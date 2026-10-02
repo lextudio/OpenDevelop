@@ -282,34 +282,8 @@ sealed class GtkDesignerHostService : IDesignerChildService
 				root.QueueDraw();
 				DrainMainContext();
 				var paintTarget = root is Gtk.Window mappedWindow ? mappedWindow.GetChild() ?? root : root;
-				// QueueDraw on the root is not enough. What gets snapshotted is the content, and
-				// SnapshotChild reuses the render node that content last produced - so without a draw of
-				// its own at the new allocation, the node is the one from before the resize, and the
-				// texture comes out at the old size (806x63 for a widget that is 800x600) while the frame
-				// claims the new one.
-				paintTarget.QueueDraw();
-				DrainMainContext();
-				// An unmapped window never runs a size-allocate pass on its child, so the content keeps
-				// its natural size while the frame reports the size that was asked for. The client then
-				// stretches that small bitmap across the large frame it was promised, and a label-and-
-				// button window comes out as an 800x600 frame holding an 800x60 strip of squashed text.
-				// Allocate the paint target to the size the frame will claim, and settle the context, until
-				// it agrees - otherwise the reported size and the rendered pixels disagree.
-				if (!ReferenceEquals(paintTarget, root)) {
-					for (var attempt = 0; attempt < 4; attempt++) {
-						if (paintTarget.GetWidth() == width && paintTarget.GetHeight() == height) break;
-						paintTarget.Allocate(width, height, -1, null);
-						paintTarget.QueueDraw();
-						DrainMainContext();
-					}
-					// Append rather than assign: the allocation note below must not displace the tree.
-					if (Environment.GetEnvironmentVariable("OD_GTK_DUMP_TREE") == "1")
-						session.RenderDiagnostic = DescribeWidgetTree(paintTarget, 0) + session.RenderDiagnostic;
-					if (paintTarget.GetWidth() != width || paintTarget.GetHeight() != height)
-						session.RenderDiagnostic += "GTK allocated the window content to "
-							+ paintTarget.GetWidth() + "x" + paintTarget.GetHeight() + " rather than the requested "
-							+ width + "x" + height + ", so the preview is smaller than the frame it is reported in.\n";
-				}
+				if (Environment.GetEnvironmentVariable("OD_GTK_DUMP_TREE") == "1")
+					session.RenderDiagnostic = DescribeWidgetTree(paintTarget, 0) + session.RenderDiagnostic;
 				// ToNode, not FreeToNode: gtk_snapshot_free_to_node frees the GtkSnapshot, but its
 				// managed wrapper keeps a toggle reference, and releasing that later (from the GC)
 				// touched freed memory - a native 0xC0000005 in ToggleRegistration.RemoveToggleRef.
