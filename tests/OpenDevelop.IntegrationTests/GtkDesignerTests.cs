@@ -12,7 +12,10 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		this.app = app;
 		var repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(app.OpenDevelopProjectPath)!, "..", "..", ".."));
 		var fixture = Path.Combine(repo, "tests", "fixtures", "GtkDesignerFixture");
-		workDir = Path.Combine(Path.GetTempPath(), "GtkDesignerTests-" + Guid.NewGuid().ToString("N"));
+		// The real path, not Path.GetTempPath()'s: on macOS that is /var/..., a symlink to /private/var.
+		// MSBuild given the /var path of the project resolves its items under /private/var, sees them as
+		// outside the project, and copies Windows/MainWindow.ui flat into bin/ - where the app cannot find it.
+		workDir = Path.Combine(RealPath(Path.GetTempPath()), "GtkDesignerTests-" + Guid.NewGuid().ToString("N"));
 		CopyDirectory(fixture, workDir); projectPath = Path.Combine(workDir, "GtkDesignerFixture.csproj"); uiPath = Path.Combine(workDir, "Windows", "MainWindow.ui"); settingsUiPath = Path.Combine(workDir, "Windows", "SettingsWindow.ui");
 	}
 
@@ -329,7 +332,7 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 
 		// Type into the XML pane the way a user does: the source editor becomes the active view, so
 		// returning to the designer hands it the edited text.
-		await app.InvokeAsync("od.file.query-text-area-screen-bounds", uiPath);
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => (await app.InvokeAsync("od.file.query-text-area-screen-bounds", uiPath)).GetProperty("success").GetBoolean(), TimeSpan.FromSeconds(10)), "the XML source view never became visible");
 		var broken = await app.InvokeAsync("od.file.replace-text", uiPath, "<property name=\"label\">Run</property>", "<property name=\"label\">Run</propertyX>");
 		Assert.True(broken.GetProperty("success").GetBoolean(), broken.ToString());
 		JsonElement reported = default;
@@ -339,7 +342,7 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 			return text.Contains("propertyX", StringComparison.Ordinal) || text.Contains("does not match", StringComparison.OrdinalIgnoreCase) || text.Contains("unexpected end tag", StringComparison.OrdinalIgnoreCase);
 		}, TimeSpan.FromSeconds(15)), "the malformed source was not reported: " + reported);
 
-		await app.InvokeAsync("od.file.query-text-area-screen-bounds", uiPath);
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => (await app.InvokeAsync("od.file.query-text-area-screen-bounds", uiPath)).GetProperty("success").GetBoolean(), TimeSpan.FromSeconds(10)), "the XML source view never became visible");
 		var fixedText = await app.InvokeAsync("od.file.replace-text", uiPath, "<property name=\"label\">Run</propertyX>", "<property name=\"label\">Run again</property>");
 		Assert.True(fixedText.GetProperty("success").GetBoolean(), fixedText.ToString());
 		JsonElement recovered = default;
@@ -582,25 +585,20 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		await app.InvokeAsync("od.activate");
 		await app.InvokeAsync("od.gtk-designer.fit");
 
-		var toolboxBounds = await app.InvokeAsync("od.gtk-designer.toolbox.query-item-bounds", "GtkSwitch");
-		Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
-		var fromX = toolboxBounds.GetProperty("centerX").GetDouble();
-		var fromY = toolboxBounds.GetProperty("centerY").GetDouble();
-
 		// Target a real LEAF element (runButton), not a container whose own native bounds can
 		// tie exactly with an ancestor's (e.g. contentBox vs mainWindow both reporting the full
 		// 800x600 frame here) - NativeNodeAt's tie-break on equal area is order-dependent and
 		// made an early version of this test flaky at the coordinate-resolution step, independent
 		// of the drag/drop mechanics themselves.
-		var targetBounds = await app.InvokeAsync("od.gtk-designer.query-element-screen-bounds", "runButton");
-		Assert.True(targetBounds.GetProperty("success").GetBoolean(), targetBounds.ToString());
-		var toX = targetBounds.GetProperty("centerX").GetDouble();
-		var toY = targetBounds.GetProperty("centerY").GetDouble();
-
 		JsonElement statusAfterDrop = default;
 		var grew = false;
 		for (int attempt = 1; attempt <= 4 && !grew; attempt++) {
 			await app.InvokeAsync("od.activate");
+			// Read both points after activation, and only once two samples agree: showing the Tools pad
+			// and activating the window re-lay it out, and a toolbox point read before that settles lands
+			// on a neighbouring item - the drop then inserts a CheckButton instead of the Switch.
+			var (fromX, fromY) = await StableCenterAsync("od.gtk-designer.toolbox.query-item-bounds", "GtkSwitch");
+			var (toX, toY) = await StableCenterAsync("od.gtk-designer.query-element-screen-bounds", "runButton");
 			var pressed = await app.PressPointerAsync(fromX, fromY); Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
 			for (int step = 1; step <= 6; step++) {
 				var t = step / 6.0;
@@ -624,6 +622,20 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		await ValidateGtkBuilderAsync(uiPath);
 	}
 
+	async Task<(double X, double Y)> StableCenterAsync(string action, string name)
+	{
+		(double X, double Y)? previous = null;
+		for (int sample = 0; sample < 20; sample++) {
+			var bounds = await app.InvokeAsync(action, name);
+			Assert.True(bounds.GetProperty("success").GetBoolean(), bounds.ToString());
+			var current = (bounds.GetProperty("centerX").GetDouble(), bounds.GetProperty("centerY").GetDouble());
+			if (previous == current) return current;
+			previous = current;
+			await Task.Delay(150, TestContext.Current.CancellationToken);
+		}
+		Assert.Fail(action + " " + name + " never reported the same bounds twice in a row; last " + previous);
+		return default;
+	}
 	async Task<JsonElement> WaitAsync(string? rootId = null)
 	{
 		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20); JsonElement last = default;
@@ -690,9 +702,28 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var outputTask = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken); var errorTask = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
 		await process.WaitForExitAsync(TestContext.Current.CancellationToken);
 		var output = await outputTask; var error = await errorTask;
-		Assert.True(process.ExitCode == 0 && output.Contains("smoke test passed", StringComparison.Ordinal), "GTK fixture did not start after saved edits:\n" + output + error);
+		Assert.True(process.ExitCode == 0 && output.Contains("smoke test passed", StringComparison.Ordinal), "GTK fixture did not start after saved edits:\n" + output + error + "\noutput directory:\n" + DescribeFixtureOutput(projectPath) + "\nproject:\n" + File.ReadAllText(projectPath));
 	}
 
+	/// <summary>The path with every symbolic link along it resolved.</summary>
+	static string RealPath(string path)
+	{
+		var full = Path.GetFullPath(path);
+		var resolved = Path.GetPathRoot(full)!;
+		foreach (var part in full.Substring(resolved.Length).Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries)) {
+			resolved = Path.Combine(resolved, part);
+			if (new DirectoryInfo(resolved).LinkTarget is { } target)
+				resolved = Path.GetFullPath(target, Path.GetDirectoryName(resolved)!);
+		}
+		return resolved;
+	}
+	static string DescribeFixtureOutput(string projectPath)
+	{
+		var bin = Path.Combine(Path.GetDirectoryName(projectPath)!, "bin");
+		return Directory.Exists(bin)
+			? string.Join("\n", Directory.EnumerateFiles(bin, "*", SearchOption.AllDirectories).Where(f => !f.EndsWith(".dll", StringComparison.Ordinal)).Select(f => Path.GetRelativePath(bin, f)))
+			: "(no bin directory)";
+	}
 	static async Task ValidateFixtureBuildAsync(string projectPath)
 	{
 		var start = new System.Diagnostics.ProcessStartInfo("dotnet") { RedirectStandardError = true, RedirectStandardOutput = true, UseShellExecute = false };
@@ -709,5 +740,11 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var children = output.Split('\n').Where(line => line.TrimStart().StartsWith(hostProcessId.ToString() + " ", StringComparison.Ordinal)).ToArray();
 		Assert.DoesNotContain(children, line => line.Contains("gtk4-builder-tool", StringComparison.Ordinal) || line.Contains("GtkRenderHelper", StringComparison.Ordinal));
 	}
-	public ValueTask DisposeAsync() { try { Directory.Delete(workDir, true); } catch { } return ValueTask.CompletedTask; }
+	public async ValueTask DisposeAsync()
+	{
+		// Close the documents first: the app outlives this class, and a tab still open on a deleted
+		// .ui fails the next time the workbench initializes its views.
+		try { await app.InvokeAsync("od.close-all-document-views"); } catch { }
+		try { if (Environment.GetEnvironmentVariable("OD_KEEP_GTK_WORKDIR") != "1") Directory.Delete(workDir, true); } catch { }
+	}
 }
