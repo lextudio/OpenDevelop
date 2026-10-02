@@ -3434,6 +3434,37 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return null;
 		}
 
+		[DevFlowAction("od.tools-pad.status", Description = "What the real Tools pad shows right now, without activating any view: the active view's type, the hosted content's type, whether it is the shared Toolbox list, which designer that list was last activated for, and how many rows it shows. Use it to check the toolbox of a Design/Source split while the Source half has focus.")]
+		public static string ToolsPadStatus()
+		{
+			var pad = SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost;
+			var shared = SharedToolbox.Instance;
+			var hosted = pad?.HostedContent;
+			return JsonSerializer.Serialize(new {
+				success = pad != null,
+				activeView = SD.Workbench.ActiveViewContent?.GetType().Name,
+				hostedContent = hosted?.GetType().Name,
+				hostsSharedToolbox = hosted != null && ReferenceEquals(hosted, shared.ToolboxControl),
+				sharedToolboxOwner = shared.ActiveOwner?.GetType().Name,
+				visibleItemCount = shared.VisibleItemCount,
+				hasSearch = pad?.HasToolboxSearch ?? false
+			});
+		}
+
+		[DevFlowAction("od.file.drop-toolbox-item", Description = "Drop a Toolbox item onto an open file's source view at a document offset, through the same path a real drop takes once it has resolved the offset under the pointer (IToolboxDropTarget). Activates the Source view first, so the Tools pad shows what a user dragging onto it would see. Returns the resulting text so a test can assert where the markup landed.")]
+		public static string DropToolboxItem(string path, int offset, string typeName)
+		{
+			var editor = ActivateTextEditorView(path);
+			var window = SD.FileService.GetOpenFile(FileName.Create(path))?.WorkbenchWindow;
+			var target = window?.ViewContents.Select(view => view.GetService<IToolboxDropTarget>()).FirstOrDefault(t => t != null);
+			if (editor == null || target == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No source view accepting toolbox drops for " + path });
+			var data = new DataObject();
+			ToolboxDragData.Pack(data, typeName);
+			var inserted = target.DropToolboxItem(data, offset);
+			return JsonSerializer.Serialize(new { success = true, inserted, text = editor.Document.Text, caretOffset = editor.Caret.Offset });
+		}
+
 		[DevFlowAction("od.file.query-vs-text-buffer", Description = "Report the VS editor ITextBuffer exposed for an open file's primary AvalonEdit editor (registered by CodeEditor into the document's service container) - verifies the vs-editor-api integration point: editor.GetService<ITextBuffer>() returns a live wrapper over the same TextDocument")]
 		public static string QueryVsTextBuffer(string path)
 		{
