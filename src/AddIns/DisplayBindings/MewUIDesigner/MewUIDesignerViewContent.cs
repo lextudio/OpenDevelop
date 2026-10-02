@@ -9,7 +9,7 @@ namespace ICSharpCode.MewUIDesigner;
 public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadErrors, IOutlineContentHost, IToolsHost, IHasPropertyContainer, IUndoHandler, IFilterableToolbox, IDesignCanvasBackend
 {
 	public static readonly string[] ToolNames = { "StackPanel", "Grid", "DockPanel", "WrapPanel", "Border", "ScrollViewer", "Label", "Button", "TextBox", "CheckBox", "RadioButton", "Slider", "ProgressBar", "ComboBox", "ListBox", "Image" };
-	readonly DocumentOutlineControl outline = new(); readonly ListBox toolbox = new() { ItemTemplate = DesignerTypeIcons.CreateToolboxItemTemplate(mapper: MewUIControlMapper.Instance) }; readonly PropertyContainer properties = new(); readonly TextBlock diagnostic = new() { Foreground = Brushes.OrangeRed, Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap }; readonly OpenedFile mxamlFile;
+	readonly DocumentOutlineControl outline = new() { IconMapper = MewUIControlMapper.Instance }; readonly ListBox toolbox = new() { ItemTemplate = DesignerTypeIcons.CreateToolboxItemTemplate(mapper: MewUIControlMapper.Instance) }; readonly PropertyContainer properties = new(); readonly TextBlock diagnostic = new() { Foreground = Brushes.OrangeRed, Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap }; readonly OpenedFile mxamlFile;
 	// The shared design canvas (ICSharpCode.DesignerCanvas addin) showing the host's real MewUI
 	// render, keyed by element id (the Name, or a path-based id for an unnamed element). MewUI panels lay children out, so there are no resize handles
 	// and a drag is a reorder among siblings (see CommitCanvasDrag).

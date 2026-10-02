@@ -86,6 +86,7 @@ namespace ICSharpCode.GtkDesigner
 
 			// Windows.
 			{ "Window", "Window" },
+			{ "ApplicationWindow", "Window" },
 			{ "Dialog", "Dialog" },
 			{ "MessageDialog", "Dialog" },
 			{ "AboutDialog", "Dialog" },
@@ -94,7 +95,7 @@ namespace ICSharpCode.GtkDesigner
 			// They are GTK's own controls wearing a different library's name, so they resolve through
 			// the same shared concepts.
 			{ "HeaderBar", "Container" },
-			{ "StatusPage", "Text" },
+			{ "StatusPage", "Label" },
 			{ "Clamp", "Container" },
 			{ "PreferencesPage", "Tab" },
 			{ "PreferencesGroup", "Expander" },
@@ -116,7 +117,7 @@ namespace ICSharpCode.GtkDesigner
 			{ "ViewStack", "Tab" },
 			{ "ViewSwitcher", "Tab" },
 			{ "ViewSwitcherBar", "Tab" },
-			{ "WindowTitle", "Text" },
+			{ "WindowTitle", "Label" },
 		};
 
 		public string? GetConcept(string typeName)
