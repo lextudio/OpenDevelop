@@ -236,13 +236,6 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	{
 		session.RenderDiagnostic = "";
 		if (string.IsNullOrEmpty(rootId) || rootId.StartsWith("$", StringComparison.Ordinal)) return null;
-		// Which object is being rendered, and what the realized widget for it is, decides the frame size:
-		// a child has no default size of its own and falls back to its natural size. Record it on every
-		// call - including the cached path below - so a run can be read back rather than guessed at.
-		session.RenderDiagnostic = "render root=" + rootId
-			+ " class=" + (session.NativeRoot?.GetType().Name ?? "?")
-			+ " size=" + session.NativeRoot?.GetWidth() + "x" + session.NativeRoot?.GetHeight()
-			+ " v" + session.Version + "\n";
 		try {
 			var xml = PreviewXml(session);
 			var renderKey = rootId + ":" + Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(xml)));
@@ -282,8 +275,16 @@ sealed class GtkDesignerHostService : IDesignerChildService
 				root.QueueDraw();
 				DrainMainContext();
 				var paintTarget = root is Gtk.Window mappedWindow ? mappedWindow.GetChild() ?? root : root;
+				// Which object is being rendered, and what the realized widget for it is, decides the frame size:
+				// a child has no default size of its own and falls back to its natural size. Traced only when
+				// asked for, because a designer that reports a diagnostic per render surfaces it to the user.
 				if (Environment.GetEnvironmentVariable("OD_GTK_DUMP_TREE") == "1")
-					session.RenderDiagnostic = DescribeWidgetTree(paintTarget, 0) + session.RenderDiagnostic;
+					session.RenderDiagnostic = "render root=" + rootId
+						+ " class=" + (session.NativeRoot?.GetType().Name ?? "?")
+						+ " size=" + session.NativeRoot?.GetWidth() + "x" + session.NativeRoot?.GetHeight()
+						+ " v" + session.Version + "\n"
+						+ DescribeWidgetTree(paintTarget, 0)
+						+ session.RenderDiagnostic;
 				// ToNode, not FreeToNode: gtk_snapshot_free_to_node frees the GtkSnapshot, but its
 				// managed wrapper keeps a toggle reference, and releasing that later (from the GC)
 				// touched freed memory - a native 0xC0000005 in ToggleRegistration.RemoveToggleRef.
