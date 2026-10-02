@@ -314,6 +314,10 @@ sealed class GtkDesignerHostService : IDesignerChildService
 				// managed wrapper keeps a toggle reference, and releasing that later (from the GC)
 				// touched freed memory - a native 0xC0000005 in ToggleRegistration.RemoveToggleRef.
 				// ToNode leaves the snapshot alive and the wrapper disposes it normally.
+				// WidgetPaintable is the supported GTK4 route for snapshotting a widget at a chosen size, and
+				// it is what every non-window root uses - but for a window's content it produces an empty node
+				// here, so the frame comes back blank. SnapshotChild is the only route that yields pixels at
+				// all, and its node is the one the content last drew.
 				Gsk.RenderNode? node;
 				using (var snapshot = Gtk.Snapshot.New()) {
 					if (!ReferenceEquals(paintTarget, root)) root.SnapshotChild(paintTarget, snapshot);

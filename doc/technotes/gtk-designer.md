@@ -747,6 +747,110 @@ framework-independent absolute move/resize operation to expose through DDP.
 - Reusing Stetic's GTK 2 runtime, `gui.stetic`, generated folder or wrapper hierarchy is explicitly
   out of scope.
 
+## Preview rendering: known defects and what has been ruled out
+
+Recorded 2026-10-02 from a macOS investigation of a "distorted / squashed surface"
+in the design preview. Everything here was measured, not inferred; the numbers come
+from `GtkDesigner.Host --probe` (offline) and from
+`GtkDesignerVisualWalkthroughTests` (in the running host).
+
+### Symptom
+
+Opening a window document produced a strip of squashed text in a tall frame, and in
+a later state a window-sized frame with almost nothing in it:
+
+| | |
+|---|---|
+| fixture declares | `default-width 800`, `default-height 600` |
+| GTK widget allocated | `800x600` |
+| frame reported to the client | `806x63` for steps 1-7, `806x606` afterwards |
+| PNG actually encoded | identical to the reported frame |
+
+The sizes were **stable per phase** rather than random, and the rendered content was
+missing: a window whose widget is `800x600` painted a single centred `Button`.
+
+### The size lie (fixed)
+
+`NativeGtkRenderer.Render` reported the size it had *asked for* while encoding a
+texture of a different size. The canvas laid a small bitmap out in a large frame, and
+an 800x600 window came out as an 800x60 strip. The host now reports the size of the
+texture it actually encoded, so the frame cannot claim pixels it does not carry and
+nothing is stretched. `GtkDesignerVisualWalkthroughTests` asserts this on every
+capture: the declared frame size must equal the PNG's header dimensions, both read
+from the single call that wrote the file - a separate `status` query races the next
+render and compares two different states.
+
+### Where the remaining defect lives
+
+Per-render tracing (`session.RenderDiagnostic`, surfaced as a diagnostic) shows the
+window is correctly realized while the texture is not:
+
+```
+render root=mainWindow class=ApplicationWindow size=800x600
+nativeFrame 806x63
+```
+
+So allocation is fine and the fault is in the snapshot. `GtkDesigner.Host --probe
+<file.ui>` reproduces it with no IDE involved: it builds the document, measures,
+reads the default size, allocates, maps, snapshots and renders a texture, printing
+every size including the texture's.
+
+### Ruled out
+
+| Suspect | Result |
+|---|---|
+| GTK itself | `--probe` allocates `800x600` and prints a complete tree (`Box`/`Label`/`Button`) |
+| `GtkPreviewSanitizer` | sanitized and original documents render identically |
+| `GetDefaultSize` | returns `800x600`; the `63` is the natural height (`61`) plus a couple of pixels |
+| reusing a realized window across renders | four further passes on the same widget all hold `800x600` |
+| mapping the window (`SetVisible` + settle) | still `800x600` |
+| `QueueDraw` on the snapshotted content | still `806x63` |
+| `Gtk.WidgetPaintable` instead of `SnapshotChild` | **empty render node**, blank frame - a real result, not an offscreen artefact |
+
+### What is actually known about the snapshot
+
+`root.SnapshotChild(paintTarget, snapshot)` appends the render node the content
+**last produced**. It measures the content as it was before the resize, and nothing
+the caller does afterwards recovers a fresher node. GTK4 removed
+`gtk_widget_snapshot`, so a widget cannot snapshot itself, and `WidgetPaintable` -
+the supported route - yields nothing here. An unrealized `Gsk.CairoRenderer` is a
+separate trap: `gsk_renderer_render_texture` asserts `priv->is_realized` and returns
+nothing (`CreateRenderer` realizes it).
+
+The open question is why the content never produces a node at the current allocation
+in the first place. Both existing routes assume a draw has already happened at the
+size being reported. Candidates not yet tried: hosting the content in a `Gtk.Picture`
+or another non-window surface so it draws on its own; driving a real frame cycle
+before snapshotting instead of draining the main context; or avoiding the
+`Gtk.Window` root entirely for previews.
+
+### Offline probe
+
+```
+dotnet src/AddIns/DisplayBindings/GtkDesigner.Host/bin/.../GtkDesigner.Host.dll \
+  --probe tests/fixtures/GtkDesignerFixture/Windows/MainWindow.ui
+```
+
+Reports the document twice - once as authored, once as `PreviewXml` delivers it -
+then the natural size, the declared default, the frame, the realized widget tree with
+each allocation, and the texture size. `gsk_renderer_render_texture` needs a realized
+renderer, and the probe creates one; keep that when extending it. Homebrew's GTK is
+keg-only on macOS, so the libraries have to be linked beside the host first (the IDE
+does this through `GtkRuntimeLocator.PrepareMacOsLibraries`).
+
+### Walkthrough captures
+
+`GtkDesignerVisualWalkthroughTests` drives the designer's own steps and writes a PNG
+after each one that changes the canvas, to
+`tests/OpenDevelop.IntegrationTests/bin/gtk-walkthrough/`, alongside a
+`walkthrough.log` of the host's per-render trace. It is for looking at, not asserting
+appearance: on a platform without a WPF image encoder (LibreWPF on macOS has none)
+`od.gtk-designer.screenshot` falls back to the GTK host's own PNG and reports
+`source`, so the two are never confused. A captured PNG is the design content only,
+without the canvas chrome - which is what makes it useful for telling "GTK rendered
+it wrong" apart from "the canvas placed it wrong", but it cannot show the composed
+surface.
+
 ## Primary references
 
 - GTK 4 GtkBuilder: <https://docs.gtk.org/gtk4/class.Builder.html>
