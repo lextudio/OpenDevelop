@@ -661,7 +661,7 @@ public sealed class WpfSurfaceHostRpcTests
 			TypeName = "CheckBox",
 			XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 		};
-		var added = await client.AddElementAsync(1, gridPath, toolboxItem, "added", 10, 10, timeout.Token);
+		var added = await client.AddElementAsync(1, gridPath, toolboxItem, "added", 10, 10, cancellationToken: timeout.Token);
 		Assert.True(added.Accepted, added.Error);
 		var addedNode = FindByName(added.Tree!, "added");
 		Assert.True(addedNode != null, "the new CheckBox did not appear in the element tree");
@@ -686,7 +686,7 @@ public sealed class WpfSurfaceHostRpcTests
 			TypeName = "Menu",
 			XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 		};
-		var added = await client.AddElementAsync(1, opened.Tree!.Id, menu, "menu", 0, 0, timeout.Token);
+		var added = await client.AddElementAsync(1, opened.Tree!.Id, menu, "menu", 0, 0, cancellationToken: timeout.Token);
 		Assert.True(added.Accepted, added.Error);
 		Assert.NotNull(FindByName(added.Tree!, "menu"));
 		Assert.NotNull(added.Render);
@@ -712,7 +712,7 @@ public sealed class WpfSurfaceHostRpcTests
 			TypeName = "Menu",
 			XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 		};
-		var added = await client.AddElementAsync(1, grid.Id, menu, "menu", 0, 0, timeout.Token);
+		var added = await client.AddElementAsync(1, grid.Id, menu, "menu", 0, 0, cancellationToken: timeout.Token);
 		Assert.True(added.Accepted, added.Error);
 		Assert.NotNull(added.Render);
 		Assert.False(string.IsNullOrEmpty(added.Render!.Data));
@@ -732,7 +732,7 @@ public sealed class WpfSurfaceHostRpcTests
 			TypeName = "CheckBox",
 			XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 		};
-		var result = await client.AddElementAsync(1, "9,9,9", toolboxItem, "shouldNotApply", 0, 0, timeout.Token);
+		var result = await client.AddElementAsync(1, "9,9,9", toolboxItem, "shouldNotApply", 0, 0, cancellationToken: timeout.Token);
 		Assert.False(result.Accepted);
 		Assert.False(string.IsNullOrEmpty(result.Error));
 	}
@@ -1120,7 +1120,7 @@ public sealed class WpfSurfaceHostRpcTests
 			TypeName = "CheckBox",
 			XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 		};
-		var added = await client.AddElementAsync(1, opened.Tree!.Id, toolboxItem, "added", 10, 10, timeout.Token);
+		var added = await client.AddElementAsync(1, opened.Tree!.Id, toolboxItem, "added", 10, 10, cancellationToken: timeout.Token);
 		Assert.True(added.Accepted, added.Error);
 		var text = (await client.FlushAsync(1, timeout.Token)).Files.Single().Text;
 		var lines = text.Split('\n');

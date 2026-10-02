@@ -546,7 +546,7 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("button1.Click += button1_Click;",
 			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 
-		var added = await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "System.Windows.Forms.Label" }, "label1", 30, 70, timeout.Token);
+		var added = await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "System.Windows.Forms.Label" }, "label1", 30, 70, cancellationToken: timeout.Token);
 		Assert.Contains(added.Components, component => component.Name == "label1"
 			&& component.Type == "System.Windows.Forms.Label" && component.Parent == "Form1"
 			&& component.X == 30 && component.Y == 70);
@@ -567,9 +567,9 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("new System.Drawing.Point(40, 50)", movedSource, StringComparison.Ordinal);
 		Assert.Contains("new System.Drawing.Size(120, 35)", movedSource, StringComparison.Ordinal);
 
-		var withPanel = await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "Panel" }, "panel1", 10, 100, timeout.Token);
+		var withPanel = await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "Panel" }, "panel1", 10, 100, cancellationToken: timeout.Token);
 		var panel1 = Assert.Single(withPanel.Components, component => component.Name == "panel1");
-		var nested = await client.AddElementAsync(7, "panel1", new DesignerToolboxItemInfo { TypeName = "Button" }, "nestedButton", 5, 6, timeout.Token);
+		var nested = await client.AddElementAsync(7, "panel1", new DesignerToolboxItemInfo { TypeName = "Button" }, "nestedButton", 5, 6, cancellationToken: timeout.Token);
 		// SurfaceX/Y are relative to panel1's own reported surface position (itself offset by the
 		// root form's non-client border on the Microsoft backend) plus the button's LOCAL (client,
 		// panel-relative) offset - not a value hardcoded against a zero root offset.
@@ -579,12 +579,12 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("panel1.Controls.Add(nestedButton);",
 			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 		var beforeAdvancedControlRender = FramePayload(nested.Render!);
-		var advanced = await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "DataGridView" }, "dataGridView1", 145, 10, timeout.Token);
+		var advanced = await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "DataGridView" }, "dataGridView1", 145, 10, cancellationToken: timeout.Token);
 		Assert.Contains(advanced.Components, component => component.Name == "dataGridView1"
 			&& component.Type == "System.Windows.Forms.DataGridView");
 		Assert.NotEqual(beforeAdvancedControlRender, FramePayload(advanced.Render!));
 		Assert.Contains("System.Windows.Forms.DataGridView dataGridView1", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
-		await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "Button" }, "renameMe", 5, 5, timeout.Token);
+		await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "Button" }, "renameMe", 5, 5, cancellationToken: timeout.Token);
 		var renamed = await client.RenameAsync(7, "renameMe", "renamedButton", timeout.Token);
 		Assert.Contains(renamed.Components, component => component.Name == "renamedButton");
 		Assert.DoesNotContain(renamed.Components, component => component.Name == "renameMe");
@@ -1992,7 +1992,7 @@ public sealed class FormsDesignerHostClientTests
 		Assert.DoesNotContain("AddHandler button1.Click",
 			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 
-		var added = await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "System.Windows.Forms.Label" }, "label1", 30, 70, timeout.Token);
+		var added = await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "System.Windows.Forms.Label" }, "label1", 30, 70, cancellationToken: timeout.Token);
 		Assert.Contains(added.Components, component => component.Name == "label1"
 			&& component.Type == "System.Windows.Forms.Label" && component.Parent == "Form1"
 			&& component.X == 30 && component.Y == 70);

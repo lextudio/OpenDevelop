@@ -218,7 +218,7 @@ public sealed class UnoDesignHostRpcTests
 		Assert.False(badEvent.Accepted);
 
 		var itemXaml = $"""<Button xmlns="{Ns}" xmlns:x="{XNs}" x:Name="tempButton" Content="Temp"/>""";
-		var added = await client.AddElementAsync(1, "root", new DesignerToolboxItemInfo { Template = itemXaml }, "tempButton", 10, 10, timeout.Token);
+		var added = await client.AddElementAsync(1, "root", new DesignerToolboxItemInfo { Template = itemXaml }, "tempButton", 10, 10, cancellationToken: timeout.Token);
 		Assert.True(added.Accepted);
 
 		var deleted = await client.DeleteElementsAsync(1, new[] { "tempButton" }, timeout.Token);
