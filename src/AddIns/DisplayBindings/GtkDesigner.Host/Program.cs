@@ -82,7 +82,74 @@ static class Probe
 			Console.WriteLine($"  settle {attempt}: " + paintTarget.GetWidth() + "x" + paintTarget.GetHeight());
 		}
 		Console.Write(Tree(paintTarget, 1));
+
+		// The preview makes the window visible (transparent, so it never flashes) and waits for it to be
+		// mapped before snapshotting. Mapping is a real size negotiation with the window system, so this
+		// step - not the allocate above - is where a window can be resized away from what was requested.
+		Console.WriteLine("mapped before: " + root.GetMapped());
+		if (!root.GetMapped()) {
+			if (root is Gtk.Window toFade) toFade.SetOpacity(0);
+			root.SetVisible(true);
+		}
+		for (var i = 0; i < 8; i++) {
+			var ctx = GLib.MainContext.Default();
+			for (var j = 0; j < 8 && ctx.Pending(); j++) ctx.Iteration(false);
+			if (root.GetMapped()) break;
+		}
+		Console.WriteLine("mapped after: " + root.GetMapped()
+			+ " root " + root.GetWidth() + "x" + root.GetHeight()
+			+ " content " + paintTarget.GetWidth() + "x" + paintTarget.GetHeight()
+			+ " default " + Requested(root));
+
+		// The long-lived host reuses the realized window across renders rather than rebuilding it, so
+		// run the whole sequence again on the same widget: if GTK honours a fresh size request only on a
+		// freshly built widget, this is where the frame collapses back to the natural size.
+		for (var pass = 2; pass <= 4; pass++) {
+			root.SetSizeRequest(width, height);
+			root.Realize();
+			root.Allocate(width, height, -1, null);
+			var context = GLib.MainContext.Default();
+			for (var i = 0; i < 8 && context.Pending(); i++) context.Iteration(false);
+			Console.WriteLine("pass " + pass + ": root " + root.GetWidth() + "x" + root.GetHeight()
+				+ " content " + paintTarget.GetWidth() + "x" + paintTarget.GetHeight()
+				+ " requested-default " + Requested(root));
+			paintTarget.QueueDraw();
+			for (var i = 0; i < 8 && context.Pending(); i++) context.Iteration(false);
+			Console.WriteLine("          after draw: content " + paintTarget.GetWidth() + "x" + paintTarget.GetHeight());
+		}
+		// The step that decides what the frame actually measures: a snapshot of the window's content,
+		// turned into a texture. Reporting the texture's size rather than the widget's is what stopped the
+		// frame from claiming more pixels than it carries - so it is also where a wrong size comes from.
+		Console.WriteLine("paintTarget " + paintTarget.GetType().Name + " "
+			+ paintTarget.GetWidth() + "x" + paintTarget.GetHeight());
+		Gsk.RenderNode? node;
+		using (var snapshot = Gtk.Snapshot.New()) {
+			if (!ReferenceEquals(paintTarget, root)) root.SnapshotChild(paintTarget, snapshot);
+			else {
+				using var paintable = Gtk.WidgetPaintable.New(paintTarget);
+				paintable.Snapshot(snapshot, width, height);
+			}
+			node = snapshot.ToNode();
+		}
+		if (node == null) { Console.WriteLine("empty render node"); return 0; }
+		var renderer = Gsk.CairoRenderer.New();
+		// An unrealized renderer fails the render outright and hands back nothing: gsk_renderer_render_texture
+		// asserts priv->is_realized. Production realizes it in CreateRenderer.
+		renderer.Realize(null);
+		using (var texture = renderer.RenderTexture(node, null)) {
+			Console.WriteLine("texture " + texture.Width + "x" + texture.Height
+				+ " (widget content was " + paintTarget.GetWidth() + "x" + paintTarget.GetHeight()
+				+ ", frame " + width + "x" + height + ")");
+		}
 		return 0;
+	}
+
+	/// <summary>The default size still recorded on a window, which is what a later render reads back.</summary>
+	static string Requested(Gtk.Widget widget)
+	{
+		if (widget is not Gtk.Window window) return "n/a";
+		window.GetDefaultSize(out var w, out var h);
+		return w + "x" + h;
 	}
 
 	/// <summary>GTK4 dropped GtkContainer: children come from the first-child / next-sibling chain.</summary>

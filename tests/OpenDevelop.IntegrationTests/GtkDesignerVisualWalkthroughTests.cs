@@ -100,6 +100,7 @@ public sealed class GtkDesignerVisualWalkthroughTests : IAsyncLifetime, IAsyncDi
 		// Written to the output folder rather than to the test output: a passing test's output is not shown,
 		// and this log is the point of the walkthrough.
 		var log = new System.Text.StringBuilder();
+		foreach (var d in initial.GetProperty("diagnostics").EnumerateArray()) log.AppendLine("D: " + d.GetString());
 		log.AppendLine("nativeFrame " + initial.GetProperty("nativeFrameWidth").GetInt32() + "x"
 			+ initial.GetProperty("nativeFrameHeight").GetInt32() + " rootIsWindow="
 			+ initial.GetProperty("rootIsWindow").GetBoolean());

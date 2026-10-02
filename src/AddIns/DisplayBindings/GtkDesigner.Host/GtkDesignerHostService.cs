@@ -236,6 +236,13 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	{
 		session.RenderDiagnostic = "";
 		if (string.IsNullOrEmpty(rootId) || rootId.StartsWith("$", StringComparison.Ordinal)) return null;
+		// Which object is being rendered, and what the realized widget for it is, decides the frame size:
+		// a child has no default size of its own and falls back to its natural size. Record it on every
+		// call - including the cached path below - so a run can be read back rather than guessed at.
+		session.RenderDiagnostic = "render root=" + rootId
+			+ " class=" + (session.NativeRoot?.GetType().Name ?? "?")
+			+ " size=" + session.NativeRoot?.GetWidth() + "x" + session.NativeRoot?.GetHeight()
+			+ " v" + session.Version + "\n";
 		try {
 			var xml = PreviewXml(session);
 			var renderKey = rootId + ":" + Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(xml)));
