@@ -578,6 +578,9 @@
     </Style>
 
     <Style TargetType="{x:Type MenuItem}">
+        <!-- Display text formatting measures CJK to zero width on this WPF port, which left the menu
+             bar blank in a Chinese UI; Ideal renders it. See the port bug write-up. -->
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
         <Setter Property="Foreground" Value="{DynamicResource Foreground}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="Transparent" />
