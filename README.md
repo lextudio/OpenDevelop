@@ -322,6 +322,10 @@ The project intentionally develops these pieces in the open so that individual c
 
 ![MewUI visual designer](images/mewui-designer.png)
 
+### GTK 4 visual designer
+
+![GTK 4 visual designer](images/gtk4-designer.png)
+
 ### ILSpy integration
 
 ![ILSpy decompiler layout](images/ilspy-layout.png)
