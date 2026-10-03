@@ -1,5 +1,7 @@
 # OpenDevelop
 
+[![Downloads](https://img.shields.io/github/downloads/lextudio/OpenDevelop/total?label=downloads)](https://github.com/lextudio/OpenDevelop/releases)
+
 **A modern, open-source, cross-platform IDE for C# and .NET, built from the best ideas and technologies across the .NET development tools ecosystem.**
 
 OpenDevelop started from the classic SharpDevelop code base, but it has since been extensively re-engineered for modern .NET. It brings together technologies and ideas from SharpDevelop, MonoDevelop and Visual Studio for Mac, ILSpy, XAML Studio, Roslyn, and the Visual Studio Editor platform, while building new infrastructure of its own.
