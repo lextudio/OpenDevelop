@@ -154,10 +154,10 @@
     <value>失效</value>
   </data>
   <data name="AddInManager.AddInEnabled" xml:space="preserve">
-    <value>重新启动SharpDevelop后插件才能使用</value>
+    <value>重新启动${ProductName}后插件才能使用</value>
   </data>
   <data name="AddInManager.AddInInstalled" xml:space="preserve">
-    <value>插件将在重启OpenDevelop后安装</value>
+    <value>插件将在重启${ProductName}后安装</value>
   </data>
   <data name="AddInManager.AddInInstalledTwice" xml:space="preserve">
     <value>该插件安装了两次，请卸载其中一个版本。</value>
@@ -166,13 +166,13 @@
     <value>插件必须在插件管理器中具有唯一标识。</value>
   </data>
   <data name="AddInManager.AddInRemoved" xml:space="preserve">
-    <value>重启OpenDevelop后插件将被移除</value>
+    <value>重启${ProductName}后插件将被移除</value>
   </data>
   <data name="AddInManager.AddInUpdated" xml:space="preserve">
-    <value>插件将在重启OpenDevelop后更新</value>
+    <value>插件将在重启${ProductName}后更新</value>
   </data>
   <data name="AddInManager.AddInWillBeDisabled" xml:space="preserve">
-    <value>插件将在重启OpenDevelop后失效</value>
+    <value>插件将在重启${ProductName}后失效</value>
   </data>
   <data name="AddInManager.CannotDisableAddInManager" xml:space="preserve">
     <value>你不能禁用插件管理器，因为你需要它让插件重新可用！</value>
@@ -386,7 +386,7 @@
     <value>正在分析...</value>
   </data>
   <data name="AddIns.Profiler.Messages.RegisterFailed" xml:space="preserve">
-    <value>无法注册分析器到COM注册表。不能启动分析器！</value>
+    <value>无法注册探查器到COM注册表。不能启动探查器！</value>
   </data>
   <data name="AddIns.Profiler.Messages.UnregisterFailed" xml:space="preserve">
     <value>不能从COM注册表撤销探查器！</value>
