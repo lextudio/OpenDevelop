@@ -120,6 +120,14 @@
     <EmbeddedResource Include="..\..\..\data\resources\StringResources.resx">
       <Link>Resources\StringResources.resx</Link>
     </EmbeddedResource>
+    <!-- The 20 translated StringResources packs. Without these the chosen UI language had
+         nothing to load: ResourceService falls back to the neutral English manager and the
+         option appears to do nothing. Naming each file StringResources.<culture>.resx is what
+         makes MSBuild build a satellite assembly (zh/OpenDevelop.resources.dll) that
+         ResourceService.TrySatellite looks for. -->
+    <EmbeddedResource Include="..\..\..\data\resources\StringResources.*.resx">
+      <Link>Resources\%(Filename)%(Extension)</Link>
+    </EmbeddedResource>
     <!-- BitmapResources.resources was removed in favour of the pngResourceMap
          in ICSharpCode.Core.Presentation/PresentationResourceService.cs, which
          resolves icons via pack: URIs from Resources/VS2026/*.png -->

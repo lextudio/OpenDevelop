@@ -116,7 +116,10 @@ namespace ICSharpCode.SharpDevelop.Sda
 			MSBuildInternals.InitializeMSBuildEnvironment();
 
 			Assembly exe = Assembly.Load(properties.ResourceAssemblyName);
-			SD.ResourceService.RegisterNeutralStrings(new ResourceManager("ICSharpCode.SharpDevelop.Resources.StringResources", exe));
+			// RegisterStrings, not RegisterNeutralStrings: only the former creates the ResourceAssembly
+			// that resolves the chosen UI language. The neutral call left the English manager in place
+			// and the language option had nothing to switch to, which is why it always stayed English.
+			SD.ResourceService.RegisterStrings("ICSharpCode.SharpDevelop.Resources.StringResources", exe);
 
 			
 			CommandWrapper.LinkCommandCreator = (link => new LinkCommand(link));
