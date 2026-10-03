@@ -21,6 +21,9 @@ namespace ICSharpCode.SharpDevelop.Startup
 		public SplashScreenForm()
 		{
 			InitializeComponent();
+			// Keep the version beside startup progress: it is visible long enough to identify a
+			// build, but does not compete with the splash artwork or transient status text.
+			Version.Text = "v" + RevisionClass.FullVersion;
 			ICSharpCode.Core.StartupProgress.Reported += OnProgressReported;
 			Closed += (_, _) => ICSharpCode.Core.StartupProgress.Reported -= OnProgressReported;
 		}
