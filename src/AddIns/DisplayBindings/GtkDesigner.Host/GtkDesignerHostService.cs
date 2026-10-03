@@ -314,8 +314,21 @@ sealed class GtkDesignerHostService : IDesignerChildService
 				var titleBar = root is Gtk.Window ? WindowTitleBarHeight : 0;
 				Gsk.RenderNode? node;
 				using (var frame = Gtk.Snapshot.New()) {
+					// The window is opaque. A bare GtkBox draws no background, so without this the
+					// canvas's own dotted backdrop shows through the whole design and the preview reads
+					// as floating controls rather than a window. WinForms gets this for free from the
+					// form's BackColor; here it has to be painted, over the full frame - title bar and
+					// content alike - and bounded by a border so the window has an edge.
+					var whole = new Graphene.Rect();
+					whole.Init(0, 0, width, height + titleBar);
+					frame.AppendColor(CaptionColor(1.0, 1.0, 1.0), whole);
+					foreach (var edge in new (float X, float Y, float W, float H)[] { (0, 0, width, 1), (0, height + titleBar - 1, width, 1), (0, 0, 1, height + titleBar), (width - 1, 0, 1, height + titleBar) }) {
+						var border = new Graphene.Rect();
+						border.Init(edge.Item1, edge.Item2, edge.Item3, edge.Item4);
+						frame.AppendColor(CaptionColor(0.60, 0.60, 0.60), border);
+					}
 					if (titleBar > 0) {
-						var band = new Graphene.Rect(); band.Init(0, 0, width, titleBar);
+						var band = new Graphene.Rect(); band.Init(1, 1, width - 2, titleBar - 1);
 						frame.AppendColor(CaptionColor(0.94, 0.94, 0.94), band);
 						var separator = new Graphene.Rect(); separator.Init(0, titleBar - 1, width, 1);
 						frame.AppendColor(CaptionColor(0.70, 0.70, 0.70), separator);
