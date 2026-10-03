@@ -25,7 +25,24 @@
 	</Window.Resources>
 
 	<DockPanel Name="dockPanel">
-		<Menu Name="mainMenu" DockPanel.Dock="Top"/>
+		<!-- Reserve the right edge of the menu row for process-wide state badges.  This keeps the
+		     administrator marker visible without making it part of a movable toolbar strip. -->
+		<Grid DockPanel.Dock="Top">
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="*" />
+				<ColumnDefinition Width="Auto" />
+			</Grid.ColumnDefinitions>
+			<Menu Name="mainMenu" Grid.Column="0"/>
+			<Border x:Name="administratorBadge" Grid.Column="1"
+			        Margin="6,3,8,3" Padding="6,1"
+			        Background="{DynamicResource InfoBarBackground}"
+			        BorderBrush="{DynamicResource InfoBarBorder}" BorderThickness="1"
+			        CornerRadius="2" ToolTip="OpenDevelop is running as administrator."
+			        Visibility="Collapsed" IsHitTestVisible="False">
+				<TextBlock Text="ADMIN" FontSize="10" FontWeight="SemiBold"
+				           Foreground="{DynamicResource Foreground}" />
+			</Border>
+		</Grid>
 		<!-- Toolbars will be inserted here (index: 1) -->
 		<!-- Statusbar will be inserted here (index: Count-2) -->
 		<!--

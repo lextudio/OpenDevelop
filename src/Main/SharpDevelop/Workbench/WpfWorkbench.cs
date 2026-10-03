@@ -24,6 +24,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Xml;
 using System.Windows;
 using System.Windows.Controls;
@@ -97,9 +98,27 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			SD.Services.AddService(typeof(IStatusBarService), new StatusBarService(statusBar));
 			SD.Services.AddService(typeof(ViewModels.INotificationHost), notificationBanner);
 			InitializeComponent();
+			administratorBadge.Visibility = IsRunningAsAdministrator()
+				? Visibility.Visible : Visibility.Collapsed;
 			notificationBar.DataContext = notificationBanner;
 			InitFocusTrackingEvents();
 			InitWorkbenchWindowCommandBindings();
+		}
+
+		static bool IsRunningAsAdministrator()
+		{
+			if (!OperatingSystem.IsWindows())
+				return false;
+
+			try {
+				using WindowsIdentity identity = WindowsIdentity.GetCurrent();
+				return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+			} catch (Exception ex) {
+				// An unavailable token must never prevent the workbench from opening.  The badge is
+				// informational, so absence is safer than presenting an incorrect elevation state.
+				LoggingService.Warn("Could not determine whether OpenDevelop is running as administrator.", ex);
+				return false;
+			}
 		}
 
 		/// <summary>
