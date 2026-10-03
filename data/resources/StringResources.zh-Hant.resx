@@ -8244,4 +8244,109 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
   <data name="XML.MainMenu.SearchMenu.SearchForIssues" xml:space="preserve">
     <value>搜尋問題...</value>
   </data>
+  <data name="Dialog.NewProject.Title" xml:space="preserve">
+    <value>新增專案</value>
+  </data>
+  <data name="Dialog.NewProject.ProjectNameLabel" xml:space="preserve">
+    <value>專案名稱：</value>
+  </data>
+  <data name="Dialog.NewProject.ProjectNameToolTip" xml:space="preserve">
+    <value>用於專案和產生檔案的名稱。</value>
+  </data>
+  <data name="Dialog.NewProject.LocationLabel" xml:space="preserve">
+    <value>位置：</value>
+  </data>
+  <data name="Dialog.NewProject.LocationToolTip" xml:space="preserve">
+    <value>將建立專案的資料夾。</value>
+  </data>
+  <data name="Dialog.NewProject.Browse" xml:space="preserve">
+    <value>瀏覽...</value>
+  </data>
+  <data name="Dialog.NewProject.BrowseToolTip" xml:space="preserve">
+    <value>選擇將建立專案的資料夾。</value>
+  </data>
+  <data name="Dialog.NewProject.SolutionNameLabel" xml:space="preserve">
+    <value>方案名稱：</value>
+  </data>
+  <data name="Dialog.NewProject.SolutionNameToolTip" xml:space="preserve">
+    <value>為此專案建立的方案檔名稱。</value>
+  </data>
+  <data name="Dialog.NewProject.CreateDirectoryForSolutionToolTip" xml:space="preserve">
+    <value>將專案放在以方案命名的資料夾中。</value>
+  </data>
+  <data name="Dialog.NewProject.ProjectTypeLabel" xml:space="preserve">
+    <value>專案類型：</value>
+  </data>
+  <data name="Dialog.NewProject.ProjectTypeToolTip" xml:space="preserve">
+    <value>依範本引擎分類篩選範本。</value>
+  </data>
+  <data name="Dialog.NewProject.SearchToolTip" xml:space="preserve">
+    <value>搜尋範本名稱、短名稱、說明或標記</value>
+  </data>
+  <data name="Dialog.NewProject.LanguageToolTip" xml:space="preserve">
+    <value>為提供多種變體的範本選擇語言。</value>
+  </data>
+  <data name="Dialog.NewProject.TemplateOptionsLabel" xml:space="preserve">
+    <value>範本選項：</value>
+  </data>
+  <data name="Dialog.NewProject.AdvancedTemplateOptionsLabel" xml:space="preserve">
+    <value>其他範本選項（進階）：</value>
+  </data>
+  <data name="Dialog.NewProject.TemplateOptionsToolTip" xml:space="preserve">
+    <value>選用的範本引擎參數。每行輸入一個「參數=值」組。</value>
+  </data>
+  <data name="Dialog.NewProject.CreateInToolTip" xml:space="preserve">
+    <value>將在其中建立所選範本的目錄。</value>
+  </data>
+  <data name="Dialog.NewProject.Create" xml:space="preserve">
+    <value>建立</value>
+  </data>
+  <data name="Global.Cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="Dialog.NewItem.Title" xml:space="preserve">
+    <value>新增項目</value>
+  </data>
+  <data name="Dialog.NewItem.ItemNameLabel" xml:space="preserve">
+    <value>項目名稱：</value>
+  </data>
+  <data name="Dialog.NewItem.ItemNameToolTip" xml:space="preserve">
+    <value>所選範本產生的新項目名稱。</value>
+  </data>
+  <data name="Dialog.NewItem.ItemTypeLabel" xml:space="preserve">
+    <value>項目類型：</value>
+  </data>
+  <data name="Dialog.NewItem.ItemTypeToolTip" xml:space="preserve">
+    <value>依範本引擎分類篩選項目範本。</value>
+  </data>
+  <data name="Dialog.NewItem.SearchToolTip" xml:space="preserve">
+    <value>搜尋範本名稱、短名稱、說明或標記。</value>
+  </data>
+  <data name="Dialog.NewItem.TemplateOptionsLabel" xml:space="preserve">
+    <value>範本選項：</value>
+  </data>
+  <data name="Dialog.NewItem.AdvancedTemplateOptionsLabel" xml:space="preserve">
+    <value>其他範本選項（進階）：</value>
+  </data>
+  <data name="Dialog.NewItem.TemplateOptionsToolTip" xml:space="preserve">
+    <value>選用的範本引擎參數。每行輸入一個「參數=值」組。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.IdeTheme.Title" xml:space="preserve">
+    <value>IDE 主題</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.IdeTheme.Description" xml:space="preserve">
+    <value>選擇 IDE 工作台使用的 Visual Studio 色彩主題。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.IdeTheme.Light" xml:space="preserve">
+    <value>Visual Studio 淺色</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.IdeTheme.Dark" xml:space="preserve">
+    <value>Visual Studio 深色</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.IdeTheme.Blue" xml:space="preserve">
+    <value>Visual Studio 藍色</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.IdeTheme.Note" xml:space="preserve">
+    <value>主題在您選擇「確定」後套用，並在下次啟動時還原。</value>
+  </data>
 </root>

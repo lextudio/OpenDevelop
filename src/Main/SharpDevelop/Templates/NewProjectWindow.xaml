@@ -1,7 +1,8 @@
 <Window x:Class="ICSharpCode.SharpDevelop.Templates.NewProjectWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="New Project"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
+        Title="{core:Localize Dialog.NewProject.Title}"
         Width="780" Height="680"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize">
@@ -25,46 +26,46 @@
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
 
-    <Label Grid.Row="0" Content="Project name:" Target="{Binding ElementName=NameBox}" />
+    <Label Grid.Row="0" Content="{core:Localize Dialog.NewProject.ProjectNameLabel}" Target="{Binding ElementName=NameBox}" />
     <TextBox x:Name="NameBox"
              Grid.Row="0"
              Margin="105,0,0,4"
-             ToolTip="The name used for the project and generated files."
+             ToolTip="{core:Localize Dialog.NewProject.ProjectNameToolTip}"
              TextChanged="OnNameChanged" />
 
-    <Label Grid.Row="1" Content="Location:" Target="{Binding ElementName=LocationBox}" />
+    <Label Grid.Row="1" Content="{core:Localize Dialog.NewProject.LocationLabel}" Target="{Binding ElementName=LocationBox}" />
     <Grid Grid.Row="1" Margin="105,0,0,8">
       <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
       <TextBox x:Name="LocationBox"
              Grid.Column="0"
-             ToolTip="Folder where the project will be created."
+             ToolTip="{core:Localize Dialog.NewProject.LocationToolTip}"
              TextChanged="OnLocationChanged" />
-      <Button Grid.Column="1" Content="Browse..." Margin="8,0,0,0" Padding="10,2"
-              ToolTip="Choose the folder where the project will be created."
+      <Button Grid.Column="1" Content="{core:Localize Dialog.NewProject.Browse}" Margin="8,0,0,0" Padding="10,2"
+              ToolTip="{core:Localize Dialog.NewProject.BrowseToolTip}"
               Click="OnBrowseLocationClick" />
     </Grid>
 
-    <Label x:Name="SolutionNameLabel" Grid.Row="2" Content="Solution name:" Target="{Binding ElementName=SolutionNameBox}" />
+    <Label x:Name="SolutionNameLabel" Grid.Row="2" Content="{core:Localize Dialog.NewProject.SolutionNameLabel}" Target="{Binding ElementName=SolutionNameBox}" />
     <TextBox x:Name="SolutionNameBox" Grid.Row="2" Margin="105,0,0,4"
-             ToolTip="Name of the solution file created for this project."
+             ToolTip="{core:Localize Dialog.NewProject.SolutionNameToolTip}"
              TextChanged="OnSolutionNameChanged" />
     <CheckBox x:Name="CreateSolutionDirectoryBox" Grid.Row="3" Grid.ColumnSpan="2"
-              Content="Create directory for solution" IsChecked="True"
-              ToolTip="Place the project in a folder named after the solution."
+              Content="{core:Localize Dialog.NewProject.CreateDirectoryForSolution}" IsChecked="True"
+              ToolTip="{core:Localize Dialog.NewProject.CreateDirectoryForSolutionToolTip}"
               Checked="OnSolutionDirectoryChanged" Unchecked="OnSolutionDirectoryChanged" />
 
     <Grid Grid.Row="4" Margin="0,4,0,8">
       <Grid.ColumnDefinitions><ColumnDefinition Width="210" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
       <StackPanel Grid.Column="0">
-        <Label Content="Project type:" Target="{Binding ElementName=CategoryTree}" Padding="0,0,0,4" />
-        <TreeView x:Name="CategoryTree" ToolTip="Filter templates by their template-engine classification."
+        <Label Content="{core:Localize Dialog.NewProject.ProjectTypeLabel}" Target="{Binding ElementName=CategoryTree}" Padding="0,0,0,4" />
+        <TreeView x:Name="CategoryTree" ToolTip="{core:Localize Dialog.NewProject.ProjectTypeToolTip}"
                   SelectedItemChanged="OnCategoryChanged" />
       </StackPanel>
       <Grid Grid.Column="2">
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="160" /></Grid.ColumnDefinitions>
-          <TextBox x:Name="SearchBox" ToolTip="Search template name, short name, description, or tags" TextChanged="OnSearchChanged" />
-          <ComboBox x:Name="LanguageBox" Grid.Column="1" Margin="8,0,0,0" ToolTip="Choose the language for templates that provide multiple variants." SelectionChanged="OnLanguageChanged" />
+          <TextBox x:Name="SearchBox" ToolTip="{core:Localize Dialog.NewProject.SearchToolTip}" TextChanged="OnSearchChanged" />
+          <ComboBox x:Name="LanguageBox" Grid.Column="1" Margin="8,0,0,0" ToolTip="{core:Localize Dialog.NewProject.LanguageToolTip}" SelectionChanged="OnLanguageChanged" />
         </Grid>
         <ListView x:Name="TemplateList" Grid.Row="1" SelectionMode="Single" SelectionChanged="OnSelectionChanged" Margin="0,6,0,6">
           <ListView.ItemTemplate><DataTemplate><StackPanel><TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" /><TextBlock Text="{Binding Description}" Foreground="{DynamicResource MutedForeground}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" /></StackPanel></DataTemplate></ListView.ItemTemplate>
@@ -76,17 +77,17 @@
     </Grid>
 
     <StackPanel Grid.Row="5" Margin="0,0,0,6">
-      <Label Content="Template options:" Target="{Binding ElementName=TemplateOptionsPanel}" Padding="0,0,0,3" />
+      <Label Content="{core:Localize Dialog.NewProject.TemplateOptionsLabel}" Target="{Binding ElementName=TemplateOptionsPanel}" Padding="0,0,0,3" />
       <ScrollViewer Height="115" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel x:Name="TemplateOptionsPanel" />
       </ScrollViewer>
     </StackPanel>
-    <Label Grid.Row="6" Content="Additional template options (advanced):" Target="{Binding ElementName=ParametersBox}" />
+    <Label Grid.Row="6" Content="{core:Localize Dialog.NewProject.AdvancedTemplateOptionsLabel}" Target="{Binding ElementName=ParametersBox}" />
     <TextBox x:Name="ParametersBox" Grid.Row="6"
              AcceptsReturn="True"
              TextWrapping="Wrap"
              VerticalScrollBarVisibility="Auto"
-             ToolTip="Optional template-engine parameters. Enter one parameter=value pair per line."
+             ToolTip="{core:Localize Dialog.NewProject.TemplateOptionsToolTip}"
              Margin="0,20,0,8" MinHeight="42" MaxHeight="64" />
 
     <TextBlock x:Name="StatusText"
@@ -98,17 +99,17 @@
                Grid.Row="8"
                Foreground="{DynamicResource MutedForeground}"
                TextTrimming="CharacterEllipsis"
-               ToolTip="The directory in which the selected template will be created."
+               ToolTip="{core:Localize Dialog.NewProject.CreateInToolTip}"
                Margin="0,0,0,8" />
 
     <StackPanel Grid.Row="9" Orientation="Horizontal" HorizontalAlignment="Right">
       <Button x:Name="CreateButton"
-              Content="Create"
+              Content="{core:Localize Dialog.NewProject.Create}"
               IsEnabled="False"
               Click="OnCreateClick"
               Margin="0,0,8,0"
               Padding="12,4" />
-      <Button Content="Cancel"
+      <Button Content="{core:Localize Global.Cancel}"
               Click="OnCancelClick"
               Padding="12,4" />
     </StackPanel>

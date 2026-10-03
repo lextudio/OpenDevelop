@@ -8244,4 +8244,109 @@ SharpDevelop 编译资源时发现不对应：资源名称不是文件名，而�
   <data name="XML.MainMenu.SearchMenu.SearchForIssues" xml:space="preserve">
     <value>搜索问题...</value>
   </data>
+  <data name="Dialog.NewProject.Title" xml:space="preserve">
+    <value>新建项目</value>
+  </data>
+  <data name="Dialog.NewProject.ProjectNameLabel" xml:space="preserve">
+    <value>项目名称：</value>
+  </data>
+  <data name="Dialog.NewProject.ProjectNameToolTip" xml:space="preserve">
+    <value>用于项目和生成文件的名称。</value>
+  </data>
+  <data name="Dialog.NewProject.LocationLabel" xml:space="preserve">
+    <value>位置：</value>
+  </data>
+  <data name="Dialog.NewProject.LocationToolTip" xml:space="preserve">
+    <value>将创建项目的文件夹。</value>
+  </data>
+  <data name="Dialog.NewProject.Browse" xml:space="preserve">
+    <value>浏览...</value>
+  </data>
+  <data name="Dialog.NewProject.BrowseToolTip" xml:space="preserve">
+    <value>选择将创建项目的文件夹。</value>
+  </data>
+  <data name="Dialog.NewProject.SolutionNameLabel" xml:space="preserve">
+    <value>解决方案名称：</value>
+  </data>
+  <data name="Dialog.NewProject.SolutionNameToolTip" xml:space="preserve">
+    <value>为此项目创建的解决方案文件的名称。</value>
+  </data>
+  <data name="Dialog.NewProject.CreateDirectoryForSolutionToolTip" xml:space="preserve">
+    <value>将项目放在以解决方案命名的文件夹中。</value>
+  </data>
+  <data name="Dialog.NewProject.ProjectTypeLabel" xml:space="preserve">
+    <value>项目类型：</value>
+  </data>
+  <data name="Dialog.NewProject.ProjectTypeToolTip" xml:space="preserve">
+    <value>按模板引擎分类筛选模板。</value>
+  </data>
+  <data name="Dialog.NewProject.SearchToolTip" xml:space="preserve">
+    <value>搜索模板名称、短名称、说明或标记</value>
+  </data>
+  <data name="Dialog.NewProject.LanguageToolTip" xml:space="preserve">
+    <value>为提供多种变体的模板选择语言。</value>
+  </data>
+  <data name="Dialog.NewProject.TemplateOptionsLabel" xml:space="preserve">
+    <value>模板选项：</value>
+  </data>
+  <data name="Dialog.NewProject.AdvancedTemplateOptionsLabel" xml:space="preserve">
+    <value>其他模板选项（高级）：</value>
+  </data>
+  <data name="Dialog.NewProject.TemplateOptionsToolTip" xml:space="preserve">
+    <value>可选的模板引擎参数。每行输入一个"参数=值"对。</value>
+  </data>
+  <data name="Dialog.NewProject.CreateInToolTip" xml:space="preserve">
+    <value>将在其中创建所选模板的目录。</value>
+  </data>
+  <data name="Dialog.NewProject.Create" xml:space="preserve">
+    <value>创建</value>
+  </data>
+  <data name="Global.Cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="Dialog.NewItem.Title" xml:space="preserve">
+    <value>新建项</value>
+  </data>
+  <data name="Dialog.NewItem.ItemNameLabel" xml:space="preserve">
+    <value>项名称：</value>
+  </data>
+  <data name="Dialog.NewItem.ItemNameToolTip" xml:space="preserve">
+    <value>所选模板生成的新项的名称。</value>
+  </data>
+  <data name="Dialog.NewItem.ItemTypeLabel" xml:space="preserve">
+    <value>项类型：</value>
+  </data>
+  <data name="Dialog.NewItem.ItemTypeToolTip" xml:space="preserve">
+    <value>按模板引擎分类筛选项模板。</value>
+  </data>
+  <data name="Dialog.NewItem.SearchToolTip" xml:space="preserve">
+    <value>搜索模板名称、短名称、说明或标记。</value>
+  </data>
+  <data name="Dialog.NewItem.TemplateOptionsLabel" xml:space="preserve">
+    <value>模板选项：</value>
+  </data>
+  <data name="Dialog.NewItem.AdvancedTemplateOptionsLabel" xml:space="preserve">
+    <value>其他模板选项（高级）：</value>
+  </data>
+  <data name="Dialog.NewItem.TemplateOptionsToolTip" xml:space="preserve">
+    <value>可选的模板引擎参数。每行输入一个"参数=值"对。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.IdeTheme.Title" xml:space="preserve">
+    <value>IDE 主题</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.IdeTheme.Description" xml:space="preserve">
+    <value>选择 IDE 工作台使用的 Visual Studio 颜色主题。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.IdeTheme.Light" xml:space="preserve">
+    <value>Visual Studio 浅色</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.IdeTheme.Dark" xml:space="preserve">
+    <value>Visual Studio 深色</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.IdeTheme.Blue" xml:space="preserve">
+    <value>Visual Studio 蓝色</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.IdeTheme.Note" xml:space="preserve">
+    <value>主题在您选择“确定”后应用，并在下次启动时恢复。</value>
+  </data>
 </root>
