@@ -5,8 +5,15 @@
 	<Languages name="Brazilian Portuguese"          code="pt-br"    icon="brazil.png" />
 	<!--<Languages name="Bulgarian"                     code="bg"       icon="bulgaria.png" />-->
 	<!--<Languages name="Catalan"                       code="ca"       icon="catalonia.png" />-->
-	<!--<Languages name="Chinese (Traditional)"                code="cn-big"   icon="chinalg.png" />-->
-	<Languages name="Chinese"                  code="zh"    icon="chinalg.png" />
+	<!-- 简繁按 BCP-47 脚本子标签区分，不按国家：同一个国家可以有不同文字，反之亦然。
+	     code 里的地区只用于挑选资源文件，脚本才是语言身份，所以 zh-Hant-TW 走的是
+	     zh-Hant 资源。以后要加 zh-Hant-HK，与 zh-Hant-TW 共用同一份 zh-Hant 资源即可，
+	     不需要新增 resx。
+	     资源回退链是 zh-Hant-TW -> zh-Hant -> zh（见 ResourceService 的
+	     GetLanguageFallbacks），末端是简体：繁体缺某个键时会静默显示简体，这与
+	     .NET/CLDR 的标准回退一致，但补翻时要知道漏掉的键不会显式报错。 -->
+	<Languages name="Chinese (Traditional, Taiwan)" code="zh-Hant-TW" icon="chinalt.png" />
+	<Languages name="Chinese (Simplified)"          code="zh-Hans"    icon="chinalg.png" />
 	<Languages name="Czech"                         code="cz"       icon="czech.png" />
 	<!--<Languages name="Danish"                        code="dk"       icon="denmark.png" />-->
 	<Languages name="Dutch"                         code="nl"       icon="netherlands.png" />
@@ -32,4 +39,3 @@
 	<Languages name="Turkish"                       code="tr"       icon="turkey.png" />
 	
 </Languages>
-

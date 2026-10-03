@@ -40,15 +40,42 @@ namespace ICSharpCode.SharpDevelop
 		
 		public static UILanguage GetLanguage(string code)
 		{
+			code = NormalizeLanguageCode(code);
 			foreach (UILanguage l in languages) {
-				if (l.Code == code)
+				if (string.Equals(l.Code, code, StringComparison.OrdinalIgnoreCase))
 					return l;
 			}
 			foreach (UILanguage l in languages) {
-				if (l.Code.StartsWith(code, StringComparison.Ordinal))
+				if (code.StartsWith(l.Code + "-", StringComparison.OrdinalIgnoreCase))
 					return l;
 			}
 			return languages[0];
+		}
+
+		// Windows commonly reports Chinese by region (zh-TW/zh-CN), while the resource files
+		// identify a script.  Map both current and legacy SharpDevelop codes so first launch and
+		// existing user settings select the intended translation instead of falling back to English.
+		static string NormalizeLanguageCode(string code)
+		{
+			if (string.IsNullOrWhiteSpace(code))
+				return "en";
+
+			code = code.Replace('_', '-');
+			if (string.Equals(code, "cn-gb", StringComparison.OrdinalIgnoreCase)
+				|| string.Equals(code, "zh", StringComparison.OrdinalIgnoreCase)
+				|| code.StartsWith("zh-Hans", StringComparison.OrdinalIgnoreCase)
+				|| code.StartsWith("zh-CN", StringComparison.OrdinalIgnoreCase)
+				|| code.StartsWith("zh-SG", StringComparison.OrdinalIgnoreCase))
+				return "zh-Hans";
+
+			if (string.Equals(code, "cn-big", StringComparison.OrdinalIgnoreCase)
+				|| code.StartsWith("zh-Hant", StringComparison.OrdinalIgnoreCase)
+				|| code.StartsWith("zh-TW", StringComparison.OrdinalIgnoreCase)
+				|| code.StartsWith("zh-HK", StringComparison.OrdinalIgnoreCase)
+				|| code.StartsWith("zh-MO", StringComparison.OrdinalIgnoreCase))
+				return "zh-Hant-TW";
+
+			return code;
 		}
 		
 		static UILanguageService()

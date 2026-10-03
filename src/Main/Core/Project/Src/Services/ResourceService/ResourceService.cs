@@ -138,19 +138,18 @@ namespace ICSharpCode.Core
 				string currentLanguage = service.currentLanguage;
 				string logMessage = "Loading resources " + baseResourceName + "." + currentLanguage + ": ";
 				ResourceManager manager = null;
-				if (assembly.GetManifestResourceInfo(baseResourceName + "." + currentLanguage + ".resources") != null) {
-					LoggingService.Info(logMessage + " loading from main assembly");
-					manager = new ResourceManager(baseResourceName + "." + currentLanguage, assembly);
-				} else if (currentLanguage.IndexOf('-') > 0
-				           && assembly.GetManifestResourceInfo(baseResourceName + "." + currentLanguage.Split('-')[0] + ".resources") != null)
-				{
-					LoggingService.Info(logMessage + " loading from main assembly (no country match)");
-					manager = new ResourceManager(baseResourceName + "." + currentLanguage.Split('-')[0], assembly);
-				} else {
-					// try satellite assembly
-					manager = TrySatellite(currentLanguage);
-					if (manager == null && currentLanguage.IndexOf('-') > 0) {
-						manager = TrySatellite(currentLanguage.Split('-')[0]);
+				foreach (string language in GetLanguageFallbacks(currentLanguage)) {
+					if (assembly.GetManifestResourceInfo(baseResourceName + "." + language + ".resources") != null) {
+						LoggingService.Info(logMessage + " loading from main assembly (" + language + ")");
+						manager = new ResourceManager(baseResourceName + "." + language, assembly);
+						break;
+					}
+				}
+				if (manager == null) {
+					foreach (string language in GetLanguageFallbacks(currentLanguage)) {
+						manager = TrySatellite(language);
+						if (manager != null)
+							break;
 					}
 				}
 				if (manager == null) {
@@ -226,15 +225,8 @@ namespace ICSharpCode.Core
 					} catch (Exception) {}
 				}
 				
-				localStrings = Load(stringResources, language);
-				if (localStrings == null && language.IndexOf('-') > 0) {
-					localStrings = Load(stringResources, language.Split('-')[0]);
-				}
-				
-				localIcons = Load(imageResources, language);
-				if (localIcons == null && language.IndexOf('-') > 0) {
-					localIcons = Load(imageResources, language.Split('-')[0]);
-				}
+				localStrings = LoadWithLanguageFallback(stringResources, language);
+				localIcons = LoadWithLanguageFallback(imageResources, language);
 				
 				localStringsResMgrs.Clear();
 				localIconsResMgrs.Clear();
@@ -262,6 +254,27 @@ namespace ICSharpCode.Core
 		Hashtable Load(string name, string language)
 		{
 			return Load(resourceDirectory + Path.DirectorySeparatorChar + name + "." + language + ".resources");
+		}
+
+		Hashtable LoadWithLanguageFallback(string name, string language)
+		{
+			foreach (string candidate in GetLanguageFallbacks(language)) {
+				Hashtable resources = Load(name, candidate);
+				if (resources != null)
+					return resources;
+			}
+			return null;
+		}
+
+		static IEnumerable<string> GetLanguageFallbacks(string language)
+		{
+			for (string candidate = language; !string.IsNullOrEmpty(candidate); ) {
+				yield return candidate;
+				int separator = candidate.LastIndexOf('-');
+				if (separator < 0)
+					break;
+				candidate = candidate.Substring(0, separator);
+			}
 		}
 		
 		/// <summary>
