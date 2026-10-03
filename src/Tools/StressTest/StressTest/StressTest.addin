@@ -9,7 +9,7 @@
 	
 	<Path name="/SharpDevelop/Workbench/Tools">
 		<MenuItem id="StressTest"
-		          label="Stress Test"
+		          label="${res:StressTest.Menu.Title}"
 		          class="StressTest.StressTestMenuCommand"/>
 	</Path>
 	

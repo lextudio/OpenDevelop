@@ -89,7 +89,7 @@
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Edit">
-    <MenuItem id="Cut" label="Cut" class="ICSharpCode.SharpDevelop.Commands.CutProjectBrowserItemCommand" />
+    <MenuItem id="Cut" label="${res:ProjectBrowser.ContextMenu.Cut}" class="ICSharpCode.SharpDevelop.Commands.CutProjectBrowserItemCommand" />
     <MenuItem id="Copy" label="${res:ProjectBrowser.ContextMenu.Copy}" class="ICSharpCode.SharpDevelop.Commands.CopyProjectBrowserItemCommand" />
     <MenuItem id="Paste" label="${res:ProjectBrowser.ContextMenu.Paste}" class="ICSharpCode.SharpDevelop.Commands.PasteProjectBrowserItemCommand" />
     <MenuItem id="EditSeparator" type="Separator" />
@@ -116,7 +116,7 @@
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionNode">
     <MenuItem id="Refresh" label="${res:ProjectBrowser.ContextMenu.Refresh}" class="ICSharpCode.SharpDevelop.Commands.RefreshProjectBrowserCommand" />
-    <MenuItem id="Add" label="Add" type="Menu">
+    <MenuItem id="Add" label="${res:ProjectBrowser.ContextMenu.Add}" type="Menu">
       <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Add" />
     </MenuItem>
     <MenuItem id="Separator1" type="Separator" />
@@ -126,7 +126,7 @@
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionFolderNode">
-    <MenuItem id="Add" label="Add" type="Menu">
+    <MenuItem id="Add" label="${res:ProjectBrowser.ContextMenu.Add}" type="Menu">
       <MenuItem id="NewProject" label="${res:ProjectBrowser.ContextMenu.NewProject}" class="ICSharpCode.SharpDevelop.Commands.NewProjectProjectBrowserCommand" />
       <MenuItem id="ExistingProject" label="${res:ProjectBrowser.ContextMenu.ExistingProject}" class="ICSharpCode.SharpDevelop.Commands.AddExistingProjectProjectBrowserCommand" />
       <MenuItem id="NewSolutionFolder" label="${res:ProjectBrowser.ContextMenu.NewSolutionFolder}" class="ICSharpCode.SharpDevelop.Commands.NewSolutionFolderProjectBrowserCommand" />
@@ -151,7 +151,7 @@
     <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Open" />
     <MenuItem id="Separator1" type="Separator" />
     <MenuItem id="Refresh" label="${res:ProjectBrowser.ContextMenu.Refresh}" class="ICSharpCode.SharpDevelop.Commands.RefreshProjectBrowserCommand" />
-    <MenuItem id="Add" label="Add" type="Menu">
+    <MenuItem id="Add" label="${res:ProjectBrowser.ContextMenu.Add}" type="Menu">
       <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Add" />
     </MenuItem>
     <MenuItem id="AddReferenceDialog" label="${res:ProjectBrowser.ContextMenu.AddReference}" class="ICSharpCode.SharpDevelop.Commands.AddReferenceProjectBrowserCommand" />
@@ -166,7 +166,7 @@
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FolderNode">
     <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Open" />
     <MenuItem id="Separator1" type="Separator" />
-    <MenuItem id="Add" label="Add" type="Menu">
+    <MenuItem id="Add" label="${res:ProjectBrowser.ContextMenu.Add}" type="Menu">
       <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Add" />
     </MenuItem>
     <MenuItem id="Separator2" type="Separator" />

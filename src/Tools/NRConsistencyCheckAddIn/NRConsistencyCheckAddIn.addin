@@ -10,11 +10,11 @@
 	<Path name="/SharpDevelop/Workbench/Tools">
 		<MenuItem id="NR Consistency Check"
 		          type="Menu"
-		          label="NR Consistency Check">
-			<MenuItem label="Run all tests" class="ICSharpCode.NRefactory.ConsistencyCheck.RunAllTestsCommand" />
-			<MenuItem label="CSharpAstResolver test" class="ICSharpCode.NRefactory.ConsistencyCheck.ResolverTestCommand" />
-			<MenuItem label="CSharpAstResolver test (no unresolved file)" class="ICSharpCode.NRefactory.ConsistencyCheck.ResolverTestWithoutUnresolvedFileCommand" />
-			<MenuItem label="CSharpAstResolver test (randomized order)" class="ICSharpCode.NRefactory.ConsistencyCheck.ResolverTestRandomizedOrderCommand" />
+		          label="${res:NRConsistencyCheck.Menu.Title}">
+			<MenuItem label="${res:NRConsistencyCheck.RunAllTests}" class="ICSharpCode.NRefactory.ConsistencyCheck.RunAllTestsCommand" />
+			<MenuItem label="${res:NRConsistencyCheck.ResolverTest}" class="ICSharpCode.NRefactory.ConsistencyCheck.ResolverTestCommand" />
+			<MenuItem label="${res:NRConsistencyCheck.ResolverTestNoUnresolvedFile}" class="ICSharpCode.NRefactory.ConsistencyCheck.ResolverTestWithoutUnresolvedFileCommand" />
+			<MenuItem label="${res:NRConsistencyCheck.ResolverTestRandomizedOrder}" class="ICSharpCode.NRefactory.ConsistencyCheck.ResolverTestRandomizedOrderCommand" />
 		</MenuItem>
 	</Path>
 </AddIn>

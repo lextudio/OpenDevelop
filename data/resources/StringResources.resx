@@ -8560,4 +8560,79 @@ Press Esc to cancel this operation.</value>
   <data name="ProjectBrowser.PadTitle" xml:space="preserve">
     <value>Projects</value>
   </data>
+  <data name="ProjectBrowser.ContextMenu.Cut" xml:space="preserve">
+    <value>Cut</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.Add" xml:space="preserve">
+    <value>Add</value>
+  </data>
+  <data name="NRConsistencyCheck.Menu.Title" xml:space="preserve">
+    <value>NR Consistency Check</value>
+  </data>
+  <data name="NRConsistencyCheck.RunAllTests" xml:space="preserve">
+    <value>Run all tests</value>
+  </data>
+  <data name="NRConsistencyCheck.ResolverTest" xml:space="preserve">
+    <value>CSharpAstResolver test</value>
+  </data>
+  <data name="NRConsistencyCheck.ResolverTestNoUnresolvedFile" xml:space="preserve">
+    <value>CSharpAstResolver test (no unresolved file)</value>
+  </data>
+  <data name="NRConsistencyCheck.ResolverTestRandomizedOrder" xml:space="preserve">
+    <value>CSharpAstResolver test (randomized order)</value>
+  </data>
+  <data name="StressTest.Menu.Title" xml:space="preserve">
+    <value>Stress Test</value>
+  </data>
+  <data name="Reporting.LayoutPanel.Label" xml:space="preserve">
+    <value>Layout</value>
+  </data>
+  <data name="AndroidDeviceManager.Menu.Title" xml:space="preserve">
+    <value>Android Device Manager...</value>
+  </data>
+  <data name="AndroidSdkManager.Menu.Title" xml:space="preserve">
+    <value>Android SDK Manager...</value>
+  </data>
+  <data name="Profiler.Menu.Title" xml:space="preserve">
+    <value>Profiler</value>
+  </data>
+  <data name="HexEditor.Copy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="HexEditor.CopyAsBinary" xml:space="preserve">
+    <value>As binary</value>
+  </data>
+  <data name="HexEditor.CopyAsHexString" xml:space="preserve">
+    <value>As hex string</value>
+  </data>
+  <data name="AspNetCore.LaunchOptions.PanelName" xml:space="preserve">
+    <value>ASP.NET Core Launch</value>
+  </data>
+  <data name="AspNetCore.PublishToFolder" xml:space="preserve">
+    <value>Publish to Folder...</value>
+  </data>
+  <data name="AspNetCore.AddScaffoldedItem" xml:space="preserve">
+    <value>Add Scaffolded Item...</value>
+  </data>
+  <data name="AspNetMvc.AddView" xml:space="preserve">
+    <value>View...</value>
+  </data>
+  <data name="AspNetMvc.AddController" xml:space="preserve">
+    <value>Controller...</value>
+  </data>
+  <data name="ClassDiagram.PadTitle" xml:space="preserve">
+    <value>Class Diagram</value>
+  </data>
+  <data name="DataExplorer.PadTitle" xml:space="preserve">
+    <value>Database Explorer</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.AddExpressionBreakpoint" xml:space="preserve">
+    <value>Add expression breakpoint</value>
+  </data>
+  <data name="SharpReport.Wizard.ResultPanel.SaveXsdComplete" xml:space="preserve">
+    <value>Save XSD (complete)</value>
+  </data>
+  <data name="SharpReport.Wizard.ResultPanel.SaveXsdSchemaOnly" xml:space="preserve">
+    <value>Save XSD schema only</value>
+  </data>
 </root>

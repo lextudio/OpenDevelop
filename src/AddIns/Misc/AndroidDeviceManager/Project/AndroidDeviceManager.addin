@@ -13,7 +13,7 @@
 
 	<Path name="/SharpDevelop/Workbench/Tools">
 		<MenuItem id="ShowAndroidDeviceManager"
-		          label="Android Device Manager..."
+		          label="${res:AndroidDeviceManager.Menu.Title}"
 		          class="ICSharpCode.AndroidDeviceManager.ShowAndroidDeviceManagerCommand"/>
 	</Path>
 

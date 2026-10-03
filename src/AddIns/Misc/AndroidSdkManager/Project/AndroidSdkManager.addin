@@ -13,7 +13,7 @@
 
 	<Path name="/SharpDevelop/Workbench/Tools">
 		<MenuItem id="ShowAndroidSdkManager"
-		          label="Android SDK Manager..."
+		          label="${res:AndroidSdkManager.Menu.Title}"
 		          class="ICSharpCode.AndroidSdkManager.ShowAndroidSdkManagerCommand"/>
 	</Path>
 

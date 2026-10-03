@@ -5,7 +5,7 @@
   <Manifest><Identity name="ClassDiagram" /></Manifest>
   <Runtime><Import assembly="ClassDiagramAddin.dll" /></Runtime>
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ProjectNode">
-    <MenuItem id="ShowClassDiagram" label="Class Diagram"
+    <MenuItem id="ShowClassDiagram" label="${res:ClassDiagram.PadTitle}"
               class="ICSharpCode.ClassDiagram.ShowClassDiagramCommand"
               icon="Icons.16x16.Class" />
   </Path>
@@ -17,6 +17,6 @@
     <DisplayBinding id="ClassDiagram"
                     class="ICSharpCode.ClassDiagram.ClassDiagramDisplayBinding"
                     insertbefore="Text" fileNamePattern="\.(cd)$"
-                    title="Class Diagram" />
+                    title="${res:ClassDiagram.PadTitle}" />
   </Path>
 </AddIn>

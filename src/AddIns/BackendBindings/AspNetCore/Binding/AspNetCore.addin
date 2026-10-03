@@ -41,18 +41,18 @@
 
 	<Path name="/SharpDevelop/BackendBindings/ProjectOptions/AllManaged">
 		<Condition name="AspNetCoreProject">
-			<OptionPanel id="AspNetCoreLaunch" label="ASP.NET Core Launch" class="ICSharpCode.AspNetCore.AddIn.AspNetCoreLaunchOptionsPanel"/>
+			<OptionPanel id="AspNetCoreLaunch" label="${res:AspNetCore.LaunchOptions.PanelName}" class="ICSharpCode.AspNetCore.AddIn.AspNetCoreLaunchOptionsPanel"/>
 		</Condition>
 	</Path>
 
 	<Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ProjectNode">
 		<Condition name="AspNetCoreProject">
 			<MenuItem id="AspNetCorePublishToFolder"
-			          label="Publish to Folder..."
+			          label="${res:AspNetCore.PublishToFolder}"
 			          insertafter="Build"
 			          class="ICSharpCode.AspNetCore.AddIn.AspNetCorePublishToFolderCommand"/>
 			<MenuItem id="AspNetCoreScaffold"
-			          label="Add Scaffolded Item..."
+			          label="${res:AspNetCore.AddScaffoldedItem}"
 			          insertafter="AspNetCorePublishToFolder"
 			          class="ICSharpCode.AspNetCore.AddIn.AspNetCoreScaffoldCommand"/>
 		</Condition>

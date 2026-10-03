@@ -27,7 +27,7 @@
 			<MenuItem
 				id="MvcView"
 				insertbefore="New Item"
-				label="View..."
+				label="${res:AspNetMvc.AddView}"
 				icon="Icons.16x16.NewDocumentIcon"
 				class="ICSharpCode.AspNet.Mvc.AddMvcViewToProjectCommand"/>
 			<MenuItem
@@ -39,7 +39,7 @@
 			<MenuItem
 				id="MvcController"
 				insertbefore="New Item"
-				label="Controller..."
+				label="${res:AspNetMvc.AddController}"
 				icon="Icons.16x16.NewDocumentIcon"
 				class="ICSharpCode.AspNet.Mvc.AddMvcControllerToProjectCommand"/>
 			<MenuItem

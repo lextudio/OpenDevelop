@@ -14,7 +14,7 @@
 	</Manifest>
 	
 	<Path name="/SharpDevelop/Workbench/MainMenu/Analysis">
-		<MenuItem id="Profiler" label="Profiler" type="Menu" insertbefore="Separator1">
+		<MenuItem id="Profiler" label="${res:Profiler.Menu.Title}" type="Menu" insertbefore="Separator1">
 			<ComplexCondition action="Disable">
 				<And>
 					<Condition name = "ProjectActive" activeproject="*" />

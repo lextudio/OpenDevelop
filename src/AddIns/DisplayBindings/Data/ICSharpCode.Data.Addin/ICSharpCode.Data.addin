@@ -28,7 +28,7 @@
       <Pad id="DatabaseExplorer"
           icon="Icons.16x16.SharpQuery.Refresh"
           category="Tools"
-          title="Database Explorer"
+          title="${res:DataExplorer.PadTitle}"
 		   defaultPosition = "Right, Hidden"
           class="ICSharpCode.Data.Addin.Pad.DatabasesTreeViewPad" />
   </Path>

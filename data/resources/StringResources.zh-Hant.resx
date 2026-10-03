@@ -7310,4 +7310,178 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
   <data name="ProjectBrowser.PadTitle" xml:space="preserve">
     <value>專案</value>
   </data>
+  <data name="ProjectBrowser.ContextMenu.Cut" xml:space="preserve">
+    <value>剪下</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.Add" xml:space="preserve">
+    <value>新增</value>
+  </data>
+  <data name="NRConsistencyCheck.Menu.Title" xml:space="preserve">
+    <value>NR 一致性檢查</value>
+  </data>
+  <data name="NRConsistencyCheck.RunAllTests" xml:space="preserve">
+    <value>執行所有測試</value>
+  </data>
+  <data name="NRConsistencyCheck.ResolverTest" xml:space="preserve">
+    <value>CSharpAstResolver 測試</value>
+  </data>
+  <data name="NRConsistencyCheck.ResolverTestNoUnresolvedFile" xml:space="preserve">
+    <value>CSharpAstResolver 測試（無未解析檔案）</value>
+  </data>
+  <data name="NRConsistencyCheck.ResolverTestRandomizedOrder" xml:space="preserve">
+    <value>CSharpAstResolver 測試（隨機順序）</value>
+  </data>
+  <data name="StressTest.Menu.Title" xml:space="preserve">
+    <value>壓力測試</value>
+  </data>
+  <data name="Reporting.LayoutPanel.Label" xml:space="preserve">
+    <value>版面配置</value>
+  </data>
+  <data name="AndroidDeviceManager.Menu.Title" xml:space="preserve">
+    <value>Android 裝置管理員...</value>
+  </data>
+  <data name="AndroidSdkManager.Menu.Title" xml:space="preserve">
+    <value>Android SDK 管理員...</value>
+  </data>
+  <data name="Profiler.Menu.Title" xml:space="preserve">
+    <value>分析工具</value>
+  </data>
+  <data name="HexEditor.Copy" xml:space="preserve">
+    <value>複製</value>
+  </data>
+  <data name="HexEditor.CopyAsBinary" xml:space="preserve">
+    <value>二進位</value>
+  </data>
+  <data name="HexEditor.CopyAsHexString" xml:space="preserve">
+    <value>十六進位字串</value>
+  </data>
+  <data name="AspNetCore.LaunchOptions.PanelName" xml:space="preserve">
+    <value>ASP.NET Core 啟動</value>
+  </data>
+  <data name="AspNetCore.PublishToFolder" xml:space="preserve">
+    <value>發佈至資料夾...</value>
+  </data>
+  <data name="AspNetCore.AddScaffoldedItem" xml:space="preserve">
+    <value>新增 Scaffold 項目...</value>
+  </data>
+  <data name="AspNetMvc.AddView" xml:space="preserve">
+    <value>檢視...</value>
+  </data>
+  <data name="AspNetMvc.AddController" xml:space="preserve">
+    <value>控制器...</value>
+  </data>
+  <data name="ClassDiagram.PadTitle" xml:space="preserve">
+    <value>類別圖</value>
+  </data>
+  <data name="DataExplorer.PadTitle" xml:space="preserve">
+    <value>資料庫總管</value>
+  </data>
+  <data name="AddInManager2.OptionPanel.Tree.AddIns" xml:space="preserve">
+    <value>增益集</value>
+  </data>
+  <data name="AddInManager2.OptionPanel.Tree.General" xml:space="preserve">
+    <value>一般</value>
+  </data>
+  <data name="AddIns.Debugger.Console.ClearConsole" xml:space="preserve">
+    <value>清除主控台</value>
+  </data>
+  <data name="AddIns.Debugger.Console.DeleteHistory" xml:space="preserve">
+    <value>刪除歷程記錄</value>
+  </data>
+  <data name="AddIns.Git.Options.Title" xml:space="preserve">
+    <value>Git 選項</value>
+  </data>
+  <data name="AddIns.PackageManagement.ConsolePad.Title" xml:space="preserve">
+    <value>套件管理主控台</value>
+  </data>
+  <data name="AddIns.PackageManagement.Menu.ManagePackages" xml:space="preserve">
+    <value>管理套件...</value>
+  </data>
+  <data name="AddIns.PackageManagement.Menu.RestorePackages" xml:space="preserve">
+    <value>還原套件</value>
+  </data>
+  <data name="AddIns.PackageManagement.Options.PackageSources" xml:space="preserve">
+    <value>套件來源</value>
+  </data>
+  <data name="AddIns.PackageManagement.Options.Title" xml:space="preserve">
+    <value>套件管理</value>
+  </data>
+  <data name="AddIns.SourceAnalysis.CheckProjectWithStyleCop" xml:space="preserve">
+    <value>使用 StyleCop 檢查目前的專案</value>
+  </data>
+  <data name="Dialog.Options.ServicesReferencesText" xml:space="preserve">
+    <value>服務參考</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo" xml:space="preserve">
+    <value>組件資訊</value>
+  </data>
+  <data name="ICSharpCode.CodeAnalysis.CheckProjectWithFxCop" xml:space="preserve">
+    <value>使用 FxCop 檢查目前的專案</value>
+  </data>
+  <data name="ICSharpCode.WpfDesign.AddIn.Options.Title" xml:space="preserve">
+    <value>WPF 編輯器</value>
+  </data>
+  <data name="ICSharpCode.WpfDesign.AddIn.ThumbnailViewPad" xml:space="preserve">
+    <value>WPF 設計工具縮圖檢視</value>
+  </data>
+  <data name="MainWindow.Windows.ClassBrowser.OpenInClassBrowser" xml:space="preserve">
+    <value>在類別瀏覽器中開啟</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.AddExpressionBreakpoint" xml:space="preserve">
+    <value>新增運算式中斷點</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.AddWatchExpression" xml:space="preserve">
+    <value>新增監看運算式</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.DebugExecutable" xml:space="preserve">
+    <value>偵錯執行檔</value>
+  </data>
+  <data name="OpenFileTabEventHandler.OpenCommandPromptHere" xml:space="preserve">
+    <value>在此處開啟命令提示字元</value>
+  </data>
+  <data name="ProjectComponent.ContextMenu.AddServiceReference" xml:space="preserve">
+    <value>新增服務參考</value>
+  </data>
+  <data name="ProjectComponent.ContextMenu.EditProjectFile" xml:space="preserve">
+    <value>編輯專案檔(&amp;E)</value>
+  </data>
+  <data name="ProjectComponent.ContextMenu.RunProjectWithoutDebugger" xml:space="preserve">
+    <value>不以偵錯執行專案</value>
+  </data>
+  <data name="ResourceEditor.ResourceEdit.ContextMenu.AddBooleanEntry" xml:space="preserve">
+    <value>新增布林項目(&amp;B)</value>
+  </data>
+  <data name="ResourceEditor.ResourceEdit.ContextMenu.EditComment" xml:space="preserve">
+    <value>編輯註解</value>
+  </data>
+  <data name="SharpDevelop.Refactoring.ClipboardRingCommand" xml:space="preserve">
+    <value>從剪貼簿環貼上...</value>
+  </data>
+  <data name="SharpDevelop.Refactoring.FindBaseClassesOrMembersCommand" xml:space="preserve">
+    <value>尋找基底符號</value>
+  </data>
+  <data name="SharpReport.Wizard.ResultPanel.SaveXsdComplete" xml:space="preserve">
+    <value>儲存 XSD（完整）</value>
+  </data>
+  <data name="SharpReport.Wizard.ResultPanel.SaveXsdSchemaOnly" xml:space="preserve">
+    <value>僅儲存 XSD 結構描述</value>
+  </data>
+  <data name="XML.MainMenu.DebugMenu.ApplyHotReload" xml:space="preserve">
+    <value>套用熱重新載入變更</value>
+  </data>
+  <data name="XML.MainMenu.DebugMenu.StartHotReload" xml:space="preserve">
+    <value>啟動熱重新載入</value>
+  </data>
+  <data name="XML.MainMenu.DebugMenu.StartHotReload.Description" xml:space="preserve">
+    <value>使用熱重新載入啟動應用程式</value>
+  </data>
+  <data name="XML.MainMenu.DebugMenu.StopHotReload" xml:space="preserve">
+    <value>停止熱重新載入</value>
+  </data>
+  <data name="XML.MainMenu.HelpMenu.CheckForUpdates" xml:space="preserve">
+    <value>檢查更新(&amp;U)…</value>
+  </data>
+  <data name="XML.TextAreaContextMenu.Reformat" xml:space="preserve">
+    <value>重新格式化</value>
+  </data>
 </root>

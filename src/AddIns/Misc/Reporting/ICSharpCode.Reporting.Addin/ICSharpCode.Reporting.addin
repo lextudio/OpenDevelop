@@ -172,7 +172,7 @@
 		<ReportDialogPanel id="PushModel" label="${res:SharpReport.Wizard.PushModel}" class="ICSharpCode.Reports.Addin.ReportWizard.PushModelPanel" />
 		<ReportDialogPanel id="PullModel" label="${res:SharpReport.Wizard.PullModel}" class="ICSharpCode.Reports.Addin.ReportWizard.PullModelPanel" />
 		<ReportDialogPanel id="QueryResult" label="${res:SharpReport.Wizard.ShowQueryResult}" class="ICSharpCode.Reports.Addin.ReportWizard.ResultPanel" />
-		<ReportDialogPanel id="Layout" label="Layout" class="ICSharpCode.Reports.Addin.ReportWizard.LayoutPanel" />
+		<ReportDialogPanel id="Layout" label="${res:Reporting.LayoutPanel.Label}" class="ICSharpCode.Reports.Addin.ReportWizard.LayoutPanel" />
 	</Path>-->
 
 	<!-- ContextMenu Sections -->
