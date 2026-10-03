@@ -7232,4 +7232,82 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
   <data name="XML.TextAreaContextMenu.UncommentSelection" xml:space="preserve">
     <value>設為非注釋區</value>
   </data>
+  <data name="ProjectBrowser.ContextMenu.NewProject" xml:space="preserve">
+    <value>新增專案</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.ExistingProject" xml:space="preserve">
+    <value>現有專案</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.NewSolutionFolder" xml:space="preserve">
+    <value>新增方案資料夾</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.ExistingItem" xml:space="preserve">
+    <value>現有項目</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.NewItem" xml:space="preserve">
+    <value>新增項目</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.NewFolder" xml:space="preserve">
+    <value>新增資料夾</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.NewFile" xml:space="preserve">
+    <value>新增檔案</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.AddExistingFile" xml:space="preserve">
+    <value>新增現有檔案</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.AddExistingFolder" xml:space="preserve">
+    <value>新增現有資料夾</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.OpenFolder" xml:space="preserve">
+    <value>開啟資料夾</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.OpenInTerminal" xml:space="preserve">
+    <value>在終端機中開啟</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.Copy" xml:space="preserve">
+    <value>複製</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.Paste" xml:space="preserve">
+    <value>貼上</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.Rename" xml:space="preserve">
+    <value>重新命名</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.Delete" xml:space="preserve">
+    <value>刪除</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.RemoveFromProject" xml:space="preserve">
+    <value>從專案移除</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.CopyPath" xml:space="preserve">
+    <value>複製路徑</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.IncludeInProject" xml:space="preserve">
+    <value>加入專案</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.ExcludeFromProject" xml:space="preserve">
+    <value>從專案排除</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.Refresh" xml:space="preserve">
+    <value>重新整理</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.AddReference" xml:space="preserve">
+    <value>新增參考...</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.Remove" xml:space="preserve">
+    <value>移除</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.ProjectOptions" xml:space="preserve">
+    <value>專案選項...</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.ViewInBrowser" xml:space="preserve">
+    <value>在瀏覽器中檢視</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.RunCustomTool" xml:space="preserve">
+    <value>執行自訂工具</value>
+  </data>
+  <data name="ProjectBrowser.PadTitle" xml:space="preserve">
+    <value>專案</value>
+  </data>
 </root>

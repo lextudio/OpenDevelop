@@ -8482,4 +8482,82 @@ Press Esc to cancel this operation.</value>
   <data name="ICSharpCode.WpfDesign.AddIn.Options.EnableAppXamlParsing" xml:space="preserve">
     <value>Enable App.xaml parsing</value>
   </data>
+  <data name="ProjectBrowser.ContextMenu.NewProject" xml:space="preserve">
+    <value>New Project...</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.ExistingProject" xml:space="preserve">
+    <value>Existing Project...</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.NewSolutionFolder" xml:space="preserve">
+    <value>New Solution Folder...</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.ExistingItem" xml:space="preserve">
+    <value>Existing Item...</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.NewItem" xml:space="preserve">
+    <value>New Item...</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.NewFolder" xml:space="preserve">
+    <value>New Folder</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.NewFile" xml:space="preserve">
+    <value>New File</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.AddExistingFile" xml:space="preserve">
+    <value>Add Existing File</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.AddExistingFolder" xml:space="preserve">
+    <value>Add Existing Folder</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.OpenFolder" xml:space="preserve">
+    <value>Open Folder</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.OpenInTerminal" xml:space="preserve">
+    <value>Open in Terminal</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.Copy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.Paste" xml:space="preserve">
+    <value>Paste</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.Rename" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.RemoveFromProject" xml:space="preserve">
+    <value>Remove From Project</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.CopyPath" xml:space="preserve">
+    <value>Copy Path</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.IncludeInProject" xml:space="preserve">
+    <value>Include In Project</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.ExcludeFromProject" xml:space="preserve">
+    <value>Exclude From Project</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.Refresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.AddReference" xml:space="preserve">
+    <value>Add Reference...</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.ProjectOptions" xml:space="preserve">
+    <value>Project Options...</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.ViewInBrowser" xml:space="preserve">
+    <value>View in Browser</value>
+  </data>
+  <data name="ProjectBrowser.ContextMenu.RunCustomTool" xml:space="preserve">
+    <value>Run Custom Tool</value>
+  </data>
+  <data name="ProjectBrowser.PadTitle" xml:space="preserve">
+    <value>Projects</value>
+  </data>
 </root>

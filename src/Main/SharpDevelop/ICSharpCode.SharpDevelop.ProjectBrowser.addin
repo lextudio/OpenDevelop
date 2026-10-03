@@ -48,34 +48,34 @@
          PadContentCollection + LegacyPadClass. Left matches the Default layout template. -->
     <Pad id="ProjectBrowser"
          category="Main"
-         title="Projects"
+         title="${res:ProjectBrowser.PadTitle}"
          class="ICSharpCode.SharpDevelop.Services.ProjectBrowserPad"
          defaultPosition="Left" />
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Add">
-    <MenuItem id="NewProject" label="New Project..." class="ICSharpCode.SharpDevelop.Commands.NewProjectProjectBrowserCommand" />
+    <MenuItem id="NewProject" label="${res:ProjectBrowser.ContextMenu.NewProject}" class="ICSharpCode.SharpDevelop.Commands.NewProjectProjectBrowserCommand" />
     <Condition name="Ownerstate" ownerstate="Solution">
-      <MenuItem id="ExistingProject" label="Existing Project..." class="ICSharpCode.SharpDevelop.Commands.AddExistingProjectProjectBrowserCommand" />
-      <MenuItem id="NewSolutionFolder" label="New Solution Folder..." class="ICSharpCode.SharpDevelop.Commands.NewSolutionFolderProjectBrowserCommand" />
-      <MenuItem id="AddSolutionItems" label="Existing Item..." class="ICSharpCode.SharpDevelop.Commands.AddSolutionItemsProjectBrowserCommand" />
+      <MenuItem id="ExistingProject" label="${res:ProjectBrowser.ContextMenu.ExistingProject}" class="ICSharpCode.SharpDevelop.Commands.AddExistingProjectProjectBrowserCommand" />
+      <MenuItem id="NewSolutionFolder" label="${res:ProjectBrowser.ContextMenu.NewSolutionFolder}" class="ICSharpCode.SharpDevelop.Commands.NewSolutionFolderProjectBrowserCommand" />
+      <MenuItem id="AddSolutionItems" label="${res:ProjectBrowser.ContextMenu.ExistingItem}" class="ICSharpCode.SharpDevelop.Commands.AddSolutionItemsProjectBrowserCommand" />
     </Condition>
-    <MenuItem id="NewItem" label="New Item..." class="ICSharpCode.SharpDevelop.Commands.NewItemProjectBrowserCommand" />
-    <MenuItem id="NewFolder" label="New Folder" class="ICSharpCode.SharpDevelop.Commands.NewFolderProjectBrowserCommand" />
-    <MenuItem id="NewFile" label="New File" class="ICSharpCode.SharpDevelop.Commands.NewFileProjectBrowserCommand" />
-    <MenuItem id="ExistingFile" label="Add Existing File" class="ICSharpCode.SharpDevelop.Commands.AddExistingFileProjectBrowserCommand">
+    <MenuItem id="NewItem" label="${res:ProjectBrowser.ContextMenu.NewItem}" class="ICSharpCode.SharpDevelop.Commands.NewItemProjectBrowserCommand" />
+    <MenuItem id="NewFolder" label="${res:ProjectBrowser.ContextMenu.NewFolder}" class="ICSharpCode.SharpDevelop.Commands.NewFolderProjectBrowserCommand" />
+    <MenuItem id="NewFile" label="${res:ProjectBrowser.ContextMenu.NewFile}" class="ICSharpCode.SharpDevelop.Commands.NewFileProjectBrowserCommand" />
+    <MenuItem id="ExistingFile" label="${res:ProjectBrowser.ContextMenu.AddExistingFile}" class="ICSharpCode.SharpDevelop.Commands.AddExistingFileProjectBrowserCommand">
       <Condition name="Ownerstate" ownerstate="AddExisting" />
     </MenuItem>
-    <MenuItem id="ExistingFolder" label="Add Existing Folder" class="ICSharpCode.SharpDevelop.Commands.AddExistingFolderProjectBrowserCommand">
+    <MenuItem id="ExistingFolder" label="${res:ProjectBrowser.ContextMenu.AddExistingFolder}" class="ICSharpCode.SharpDevelop.Commands.AddExistingFolderProjectBrowserCommand">
       <Condition name="Ownerstate" ownerstate="AddExisting" />
     </MenuItem>
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Open">
-    <MenuItem id="Open" label="Open" class="ICSharpCode.SharpDevelop.Commands.OpenProjectBrowserItemCommand">
+    <MenuItem id="Open" label="${res:Gui.ProjectBrowser.Open}" class="ICSharpCode.SharpDevelop.Commands.OpenProjectBrowserItemCommand">
       <Condition name="Ownerstate" ownerstate="Openable" />
     </MenuItem>
-    <MenuItem id="OpenWith" label="Open With" class="ICSharpCode.SharpDevelop.Commands.OpenWithProjectBrowserCommand">
+    <MenuItem id="OpenWith" label="${res:Gui.ProjectBrowser.OpenWith}" class="ICSharpCode.SharpDevelop.Commands.OpenWithProjectBrowserCommand">
       <Condition name="Ownerstate" ownerstate="OpenWith" />
     </MenuItem>
     <!-- A project node already gets "Open Folder in Explorer" from ContextMenu/ProjectActions. -->
@@ -83,80 +83,80 @@
       <Not>
         <Condition name="Ownerstate" ownerstate="Project" />
       </Not>
-      <MenuItem id="OpenFolder" label="Open Folder" class="ICSharpCode.SharpDevelop.Commands.OpenFolderProjectBrowserCommand" />
+      <MenuItem id="OpenFolder" label="${res:ProjectBrowser.ContextMenu.OpenFolder}" class="ICSharpCode.SharpDevelop.Commands.OpenFolderProjectBrowserCommand" />
     </ComplexCondition>
-    <MenuItem id="OpenTerminal" label="Open in Terminal" class="ICSharpCode.SharpDevelop.Commands.OpenTerminalProjectBrowserCommand" />
+    <MenuItem id="OpenTerminal" label="${res:ProjectBrowser.ContextMenu.OpenInTerminal}" class="ICSharpCode.SharpDevelop.Commands.OpenTerminalProjectBrowserCommand" />
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Edit">
     <MenuItem id="Cut" label="Cut" class="ICSharpCode.SharpDevelop.Commands.CutProjectBrowserItemCommand" />
-    <MenuItem id="Copy" label="Copy" class="ICSharpCode.SharpDevelop.Commands.CopyProjectBrowserItemCommand" />
-    <MenuItem id="Paste" label="Paste" class="ICSharpCode.SharpDevelop.Commands.PasteProjectBrowserItemCommand" />
+    <MenuItem id="Copy" label="${res:ProjectBrowser.ContextMenu.Copy}" class="ICSharpCode.SharpDevelop.Commands.CopyProjectBrowserItemCommand" />
+    <MenuItem id="Paste" label="${res:ProjectBrowser.ContextMenu.Paste}" class="ICSharpCode.SharpDevelop.Commands.PasteProjectBrowserItemCommand" />
     <MenuItem id="EditSeparator" type="Separator" />
-    <MenuItem id="Rename" label="Rename" class="ICSharpCode.SharpDevelop.Commands.RenameProjectBrowserItemCommand">
+    <MenuItem id="Rename" label="${res:ProjectBrowser.ContextMenu.Rename}" class="ICSharpCode.SharpDevelop.Commands.RenameProjectBrowserItemCommand">
       <Condition name="Ownerstate" ownerstate="Renameable" />
     </MenuItem>
-    <MenuItem id="Delete" label="Delete" class="ICSharpCode.SharpDevelop.Commands.DeleteProjectBrowserItemCommand">
+    <MenuItem id="Delete" label="${res:ProjectBrowser.ContextMenu.Delete}" class="ICSharpCode.SharpDevelop.Commands.DeleteProjectBrowserItemCommand">
       <Condition name="Ownerstate" ownerstate="Deletable" />
     </MenuItem>
-    <MenuItem id="RemoveFromProject" label="Remove From Project" class="ICSharpCode.SharpDevelop.Commands.RemoveFromProjectProjectBrowserCommand">
+    <MenuItem id="RemoveFromProject" label="${res:ProjectBrowser.ContextMenu.RemoveFromProject}" class="ICSharpCode.SharpDevelop.Commands.RemoveFromProjectProjectBrowserCommand">
       <Condition name="Ownerstate" ownerstate="RemovableFromSolution" />
     </MenuItem>
-    <MenuItem id="CopyPath" label="Copy Path" class="ICSharpCode.SharpDevelop.Commands.CopyPathProjectBrowserCommand" />
+    <MenuItem id="CopyPath" label="${res:ProjectBrowser.ContextMenu.CopyPath}" class="ICSharpCode.SharpDevelop.Commands.CopyPathProjectBrowserCommand" />
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Membership">
-    <MenuItem id="IncludeInProject" label="Include In Project" class="ICSharpCode.SharpDevelop.Commands.IncludeInProjectProjectBrowserCommand">
+    <MenuItem id="IncludeInProject" label="${res:ProjectBrowser.ContextMenu.IncludeInProject}" class="ICSharpCode.SharpDevelop.Commands.IncludeInProjectProjectBrowserCommand">
       <Condition name="Ownerstate" ownerstate="IncludeInProject" />
     </MenuItem>
-    <MenuItem id="ExcludeFromProject" label="Exclude From Project" class="ICSharpCode.SharpDevelop.Commands.ExcludeFromProjectProjectBrowserCommand">
+    <MenuItem id="ExcludeFromProject" label="${res:ProjectBrowser.ContextMenu.ExcludeFromProject}" class="ICSharpCode.SharpDevelop.Commands.ExcludeFromProjectProjectBrowserCommand">
       <Condition name="Ownerstate" ownerstate="ExcludeFromProject" />
     </MenuItem>
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionNode">
-    <MenuItem id="Refresh" label="Refresh" class="ICSharpCode.SharpDevelop.Commands.RefreshProjectBrowserCommand" />
+    <MenuItem id="Refresh" label="${res:ProjectBrowser.ContextMenu.Refresh}" class="ICSharpCode.SharpDevelop.Commands.RefreshProjectBrowserCommand" />
     <MenuItem id="Add" label="Add" type="Menu">
       <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Add" />
     </MenuItem>
     <MenuItem id="Separator1" type="Separator" />
-    <MenuItem id="CopyPath" label="Copy Path" class="ICSharpCode.SharpDevelop.Commands.CopyPathProjectBrowserCommand" />
-    <MenuItem id="OpenFolder" label="Open Folder" class="ICSharpCode.SharpDevelop.Commands.OpenFolderProjectBrowserCommand" />
-    <MenuItem id="OpenTerminal" label="Open in Terminal" class="ICSharpCode.SharpDevelop.Commands.OpenTerminalProjectBrowserCommand" />
+    <MenuItem id="CopyPath" label="${res:ProjectBrowser.ContextMenu.CopyPath}" class="ICSharpCode.SharpDevelop.Commands.CopyPathProjectBrowserCommand" />
+    <MenuItem id="OpenFolder" label="${res:ProjectBrowser.ContextMenu.OpenFolder}" class="ICSharpCode.SharpDevelop.Commands.OpenFolderProjectBrowserCommand" />
+    <MenuItem id="OpenTerminal" label="${res:ProjectBrowser.ContextMenu.OpenInTerminal}" class="ICSharpCode.SharpDevelop.Commands.OpenTerminalProjectBrowserCommand" />
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionFolderNode">
     <MenuItem id="Add" label="Add" type="Menu">
-      <MenuItem id="NewProject" label="New Project..." class="ICSharpCode.SharpDevelop.Commands.NewProjectProjectBrowserCommand" />
-      <MenuItem id="ExistingProject" label="Existing Project..." class="ICSharpCode.SharpDevelop.Commands.AddExistingProjectProjectBrowserCommand" />
-      <MenuItem id="NewSolutionFolder" label="New Solution Folder..." class="ICSharpCode.SharpDevelop.Commands.NewSolutionFolderProjectBrowserCommand" />
-      <MenuItem id="AddSolutionItems" label="Existing Item..." class="ICSharpCode.SharpDevelop.Commands.AddSolutionItemsProjectBrowserCommand" />
+      <MenuItem id="NewProject" label="${res:ProjectBrowser.ContextMenu.NewProject}" class="ICSharpCode.SharpDevelop.Commands.NewProjectProjectBrowserCommand" />
+      <MenuItem id="ExistingProject" label="${res:ProjectBrowser.ContextMenu.ExistingProject}" class="ICSharpCode.SharpDevelop.Commands.AddExistingProjectProjectBrowserCommand" />
+      <MenuItem id="NewSolutionFolder" label="${res:ProjectBrowser.ContextMenu.NewSolutionFolder}" class="ICSharpCode.SharpDevelop.Commands.NewSolutionFolderProjectBrowserCommand" />
+      <MenuItem id="AddSolutionItems" label="${res:ProjectBrowser.ContextMenu.ExistingItem}" class="ICSharpCode.SharpDevelop.Commands.AddSolutionItemsProjectBrowserCommand" />
     </MenuItem>
     <MenuItem id="Separator1" type="Separator" />
-    <MenuItem id="Rename" label="Rename" class="ICSharpCode.SharpDevelop.Commands.RenameProjectBrowserItemCommand" />
-    <MenuItem id="RemoveFromSolution" label="Remove" class="ICSharpCode.SharpDevelop.Commands.RemoveFromProjectProjectBrowserCommand" />
+    <MenuItem id="Rename" label="${res:ProjectBrowser.ContextMenu.Rename}" class="ICSharpCode.SharpDevelop.Commands.RenameProjectBrowserItemCommand" />
+    <MenuItem id="RemoveFromSolution" label="${res:ProjectBrowser.ContextMenu.Remove}" class="ICSharpCode.SharpDevelop.Commands.RemoveFromProjectProjectBrowserCommand" />
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionItemNode">
-    <MenuItem id="Open" label="Open" class="ICSharpCode.SharpDevelop.Commands.OpenProjectBrowserItemCommand" />
-    <MenuItem id="OpenWith" label="Open With" class="ICSharpCode.SharpDevelop.Commands.OpenWithProjectBrowserCommand" />
-    <MenuItem id="OpenFolder" label="Open Folder" class="ICSharpCode.SharpDevelop.Commands.OpenFolderProjectBrowserCommand" />
-    <MenuItem id="OpenTerminal" label="Open in Terminal" class="ICSharpCode.SharpDevelop.Commands.OpenTerminalProjectBrowserCommand" />
+    <MenuItem id="Open" label="${res:Gui.ProjectBrowser.Open}" class="ICSharpCode.SharpDevelop.Commands.OpenProjectBrowserItemCommand" />
+    <MenuItem id="OpenWith" label="${res:Gui.ProjectBrowser.OpenWith}" class="ICSharpCode.SharpDevelop.Commands.OpenWithProjectBrowserCommand" />
+    <MenuItem id="OpenFolder" label="${res:ProjectBrowser.ContextMenu.OpenFolder}" class="ICSharpCode.SharpDevelop.Commands.OpenFolderProjectBrowserCommand" />
+    <MenuItem id="OpenTerminal" label="${res:ProjectBrowser.ContextMenu.OpenInTerminal}" class="ICSharpCode.SharpDevelop.Commands.OpenTerminalProjectBrowserCommand" />
     <MenuItem id="Separator1" type="Separator" />
-    <MenuItem id="CopyPath" label="Copy Path" class="ICSharpCode.SharpDevelop.Commands.CopyPathProjectBrowserCommand" />
-    <MenuItem id="RemoveFromSolution" label="Remove" class="ICSharpCode.SharpDevelop.Commands.RemoveFromProjectProjectBrowserCommand" />
+    <MenuItem id="CopyPath" label="${res:ProjectBrowser.ContextMenu.CopyPath}" class="ICSharpCode.SharpDevelop.Commands.CopyPathProjectBrowserCommand" />
+    <MenuItem id="RemoveFromSolution" label="${res:ProjectBrowser.ContextMenu.Remove}" class="ICSharpCode.SharpDevelop.Commands.RemoveFromProjectProjectBrowserCommand" />
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ProjectNode">
     <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Open" />
     <MenuItem id="Separator1" type="Separator" />
-    <MenuItem id="Refresh" label="Refresh" class="ICSharpCode.SharpDevelop.Commands.RefreshProjectBrowserCommand" />
+    <MenuItem id="Refresh" label="${res:ProjectBrowser.ContextMenu.Refresh}" class="ICSharpCode.SharpDevelop.Commands.RefreshProjectBrowserCommand" />
     <MenuItem id="Add" label="Add" type="Menu">
       <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Add" />
     </MenuItem>
-    <MenuItem id="AddReferenceDialog" label="Add Reference..." class="ICSharpCode.SharpDevelop.Commands.AddReferenceProjectBrowserCommand" />
+    <MenuItem id="AddReferenceDialog" label="${res:ProjectBrowser.ContextMenu.AddReference}" class="ICSharpCode.SharpDevelop.Commands.AddReferenceProjectBrowserCommand" />
     <!-- Selecting a project node makes it the current project, which is what ViewProjectOptions opens. -->
-    <MenuItem id="ProjectOptions" label="Project Options..." class="ICSharpCode.SharpDevelop.Project.Commands.ViewProjectOptions" />
+    <MenuItem id="ProjectOptions" label="${res:ProjectBrowser.ContextMenu.ProjectOptions}" class="ICSharpCode.SharpDevelop.Project.Commands.ViewProjectOptions" />
     <!-- Set Startup Project comes from ContextMenu/ProjectActions in ICSharpCode.SharpDevelop.addin, which the
          main Project menu shares, so it is not repeated here. -->
     <MenuItem id="Separator2" type="Separator" />
@@ -175,27 +175,27 @@
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FileNode">
     <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Open" />
-    <MenuItem id="ViewInBrowser" label="View in Browser" icon="Icons.22x22.Browser" class="ICSharpCode.SharpDevelop.Commands.ViewInBrowserProjectBrowserCommand" />
+    <MenuItem id="ViewInBrowser" label="${res:ProjectBrowser.ContextMenu.ViewInBrowser}" icon="Icons.22x22.Browser" class="ICSharpCode.SharpDevelop.Commands.ViewInBrowserProjectBrowserCommand" />
     <MenuItem id="Separator1" type="Separator" />
     <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Membership" />
-    <MenuItem id="RunCustomTool" label="Run Custom Tool" class="ICSharpCode.SharpDevelop.Commands.RunCustomToolProjectBrowserCommand" />
+    <MenuItem id="RunCustomTool" label="${res:ProjectBrowser.ContextMenu.RunCustomTool}" class="ICSharpCode.SharpDevelop.Commands.RunCustomToolProjectBrowserCommand" />
     <MenuItem id="Separator2" type="Separator" />
     <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Edit" />
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ReferenceNode">
-    <MenuItem id="OpenProjectReference" label="Open" class="ICSharpCode.SharpDevelop.Commands.OpenProjectReferenceProjectBrowserCommand">
+    <MenuItem id="OpenProjectReference" label="${res:Gui.ProjectBrowser.Open}" class="ICSharpCode.SharpDevelop.Commands.OpenProjectReferenceProjectBrowserCommand">
       <Condition name="Ownerstate" ownerstate="OpenReference" />
     </MenuItem>
     <MenuItem id="Separator0" type="Separator" />
-    <MenuItem id="RemoveReference" label="Remove" class="ICSharpCode.SharpDevelop.Commands.RemoveReferenceProjectBrowserCommand">
+    <MenuItem id="RemoveReference" label="${res:ProjectBrowser.ContextMenu.Remove}" class="ICSharpCode.SharpDevelop.Commands.RemoveReferenceProjectBrowserCommand">
       <Condition name="Ownerstate" ownerstate="RemovableReference" />
     </MenuItem>
-    <MenuItem id="CopyPath" label="Copy Path" class="ICSharpCode.SharpDevelop.Commands.CopyPathProjectBrowserCommand" />
+    <MenuItem id="CopyPath" label="${res:ProjectBrowser.ContextMenu.CopyPath}" class="ICSharpCode.SharpDevelop.Commands.CopyPathProjectBrowserCommand" />
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/PackageReferenceNode">
-    <MenuItem id="RemoveReference" label="Remove" class="ICSharpCode.SharpDevelop.Commands.RemoveReferenceProjectBrowserCommand">
+    <MenuItem id="RemoveReference" label="${res:ProjectBrowser.ContextMenu.Remove}" class="ICSharpCode.SharpDevelop.Commands.RemoveReferenceProjectBrowserCommand">
       <Condition name="Ownerstate" ownerstate="RemovableReference" />
     </MenuItem>
   </Path>
@@ -205,7 +205,7 @@
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ToolBar/Standard">
     <Condition name="SolutionOpen" action="Disable">
-      <ToolbarItem id="Refresh" tooltip="Refresh" class="ICSharpCode.SharpDevelop.Commands.RefreshProjectBrowserCommand" />
+      <ToolbarItem id="Refresh" tooltip="${res:ProjectBrowser.ContextMenu.Refresh}" class="ICSharpCode.SharpDevelop.Commands.RefreshProjectBrowserCommand" />
     </Condition>
   </Path>
 </AddIn>
