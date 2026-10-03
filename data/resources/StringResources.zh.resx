@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -124,7 +124,7 @@
     <value>关于</value>
   </data>
   <data name="AddInManager.ActionCancelDeinstallation" xml:space="preserve">
-    <value>取消分离安装</value>
+    <value>取消卸载</value>
   </data>
   <data name="AddInManager.ActionCancelInstallation" xml:space="preserve">
     <value>取消安装</value>
@@ -157,7 +157,7 @@
     <value>重新启动SharpDevelop后插件才能使用</value>
   </data>
   <data name="AddInManager.AddInInstalled" xml:space="preserve">
-    <value>插件将在重启SharpDevelop后安装</value>
+    <value>插件将在重启OpenDevelop后安装</value>
   </data>
   <data name="AddInManager.AddInInstalledTwice" xml:space="preserve">
     <value>该插件安装了两次，请卸载其中一个版本。</value>
@@ -166,16 +166,16 @@
     <value>插件必须在插件管理器中具有唯一标识。</value>
   </data>
   <data name="AddInManager.AddInRemoved" xml:space="preserve">
-    <value>重启SharpDevelop后插件将被移除</value>
+    <value>重启OpenDevelop后插件将被移除</value>
   </data>
   <data name="AddInManager.AddInUpdated" xml:space="preserve">
-    <value>插件将在重启SharpDevelop后更新</value>
+    <value>插件将在重启OpenDevelop后更新</value>
   </data>
   <data name="AddInManager.AddInWillBeDisabled" xml:space="preserve">
-    <value>插件将在重启SharpDevelop后失效</value>
+    <value>插件将在重启OpenDevelop后失效</value>
   </data>
   <data name="AddInManager.CannotDisableAddInManager" xml:space="preserve">
-    <value>你不能关闭插件管理器，因为你需要它让插件重新可用！</value>
+    <value>你不能禁用插件管理器，因为你需要它让插件重新可用！</value>
   </data>
   <data name="AddInManager.CannotInstallIntoApplicationDirectory" xml:space="preserve">
     <value>你不能把插件安装在${ProductName}目录,它们将自动被当作预安装插件.</value>
@@ -218,7 +218,7 @@
     <value>选项</value>
   </data>
   <data name="AddInManager.RequiredBy" xml:space="preserve">
-    <value>插件被需用于:</value>
+    <value>以下插件依赖于它:</value>
   </data>
   <data name="AddInManager.RequiredDependencies" xml:space="preserve">
     <value>需要附件:</value>
@@ -386,7 +386,7 @@
     <value>正在分析...</value>
   </data>
   <data name="AddIns.Profiler.Messages.RegisterFailed" xml:space="preserve">
-    <value>无法注册探查器到COM注册表。不能启动探查器！</value>
+    <value>无法注册分析器到COM注册表。不能启动分析器！</value>
   </data>
   <data name="AddIns.Profiler.Messages.UnregisterFailed" xml:space="preserve">
     <value>不能从COM注册表撤销探查器！</value>
@@ -620,7 +620,7 @@
     <value>解析扩展方法{0}</value>
   </data>
   <data name="AddIns.SourceAnalysis.CheckWithStyleCop" xml:space="preserve">
-    <value>用FxCop检验</value>
+    <value>用StyleCop检验</value>
   </data>
   <data name="AddIns.SourceAnalysis.Title" xml:space="preserve">
     <value>源代码风格分析</value>
@@ -1015,7 +1015,7 @@
     <value>事件已经添加到日志中</value>
   </data>
   <data name="ComponentInspector.EventLogList.EventsTab" xml:space="preserve">
-    <value>Eveng log(事件日志)</value>
+    <value>Event log(事件日志)</value>
   </data>
   <data name="ComponentInspector.EventLogList.IncrementColumnHeader" xml:space="preserve">
     <value>正序</value>
@@ -1208,7 +1208,7 @@
     <value>程序集文件</value>
   </data>
   <data name="ComponentInspector.ObjectBrowserForm.AttachMenuItem" xml:space="preserve">
-    <value>跟踪(&amp;T)...</value>
+    <value>附加(&amp;T)...</value>
   </data>
   <data name="ComponentInspector.ObjectBrowserForm.DirectoriesMenuItem" xml:space="preserve">
     <value>目录(&amp;D)</value>
@@ -1551,7 +1551,7 @@
     <value>当前选择</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.LookIn.DirectoryNotFound" xml:space="preserve">
-    <value>目录'{0}'不存在.</value>
+    <value>目录'{0}'不存在</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.LookIn.SelectDirectory" xml:space="preserve">
     <value>选择搜索目录</value>
@@ -2022,7 +2022,7 @@
     <value>无</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Behaviour.IndentStyle.Smart" xml:space="preserve">
-    <value>剧烈</value>
+    <value>智能</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Behaviour.MouseWhellGroupBox" xml:space="preserve">
     <value>鼠标滑轮方向(&amp;M)</value>
@@ -3898,10 +3898,10 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>解析</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectFile.BuildAction" xml:space="preserve">
-    <value>成功行为</value>
+    <value>构建行为</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectFile.BuildAction.Description" xml:space="preserve">
-    <value>那个文件的成功行为</value>
+    <value>那个文件的构建行为</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectFile.CopyToOutputDirectory" xml:space="preserve">
     <value>复制到输出目录</value>
@@ -4373,7 +4373,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>复制</value>
   </data>
   <data name="ICSharpCode.WPFDesigner.ContextMenu.Cut" xml:space="preserve">
-    <value>粘贴</value>
+    <value>剪切</value>
   </data>
   <data name="ICSharpCode.WPFDesigner.ContextMenu.Outline" xml:space="preserve">
     <value>大纲</value>
@@ -4385,7 +4385,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>属性</value>
   </data>
   <data name="ICSharpCode.WPFDesigner.ContextMenu.Redo" xml:space="preserve">
-    <value>撤销</value>
+    <value>重做</value>
   </data>
   <data name="ICSharpCode.WPFDesigner.ContextMenu.Remove" xml:space="preserve">
     <value>移除</value>
@@ -4868,7 +4868,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>当调试器在运行时无法浏览变量</value>
   </data>
   <data name="MainWindow.Windows.Debug.LocalVariables.CannotSetValue.BadFormat" xml:space="preserve">
-    <value>无法转换{0}到{1}</value>
+    <value>无法将{0}转换到{1}</value>
   </data>
   <data name="MainWindow.Windows.Debug.LocalVariables.CannotSetValue.Title" xml:space="preserve">
     <value>无法设定值</value>
@@ -5357,7 +5357,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>包括在项目中</value>
   </data>
   <data name="ProjectComponent.ContextMenu.IncludeMenu.InCompile" xml:space="preserve">
-    <value>成功</value>
+    <value>编译</value>
   </data>
   <data name="ProjectComponent.ContextMenu.IncludeMenu.InDeploy" xml:space="preserve">
     <value>部署</value>
@@ -5423,7 +5423,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>类名</value>
   </data>
   <data name="RegExpTk.MainDialog.CompileTab" xml:space="preserve">
-    <value>成功</value>
+    <value>编译</value>
   </data>
   <data name="RegExpTk.MainDialog.CreateAssembly" xml:space="preserve">
     <value>生成组件</value>
@@ -6007,7 +6007,7 @@ SharpDevelop 编译资源时发现不对应：资源名称不是文件名，而�
     <value>表</value>
   </data>
   <data name="SharpReport.Toolbar.TextBox" xml:space="preserve">
-    <value>标签</value>
+    <value>文本框</value>
   </data>
   <data name="SharpReport.Wizard.BaseSettings" xml:space="preserve">
     <value>基本设置</value>
@@ -6292,10 +6292,10 @@ SharpDevelop 编译资源时发现不对应：资源名称不是文件名，而�
     <value>空视图</value>
   </data>
   <data name="Templates.File.SingletonClass.Description" xml:space="preserve">
-    <value>具有标准样式的类。</value>
+    <value>实现单例模式的类。</value>
   </data>
   <data name="Templates.File.SingletonClass.Name" xml:space="preserve">
-    <value>样品类</value>
+    <value>单例类</value>
   </data>
   <data name="Templates.File.Struct.Description" xml:space="preserve">
     <value>一个包含Equals()和GetHashCode()方法的结构体.</value>
@@ -6517,7 +6517,7 @@ SharpDevelop 编译资源时发现不对应：资源名称不是文件名，而�
     <value>在任务栏右侧的图标通知区域显示图标的项目。</value>
   </data>
   <data name="Templates.Project.SysTrayIcon.Name" xml:space="preserve">
-    <value>任务栏图标应用程</value>
+    <value>任务栏图标应用程序</value>
   </data>
   <data name="Templates.Project.UserControlLibrary.Description" xml:space="preserve">
     <value>创建一个可在 Windows 应用程序中使用的用户控件的项目</value>
@@ -6559,7 +6559,7 @@ SharpDevelop 编译资源时发现不对应：资源名称不是文件名，而�
     <value>创建一个简单的只有一个浏览页面的WPF应用程序</value>
   </data>
   <data name="Templates.Project.WinFXNavigationApplication.Name" xml:space="preserve">
-    <value>WPF网页应用程度</value>
+    <value>WPF网页应用程序</value>
   </data>
   <data name="Templates.SharpReport.NewReport" xml:space="preserve">
     <value>使用报表向导建立一个新报表</value>

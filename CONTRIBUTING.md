@@ -1,6 +1,6 @@
-# Contributing to SharpDevelop
+# Contributing to OpenDevelop
 
-Thanks for helping to improve SharpDevelop.
+Thanks for helping to improve OpenDevelop.
 
 In order for your changes to be accepted you can either sign the [Joint Copyright Assignment](http://www.icsharpcode.net/TechNotes/JointCopyrightAssignment.pdf) or add the following statement to your pull request:
 
