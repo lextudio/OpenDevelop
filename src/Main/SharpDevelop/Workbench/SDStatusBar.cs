@@ -75,7 +75,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			};
 
 			cursorStatusBarPanel.Width = 150;
-			selectionStatusBarPanel.Content = 50;
+			selectionStatusBarPanel.Width = 50;
 			modeStatusBarPanel.Width = 25;
 			
 			statusProgressBar.Minimum = 0;
