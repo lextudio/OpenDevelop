@@ -148,13 +148,6 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		try { return Convert.FromBase64String(png!); } catch (FormatException) { return null; }
 	}
 
-	/// <summary>Whether the design root is a top-level window, in which case the canvas draws the
-	/// chrome the GTK host cannot: a GtkWindow's title bar belongs to the window manager.</summary>
-	public bool RootIsWindow => state.RootIsWindow;
-
-	/// <summary>The title the canvas shows in that window frame.</summary>
-	public string WindowTitle => state.RootType;
-
 	public string RootId => state.Tree?.Id == "$interface" ? state.Tree.Children.FirstOrDefault()?.Id ?? "" : state.Tree?.Id ?? "";
 	public int ToolbarItemCount => canvas.VisibleToolbarItems.Count; public IReadOnlyList<string> ToolbarItems => canvas.VisibleToolbarItems; public string ToolbarCapabilities => canvas.Capabilities.ToString(); public double Zoom { get => canvas.ViewportScale; set => canvas.SetViewport(Math.Clamp(value, .25, 2), 0, 0); }
 	public bool Gridlines => canvas.Gridlines; public bool FitMeasured { get; private set; } public void FitDesign() => FitView(); public void ShowGridlines(bool show) { canvas.IsGridEnabled = show; canvas.SetGridlines(show); }
@@ -246,11 +239,6 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	}
 	void Rebuild()
 	{
-		// The GTK host paints the window's content, not its chrome: a GtkWindow's title bar and border
-		// belong to the window manager, not the widget tree, so they cannot be in the snapshot. The
-		// host says the root is a window and the shared canvas draws the frame around it, which is what
-		// the other frameworks' designers already do with their own window chrome.
-		canvas.SetRootWindow(state.RootIsWindow, state.RootType);
 		diagnostic.Text = HasNativeFrame ? Status : Status + " - no native frame: the GTK 4 runtime could not render this interface.";
 		pads.UpdateRoots(state.Tree == null ? null : state.Tree.Id == "$interface" ? state.Tree.Children : new[] { state.Tree });
 		canvasController.ApplySnapshot(CanvasSnapshot());

@@ -44,38 +44,10 @@ public class DesignSurface : DesignerCanvas
 	public const double MinZoom = 0.1;
 	public const double MaxZoom = 16.0;
 	const double DragThreshold = 4;
-	/// <summary>Height of the title bar drawn above a window's content, matching Visual Studio's
-	/// design surface so a window reads the same here as it does there.</summary>
-	public const double WindowCaptionHeight = 22;
-	const double WindowBorderThickness = 1;
 	/// <summary>Empty-canvas margin around the design bitmap, so the design surface never
 	/// touches the scroll-viewport edge (the dotted EdgePattern reads as "outside the design"
 	/// and leaves room for edge-drag to resize the page).</summary>
 	public const double CanvasMargin = 32;
-
-	/// <summary>Whether the chrome around the design root is drawn as a window. False for a bare
-	/// content element, which then sits flush with the canvas edge the way a control rather than a
-	/// window should.</summary>
-	public bool RootIsWindow { get; private set; }
-
-	/// <summary>The title shown in the window frame, normally the root element's name or type.</summary>
-	public string WindowTitle { get; private set; } = "";
-
-	/// <summary>Records whether the design root is a top-level window, from
-	/// DesignerSessionState.RootIsWindow. A framework whose decorations live outside the element tree
-	/// (a GTK window's title bar is drawn by the window manager, not by a widget) reports the frame
-	/// size but cannot put the chrome into the pixels, so the canvas draws it instead - which is what
-	/// makes a window read as a window on every framework, not only on those whose toolkit happens to
-	/// paint its own decorations.</summary>
-	public void SetRootWindow(bool isWindow, string title)
-	{
-		var newTitle = title ?? "";
-		if (RootIsWindow == isWindow && WindowTitle == newTitle)
-			return;
-		RootIsWindow = isWindow;
-		WindowTitle = newTitle;
-		ApplyViewport();
-	}
 
 	static readonly Color SelectionColor = Color.FromRgb(0x00, 0x78, 0xD4);
 	static readonly double[] ZoomPresets = { 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 4.0 };
@@ -90,17 +62,6 @@ public class DesignSurface : DesignerCanvas
 	};
 	readonly GridlineOverlay gridlineOverlay = new();
 	readonly Border frameBackdrop = new() { IsHitTestVisible = false };
-	// Drawn under the frame when the design root is a top-level window. The host cannot include the
-	// chrome in its pixels - a GTK window's title bar is drawn by the window manager and is not part
-	// of the widget tree at all - so the canvas draws it from RootIsWindow instead, which is what
-	// makes a window look like a window on every framework rather than only those whose toolkit
-	// paints its own decorations.
-	readonly Border windowFrame = new() { IsHitTestVisible = false };
-	readonly TextBlock windowCaption = new() {
-		IsHitTestVisible = false,
-		TextAlignment = TextAlignment.Center,
-		VerticalAlignment = VerticalAlignment.Top
-	};
 	readonly Canvas viewportCanvas = new();
 	readonly Canvas contentCanvas = new();
 	// Marquee (rubber-band) selection, drawn in content coordinates so it scrolls with the design.
@@ -187,8 +148,6 @@ public class DesignSurface : DesignerCanvas
 		textEditor.KeyDown += OnTextEditorKeyDown;
 		textEditor.LostKeyboardFocus += OnTextEditorLostFocus;
 		viewportCanvas.Children.Add(frameBackdrop);
-		viewportCanvas.Children.Add(windowFrame);
-		viewportCanvas.Children.Add(windowCaption);
 		viewportCanvas.Children.Add(framePresenter.Visual);
 		viewportCanvas.Children.Add(gridlineOverlay.Visual);
 		viewportCanvas.Children.Add(overlay);
@@ -951,34 +910,6 @@ public class DesignSurface : DesignerCanvas
 
 	void OnScrollChanged(object sender, ScrollChangedEventArgs e) => ApplyViewport();
 
-	/// <summary>Places the window chrome around the frame the host produced, or removes it and pulls
-	/// the content back flush when the root is not a window. Both directions run on every call: the
-	/// top offsets are sticky on the visuals, so returning early without the reset would leave a
-	/// document that stopped being a window permanently offset by one caption.</summary>
-	void LayoutWindowFrame(double contentWidth, double contentHeight)
-	{
-		var captionHeight = RootIsWindow ? WindowCaptionHeight : 0;
-		foreach (var visual in new UIElement[] { framePresenter.Visual, gridlineOverlay.Visual, overlay, textEditor })
-			Canvas.SetTop(visual, captionHeight);
-		windowFrame.Visibility = RootIsWindow ? Visibility.Visible : Visibility.Collapsed;
-		windowCaption.Visibility = RootIsWindow ? Visibility.Visible : Visibility.Collapsed;
-		if (!RootIsWindow)
-			return;
-		windowFrame.Width = contentWidth;
-		windowFrame.Height = contentHeight + WindowCaptionHeight;
-		windowFrame.BorderThickness = new Thickness(WindowBorderThickness);
-		windowFrame.BorderBrush = new SolidColorBrush(Color.FromRgb(0x70, 0x70, 0x70));
-		windowFrame.Background = new SolidColorBrush(Color.FromRgb(0xF0, 0xF0, 0xF0));
-		Canvas.SetLeft(windowFrame, 0);
-		Canvas.SetTop(windowFrame, 0);
-		windowCaption.Width = contentWidth;
-		windowCaption.Height = WindowCaptionHeight - 1;
-		windowCaption.Text = WindowTitle;
-		windowCaption.SetResourceReference(TextBlock.ForegroundProperty, "MutedForeground");
-		Canvas.SetLeft(windowCaption, 0);
-		Canvas.SetTop(windowCaption, WindowBorderThickness);
-	}
-
 	void ApplyViewport()
 	{
 		if (pixelWidth == 0 || pixelHeight == 0 || scroller.ViewportWidth == 0 || scroller.ViewportHeight == 0)
@@ -1006,7 +937,6 @@ public class DesignSurface : DesignerCanvas
 		viewportCanvas.Height = pixelHeight * scale;
 		frameBackdrop.Width = viewportCanvas.Width;
 		frameBackdrop.Height = viewportCanvas.Height;
-		LayoutWindowFrame(pixelWidth * scale, pixelHeight * scale);
 		// The image must fill the design-size canvas: without explicit size it renders at
 		// the bitmap's natural DIP size (1 design unit = 1 DIP), which at fit scale is about
 		// 2x too large and drifts from the selection outline.

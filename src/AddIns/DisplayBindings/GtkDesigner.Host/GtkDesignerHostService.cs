@@ -172,15 +172,6 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		if (!string.IsNullOrEmpty(GtkPropertyMetadata.Diagnostic)) result.Diagnostics.Add(new DesignerDiagnostic { Severity = "Info", Message = GtkPropertyMetadata.Diagnostic });
 		if (GtkAdwaita.Requires(session.Editor.Text) && GtkAdwaita.Diagnostic.Length > 0) result.Diagnostics.Add(new DesignerDiagnostic { Severity = "Warning", Message = GtkAdwaita.Diagnostic });
 		foreach (var message in session.PreviewDiagnostics.Distinct()) result.Diagnostics.Add(new DesignerDiagnostic { Severity = "Warning", Message = message });
-		// A GtkWindow is a Bin: the widget tree holds its content, while the title bar and border are
-		// drawn by the window manager, so they cannot appear in the snapshot (Render paints
-		// GetChild()). Say so, and let the client draw the chrome - otherwise a window is
-		// indistinguishable from a bare content element on the design surface.
-		if (session.NativeRoot is Gtk.Window) {
-			result.RootIsWindow = true;
-			if (string.IsNullOrEmpty(result.RootType))
-				result.RootType = session.NativeRoot.GetType().Name;
-		}
 		if (!string.IsNullOrEmpty(session.RenderDiagnostic)) result.Diagnostics.Add(new DesignerDiagnostic { Severity = "Warning", Message = session.RenderDiagnostic });
 		return result;
 	}
