@@ -102,8 +102,7 @@ public sealed class GtkDesignerVisualWalkthroughTests : IAsyncLifetime, IAsyncDi
 		var log = new System.Text.StringBuilder();
 		foreach (var d in initial.GetProperty("diagnostics").EnumerateArray()) log.AppendLine("D: " + d.GetString());
 		log.AppendLine("nativeFrame " + initial.GetProperty("nativeFrameWidth").GetInt32() + "x"
-			+ initial.GetProperty("nativeFrameHeight").GetInt32() + " rootIsWindow="
-			+ initial.GetProperty("rootIsWindow").GetBoolean());
+			+ initial.GetProperty("nativeFrameHeight").GetInt32());
 		foreach (var diagnostic in initial.GetProperty("diagnostics").EnumerateArray())
 			log.AppendLine("DIAG: " + diagnostic.GetString());
 		log.AppendLine("HOSTLOG: " + initial.GetProperty("hostLog").GetString());

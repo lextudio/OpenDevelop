@@ -876,6 +876,14 @@ the rendered texture and account for it in `HitTest` and in the reported bounds,
 WinForms host does with `RootClientOffset` and its portable 30px title bar (see
 designer-common.md, "Window chrome and coordinate ownership").
 
+This is now implemented that way: `WindowTitleBarHeight` (30, mirroring the WinForms host's
+`PortableFormTitleBarHeight`) is composed into the rendered frame - a band, a separator and the
+window title through a Pango layout - the content is translated down by it, and the frame is
+reported that much taller. The offset is then applied in both directions by the host alone:
+`HitTest` subtracts it before comparing against `NativeBounds`, and `Node`/`DropNode` add it back
+when reporting bounds, so selection outlines and drops line up with the picture. The canvas is
+untouched.
+
 It was briefly done the other way - the shared canvas drew a caption and border, which required
 the content to be shifted relative to the viewport that `SurfaceToDesign` maps against. Clicks
 then resolved one caption (22px) too high in design space and selecting the Run button selected

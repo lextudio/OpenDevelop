@@ -134,7 +134,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("design/reorder")]
 	public DesignerSessionState Reorder(string sessionId, string documentId, long baseVersion, string elementId, int delta) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Reorder(elementId, delta)) throw new InvalidOperationException("GTK reorder was rejected."); session.Version++; return State(session, false); }
 	[JsonRpcMethod("design/hit-test")]
-	public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, double x, double y) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); var hit = session.NativeBounds.Where(p => x >= p.Value.X && y >= p.Value.Y && x <= p.Value.X + p.Value.Width && y <= p.Value.Y + p.Value.Height).OrderBy(p => p.Value.Width * p.Value.Height).FirstOrDefault(); return string.IsNullOrEmpty(hit.Key) ? new DesignerHitTestResult() : new DesignerHitTestResult { Hit = true, ComponentName = hit.Key, Chain = { hit.Key } }; }
+	public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, double x, double y) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); y -= WindowTitleBarOffset(session); var hit = session.NativeBounds.Where(p => x >= p.Value.X && y >= p.Value.Y && x <= p.Value.X + p.Value.Width && y <= p.Value.Y + p.Value.Height).OrderBy(p => p.Value.Width * p.Value.Height).FirstOrDefault(); return string.IsNullOrEmpty(hit.Key) ? new DesignerHitTestResult() : new DesignerHitTestResult { Hit = true, ComponentName = hit.Key, Chain = { hit.Key } }; }
 	[JsonRpcMethod("design/undo")]
 	public DesignerSessionState Undo(string sessionId, string documentId, long baseVersion) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Undo()) throw new InvalidOperationException("Nothing to undo."); session.Version++; return State(session, false); }
 	[JsonRpcMethod("design/redo")]
@@ -238,6 +238,19 @@ sealed class GtkDesignerHostService : IDesignerChildService
 			return frame;
 		} catch (Exception ex) { session.RenderDiagnostic = ex.Message; return null; }
 	}
+	/// <summary>Height of the title bar the host draws above a window's content, mirroring the WinForms
+	/// host's PortableFormTitleBarHeight. A GtkWindow's own title bar belongs to the window manager and
+	/// is not in the widget tree, so the preview composes one - and, exactly as in WinForms, the host
+	/// then owns the conversion between the frame it reports (surface) and its own client coordinates:
+	/// HitTest subtracts this, Node and DropNode add it back.</summary>
+	const int WindowTitleBarHeight = 30;
+
+	/// <summary>How far the client content sits below the top of the reported frame. Zero for a root
+	/// that is not a window, which is then reported exactly as it is.</summary>
+	static int WindowTitleBarOffset(DocumentSession session) => session.NativeRoot is Gtk.Window ? WindowTitleBarHeight : 0;
+
+	static Gdk.RGBA CaptionColor(double r, double g, double b) => new() { Red = (float)r, Green = (float)g, Blue = (float)b, Alpha = 1 };
+
 	static class NativeGtkRenderer
 	{
 		static readonly object Gate = new();
@@ -284,14 +297,45 @@ sealed class GtkDesignerHostService : IDesignerChildService
 				// it is what every non-window root uses - but for a window's content it produces an empty node
 				// here, so the frame comes back blank. SnapshotChild is the only route that yields pixels at
 				// all, and its node is the one the content last drew.
-				Gsk.RenderNode? node;
+				Gsk.RenderNode? content;
 				using (var snapshot = Gtk.Snapshot.New()) {
 					if (!ReferenceEquals(paintTarget, root)) root.SnapshotChild(paintTarget, snapshot);
 					else {
 						using var paintable = Gtk.WidgetPaintable.New(paintTarget);
 						paintable.Snapshot(snapshot, width, height);
 					}
-					node = snapshot.ToNode();
+					content = snapshot.ToNode();
+				}
+				if (content == null) throw new InvalidOperationException("GTK produced an empty render node.");
+				// A window is previewed with a title bar the host composes itself, because the real one
+				// belongs to the window manager. The content moves down by exactly WindowTitleBarHeight
+				// inside the frame and the frame is that much taller, which is why every coordinate the
+				// host reports or accepts is converted - see WindowTitleBarOffset.
+				var titleBar = root is Gtk.Window ? WindowTitleBarHeight : 0;
+				Gsk.RenderNode? node;
+				using (var frame = Gtk.Snapshot.New()) {
+					if (titleBar > 0) {
+						var band = new Graphene.Rect(); band.Init(0, 0, width, titleBar);
+						frame.AppendColor(CaptionColor(0.94, 0.94, 0.94), band);
+						var separator = new Graphene.Rect(); separator.Init(0, titleBar - 1, width, 1);
+						frame.AppendColor(CaptionColor(0.70, 0.70, 0.70), separator);
+						using var layout = Pango.Layout.New(root.GetPangoContext());
+						layout.SetText(root is Gtk.Window titled ? titled.GetTitle() ?? "" : "", -1);
+						using var font = Pango.FontDescription.FromString("Sans 11");
+						layout.SetFontDescription(font);
+						frame.Save();
+						var textOffset = new Graphene.Point();
+						textOffset.Init(8, 7);
+						frame.Translate(textOffset);
+						frame.AppendLayout(layout, CaptionColor(0.15, 0.15, 0.15));
+						frame.Restore();
+					}
+					frame.Save();
+					var shift = new Graphene.Point(); shift.Init(0, titleBar);
+					frame.Translate(shift);
+					frame.AppendNode(content);
+					frame.Restore();
+					node = frame.ToNode();
 				}
 				if (node == null) throw new InvalidOperationException("GTK produced an empty render node.");
 				renderer ??= CreateRenderer();
@@ -300,7 +344,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 				// (-3, 2.66) - the two rows plus the button's shadow - for content allocated 800x600, and a
 				// null viewport renders exactly those bounds. Clip to the allocation instead.
 				var viewport = new Graphene.Rect();
-				viewport.Init(0, 0, width, height);
+				viewport.Init(0, 0, width, height + (root is Gtk.Window ? WindowTitleBarHeight : 0));
 				using var texture = renderer.RenderTexture(node, viewport);
 				// Whatever GTK produced is what the canvas has to lay out, so report the texture's size and
 				// not the size that was requested. A frame that claims more pixels than it carries is what
@@ -350,7 +394,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 			for (var iteration = 0; iteration < 8 && context.Pending(); iteration++) context.Iteration(false);
 		}
 	}
-	DesignerElementNode Node(DocumentSession session, GtkUiNode node, string? parentClass = null) { session.NativeBounds.TryGetValue(node.Id, out var bounds); return new() { Id = node.Id, Name = node.Id, Type = node.ClassName, X = bounds.X, Y = bounds.Y, Width = bounds.Width, Height = bounds.Height,
+	DesignerElementNode Node(DocumentSession session, GtkUiNode node, string? parentClass = null) { session.NativeBounds.TryGetValue(node.Id, out var bounds); return new() { Id = node.Id, Name = node.Id, Type = node.ClassName, X = bounds.X, Y = bounds.Y + WindowTitleBarOffset(session), Width = bounds.Width, Height = bounds.Height,
 		Properties = GtkPropertyMetadata.PropertiesFor(node, parentClass).Prepend(new DesignerPropertyInfo { Name = "$id", DisplayName = "ID", Value = node.Id, Category = "Identity" }).ToList(),
 		Events = GtkPropertyMetadata.SignalsFor(node.ClassName, SignalsFor).Select(name => new DesignerEventInfo { Name = name, Category = "GTK Signals", Handler = session.Editor.GetSignals(node.Id).GetValueOrDefault(name) ?? "" }).ToList(),
 		Children = node.Children.Select(n => Node(session, n, node.ClassName)).ToList() }; }
@@ -359,7 +403,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	{
 		session.NativeBounds.TryGetValue(node.Id, out var b);
 		int Layout(string name, int fallback) => node.Layout != null && node.Layout.TryGetValue(name, out var v) && int.TryParse(v, out var i) ? i : fallback;
-		return new GtkDropNode(node.Id, node.ClassName, b.X, b.Y, b.Width, b.Height,
+		return new GtkDropNode(node.Id, node.ClassName, b.X, b.Y + WindowTitleBarOffset(session), b.Width, b.Height,
 			node.Children.Select(c => DropNode(session, c)).ToList(),
 			node.Properties.TryGetValue("orientation", out var o) ? o : null,
 			Layout("column", 0), Layout("row", 0), Layout("column-span", 1), Layout("row-span", 1));
