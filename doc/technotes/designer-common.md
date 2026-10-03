@@ -1991,6 +1991,79 @@ process alive across file opens/closes independently of any single ViewContent (
 is re-entrancy-safe) - the reload-avoidance above is purely a ViewContent-layer concern; it does
 not change how the shared broker/pool behaves.
 
+## Window chrome and coordinate ownership (2026-10-02)
+
+Two rules, learned by breaking them. Both are about where a designer may put things that are
+not the design itself.
+
+### Chrome belongs to the host, never to the canvas
+
+The WinForms designer already does this, and its own code says why. `Form.DrawToBitmap` paints
+the **outer window** - border and caption - into the frame bitmap, and the host then:
+
+- subtracts `RootClientOffset` from an incoming surface point before comparing it against
+  client-space control bounds (`HitTest`),
+- adds the same offset back when reporting bounds (`SurfaceLocation`),
+- on the portable host, reserves `PortableFormTitleBarHeight` (30) and paints a simulated title
+  bar, applying the identical offset in both directions.
+
+The canvas takes no part in any of that. So when a framework's toolkit cannot put its own
+decoration in the pixels - a GTK window's title bar is drawn by the window manager and is not in
+the widget tree at all - the answer is still the host: **the host synthesises the chrome into the
+texture it renders and accounts for it in its own coordinate conversions.** Do not teach the
+canvas about windows.
+
+That mistake was made and reverted in `dba7025f4b` / `16836ded89`: a `RootIsWindow` flag, a
+caption and border drawn by `DesignSurface`, and a protocol field, host flag, client property and
+devflow field to feed it. It bought a title bar and cost correct hit-testing.
+
+### The canvas has exactly one coordinate rule
+
+> The host reports **surface** coordinates. The canvas maps surface <-> design with
+> `DesignViewport.SurfaceToDesign` / `DesignToSurface`. Any conversion between surface and a
+> framework's own client coordinates is the **host's** job.
+
+Anything that moves the rendered content relative to the viewport that `SurfaceToDesign` maps
+against breaks every mouse gesture by a fixed offset. It has now happened twice:
+
+| Change | Offset | Symptom |
+|---|---|---|
+| reading raw `panX`/`panY` instead of `viewport.PanX/PanY` when placing `viewportCanvas` | 32px | bitmap, selection outline and click hit-testing all disagreed |
+| shifting the content down by a caption inside `viewportCanvas`, so a title bar had room | 22px | every click resolved one caption too high in design space; clicking Run selected the window |
+
+Both are documented above the `viewportCanvas` placement, because that is where the invariant is
+enforced.
+
+### Diagnosing an offset
+
+A click that selects a neighbour, the parent, or nothing at all is almost always this, not a
+broken backend. The procedure that located both cases:
+
+1. `od.gtk-designer.bounds <id>` gives the element's **design**-space rect;
+   `od.gtk-designer.query-element-screen-bounds <id>` gives its reported screen rect. If the
+   screen rect is the design rect plus a constant and is **not scaled** by the zoom, the
+   reported mapping is suspect.
+2. Click a vertical line of points down the canvas with the DevFlow pointer action and record the
+   selected id at each. Transitions should be monotonic and match the document order. A repeated
+   band of the root between children, or a child appearing above one that precedes it in the
+   document, means the mapping is off by a fixed amount.
+3. Compare the reported `zoom` against the actual scale: the `DesignSurface` bounds from
+   `GET /api/v1/ui/tree` divided by the design size. `zoom: 1` while the surface is 468px wide for
+   an 800px design is a contradiction worth chasing.
+
+Two gotchas when driving this by hand: `od.gtk-designer.hit-test` takes **canvas** coordinates,
+not screen coordinates, and `od.gtk-designer.show-source` is a one-way switch to the source view
+with no counterpart to switch back, so a later click lands in the text editor.
+
+### Checklist for a designer that wants to show chrome
+
+- [ ] The host composes the chrome into the frame it renders; the canvas is untouched.
+- [ ] The frame it reports is the size of the bitmap **including** the chrome.
+- [ ] `HitTest` subtracts the chrome offset before comparing against the framework's own bounds.
+- [ ] Reported element bounds add it back, so selection outlines line up with the picture.
+- [ ] The offset is a single named constant used in both directions, like
+      `PortableFormTitleBarHeight`.
+
 ## References
 
 - [`winforms-designer.md`](winforms-designer.md), [`wpf-designer.md`](wpf-designer.md),

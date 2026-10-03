@@ -867,6 +867,20 @@ without the canvas chrome - which is what makes it useful for telling "GTK rende
 it wrong" apart from "the canvas placed it wrong", but it cannot show the composed
 surface.
 
+### The window frame is not the canvas's job
+
+A GtkWindow renders as its content only: the title bar and border are drawn by the window
+manager and are not in the widget tree, so `Render` correctly paints `GetChild()` and the preview
+has no chrome. That is a host-side fact, and the fix is host-side too - compose a title bar into
+the rendered texture and account for it in `HitTest` and in the reported bounds, exactly as the
+WinForms host does with `RootClientOffset` and its portable 30px title bar (see
+designer-common.md, "Window chrome and coordinate ownership").
+
+It was briefly done the other way - the shared canvas drew a caption and border, which required
+the content to be shifted relative to the viewport that `SurfaceToDesign` maps against. Clicks
+then resolved one caption (22px) too high in design space and selecting the Run button selected
+the window. Reverted; the canvas has one coordinate rule and GTK does not get an exception.
+
 ## Primary references
 
 - GTK 4 GtkBuilder: <https://docs.gtk.org/gtk4/class.Builder.html>
