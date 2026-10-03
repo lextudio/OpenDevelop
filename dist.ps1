@@ -124,6 +124,37 @@ function New-TempDir {
     return $p
 }
 
+function Get-ProcessLockingPath {
+    <#
+      Best-effort answer to "why is this directory not empty?" on Windows. Enumerates the modules
+      mapped into each running process and returns the ones loaded from inside $Directory. Loaded
+      AddIn DLLs are exactly what keeps the AddIns deployment root undeletable, and naming the
+      holder is far more actionable than Remove-Item's "The directory is not empty" (which hides
+      that a child handle, not the directory, is the problem). A file merely opened as data (a log,
+      a .pdb) will not appear here, so callers must still cope with an empty result.
+    #>
+    param([Parameter(Mandatory)][string]$Directory)
+
+    $separators = [char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $prefix = [System.IO.Path]::GetFullPath($Directory).TrimEnd($separators) + [System.IO.Path]::DirectorySeparatorChar
+    $holders = @()
+    foreach ($proc in Get-Process -ErrorAction SilentlyContinue) {
+        try {
+            foreach ($module in $proc.Modules) {
+                $file = $module.FileName
+                if ($file -and $file.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $holders += [pscustomobject]@{ Id = $proc.Id; Name = $proc.ProcessName; File = $file }
+                }
+            }
+        }
+        catch {
+            # Access denied / bitness mismatch / process exited mid-enumeration. The lock, if any,
+            # is reported by whichever process we can still read.
+        }
+    }
+    return $holders
+}
+
 function Remove-RepoGeneratedDirectory {
     <#
       PowerShell's Remove-Item -Recurse enumerates the AddIns deployment file-by-file. On macOS
@@ -146,8 +177,41 @@ function Remove-RepoGeneratedDirectory {
     }
 
     if ($IsWindows) {
-        Remove-Item -LiteralPath $fullPath -Recurse -Force -ErrorAction Stop
-        return
+        # Remove-Item -Recurse deletes children first, so if a single child is still open it aborts
+        # and reports the TOP directory as "The directory is not empty" - never "file in use". The
+        # AddIns deployment root is full of DLLs a lingering out-of-process designer host, a reused
+        # MSBuild node, or antivirus/indexer can still hold briefly, and that transient handle is
+        # exactly the failure being worked around. Retry with backoff, using robocopy /MIR from an
+        # empty directory between attempts to clear read-only attributes and long-path skeletons a
+        # plain Remove-Item can leave behind, then fail with the actual lock holder named.
+        $attempts = 6
+        for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+            try {
+                Remove-Item -LiteralPath $fullPath -Recurse -Force -ErrorAction Stop
+                return
+            }
+            catch {
+                if ($attempt -eq $attempts) { break }
+                Start-Sleep -Milliseconds (200 * $attempt)
+                if (Test-Path -LiteralPath $fullPath) {
+                    $empty = New-TempDir
+                    try {
+                        & robocopy.exe $empty $fullPath /MIR /COPY:DAT /DCOPY:DAT /XJ /R:0 /W:0 /NFL /NDL /NJH /NJS /NP | Out-Null
+                    }
+                    finally {
+                        Remove-Item -LiteralPath $empty -Recurse -Force -ErrorAction SilentlyContinue
+                    }
+                }
+            }
+        }
+
+        $advice = "Stop OpenDevelop and every lingering dotnet/MSBuild process (out-of-process designer hosts survive the IDE), then re-run with -Kill."
+        $holders = @(Get-ProcessLockingPath -Directory $fullPath | Sort-Object Id -Unique)
+        if ($holders.Count -gt 0) {
+            $detail = ($holders | ForEach-Object { "  PID $($_.Id) $($_.Name): $($_.File)" }) -join [Environment]::NewLine
+            throw "dist.ps1: could not remove generated directory because process(es) still have files open inside it:`n$detail`n$advice`nDirectory: $fullPath"
+        }
+        throw "dist.ps1: could not remove generated directory after $attempts attempts (no lock holder identified; antivirus/indexer may be holding it): $fullPath`n$advice"
     }
 
     & /bin/rm -rf -- $fullPath
