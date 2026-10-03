@@ -7484,4 +7484,764 @@ SharpDevelop 编译资源时发现不对应：资源名称不是文件名，而�
   <data name="XML.TextAreaContextMenu.Reformat" xml:space="preserve">
     <value>重新格式化</value>
   </data>
+  <data name="AddInManager2.AddInsView.InstallFromArchive" xml:space="preserve">
+    <value>从归档安装...</value>
+  </data>
+  <data name="AddInManager2.AddInsView.Repository" xml:space="preserve">
+    <value>仓库：</value>
+  </data>
+  <data name="AddInManager2.AddInsView.Search" xml:space="preserve">
+    <value>搜索：</value>
+  </data>
+  <data name="AddInManager2.AddInsView.ShowPreinstalledAddIns" xml:space="preserve">
+    <value>显示预装插件</value>
+  </data>
+  <data name="AddInManager2.AddInsView.ShowPrereleaseAddIns" xml:space="preserve">
+    <value>显示预发行版</value>
+  </data>
+  <data name="AddInManager2.CannotRemoveAddInManager" xml:space="preserve">
+    <value>无法卸载插件管理器，因为您需要用它重新安装插件！</value>
+  </data>
+  <data name="AddInManager2.DefaultRepository" xml:space="preserve">
+    <value>SharpDevelop 插件仓库</value>
+  </data>
+  <data name="AddInManager2.Details.CreatedBy" xml:space="preserve">
+    <value>创建者：</value>
+  </data>
+  <data name="AddInManager2.Details.Dependencies" xml:space="preserve">
+    <value>依赖项：</value>
+  </data>
+  <data name="AddInManager2.Details.DownloadCount" xml:space="preserve">
+    <value>下载次数：</value>
+  </data>
+  <data name="AddInManager2.Details.FileName" xml:space="preserve">
+    <value>文件名：</value>
+  </data>
+  <data name="AddInManager2.Details.InstalledVersion" xml:space="preserve">
+    <value>已安装版本：</value>
+  </data>
+  <data name="AddInManager2.Details.LastUpdated" xml:space="preserve">
+    <value>最后更新：</value>
+  </data>
+  <data name="AddInManager2.Details.MoreInformation" xml:space="preserve">
+    <value>详细信息</value>
+  </data>
+  <data name="AddInManager2.Details.NewVersion" xml:space="preserve">
+    <value>新版本：</value>
+  </data>
+  <data name="AddInManager2.Details.Rating" xml:space="preserve">
+    <value>评分：</value>
+  </data>
+  <data name="AddInManager2.Details.ReportAbuse" xml:space="preserve">
+    <value>报告滥用</value>
+  </data>
+  <data name="AddInManager2.Details.Version" xml:space="preserve">
+    <value>版本：</value>
+  </data>
+  <data name="AddInManager2.Details.ViewLicenseTerms" xml:space="preserve">
+    <value>查看许可条款</value>
+  </data>
+  <data name="AddInManager2.DisableDependentWarning" xml:space="preserve">
+    <value>以下已安装插件依赖于“{0}”：
+
+{1}
+
+禁用此插件后它们将停止工作！确定要继续吗？</value>
+  </data>
+  <data name="AddInManager2.InstallDependentMessage" xml:space="preserve">
+    <value>包“{0}”需要至少一个附加包：
+
+{1}
+
+应用程序将尝试一并下载并安装它们。要继续吗？</value>
+  </data>
+  <data name="AddInManager2.InvalidPackage" xml:space="preserve">
+    <value>所选包不包含有效的 SharpDevelop 插件。</value>
+  </data>
+  <data name="AddInManager2.LicenseAcceptance.AcceptButton" xml:space="preserve">
+    <value>我接受(&amp;A)</value>
+  </data>
+  <data name="AddInManager2.LicenseAcceptance.DeclineButton" xml:space="preserve">
+    <value>我拒绝(&amp;D)</value>
+  </data>
+  <data name="AddInManager2.LicenseAcceptance.Explanation.Package" xml:space="preserve">
+    <value>点击“我接受”即表示您同意上述包的许可条款。
+如果您不同意许可条款，请点击“我拒绝”。</value>
+  </data>
+  <data name="AddInManager2.LicenseAcceptance.Explanation.Packages" xml:space="preserve">
+    <value>点击“我接受”即表示您同意上述各包的许可条款。
+如果您不同意许可条款，请点击“我拒绝”。</value>
+  </data>
+  <data name="AddInManager2.LicenseAcceptance.Introduction.Package" xml:space="preserve">
+    <value>以下包需要点击接受许可：</value>
+  </data>
+  <data name="AddInManager2.LicenseAcceptance.Introduction.Packages" xml:space="preserve">
+    <value>以下包需要点击接受许可：</value>
+  </data>
+  <data name="AddInManager2.LicenseAcceptance.Title" xml:space="preserve">
+    <value>许可协议</value>
+  </data>
+  <data name="AddInManager2.OptionPanel.Add" xml:space="preserve">
+    <value>添加</value>
+  </data>
+  <data name="AddInManager2.OptionPanel.AutoCheckForUpdates" xml:space="preserve">
+    <value>自动检查更新</value>
+  </data>
+  <data name="AddInManager2.OptionPanel.MoveDown" xml:space="preserve">
+    <value>下移</value>
+  </data>
+  <data name="AddInManager2.OptionPanel.MoveUp" xml:space="preserve">
+    <value>上移</value>
+  </data>
+  <data name="AddInManager2.OptionPanel.Name" xml:space="preserve">
+    <value>名称：</value>
+  </data>
+  <data name="AddInManager2.OptionPanel.Remove" xml:space="preserve">
+    <value>移除</value>
+  </data>
+  <data name="AddInManager2.OptionPanel.Source" xml:space="preserve">
+    <value>源：</value>
+  </data>
+  <data name="AddInManager2.OptionPanel.Tree.Repositories" xml:space="preserve">
+    <value>仓库</value>
+  </data>
+  <data name="AddInManager2.RemoveDependentWarning" xml:space="preserve">
+    <value>以下已安装插件依赖于“{0}”：
+
+{1}
+
+移除此插件后它们将停止工作！确定要继续吗？</value>
+  </data>
+  <data name="AddInManager2.SDAddInFileFilter" xml:space="preserve">
+    <value>SharpDevelop 插件|*.sdaddin;*.addin|所有文件|*.*</value>
+  </data>
+  <data name="AddInManager2.UpdateNotifier.BubbleText" xml:space="preserve">
+    <value>单击此处查看更新。</value>
+  </data>
+  <data name="AddInManager2.UpdateNotifier.BubbleTitle" xml:space="preserve">
+    <value>有可用的 SharpDevelop 更新</value>
+  </data>
+  <data name="AddInManager2.Views.Available" xml:space="preserve">
+    <value>可用</value>
+  </data>
+  <data name="AddInManager2.Views.Installed" xml:space="preserve">
+    <value>已安装</value>
+  </data>
+  <data name="AddInManager2.Views.Updates" xml:space="preserve">
+    <value>更新</value>
+  </data>
+  <data name="AddIns.AvalonEdit.InconsistentNewlines.Description" xml:space="preserve">
+    <value>此文件包含不一致的换行符。</value>
+  </data>
+  <data name="AddIns.AvalonEdit.InconsistentNewlines.Header" xml:space="preserve">
+    <value>不一致的换行符</value>
+  </data>
+  <data name="AddIns.AvalonEdit.InconsistentNewlines.Normalize" xml:space="preserve">
+    <value>规范化</value>
+  </data>
+  <data name="AddIns.Git.DirectoryDoesNotContainGit" xml:space="preserve">
+    <value>在所选目录中未找到“git.exe”！</value>
+  </data>
+  <data name="AddIns.Git.NoPathFoundStatus" xml:space="preserve">
+    <value>未找到 Git 安装。</value>
+  </data>
+  <data name="AddIns.Git.Options.FindGitPath" xml:space="preserve">
+    <value>选择 Git 路径</value>
+  </data>
+  <data name="AddIns.Git.Options.GitPath" xml:space="preserve">
+    <value>Git 路径</value>
+  </data>
+  <data name="AddIns.Git.Options.ResetGitPath" xml:space="preserve">
+    <value>重置 Git 路径</value>
+  </data>
+  <data name="AddIns.Git.PathAutoDetectStatus" xml:space="preserve">
+    <value>（自动检测）</value>
+  </data>
+  <data name="AddIns.HelpViewer.HLMNoActiveCatalogError" xml:space="preserve">
+    <value>无法启动帮助库管理器，因为没有安装或选择帮助目录。请检查您的帮助设置。</value>
+  </data>
+  <data name="AddIns.HelpViewer.HLMNotAvailableDownloadWinSDK" xml:space="preserve">
+    <value>未找到帮助库管理器。要使用 SharpDevelop 的帮助功能，请下载并安装 Windows SDK。</value>
+  </data>
+  <data name="AddIns.SharpRefactoring.CreateProperties.Description.ImplementINotifyPropertyChanged" xml:space="preserve">
+    <value>实现 INotifyPropertyChanged</value>
+  </data>
+  <data name="AddIns.XamlBinding.Menu.ExtractPropertiesAsStyle.ReplaceQuestion" xml:space="preserve">
+    <value>所选控件已分配样式。是否要用提取出的样式替换现有样式？</value>
+  </data>
+  <data name="AddIns.XamlBinding.Menu.GroupInto" xml:space="preserve">
+    <value>分组到</value>
+  </data>
+  <data name="CSharpBinding.Formatting.AutoFormat" xml:space="preserve">
+    <value>自动格式化代码</value>
+  </data>
+  <data name="CSharpBinding.Formatting.DefaultOptionReference" xml:space="preserve">
+    <value>（默认）</value>
+  </data>
+  <data name="CSharpBinding.Formatting.GlobalOptionReference" xml:space="preserve">
+    <value>（全局）</value>
+  </data>
+  <data name="CSharpBinding.Formatting.NoPresetSelectedMessage" xml:space="preserve">
+    <value>未选择格式设置预设！</value>
+  </data>
+  <data name="CSharpBinding.Formatting.PresetOverwriteQuestion" xml:space="preserve">
+    <value>确定要重置所有先前定义的格式设置选项吗？</value>
+  </data>
+  <data name="CSharpBinding.Formatting.ProjectOptionReference" xml:space="preserve">
+    <value>（项目）</value>
+  </data>
+  <data name="CSharpBinding.Formatting.ResetTo" xml:space="preserve">
+    <value>重置为：</value>
+  </data>
+  <data name="CSharpBinding.Formatting.SolutionOptionReference" xml:space="preserve">
+    <value>（解决方案）</value>
+  </data>
+  <data name="CSharpBinding.Refactoring.EventCreation.EventHandlerText" xml:space="preserve">
+    <value>&lt;创建 ${HandlerName}&gt;</value>
+  </data>
+  <data name="CSharpBinding.Refactoring.InsertWithCursor.Description" xml:space="preserve">
+    <value>使用上/下方向键移到其他位置。
+按 Enter 选择该位置。
+按 Esc 取消此操作。</value>
+  </data>
+  <data name="ComponentInspector.CastDialog.CastForTitle" xml:space="preserve">
+    <value>转换为</value>
+  </data>
+  <data name="ComponentInspector.CastDialog.CastTitle" xml:space="preserve">
+    <value>转换</value>
+  </data>
+  <data name="ComponentInspector.ConstructorDialog.Information" xml:space="preserve">
+    <value>如果选择了带参数的构造函数，点击确定后请填写参数，然后继续。</value>
+  </data>
+  <data name="ComponentInspector.FindDialog.AssembliesRadioButton" xml:space="preserve">
+    <value>程序集/类型</value>
+  </data>
+  <data name="ComponentInspector.InspectorMenu.TypeHandlerOptionsPanel.Title" xml:space="preserve">
+    <value>类型处理程序</value>
+  </data>
+  <data name="ComponentInspector.MainMenu.InspectorMenu" xml:space="preserve">
+    <value>检查器(&amp;I)</value>
+  </data>
+  <data name="ComponentInspector.ObjectBrowserForm.TypeHandlersMenuItem" xml:space="preserve">
+    <value>类型处理程序(&amp;T)...</value>
+  </data>
+  <data name="Debugger.Visualizers.ColumnPickerLabel" xml:space="preserve">
+    <value>列：</value>
+  </data>
+  <data name="Dialog.AddServiceReference.OperationsLabel" xml:space="preserve">
+    <value>操作：</value>
+  </data>
+  <data name="Dialog.AddServiceReference.ServicesLabel" xml:space="preserve">
+    <value>服务：</value>
+  </data>
+  <data name="Dialog.AdvancedService.Client.AccessLevel.Internal" xml:space="preserve">
+    <value>内部</value>
+  </data>
+  <data name="Dialog.AdvancedService.Client.AccessLevel.Public" xml:space="preserve">
+    <value>公共</value>
+  </data>
+  <data name="Dialog.AdvancedService.Client.AccessLevelLabel" xml:space="preserve">
+    <value>生成的类的访问级别：</value>
+  </data>
+  <data name="Dialog.AdvancedService.Client.GenerateAsyncOperations" xml:space="preserve">
+    <value>生成异步操作</value>
+  </data>
+  <data name="Dialog.AdvancedService.ClientHeader" xml:space="preserve">
+    <value>客户端</value>
+  </data>
+  <data name="Dialog.HighlightingEditor.ColorDlg.Underline" xml:space="preserve">
+    <value>带下划线</value>
+  </data>
+  <data name="Dialog.HighlightingEditor.Export" xml:space="preserve">
+    <value>导出语法高亮颜色</value>
+  </data>
+  <data name="Dialog.HighlightingEditor.Import" xml:space="preserve">
+    <value>导入语法高亮颜色</value>
+  </data>
+  <data name="Dialog.HighlightingEditor.NotSupportedMessage" xml:space="preserve">
+    <value>不支持该设置版本！</value>
+  </data>
+  <data name="Dialog.HighlightingEditor.OverwriteCustomizationsMessage" xml:space="preserve">
+    <value>这将重置所有现有自定义设置，然后导入所选文件。要继续吗？</value>
+  </data>
+  <data name="Dialog.HighlightingEditor.ResetAll" xml:space="preserve">
+    <value>全部重置为默认值</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.CodeCompletion.CommitOnCharacters" xml:space="preserve">
+    <value>键入以下字符时插入选定的代码完成项：</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.CodeCompletion.CommitOnTabEnterOnly" xml:space="preserve">
+    <value>仅在键入 &lt;Tab&gt; 或 &lt;Enter&gt; 时插入选定的代码完成项。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.CodeCompletion.TooltipLabel" xml:space="preserve">
+    <value>工具提示设置</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.CodeCompletion.TooltipLinkTarget" xml:space="preserve">
+    <value>工具提示中的链接应指向</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.CodeCompletion.TooltipLinkTargetDefinition" xml:space="preserve">
+    <value>代码中的定义</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.CodeCompletion.TooltipLinkTargetDocumentation" xml:space="preserve">
+    <value>文档（如果有）</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.CodingOptions.CodeFormatting.Title" xml:space="preserve">
+    <value>格式设置</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.CodingOptions.CodeIssues.Title" xml:space="preserve">
+    <value>代码检查</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Debugging.AskForArguments" xml:space="preserve">
+    <value>启动可执行文件时询问参数和工作目录。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Debugging.BreakAtBeginning" xml:space="preserve">
+    <value>在执行的第一个语句处中断。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Debugging.ChooseExceptions" xml:space="preserve">
+    <value>选择异常</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Debugging.EnableDecompiler" xml:space="preserve">
+    <value>启用反编译器</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Debugging.EnableEditAndContinue" xml:space="preserve">
+    <value>启用“编辑并继续”</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Debugging.ExceptionFilter.ColumnExpression" xml:space="preserve">
+    <value>完整异常名称</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Debugging.ExceptionFilter.ColumnIsActive" xml:space="preserve">
+    <value>中断条件</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Debugging.ExceptionFilterTitle" xml:space="preserve">
+    <value>选择希望调试器中断的异常</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Debugging.Exceptions" xml:space="preserve">
+    <value>异常</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Debugging.Stepping.DecompileCodeWithoutSymbols" xml:space="preserve">
+    <value>反编译没有符号的代码</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Debugging.SuppressJITOptimization" xml:space="preserve">
+    <value>禁止 JIT 优化</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Debugging.SuppressNGENOptimization" xml:space="preserve">
+    <value>禁止 NGEN 优化</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Debugging.WithoutSource" xml:space="preserve">
+    <value>无源代码调试</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.SelectCulture.CurrentUILanguageLabel" xml:space="preserve">
+    <value>当前界面语言：</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.TextEditor.General.ChangeMarkerMarginCheckBox" xml:space="preserve">
+    <value>启用更改标记边距</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.TextEditor.General.OpenLensCheckBox" xml:space="preserve">
+    <value>显示 OpenLens 引用/实现计数(&amp;O)</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.TextEditor.Markers.HighlightCurrentLineCheckBox" xml:space="preserve">
+    <value>突出显示当前行</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.TextEditor.Markers.RulersGroupBox" xml:space="preserve">
+    <value>标尺</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.TextEditor.Markers.ShowHiddenDefinitionsCheckBox" xml:space="preserve">
+    <value>显示隐藏的定义(&amp;H)（仅括号）</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.AssemblyInfoNotFound" xml:space="preserve">
+    <value>未找到程序集信息文件。请确保项目包含程序集信息文件。</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.AssemblyVersion" xml:space="preserve">
+    <value>程序集版本：</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.ClsCompliant" xml:space="preserve">
+    <value>符合 CLS</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.Company" xml:space="preserve">
+    <value>公司：</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.Copyright" xml:space="preserve">
+    <value>版权：</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.DefaultAlias" xml:space="preserve">
+    <value>默认别名：</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.Description" xml:space="preserve">
+    <value>说明：</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.FileVersion" xml:space="preserve">
+    <value>文件版本：</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.GUID" xml:space="preserve">
+    <value>GUID：</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.IncorrectValue" xml:space="preserve">
+    <value>某个程序集信息值不正确。</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.InformationalVersion" xml:space="preserve">
+    <value>信息版本：</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.JitOptimization" xml:space="preserve">
+    <value>JIT 优化</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.JitTracking" xml:space="preserve">
+    <value>JIT 跟踪</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.MakeAssemblyCOMVisible" xml:space="preserve">
+    <value>使程序集对 COM 可见</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.NeutralLanguage" xml:space="preserve">
+    <value>非特定语言：</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.NewGUID" xml:space="preserve">
+    <value>新建 GUID</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.None" xml:space="preserve">
+    <value>无</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.Product" xml:space="preserve">
+    <value>产品：</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.Title" xml:space="preserve">
+    <value>标题：</value>
+  </data>
+  <data name="Dialog.ProjectOptions.AssemblyInfo.Trademark" xml:space="preserve">
+    <value>商标：</value>
+  </data>
+  <data name="Dialog.ProjectOptions.Build.TargetCPU.Any32" xml:space="preserve">
+    <value>任何处理器（首选 32 位）</value>
+  </data>
+  <data name="Dialog.ProjectOptions.Build.TargetCPU.Any64" xml:space="preserve">
+    <value>任何处理器（首选 64 位）</value>
+  </data>
+  <data name="Dialog.ProjectOptions.CodeFormatting" xml:space="preserve">
+    <value>代码格式设置</value>
+  </data>
+  <data name="Dialog.ProjectOptions.CustomTool.Filenames" xml:space="preserve">
+    <value>文件名：</value>
+  </data>
+  <data name="Dialog.ProjectOptions.CustomTool.RunOnBuild" xml:space="preserve">
+    <value>生成时运行</value>
+  </data>
+  <data name="Dialog.SearchForIssues.AutoFix" xml:space="preserve">
+    <value>尽可能自动修复问题</value>
+  </data>
+  <data name="Global.Advanced" xml:space="preserve">
+    <value>高级</value>
+  </data>
+  <data name="Global.Reset" xml:space="preserve">
+    <value>重置</value>
+  </data>
+  <data name="Global.Shortcuts.Alt" xml:space="preserve">
+    <value>Alt</value>
+  </data>
+  <data name="Global.Shortcuts.Ctrl" xml:space="preserve">
+    <value>Ctrl</value>
+  </data>
+  <data name="Global.Shortcuts.Shift" xml:space="preserve">
+    <value>Shift</value>
+  </data>
+  <data name="Global.Shortcuts.Win" xml:space="preserve">
+    <value>Win</value>
+  </data>
+  <data name="ICSharpCode.CodeCoverage.CodePartCovered" xml:space="preserve">
+    <value>代码部分覆盖</value>
+  </data>
+  <data name="ICSharpCode.CodeCoverage.Content" xml:space="preserve">
+    <value>内容</value>
+  </data>
+  <data name="ICSharpCode.Refactoring.NoClassOrMemberUnderCursorError" xml:space="preserve">
+    <value>在光标位置找不到类型定义或类型成员。</value>
+  </data>
+  <data name="ICSharpCode.SharpDevelop.Dom.AssemblyInvalid" xml:space="preserve">
+    <value>{0} 不是有效的 .NET 程序集。</value>
+  </data>
+  <data name="ICSharpCode.SharpDevelop.Dom.AssemblyNotAccessible" xml:space="preserve">
+    <value>{0} 无法访问或已不存在。</value>
+  </data>
+  <data name="ICSharpCode.SharpDevelop.FormDesigner.ReportFlushErrors" xml:space="preserve">
+    <value>尝试刷新设计器内容时发生一个或多个错误。这可能是由于未处理的异常所致。</value>
+  </data>
+  <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.ReferenceOutputAssembly" xml:space="preserve">
+    <value>引用程序集</value>
+  </data>
+  <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.ReferenceOutputAssembly.Description" xml:space="preserve">
+    <value>如果设置为 false，此引用仅指定生成顺序依赖关系，而不引用程序集的输出。</value>
+  </data>
+  <data name="ICSharpCode.SharpDevelop.Project.CloseSolution" xml:space="preserve">
+    <value>关闭解决方案</value>
+  </data>
+  <data name="ICSharpCode.SharpDevelop.Project.SolutionFormattingOptions.Title" xml:space="preserve">
+    <value>解决方案格式设置选项</value>
+  </data>
+  <data name="ICSharpCode.SharpDevelop.Project.UpgradeView.UpdateToMSBuildButton" xml:space="preserve">
+    <value>升级到 MSBuild ${NewToolsVersion}</value>
+  </data>
+  <data name="ICSharpCode.UnitTesting.RunInTestPad" xml:space="preserve">
+    <value>在单元测试板中运行</value>
+  </data>
+  <data name="ICSharpCode.WebProjectOptionsPanel.UseIISExpress" xml:space="preserve">
+    <value>使用 IIS Express Web 服务器</value>
+  </data>
+  <data name="ICSharpCode.WixBinding.WixLocalizationFileFilterName" xml:space="preserve">
+    <value>WiX 本地化文件</value>
+  </data>
+  <data name="ICSharpCode.WixBinding.WixNetFxExtensionTitle" xml:space="preserve">
+    <value>.NET Framework 扩展</value>
+  </data>
+  <data name="ICSharpCode.WixBinding.WixNotInstalled" xml:space="preserve">
+    <value>未安装 WiX。请从 http://wixtoolset.org/ 下载 WiX。</value>
+  </data>
+  <data name="ICSharpCode.WpfDesign.AddIn.Options.EnableAppXamlParsing" xml:space="preserve">
+    <value>启用 App.xaml 分析</value>
+  </data>
+  <data name="ICSharpCode.WpfDesign.AddIn.PressAltText" xml:space="preserve">
+    <value>按“Alt”进入容器</value>
+  </data>
+  <data name="MainWindow.CompilerMessages.BuildingProjectIsNotSupported" xml:space="preserve">
+    <value>不支持生成项目 ${Name}。</value>
+  </data>
+  <data name="MainWindow.Windows.ClassBrowser.AddToWorkspace" xml:space="preserve">
+    <value>添加到工作区</value>
+  </data>
+  <data name="MainWindow.Windows.ClassBrowser.OpenAssemblyButton.ToolTip" xml:space="preserve">
+    <value>打开程序集</value>
+  </data>
+  <data name="MainWindow.Windows.ClassBrowser.OpenAssemblyFromFile" xml:space="preserve">
+    <value>从文件打开程序集...</value>
+  </data>
+  <data name="MainWindow.Windows.ClassBrowser.OpenAssemblyFromGAC" xml:space="preserve">
+    <value>从 GAC 打开程序集...</value>
+  </data>
+  <data name="MainWindow.Windows.ClassBrowser.Workspace" xml:space="preserve">
+    <value>工作区 {0}</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.CallStack.CannotSwitchWithoutSymbolsOrDecompiledCodeOptions" xml:space="preserve">
+    <value>无法切换到没有调试符号的函数。请使用符号重新编译，或启用反编译选项。</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.CallStack.Module" xml:space="preserve">
+    <value>模块</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.Conditional.Breakpoints.BreakpointHitAtBecause" xml:space="preserve">
+    <value>在第 {0} 行（{1}）命中断点，因为 {2}</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.Conditional.Breakpoints.EditCondition" xml:space="preserve">
+    <value>编辑条件...</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.ExceptionForm.BreakOnHandled" xml:space="preserve">
+    <value>在已处理的 ${ExceptionName} 上中断</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.ExceptionForm.Error.CannotInterceptException" xml:space="preserve">
+    <value>无法拦截异常。被调试的程序无法继续，属性也无法求值。</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.ExceptionForm.Error.CannotInterceptHandledException" xml:space="preserve">
+    <value>无法拦截已处理的异常。该异常的源可能没有可用的调试符号。</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.LocalVariables.NameColumn" xml:space="preserve">
+    <value>名称</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.LocalVariables.TypeColumn" xml:space="preserve">
+    <value>类型</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.LocalVariables.ValueColumn" xml:space="preserve">
+    <value>值</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.MemoryPad.UnableToReadFormat" xml:space="preserve">
+    <value>无法读取地址 {0} 处大小为 {1} 的数据。</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.ParallelStack" xml:space="preserve">
+    <value>并行堆栈</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.Threads.CannotSwitchWithoutDecompiledCodeOptions" xml:space="preserve">
+    <value>未启用反编译代码选项，无法切换到反编译代码中的线程。</value>
+  </data>
+  <data name="MainWindow.Windows.OutputWindow.TextTooLong" xml:space="preserve">
+    <value>&lt;文本因过长已被截断&gt;</value>
+  </data>
+  <data name="MainWindow.Windows.SearchResultPanel.NoProject" xml:space="preserve">
+    <value>&lt;无项目&gt;</value>
+  </data>
+  <data name="MainWindow.Windows.SearchResultPanel.PerProject" xml:space="preserve">
+    <value>按项目</value>
+  </data>
+  <data name="MainWindow.Windows.SearchResultPanel.PerProjectAndFile" xml:space="preserve">
+    <value>按项目和文件</value>
+  </data>
+  <data name="MainWindow.Windows.TaskList.AllOpenedFiles" xml:space="preserve">
+    <value>所有打开的文件</value>
+  </data>
+  <data name="MainWindow.Windows.TaskList.CurrentClass" xml:space="preserve">
+    <value>类/模块</value>
+  </data>
+  <data name="MainWindow.Windows.TaskList.CurrentFile" xml:space="preserve">
+    <value>文件</value>
+  </data>
+  <data name="MainWindow.Windows.TaskList.Namespace" xml:space="preserve">
+    <value>命名空间</value>
+  </data>
+  <data name="MainWindow.Windows.TaskList.Project" xml:space="preserve">
+    <value>项目</value>
+  </data>
+  <data name="MainWindow.Windows.TaskList.Solution" xml:space="preserve">
+    <value>解决方案</value>
+  </data>
+  <data name="PortableLibrary.ChooseTargetFrameworks" xml:space="preserve">
+    <value>选择目标框架</value>
+  </data>
+  <data name="PortableLibrary.CouldNotFindTools" xml:space="preserve">
+    <value>找不到可移植类库工具。</value>
+  </data>
+  <data name="PortableLibrary.PortableSubset" xml:space="preserve">
+    <value>.NET 可移植子集</value>
+  </data>
+  <data name="PortableLibrary.SelectAtLeastTwoFrameworks" xml:space="preserve">
+    <value>必须选择两个或更多框架。</value>
+  </data>
+  <data name="PortableLibrary.SelectProfileDialog.Title" xml:space="preserve">
+    <value>选择可移植库配置文件</value>
+  </data>
+  <data name="PortableLibrary.SelectedProfile" xml:space="preserve">
+    <value>所选配置文件：</value>
+  </data>
+  <data name="PortableLibrary.ToolsInstallationHelp" xml:space="preserve">
+    <value>若要在不安装 Visual Studio 的情况下安装可移植类库工具，请将下载文件 (PortableLibraryTools.exe) 保存到您的计算机上并运行它。</value>
+  </data>
+  <data name="ProjectComponent.ContextMenu.GenerateDocumentation.ProjectNeedsToBeCompiled" xml:space="preserve">
+    <value>需要先编译项目。</value>
+  </data>
+  <data name="ResourceEditor.BitmapView.UpdateCursor" xml:space="preserve">
+    <value>更新光标...</value>
+  </data>
+  <data name="ResourceEditor.BitmapView.UpdateIcon" xml:space="preserve">
+    <value>更新图标...</value>
+  </data>
+  <data name="ResourceEditor.Filter" xml:space="preserve">
+    <value>筛选：</value>
+  </data>
+  <data name="ResourceEditor.Messages.CantLoadResourceFromFile" xml:space="preserve">
+    <value>无法从文件加载资源：{0}</value>
+  </data>
+  <data name="ResourceEditor.ResourceEdit.CommentColumn" xml:space="preserve">
+    <value>注释</value>
+  </data>
+  <data name="ResourceEditor.ResourceEdit.ContextMenu.EditCommentText" xml:space="preserve">
+    <value>输入资源注释的新文本：</value>
+  </data>
+  <data name="SharpDevelop.FileFilter.AllKnownFiles" xml:space="preserve">
+    <value>所有已知文件扩展名</value>
+  </data>
+  <data name="SharpDevelop.Refactoring.BaseMembersOf" xml:space="preserve">
+    <value>${Name} 的基成员</value>
+  </data>
+  <data name="SharpDevelop.Refactoring.ClipboardRingEmpty" xml:space="preserve">
+    <value>剪贴板环为空</value>
+  </data>
+  <data name="SharpDevelop.Refactoring.PartsOfClass" xml:space="preserve">
+    <value>${Name} 的各部分</value>
+  </data>
+  <data name="SharpDevelop.Refactoring.RenameFile" xml:space="preserve">
+    <value>重命名文件</value>
+  </data>
+  <data name="SharpDevelop.Refactoring.RenameIncludeComments" xml:space="preserve">
+    <value>包括注释</value>
+  </data>
+  <data name="SharpDevelop.Refactoring.RenameIncludeStrings" xml:space="preserve">
+    <value>包括字符串</value>
+  </data>
+  <data name="SharpDevelop.Refactoring.RenameOverloads" xml:space="preserve">
+    <value>重命名重载</value>
+  </data>
+  <data name="SharpReport.ContextMenu.SectionVisible" xml:space="preserve">
+    <value>节可见</value>
+  </data>
+  <data name="SharpReport.Wizard.BaseSettings.Description" xml:space="preserve">
+    <value>基本报表设置</value>
+  </data>
+  <data name="SharpReport.Wizard.PageLayout" xml:space="preserve">
+    <value>页面布局</value>
+  </data>
+  <data name="SharpReport.Wizard.PushModel.NoProject" xml:space="preserve">
+    <value>未选择项目，请输入 FieldNames</value>
+  </data>
+  <data name="SharpReport.Wizard.PushModel.SelectProject" xml:space="preserve">
+    <value>所选项目中的类</value>
+  </data>
+  <data name="SharpReport.Wizard.Welcome" xml:space="preserve">
+    <value>欢迎使用 SharpReport 向导</value>
+  </data>
+  <data name="StartPage.StartMenu.RemoveRecentProject" xml:space="preserve">
+    <value>从最近的项目列表中移除</value>
+  </data>
+  <data name="StatusBarService.SelectionStatusBarPanelTextMulti" xml:space="preserve">
+    <value>长度 ${Rows} * ${Cols}（${Total}）</value>
+  </data>
+  <data name="StatusBarService.SelectionStatusBarPanelTextSingle" xml:space="preserve">
+    <value>长度 ${Length}</value>
+  </data>
+  <data name="Templates.File.PRISMViewAndViewModelUnity.Description" xml:space="preserve">
+    <value>为 PRISM 模块创建视图及相应的 ViewModel。</value>
+  </data>
+  <data name="Templates.File.PRISMViewAndViewModelUnity.Name" xml:space="preserve">
+    <value>PRISM 视图和 ViewModel (Unity)</value>
+  </data>
+  <data name="Templates.File.PRISMViewModelUnity.Description" xml:space="preserve">
+    <value>为 PRISM 模块创建 ViewModel。</value>
+  </data>
+  <data name="Templates.File.PRISMViewModelUnity.Name" xml:space="preserve">
+    <value>PRISM ViewModel (Unity)</value>
+  </data>
+  <data name="Templates.File.PRISMViewUnity.Description" xml:space="preserve">
+    <value>为 PRISM 模块创建视图。</value>
+  </data>
+  <data name="Templates.File.PRISMViewUnity.Name" xml:space="preserve">
+    <value>PRISM 视图 (Unity)</value>
+  </data>
+  <data name="Templates.File.SharpDevelop.MenuCommand.Description" xml:space="preserve">
+    <value>#D 的空菜单命令。</value>
+  </data>
+  <data name="Templates.File.SharpDevelop.OptionPanel.Name" xml:space="preserve">
+    <value>选项面板</value>
+  </data>
+  <data name="Templates.File.SharpDevelop.SimpleCommand.Description" xml:space="preserve">
+    <value>可用于各种场合的命令。</value>
+  </data>
+  <data name="Templates.File.SharpDevelop.SimpleCommand.Name" xml:space="preserve">
+    <value>简单命令</value>
+  </data>
+  <data name="Templates.File.SharpDevelop.SimplePad.Description" xml:space="preserve">
+    <value>#D 的面板内容（例如 #D 浏览器）。</value>
+  </data>
+  <data name="Templates.File.SharpDevelop.SimplePad.Name" xml:space="preserve">
+    <value>空面板</value>
+  </data>
+  <data name="Templates.Project.PRISMApplicationSmallUnity.Description" xml:space="preserve">
+    <value>创建一个带有 Bootstrapper 和 Infrastructure 的小型 PRISM 应用程序。</value>
+  </data>
+  <data name="Templates.Project.PRISMApplicationSmallUnity.Name" xml:space="preserve">
+    <value>PRISM 应用程序 - 小型 (Unity)</value>
+  </data>
+  <data name="Templates.Project.PRISMApplicationUnity.Description" xml:space="preserve">
+    <value>创建一个带有 Bootstrapper 和 Infrastructure 的 PRISM 应用程序。</value>
+  </data>
+  <data name="Templates.Project.PRISMApplicationUnity.Name" xml:space="preserve">
+    <value>PRISM 应用程序 (Unity)</value>
+  </data>
+  <data name="Templates.Project.PRISMModuleUnity.Description" xml:space="preserve">
+    <value>创建一个带有视图及相应 ViewModel 的 PRISM 模块。</value>
+  </data>
+  <data name="Templates.Project.PRISMModuleUnity.Name" xml:space="preserve">
+    <value>PRISM 模块 (Unity)</value>
+  </data>
+  <data name="Templates.Project.PortableLibrary.Description" xml:space="preserve">
+    <value>可用于 Windows、Silverlight、Windows Phone 和 Xbox 的库。</value>
+  </data>
+  <data name="Templates.Project.PortableLibrary.Name" xml:space="preserve">
+    <value>可移植类库</value>
+  </data>
+  <data name="XML.MainMenu.DebugMenu.SaveForHotReload" xml:space="preserve">
+    <value>保存以供热重载</value>
+  </data>
+  <data name="XML.MainMenu.SearchMenu.SearchForIssues" xml:space="preserve">
+    <value>搜索问题...</value>
+  </data>
 </root>
