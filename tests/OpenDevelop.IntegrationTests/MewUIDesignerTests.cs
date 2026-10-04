@@ -252,25 +252,19 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		// outside the designer entirely (observed landing on the Properties pad).
 		await app.InvokeAsync("od.mewui-designer.fit");
 
-		var toolboxBounds = await app.InvokeAsync("od.mewui-designer.toolbox.query-item-bounds", "CheckBox");
-		Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
-		var fromX = toolboxBounds.GetProperty("centerX").GetDouble();
-		var fromY = toolboxBounds.GetProperty("centerY").GetDouble();
-
 		// Drop on toolRow's centre. Landing on one of its child Buttons is fine and intended:
 		// ResolveDropTarget walks up from the hit, and a Button only has AllowDrop by inheritance
 		// (which the portable resolver deliberately ignores), so the first EXPLICIT AllowDrop
 		// ancestor - toolRow's own panel - is what receives the drop.
-		var targetBounds = await app.InvokeAsync("od.mewui-designer.query-element-screen-bounds", "toolRow");
-		Assert.True(targetBounds.GetProperty("success").GetBoolean(), targetBounds.ToString());
-		var toX = targetBounds.GetProperty("centerX").GetDouble();
-		var toY = targetBounds.GetProperty("centerY").GetDouble();
-
 		JsonElement statusAfterDrop = default;
-		var grew = false;
+		var grew = false; var pointerEvents = "";
 		for (int attempt = 1; attempt <= 4 && !grew; attempt++) {
 			await app.InvokeAsync("od.activate");
+			var (fromX, fromY) = await StableCenterAsync("od.mewui-designer.toolbox.query-item-bounds", "CheckBox");
+			var (toX, toY) = await StableCenterAsync("od.mewui-designer.query-element-screen-bounds", "toolRow");
+			await app.InvokeAsync("od.pointer-events", true);
 			var pressed = await app.PressPointerAsync(fromX, fromY); Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
+			pointerEvents = (await app.InvokeAsync("od.pointer-events", false)).ToString();
 			for (int step = 1; step <= 6; step++) {
 				var t = step / 6.0;
 				var moved = await app.DragMovePointerAsync(fromX + (toX - fromX) * t, fromY + (toY - fromY) * t);
@@ -284,11 +278,26 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 				return statusAfterDrop.GetProperty("elementCount").GetInt32() > elementCountBefore;
 			}, TimeSpan.FromSeconds(8), initialDelayMs: 50, maxDelayMs: 250);
 		}
-		Assert.True(grew, "Expected elementCount to grow after the drag-drop, even after retries.\nBefore: " + elementCountBefore + "\nAfter: " + statusAfterDrop);
+		Assert.True(grew, "Expected elementCount to grow after the drag-drop, even after retries.\nBefore: " + elementCountBefore + "\nPointer: " + pointerEvents + "\nAfter: " + statusAfterDrop);
 
 		var saved = await app.InvokeAsync("od.file.save", designerPath); Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
 		var mxamlContent = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
 		Assert.Contains("<CheckBox ", mxamlContent);
+	}
+
+	async Task<(double X, double Y)> StableCenterAsync(string action, string name)
+	{
+		(double X, double Y)? previous = null;
+		for (int sample = 0; sample < 20; sample++) {
+			var bounds = await app.InvokeAsync(action, name);
+			Assert.True(bounds.GetProperty("success").GetBoolean(), bounds.ToString());
+			var current = (bounds.GetProperty("centerX").GetDouble(), bounds.GetProperty("centerY").GetDouble());
+			if (previous == current) return current;
+			previous = current;
+			await Task.Delay(150, TestContext.Current.CancellationToken);
+		}
+		Assert.Fail(action + " " + name + " never reported stable bounds; last " + previous);
+		return default;
 	}
 
 	[Fact]

@@ -46,6 +46,9 @@ public sealed class AddReferenceTests : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        // The command awaits ShowDialog(); an assertion before Add is clicked would otherwise
+        // leave its modal window up and steal every later test's input.
+        await _app.InvokeAsync("od.add-reference-dialog.close");
         await _app.InvokeAsync("od.test.clear-dialog-answers");
         try { Directory.Delete(_dir, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }

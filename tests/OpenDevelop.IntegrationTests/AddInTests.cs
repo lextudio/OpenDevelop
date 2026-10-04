@@ -3479,11 +3479,11 @@ public sealed class AddInTests : IAsyncDisposable
                     label + ": resize handle not at element bottom-right.\nelement=" + e + "\nhandle=(" + hx + "," + hy + ")\n" + g);
             }
 
-            // Zoom out first: a 100% form taller than a small editor tab puts its resize handle below
-            // the visible viewport, where a press lands on whatever is underneath instead. A fixed
-            // zoom, not Fit - Fit rescales the grown form back into the same box, so the frame would
-            // never measurably grow on screen.
-            Assert.True((await _app.InvokeAsync("od.forms-designer.view", "0.25")).GetProperty("success").GetBoolean());
+            // Zoom out enough that the whole form and its bottom-right handle stay visible, but
+            // retain a human-sized hit target.  25% technically fit but made the handle nearly
+            // impossible to see or grab; a fixed 50% scale (not Fit) still lets the rendered
+            // frame grow measurably after the resize.
+            Assert.True((await _app.InvokeAsync("od.forms-designer.view", "0.5")).GetProperty("success").GetBoolean());
             var before = await _app.InvokeAsync("od.forms-designer.surface-geometry");
             Assert.True(before.GetProperty("available").GetBoolean(), before.ToString());
             AssertConsistent(before, "before");
@@ -3499,6 +3499,7 @@ public sealed class AddInTests : IAsyncDisposable
             JsonElement after = default;
             var effectiveBefore = before;
             var grew = false;
+            var pointerEvents = "";
             // The test host deliberately starts with ShowActivated=false. A native input gesture
             // therefore must reacquire foreground focus immediately before it starts; a flyout or
             // window-manager transition can otherwise consume the first press. Re-read the handle
@@ -3514,8 +3515,10 @@ public sealed class AddInTests : IAsyncDisposable
                 // Forms surface; the press/move/release input pump does deliver them.  `global`
                 // is set by the fixture, so all points remain the actual screen coordinates
                 // obtained above after scrolling the canvas to its bottom-right corner.
+                await _app.InvokeAsync("od.pointer-events", true);
                 var pressed = await _app.PressPointerAsync(hx, hy);
                 Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
+                pointerEvents = (await _app.InvokeAsync("od.pointer-events", false)).ToString();
                 for (int step = 1; step <= 6; step++)
                 {
                     var t = step / 6.0;
@@ -3538,7 +3541,7 @@ public sealed class AddInTests : IAsyncDisposable
             }
             before = effectiveBefore;
             var afterFrameStr = after.TryGetProperty("frame", out var af) ? $"({af.GetProperty("width").GetDouble():F1},{af.GetProperty("height").GetDouble():F1})" : "N/A";
-			Assert.True(grew, "The resize drag did not grow the rendered frame.\nbefore=" + before + "\nafter=" + after);
+			Assert.True(grew, "The resize drag did not grow the rendered frame.\nbefore=" + before + "\nPointer=" + pointerEvents + "\nafter=" + after);
             AssertConsistent(after, "after");
 
             // The native gesture is expressed in screen pixels while the Forms canvas may be

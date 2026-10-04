@@ -82,6 +82,16 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return "{\"closed\":true}";
 		}
 
+		[DevFlowAction("od.add-reference-dialog.close", Description = "Close the WPF Add Reference dialog after integration testing")]
+		public static object CloseAddReferenceDialog()
+		{
+			var dialog = System.Windows.Application.Current.Windows.OfType<Services.AddReferenceWindow>().FirstOrDefault();
+			if (dialog is null)
+				return "{\"closed\":false}";
+			dialog.DialogResult = false;
+			return "{\"closed\":true}";
+		}
+
 		[DevFlowAction("od.new-solution-dialog.create", Description = "Fill and submit the WPF New Solution dialog for end-to-end integration testing")]
 		public static string CreateNewSolutionFromDialog(string templateSearch, string projectName, string location, string solutionName)
 		{
