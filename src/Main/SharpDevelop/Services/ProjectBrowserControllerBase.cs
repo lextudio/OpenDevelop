@@ -858,7 +858,11 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
                     .Where(path => !string.IsNullOrEmpty(path))!,
                 StringComparer.OrdinalIgnoreCase);
             var candidates = solution.Projects
-                .Where(p => p != project && !alreadyReferenced.Contains(p.FileName.ToString()))
+                // IProject implementations can define equality by project kind/configuration rather
+                // than project-file identity.  Compare paths here: otherwise a sibling SDK project
+                // such as Lib can be mistaken for the selected App and disappear from Add Reference.
+                .Where(p => !string.Equals(p.FileName.ToString(), project.FileName.ToString(), StringComparison.OrdinalIgnoreCase)
+                    && !alreadyReferenced.Contains(p.FileName.ToString()))
                 .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
                 .Select(p => new ReferenceCandidate(p.Name, p.FileName.ToString()))
                 .ToArray();
