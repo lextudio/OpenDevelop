@@ -1,6 +1,7 @@
 ﻿<gui:OptionPanel x:Class="CSharpBinding.Refactoring.IssueOptions"
                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
                  xmlns:sd="http://icsharpcode.net/sharpdevelop/core"
                  xmlns:nr="clr-namespace:ICSharpCode.NRefactory.Refactoring;assembly=ICSharpCode.NRefactory"
                  xmlns:gui="clr-namespace:ICSharpCode.SharpDevelop.Gui;assembly=ICSharpCode.SharpDevelop">

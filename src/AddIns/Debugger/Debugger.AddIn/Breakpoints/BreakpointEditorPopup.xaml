@@ -1,5 +1,6 @@
 ﻿<Popup x:Class="Debugger.AddIn.Breakpoints.BreakpointEditorPopup"
        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	       xmlns:core="http://icsharpcode.net/sharpdevelop/core"
        xmlns:sd="http://icsharpcode.net/sharpdevelop/core"
        xmlns:controls="clr-namespace:Debugger.AddIn.Pads.Controls"
        xmlns:widgets="http://icsharpcode.net/sharpdevelop/widgets"
