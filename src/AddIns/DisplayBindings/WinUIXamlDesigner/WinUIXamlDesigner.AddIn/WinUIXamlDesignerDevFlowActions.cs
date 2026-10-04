@@ -181,8 +181,8 @@ public static class WinUIXamlDesignerDevFlowActions
 	[DevFlowAction("od.winui-designer.toolbox.query-item-bounds", Description = "Get the real on-screen bounds of a WinUI/Uno Toolbox row, for driving a synthetic mouse drag onto the design surface")]
 	public static string QueryToolboxItemBounds(string controlName)
 	{
-		// Activating the designer is what makes the shared ToolsPad resolve this view's
-		// IToolsHost.ToolsContent - i.e. actually realize the WinUI toolbox - in the first place.
+		// This selects the design pane as the drag target. Its Source sibling exposes the same
+		// shared toolbox, so the pad itself stays mounted across the focus change.
 		if (ActivateDesigner() == null)
 			return Failure("No WinUI/Uno designer is active");
 		return QueryRealizedToolboxItemBounds(controlName);
@@ -192,8 +192,7 @@ public static class WinUIXamlDesignerDevFlowActions
 	public static string QueryToolboxItemBoundsWithoutActivatingDesigner(string controlName)
 	{
 		// The source view supplies this same singleton through IToolsHost. Do not call
-		// ActivateDesigner here: it replaces the Tools pad's visual tree and invalidates the
-		// returned screen coordinates as soon as a source-editor test switches back.
+		// ActivateDesigner here: this action must leave the source pane as the drop target.
 		return QueryRealizedToolboxItemBounds(controlName);
 	}
 
@@ -710,7 +709,7 @@ public static class WinUIXamlDesignerDevFlowActions
 	}
 
 	[DevFlowAction("od.winui-designer.activate-design",
-		Description = "Switch the active XAML document to its Design (secondary) view, which re-loads the current source into the designer")]
+		Description = "Make the already-visible XAML Design pane the active drop/command target")]
 	public static string ActivateDesign()
 	{
 		var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow;

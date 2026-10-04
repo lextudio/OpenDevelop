@@ -248,8 +248,15 @@ namespace ICSharpCode.SharpDevelop.Gui
 		/// Enter does not insert whatever control happens to come first.</summary>
 		public void SetActiveScopes(object owner, bool selectFirst, params string[] scopes)
 		{
+			var nextScopes = new HashSet<string>(scopes, StringComparer.Ordinal);
+			// Source and Design now remain mounted side by side. They return this same control,
+			// so a focus-only transition within one facade must not refresh the view or reset the
+			// user's selected tool back to Pointer. A different owner or scope still changes the
+			// drag destination/filter and follows the normal reset path.
+			if (ReferenceEquals(ActiveOwner, owner) && activeScopes != null && activeScopes.SetEquals(nextScopes))
+				return;
 			ActiveOwner = owner;
-			activeScopes = new HashSet<string>(scopes, StringComparer.Ordinal);
+			activeScopes = nextScopes;
 			itemsView.View.Refresh();
 			resetSelectsFirst = selectFirst;
 			if (selectFirst)

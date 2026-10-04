@@ -89,7 +89,15 @@ internal sealed class ToolsPadViewModel : ToolPaneModel, IToolsPadHost
     {
         var context = e as WorkbenchContextChangedEventArgs;
         var view = context?.ActiveViewContent ?? SD.Workbench.ActiveViewContent;
-        hostedContent = DocumentToolsContent(view);
+        var nextContent = DocumentToolsContent(view);
+        // Design and Source are both visible in a split document and deliberately expose the
+        // same SharedToolbox control. Re-parenting that control on a focus change needlessly
+        // rebuilds the pad and loses keyboard/drag state. ToolsContent is still evaluated above:
+        // a facade may use that call to select its framework scopes before returning the control.
+        if (ReferenceEquals(hostedContent, nextContent))
+            return;
+
+        hostedContent = nextContent;
         if (hostedContent is FrameworkElement element && element.Tag is IFilterableToolbox filterable)
             contentControl.Content = CreateSearchableToolbox(element, filterable);
         else {
@@ -101,9 +109,9 @@ internal sealed class ToolsPadViewModel : ToolPaneModel, IToolsPadHost
 
     /// <summary>
     /// The toolbox of the document <paramref name="view"/> belongs to. The active view's own content
-    /// comes first; when it has none - the Source half of a document shown Design and Source side by
-    /// side, whose editor knows nothing about the framework - another view in the same window
-    /// supplies it. One document has one toolbox, whichever half has focus.
+    /// comes first. XAML source editors directly provide their dialect's shared toolbox; the
+    /// sibling fallback remains for older designer/source pairs whose source editor cannot yet do
+    /// that. One document therefore keeps one toolbox while focus merely selects a drop target.
     /// </summary>
     static object DocumentToolsContent(IViewContent view)
     {

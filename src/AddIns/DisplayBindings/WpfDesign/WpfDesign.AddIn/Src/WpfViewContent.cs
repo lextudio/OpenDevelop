@@ -631,11 +631,11 @@ namespace ICSharpCode.WpfDesign.AddIn
 		/// <c>FormsDesignerViewContent</c> and <c>WinUIXamlDesignerViewContent</c> both return
 		/// (each simply hands back its own outline). This used to walk the sibling views and
 		/// return the SOURCE editor's outline instead - a leftover from the old in-process
-		/// designer, which had no outline of its own - so with the Design tab active the Outline
+		/// designer, which had no outline of its own - so in the former tab model the Outline
 		/// pad showed the XAML text editor's LSP symbol list rather than the designed element
 		/// tree, and the tree built in <see cref="UpdateOutline"/> was never displayed at all.
-		/// The source view keeps its own <c>IOutlineContentHost</c> (XamlOutlineContentHost), so
-		/// switching to the Source tab still shows the source outline - that split is the point.</summary>
+		/// In the side-by-side workbench the Outline pad keeps this tree even when the source pane
+		/// has focus; the source outline remains available to source-only documents.</summary>
 		public object OutlineContent => outline;
 	}
 

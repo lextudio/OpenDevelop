@@ -1722,6 +1722,14 @@ public sealed class AddInTests : IAsyncDisposable
         var selected = await _app.InvokeAsync("od.winui-designer.select", "PrimaryButton");
         Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
 
+        // Source is an editing target in split view, not a new Properties owner. The designer
+        // adapter must remain live after moving keyboard focus into its sibling pane.
+        Assert.True((await _app.InvokeAsync("od.winui-designer.switch-to-source"))
+            .GetProperty("success").GetBoolean());
+        var sourceFocusedProperties = await _app.InvokeAsync("od.property-pad.selected-object");
+        Assert.True(sourceFocusedProperties.GetProperty("hasSelection").GetBoolean(), sourceFocusedProperties.ToString());
+        Assert.Contains("WinUIXamlElementPropertyAdapter", sourceFocusedProperties.GetProperty("typeName").GetString());
+
         var beforeBounds = (await _app.InvokeAsync("od.winui-designer.describe-element", "PrimaryButton"))
             .GetProperty("description").GetString();
 
@@ -3766,6 +3774,18 @@ public sealed class AddInTests : IAsyncDisposable
             // Source-then-Design round trip through the view tabs.
             var toSource = await _app.InvokeAsync("od.wpf-designer.switch-to-source");
             Assert.True(toSource.GetProperty("success").GetBoolean(), toSource.ToString());
+
+            // Both panes remain visible, and Document Outline stays designer-owned while Source
+            // is the active command target. Do not regress to replacing it with AvalonEdit's
+            // one-to-one XAML symbol tree merely because the source pane was clicked.
+            Assert.True((await _app.InvokeAsync("od.show-pad", "ICSharpCode.SharpDevelop.Gui.OutlinePad"))
+                .GetProperty("found").GetBoolean());
+            var sourceFocusedOutline = await _app.InvokeAsync("od.outline-pad.content");
+            var sourceFocusedNames = sourceFocusedOutline.GetProperty("names").EnumerateArray()
+                .Select(n => n.GetString()).ToArray();
+            Assert.Contains("PaneList", sourceFocusedNames);
+            Assert.Contains("PaneTitle", sourceFocusedNames);
+
             var toDesign = await _app.InvokeAsync("od.wpf-designer.activate-design");
             Assert.True(toDesign.GetProperty("success").GetBoolean(), toDesign.ToString());
 

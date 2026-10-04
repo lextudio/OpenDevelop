@@ -18,8 +18,8 @@ namespace ICSharpCode.SharpDevelop.Gui;
 /// <summary>
 /// Modern (doc/technotes/ilspy.md "Docking and layout replacement" item 4, 2026-08-03)
 /// replacement for the legacy AddInTree-registered <see cref="PropertyPad"/>: shows the Xceed
-/// property grid for whatever has focus, same behavior as before, just as a
-/// <see cref="ToolPaneModel"/>. Implements <see cref="IPropertyPadHost"/> and registers itself as
+/// property grid for the active tool pane or, for a split designer document, its stable designer
+/// selection. Implements <see cref="IPropertyPadHost"/> and registers itself as
 /// that service so <see cref="PropertyContainer"/> (Base project) and other AddIns (e.g.
 /// WpfDesign.AddIn) can reach it without a compile-time reference to this class.
 /// </summary>
@@ -35,7 +35,6 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
 
     PropertyContainer activeContainer;
     object currentReplacementContent;
-    IHasPropertyContainer previousContent;
     bool subscribed;
 
     public XceedPropertyGrid Grid {
@@ -244,31 +243,46 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
     void WorkbenchActiveContentChanged(object sender, EventArgs e)
     {
         var context = e as WorkbenchContextChangedEventArgs;
-        IHasPropertyContainer c = (context?.ActiveDockContent ?? SD.Workbench.ActiveDockContent) as IHasPropertyContainer;
-
+        var activeDockContent = context?.ActiveDockContent ?? SD.Workbench.ActiveDockContent;
         var activeViewOrPad = context?.ActiveContent ?? SD.Workbench.ActiveContent;
-        // Secondary designer views (WinUI, WPF and Forms) implement IHasPropertyContainer
-        // directly.  They are not IServiceProvider instances, so looking only through GetService
-        // loses their selection whenever ActiveContent is the view itself; the grid then retains
-        // the empty container even though the design surface has selected a control.
-        c = c ?? activeViewOrPad as IHasPropertyContainer
+
+        // A real tool pane (Project Browser, for example) owns Properties while it has focus.
+        // A document's source pane does not: for a side-by-side document its secondary designer
+        // owns the selected design object even while the source pane receives keyboard input.
+        IHasPropertyContainer c = activeDockContent is not IViewContent
+            ? activeDockContent as IHasPropertyContainer
+            : null;
+        var view = activeDockContent as IViewContent
+            ?? context?.ActiveViewContent
+            ?? SD.Workbench.ActiveViewContent;
+        c = c ?? DocumentPropertyContainer(view)
+            ?? activeViewOrPad as IHasPropertyContainer
             ?? (activeViewOrPad as IServiceProvider)?.GetService<IHasPropertyContainer>();
-        if (c == null) {
-            c = (context?.ActiveViewContent ?? SD.Workbench.ActiveViewContent) as IHasPropertyContainer;
-        }
-        if (c == null) {
-            if (previousContent == null) {
-                c = SD.GetActiveViewContentService<IHasPropertyContainer>();
-            } else {
-                if (previousContent is IViewContent && previousContent != (context?.ActiveViewContent ?? SD.Workbench.ActiveViewContent)) {
-                    c = null;
-                } else {
-                    c = previousContent;
-                }
+        SetActiveContainer(c?.PropertyContainer);
+    }
+
+    /// <summary>
+    /// Display bindings append a visual designer after the primary source view. The designer's
+    /// container is the document-level property authority in split mode; code focus must not
+    /// clear a selected design object's properties. Source-only documents retain their own host.
+    /// </summary>
+    static IHasPropertyContainer DocumentPropertyContainer(IViewContent view)
+    {
+        if (view == null)
+            return null;
+
+        var views = view.WorkbenchWindow?.ViewContents;
+        if (views != null && views.Count > 1)
+        {
+            for (var index = 1; index < views.Count; index++)
+            {
+                if (views[index] is IHasPropertyContainer designerContainer)
+                    return designerContainer;
             }
         }
-        SetActiveContainer(c?.PropertyContainer);
-        previousContent = c;
+
+        return view as IHasPropertyContainer
+            ?? view.GetService(typeof(IHasPropertyContainer)) as IHasPropertyContainer;
     }
 
     public void Dispose()

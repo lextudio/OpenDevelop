@@ -660,11 +660,9 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 
 		/// <summary>
 		/// The WPF designer registers as a secondary view content alongside the primary AvalonEdit
-		/// text view for .xaml files, and the "Source" tab is the default active sub-view - so
-		/// ActiveViewContent alone won't find it, and merely finding the (inactive) secondary view
-		/// content isn't enough either: SharpDevelop only calls LoadInternal (which spawns the
-		/// out-of-process child) on a secondary view when its tab actually becomes active, so
-		/// WpfViewContent.SurfaceControl is null until we switch to it via IWorkbenchWindow.SwitchView.
+		/// text view for .xaml files. Both are mounted in the split layout, but this helper still
+		/// makes the designer pane active when an action is explicitly aimed at it: active view is
+		/// the document/save authority and determines where Toolbox invocations are delivered.
 		/// </summary>
 		/// <summary>
 		/// The live Properties pad's Xceed grid, reached via <c>IPropertyPadHost</c> (Base
@@ -770,7 +768,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			return JsonSerializer.Serialize(new { success = true, outlineNames = names.ToArray() });
 		}
 
-		[DevFlowAction("od.wpf-designer.activate-design", Description = "Switch the active document to its WPF Design (secondary) view, which re-loads the current source into the designer - mirrors od.winui-designer.activate-design")]
+		[DevFlowAction("od.wpf-designer.activate-design", Description = "Make the already-visible WPF Design pane the active drop/command target - mirrors od.winui-designer.activate-design")]
 		public static string ActivateDesign()
 		{
 			var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow;
@@ -788,7 +786,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			return Failure("No design view in the active document");
 		}
 
-		[DevFlowAction("od.wpf-designer.switch-to-source", Description = "Switch the active document back to its primary Source view, so a Source-then-Design round trip can be driven - mirrors od.winui-designer.switch-to-source")]
+		[DevFlowAction("od.wpf-designer.switch-to-source", Description = "Make the already-visible primary Source pane the active drop/command target - mirrors od.winui-designer.switch-to-source")]
 		public static string SwitchToSource()
 		{
 			var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow;

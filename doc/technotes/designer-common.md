@@ -269,13 +269,42 @@ hides is cleared. `SharedToolbox.AddItems` de-duplicates scope/category/name key
 several documents of one framework cannot multiply rows. The DevFlow endpoints are named
 `od.<designer>.toolbox.filter` and report the normalized filter plus visible item count.
 
-### One toolbox per document: the Design/Source split
+### One stable toolbox in the Design/Source split
 
-A document shown as Design and Source side by side has one toolbox, whichever half has focus:
+Design and Source are mounted together, not alternative tabs. They normally return the same
+`SharedToolbox` visual through `IToolsHost`, so `ToolsPadViewModel` leaves that visual mounted when
+focus moves between the panes. The filter, scroll position and chosen tool therefore survive a
+source/design focus change. The facade still receives `ToolsContent` so it can select the
+appropriate framework scopes; a different framework or designer changes those scopes normally.
 
-- **What the Tools pad shows.** `ToolsPadViewModel` asks the active view first. When that view has
-  no toolbox content - the plain text editor of a `.ui` or `.mxaml` - another view in the same
-  window supplies it. `od.tools-pad.status` reports this without activating any view.
+The active pane now chooses the **drop target**, rather than choosing a different Toolbox. XAML
+source editors directly resolve their dialect's toolbox via `XamlDialectRegistry`; the sibling-view
+fallback is retained only for legacy designer/source pairs whose source editor supplies no toolbox.
+`od.tools-pad.status` observes this without activating either pane.
+
+### One stable Document Outline in the Design/Source split
+
+The Outline pad follows the same rule, but its stable content is the designer's object tree rather
+than the source editor's symbol tree. `OutlineViewModel` prefers the secondary view's
+`IOutlineContentHost` for a split document even while the Source pane has keyboard focus. This is
+the Visual Studio XAML Designer model: Document Outline represents the artboard hierarchy used for
+selection and layout work; markup structure remains the code editor's concern (navigation and
+folding), not a second pad that replaces the first one on every click.
+
+Consequently, Outline-to-designer selection remains available throughout split editing, and a
+designer selection continues to update that same tree. A source-only document, or one for which no
+designer view was attached, falls back to its language-service outline as before. The pad does not
+auto-show in either case.
+
+### One stable Properties selection in the Design/Source split
+
+Properties follows the designer selection, not the source caret. `PropertyPadViewModel` gives an
+active non-document tool pane (for example Project Browser) first priority, then resolves the
+secondary designer's `IHasPropertyContainer` for a split document. Selecting an element in the
+surface or Document Outline and then editing XAML therefore leaves that element's property adapter
+in place; source focus is only the text-editing target. If a source edit invalidates or removes the
+element, the designer clears or refreshes its own container and the shared grid follows it. A
+source-only document keeps its ordinary property-container behavior.
 - **Drag data.** Every toolbox drag carries `ToolboxDragData` (`OpenDevelop.ToolboxTypeName`, plus
   the older `ComponentTypeName` the XAML editor and WPF designer read). Read it with
   `ToolboxDragData.GetTypeName`; GTK and MewUI no longer drag a bare `StringFormat`, which a text
@@ -1675,7 +1704,7 @@ acceptance check, so the list can be resumed by a fresh session at any point.
   selection):
   - `WpfViewContent.OutlineContent` walked the OTHER open views and returned the SOURCE
     editor's `IOutlineContentHost` instead of its own - a leftover from the old in-process
-    designer, which had no outline of its own to return. With the Design tab active, the
+    designer, which had no outline of its own to return. In the former tab model, the
     Outline pad showed the XAML text editor's LSP symbol list (one entry, e.g.
     `TextBlock [PaneTitle]`) instead of the designed element tree that
     `WpfViewContent.UpdateOutline` was building and nobody ever displayed. Fixed to
@@ -1949,16 +1978,17 @@ acceptance check, so the list can be resumed by a fresh session at any point.
   the common property/multi-selection contract, but host-side event serialization remains an
   explicit backend gap rather than a shell exception.
 
-## Design-tab-activation convention (async load, no needless reload)
+## Visible-designer loading convention (async, no needless reload)
 
-Every out-of-process designer backend's `ViewContent.LoadInternal` follows the same shape when
-(re)activating the Design tab, so switching Source↔Design never freezes the dispatcher and never
-redoes work that didn't need redoing:
+Every out-of-process designer backend's `ViewContent.LoadInternal` follows the same shape when a
+visible designer needs a load. In the side-by-side workbench both panes initialize as they become
+visible; moving focus between Source and Design neither hides a pane nor starts a reload. The same
+rules also cover an explicit reload after source edits:
 
 1. **Skip entirely when nothing changed.** Compare the incoming source text against the text used
    for the last successful load. If it's identical AND the out-of-process session is still alive,
    just re-assign `UserContent` to the existing canvas and return - no RPC at all. This is the
-   fix for the common case of a user merely switching tabs back and forth without editing.
+   fix for the common case of moving focus between panes without editing.
 2. **Never block the dispatcher on the acquire/open/update round-trip.** `LoadInternal` starts the
    async chain and returns immediately; it must not call `.GetAwaiter().GetResult()` on the
    acquire/open/update calls. Two ways to get the continuation back onto the dispatcher safely:

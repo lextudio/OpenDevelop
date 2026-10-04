@@ -11,9 +11,11 @@ namespace ICSharpCode.SharpDevelop.Gui;
 
 /// <summary>
 /// Modern (doc/technotes/ilspy.md "Docking and layout replacement" item 4, 2026-08-03)
-/// replacement for the legacy AddInTree-registered <see cref="OutlinePad"/>: shows a single
-/// child control determined by whichever document currently has focus, same behavior as before,
-/// just as a <see cref="ToolPaneModel"/> instead of an <see cref="AbstractPadContent"/>.
+/// replacement for the legacy AddInTree-registered <see cref="OutlinePad"/>. A document with a
+/// visible designer keeps that designer's object tree in the pad; focus chooses the command/drop
+/// target, not a competing source-symbol tree. Plain source documents retain their language-service
+/// outline. The implementation is a <see cref="ToolPaneModel"/> instead of an
+/// <see cref="AbstractPadContent"/>.
 /// </summary>
 [Export(typeof(OutlineViewModel))]
 [Export("ToolPane", typeof(ToolPaneModel))]
@@ -84,10 +86,37 @@ internal sealed class OutlineViewModel : ToolPaneModel, IOutlinePadHost, IDispos
             ?? context?.ActiveViewContent
             ?? SD.Workbench.ActiveDockContent as IViewContent
             ?? SD.Workbench.ActiveViewContent;
-        var host = view?.GetService(typeof(IOutlineContentHost)) as IOutlineContentHost;
+        var host = DocumentOutlineHost(view);
         contentControl.Content = host != null
             ? host.OutlineContent
             : StringParser.Parse("${res:MainWindow.Windows.OutlinePad.NoContentAvailable}");
+    }
+
+    /// <summary>
+    /// A split document has both Source and Design mounted. Prefer its secondary designer's
+    /// outline even while the source editor has focus, matching Visual Studio's Document Outline:
+    /// it represents the artboard hierarchy, while code structure stays available through the
+    /// editor's own navigation/folding. A document without a designer still uses its own source
+    /// outline.
+    /// </summary>
+    static IOutlineContentHost DocumentOutlineHost(IViewContent view)
+    {
+        if (view == null)
+            return null;
+
+        var views = view.WorkbenchWindow?.ViewContents;
+        if (views != null && views.Count > 1)
+        {
+            // Display bindings append a visual designer after the primary source view. Do not
+            // infer the designer from focus: either split pane can be active at any time.
+            for (var index = 1; index < views.Count; index++)
+            {
+                if (views[index].GetService(typeof(IOutlineContentHost)) is IOutlineContentHost designerHost)
+                    return designerHost;
+            }
+        }
+
+        return view.GetService(typeof(IOutlineContentHost)) as IOutlineContentHost;
     }
 
     public void Dispose()
