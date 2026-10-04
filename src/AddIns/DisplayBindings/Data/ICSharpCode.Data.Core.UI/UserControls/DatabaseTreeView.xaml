@@ -1,7 +1,9 @@
-<TreeView x:Class="ICSharpCode.Data.Core.UI.UserControls.DatabaseTreeView"
+﻿<TreeView x:Class="ICSharpCode.Data.Core.UI.UserControls.DatabaseTreeView"
     x:Name="This"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:core="http://icsharpcode.net/sharpdevelop/core"
+
     xmlns:data="http://icsharpcode.net/data"
     xmlns:local="clr-namespace:ICSharpCode.Data.Core.UI.UserControls">
     <TreeView.Resources>
@@ -21,7 +23,7 @@
                 </Grid.ColumnDefinitions>
                 
                 <CheckBox Margin="2" Click="chkIsSelected_Click" IsChecked="True" Tag="{Binding Database.Tables, ElementName=This}" />
-                <TextBlock Grid.Column="1" Margin="2">Tables</TextBlock>
+                <TextBlock Grid.Column="1" Margin="2" Text="{core:Localize Data.TreeView.Tables}" />
             </Grid>
         </TreeViewItem.Header>
     </TreeViewItem>
@@ -34,7 +36,7 @@
                 </Grid.ColumnDefinitions>
 
                 <CheckBox Margin="2" Click="chkIsSelected_Click" IsChecked="True" Tag="{Binding Database.Views, ElementName=This}" />
-                <TextBlock Grid.Column="1" Margin="2">Views</TextBlock>
+                <TextBlock Grid.Column="1" Margin="2" Text="{core:Localize Data.TreeView.Views}" />
             </Grid>
         </TreeViewItem.Header>
     </TreeViewItem>
@@ -47,7 +49,7 @@
                 </Grid.ColumnDefinitions>
 
                 <CheckBox Margin="2" Click="chkIsSelected_Click" IsChecked="True" Tag="{Binding Database.Procedures, ElementName=This}" />
-                <TextBlock Grid.Column="1" Margin="2">Procedures</TextBlock>
+                <TextBlock Grid.Column="1" Margin="2" Text="{core:Localize Data.TreeView.Procedures}" />
             </Grid>
         </TreeViewItem.Header>
     </TreeViewItem>

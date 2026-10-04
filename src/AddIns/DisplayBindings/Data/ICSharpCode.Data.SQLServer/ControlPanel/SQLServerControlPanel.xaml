@@ -19,10 +19,10 @@
             <ColumnDefinition />
         </Grid.ColumnDefinitions>
         
-        <TextBlock Margin="2">User Id:</TextBlock>
+        <TextBlock Margin="2" Text="{core:Localize Data.SQLServer.UserId}" />
         <TextBox Grid.Column="1" Margin="2" Text="{Binding Datasource.UserId, ElementName=This}"
             IsEnabled="{Binding IsChecked, ElementName=chkIntegratedSecurity, Converter={StaticResource OppositeBoolConverter}}" />
-        <TextBlock Grid.Row="1" Margin="2">Password:</TextBlock>
+        <TextBlock Grid.Row="1" Margin="2" Text="{core:Localize Data.SQLServer.Password}" />
         <PasswordBox Grid.Row="1" Grid.Column="1" Margin="2" PasswordChanged="PasswordBox_PasswordChanged"
             IsEnabled="{Binding IsChecked, ElementName=chkIntegratedSecurity, Converter={StaticResource OppositeBoolConverter}}" />
         

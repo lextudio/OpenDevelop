@@ -1,6 +1,8 @@
 ﻿<data:WizardUserControl x:Class="ICSharpCode.Data.EDMDesigner.Core.Windows.EDMWizard.ChooseDatabaseConnectionUserControl"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:core="http://icsharpcode.net/sharpdevelop/core"
+
     xmlns:data="http://icsharpcode.net/data">
     <Grid Margin="5" x:Name="grdConnection">
         <Grid.RowDefinitions>
@@ -10,7 +12,7 @@
             <RowDefinition />
         </Grid.RowDefinitions>
 
-        <TextBlock Margin="3">Which database connection should your application use?</TextBlock>
+        <TextBlock Margin="3" Text="{core:Localize Data.EDMDesigner.ChooseConnection.Question}" />
 
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
@@ -25,10 +27,10 @@
                     </DataTemplate>
                 </ComboBox.ItemTemplate>
             </ComboBox>
-            <Button Grid.Column="1" Margin="3" Padding="3" Click="btnNewConnection_Click">New Connection...</Button>
+            <Button Grid.Column="1" Margin="3" Padding="3" Click="btnNewConnection_Click" Content="{core:Localize Data.EDMDesigner.NewConnection}" />
         </Grid>
 
-        <TextBlock Grid.Row="2" Margin="3">Entity connection string:</TextBlock>
+        <TextBlock Grid.Row="2" Margin="3" Text="{core:Localize Data.EDMDesigner.EntityConnectionString}" />
         <TextBox Grid.Row="3" Margin="3" TextWrapping="WrapWithOverflow" IsReadOnly="True" Text="{Binding EntityConnectionString, Mode=OneWay}" />
     </Grid>
 </data:WizardUserControl>

@@ -10,8 +10,8 @@
 			<RowDefinition Height="80*" />
 			<RowDefinition Height="283*" />
 		</Grid.RowDefinitions>
-		<Button Height="23" HorizontalAlignment="Left" Margin="10,9,0,0" Name="btnRun" VerticalAlignment="Top" Width="98" Click="btnRun_Click">Run and Profile</Button>
-		<Button Height="23" HorizontalAlignment="Left" Margin="118,9,0,0" Name="btnStop" VerticalAlignment="Top" Width="111" Click="btnStop_Click">Stop and Shutdown</Button>
+		<Button Height="23" HorizontalAlignment="Left" Margin="10,9,0,0" Name="btnRun" VerticalAlignment="Top" Width="98" Click="btnRun_Click">{core:Localize Profiler.Window.RunAndProfile}</Button>
+		<Button Height="23" HorizontalAlignment="Left" Margin="118,9,0,0" Name="btnStop" VerticalAlignment="Top" Width="111" Click="btnStop_Click">{core:Localize Profiler.Window.StopAndShutdown}</Button>
 		<TextBox Margin="10,39,12,4" Name="txtOutput" VerticalScrollBarVisibility="Visible" />
 		<GridSplitter Height="2" VerticalAlignment="Bottom" Grid.Row="1" />
 			<!-- <y:TimeLineControl x:Name="timeLine" RangeChanged="timeLine_RangeChanged" /> -->
@@ -24,6 +24,6 @@
 				<y:CompareView x:Name="compareView" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 			</TabItem>
 		</TabControl>
-		<Button Height="23" Margin="235,9,0,0" Name="btnLoadSession" VerticalAlignment="Top" HorizontalAlignment="Left" Width="87" Click="btnLoadSession_Click">Load session</Button>
+		<Button Height="23" Margin="235,9,0,0" Name="btnLoadSession" VerticalAlignment="Top" HorizontalAlignment="Left" Width="87" Click="btnLoadSession_Click">{core:Localize Profiler.Window.LoadSession}</Button>
 	</Grid>
 </Window>

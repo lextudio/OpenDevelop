@@ -1,4 +1,4 @@
-<Window x:Class="Debugger.AddIn.Visualizers.GridVisualizer.GridVisualizerWindow"
+﻿<Window x:Class="Debugger.AddIn.Visualizers.GridVisualizer.GridVisualizerWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:core="http://icsharpcode.net/sharpdevelop/core"
@@ -33,7 +33,7 @@
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                             <ComboBox.ToolTip>
-                                <ToolTip>Select displayed columns</ToolTip>
+	                                <ToolTip ToolTip="{core:Localize Debugger.Visualizers.SelectDisplayedColumns}" />
                             </ComboBox.ToolTip>
                         </ComboBox>
 				</DockPanel>

@@ -1,6 +1,7 @@
 ﻿<gui:OptionPanel x:Class="ICSharpCode.AvalonEdit.AddIn.ContextActions.ContextActionOptions"
                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
                  xmlns:sd="http://icsharpcode.net/sharpdevelop/core"
                  xmlns:gui="clr-namespace:ICSharpCode.SharpDevelop.Gui;assembly=ICSharpCode.SharpDevelop">
 	<DockPanel>

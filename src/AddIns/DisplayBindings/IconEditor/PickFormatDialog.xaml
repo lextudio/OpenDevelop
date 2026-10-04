@@ -1,4 +1,4 @@
-<Window x:Class="ICSharpCode.IconEditor.PickFormatDialog"
+﻿<Window x:Class="ICSharpCode.IconEditor.PickFormatDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:core="http://icsharpcode.net/sharpdevelop/core"
@@ -20,19 +20,19 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <Label Grid.Row="0" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center">_Width:</Label>
+        <Label Grid.Row="0" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center">{core:Localize IconEditor.PickFormat.Width}</Label>
         <TextBox x:Name="widthTextBox" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8" Text="32" VerticalAlignment="Center"/>
 
-        <Label Grid.Row="1" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center">_Height:</Label>
+        <Label Grid.Row="1" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center">{core:Localize IconEditor.PickFormat.Height}</Label>
         <TextBox x:Name="heightTextBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8" Text="32" VerticalAlignment="Center"/>
 
-        <Label Grid.Row="2" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center">_Colors:</Label>
+        <Label Grid.Row="2" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center">{core:Localize IconEditor.PickFormat.Colors}</Label>
         <ComboBox x:Name="colorDepthComboBox" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8" VerticalAlignment="Center">
-            <ComboBoxItem>Monochrome</ComboBoxItem>
-            <ComboBoxItem>4 bit</ComboBoxItem>
-            <ComboBoxItem>8 bit</ComboBoxItem>
-            <ComboBoxItem>24 bit</ComboBoxItem>
-            <ComboBoxItem IsSelected="True">32 bit</ComboBoxItem>
+            <ComboBoxItem Content="{core:Localize IconEditor.PickFormat.Monochrome}" />
+            <ComboBoxItem Content="{core:Localize IconEditor.PickFormat.Depth4}" />
+            <ComboBoxItem Content="{core:Localize IconEditor.PickFormat.Depth8}" />
+            <ComboBoxItem Content="{core:Localize IconEditor.PickFormat.Depth24}" />
+            <ComboBoxItem IsSelected="True" Content="{core:Localize IconEditor.PickFormat.Depth32}" />
         </ComboBox>
 
         <StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2"

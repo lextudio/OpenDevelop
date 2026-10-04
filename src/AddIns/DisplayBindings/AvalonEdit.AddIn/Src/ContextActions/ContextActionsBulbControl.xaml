@@ -1,6 +1,8 @@
 ﻿<UserControl x:Class="ICSharpCode.AvalonEdit.AddIn.ContextActions.ContextActionsBulbControl"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="http://icsharpcode.net/sharpdevelop/core"
+
              xmlns:local="clr-namespace:ICSharpCode.AvalonEdit.AddIn.ContextActions"
              xmlns:widgets="http://icsharpcode.net/sharpdevelop/widgets"
              xmlns:aero="clr-namespace:Microsoft.Windows.Themes;assembly=PresentationFramework.Aero">
@@ -196,7 +198,7 @@
 		<Border x:Name="Header" Grid.Row="0" Grid.Column="0" Padding="2" BorderThickness="1" CornerRadius="2"
 		        BorderBrush="#485763" HorizontalAlignment="Left" MouseUp="Header_MouseUp" ToolTipService.ShowDuration="3000">
 			<Border.ToolTip>
-				<ToolTip Placement="Top"><TextBlock>Available actions (Ctrl+T)</TextBlock></ToolTip>
+				<ToolTip Placement="Top"><TextBlock>{core:Localize AvalonEdit.ContextActions.AvailableActions}</TextBlock></ToolTip>
 			</Border.ToolTip>
 			<Border.Background>
 				<LinearGradientBrush StartPoint="0,0" EndPoint="0,1">

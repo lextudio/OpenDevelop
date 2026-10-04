@@ -39,8 +39,8 @@
 			</ListView.View>
 		</ListView>
 		<StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
-			<Button IsDefault="True" Margin="2,0" Height="23" MinWidth="75" IsEnabled="False" Name="okButton" Click="OKButton_Click">Open</Button>
-			<Button IsCancel="True" Margin="2,0" Height="23" MinWidth="75">Cancel</Button>
+			<Button IsDefault="True" Margin="2,0" Height="23" MinWidth="75" IsEnabled="False" Name="okButton" Click="OKButton_Click" Content="{core:Localize ComponentInspector.GacList.OpenMenuItem}" />
+			<Button IsCancel="True" Margin="2,0" Height="23" MinWidth="75" Content="{core:Localize Global.Cancel}" />
 		</StackPanel>
 		<ProgressBar Grid.Row="1" Height="10" HorizontalAlignment="Stretch" Name="gacReadingProgressBar" VerticalAlignment="Bottom" Visibility="Hidden" />
 	</Grid>

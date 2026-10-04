@@ -1,4 +1,4 @@
-<Window x:Class="ICSharpCode.Data.Core.UI.Windows.ConnectionWizardWindow"
+﻿<Window x:Class="ICSharpCode.Data.Core.UI.Windows.ConnectionWizardWindow"
     x:Name="This"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -39,11 +39,11 @@
                 </Grid.ColumnDefinitions>
 
                 <Image Margin="5,5,10,10" Width="16" Height="16" Source="{StaticResource DatabaseConnectImage}" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1" Margin="10,5,10,10" FontWeight="Bold" VerticalAlignment="Center">Add new database connection</TextBlock>
+                <TextBlock Grid.Column="1" Margin="10,5,10,10" FontWeight="Bold" VerticalAlignment="Center" Text="{core:Localize Data.ConnectionWizard.Title}" />
             </Grid>
         </Border>
 
-        <TextBlock Grid.Row="1" Margin="3">Database driver:</TextBlock>
+        <TextBlock Grid.Row="1" Margin="3" Text="{core:Localize Data.ConnectionWizard.DatabaseDriver}" />
         <ComboBox x:Name="cboDatabaseDriver" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="3" SelectedItem="{Binding SelectedDatabaseDriver, ElementName=This}" 
             ItemsSource="{x:Static data:DatabaseDriver.DatabaseDrivers}">
             <ComboBox.ItemTemplate>
@@ -53,7 +53,7 @@
             </ComboBox.ItemTemplate>
         </ComboBox>
         
-        <TextBlock Grid.Row="2" Margin="3">Data source:</TextBlock>
+        <TextBlock Grid.Row="2" Margin="3" Text="{core:Localize Data.ConnectionWizard.DataSource}" />
         <Grid Grid.Row="2" Grid.Column="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition />
@@ -82,7 +82,7 @@
                 IsEnabled="{Binding CanConnect, ElementName=This}"
                 Click="btnConnect_Click" />
         
-        <TextBlock Grid.Row="5" Margin="3">Database:</TextBlock>
+        <TextBlock Grid.Row="5" Margin="3" Text="{core:Localize Data.ConnectionWizard.Database}" />
 
         <ComboBox x:Name="cboDatabases" Grid.Row="5" Grid.Column="1" Margin="3" SelectedItem="{Binding SelectedDatabase, ElementName=This}" 
             ItemsSource="{Binding SelectedDatasource.Databases, ElementName=This}">
@@ -100,8 +100,8 @@
         
         <userControls:LoadingCircle Grid.Row="7" Margin="3" IsActivated="{Binding IsLoading, ElementName=This}" />
         <StackPanel Grid.Row="7" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button x:Name="btnAdd" Margin="3" Padding="3" Click="btnAdd_Click" IsEnabled="False">Add</Button>
-            <Button Margin="3" IsCancel="True" Padding="3" Click="btnCancel_Click">Cancel</Button>
+            <Button x:Name="btnAdd" Margin="3" Padding="3" Click="btnAdd_Click" IsEnabled="False" Content="{core:Localize Global.OK}" />
+            <Button Margin="3" IsCancel="True" Padding="3" Click="btnCancel_Click" Content="{core:Localize Global.Cancel}" />
         </StackPanel>
     </Grid>
 </Window>

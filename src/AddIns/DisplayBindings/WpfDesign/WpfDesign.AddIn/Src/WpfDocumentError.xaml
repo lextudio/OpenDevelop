@@ -75,7 +75,7 @@
 				Margin="50,0,10,10">
 				<Hyperlink
 					Foreground="Black"
-					Click="ViewXaml">View XAML</Hyperlink>
+					Click="ViewXaml">{core:Localize ICSharpCode.WPFDesigner.ContextMenu.ViewXAML}</Hyperlink>
 			</TextBlock>
 			<GroupBox
 				Grid.Row="4"
