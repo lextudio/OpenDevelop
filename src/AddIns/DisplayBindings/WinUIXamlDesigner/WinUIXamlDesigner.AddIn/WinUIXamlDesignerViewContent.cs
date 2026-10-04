@@ -1275,12 +1275,17 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			return;
 		}
 
+		// A Source -> Design round trip reloads this view even when the text is unchanged, so keep
+		// the selection by name (as ReplayHistory does) instead of emptying the Properties pad.
+		var previouslySelected = SelectedElementName;
 		SelectedElementName = null;
 		propertyContainer.SelectedObject = null;
 		RebuildOutline();
 		previewHost.SetSelectableNames(editor.ElementNames());
 		previewHost.LoadXaml(editor.Text);
 		status.Text = previewHost.StatusText;
+		if (previouslySelected != null)
+			SelectElement(previouslySelected);
 	}
 
 	protected override void SaveInternal(OpenedFile file, Stream stream)
