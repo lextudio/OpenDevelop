@@ -13,22 +13,22 @@
 			<ToolBar ToolBarTray.IsLocked="True" ToolBar.OverflowMode="Never">
 				<RadioButton x:Name="breakAction"
 				             Checked="TypeChecked"
-				             Content="Break"
-				             ToolTip="Break" />
+				             Content="{core:Localize BreakpointEditor.Break}"
+				             ToolTip="{core:Localize BreakpointEditor.Break.ToolTip}" />
 				<RadioButton x:Name="conditionalAction"
 				             Checked="TypeChecked"
-				             Content="Conditional"
-				             ToolTip="Conditional" />
+				             Content="{core:Localize BreakpointEditor.Conditional}"
+				             ToolTip="{core:Localize BreakpointEditor.Conditional.ToolTip}" />
 				<Separator />
 				<CheckBox x:Name="hitCountCheck"
 				          Checked="HitCountChecked"
 				          Unchecked="HitCountChecked"
-				          Content="Hit Count"
-				          ToolTip="Break only once the hit count satisfies this expression (e.g. 5, &gt;=5, %3)" />
+				          Content="{core:Localize BreakpointEditor.HitCount}"
+				          ToolTip="{core:Localize BreakpointEditor.HitCount.ToolTip}" />
 				<Separator />
-				<CheckBox Content="Enabled"
+				<CheckBox Content="{core:Localize BreakpointEditor.Enabled}"
 				          IsChecked="{Binding IsEnabled}"
-				          ToolTip="Enabled" />
+				          ToolTip="{core:Localize BreakpointEditor.Enabled.ToolTip}" />
 			</ToolBar>
 			<Border
 				Margin="2"
@@ -47,7 +47,7 @@
 				Visibility="{Binding IsChecked, ElementName=hitCountCheck, Converter={StaticResource showWhenTrue}}"
 				BorderThickness="1">
 				<TextBox x:Name="hitCondition" Text="{Binding HitCondition}"
-				         ToolTip="Hit count expression, e.g. 5, &gt;=5, %3" />
+				         ToolTip="{core:Localize BreakpointEditor.HitCountExpression.ToolTip}" />
 			</Border>
 		</StackPanel>
 	</Border>

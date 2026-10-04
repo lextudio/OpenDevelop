@@ -9418,4 +9418,193 @@ Press Esc to cancel this operation.</value>
   <data name="AvdEditor.PropertyHeader" xml:space="preserve">
     <value>Property</value>
   </data>
+  <data name="FindInFiles.Title" xml:space="preserve">
+    <value>Find in Files</value>
+  </data>
+  <data name="FindInFiles.FindWhat" xml:space="preserve">
+    <value>Find what:</value>
+  </data>
+  <data name="FindInFiles.LookIn" xml:space="preserve">
+    <value>Look in:</value>
+  </data>
+  <data name="FindInFiles.CurrentDocument" xml:space="preserve">
+    <value>Current Document</value>
+  </data>
+  <data name="FindInFiles.AllOpenFiles" xml:space="preserve">
+    <value>All Open Files</value>
+  </data>
+  <data name="FindInFiles.CurrentProject" xml:space="preserve">
+    <value>Current Project</value>
+  </data>
+  <data name="FindInFiles.EntireSolution" xml:space="preserve">
+    <value>Entire Solution</value>
+  </data>
+  <data name="FindInFiles.FileTypes" xml:space="preserve">
+    <value>File types:</value>
+  </data>
+  <data name="FindInFiles.MatchCase" xml:space="preserve">
+    <value>Match case</value>
+  </data>
+  <data name="FindInFiles.MatchWholeWord" xml:space="preserve">
+    <value>Match whole word</value>
+  </data>
+  <data name="FindInFiles.FindAll" xml:space="preserve">
+    <value>Find All</value>
+  </data>
+  <data name="FindInFiles.FindNext" xml:space="preserve">
+    <value>Find Next</value>
+  </data>
+  <data name="AndroidDeviceManager.Title" xml:space="preserve">
+    <value>Android Device Manager</value>
+  </data>
+  <data name="AndroidDeviceManager.Start" xml:space="preserve">
+    <value>Start</value>
+  </data>
+  <data name="AndroidDeviceManager.Edit" xml:space="preserve">
+    <value>Edit...</value>
+  </data>
+  <data name="AndroidDeviceManager.Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="AndroidDeviceManager.Refresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="AndroidDeviceManager.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="AndroidDeviceManager.Device" xml:space="preserve">
+    <value>Device</value>
+  </data>
+  <data name="AndroidDeviceManager.Target" xml:space="preserve">
+    <value>Target</value>
+  </data>
+  <data name="AndroidDeviceManager.BasedOn" xml:space="preserve">
+    <value>Based on</value>
+  </data>
+  <data name="Profiler.Compare.Column" xml:space="preserve">
+    <value>Column:</value>
+  </data>
+  <data name="Profiler.Compare.NumberOfCalls" xml:space="preserve">
+    <value>Number of calls</value>
+  </data>
+  <data name="Profiler.Compare.Threshold" xml:space="preserve">
+    <value>Threshold:</value>
+  </data>
+  <data name="Profiler.Compare.FilesSelected" xml:space="preserve">
+    <value>Files selected for comparison</value>
+  </data>
+  <data name="Profiler.Compare.BaseFile" xml:space="preserve">
+    <value>Base file:</value>
+  </data>
+  <data name="Profiler.Compare.ComparisonFile" xml:space="preserve">
+    <value>Comparison file:</value>
+  </data>
+  <data name="Profiler.Compare.Compare" xml:space="preserve">
+    <value>Compare</value>
+  </data>
+  <data name="AboutDialog.Title" xml:space="preserve">
+    <value>About OpenDevelop</value>
+  </data>
+  <data name="AboutDialog.About" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="AboutDialog.VersionInfo" xml:space="preserve">
+    <value>Version Info</value>
+  </data>
+  <data name="AboutDialog.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="AboutDialog.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="AboutDialog.Path" xml:space="preserve">
+    <value>Path</value>
+  </data>
+  <data name="AboutDialog.Copy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="BreakpointEditor.Break" xml:space="preserve">
+    <value>Break</value>
+  </data>
+  <data name="BreakpointEditor.Break.ToolTip" xml:space="preserve">
+    <value>Break</value>
+  </data>
+  <data name="BreakpointEditor.Conditional" xml:space="preserve">
+    <value>Conditional</value>
+  </data>
+  <data name="BreakpointEditor.Conditional.ToolTip" xml:space="preserve">
+    <value>Conditional</value>
+  </data>
+  <data name="BreakpointEditor.HitCount" xml:space="preserve">
+    <value>Hit Count</value>
+  </data>
+  <data name="BreakpointEditor.HitCount.ToolTip" xml:space="preserve">
+    <value>Break only once the hit count satisfies this expression (e.g. 5, &gt;=5, %3)</value>
+  </data>
+  <data name="BreakpointEditor.Enabled" xml:space="preserve">
+    <value>Enabled</value>
+  </data>
+  <data name="BreakpointEditor.Enabled.ToolTip" xml:space="preserve">
+    <value>Enabled</value>
+  </data>
+  <data name="BreakpointEditor.HitCountExpression.ToolTip" xml:space="preserve">
+    <value>Hit count expression, e.g. 5, &gt;=5, %3</value>
+  </data>
+  <data name="SolutionConfiguration.Title" xml:space="preserve">
+    <value>Edit Solution Configurations</value>
+  </data>
+  <data name="SolutionConfiguration.SolutionConfiguration" xml:space="preserve">
+    <value>Solution configuration:</value>
+  </data>
+  <data name="SolutionConfiguration.PlatformLabel" xml:space="preserve">
+    <value>Platform:</value>
+  </data>
+  <data name="SolutionConfiguration.Project" xml:space="preserve">
+    <value>Project</value>
+  </data>
+  <data name="SolutionConfiguration.Configuration" xml:space="preserve">
+    <value>Configuration</value>
+  </data>
+  <data name="SolutionConfiguration.Platform" xml:space="preserve">
+    <value>Platform</value>
+  </data>
+  <data name="AddReference.Title" xml:space="preserve">
+    <value>Add Reference</value>
+  </data>
+  <data name="AddReference.Projects" xml:space="preserve">
+    <value>Projects</value>
+  </data>
+  <data name="AddReference.NoProjects" xml:space="preserve">
+    <value>No other projects in this solution can be referenced.</value>
+  </data>
+  <data name="AddReference.BrowseTab" xml:space="preserve">
+    <value>Browse</value>
+  </data>
+  <data name="AddReference.Browse" xml:space="preserve">
+    <value>Browse...</value>
+  </data>
+  <data name="AddReference.Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="AddReference.Add" xml:space="preserve">
+    <value>Add</value>
+  </data>
+  <data name="OpenFromGac.Title" xml:space="preserve">
+    <value>Open From GAC</value>
+  </data>
+  <data name="OpenFromGac.ReferenceName" xml:space="preserve">
+    <value>Reference Name</value>
+  </data>
+  <data name="OpenFromGac.Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="OpenFromGac.Culture" xml:space="preserve">
+    <value>Culture</value>
+  </data>
+  <data name="OpenFromGac.PublicKeyToken" xml:space="preserve">
+    <value>Public Key Token</value>
+  </data>
+  <data name="OpenFromGac.Location" xml:space="preserve">
+    <value>Location</value>
+  </data>
 </root>

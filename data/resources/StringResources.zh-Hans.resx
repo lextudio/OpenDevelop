@@ -9027,4 +9027,193 @@ SharpDevelop 编译资源时发现不对应：资源名称不是文件名，而�
   <data name="AvdEditor.PropertyHeader" xml:space="preserve">
     <value>属性</value>
   </data>
+  <data name="FindInFiles.Title" xml:space="preserve">
+    <value>在文件中查找</value>
+  </data>
+  <data name="FindInFiles.FindWhat" xml:space="preserve">
+    <value>查找内容：</value>
+  </data>
+  <data name="FindInFiles.LookIn" xml:space="preserve">
+    <value>查找范围：</value>
+  </data>
+  <data name="FindInFiles.CurrentDocument" xml:space="preserve">
+    <value>当前文档</value>
+  </data>
+  <data name="FindInFiles.AllOpenFiles" xml:space="preserve">
+    <value>所有打开的文件</value>
+  </data>
+  <data name="FindInFiles.CurrentProject" xml:space="preserve">
+    <value>当前项目</value>
+  </data>
+  <data name="FindInFiles.EntireSolution" xml:space="preserve">
+    <value>整个解决方案</value>
+  </data>
+  <data name="FindInFiles.FileTypes" xml:space="preserve">
+    <value>文件类型：</value>
+  </data>
+  <data name="FindInFiles.MatchCase" xml:space="preserve">
+    <value>区分大小写</value>
+  </data>
+  <data name="FindInFiles.MatchWholeWord" xml:space="preserve">
+    <value>全字匹配</value>
+  </data>
+  <data name="FindInFiles.FindAll" xml:space="preserve">
+    <value>全部查找</value>
+  </data>
+  <data name="FindInFiles.FindNext" xml:space="preserve">
+    <value>查找下一个</value>
+  </data>
+  <data name="AndroidDeviceManager.Title" xml:space="preserve">
+    <value>Android 设备管理器</value>
+  </data>
+  <data name="AndroidDeviceManager.Start" xml:space="preserve">
+    <value>启动</value>
+  </data>
+  <data name="AndroidDeviceManager.Edit" xml:space="preserve">
+    <value>编辑...</value>
+  </data>
+  <data name="AndroidDeviceManager.Delete" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="AndroidDeviceManager.Refresh" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="AndroidDeviceManager.Name" xml:space="preserve">
+    <value>名称</value>
+  </data>
+  <data name="AndroidDeviceManager.Device" xml:space="preserve">
+    <value>设备</value>
+  </data>
+  <data name="AndroidDeviceManager.Target" xml:space="preserve">
+    <value>目标</value>
+  </data>
+  <data name="AndroidDeviceManager.BasedOn" xml:space="preserve">
+    <value>基于</value>
+  </data>
+  <data name="Profiler.Compare.Column" xml:space="preserve">
+    <value>列：</value>
+  </data>
+  <data name="Profiler.Compare.NumberOfCalls" xml:space="preserve">
+    <value>调用次数</value>
+  </data>
+  <data name="Profiler.Compare.Threshold" xml:space="preserve">
+    <value>阈值：</value>
+  </data>
+  <data name="Profiler.Compare.FilesSelected" xml:space="preserve">
+    <value>选择用于比较的文件</value>
+  </data>
+  <data name="Profiler.Compare.BaseFile" xml:space="preserve">
+    <value>基准文件：</value>
+  </data>
+  <data name="Profiler.Compare.ComparisonFile" xml:space="preserve">
+    <value>比较文件：</value>
+  </data>
+  <data name="Profiler.Compare.Compare" xml:space="preserve">
+    <value>比较</value>
+  </data>
+  <data name="AboutDialog.Title" xml:space="preserve">
+    <value>关于 OpenDevelop</value>
+  </data>
+  <data name="AboutDialog.About" xml:space="preserve">
+    <value>关于</value>
+  </data>
+  <data name="AboutDialog.VersionInfo" xml:space="preserve">
+    <value>版本信息</value>
+  </data>
+  <data name="AboutDialog.Name" xml:space="preserve">
+    <value>名称</value>
+  </data>
+  <data name="AboutDialog.Version" xml:space="preserve">
+    <value>版本</value>
+  </data>
+  <data name="AboutDialog.Path" xml:space="preserve">
+    <value>路径</value>
+  </data>
+  <data name="AboutDialog.Copy" xml:space="preserve">
+    <value>复制</value>
+  </data>
+  <data name="BreakpointEditor.Break" xml:space="preserve">
+    <value>中断</value>
+  </data>
+  <data name="BreakpointEditor.Break.ToolTip" xml:space="preserve">
+    <value>中断</value>
+  </data>
+  <data name="BreakpointEditor.Conditional" xml:space="preserve">
+    <value>条件</value>
+  </data>
+  <data name="BreakpointEditor.Conditional.ToolTip" xml:space="preserve">
+    <value>条件</value>
+  </data>
+  <data name="BreakpointEditor.HitCount" xml:space="preserve">
+    <value>命中次数</value>
+  </data>
+  <data name="BreakpointEditor.HitCount.ToolTip" xml:space="preserve">
+    <value>仅当命中次数满足此表达式时中断（例如 5、&gt;=5、%3）</value>
+  </data>
+  <data name="BreakpointEditor.Enabled" xml:space="preserve">
+    <value>已启用</value>
+  </data>
+  <data name="BreakpointEditor.Enabled.ToolTip" xml:space="preserve">
+    <value>已启用</value>
+  </data>
+  <data name="BreakpointEditor.HitCountExpression.ToolTip" xml:space="preserve">
+    <value>命中次数表达式，例如 5、&gt;=5、%3</value>
+  </data>
+  <data name="SolutionConfiguration.Title" xml:space="preserve">
+    <value>编辑解决方案配置</value>
+  </data>
+  <data name="SolutionConfiguration.SolutionConfiguration" xml:space="preserve">
+    <value>解决方案配置：</value>
+  </data>
+  <data name="SolutionConfiguration.PlatformLabel" xml:space="preserve">
+    <value>平台：</value>
+  </data>
+  <data name="SolutionConfiguration.Project" xml:space="preserve">
+    <value>项目</value>
+  </data>
+  <data name="SolutionConfiguration.Configuration" xml:space="preserve">
+    <value>配置</value>
+  </data>
+  <data name="SolutionConfiguration.Platform" xml:space="preserve">
+    <value>平台</value>
+  </data>
+  <data name="AddReference.Title" xml:space="preserve">
+    <value>添加引用</value>
+  </data>
+  <data name="AddReference.Projects" xml:space="preserve">
+    <value>项目</value>
+  </data>
+  <data name="AddReference.NoProjects" xml:space="preserve">
+    <value>此解决方案中没有其他可引用的项目。</value>
+  </data>
+  <data name="AddReference.BrowseTab" xml:space="preserve">
+    <value>浏览</value>
+  </data>
+  <data name="AddReference.Browse" xml:space="preserve">
+    <value>浏览...</value>
+  </data>
+  <data name="AddReference.Remove" xml:space="preserve">
+    <value>移除</value>
+  </data>
+  <data name="AddReference.Add" xml:space="preserve">
+    <value>添加</value>
+  </data>
+  <data name="OpenFromGac.Title" xml:space="preserve">
+    <value>从 GAC 打开</value>
+  </data>
+  <data name="OpenFromGac.ReferenceName" xml:space="preserve">
+    <value>引用名称</value>
+  </data>
+  <data name="OpenFromGac.Version" xml:space="preserve">
+    <value>版本</value>
+  </data>
+  <data name="OpenFromGac.Culture" xml:space="preserve">
+    <value>区域性</value>
+  </data>
+  <data name="OpenFromGac.PublicKeyToken" xml:space="preserve">
+    <value>公钥标记</value>
+  </data>
+  <data name="OpenFromGac.Location" xml:space="preserve">
+    <value>位置</value>
+  </data>
 </root>

@@ -1,23 +1,24 @@
 <Window x:Class="ICSharpCode.SharpDevelop.Services.SolutionConfigurationWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Edit Solution Configurations" Width="720" Height="420"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
+        Title="{core:Localize SolutionConfiguration.Title}" Width="720" Height="420"
         MinWidth="520" MinHeight="240" WindowStartupLocation="CenterOwner">
   <Grid Margin="12">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-      <Label Content="Solution configuration:" Target="{Binding ElementName=ConfigurationBox}" />
+      <Label Content="{core:Localize SolutionConfiguration.SolutionConfiguration}" Target="{Binding ElementName=ConfigurationBox}" />
       <ComboBox x:Name="ConfigurationBox" Width="165" Margin="6,0,18,0" SelectionChanged="OnSolutionSelectionChanged" />
-      <Label Content="Platform:" Target="{Binding ElementName=PlatformBox}" />
+      <Label Content="{core:Localize SolutionConfiguration.PlatformLabel}" Target="{Binding ElementName=PlatformBox}" />
       <ComboBox x:Name="PlatformBox" Width="140" Margin="6,0,0,0" SelectionChanged="OnSolutionSelectionChanged" />
     </StackPanel>
     <DataGrid x:Name="ProjectGrid" Grid.Row="1" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="False">
       <DataGrid.Columns>
-        <DataGridTextColumn Header="Project" Binding="{Binding Name}" IsReadOnly="True" Width="*" />
-        <DataGridTemplateColumn Header="Configuration" Width="170"><DataGridTemplateColumn.CellTemplate><DataTemplate><ComboBox ItemsSource="{Binding Configurations}" SelectedItem="{Binding Configuration, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-        <DataGridTemplateColumn Header="Platform" Width="150"><DataGridTemplateColumn.CellTemplate><DataTemplate><ComboBox ItemsSource="{Binding Platforms}" SelectedItem="{Binding Platform, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+        <DataGridTextColumn Header="{core:Localize SolutionConfiguration.Project}" Binding="{Binding Name}" IsReadOnly="True" Width="*" />
+        <DataGridTemplateColumn Header="{core:Localize SolutionConfiguration.Configuration}" Width="170"><DataGridTemplateColumn.CellTemplate><DataTemplate><ComboBox ItemsSource="{Binding Configurations}" SelectedItem="{Binding Configuration, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+        <DataGridTemplateColumn Header="{core:Localize SolutionConfiguration.Platform}" Width="150"><DataGridTemplateColumn.CellTemplate><DataTemplate><ComboBox ItemsSource="{Binding Platforms}" SelectedItem="{Binding Platform, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
       </DataGrid.Columns>
     </DataGrid>
-    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0"><Button Content="Close" Padding="14,4" IsDefault="True" Click="OnCloseClick" /></StackPanel>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0"><Button Content="{core:Localize Global.Close}" Padding="14,4" IsDefault="True" Click="OnCloseClick" /></StackPanel>
   </Grid>
 </Window>

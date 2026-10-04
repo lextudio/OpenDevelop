@@ -1,7 +1,8 @@
 <Window x:Class="ICSharpCode.SharpDevelop.Services.AddReferenceWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Add Reference"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
+        Title="{core:Localize AddReference.Title}"
         Width="520" Height="440"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize">
@@ -13,7 +14,7 @@
     </Grid.RowDefinitions>
 
     <TabControl x:Name="Tabs" Grid.Row="0" Margin="0,0,0,8">
-      <TabItem Header="Projects">
+      <TabItem Header="{core:Localize AddReference.Projects}">
         <Grid Margin="4">
           <ListBox x:Name="ProjectList" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
             <ListBox.ItemTemplate>
@@ -29,13 +30,13 @@
             </ListBox.ItemTemplate>
           </ListBox>
           <TextBlock x:Name="NoProjectsText"
-                     Text="No other projects in this solution can be referenced."
+                     Text="{core:Localize AddReference.NoProjects}"
                      Foreground="{DynamicResource MutedForeground}"
                      HorizontalAlignment="Center" VerticalAlignment="Center"
                      Visibility="Collapsed" />
         </Grid>
       </TabItem>
-      <TabItem Header="Browse">
+      <TabItem Header="{core:Localize AddReference.BrowseTab}">
         <Grid Margin="4">
           <Grid.RowDefinitions>
             <RowDefinition Height="*" />
@@ -44,8 +45,8 @@
           <ListBox x:Name="AssemblyList" Grid.Row="0" SelectionMode="Extended" Margin="0,0,0,8"
                    ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
           <StackPanel Grid.Row="1" Orientation="Horizontal">
-            <Button Content="Browse..." Click="OnBrowseClick" Padding="12,4" Margin="0,0,8,0" />
-            <Button Content="Remove" Click="OnRemoveClick" Padding="12,4" />
+            <Button Content="{core:Localize AddReference.Browse}" Click="OnBrowseClick" Padding="12,4" Margin="0,0,8,0" />
+            <Button Content="{core:Localize AddReference.Remove}" Click="OnRemoveClick" Padding="12,4" />
           </StackPanel>
         </Grid>
       </TabItem>
@@ -58,13 +59,13 @@
 
     <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
       <Button x:Name="AddButton"
-              Content="Add"
+              Content="{core:Localize AddReference.Add}"
               IsEnabled="False"
               IsDefault="True"
               Click="OnAddClick"
               Margin="0,0,8,0"
               Padding="12,4" />
-      <Button Content="Cancel"
+      <Button Content="{core:Localize Global.Cancel}"
               IsCancel="True"
               Click="OnCancelClick"
               Padding="12,4" />
