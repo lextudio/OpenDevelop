@@ -13,229 +13,229 @@
 		
 		<!-- All formatting options shown inside of editor control -->
 		<local:FormattingGroupContainer x:Key="rootEntries">
-			<local:FormattingGroupContainer Text="Indentation">
+			<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Indentation}">
 				<local:FormattingOptionContainer>
-					<local:FormattingOption Option="IndentNamespaceBody" Text="Indent namespace body" />
-					<local:FormattingOption Option="IndentClassBody" Text="Indent class body" />
-					<local:FormattingOption Option="IndentInterfaceBody" Text="Indent interface body" />
-					<local:FormattingOption Option="IndentStructBody" Text="Indent struct body" />
-					<local:FormattingOption Option="IndentEnumBody" Text="Indent enum body" />
-					<local:FormattingOption Option="IndentMethodBody" Text="Indent method body" />
-					<local:FormattingOption Option="IndentPropertyBody" Text="Indent property body" />
-					<local:FormattingOption Option="IndentEventBody" Text="Indent event body" />
-					<local:FormattingOption Option="IndentBlocks" Text="Indent blocks" />
-					<local:FormattingOption Option="IndentSwitchBody" Text="Indent switch body" />
-					<local:FormattingOption Option="IndentCaseBody" Text="Indent case body" />
-					<local:FormattingOption Option="IndentBreakStatements" Text="Indent break statements" />
-					<local:FormattingOption Option="AlignEmbeddedStatements" Text="Align embedded statements" />
-					<local:FormattingOption Option="AlignElseInIfStatements" Text="Align &quot;else&quot; in &quot;if&quot; statements" />
-					<local:FormattingOption Option="AutoPropertyFormatting" Text="Auto property formatting" />
-					<local:FormattingOption Option="SimplePropertyFormatting" Text="Simple property formatting" />
-					<local:FormattingOption Option="EmptyLineFormatting" Text="Empty line formatting" />
-					<local:FormattingOption Option="IndentPreprocessorDirectives" Text="Indent preprocessor directives" />
-					<local:FormattingOption Option="AlignToMemberReferenceDot" Text="Align to member reference dot" />
+					<local:FormattingOption Option="IndentNamespaceBody" Text="{core:Localize CSharpBinding.Formatting.Option.Indentnamespacebody}" />
+					<local:FormattingOption Option="IndentClassBody" Text="{core:Localize CSharpBinding.Formatting.Option.Indentclassbody}" />
+					<local:FormattingOption Option="IndentInterfaceBody" Text="{core:Localize CSharpBinding.Formatting.Option.Indentinterfacebody}" />
+					<local:FormattingOption Option="IndentStructBody" Text="{core:Localize CSharpBinding.Formatting.Option.Indentstructbody}" />
+					<local:FormattingOption Option="IndentEnumBody" Text="{core:Localize CSharpBinding.Formatting.Option.Indentenumbody}" />
+					<local:FormattingOption Option="IndentMethodBody" Text="{core:Localize CSharpBinding.Formatting.Option.Indentmethodbody}" />
+					<local:FormattingOption Option="IndentPropertyBody" Text="{core:Localize CSharpBinding.Formatting.Option.Indentpropertybody}" />
+					<local:FormattingOption Option="IndentEventBody" Text="{core:Localize CSharpBinding.Formatting.Option.Indenteventbody}" />
+					<local:FormattingOption Option="IndentBlocks" Text="{core:Localize CSharpBinding.Formatting.Option.Indentblocks}" />
+					<local:FormattingOption Option="IndentSwitchBody" Text="{core:Localize CSharpBinding.Formatting.Option.Indentswitchbody}" />
+					<local:FormattingOption Option="IndentCaseBody" Text="{core:Localize CSharpBinding.Formatting.Option.Indentcasebody}" />
+					<local:FormattingOption Option="IndentBreakStatements" Text="{core:Localize CSharpBinding.Formatting.Option.Indentbreakstatements}" />
+					<local:FormattingOption Option="AlignEmbeddedStatements" Text="{core:Localize CSharpBinding.Formatting.Option.Alignembeddedstatements}" />
+					<local:FormattingOption Option="AlignElseInIfStatements" Text="{core:Localize CSharpBinding.Formatting.Option.Alignelseinifstatements}" />
+					<local:FormattingOption Option="AutoPropertyFormatting" Text="{core:Localize CSharpBinding.Formatting.Option.Autopropertyformatting}" />
+					<local:FormattingOption Option="SimplePropertyFormatting" Text="{core:Localize CSharpBinding.Formatting.Option.Simplepropertyformatting}" />
+					<local:FormattingOption Option="EmptyLineFormatting" Text="{core:Localize CSharpBinding.Formatting.Option.Emptylineformatting}" />
+					<local:FormattingOption Option="IndentPreprocessorDirectives" Text="{core:Localize CSharpBinding.Formatting.Option.Indentpreprocessordirectives}" />
+					<local:FormattingOption Option="AlignToMemberReferenceDot" Text="{core:Localize CSharpBinding.Formatting.Option.Aligntomemberreferencedot}" />
 				</local:FormattingOptionContainer>
 			</local:FormattingGroupContainer>
-			<local:FormattingGroupContainer Text="Braces">
+			<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Braces}">
 				<local:FormattingOptionContainer>
-					<local:FormattingOption Option="NamespaceBraceStyle" Text="Namespace brace style" />
-					<local:FormattingOption Option="ClassBraceStyle" Text="Class brace style" />
-					<local:FormattingOption Option="InterfaceBraceStyle" Text="Interface brace style" />
-					<local:FormattingOption Option="StructBraceStyle" Text="Struct brace style" />
-					<local:FormattingOption Option="EnumBraceStyle" Text="Enum brace style" />
-					<local:FormattingOption Option="MethodBraceStyle" Text="Method brace style" />
-					<local:FormattingOption Option="AnonymousMethodBraceStyle" Text="Anonymous brace style" />
-					<local:FormattingOption Option="ConstructorBraceStyle" Text="Constructor brace style" />
-					<local:FormattingOption Option="DestructorBraceStyle" Text="Destructor brace style" />
-					<local:FormattingOption Option="PropertyBraceStyle" Text="Property brace style" />
-					<local:FormattingOption Option="PropertyGetBraceStyle" Text="Property &quot;get&quot; brace style" />
-					<local:FormattingOption Option="PropertySetBraceStyle" Text="Property &quot;set&quot; brace style" />
-					<local:FormattingOption Option="SimpleGetBlockFormatting" Text="Simple &quot;get&quot; block formatting" />
-					<local:FormattingOption Option="SimpleSetBlockFormatting" Text="Simple &quot;set&quot; block formatting" />
-					<local:FormattingOption Option="EventBraceStyle" Text="Event brace style" />
-					<local:FormattingOption Option="EventAddBraceStyle" Text="Event &quot;add&quot; brace style" />
-					<local:FormattingOption Option="EventRemoveBraceStyle" Text="Event &quot;remove&quot; brace style" />
-					<local:FormattingOption Option="AllowEventAddBlockInline" Text="Allow event &quot;add&quot; block inline" />
-					<local:FormattingOption Option="AllowEventRemoveBlockInline" Text="Allow event &quot;remove&quot; block inline" />
-					<local:FormattingOption Option="StatementBraceStyle" Text="Statement brace style" />
-					<local:FormattingOption Option="AllowIfBlockInline" Text="Allow &quot;if&quot; block inline" />
-					<local:FormattingOption Option="AllowOneLinedArrayInitialziers" Text="Allow one-lined array initializers" />
+					<local:FormattingOption Option="NamespaceBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Namespacebracestyle}" />
+					<local:FormattingOption Option="ClassBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Classbracestyle}" />
+					<local:FormattingOption Option="InterfaceBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Interfacebracestyle}" />
+					<local:FormattingOption Option="StructBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Structbracestyle}" />
+					<local:FormattingOption Option="EnumBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Enumbracestyle}" />
+					<local:FormattingOption Option="MethodBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Methodbracestyle}" />
+					<local:FormattingOption Option="AnonymousMethodBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Anonymousbracestyle}" />
+					<local:FormattingOption Option="ConstructorBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Constructorbracestyle}" />
+					<local:FormattingOption Option="DestructorBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Destructorbracestyle}" />
+					<local:FormattingOption Option="PropertyBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Propertybracestyle}" />
+					<local:FormattingOption Option="PropertyGetBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Propertygetbracestyle}" />
+					<local:FormattingOption Option="PropertySetBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Propertysetbracestyle}" />
+					<local:FormattingOption Option="SimpleGetBlockFormatting" Text="{core:Localize CSharpBinding.Formatting.Option.Simplegetblockformatting}" />
+					<local:FormattingOption Option="SimpleSetBlockFormatting" Text="{core:Localize CSharpBinding.Formatting.Option.Simplesetblockformatting}" />
+					<local:FormattingOption Option="EventBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Eventbracestyle}" />
+					<local:FormattingOption Option="EventAddBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Eventaddbracestyle}" />
+					<local:FormattingOption Option="EventRemoveBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Eventremovebracestyle}" />
+					<local:FormattingOption Option="AllowEventAddBlockInline" Text="{core:Localize CSharpBinding.Formatting.Option.Alloweventaddblockinline}" />
+					<local:FormattingOption Option="AllowEventRemoveBlockInline" Text="{core:Localize CSharpBinding.Formatting.Option.Alloweventremoveblockinline}" />
+					<local:FormattingOption Option="StatementBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Statementbracestyle}" />
+					<local:FormattingOption Option="AllowIfBlockInline" Text="{core:Localize CSharpBinding.Formatting.Option.Allowifblockinline}" />
+					<local:FormattingOption Option="AllowOneLinedArrayInitialziers" Text="{core:Localize CSharpBinding.Formatting.Option.Allowonelinedarrayinitializers}" />
 				</local:FormattingOptionContainer>
 			</local:FormattingGroupContainer>
-			<local:FormattingGroupContainer Text="New lines">
+			<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Newlines}">
 				<local:FormattingOptionContainer>
 					<local:FormattingOption Option="ElseNewLinePlacement" Text="&quot;else&quot; placement" />
 					<local:FormattingOption Option="ElseIfNewLinePlacement" Text="&quot;else if&quot; placement" />
 					<local:FormattingOption Option="CatchNewLinePlacement" Text="&quot;catch&quot; placement" />
 					<local:FormattingOption Option="FinallyNewLinePlacement" Text="&quot;finally&quot; placement" />
 					<local:FormattingOption Option="WhileNewLinePlacement" Text="&quot;while&quot; placement" />
-					<local:FormattingOption Option="EmbeddedStatementPlacement" Text="Embedded statement placement" />
+					<local:FormattingOption Option="EmbeddedStatementPlacement" Text="{core:Localize CSharpBinding.Formatting.Option.Embeddedstatementplacement}" />
 				</local:FormattingOptionContainer>
 			</local:FormattingGroupContainer>
-			<local:FormattingGroupContainer Text="Spaces">
-				<local:FormattingGroupContainer Text="Methods">
+			<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Spaces}">
+				<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Methods}">
 					<local:FormattingOptionContainer>
-						<local:FormattingOption Option="SpaceBeforeMethodDeclarationParentheses" Text="Space before parentheses" />
-						<local:FormattingOption Option="SpaceBetweenEmptyMethodDeclarationParentheses" Text="Space between parentheses" />
-						<local:FormattingOption Option="SpaceBeforeMethodDeclarationParameterComma" Text="Space before parameter comma" />
-						<local:FormattingOption Option="SpaceAfterMethodDeclarationParameterComma" Text="Space after parameter comma" />
-						<local:FormattingOption Option="SpaceWithinMethodDeclarationParentheses" Text="Space within parentheses" />
+						<local:FormattingOption Option="SpaceBeforeMethodDeclarationParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeparentheses}" />
+						<local:FormattingOption Option="SpaceBetweenEmptyMethodDeclarationParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebetweenparentheses}" />
+						<local:FormattingOption Option="SpaceBeforeMethodDeclarationParameterComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeparametercomma}" />
+						<local:FormattingOption Option="SpaceAfterMethodDeclarationParameterComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceafterparametercomma}" />
+						<local:FormattingOption Option="SpaceWithinMethodDeclarationParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacewithinparentheses}" />
 					</local:FormattingOptionContainer>
 				</local:FormattingGroupContainer>
-				<local:FormattingGroupContainer Text="Method calls">
+				<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Methodcalls}">
 					<local:FormattingOptionContainer>
-						<local:FormattingOption Option="SpaceBeforeMethodCallParentheses" Text="Space before parentheses" />
-						<local:FormattingOption Option="SpaceBetweenEmptyMethodCallParentheses" Text="Space between empty parentheses" />
-						<local:FormattingOption Option="SpaceBeforeMethodCallParameterComma" Text="Space before parameter comma" />
-						<local:FormattingOption Option="SpaceAfterMethodCallParameterComma" Text="Space after parameter comma" />
-						<local:FormattingOption Option="SpaceWithinMethodCallParentheses" Text="Space within parentheses" />
+						<local:FormattingOption Option="SpaceBeforeMethodCallParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeparentheses}" />
+						<local:FormattingOption Option="SpaceBetweenEmptyMethodCallParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebetweenemptyparentheses}" />
+						<local:FormattingOption Option="SpaceBeforeMethodCallParameterComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeparametercomma}" />
+						<local:FormattingOption Option="SpaceAfterMethodCallParameterComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceafterparametercomma}" />
+						<local:FormattingOption Option="SpaceWithinMethodCallParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacewithinparentheses}" />
 					</local:FormattingOptionContainer>
 				</local:FormattingGroupContainer>
-				<local:FormattingGroupContainer Text="Fields">
+				<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Fields}">
 					<local:FormattingOptionContainer>
-						<local:FormattingOption Option="SpaceBeforeFieldDeclarationComma" Text="Space before comma" />
-						<local:FormattingOption Option="SpaceAfterFieldDeclarationComma" Text="Space after comma" />
+						<local:FormattingOption Option="SpaceBeforeFieldDeclarationComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforecomma}" />
+						<local:FormattingOption Option="SpaceAfterFieldDeclarationComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceaftercomma}" />
 					</local:FormattingOptionContainer>
 				</local:FormattingGroupContainer>
-				<local:FormattingGroupContainer Text="Local variables">
+				<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Localvariables}">
 					<local:FormattingOptionContainer>
-						<local:FormattingOption Option="SpaceBeforeLocalVariableDeclarationComma" Text="Space before declaration comma" />
-						<local:FormattingOption Option="SpaceAfterLocalVariableDeclarationComma" Text="Space after declaration comma" />
+						<local:FormattingOption Option="SpaceBeforeLocalVariableDeclarationComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforedeclarationcomma}" />
+						<local:FormattingOption Option="SpaceAfterLocalVariableDeclarationComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceafterdeclarationcomma}" />
 					</local:FormattingOptionContainer>
 				</local:FormattingGroupContainer>
-				<local:FormattingGroupContainer Text="Constructors">
+				<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Constructors}">
 					<local:FormattingOptionContainer>
-						<local:FormattingOption Option="SpaceBeforeConstructorDeclarationParentheses" Text="Space before parentheses" />
-						<local:FormattingOption Option="SpaceBetweenEmptyConstructorDeclarationParentheses" Text="Space between empty parentheses" />
-						<local:FormattingOption Option="SpaceBeforeConstructorDeclarationParameterComma" Text="Space before parameter comma" />
-						<local:FormattingOption Option="SpaceAfterConstructorDeclarationParameterComma" Text="Space after parameter comma" />
-						<local:FormattingOption Option="SpaceWithinConstructorDeclarationParentheses" Text="Space within parentheses" />
+						<local:FormattingOption Option="SpaceBeforeConstructorDeclarationParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeparentheses}" />
+						<local:FormattingOption Option="SpaceBetweenEmptyConstructorDeclarationParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebetweenemptyparentheses}" />
+						<local:FormattingOption Option="SpaceBeforeConstructorDeclarationParameterComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeparametercomma}" />
+						<local:FormattingOption Option="SpaceAfterConstructorDeclarationParameterComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceafterparametercomma}" />
+						<local:FormattingOption Option="SpaceWithinConstructorDeclarationParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacewithinparentheses}" />
 					</local:FormattingOptionContainer>
 				</local:FormattingGroupContainer>
-				<local:FormattingGroupContainer Text="Indexers">
+				<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Indexers}">
 					<local:FormattingOptionContainer>
-						<local:FormattingOption Option="SpaceBeforeIndexerDeclarationBracket" Text="Space before bracket" />
-						<local:FormattingOption Option="SpaceWithinIndexerDeclarationBracket" Text="Space within brackets" />
-						<local:FormattingOption Option="SpaceBeforeIndexerDeclarationParameterComma" Text="Space before parameter comma" />
-						<local:FormattingOption Option="SpaceAfterIndexerDeclarationParameterComma" Text="Space after parameter comma" />
+						<local:FormattingOption Option="SpaceBeforeIndexerDeclarationBracket" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforebracket}" />
+						<local:FormattingOption Option="SpaceWithinIndexerDeclarationBracket" Text="{core:Localize CSharpBinding.Formatting.Option.Spacewithinbrackets}" />
+						<local:FormattingOption Option="SpaceBeforeIndexerDeclarationParameterComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeparametercomma}" />
+						<local:FormattingOption Option="SpaceAfterIndexerDeclarationParameterComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceafterparametercomma}" />
 					</local:FormattingOptionContainer>
 				</local:FormattingGroupContainer>
-				<local:FormattingGroupContainer Text="Delegates">
+				<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Delegates}">
 					<local:FormattingOptionContainer>
-						<local:FormattingOption Option="SpaceBeforeDelegateDeclarationParentheses" Text="Space before parentheses" />
-						<local:FormattingOption Option="SpaceBetweenEmptyDelegateDeclarationParentheses" Text="Space between empty parentheses" />
-						<local:FormattingOption Option="SpaceBeforeDelegateDeclarationParameterComma" Text="Space before parameter comma" />
-						<local:FormattingOption Option="SpaceAfterDelegateDeclarationParameterComma" Text="Space after parameter comma" />
-						<local:FormattingOption Option="SpaceWithinDelegateDeclarationParentheses" Text="Space within parentheses" />
+						<local:FormattingOption Option="SpaceBeforeDelegateDeclarationParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeparentheses}" />
+						<local:FormattingOption Option="SpaceBetweenEmptyDelegateDeclarationParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebetweenemptyparentheses}" />
+						<local:FormattingOption Option="SpaceBeforeDelegateDeclarationParameterComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeparametercomma}" />
+						<local:FormattingOption Option="SpaceAfterDelegateDeclarationParameterComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceafterparametercomma}" />
+						<local:FormattingOption Option="SpaceWithinDelegateDeclarationParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacewithinparentheses}" />
 					</local:FormattingOptionContainer>
 				</local:FormattingGroupContainer>
-				<local:FormattingGroupContainer Text="Statements">
+				<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Statements}">
 					<local:FormattingOptionContainer>
-						<local:FormattingOption Option="SpaceBeforeNewParentheses" Text="Space before &quot;new&quot; parentheses" />
-						<local:FormattingOption Option="SpaceBeforeIfParentheses" Text="Space before &quot;if&quot; parentheses" />
-						<local:FormattingOption Option="SpaceBeforeWhileParentheses" Text="Space before &quot;while&quot; parentheses" />
-						<local:FormattingOption Option="SpaceBeforeForParentheses" Text="Space before &quot;for&quot; parentheses" />
-						<local:FormattingOption Option="SpaceBeforeForeachParentheses" Text="Space before &quot;foreach&quot; parentheses" />
-						<local:FormattingOption Option="SpaceBeforeCatchParentheses" Text="Space before &quot;catch&quot; parentheses" />
-						<local:FormattingOption Option="SpaceBeforeSwitchParentheses" Text="Space before &quot;switch&quot; parentheses" />
-						<local:FormattingOption Option="SpaceBeforeLockParentheses" Text="Space before &quot;lock&quot; parentheses" />
-						<local:FormattingOption Option="SpaceBeforeUsingParentheses" Text="Space before &quot;using&quot; parentheses" />
-						<local:FormattingOption Option="SpaceAroundAssignment" Text="Space around assignment" />
-						<local:FormattingOption Option="SpaceAroundLogicalOperator" Text="Space around logical operator" />
-						<local:FormattingOption Option="SpaceAroundEqualityOperator" Text="Space around equality operator" />
-						<local:FormattingOption Option="SpaceAroundRelationalOperator" Text="Space around relational operator" />
-						<local:FormattingOption Option="SpaceAroundBitwiseOperator" Text="Space around bitwise operator" />
-						<local:FormattingOption Option="SpaceAroundAdditiveOperator" Text="Space around additive operator" />
-						<local:FormattingOption Option="SpaceAroundMultiplicativeOperator" Text="Space around multiplicative operator" />
-						<local:FormattingOption Option="SpaceAroundShiftOperator" Text="Space around shift operator" />
-						<local:FormattingOption Option="SpaceAroundNullCoalescingOperator" Text="Space around null coalescing operator" />
-						<local:FormattingOption Option="SpaceAfterUnsafeAddressOfOperator" Text="Space after unsafe address of operator" />
-						<local:FormattingOption Option="SpaceAfterUnsafeAsteriskOfOperator" Text="Space after unsafe asterisk of operator" />
-						<local:FormattingOption Option="SpaceAroundUnsafeArrowOperator" Text="Space around unsafe arrow operator" />
-						<local:FormattingOption Option="SpacesWithinParentheses" Text="Spaces within parentheses" />
-						<local:FormattingOption Option="SpacesWithinIfParentheses" Text="Spaces within &quot;if&quot; parentheses" />
-						<local:FormattingOption Option="SpacesWithinWhileParentheses" Text="Spaces within &quot;while&quot; parentheses" />
-						<local:FormattingOption Option="SpacesWithinForParentheses" Text="Spaces within &quot;for&quot; parentheses" />
-						<local:FormattingOption Option="SpacesWithinForeachParentheses" Text="Spaces within &quot;foreach&quot; parentheses" />
-						<local:FormattingOption Option="SpacesWithinCatchParentheses" Text="Spaces within &quot;catch&quot; parentheses" />
-						<local:FormattingOption Option="SpacesWithinSwitchParentheses" Text="Spaces within &quot;switch&quot; parentheses" />
-						<local:FormattingOption Option="SpacesWithinLockParentheses" Text="Spaces within &quot;lock&quot; parentheses" />
-						<local:FormattingOption Option="SpacesWithinUsingParentheses" Text="Spaces within &quot;using&quot; parentheses" />
-						<local:FormattingOption Option="SpacesWithinCastParentheses" Text="Spaces within cast parentheses" />
-						<local:FormattingOption Option="SpacesWithinSizeOfParentheses" Text="Spaces within &quot;sizeof&quot; parentheses" />
-						<local:FormattingOption Option="SpaceBeforeSizeOfParentheses" Text="Space before &quot;sizeof&quot; parentheses" />
-						<local:FormattingOption Option="SpacesWithinTypeOfParentheses" Text="Spaces within &quot;typeof&quot; parentheses" />
-						<local:FormattingOption Option="SpacesWithinNewParentheses" Text="Spaces within &quot;new&quot; parentheses" />
-						<local:FormattingOption Option="SpacesBetweenEmptyNewParentheses" Text="Spaces between empty &quot;new&quot; parentheses" />
-						<local:FormattingOption Option="SpaceBeforeNewParameterComma" Text="Space before &quot;new&quot; parameter comma" />
-						<local:FormattingOption Option="SpaceAfterNewParameterComma" Text="Space after &quot;new&quot; parameter comma" />
-						<local:FormattingOption Option="SpaceBeforeTypeOfParentheses" Text="Space before &quot;typeof&quot; parentheses" />
-						<local:FormattingOption Option="SpacesWithinCheckedExpressionParantheses" Text="Spaces within &quot;checked&quot; expression parentheses" />
-						<local:FormattingOption Option="SpaceBeforeConditionalOperatorCondition" Text="Space before conditional operator condition" />
-						<local:FormattingOption Option="SpaceAfterConditionalOperatorCondition" Text="Space after conditional operator condition" />
-						<local:FormattingOption Option="SpaceBeforeConditionalOperatorSeparator" Text="Space before conditional operator separator" />
-						<local:FormattingOption Option="SpaceAfterConditionalOperatorSeparator" Text="Space after conditional operator separator" />
+						<local:FormattingOption Option="SpaceBeforeNewParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforenewparentheses}" />
+						<local:FormattingOption Option="SpaceBeforeIfParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeifparentheses}" />
+						<local:FormattingOption Option="SpaceBeforeWhileParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforewhileparentheses}" />
+						<local:FormattingOption Option="SpaceBeforeForParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeforparentheses}" />
+						<local:FormattingOption Option="SpaceBeforeForeachParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeforeachparentheses}" />
+						<local:FormattingOption Option="SpaceBeforeCatchParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforecatchparentheses}" />
+						<local:FormattingOption Option="SpaceBeforeSwitchParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeswitchparentheses}" />
+						<local:FormattingOption Option="SpaceBeforeLockParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforelockparentheses}" />
+						<local:FormattingOption Option="SpaceBeforeUsingParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeusingparentheses}" />
+						<local:FormattingOption Option="SpaceAroundAssignment" Text="{core:Localize CSharpBinding.Formatting.Option.Spacearoundassignment}" />
+						<local:FormattingOption Option="SpaceAroundLogicalOperator" Text="{core:Localize CSharpBinding.Formatting.Option.Spacearoundlogicaloperator}" />
+						<local:FormattingOption Option="SpaceAroundEqualityOperator" Text="{core:Localize CSharpBinding.Formatting.Option.Spacearoundequalityoperator}" />
+						<local:FormattingOption Option="SpaceAroundRelationalOperator" Text="{core:Localize CSharpBinding.Formatting.Option.Spacearoundrelationaloperator}" />
+						<local:FormattingOption Option="SpaceAroundBitwiseOperator" Text="{core:Localize CSharpBinding.Formatting.Option.Spacearoundbitwiseoperator}" />
+						<local:FormattingOption Option="SpaceAroundAdditiveOperator" Text="{core:Localize CSharpBinding.Formatting.Option.Spacearoundadditiveoperator}" />
+						<local:FormattingOption Option="SpaceAroundMultiplicativeOperator" Text="{core:Localize CSharpBinding.Formatting.Option.Spacearoundmultiplicativeoperator}" />
+						<local:FormattingOption Option="SpaceAroundShiftOperator" Text="{core:Localize CSharpBinding.Formatting.Option.Spacearoundshiftoperator}" />
+						<local:FormattingOption Option="SpaceAroundNullCoalescingOperator" Text="{core:Localize CSharpBinding.Formatting.Option.Spacearoundnullcoalescingoperator}" />
+						<local:FormattingOption Option="SpaceAfterUnsafeAddressOfOperator" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceafterunsafeaddressofoperator}" />
+						<local:FormattingOption Option="SpaceAfterUnsafeAsteriskOfOperator" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceafterunsafeasteriskofoperator}" />
+						<local:FormattingOption Option="SpaceAroundUnsafeArrowOperator" Text="{core:Localize CSharpBinding.Formatting.Option.Spacearoundunsafearrowoperator}" />
+						<local:FormattingOption Option="SpacesWithinParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceswithinparentheses}" />
+						<local:FormattingOption Option="SpacesWithinIfParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceswithinifparentheses}" />
+						<local:FormattingOption Option="SpacesWithinWhileParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceswithinwhileparentheses}" />
+						<local:FormattingOption Option="SpacesWithinForParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceswithinforparentheses}" />
+						<local:FormattingOption Option="SpacesWithinForeachParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceswithinforeachparentheses}" />
+						<local:FormattingOption Option="SpacesWithinCatchParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceswithincatchparentheses}" />
+						<local:FormattingOption Option="SpacesWithinSwitchParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceswithinswitchparentheses}" />
+						<local:FormattingOption Option="SpacesWithinLockParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceswithinlockparentheses}" />
+						<local:FormattingOption Option="SpacesWithinUsingParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceswithinusingparentheses}" />
+						<local:FormattingOption Option="SpacesWithinCastParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceswithincastparentheses}" />
+						<local:FormattingOption Option="SpacesWithinSizeOfParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceswithinsizeofparentheses}" />
+						<local:FormattingOption Option="SpaceBeforeSizeOfParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforesizeofparentheses}" />
+						<local:FormattingOption Option="SpacesWithinTypeOfParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceswithintypeofparentheses}" />
+						<local:FormattingOption Option="SpacesWithinNewParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceswithinnewparentheses}" />
+						<local:FormattingOption Option="SpacesBetweenEmptyNewParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacesbetweenemptynewparentheses}" />
+						<local:FormattingOption Option="SpaceBeforeNewParameterComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforenewparametercomma}" />
+						<local:FormattingOption Option="SpaceAfterNewParameterComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceafternewparametercomma}" />
+						<local:FormattingOption Option="SpaceBeforeTypeOfParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforetypeofparentheses}" />
+						<local:FormattingOption Option="SpacesWithinCheckedExpressionParantheses" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceswithincheckedexpressionparentheses}" />
+						<local:FormattingOption Option="SpaceBeforeConditionalOperatorCondition" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeconditionaloperatorcondition}" />
+						<local:FormattingOption Option="SpaceAfterConditionalOperatorCondition" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceafterconditionaloperatorcondition}" />
+						<local:FormattingOption Option="SpaceBeforeConditionalOperatorSeparator" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeconditionaloperatorseparator}" />
+						<local:FormattingOption Option="SpaceAfterConditionalOperatorSeparator" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceafterconditionaloperatorseparator}" />
 					</local:FormattingOptionContainer>
 				</local:FormattingGroupContainer>
-				<local:FormattingGroupContainer Text="Brackets">
+				<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Brackets}">
 					<local:FormattingOptionContainer>
-						<local:FormattingOption Option="SpacesWithinBrackets" Text="Spaces within brackets" />
-						<local:FormattingOption Option="SpacesBeforeBrackets" Text="Spaces before brackets" />
-						<local:FormattingOption Option="SpaceBeforeBracketComma" Text="Space before bracket comma" />
-						<local:FormattingOption Option="SpaceAfterBracketComma" Text="Space after bracket comma" />
-						<local:FormattingOption Option="SpaceBeforeForSemicolon" Text="Space before &quot;for&quot; semicolon" />
-						<local:FormattingOption Option="SpaceAfterForSemicolon" Text="Space after &quot;for&quot; semicolon" />
-						<local:FormattingOption Option="SpaceAfterTypecast" Text="Space after type cast" />
-						<local:FormattingOption Option="SpaceBeforeArrayDeclarationBrackets" Text="Space before array declaration brackets" />
-						<local:FormattingOption Option="SpaceInNamedArgumentAfterDoubleColon" Text="Space in named argument after double colon" />
-						<local:FormattingOption Option="RemoveEndOfLineWhiteSpace" Text="Remove end of line whitespace" />
-						<local:FormattingOption Option="SpaceBeforeSemicolon" Text="Space before semicolon" />
+						<local:FormattingOption Option="SpacesWithinBrackets" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceswithinbrackets}" />
+						<local:FormattingOption Option="SpacesBeforeBrackets" Text="{core:Localize CSharpBinding.Formatting.Option.Spacesbeforebrackets}" />
+						<local:FormattingOption Option="SpaceBeforeBracketComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforebracketcomma}" />
+						<local:FormattingOption Option="SpaceAfterBracketComma" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceafterbracketcomma}" />
+						<local:FormattingOption Option="SpaceBeforeForSemicolon" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforeforsemicolon}" />
+						<local:FormattingOption Option="SpaceAfterForSemicolon" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceafterforsemicolon}" />
+						<local:FormattingOption Option="SpaceAfterTypecast" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceaftertypecast}" />
+						<local:FormattingOption Option="SpaceBeforeArrayDeclarationBrackets" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforearraydeclarationbrackets}" />
+						<local:FormattingOption Option="SpaceInNamedArgumentAfterDoubleColon" Text="{core:Localize CSharpBinding.Formatting.Option.Spaceinnamedargumentafterdoublecolon}" />
+						<local:FormattingOption Option="RemoveEndOfLineWhiteSpace" Text="{core:Localize CSharpBinding.Formatting.Option.Removeendoflinewhitespace}" />
+						<local:FormattingOption Option="SpaceBeforeSemicolon" Text="{core:Localize CSharpBinding.Formatting.Option.Spacebeforesemicolon}" />
 					</local:FormattingOptionContainer>
 				</local:FormattingGroupContainer>
 			</local:FormattingGroupContainer>
-			<local:FormattingGroupContainer Text="Minimum blank lines">
+			<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Minimumblanklines}">
 				<local:FormattingOptionContainer>
-					<local:FormattingOption Option="MinimumBlankLinesBeforeUsings" Text="Before usings" />
-					<local:FormattingOption Option="MinimumBlankLinesAfterUsings" Text="After usings" />
-					<local:FormattingOption Option="MinimumBlankLinesBeforeFirstDeclaration" Text="Before first declaration" />
-					<local:FormattingOption Option="MinimumBlankLinesBetweenTypes" Text="Between types" />
-					<local:FormattingOption Option="MinimumBlankLinesBetweenFields" Text="Between fields" />
-					<local:FormattingOption Option="MinimumBlankLinesBetweenEventFields" Text="Between event fields" />
-					<local:FormattingOption Option="MinimumBlankLinesBetweenMembers" Text="Between members" />
-					<local:FormattingOption Option="MinimumBlankLinesAroundRegion" Text="Around region" />
-					<local:FormattingOption Option="MinimumBlankLinesInsideRegion" Text="Inside region" />
+					<local:FormattingOption Option="MinimumBlankLinesBeforeUsings" Text="{core:Localize CSharpBinding.Formatting.Option.Beforeusings}" />
+					<local:FormattingOption Option="MinimumBlankLinesAfterUsings" Text="{core:Localize CSharpBinding.Formatting.Option.Afterusings}" />
+					<local:FormattingOption Option="MinimumBlankLinesBeforeFirstDeclaration" Text="{core:Localize CSharpBinding.Formatting.Option.Beforefirstdeclaration}" />
+					<local:FormattingOption Option="MinimumBlankLinesBetweenTypes" Text="{core:Localize CSharpBinding.Formatting.Option.Betweentypes}" />
+					<local:FormattingOption Option="MinimumBlankLinesBetweenFields" Text="{core:Localize CSharpBinding.Formatting.Option.Betweenfields}" />
+					<local:FormattingOption Option="MinimumBlankLinesBetweenEventFields" Text="{core:Localize CSharpBinding.Formatting.Option.Betweeneventfields}" />
+					<local:FormattingOption Option="MinimumBlankLinesBetweenMembers" Text="{core:Localize CSharpBinding.Formatting.Option.Betweenmembers}" />
+					<local:FormattingOption Option="MinimumBlankLinesAroundRegion" Text="{core:Localize CSharpBinding.Formatting.Option.Aroundregion}" />
+					<local:FormattingOption Option="MinimumBlankLinesInsideRegion" Text="{core:Localize CSharpBinding.Formatting.Option.Insideregion}" />
 				</local:FormattingOptionContainer>
 			</local:FormattingGroupContainer>
-			<local:FormattingGroupContainer Text="Keep formatting">
+			<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Keepformatting}">
 				<local:FormattingOptionContainer>
-					<local:FormattingOption Option="KeepCommentsAtFirstColumn" Text="Keep comments at first column" />
+					<local:FormattingOption Option="KeepCommentsAtFirstColumn" Text="{core:Localize CSharpBinding.Formatting.Option.Keepcommentsatfirstcolumn}" />
 				</local:FormattingOptionContainer>
 			</local:FormattingGroupContainer>
-			<local:FormattingGroupContainer Text="Wrapping">
+			<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Wrapping}">
 				<local:FormattingOptionContainer>
-					<local:FormattingOption Option="ArrayInitializerWrapping" Text="Array initializer wrapping" />
-					<local:FormattingOption Option="ArrayInitializerBraceStyle" Text="Array initializer brace style" />
-					<local:FormattingOption Option="ChainedMethodCallWrapping" Text="Chained method call wrapping" />
-					<local:FormattingOption Option="MethodCallArgumentWrapping" Text="Method call argument wrapping" />
-					<local:FormattingOption Option="NewLineAferMethodCallOpenParentheses" Text="New line after method call open parentheses" />
-					<local:FormattingOption Option="MethodCallClosingParenthesesOnNewLine" Text="Method call closing parentheses on new line" />
-					<local:FormattingOption Option="IndexerArgumentWrapping" Text="Indexer argument wrapping" />
-					<local:FormattingOption Option="NewLineAferIndexerOpenBracket" Text="New line after indexer open bracket" />
-					<local:FormattingOption Option="IndexerClosingBracketOnNewLine" Text="Indexer closing bracket on new line" />
-					<local:FormattingOption Option="MethodDeclarationParameterWrapping" Text="Method declaration parameter wrapping" />
-					<local:FormattingOption Option="NewLineAferMethodDeclarationOpenParentheses" Text="New line after method declaration open parentheses" />
-					<local:FormattingOption Option="MethodDeclarationClosingParenthesesOnNewLine" Text="Method declaration closing parentheses on new line" />
-					<local:FormattingOption Option="IndexerDeclarationParameterWrapping" Text="Indexer declaration parameter wrapping" />
-					<local:FormattingOption Option="NewLineAferIndexerDeclarationOpenBracket" Text="New line after indexer declaration open bracket" />
-					<local:FormattingOption Option="IndexerDeclarationClosingBracketOnNewLine" Text="Indexer declaration closing bracket on new line" />
-					<local:FormattingOption Option="AlignToFirstIndexerArgument" Text="Align to first indexer argument" />
-					<local:FormattingOption Option="AlignToFirstIndexerDeclarationParameter" Text="Align to first indexer declaration parameter" />
-					<local:FormattingOption Option="AlignToFirstMethodCallArgument" Text="Align to first method call argument" />
-					<local:FormattingOption Option="AlignToFirstMethodDeclarationParameter" Text="Align to first method declaration parameter" />
-					<local:FormattingOption Option="NewLineBeforeNewQueryClause" Text="New line before new query clause" />
+					<local:FormattingOption Option="ArrayInitializerWrapping" Text="{core:Localize CSharpBinding.Formatting.Option.Arrayinitializerwrapping}" />
+					<local:FormattingOption Option="ArrayInitializerBraceStyle" Text="{core:Localize CSharpBinding.Formatting.Option.Arrayinitializerbracestyle}" />
+					<local:FormattingOption Option="ChainedMethodCallWrapping" Text="{core:Localize CSharpBinding.Formatting.Option.Chainedmethodcallwrapping}" />
+					<local:FormattingOption Option="MethodCallArgumentWrapping" Text="{core:Localize CSharpBinding.Formatting.Option.Methodcallargumentwrapping}" />
+					<local:FormattingOption Option="NewLineAferMethodCallOpenParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Newlineaftermethodcallopenparentheses}" />
+					<local:FormattingOption Option="MethodCallClosingParenthesesOnNewLine" Text="{core:Localize CSharpBinding.Formatting.Option.Methodcallclosingparenthesesonnewline}" />
+					<local:FormattingOption Option="IndexerArgumentWrapping" Text="{core:Localize CSharpBinding.Formatting.Option.Indexerargumentwrapping}" />
+					<local:FormattingOption Option="NewLineAferIndexerOpenBracket" Text="{core:Localize CSharpBinding.Formatting.Option.Newlineafterindexeropenbracket}" />
+					<local:FormattingOption Option="IndexerClosingBracketOnNewLine" Text="{core:Localize CSharpBinding.Formatting.Option.Indexerclosingbracketonnewline}" />
+					<local:FormattingOption Option="MethodDeclarationParameterWrapping" Text="{core:Localize CSharpBinding.Formatting.Option.Methoddeclarationparameterwrapping}" />
+					<local:FormattingOption Option="NewLineAferMethodDeclarationOpenParentheses" Text="{core:Localize CSharpBinding.Formatting.Option.Newlineaftermethoddeclarationopenparentheses}" />
+					<local:FormattingOption Option="MethodDeclarationClosingParenthesesOnNewLine" Text="{core:Localize CSharpBinding.Formatting.Option.Methoddeclarationclosingparenthesesonnewline}" />
+					<local:FormattingOption Option="IndexerDeclarationParameterWrapping" Text="{core:Localize CSharpBinding.Formatting.Option.Indexerdeclarationparameterwrapping}" />
+					<local:FormattingOption Option="NewLineAferIndexerDeclarationOpenBracket" Text="{core:Localize CSharpBinding.Formatting.Option.Newlineafterindexerdeclarationopenbracket}" />
+					<local:FormattingOption Option="IndexerDeclarationClosingBracketOnNewLine" Text="{core:Localize CSharpBinding.Formatting.Option.Indexerdeclarationclosingbracketonnewline}" />
+					<local:FormattingOption Option="AlignToFirstIndexerArgument" Text="{core:Localize CSharpBinding.Formatting.Option.Aligntofirstindexerargument}" />
+					<local:FormattingOption Option="AlignToFirstIndexerDeclarationParameter" Text="{core:Localize CSharpBinding.Formatting.Option.Aligntofirstindexerdeclarationparameter}" />
+					<local:FormattingOption Option="AlignToFirstMethodCallArgument" Text="{core:Localize CSharpBinding.Formatting.Option.Aligntofirstmethodcallargument}" />
+					<local:FormattingOption Option="AlignToFirstMethodDeclarationParameter" Text="{core:Localize CSharpBinding.Formatting.Option.Aligntofirstmethoddeclarationparameter}" />
+					<local:FormattingOption Option="NewLineBeforeNewQueryClause" Text="{core:Localize CSharpBinding.Formatting.Option.Newlinebeforenewqueryclause}" />
 				</local:FormattingOptionContainer>
 			</local:FormattingGroupContainer>
-			<local:FormattingGroupContainer Text="Using declarations">
+			<local:FormattingGroupContainer Text="{core:Localize CSharpBinding.Formatting.Option.Usingdeclarations}">
 				<local:FormattingOptionContainer>
 					<local:FormattingOption Option="UsingPlacement" Text="&quot;using&quot; placement" />
 				</local:FormattingOptionContainer>

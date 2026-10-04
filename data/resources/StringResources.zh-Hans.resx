@@ -8349,4 +8349,472 @@ SharpDevelop 编译资源时发现不对应：资源名称不是文件名，而�
   <data name="Dialog.Options.IDEOptions.IdeTheme.Note" xml:space="preserve">
     <value>主题在您选择“确定”后应用，并在下次启动时恢复。</value>
   </data>
+  <data name="CSharpBinding.Formatting.Option.Indentation" xml:space="preserve">
+    <value>缩进</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentnamespacebody" xml:space="preserve">
+    <value>缩进命名空间主体</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentclassbody" xml:space="preserve">
+    <value>缩进类主体</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentinterfacebody" xml:space="preserve">
+    <value>缩进接口主体</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentstructbody" xml:space="preserve">
+    <value>缩进结构主体</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentenumbody" xml:space="preserve">
+    <value>缩进枚举主体</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentmethodbody" xml:space="preserve">
+    <value>缩进方法主体</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentpropertybody" xml:space="preserve">
+    <value>缩进属性主体</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indenteventbody" xml:space="preserve">
+    <value>缩进事件主体</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentblocks" xml:space="preserve">
+    <value>缩进块</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentswitchbody" xml:space="preserve">
+    <value>缩进switch 体</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentcasebody" xml:space="preserve">
+    <value>缩进case 体</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentbreakstatements" xml:space="preserve">
+    <value>缩进break 语句</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Alignembeddedstatements" xml:space="preserve">
+    <value>对齐嵌入语句</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Alignelseinifstatements" xml:space="preserve">
+    <value>对齐"if" 语句中的 "else"</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Autopropertyformatting" xml:space="preserve">
+    <value>自动属性格式设置</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Simplepropertyformatting" xml:space="preserve">
+    <value>简单属性格式设置</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Emptylineformatting" xml:space="preserve">
+    <value>空行格式设置</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentpreprocessordirectives" xml:space="preserve">
+    <value>缩进预处理器指令</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Aligntomemberreferencedot" xml:space="preserve">
+    <value>对齐到成员引用点</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Braces" xml:space="preserve">
+    <value>大括号</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Namespacebracestyle" xml:space="preserve">
+    <value>命名空间的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Classbracestyle" xml:space="preserve">
+    <value>类的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Interfacebracestyle" xml:space="preserve">
+    <value>接口的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Structbracestyle" xml:space="preserve">
+    <value>结构的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Enumbracestyle" xml:space="preserve">
+    <value>枚举的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Methodbracestyle" xml:space="preserve">
+    <value>方法的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Anonymousbracestyle" xml:space="preserve">
+    <value>匿名的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Constructorbracestyle" xml:space="preserve">
+    <value>构造函数的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Destructorbracestyle" xml:space="preserve">
+    <value>析构函数的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Propertybracestyle" xml:space="preserve">
+    <value>属性的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Propertygetbracestyle" xml:space="preserve">
+    <value>属性 "get"的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Propertysetbracestyle" xml:space="preserve">
+    <value>属性 "set"的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Simplegetblockformatting" xml:space="preserve">
+    <value>简单 "get"的格式设置</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Simplesetblockformatting" xml:space="preserve">
+    <value>简单 "set"的格式设置</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Eventbracestyle" xml:space="preserve">
+    <value>事件的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Eventaddbracestyle" xml:space="preserve">
+    <value>事件 "add"的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Eventremovebracestyle" xml:space="preserve">
+    <value>事件 "remove"的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Alloweventaddblockinline" xml:space="preserve">
+    <value>允许事件 "add"块内联</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Alloweventremoveblockinline" xml:space="preserve">
+    <value>允许事件 "remove"块内联</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Statementbracestyle" xml:space="preserve">
+    <value>语句的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Allowifblockinline" xml:space="preserve">
+    <value>允许"if"块内联</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Allowonelinedarrayinitializers" xml:space="preserve">
+    <value>允许单行数组初始值设定项</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Newlines" xml:space="preserve">
+    <value>换行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Embeddedstatementplacement" xml:space="preserve">
+    <value>嵌入语句的位置</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaces" xml:space="preserve">
+    <value>空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Methods" xml:space="preserve">
+    <value>方法</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeparentheses" xml:space="preserve">
+    <value>括号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebetweenparentheses" xml:space="preserve">
+    <value>括号之间的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeparametercomma" xml:space="preserve">
+    <value>参数逗号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafterparametercomma" xml:space="preserve">
+    <value>参数逗号后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacewithinparentheses" xml:space="preserve">
+    <value>括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Methodcalls" xml:space="preserve">
+    <value>方法调用</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebetweenemptyparentheses" xml:space="preserve">
+    <value>空括号之间的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Fields" xml:space="preserve">
+    <value>字段</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforecomma" xml:space="preserve">
+    <value>逗号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceaftercomma" xml:space="preserve">
+    <value>逗号后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Localvariables" xml:space="preserve">
+    <value>局部变量</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforedeclarationcomma" xml:space="preserve">
+    <value>声明逗号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafterdeclarationcomma" xml:space="preserve">
+    <value>声明逗号后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Constructors" xml:space="preserve">
+    <value>构造函数</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indexers" xml:space="preserve">
+    <value>索引器</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforebracket" xml:space="preserve">
+    <value>方括号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacewithinbrackets" xml:space="preserve">
+    <value>方括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Delegates" xml:space="preserve">
+    <value>委托</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Statements" xml:space="preserve">
+    <value>语句</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforenewparentheses" xml:space="preserve">
+    <value>"new" 括号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeifparentheses" xml:space="preserve">
+    <value>"if" 括号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforewhileparentheses" xml:space="preserve">
+    <value>"while" 括号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeforparentheses" xml:space="preserve">
+    <value>"for" 括号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeforeachparentheses" xml:space="preserve">
+    <value>"foreach" 括号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforecatchparentheses" xml:space="preserve">
+    <value>"catch" 括号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeswitchparentheses" xml:space="preserve">
+    <value>"switch" 括号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforelockparentheses" xml:space="preserve">
+    <value>"lock" 括号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeusingparentheses" xml:space="preserve">
+    <value>"using" 括号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundassignment" xml:space="preserve">
+    <value>赋值前后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundlogicaloperator" xml:space="preserve">
+    <value>逻辑运算符前后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundequalityoperator" xml:space="preserve">
+    <value>相等运算符前后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundrelationaloperator" xml:space="preserve">
+    <value>关系运算符前后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundbitwiseoperator" xml:space="preserve">
+    <value>位运算符前后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundadditiveoperator" xml:space="preserve">
+    <value>加法运算符前后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundmultiplicativeoperator" xml:space="preserve">
+    <value>乘法运算符前后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundshiftoperator" xml:space="preserve">
+    <value>移位运算符前后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundnullcoalescingoperator" xml:space="preserve">
+    <value>null 合并运算符前后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafterunsafeaddressofoperator" xml:space="preserve">
+    <value>unsafe 取址运算符后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafterunsafeasteriskofoperator" xml:space="preserve">
+    <value>unsafe 指针运算符后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundunsafearrowoperator" xml:space="preserve">
+    <value>unsafe 箭头运算符前后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinparentheses" xml:space="preserve">
+    <value>括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinifparentheses" xml:space="preserve">
+    <value>"if" 括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinwhileparentheses" xml:space="preserve">
+    <value>"while" 括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinforparentheses" xml:space="preserve">
+    <value>"for" 括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinforeachparentheses" xml:space="preserve">
+    <value>"foreach" 括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithincatchparentheses" xml:space="preserve">
+    <value>"catch" 括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinswitchparentheses" xml:space="preserve">
+    <value>"switch" 括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinlockparentheses" xml:space="preserve">
+    <value>"lock" 括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinusingparentheses" xml:space="preserve">
+    <value>"using" 括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithincastparentheses" xml:space="preserve">
+    <value>强制转换括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinsizeofparentheses" xml:space="preserve">
+    <value>"sizeof" 括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforesizeofparentheses" xml:space="preserve">
+    <value>"sizeof" 括号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithintypeofparentheses" xml:space="preserve">
+    <value>"typeof" 括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinnewparentheses" xml:space="preserve">
+    <value>"new" 括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacesbetweenemptynewparentheses" xml:space="preserve">
+    <value>空 "new" 括号之间的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforenewparametercomma" xml:space="preserve">
+    <value>"new" 参数逗号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafternewparametercomma" xml:space="preserve">
+    <value>"new" 参数逗号后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforetypeofparentheses" xml:space="preserve">
+    <value>"typeof" 括号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithincheckedexpressionparentheses" xml:space="preserve">
+    <value>"checked" 表达式括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeconditionaloperatorcondition" xml:space="preserve">
+    <value>条件运算符的条件前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafterconditionaloperatorcondition" xml:space="preserve">
+    <value>条件运算符的条件后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeconditionaloperatorseparator" xml:space="preserve">
+    <value>条件运算符的分隔符前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafterconditionaloperatorseparator" xml:space="preserve">
+    <value>条件运算符的分隔符后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Brackets" xml:space="preserve">
+    <value>方括号</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinbrackets" xml:space="preserve">
+    <value>方括号内的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacesbeforebrackets" xml:space="preserve">
+    <value>方括号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforebracketcomma" xml:space="preserve">
+    <value>方括号逗号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafterbracketcomma" xml:space="preserve">
+    <value>方括号逗号后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeforsemicolon" xml:space="preserve">
+    <value>"for" 分号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafterforsemicolon" xml:space="preserve">
+    <value>"for" 分号后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceaftertypecast" xml:space="preserve">
+    <value>类型强制转换后的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforearraydeclarationbrackets" xml:space="preserve">
+    <value>数组声明方括号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceinnamedargumentafterdoublecolon" xml:space="preserve">
+    <value>双冒号后命名参数中的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Removeendoflinewhitespace" xml:space="preserve">
+    <value>移除行尾空白</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforesemicolon" xml:space="preserve">
+    <value>分号前的空格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Minimumblanklines" xml:space="preserve">
+    <value>最少空行数</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Beforeusings" xml:space="preserve">
+    <value>using 指令前</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Afterusings" xml:space="preserve">
+    <value>using 指令后</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Beforefirstdeclaration" xml:space="preserve">
+    <value>第一个声明前</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Betweentypes" xml:space="preserve">
+    <value>类型之间</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Betweenfields" xml:space="preserve">
+    <value>字段之间</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Betweeneventfields" xml:space="preserve">
+    <value>事件字段之间</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Betweenmembers" xml:space="preserve">
+    <value>成员之间</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Aroundregion" xml:space="preserve">
+    <value>区域前后</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Insideregion" xml:space="preserve">
+    <value>区域内</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Keepformatting" xml:space="preserve">
+    <value>保留格式设置</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Keepcommentsatfirstcolumn" xml:space="preserve">
+    <value>将注释保留在第一列</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Wrapping" xml:space="preserve">
+    <value>换行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Arrayinitializerwrapping" xml:space="preserve">
+    <value>数组初始值设定项换行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Arrayinitializerbracestyle" xml:space="preserve">
+    <value>数组初始值设定项的大括号风格</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Chainedmethodcallwrapping" xml:space="preserve">
+    <value>链式方法调用换行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Methodcallargumentwrapping" xml:space="preserve">
+    <value>方法调用参数换行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Newlineaftermethodcallopenparentheses" xml:space="preserve">
+    <value>方法调用左括号后换行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Methodcallclosingparenthesesonnewline" xml:space="preserve">
+    <value>方法调用右括号另起一行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indexerargumentwrapping" xml:space="preserve">
+    <value>索引器参数换行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Newlineafterindexeropenbracket" xml:space="preserve">
+    <value>索引器左方括号后换行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indexerclosingbracketonnewline" xml:space="preserve">
+    <value>索引器右方括号另起一行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Methoddeclarationparameterwrapping" xml:space="preserve">
+    <value>方法声明参数换行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Newlineaftermethoddeclarationopenparentheses" xml:space="preserve">
+    <value>方法声明左括号后换行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Methoddeclarationclosingparenthesesonnewline" xml:space="preserve">
+    <value>方法声明右括号另起一行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indexerdeclarationparameterwrapping" xml:space="preserve">
+    <value>索引器声明参数换行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Newlineafterindexerdeclarationopenbracket" xml:space="preserve">
+    <value>索引器声明左方括号后换行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indexerdeclarationclosingbracketonnewline" xml:space="preserve">
+    <value>索引器声明右方括号另起一行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Aligntofirstindexerargument" xml:space="preserve">
+    <value>对齐到第一个索引器参数</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Aligntofirstindexerdeclarationparameter" xml:space="preserve">
+    <value>对齐到第一个索引器声明参数</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Aligntofirstmethodcallargument" xml:space="preserve">
+    <value>对齐到第一个方法调用参数</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Aligntofirstmethoddeclarationparameter" xml:space="preserve">
+    <value>对齐到第一个方法声明参数</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Newlinebeforenewqueryclause" xml:space="preserve">
+    <value>新查询子句前换行</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Usingdeclarations" xml:space="preserve">
+    <value>using 声明</value>
+  </data>
 </root>

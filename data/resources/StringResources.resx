@@ -8740,4 +8740,472 @@ Press Esc to cancel this operation.</value>
   <data name="Dialog.Options.IDEOptions.IdeTheme.Note" xml:space="preserve">
     <value>The theme is applied when you choose OK and is restored on the next start.</value>
   </data>
+  <data name="CSharpBinding.Formatting.Option.Indentation" xml:space="preserve">
+    <value>Indentation</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentnamespacebody" xml:space="preserve">
+    <value>Indent namespace body</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentclassbody" xml:space="preserve">
+    <value>Indent class body</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentinterfacebody" xml:space="preserve">
+    <value>Indent interface body</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentstructbody" xml:space="preserve">
+    <value>Indent struct body</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentenumbody" xml:space="preserve">
+    <value>Indent enum body</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentmethodbody" xml:space="preserve">
+    <value>Indent method body</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentpropertybody" xml:space="preserve">
+    <value>Indent property body</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indenteventbody" xml:space="preserve">
+    <value>Indent event body</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentblocks" xml:space="preserve">
+    <value>Indent blocks</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentswitchbody" xml:space="preserve">
+    <value>Indent switch body</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentcasebody" xml:space="preserve">
+    <value>Indent case body</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentbreakstatements" xml:space="preserve">
+    <value>Indent break statements</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Alignembeddedstatements" xml:space="preserve">
+    <value>Align embedded statements</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Alignelseinifstatements" xml:space="preserve">
+    <value>Align "else" in "if" statements</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Autopropertyformatting" xml:space="preserve">
+    <value>Auto property formatting</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Simplepropertyformatting" xml:space="preserve">
+    <value>Simple property formatting</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Emptylineformatting" xml:space="preserve">
+    <value>Empty line formatting</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indentpreprocessordirectives" xml:space="preserve">
+    <value>Indent preprocessor directives</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Aligntomemberreferencedot" xml:space="preserve">
+    <value>Align to member reference dot</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Braces" xml:space="preserve">
+    <value>Braces</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Namespacebracestyle" xml:space="preserve">
+    <value>Namespace brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Classbracestyle" xml:space="preserve">
+    <value>Class brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Interfacebracestyle" xml:space="preserve">
+    <value>Interface brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Structbracestyle" xml:space="preserve">
+    <value>Struct brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Enumbracestyle" xml:space="preserve">
+    <value>Enum brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Methodbracestyle" xml:space="preserve">
+    <value>Method brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Anonymousbracestyle" xml:space="preserve">
+    <value>Anonymous brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Constructorbracestyle" xml:space="preserve">
+    <value>Constructor brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Destructorbracestyle" xml:space="preserve">
+    <value>Destructor brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Propertybracestyle" xml:space="preserve">
+    <value>Property brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Propertygetbracestyle" xml:space="preserve">
+    <value>Property "get" brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Propertysetbracestyle" xml:space="preserve">
+    <value>Property "set" brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Simplegetblockformatting" xml:space="preserve">
+    <value>Simple "get" block formatting</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Simplesetblockformatting" xml:space="preserve">
+    <value>Simple "set" block formatting</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Eventbracestyle" xml:space="preserve">
+    <value>Event brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Eventaddbracestyle" xml:space="preserve">
+    <value>Event "add" brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Eventremovebracestyle" xml:space="preserve">
+    <value>Event "remove" brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Alloweventaddblockinline" xml:space="preserve">
+    <value>Allow event "add" block inline</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Alloweventremoveblockinline" xml:space="preserve">
+    <value>Allow event "remove" block inline</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Statementbracestyle" xml:space="preserve">
+    <value>Statement brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Allowifblockinline" xml:space="preserve">
+    <value>Allow "if" block inline</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Allowonelinedarrayinitializers" xml:space="preserve">
+    <value>Allow one-lined array initializers</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Newlines" xml:space="preserve">
+    <value>New lines</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Embeddedstatementplacement" xml:space="preserve">
+    <value>Embedded statement placement</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaces" xml:space="preserve">
+    <value>Spaces</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Methods" xml:space="preserve">
+    <value>Methods</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeparentheses" xml:space="preserve">
+    <value>Space before parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebetweenparentheses" xml:space="preserve">
+    <value>Space between parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeparametercomma" xml:space="preserve">
+    <value>Space before parameter comma</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafterparametercomma" xml:space="preserve">
+    <value>Space after parameter comma</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacewithinparentheses" xml:space="preserve">
+    <value>Space within parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Methodcalls" xml:space="preserve">
+    <value>Method calls</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebetweenemptyparentheses" xml:space="preserve">
+    <value>Space between empty parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Fields" xml:space="preserve">
+    <value>Fields</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforecomma" xml:space="preserve">
+    <value>Space before comma</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceaftercomma" xml:space="preserve">
+    <value>Space after comma</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Localvariables" xml:space="preserve">
+    <value>Local variables</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforedeclarationcomma" xml:space="preserve">
+    <value>Space before declaration comma</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafterdeclarationcomma" xml:space="preserve">
+    <value>Space after declaration comma</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Constructors" xml:space="preserve">
+    <value>Constructors</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indexers" xml:space="preserve">
+    <value>Indexers</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforebracket" xml:space="preserve">
+    <value>Space before bracket</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacewithinbrackets" xml:space="preserve">
+    <value>Space within brackets</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Delegates" xml:space="preserve">
+    <value>Delegates</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Statements" xml:space="preserve">
+    <value>Statements</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforenewparentheses" xml:space="preserve">
+    <value>Space before "new" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeifparentheses" xml:space="preserve">
+    <value>Space before "if" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforewhileparentheses" xml:space="preserve">
+    <value>Space before "while" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeforparentheses" xml:space="preserve">
+    <value>Space before "for" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeforeachparentheses" xml:space="preserve">
+    <value>Space before "foreach" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforecatchparentheses" xml:space="preserve">
+    <value>Space before "catch" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeswitchparentheses" xml:space="preserve">
+    <value>Space before "switch" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforelockparentheses" xml:space="preserve">
+    <value>Space before "lock" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeusingparentheses" xml:space="preserve">
+    <value>Space before "using" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundassignment" xml:space="preserve">
+    <value>Space around assignment</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundlogicaloperator" xml:space="preserve">
+    <value>Space around logical operator</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundequalityoperator" xml:space="preserve">
+    <value>Space around equality operator</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundrelationaloperator" xml:space="preserve">
+    <value>Space around relational operator</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundbitwiseoperator" xml:space="preserve">
+    <value>Space around bitwise operator</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundadditiveoperator" xml:space="preserve">
+    <value>Space around additive operator</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundmultiplicativeoperator" xml:space="preserve">
+    <value>Space around multiplicative operator</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundshiftoperator" xml:space="preserve">
+    <value>Space around shift operator</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundnullcoalescingoperator" xml:space="preserve">
+    <value>Space around null coalescing operator</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafterunsafeaddressofoperator" xml:space="preserve">
+    <value>Space after unsafe address of operator</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafterunsafeasteriskofoperator" xml:space="preserve">
+    <value>Space after unsafe asterisk of operator</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacearoundunsafearrowoperator" xml:space="preserve">
+    <value>Space around unsafe arrow operator</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinparentheses" xml:space="preserve">
+    <value>Spaces within parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinifparentheses" xml:space="preserve">
+    <value>Spaces within "if" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinwhileparentheses" xml:space="preserve">
+    <value>Spaces within "while" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinforparentheses" xml:space="preserve">
+    <value>Spaces within "for" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinforeachparentheses" xml:space="preserve">
+    <value>Spaces within "foreach" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithincatchparentheses" xml:space="preserve">
+    <value>Spaces within "catch" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinswitchparentheses" xml:space="preserve">
+    <value>Spaces within "switch" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinlockparentheses" xml:space="preserve">
+    <value>Spaces within "lock" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinusingparentheses" xml:space="preserve">
+    <value>Spaces within "using" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithincastparentheses" xml:space="preserve">
+    <value>Spaces within cast parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinsizeofparentheses" xml:space="preserve">
+    <value>Spaces within "sizeof" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforesizeofparentheses" xml:space="preserve">
+    <value>Space before "sizeof" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithintypeofparentheses" xml:space="preserve">
+    <value>Spaces within "typeof" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinnewparentheses" xml:space="preserve">
+    <value>Spaces within "new" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacesbetweenemptynewparentheses" xml:space="preserve">
+    <value>Spaces between empty "new" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforenewparametercomma" xml:space="preserve">
+    <value>Space before "new" parameter comma</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafternewparametercomma" xml:space="preserve">
+    <value>Space after "new" parameter comma</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforetypeofparentheses" xml:space="preserve">
+    <value>Space before "typeof" parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithincheckedexpressionparentheses" xml:space="preserve">
+    <value>Spaces within "checked" expression parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeconditionaloperatorcondition" xml:space="preserve">
+    <value>Space before conditional operator condition</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafterconditionaloperatorcondition" xml:space="preserve">
+    <value>Space after conditional operator condition</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeconditionaloperatorseparator" xml:space="preserve">
+    <value>Space before conditional operator separator</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafterconditionaloperatorseparator" xml:space="preserve">
+    <value>Space after conditional operator separator</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Brackets" xml:space="preserve">
+    <value>Brackets</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceswithinbrackets" xml:space="preserve">
+    <value>Spaces within brackets</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacesbeforebrackets" xml:space="preserve">
+    <value>Spaces before brackets</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforebracketcomma" xml:space="preserve">
+    <value>Space before bracket comma</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafterbracketcomma" xml:space="preserve">
+    <value>Space after bracket comma</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforeforsemicolon" xml:space="preserve">
+    <value>Space before "for" semicolon</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceafterforsemicolon" xml:space="preserve">
+    <value>Space after "for" semicolon</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceaftertypecast" xml:space="preserve">
+    <value>Space after type cast</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforearraydeclarationbrackets" xml:space="preserve">
+    <value>Space before array declaration brackets</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spaceinnamedargumentafterdoublecolon" xml:space="preserve">
+    <value>Space in named argument after double colon</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Removeendoflinewhitespace" xml:space="preserve">
+    <value>Remove end of line whitespace</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Spacebeforesemicolon" xml:space="preserve">
+    <value>Space before semicolon</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Minimumblanklines" xml:space="preserve">
+    <value>Minimum blank lines</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Beforeusings" xml:space="preserve">
+    <value>Before usings</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Afterusings" xml:space="preserve">
+    <value>After usings</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Beforefirstdeclaration" xml:space="preserve">
+    <value>Before first declaration</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Betweentypes" xml:space="preserve">
+    <value>Between types</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Betweenfields" xml:space="preserve">
+    <value>Between fields</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Betweeneventfields" xml:space="preserve">
+    <value>Between event fields</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Betweenmembers" xml:space="preserve">
+    <value>Between members</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Aroundregion" xml:space="preserve">
+    <value>Around region</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Insideregion" xml:space="preserve">
+    <value>Inside region</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Keepformatting" xml:space="preserve">
+    <value>Keep formatting</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Keepcommentsatfirstcolumn" xml:space="preserve">
+    <value>Keep comments at first column</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Wrapping" xml:space="preserve">
+    <value>Wrapping</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Arrayinitializerwrapping" xml:space="preserve">
+    <value>Array initializer wrapping</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Arrayinitializerbracestyle" xml:space="preserve">
+    <value>Array initializer brace style</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Chainedmethodcallwrapping" xml:space="preserve">
+    <value>Chained method call wrapping</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Methodcallargumentwrapping" xml:space="preserve">
+    <value>Method call argument wrapping</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Newlineaftermethodcallopenparentheses" xml:space="preserve">
+    <value>New line after method call open parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Methodcallclosingparenthesesonnewline" xml:space="preserve">
+    <value>Method call closing parentheses on new line</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indexerargumentwrapping" xml:space="preserve">
+    <value>Indexer argument wrapping</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Newlineafterindexeropenbracket" xml:space="preserve">
+    <value>New line after indexer open bracket</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indexerclosingbracketonnewline" xml:space="preserve">
+    <value>Indexer closing bracket on new line</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Methoddeclarationparameterwrapping" xml:space="preserve">
+    <value>Method declaration parameter wrapping</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Newlineaftermethoddeclarationopenparentheses" xml:space="preserve">
+    <value>New line after method declaration open parentheses</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Methoddeclarationclosingparenthesesonnewline" xml:space="preserve">
+    <value>Method declaration closing parentheses on new line</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indexerdeclarationparameterwrapping" xml:space="preserve">
+    <value>Indexer declaration parameter wrapping</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Newlineafterindexerdeclarationopenbracket" xml:space="preserve">
+    <value>New line after indexer declaration open bracket</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Indexerdeclarationclosingbracketonnewline" xml:space="preserve">
+    <value>Indexer declaration closing bracket on new line</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Aligntofirstindexerargument" xml:space="preserve">
+    <value>Align to first indexer argument</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Aligntofirstindexerdeclarationparameter" xml:space="preserve">
+    <value>Align to first indexer declaration parameter</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Aligntofirstmethodcallargument" xml:space="preserve">
+    <value>Align to first method call argument</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Aligntofirstmethoddeclarationparameter" xml:space="preserve">
+    <value>Align to first method declaration parameter</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Newlinebeforenewqueryclause" xml:space="preserve">
+    <value>New line before new query clause</value>
+  </data>
+  <data name="CSharpBinding.Formatting.Option.Usingdeclarations" xml:space="preserve">
+    <value>Using declarations</value>
+  </data>
 </root>
