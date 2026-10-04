@@ -62,6 +62,11 @@
   <ItemGroup>
     <_DesignerAddinProject Include="../../src/AddIns/DisplayBindings/GtkDesigner/GtkDesigner.csproj" />
     <_DesignerAddinProject Include="../../src/AddIns/DisplayBindings/MewUIDesigner/MewUIDesigner.csproj" />
+    <!-- The WinForms designer addin itself (its out-of-process Host is built below). Without it, a
+         version bump leaves a stale FormsDesigner.dll bound to the previous DesignerCanvas version,
+         and every WinForms/Gtk designer test fails with od.forms-designer.status 400 /
+         FileNotFoundException for ICSharpCode.DesignerCanvas. -->
+    <_DesignerAddinProject Include="../../src/AddIns/DisplayBindings/FormsDesigner/Project/FormsDesigner.csproj" />
   </ItemGroup>
   <Target Name="BuildDesignerAddinsForIntegrationTests" BeforeTargets="Build"
           DependsOnTargets="RestoreIntegrationRuntimeProjects">
