@@ -1,8 +1,9 @@
 <Window x:Class="ICSharpCode.AndroidSdkManager.AndroidSdkManagerWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
         xmlns:tv="http://icsharpcode.net/sharpdevelop/treeview"
-        Title="Android SDKs and Tools"
+        Title="{core:Localize AndroidSdkManager.Title}"
         Height="520" Width="700"
         WindowStartupLocation="CenterOwner">
 	<Grid Margin="8">
@@ -19,7 +20,7 @@
 				<ColumnDefinition Width="*"/>
 				<ColumnDefinition Width="Auto"/>
 			</Grid.ColumnDefinitions>
-			<TextBlock Text="Android SDK Location:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+			<TextBlock Text="{core:Localize AndroidSdkManager.SdkLocationLabel}" VerticalAlignment="Center" Margin="0,0,8,0"/>
 			<ComboBox x:Name="sdkLocationComboBox" Grid.Column="1" IsEditable="True"
 			          SelectionChanged="SdkLocationComboBox_SelectionChanged"
 			          LostFocus="SdkLocationComboBox_LostFocus"/>
@@ -29,48 +30,48 @@
 
 		<!-- Platforms / Tools tabs -->
 		<TabControl Grid.Row="1" x:Name="tabControl">
-			<TabItem Header="Platforms">
+			<TabItem Header="{core:Localize AndroidSdkManager.Platforms}">
 				<DockPanel>
-					<TextBlock DockPanel.Dock="Top" Text="Check or uncheck items to install or remove."
+					<TextBlock DockPanel.Dock="Top" Text="{core:Localize AndroidSdkManager.Hint}"
 					           Margin="0,4,0,4"/>
 					<tv:SharpTreeView x:Name="platformsTreeView" ShowRoot="False" ShowLines="False">
 						<ListView.View>
 							<tv:SharpGridView>
 								<tv:SharpGridView.Columns>
-									<GridViewColumn Header="Name" Width="280">
+									<GridViewColumn Header="{core:Localize AndroidSdkManager.Name}" Width="280">
 										<GridViewColumn.CellTemplate>
 											<DataTemplate>
 												<tv:SharpTreeNodeView/>
 											</DataTemplate>
 										</GridViewColumn.CellTemplate>
 									</GridViewColumn>
-									<GridViewColumn Header="Version" Width="90" DisplayMemberBinding="{Binding VersionText}"/>
-									<GridViewColumn Header="Size" Width="80" DisplayMemberBinding="{Binding Size}"/>
-									<GridViewColumn Header="Status" Width="120" DisplayMemberBinding="{Binding StatusText}"/>
+									<GridViewColumn Header="{core:Localize AndroidSdkManager.Version}" Width="90" DisplayMemberBinding="{Binding VersionText}"/>
+									<GridViewColumn Header="{core:Localize AndroidSdkManager.Size}" Width="80" DisplayMemberBinding="{Binding Size}"/>
+									<GridViewColumn Header="{core:Localize AndroidSdkManager.Status}" Width="120" DisplayMemberBinding="{Binding StatusText}"/>
 								</tv:SharpGridView.Columns>
 							</tv:SharpGridView>
 						</ListView.View>
 					</tv:SharpTreeView>
 				</DockPanel>
 			</TabItem>
-			<TabItem Header="Tools">
+			<TabItem Header="{core:Localize AndroidSdkManager.Tools}">
 				<DockPanel>
-					<TextBlock DockPanel.Dock="Top" Text="Check or uncheck items to install or remove."
+					<TextBlock DockPanel.Dock="Top" Text="{core:Localize AndroidSdkManager.Hint}"
 					           Margin="0,4,0,4"/>
 					<tv:SharpTreeView x:Name="toolsTreeView" ShowRoot="False" ShowLines="False">
 						<ListView.View>
 							<tv:SharpGridView>
 								<tv:SharpGridView.Columns>
-									<GridViewColumn Header="Name" Width="330">
+									<GridViewColumn Header="{core:Localize AndroidSdkManager.Name}" Width="330">
 										<GridViewColumn.CellTemplate>
 											<DataTemplate>
 												<tv:SharpTreeNodeView/>
 											</DataTemplate>
 										</GridViewColumn.CellTemplate>
 									</GridViewColumn>
-									<GridViewColumn Header="Version" Width="90" DisplayMemberBinding="{Binding VersionText}"/>
-									<GridViewColumn Header="Size" Width="80" DisplayMemberBinding="{Binding Size}"/>
-									<GridViewColumn Header="Status" Width="120" DisplayMemberBinding="{Binding StatusText}"/>
+									<GridViewColumn Header="{core:Localize AndroidSdkManager.Version}" Width="90" DisplayMemberBinding="{Binding VersionText}"/>
+									<GridViewColumn Header="{core:Localize AndroidSdkManager.Size}" Width="80" DisplayMemberBinding="{Binding Size}"/>
+									<GridViewColumn Header="{core:Localize AndroidSdkManager.Status}" Width="120" DisplayMemberBinding="{Binding StatusText}"/>
 								</tv:SharpGridView.Columns>
 							</tv:SharpGridView>
 						</ListView.View>
@@ -89,9 +90,9 @@
 			</Grid.ColumnDefinitions>
 			<Button x:Name="updatesAvailableButton" Grid.Column="0" Content="0 Updates Available"
 			        Padding="8,2" Click="UpdatesAvailableButton_Click"/>
-			<TextBlock x:Name="installCountText" Grid.Column="2" Text="Install: 0"
+			<TextBlock x:Name="installCountText" Grid.Column="2" Text="{core:Localize AndroidSdkManager.InstallCount}"
 			           VerticalAlignment="Center" Margin="0,0,8,0"/>
-			<Button x:Name="applyChangesButton" Grid.Column="3" Content="Apply Changes"
+			<Button x:Name="applyChangesButton" Grid.Column="3" Content="{core:Localize AndroidSdkManager.ApplyChanges}"
 			        Padding="12,4" IsEnabled="False" Click="ApplyChangesButton_Click"/>
 		</Grid>
 	</Grid>

@@ -8817,4 +8817,214 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
   <data name="CSharpBinding.Formatting.Option.Usingdeclarations" xml:space="preserve">
     <value>using 宣告</value>
   </data>
+  <data name="AndroidSdkManager.Title" xml:space="preserve">
+    <value>Android SDK 與工具</value>
+  </data>
+  <data name="AndroidSdkManager.SdkLocationLabel" xml:space="preserve">
+    <value>Android SDK 位置：</value>
+  </data>
+  <data name="AndroidSdkManager.Platforms" xml:space="preserve">
+    <value>平台</value>
+  </data>
+  <data name="AndroidSdkManager.Hint" xml:space="preserve">
+    <value>核取或取消核取項目以安裝或移除。</value>
+  </data>
+  <data name="AndroidSdkManager.Name" xml:space="preserve">
+    <value>名稱</value>
+  </data>
+  <data name="AndroidSdkManager.Version" xml:space="preserve">
+    <value>版本</value>
+  </data>
+  <data name="AndroidSdkManager.Size" xml:space="preserve">
+    <value>大小</value>
+  </data>
+  <data name="AndroidSdkManager.Status" xml:space="preserve">
+    <value>狀態</value>
+  </data>
+  <data name="AndroidSdkManager.Tools" xml:space="preserve">
+    <value>工具</value>
+  </data>
+  <data name="AndroidSdkManager.InstallCount" xml:space="preserve">
+    <value>安裝：0</value>
+  </data>
+  <data name="AndroidSdkManager.ApplyChanges" xml:space="preserve">
+    <value>套用變更</value>
+  </data>
+  <data name="AspNetMvc.AddView.Title" xml:space="preserve">
+    <value>新增檢視</value>
+  </data>
+  <data name="AspNetMvc.AddView.ViewName" xml:space="preserve">
+    <value>檢視名稱：</value>
+  </data>
+  <data name="AspNetMvc.AddView.ViewEngine" xml:space="preserve">
+    <value>檢視引擎：</value>
+  </data>
+  <data name="AspNetMvc.AddView.StronglyTyped" xml:space="preserve">
+    <value>強型別：</value>
+  </data>
+  <data name="AspNetMvc.AddView.Model" xml:space="preserve">
+    <value>模型：</value>
+  </data>
+  <data name="AspNetMvc.AddView.Template" xml:space="preserve">
+    <value>範本：</value>
+  </data>
+  <data name="AspNetMvc.AddView.UseMasterPage" xml:space="preserve">
+    <value>使用主版頁面：</value>
+  </data>
+  <data name="AspNetMvc.AddView.UseLayout" xml:space="preserve">
+    <value>使用版面配置：</value>
+  </data>
+  <data name="AspNetMvc.AddView.MasterPage" xml:space="preserve">
+    <value>主版頁面：</value>
+  </data>
+  <data name="AspNetMvc.AddView.Layout" xml:space="preserve">
+    <value>版面配置：</value>
+  </data>
+  <data name="AspNetMvc.AddView.MainContentId" xml:space="preserve">
+    <value>主要內容 ID：</value>
+  </data>
+  <data name="AspNetMvc.AddView.PartialView" xml:space="preserve">
+    <value>部分檢視：</value>
+  </data>
+  <data name="AspNetMvc.AddView.SelectMasterPage" xml:space="preserve">
+    <value>選擇主版頁面</value>
+  </data>
+  <data name="AspNetMvc.AddView.SelectLayoutPage" xml:space="preserve">
+    <value>選擇版面配置頁</value>
+  </data>
+  <data name="AspNetMvc.AddView.File" xml:space="preserve">
+    <value>檔案</value>
+  </data>
+  <data name="AspNetMvc.AddView.ProjectFolder" xml:space="preserve">
+    <value>專案資料夾</value>
+  </data>
+  <data name="RegExpTk.Title" xml:space="preserve">
+    <value>規則運算式工具組</value>
+  </data>
+  <data name="RegExpTk.Regex" xml:space="preserve">
+    <value>規則運算式：</value>
+  </data>
+  <data name="RegExpTk.IgnoreCase" xml:space="preserve">
+    <value>忽略大小寫</value>
+  </data>
+  <data name="RegExpTk.Multiline" xml:space="preserve">
+    <value>多行</value>
+  </data>
+  <data name="RegExpTk.Replace" xml:space="preserve">
+    <value>取代</value>
+  </data>
+  <data name="RegExpTk.ReplaceWith" xml:space="preserve">
+    <value>取代為：</value>
+  </data>
+  <data name="RegExpTk.Find" xml:space="preserve">
+    <value>尋找</value>
+  </data>
+  <data name="Global.Close" xml:space="preserve">
+    <value>關閉</value>
+  </data>
+  <data name="RegExpTk.ShowGroups" xml:space="preserve">
+    <value>顯示群組...</value>
+  </data>
+  <data name="RegExpTk.Value" xml:space="preserve">
+    <value>值</value>
+  </data>
+  <data name="RegExpTk.Index" xml:space="preserve">
+    <value>索引</value>
+  </data>
+  <data name="RegExpTk.End" xml:space="preserve">
+    <value>結束</value>
+  </data>
+  <data name="RegExpTk.Length" xml:space="preserve">
+    <value>長度</value>
+  </data>
+  <data name="RegExpTk.Groups" xml:space="preserve">
+    <value>群組</value>
+  </data>
+  <data name="RegExpTk.Ready" xml:space="preserve">
+    <value>就緒</value>
+  </data>
+  <data name="PackageManagement.Add" xml:space="preserve">
+    <value>新增</value>
+  </data>
+  <data name="PackageManagement.Remove" xml:space="preserve">
+    <value>移除</value>
+  </data>
+  <data name="PackageManagement.Manage" xml:space="preserve">
+    <value>管理</value>
+  </data>
+  <data name="PackageManagement.CreatedBy" xml:space="preserve">
+    <value>建立者：</value>
+  </data>
+  <data name="PackageManagement.Id" xml:space="preserve">
+    <value>ID：</value>
+  </data>
+  <data name="PackageManagement.Version" xml:space="preserve">
+    <value>版本：</value>
+  </data>
+  <data name="PackageManagement.LastPublished" xml:space="preserve">
+    <value>上次發佈：</value>
+  </data>
+  <data name="PackageManagement.Downloads" xml:space="preserve">
+    <value>下載次數：</value>
+  </data>
+  <data name="PackageManagement.Rating" xml:space="preserve">
+    <value>評分：</value>
+  </data>
+  <data name="PackageManagement.ViewLicenseTerms" xml:space="preserve">
+    <value>檢視授權條款</value>
+  </data>
+  <data name="PackageManagement.MoreInformation" xml:space="preserve">
+    <value>更多資訊</value>
+  </data>
+  <data name="PackageManagement.ReportAbuse" xml:space="preserve">
+    <value>檢舉濫用</value>
+  </data>
+  <data name="PackageManagement.Dependencies" xml:space="preserve">
+    <value>相依性：</value>
+  </data>
+  <data name="PackageManagement.None" xml:space="preserve">
+    <value>無</value>
+  </data>
+  <data name="PackageManagement.IncludePrerelease" xml:space="preserve">
+    <value>包含發行前版本</value>
+  </data>
+  <data name="PackageManagement.UpdateAll" xml:space="preserve">
+    <value>全部更新</value>
+  </data>
+  <data name="AvdEditor.Title" xml:space="preserve">
+    <value>Android 虛擬裝置編輯器</value>
+  </data>
+  <data name="AvdEditor.Name" xml:space="preserve">
+    <value>名稱：</value>
+  </data>
+  <data name="AvdEditor.BaseDevice" xml:space="preserve">
+    <value>基礎裝置：</value>
+  </data>
+  <data name="AvdEditor.Processor" xml:space="preserve">
+    <value>處理器：</value>
+  </data>
+  <data name="AvdEditor.Os" xml:space="preserve">
+    <value>作業系統：</value>
+  </data>
+  <data name="AvdEditor.Property" xml:space="preserve">
+    <value>屬性</value>
+  </data>
+  <data name="AvdEditor.Value" xml:space="preserve">
+    <value>值</value>
+  </data>
+  <data name="AvdEditor.Details" xml:space="preserve">
+    <value>詳細資料</value>
+  </data>
+  <data name="AvdEditor.AddProperty" xml:space="preserve">
+    <value>新增屬性：</value>
+  </data>
+  <data name="AvdEditor.Add" xml:space="preserve">
+    <value>新增</value>
+  </data>
+  <data name="AvdEditor.Save" xml:space="preserve">
+    <value>儲存</value>
+  </data>
+  <data name="AvdEditor.PropertyHeader" xml:space="preserve">
+    <value>屬性</value>
+  </data>
 </root>

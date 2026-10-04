@@ -68,7 +68,7 @@
 					x:Name="addPackageButton"
 					automation:AutomationProperties.AutomationId="AddPackageButton"
 					Grid.Column="2"
-					Content="Add"
+					Content="{core:Localize PackageManagement.Add}"
 					IsDefault="True"
 					Visibility="Collapsed"
 					Command="{Binding Path=AddPackageCommand}"
@@ -76,7 +76,7 @@
 				<Button
 					x:Name="removePackageButton"
 					Grid.Column="2"
-					Content="Remove"
+					Content="{core:Localize PackageManagement.Remove}"
 					IsDefault="True"
 					Visibility="Collapsed"
 					Command="{Binding Path=RemovePackageCommand}"
@@ -84,7 +84,7 @@
 				<Button
 					x:Name="managePackageButton"
 					Grid.Column="2"
-					Content="Manage"
+					Content="{core:Localize PackageManagement.Manage}"
 					IsDefault="True"
 					Visibility="Collapsed"
 					Command="{Binding Path=ManagePackageCommand}"
@@ -151,7 +151,7 @@
 						Orientation="Horizontal"
 						Margin="0, 4">
 						<TextBlock
-							Text="Created by:"
+							Text="{core:Localize PackageManagement.CreatedBy}"
 							FontWeight="Bold"/>
 						<ItemsControl
 							Margin="4, 0"
@@ -161,7 +161,7 @@
 						Orientation="Horizontal"
 						Margin="0, 4">
 						<TextBlock
-							Text="Id:"
+							Text="{core:Localize PackageManagement.Id}"
 							FontWeight="Bold"
 							Margin="0, 0, 4, 0"/>
 						<TextBlock Visibility="{Binding Path=HasGalleryUrl, Converter={StaticResource BoolToVisibility}}">
@@ -179,7 +179,7 @@
 						Orientation="Horizontal"
 						Margin="0, 4">
 						<TextBlock
-							Text="Version:"
+							Text="{core:Localize PackageManagement.Version}"
 							FontWeight="Bold"
 							Margin="0, 0, 4, 0"/>
 						<TextBlock Text="{Binding Path=Version}"/>
@@ -190,7 +190,7 @@
 						Margin="0, 4">
 						<TextBlock
 							Margin="0, 0, 4, 0"
-							Text="Last Published:"
+							Text="{core:Localize PackageManagement.LastPublished}"
 							FontWeight="Bold"/>
 						<TextBlock Text="{Binding Path=LastPublished, StringFormat=d}"/>
 					</StackPanel>
@@ -200,7 +200,7 @@
 						Margin="0, 4">
 						<TextBlock
 							Margin="0, 0, 4, 0"
-							Text="Downloads:"
+							Text="{core:Localize PackageManagement.Downloads}"
 							FontWeight="Bold"/>
 						<TextBlock Text="{Binding Path=DownloadCount}"/>
 					</StackPanel>
@@ -210,7 +210,7 @@
 						Margin="0, 4">
 						<TextBlock
 							Margin="0, 0, 4, 0"
-							Text="Rating:"
+							Text="{core:Localize PackageManagement.Rating}"
 							FontWeight="Bold"/>
 						<TextBlock Text="{Binding Path=Rating}"/>
 					</StackPanel>
@@ -219,7 +219,7 @@
 						<Hyperlink
 							Command="{StaticResource OpenHyperlinkCommand}"
 							CommandParameter="{Binding Path=LicenseUrl}">
-							<TextBlock Text="View License Terms"/>
+							<TextBlock Text="{core:Localize PackageManagement.ViewLicenseTerms}"/>
 						</Hyperlink>
 					</TextBlock>
 					<TextBlock
@@ -227,7 +227,7 @@
 						<Hyperlink
 							Command="{StaticResource OpenHyperlinkCommand}"
 							CommandParameter="{Binding Path=ProjectUrl}">
-							<TextBlock Text="More Information"/>
+							<TextBlock Text="{core:Localize PackageManagement.MoreInformation}"/>
 						</Hyperlink>
 					</TextBlock>
 					<TextBlock
@@ -235,7 +235,7 @@
 						<Hyperlink
 							Command="{StaticResource OpenHyperlinkCommand}"
 							CommandParameter="{Binding Path=ReportAbuseUrl}">
-							<TextBlock Text="Report Abuse"/>
+							<TextBlock Text="{core:Localize PackageManagement.ReportAbuse}"/>
 						</Hyperlink>
 					</TextBlock>
 					<TextBlock
@@ -245,11 +245,11 @@
 					<StackPanel Margin="0, 4">
 						<StackPanel Orientation="Horizontal">
 							<TextBlock
-								Text="Dependencies:"
+								Text="{core:Localize PackageManagement.Dependencies}"
 								Margin="0, 0, 4, 0"
 								FontWeight="Bold"/>
 							<TextBlock
-								Text="None"
+								Text="{core:Localize PackageManagement.None}"
 								Visibility="{Binding Path=HasNoDependencies, Converter={StaticResource BoolToVisibility}}"/>
 						</StackPanel>
 						<ItemsControl 
@@ -382,7 +382,7 @@
 					Grid.Row="2"
 					Grid.ColumnSpan="2"
 					Margin="2"
-					Content="Include Prerelease"
+					Content="{core:Localize PackageManagement.IncludePrerelease}"
 					Visibility="{Binding Path=ShowPrerelease, Converter={StaticResource BoolToVisibility}}"
 					IsChecked="{Binding Path=IncludePrerelease}"/>
 				<Button
@@ -390,7 +390,7 @@
 					Grid.Column="1"
 					Margin="2"
 					Visibility="{Binding Path=IsUpdateAllPackagesEnabled, Converter={StaticResource BoolToVisibility}}"
-					Content="Update All"
+					Content="{core:Localize PackageManagement.UpdateAll}"
 					Command="{Binding Path=UpdateAllPackagesCommand}"/>
 			</Grid>
 			<ContentControl
