@@ -274,9 +274,14 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
         var views = view.WorkbenchWindow?.ViewContents;
         if (views != null && views.Count > 1)
         {
-            for (var index = 1; index < views.Count; index++)
+            // ViewContents is not a stable "source first, designer second" contract.  A
+            // source/design activation round trip can reorder it, which made index 0 the WPF
+            // designer and caused this old index-1 scan to select the source's empty container.
+            // Inspect every sibling and skip the currently active source view; the remaining
+            // designer container is document-owned regardless of tab/focus order.
+            foreach (var candidate in views)
             {
-                if (views[index] is IHasPropertyContainer designerContainer)
+                if (!ReferenceEquals(candidate, view) && candidate is IHasPropertyContainer designerContainer)
                     return designerContainer;
             }
         }

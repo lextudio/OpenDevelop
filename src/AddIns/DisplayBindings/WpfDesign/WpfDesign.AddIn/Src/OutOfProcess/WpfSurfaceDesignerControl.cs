@@ -246,8 +246,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// see <see cref="Show"/>.</summary>
 		public async Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
 		{
-			state = await client.UpdateAsync(snapshot, cancellationToken).ConfigureAwait(false);
-			return state;
+			var updated = await client.UpdateAsync(snapshot, cancellationToken).ConfigureAwait(false);
+			// session/update is allowed to be incremental just like design/select.  Do not assign it
+			// to state here: callers deliberately hand the result to Show(), and overwriting state
+			// first loses the last complete tree before Show() has a chance to merge it.  That was
+			// exposed by redo followed by a selection from the Source half: the frame updated, but
+			// the Properties pad could no longer construct an adapter for the selected element.
+			updated.Tree ??= state?.Tree;
+			return updated;
 		}
 
 		/// <summary>Renders <paramref name="newState"/>'s frame and re-places the selection.
@@ -382,7 +388,21 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			{
 				var newState = client.SelectAsync(RequireVersion(), controller.SelectedElementName).GetAwaiter().GetResult();
 				if (newState.Render != null)
+				{
+					// design/select is normally an incremental response.  When selecting inside a
+					// collapsed Expander it includes a new frame, but the host need not repeat
+					// the unchanged design tree.  Replacing the full state with that frame-only
+					// response made Show() index an empty tree and drop the very selection that
+					// initiated the call (notably after undo/redo, when a render is common).
+					newState.Tree ??= state.Tree;
 					Show(newState);
+					// Show() reapplies the controller selection against the newly committed tree.
+					// The first notification above occurred before this incremental frame arrived;
+					// it can therefore give Properties an adapter from the pre-update controller (or
+					// none at all after undo/redo). Notify again only after Show has made the new
+					// tree and selection authoritative.
+					SelectionChanged?.Invoke(this, EventArgs.Empty);
+				}
 			}
 			catch (Exception)
 			{
@@ -417,6 +437,13 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// passing it selects the Window/UserControl itself.</summary>
 		public void SelectElementId(string? id)
 		{
+			// A preceding incremental host response (for example after redo followed by
+			// design/select) may have updated the displayed frame without repopulating the
+			// controller's lookup table.  Programmatic selection is addressed by the current
+			// session tree, so make that tree authoritative before RestoreSelection consults
+			// its index.
+			if (state != null)
+				controller.ApplySnapshot(state);
 			controller.RestoreSelection(id == null ? Array.Empty<string>() : new[] { NodeById(id)?.Id ?? id });
 			NotifySelectionChanged();
 			UpdateSelectionChrome();

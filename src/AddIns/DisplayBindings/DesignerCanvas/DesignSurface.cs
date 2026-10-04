@@ -171,8 +171,22 @@ public class DesignSurface : DesignerCanvas
 		PreviewMouseLeftButtonDown += OnMouseLeftButtonDown;
 		scroller.ScrollChanged += OnScrollChanged;
 		scroller.SizeChanged += (_, _) => ApplyViewport();
+		// A designer may receive its first frame while its document tab is still hidden.  In
+		// that state the ScrollViewer has a zero viewport, so SetRender deliberately cannot
+		// place the bitmap yet.  Switching back to the tab is not a new backend render, and
+		// some hosts do not produce a SizeChanged notification for that transition.  Reapply
+		// the retained frame after WPF has made the surface visible and arranged it; otherwise
+		// a perfectly valid GTK/remote frame looks like an empty canvas only in long, tab-heavy
+		// sessions such as the full integration suite.
+		Loaded += (_, _) => QueueViewportAfterLayout();
+		IsVisibleChanged += (_, _) => { if (IsVisible) QueueViewportAfterLayout(); };
 
 		ApplyDesignTheme(IsDarkTheme);
+	}
+
+	void QueueViewportAfterLayout()
+	{
+		Dispatcher.BeginInvoke(new Action(ApplyViewport));
 	}
 
 	int zoomComboSyncIndex;

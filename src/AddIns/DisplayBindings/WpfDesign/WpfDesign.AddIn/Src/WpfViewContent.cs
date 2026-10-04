@@ -272,7 +272,12 @@ namespace ICSharpCode.WpfDesign.AddIn
 				hasLoadedOnce = true;
 				UpdateTasks(state.Diagnostics);
 				UpdateOutline(state);
-				propertyContainer.SelectedObject = null;
+				// A Source/Design focus change can finish this asynchronous load after the user has
+				// already reselected an element.  Clearing unconditionally here races that selection
+				// and leaves the document-owned Properties pad empty even though the surface still
+				// has a valid selected adapter.  Synchronize from the committed surface instead; an
+				// initial load naturally produces an empty container because it has no selection.
+				OnSelectionChanged(surfaceControl, EventArgs.Empty);
 				// Baseline for Undo/Redo: the first mutation's OnDocumentChanged pushes THIS text
 				// (not the not-yet-fetched post-mutation text) onto undoStack.
 				LoggingService.Info("WPF designer: flushing initial document baseline");
