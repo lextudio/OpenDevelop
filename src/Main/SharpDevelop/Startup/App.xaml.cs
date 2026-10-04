@@ -34,7 +34,14 @@ namespace ICSharpCode.SharpDevelop.Startup
 			InitializeComponent();
 			if (IsDevFlowEnabled())
 			{
-				this.AddWpfDevFlowAgent(new AgentOptions { Port = GetAgentPort() });
+				this.AddWpfDevFlowAgent(new AgentOptions {
+					Port = GetAgentPort(),
+					// Integration tests deliberately keep a modal command request open while
+					// driving its dialog through another DevFlow request.  There is one
+					// controlled test client in OD_TEST_MODE, so the general-purpose mutation
+					// lease would only deadlock that valid workflow.
+					RequireMutationLease = Environment.GetEnvironmentVariable("OD_TEST_MODE") != "1"
+				});
 			}
 			// Log the exception instead of dying silently: an unhandled dispatcher exception
 			// otherwise exits the process without a trace in the captured stdout/stderr (measured

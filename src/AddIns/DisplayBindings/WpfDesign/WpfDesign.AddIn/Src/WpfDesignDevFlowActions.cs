@@ -133,6 +133,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				toolboxItemCount = toolboxItems.Length,
 				toolboxGroupCount = toolboxItems.Select(i => i.CategoryName).Distinct().Count(),
 				toolboxFilterText = SharedToolbox.Instance.FilterText,
+				toolboxDrag = SharedToolbox.Instance.DragDiagnostic,
 				toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true,
 				outlineRootName = state?.Tree?.Name ?? state?.Tree?.Type,
 				outlineChildCount = state?.Tree?.Children.Count ?? 0,
@@ -476,6 +477,21 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		{
 			var topLeft = element.PointToScreen(new Point(0, 0));
 			var bottomRight = element.PointToScreen(new Point(element.RenderSize.Width, element.RenderSize.Height));
+			// Raw DevFlow press/drag-move/release endpoints feed their coordinates straight
+			// to cliclick on macOS. LibreWPF can expose client-relative PointToScreen values
+			// while its portable presentation source is active, so calibrate both corners to
+			// the real NSWindow content origin just as WpfAgentService does for element taps.
+			// Without this, the reported Toolbox row is shifted by the main-window origin and
+			// a real drag never even raises the Toolbox's PreviewMouseDown handler.
+			if (OperatingSystem.IsMacOS()
+				&& Window.GetWindow(element) is { } window
+				&& MacOSWindowOrigin.TryGetKeyWindowContentOrigin() is { } nativeOrigin)
+			{
+				var reportedOrigin = window.PointToScreen(new Point());
+				var delta = new Vector(nativeOrigin.X - reportedOrigin.X, nativeOrigin.Y - reportedOrigin.Y);
+				topLeft += delta;
+				bottomRight += delta;
+			}
 			return new {
 				success = true,
 				x = topLeft.X,

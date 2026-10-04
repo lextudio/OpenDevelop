@@ -236,6 +236,14 @@ namespace ICSharpCode.SharpDevelop.Gui
 		/// externally driven tool change back onto the visible selection.</summary>
 		public void Select(SharedToolboxItem item) => toolbox.SelectedItem = item;
 
+		/// <summary>The visible row with this display name (case-insensitive), so a caller that
+		/// cannot press the row itself - a DevFlow probe - can still reproduce what a user's click
+		/// selects. Only currently shown rows are found: the filter and the active scopes decide
+		/// what a user could have clicked.</summary>
+		public SharedToolboxItem FindVisibleItem(string displayName) =>
+			itemsView.View.Cast<SharedToolboxItem>().FirstOrDefault(item =>
+				string.Equals(item.DisplayName, displayName, StringComparison.OrdinalIgnoreCase));
+
 		/// <summary>Filters the shared list down to the given scopes and selects that scope's
 		/// first ("Pointer") row - call this right before handing <see cref="ToolboxControl"/> to
 		/// an <see cref="IToolsHost.ToolsContent"/> caller, so the one shared ListBox shows only

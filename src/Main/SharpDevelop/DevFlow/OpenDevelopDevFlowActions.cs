@@ -1220,6 +1220,10 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		[return: MarshalAs(UnmanagedType.I1)]
 		static extern bool ObjCSendReturningBool(IntPtr receiver, IntPtr selector);
 
+		[DllImport(ObjectiveCRuntime, EntryPoint = "objc_msgSend")]
+		[return: MarshalAs(UnmanagedType.I1)]
+		static extern bool ObjCSendULongReturningBool(IntPtr receiver, IntPtr selector, ulong value);
+
 		/// <summary>
 		/// [NSApp activateIgnoringOtherApps:YES], then reports NSRunningApplication
 		/// .currentApplication.isActive. Returns false rather than throwing if any of the lookups
@@ -1234,7 +1238,17 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 					return false;
 				ObjCSendBool(application, ObjCSelector("activateIgnoringOtherApps:"), true);
 				var running = ObjCSend(ObjCGetClass("NSRunningApplication"), ObjCSelector("currentApplication"));
-				return running != IntPtr.Zero && ObjCSendReturningBool(running, ObjCSelector("isActive"));
+				if (running == IntPtr.Zero)
+					return false;
+				// NSApp activation is asynchronous under the GLFW/AppKit bridge. Ask the
+				// process object too, then wait only for the verified state to settle.
+				ObjCSendULongReturningBool(running, ObjCSelector("activateWithOptions:"), 1);
+				for (var attempt = 0; attempt != 8; attempt++) {
+					if (ObjCSendReturningBool(running, ObjCSelector("isActive")))
+						return true;
+					Thread.Sleep(25);
+				}
+				return false;
 			} catch (Exception ex) {
 				LoggingService.Warn("od.activate: NSApplication activation failed: " + ex.Message);
 				return false;
@@ -3434,7 +3448,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return null;
 		}
 
-		[DevFlowAction("od.tools-pad.status", Description = "What the real Tools pad shows right now, without activating any view: the active view's type, the hosted content's type, whether it is the shared Toolbox list, which designer that list was last activated for, and how many rows it shows. Use it to check the toolbox of a Design/Source split while the Source half has focus.")]
+		[DevFlowAction("od.tools-pad.status", Description = "What the real Tools pad shows right now, without activating any view: the active view's type, the hosted content's type and identity, whether it is the shared Toolbox list, which designer that list was last activated for, how many rows it shows, its filter text and its selected row. Use it to check the toolbox of a Design/Source split while the Source half has focus - hostedContentId is stable across a pane switch precisely because the pad keeps the same SharedToolbox mounted.")]
 		public static string ToolsPadStatus()
 		{
 			var pad = SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost;
@@ -3444,10 +3458,36 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				success = pad != null,
 				activeView = SD.Workbench.ActiveViewContent?.GetType().Name,
 				hostedContent = hosted?.GetType().Name,
+				// Reference identity of the hosted visual: two probes returning the same number are
+				// looking at one and the same control instance, not two look-alikes.
+				hostedContentId = hosted == null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(hosted),
 				hostsSharedToolbox = hosted != null && ReferenceEquals(hosted, shared.ToolboxControl),
 				sharedToolboxOwner = shared.ActiveOwner?.GetType().Name,
 				visibleItemCount = shared.VisibleItemCount,
+				filterText = shared.FilterText,
+				selectedTool = shared.SelectedItem?.DisplayName,
 				hasSearch = pad?.HasToolboxSearch ?? false
+			});
+		}
+
+		[DevFlowAction("od.tools-pad.select", Description = "Select a visible row of the shared Tools pad list by display name, exactly as clicking it would - so a test can prove that moving focus between the Source and Design panes keeps the chosen tool instead of resetting it to the first row")]
+		public static string SelectToolsPadItem(string displayName)
+		{
+			var shared = SharedToolbox.Instance;
+			var item = shared.FindVisibleItem(displayName);
+			if (item == null) {
+				return JsonSerializer.Serialize(new {
+					success = false,
+					error = "No visible toolbox item named '" + displayName + "'.",
+					visibleItemCount = shared.VisibleItemCount,
+					filterText = shared.FilterText
+				});
+			}
+			shared.Select(item);
+			return JsonSerializer.Serialize(new {
+				success = true,
+				selectedTool = shared.SelectedItem?.DisplayName,
+				visibleItemCount = shared.VisibleItemCount
 			});
 		}
 

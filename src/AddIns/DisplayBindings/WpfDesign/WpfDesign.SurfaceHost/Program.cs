@@ -1,4 +1,7 @@
 using System;
+using System.IO;
+using System.Reflection;
+using System.Runtime.Loader;
 using System.Threading.Tasks;
 using System.Windows;
 using ICSharpCode.SharpDevelop.Designer.Remote;
@@ -12,6 +15,12 @@ static class Program
 	{
 		try
 		{
+			// The portable LibreWPF package describes System.Windows.Extensions as a Windows
+			// runtime asset. On macOS the child host's deps graph consequently has no selected
+			// candidate, although the host payload contains the portable DLL beside this entry
+			// assembly. Resolve such addin-local dependencies from the host payload; do not use
+			// a machine-wide probing path or a RID-specific asset.
+			AssemblyLoadContext.Default.Resolving += ResolvePayloadAssembly;
 			#if MICROSOFT_WPF
 			Console.Error.WriteLine("WpfDesign.SurfaceHost: runtime=MicrosoftWpf (isolated MicrosoftHost payload).");
 			#else
@@ -42,5 +51,13 @@ static class Program
 			Console.Error.WriteLine($"WpfDesign.SurfaceHost: fatal dispatcher error: {exception}");
 			return 1;
 		}
+	}
+
+	static Assembly? ResolvePayloadAssembly(AssemblyLoadContext _, AssemblyName name)
+	{
+		if (string.IsNullOrEmpty(name.Name))
+			return null;
+		var candidate = Path.Combine(AppContext.BaseDirectory, name.Name + ".dll");
+		return File.Exists(candidate) ? AssemblyLoadContext.Default.LoadFromAssemblyPath(candidate) : null;
 	}
 }
