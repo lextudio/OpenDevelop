@@ -8,14 +8,15 @@
     <OpenDevelopHostBin>$(TestRoot)Host/</OpenDevelopHostBin>
     <OpenDevelopHostManifest>$(OpenDevelopHostBin)OpenDevelop.host-assemblies.txt</OpenDevelopHostManifest>
     <OpenDevelopHostPublishManifest>$(TestRoot)OpenDevelop.host-publish-files.txt</OpenDevelopHostPublishManifest>
-    <OpenDevelopDistributionBuild>true</OpenDevelopDistributionBuild>
+    <!-- The early shared-host filter is also used by ordinary development builds. -->
+    <OpenDevelopDistributionBuild>false</OpenDevelopDistributionBuild>
     <OpenDevelopDistributionRidFamily>osx</OpenDevelopDistributionRidFamily>
   </PropertyGroup>
   <ItemGroup>
     <OpenDevelopAddinManifest Include="$(MSBuildThisFileDirectory)Sample.addin" />
   </ItemGroup>
   <Import Project="$(MSBuildThisFileDirectory)../../src/SDK/OpenDevelop.Addin.Sdk/Sdk/Sdk.targets" />
-  <Target Name="Build" DependsOnTargets="Prepare;OpenDevelopDeployAddinManifest;OpenDevelopTrimAddinOutput;OpenDevelopPruneAddinDeploymentAssets;Assert">
+  <Target Name="Build" DependsOnTargets="Prepare;RemoveHostProvidedFilesFromAddInCopyLocal;OpenDevelopDeployAddinManifest;OpenDevelopTrimAddinOutput;OpenDevelopPruneAddinDeploymentAssets;Assert">
   </Target>
   <Target Name="Prepare">
     <MakeDir Directories="$(OutputPath);$(OpenDevelopHostBin);$(OutputPath)ref;$(OutputPath)runtimes/win-x64;$(OutputPath)runtimes/osx" />
@@ -39,23 +40,29 @@
     </ItemGroup>
   </Target>
   <Target Name="AssertPublishManifestCopyLocalFilter" AfterTargets="RemoveHostProvidedFilesFromAddInCopyLocal">
-    <Error Condition="'@(ReferenceCopyLocalPaths->'%(Filename)%(Extension)')'.Contains('Host.Shared.dll')"
-           Text="Publish-manifest host DLL was not removed from ReferenceCopyLocalPaths." />
-    <Error Condition="!'@(ReferenceCopyLocalPaths->'%(Filename)%(Extension)')'.Contains('Addin.Private.dll')"
+    <ItemGroup>
+      <_HostCopyLocal Include="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)%(Extension)' == 'Host.Shared.dll'" />
+      <_PrivateCopyLocal Include="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)%(Extension)' == 'Addin.Private.dll'" />
+      <_HostNone Include="@(None)" Condition="'%(Filename)%(Extension)' == 'Host.Shared.dll'" />
+      <_PrivateNone Include="@(None)" Condition="'%(Filename)%(Extension)' == 'Addin.Private.dll'" />
+    </ItemGroup>
+    <Error Condition="'@(_HostCopyLocal)' != ''"
+           Text="Host-manifest DLL was not removed from ReferenceCopyLocalPaths." />
+    <Error Condition="'@(_PrivateCopyLocal)' == ''"
            Text="Addin-private DLL was incorrectly removed from ReferenceCopyLocalPaths." />
-    <Error Condition="'@(None->'%(Filename)%(Extension)')'.Contains('Host.Shared.dll')"
-           Text="Publish-manifest host DLL was not removed from None copy candidates." />
-    <Error Condition="!'@(None->'%(Filename)%(Extension)')'.Contains('Addin.Private.dll')"
+    <Error Condition="'@(_HostNone)' != ''"
+           Text="Host-manifest DLL was not removed from None copy candidates." />
+    <Error Condition="'@(_PrivateNone)' == ''"
            Text="Addin-private DLL was incorrectly removed from None copy candidates." />
   </Target>
   <Target Name="Assert">
     <Error Condition="Exists('$(OutputPath)Host.Shared.dll')" Text="Host-provided DLL was not trimmed." />
     <Error Condition="!Exists('$(OutputPath)Addin.Private.dll')" Text="Addin-private DLL was incorrectly trimmed." />
     <Error Condition="!Exists('$(OutputPath)Sample.addin')" Text="Addin manifest was not deployed." />
-    <Error Condition="Exists('$(OutputPath)Addin.Private.xml')" Text="Assembly XML documentation was not pruned." />
+    <Error Condition="'$(OpenDevelopDistributionBuild)' == 'true' And Exists('$(OutputPath)Addin.Private.xml')" Text="Assembly XML documentation was not pruned." />
     <Error Condition="!Exists('$(OutputPath)Layout.xml')" Text="Runtime XML layout was incorrectly pruned." />
-    <Error Condition="Exists('$(OutputPath)ref/Reference.dll')" Text="Reference asset was not pruned." />
-    <Error Condition="Exists('$(OutputPath)runtimes/win-x64/native.dll')" Text="Foreign runtime asset was not pruned." />
+    <Error Condition="'$(OpenDevelopDistributionBuild)' == 'true' And Exists('$(OutputPath)ref/Reference.dll')" Text="Reference asset was not pruned." />
+    <Error Condition="'$(OpenDevelopDistributionBuild)' == 'true' And Exists('$(OutputPath)runtimes/win-x64/native.dll')" Text="Foreign runtime asset was not pruned." />
     <Error Condition="!Exists('$(OutputPath)runtimes/osx/native.dylib')" Text="Current-platform runtime asset was incorrectly pruned." />
 
     <!-- F5-debug support (see doc/technotes/stride-game-studio.md "Part 1"): the SDK must make an

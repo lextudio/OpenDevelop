@@ -43,6 +43,47 @@
   <ItemGroup Condition="'$(OpenDevelopAddin)' == 'true' And '@(OpenDevelopAddinManifest)' == ''">
     <OpenDevelopAddinManifest Include="$(MSBuildProjectDirectory)/*.addin" />
   </ItemGroup>
+  <!-- In-process addins run in OpenDevelop's default AssemblyLoadContext. Shared assemblies
+       are resolved from the host base directory, so copying them into every AddIns leaf is
+       redundant. Do this before CopyLocal writes the closure; the post-build trim below remains
+       necessary to remove stale files produced before the host manifest became available.
+
+       A missing manifest deliberately fails open. This supports a newly-created out-of-tree
+       addin before its target IDE has been built. Out-of-process hosts are separate applications
+       with their own deps.json closure and are never filtered. -->
+  <Target Name="RemoveHostProvidedFilesFromAddInCopyLocal"
+          BeforeTargets="GetCopyToOutputDirectoryItems;_CopyFilesMarkedCopyLocal"
+          Condition="'$(OpenDevelopAddin)' == 'true'
+                     And '$(OpenDevelopAddinKind)' != 'OutOfProcessHost'
+                     And '$(OpenDevelopTrimHostAssemblies)' == 'true'
+                     And (Exists('$(OpenDevelopHostManifest)') Or Exists('$(OpenDevelopHostPublishManifest)') Or '$(OpenDevelopHostPublishDir)' != '')">
+    <!-- A package build supplies the final publish manifest. A normal SDK build uses the
+         host output manifest; the directory glob is compatibility-only for older callers. -->
+    <ReadLinesFromFile File="$(OpenDevelopHostManifest)"
+                       Condition="Exists('$(OpenDevelopHostManifest)') And !Exists('$(OpenDevelopHostPublishManifest)')">
+      <Output TaskParameter="Lines" ItemName="_OpenDevelopHostCopyLocalFile" />
+    </ReadLinesFromFile>
+    <ReadLinesFromFile File="$(OpenDevelopHostPublishManifest)" Condition="Exists('$(OpenDevelopHostPublishManifest)')">
+      <Output TaskParameter="Lines" ItemName="_OpenDevelopHostCopyLocalFile" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_OpenDevelopHostCopyLocalFile Include="$(OpenDevelopHostPublishDir)/**/*"
+                                          Condition="!Exists('$(OpenDevelopHostManifest)') And !Exists('$(OpenDevelopHostPublishManifest)') And Exists('$(OpenDevelopHostPublishDir)')" />
+      <_OpenDevelopHostCopyLocalFile Remove="@(OpenDevelopAlwaysCopy)"
+                                          MatchOnMetadata="Filename;Extension"
+                                          MatchOnMetadataOptions="PathLike" />
+      <ReferenceCopyLocalPaths Remove="@(_OpenDevelopHostCopyLocalFile)"
+                               MatchOnMetadata="Filename;Extension"
+                               MatchOnMetadataOptions="PathLike" />
+      <!-- Package targets may inject copy candidates outside ReferenceCopyLocalPaths. -->
+      <None Remove="@(_OpenDevelopHostCopyLocalFile)"
+            MatchOnMetadata="Filename;Extension"
+            MatchOnMetadataOptions="PathLike" />
+      <Content Remove="@(_OpenDevelopHostCopyLocalFile)"
+               MatchOnMetadata="Filename;Extension"
+               MatchOnMetadataOptions="PathLike" />
+    </ItemGroup>
+  </Target>
   <Target Name="OpenDevelopValidateAddin" BeforeTargets="Build" Condition="'$(OpenDevelopAddin)' == 'true'">
     <Error Condition="'$(OpenDevelopAddinKind)' != 'InProcess' And '$(OpenDevelopAddinKind)' != 'InProcessDependency' And '$(OpenDevelopAddinKind)' != 'OutOfProcessHost'" Text="OpenDevelopAddinKind must be InProcess, InProcessDependency, or OutOfProcessHost, not '$(OpenDevelopAddinKind)'." />
     <Error Condition="'$(OpenDevelopAddinKind)' == 'InProcess' And '@(OpenDevelopAddinManifest)' == ''" Text="No .addin manifest was found. Add one beside the project or declare OpenDevelopAddinManifest explicitly." />

@@ -40,16 +40,17 @@ them at all.
 
 ## Existing infrastructure (do not duplicate)
 
-`Directory.Build.targets` already contains `RemoveHostProvidedFilesFromAddInCopyLocal`,
-used by the DISTRIBUTION flow only. `dist.ps1` writes the published host's unique filenames once
-to `OpenDevelopHostPublishManifest`; while addin copy-local items are gathered, anything whose
-filename+extension matches that manifest is removed. Semantics: **filename+extension match,
-version-blind, fail-open** (manifest absent ⇒ no trim). `OpenDevelopHostPublishDir` remains a
-compatibility fallback for callers that have only a directory, but distribution builds do not copy
-or recursively scan that directory per addin.
+`OpenDevelop.Addin.Sdk` owns `RemoveHostProvidedFilesFromAddInCopyLocal`. For every in-process
+addin, it reads `OpenDevelop.host-assemblies.txt` from the host output and removes matching
+`ReferenceCopyLocalPaths`, `None`, and `Content` items **before** MSBuild copies them. This is
+normal development-build behavior, not just distribution cleanup: addin output follows the same
+ownership model as runtime loading, with shared dependencies beside OpenDevelop.
 
-Phase 1 reuses exactly these semantics, extended to developer builds and hardened with
-two exclusions the dist flow never needed.
+`dist.ps1` supplies `OpenDevelopHostPublishManifest` for a package, which takes precedence over
+the local host manifest. Semantics are **filename+extension match, version-blind, fail-open**
+(manifest absent ⇒ no trim). `OpenDevelopHostPublishDir` remains a compatibility fallback for
+callers that have only a directory, but normal builds never recursively scan the host directory.
+`OpenDevelopAlwaysCopy` is the explicit escape hatch for a genuinely private colliding asset.
 
 ## Design
 
@@ -117,7 +118,7 @@ manifest as the readiness marker and use the corresponding host directory as the
 If it does not exist yet, trimming fails open; the repository build entry point builds the host
 before the addin graph so ordinary full builds do not take that path.
 
-### Trim rules (per addin project, `AfterTargets="Build"`)
+### Trim rules (per addin project)
 
 Delete from the project's `$(OutputPath)` top level any `.dll` whose filename appears in
 the baseline manifest, unless:
@@ -142,12 +143,13 @@ host-closure scan across the distribution addin graph. Distribution asset prunin
 whole `ref/` and foreign-RID runtime directories with `RemoveDir`, rather than issuing one delete
 operation per contained file.
 
-### Why post-Build delete instead of filtering copy-local items?
+### Why retain a post-Build delete after filtering CopyLocal?
 
-Filtering item lists (RAR output / `GetCopyToOutputDirectoryItems`) requires running
-before copy-local *and* guarantees the app bin is already populated — but addins do not
-all depend on the exe project, so build order gives no such guarantee inside one
-`dotnet build`. A delete-pass after each addin's `Build` is order-independent (fails
+Filtering item lists (RAR output / `GetCopyToOutputDirectoryItems`) avoids writing the shared
+closure whenever the host manifest is ready. Addins do not all depend on the exe project, though,
+so a freshly-created or partially-built host may not have produced that marker yet. In that case
+the filter fails open, and the delete-pass after each addin's `Build` is the order-independent
+cleanup for stale files (fails
 open when the manifest is absent), covers transitive content flow (`GetCopyToOutputDirectoryItems`
 propagation — the reason `ICSharpCode.WpfDesign.AddIn.dll` once appeared in six unrelated
 folders) with zero extra targets, and costs nothing measurable next to the multi-GB copy

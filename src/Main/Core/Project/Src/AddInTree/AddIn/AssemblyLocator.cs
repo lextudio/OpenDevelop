@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 
 namespace ICSharpCode.Core
@@ -52,7 +53,22 @@ namespace ICSharpCode.Core
 		{
 			lock (assemblies) {
 				Assembly assembly = null;
-				assemblies.TryGetValue(args.Name, out assembly);
+				if (assemblies.TryGetValue(args.Name, out assembly))
+					return assembly;
+
+				// AddIns intentionally do not copy OpenDevelop-provided assemblies beside every
+				// addin.  A host dependency may not have been loaded yet when Init() seeds the
+				// cache, though, so the cache alone cannot satisfy the first such bind.  Resolve
+				// the exact assembly name from the application's payload directory, which keeps
+				// one authoritative copy in OpenDevelop rather than duplicating it per AddIn.
+				var simpleName = new AssemblyName(args.Name).Name;
+				if (string.IsNullOrEmpty(simpleName))
+					return null;
+				var candidate = Path.Combine(AppContext.BaseDirectory, simpleName + ".dll");
+				if (!File.Exists(candidate))
+					return null;
+				assembly = Assembly.LoadFrom(candidate);
+				assemblies[assembly.FullName] = assembly;
 				return assembly;
 			}
 		}

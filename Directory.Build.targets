@@ -1,37 +1,6 @@
 <Project>
-  <!--
-    A distribution keeps shared runtime dependencies beside OpenDevelop itself.
-    Remove those files from addin copy-local before they reach AddIns/. Regular
-    developer builds remain self-contained because this is opt-in.
-  -->
-  <Target Name="RemoveHostProvidedFilesFromAddInCopyLocal"
-          BeforeTargets="GetCopyToOutputDirectoryItems;_CopyFilesMarkedCopyLocal"
-          Condition="'$(OpenDevelopDistributionBuild)' == 'true'
-                     and (Exists('$(OpenDevelopHostPublishManifest)') or '$(OpenDevelopHostPublishDir)' != '')
-                     and $([System.String]::Copy('$(OutputPath)').Contains('AddIns'))">
-    <!-- dist.ps1 supplies a filename manifest from the final publish closure. This avoids copying
-         the entire host deployment to a temporary directory and then recursively globbing it once
-         for every add-in. Keep the directory glob as a compatibility fallback for callers that
-         still only provide OpenDevelopHostPublishDir. -->
-    <ReadLinesFromFile File="$(OpenDevelopHostPublishManifest)" Condition="Exists('$(OpenDevelopHostPublishManifest)')">
-      <Output TaskParameter="Lines" ItemName="_OpenDevelopHostFile" />
-    </ReadLinesFromFile>
-    <ItemGroup>
-      <_OpenDevelopHostFile Include="$(OpenDevelopHostPublishDir)/**/*"
-                            Condition="!Exists('$(OpenDevelopHostPublishManifest)') and Exists('$(OpenDevelopHostPublishDir)')" />
-      <ReferenceCopyLocalPaths Remove="@(_OpenDevelopHostFile)"
-                               MatchOnMetadata="Filename;Extension"
-                               MatchOnMetadataOptions="PathLike" />
-      <!-- Package build targets can add native helpers as None/Content with
-           CopyToOutputDirectory, bypassing ReferenceCopyLocalPaths entirely. -->
-      <None Remove="@(_OpenDevelopHostFile)"
-            MatchOnMetadata="Filename;Extension"
-            MatchOnMetadataOptions="PathLike" />
-      <Content Remove="@(_OpenDevelopHostFile)"
-            MatchOnMetadata="Filename;Extension"
-            MatchOnMetadataOptions="PathLike" />
-    </ItemGroup>
-  </Target>
+  <!-- OpenDevelop.Addin.Sdk owns the CopyLocal filter as well as trimming.  Keeping it in
+       the SDK makes an out-of-tree addin follow the same shared-host deployment model. -->
 
   <!-- Repository compatibility shim. New projects consume OpenDevelop.Addin.Sdk as an
        MSBuild SDK; existing addins are discovered from their deployment OutputPath. -->
