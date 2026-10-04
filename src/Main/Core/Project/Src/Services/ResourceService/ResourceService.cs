@@ -152,6 +152,15 @@ namespace ICSharpCode.Core
 							break;
 					}
 				}
+				// The neutral resource set is embedded in the main assembly.  A culture
+				// such as en-US has no satellite of its own, so use that set after all
+				// culture-specific candidates have been exhausted.  Without this
+				// fallback, localized markup extensions resolve to an empty value in an
+				// English process even though their neutral strings are available.
+				if (manager == null && assembly.GetManifestResourceInfo(baseResourceName + ".resources") != null) {
+					LoggingService.Info(logMessage + " loading neutral resources from main assembly");
+					manager = new ResourceManager(baseResourceName, assembly);
+				}
 				if (manager == null) {
 					LoggingService.Warn(logMessage + "NOT FOUND");
 				} else {
@@ -263,7 +272,11 @@ namespace ICSharpCode.Core
 				if (resources != null)
 					return resources;
 			}
-			return null;
+			// English is the neutral resource set (StringResources.resources), not a
+			// separate StringResources.en.resources satellite.  A real en-US/en locale
+			// must therefore fall back to this file after its culture candidates fail;
+			// otherwise all localized XAML values become empty in an English process.
+			return Load(resourceDirectory + Path.DirectorySeparatorChar + name + ".resources");
 		}
 
 		static IEnumerable<string> GetLanguageFallbacks(string language)
