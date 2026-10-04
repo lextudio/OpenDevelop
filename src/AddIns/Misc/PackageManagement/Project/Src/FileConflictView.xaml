@@ -3,7 +3,7 @@
 	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 	xmlns:core="http://icsharpcode.net/sharpdevelop/core"
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-	Title="File Conflict"
+	Title="{core:Localize PackageManagement.FileConflict.Title}"
 	FocusManager.FocusedElement="{Binding ElementName=NoButton}"
 	WindowStartupLocation="CenterOwner"
 	Style="{x:Static core:GlobalStyles.DialogWindowStyle}"
@@ -44,7 +44,7 @@
 			Grid.Row="1"
 			Grid.Column="2"
 			Command="{Binding YesToAllCommand}"
-			Content="Yes to All"/>
+			Content="{core:Localize PackageManagement.FileConflict.YesToAll}"/>
 		<Button
 			x:Name="NoButton"
 			Margin="4"
@@ -58,6 +58,6 @@
 			Grid.Row="1"
 			Grid.Column="4"
 			Command="{Binding NoToAllCommand}"
-			Content="No to All"/>
+			Content="{core:Localize PackageManagement.FileConflict.NoToAll}"/>
 	</Grid>
 </Window>

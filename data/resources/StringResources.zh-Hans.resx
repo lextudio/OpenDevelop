@@ -9315,4 +9315,193 @@ SharpDevelop 编译资源时发现不对应：资源名称不是文件名，而�
   <data name="WpfWorkbench.AdminToolTip" xml:space="preserve">
     <value>OpenDevelop 正以管理员身份运行。</value>
   </data>
+  <data name="ILSpy.OpenFromProcess.Title" xml:space="preserve">
+    <value>从正在运行的进程打开</value>
+  </data>
+  <data name="ILSpy.OpenFromProcess.Process" xml:space="preserve">
+    <value>进程</value>
+  </data>
+  <data name="ILSpy.OpenFromProcess.Runtime" xml:space="preserve">
+    <value>运行时</value>
+  </data>
+  <data name="ILSpy.OpenFromProcess.Architecture" xml:space="preserve">
+    <value>体系结构</value>
+  </data>
+  <data name="ILSpy.OpenFromProcess.EntryAssembly" xml:space="preserve">
+    <value>入口程序集</value>
+  </data>
+  <data name="Global.Location" xml:space="preserve">
+    <value>位置</value>
+  </data>
+  <data name="ILSpy.OpenFromProcess.AddSelected" xml:space="preserve">
+    <value>添加所选</value>
+  </data>
+  <data name="ILSpy.OpenFromProcess.AddEntryAssembly" xml:space="preserve">
+    <value>添加入口程序集</value>
+  </data>
+  <data name="AdvancedService.DataType" xml:space="preserve">
+    <value>数据类型</value>
+  </data>
+  <data name="AdvancedService.AlwaysMessageContracts" xml:space="preserve">
+    <value>始终生成消息协定</value>
+  </data>
+  <data name="AdvancedService.CollectionType" xml:space="preserve">
+    <value>集合类型：</value>
+  </data>
+  <data name="AdvancedService.DictionaryCollectionType" xml:space="preserve">
+    <value>字典集合类型：</value>
+  </data>
+  <data name="AdvancedService.ReuseInReferenced" xml:space="preserve">
+    <value>在引用的程序集中重用类型</value>
+  </data>
+  <data name="AdvancedService.ReuseInAll" xml:space="preserve">
+    <value>在所有引用的程序集中重用类型</value>
+  </data>
+  <data name="AdvancedService.ReuseInSpecified" xml:space="preserve">
+    <value>在指定的引用程序集中重用类型</value>
+  </data>
+  <data name="RegisteredPackageSources.Name" xml:space="preserve">
+    <value>名称：</value>
+  </data>
+  <data name="RegisteredPackageSources.Source" xml:space="preserve">
+    <value>源：</value>
+  </data>
+  <data name="Global.Remove" xml:space="preserve">
+    <value>移除</value>
+  </data>
+  <data name="SamplePane.Title" xml:space="preserve">
+    <value>示例窗格</value>
+  </data>
+  <data name="SamplePane.Description" xml:space="preserve">
+    <value>用于热重载冒烟测试的嵌套控件。</value>
+  </data>
+  <data name="SamplePane.FirstItem" xml:space="preserve">
+    <value>第一项</value>
+  </data>
+  <data name="SamplePane.SecondItem" xml:space="preserve">
+    <value>第二项</value>
+  </data>
+  <data name="Reporting.PushData.SelectProject" xml:space="preserve">
+    <value>选择项目</value>
+  </data>
+  <data name="Reporting.PushData.ColumnName" xml:space="preserve">
+    <value>列名</value>
+  </data>
+  <data name="Reporting.PushData.DataType" xml:space="preserve">
+    <value>数据类型</value>
+  </data>
+  <data name="Profiler.Timeline.PerformanceCounters" xml:space="preserve">
+    <value>性能计数器</value>
+  </data>
+  <data name="Profiler.Timeline.Time" xml:space="preserve">
+    <value>时间</value>
+  </data>
+  <data name="Profiler.Timeline.Events" xml:space="preserve">
+    <value>事件</value>
+  </data>
+  <data name="Profiler.Timeline.Graph" xml:space="preserve">
+    <value>图表</value>
+  </data>
+  <data name="ILSpy.Compare.Swap" xml:space="preserve">
+    <value>交换左右</value>
+  </data>
+  <data name="ILSpy.Compare.ShowIdentical" xml:space="preserve">
+    <value>显示相同的项</value>
+  </data>
+  <data name="ILSpy.Compare.ExpandAll" xml:space="preserve">
+    <value>全部展开</value>
+  </data>
+  <data name="ILSpy.Compare.CopyJson" xml:space="preserve">
+    <value>以 JSON 复制到剪贴板</value>
+  </data>
+  <data name="WpfDesign.ChooseImage.Title" xml:space="preserve">
+    <value>选择图像</value>
+  </data>
+  <data name="WpfDesign.ChooseImage.Existing" xml:space="preserve">
+    <value>现有图像</value>
+  </data>
+  <data name="WpfDesign.ChooseImage.Url" xml:space="preserve">
+    <value>URL：</value>
+  </data>
+  <data name="EdmDesigner.AddEntityType.Title" xml:space="preserve">
+    <value>添加实体类型</value>
+  </data>
+  <data name="EdmDesigner.AddEntityType.Name" xml:space="preserve">
+    <value>实体类型名称</value>
+  </data>
+  <data name="EdmDesigner.AddEntityType.BaseType" xml:space="preserve">
+    <value>基类型</value>
+  </data>
+  <data name="Data.ConnectionWizard.Title" xml:space="preserve">
+    <value>添加新数据库连接</value>
+  </data>
+  <data name="Data.ConnectionWizard.AutoDiscover" xml:space="preserve">
+    <value>自动发现</value>
+  </data>
+  <data name="Data.ConnectionWizard.Connect" xml:space="preserve">
+    <value>连接</value>
+  </data>
+  <data name="Data.ConnectionWizard.ConnectionString" xml:space="preserve">
+    <value>连接字符串</value>
+  </data>
+  <data name="PackageManagement.FileConflict.Title" xml:space="preserve">
+    <value>文件冲突</value>
+  </data>
+  <data name="PackageManagement.FileConflict.YesToAll" xml:space="preserve">
+    <value>全部选是</value>
+  </data>
+  <data name="PackageManagement.FileConflict.NoToAll" xml:space="preserve">
+    <value>全部选否</value>
+  </data>
+  <data name="Reporting.BaseSettings.ReportType" xml:space="preserve">
+    <value>报表类型：</value>
+  </data>
+  <data name="Reporting.BaseSettings.Portrait" xml:space="preserve">
+    <value>纵向</value>
+  </data>
+  <data name="Reporting.BaseSettings.Landscape" xml:space="preserve">
+    <value>横向</value>
+  </data>
+  <data name="CodeQuality.Node.Type" xml:space="preserve">
+    <value>类型：</value>
+  </data>
+  <data name="CodeQuality.Node.Class" xml:space="preserve">
+    <value>类：</value>
+  </data>
+  <data name="CodeQuality.Node.Children" xml:space="preserve">
+    <value>子级：</value>
+  </data>
+  <data name="Profiler.Overview" xml:space="preserve">
+    <value>概览</value>
+  </data>
+  <data name="SourceAnalysis.FindStyleCopPath" xml:space="preserve">
+    <value>查找 StyleCop 路径</value>
+  </data>
+  <data name="SourceAnalysis.ModifyMasterSettings" xml:space="preserve">
+    <value>修改主 StyleCop 设置</value>
+  </data>
+  <data name="Global.Height" xml:space="preserve">
+    <value>高度</value>
+  </data>
+  <data name="WpfDesign.DocumentError.Title" xml:space="preserve">
+    <value>加载时出现问题</value>
+  </data>
+  <data name="WpfDesign.DocumentError.Message" xml:space="preserve">
+    <value>文档包含错误，需先修复才能加载设计器。请切换到 XAML 选项卡修复错误。</value>
+  </data>
+  <data name="WpfDesign.DocumentError.Additional" xml:space="preserve">
+    <value>其他信息</value>
+  </data>
+  <data name="FormsDesigner.General.OutOfProcessHost" xml:space="preserve">
+    <value>进程外设计器宿主</value>
+  </data>
+  <data name="FormsDesigner.General.LoadingTimeout" xml:space="preserve">
+    <value>加载超时（秒）：</value>
+  </data>
+  <data name="FormsDesigner.General.LoadingTimeoutHelp" xml:space="preserve">
+    <value>IDE 等待 WinForms 设计器宿主打开/更新文档的时间，超过后视为挂起并重启。对于非常大的窗体请增大此值。</value>
+  </data>
+  <data name="EdmDesigner.AddComplexType.Title" xml:space="preserve">
+    <value>添加复杂类型</value>
+  </data>
 </root>

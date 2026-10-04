@@ -1,6 +1,7 @@
 <UserControl x:Class="ICSharpCode.ILSpy.Views.CompareView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:local="clr-namespace:ICSharpCode.ILSpy.Views"
@@ -33,19 +34,19 @@
 			<RowDefinition Height="*" />
 		</Grid.RowDefinitions>
 		<ToolBar>
-			<Button Command="{Binding SwapAssembliesCommand}" ToolTip="Swap left and right">
+			<Button Command="{Binding SwapAssembliesCommand}" ToolTip="{core:Localize ILSpy.Compare.Swap}">
 				<Image Width="16" Height="16" Source="{controls:XamlResource Images/SwitchSourceOrTarget}"
 			       Style="{StaticResource DarkModeAwareImageStyle}" />
 			</Button>
-			<ToggleButton IsChecked="{Binding ShowIdentical}" ToolTip="Show identical entries">
+			<ToggleButton IsChecked="{Binding ShowIdentical}" ToolTip="{core:Localize ILSpy.Compare.ShowIdentical}">
 				<Image Width="16" Height="16" Source="{controls:XamlResource Images/DictionaryContain}"
 			       Style="{StaticResource DarkModeAwareImageStyle}" />
 			</ToggleButton>
-			<Button Command="{Binding ExpandAllCommand}" ToolTip="Expand all">
+			<Button Command="{Binding ExpandAllCommand}" ToolTip="{core:Localize ILSpy.Compare.ExpandAll}">
 				<Image Width="16" Height="16" Source="{controls:XamlResource Images/ExpandAll}"
 			       Style="{StaticResource DarkModeAwareImageStyle}" />
 			</Button>
-			<Button Command="{Binding CopyToClipboardAsJSONCommand}" ToolTip="Copy to clipboard as JSON">
+			<Button Command="{Binding CopyToClipboardAsJSONCommand}" ToolTip="{core:Localize ILSpy.Compare.CopyJson}">
 				<Image Width="16" Height="16" Source="{controls:XamlResource Images/ResultToJSON}"
 			       Style="{StaticResource DarkModeAwareImageStyle}" />
 			</Button>

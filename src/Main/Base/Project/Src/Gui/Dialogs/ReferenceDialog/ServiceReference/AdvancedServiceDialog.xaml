@@ -55,7 +55,7 @@
 		</GroupBox>
 		
 		<GroupBox
-			Header="Data Type"
+			Header="{core:Localize AdvancedService.DataType}"
 			Grid.Row="1"
 			Grid.ColumnSpan="2">
 			<Grid>
@@ -83,12 +83,12 @@
 					Margin="25,0,0,0"
 					VerticalAlignment="Center"
 					IsChecked="{Binding GenerateMessageContract}"
-					Content="Always generate message contracts"></CheckBox>
+					Content="{core:Localize AdvancedService.AlwaysMessageContracts}"></CheckBox>
 				<TextBlock
 					Margin="25,0,0,0"
 					Grid.Row="1"
 					VerticalAlignment="Center"
-					Text="Collection type:"></TextBlock>
+					Text="{core:Localize AdvancedService.CollectionType}"></TextBlock>
 				<ComboBox
 					Grid.Row="1" Grid.Column="2" Margin="4"
 					sd:EnumBinding.EnumType="{x:Type local:CollectionTypes}"
@@ -98,7 +98,7 @@
 					Grid.Row="2"
 					Margin="25,0,0,0"
 					VerticalAlignment="Center"
-					Text="Dictionary collection type:"></TextBlock>
+					Text="{core:Localize AdvancedService.DictionaryCollectionType}"></TextBlock>
 				<ComboBox
 					Grid.Row="2"
 					Grid.Column="1" Margin="4"
@@ -110,7 +110,7 @@
 					VerticalAlignment="Center" Grid.Row="3"
 					Margin="25,0,0,0"
 					IsChecked="{Binding UseReferencedAssemblies}"
-					Content="Reuse types in referenced assemblies">
+					Content="{core:Localize AdvancedService.ReuseInReferenced}">
 				</CheckBox>
 				
 				<RadioButton Grid.Row="4"  Margin="45,0,0,0"
@@ -118,7 +118,7 @@
  				             GroupName="ReferenceType"
 				             IsChecked="{Binding ReuseTypes}"
 				             IsEnabled="{Binding UseReferencedAssemblies}"
-				             Content="Reuse types in all referenced assemblies">
+				             Content="{core:Localize AdvancedService.ReuseInAll}">
 				</RadioButton>
 				
 				<RadioButton Grid.Row="5" Margin="45,0,0,0"
@@ -126,7 +126,7 @@
 				             GroupName="ReferenceType"
 				             IsChecked="{Binding ReuseReferencedTypes}"
 				             IsEnabled="{Binding UseReferencedAssemblies}"
-				             Content="Reuse types in specified referenced assemblies">
+				             Content="{core:Localize AdvancedService.ReuseInSpecified}">
 				</RadioButton>
 				
 				<ListBox Grid.Row="6"  Grid.ColumnSpan="2" Width="400"

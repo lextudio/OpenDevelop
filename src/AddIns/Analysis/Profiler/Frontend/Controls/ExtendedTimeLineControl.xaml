@@ -1,10 +1,11 @@
 <UserControl x:Class="ICSharpCode.Profiler.Controls.ExtendedTimeLineControl"
 	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
 	xmlns:local="clr-namespace:ICSharpCode.Profiler.Controls">
 	<DockPanel>
 		<DockPanel Margin="3,0">
-			<TextBlock Text="Performance Counters" DockPanel.Dock="Top" />
+			<TextBlock Text="{core:Localize Profiler.Timeline.PerformanceCounters}" DockPanel.Dock="Top" />
 			<ListBox x:Name="perfCounterList" SelectionChanged="PerfCounterListSelectionChanged" />
 		</DockPanel>
 		<Grid Margin="3,0">
@@ -13,11 +14,11 @@
 				<RowDefinition Height="20" />
 				<RowDefinition Height="100" />
 			</Grid.RowDefinitions>
-			<TextBlock Text="Time" />
-			<TextBlock Grid.Row="1" Text="Events" />
+			<TextBlock Text="{core:Localize Profiler.Timeline.Time}" />
+			<TextBlock Grid.Row="1" Text="{core:Localize Profiler.Timeline.Events}" />
 			<DockPanel Grid.Row="2">
 				<StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
-					<TextBlock Text="Graph    " />
+					<TextBlock Text="{core:Localize Profiler.Timeline.Graph}" />
 					<TextBlock x:Name="maxLabel" HorizontalAlignment="Right" />
 				</StackPanel>
 				<TextBlock x:Name="minLabel" DockPanel.Dock="Bottom" VerticalAlignment="Bottom" HorizontalAlignment="Right" />

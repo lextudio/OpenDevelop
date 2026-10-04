@@ -1,8 +1,9 @@
 <Window x:Class="ICSharpCode.ILSpy.Views.SetTargetFrameworkDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
         Title="ILSpy"
-        Width="360" SizeToContent="Height" ResizeMode="NoResize"
+        Width="360" SizeToContent="{core:Localize Global.Height}" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
     <Grid Margin="12,10">
@@ -23,7 +24,7 @@
         <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right"
                     Margin="0,12,0,0">
             <Button x:Name="OkButton" Content="OK" IsDefault="True" MinWidth="72" Margin="0,0,6,0" />
-            <Button x:Name="CancelButton" Content="Cancel" IsCancel="True" MinWidth="72" />
+            <Button x:Name="CancelButton" Content="{core:Localize Global.Cancel}" IsCancel="True" MinWidth="72" />
         </StackPanel>
     </Grid>
 </Window>

@@ -6,6 +6,7 @@
 	xmlns:pm="clr-namespace:ICSharpCode.PackageManagement"
 	xmlns:pmd="clr-namespace:ICSharpCode.PackageManagement.Design"
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
 	mc:Ignorable="d"
 	d:DesignHeight="300"
 	d:DesignWidth="300">
@@ -58,7 +59,7 @@
 				Grid.Row="0"
 				Grid.Column="0"
 				Margin="4"
-				Text="Name:"/>
+				Text="{core:Localize RegisteredPackageSources.Name}"/>
 			<TextBox
 				Grid.Row="0"
 				Grid.Column="1"
@@ -68,7 +69,7 @@
 				Grid.Row="1"
 				Grid.Column="0"
 				Margin="4"
-				Text="Source:"/>
+				Text="{core:Localize RegisteredPackageSources.Source}"/>
 			<TextBox
 				Grid.Row="1"
 				Grid.Column="1"
@@ -79,17 +80,17 @@
 			Grid.Column="1"
 			Grid.Row="0">
 			<Button
-				Content="Move Up"
+				Content="{core:Localize Global.MoveUp}"
 				Command="{Binding Path=MovePackageSourceUpCommand}"
 				Margin="4, 2"
 				Padding="7, 0"/>
 			<Button
-				Content="Move Down"
+				Content="{core:Localize Global.MoveDown}"
 				Command="{Binding Path=MovePackageSourceDownCommand}"
 				Margin="4, 2"
 				Padding="7, 0"/>
 			<Button
-				Content="Remove"
+				Content="{core:Localize Global.Remove}"
 				Command="{Binding Path=RemovePackageSourceCommand}"
 				Margin="4, 2"
 				Padding="7, 0"/>

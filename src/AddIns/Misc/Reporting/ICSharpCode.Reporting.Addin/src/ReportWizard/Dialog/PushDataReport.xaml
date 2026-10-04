@@ -1,6 +1,7 @@
 <xctk:WizardPage x:Class="ICSharpCode.Reporting.Addin.ReportWizard.Dialog.PushDataReport"
                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
                  xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
                  xmlns:System="clr-namespace:System;assembly=mscorlib"
                  xmlns:sdr="clr-namespace:ICSharpCode.Reporting.Globals;assembly=ICSharpCode.Reporting"
@@ -28,7 +29,7 @@
 		</Grid.RowDefinitions>
 	
 		<!-- Seelct project in Solution -->	
-		<TextBlock   Text="Select Project" FontSize="15" ></TextBlock>
+		<TextBlock   Text="{core:Localize Reporting.PushData.SelectProject}" FontSize="15" ></TextBlock>
 		<ComboBox Name="_projectsCbo" Grid.Row="1" SelectionChanged="_pro_SelectionChanged"></ComboBox>  
 		
 		<!-- Select Type from Solution -->
@@ -45,8 +46,8 @@
 		          CanUserDeleteRows="True"
 		          AutoGenerateColumns="False" Grid.Row="1" Grid.RowSpan="5" Margin="5,10,30,5" Width="400" Grid.Column="1">
 			<DataGrid.Columns>
-				<DataGridTextColumn Header="ColumnName" Binding="{Binding ColumnName}" Width="200"></DataGridTextColumn>
-				<DataGridComboBoxColumn Header="DataType" x:Name="cboType" SelectedItemBinding="{Binding DataTypeName}" Width="*"></DataGridComboBoxColumn>
+				<DataGridTextColumn Header="{core:Localize Reporting.PushData.ColumnName}" Binding="{Binding ColumnName}" Width="200"></DataGridTextColumn>
+				<DataGridComboBoxColumn Header="{core:Localize Reporting.PushData.DataType}" x:Name="cboType" SelectedItemBinding="{Binding DataTypeName}" Width="*"></DataGridComboBoxColumn>
 			</DataGrid.Columns>
 		</DataGrid>
 	</Grid>
@@ -66,7 +67,7 @@ http://www.scottlogic.com/blog/2008/11/26/multiselect-datagrid-with-checkboxes.h
                     </DataTemplate>
                 </DataGridCheckBoxColumn.HeaderTemplate>
             </DataGridCheckBoxColumn>
-            <DataGridTemplateColumn Header="Name" Width="SizeToCells" IsReadOnly="True">
+            <DataGridTemplateColumn Header="{core:Localize Global.Name}" Width="SizeToCells" IsReadOnly="True">
                 <DataGridTemplateColumn.CellTemplate>
                     <DataTemplate>
                         <TextBlock Text="{Binding Name}" />

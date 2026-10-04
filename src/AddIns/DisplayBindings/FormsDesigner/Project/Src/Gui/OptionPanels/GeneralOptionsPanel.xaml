@@ -34,11 +34,11 @@
 				Content="{core:Localize ICSharpCode.SharpDevelop.FormDesigner.Gui.OptionPanels.GridOptionsPanel.PropertyGridSortCheckBox}"></CheckBox>
 		</GroupBox>
 
-		<GroupBox Header="Out-of-process designer host">
+		<GroupBox Header="{core:Localize FormsDesigner.General.OutOfProcessHost}">
 			<StackPanel Orientation="Horizontal" Margin="2,8,2,3">
-				<TextBlock Text="Loading timeout (seconds):" VerticalAlignment="Center"/>
+				<TextBlock Text="{core:Localize FormsDesigner.General.LoadingTimeout}" VerticalAlignment="Center"/>
 				<TextBox x:Name="loadingTimeoutTextBox" Width="50" Margin="6,0,0,0"/>
-				<TextBlock Text="How long the IDE waits for the WinForms designer host to open/update a document before it is treated as hung and restarted. Increase this for very large forms." Margin="10,0,0,0" TextWrapping="Wrap" VerticalAlignment="Center" MaxWidth="320"/>
+				<TextBlock Text="{core:Localize FormsDesigner.General.LoadingTimeoutHelp}" Margin="10,0,0,0" TextWrapping="Wrap" VerticalAlignment="Center" MaxWidth="320"/>
 			</StackPanel>
 		</GroupBox>
 	</StackPanel>

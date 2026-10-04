@@ -1,6 +1,7 @@
 ﻿<Window x:Class="ICSharpCode.Profiler.Frontend.Window1"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
         xmlns:y="clr-namespace:ICSharpCode.Profiler.Controls;assembly=ICSharpCode.Profiler.Controls"
         Height="799" Width="963" Title="ProfilerFrontend">
 	<Grid>
@@ -16,7 +17,7 @@
 			<!-- <y:TimeLineControl x:Name="timeLine" RangeChanged="timeLine_RangeChanged" /> -->
 			<y:ExtendedTimeLineControl x:Name="timeLine" Grid.Row="1" />
 		<TabControl Name="tabView" HorizontalAlignment="Stretch" Grid.Row="2">
-			<TabItem Header="Overview">
+			<TabItem Header="{core:Localize Profiler.Overview}">
 				<y:QueryView x:Name="treeView" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ShowQueryItems="False" CurrentQuery="from t in Threads select t" />
 			</TabItem>
 			<TabItem Header="CompareViewTest">

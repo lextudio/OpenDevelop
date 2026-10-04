@@ -9706,4 +9706,193 @@ Press Esc to cancel this operation.</value>
   <data name="WpfWorkbench.AdminToolTip" xml:space="preserve">
     <value>OpenDevelop is running as administrator.</value>
   </data>
+  <data name="ILSpy.OpenFromProcess.Title" xml:space="preserve">
+    <value>Open from Running Process</value>
+  </data>
+  <data name="ILSpy.OpenFromProcess.Process" xml:space="preserve">
+    <value>Process</value>
+  </data>
+  <data name="ILSpy.OpenFromProcess.Runtime" xml:space="preserve">
+    <value>Runtime</value>
+  </data>
+  <data name="ILSpy.OpenFromProcess.Architecture" xml:space="preserve">
+    <value>Architecture</value>
+  </data>
+  <data name="ILSpy.OpenFromProcess.EntryAssembly" xml:space="preserve">
+    <value>Entry Assembly</value>
+  </data>
+  <data name="Global.Location" xml:space="preserve">
+    <value>Location</value>
+  </data>
+  <data name="ILSpy.OpenFromProcess.AddSelected" xml:space="preserve">
+    <value>Add Selected</value>
+  </data>
+  <data name="ILSpy.OpenFromProcess.AddEntryAssembly" xml:space="preserve">
+    <value>Add Entry Assembly</value>
+  </data>
+  <data name="AdvancedService.DataType" xml:space="preserve">
+    <value>Data Type</value>
+  </data>
+  <data name="AdvancedService.AlwaysMessageContracts" xml:space="preserve">
+    <value>Always generate message contracts</value>
+  </data>
+  <data name="AdvancedService.CollectionType" xml:space="preserve">
+    <value>Collection type:</value>
+  </data>
+  <data name="AdvancedService.DictionaryCollectionType" xml:space="preserve">
+    <value>Dictionary collection type:</value>
+  </data>
+  <data name="AdvancedService.ReuseInReferenced" xml:space="preserve">
+    <value>Reuse types in referenced assemblies</value>
+  </data>
+  <data name="AdvancedService.ReuseInAll" xml:space="preserve">
+    <value>Reuse types in all referenced assemblies</value>
+  </data>
+  <data name="AdvancedService.ReuseInSpecified" xml:space="preserve">
+    <value>Reuse types in specified referenced assemblies</value>
+  </data>
+  <data name="RegisteredPackageSources.Name" xml:space="preserve">
+    <value>Name:</value>
+  </data>
+  <data name="RegisteredPackageSources.Source" xml:space="preserve">
+    <value>Source:</value>
+  </data>
+  <data name="Global.Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="SamplePane.Title" xml:space="preserve">
+    <value>Sample pane</value>
+  </data>
+  <data name="SamplePane.Description" xml:space="preserve">
+    <value>Nested control for hot reload smoke tests.</value>
+  </data>
+  <data name="SamplePane.FirstItem" xml:space="preserve">
+    <value>First item</value>
+  </data>
+  <data name="SamplePane.SecondItem" xml:space="preserve">
+    <value>Second item</value>
+  </data>
+  <data name="Reporting.PushData.SelectProject" xml:space="preserve">
+    <value>Select Project</value>
+  </data>
+  <data name="Reporting.PushData.ColumnName" xml:space="preserve">
+    <value>ColumnName</value>
+  </data>
+  <data name="Reporting.PushData.DataType" xml:space="preserve">
+    <value>DataType</value>
+  </data>
+  <data name="Profiler.Timeline.PerformanceCounters" xml:space="preserve">
+    <value>Performance Counters</value>
+  </data>
+  <data name="Profiler.Timeline.Time" xml:space="preserve">
+    <value>Time</value>
+  </data>
+  <data name="Profiler.Timeline.Events" xml:space="preserve">
+    <value>Events</value>
+  </data>
+  <data name="Profiler.Timeline.Graph" xml:space="preserve">
+    <value>Graph</value>
+  </data>
+  <data name="ILSpy.Compare.Swap" xml:space="preserve">
+    <value>Swap left and right</value>
+  </data>
+  <data name="ILSpy.Compare.ShowIdentical" xml:space="preserve">
+    <value>Show identical entries</value>
+  </data>
+  <data name="ILSpy.Compare.ExpandAll" xml:space="preserve">
+    <value>Expand all</value>
+  </data>
+  <data name="ILSpy.Compare.CopyJson" xml:space="preserve">
+    <value>Copy to clipboard as JSON</value>
+  </data>
+  <data name="WpfDesign.ChooseImage.Title" xml:space="preserve">
+    <value>Choose Image</value>
+  </data>
+  <data name="WpfDesign.ChooseImage.Existing" xml:space="preserve">
+    <value>Existing images</value>
+  </data>
+  <data name="WpfDesign.ChooseImage.Url" xml:space="preserve">
+    <value>URL:</value>
+  </data>
+  <data name="EdmDesigner.AddEntityType.Title" xml:space="preserve">
+    <value>Add entity type</value>
+  </data>
+  <data name="EdmDesigner.AddEntityType.Name" xml:space="preserve">
+    <value>Entity type name</value>
+  </data>
+  <data name="EdmDesigner.AddEntityType.BaseType" xml:space="preserve">
+    <value>Base type</value>
+  </data>
+  <data name="Data.ConnectionWizard.Title" xml:space="preserve">
+    <value>Add new database connection</value>
+  </data>
+  <data name="Data.ConnectionWizard.AutoDiscover" xml:space="preserve">
+    <value>Auto Discover</value>
+  </data>
+  <data name="Data.ConnectionWizard.Connect" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="Data.ConnectionWizard.ConnectionString" xml:space="preserve">
+    <value>Connection String</value>
+  </data>
+  <data name="PackageManagement.FileConflict.Title" xml:space="preserve">
+    <value>File Conflict</value>
+  </data>
+  <data name="PackageManagement.FileConflict.YesToAll" xml:space="preserve">
+    <value>Yes to All</value>
+  </data>
+  <data name="PackageManagement.FileConflict.NoToAll" xml:space="preserve">
+    <value>No to All</value>
+  </data>
+  <data name="Reporting.BaseSettings.ReportType" xml:space="preserve">
+    <value>ReportType :</value>
+  </data>
+  <data name="Reporting.BaseSettings.Portrait" xml:space="preserve">
+    <value>Legal</value>
+  </data>
+  <data name="Reporting.BaseSettings.Landscape" xml:space="preserve">
+    <value>Landscape</value>
+  </data>
+  <data name="CodeQuality.Node.Type" xml:space="preserve">
+    <value>Type :</value>
+  </data>
+  <data name="CodeQuality.Node.Class" xml:space="preserve">
+    <value>Class :</value>
+  </data>
+  <data name="CodeQuality.Node.Children" xml:space="preserve">
+    <value>Children :</value>
+  </data>
+  <data name="Profiler.Overview" xml:space="preserve">
+    <value>Overview</value>
+  </data>
+  <data name="SourceAnalysis.FindStyleCopPath" xml:space="preserve">
+    <value>Find StyleCop path</value>
+  </data>
+  <data name="SourceAnalysis.ModifyMasterSettings" xml:space="preserve">
+    <value>Modify Master StyleCop Settings</value>
+  </data>
+  <data name="Global.Height" xml:space="preserve">
+    <value>Height</value>
+  </data>
+  <data name="WpfDesign.DocumentError.Title" xml:space="preserve">
+    <value>Problem Loading</value>
+  </data>
+  <data name="WpfDesign.DocumentError.Message" xml:space="preserve">
+    <value>The document contains errors which should be fixed so that the designer can load. Switch to XAML Tab to fix the errors.</value>
+  </data>
+  <data name="WpfDesign.DocumentError.Additional" xml:space="preserve">
+    <value>Additional information</value>
+  </data>
+  <data name="FormsDesigner.General.OutOfProcessHost" xml:space="preserve">
+    <value>Out-of-process designer host</value>
+  </data>
+  <data name="FormsDesigner.General.LoadingTimeout" xml:space="preserve">
+    <value>Loading timeout (seconds):</value>
+  </data>
+  <data name="FormsDesigner.General.LoadingTimeoutHelp" xml:space="preserve">
+    <value>How long the IDE waits for the WinForms designer host to open/update a document before it is treated as hung and restarted. Increase this for very large forms.</value>
+  </data>
+  <data name="EdmDesigner.AddComplexType.Title" xml:space="preserve">
+    <value>Add complex type</value>
+  </data>
 </root>
