@@ -118,7 +118,7 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="_Internal.Bogus.Translation.Test1" xml:space="preserve">
-    <value>該資源不被使用.它僅僅用來測試翻譯資料庫.</value>
+    <value>該資源不被使用。它僅僅用來測試翻譯資料庫。</value>
   </data>
   <data name="AddInManager.About" xml:space="preserve">
     <value>關於</value>
@@ -133,10 +133,10 @@
     <value>取消更新</value>
   </data>
   <data name="AddInManager.ActionDisable" xml:space="preserve">
-    <value>失效</value>
+    <value>停用</value>
   </data>
   <data name="AddInManager.ActionEnable" xml:space="preserve">
-    <value>有效</value>
+    <value>啟用</value>
   </data>
   <data name="AddInManager.ActionInstall" xml:space="preserve">
     <value>安裝</value>
@@ -148,10 +148,10 @@
     <value>更新</value>
   </data>
   <data name="AddInManager.AddInDependencyFailed" xml:space="preserve">
-    <value>該增益集的相關附件沒有找到。請安裝。</value>
+    <value>找不到該增益集的相依性。請安裝以啟用此增益集。</value>
   </data>
   <data name="AddInManager.AddInDisabled" xml:space="preserve">
-    <value>失效</value>
+    <value>已停用</value>
   </data>
   <data name="AddInManager.AddInEnabled" xml:space="preserve">
     <value>重新啟動${ProductName}後增益集才能使用</value>
@@ -178,7 +178,7 @@
     <value>你不能停用增益集管理器，因為你需要它讓增益集重新可用！</value>
   </data>
   <data name="AddInManager.CannotInstallIntoApplicationDirectory" xml:space="preserve">
-    <value>你不能把增益集安裝在${ProductName}目錄,它們將自動被當作預安裝增益集.</value>
+    <value>你不能把增益集安裝在${ProductName}目錄，它們將自動被當作預安裝增益集。</value>
   </data>
   <data name="AddInManager.DescriptionCancelDeinstallation" xml:space="preserve">
     <value>終止已選增益集的解除安裝</value>
@@ -187,7 +187,7 @@
     <value>終止已選增益集的安裝</value>
   </data>
   <data name="AddInManager.DescriptionCancelUpdate" xml:space="preserve">
-    <value>終止已選增益集的更新.</value>
+    <value>終止已選增益集的更新。</value>
   </data>
   <data name="AddInManager.DescriptionDisable" xml:space="preserve">
     <value>停用選中的增益集</value>
@@ -196,7 +196,7 @@
     <value>啟用選中的增益集</value>
   </data>
   <data name="AddInManager.DescriptionInconsistentSelection" xml:space="preserve">
-    <value>增益集選擇不匹配,請選擇相同狀態的增益集.</value>
+    <value>增益集選擇不匹配，請選擇相同狀態的增益集。</value>
   </data>
   <data name="AddInManager.FileAssociation" xml:space="preserve">
     <value>增益集安裝包</value>
@@ -208,20 +208,20 @@
     <value>增益集安裝(&amp;I)</value>
   </data>
   <data name="AddInManager.NoAddInsInstalled" xml:space="preserve">
-    <value>你沒有安裝任何增益集.
-請從Internet下載增益集,點擊"增益集安裝"選擇下載的檔案進行安裝.</value>
+    <value>你沒有安裝任何增益集。
+請從Internet下載增益集，按一下"增益集安裝"選擇下載的檔案進行安裝。</value>
   </data>
   <data name="AddInManager.OpenWebsite" xml:space="preserve">
-    <value>打開網站</value>
+    <value>開啟網站</value>
   </data>
   <data name="AddInManager.Options" xml:space="preserve">
     <value>選項</value>
   </data>
   <data name="AddInManager.RequiredBy" xml:space="preserve">
-    <value>以下增益集依賴於它:</value>
+    <value>以下增益集依賴於它：</value>
   </data>
   <data name="AddInManager.RequiredDependencies" xml:space="preserve">
-    <value>需要附件:</value>
+    <value>需要的相依性：</value>
   </data>
   <data name="AddInManager.ShowPreinstalledAddIns" xml:space="preserve">
     <value>顯示預安裝增益集</value>
@@ -230,7 +230,7 @@
     <value>增益集管理器</value>
   </data>
   <data name="AddInManager.UnknownFileFormat" xml:space="preserve">
-    <value>未知檔案格式:</value>
+    <value>未知檔案格式：</value>
   </data>
   <data name="AddIns.AvalonEdit.SearchPanel.ErrorText" xml:space="preserve">
     <value>錯誤：</value>
@@ -248,7 +248,7 @@
     <value>顯示類圖</value>
   </data>
   <data name="AddIns.Git.TortoiseGitRequired" xml:space="preserve">
-    <value>TortoiseGit需要安裝執行此操作。</value>
+    <value>執行此動作需要安裝 TortoiseGit。</value>
   </data>
   <data name="AddIns.HelpViewer.ContentsPadTitle" xml:space="preserve">
     <value>內容</value>
@@ -269,7 +269,7 @@
     <value>沒有找到說明文件庫管理工具，請檢查是否正確安裝。</value>
   </data>
   <data name="AddIns.HelpViewer.InstalledHelpCatalogsLabel" xml:space="preserve">
-    <value>說明所在目錄</value>
+    <value>已安裝的說明目錄</value>
   </data>
   <data name="AddIns.HelpViewer.LaunchHelpLibraryManagerCommand" xml:space="preserve">
     <value>啟動說明文件管理工具</value>
@@ -278,13 +278,13 @@
     <value>微軟說明查看器</value>
   </data>
   <data name="AddIns.HelpViewer.OfflineFeatureRequestMsg" xml:space="preserve">
-    <value>在離線模式下您不能使用在線說明的功能。請切換到在線模式。</value>
+    <value>您線上上說明模式下要求了離線功能。若要使用此功能，您必須切換模式。</value>
   </data>
   <data name="AddIns.HelpViewer.SearchDoSearchButton" xml:space="preserve">
     <value>搜尋</value>
   </data>
   <data name="AddIns.HelpViewer.SearchLookForLabel" xml:space="preserve">
-    <value>尋找:</value>
+    <value>尋找：</value>
   </data>
   <data name="AddIns.HelpViewer.SearchPadTitle" xml:space="preserve">
     <value>搜尋</value>
@@ -299,7 +299,7 @@
     <value>我想使用本地說明</value>
   </data>
   <data name="AddIns.HelpViewer.UseOnlineHelpLabel" xml:space="preserve">
-    <value>我想使用聯機說明</value>
+    <value>我想使用線上說明</value>
   </data>
   <data name="AddIns.HexEditor.DefaultBytesPerLine" xml:space="preserve">
     <value>每行的位元組數</value>
@@ -308,7 +308,7 @@
     <value>顯示</value>
   </data>
   <data name="AddIns.HexEditor.Display.Elements.Data" xml:space="preserve">
-    <value>數據</value>
+    <value>資料</value>
   </data>
   <data name="AddIns.HexEditor.Display.Elements.Offset" xml:space="preserve">
     <value>偏移量</value>
@@ -326,16 +326,16 @@
     <value>八進位</value>
   </data>
   <data name="AddIns.HexEditor.SizeToFit" xml:space="preserve">
-    <value>調整以適應當前的寬度</value>
+    <value>調整以適應目前的寬度</value>
   </data>
   <data name="AddIns.HtmlHelp2.Back" xml:space="preserve">
-    <value>返回</value>
+    <value>後退</value>
   </data>
   <data name="AddIns.HtmlHelp2.Contents" xml:space="preserve">
-    <value>目錄</value>
+    <value>內容</value>
   </data>
   <data name="AddIns.HtmlHelp2.EnterURL" xml:space="preserve">
-    <value>輸入地址:</value>
+    <value>輸入地址：</value>
   </data>
   <data name="AddIns.HtmlHelp2.Forward" xml:space="preserve">
     <value>向前</value>
@@ -350,10 +350,10 @@
     <value>新視窗</value>
   </data>
   <data name="AddIns.HtmlHelp2.Search" xml:space="preserve">
-    <value>尋找</value>
+    <value>搜尋</value>
   </data>
   <data name="AddIns.HtmlHelp2.Stop" xml:space="preserve">
-    <value>終止</value>
+    <value>停止</value>
   </data>
   <data name="AddIns.HtmlHelp2.Title" xml:space="preserve">
     <value>標題</value>
@@ -368,13 +368,13 @@
     <value>{0}的所有函式</value>
   </data>
   <data name="AddIns.Profiler.DatabaseTooNewError" xml:space="preserve">
-    <value>無法打開選中的分析會話,因為它是由新版本的SharpDevelop創建的.</value>
+    <value>無法開啟選中的分析會話，因為它是由新版本的SharpDevelop創建的。</value>
   </data>
   <data name="AddIns.Profiler.FileExtensionDescription" xml:space="preserve">
     <value>SharpDevelop分析會話</value>
   </data>
   <data name="AddIns.Profiler.Messages.FileNotFound" xml:space="preserve">
-    <value>找不到可執行檔案專案無法啟動，請確認專案和它的相依性是否已建置!</value>
+    <value>找不到可執行檔案專案無法啟動，請確認專案和它的相依性是否已建置！</value>
   </data>
   <data name="AddIns.Profiler.Messages.NoStartableProjectFound" xml:space="preserve">
     <value>沒有找到啟動專案。正在中止...</value>
@@ -383,7 +383,7 @@
     <value>這個專案不是可啟動專案。您需要用方案中的可啟動專案來代替嗎？</value>
   </data>
   <data name="AddIns.Profiler.Messages.PreparingForAnalysis" xml:space="preserve">
-    <value>正在分析...</value>
+    <value>正在準備分析...</value>
   </data>
   <data name="AddIns.Profiler.Messages.RegisterFailed" xml:space="preserve">
     <value>無法註冊探查器到COM登入檔。不能啟動探查器！</value>
@@ -401,38 +401,38 @@
     <value>不要分析.NET內部呼叫</value>
   </data>
   <data name="AddIns.Profiler.Options.General.DataCollection.EnableDC" xml:space="preserve">
-    <value>僅在會話結束後收集數據。</value>
+    <value>僅在會話結束後收集資料。</value>
   </data>
   <data name="AddIns.Profiler.Options.General.DataCollection.EnableDCAtStartup" xml:space="preserve">
-    <value>在會話啟動後立即開始收集數據。</value>
+    <value>在會話啟動後立即開始收集資料。</value>
   </data>
   <data name="AddIns.Profiler.Options.General.DataCollection.Header" xml:space="preserve">
-    <value>數據採集</value>
+    <value>資料採集</value>
   </data>
   <data name="AddIns.Profiler.Options.General.DataCollection.SizeOfStorageDescription" xml:space="preserve">
-    <value>臨時檔案的存儲大小</value>
+    <value>臨時檔案的儲存大小</value>
   </data>
   <data name="AddIns.Profiler.Options.General.DataCollection.TrackEvents" xml:space="preserve">
-    <value>跟蹤事件</value>
+    <value>追蹤事件</value>
   </data>
   <data name="AddIns.Profiler.Options.Title" xml:space="preserve">
     <value>分析</value>
   </data>
   <data name="AddIns.Profiler.ProfileCurrentProject" xml:space="preserve">
-    <value>分析當前專案</value>
+    <value>分析目前專案</value>
   </data>
   <data name="AddIns.Profiler.ProfileExecutable" xml:space="preserve">
     <value>分析指定程式</value>
   </data>
   <data name="AddIns.Profiler.ProfileExecutable.ErrorMessage" xml:space="preserve">
-    <value>無效數據,請重試!</value>
+    <value>無效資料，請重試！</value>
   </data>
   <data name="AddIns.Profiler.ProfileExecutableForm.CmdLineArgsText" xml:space="preserve">
-    <value>命令行參數:</value>
+    <value>命令行參數：</value>
   </data>
   <data name="AddIns.Profiler.ProfileExecutableForm.DescriptionText" xml:space="preserve">
     <value>選擇您要分析的程式。
-可以指定工作目錄和命令行參數.
+可以指定工作目錄和命令行參數。
 </value>
   </data>
   <data name="AddIns.Profiler.ProfileExecutableForm.ExePathText" xml:space="preserve">
@@ -445,28 +445,28 @@
     <value>分析應用程式</value>
   </data>
   <data name="AddIns.Profiler.ProfileExecutableForm.WorkingDirText" xml:space="preserve">
-    <value>工作目錄:</value>
+    <value>工作目錄：</value>
   </data>
   <data name="AddIns.Profiler.ProfilerControlWindow.CollectData" xml:space="preserve">
-    <value>數據採樣</value>
+    <value>資料採樣</value>
   </data>
   <data name="AddIns.Profiler.ProfilerControlWindow.Shutdown" xml:space="preserve">
     <value>停止</value>
   </data>
   <data name="AddIns.Profiler.ProfilerControlWindow.Title" xml:space="preserve">
-    <value>分析控制</value>
+    <value>分析器控制視窗</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.CallCountColumnText" xml:space="preserve">
     <value>呼叫次數</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.CallsText" xml:space="preserve">
-    <value>呼叫次數:</value>
+    <value>呼叫次數：</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.ClearQueryHistoryText" xml:space="preserve">
     <value>清除查詢歷史</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.ContextMenu.CopySelectedData" xml:space="preserve">
-    <value>複製選中數據</value>
+    <value>複製選中資料</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.ContextMenu.CopyStacktrace" xml:space="preserve">
     <value>複製呼叫堆疊</value>
@@ -478,7 +478,7 @@
     <value>轉到定義</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.ContextMenu.SetAsRoot" xml:space="preserve">
-    <value>以此為根在新增頁中打開</value>
+    <value>以此為根在新增頁中開啟</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.ContextMenu.ShowFunctions" xml:space="preserve">
     <value>顯示函式</value>
@@ -487,28 +487,28 @@
     <value>CPU周期：</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.ExecuteQueryText" xml:space="preserve">
-    <value>查詢</value>
+    <value>執行查詢</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.ExpandHotPathSubtreeText" xml:space="preserve">
-    <value>展開當前目錄</value>
+    <value>展開選取的熱路徑</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.NameColumnText" xml:space="preserve">
     <value>名稱</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.OverviewTabText" xml:space="preserve">
-    <value>概述</value>
+    <value>概觀</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.QueryHistoryText" xml:space="preserve">
     <value>查詢歷史</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.SearchLabelText" xml:space="preserve">
-    <value>搜尋:</value>
+    <value>搜尋：</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.ShowQueryBarText" xml:space="preserve">
     <value>顯示查詢欄</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.TimePercentageOfParentColumnText" xml:space="preserve">
-    <value>%佔用父執行緒</value>
+    <value>% 佔用父項</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.TimeSpentColumnText" xml:space="preserve">
     <value>總消耗時間</value>
@@ -517,13 +517,13 @@
     <value>消耗時間/次</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.TimeSpentSelfColumnText" xml:space="preserve">
-    <value>消耗時間(自己)</value>
+    <value>消耗時間（自己）</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.TimeSpentSelfPerCallColumnText" xml:space="preserve">
-    <value>消耗時間(自己)/次</value>
+    <value>消耗時間（自己）/次</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.TimeText" xml:space="preserve">
-    <value>時間:</value>
+    <value>時間：</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.Title" xml:space="preserve">
     <value>會話分析器</value>
@@ -532,7 +532,7 @@
     <value>前20條</value>
   </data>
   <data name="AddIns.Profiler.ProfilingView.WaitBarText" xml:space="preserve">
-    <value>刷新檢視，請稍等...</value>
+    <value>重新整理檢視，請稍等...</value>
   </data>
   <data name="AddIns.Profiler.UnitTests.RunWithProfiler" xml:space="preserve">
     <value>執行探查器</value>
@@ -553,10 +553,10 @@
     <value>提取方法</value>
   </data>
   <data name="AddIns.SharpRefactoring.ExtractMethod.ContainsBreakError" xml:space="preserve">
-    <value>所選內容包含"break"陳述式,但未包含封閉陳述式。請更改選擇！</value>
+    <value>所選內容包含"break"陳述式，但未包含封閉迴圈。請更改選擇！</value>
   </data>
   <data name="AddIns.SharpRefactoring.ExtractMethod.ContainsContinueError" xml:space="preserve">
-    <value>所選內容包含"continue"陳述式,但未包含封閉陳述式。請更改選擇！</value>
+    <value>所選內容包含"continue"陳述式，但未包含封閉迴圈。請更改選擇！</value>
   </data>
   <data name="AddIns.SharpRefactoring.ExtractMethod.ContainsGotoError" xml:space="preserve">
     <value>所選內容中的goto陳述式參照了所選內容外的標籤。請更改選擇！</value>
@@ -565,17 +565,17 @@
     <value>輸入新方法的名稱</value>
   </data>
   <data name="AddIns.SharpRefactoring.ExtractMethod.InvalidSelection" xml:space="preserve">
-    <value>無效的選擇!請選擇一個有效的範圍.
+    <value>無效的選擇！請選擇一個有效的範圍。
 </value>
   </data>
   <data name="AddIns.SharpRefactoring.ExtractMethod.ParseErrors" xml:space="preserve">
-    <value>解析過程中出錯！無法提取方法.</value>
+    <value>解析過程中出錯！無法提取方法。</value>
   </data>
   <data name="AddIns.SharpRefactoring.ExtractMethodNotSupported" xml:space="preserve">
-    <value>目前不支援從{0}裡提取方法!</value>
+    <value>目前不支援從{0}裡提取方法！</value>
   </data>
   <data name="AddIns.SharpRefactoring.InsertCtor" xml:space="preserve">
-    <value>插入構造器</value>
+    <value>插入建構函式</value>
   </data>
   <data name="AddIns.SharpRefactoring.InsertCtor.AddCheckForNullLabel" xml:space="preserve">
     <value>新增空引用檢查</value>
@@ -590,7 +590,7 @@
     <value>變數</value>
   </data>
   <data name="AddIns.SharpRefactoring.IntroduceMethod" xml:space="preserve">
-    <value>導入{1}中的方法{0}</value>
+    <value>在{1}中引入方法{0}</value>
   </data>
   <data name="AddIns.SharpRefactoring.OverrideEqualsGetHashCodeMethods" xml:space="preserve">
     <value>重寫Equals()和GetHashCode()</value>
@@ -602,7 +602,7 @@
     <value>新增運算子多載</value>
   </data>
   <data name="AddIns.SharpRefactoring.OverrideEqualsGetHashCodeMethods.AddOtherMethod" xml:space="preserve">
-    <value>新增${otherMethod}多載</value>
+    <value>新增 ${otherMethod} 覆寫</value>
   </data>
   <data name="AddIns.SharpRefactoring.OverrideEqualsGetHashCodeMethods.SurroundWithRegion" xml:space="preserve">
     <value>用#region注釋程式碼</value>
@@ -611,16 +611,16 @@
     <value>重寫ToString()</value>
   </data>
   <data name="AddIns.SharpRefactoring.OverrideToStringMethod.Description" xml:space="preserve">
-    <value>請選擇一個您要實作ToString()方法的欄位:</value>
+    <value>請選擇要用於 ToString() 實作的欄位：</value>
   </data>
   <data name="AddIns.SharpRefactoring.ResolveAttribute" xml:space="preserve">
-    <value>處理屬性: {0}</value>
+    <value>解析屬性：{0}</value>
   </data>
   <data name="AddIns.SharpRefactoring.ResolveExtensionMethod" xml:space="preserve">
     <value>解析擴展方法{0}</value>
   </data>
   <data name="AddIns.SourceAnalysis.CheckWithStyleCop" xml:space="preserve">
-    <value>用StyleCop檢驗</value>
+    <value>用 StyleCop 檢查</value>
   </data>
   <data name="AddIns.SourceAnalysis.Title" xml:space="preserve">
     <value>原始碼風格分析</value>
@@ -644,10 +644,10 @@
     <value>不能移除這個檔案/目錄，因為它在subversion中的狀態是'{0}'.</value>
   </data>
   <data name="AddIns.Subversion.CheckForModifications" xml:space="preserve">
-    <value>查看更新</value>
+    <value>檢查修改</value>
   </data>
   <data name="AddIns.Subversion.Checkout" xml:space="preserve">
-    <value>籤出</value>
+    <value>簽出</value>
   </data>
   <data name="AddIns.Subversion.CleanUp" xml:space="preserve">
     <value>清理</value>
@@ -671,7 +671,7 @@
     <value>無法刪除${File}</value>
   </data>
   <data name="AddIns.Subversion.Export" xml:space="preserve">
-    <value>導出</value>
+    <value>匯出</value>
   </data>
   <data name="AddIns.Subversion.ForceDelete" xml:space="preserve">
     <value>強制刪除</value>
@@ -701,13 +701,13 @@
     <value>在更改專案檔案後重新載入專案(&amp;R)</value>
   </data>
   <data name="AddIns.Subversion.Options.RenameInsideSubversion" xml:space="preserve">
-    <value>重命名檔案取代覆寫檔案(保留歷史記錄)(&amp;R)。</value>
+    <value>在 Subversion 中重命名檔案（保留歷史記錄）(&amp;R)。</value>
   </data>
   <data name="AddIns.Subversion.Options.Title" xml:space="preserve">
     <value>Subversion選項</value>
   </data>
   <data name="AddIns.Subversion.Options.UseHistoryDisplayBinding" xml:space="preserve">
-    <value>查看版本控制檔案的歷史清單(&amp;H)</value>
+    <value>為版本控制檔案顯示歷史索引標籤(&amp;H)</value>
   </data>
   <data name="AddIns.Subversion.Relocate" xml:space="preserve">
     <value>重新定位</value>
@@ -719,7 +719,7 @@
     <value>該檔案剛剛被移動到這個位置，你真的想刪除它？</value>
   </data>
   <data name="AddIns.Subversion.RepositoryBrowser" xml:space="preserve">
-    <value>瀏覽知識庫(Repository)</value>
+    <value>知識庫瀏覽器</value>
   </data>
   <data name="AddIns.Subversion.Revert" xml:space="preserve">
     <value>還原</value>
@@ -756,25 +756,25 @@
     <value>謝謝您的支援。您可以隨時在選項中關閉此功能。</value>
   </data>
   <data name="AddIns.UsageDataCollector.AcceptRadioButton" xml:space="preserve">
-    <value>我願意參與收集並上傳數據</value>
+    <value>我願意參與收集並上傳資料</value>
   </data>
   <data name="AddIns.UsageDataCollector.DeclineConfirmation" xml:space="preserve">
-    <value>您可以隨時在選項中打開此功能。</value>
+    <value>您可以隨時在選項中開啟此功能。</value>
   </data>
   <data name="AddIns.UsageDataCollector.DeclineRadioButton" xml:space="preserve">
     <value>我不想參與</value>
   </data>
   <data name="AddIns.UsageDataCollector.Introduction" xml:space="preserve">
-    <value>我們需要您的說明。在未來的改進中,我們需要知道SharpDevelop的那些功能是使用較多的。我們會收集這些資訊，並且自動上傳到伺服器。</value>
+    <value>我們需要您的幫助。在未來的改進中，我們需要知道SharpDevelop的哪些功能是使用較多的。我們會收集這些資訊，並且自動上傳到伺服器。</value>
   </data>
   <data name="AddIns.UsageDataCollector.PrivacyStatement" xml:space="preserve">
-    <value>隱私權宣告</value>
+    <value>隱私權聲明</value>
   </data>
   <data name="AddIns.UsageDataCollector.ShowCollectedData" xml:space="preserve">
-    <value>查看收集的數據</value>
+    <value>查看收集的資料</value>
   </data>
   <data name="AddIns.UsageDataCollector.Title" xml:space="preserve">
-    <value>使用數據收集器</value>
+    <value>使用資料收集器</value>
   </data>
   <data name="AddIns.VBNetBinding.CodeCompletion.QuestionmarkEqualsItem.Description" xml:space="preserve">
     <value>讓SharpDevelop根據初始物件確定型別</value>
@@ -783,7 +783,7 @@
     <value>編輯格線的列和行</value>
   </data>
   <data name="AddIns.XamlBinding.Menu.ExtractPropertiesAsStyle" xml:space="preserve">
-    <value>將屬性提取為型別</value>
+    <value>將屬性提取為樣式</value>
   </data>
   <data name="AddIns.XamlBinding.Menu.ExtractPropertiesAsStyle.ErrorNoSelection" xml:space="preserve">
     <value>沒有選擇有效元素！</value>
@@ -807,43 +807,43 @@
     <value>&lt;新事件處理程式&gt;</value>
   </data>
   <data name="AddIns.XamlBinding.Options.CodeCompletionGroupLabel" xml:space="preserve">
-    <value>程式碼結束</value>
+    <value>程式碼補全</value>
   </data>
   <data name="AddIns.XamlBinding.Options.EventColor" xml:space="preserve">
-    <value>事件顏的色:</value>
+    <value>事件色彩：</value>
   </data>
   <data name="AddIns.XamlBinding.Options.EventHandlerNamePattern" xml:space="preserve">
-    <value>事件處理程式名稱的模式:</value>
+    <value>事件處理程式名稱的模式：</value>
   </data>
   <data name="AddIns.XamlBinding.Options.HighlightingDescription" xml:space="preserve">
-    <value>選擇XAML高亮顯示的色彩:</value>
+    <value>選擇XAML高亮顯示的色彩：</value>
   </data>
   <data name="AddIns.XamlBinding.Options.HighlightingGroupLabel" xml:space="preserve">
     <value>高亮設定</value>
   </data>
   <data name="AddIns.XamlBinding.Options.IgnoredElementColor" xml:space="preserve">
-    <value>忽略元素的色彩:</value>
+    <value>忽略元素的色彩：</value>
   </data>
   <data name="AddIns.XamlBinding.Options.NamespaceDeclarationColor" xml:space="preserve">
-    <value>XML命名空間宣告的色彩:</value>
+    <value>XML命名空間宣告的色彩：</value>
   </data>
   <data name="AddIns.XamlBinding.Options.PropertyColor" xml:space="preserve">
-    <value>屬性色彩:</value>
+    <value>屬性色彩：</value>
   </data>
   <data name="AddIns.XamlBinding.Options.SwitchToCodeViewAfterInsertion" xml:space="preserve">
-    <value>切換到程式碼後插入新的事件:</value>
+    <value>插入新事件處理程式後切換到程式碼</value>
   </data>
   <data name="AddIns.XamlBinding.Options.Title" xml:space="preserve">
     <value>XAML</value>
   </data>
   <data name="AddIns.XamlBinding.Options.UseExtensionCompletion" xml:space="preserve">
-    <value>擴展標記結束時使用</value>
+    <value>使用標記延伸補全</value>
   </data>
   <data name="AddIns.XamlBinding.Options.UseHighlighting" xml:space="preserve">
     <value>使用高級高亮設定</value>
   </data>
   <data name="AvalonEdit.FileEncoding.EncodingCausesDataLoss" xml:space="preserve">
-    <value>這個檔案無法儲存為當前編碼${encoding}，因為它會丟失數據。</value>
+    <value>這個檔案無法儲存為目前編碼${encoding}，因為它會丟失資料。</value>
   </data>
   <data name="AvalonEdit.FileEncoding.EncodingCausesDataLoss.Continue" xml:space="preserve">
     <value>繼續</value>
@@ -852,11 +852,11 @@
     <value>儲存為UTF-8格式</value>
   </data>
   <data name="BackendBindings.ExecutionManager.CantExecuteDLLError" xml:space="preserve">
-    <value>專案被設定為dll,但是沒有指定執行命令.
-你可以在專案選項中指定執行命令.</value>
+    <value>此專案建置的是類別庫（.dll），無法單獨啟動。
+若要執行或偵錯它，請選擇「專案選項」&gt;「偵錯」，將「啟動動作」設為「啟動外部程式」，或將可執行的專案設為起始專案。</value>
   </data>
   <data name="BackendBindings.ExecutionManager.NoSingleFileCompilation" xml:space="preserve">
-    <value>不支援單個檔案建置,請建立專案!</value>
+    <value>不支援單個檔案建置，請建立專案！</value>
   </data>
   <data name="CompilerResultView.DescriptionText" xml:space="preserve">
     <value>說明</value>
@@ -868,7 +868,7 @@
     <value>關於</value>
   </data>
   <data name="ComponentInspector.AboutDialog.VersionLabel" xml:space="preserve">
-    <value>版本:</value>
+    <value>版本：</value>
   </data>
   <data name="ComponentInspector.ActionMenu.CastMenuItem" xml:space="preserve">
     <value>強制轉換</value>
@@ -889,13 +889,13 @@
     <value>事件記錄(&amp;E)</value>
   </data>
   <data name="ComponentInspector.ActionMenu.OnDesignSurfaceMenuItem" xml:space="preserve">
-    <value>設計時介面</value>
+    <value>在設計介面上</value>
   </data>
   <data name="ComponentInspector.ActionMenu.PasteObjectMenuItem" xml:space="preserve">
     <value>貼上物件(&amp;P)</value>
   </data>
   <data name="ComponentInspector.ActionMenu.RefreshRunningComObjectsMenuItem" xml:space="preserve">
-    <value>更新正在執行的COM物件。</value>
+    <value>重新整理正在執行的COM物件。</value>
   </data>
   <data name="ComponentInspector.ActionMenu.RegisterTypeLibMenuItem" xml:space="preserve">
     <value>註冊類庫(TypeLib)</value>
@@ -907,7 +907,7 @@
     <value>取消註冊TypeLib</value>
   </data>
   <data name="ComponentInspector.AssemblyTreeNode.Text" xml:space="preserve">
-    <value>已打開的組件</value>
+    <value>已開啟的組件</value>
   </data>
   <data name="ComponentInspector.AttachDialog.AttachFailedMessage" xml:space="preserve">
     <value>附加到處理序{0}出錯。</value>
@@ -922,7 +922,7 @@
     <value>找不到型別</value>
   </data>
   <data name="ComponentInspector.CastDialog.CannotFindTypeInAssembliesMessage" xml:space="preserve">
-    <value>在當前打開的組件中找不到型別{0}</value>
+    <value>在目前開啟的組件中找不到型別{0}</value>
   </data>
   <data name="ComponentInspector.CastDialog.CastToLabel" xml:space="preserve">
     <value>轉換為</value>
@@ -979,16 +979,16 @@
     <value>在啟動時獲取COM執行時物件</value>
   </data>
   <data name="ComponentInspector.CustomObjectPanel.OtherLabel" xml:space="preserve">
-    <value>其它</value>
+    <value>其他</value>
   </data>
   <data name="ComponentInspector.CustomObjectPanel.ShowBaseClassNamesCheckBox" xml:space="preserve">
     <value>顯示基類名稱</value>
   </data>
   <data name="ComponentInspector.CustomObjectPanel.ShowLabel" xml:space="preserve">
-    <value>查看</value>
+    <value>顯示</value>
   </data>
   <data name="ComponentInspector.CustomObjectPanel.ShowObjectAsBaseCheckBox" xml:space="preserve">
-    <value>顯示物件類的基類成員</value>
+    <value>在基類分類中顯示物件成員</value>
   </data>
   <data name="ComponentInspector.CustomObjectPanel.ShowPublicMembersCheckBox" xml:space="preserve">
     <value>只顯示公共成員</value>
@@ -1015,15 +1015,15 @@
     <value>事件已經新增到日誌中</value>
   </data>
   <data name="ComponentInspector.EventLogList.EventsTab" xml:space="preserve">
-    <value>Event log(事件日誌)</value>
+    <value>Event log（事件日誌）</value>
   </data>
   <data name="ComponentInspector.EventLogList.IncrementColumnHeader" xml:space="preserve">
     <value>正序</value>
   </data>
   <data name="ComponentInspector.EventLogList.NoEventsBeingLoggedMessage" xml:space="preserve">
-    <value>您尚未對任何事件新增日誌.
+    <value>您尚未對任何事件新增日誌。
 
-在對事件新增日誌時, 在物件面板中選擇一個物件或者事件, 然後使用右鍵或者功能表來開啟事件日誌功能.</value>
+在對事件新增日誌時， 在物件面板中選擇一個物件或者事件， 然後使用右鍵或者功能表來開啟事件日誌功能。</value>
   </data>
   <data name="ComponentInspector.EventLogList.ParametersColumnHeader" xml:space="preserve">
     <value>參數</value>
@@ -1038,7 +1038,7 @@
     <value>時間</value>
   </data>
   <data name="ComponentInspector.FindDialog.AllLevelsLabel" xml:space="preserve">
-    <value>所有級別</value>
+    <value>所有層級</value>
   </data>
   <data name="ComponentInspector.FindDialog.ContainsRadioButton" xml:space="preserve">
     <value>包含</value>
@@ -1053,7 +1053,7 @@
     <value>尋找內容</value>
   </data>
   <data name="ComponentInspector.FindDialog.FoundListColumnHeader" xml:space="preserve">
-    <value>專案</value>
+    <value>項目</value>
   </data>
   <data name="ComponentInspector.FindDialog.FullNameLabel" xml:space="preserve">
     <value>全名</value>
@@ -1062,10 +1062,10 @@
     <value>只向下</value>
   </data>
   <data name="ComponentInspector.FindDialog.LevelsLabel" xml:space="preserve">
-    <value>級別</value>
+    <value>層級</value>
   </data>
   <data name="ComponentInspector.FindDialog.LookingAtLabel" xml:space="preserve">
-    <value>尋找:</value>
+    <value>尋找：</value>
   </data>
   <data name="ComponentInspector.FindDialog.MatchLabel" xml:space="preserve">
     <value>匹配</value>
@@ -1077,7 +1077,7 @@
     <value>請選擇樹節點</value>
   </data>
   <data name="ComponentInspector.FindDialog.NoTreeNodeSelectedMessage" xml:space="preserve">
-    <value>你必須在某些樹上選擇一個節點;將從那個節點開始尋找。</value>
+    <value>你必須在某些樹上選擇一個節點；將從那個節點開始尋找。</value>
   </data>
   <data name="ComponentInspector.FindDialog.ObjectTreeNameCheckBox" xml:space="preserve">
     <value>名稱</value>
@@ -1095,10 +1095,10 @@
     <value>在搜尋物件樹的時候請選一個或多個名稱或值。</value>
   </data>
   <data name="ComponentInspector.FindDialog.SelectNodeInTreeNameMessage" xml:space="preserve">
-    <value>你必須在樹 {0} 上選擇一個節點;將從那個節點開始尋找。</value>
+    <value>你必須在樹 {0} 上選擇一個節點；將從那個節點開始尋找。</value>
   </data>
   <data name="ComponentInspector.FindDialog.ShowItemMenuItem" xml:space="preserve">
-    <value>顯示專案</value>
+    <value>顯示項目</value>
   </data>
   <data name="ComponentInspector.FindDialog.StartingWithLabel" xml:space="preserve">
     <value>以此打頭：</value>
@@ -1110,16 +1110,16 @@
     <value>尋找</value>
   </data>
   <data name="ComponentInspector.GacList.CultureColumn" xml:space="preserve">
-    <value>文化及語言</value>
+    <value>文化特性</value>
   </data>
   <data name="ComponentInspector.GacList.GlobalAssemblyNameColumn" xml:space="preserve">
     <value>全域組件名稱</value>
   </data>
   <data name="ComponentInspector.GacList.OpenMenuItem" xml:space="preserve">
-    <value>打開(&amp;O)</value>
+    <value>開啟(&amp;O)</value>
   </data>
   <data name="ComponentInspector.GacList.PublicKeyTokenColumn" xml:space="preserve">
-    <value>公共密鑰令牌</value>
+    <value>公開金鑰權杖</value>
   </data>
   <data name="ComponentInspector.GacList.VersionColumn" xml:space="preserve">
     <value>版本</value>
@@ -1146,13 +1146,13 @@
     <value>獲取屬性(&amp;G)</value>
   </data>
   <data name="ComponentInspector.GettingStartedDialog.Information" xml:space="preserve">
-    <value>監看式可以查看和操控任何ActiveX/COM物件。
+    <value>檢查器可以查看和操控任何ActiveX/COM物件。
 
-在左邊的物件樹中瀏覽到執行相應物件的COM組件，然後用滑鼠右鍵點擊物件的方法即可呼叫該方法。
+在左邊的物件樹中瀏覽到執行相應物件的COM組件，然後用滑鼠右鍵點選物件的方法即可呼叫該方法。
 
 通過ActiveX/COM索引標籤可以瀏覽已經安裝的COM組件。
 
-通過打開功能表(Open)可以打開型別庫(Type Library)或控制項檔案。
+通過開啟功能表(Open)可以開啟型別庫(Type Library)或控制項檔案。
 
 如果要創建和操控Active/COM組件，可以將TypeLib/Control中的類拖到物件樹或設計器中。</value>
   </data>
@@ -1178,10 +1178,10 @@
     <value>物件樹</value>
   </data>
   <data name="ComponentInspector.InspectorMenu.OpenAssembly" xml:space="preserve">
-    <value>打開組件(&amp;O)...</value>
+    <value>開啟組件(&amp;O)...</value>
   </data>
   <data name="ComponentInspector.InvokeMethodMenuItem" xml:space="preserve">
-    <value>呼叫(啟用)方法(&amp;M)</value>
+    <value>呼叫（啟用）方法(&amp;M)</value>
   </data>
   <data name="ComponentInspector.ObjectBrowser.ObjectsTreePanel" xml:space="preserve">
     <value>物件</value>
@@ -1217,7 +1217,7 @@
     <value>物件樹(&amp;O)</value>
   </data>
   <data name="ComponentInspector.ObjectBrowserForm.OpenFileDialogTitle" xml:space="preserve">
-    <value>選擇要打開的檔案</value>
+    <value>選擇要開啟的檔案</value>
   </data>
   <data name="ComponentInspector.ObjectBrowserForm.OptionsMenuItem" xml:space="preserve">
     <value>選項(&amp;O)</value>
@@ -1229,7 +1229,7 @@
     <value>說明(&amp;H)...</value>
   </data>
   <data name="ComponentInspector.ObjectBrowserForm.TracingMenuItem" xml:space="preserve">
-    <value>跟蹤(&amp;T)</value>
+    <value>追蹤(&amp;T)</value>
   </data>
   <data name="ComponentInspector.ObjectTreeOptionsPanel.CategoriesGroupBox" xml:space="preserve">
     <value>分類</value>
@@ -1241,10 +1241,10 @@
     <value>以16進位顯示整數</value>
   </data>
   <data name="ComponentInspector.ObjectTreeOptionsPanel.ShowBaseClassCategoryCheckBox" xml:space="preserve">
-    <value>顯示基類分類(目錄)</value>
+    <value>顯示基類分類</value>
   </data>
   <data name="ComponentInspector.ObjectTreeOptionsPanel.ShowBaseClassMembersCheckBox" xml:space="preserve">
-    <value>基類成員方法</value>
+    <value>基類成員</value>
   </data>
   <data name="ComponentInspector.ObjectTreeOptionsPanel.ShowBaseClassNamesCheckBox" xml:space="preserve">
     <value>基類的類名</value>
@@ -1268,7 +1268,7 @@
     <value>方法</value>
   </data>
   <data name="ComponentInspector.ObjectTreeOptionsPanel.ShowObjectAsBaseClassCheckBox" xml:space="preserve">
-    <value>顯示物件成員</value>
+    <value>在基類分類中顯示物件成員</value>
   </data>
   <data name="ComponentInspector.ObjectTreeOptionsPanel.ShowPropertiesCheckBox" xml:space="preserve">
     <value>屬性</value>
@@ -1277,7 +1277,7 @@
     <value>屬性/事件存取器方法</value>
   </data>
   <data name="ComponentInspector.ObjectTreeOptionsPanel.ShowPublicMembersOnlyCheckBox" xml:space="preserve">
-    <value>僅公有成員方法</value>
+    <value>只顯示公共成員</value>
   </data>
   <data name="ComponentInspector.OutputList.OutputColumnHeader" xml:space="preserve">
     <value>輸出</value>
@@ -1286,7 +1286,7 @@
     <value>選擇物件</value>
   </data>
   <data name="ComponentInspector.ParamControlInfo.SeparateStringsWithSpaces" xml:space="preserve">
-    <value>(用空格分開字串)</value>
+    <value>（用空格分開字串）</value>
   </data>
   <data name="ComponentInspector.ParamControlInfo.ValueLabel" xml:space="preserve">
     <value>值</value>
@@ -1304,10 +1304,10 @@
     <value>正在獲取{0}資訊，請稍等</value>
   </data>
   <data name="ComponentInspector.ProgressDialog.LoadingPreviouslyOpenedAssembliesDialogTitle" xml:space="preserve">
-    <value>正在載入最近打開過的組件</value>
+    <value>正在載入最近開啟過的組件</value>
   </data>
   <data name="ComponentInspector.ProgressDialog.LoadingPreviouslyOpenedAssembliesMessage" xml:space="preserve">
-    <value>正在打開以前載入過的組件，請稍等。</value>
+    <value>正在開啟以前載入過的組件，請稍等。</value>
   </data>
   <data name="ComponentInspector.Registry.Text" xml:space="preserve">
     <value>登入檔</value>
@@ -1319,23 +1319,22 @@
     <value>設定屬性(&amp;S)</value>
   </data>
   <data name="ComponentInspector.ToolsMenu.ShowComponentInspectorMenuItem" xml:space="preserve">
-    <value>組件監控器</value>
+    <value>組件檢查器</value>
   </data>
   <data name="ComponentInspector.TracingDialog.Title" xml:space="preserve">
-    <value>設定追蹤級別</value>
+    <value>設定追蹤層級</value>
   </data>
   <data name="ComponentInspector.TracingDialog.TraceLevelLabel" xml:space="preserve">
-    <value>跟蹤層級</value>
+    <value>追蹤層級</value>
   </data>
   <data name="ComponentInspector.TreeListPanel.HeaderPanel" xml:space="preserve">
     <value>名稱</value>
   </data>
   <data name="ComponentInspector.TypeHandlerOptionsPanel.InformationLabel" xml:space="preserve">
-    <value>以下為了方便而標出的類的型別控制程式碼(Type handlers)沒有顯示不要必要的細節.
-(Type handlers present the classes marked below in a more convenient manner, suppressing unnecessary details.)</value>
+    <value>型別處理程序會以更方便的方式呈現下面標出的類，不顯示不必要的細節。</value>
   </data>
   <data name="ComponentInspector.WaitingForAppDialog.Information" xml:space="preserve">
-    <value>當前專案檔案{0}設定了只讀屬性。新檔案將不能新增到專案中。</value>
+    <value>正在等待應用程式啟動。如果應用程式無法啟動（或您已等得不耐煩），可以按「取消」按鈕取消。</value>
   </data>
   <data name="ComponentInspector.WaitingForAppDialog.Title" xml:space="preserve">
     <value>程式正在啟動請稍等</value>
@@ -1344,7 +1343,7 @@
     <value>程式碼品質分析</value>
   </data>
   <data name="CSharpBinding.GenerateNewHandlerInstructions" xml:space="preserve">
-    <value>插入對特定方法的參考;可再按跳格鍵(Tab)或回車鍵(Enter)來新增新的方法.</value>
+    <value>插入對明確方法的參考；再次按 Tab 或 Enter 可插入新的方法存根。</value>
   </data>
   <data name="CSharpBinding.InsertAnonymousMethod" xml:space="preserve">
     <value>插入無參數未命名方法</value>
@@ -1359,10 +1358,10 @@
     <value>版本</value>
   </data>
   <data name="Dialog.About.label2Text" xml:space="preserve">
-    <value>修訂</value>
+    <value>內部版本</value>
   </data>
   <data name="Dialog.About.License" xml:space="preserve">
-    <value>在條款${License}下發布.</value>
+    <value>在 ${License} 條款下發布。</value>
   </data>
   <data name="Dialog.About.VersionInfoTabName" xml:space="preserve">
     <value>版本資訊</value>
@@ -1407,10 +1406,10 @@
     <value>您確定刪除'{0}'?</value>
   </data>
   <data name="Dialog.EditAvailableConfigurationsDialog.CopySettingsFrom" xml:space="preserve">
-    <value>複製設定:</value>
+    <value>複製設定(&amp;S):</value>
   </data>
   <data name="Dialog.EditAvailableConfigurationsDialog.CreateConfigurationInAllProjects" xml:space="preserve">
-    <value>建置組態應用到所有專案</value>
+    <value>在所有專案中建立此組態(&amp;C)</value>
   </data>
   <data name="Dialog.EditAvailableConfigurationsDialog.DuplicateName" xml:space="preserve">
     <value>名稱重複。</value>
@@ -1431,7 +1430,7 @@
     <value>&lt;Empty&gt;</value>
   </data>
   <data name="Dialog.EditAvailableConfigurationsDialog.EnterNewName" xml:space="preserve">
-    <value>輸入新名稱:</value>
+    <value>輸入新名稱：</value>
   </data>
   <data name="Dialog.EditAvailableConfigurationsDialog.InvalidName" xml:space="preserve">
     <value>名稱無效。</value>
@@ -1443,15 +1442,15 @@
     <value>跳到行</value>
   </data>
   <data name="Dialog.Goto.IntroText" xml:space="preserve">
-    <value>請輸入跳轉的表達.
-你可以輸入行數,類名稱和檔案名.
-比如:"120", "MainClass", "Main.cs, 120".</value>
+    <value>請輸入跳轉的表達。
+你可以輸入行數，類名稱和檔案名。
+比如："120", "MainClass", "Main.cs, 120".</value>
   </data>
   <data name="Dialog.HighlightingEditor.ColorDlg.Background" xml:space="preserve">
     <value>背景色</value>
   </data>
   <data name="Dialog.HighlightingEditor.ColorDlg.Bold" xml:space="preserve">
-    <value>黑體</value>
+    <value>粗體</value>
   </data>
   <data name="Dialog.HighlightingEditor.ColorDlg.Foreground" xml:space="preserve">
     <value>前景色</value>
@@ -1466,8 +1465,8 @@
     <value>示例文本</value>
   </data>
   <data name="Dialog.NewFile.AddToProjectQuestion" xml:space="preserve">
-    <value>如果你要在當前專案中使用新檔案,你必須把它新增到專案中.
-你要新增新檔案到專案${CurrentProjectName}嗎?</value>
+    <value>如果你要在目前專案中使用新檔案，你必須把它新增到專案中。
+你要新增新檔案到專案${CurrentProjectName}嗎？</value>
   </data>
   <data name="Dialog.NewFile.AddToProjectQuestionProject" xml:space="preserve">
     <value>在專案內創建檔案</value>
@@ -1476,7 +1475,7 @@
     <value>創建獨立檔案</value>
   </data>
   <data name="Dialog.NewFile.AddToProjectQuestionTitle" xml:space="preserve">
-    <value>新增檔案到專案?</value>
+    <value>新增檔案到專案？</value>
   </data>
   <data name="Dialog.NewFile.CategoryText" xml:space="preserve">
     <value>類別(&amp;C)</value>
@@ -1494,13 +1493,13 @@
     <value>創建此檔案之前請先設定其屬性</value>
   </data>
   <data name="Dialog.NewFile.ReadOnlyProjectWarning" xml:space="preserve">
-    <value>當前專案檔案{0}設定了只讀屬性。新檔案無法加入到這個專案。</value>
+    <value>目前專案檔案{0}設定了只讀屬性。新檔案無法加入到這個專案。</value>
   </data>
   <data name="Dialog.NewFile.TemplateText" xml:space="preserve">
     <value>範本(&amp;T)</value>
   </data>
   <data name="Dialog.NewProject.CreateDirectoryForSolution" xml:space="preserve">
-    <value>創建方案的目錄</value>
+    <value>創建方案的目錄(&amp;D)</value>
   </data>
   <data name="Dialog.NewProject.DialogName" xml:space="preserve">
     <value>新專案</value>
@@ -1518,7 +1517,7 @@
     <value>類別(&amp;C):</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.ErrorParsingRegex" xml:space="preserve">
-    <value>分析規則運算式錯誤:</value>
+    <value>分析規則運算式錯誤：</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.FindAll" xml:space="preserve">
     <value>尋找所有(&amp;A)</value>
@@ -1533,7 +1532,7 @@
     <value>尋找下一個(&amp;F)</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.FindWhat" xml:space="preserve">
-    <value>尋找內容:</value>
+    <value>尋找內容(&amp;N):</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.IncludeSubFolders" xml:space="preserve">
     <value>包含子資料夾(&amp;B)</value>
@@ -1542,13 +1541,13 @@
     <value>尋找該檔案型別(&amp;T):</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.LookIn.AllOpenDocuments" xml:space="preserve">
-    <value>所有打開文件</value>
+    <value>所有開啟文件</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.LookIn.CurrentDocument" xml:space="preserve">
-    <value>當前文件</value>
+    <value>目前文件</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.LookIn.CurrentSelection" xml:space="preserve">
-    <value>當前選擇</value>
+    <value>目前選擇</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.LookIn.DirectoryNotFound" xml:space="preserve">
     <value>目錄'{0}'不存在</value>
@@ -1563,7 +1562,7 @@
     <value>整個方案</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.MarkAllButton" xml:space="preserve">
-    <value>全部標記</value>
+    <value>全部標記(&amp;B)</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.MatchCase" xml:space="preserve">
     <value>匹配大小寫(&amp;C)</value>
@@ -1581,10 +1580,10 @@
     <value>取代</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.ReplaceWith" xml:space="preserve">
-    <value>取代為:</value>
+    <value>取代為：</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.SearchIn" xml:space="preserve">
-    <value>尋找範圍:</value>
+    <value>尋找範圍(&amp;L):</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.SearchStrategy.RegexSearch" xml:space="preserve">
     <value>規則運算式</value>
@@ -1596,7 +1595,7 @@
     <value>萬用字元</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.SearchStringNotFound" xml:space="preserve">
-    <value>沒有找到你要尋找的內容!</value>
+    <value>沒有找到你要尋找的內容！</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.SearchStringNotFound.Title" xml:space="preserve">
     <value>沒有找到</value>
@@ -1605,10 +1604,10 @@
     <value>尋找取代</value>
   </data>
   <data name="Dialog.NewProject.SearchReplace.UseMethodLabel" xml:space="preserve">
-    <value>使用:</value>
+    <value>使用(&amp;E):</value>
   </data>
   <data name="Dialog.NewProject.SelectDirectoryForProject" xml:space="preserve">
-    <value>選擇你要創建專案的目錄.</value>
+    <value>選擇你要創建專案的目錄。</value>
   </data>
   <data name="Dialog.NewProject.SolutionName" xml:space="preserve">
     <value>方案名稱(&amp;M):</value>
@@ -1626,7 +1625,7 @@
     <value>說明</value>
   </data>
   <data name="Dialog.Options.CodeTemplate.EditGroupDialog.Text" xml:space="preserve">
-    <value>有輸入用分號分隔的檔案副檔名（如：.h;.c;.cs）</value>
+    <value>請輸入以分號分隔的檔案副檔名清單（例如：.h;.c;.cpp）</value>
   </data>
   <data name="Dialog.Options.CodeTemplate.EditGroupLabel" xml:space="preserve">
     <value>編輯擴展(&amp;E)</value>
@@ -1644,7 +1643,7 @@
     <value>擴展(&amp;X)</value>
   </data>
   <data name="Dialog.Options.CodeTemplate.Keyword" xml:space="preserve">
-    <value>關鍵字映射</value>
+    <value>關鍵字對應</value>
   </data>
   <data name="Dialog.Options.CodeTemplate.PressTabToInsertTemplate" xml:space="preserve">
     <value>請按Tab鍵插入這個程式碼範本。</value>
@@ -1683,31 +1682,31 @@
     <value>參數提示(&amp;P)</value>
   </data>
   <data name="Dialog.Options.ExternalTool.QuickInsertMenu.CombineDirectory" xml:space="preserve">
-    <value>方案目錄(&amp;C)</value>
+    <value>方案目錄(&amp;S)</value>
   </data>
   <data name="Dialog.Options.ExternalTool.QuickInsertMenu.CombineFileName" xml:space="preserve">
     <value>方案檔案名</value>
   </data>
   <data name="Dialog.Options.ExternalTool.QuickInsertMenu.CurrentColumn" xml:space="preserve">
-    <value>當前列</value>
+    <value>目前列</value>
   </data>
   <data name="Dialog.Options.ExternalTool.QuickInsertMenu.CurrentLine" xml:space="preserve">
-    <value>當前行</value>
+    <value>目前行</value>
   </data>
   <data name="Dialog.Options.ExternalTool.QuickInsertMenu.CurrentText" xml:space="preserve">
-    <value>當前文本</value>
+    <value>目前文本</value>
   </data>
   <data name="Dialog.Options.ExternalTool.QuickInsertMenu.FullItemDirectory" xml:space="preserve">
-    <value>專案目錄(&amp;I)</value>
+    <value>項目目錄(&amp;I)</value>
   </data>
   <data name="Dialog.Options.ExternalTool.QuickInsertMenu.FullItemPath" xml:space="preserve">
-    <value>專案路徑</value>
+    <value>項目路徑</value>
   </data>
   <data name="Dialog.Options.ExternalTool.QuickInsertMenu.FullTargetPath" xml:space="preserve">
     <value>目標路徑</value>
   </data>
   <data name="Dialog.Options.ExternalTool.QuickInsertMenu.ItemExtension" xml:space="preserve">
-    <value>專案副檔名</value>
+    <value>項目副檔名</value>
   </data>
   <data name="Dialog.Options.ExternalTool.QuickInsertMenu.ItemFileName" xml:space="preserve">
     <value>目錄檔案名</value>
@@ -1719,7 +1718,7 @@
     <value>專案檔案名</value>
   </data>
   <data name="Dialog.Options.ExternalTool.QuickInsertMenu.SharpDevelopStartupPath" xml:space="preserve">
-    <value>#Develop啟始目錄</value>
+    <value>#Develop 起始目錄</value>
   </data>
   <data name="Dialog.Options.ExternalTool.QuickInsertMenu.TargetDirectory" xml:space="preserve">
     <value>目標目錄(&amp;T)</value>
@@ -1743,25 +1742,25 @@
     <value>工作目錄(&amp;W)</value>
   </data>
   <data name="Dialog.Options.ExternalToolsText" xml:space="preserve">
-    <value>擴展工具</value>
+    <value>外部工具</value>
   </data>
   <data name="Dialog.Options.IDEOptions.CodeCompletion.ClearCache" xml:space="preserve">
     <value>清除快取</value>
   </data>
   <data name="Dialog.Options.IDEOptions.CodeCompletion.CompleteWhenTyping" xml:space="preserve">
-    <value>鍵入一個字元後顯示完整的清單</value>
+    <value>鍵入一個字元後顯示補全清單</value>
   </data>
   <data name="Dialog.Options.IDEOptions.CodeCompletion.DetailSettings" xml:space="preserve">
-    <value>程式碼結束時的詳細設定</value>
+    <value>程式碼完成詳細設定</value>
   </data>
   <data name="Dialog.Options.IDEOptions.CodeCompletion.LanguageDependend" xml:space="preserve">
-    <value>下列選項與語言相關,有些選項僅適用於部分語言.</value>
+    <value>下列選項與語言相關，有些選項僅適用於部分語言。</value>
   </data>
   <data name="Dialog.Options.IDEOptions.CodeCompletion.MainOption" xml:space="preserve">
-    <value>使用下面選項關閉程式碼結束:</value>
+    <value>使用下列選項完全關閉程式碼補全：</value>
   </data>
   <data name="Dialog.Options.IDEOptions.CodeCompletion.RefreshInsightOnComma" xml:space="preserve">
-    <value>當點號擠壓時重新打開工具箱</value>
+    <value>按逗號時以更合適的多載重新開啟工具提示</value>
   </data>
   <data name="Dialog.Options.IDEOptions.CodeCompletion.SaveItemCountAfterNumber" xml:space="preserve">
     <value>條目</value>
@@ -1776,13 +1775,13 @@
     <value>僅在偵錯模式</value>
   </data>
   <data name="Dialog.Options.IDEOptions.CodeCompletion.UseInsight" xml:space="preserve">
-    <value>當呼叫方法時顯示工具列</value>
+    <value>撰寫方法呼叫時顯示工具提示</value>
   </data>
   <data name="Dialog.Options.IDEOptions.CodeCompletion.UseKeywordCompletion" xml:space="preserve">
-    <value>啟用關鍵字程式碼結束</value>
+    <value>在關鍵字後觸發程式碼補全</value>
   </data>
   <data name="Dialog.Options.IDEOptions.CodeCompletion.UseTooltips" xml:space="preserve">
-    <value>當滑鼠移過運算式時顯示工具列</value>
+    <value>滑鼠移過運算式時顯示工具提示</value>
   </data>
   <data name="Dialog.Options.IDEOptions.CodeGenerationOptionsPanel.BlankLinesBetweenMembersCheckBox" xml:space="preserve">
     <value>在成員之間插入空行(&amp;I)</value>
@@ -1797,10 +1796,10 @@
     <value>Else同行插入關閉括號(&amp;E)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.CodeGenerationOptionsPanel.GenerateAdditionalCommentsCheckBox" xml:space="preserve">
-    <value>建置附加注釋(&amp;A)</value>
+    <value>產生其他註解(&amp;A)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.CodeGenerationOptionsPanel.GenerateDocCommentsCheckBox" xml:space="preserve">
-    <value>建置文本注釋(&amp;D)</value>
+    <value>產生文件註解(&amp;D)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.CodeGenerationOptionsPanel.StartBlockOnTheSameLineCheckBox" xml:space="preserve">
     <value>啟用同行程式碼塊(&amp;S)</value>
@@ -1809,7 +1808,7 @@
     <value>程式碼建置</value>
   </data>
   <data name="Dialog.Options.IDEOptions.CodeGenerationOptionsPanel.UseFullTypeNamesCheckBox" xml:space="preserve">
-    <value>使用完整的類名稱(&amp;U)</value>
+    <value>使用完整的型別名稱(&amp;U)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.CodingOptionsText" xml:space="preserve">
     <value>程式碼編寫</value>
@@ -1818,10 +1817,10 @@
     <value>偵錯</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Debugging.PauseOnHandledExceptions" xml:space="preserve">
-    <value>遇到捕獲的例外時暫停</value>
+    <value>遇到已處理的例外時暫停</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Debugging.Stepping" xml:space="preserve">
-    <value>偵錯</value>
+    <value>單步執行</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Debugging.Stepping.EnableJustMyCode" xml:space="preserve">
     <value>使用"僅我的程式碼"特性步進偵錯</value>
@@ -1845,7 +1844,7 @@
     <value>符號</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Debugging.Symbols.ListCaption" xml:space="preserve">
-    <value>符號和原始碼路徑:</value>
+    <value>符號和原始碼路徑：</value>
   </data>
   <data name="Dialog.Options.IDEOptions.EditStandardHeaderPanel.HeaderLabel" xml:space="preserve">
     <value>頭檔案(&amp;H)</value>
@@ -1860,10 +1859,10 @@
     <value>常規</value>
   </data>
   <data name="Dialog.Options.IDEOptions.LoadSaveOptions.AutoLoadExternalChanges" xml:space="preserve">
-    <value>如果檔案外部有變化,自動載入</value>
+    <value>如果檔案外部有變化，自動載入(&amp;A)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.LoadSaveOptions.CreateBackupCopyCheckBox" xml:space="preserve">
-    <value>總是建立備份(&amp;A)</value>
+    <value>使用暫存檔(&amp;T)儲存</value>
   </data>
   <data name="Dialog.Options.IDEOptions.LoadSaveOptions.DefaultFileEncoding" xml:space="preserve">
     <value>預設檔案編碼(&amp;E):</value>
@@ -1875,7 +1874,7 @@
     <value>讀取</value>
   </data>
   <data name="Dialog.Options.IDEOptions.LoadSaveOptions.LoadUserDataCheckBox" xml:space="preserve">
-    <value>讀取使用者詳細設定文件(&amp;L)</value>
+    <value>隨文件載入使用者特定的設定(&amp;L)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.LoadSaveOptions.PanelName" xml:space="preserve">
     <value>讀取/儲存</value>
@@ -1887,7 +1886,7 @@
     <value>Unix (LF)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.LoadSaveOptions.UseRecycleBin" xml:space="preserve">
-    <value>刪除檔案移動到垃圾桶</value>
+    <value>刪除檔案移動到垃圾桶(&amp;R)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.LoadSaveOptions.WindowsRadioButton" xml:space="preserve">
     <value>Windows (CRLF)</value>
@@ -1908,13 +1907,13 @@
     <value>指定的專案路徑不合法。</value>
   </data>
   <data name="Dialog.Options.IDEOptions.ProjectAndSolutionOptions.LoadPrevProjectCheckBox" xml:space="preserve">
-    <value>啟動時讀取最近的方案。</value>
+    <value>啟動時載入上次的方案。</value>
   </data>
   <data name="Dialog.Options.IDEOptions.ProjectAndSolutionOptions.PanelName" xml:space="preserve">
     <value>專案和方案</value>
   </data>
   <data name="Dialog.Options.IDEOptions.ProjectAndSolutionOptions.ParallelBuild" xml:space="preserve">
-    <value>並行編譯的工程數量:</value>
+    <value>並行建置的專案數量：</value>
   </data>
   <data name="Dialog.Options.IDEOptions.ProjectAndSolutionOptions.ProjectLocationLabel" xml:space="preserve">
     <value>預設專案位置：</value>
@@ -1932,7 +1931,7 @@
     <value>當執行：</value>
   </data>
   <data name="Dialog.Options.IDEOptions.ProjectAndSolutionOptions.WhenRunning.BuildModifiedAndDependent" xml:space="preserve">
-    <value>建置修過的專案和與它有關的專案</value>
+    <value>建置已修改的專案以及相依於它們的專案</value>
   </data>
   <data name="Dialog.Options.IDEOptions.ProjectAndSolutionOptions.WhenRunning.BuildOnlyModified" xml:space="preserve">
     <value>只建置修改過的專案</value>
@@ -1944,16 +1943,16 @@
     <value>建置所有專案</value>
   </data>
   <data name="Dialog.Options.IDEOptions.SelectCulture.DescriptionText" xml:space="preserve">
-    <value>點擊圖標選擇語言種類。</value>
+    <value>按一下圖標選擇語言種類。</value>
   </data>
   <data name="Dialog.Options.IDEOptions.SelectCulture.PanelName" xml:space="preserve">
     <value>使用者介面語言(UI)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.SelectStyle.SelectAmbienceLabel" xml:space="preserve">
-    <value>選擇你喜歡的布局環境:(&amp;A)</value>
+    <value>選擇你喜歡的布局環境：(&amp;A)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.SelectStyle.ShowExtensionsCheckBox" xml:space="preserve">
-    <value>在專案跟蹤欄裡顯示檔案副檔名(&amp;E)</value>
+    <value>在專案追蹤欄裡顯示檔案副檔名(&amp;E)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.SelectStyle.ShowStatusBarCheckBox" xml:space="preserve">
     <value>顯示狀態列(&amp;S)</value>
@@ -1962,7 +1961,7 @@
     <value>顯示工具列(&amp;T)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.SelectStyle.UseProfessionalStyleCheckBox" xml:space="preserve">
-    <value>對功能表和工具列使用藍色風格(類似Office2003)</value>
+    <value>對功能表和工具列使用藍色風格（類似Office2003）</value>
   </data>
   <data name="Dialog.Options.IDEOptions.SelectStyle.UseProjectAmbience" xml:space="preserve">
     <value>如果可能，使用專案環境偏好設定</value>
@@ -1974,7 +1973,7 @@
     <value>外觀效果</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TaskListOptions.CommentTagsGroupBox" xml:space="preserve">
-    <value>標籤和注釋</value>
+    <value>註解標籤</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TaskListOptions.NameLabel" xml:space="preserve">
     <value>名稱(&amp;N)</value>
@@ -1995,7 +1994,7 @@
     <value>標籤轉為空格(&amp;O)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Behaviour.CtrlClickGotoDefinition" xml:space="preserve">
-    <value>使用Ctrl+單擊轉到定義</value>
+    <value>使用Ctrl+按一下轉到定義</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Behaviour.CurlyBracketCheckBox" xml:space="preserve">
     <value>自動插入大括號(&amp;U)</value>
@@ -2007,7 +2006,7 @@
     <value>啟用虛擬空間</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Behaviour.HideMouseCheckBox" xml:space="preserve">
-    <value>文字輸入時自動隱藏滑鼠光標(&amp;H)</value>
+    <value>文字輸入時自動隱藏滑鼠游標(&amp;H)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Behaviour.IndentLabel" xml:space="preserve">
     <value>縮排(&amp;N)</value>
@@ -2049,13 +2048,13 @@
     <value>使用智慧縮排</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.CodeCompletion.PanelName" xml:space="preserve">
-    <value>程式碼結束</value>
+    <value>程式碼補全</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.General.AntialiasedFontCheckBox" xml:space="preserve">
     <value>抗鋸齒(&amp;R)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.General.CodeCompletionCheckBox" xml:space="preserve">
-    <value>啟用程式碼結束(&amp;C)</value>
+    <value>啟用程式碼補全(&amp;C)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.General.DoubleBufferCheckBox" xml:space="preserve">
     <value>啟動雙倍緩衝(&amp;D)</value>
@@ -2085,43 +2084,43 @@
     <value>顯示快速類瀏覽器面板(&amp;Q)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.General.TextfontLabel" xml:space="preserve">
-    <value>文本字型:</value>
+    <value>文本字型：</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.AtRowLabel" xml:space="preserve">
-    <value>列</value>
+    <value>列(&amp;N)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.BracketMatchingStyle.AfterCaret" xml:space="preserve">
-    <value>當輸入完成</value>
+    <value>插入點之後</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.BracketMatchingStyle.BeforeCaret" xml:space="preserve">
-    <value>輸入之前</value>
+    <value>插入點之前</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.CaretCheckBox" xml:space="preserve">
-    <value>顯示光標所在行</value>
+    <value>顯示游標所在行</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.EnableAnimationsCheckBox" xml:space="preserve">
     <value>啟用動畫效果</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.EOLMarkersCheckBox" xml:space="preserve">
-    <value>顯示行尾標記</value>
+    <value>顯示行尾標記(&amp;E)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.HighlightBracketCheckBox" xml:space="preserve">
-    <value>突出顯示匹配的括號</value>
+    <value>突出顯示匹配的括號(&amp;M)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.HighlightSymbolCheckBox" xml:space="preserve">
     <value>高亮顯示符號</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.HorizontalRulerCheckBox" xml:space="preserve">
-    <value>顯示橫向標尺</value>
+    <value>顯示橫向標尺(&amp;H)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.InvalidLinesCheckBox" xml:space="preserve">
     <value>顯示無效行(&amp;I)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.LineMarkerLabel" xml:space="preserve">
-    <value>行標記型別</value>
+    <value>行標記樣式(&amp;A)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.LineNumberCheckBox" xml:space="preserve">
-    <value>顯示行數</value>
+    <value>顯示行數(&amp;L)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.LineViewerStyle.FullRow" xml:space="preserve">
     <value>整行</value>
@@ -2142,16 +2141,16 @@
     <value>顯示標籤(&amp;T)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.UnderLineErrorsCheckBox" xml:space="preserve">
-    <value>用下劃線標記錯誤</value>
+    <value>用下劃線標記錯誤(&amp;U)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.VerticalRulerCheckBox" xml:space="preserve">
     <value>顯示縱向標尺(&amp;C)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.VB.EnableCasingCheckBox" xml:space="preserve">
-    <value>啟用關鍵字自動包裝</value>
+    <value>啟用關鍵字自動大小寫</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.VB.EnableEndConstructsCheckBox" xml:space="preserve">
-    <value>啟用結構結束自動插入</value>
+    <value>啟用自動插入結束建構</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.VB.FormattingGroupBox" xml:space="preserve">
     <value>程式碼格式化</value>
@@ -2166,13 +2165,13 @@
     <value>工具</value>
   </data>
   <data name="Dialog.Options.PrjOptions.Configuration.CompileTarget.Exe" xml:space="preserve">
-    <value>控制臺應用程式</value>
+    <value>主控台應用程式</value>
   </data>
   <data name="Dialog.Options.PrjOptions.Configuration.CompileTarget.Library" xml:space="preserve">
     <value>類庫</value>
   </data>
   <data name="Dialog.Options.PrjOptions.Configuration.CompileTarget.Module" xml:space="preserve">
-    <value>.Net模塊</value>
+    <value>.Net模組</value>
   </data>
   <data name="Dialog.Options.PrjOptions.Configuration.CompileTarget.WinExe" xml:space="preserve">
     <value>Windows應用程式</value>
@@ -2205,10 +2204,10 @@
     <value>應用程式清單(&amp;M):</value>
   </data>
   <data name="Dialog.ProjectOptions.ApplicationSettings.Manifest.DoNotEmbedManifest" xml:space="preserve">
-    <value>創建不帶清單的應用程式</value>
+    <value>不內嵌資訊清單</value>
   </data>
   <data name="Dialog.ProjectOptions.ApplicationSettings.Manifest.EmbedDefault" xml:space="preserve">
-    <value>嵌入帶預設設定的清單</value>
+    <value>嵌入預設資訊清單</value>
   </data>
   <data name="Dialog.ProjectOptions.ApplicationSettings.Manifest.ManifestFiles" xml:space="preserve">
     <value>清單檔案</value>
@@ -2223,13 +2222,13 @@
     <value>專案檔案(&amp;F):</value>
   </data>
   <data name="Dialog.ProjectOptions.ApplicationSettings.ProjectFolder" xml:space="preserve">
-    <value>專案資料夾:</value>
+    <value>專案資料夾：</value>
   </data>
   <data name="Dialog.ProjectOptions.ApplicationSettings.ProjectInformation" xml:space="preserve">
     <value>專案資訊</value>
   </data>
   <data name="Dialog.ProjectOptions.ApplicationSettings.RootNamespace" xml:space="preserve">
-    <value>根名字空間(&amp;R):</value>
+    <value>根命名空間(&amp;R):</value>
   </data>
   <data name="Dialog.ProjectOptions.ApplicationSettings.StartupObject" xml:space="preserve">
     <value>啟動物件(&amp;S):</value>
@@ -2238,19 +2237,19 @@
     <value>Win32 資源檔案(&amp;E):</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.Advanced" xml:space="preserve">
-    <value>高級</value>
+    <value>進階</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.Auto" xml:space="preserve">
     <value>自動</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.BaseIntermediateOutputPath" xml:space="preserve">
-    <value>基本中間體輸出路徑:</value>
+    <value>基本中繼輸出路徑：</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.DebugInfo" xml:space="preserve">
     <value>偵錯資訊(&amp;I):</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.DLLBaseAddress" xml:space="preserve">
-    <value>DLL基地址:</value>
+    <value>DLL基地址：</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.ErrorsAndWarnings" xml:space="preserve">
     <value>錯誤和警告</value>
@@ -2259,16 +2258,16 @@
     <value>檔案對齊(&amp;F):</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.GenerateSerializationAssembly" xml:space="preserve">
-    <value>建置集合序列:</value>
+    <value>建置序列化組件(&amp;G):</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.IntermediateOutputPath" xml:space="preserve">
-    <value>中間體輸出路徑:</value>
+    <value>中繼輸出路徑：</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.Off" xml:space="preserve">
     <value>關閉</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.On" xml:space="preserve">
-    <value>打開</value>
+    <value>開啟</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.Output" xml:space="preserve">
     <value>輸出</value>
@@ -2289,7 +2288,7 @@
     <value>任意處理器</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.TargetCPU.Itanium" xml:space="preserve">
-    <value>Intel64位處理器</value>
+    <value>Intel 64 位元 Itanium 處理器</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.TargetCPU.x64" xml:space="preserve">
     <value>AMD/Intel 64位處理器</value>
@@ -2298,7 +2297,7 @@
     <value>32位Intel兼容處理器</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.TargetFramework" xml:space="preserve">
-    <value>目標框架:</value>
+    <value>目標框架：</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.TreatWarningsAsErrors" xml:space="preserve">
     <value>視警告為錯誤</value>
@@ -2313,7 +2312,7 @@
     <value>特殊警告(&amp;E):</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.WarningLevel" xml:space="preserve">
-    <value>警告級別(&amp;W):</value>
+    <value>警告層級(&amp;W):</value>
   </data>
   <data name="Dialog.ProjectOptions.Build.XmlDocumentationFile" xml:space="preserve">
     <value>XML文件(&amp;X):</value>
@@ -2340,7 +2339,7 @@
     <value>檢查算法上溢/下溢(&amp;C)</value>
   </data>
   <data name="Dialog.ProjectOptions.BuildOptions.ConditionalSymbols" xml:space="preserve">
-    <value>附加建置符號:</value>
+    <value>附加建置符號(&amp;D):</value>
   </data>
   <data name="Dialog.ProjectOptions.BuildOptions.General" xml:space="preserve">
     <value>常規</value>
@@ -2349,22 +2348,22 @@
     <value>不參考mscorlib.dll(&amp;M)</value>
   </data>
   <data name="Dialog.ProjectOptions.BuildOptions.OptimizeCode" xml:space="preserve">
-    <value>優化程式碼(&amp;P)</value>
+    <value>最佳化程式碼(&amp;P)</value>
   </data>
   <data name="Dialog.ProjectOptions.BuildOptions.RemoveOverflowChecks" xml:space="preserve">
     <value>去除整數溢出檢查(&amp;C)</value>
   </data>
   <data name="Dialog.ProjectOptions.BuildOptions.VBOptionsDefaultValues" xml:space="preserve">
-    <value>VB選項預設值:</value>
+    <value>VB選項預設值：</value>
   </data>
   <data name="Dialog.ProjectOptions.Configuration" xml:space="preserve">
-    <value>組態(C)</value>
+    <value>組態(&amp;C)</value>
   </data>
   <data name="Dialog.ProjectOptions.ConfigurationSpecific" xml:space="preserve">
     <value>特殊組態</value>
   </data>
   <data name="Dialog.ProjectOptions.ContinueSwitchConfiguration" xml:space="preserve">
-    <value>修改組態將儲存當前值。繼續嗎？</value>
+    <value>修改組態將儲存目前值。繼續嗎？</value>
   </data>
   <data name="Dialog.ProjectOptions.DebugOptions" xml:space="preserve">
     <value>偵錯</value>
@@ -2382,7 +2381,7 @@
     <value>啟動選項</value>
   </data>
   <data name="Dialog.ProjectOptions.DebugOptions.StartProgram" xml:space="preserve">
-    <value>啟動外部程式(&amp;E):</value>
+    <value>啟動外部程式(&amp;X):</value>
   </data>
   <data name="Dialog.ProjectOptions.DebugOptions.StartProject" xml:space="preserve">
     <value>啟動專案(&amp;S)</value>
@@ -2400,7 +2399,7 @@
     <value>僅.pdb檔案</value>
   </data>
   <data name="Dialog.ProjectOptions.NoPanelsInstalledForProject" xml:space="preserve">
-    <value>沒有為此類專案安裝對應的專案選項組態器.</value>
+    <value>沒有為此類專案安裝對應的專案選項組態器。</value>
   </data>
   <data name="Dialog.ProjectOptions.Platform" xml:space="preserve">
     <value>平台</value>
@@ -2409,19 +2408,19 @@
     <value>特定平台</value>
   </data>
   <data name="Dialog.ProjectOptions.PleaseEnterValidNumber" xml:space="preserve">
-    <value>請輸入有效的數字.</value>
+    <value>請輸入有效的數字。</value>
   </data>
   <data name="Dialog.ProjectOptions.ProjectImports" xml:space="preserve">
-    <value>導入</value>
+    <value>匯入</value>
   </data>
   <data name="Dialog.ProjectOptions.ProjectImports.AddImport" xml:space="preserve">
-    <value>新增導入(&amp;A)</value>
+    <value>新增匯入(&amp;A)</value>
   </data>
   <data name="Dialog.ProjectOptions.ProjectImports.Namespace" xml:space="preserve">
     <value>命名空間(&amp;N):</value>
   </data>
   <data name="Dialog.ProjectOptions.ProjectImports.RemoveImport" xml:space="preserve">
-    <value>刪除導入(&amp;R)</value>
+    <value>移除匯入(&amp;R)</value>
   </data>
   <data name="Dialog.ProjectOptions.ProjectImports.Title" xml:space="preserve">
     <value>專案級導入</value>
@@ -2448,19 +2447,19 @@
     <value>選擇資料夾</value>
   </data>
   <data name="Dialog.ProjectOptions.Signing" xml:space="preserve">
-    <value>籤名</value>
+    <value>簽章</value>
   </data>
   <data name="Dialog.ProjectOptions.Signing.ChangePassword" xml:space="preserve">
-    <value>更改密碼...</value>
+    <value>更改密碼(&amp;W)...</value>
   </data>
   <data name="Dialog.ProjectOptions.Signing.ChooseKeyFile" xml:space="preserve">
-    <value>選擇強名稱密鑰檔案:</value>
+    <value>選擇強名稱密鑰檔案：</value>
   </data>
   <data name="Dialog.ProjectOptions.Signing.ClickOnce" xml:space="preserve">
-    <value>為ClickOnce籤名</value>
+    <value>ClickOnce 簽章</value>
   </data>
   <data name="Dialog.ProjectOptions.Signing.ClickOnceNotSupported" xml:space="preserve">
-    <value>目前不支援對ClickOnce的籤名</value>
+    <value>目前不支援 ClickOnce 簽章。</value>
   </data>
   <data name="Dialog.ProjectOptions.Signing.CreateKey.ConfirmPassword" xml:space="preserve">
     <value>確認密碼(&amp;F):</value>
@@ -2475,49 +2474,49 @@
     <value>創建強名稱密鑰</value>
   </data>
   <data name="Dialog.ProjectOptions.Signing.CreateKey.UsePassword" xml:space="preserve">
-    <value>Key檔案保護密碼(&amp;P):</value>
+    <value>使用密碼保護金鑰檔(&amp;P):</value>
   </data>
   <data name="Dialog.ProjectOptions.Signing.DelaySignOnly" xml:space="preserve">
-    <value>僅延遲籤名</value>
+    <value>僅延遲簽章(&amp;Y)</value>
   </data>
   <data name="Dialog.ProjectOptions.Signing.DelaySignWarning" xml:space="preserve">
-    <value>延遲籤名後,專案將不會執行,也不能進行偵錯.</value>
+    <value>延遲簽章後，專案將不會執行，也不能進行偵錯。</value>
   </data>
   <data name="Dialog.ProjectOptions.Signing.EnterKeyName" xml:space="preserve">
-    <value>您必須輸入密鑰檔案</value>
+    <value>您必須輸入金鑰名稱。</value>
   </data>
   <data name="Dialog.ProjectOptions.Signing.ErrorCreatingKey" xml:space="preserve">
-    <value>建置密碼檔案(籤名檔案)時出錯.</value>
+    <value>建立金鑰檔時發生錯誤。</value>
   </data>
   <data name="Dialog.ProjectOptions.Signing.PasswordsDontMatch" xml:space="preserve">
     <value>輸入的密碼不一致</value>
   </data>
   <data name="Dialog.ProjectOptions.Signing.PasswordTooShort" xml:space="preserve">
-    <value>密碼的長度不能少於6個字元.</value>
+    <value>密碼的長度不能少於6個字元。</value>
   </data>
   <data name="Dialog.ProjectOptions.Signing.SignAssembly" xml:space="preserve">
-    <value>為組件籤名(&amp;A)</value>
+    <value>為組件簽章(&amp;A)</value>
   </data>
   <data name="Dialog.ProjectOptions.Signing.SNnotFound" xml:space="preserve">
     <value>沒有找到sn.exe. 請確認您的計算機上已經安裝了.Net Framework SDK.</value>
   </data>
   <data name="Dialog.ProjectOptions.Signing.StrongName" xml:space="preserve">
-    <value>強名稱籤名</value>
+    <value>強式名稱簽章</value>
   </data>
   <data name="Dialog.ProjectOptions.StorageLocationHelp" xml:space="preserve">
-    <value>每個組態項前的小按鈕可用於選擇儲存組態的位置.
-'組態相關'表示設定在每種組態(偵錯/發布)都有不同的值.
-'平台相關'表示設定在不同的平台下有不同的值.
-你也可以選擇儲存組態資訊到.user檔案中而不是專案檔案中,以便不同的開發人員即使使用同一個源碼管理器也可以有自己的設定.</value>
+    <value>每個組態項前的小按鈕可用於選擇儲存組態的位置。
+'組態相關'表示設定在每種組態（偵錯/發布）都有不同的值。
+'平台相關'表示設定在不同的平台下有不同的值。
+你也可以選擇儲存組態資訊到.user檔案中而不是專案檔案中，以便不同的開發人員即使使用同一個原始碼管理系統也可以有自己的設定。</value>
   </data>
   <data name="Dialog.ProjectOptions.StoreInUserFile" xml:space="preserve">
     <value>儲存在.user-file</value>
   </data>
   <data name="Dialog.Refactoring.ExtractInterface.AddInterfaceToClass" xml:space="preserve">
-    <value>新增介面類</value>
+    <value>為類別新增介面</value>
   </data>
   <data name="Dialog.Refactoring.ExtractInterface.GeneratedName" xml:space="preserve">
-    <value>建置名稱</value>
+    <value>產生的名稱</value>
   </data>
   <data name="Dialog.Refactoring.ExtractInterface.IncludeComments" xml:space="preserve">
     <value>包括備註資訊</value>
@@ -2544,7 +2543,7 @@
     <value>使用現有類：</value>
   </data>
   <data name="Dialog.SelectReferenceDialog.BrowserTabPage" xml:space="preserve">
-    <value>.NET集合瀏覽器</value>
+    <value>.NET 組件瀏覽器</value>
   </data>
   <data name="Dialog.SelectReferenceDialog.DialogName" xml:space="preserve">
     <value>新增參考</value>
@@ -2598,7 +2597,7 @@
     <value>檔案</value>
   </data>
   <data name="Dialog.WordCountDialog.IsNotTextFile" xml:space="preserve">
-    <value>當前檔案不是文本檔案，無法統計。</value>
+    <value>目前檔案不是文本檔案，無法統計。</value>
   </data>
   <data name="Dialog.WordCountDialog.Label1Text" xml:space="preserve">
     <value>統計檔案位置(&amp;C)</value>
@@ -2631,7 +2630,7 @@
     <value>儲存時出錯</value>
   </data>
   <data name="FileUtilityService.FileSizeTooBig" xml:space="preserve">
-    <value>檔案過大，無法打開。</value>
+    <value>檔案過大，無法開啟。</value>
   </data>
   <data name="FormsDesigner.DesignErrorPanel.ErrorText" xml:space="preserve">
     <value>請在設計前更正所有的原始碼錯誤</value>
@@ -2643,7 +2642,7 @@
     <value>原始碼</value>
   </data>
   <data name="Global.AbortButtonText" xml:space="preserve">
-    <value>放棄</value>
+    <value>中止</value>
   </data>
   <data name="Global.AddButtonText" xml:space="preserve">
     <value>新增(&amp;A)</value>
@@ -2688,7 +2687,7 @@
     <value>錯誤</value>
   </data>
   <data name="Global.FileAlreadyExists" xml:space="preserve">
-    <value>檔案'{0}'已經存在.</value>
+    <value>檔案'{0}'已經存在。</value>
   </data>
   <data name="Global.FileName" xml:space="preserve">
     <value>檔案名</value>
@@ -2712,7 +2711,7 @@
     <value>選擇字型</value>
   </data>
   <data name="Global.FontStyle.Underline" xml:space="preserve">
-    <value>下劃線</value>
+    <value>底線</value>
   </data>
   <data name="Global.HelpButtonText" xml:space="preserve">
     <value>說明(&amp;H)</value>
@@ -2727,10 +2726,10 @@
     <value>大圖標</value>
   </data>
   <data name="Global.Location.allopenfiles" xml:space="preserve">
-    <value>所有打開檔案</value>
+    <value>所有開啟檔案</value>
   </data>
   <data name="Global.Location.currentfile" xml:space="preserve">
-    <value>當前檔案</value>
+    <value>目前檔案</value>
   </data>
   <data name="Global.Location.directories" xml:space="preserve">
     <value>目錄</value>
@@ -2760,7 +2759,7 @@
     <value>確定</value>
   </data>
   <data name="Global.OpenButtonText" xml:space="preserve">
-    <value>打開(&amp;O)</value>
+    <value>開啟(&amp;O)</value>
   </data>
   <data name="Global.OptionsLabelText" xml:space="preserve">
     <value>選項</value>
@@ -2781,7 +2780,7 @@
     <value>只讀</value>
   </data>
   <data name="Global.Refresh" xml:space="preserve">
-    <value>刷新</value>
+    <value>重新整理</value>
   </data>
   <data name="Global.RemoveButtonText" xml:space="preserve">
     <value>刪除(&amp;R)</value>
@@ -2817,22 +2816,22 @@
     <value>是</value>
   </data>
   <data name="Global.YesToAll" xml:space="preserve">
-    <value>全是</value>
+    <value>全部皆是</value>
   </data>
   <data name="Gui.ProjectBrowser.FileInUseError" xml:space="preserve">
-    <value>檔案或者目錄名稱已經存在，請選擇其它名稱。</value>
+    <value>檔案或目錄名稱已經存在，請選擇其他名稱。</value>
   </data>
   <data name="Gui.ProjectBrowser.IllegalCharactersInFileNameError" xml:space="preserve">
     <value>檔案名中包含非法字元。請重新選擇。</value>
   </data>
   <data name="Gui.ProjectBrowser.Open" xml:space="preserve">
-    <value>打開</value>
+    <value>開啟</value>
   </data>
   <data name="Gui.ProjectBrowser.OpenFolderInExplorer" xml:space="preserve">
-    <value>打開所在的資料夾</value>
+    <value>開啟所在的資料夾</value>
   </data>
   <data name="Gui.ProjectBrowser.OpenWith" xml:space="preserve">
-    <value>打開方式...</value>
+    <value>開啟方式...</value>
   </data>
   <data name="Gui.ProjectBrowser.OpenWith.AddProgram.DialogTitle" xml:space="preserve">
     <value>新增程式</value>
@@ -2844,7 +2843,7 @@
     <value>程式(&amp;P):</value>
   </data>
   <data name="Gui.ProjectBrowser.OpenWith.Bindings.DefaultWindowsApplication" xml:space="preserve">
-    <value>使用預設程式打開此檔案</value>
+    <value>使用預設程式開啟此檔案</value>
   </data>
   <data name="Gui.ProjectBrowser.OpenWith.Bindings.IconEditor" xml:space="preserve">
     <value>圖標編輯器</value>
@@ -2856,7 +2855,7 @@
     <value>文本編輯器</value>
   </data>
   <data name="Gui.ProjectBrowser.OpenWith.Bindings.TextEditorWithEncoding" xml:space="preserve">
-    <value>文本編輯器(選擇編碼)</value>
+    <value>文本編輯器（選擇編碼）</value>
   </data>
   <data name="Gui.ProjectBrowser.OpenWith.Bindings.WebBrowser" xml:space="preserve">
     <value>內置網頁瀏覽器</value>
@@ -2865,13 +2864,13 @@
     <value>XML編輯器</value>
   </data>
   <data name="Gui.ProjectBrowser.OpenWith.ChooseProgram" xml:space="preserve">
-    <value>選擇您要打開這個檔案的程式：</value>
+    <value>選擇您要開啟這個檔案的程式：</value>
   </data>
   <data name="Gui.ProjectBrowser.OpenWith.Default" xml:space="preserve">
     <value>預設</value>
   </data>
   <data name="Gui.ProjectBrowser.OpenWith.DialogTitle" xml:space="preserve">
-    <value>打開方式</value>
+    <value>開啟方式</value>
   </data>
   <data name="Gui.ProjectBrowser.OpenWith.SetAsDefault" xml:space="preserve">
     <value>設為預設</value>
@@ -2886,22 +2885,22 @@
     <value>&lt;新增&gt;</value>
   </data>
   <data name="Hornung.ResourceToolkit.DeleteAllSelectedResourceKeysQuestion" xml:space="preserve">
-    <value>您確定要從資源檔案中刪除${Count}個選的資源以及依賴檔案嗎?</value>
+    <value>您確定要從資源檔案中刪除${Count}個選的資源以及依賴檔案嗎？</value>
   </data>
   <data name="Hornung.ResourceToolkit.DeleteSingleResourceKeyQuestion" xml:space="preserve">
-    <value>您確定要從資源檔案"${FileName}" 中刪除"${Key}" 資源以及依賴檔案嗎?</value>
+    <value>您確定要從資源檔案"${FileName}" 中永久刪除"${Key}" 資源以及所有相依的當地語系化資源檔嗎？</value>
   </data>
   <data name="Hornung.ResourceToolkit.EditStringResourceDialog.Caption" xml:space="preserve">
     <value>編輯字串</value>
   </data>
   <data name="Hornung.ResourceToolkit.EditStringResourceDialog.DuplicateKey" xml:space="preserve">
-    <value>此資源名稱已存在!</value>
+    <value>此資源名稱已存在！</value>
   </data>
   <data name="Hornung.ResourceToolkit.EditStringResourceDialog.KeyIsEmpty" xml:space="preserve">
-    <value>資源名稱不能為空!</value>
+    <value>資源名稱不能為空！</value>
   </data>
   <data name="Hornung.ResourceToolkit.ErrorProcessingResourceFile" xml:space="preserve">
-    <value>在處理資源檔案'{0}'時發生了錯誤.</value>
+    <value>在處理資源檔案'{0}'時發生了錯誤。</value>
   </data>
   <data name="Hornung.ResourceToolkit.FindMissingResourceKeys" xml:space="preserve">
     <value>尋找丟失的資源名稱</value>
@@ -2913,7 +2912,7 @@
     <value>資源名稱</value>
   </data>
   <data name="Hornung.ResourceToolkit.KeyLabel" xml:space="preserve">
-    <value>資源名稱:</value>
+    <value>資源名稱：</value>
   </data>
   <data name="Hornung.ResourceToolkit.KeyNotFoundWarning" xml:space="preserve">
     <value>在檔案"{1}"中沒有找到資源"{0}" .</value>
@@ -2922,13 +2921,13 @@
     <value>參考資源缺失</value>
   </data>
   <data name="Hornung.ResourceToolkit.ReferencesToResource" xml:space="preserve">
-    <value>參考到${ResourceKey} (在${ResourceFileName}中)</value>
+    <value>參考到${ResourceKey} （在${ResourceFileName}中）</value>
   </data>
   <data name="Hornung.ResourceToolkit.RenameKeyDefinitionNotFoundWarning" xml:space="preserve">
     <value>沒有查到該資源名稱或已被改名。</value>
   </data>
   <data name="Hornung.ResourceToolkit.RenameResourceText" xml:space="preserve">
-    <value>輸入新的資源名稱:</value>
+    <value>輸入新的資源名稱：</value>
   </data>
   <data name="Hornung.ResourceToolkit.ResourceTypeNotSupported" xml:space="preserve">
     <value>選定資源不是字串，無法編輯。</value>
@@ -2970,10 +2969,10 @@
     <value>值</value>
   </data>
   <data name="Hornung.ResourceToolkit.ValueLabel" xml:space="preserve">
-    <value>值:</value>
+    <value>值：</value>
   </data>
   <data name="ICSharpCode.AvalonEdit.AddIn.SharpDevelopCompletionWindow.EmptyText" xml:space="preserve">
-    <value>請按Ctrl+Space顯示所有命名空間中的專案。</value>
+    <value>按 Ctrl+Space 顯示所有命名空間中的項目。</value>
   </data>
   <data name="ICSharpCode.BooInterpreter" xml:space="preserve">
     <value>Boo語言解釋器</value>
@@ -2997,7 +2996,7 @@
     <value>程式碼分析</value>
   </data>
   <data name="ICSharpCode.CodeAnalysis.CheckWithFxCop" xml:space="preserve">
-    <value>用FxCop檢驗</value>
+    <value>用 FxCop 檢查</value>
   </data>
   <data name="ICSharpCode.CodeAnalysis.IdeOptions.DirectoryDoesNotContainFxCop" xml:space="preserve">
     <value>選擇的目錄不包含FxCop安裝檔案。</value>
@@ -3009,28 +3008,28 @@
     <value>在以下目錄中找到FxCop:</value>
   </data>
   <data name="ICSharpCode.CodeAnalysis.IdeOptions.FxCopNotFound" xml:space="preserve">
-    <value>找不到FxCop。安裝FxCop，並且點擊"選擇FxCop路徑" 為SharpDevelop設定FxCop安裝位置。</value>
+    <value>找不到FxCop。安裝FxCop，並且按一下"選擇FxCop路徑" 為SharpDevelop設定FxCop安裝位置。</value>
   </data>
   <data name="ICSharpCode.CodeAnalysis.IdeOptions.FxCopPath" xml:space="preserve">
     <value>FxCop路徑</value>
   </data>
   <data name="ICSharpCode.CodeAnalysis.ProjectOptions.AddRemoveRuleAssembly" xml:space="preserve">
-    <value>新增/移除規則集</value>
+    <value>新增/移除規則組件</value>
   </data>
   <data name="ICSharpCode.CodeAnalysis.ProjectOptions.CannotFindFxCop" xml:space="preserve">
     <value>找不到FxCop-請確定FxCop已經安裝。</value>
   </data>
   <data name="ICSharpCode.CodeAnalysis.ProjectOptions.ChooseRuleAssemblyDirectory" xml:space="preserve">
-    <value>選擇目錄中包含的規則集：</value>
+    <value>選擇包含規則組件的目錄：</value>
   </data>
   <data name="ICSharpCode.CodeAnalysis.ProjectOptions.Enable" xml:space="preserve">
-    <value>啟用程式碼分析(定義常數CODE_ANALYSIS)(&amp;E)</value>
+    <value>啟用程式碼分析（定義常數CODE_ANALYSIS）(&amp;E)</value>
   </data>
   <data name="ICSharpCode.CodeAnalysis.ProjectOptions.LoadingRules" xml:space="preserve">
     <value>載入可用規則...</value>
   </data>
   <data name="ICSharpCode.CodeAnalysis.ProjectOptions.RunOnBuild" xml:space="preserve">
-    <value>在建置的時候執行程式碼分析(定義常數CODE_ANALYSIS)</value>
+    <value>在建置的時候執行程式碼分析(&amp;R)（定義常數CODE_ANALYSIS）</value>
   </data>
   <data name="ICSharpCode.CodeAnalysis.ProjectOptions.SpecifyFxCopPath" xml:space="preserve">
     <value>您可以在SharpDevelop的選項中指定FxCop的路徑。</value>
@@ -3045,7 +3044,7 @@
     <value>規則</value>
   </data>
   <data name="ICSharpCode.CodeAnalysis.RunningFxCopOn" xml:space="preserve">
-    <value>正在FxCop上執行</value>
+    <value>正在對以下項目執行 FxCop：</value>
   </data>
   <data name="ICSharpCode.CodeAnalysis.SuppressMessage" xml:space="preserve">
     <value>禁止消息</value>
@@ -3075,7 +3074,7 @@
     <value>程式碼覆寫率色彩</value>
   </data>
   <data name="ICSharpCode.CodeCoverage.OptionsPanel.DisplayItemsLabel" xml:space="preserve">
-    <value>顯示專案(&amp;D):</value>
+    <value>顯示項目(&amp;D):</value>
   </data>
   <data name="ICSharpCode.CodeCoverage.OptionsPanel.ItemBackgroundLabel" xml:space="preserve">
     <value>背景色(&amp;K)</value>
@@ -3129,7 +3128,7 @@
     <value>連接附加檔案</value>
   </data>
   <data name="ICSharpCode.CppBinding.ProjectOptions.Linker.AddModule" xml:space="preserve">
-    <value>連接指定的.NET模塊</value>
+    <value>連接指定的.NET模組</value>
   </data>
   <data name="ICSharpCode.CppBinding.ProjectOptions.Linker.GenerateDebugInfo" xml:space="preserve">
     <value>建置偵錯資訊</value>
@@ -3141,10 +3140,10 @@
     <value>嵌入.NET資源檔案</value>
   </data>
   <data name="ICSharpCode.CppBinding.ProjectOptions.Preprocessor" xml:space="preserve">
-    <value>預處理器</value>
+    <value>前置處理器</value>
   </data>
   <data name="ICSharpCode.CppBinding.ProjectOptions.Preprocessor.Definitions" xml:space="preserve">
-    <value>定義以下預處理器符號</value>
+    <value>定義以下前置處理器符號</value>
   </data>
   <data name="ICSharpCode.CppBinding.ProjectOptions.Preprocessor.Includes" xml:space="preserve">
     <value>頭檔案位置</value>
@@ -3159,7 +3158,7 @@
     <value>符號</value>
   </data>
   <data name="ICSharpCode.FiletypeRegisterer.BinaryResourceFilesFileAssozisation" xml:space="preserve">
-    <value>.NET源檔案(二進位)</value>
+    <value>.NET 資源檔（二進位）</value>
   </data>
   <data name="ICSharpCode.FiletypeRegisterer.CSharpSourceFileAssozisation" xml:space="preserve">
     <value>C#源檔案</value>
@@ -3196,7 +3195,7 @@
     <value>執行NAnt</value>
   </data>
   <data name="ICSharpCode.NAntAddIn.AbstractRunNAntCommand.TerminateNAntQuestion" xml:space="preserve">
-    <value>將停止NAnt處理序,確認嗎?</value>
+    <value>將停止NAnt處理序，確認嗎？</value>
   </data>
   <data name="ICSharpCode.NAntAddIn.CreateBuildFileMenuLabel" xml:space="preserve">
     <value>創建建置檔案(&amp;B)</value>
@@ -3229,7 +3228,7 @@
     <value>安靜模式(&amp;Q)</value>
   </data>
   <data name="ICSharpCode.NAntAddIn.NAntAddInOptionPanel.ShowLogoLabel" xml:space="preserve">
-    <value>顯示Logo</value>
+    <value>顯示Logo(&amp;L)</value>
   </data>
   <data name="ICSharpCode.NAntAddIn.NAntAddInOptionPanel.VerboseLabel" xml:space="preserve">
     <value>明細資訊(&amp;B)</value>
@@ -3247,7 +3246,7 @@
     <value>停止建置</value>
   </data>
   <data name="ICSharpCode.NAntAddIn.ProcessRunner.NoProcessRunningErrorText" xml:space="preserve">
-    <value>沒有正在執行的處理序.</value>
+    <value>沒有正在執行的處理序。</value>
   </data>
   <data name="ICSharpCode.NAntAddIn.RunCleanTargetMenuLabel" xml:space="preserve">
     <value>執行並清除目標(Run Clean Target)(&amp;C)</value>
@@ -3262,7 +3261,7 @@
     <value>停止NAnt(&amp;S)</value>
   </data>
   <data name="ICSharpCode.NoStartupProject" xml:space="preserve">
-    <value>這不是一個可以啟動的專案。</value>
+    <value>沒有可偵錯的起始專案。</value>
   </data>
   <data name="ICSharpCode.NUnitPad.NUnitPadContent.PadName" xml:space="preserve">
     <value>單元測試</value>
@@ -3271,7 +3270,7 @@
     <value>全部</value>
   </data>
   <data name="ICSharpCode.PInvokeAddIn.InsertPInvokeSignaturesForm.DialogName" xml:space="preserve">
-    <value>插入PInvoke籤名</value>
+    <value>插入 PInvoke 簽章</value>
   </data>
   <data name="ICSharpCode.PInvokeAddIn.InsertPInvokeSignaturesForm.FindButtonText" xml:space="preserve">
     <value>尋找</value>
@@ -3283,22 +3282,22 @@
     <value>插入</value>
   </data>
   <data name="ICSharpCode.PInvokeAddIn.InsertPInvokeSignaturesForm.LanguageLabel" xml:space="preserve">
-    <value>開發語言:</value>
+    <value>開發語言：</value>
   </data>
   <data name="ICSharpCode.PInvokeAddIn.InsertPInvokeSignaturesForm.ModuleNameLabel" xml:space="preserve">
-    <value>模塊:</value>
+    <value>模組：</value>
   </data>
   <data name="ICSharpCode.PInvokeAddIn.InsertPInvokeSignaturesForm.MoreInfoLinkLabel" xml:space="preserve">
     <value>更多資訊</value>
   </data>
   <data name="ICSharpCode.PInvokeAddIn.InsertPInvokeSignaturesForm.NoSignatureFoundForLanguage" xml:space="preserve">
-    <value>語言'{0}'未找到籤名.</value>
+    <value>語言'{0}'找不到簽章。</value>
   </data>
   <data name="ICSharpCode.PInvokeAddIn.InsertPInvokeSignaturesForm.NoSignaturesFound" xml:space="preserve">
-    <value>籤名未找到。</value>
+    <value>找不到簽章。</value>
   </data>
   <data name="ICSharpCode.PInvokeAddIn.InsertPInvokeSignaturesMenuLabel" xml:space="preserve">
-    <value>插入PInvoke標籤...</value>
+    <value>插入 PInvoke 簽章...</value>
   </data>
   <data name="ICSharpCode.PythonBinding.ConvertCSharpProjectToPythonProject" xml:space="preserve">
     <value>從C#到Python</value>
@@ -3307,7 +3306,7 @@
     <value>從VB.NET到Python</value>
   </data>
   <data name="ICSharpCode.PythonBinding.PythonConsole" xml:space="preserve">
-    <value>Python控制臺</value>
+    <value>Python主控台</value>
   </data>
   <data name="ICSharpCode.PythonBinding.PythonFiles" xml:space="preserve">
     <value>Python檔案</value>
@@ -3316,31 +3315,31 @@
     <value>Python專案檔案</value>
   </data>
   <data name="ICSharpCode.PythonBinding.SendLineToPythonConsole" xml:space="preserve">
-    <value>發送行到Python控制臺</value>
+    <value>發送行到Python主控台</value>
   </data>
   <data name="ICSharpCode.PythonBinding.SendSelectedTextToPythonConsole" xml:space="preserve">
-    <value>發送到Python控制臺</value>
+    <value>發送到Python主控台</value>
   </data>
   <data name="ICSharpCode.PythonBinding.UnknownTypeName" xml:space="preserve">
-    <value>找不到型別'{0}'。是否缺少組件參考?</value>
+    <value>找不到型別'{0}'。是否缺少組件參考？</value>
   </data>
   <data name="ICSharpCode.Refactoring.NoClassOrOverridableSymbolUnderCursorError" xml:space="preserve">
-    <value>選中的物件不是類或者可多載的成員方法，因此無法顯示派生屬性。</value>
+    <value>選中的物件不是類或者可多載的成員方法，因此無法顯示衍生屬性。</value>
   </data>
   <data name="ICSharpCode.Refactoring.NoClassUnderCursorError" xml:space="preserve">
-    <value>無法找到光標所在位置的物件的型別定義。</value>
+    <value>無法找到游標所在位置的物件的型別定義。</value>
   </data>
   <data name="ICSharpCode.RubyBinding.SendLineToRubyConsole" xml:space="preserve">
-    <value>發送行到Ruby控制臺</value>
+    <value>發送行到Ruby主控台</value>
   </data>
   <data name="ICSharpCode.RubyBinding.SendSelectedTextToRubyConsole" xml:space="preserve">
-    <value>發送到Ruby控制臺</value>
+    <value>發送到Ruby主控台</value>
   </data>
   <data name="ICSharpCode.Services.FileUtilityService.CantLoadFileStandardText" xml:space="preserve">
     <value>在${Path}無法讀取檔案 ${FileNameWithoutPath}.請確認是否有權限讀取檔案或者該檔案是否存在。</value>
   </data>
   <data name="ICSharpCode.Services.FileUtilityService.CantSaveFileStandardText" xml:space="preserve">
-    <value>無法在 ${Path}儲存檔案${FileNameWithoutPath}。請選擇其它檔案名或確認該目錄是否存在以及你是否有權限操作。(可能防寫？)</value>
+    <value>無法在 ${Path}儲存檔案${FileNameWithoutPath}。請選擇其他檔案名稱或確認該目錄是否存在以及您是否有權限操作。（可能寫保護？）</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.BrowserDisplayBinding.Browser" xml:space="preserve">
     <value>瀏覽器</value>
@@ -3361,7 +3360,7 @@
     <value>新增布局</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.ChooseLayoutCommand.EditLayouts.Label" xml:space="preserve">
-    <value>編輯使用者定義的布局清單:</value>
+    <value>編輯使用者定義的布局清單：</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.ChooseLayoutCommand.EditLayouts.Title" xml:space="preserve">
     <value>編輯布局</value>
@@ -3373,26 +3372,26 @@
     <value>&lt;恢復預設&gt;</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.ChooseLayoutCommand.ResetToDefaultsQuestion" xml:space="preserve">
-    <value>您確認要重置介面布局組態嗎?
-說明:此操作不會影響您的自訂布局.</value>
+    <value>您確認要重置介面布局組態嗎？
+說明：此操作不會影響您的自訂布局。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.Convert" xml:space="preserve">
     <value>程式碼轉換</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.Convert.ConversionComplete" xml:space="preserve">
-    <value>轉換完成.</value>
+    <value>轉換完成。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.Convert.ConversionResults" xml:space="preserve">
     <value>轉換結果</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.Convert.ConverterErrorCount" xml:space="preserve">
-    <value>轉換檔案${FileName}時出現了${ErrorCount}個錯誤:</value>
+    <value>轉換檔案${FileName}時出現了${ErrorCount}個錯誤：</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.Convert.CorrectSourceCodeErrors" xml:space="preserve">
-    <value>請先改正源碼中的錯誤(只有正確的源碼才能被轉換).</value>
+    <value>請先修正原始碼中的錯誤（只有正確的原始碼才能被轉換）.</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.Convert.IsNotConverted" xml:space="preserve">
-    <value>${FileName}沒有被轉換:</value>
+    <value>${FileName}沒有被轉換：</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.Convert.ParserErrorCount" xml:space="preserve">
     <value>解析器發現了${ErrorCount}處錯誤</value>
@@ -3404,7 +3403,7 @@
     <value>源目錄</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.Convert.TargetAlreadyExists" xml:space="preserve">
-    <value>{0}已經存在, 無法轉換.</value>
+    <value>{0}已經存在， 無法轉換。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.Convert.TargetDirectory" xml:space="preserve">
     <value>目標目錄</value>
@@ -3419,7 +3418,7 @@
     <value>打不開檔案 '${FileName}'。它是一個無效的方案或專案檔案。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.OpenCombine.SolutionDoesNotContainProject" xml:space="preserve">
-    <value>SharpDevelop 載入了方案'${SolutionName},但是它不包含專案'${ProjectName}'。</value>
+    <value>SharpDevelop 載入了方案'${SolutionName}'，但是它不包含專案'${ProjectName}'。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.OpenCombine.SolutionDoesNotContainProject.AddProjectToSolution" xml:space="preserve">
     <value>將'${ProjectName}'新增到'${SolutionName}'.</value>
@@ -3431,10 +3430,10 @@
     <value>無法創建列印文件</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.ProjectBrowser.AddFilesToProject.FileIsReadOnly" xml:space="preserve">
-    <value>在該位置上已經有一個防寫的同名檔案存在.</value>
+    <value>在該位置上已經有一個防寫的同名檔案存在。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.ProjectBrowser.NoBackendForProjectType" xml:space="preserve">
-    <value>沒有安裝支援此類專案的後臺程式.</value>
+    <value>沒有安裝支援此類專案的後臺程式。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.ProjectBrowser.ProjectFileNotFound" xml:space="preserve">
     <value>無法找到專案檔案</value>
@@ -3443,7 +3442,7 @@
     <value>參考</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.ProjectBrowser.RefreshWebReference.ReadServiceDescriptionError" xml:space="preserve">
-    <value>無法讀取Web服務的描述.地址='{0}'</value>
+    <value>無法讀取Web服務的描述。地址='{0}'</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.ProjectBrowser.SolutionItemsNodeText" xml:space="preserve">
     <value>方案項</value>
@@ -3459,7 +3458,7 @@
 所有的修改都丟失。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.RunCompile.LanguageBindingCantCompileFileError" xml:space="preserve">
-    <value>建置語言${LanguageBinding}不能編譯${FileName}.</value>
+    <value>語言繫結 ${LanguageBinding} 無法編譯 ${FileName}。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.SaveFile.FileSaved" xml:space="preserve">
     <value>檔案已儲存</value>
@@ -3477,7 +3476,7 @@
     <value>由VB.NET轉換成C#</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.DefaultEditor.Gui.Editor.CodeCompletionData.OverloadsCounter" xml:space="preserve">
-    <value>(+${NumOverloads} 多載)</value>
+    <value>（+${NumOverloads} 多載）</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.DefaultEditor.Gui.Editor.InsightWindow.NumberOfText" xml:space="preserve">
     <value>${CurrentMethodNumber}/${NumberOfTotalMethods}</value>
@@ -3486,16 +3485,16 @@
     <value>檔案${File}已在外部修改過，要重新載入嗎？</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.DefaultEditor.IncrementalSearch.ForwardsSearchStatusBarMessage" xml:space="preserve">
-    <value>增量搜尋:</value>
+    <value>增量搜尋：</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.DefaultEditor.IncrementalSearch.NotFoundStatusBarMessage" xml:space="preserve">
-    <value>(沒找到)</value>
+    <value>（沒找到）</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.DefaultEditor.IncrementalSearch.PassedEndOfDocumentStatusBarMessage" xml:space="preserve">
     <value>（已經到文件末尾）</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.DefaultEditor.IncrementalSearch.ReverseSearchStatusBarMessage" xml:space="preserve">
-    <value>反向增量搜尋:</value>
+    <value>反向增量搜尋：</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.ErrorLoadingCodeCompletionInformation" xml:space="preserve">
     <value>從檔案${Filename}中讀取${Assembly}的程式碼自動完成資訊時出錯：</value>
@@ -3510,34 +3509,34 @@
     <value>退出SharpDevelop</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.ExceptionBox.HelpText1" xml:space="preserve">
-    <value>SharpDevelop出現了未處理的例外. 此例外未經處理, 我們希望您報告此例外給SharpDevelop開發小組以改進SharpDevelop.</value>
+    <value>SharpDevelop 發生了未處理的例外。這是意外情況，我們希望您將此錯誤回報給 SharpDevelop 開發小組，以協助我們改進 SharpDevelop。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.ExceptionBox.HelpText2" xml:space="preserve">
-    <value>有效地報告錯誤的方法: 我們已經為SharpDevelop使用者建立了報告和跟蹤錯誤的網站. 為了儘可能減少大家重複的問題, 最簡單的辦法是直接將系統報告的錯誤複製到剪貼簿上再複製到網頁上, 此外我們還希望您詳細描述您在產生錯誤前的每一步操作.</value>
+    <value>有效地報告錯誤的方法： 我們已經為SharpDevelop使用者建立了報告和追蹤錯誤的網站。 為了儘可能減少大家重複的問題， 最簡單的辦法是直接將系統報告的錯誤複製到剪貼簿上再複製到網頁上， 此外我們還希望您詳細描述您在產生錯誤前的每一步操作。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.ExceptionBox.QuitWarning" xml:space="preserve">
-    <value>您真的要退出SharpDevelop嗎? 所有未儲存的修改都將丟失!</value>
+    <value>您真的要退出SharpDevelop嗎？ 所有未儲存的修改都將丟失！</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.ExceptionBox.ReportError" xml:space="preserve">
     <value>向SharpDevelop開發小組報告錯誤</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.ExceptionBox.ThankYouMsg" xml:space="preserve">
-    <value>非常感謝您為使SharpDevelop成為更出色的工具而做出貢獻!</value>
+    <value>非常感謝您為使SharpDevelop成為更出色的工具而做出貢獻！</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.ExceptionBox.Title" xml:space="preserve">
     <value>發生了未處理的例外</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.CantDeserializeFormError" xml:space="preserve">
-    <value>無法反序列化窗體. 可能原因:手工改動了初始化組件的方法</value>
+    <value>無法反序列化表單。可能原因：手工改動了初始化組件的方法</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.DesignPanel.CantCreateRootDesignerError" xml:space="preserve">
-    <value>無法為組件'${RootComponent}'創建根設計器.</value>
+    <value>無法為組件'${RootComponent}'創建根設計器。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.DesignPanel.RootDesignerNotWindowsFormsError" xml:space="preserve">
-    <value>根設計器不支援Windows窗體的檢視技術.</value>
+    <value>根設計器不支援Windows Forms的檢視技術。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.ErrorLoadingDesigner" xml:space="preserve">
-    <value>載入設計器出錯:</value>
+    <value>載入設計器出錯：</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.AddSidebarComponents.Components.Assembly" xml:space="preserve">
     <value>組件</value>
@@ -3552,16 +3551,16 @@
     <value>新增的組件(&amp;O)</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.AddSidebarComponents.CustomTabPage" xml:space="preserve">
-    <value>通用</value>
+    <value>自訂</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.AddSidebarComponents.DialogName" xml:space="preserve">
     <value>增加組件</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.AddSidebarComponents.EnterValidFilename" xml:space="preserve">
-    <value>請輸入一個有效的檔案名.</value>
+    <value>請輸入一個有效的檔案名。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.AddSidebarComponents.FileIsNotAssembly" xml:space="preserve">
-    <value>請輸入一個有效的.Net組件的檔案名.</value>
+    <value>請輸入一個有效的.Net組件的檔案名。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.AddSidebarComponents.GAC.Version" xml:space="preserve">
     <value>版本</value>
@@ -3570,7 +3569,7 @@
     <value>GAC</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.AddSidebarComponents.NoComponentsFound" xml:space="preserve">
-    <value>組件${Name}不包含任何組件.</value>
+    <value>組件${Name}不包含任何組件。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.AddSidebarComponentsFileNameLabel" xml:space="preserve">
     <value>檔案名(&amp;F)</value>
@@ -3594,13 +3593,13 @@
     <value>新增(&amp;N)</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.ConfigureSideBarDialog.RemoveCategoryQuestion" xml:space="preserve">
-    <value>您確認要刪除分類?</value>
+    <value>您確認要刪除分類？</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.ConfigureSidebarDialog.RemoveComponentsButton" xml:space="preserve">
     <value>移除組件(&amp;M)</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.ConfigureSideBarDialog.RemoveComponentsQuestion" xml:space="preserve">
-    <value>您真的要從分類中刪除選擇的組件嗎?</value>
+    <value>您真的要從分類中刪除選擇的組件嗎？</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.ConfigureSidebarDialog.RenameButton" xml:space="preserve">
     <value>重命名(&amp;E)</value>
@@ -3642,10 +3641,10 @@
     <value>高度(&amp;H)</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.OptionPanels.GridOptionsPanel.InPlaceEditCheckBox" xml:space="preserve">
-    <value>工具條啟動即時編輯功能</value>
+    <value>啟用工具列的原地編輯功能</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.OptionPanels.GridOptionsPanel.OptimizedCodeGenerationCheckBox" xml:space="preserve">
-    <value>使用優化程式碼建置</value>
+    <value>使用最佳化程式碼建置</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.OptionPanels.GridOptionsPanel.PanelName" xml:space="preserve">
     <value>格線選項</value>
@@ -3660,7 +3659,7 @@
     <value>顯示格線(&amp;S)</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.OptionPanels.GridOptionsPanel.SmartTagAutoShowCheckBox" xml:space="preserve">
-    <value>自動打開智慧標記</value>
+    <value>自動開啟智慧標記</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.OptionPanels.GridOptionsPanel.SmartTagsCheckBox" xml:space="preserve">
     <value>使用智慧標記</value>
@@ -3684,7 +3683,7 @@
     <value>在新事件處理程式中加入注釋"TODO"</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.OptionPanels.LocalizationModelOptionsPanel.AssignmentRadioButton" xml:space="preserve">
-    <value>指派屬性 (數量少時很快，但數量很大時可擴展性很差)</value>
+    <value>指派屬性 （數量少時很快，但數量很大時可擴展性很差）</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.OptionPanels.LocalizationModelOptionsPanel.DefaultLocalizationModel" xml:space="preserve">
     <value>預設的本地化模式</value>
@@ -3696,16 +3695,16 @@
     <value>Localization Model</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.OptionPanels.LocalizationModelOptionsPanel.ReflectionRadioButton" xml:space="preserve">
-    <value>屬性反射(較少的屬性地較慢,但較多的屬性時擴展性較好,尤其是有許多預設值的時候)</value>
+    <value>屬性反射（屬性較少時較慢，但屬性較多時擴充性較好，尤其是有許多預設值時）</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.OptionPanels.PanelName" xml:space="preserve">
-    <value>Windows窗體設計器</value>
+    <value>Windows Forms設計器</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.RenameCategoryDialog.CategoryNameLabel" xml:space="preserve">
     <value>類別名(&amp;C)</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.RenameCategoryDialog.DuplicateNameError" xml:space="preserve">
-    <value>命名重複, 請更換另一個.</value>
+    <value>命名重複， 請更換另一個。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Gui.RenameCategoryDialog.NewCategoryDialogName" xml:space="preserve">
     <value>新類別</value>
@@ -3717,21 +3716,19 @@
     <value>顯示組件(&amp;S)</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Hosts.DefaultDesignerHost.CyclicDependencyError" xml:space="preserve">
-    <value>您新增的組件將導致組件間的迴圈依賴.</value>
+    <value>您新增的組件將導致組件間的迴圈依賴。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.Hosts.DefaultDesignerHost.ExceptionDuringComponentCreationError" xml:space="preserve">
-    <value>Exception while creating the component for the Forms Designer (a component has thrown an exception in the constructor).
-THIS DOES NOT AFFECT THE SOURCE CODE.
-為窗體設計器創建控制項時引發了例外（一個控制項的建構函式中發生了例外）。
-說明：此例外不影響原始碼。</value>
+    <value>為Forms設計器建立元件時發生例外（元件的建構函式中發生例外）。
+這不會影響原始碼。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.LoadErrorCheckSourceCodeForErrors" xml:space="preserve">
-    <value>載入設計器出錯. 請檢查源碼是否有符號錯誤, 以及是否所有參考都仍然存在.</value>
+    <value>載入設計器出錯。 請檢查原始碼是否有符號錯誤， 以及是否所有參考都仍然存在。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.ToolboxProvider.CantLoadSidbarComponentLibraryWarning" xml:space="preserve">
-    <value>無法裝載側邊工具列的組件庫.
-將沒有可用的Windows窗體組件, 請手工組態側邊工具列.
-(在側邊工具列分類上擊右鍵, 再選擇"自定額側邊工具列)</value>
+    <value>無法載入側邊工具列的組件庫。
+將沒有可用的Windows Forms元件，請手動組態側邊工具列。
+（在側邊工具列分類上按右鍵，再選擇「自訂側邊工具列」）</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.ToolboxProvider.CustomComponents" xml:space="preserve">
     <value>自訂組件</value>
@@ -3746,7 +3743,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>後退</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.AddWebReferenceDialog.BindingProperty" xml:space="preserve">
-    <value>正在建置</value>
+    <value>繫結</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.AddWebReferenceDialog.DialogTitle" xml:space="preserve">
     <value>新增Web參考</value>
@@ -3779,7 +3776,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>參考名稱(&amp;R):</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.AddWebReferenceDialog.RefreshButtonTooltip" xml:space="preserve">
-    <value>刷新</value>
+    <value>重新整理</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.AddWebReferenceDialog.RetrievalUriProperty" xml:space="preserve">
     <value>獲取URI</value>
@@ -3803,7 +3800,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>附加</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.AttachToProcessForm.Managed" xml:space="preserve">
-    <value>託管</value>
+    <value>受控</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.AttachToProcessForm.Title" xml:space="preserve">
     <value>附加到處理序</value>
@@ -3817,10 +3814,10 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
 只能使用字母，數字，空格，'.' 或'_'。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.NewProjectDialog.ProjectNameMustNotEndWithDot" xml:space="preserve">
-    <value>無效的專案名: 可能是因為專案名以"."結尾.</value>
+    <value>無效的專案名： 可能是因為專案名以"."結尾。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.NewProjectDialog.ProjectNameMustStartWithLetter" xml:space="preserve">
-    <value>無效的專案名:專案名必須以字母打頭.</value>
+    <value>無效的專案名：專案名必須以字母打頭。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.NewProjectDialog.SpecifyValidLocation" xml:space="preserve">
     <value>你必須指定一個有效的專案絕對路徑。</value>
@@ -3859,13 +3856,13 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>未找到工具</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.UserCredentialsDialog.DialogTitle" xml:space="preserve">
-    <value>識別介面需要帳號和密碼</value>
+    <value>探索認證</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.UserCredentialsDialog.DomainLabel" xml:space="preserve">
-    <value>域名(&amp;D):</value>
+    <value>網域(&amp;D):</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.UserCredentialsDialog.InformationLabel" xml:space="preserve">
-    <value>請提供相應的證書，才能存取此URL地址。</value>
+    <value>請提供認證以存取指定的 URL 位址。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.UserCredentialsDialog.PasswordLabel" xml:space="preserve">
     <value>密碼(&amp;P)：</value>
@@ -3880,7 +3877,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>大綱</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.OutlinePad.NotAvailable" xml:space="preserve">
-    <value>當前文件沒有大綱檢視。</value>
+    <value>目前文件沒有大綱檢視。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Pads.ClassScout.LoadingNode" xml:space="preserve">
     <value>正在載入...</value>
@@ -3898,10 +3895,10 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>解析</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectFile.BuildAction" xml:space="preserve">
-    <value>構建行為</value>
+    <value>建置動作</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectFile.BuildAction.Description" xml:space="preserve">
-    <value>那個檔案的構建行為</value>
+    <value>該檔案的建置動作</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectFile.CopyToOutputDirectory" xml:space="preserve">
     <value>複製到輸出目錄</value>
@@ -3928,16 +3925,16 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>邏輯名</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectFile.LogicalName.Description" xml:space="preserve">
-    <value>嵌入式資源的名稱.如果留空,則自動建置的。</value>
+    <value>嵌入式資源的名稱。如果留空，則自動建置的。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.Aliases" xml:space="preserve">
     <value>別名</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.Aliases.Description" xml:space="preserve">
-    <value>用逗號分隔的別名清單.如果你需要參考有類名和命名空間名稱衝突的組件(也就是僅僅是版本號不同的組件),請使用別名(aliases).</value>
+    <value>用逗號分隔的別名清單。如果你需要參考有類名和命名空間名稱衝突的組件（也就是僅僅是版本號不同的組件），請使用別名(aliases).</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.Culture" xml:space="preserve">
-    <value>文化</value>
+    <value>文化特性</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.Culture.Description" xml:space="preserve">
     <value>此參考支援的語言</value>
@@ -3952,10 +3949,10 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>本地複製</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.LocalCopy.Description" xml:space="preserve">
-    <value>如果正確，參考的組件被複製到輸出路徑</value>
+    <value>若為 true，參考的組件被複製到輸出路徑</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.Name" xml:space="preserve">
-    <value>(名稱)</value>
+    <value>（名稱）</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.Name.Description" xml:space="preserve">
     <value>參考名稱</value>
@@ -3982,7 +3979,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>版本</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.Version.Description" xml:space="preserve">
-    <value>參考的主版本號,次版本號,修正號和建置號</value>
+    <value>參考的主版本號，次版本號，修正號和建置號</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.WebReferenceUrl" xml:space="preserve">
     <value>Web參考URL</value>
@@ -3991,19 +3988,19 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>Web參考URL</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Templates.CombineDescriptor.OverwriteProjectQuestion" xml:space="preserve">
-    <value>在路徑${combineLocation}上已存在一個方案的檔案, 您想覆寫已存在的檔案嗎?</value>
+    <value>方案檔案 ${combineLocation} 已存在，您想覆寫已存在的檔案嗎？</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Templates.ProjectDescriptor.CantCreateProjectWithTypeError" xml:space="preserve">
-    <value>無法建立'${type}'型別的專案.</value>
+    <value>無法建立'${type}'型別的專案。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Templates.ProjectDescriptor.FileCouldntBeWrittenError" xml:space="preserve">
     <value>無法寫檔案${fileName}.</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Templates.ProjectDescriptor.OverwriteProjectQuestion" xml:space="preserve">
-    <value>專案檔案${projectLocation}已經存在, 您想覆寫所有已存在的檔案嗎?</value>
+    <value>專案檔案${projectLocation}已經存在， 您想覆寫所有已存在的檔案嗎？</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Templates.ProjectDescriptor.OverwriteQuestion" xml:space="preserve">
-    <value>檔案${fileNames}已存在,你想覆寫這個檔案嗎?</value>
+    <value>檔案${fileNames}已存在，你想覆寫這個檔案嗎？</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Templates.ProjectDescriptor.OverwriteQuestion.InfoName" xml:space="preserve">
     <value>檔案已經存在</value>
@@ -4012,7 +4009,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>載入${Filename}...</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Project.KeepOldSolution" xml:space="preserve">
-    <value>保持原方案打開</value>
+    <value>保持原方案開啟</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Project.ReloadSolution" xml:space="preserve">
     <value>重新載入方案</value>
@@ -4024,7 +4021,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>將選中的專案轉換到(&amp;P):</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Project.UpgradeView.ChangeTargetFrameworkLabel" xml:space="preserve">
-    <value>切換到新的框架：</value>
+    <value>切換到新的框架(&amp;T)：</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Project.UpgradeView.ChangeVersionGroupBoxHeader" xml:space="preserve">
     <value>更改選定專案的版本</value>
@@ -4045,17 +4042,17 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>專案升級</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Project.UpgradeView.UpdateOnLoadDueToMissingMSBuild" xml:space="preserve">
-    <value>工程'${ProjectName}'要求採用MSBuild ${OldToolsVersion}，但該版本並未安裝。
+    <value>專案'${ProjectName}'要求採用MSBuild ${OldToolsVersion}，但該版本並未安裝。
 請問是否將它升級到MSBuild  ${NewToolsVersion}?
-如果不升級那麼此工程將無法打開。</value>
+如果不升級那麼此專案將無法開啟。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Project.UpgradeView.UpgradeFromPreviousVersionDescription" xml:space="preserve">
     <value>這個方案是用SharpDevelop的舊版本創建的。
 您需要轉換為新版本的方案，因為它支援新語言或框架的新特性。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Services.AmbienceService.AmbienceNotFoundError" xml:space="preserve">
-    <value>無法找到當前.
-請通過'選項-&gt;外觀效果'來更改當前語言的色調風格.</value>
+    <value>找不到目前的色調風格。
+請透過「選項 -> 外觀效果」變更目前語言的色調風格。</value>
   </data>
   <data name="ICSharpCode.TextEditor.Document.SearchReplaceManager.MarkAllDone" xml:space="preserve">
     <value>完成全部標記。</value>
@@ -4073,7 +4070,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>創建XML輸出檔案</value>
   </data>
   <data name="ICSharpCode.UnitTesting.OptionsPanel.LabelEachTest" xml:space="preserve">
-    <value>標籤匹配測試</value>
+    <value>為每個測試加上標籤</value>
   </data>
   <data name="ICSharpCode.UnitTesting.OptionsPanel.ShadowCopy" xml:space="preserve">
     <value>陰影複製</value>
@@ -4082,7 +4079,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>查看日誌</value>
   </data>
   <data name="ICSharpCode.UnitTesting.OptionsPanel.ShowProgress" xml:space="preserve">
-    <value>查看處理序</value>
+    <value>顯示進度</value>
   </data>
   <data name="ICSharpCode.UnitTesting.OptionsPanel.Thread" xml:space="preserve">
     <value>在不同的執行緒上執行測試</value>
@@ -4091,7 +4088,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>執行所有程式碼覆寫率測試</value>
   </data>
   <data name="ICSharpCode.UnitTesting.RunProjectTests" xml:space="preserve">
-    <value>在當前專案中執行單元測試。</value>
+    <value>在目前專案中執行單元測試。</value>
   </data>
   <data name="ICSharpCode.UnitTesting.RunWithCoverage" xml:space="preserve">
     <value>執行程式碼覆寫率</value>
@@ -4109,13 +4106,13 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>無法執行單元測試。找不到檔案'{0}'。</value>
   </data>
   <data name="ICSharpCode.WebProjectOptionsPanel" xml:space="preserve">
-    <value>網路</value>
+    <value>Web</value>
   </data>
   <data name="ICSharpCode.WebProjectOptionsPanel.ApplicationExists" xml:space="preserve">
     <value>應用程式已經存在。</value>
   </data>
   <data name="ICSharpCode.WebProjectOptionsPanel.CreateVirtualDir" xml:space="preserve">
-    <value>創建應用程式或虛擬目錄</value>
+    <value>建立應用程式/虛擬目錄</value>
   </data>
   <data name="ICSharpCode.WebProjectOptionsPanel.DisableWebServerButton" xml:space="preserve">
     <value>停用web伺服器選項</value>
@@ -4127,7 +4124,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>ASP.NET/IIS(Express)的工作處理序({0})沒有找到。</value>
   </data>
   <data name="ICSharpCode.WebProjectOptionsPanel.NoProjectUrlOrProgramAction" xml:space="preserve">
-    <value>未指定工程的URL地址或外部程式。請到工程屬性的「偵錯」索引標籤中檢查WEB伺服器的設定</value>
+    <value>未指定專案的URL位址或外部程式。請到專案屬性的「Web」索引標籤中檢查WEB伺服器的設定</value>
   </data>
   <data name="ICSharpCode.WebProjectOptionsPanel.Port" xml:space="preserve">
     <value>伺服器埠：</value>
@@ -4145,7 +4142,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>使用本地IIS伺服器</value>
   </data>
   <data name="ICSharpCode.WebProjectOptionsPanel.VirtualDirCreated" xml:space="preserve">
-    <value>應用程式/虛擬目錄已經創建.</value>
+    <value>應用程式/虛擬目錄已經創建。</value>
   </data>
   <data name="ICSharpCode.WixBinding.AddCompilerExtensionsDialog.Title" xml:space="preserve">
     <value>新增擴展</value>
@@ -4157,25 +4154,25 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>WiX庫檔案</value>
   </data>
   <data name="ICSharpCode.WixBinding.ApplicationSettings.OutputNameLabel" xml:space="preserve">
-    <value>輸出名稱:</value>
+    <value>輸出名稱：</value>
   </data>
   <data name="ICSharpCode.WixBinding.ApplicationsSettingsPanel.OutputFileNameLabel" xml:space="preserve">
-    <value>輸出檔案名稱:</value>
+    <value>輸出檔案名稱：</value>
   </data>
   <data name="ICSharpCode.WixBinding.CompilerParametersPanel.CompilerExtensionsGroupBox" xml:space="preserve">
     <value>擴展</value>
   </data>
   <data name="ICSharpCode.WixBinding.CompilerParametersPanel.CulturesLabel" xml:space="preserve">
-    <value>文化(本地化類別)：</value>
+    <value>文化特性：</value>
   </data>
   <data name="ICSharpCode.WixBinding.CompilerParametersPanel.SuppressIces" xml:space="preserve">
     <value>停用ICEs</value>
   </data>
   <data name="ICSharpCode.WixBinding.CompilerParametersPanel.TreatWarningsAsErrorsCheckBox" xml:space="preserve">
-    <value>將警告作為錯誤處理:</value>
+    <value>將警告作為錯誤處理：</value>
   </data>
   <data name="ICSharpCode.WixBinding.CompilerParametersPanel.WixMSBuildExtensionsPathLabel" xml:space="preserve">
-    <value>WiX的MSBuild擴展工具路徑:</value>
+    <value>WiX的MSBuild擴展工具路徑：</value>
   </data>
   <data name="ICSharpCode.WixBinding.CompilerParametersPanel.WixTargetsPathLabel" xml:space="preserve">
     <value>WiX目標路徑：</value>
@@ -4184,7 +4181,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>Wix任務路徑：</value>
   </data>
   <data name="ICSharpCode.WixBinding.CompilerParametersPanel.WixToolPathLabel" xml:space="preserve">
-    <value>WiX工具路徑:</value>
+    <value>WiX工具路徑：</value>
   </data>
   <data name="ICSharpCode.WixBinding.CompilerParametersPanel.WixVariablesLabel" xml:space="preserve">
     <value>WiX變數：</value>
@@ -4193,7 +4190,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>在文件中找不到ID為'{0}'的對話方塊。</value>
   </data>
   <data name="ICSharpCode.WixBinding.ExtensionBinding.InvalidExtension" xml:space="preserve">
-    <value>擴展(Extension)必須符合這種格式：類名,組件名
+    <value>擴展(Extension)必須符合這種格式：類名，組件名
 
 如：
 Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension</value>
@@ -4217,10 +4214,10 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>新增檔案...</value>
   </data>
   <data name="ICSharpCode.WixBinding.PackageFilesView.AllWixFilesContainErrorsMessage" xml:space="preserve">
-    <value>無法找到安裝檔案. WiX檔案中包含錯誤.</value>
+    <value>無法找到安裝檔案。 WiX檔案中包含錯誤。</value>
   </data>
   <data name="ICSharpCode.WixBinding.PackageFilesView.NoRootDirectoryFoundMessage" xml:space="preserve">
-    <value>無法找到TARGETDIR(目標)資料夾或DirectoryRef(資料夾引用)元素。可能是它們在WiX文件中不存在， 或者是WiX文件不是針對WiX 3.0的並且對應用的命名空間不是"http://schemas.microsoft.com/wix/2006/wi"。</value>
+    <value>無法找到TARGETDIR（目標）資料夾或DirectoryRef（資料夾引用）元素。可能是它們在WiX文件中不存在， 或者是WiX文件不是針對WiX 3.0的並且對應用的命名空間不是"http://schemas.microsoft.com/wix/2006/wi"。</value>
   </data>
   <data name="ICSharpCode.WixBinding.PackageFilesView.NoWixFileFoundInProjectMessage" xml:space="preserve">
     <value>在'{0}'專案中沒有找到WiX檔案(.wxs)</value>
@@ -4247,7 +4244,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>安裝包</value>
   </data>
   <data name="ICSharpCode.WixBinding.ProjectOptions.OutputType.MergeModule" xml:space="preserve">
-    <value>合併模塊</value>
+    <value>合併模組</value>
   </data>
   <data name="ICSharpCode.WixBinding.ProjectOptions.OutputType.WixLibrary" xml:space="preserve">
     <value>WiX庫</value>
@@ -4262,22 +4259,22 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>新增...</value>
   </data>
   <data name="ICSharpCode.WixBinding.WixDialog.IllegalAttributeIntegerValue" xml:space="preserve">
-    <value>屬性{0}的值'{1}'並不是一個有效的整數.</value>
+    <value>屬性{0}的值'{1}'並不是一個有效的整數。</value>
   </data>
   <data name="ICSharpCode.WixBinding.WixDialog.RequiredAttributeMissingMessage" xml:space="preserve">
     <value>缺少必須的屬性'{0}'.</value>
   </data>
   <data name="ICSharpCode.WixBinding.WixDialogDesigner.NoDialogSelectedInDocumentMessage" xml:space="preserve">
-    <value>在WiX文件中沒有選中安裝對話方塊. 請先將光標移動到對話方塊裡的一項上,或者用'安裝對話方塊'打開一個對話方塊.</value>
+    <value>在WiX文件中沒有選中安裝對話方塊。 請先將游標移動到對話方塊裡的一項上，或者用'安裝對話方塊'開啟一個對話方塊。</value>
   </data>
   <data name="ICSharpCode.WixBinding.WixDirectoryElement.AdminToolsFolder" xml:space="preserve">
     <value>管理工具</value>
   </data>
   <data name="ICSharpCode.WixBinding.WixDirectoryElement.AppDataFolder" xml:space="preserve">
-    <value>應用數據</value>
+    <value>應用資料</value>
   </data>
   <data name="ICSharpCode.WixBinding.WixDirectoryElement.CommonAppDataFolder" xml:space="preserve">
-    <value>公共應用程式數據</value>
+    <value>公共應用程式資料</value>
   </data>
   <data name="ICSharpCode.WixBinding.WixDirectoryElement.CommonFiles64Folder" xml:space="preserve">
     <value>公共檔案 64</value>
@@ -4295,7 +4292,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>字型</value>
   </data>
   <data name="ICSharpCode.WixBinding.WixDirectoryElement.LocalAppDataFolder" xml:space="preserve">
-    <value>本地應用程式數據</value>
+    <value>本地應用程式資料</value>
   </data>
   <data name="ICSharpCode.WixBinding.WixDirectoryElement.MyPicturesFolder" xml:space="preserve">
     <value>我的圖片</value>
@@ -4331,7 +4328,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>系統目錄</value>
   </data>
   <data name="ICSharpCode.WixBinding.WixDirectoryElement.TempFolder" xml:space="preserve">
-    <value>臨時(資料夾)</value>
+    <value>臨時（資料夾）</value>
   </data>
   <data name="ICSharpCode.WixBinding.WixDirectoryElement.TemplateFolder" xml:space="preserve">
     <value>範本</value>
@@ -4400,13 +4397,13 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>查看XAML</value>
   </data>
   <data name="ICSharpCode.XmlEditor.AddAttributeDialog.CustomAttributeLabel" xml:space="preserve">
-    <value>名稱:</value>
+    <value>自訂：</value>
   </data>
   <data name="ICSharpCode.XmlEditor.AddAttributeDialog.Title" xml:space="preserve">
     <value>新增屬性</value>
   </data>
   <data name="ICSharpCode.XmlEditor.AddElementDialog.CustomElementLabel" xml:space="preserve">
-    <value>名稱:</value>
+    <value>自訂：</value>
   </data>
   <data name="ICSharpCode.XmlEditor.AddElementDialog.Title" xml:space="preserve">
     <value>新增元素</value>
@@ -4418,19 +4415,19 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>指定XSLT Stylesheet</value>
   </data>
   <data name="ICSharpCode.XmlEditor.CreateSchemaMenuLabel" xml:space="preserve">
-    <value>創建XML大綱(Schema)(&amp;C)</value>
+    <value>建立 XML 結構描述(&amp;C)</value>
   </data>
   <data name="ICSharpCode.XmlEditor.HideXPathResults" xml:space="preserve">
     <value>隱藏XPath結果(&amp;X)</value>
   </data>
   <data name="ICSharpCode.XmlEditor.OpenXSLT" xml:space="preserve">
-    <value>打開XSLT(&amp;O)</value>
+    <value>開啟XSLT(&amp;O)</value>
   </data>
   <data name="ICSharpCode.XmlEditor.RunXSLT" xml:space="preserve">
     <value>執行XSL&amp;T</value>
   </data>
   <data name="ICSharpCode.XmlEditor.SelectXmlSchema.DialogTitle" xml:space="preserve">
-    <value>選擇XML架構</value>
+    <value>選擇 XML 結構描述</value>
   </data>
   <data name="ICSharpCode.XmlEditor.ValidateXmlMenuLabel" xml:space="preserve">
     <value>驗證XML(&amp;V)</value>
@@ -4442,13 +4439,13 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>摺疊時顯示屬性(&amp;A)</value>
   </data>
   <data name="ICSharpCode.XmlEditor.XmlEditorOptionsPanel.ShowSchemaAnnotationLabel" xml:space="preserve">
-    <value>顯示注釋模式</value>
+    <value>顯示結構描述註釋(&amp;T)</value>
   </data>
   <data name="ICSharpCode.XmlEditor.XmlEditorOptionsPanel.Title" xml:space="preserve">
     <value>XML選項</value>
   </data>
   <data name="ICSharpCode.XmlEditor.XmlEditorOptionsPanel.XmlCompletionGroupLabel" xml:space="preserve">
-    <value>XML結束</value>
+    <value>XML 補全</value>
   </data>
   <data name="ICSharpCode.XmlEditor.XmlSchemaPanel.FileExtensionLabelText" xml:space="preserve">
     <value>擴展(&amp;E)：</value>
@@ -4460,25 +4457,25 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>前綴(&amp;P):</value>
   </data>
   <data name="ICSharpCode.XmlEditor.XmlSchemaPanel.SchemaLabelText" xml:space="preserve">
-    <value>架構(&amp;S):</value>
+    <value>結構描述(&amp;S):</value>
   </data>
   <data name="ICSharpCode.XmlEditor.XmlSchemaPanel.SchemasGroupBoxText" xml:space="preserve">
-    <value>架構</value>
+    <value>結構描述</value>
   </data>
   <data name="ICSharpCode.XmlEditor.XmlSchemasPanel.NamespaceExists" xml:space="preserve">
-    <value>無法新增大綱. 因為命名空間'{0}'已經存在.</value>
+    <value>無法新增結構描述。 因為命名空間'{0}'已經存在。</value>
   </data>
   <data name="ICSharpCode.XmlEditor.XmlSchemasPanel.NoTargetNamespace" xml:space="preserve">
-    <value>大綱'{0}'沒有目標命名空間.</value>
+    <value>結構描述'{0}'沒有目標命名空間。</value>
   </data>
   <data name="ICSharpCode.XmlEditor.XmlSchemasPanel.Title" xml:space="preserve">
-    <value>XML Schemas</value>
+    <value>XML 結構描述</value>
   </data>
   <data name="ICSharpCode.XmlEditor.XmlSchemasPanel.UnableToAddSchema" xml:space="preserve">
-    <value>無法新增schema.</value>
+    <value>無法新增結構描述。</value>
   </data>
   <data name="ICSharpCode.XmlEditor.XmlSchemasPanel.UnableToSaveChanges" xml:space="preserve">
-    <value>無法儲存更改.</value>
+    <value>無法儲存更改。</value>
   </data>
   <data name="ICSharpCode.XmlEditor.XmlTreeView.AddAttributeMenuLabel" xml:space="preserve">
     <value>新增屬性...</value>
@@ -4517,7 +4514,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>XML樹</value>
   </data>
   <data name="ICSharpCode.XmlEditor.XPathQueryPad.NamespaceColumnHeaderTitle" xml:space="preserve">
-    <value>命令空間</value>
+    <value>命名空間</value>
   </data>
   <data name="ICSharpCode.XmlEditor.XPathQueryPad.NamespacesTab" xml:space="preserve">
     <value>命名空間</value>
@@ -4553,7 +4550,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>尚未設定ILSpy路徑。</value>
   </data>
   <data name="ILSpyAddIn.OpenILSpyCommand" xml:space="preserve">
-    <value>打開ILSpy</value>
+    <value>開啟ILSpy</value>
   </data>
   <data name="ILSpyAddIn.SetILSpyPathDialog.ILSpyInfo" xml:space="preserve">
     <value>此功能需要ILSpy支援，如果您需要，可以在這裡免費下載：</value>
@@ -4565,10 +4562,10 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>設定ILSpy路徑</value>
   </data>
   <data name="Internal.ExternalTool.CantLoadToolConfigWarining" xml:space="preserve">
-    <value>無法讀取擴展工具組態檔案</value>
+    <value>無法載入外部工具組態檔</value>
   </data>
   <data name="Internal.Templates.CodeTemplateLoader.CantLoadTemplatesWarning" xml:space="preserve">
-    <value>無法讀取組態檔案範本</value>
+    <value>無法載入範本組態檔</value>
   </data>
   <data name="Internal.Templates.ProjectTemplate.LoadingError" xml:space="preserve">
     <value>讀取專案範本時發生錯誤：</value>
@@ -4589,7 +4586,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>建置開始。</value>
   </data>
   <data name="MainWindow.CompilerMessages.BuildStartedOutput" xml:space="preserve">
-    <value>------ 開始建置: 專案: ${Project}組態: ${Config} ------</value>
+    <value>------ 開始建置： 專案： ${Project}組態： ${Config} ------</value>
   </data>
   <data name="MainWindow.CompilerMessages.BuildVerb" xml:space="preserve">
     <value>正在建置</value>
@@ -4604,22 +4601,22 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>執行${Script}</value>
   </data>
   <data name="MainWindow.CompilerMessages.MSBuildAlreadyRunning" xml:space="preserve">
-    <value>MSBuild 已經在執行</value>
+    <value>MSBuild 已經在執行！</value>
   </data>
   <data name="MainWindow.CompilerMessages.PerformingMainCompilationOutput" xml:space="preserve">
     <value>建置中...</value>
   </data>
   <data name="MainWindow.CompilerMessages.ProjectStatsOutput" xml:space="preserve">
-    <value>建置完成 -- ${Errors} 錯誤, ${Warnings} 警告</value>
+    <value>建置完成 -- ${Errors} 錯誤， ${Warnings} 警告</value>
   </data>
   <data name="MainWindow.CompilerMessages.SkipProjectNoChanges" xml:space="preserve">
-    <value>跳過${Name} (在SharpDevelop中未更改)</value>
+    <value>跳過${Name} （在SharpDevelop中未更改）</value>
   </data>
   <data name="MainWindow.DialogName" xml:space="preserve">
     <value>OpenDevelop</value>
   </data>
   <data name="MainWindow.DiscardChangesMessage" xml:space="preserve">
-    <value>您真的想放棄您所作的更改嗎?</value>
+    <value>您真的想放棄您所作的更改嗎？</value>
   </data>
   <data name="MainWindow.Editor.Tooltip.LocalVar" xml:space="preserve">
     <value>區域變數</value>
@@ -4643,7 +4640,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>正在建置${Project}</value>
   </data>
   <data name="MainWindow.StatusBar.ReadyMessage" xml:space="preserve">
-    <value>準備好</value>
+    <value>就緒</value>
   </data>
   <data name="MainWindow.Windows.BookmarkPad.DeleteAllMarks.ToolTip" xml:space="preserve">
     <value>刪除緩衝區中的所有書籤。</value>
@@ -4676,7 +4673,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>基本型別</value>
   </data>
   <data name="MainWindow.Windows.ClassBrowser.ClassViewSettings.ShowOtherMembers.Label" xml:space="preserve">
-    <value>顯示其它成員函式(&amp;O)</value>
+    <value>顯示其他成員函式(&amp;O)</value>
   </data>
   <data name="MainWindow.Windows.ClassBrowser.ClassViewSettings.ShowPrivateMembers.Label" xml:space="preserve">
     <value>顯示私有成員(&amp;R)</value>
@@ -4700,13 +4697,13 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>搜尋</value>
   </data>
   <data name="MainWindow.Windows.ClassBrowser.DerivedTypes" xml:space="preserve">
-    <value>派生型別</value>
+    <value>衍生型別</value>
   </data>
   <data name="MainWindow.Windows.ClassBrowser.ForwardButton.ToolTip" xml:space="preserve">
     <value>向前</value>
   </data>
   <data name="MainWindow.Windows.ClassBrowser.NoResultsFound" xml:space="preserve">
-    <value>沒有搜尋到.</value>
+    <value>沒有搜尋到。</value>
   </data>
   <data name="MainWindow.Windows.ClassBrowser.SearchButton.ToolTip" xml:space="preserve">
     <value>搜尋類檢視</value>
@@ -4718,7 +4715,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>全部清除</value>
   </data>
   <data name="MainWindow.Windows.CompilerMessageView.ShowOutputFromComboBox.ToolTip" xml:space="preserve">
-    <value>從這裡顯示輸出資訊:</value>
+    <value>從這裡顯示輸出資訊：</value>
   </data>
   <data name="MainWindow.Windows.CompilerMessageView.ToggleWordWrapButton.ToolTip" xml:space="preserve">
     <value>自動換行</value>
@@ -4733,13 +4730,13 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>當偵錯器在執行時無法切換方法</value>
   </data>
   <data name="MainWindow.Windows.Debug.CallStack.CannotSwitchWithoutSymbols" xml:space="preserve">
-    <value>您無法跳到無符號的方法中.</value>
+    <value>您無法跳到無符號的方法中。</value>
   </data>
   <data name="MainWindow.Windows.Debug.CallStack.ExternalMethods" xml:space="preserve">
     <value>[外部方法]</value>
   </data>
   <data name="MainWindow.Windows.Debug.CallStack.FunctionSwitch" xml:space="preserve">
-    <value>方法切換</value>
+    <value>函式切換</value>
   </data>
   <data name="MainWindow.Windows.Debug.CallStack.Language" xml:space="preserve">
     <value>語言</value>
@@ -4751,13 +4748,13 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>顯示參數值</value>
   </data>
   <data name="MainWindow.Windows.Debug.CallStack.ShowExternalMethods" xml:space="preserve">
-    <value>顯示擴展方法</value>
+    <value>顯示外部方法</value>
   </data>
   <data name="MainWindow.Windows.Debug.CallStack.ShowLineNumber" xml:space="preserve">
     <value>顯示行號</value>
   </data>
   <data name="MainWindow.Windows.Debug.CallStack.ShowModuleNames" xml:space="preserve">
-    <value>顯示模塊的名稱</value>
+    <value>顯示模組的名稱</value>
   </data>
   <data name="MainWindow.Windows.Debug.Conditional.Breakpoints.Ask" xml:space="preserve">
     <value>請求</value>
@@ -4769,7 +4766,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>中斷點</value>
   </data>
   <data name="MainWindow.Windows.Debug.Conditional.Breakpoints.BreakpointHit" xml:space="preserve">
-    <value>遇到中斷點!</value>
+    <value>遇到中斷點！</value>
   </data>
   <data name="MainWindow.Windows.Debug.Conditional.Breakpoints.BreakpointHitAt" xml:space="preserve">
     <value>在{1}中的第{0}行遇到中斷點。</value>
@@ -4802,10 +4799,10 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>終止</value>
   </data>
   <data name="MainWindow.Windows.Debug.Conditional.Breakpoints.Trace" xml:space="preserve">
-    <value>跟蹤</value>
+    <value>追蹤</value>
   </data>
   <data name="MainWindow.Windows.Debug.Console" xml:space="preserve">
-    <value>控制臺</value>
+    <value>主控台</value>
   </data>
   <data name="MainWindow.Windows.Debug.ExceptionForm.Break" xml:space="preserve">
     <value>中斷</value>
@@ -4817,16 +4814,16 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>隱藏例外詳細資訊</value>
   </data>
   <data name="MainWindow.Windows.Debug.ExceptionForm.LineFormat.EndOfInnerException" xml:space="preserve">
-    <value>--- 內部例外堆疊跟蹤的結尾 ---</value>
+    <value>--- 內部例外堆疊追蹤的結尾 ---</value>
   </data>
   <data name="MainWindow.Windows.Debug.ExceptionForm.LineFormat.NoSymbols" xml:space="preserve">
     <value>在{0}</value>
   </data>
   <data name="MainWindow.Windows.Debug.ExceptionForm.LineFormat.Symbols" xml:space="preserve">
-    <value>在{1}裡的{0}: (第{2}行)</value>
+    <value>在{1}裡的{0}: （第{2}行）</value>
   </data>
   <data name="MainWindow.Windows.Debug.ExceptionForm.Message" xml:space="preserve">
-    <value>拋出了型別為{0}的例外:</value>
+    <value>擲回了型別為{0}的例外：</value>
   </data>
   <data name="MainWindow.Windows.Debug.ExceptionForm.ShowExceptionDetails" xml:space="preserve">
     <value>顯示例外詳細資訊</value>
@@ -4853,7 +4850,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>時間</value>
   </data>
   <data name="MainWindow.Windows.Debug.HideZoomControl" xml:space="preserve">
-    <value>顯示/隱藏 縮放介面</value>
+    <value>顯示/隱藏縮放控制項</value>
   </data>
   <data name="MainWindow.Windows.Debug.Local" xml:space="preserve">
     <value>區域</value>
@@ -4907,7 +4904,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>沒有找到地址{0} ！</value>
   </data>
   <data name="MainWindow.Windows.Debug.MemoryPad.ByteSize" xml:space="preserve">
-    <value>顯示位元組大小:</value>
+    <value>顯示位元組大小：</value>
   </data>
   <data name="MainWindow.Windows.Debug.MemoryPad.JumpTo" xml:space="preserve">
     <value>跳轉到地址：</value>
@@ -4916,7 +4913,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>下一個虛擬地址</value>
   </data>
   <data name="MainWindow.Windows.Debug.MemoryPad.NoMappings" xml:space="preserve">
-    <value>沒有對記憶體地址的映射！</value>
+    <value>沒有對記憶體地址的對應！</value>
   </data>
   <data name="MainWindow.Windows.Debug.MemoryPad.NotDebuggingOrProcessRunning" xml:space="preserve">
     <value>未偵錯狀態或處理序已經在執行！</value>
@@ -4925,19 +4922,19 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>前一個虛擬地址</value>
   </data>
   <data name="MainWindow.Windows.Debug.MemoryPad.ReadingFromFormat" xml:space="preserve">
-    <value>從{0}讀取到[1}中， 大小:{2}.</value>
+    <value>從{0}讀取到{1}中， 大小：{2}.</value>
   </data>
   <data name="MainWindow.Windows.Debug.MemoryPad.Refresh" xml:space="preserve">
-    <value>刷新當前地址</value>
+    <value>重新整理目前位址</value>
   </data>
   <data name="MainWindow.Windows.Debug.Modules" xml:space="preserve">
-    <value>已裝載的模塊</value>
+    <value>已裝載的模組</value>
   </data>
   <data name="MainWindow.Windows.Debug.Modules.AddressColumn" xml:space="preserve">
     <value>地址</value>
   </data>
   <data name="MainWindow.Windows.Debug.Modules.DynamicModule" xml:space="preserve">
-    <value>(動態)</value>
+    <value>（動態）</value>
   </data>
   <data name="MainWindow.Windows.Debug.Modules.HasNoSymbols" xml:space="preserve">
     <value>未載入任何符號。</value>
@@ -4946,7 +4943,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>已載入符號。</value>
   </data>
   <data name="MainWindow.Windows.Debug.Modules.InMemoryModule" xml:space="preserve">
-    <value>(在記憶體中)</value>
+    <value>（在記憶體中）</value>
   </data>
   <data name="MainWindow.Windows.Debug.Modules.OrderColumn" xml:space="preserve">
     <value>排序</value>
@@ -4967,10 +4964,10 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>物件圖</value>
   </data>
   <data name="MainWindow.Windows.Debug.RunToCursor" xml:space="preserve">
-    <value>執行到光標處</value>
+    <value>執行到游標處</value>
   </data>
   <data name="MainWindow.Windows.Debug.SetCurrentStatement" xml:space="preserve">
-    <value>設定當前宣告</value>
+    <value>設定目前陳述式</value>
   </data>
   <data name="MainWindow.Windows.Debug.StopDebugging.Message" xml:space="preserve">
     <value>你要停止偵錯？</value>
@@ -4982,22 +4979,22 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>執行緒</value>
   </data>
   <data name="MainWindow.Windows.Debug.Threads.CannotFreezeWhileRunning" xml:space="preserve">
-    <value>偵錯器在執行時, 不能凍結或解凍執行緒.</value>
+    <value>偵錯器在執行時， 不能凍結或解凍執行緒。</value>
   </data>
   <data name="MainWindow.Windows.Debug.Threads.CannotStepNoActiveFunction" xml:space="preserve">
-    <value>由於沒有選擇活動的方法, 無法進行單步偵錯.</value>
+    <value>由於沒有選擇活動的方法， 無法進行單步偵錯。</value>
   </data>
   <data name="MainWindow.Windows.Debug.Threads.CannotSwitchOnNAFrame" xml:space="preserve">
-    <value>無法切換到沒有對應的上下文的執行緒。</value>
+    <value>無法切換到沒有可用框架的執行緒。</value>
   </data>
   <data name="MainWindow.Windows.Debug.Threads.CannotSwitchWhileRunning" xml:space="preserve">
-    <value>偵錯器在執行時您不能切換執行緒.</value>
+    <value>偵錯器在執行時您不能切換執行緒。</value>
   </data>
   <data name="MainWindow.Windows.Debug.Threads.Freeze" xml:space="preserve">
     <value>凍結</value>
   </data>
   <data name="MainWindow.Windows.Debug.Threads.Frozen" xml:space="preserve">
-    <value>凍結(暫停)</value>
+    <value>凍結（暫停）</value>
   </data>
   <data name="MainWindow.Windows.Debug.Threads.Priority" xml:space="preserve">
     <value>優先級</value>
@@ -5024,25 +5021,25 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>切換方法檢視</value>
   </data>
   <data name="MainWindow.Windows.Debug.Watch" xml:space="preserve">
-    <value>監視</value>
+    <value>監看</value>
   </data>
   <data name="MainWindow.Windows.Debug.Watch.AddWatch" xml:space="preserve">
-    <value>新增監視</value>
+    <value>新增監看</value>
   </data>
   <data name="MainWindow.Windows.Debug.Watch.EnterExpression" xml:space="preserve">
-    <value>輸入一個運算式:</value>
+    <value>輸入一個運算式：</value>
   </data>
   <data name="MainWindow.Windows.Debug.Watch.InvalidExpression" xml:space="preserve">
     <value>無效的運算式：{0}</value>
   </data>
   <data name="MainWindow.Windows.Debug.Watch.Refresh" xml:space="preserve">
-    <value>刷新</value>
+    <value>重新整理</value>
   </data>
   <data name="MainWindow.Windows.Debug.Watch.RemoveAll" xml:space="preserve">
     <value>全部刪除</value>
   </data>
   <data name="MainWindow.Windows.Debug.Watch.RemoveWatch" xml:space="preserve">
-    <value>移除監視</value>
+    <value>移除監看</value>
   </data>
   <data name="MainWindow.Windows.DefinitionViewLabel" xml:space="preserve">
     <value>定義檢視</value>
@@ -5078,7 +5075,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>網路驅動器</value>
   </data>
   <data name="MainWindow.Windows.FileScout.DriveType.Removeable" xml:space="preserve">
-    <value>可移動存儲設備</value>
+    <value>可移動儲存設備</value>
   </data>
   <data name="MainWindow.Windows.FileScout.LastModified" xml:space="preserve">
     <value>最後修改</value>
@@ -5162,19 +5159,19 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>顯示最近的搜尋項</value>
   </data>
   <data name="MainWindow.Windows.SearchResultsLabel" xml:space="preserve">
-    <value>尋找結果</value>
+    <value>搜尋結果</value>
   </data>
   <data name="MainWindow.Windows.TaskList" xml:space="preserve">
-    <value>任務清單</value>
+    <value>工作清單</value>
   </data>
   <data name="MainWindow.Windows.ToolbarLabel" xml:space="preserve">
     <value>工具</value>
   </data>
   <data name="MainWindow.Windows.TreeView.CollapseCurrent" xml:space="preserve">
-    <value>收縮當前項</value>
+    <value>收縮目前項</value>
   </data>
   <data name="MainWindow.Windows.TreeView.ExpandCurrent" xml:space="preserve">
-    <value>展開當前</value>
+    <value>展開目前</value>
   </data>
   <data name="MainWindow.Windows.UnitTestsTreeView.ClearResults" xml:space="preserve">
     <value>清除結果</value>
@@ -5186,10 +5183,10 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>展開所有忽略</value>
   </data>
   <data name="MainWindow.Windows.UnitTestsTreeView.ExpandCurrentFailures" xml:space="preserve">
-    <value>展開當前失敗</value>
+    <value>展開目前失敗</value>
   </data>
   <data name="MainWindow.Windows.UnitTestsTreeView.ExpandCurrentIgnoredTests" xml:space="preserve">
-    <value>展開當前忽略</value>
+    <value>展開目前忽略</value>
   </data>
   <data name="MainWindow.Windows.UnitTestsTreeView.TreeMenu" xml:space="preserve">
     <value>樹</value>
@@ -5204,13 +5201,13 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>驗證：成功</value>
   </data>
   <data name="NUnitPad.NUnitPadContent.CancelItem" xml:space="preserve">
-    <value>解除安裝測試組件, 並取消自動載入.</value>
+    <value>解除安裝測試組件， 並取消自動載入。</value>
   </data>
   <data name="NUnitPad.NUnitPadContent.GotoDefinitionContextMenuLabel" xml:space="preserve">
     <value>轉到定義(&amp;G)</value>
   </data>
   <data name="NUnitPad.NUnitPadContent.ReferenceItem" xml:space="preserve">
-    <value>給當前選中專案新增一個參考到NUnit</value>
+    <value>給目前選中專案新增一個參考到NUnit</value>
   </data>
   <data name="NUnitPad.NUnitPadContent.RefreshItem" xml:space="preserve">
     <value>重新裝載測試組件</value>
@@ -5228,7 +5225,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>停止測試</value>
   </data>
   <data name="NUnitPad.NUnitPadContent.TestTreeView.ClickOnRunInformationNode" xml:space="preserve">
-    <value>點擊執行測試或刷新啟用測試</value>
+    <value>按一下執行測試或重新整理啟用測試</value>
   </data>
   <data name="NUnitPad.NUnitPadContent.TestTreeView.LoadingErrorNode" xml:space="preserve">
     <value>載入產生的錯誤</value>
@@ -5240,13 +5237,13 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>測試用例'${TestCase}'沒有執行。</value>
   </data>
   <data name="ObjectBrowser.Menu.LoadAssembly" xml:space="preserve">
-    <value>讀取集合...</value>
+    <value>讀取組件...</value>
   </data>
   <data name="ObjectBrowser.Menu.LoadRef" xml:space="preserve">
     <value>讀取參考組件</value>
   </data>
   <data name="ObjectBrowser.Menu.LoadStd" xml:space="preserve">
-    <value>讀取標準裝配</value>
+    <value>讀取標準組件</value>
   </data>
   <data name="OpenFileTabEventHandler.ContextMenu.Close" xml:space="preserve">
     <value>關閉(&amp;L)</value>
@@ -5264,7 +5261,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>複製完整路徑</value>
   </data>
   <data name="OpenFileTabEventHandler.FileContainingFolderInExplorer" xml:space="preserve">
-    <value>打開所在的資料夾</value>
+    <value>開啟所在的資料夾</value>
   </data>
   <data name="ProjectBrowser.Toolbar.CollapseAll" xml:space="preserve">
     <value>摺疊所有節點</value>
@@ -5279,10 +5276,10 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>連結</value>
   </data>
   <data name="ProjectComponent.ContextMenu.AddExistingFiles.Question" xml:space="preserve">
-    <value>您是想把檔案複製到目標目錄還是想創建指向原檔案的連結?</value>
+    <value>您是想把檔案複製到目標目錄還是想創建指向原檔案的連結？</value>
   </data>
   <data name="ProjectComponent.ContextMenu.AddExistingFiles.ReplaceExistingFile" xml:space="preserve">
-    <value>名為'${FileName}'的檔案已存在, 您要取代它嗎?</value>
+    <value>名為'${FileName}'的檔案已存在， 您要取代它嗎？</value>
   </data>
   <data name="ProjectComponent.ContextMenu.AddExistingFiles.ReplaceExistingFile.Title" xml:space="preserve">
     <value>取代已存在的檔案</value>
@@ -5315,7 +5312,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>徹底刪除檔案'${FileName}'及其內容？</value>
   </data>
   <data name="ProjectComponent.ContextMenu.DeleteWithDependentFiles.Question" xml:space="preserve">
-    <value>您確定要永久刪除'${FileName}'和與它相關的檔案嗎?</value>
+    <value>您確定要永久刪除'${FileName}'和與它相關的檔案嗎？</value>
   </data>
   <data name="ProjectComponent.ContextMenu.ExcludeFileFromProject" xml:space="preserve">
     <value>從專案中排除</value>
@@ -5327,10 +5324,10 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>現有的資料夾...</value>
   </data>
   <data name="ProjectComponent.ContextMenu.ExistingFolder.CopyQuestion" xml:space="preserve">
-    <value>你要複製的資料夾到目標目錄嗎？</value>
+    <value>您要將資料夾複製到目標目錄嗎？</value>
   </data>
   <data name="ProjectComponent.ContextMenu.ExistingItem" xml:space="preserve">
-    <value>現有項(&amp;X)</value>
+    <value>現有項...</value>
   </data>
   <data name="ProjectComponent.ContextMenu.ExistingItemAsDependent" xml:space="preserve">
     <value>新增現有項和它的相依性</value>
@@ -5345,7 +5342,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>您必須修改專案的建置選項才能建置XML文件檔案。</value>
   </data>
   <data name="ProjectComponent.ContextMenu.GenerateDocumentation.ProjectNeedsToBeCompiled2" xml:space="preserve">
-    <value>XML檔案不存在，您需要編譯該專案。</value>
+    <value>XML 文件檔不存在，您需要編譯該專案。</value>
   </data>
   <data name="ProjectComponent.ContextMenu.GenerateDocumentation.SHFBNotFound" xml:space="preserve">
     <value>請先安裝Sandcastle說明檔案建置器，才能根據XML備註資訊建置對應的文件。</value>
@@ -5381,10 +5378,10 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>該專案不是一個Web專案。</value>
   </data>
   <data name="ProjectComponent.ContextMenu.Open" xml:space="preserve">
-    <value>打開(&amp;P)</value>
+    <value>開啟(&amp;P)</value>
   </data>
   <data name="ProjectComponent.ContextMenu.OpenProjectOutputFolder" xml:space="preserve">
-    <value>打開輸出資料夾</value>
+    <value>開啟輸出資料夾</value>
   </data>
   <data name="ProjectComponent.ContextMenu.Rebuild" xml:space="preserve">
     <value>重新建置(&amp;E)</value>
@@ -5426,7 +5423,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>編譯</value>
   </data>
   <data name="RegExpTk.MainDialog.CreateAssembly" xml:space="preserve">
-    <value>建置組件</value>
+    <value>建立組件</value>
   </data>
   <data name="RegExpTk.MainDialog.ECMA" xml:space="preserve">
     <value>ECMA腳本</value>
@@ -5435,16 +5432,16 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>結束</value>
   </data>
   <data name="RegExpTk.MainDialog.ExplicitCapture" xml:space="preserve">
-    <value>顯式捕獲</value>
+    <value>顯式擷取</value>
   </data>
   <data name="RegExpTk.MainDialog.GroupsColumn" xml:space="preserve">
-    <value>組</value>
+    <value>群組</value>
   </data>
   <data name="RegExpTk.MainDialog.IgnoreCase" xml:space="preserve">
     <value>忽略大小寫</value>
   </data>
   <data name="RegExpTk.MainDialog.IgnoreWhitespace" xml:space="preserve">
-    <value>忽略格式空白</value>
+    <value>忽略模式中的空白</value>
   </data>
   <data name="RegExpTk.MainDialog.Input" xml:space="preserve">
     <value>輸入</value>
@@ -5465,7 +5462,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>規則運算式</value>
   </data>
   <data name="RegExpTk.MainDialog.Replace" xml:space="preserve">
-    <value>替代</value>
+    <value>取代</value>
   </data>
   <data name="RegExpTk.MainDialog.Replacement" xml:space="preserve">
     <value>替代字串</value>
@@ -5495,13 +5492,13 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>類名不能為空</value>
   </data>
   <data name="RegExpTk.Messages.CompilationError" xml:space="preserve">
-    <value>規則運算式建置失敗,原因是:</value>
+    <value>規則運算式編譯失敗，原因是：</value>
   </data>
   <data name="RegExpTk.Messages.CreationError" xml:space="preserve">
-    <value>規則運算式建置錯誤,原因是:</value>
+    <value>規則運算式建置錯誤，原因是：</value>
   </data>
   <data name="RegExpTk.Messages.FileCreated" xml:space="preserve">
-    <value>檔案已成功建置:</value>
+    <value>檔案已成功建置：</value>
   </data>
   <data name="RegExpTk.Messages.FilenameInvalid" xml:space="preserve">
     <value>請輸入一個有效的檔案名</value>
@@ -5531,7 +5528,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>非字母字元值</value>
   </data>
   <data name="RegExpTk.RegExpMenu.UngreedyStar" xml:space="preserve">
-    <value>非貪婪星號(匹配)</value>
+    <value>非貪婪星號（匹配）</value>
   </data>
   <data name="RegExpTk.RegExpMenu.WhitespaceCharacter" xml:space="preserve">
     <value>空白字元</value>
@@ -5543,7 +5540,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>字母字元值</value>
   </data>
   <data name="ResourceEditor.BitmapView.UpdateBitmap" xml:space="preserve">
-    <value>更新位圖檔案...</value>
+    <value>更新點陣圖...</value>
   </data>
   <data name="ResourceEditor.DeleteEntry.Confirm" xml:space="preserve">
     <value>您確定要刪除選定的資源嗎？</value>
@@ -5555,10 +5552,10 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>無法裝載資源</value>
   </data>
   <data name="ResourceEditor.ResourceCodeGeneratorTool.ClassConflict" xml:space="preserve">
-    <value>錯誤:資原始碼建置器將跳過資源檔案"{0}", 因為由它產生的類會與現有的類"{1}"有衝突.</value>
+    <value>錯誤：資原始碼建置器將跳過資源檔案"{0}", 因為由它產生的類會與現有的類"{1}"有衝突。</value>
   </data>
   <data name="ResourceEditor.ResourceCodeGeneratorTool.CouldNotGenerateResourceProperty" xml:space="preserve">
-    <value>資原始碼建置器提示:資源'{0}'無法建置資源屬性.</value>
+    <value>資源程式碼產生器：資源'{0}'無法產生資源屬性。</value>
   </data>
   <data name="ResourceEditor.ResourceEdit.ContentColumn" xml:space="preserve">
     <value>內容</value>
@@ -5612,7 +5609,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>C#專案檔案</value>
   </data>
   <data name="SharpDevelop.FileFilter.CursorFiles" xml:space="preserve">
-    <value>光標資源檔案</value>
+    <value>游標資源檔案</value>
   </data>
   <data name="SharpDevelop.FileFilter.ExecutableFiles" xml:space="preserve">
     <value>可執行檔案 (*.exe;*.com;*.pif;*.bat;*.cmd)</value>
@@ -5630,7 +5627,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>圖片檔案</value>
   </data>
   <data name="SharpDevelop.FileFilter.KeyFiles" xml:space="preserve">
-    <value>籤名檔案</value>
+    <value>金鑰檔</value>
   </data>
   <data name="SharpDevelop.FileFilter.NAnt" xml:space="preserve">
     <value>NAnt檔案</value>
@@ -5654,7 +5651,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>Xml檔案(*.xml)</value>
   </data>
   <data name="SharpDevelop.FileFilter.XmlSchemaFiles" xml:space="preserve">
-    <value>XML大綱(schema)檔案(*.xsd)</value>
+    <value>XML 結構描述檔案 (*.xsd)</value>
   </data>
   <data name="SharpDevelop.FileFilter.XslFiles" xml:space="preserve">
     <value>XSL檔案</value>
@@ -5682,10 +5679,10 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>元素不能被重新命名，因為它不是在使用者程式碼中定義的。</value>
   </data>
   <data name="SharpDevelop.Refactoring.CannotRenameElement" xml:space="preserve">
-    <value>在當前光標位置的元素無法重命名.</value>
+    <value>在目前游標位置的元素無法重命名。</value>
   </data>
   <data name="SharpDevelop.Refactoring.ClassesDerivingFrom" xml:space="preserve">
-    <value>從${Name}派生的類</value>
+    <value>從${Name}衍生的類</value>
   </data>
   <data name="SharpDevelop.Refactoring.ConvertToAutomaticProperty" xml:space="preserve">
     <value>轉換為自動屬性</value>
@@ -5703,7 +5700,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>創建屬性(&amp;P)</value>
   </data>
   <data name="SharpDevelop.Refactoring.CurrentMethod" xml:space="preserve">
-    <value>當前方法</value>
+    <value>目前方法</value>
   </data>
   <data name="SharpDevelop.Refactoring.DeclaringType" xml:space="preserve">
     <value>宣告型別</value>
@@ -5718,22 +5715,22 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>尋找基類</value>
   </data>
   <data name="SharpDevelop.Refactoring.FindDerivedClassesCommand" xml:space="preserve">
-    <value>尋找派生類(&amp;D)</value>
+    <value>尋找衍生類(&amp;D)</value>
   </data>
   <data name="SharpDevelop.Refactoring.FindDerivedClassesOrOverridesCommand" xml:space="preserve">
-    <value>尋找派生符號</value>
+    <value>尋找衍生符號</value>
   </data>
   <data name="SharpDevelop.Refactoring.FindingReferences" xml:space="preserve">
     <value>尋找參考...</value>
   </data>
   <data name="SharpDevelop.Refactoring.FindOverridesCommand" xml:space="preserve">
-    <value>尋找多載方法(&amp;O)</value>
+    <value>尋找覆寫(&amp;O)</value>
   </data>
   <data name="SharpDevelop.Refactoring.FindReferences" xml:space="preserve">
     <value>尋找參考</value>
   </data>
   <data name="SharpDevelop.Refactoring.FindReferencesCommand" xml:space="preserve">
-    <value>尋找參考</value>
+    <value>尋找參考(&amp;F)</value>
   </data>
   <data name="SharpDevelop.Refactoring.GoToBaseClassCommand" xml:space="preserve">
     <value>轉到基類(&amp;B)</value>
@@ -5742,7 +5739,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>轉到基類(&amp;B)</value>
   </data>
   <data name="SharpDevelop.Refactoring.GoToProperty" xml:space="preserve">
-    <value>轉至屬性(P)</value>
+    <value>轉至屬性(&amp;P)</value>
   </data>
   <data name="SharpDevelop.Refactoring.ImplementAbstractClass" xml:space="preserve">
     <value>實作抽象類</value>
@@ -5751,13 +5748,13 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>實作介面</value>
   </data>
   <data name="SharpDevelop.Refactoring.ImplementInterfaceExplicit" xml:space="preserve">
-    <value>實作介面(指明(explict))</value>
+    <value>實作介面（明確）</value>
   </data>
   <data name="SharpDevelop.Refactoring.ImplementInterfaceImplicit" xml:space="preserve">
     <value>實作介面(implicit)</value>
   </data>
   <data name="SharpDevelop.Refactoring.InvalidName" xml:space="preserve">
-    <value>名稱只包含字母，數字或下劃線。</value>
+    <value>名稱只能包含字母、數字或底線。</value>
   </data>
   <data name="SharpDevelop.Refactoring.InvalidNameStart" xml:space="preserve">
     <value>名稱必須以字母或下劃線打頭</value>
@@ -5769,19 +5766,19 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>移動類到檔案'${FileName}'</value>
   </data>
   <data name="SharpDevelop.Refactoring.OverridesOf" xml:space="preserve">
-    <value>覆寫${Name}</value>
+    <value>${Name} 的覆寫</value>
   </data>
   <data name="SharpDevelop.Refactoring.ReferencesTo" xml:space="preserve">
     <value>參考${Name}</value>
   </data>
   <data name="SharpDevelop.Refactoring.RemoveUnusedImports" xml:space="preserve">
-    <value>刪除未使用的import陳述式(&amp;U)</value>
+    <value>刪除未使用的匯入陳述式(&amp;U)</value>
   </data>
   <data name="SharpDevelop.Refactoring.Rename" xml:space="preserve">
-    <value>重命名</value>
+    <value>重新命名</value>
   </data>
   <data name="SharpDevelop.Refactoring.RenameClassText" xml:space="preserve">
-    <value>輸入類的新名:</value>
+    <value>輸入類的新名稱：</value>
   </data>
   <data name="SharpDevelop.Refactoring.RenameCommand" xml:space="preserve">
     <value>重命名(&amp;R)</value>
@@ -5793,7 +5790,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>檔案名修改為'${FileName}'</value>
   </data>
   <data name="SharpDevelop.Refactoring.RenameMemberText" xml:space="preserve">
-    <value>輸入新名字</value>
+    <value>輸入成員的新名稱</value>
   </data>
   <data name="SharpDevelop.SideBar.AsciiTable" xml:space="preserve">
     <value>ASCII碼錶</value>
@@ -5811,7 +5808,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>許可證</value>
   </data>
   <data name="SharpDevelop.SideBar.NoToolsAvailableForCurrentDocument" xml:space="preserve">
-    <value>當前文件沒有可用的工具。</value>
+    <value>目前文件沒有可用的工具。</value>
   </data>
   <data name="SharpDevelop.SideBar.XSLTTags" xml:space="preserve">
     <value>XSL-T</value>
@@ -5820,8 +5817,8 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>所有已知的專案格式</value>
   </data>
   <data name="SharpDevelop.Solution.CannotLoadOldSolution" xml:space="preserve">
-    <value>當前版本的SharpDevelop無法打開由Visual Studio .Net 2003(或更舊的VS)創建的的工程。
-可以嘗試使用SharpDevelop 3.2進行轉換，或者創建一個新的工程並手工新增現有源碼。</value>
+    <value>目前版本的SharpDevelop無法開啟由Visual Studio .Net 2003（或更舊的VS）建立的專案。
+可以嘗試使用SharpDevelop 3.2進行轉換，或者建立一個新的專案並手動新增現有原始碼。</value>
   </data>
   <data name="SharpDevelop.Solution.CannotSave.IOException" xml:space="preserve">
     <value>不能儲存{0}:\n{1}</value>
@@ -5834,12 +5831,12 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
   </data>
   <data name="SharpDevelop.Solution.ImportResourceWarning" xml:space="preserve">
     <value>專案中存在資源檔案。
-SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而是以根命名空間和目錄名打頭的字串。
+SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案名，而是以根命名空間和目錄名作為前置字元。
 
-資源檔案已經根據需要重命名或作了移動。</value>
+資源檔案已經相應地重新命名或移動。</value>
   </data>
   <data name="SharpDevelop.Solution.ImportResourceWarningErrorText" xml:space="preserve">
-    <value>下列檔案不能自動被重命名/移動:</value>
+    <value>下列檔案不能自動被重命名/移動：</value>
   </data>
   <data name="SharpDevelop.Solution.InvalidSolutionFile" xml:space="preserve">
     <value>'{0}' 是一個無效的方案檔案。</value>
@@ -5860,7 +5857,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>欄位</value>
   </data>
   <data name="SharpReport.ContextMenu.Functions" xml:space="preserve">
-    <value>新增功能</value>
+    <value>新增函式</value>
   </data>
   <data name="SharpReport.ContextMenu.Grouping" xml:space="preserve">
     <value>分組/排序</value>
@@ -5902,10 +5899,10 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>這不是一個有效的報表。</value>
   </data>
   <data name="SharpReport.Error.WrongFileFormat" xml:space="preserve">
-    <value>無法讀取檔案, 可能是檔案已被破壞(SharpReport檔案的格式不正確)</value>
+    <value>無法讀取檔案， 可能是檔案已被破壞（SharpReport檔案的格式不正確）</value>
   </data>
   <data name="SharpReport.FieldsExplorer.AvailableFields" xml:space="preserve">
-    <value>有效欄位</value>
+    <value>可用欄位</value>
   </data>
   <data name="SharpReport.FieldsExplorer.ContextMenu.Columns.Remove" xml:space="preserve">
     <value>移除節點</value>
@@ -5938,7 +5935,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>報表建置器</value>
   </data>
   <data name="SharpReport.ReportViewer" xml:space="preserve">
-    <value>查看報表</value>
+    <value>報表檢視器</value>
   </data>
   <data name="SharpReport.ReportViewer.FirstPageMessage" xml:space="preserve">
     <value>首頁</value>
@@ -5959,7 +5956,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>上一頁</value>
   </data>
   <data name="SharpReport.ReportViewer.ZoomMessage" xml:space="preserve">
-    <value>放大</value>
+    <value>縮放</value>
   </data>
   <data name="SharpReport.Toolbar.Circle" xml:space="preserve">
     <value>圓</value>
@@ -5968,10 +5965,10 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>報表 - 控制項</value>
   </data>
   <data name="SharpReport.Toolbar.DataField" xml:space="preserve">
-    <value>數據欄位</value>
+    <value>資料欄位</value>
   </data>
   <data name="SharpReport.Toolbar.DataRow" xml:space="preserve">
-    <value>數據行</value>
+    <value>資料行</value>
   </data>
   <data name="SharpReport.Toolbar.Functions" xml:space="preserve">
     <value>報表 - 方法/功能</value>
@@ -6025,13 +6022,13 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>報表模型</value>
   </data>
   <data name="SharpReport.Wizard.BaseSettings.ReportModel.FormSheet" xml:space="preserve">
-    <value>窗體Sheet</value>
+    <value>表單Sheet</value>
   </data>
   <data name="SharpReport.Wizard.BaseSettings.ReportModel.Pull" xml:space="preserve">
-    <value>拉取數據</value>
+    <value>拉取資料</value>
   </data>
   <data name="SharpReport.Wizard.BaseSettings.ReportModel.Push" xml:space="preserve">
-    <value>推出數據</value>
+    <value>推出資料</value>
   </data>
   <data name="SharpReport.Wizard.BaseSettings.ReportName" xml:space="preserve">
     <value>報表名稱</value>
@@ -6055,19 +6052,19 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>表格布局</value>
   </data>
   <data name="SharpReport.Wizard.PullModel" xml:space="preserve">
-    <value>拉數據模式(Pull Data Model)</value>
+    <value>拉資料模式(Pull Data Model)</value>
   </data>
   <data name="SharpReport.Wizard.PullModel.CommandText" xml:space="preserve">
     <value>命令文本</value>
   </data>
   <data name="SharpReport.Wizard.PullModel.CommandText.ToolTip" xml:space="preserve">
-    <value>刪除此文本輸入有效的sql陳述式</value>
+    <value>刪除此文字並輸入有效的 SQL 陳述式</value>
   </data>
   <data name="SharpReport.Wizard.PushModel" xml:space="preserve">
-    <value>推送數據模型</value>
+    <value>推送資料模型</value>
   </data>
   <data name="SharpReport.Wizard.PushModel.AvailableFields" xml:space="preserve">
-    <value>有效欄位</value>
+    <value>可用欄位</value>
   </data>
   <data name="SharpReport.Wizard.ShowQueryResult" xml:space="preserve">
     <value>顯示查詢結果</value>
@@ -6079,19 +6076,19 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>刪除組(&amp;D)</value>
   </data>
   <data name="SideBarComponent.ContextMenu.DeleteTabHeaderQuestion" xml:space="preserve">
-    <value>確認要刪除組"${TabHeader}" 嗎？(這將導致組內的所有專案被刪除)</value>
+    <value>確認要刪除組"${TabHeader}" 嗎？（這將導致組內的所有專案被刪除）</value>
   </data>
   <data name="SideBarComponent.ContextMenu.DeleteTabItem" xml:space="preserve">
-    <value>刪除專案(&amp;D)</value>
+    <value>刪除項目(&amp;D)</value>
   </data>
   <data name="SideBarComponent.ContextMenu.DeleteTabItemQuestion" xml:space="preserve">
-    <value>確認要刪除專案"${TabItem}"嗎?</value>
+    <value>確認要刪除專案"${TabItem}"嗎？</value>
   </data>
   <data name="SideBarComponent.ContextMenu.RenameTab" xml:space="preserve">
     <value>重命名組(&amp;R)</value>
   </data>
   <data name="SideBarComponent.ContextMenu.RenameTabItem" xml:space="preserve">
-    <value>重命名專案(&amp;R)</value>
+    <value>重新命名項目(&amp;R)</value>
   </data>
   <data name="StartPage.AuthorsMenu.BarNameName" xml:space="preserve">
     <value>顯示作者</value>
@@ -6130,10 +6127,10 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>新增方案</value>
   </data>
   <data name="StartPage.StartMenu.OpenCombineButton" xml:space="preserve">
-    <value>打開方案</value>
+    <value>開啟方案</value>
   </data>
   <data name="StartPage.StartPageContentName" xml:space="preserve">
-    <value>啟始頁</value>
+    <value>起始頁</value>
   </data>
   <data name="StatusBarService.CaretModes.Insert" xml:space="preserve">
     <value>插入</value>
@@ -6145,7 +6142,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>行 ${Line}列${Column}字元${Character}</value>
   </data>
   <data name="Templates.File.Categories.Misc" xml:space="preserve">
-    <value>其它</value>
+    <value>其他</value>
   </data>
   <data name="Templates.File.Categories.Setup" xml:space="preserve">
     <value>安裝</value>
@@ -6154,7 +6151,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>Windows應用程式</value>
   </data>
   <data name="Templates.File.ConfigurationElement.Description" xml:space="preserve">
-    <value>一個用來實作組態元素的類.</value>
+    <value>一個用來實作組態元素的類。</value>
   </data>
   <data name="Templates.File.ConfigurationElement.Name" xml:space="preserve">
     <value>組態元素</value>
@@ -6172,7 +6169,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>組態部分(Configuration Section)</value>
   </data>
   <data name="Templates.File.EmptyClass.Description" xml:space="preserve">
-    <value>空白的類聲名。</value>
+    <value>一個空的類別宣告。</value>
   </data>
   <data name="Templates.File.EmptyClass.Name" xml:space="preserve">
     <value>類</value>
@@ -6190,10 +6187,10 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>例外</value>
   </data>
   <data name="Templates.File.GtkSharpWindow.Description" xml:space="preserve">
-    <value>Gtk#應用程式的窗體。</value>
+    <value>Gtk#應用程式的視窗。</value>
   </data>
   <data name="Templates.File.GtkSharpWindow.Name" xml:space="preserve">
-    <value>Gtk#窗體</value>
+    <value>Gtk#視窗</value>
   </data>
   <data name="Templates.File.HeaderFile.Description" xml:space="preserve">
     <value>創建一個空白的頭檔案。</value>
@@ -6208,16 +6205,16 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>創建一個空白的 HTML 檔案。</value>
   </data>
   <data name="Templates.File.Interface.Description" xml:space="preserve">
-    <value>一個空的介面宣告.</value>
+    <value>一個空的介面宣告。</value>
   </data>
   <data name="Templates.File.Interface.Name" xml:space="preserve">
     <value>介面</value>
   </data>
   <data name="Templates.File.Module.Description" xml:space="preserve">
-    <value>一個空模塊宣告.</value>
+    <value>一個空模組宣告。</value>
   </data>
   <data name="Templates.File.Module.Name" xml:space="preserve">
-    <value>模塊</value>
+    <value>模組</value>
   </data>
   <data name="Templates.File.MsBuild.Description" xml:space="preserve">
     <value>創建一個空的建置目標的MSBuild檔案</value>
@@ -6226,7 +6223,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>MSBuild檔案</value>
   </data>
   <data name="Templates.File.MyExtensionClass.Description" xml:space="preserve">
-    <value>一個用來擴展"My"命名空間的範本類.</value>
+    <value>一個用來擴展"My"命名空間的範本類。</value>
   </data>
   <data name="Templates.File.MyExtensionClass.Name" xml:space="preserve">
     <value>「我的」擴展</value>
@@ -6241,19 +6238,19 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>新增 '#if TEST ... #endif'</value>
   </data>
   <data name="Templates.File.Properties.AddIFDEFTest.Description" xml:space="preserve">
-    <value>選擇 True，那麼僅當定義了 TEST 符號，類才會被成功。</value>
+    <value>若為 true，則僅當定義了 TEST 符號時才編譯該類別。</value>
   </data>
   <data name="Templates.File.Properties.AddSetupCode" xml:space="preserve">
     <value>新增安裝程式碼</value>
   </data>
   <data name="Templates.File.Properties.AddSetupCode.Description" xml:space="preserve">
-    <value>選擇 True，將會建置安裝程式碼。</value>
+    <value>若為 true，將會產生安裝程式碼。</value>
   </data>
   <data name="Templates.File.Properties.AddTearDownCode" xml:space="preserve">
     <value>新增解除安裝程式碼</value>
   </data>
   <data name="Templates.File.Properties.AddTearDownCode.Description" xml:space="preserve">
-    <value>選擇 True，將會建置解除安裝程式碼。</value>
+    <value>若為 true，將會產生清理程式碼。</value>
   </data>
   <data name="Templates.File.Properties.ContextCategory" xml:space="preserve">
     <value>上下文</value>
@@ -6262,7 +6259,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>選項</value>
   </data>
   <data name="Templates.File.RecentFilesCollection.Description" xml:space="preserve">
-    <value>在你的程式中實作ConfigurationColletion以便儲存最近打開的檔案。</value>
+    <value>在你的程式中實作ConfigurationColletion以便儲存最近開啟的檔案。</value>
   </data>
   <data name="Templates.File.RecentFilesCollection.Name" xml:space="preserve">
     <value>最近的檔案集合</value>
@@ -6274,7 +6271,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>空資源檔案</value>
   </data>
   <data name="Templates.File.SharpDevelop.AddInOptions.Description" xml:space="preserve">
-    <value>此類使得永久屬性更易於存取.</value>
+    <value>此類使得永久屬性更易於存取。</value>
   </data>
   <data name="Templates.File.SharpDevelop.AddInOptions.Name" xml:space="preserve">
     <value>增益集選項</value>
@@ -6286,7 +6283,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>SharpDevelop選項面板</value>
   </data>
   <data name="Templates.File.SharpDevelop.View.Description" xml:space="preserve">
-    <value>SharpDevelop的檢視內容(比如文本編輯順或資源編輯器).</value>
+    <value>SharpDevelop的檢視內容（比如文本編輯順或資源編輯器）.</value>
   </data>
   <data name="Templates.File.SharpDevelop.View.Name" xml:space="preserve">
     <value>空檢視</value>
@@ -6298,7 +6295,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>單例類</value>
   </data>
   <data name="Templates.File.Struct.Description" xml:space="preserve">
-    <value>一個包含Equals()和GetHashCode()方法的結構體.</value>
+    <value>一個包含Equals()和GetHashCode()方法的結構體。</value>
   </data>
   <data name="Templates.File.Struct.Name" xml:space="preserve">
     <value>結構體</value>
@@ -6310,10 +6307,10 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>結構體</value>
   </data>
   <data name="Templates.File.Text.EmptyText.Name" xml:space="preserve">
-    <value>空text文件</value>
+    <value>空文字檔</value>
   </data>
   <data name="Templates.File.Text.EmptyTextFile.Description" xml:space="preserve">
-    <value>創建一個空白 Text 檔案。</value>
+    <value>建立一個新的文字檔。</value>
   </data>
   <data name="Templates.File.UnitTest.Description" xml:space="preserve">
     <value>創建基本的單元測試。</value>
@@ -6328,28 +6325,28 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>ASP.NET Web控制項</value>
   </data>
   <data name="Templates.File.WebForm.Description" xml:space="preserve">
-    <value>Web窗體: 包含程式碼的.aspx頁面.</value>
+    <value>Web表單： 包含程式碼的.aspx頁面。</value>
   </data>
   <data name="Templates.File.WebForm.Name" xml:space="preserve">
-    <value>ASP.NET Web窗體</value>
+    <value>ASP.NET Web表單</value>
   </data>
   <data name="Templates.File.WebHandler.Description" xml:space="preserve">
-    <value>創建一個程式碼分離的ASP.NET頁面。</value>
+    <value>建立一個帶程式碼分離的 ASP.NET WebHandler。</value>
   </data>
   <data name="Templates.File.WebHandler.Name" xml:space="preserve">
     <value>ASP.NET網頁處理程式</value>
   </data>
   <data name="Templates.File.WebService.Description" xml:space="preserve">
-    <value>ASMX Web Service組件幀</value>
+    <value>ASMX Web Service 的組件框架</value>
   </data>
   <data name="Templates.File.WebService.Name" xml:space="preserve">
     <value>ASP.NET Web Service</value>
   </data>
   <data name="Templates.File.WindowsForm.Description" xml:space="preserve">
-    <value>一個用於 Windows 應用程式的窗體。</value>
+    <value>一個用於 Windows 應用程式的表單。</value>
   </data>
   <data name="Templates.File.WindowsForm.Name" xml:space="preserve">
-    <value>窗體</value>
+    <value>表單</value>
   </data>
   <data name="Templates.File.WindowsUserControl.Description" xml:space="preserve">
     <value>用於 Windows 應用程式的使用者控制項。</value>
@@ -6367,7 +6364,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>WPF頁面功能</value>
   </data>
   <data name="Templates.File.WinFXResourceDictionary.Name" xml:space="preserve">
-    <value>WinFX資源目錄</value>
+    <value>WPF 資源字典</value>
   </data>
   <data name="Templates.File.WinFXUserControl.Description" xml:space="preserve">
     <value>WinFX自訂控制項</value>
@@ -6379,7 +6376,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>WinFX視窗</value>
   </data>
   <data name="Templates.File.WinFXWindow.Name" xml:space="preserve">
-    <value>WPF窗體</value>
+    <value>WPF視窗</value>
   </data>
   <data name="Templates.File.WiX.EmptyWiX.Description" xml:space="preserve">
     <value>為WiX檔案產生空的片段檔案(fragment file)</value>
@@ -6388,7 +6385,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>Wix片段檔案(Fragment File)為空</value>
   </data>
   <data name="Templates.File.Wix.EmptyWixDialog.Description" xml:space="preserve">
-    <value>創建一個空的安裝對話.</value>
+    <value>建立一個空的安裝對話方塊。</value>
   </data>
   <data name="Templates.File.Wix.EmptyWixDialog.Name" xml:space="preserve">
     <value>空Setup對話方塊</value>
@@ -6400,31 +6397,31 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>安裝對話方塊</value>
   </data>
   <data name="Templates.File.Wix.WixFile.Description" xml:space="preserve">
-    <value>創建一個空的安裝文件.</value>
+    <value>創建一個空的安裝文件。</value>
   </data>
   <data name="Templates.File.Wix.WixFile.Name" xml:space="preserve">
     <value>空的安裝文件</value>
   </data>
   <data name="Templates.File.Wix.WixProject.Description" xml:space="preserve">
-    <value>創建一個空的安裝專案.</value>
+    <value>創建一個空的安裝專案。</value>
   </data>
   <data name="Templates.File.Wix.WixProject.Name" xml:space="preserve">
     <value>空的安裝專案</value>
   </data>
   <data name="Templates.File.Xml.AppConfig.Description" xml:space="preserve">
-    <value>用於存儲應用程式組態和設定的檔案。如果您的專案是可執行專案，建置的時候會自動重命名為"應用程式名.exe.config".</value>
+    <value>用於儲存應用程式組態和設定的檔案。如果您的專案是可執行專案，建置的時候會自動重命名為"應用程式名.exe.config".</value>
   </data>
   <data name="Templates.File.Xml.AppConfig.Name" xml:space="preserve">
     <value>App.Config檔案</value>
   </data>
   <data name="Templates.File.Xml.EmptyXml.Name" xml:space="preserve">
-    <value>空XML文件</value>
+    <value>空 XML 檔</value>
   </data>
   <data name="Templates.File.Xml.EmptyXmlFile.Description" xml:space="preserve">
     <value>創建一個空白的 XML 檔案。</value>
   </data>
   <data name="Templates.File.Xml.EmptyXmlForm.Description" xml:space="preserve">
-    <value>創建一個空的XML表格.</value>
+    <value>建立一個空的 XML 表單。</value>
   </data>
   <data name="Templates.File.Xml.EmptyXmlForm.Name" xml:space="preserve">
     <value>XML表單</value>
@@ -6442,7 +6439,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>空白方案</value>
   </data>
   <data name="Templates.Project.ClassLibrary.Description" xml:space="preserve">
-    <value>創建一個可在其他應用程式中使用的的類的專案</value>
+    <value>創建一個可在其他應用程式中使用的類的專案</value>
   </data>
   <data name="Templates.Project.ClassLibrary.Name" xml:space="preserve">
     <value>類庫</value>
@@ -6451,13 +6448,13 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>用於創建命令行應用程式的專案。</value>
   </data>
   <data name="Templates.Project.ConsoleProject.Name" xml:space="preserve">
-    <value>控制臺應用程式</value>
+    <value>主控台應用程式</value>
   </data>
   <data name="Templates.Project.ConsoleProject.Unmanaged.Description" xml:space="preserve">
-    <value>創建一個非託管命令行應用程式的專案</value>
+    <value>建立一個使用非受控（原生）程式碼的命令列應用程式的專案</value>
   </data>
   <data name="Templates.Project.ConsoleProject.Unmanaged.Name" xml:space="preserve">
-    <value>非託管控制臺專案</value>
+    <value>非受控主控台專案</value>
   </data>
   <data name="Templates.Project.Direct3DApplication.Description" xml:space="preserve">
     <value>創建一個具有 Direct3D 介面的應用程式的專案。</value>
@@ -6502,13 +6499,13 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>SharpDevelop增益集</value>
   </data>
   <data name="Templates.Project.SharpDevelopMacro.Description" xml:space="preserve">
-    <value>用於定義"工具"功能表裡的一個使用當前文本編輯器編輯選中的文本的條目的增益集範本(AddIn template)</value>
+    <value>用於定義"工具"功能表裡的一個使用目前文本編輯器編輯選中的文本的條目的增益集範本(AddIn template)</value>
   </data>
   <data name="Templates.Project.SharpDevelopMacro.Name" xml:space="preserve">
     <value>選擇工具功能表</value>
   </data>
   <data name="Templates.Project.SilverlightApplication.Description" xml:space="preserve">
-    <value>一個專案，創建一個Silverlight應用程式.</value>
+    <value>一個專案，創建一個Silverlight應用程式。</value>
   </data>
   <data name="Templates.Project.SilverlightApplication.Name" xml:space="preserve">
     <value>Silverlight應用程式</value>
@@ -6553,13 +6550,13 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>創建一個簡單的WPF應用程式</value>
   </data>
   <data name="Templates.Project.WinFXApplication.Name" xml:space="preserve">
-    <value>WPF應用程式</value>
+    <value>WPF 資源字典</value>
   </data>
   <data name="Templates.Project.WinFXNavigationApplication.Description" xml:space="preserve">
     <value>創建一個簡單的只有一個瀏覽頁面的WPF應用程式</value>
   </data>
   <data name="Templates.Project.WinFXNavigationApplication.Name" xml:space="preserve">
-    <value>WPF網頁應用程式</value>
+    <value>WPF 導覽應用程式</value>
   </data>
   <data name="Templates.SharpReport.NewReport" xml:space="preserve">
     <value>使用報表嚮導建立一個新報表</value>
@@ -6607,7 +6604,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>重新建置方案(&amp;R)</value>
   </data>
   <data name="XML.MainMenu.BuildMenu.SetConfiguration" xml:space="preserve">
-    <value>專案選項設定</value>
+    <value>設定組態</value>
   </data>
   <data name="XML.MainMenu.BuildMenu.SetPlatform" xml:space="preserve">
     <value>設定平台</value>
@@ -6619,7 +6616,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>附加處理序...</value>
   </data>
   <data name="XML.MainMenu.DebugMenu.Break" xml:space="preserve">
-    <value>中斷偵錯處理序</value>
+    <value>中斷偵錯處理序(&amp;B)</value>
   </data>
   <data name="XML.MainMenu.DebugMenu.Break.Description" xml:space="preserve">
     <value>中斷偵錯處理序</value>
@@ -6634,10 +6631,10 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>分離</value>
   </data>
   <data name="XML.MainMenu.DebugMenu.Error.BadAssembly" xml:space="preserve">
-    <value>無法得到該程式的版本. 請檢查它是否是託管程式的組件.</value>
+    <value>無法取得該程式的 .NET Framework 版本。請檢查該程式是否為受控組件。</value>
   </data>
   <data name="XML.MainMenu.DebugMenu.Error.CannotAttachToProcess" xml:space="preserve">
-    <value>無法附加到處理序.</value>
+    <value>無法附加到處理序。</value>
   </data>
   <data name="XML.MainMenu.DebugMenu.Error.CannotStartProcess" xml:space="preserve">
     <value>不能啟動處理序。</value>
@@ -6646,7 +6643,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>無法執行該動作，因為一些程式正在偵錯。</value>
   </data>
   <data name="XML.MainMenu.DebugMenu.Error.KernelDebuggerEnabled" xml:space="preserve">
-    <value>不能啟動SharpDevelop偵錯器，因為已啟用了內核偵錯器。要想停用內核偵錯器,請從boot.ini 中移除"/debug"並重新啟動電腦。</value>
+    <value>不能啟動SharpDevelop偵錯器，因為已啟用了核心偵錯器。要想停用核心偵錯器，請從boot.ini 中移除"/debug"並重新啟動電腦。</value>
   </data>
   <data name="XML.MainMenu.DebugMenu.Error.Net10NotSupported" xml:space="preserve">
     <value>不支援偵錯.Net 1.0的應用程式</value>
@@ -6667,7 +6664,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>執行最後一次成功建置</value>
   </data>
   <data name="XML.MainMenu.DebugMenu.RunWithoutDebug" xml:space="preserve">
-    <value>執行(不偵錯)(&amp;W)</value>
+    <value>執行（不偵錯）(&amp;W)</value>
   </data>
   <data name="XML.MainMenu.DebugMenu.RunWithoutDebug.Description" xml:space="preserve">
     <value>不使用偵錯器執行程式。</value>
@@ -6694,7 +6691,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>終止處理序</value>
   </data>
   <data name="XML.MainMenu.DebugMenu.Stop.Description" xml:space="preserve">
-    <value>結束當前處理序並終止偵錯。</value>
+    <value>結束目前處理序並終止偵錯。</value>
   </data>
   <data name="XML.MainMenu.DebugMenu.ToggleBreakpoint" xml:space="preserve">
     <value>設定中斷點</value>
@@ -6790,7 +6787,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>重做</value>
   </data>
   <data name="XML.MainMenu.EditMenu.SelectAll" xml:space="preserve">
-    <value>全部選中(&amp;A)</value>
+    <value>全選(&amp;A)</value>
   </data>
   <data name="XML.MainMenu.EditMenu.Undo" xml:space="preserve">
     <value>撤消(&amp;U)</value>
@@ -6820,7 +6817,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>方案(&amp;S)</value>
   </data>
   <data name="XML.MainMenu.FileMenu.CloseAll" xml:space="preserve">
-    <value>關閉所有檔案(&amp;l)</value>
+    <value>關閉所有文件(&amp;l)</value>
   </data>
   <data name="XML.MainMenu.FileMenu.Exit" xml:space="preserve">
     <value>退出(&amp;X)</value>
@@ -6841,22 +6838,22 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>方案(&amp;S)...</value>
   </data>
   <data name="XML.MainMenu.FileMenu.Open" xml:space="preserve">
-    <value>打開(&amp;O)</value>
+    <value>開啟(&amp;O)</value>
   </data>
   <data name="XML.MainMenu.FileMenu.Open.File" xml:space="preserve">
     <value>檔案(&amp;F)...</value>
   </data>
   <data name="XML.MainMenu.FileMenu.Open.File.Description" xml:space="preserve">
-    <value>打開檔案</value>
+    <value>開啟檔案</value>
   </data>
   <data name="XML.MainMenu.FileMenu.Open.Project" xml:space="preserve">
     <value>專案/方案(&amp;P)...</value>
   </data>
   <data name="XML.MainMenu.FileMenu.Open.Project.Description" xml:space="preserve">
-    <value>打開專案/方案</value>
+    <value>開啟專案/方案</value>
   </data>
   <data name="XML.MainMenu.FileMenu.Print" xml:space="preserve">
-    <value>列印(&amp;P)</value>
+    <value>列印(&amp;R)</value>
   </data>
   <data name="XML.MainMenu.FileMenu.PrintPreview" xml:space="preserve">
     <value>列印預覽(&amp;P)</value>
@@ -6874,7 +6871,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>儲存(&amp;S)</value>
   </data>
   <data name="XML.MainMenu.FileMenu.Save.Description" xml:space="preserve">
-    <value>儲存當前檔案</value>
+    <value>儲存目前檔案</value>
   </data>
   <data name="XML.MainMenu.FileMenu.SaveAll" xml:space="preserve">
     <value>全部儲存(&amp;L)</value>
@@ -6886,7 +6883,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>另存新檔(&amp;A)...</value>
   </data>
   <data name="XML.MainMenu.FileMenu.SaveWithEncoding" xml:space="preserve">
-    <value>修改檔案編碼</value>
+    <value>以編碼儲存(&amp;E)...</value>
   </data>
   <data name="XML.MainMenu.FormatMenu" xml:space="preserve">
     <value>格式化(&amp;O)</value>
@@ -6916,7 +6913,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>垂直居中(&amp;M)</value>
   </data>
   <data name="XML.MainMenu.FormatMenu.CenterMenu" xml:space="preserve">
-    <value>窗體中部(&amp;C)</value>
+    <value>表單中央(&amp;C)</value>
   </data>
   <data name="XML.MainMenu.FormatMenu.CenterMenu.CenterHorizontally" xml:space="preserve">
     <value>水平(&amp;H)</value>
@@ -6955,10 +6952,10 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>順序(&amp;O)</value>
   </data>
   <data name="XML.MainMenu.FormatMenu.OrderMenu.BringToFront" xml:space="preserve">
-    <value>向前移動(&amp;B)</value>
+    <value>往前移動(&amp;B)</value>
   </data>
   <data name="XML.MainMenu.FormatMenu.OrderMenu.SendToBack" xml:space="preserve">
-    <value>向後移動(&amp;S)</value>
+    <value>往後移動(&amp;S)</value>
   </data>
   <data name="XML.MainMenu.FormatMenu.SameSizeMenu" xml:space="preserve">
     <value>使用相同尺寸(&amp;M)</value>
@@ -7048,17 +7045,17 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>重構(&amp;R)</value>
   </data>
   <data name="XML.MainMenu.RunMenu.BuildProject.Description" xml:space="preserve">
-    <value>建置當前專案。</value>
+    <value>建置目前專案。</value>
   </data>
   <data name="XML.MainMenu.RunMenu.BuildSolution.Description" xml:space="preserve">
     <value>建置方案</value>
   </data>
   <data name="XML.MainMenu.RunMenu.Compile.Description" xml:space="preserve">
-    <value>建置專案或檔案(當沒有專案被打開時)(自動儲存)</value>
+    <value>建置專案或檔案（當沒有專案被開啟時）（自動儲存）</value>
   </data>
   <data name="XML.MainMenu.RunMenu.Compile.StopDebuggingQuestion" xml:space="preserve">
-    <value>您必須停止偵錯器才能建置專案.
-現在立即停止偵錯器嗎?</value>
+    <value>您必須停止偵錯器才能建置專案。
+現在立即停止偵錯器嗎？</value>
   </data>
   <data name="XML.MainMenu.RunMenu.Compile.StopDebuggingTitle" xml:space="preserve">
     <value>停止偵錯器</value>
@@ -7067,7 +7064,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>執行(&amp;R)</value>
   </data>
   <data name="XML.MainMenu.RunMenu.Run.Description" xml:space="preserve">
-    <value>執行</value>
+    <value>執行已編譯的 exe（會重新編譯）</value>
   </data>
   <data name="XML.MainMenu.SearchMenu" xml:space="preserve">
     <value>尋找(&amp;S)</value>
@@ -7100,13 +7097,13 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>下一書籤(&amp;X)</value>
   </data>
   <data name="XML.MainMenu.SearchMenu.NextBookmark.Description" xml:space="preserve">
-    <value>轉到下一書籤</value>
+    <value>轉到下一個書籤</value>
   </data>
   <data name="XML.MainMenu.SearchMenu.PrevBookmark" xml:space="preserve">
     <value>前一書籤(&amp;P)</value>
   </data>
   <data name="XML.MainMenu.SearchMenu.PrevBookmark.Description" xml:space="preserve">
-    <value>轉到前一書籤</value>
+    <value>轉到前一個書籤</value>
   </data>
   <data name="XML.MainMenu.SearchMenu.Replace" xml:space="preserve">
     <value>取代(&amp;R)...</value>
@@ -7118,7 +7115,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>設定/取消書籤(&amp;T)</value>
   </data>
   <data name="XML.MainMenu.SearchMenu.ToggleBookmark.Description" xml:space="preserve">
-    <value>在當前行設定/取消書籤</value>
+    <value>在目前行設定/取消書籤</value>
   </data>
   <data name="XML.MainMenu.ToolMenu" xml:space="preserve">
     <value>工具(&amp;T)</value>
@@ -7127,14 +7124,14 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>將程式碼轉換成(&amp;C)</value>
   </data>
   <data name="XML.MainMenu.ToolMenu.ExternalTools.EnterArguments" xml:space="preserve">
-    <value>輸入該工具的意見:</value>
+    <value>輸入該工具的引數：</value>
   </data>
   <data name="XML.MainMenu.ToolMenu.ExternalTools.ExecutionFailed" xml:space="preserve">
     <value>執行外部程式失敗。
-執行錯誤:</value>
+執行錯誤：</value>
   </data>
   <data name="XML.MainMenu.ToolMenu.ExternalTools.ExitedWithCode" xml:space="preserve">
-    <value>退出程式碼:</value>
+    <value>退出程式碼：</value>
   </data>
   <data name="XML.MainMenu.ToolMenu.GenerateCode" xml:space="preserve">
     <value>自動程式碼建置</value>
@@ -7173,7 +7170,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>檔案</value>
   </data>
   <data name="XML.MainMenu.ViewMenu.ShowStartPage" xml:space="preserve">
-    <value>顯示啟始頁(&amp;S)</value>
+    <value>顯示起始頁(&amp;S)</value>
   </data>
   <data name="XML.MainMenu.ViewMenu.ToolsMenu" xml:space="preserve">
     <value>工具(&amp;T)</value>
@@ -7194,13 +7191,13 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>由SharpDevelop創建。</value>
   </data>
   <data name="XML.StandardHeader.Date" xml:space="preserve">
-    <value>日期:</value>
+    <value>日期：</value>
   </data>
   <data name="XML.StandardHeader.HowToChangeTemplateInformation" xml:space="preserve">
-    <value>要改變這種範本請點擊 工具|選項|程式碼編寫|編輯標準頭檔案</value>
+    <value>要改變這種範本請按一下 工具|選項|程式碼編寫|編輯標準頭檔案</value>
   </data>
   <data name="XML.StandardHeader.Time" xml:space="preserve">
-    <value>時間:</value>
+    <value>時間：</value>
   </data>
   <data name="XML.StandardHeader.User" xml:space="preserve">
     <value>使用者：</value>
@@ -7242,7 +7239,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>新增方案資料夾</value>
   </data>
   <data name="ProjectBrowser.ContextMenu.ExistingItem" xml:space="preserve">
-    <value>現有項目</value>
+    <value>現有項目...</value>
   </data>
   <data name="ProjectBrowser.ContextMenu.NewItem" xml:space="preserve">
     <value>新增項目</value>
@@ -7494,7 +7491,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>搜尋：</value>
   </data>
   <data name="AddInManager2.AddInsView.ShowPreinstalledAddIns" xml:space="preserve">
-    <value>顯示預裝增益集</value>
+    <value>顯示預安裝增益集</value>
   </data>
   <data name="AddInManager2.AddInsView.ShowPrereleaseAddIns" xml:space="preserve">
     <value>顯示預發行版</value>
@@ -7506,7 +7503,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>SharpDevelop 增益集倉庫</value>
   </data>
   <data name="AddInManager2.Details.CreatedBy" xml:space="preserve">
-    <value>創建者：</value>
+    <value>建立者：</value>
   </data>
   <data name="AddInManager2.Details.Dependencies" xml:space="preserve">
     <value>相依性：</value>
@@ -7515,7 +7512,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>下載次數：</value>
   </data>
   <data name="AddInManager2.Details.FileName" xml:space="preserve">
-    <value>文件名：</value>
+    <value>檔案名稱：</value>
   </data>
   <data name="AddInManager2.Details.InstalledVersion" xml:space="preserve">
     <value>已安裝版本：</value>
@@ -7565,18 +7562,18 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>我拒絕(&amp;D)</value>
   </data>
   <data name="AddInManager2.LicenseAcceptance.Explanation.Package" xml:space="preserve">
-    <value>點擊「我接受」即表示您同意上述包的許可條款。
-如果您不同意許可條款，請點擊「我拒絕」。</value>
+    <value>按一下「我接受」即表示您同意上述包的許可條款。
+如果您不同意許可條款，請按一下「我拒絕」。</value>
   </data>
   <data name="AddInManager2.LicenseAcceptance.Explanation.Packages" xml:space="preserve">
-    <value>點擊「我接受」即表示您同意上述各包的許可條款。
-如果您不同意許可條款，請點擊「我拒絕」。</value>
+    <value>按一下「我接受」即表示您同意上述各包的許可條款。
+如果您不同意許可條款，請按一下「我拒絕」。</value>
   </data>
   <data name="AddInManager2.LicenseAcceptance.Introduction.Package" xml:space="preserve">
-    <value>以下包需要點擊接受許可：</value>
+    <value>以下包需要按一下接受許可：</value>
   </data>
   <data name="AddInManager2.LicenseAcceptance.Introduction.Packages" xml:space="preserve">
-    <value>以下包需要點擊接受許可：</value>
+    <value>以下包需要按一下接受許可：</value>
   </data>
   <data name="AddInManager2.LicenseAcceptance.Title" xml:space="preserve">
     <value>許可協議</value>
@@ -7600,7 +7597,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>移除</value>
   </data>
   <data name="AddInManager2.OptionPanel.Source" xml:space="preserve">
-    <value>源：</value>
+    <value>來源：</value>
   </data>
   <data name="AddInManager2.OptionPanel.Tree.Repositories" xml:space="preserve">
     <value>倉庫</value>
@@ -7613,10 +7610,10 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
 移除此增益集後它們將停止工作！確定要繼續嗎？</value>
   </data>
   <data name="AddInManager2.SDAddInFileFilter" xml:space="preserve">
-    <value>SharpDevelop 增益集|*.sdaddin;*.addin|所有文件|*.*</value>
+    <value>SharpDevelop 增益集|*.sdaddin;*.addin|所有檔案|*.*</value>
   </data>
   <data name="AddInManager2.UpdateNotifier.BubbleText" xml:space="preserve">
-    <value>單擊此處查看更新。</value>
+    <value>按一下此處查看更新。</value>
   </data>
   <data name="AddInManager2.UpdateNotifier.BubbleTitle" xml:space="preserve">
     <value>有可用的 SharpDevelop 更新</value>
@@ -7631,7 +7628,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>更新</value>
   </data>
   <data name="AddIns.AvalonEdit.InconsistentNewlines.Description" xml:space="preserve">
-    <value>此文件包含不一致的換行符。</value>
+    <value>此檔案包含不一致的換行符。</value>
   </data>
   <data name="AddIns.AvalonEdit.InconsistentNewlines.Header" xml:space="preserve">
     <value>不一致的換行符</value>
@@ -7661,7 +7658,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>無法啟動說明庫管理器，因為沒有安裝或選擇說明目錄。請檢查您的說明設定。</value>
   </data>
   <data name="AddIns.HelpViewer.HLMNotAvailableDownloadWinSDK" xml:space="preserve">
-    <value>未找到說明庫管理器。要使用 SharpDevelop 的說明功能，請下載並安裝 Windows SDK。</value>
+    <value>未找到說明庫管理器。要使用 SharpDevelop 的說明功能，請下載並安裝 Microsoft Windows SDK 7.1。</value>
   </data>
   <data name="AddIns.SharpRefactoring.CreateProperties.Description.ImplementINotifyPropertyChanged" xml:space="preserve">
     <value>實作 INotifyPropertyChanged</value>
@@ -7708,10 +7705,10 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>轉換為</value>
   </data>
   <data name="ComponentInspector.CastDialog.CastTitle" xml:space="preserve">
-    <value>轉換</value>
+    <value>強制轉換</value>
   </data>
   <data name="ComponentInspector.ConstructorDialog.Information" xml:space="preserve">
-    <value>如果選擇了帶參數的構造函數，點擊確定後請填寫參數，然後繼續。</value>
+    <value>如果選擇了帶參數的建構函式，按一下確定後請填寫參數，然後將選定的建構函式拖曳到要建立此物件的位置。</value>
   </data>
   <data name="ComponentInspector.FindDialog.AssembliesRadioButton" xml:space="preserve">
     <value>組件/型別</value>
@@ -7741,28 +7738,28 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>公共</value>
   </data>
   <data name="Dialog.AdvancedService.Client.AccessLevelLabel" xml:space="preserve">
-    <value>生成的類的存取級別：</value>
+    <value>生成的類的存取層級：</value>
   </data>
   <data name="Dialog.AdvancedService.Client.GenerateAsyncOperations" xml:space="preserve">
     <value>生成異步操作</value>
   </data>
   <data name="Dialog.AdvancedService.ClientHeader" xml:space="preserve">
-    <value>客戶端</value>
+    <value>用戶端</value>
   </data>
   <data name="Dialog.HighlightingEditor.ColorDlg.Underline" xml:space="preserve">
-    <value>帶下劃線</value>
+    <value>帶底線</value>
   </data>
   <data name="Dialog.HighlightingEditor.Export" xml:space="preserve">
-    <value>導出語法高亮色彩</value>
+    <value>匯出語法高亮色彩</value>
   </data>
   <data name="Dialog.HighlightingEditor.Import" xml:space="preserve">
-    <value>導入語法高亮色彩</value>
+    <value>匯入語法高亮色彩</value>
   </data>
   <data name="Dialog.HighlightingEditor.NotSupportedMessage" xml:space="preserve">
     <value>不支援該設定版本！</value>
   </data>
   <data name="Dialog.HighlightingEditor.OverwriteCustomizationsMessage" xml:space="preserve">
-    <value>這將重置所有現有自訂設定，然後導入所選文件。要繼續嗎？</value>
+    <value>這將重設所有現有自訂設定，然後匯入所選檔案。要繼續嗎？</value>
   </data>
   <data name="Dialog.HighlightingEditor.ResetAll" xml:space="preserve">
     <value>全部重置為預設值</value>
@@ -7792,7 +7789,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>程式碼檢查</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Debugging.AskForArguments" xml:space="preserve">
-    <value>啟動可執行文件時詢問參數和工作目錄。</value>
+    <value>啟動可執行檔時詢問參數和工作目錄。</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Debugging.BreakAtBeginning" xml:space="preserve">
     <value>在執行的第一個陳述式處中斷。</value>
@@ -7822,16 +7819,16 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>反編譯沒有符號的程式碼</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Debugging.SuppressJITOptimization" xml:space="preserve">
-    <value>禁止 JIT 優化</value>
+    <value>禁止 JIT 最佳化</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Debugging.SuppressNGENOptimization" xml:space="preserve">
-    <value>禁止 NGEN 優化</value>
+    <value>禁止 NGEN 最佳化</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Debugging.WithoutSource" xml:space="preserve">
     <value>無原始碼偵錯</value>
   </data>
   <data name="Dialog.Options.IDEOptions.SelectCulture.CurrentUILanguageLabel" xml:space="preserve">
-    <value>當前介面語言：</value>
+    <value>目前介面語言：</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.General.ChangeMarkerMarginCheckBox" xml:space="preserve">
     <value>啟用更改標記邊距</value>
@@ -7840,7 +7837,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>顯示 OpenLens 參考/實作計數(&amp;O)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.HighlightCurrentLineCheckBox" xml:space="preserve">
-    <value>突出顯示當前行</value>
+    <value>突出顯示目前行</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.RulersGroupBox" xml:space="preserve">
     <value>標尺</value>
@@ -7849,7 +7846,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>顯示隱藏的定義(&amp;H)（僅括號）</value>
   </data>
   <data name="Dialog.ProjectOptions.AssemblyInfo.AssemblyInfoNotFound" xml:space="preserve">
-    <value>未找到組件資訊文件。請確保專案包含組件資訊文件。</value>
+    <value>未找到組件資訊檔。請確保專案包含組件資訊檔。</value>
   </data>
   <data name="Dialog.ProjectOptions.AssemblyInfo.AssemblyVersion" xml:space="preserve">
     <value>組件版本：</value>
@@ -7870,7 +7867,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>說明：</value>
   </data>
   <data name="Dialog.ProjectOptions.AssemblyInfo.FileVersion" xml:space="preserve">
-    <value>文件版本：</value>
+    <value>檔案版本：</value>
   </data>
   <data name="Dialog.ProjectOptions.AssemblyInfo.GUID" xml:space="preserve">
     <value>GUID：</value>
@@ -7882,10 +7879,10 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>資訊版本：</value>
   </data>
   <data name="Dialog.ProjectOptions.AssemblyInfo.JitOptimization" xml:space="preserve">
-    <value>JIT 優化</value>
+    <value>JIT 最佳化</value>
   </data>
   <data name="Dialog.ProjectOptions.AssemblyInfo.JitTracking" xml:space="preserve">
-    <value>JIT 跟蹤</value>
+    <value>JIT 追蹤</value>
   </data>
   <data name="Dialog.ProjectOptions.AssemblyInfo.MakeAssemblyCOMVisible" xml:space="preserve">
     <value>使組件對 COM 可見</value>
@@ -7918,7 +7915,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>程式碼格式設定</value>
   </data>
   <data name="Dialog.ProjectOptions.CustomTool.Filenames" xml:space="preserve">
-    <value>文件名：</value>
+    <value>檔案名稱：</value>
   </data>
   <data name="Dialog.ProjectOptions.CustomTool.RunOnBuild" xml:space="preserve">
     <value>生成時執行</value>
@@ -7927,7 +7924,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>儘可能自動修復問題</value>
   </data>
   <data name="Global.Advanced" xml:space="preserve">
-    <value>高級</value>
+    <value>進階</value>
   </data>
   <data name="Global.Reset" xml:space="preserve">
     <value>重置</value>
@@ -7951,7 +7948,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>內容</value>
   </data>
   <data name="ICSharpCode.Refactoring.NoClassOrMemberUnderCursorError" xml:space="preserve">
-    <value>在光標位置找不到型別定義或型別成員。</value>
+    <value>在游標位置找不到型別定義或型別成員。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Dom.AssemblyInvalid" xml:space="preserve">
     <value>{0} 不是有效的 .NET 組件。</value>
@@ -7960,7 +7957,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>{0} 無法存取或已不存在。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.ReportFlushErrors" xml:space="preserve">
-    <value>嘗試刷新設計器內容時發生一個或多個錯誤。這可能是由於未處理的例外所致。</value>
+    <value>嘗試重新整理設計器內容時發生一個或多個錯誤。這可能是由於未處理的例外所致。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.ReferenceOutputAssembly" xml:space="preserve">
     <value>參考組件</value>
@@ -7984,7 +7981,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>使用 IIS Express Web 伺服器</value>
   </data>
   <data name="ICSharpCode.WixBinding.WixLocalizationFileFilterName" xml:space="preserve">
-    <value>WiX 本地化文件</value>
+    <value>WiX 當地語系化檔案</value>
   </data>
   <data name="ICSharpCode.WixBinding.WixNetFxExtensionTitle" xml:space="preserve">
     <value>.NET Framework 擴展</value>
@@ -8005,13 +8002,13 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>新增到工作區</value>
   </data>
   <data name="MainWindow.Windows.ClassBrowser.OpenAssemblyButton.ToolTip" xml:space="preserve">
-    <value>打開組件</value>
+    <value>開啟組件</value>
   </data>
   <data name="MainWindow.Windows.ClassBrowser.OpenAssemblyFromFile" xml:space="preserve">
-    <value>從文件打開組件...</value>
+    <value>從檔案開啟組件...</value>
   </data>
   <data name="MainWindow.Windows.ClassBrowser.OpenAssemblyFromGAC" xml:space="preserve">
-    <value>從 GAC 打開組件...</value>
+    <value>從 GAC 開啟組件...</value>
   </data>
   <data name="MainWindow.Windows.ClassBrowser.Workspace" xml:space="preserve">
     <value>工作區 {0}</value>
@@ -8020,7 +8017,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>無法切換到沒有偵錯符號的函數。請使用符號重新編譯，或啟用反編譯選項。</value>
   </data>
   <data name="MainWindow.Windows.Debug.CallStack.Module" xml:space="preserve">
-    <value>模塊</value>
+    <value>模組</value>
   </data>
   <data name="MainWindow.Windows.Debug.Conditional.Breakpoints.BreakpointHitAtBecause" xml:space="preserve">
     <value>在第 {0} 行（{1}）命中中斷點，因為 {2}</value>
@@ -8047,7 +8044,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>值</value>
   </data>
   <data name="MainWindow.Windows.Debug.MemoryPad.UnableToReadFormat" xml:space="preserve">
-    <value>無法讀取地址 {0} 處大小為 {1} 的數據。</value>
+    <value>無法讀取地址 {0} 處大小為 {1} 的資料。</value>
   </data>
   <data name="MainWindow.Windows.Debug.ParallelStack" xml:space="preserve">
     <value>並行堆疊</value>
@@ -8065,16 +8062,16 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>按專案</value>
   </data>
   <data name="MainWindow.Windows.SearchResultPanel.PerProjectAndFile" xml:space="preserve">
-    <value>按專案和文件</value>
+    <value>依專案和檔案</value>
   </data>
   <data name="MainWindow.Windows.TaskList.AllOpenedFiles" xml:space="preserve">
-    <value>所有打開的文件</value>
+    <value>所有開啟的檔案</value>
   </data>
   <data name="MainWindow.Windows.TaskList.CurrentClass" xml:space="preserve">
-    <value>類/模塊</value>
+    <value>類/模組</value>
   </data>
   <data name="MainWindow.Windows.TaskList.CurrentFile" xml:space="preserve">
-    <value>文件</value>
+    <value>檔案</value>
   </data>
   <data name="MainWindow.Windows.TaskList.Namespace" xml:space="preserve">
     <value>命名空間</value>
@@ -8104,13 +8101,13 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>所選組態文件：</value>
   </data>
   <data name="PortableLibrary.ToolsInstallationHelp" xml:space="preserve">
-    <value>若要在不安裝 Visual Studio 的情況下安裝可移植類庫工具，請將下載文件 (PortableLibraryTools.exe) 儲存到您的計算機上並執行它。</value>
+    <value>若要在不安裝 Visual Studio 的情況下安裝可移植類別庫工具，請將下載檔案 (PortableLibraryTools.exe) 儲存到您的電腦上，然後從命令提示字元視窗執行安裝程式。請在命令列中包含 /buildmachine 參數。</value>
   </data>
   <data name="ProjectComponent.ContextMenu.GenerateDocumentation.ProjectNeedsToBeCompiled" xml:space="preserve">
     <value>需要先編譯專案。</value>
   </data>
   <data name="ResourceEditor.BitmapView.UpdateCursor" xml:space="preserve">
-    <value>更新光標...</value>
+    <value>更新游標...</value>
   </data>
   <data name="ResourceEditor.BitmapView.UpdateIcon" xml:space="preserve">
     <value>更新圖標...</value>
@@ -8119,7 +8116,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>篩選：</value>
   </data>
   <data name="ResourceEditor.Messages.CantLoadResourceFromFile" xml:space="preserve">
-    <value>無法從文件載入資源：{0}</value>
+    <value>無法從檔案載入資源：{0}</value>
   </data>
   <data name="ResourceEditor.ResourceEdit.CommentColumn" xml:space="preserve">
     <value>注釋</value>
@@ -8128,25 +8125,25 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>輸入資源注釋的新文本：</value>
   </data>
   <data name="SharpDevelop.FileFilter.AllKnownFiles" xml:space="preserve">
-    <value>所有已知文件副檔名</value>
+    <value>所有已知檔案副檔名</value>
   </data>
   <data name="SharpDevelop.Refactoring.BaseMembersOf" xml:space="preserve">
     <value>${Name} 的基成員</value>
   </data>
   <data name="SharpDevelop.Refactoring.ClipboardRingEmpty" xml:space="preserve">
-    <value>剪貼板環為空</value>
+    <value>剪貼簿環為空</value>
   </data>
   <data name="SharpDevelop.Refactoring.PartsOfClass" xml:space="preserve">
     <value>${Name} 的各部分</value>
   </data>
   <data name="SharpDevelop.Refactoring.RenameFile" xml:space="preserve">
-    <value>重命名文件</value>
+    <value>重新命名檔案</value>
   </data>
   <data name="SharpDevelop.Refactoring.RenameIncludeComments" xml:space="preserve">
     <value>包括注釋</value>
   </data>
   <data name="SharpDevelop.Refactoring.RenameIncludeStrings" xml:space="preserve">
-    <value>包括字元串</value>
+    <value>包括字串</value>
   </data>
   <data name="SharpDevelop.Refactoring.RenameOverloads" xml:space="preserve">
     <value>重命名多載</value>
@@ -8167,7 +8164,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>所選專案中的類</value>
   </data>
   <data name="SharpReport.Wizard.Welcome" xml:space="preserve">
-    <value>歡迎使用 SharpReport 嚮導</value>
+    <value>歡迎使用 SharpReport 精靈</value>
   </data>
   <data name="StartPage.StartMenu.RemoveRecentProject" xml:space="preserve">
     <value>從最近的專案清單中移除</value>
@@ -8179,25 +8176,25 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>長度 ${Length}</value>
   </data>
   <data name="Templates.File.PRISMViewAndViewModelUnity.Description" xml:space="preserve">
-    <value>為 PRISM 模塊創建檢視及相應的 ViewModel。</value>
+    <value>為 PRISM 模組創建檢視及相應的 ViewModel。</value>
   </data>
   <data name="Templates.File.PRISMViewAndViewModelUnity.Name" xml:space="preserve">
     <value>PRISM 檢視和 ViewModel (Unity)</value>
   </data>
   <data name="Templates.File.PRISMViewModelUnity.Description" xml:space="preserve">
-    <value>為 PRISM 模塊創建 ViewModel。</value>
+    <value>為 PRISM 模組創建 ViewModel。</value>
   </data>
   <data name="Templates.File.PRISMViewModelUnity.Name" xml:space="preserve">
     <value>PRISM ViewModel (Unity)</value>
   </data>
   <data name="Templates.File.PRISMViewUnity.Description" xml:space="preserve">
-    <value>為 PRISM 模塊創建檢視。</value>
+    <value>為 PRISM 模組創建檢視。</value>
   </data>
   <data name="Templates.File.PRISMViewUnity.Name" xml:space="preserve">
     <value>PRISM 檢視 (Unity)</value>
   </data>
   <data name="Templates.File.SharpDevelop.MenuCommand.Description" xml:space="preserve">
-    <value>#D 的空菜單命令。</value>
+    <value>#D 的空功能表命令。</value>
   </data>
   <data name="Templates.File.SharpDevelop.OptionPanel.Name" xml:space="preserve">
     <value>選項面板</value>
@@ -8227,10 +8224,10 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>PRISM 應用程式 (Unity)</value>
   </data>
   <data name="Templates.Project.PRISMModuleUnity.Description" xml:space="preserve">
-    <value>創建一個帶有檢視及相應 ViewModel 的 PRISM 模塊。</value>
+    <value>創建一個帶有檢視及相應 ViewModel 的 PRISM 模組。</value>
   </data>
   <data name="Templates.Project.PRISMModuleUnity.Name" xml:space="preserve">
-    <value>PRISM 模塊 (Unity)</value>
+    <value>PRISM 模組 (Unity)</value>
   </data>
   <data name="Templates.Project.PortableLibrary.Description" xml:space="preserve">
     <value>可用於 Windows、Silverlight、Windows Phone 和 Xbox 的庫。</value>
@@ -8239,7 +8236,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>可移植類庫</value>
   </data>
   <data name="XML.MainMenu.DebugMenu.SaveForHotReload" xml:space="preserve">
-    <value>儲存以供熱多載</value>
+    <value>儲存以供熱重新載入</value>
   </data>
   <data name="XML.MainMenu.SearchMenu.SearchForIssues" xml:space="preserve">
     <value>搜尋問題...</value>
@@ -9298,7 +9295,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>開啟檔案</value>
   </data>
   <data name="StressTest.TypeComment" xml:space="preserve">
-    <value>在 C# 檔案中鍵入註解</value>
+    <value>C# 檔案中的型別註解</value>
   </data>
   <data name="StressTest.EraseText" xml:space="preserve">
     <value>清除 C# 程式碼中的文字</value>
@@ -9433,16 +9430,16 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>基底型別</value>
   </data>
   <data name="Data.ConnectionWizard.Title" xml:space="preserve">
-    <value>新增資料庫連接</value>
+    <value>新增資料庫連線</value>
   </data>
   <data name="Data.ConnectionWizard.AutoDiscover" xml:space="preserve">
     <value>自動探索</value>
   </data>
   <data name="Data.ConnectionWizard.Connect" xml:space="preserve">
-    <value>連接</value>
+    <value>連線</value>
   </data>
   <data name="Data.ConnectionWizard.ConnectionString" xml:space="preserve">
-    <value>連接字串</value>
+    <value>連線字串</value>
   </data>
   <data name="PackageManagement.FileConflict.Title" xml:space="preserve">
     <value>檔案衝突</value>
@@ -9559,7 +9556,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>在色彩上檢視：</value>
   </data>
   <data name="IconEditor.RightClickHint" xml:space="preserve">
-    <value>以滑鼠右鍵按一下個別影像以查看更多選項。</value>
+    <value>在個別影像上按右鍵以查看更多選項。</value>
   </data>
   <data name="Data.DatabasesTreeView.AddDatabase" xml:space="preserve">
     <value>新增資料庫...</value>
@@ -9682,7 +9679,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>短名稱：</value>
   </data>
   <data name="NewItem.InvalidItemName" xml:space="preserve">
-    <value>請輸入有效的項目名稱。不能包含檔案名稱字元。</value>
+    <value>請輸入有效的項目名稱。不能包含檔案名稱的標點符號。</value>
   </data>
   <data name="UpdatesOptions.Checking" xml:space="preserve">
     <value>正在檢查...</value>
@@ -9793,7 +9790,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>新增連線...</value>
   </data>
   <data name="Data.EDMDesigner.EntityConnectionString" xml:space="preserve">
-    <value>實體連接字串：</value>
+    <value>實體連線字串：</value>
   </data>
   <data name="Data.EDMDesigner.ChooseObjects.Question" xml:space="preserve">
     <value>您要將哪些資料庫物件包含在模型中？</value>
@@ -9814,13 +9811,13 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>密碼：</value>
   </data>
   <data name="IconEditor.PickFormat.Width" xml:space="preserve">
-    <value>_寬度:</value>
+    <value>_寬度：</value>
   </data>
   <data name="IconEditor.PickFormat.Height" xml:space="preserve">
-    <value>_高度:</value>
+    <value>_高度：</value>
   </data>
   <data name="IconEditor.PickFormat.Colors" xml:space="preserve">
-    <value>_色彩:</value>
+    <value>_色彩：</value>
   </data>
   <data name="IconEditor.PickFormat.Monochrome" xml:space="preserve">
     <value>單色</value>
