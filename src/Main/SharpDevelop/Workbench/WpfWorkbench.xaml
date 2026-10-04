@@ -37,7 +37,7 @@
 			        Margin="6,3,8,3" Padding="6,1"
 			        Background="{DynamicResource InfoBarBackground}"
 			        BorderBrush="{DynamicResource InfoBarBorder}" BorderThickness="1"
-			        CornerRadius="2" ToolTip="OpenDevelop is running as administrator."
+			        CornerRadius="2" ToolTip="{core:Localize WpfWorkbench.AdminToolTip}"
 			        Visibility="Collapsed" IsHitTestVisible="False">
 				<TextBlock Text="ADMIN" FontSize="10" FontWeight="SemiBold"
 				           Foreground="{DynamicResource Foreground}" />

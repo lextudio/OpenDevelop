@@ -2,6 +2,7 @@
              x:ClassModifier="internal"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
              xmlns:services="clr-namespace:ICSharpCode.SharpDevelop.Services"
              xmlns:controls="clr-namespace:ICSharpCode.SharpDevelop.Controls"
              xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore">
@@ -32,11 +33,11 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <ToolBar Grid.Row="0" ToolBarTray.IsLocked="True" KeyboardNavigation.TabNavigation="None">
-            <Button Command="{Binding ShowPropertiesCommand}" ToolTip="Properties" Padding="3"><Image Width="16" Height="16" Source="{Binding PropertiesIcon}" /></Button>
+            <Button Command="{Binding ShowPropertiesCommand}" ToolTip="{core:Localize ProjectBrowser.Toolbar.Properties}" Padding="3"><Image Width="16" Height="16" Source="{Binding PropertiesIcon}" /></Button>
             <Separator />
-            <ToggleButton IsChecked="{Binding ShowAllFiles, Mode=TwoWay}" ToolTip="Show All Files" Padding="3"><Image Width="16" Height="16" Source="{Binding ShowAllFilesIcon}" /></ToggleButton>
-            <Button Command="{Binding RefreshCommand}" ToolTip="Refresh" Padding="3"><Image Width="16" Height="16" Source="{Binding RefreshIcon}" /></Button>
-            <Button Command="{Binding CollapseAllCommand}" ToolTip="Collapse All" Padding="3"><Image Width="16" Height="16" Source="{Binding CollapseAllIcon}" /></Button>
+            <ToggleButton IsChecked="{Binding ShowAllFiles, Mode=TwoWay}" ToolTip="{core:Localize ProjectBrowser.Toolbar.ShowAllFiles}" Padding="3"><Image Width="16" Height="16" Source="{Binding ShowAllFilesIcon}" /></ToggleButton>
+            <Button Command="{Binding RefreshCommand}" ToolTip="{core:Localize ProjectBrowser.Toolbar.Refresh}" Padding="3"><Image Width="16" Height="16" Source="{Binding RefreshIcon}" /></Button>
+            <Button Command="{Binding CollapseAllCommand}" ToolTip="{core:Localize ProjectBrowser.Toolbar.CollapseAll}" Padding="3"><Image Width="16" Height="16" Source="{Binding CollapseAllIcon}" /></Button>
         </ToolBar>
         <controls:StickyTreeView x:Name="treeView" Grid.Row="1"
                                  ItemsSource="{Binding RootNodes}"
@@ -46,7 +47,7 @@
             </controls:StickyTreeView.ItemContainerStyle>
         </controls:StickyTreeView>
         <TextBlock Grid.Row="1" Margin="12" HorizontalAlignment="Left" VerticalAlignment="Top"
-                   Foreground="{DynamicResource MutedForeground}" IsHitTestVisible="False" Text="Loading projects…">
+                   Foreground="{DynamicResource MutedForeground}" IsHitTestVisible="False" Text="{core:Localize ProjectBrowser.Loading}">
             <TextBlock.Style>
                 <Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding IsLoading}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style>
             </TextBlock.Style>

@@ -9607,4 +9607,103 @@ Press Esc to cancel this operation.</value>
   <data name="OpenFromGac.Location" xml:space="preserve">
     <value>Location</value>
   </data>
+  <data name="RegExpTk.GroupForm.Title" xml:space="preserve">
+    <value>Match Groups</value>
+  </data>
+  <data name="PackageManagement.ClearRecentPackages" xml:space="preserve">
+    <value>Clear Recent Packages</value>
+  </data>
+  <data name="PackageManagement.NoRecentPackages" xml:space="preserve">
+    <value>No recent packages</value>
+  </data>
+  <data name="PackageManagement.PackagesCache" xml:space="preserve">
+    <value>Packages _Cache</value>
+  </data>
+  <data name="PackageManagement.ClearPackageCache" xml:space="preserve">
+    <value>Clear Package Cache</value>
+  </data>
+  <data name="PackageManagement.NoCachedPackages" xml:space="preserve">
+    <value>No cached packages</value>
+  </data>
+  <data name="PackageManagement.RestorePackages" xml:space="preserve">
+    <value>R_estore Packages</value>
+  </data>
+  <data name="PackageManagement.EnableRestore" xml:space="preserve">
+    <value>Enable package restore</value>
+  </data>
+  <data name="ExecuteProcess.Title" xml:space="preserve">
+    <value>Select process to debug...</value>
+  </data>
+  <data name="ExecuteProcess.Executable" xml:space="preserve">
+    <value>Executable</value>
+  </data>
+  <data name="ExecuteProcess.Arguments" xml:space="preserve">
+    <value>Arguments</value>
+  </data>
+  <data name="ExecuteProcess.WorkingDirectory" xml:space="preserve">
+    <value>Working directory</value>
+  </data>
+  <data name="ExecuteProcess.Execute" xml:space="preserve">
+    <value>Execute</value>
+  </data>
+  <data name="ProjectBrowser.Toolbar.Properties" xml:space="preserve">
+    <value>Properties</value>
+  </data>
+  <data name="ProjectBrowser.Toolbar.ShowAllFiles" xml:space="preserve">
+    <value>Show All Files</value>
+  </data>
+  <data name="ProjectBrowser.Toolbar.Refresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="ProjectBrowser.Loading" xml:space="preserve">
+    <value>Loading projects…</value>
+  </data>
+  <data name="ExceptionBox.Title" xml:space="preserve">
+    <value>Unhandled exception</value>
+  </data>
+  <data name="ExceptionBox.Copy" xml:space="preserve">
+    <value>Copy to Clipboard</value>
+  </data>
+  <data name="ExceptionBox.Continue" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="ExceptionBox.Exit" xml:space="preserve">
+    <value>Exit</value>
+  </data>
+  <data name="PackageManagement.Available" xml:space="preserve">
+    <value>Available</value>
+  </data>
+  <data name="PackageManagement.Installed" xml:space="preserve">
+    <value>Installed</value>
+  </data>
+  <data name="PackageManagement.Updates" xml:space="preserve">
+    <value>Updates</value>
+  </data>
+  <data name="PackageManagement.Recent" xml:space="preserve">
+    <value>Recent</value>
+  </data>
+  <data name="StressTest.Editor" xml:space="preserve">
+    <value>Editor</value>
+  </data>
+  <data name="StressTest.OpenFile" xml:space="preserve">
+    <value>Open File</value>
+  </data>
+  <data name="StressTest.TypeComment" xml:space="preserve">
+    <value>Type Comment in C# File</value>
+  </data>
+  <data name="StressTest.EraseText" xml:space="preserve">
+    <value>Erasing Text in C# code</value>
+  </data>
+  <data name="StressTest.Typing" xml:space="preserve">
+    <value>Typing C# code</value>
+  </data>
+  <data name="StressTest.Workbench" xml:space="preserve">
+    <value>Workbench</value>
+  </data>
+  <data name="StressTest.SwitchLayout" xml:space="preserve">
+    <value>Switch Layout</value>
+  </data>
+  <data name="WpfWorkbench.AdminToolTip" xml:space="preserve">
+    <value>OpenDevelop is running as administrator.</value>
+  </data>
 </root>

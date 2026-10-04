@@ -71,22 +71,22 @@
 				Click="CloseButton_Click"/>
 		</Grid>
 		<TabControl>
-			<TabItem Header="Available">
+			<TabItem Header="{core:Localize PackageManagement.Available}">
 				<pm:PackagesView
 					x:Name="AvailablePackagesView"
 					DataContext="{Binding Path=AvailablePackagesViewModel}"/>
 			</TabItem>
-			<TabItem Header="Installed">
+			<TabItem Header="{core:Localize PackageManagement.Installed}">
 				<pm:PackagesView
 					x:Name="InstalledPackagesView"
 					DataContext="{Binding Path=InstalledPackagesViewModel}"/>
 			</TabItem>
-			<TabItem Header="Updates">
+			<TabItem Header="{core:Localize PackageManagement.Updates}">
 				<pm:PackagesView
 					x:Name="PackageUpdatesView"
 					DataContext="{Binding Path=UpdatedPackagesViewModel}"/>
 			</TabItem>
-			<TabItem Header="Recent">
+			<TabItem Header="{core:Localize PackageManagement.Recent}">
 				<pm:PackagesView
 					x:Name="RecentPackagesView"
 					DataContext="{Binding Path=RecentPackagesViewModel}"/>

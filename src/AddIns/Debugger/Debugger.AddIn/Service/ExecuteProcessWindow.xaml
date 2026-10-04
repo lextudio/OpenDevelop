@@ -4,7 +4,7 @@
 	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 	xmlns:core="http://icsharpcode.net/sharpdevelop/core"
-	Title="Select process to debug..."
+	Title="{core:Localize ExecuteProcess.Title}"
 	WindowStartupLocation="CenterOwner"
 	WindowState="Normal"
 	WindowStyle="ToolWindow"
@@ -20,7 +20,7 @@
 				Height="0.2*" />
 		</Grid.RowDefinitions>
 		<Label
-			Content="Executable"
+			Content="{core:Localize ExecuteProcess.Executable}"
 			Grid.Column="0"
 			Grid.Row="0"
 			HorizontalAlignment="Left"
@@ -58,7 +58,7 @@
 			Height="25"
 			Name="argumentsTextBox" />
 		<Label
-			Content="Arguments"
+			Content="{core:Localize ExecuteProcess.Arguments}"
 			Grid.Column="0"
 			Grid.Row="0"
 			HorizontalAlignment="Left"
@@ -87,7 +87,7 @@
 			Height="25"
 			Name="workingDirectoryTextBox" />
 		<Label
-			Content="Working directory"
+			Content="{core:Localize ExecuteProcess.WorkingDirectory}"
 			Grid.Column="0"
 			Grid.Row="0"
 			HorizontalAlignment="Left"
@@ -103,7 +103,7 @@
 				HorizontalAlignment="Center"
 				x:Name="ExecuteButton"
 				Click="ExecuteButton_Click"
-				Content="Execute"
+				Content="{core:Localize ExecuteProcess.Execute}"
 				Width="100" />
 			<Button
 				DockPanel.Dock="Right"

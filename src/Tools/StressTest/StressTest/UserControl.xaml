@@ -1,39 +1,40 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <UserControl
-	x:Class="StressTest.UserControl" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+	x:Class="StressTest.UserControl" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core">
 	<ScrollViewer>
 		<StackPanel>
 			<StackPanel Orientation="Horizontal"><Label>Repetitions:</Label><TextBox Name="repetitionsTextBox" Text="1" Width="40"/></StackPanel>
-			<Expander Header="Editor" IsExpanded="True">
+			<Expander Header="{core:Localize StressTest.Editor}" IsExpanded="True">
 				<StackPanel>
 					<Button
-						Content="Open File"
+						Content="{core:Localize StressTest.OpenFile}"
 						Height="23"
 						Click="openFileButton_Click" />
 					<StackPanel Orientation="Horizontal">
 						<TextBox Name="typeCommentTextBox">This is a comment</TextBox>
 						<Button
-							Content="Type Comment in C# File"
+							Content="{core:Localize StressTest.TypeComment}"
 							Height="23"
 							Click="TypeTextButton_Click" />
 					</StackPanel>
 					<StackPanel Orientation="Horizontal">
 						<CheckBox Name="eraseTextBackwards">Backwards</CheckBox>
 						<Button
-							Content="Erasing Text in C# code"
+							Content="{core:Localize StressTest.EraseText}"
 							Height="23"
 							Click="EraseTextButton_Click" />
 					</StackPanel>
 					<Button
-						Content="Typing C# code"
+						Content="{core:Localize StressTest.Typing}"
 						Height="23"
 						Click="TypeCodeButton_Click" />
 				</StackPanel>
 			</Expander>
-			<Expander Header="Workbench" IsExpanded="True">
+			<Expander Header="{core:Localize StressTest.Workbench}" IsExpanded="True">
 				<StackPanel>
 					<Button
-						Content="Switch Layout"
+						Content="{core:Localize StressTest.SwitchLayout}"
 						Height="23"
 						Click="SwitchLayoutButton_Click" />
 				</StackPanel>

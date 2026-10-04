@@ -10,7 +10,7 @@
 	mc:Ignorable="d"
 	WindowStartupLocation="CenterOwner"
 	Style="{x:Static core:GlobalStyles.DialogWindowStyle}"
-	Title="License Agreements"
+	Title="{core:Localize AddInManager2.LicenseAcceptance.Title}"
 	Height="300"
 	Width="480"
 	MinHeight="300"
@@ -35,7 +35,7 @@
 						<Hyperlink
 							Command="{StaticResource OpenHyperlinkCommand}"
 							CommandParameter="{Binding Path=LicenseUrl}">
-							<TextBlock Text="View License Terms"/>
+							<TextBlock Text="{core:Localize PackageManagement.ViewLicenseTerms}"/>
 						</Hyperlink>
 					</TextBlock>
 				</StackPanel>
@@ -65,11 +65,11 @@
 			<TextBlock 
 				Visibility="{Binding Path=HasMultiplePackages, Converter={StaticResource BoolToVisibility}}"
 				TextWrapping="Wrap"
-				Text="The following packages require a click-to-accept license:"/>
+				Text="{core:Localize AddInManager2.LicenseAcceptance.Introduction.Packages}"/>
 			<TextBlock 
 				Visibility="{Binding Path=HasOnePackage, Converter={StaticResource BoolToVisibility}}"
 				TextWrapping="Wrap"
-				Text="The following package requires a click-to-accept license:"/>
+				Text="{core:Localize AddInManager2.LicenseAcceptance.Introduction.Package}"/>
 		</StackPanel>
 		<Border 
 			Grid.Row="1"
@@ -106,10 +106,10 @@
 			Orientation="Horizontal"
 			HorizontalAlignment="Right">
 			<Button 
-				Content="I _Decline"
+				Content="{core:Localize AddInManager2.LicenseAcceptance.DeclineButton}"
 				IsCancel="True"/>
 			<Button 
-				Content="I _Accept" 
+				Content="{core:Localize AddInManager2.LicenseAcceptance.AcceptButton}" 
 				Click="AcceptButtonClick"/>
 		</StackPanel>
 	</Grid>

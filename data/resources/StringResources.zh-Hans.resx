@@ -9216,4 +9216,103 @@ SharpDevelop 编译资源时发现不对应：资源名称不是文件名，而�
   <data name="OpenFromGac.Location" xml:space="preserve">
     <value>位置</value>
   </data>
+  <data name="RegExpTk.GroupForm.Title" xml:space="preserve">
+    <value>匹配组</value>
+  </data>
+  <data name="PackageManagement.ClearRecentPackages" xml:space="preserve">
+    <value>清除最近的包</value>
+  </data>
+  <data name="PackageManagement.NoRecentPackages" xml:space="preserve">
+    <value>没有最近的包</value>
+  </data>
+  <data name="PackageManagement.PackagesCache" xml:space="preserve">
+    <value>包缓存(_C)</value>
+  </data>
+  <data name="PackageManagement.ClearPackageCache" xml:space="preserve">
+    <value>清除包缓存</value>
+  </data>
+  <data name="PackageManagement.NoCachedPackages" xml:space="preserve">
+    <value>没有缓存的包</value>
+  </data>
+  <data name="PackageManagement.RestorePackages" xml:space="preserve">
+    <value>还原包(_E)</value>
+  </data>
+  <data name="PackageManagement.EnableRestore" xml:space="preserve">
+    <value>启用包还原</value>
+  </data>
+  <data name="ExecuteProcess.Title" xml:space="preserve">
+    <value>选择要调试的进程...</value>
+  </data>
+  <data name="ExecuteProcess.Executable" xml:space="preserve">
+    <value>可执行文件</value>
+  </data>
+  <data name="ExecuteProcess.Arguments" xml:space="preserve">
+    <value>参数</value>
+  </data>
+  <data name="ExecuteProcess.WorkingDirectory" xml:space="preserve">
+    <value>工作目录</value>
+  </data>
+  <data name="ExecuteProcess.Execute" xml:space="preserve">
+    <value>执行</value>
+  </data>
+  <data name="ProjectBrowser.Toolbar.Properties" xml:space="preserve">
+    <value>属性</value>
+  </data>
+  <data name="ProjectBrowser.Toolbar.ShowAllFiles" xml:space="preserve">
+    <value>显示所有文件</value>
+  </data>
+  <data name="ProjectBrowser.Toolbar.Refresh" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="ProjectBrowser.Loading" xml:space="preserve">
+    <value>正在加载项目…</value>
+  </data>
+  <data name="ExceptionBox.Title" xml:space="preserve">
+    <value>未处理的异常</value>
+  </data>
+  <data name="ExceptionBox.Copy" xml:space="preserve">
+    <value>复制到剪贴板</value>
+  </data>
+  <data name="ExceptionBox.Continue" xml:space="preserve">
+    <value>继续</value>
+  </data>
+  <data name="ExceptionBox.Exit" xml:space="preserve">
+    <value>退出</value>
+  </data>
+  <data name="PackageManagement.Available" xml:space="preserve">
+    <value>可用</value>
+  </data>
+  <data name="PackageManagement.Installed" xml:space="preserve">
+    <value>已安装</value>
+  </data>
+  <data name="PackageManagement.Updates" xml:space="preserve">
+    <value>更新</value>
+  </data>
+  <data name="PackageManagement.Recent" xml:space="preserve">
+    <value>最近</value>
+  </data>
+  <data name="StressTest.Editor" xml:space="preserve">
+    <value>编辑器</value>
+  </data>
+  <data name="StressTest.OpenFile" xml:space="preserve">
+    <value>打开文件</value>
+  </data>
+  <data name="StressTest.TypeComment" xml:space="preserve">
+    <value>在 C# 文件中键入注释</value>
+  </data>
+  <data name="StressTest.EraseText" xml:space="preserve">
+    <value>擦除 C# 代码中的文本</value>
+  </data>
+  <data name="StressTest.Typing" xml:space="preserve">
+    <value>键入 C# 代码</value>
+  </data>
+  <data name="StressTest.Workbench" xml:space="preserve">
+    <value>工作台</value>
+  </data>
+  <data name="StressTest.SwitchLayout" xml:space="preserve">
+    <value>切换布局</value>
+  </data>
+  <data name="WpfWorkbench.AdminToolTip" xml:space="preserve">
+    <value>OpenDevelop 正以管理员身份运行。</value>
+  </data>
 </root>
