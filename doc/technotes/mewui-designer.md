@@ -215,7 +215,8 @@ The Design view contributes all three standard designer pads:
   Design/Source split focused the pad keeps this list, and a control dropped onto the `.mxaml`
   goes on its own line in the innermost container under the drop point: a panel takes any number
   of children, a content control (Window, Border, ScrollViewer, GroupBox, ...) only its first.
-- Outline: the parsed source hierarchy; selecting a node synchronizes the Properties pad.
+- Outline: the parsed source hierarchy; selecting a node synchronizes the Properties pad. It is
+  also the Outline pad's content while the Source pane has focus, like the toolbox list above.
 - Properties: identity, text/content, layout, appearance and enabled-state properties; edits land
   in C# source.
 

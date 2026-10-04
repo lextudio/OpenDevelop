@@ -282,29 +282,6 @@ source editors directly resolve their dialect's toolbox via `XamlDialectRegistry
 fallback is retained only for legacy designer/source pairs whose source editor supplies no toolbox.
 `od.tools-pad.status` observes this without activating either pane.
 
-### One stable Document Outline in the Design/Source split
-
-The Outline pad follows the same rule, but its stable content is the designer's object tree rather
-than the source editor's symbol tree. `OutlineViewModel` prefers the secondary view's
-`IOutlineContentHost` for a split document even while the Source pane has keyboard focus. This is
-the Visual Studio XAML Designer model: Document Outline represents the artboard hierarchy used for
-selection and layout work; markup structure remains the code editor's concern (navigation and
-folding), not a second pad that replaces the first one on every click.
-
-Consequently, Outline-to-designer selection remains available throughout split editing, and a
-designer selection continues to update that same tree. A source-only document, or one for which no
-designer view was attached, falls back to its language-service outline as before. The pad does not
-auto-show in either case.
-
-### One stable Properties selection in the Design/Source split
-
-Properties follows the designer selection, not the source caret. `PropertyPadViewModel` gives an
-active non-document tool pane (for example Project Browser) first priority, then resolves the
-secondary designer's `IHasPropertyContainer` for a split document. Selecting an element in the
-surface or Document Outline and then editing XAML therefore leaves that element's property adapter
-in place; source focus is only the text-editing target. If a source edit invalidates or removes the
-element, the designer clears or refreshes its own container and the shared grid follows it. A
-source-only document keeps its ordinary property-container behavior.
 - **Drag data.** Every toolbox drag carries `ToolboxDragData` (`OpenDevelop.ToolboxTypeName`, plus
   the older `ComponentTypeName` the XAML editor and WPF designer read). Read it with
   `ToolboxDragData.GetTypeName`; GTK and MewUI no longer drag a bare `StringFormat`, which a text
@@ -332,6 +309,49 @@ keeps `IToolsPadHost.HostedContent` pointed at the original ListBox, preserving 
 document-host identity. Search wrappers are cached weakly per toolbox instance, so switching among
 multiple designer windows reuses their logical tree and retains per-document search state without
 leaking closed views.
+
+### One stable Document Outline in the Design/Source split
+
+The Outline pad follows the same rule, but its stable content is the designer's object tree rather
+than the source editor's symbol tree. `OutlineViewModel.DocumentOutlineHost` prefers the secondary
+view's `IOutlineContentHost` for a split document even while the Source pane has keyboard focus.
+This is the Visual Studio XAML Designer model: Document Outline represents the artboard hierarchy
+used for selection and layout work; markup structure remains the code editor's concern (navigation
+and folding), not a second pad that replaces the first one on every click.
+
+Consequently, Outline-to-designer selection remains available throughout split editing, and a
+designer selection continues to update that same tree. A source-only document, or one for which no
+designer view was attached, falls back to its language-service outline as before (an `App.xaml`,
+whose display binding attaches no designer, is the case that proves the fallback still works). The
+pad does not auto-show in either case.
+
+### One stable Properties selection in the Design/Source split
+
+Properties follows the designer selection, not the source caret. `PropertyPadViewModel` gives an
+active non-document tool pane (for example Project Browser) first priority, then resolves the
+secondary designer's `IHasPropertyContainer` for a split document
+(`PropertyPadViewModel.DocumentPropertyContainer`). Selecting an element in the surface or Document
+Outline and then editing XAML therefore leaves that element's property adapter in place; source
+focus is only the text-editing target. If a source edit invalidates or removes the element, the
+designer clears or refreshes its own container and the shared grid follows it. A source-only
+document keeps its ordinary property-container behavior. The pad no longer carries a "previous
+content" fallback across view switches: focus is a weak signal, so the container is re-resolved
+from the document instead of being remembered.
+
+### Pane targeting: activate-design and switch-to-source
+
+Because the three pads no longer depend on which pane has focus, the per-designer DevFlow actions
+that move focus are retargeted commands, not navigation:
+
+| Action | What it actually does |
+|---|---|
+| `od.<designer>.activate-design` | Makes the already-visible Design pane the active view: document/save authority and the target a Toolbox drop is delivered to. No load is triggered and no pane is hidden. |
+| `od.<designer>.switch-to-source` | Makes the already-visible Source pane the active view, i.e. the text-editing and drop target. Same non-effect on the pads and on the designer load. |
+
+The Forms backend still documents its pair as "which re-loads the current source into the
+designer" because its `SwitchView` path does re-enter `LoadInternal`; the WPF and WinUI actions are
+the ones that were reworded. Prefer `od.<designer>.toolbox.query-item-bounds` (which does not
+activate anything) when a test only needs toolbox row coordinates.
 
 ### Observability and acceptance
 
@@ -1583,14 +1603,15 @@ acceptance check, so the list can be resumed by a fresh session at any point.
 2. ~~**Decide the event-binding navigation behavior.**~~ **Decided (2026-08-18): keep the jump.**
    `DesignerViewContent.SetRemoteEvent`
    (src/AddIns/DisplayBindings/FormsDesigner/Project/Src/DesignerViewContent.cs:142-144)
-   jumps to the source tab after binding a handler ("VS-style") — this stays as-is, on
-   purpose, for all three designers, not just WinForms. The jump makes the design surface
-   disappear from view and empties the Properties pad (it follows `ActiveViewContent`), which
-   reads as "the designer selection changed", but the selection state itself never changes —
-   only the active view does, and jumping to the newly-generated handler stub is the
+   jumps to the source pane after binding a handler ("VS-style") — this stays as-is, on
+   purpose, for all three designers, not just WinForms. Neither pane is hidden and the Properties
+   pad keeps the selected design object (a document's designer owns it regardless of focus — see
+   "One stable Properties selection in the Design/Source split"), so the jump reads only as "the
+   editor moved to the newly-generated handler stub". What never changes is the designer's
+   selection state itself: only the active view changes, and jumping to the new handler is the
    behavior a user actually wants after binding an event.
    **Acceptance:** `WinFormsDesigner_DoubleClickEventRow_CreatesAndBindsHandler` asserts the
-   source tab becomes active after binding (not that it stays on the design tab); WinUI/WPF
+   source pane becomes active after binding (not that it stays on the design pane); WinUI/WPF
    should do the same once/if they grow an equivalent event-binding UI (today only WinForms
    has one - see Part III's `design/set-event` row).
 

@@ -354,6 +354,12 @@ which prevents runtime defaults and binding-specific behavior from rewriting the
 
 ## Pads and interaction
 
+All three pads below belong to the document rather than to the focused pane: with the `.ui` source
+editor and the designer side by side, clicking into the source leaves the mounted toolbox, the
+Outline and the Properties selection as they were. See
+[`designer-common.md`](designer-common.md) "One stable toolbox in the Design/Source split" and its
+two sibling sections.
+
 ### Tools
 
 The Tools pad is populated from the GIR catalogue filtered by the project's GTK version and
@@ -539,7 +545,7 @@ compiled into the IDE as well as the host: it runs synchronously against the Sou
 the result is the same `<child><object class id/></child>` (with starter text) a designer drop
 writes, placed after the child the drop is on, or before it when the drop is on its `<object ...>`
 line. Outside every container, for example on `<requires>`, the drop is refused. See
-designer-common.md, "One toolbox per document".
+designer-common.md, "One stable toolbox in the Design/Source split".
 
 ### Drop placement (2026-10-01)
 

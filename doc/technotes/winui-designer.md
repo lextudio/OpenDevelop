@@ -582,6 +582,12 @@ Properties, and Outline are served through OpenDevelop's existing shell contract
 `IToolsHost.ToolsContent`, `IHasPropertyContainer.PropertyContainer`, and
 `IOutlineContentHost.OutlineContent` — exactly as `WpfViewContent` does.
 
+Those pads are owned by the document, not by whichever pane has focus: with Source and Design both
+visible, clicking into the source editor leaves the toolbox mounted, leaves Document Outline on the
+designer element tree, and leaves Properties on the selected design object. Only the drop/command
+target moves. See [`designer-common.md`](designer-common.md) "One stable toolbox in the
+Design/Source split" and its two sibling sections.
+
 Design-surface picking uses ProGPU's public `InputSystem.HitTest`, and maps the hit visual back
 to the document through the WinUI namescope: the emitter never assigns `FrameworkElement.Name`, it
 publishes names via `XamlTemplateFactory.RegisterName`, so `root.FindName(x)` is the supported way
@@ -1520,7 +1526,10 @@ source-tree outline is replaced by the real one. The design-view outline now:
 - omits elements the source marks not-visible (`Visibility="Collapsed"` / `x:Load="False"`).
 
 `od.winui-designer.status` gained an `outlineNames` field for tests. Code view's outline
-(`XamlOutlineContentHost`) still shows the whole document, resources included.
+(`XamlOutlineContentHost`) still shows the whole document, resources included — but it is the
+Outline pad's content only for a source-only document. In a Design/Source split the pad keeps this
+designer tree even while the source editor has focus, so the two outlines are never swapped back and
+forth by clicking between the panes.
 
 ### Breakpoint-gutter icons removed for XAML/XML
 

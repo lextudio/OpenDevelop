@@ -158,6 +158,14 @@ through OpenDevelop's shell contracts (`IToolsHost.ToolsContent`,
 `WpfToolbox` pad in particular is reused by the WinForms designer too
 (see [`winforms-designer.md`](winforms-designer.md)).
 
+In the side-by-side workbench all three pads stay designer-owned while the Source pane has focus:
+Tools keeps the same `SharedToolbox` mounted, Document Outline keeps `WpfViewContent.OutlineContent`
+(the designed element tree, not AvalonEdit's XAML symbol list), and Properties keeps the selected
+design object. Focus only decides where a Toolbox drop is delivered. See
+[`designer-common.md`](designer-common.md) "One stable toolbox in the Design/Source split" and its
+two sibling sections; `od.wpf-designer.switch-to-source` / `activate-design` are therefore pane
+targeting, not tab navigation.
+
 ## Portable Drag-and-Drop Findings (2026-08-12)
 
 Real WPF's drag source blocks inside a Win32 OLE modal loop. `PortablePresentationSource` has no

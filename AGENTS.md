@@ -747,6 +747,16 @@ It is not a wrapper around `dotnet build` for convenience — it exists because 
    compatible with the current process architecture"* elsewhere — including in the x64 OpenDevelop
    process on an ARM64 machine, where it takes the app down at startup. Passed by default;
    `-NativeRid` opts out.
+
+   **This applies equally to integration-test deployment.** OpenDevelop AddIns and their
+   portable designer hosts are AnyCPU; never set `RuntimeIdentifier` to the developer machine's
+   RID (for example `osx-arm64`) and never add a RID target to `project.assets.json` merely to
+   make `ResolvePackageAssets` pass. That only masks a mismatched restore/build graph and produces
+   an architecture-stamped plugin. The integration runner's dynamic `MSBuild` Restore *and* Build
+   calls must propagate `ProGpuWpfUseCurrentRuntimeIdentifier=false`; its restore must force
+   re-evaluation (`RestoreForceEvaluate=true`) after any previous RID-specific restore so stale
+   assets cannot survive. A missing RID target in an AddIn build is evidence to fix that property
+   propagation, not a reason to build the AddIn for that RID.
 3. **Projects `dotnet build` cannot build at all** — anything under `MicrosoftHost` is routed to
    Visual Studio's MSBuild automatically, RID-specific for the WinUI child (both architectures) and
    RID-less for the Forms host, mirroring `Build-MicrosoftDesignerHosts`.
