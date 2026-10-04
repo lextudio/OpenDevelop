@@ -5,7 +5,7 @@
   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" 
   xmlns:core="http://icsharpcode.net/sharpdevelop/core"
   xmlns:AvalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
-  Title="Text visualizer"
+  Title="{core:Localize Debugger.Visualizer.Text}"
   SizeToContent="WidthAndHeight"
   Style="{x:Static core:GlobalStyles.WindowStyle}"
   WindowStartupLocation="CenterScreen"

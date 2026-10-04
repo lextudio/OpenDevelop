@@ -44,7 +44,7 @@
 							</GridViewColumn.CellTemplate>
 						</GridViewColumn>
 						
-						<GridViewColumn Header="Action">
+						<GridViewColumn Header="{core:Localize CodeAnalysis.ProjectOptions.Action}">
 							<GridViewColumn.CellTemplate>
 								<DataTemplate>
 									<StackPanel Orientation="Horizontal">

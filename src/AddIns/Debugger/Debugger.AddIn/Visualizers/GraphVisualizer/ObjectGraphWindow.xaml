@@ -4,7 +4,7 @@
     xmlns:dv="clr-namespace:Debugger.AddIn.Visualizers.Graph"
     xmlns:controls="clr-namespace:Debugger.AddIn.Visualizers.Controls"
     xmlns:core="http://icsharpcode.net/sharpdevelop/core"
-    Title="Object graph visualizer" Height="400" Width="600" Style="{x:Static core:GlobalStyles.WindowStyle}">
+    Title="{core:Localize Debugger.Visualizer.ObjectGraph}" Height="400" Width="600" Style="{x:Static core:GlobalStyles.WindowStyle}">
     
     <dv:ObjectGraphControl x:Name="objectGraphControl"></dv:ObjectGraphControl>
 </Window>

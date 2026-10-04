@@ -267,7 +267,7 @@
 					</DataGridTemplateColumn.CellTemplate>
 				</DataGridTemplateColumn>
 				<!-- Text (value) -->
-				<DataGridTemplateColumn MinWidth="20" Header="Text">
+				<DataGridTemplateColumn MinWidth="20" Header="{core:Localize Debugger.Tooltip.Text}">
 					<DataGridTemplateColumn.CellTemplate>
 						<DataTemplate>
 							<TextBox

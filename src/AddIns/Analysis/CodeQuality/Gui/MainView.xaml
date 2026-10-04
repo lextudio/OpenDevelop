@@ -3,7 +3,8 @@
 	x:Class="ICSharpCode.CodeQuality.Gui.MainView"
 	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 	xmlns:gui="clr-namespace:ICSharpCode.CodeQuality.Gui"
-	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core">
 
 	<DockPanel>
 		<ToolBar DockPanel.Dock="Top">
@@ -13,13 +14,13 @@
 		
 		<TabControl x:Name="mainTab">
 			<TabItem
-				Header="Dependency Matrix">
+				Header="{core:Localize CodeQuality.MainView.DependencyMatrix}">
 				<Grid>
 					<TextBlock
 						x:Name="introBlock"
 						VerticalAlignment="Center"
 						HorizontalAlignment="Center"
-						Text="Please select an assembly ..."
+						Text="{core:Localize CodeQuality.MainView.SelectAssembly}"
 						FontSize="15" />
 					<gui:DependencyMatrixView
 						Visibility="Collapsed"

@@ -8,7 +8,7 @@
 		<!-- TODO: Translate -->
 		<CheckBox Name="featureEnabledCheckBox" DockPanel.Dock="Top"
 		          IsEnabled="False"
-		          IsChecked="True" Content="Enable code inspection" />
+		          IsChecked="True" Content="{core:Localize CSharpBinding.IssueOptions.Enable}" />
 		<TextBlock DockPanel.Dock="Bottom" TextWrapping="WrapWithOverflow" MaxHeight="75"
 		           Text="{Binding SelectedValue.Description, ElementName=listBox}" />
 		<TextBlock FontWeight="Bold" DockPanel.Dock="Bottom" Text="{Binding SelectedValue.Title, ElementName=listBox}" />

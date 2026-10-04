@@ -27,7 +27,7 @@
 			<Label Content="{core:Localize Dialog.NewProject.SearchReplace.SearchIn}" />
 			<widgets:RadioButtonGroup Name="searchInRBG" Margin="0,6,0,0" sd:EnumBinding.EnumType="local:SearchForIssuesTarget" />
 		</StackPanel>
-		<Label Content="Issues:" Grid.Row="1" HorizontalAlignment="Left" />
+		<Label Content="{core:Localize CSharpBinding.SearchForIssues.Issues}" Grid.Row="1" HorizontalAlignment="Left" />
 		<tv:SharpTreeView Name="treeView" Grid.Row="2" Margin="4,0,4,4" />
 		<CheckBox Name="fixCheckBox" Grid.Row="3" Margin="8,0,0,0" Checked="FixCheckBox_Checked" Unchecked="FixCheckBox_Unchecked"
 		          HorizontalAlignment="Left" Content="{core:Localize Dialog.SearchForIssues.AutoFix}" />

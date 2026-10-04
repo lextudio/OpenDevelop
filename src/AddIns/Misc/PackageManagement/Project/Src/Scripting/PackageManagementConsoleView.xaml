@@ -36,7 +36,7 @@
 		<ToolBar>
 			<TextBlock
 				Margin="4"
-				Text="Package Source:"/>
+				Text="{core:Localize PackageManagement.Console.PackageSource}"/>
 
 			<ComboBox
 				Grid.Column="1"
@@ -48,7 +48,7 @@
 			<TextBlock
 				Grid.Column="2"
 				Margin="4"
-				Text="Default Project:"/>
+				Text="{core:Localize PackageManagement.Console.DefaultProject}"/>
 
 			<ComboBox
 				Grid.Column="3"

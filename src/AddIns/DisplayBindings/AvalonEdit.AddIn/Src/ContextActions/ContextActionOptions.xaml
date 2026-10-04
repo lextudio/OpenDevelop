@@ -7,7 +7,7 @@
 		<!-- TODO: Translate -->
 		<CheckBox Name="featureEnabledCheckBox" DockPanel.Dock="Top"
 		          IsEnabled="False"
-		          IsChecked="True" Content="Enable context actions" />
+		          IsChecked="True" Content="{core:Localize AvalonEdit.ContextActions.Enable}" />
 		<sd:RestrictDesiredSize Margin="0, 4, 0, 0">
 			<ListBox Name="listBox" SelectionMode="Multiple"
 			         IsEnabled="{Binding IsChecked, ElementName=featureEnabledCheckBox}"

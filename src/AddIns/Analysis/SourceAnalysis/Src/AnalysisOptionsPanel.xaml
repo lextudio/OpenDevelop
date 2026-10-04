@@ -32,7 +32,7 @@
 		
 		
 		<Button Grid.Row="2" Grid.ColumnSpan="2" VerticalAlignment="Center"
-		        Content="Modify StyleCop Settings" Style="{x:Static core:GlobalStyles.ButtonStyle}"
+		        Content="{core:Localize SourceAnalysis.ModifyStyleCopSettings}" Style="{x:Static core:GlobalStyles.ButtonStyle}"
 		        Click="ModifyStyleCopSettings_Click"></Button>
 	</Grid>
 </optionpanels:ProjectOptionPanel>

@@ -1,5 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
 	xmlns:local="clr-namespace:ICSharpCode.ILSpy.Controls">
 	
 	<Style x:Key="{x:Type local:SearchBox}" TargetType="{x:Type local:SearchBox}" BasedOn="{StaticResource {x:Type TextBox}}">
@@ -39,7 +40,7 @@
 								       Stretch="None"
 								       HorizontalAlignment="Center"
 								       VerticalAlignment="Center"
-								       ToolTip="Search"
+								       ToolTip="{core:Localize Global.Search}"
 								       Source="{local:XamlResource Images/Search}" />
 							</Border>
 						</Grid>

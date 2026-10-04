@@ -9895,4 +9895,124 @@ Press Esc to cancel this operation.</value>
   <data name="EdmDesigner.AddComplexType.Title" xml:space="preserve">
     <value>Add complex type</value>
   </data>
+  <data name="PackageManagement.SelectProjects.Title" xml:space="preserve">
+    <value>Select Projects</value>
+  </data>
+  <data name="PackageManagement.SelectProjects.Prompt" xml:space="preserve">
+    <value>Install the package into the following projects:</value>
+  </data>
+  <data name="PackageManagement.Console.PackageSource" xml:space="preserve">
+    <value>Package Source:</value>
+  </data>
+  <data name="PackageManagement.Console.DefaultProject" xml:space="preserve">
+    <value>Default Project:</value>
+  </data>
+  <data name="Reporting.PullModel.NotAvailable" xml:space="preserve">
+    <value>Pull Model not available at the moment</value>
+  </data>
+  <data name="UsageDataCollector.CollectedData" xml:space="preserve">
+    <value>Collected Data</value>
+  </data>
+  <data name="CodeAnalysis.ProjectOptions.Action" xml:space="preserve">
+    <value>Action</value>
+  </data>
+  <data name="CodeQuality.MainView.DependencyMatrix" xml:space="preserve">
+    <value>Dependency Matrix</value>
+  </data>
+  <data name="CodeQuality.MainView.SelectAssembly" xml:space="preserve">
+    <value>Please select an assembly ...</value>
+  </data>
+  <data name="Profiler.QueryView.Columns" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="SourceAnalysis.ModifyStyleCopSettings" xml:space="preserve">
+    <value>Modify StyleCop Settings</value>
+  </data>
+  <data name="Global.Search" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="SettingsEditor.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="SettingsEditor.Scope" xml:space="preserve">
+    <value>Scope</value>
+  </data>
+  <data name="WpfDesign.ObjectEditor.New" xml:space="preserve">
+    <value>New...</value>
+  </data>
+  <data name="AvalonEdit.ContextActions.Enable" xml:space="preserve">
+    <value>Enable context actions</value>
+  </data>
+  <data name="IconEditor.PickFormat.Title" xml:space="preserve">
+    <value>Image Format</value>
+  </data>
+  <data name="IconEditor.ViewOnColor" xml:space="preserve">
+    <value>View on color:</value>
+  </data>
+  <data name="IconEditor.RightClickHint" xml:space="preserve">
+    <value>Right-click on the individual images to see more options.</value>
+  </data>
+  <data name="Data.DatabasesTreeView.AddDatabase" xml:space="preserve">
+    <value>Add database...</value>
+  </data>
+  <data name="Data.DatabasesTreeView.Databases" xml:space="preserve">
+    <value>Databases</value>
+  </data>
+  <data name="Debugger.Visualizer.Collection" xml:space="preserve">
+    <value>Collection visualizer</value>
+  </data>
+  <data name="Debugger.Visualizer.Text" xml:space="preserve">
+    <value>Text visualizer</value>
+  </data>
+  <data name="Debugger.Visualizer.ObjectGraph" xml:space="preserve">
+    <value>Object graph visualizer</value>
+  </data>
+  <data name="Debugger.ObjectGraph.Plus" xml:space="preserve">
+    <value>Plus</value>
+  </data>
+  <data name="Debugger.ObjectGraph.Icon" xml:space="preserve">
+    <value>Icon</value>
+  </data>
+  <data name="Debugger.Tooltip.Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="AspNetMvc.AddController.Title" xml:space="preserve">
+    <value>Add Controller</value>
+  </data>
+  <data name="AspNetMvc.AddController.Name" xml:space="preserve">
+    <value>Controller Name:</value>
+  </data>
+  <data name="AspNetMvc.AddController.Template" xml:space="preserve">
+    <value>Template:</value>
+  </data>
+  <data name="CSharpBinding.SearchForIssues.Issues" xml:space="preserve">
+    <value>Issues:</value>
+  </data>
+  <data name="CSharpBinding.IssueOptions.Enable" xml:space="preserve">
+    <value>Enable code inspection</value>
+  </data>
+  <data name="UpdatesOptions.Updates" xml:space="preserve">
+    <value>Updates</value>
+  </data>
+  <data name="UpdatesOptions.AutoCheckWeekly" xml:space="preserve">
+    <value>Automatically check for updates once a week</value>
+  </data>
+  <data name="UpdatesOptions.CheckNow" xml:space="preserve">
+    <value>Check Now</value>
+  </data>
+  <data name="DotNetSdk.Description" xml:space="preserve">
+    <value>Choose which installed .NET SDK is used to compile, debug, and run tests for project files. The default is the system-installed SDK.</value>
+  </data>
+  <data name="DotNetSdk.AddCustomPath" xml:space="preserve">
+    <value>Add Custom Path...</value>
+  </data>
+  <data name="ProjectAndSolution.BuildVerbosity" xml:space="preserve">
+    <value>Build Verbosity:</value>
+  </data>
+  <data name="DebugOptions.ClassLibraryHint" xml:space="preserve">
+    <value>A class library cannot start by itself. Choose Start external program and select an application that loads this library.</value>
+  </data>
+  <data name="ServiceReference.SvcUtilConfiguration" xml:space="preserve">
+    <value>SvcUtil Configuration</value>
+  </data>
 </root>

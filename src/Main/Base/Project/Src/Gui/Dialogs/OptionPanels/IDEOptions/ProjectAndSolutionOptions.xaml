@@ -35,7 +35,7 @@
 				</StackPanel>
 				<StackPanel Orientation="Horizontal">
 					<Label
-						Content="Build Verbosity:"
+						Content="{core:Localize ProjectAndSolution.BuildVerbosity}"
 						Target="{Binding ElementName=verbosityComboBox}" />
 					<ComboBox Name="verbosityComboBox" VerticalAlignment="Center" />
 				</StackPanel>

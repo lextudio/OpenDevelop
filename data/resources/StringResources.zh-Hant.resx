@@ -9504,4 +9504,124 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
   <data name="EdmDesigner.AddComplexType.Title" xml:space="preserve">
     <value>新增複雜型別</value>
   </data>
+  <data name="PackageManagement.SelectProjects.Title" xml:space="preserve">
+    <value>選取專案</value>
+  </data>
+  <data name="PackageManagement.SelectProjects.Prompt" xml:space="preserve">
+    <value>將套件安裝至下列專案：</value>
+  </data>
+  <data name="PackageManagement.Console.PackageSource" xml:space="preserve">
+    <value>套件來源：</value>
+  </data>
+  <data name="PackageManagement.Console.DefaultProject" xml:space="preserve">
+    <value>預設專案：</value>
+  </data>
+  <data name="Reporting.PullModel.NotAvailable" xml:space="preserve">
+    <value>提取模型目前無法使用</value>
+  </data>
+  <data name="UsageDataCollector.CollectedData" xml:space="preserve">
+    <value>收集的資料</value>
+  </data>
+  <data name="CodeAnalysis.ProjectOptions.Action" xml:space="preserve">
+    <value>動作</value>
+  </data>
+  <data name="CodeQuality.MainView.DependencyMatrix" xml:space="preserve">
+    <value>相依性矩陣</value>
+  </data>
+  <data name="CodeQuality.MainView.SelectAssembly" xml:space="preserve">
+    <value>請選取組件...</value>
+  </data>
+  <data name="Profiler.QueryView.Columns" xml:space="preserve">
+    <value>欄</value>
+  </data>
+  <data name="SourceAnalysis.ModifyStyleCopSettings" xml:space="preserve">
+    <value>修改 StyleCop 設定</value>
+  </data>
+  <data name="Global.Search" xml:space="preserve">
+    <value>搜尋</value>
+  </data>
+  <data name="SettingsEditor.Name" xml:space="preserve">
+    <value>名稱</value>
+  </data>
+  <data name="SettingsEditor.Scope" xml:space="preserve">
+    <value>範圍</value>
+  </data>
+  <data name="WpfDesign.ObjectEditor.New" xml:space="preserve">
+    <value>新增...</value>
+  </data>
+  <data name="AvalonEdit.ContextActions.Enable" xml:space="preserve">
+    <value>啟用內容動作</value>
+  </data>
+  <data name="IconEditor.PickFormat.Title" xml:space="preserve">
+    <value>影像格式</value>
+  </data>
+  <data name="IconEditor.ViewOnColor" xml:space="preserve">
+    <value>在色彩上檢視：</value>
+  </data>
+  <data name="IconEditor.RightClickHint" xml:space="preserve">
+    <value>以滑鼠右鍵按一下個別影像以查看更多選項。</value>
+  </data>
+  <data name="Data.DatabasesTreeView.AddDatabase" xml:space="preserve">
+    <value>新增資料庫...</value>
+  </data>
+  <data name="Data.DatabasesTreeView.Databases" xml:space="preserve">
+    <value>資料庫</value>
+  </data>
+  <data name="Debugger.Visualizer.Collection" xml:space="preserve">
+    <value>集合視覺化工具</value>
+  </data>
+  <data name="Debugger.Visualizer.Text" xml:space="preserve">
+    <value>文字視覺化工具</value>
+  </data>
+  <data name="Debugger.Visualizer.ObjectGraph" xml:space="preserve">
+    <value>物件圖形視覺化工具</value>
+  </data>
+  <data name="Debugger.ObjectGraph.Plus" xml:space="preserve">
+    <value>加號</value>
+  </data>
+  <data name="Debugger.ObjectGraph.Icon" xml:space="preserve">
+    <value>圖示</value>
+  </data>
+  <data name="Debugger.Tooltip.Text" xml:space="preserve">
+    <value>文字</value>
+  </data>
+  <data name="AspNetMvc.AddController.Title" xml:space="preserve">
+    <value>新增控制器</value>
+  </data>
+  <data name="AspNetMvc.AddController.Name" xml:space="preserve">
+    <value>控制器名稱：</value>
+  </data>
+  <data name="AspNetMvc.AddController.Template" xml:space="preserve">
+    <value>範本：</value>
+  </data>
+  <data name="CSharpBinding.SearchForIssues.Issues" xml:space="preserve">
+    <value>問題：</value>
+  </data>
+  <data name="CSharpBinding.IssueOptions.Enable" xml:space="preserve">
+    <value>啟用程式碼檢查</value>
+  </data>
+  <data name="UpdatesOptions.Updates" xml:space="preserve">
+    <value>更新</value>
+  </data>
+  <data name="UpdatesOptions.AutoCheckWeekly" xml:space="preserve">
+    <value>每週自動檢查一次更新</value>
+  </data>
+  <data name="UpdatesOptions.CheckNow" xml:space="preserve">
+    <value>立即檢查</value>
+  </data>
+  <data name="DotNetSdk.Description" xml:space="preserve">
+    <value>選擇用來編譯、偵錯及執行專案檔測試的已安裝 .NET SDK。預設為系統安裝的 SDK。</value>
+  </data>
+  <data name="DotNetSdk.AddCustomPath" xml:space="preserve">
+    <value>新增自訂路徑...</value>
+  </data>
+  <data name="ProjectAndSolution.BuildVerbosity" xml:space="preserve">
+    <value>建置詳細程度：</value>
+  </data>
+  <data name="DebugOptions.ClassLibraryHint" xml:space="preserve">
+    <value>類別庫無法自行啟動。請選擇「啟動外部程式」並選取載入此類別庫的應用程式。</value>
+  </data>
+  <data name="ServiceReference.SvcUtilConfiguration" xml:space="preserve">
+    <value>SvcUtil 組態</value>
+  </data>
 </root>

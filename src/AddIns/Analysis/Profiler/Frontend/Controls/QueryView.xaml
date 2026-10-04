@@ -1,6 +1,7 @@
 ﻿<UserControl x:Class="ICSharpCode.Profiler.Controls.QueryView" x:Name="queryView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
              xmlns:theme="clr-namespace:Microsoft.Windows.Themes;assembly=PresentationFramework.Aero"
              xmlns:local="clr-namespace:ICSharpCode.Profiler.Controls">
 	<UserControl.Resources>
@@ -219,7 +220,7 @@
                                 IsHitTestVisible="false" 
                                 SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" 
                                 ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" 
-                                Content="Columns" />
+                                Content="{core:Localize Profiler.QueryView.Columns}" />
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="HasDropShadow" SourceName="PART_Popup" Value="true">

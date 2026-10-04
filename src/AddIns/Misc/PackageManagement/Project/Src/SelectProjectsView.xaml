@@ -10,7 +10,7 @@
 	mc:Ignorable="d"
 	WindowStartupLocation="CenterOwner"
  	Style="{x:Static core:GlobalStyles.DialogWindowStyle}"
-	Title="Select Projects"
+	Title="{core:Localize PackageManagement.SelectProjects.Title}"
 	Height="300"
 	Width="480"
 	MinHeight="300"
@@ -45,7 +45,7 @@
 		<TextBlock
 			Grid.Row="0"
 			Margin="4"
-			Text="Install the package into the following projects:"/>
+			Text="{core:Localize PackageManagement.SelectProjects.Prompt}"/>
 		<ListBox
 			Grid.Row="1"
 			ItemTemplate="{StaticResource ListBoxItemTemplate}"

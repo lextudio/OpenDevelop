@@ -3,6 +3,7 @@
 	x:Class="ICSharpCode.SettingsEditor.SettingsView"
 	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
 	xmlns:sd="clr-namespace:ICSharpCode.SharpDevelop;assembly=ICSharpCode.SharpDevelop"
 	xmlns:local="clr-namespace:ICSharpCode.SettingsEditor">
 
@@ -36,7 +37,7 @@
 					</DataGridTemplateColumn.CellTemplate>
 				</DataGridTemplateColumn>
 				
-				<DataGridTemplateColumn Header="Scope" Width="150">
+				<DataGridTemplateColumn Header="{core:Localize SettingsEditor.Scope}" Width="150">
 					<DataGridTemplateColumn.CellEditingTemplate>
 						<DataTemplate>
 							<ComboBox 

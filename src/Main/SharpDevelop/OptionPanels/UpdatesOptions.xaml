@@ -2,15 +2,16 @@
                  x:ClassModifier="internal"
                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:core="http://icsharpcode.net/sharpdevelop/core"
                  xmlns:gui="clr-namespace:ICSharpCode.SharpDevelop.Gui;assembly=ICSharpCode.SharpDevelop">
     <StackPanel Margin="8">
-        <TextBlock Text="Updates" FontWeight="SemiBold" />
+        <TextBlock Text="{core:Localize UpdatesOptions.Updates}" FontWeight="SemiBold" />
         <CheckBox x:Name="automaticCheckBox"
                   Margin="0,10,0,0"
-                  Content="Automatically check for updates once a week" />
+                  Content="{core:Localize UpdatesOptions.AutoCheckWeekly}" />
         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
             <Button x:Name="checkNowButton"
-                    Content="Check Now"
+                    Content="{core:Localize UpdatesOptions.CheckNow}"
                     Padding="10,3"
                     Click="CheckNowButton_Click" />
             <TextBlock x:Name="checkResultText"

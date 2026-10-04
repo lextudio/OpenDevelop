@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:core="http://icsharpcode.net/sharpdevelop/core"
         xmlns:Microsoft_Windows_Themes="clr-namespace:Microsoft.Windows.Themes;assembly=PresentationFramework.Aero"
-        Title="Collection visualizer" Height="350" MaxHeight="350" Width="600" Style="{x:Static core:GlobalStyles.WindowStyle}">
+        Title="{core:Localize Debugger.Visualizer.Collection}" Height="350" MaxHeight="350" Width="600" Style="{x:Static core:GlobalStyles.WindowStyle}">
 <Window.Resources>
 	<ResourceDictionary>
 	  <ResourceDictionary.MergedDictionaries>

@@ -88,7 +88,7 @@
 						Text="{Binding StartURL.Value, UpdateSourceTrigger=PropertyChanged}"></TextBox>
 					<TextBlock x:Name="ClassLibraryHint" Grid.Row="3" Grid.ColumnSpan="4" Margin="5,2,5,5"
 						Visibility="Collapsed" TextWrapping="Wrap"
-						Text="A class library cannot start by itself. Choose Start external program and select an application that loads this library." />
+						Text="{core:Localize DebugOptions.ClassLibraryHint}" />
 				</Grid>
 			</GroupBox>
 			

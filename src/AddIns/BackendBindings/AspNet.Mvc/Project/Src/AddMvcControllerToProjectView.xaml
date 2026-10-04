@@ -4,7 +4,7 @@
 	xmlns:core="http://icsharpcode.net/sharpdevelop/core"
 	xmlns:mvc="clr-namespace:ICSharpCode.AspNet.Mvc"
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-	Title="Add Controller"
+	Title="{core:Localize AspNetMvc.AddController.Title}"
 	Style="{x:Static core:GlobalStyles.DialogWindowStyle}"
 	mvc:CloseWindowBehaviour.IsClosed="{Binding IsClosed}"
 	WindowStartupLocation="CenterOwner"
@@ -34,7 +34,7 @@
 	
 		<TextBlock
 			Margin="4"
-			Text="Controller Name:"/>
+			Text="{core:Localize AspNetMvc.AddController.Name}"/>
 		<TextBox
 			x:Name="ControllerNameTextBox"
 			Grid.Column="1"
@@ -43,7 +43,7 @@
 		<TextBlock
 			Grid.Row="1"
 			Margin="4"
-			Text="Template:"/>
+			Text="{core:Localize AspNetMvc.AddController.Template}"/>
 		<ComboBox
 			Margin="2"
 			Grid.Column="1"

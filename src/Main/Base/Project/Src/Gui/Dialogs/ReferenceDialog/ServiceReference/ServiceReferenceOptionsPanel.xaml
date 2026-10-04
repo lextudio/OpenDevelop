@@ -8,7 +8,7 @@
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 	xmlns:local="clr-namespace:ICSharpCode.SharpDevelop.Gui.OptionPanels">
 	<StackPanel>
-		<GroupBox Header="SvcUtil Configuration">
+		<GroupBox Header="{core:Localize ServiceReference.SvcUtilConfiguration}">
 			<Grid>
 				<Grid.ColumnDefinitions>
 					<ColumnDefinition Width="Auto"/>
@@ -16,7 +16,7 @@
 					<ColumnDefinition Width="Auto"/>
 				</Grid.ColumnDefinitions>
 				
-				<Label Content="Path:"/>
+				<Label Content="{core:Localize Global.Path}"/>
 				<TextBox
 					Grid.Column="1"
 					Text="{Binding SvcUtilPath}"/>
