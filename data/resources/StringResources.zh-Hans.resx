@@ -9699,4 +9699,145 @@ SharpDevelop 编译资源时发现不对应：资源名称不是文件名，而�
   <data name="NewItem.AllTypes" xml:space="preserve">
     <value>所有项类型</value>
   </data>
+  <data name="FormsDesigner.DesignerStartupFailed" xml:space="preserve">
+    <value>无法启动 WinForms 设计器：{0}</value>
+  </data>
+  <data name="FormsDesigner.LoadDesignerFailed" xml:space="preserve">
+    <value>载入设计器失败：{0}</value>
+  </data>
+  <data name="WpfDesign.Status.StartingHost" xml:space="preserve">
+    <value>正在启动 {0} 设计宿主…</value>
+  </data>
+  <data name="WpfDesign.Status.HostError" xml:space="preserve">
+    <value>{0} 设计宿主：{1}</value>
+  </data>
+  <data name="WpfDesign.Status.OperationRejected" xml:space="preserve">
+    <value>该操作被拒绝。</value>
+  </data>
+  <data name="WpfDesign.Status.NothingRenderedYet" xml:space="preserve">
+    <value>{0} 设计宿主：尚未渲染任何内容。</value>
+  </data>
+  <data name="WpfDesign.Status.RenderedByHost" xml:space="preserve">
+    <value>由 {0} 设计宿主渲染（{1}×{2}）。</value>
+  </data>
+  <data name="WpfDesign.Status.DropRejected" xml:space="preserve">
+    <value>该拖放被拒绝。</value>
+  </data>
+  <data name="Global.Designer.UnsupportedOnThisOS" xml:space="preserve">
+    <value>此项目使用 {0}，它只能在 Windows 上运行，因此在此操作系统上不支持其设计视图。{1} 项目可在此处设计。</value>
+  </data>
+  <data name="CodeQuality.MainView.AddAssembly" xml:space="preserve">
+    <value>添加程序集</value>
+  </data>
+  <data name="CodeQuality.MainView.AddCurrentProjectAssembly" xml:space="preserve">
+    <value>添加当前项目程序集</value>
+  </data>
+  <data name="Profiler.Window.RunAndProfile" xml:space="preserve">
+    <value>运行并分析</value>
+  </data>
+  <data name="Profiler.Window.StopAndShutdown" xml:space="preserve">
+    <value>停止并关闭</value>
+  </data>
+  <data name="Profiler.Window.LoadSession" xml:space="preserve">
+    <value>加载会话</value>
+  </data>
+  <data name="Debugger.ObjectGraph.Expression" xml:space="preserve">
+    <value>表达式：</value>
+  </data>
+  <data name="Debugger.ObjectGraph.Layout" xml:space="preserve">
+    <value>布局：</value>
+  </data>
+  <data name="Debugger.ObjectGraph.Zoom" xml:space="preserve">
+    <value>缩放：</value>
+  </data>
+  <data name="Debugger.ObjectGraph.Error" xml:space="preserve">
+    <value>错误：</value>
+  </data>
+  <data name="Debugger.Visualizers.SelectDisplayedColumns" xml:space="preserve">
+    <value>选择要显示的列</value>
+  </data>
+  <data name="AvalonEdit.ContextActions.AvailableActions" xml:space="preserve">
+    <value>可用操作 (Ctrl+T)</value>
+  </data>
+  <data name="Data.AddConnection" xml:space="preserve">
+    <value>添加连接...</value>
+  </data>
+  <data name="Data.TreeView.Local" xml:space="preserve">
+    <value>本地</value>
+  </data>
+  <data name="Data.TreeView.Tables" xml:space="preserve">
+    <value>表</value>
+  </data>
+  <data name="Data.TreeView.Views" xml:space="preserve">
+    <value>视图</value>
+  </data>
+  <data name="Data.TreeView.Procedures" xml:space="preserve">
+    <value>存储过程</value>
+  </data>
+  <data name="Data.ConnectionWizard.DatabaseDriver" xml:space="preserve">
+    <value>数据库驱动程序：</value>
+  </data>
+  <data name="Data.ConnectionWizard.DataSource" xml:space="preserve">
+    <value>数据源：</value>
+  </data>
+  <data name="Data.ConnectionWizard.Database" xml:space="preserve">
+    <value>数据库：</value>
+  </data>
+  <data name="Data.DemoApp.CreateEDM" xml:space="preserve">
+    <value>创建 EDM</value>
+  </data>
+  <data name="Data.EDMDesigner.ChooseConnection.Question" xml:space="preserve">
+    <value>您的应用程序应使用哪个数据库连接？</value>
+  </data>
+  <data name="Data.EDMDesigner.NewConnection" xml:space="preserve">
+    <value>新建连接...</value>
+  </data>
+  <data name="Data.EDMDesigner.EntityConnectionString" xml:space="preserve">
+    <value>实体连接字符串：</value>
+  </data>
+  <data name="Data.EDMDesigner.ChooseObjects.Question" xml:space="preserve">
+    <value>您要将哪些数据库对象包含在模型中？</value>
+  </data>
+  <data name="Data.EDMDesigner.ModelNamespace" xml:space="preserve">
+    <value>模型命名空间：</value>
+  </data>
+  <data name="Data.EDMDesigner.ObjectContextName" xml:space="preserve">
+    <value>对象上下文名称：</value>
+  </data>
+  <data name="Data.EDMDesigner.ErrorDuringGeneration" xml:space="preserve">
+    <value>生成实体数据模型时发生以下错误：</value>
+  </data>
+  <data name="Data.SQLServer.UserId" xml:space="preserve">
+    <value>用户 ID：</value>
+  </data>
+  <data name="Data.SQLServer.Password" xml:space="preserve">
+    <value>密码：</value>
+  </data>
+  <data name="IconEditor.PickFormat.Width" xml:space="preserve">
+    <value>_宽度:</value>
+  </data>
+  <data name="IconEditor.PickFormat.Height" xml:space="preserve">
+    <value>_高度:</value>
+  </data>
+  <data name="IconEditor.PickFormat.Colors" xml:space="preserve">
+    <value>_颜色:</value>
+  </data>
+  <data name="IconEditor.PickFormat.Monochrome" xml:space="preserve">
+    <value>单色</value>
+  </data>
+  <data name="IconEditor.PickFormat.Depth4" xml:space="preserve">
+    <value>4 位</value>
+  </data>
+  <data name="IconEditor.PickFormat.Depth8" xml:space="preserve">
+    <value>8 位</value>
+  </data>
+  <data name="IconEditor.PickFormat.Depth24" xml:space="preserve">
+    <value>24 位</value>
+  </data>
+  <data name="IconEditor.PickFormat.Depth32" xml:space="preserve">
+    <value>32 位</value>
+  </data>
+  <data name="Global.OK" xml:space="preserve">
+    <value>确定</value>
+  </data>
 </root>

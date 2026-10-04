@@ -559,7 +559,7 @@
     <value>所選內容包含"continue"陳述式,但未包含封閉陳述式。請更改選擇！</value>
   </data>
   <data name="AddIns.SharpRefactoring.ExtractMethod.ContainsGotoError" xml:space="preserve">
-    <value>所選內容中的goto陳述式引用了所選內容外的標籤。請更改選擇！</value>
+    <value>所選內容中的goto陳述式參照了所選內容外的標籤。請更改選擇！</value>
   </data>
   <data name="AddIns.SharpRefactoring.ExtractMethod.EnterName" xml:space="preserve">
     <value>輸入新方法的名稱</value>
@@ -1344,7 +1344,7 @@
     <value>程式碼品質分析</value>
   </data>
   <data name="CSharpBinding.GenerateNewHandlerInstructions" xml:space="preserve">
-    <value>插入對特定方法的引用;可再按跳格鍵(Tab)或回車鍵(Enter)來新增新的方法.</value>
+    <value>插入對特定方法的參考;可再按跳格鍵(Tab)或回車鍵(Enter)來新增新的方法.</value>
   </data>
   <data name="CSharpBinding.InsertAnonymousMethod" xml:space="preserve">
     <value>插入無參數未命名方法</value>
@@ -2346,7 +2346,7 @@
     <value>常規</value>
   </data>
   <data name="Dialog.ProjectOptions.BuildOptions.NoCorlib" xml:space="preserve">
-    <value>不引用mscorlib.dll(&amp;M)</value>
+    <value>不參考mscorlib.dll(&amp;M)</value>
   </data>
   <data name="Dialog.ProjectOptions.BuildOptions.OptimizeCode" xml:space="preserve">
     <value>優化程式碼(&amp;P)</value>
@@ -2430,7 +2430,7 @@
     <value>發布</value>
   </data>
   <data name="Dialog.ProjectOptions.ReferencePaths" xml:space="preserve">
-    <value>引用路徑</value>
+    <value>參考路徑</value>
   </data>
   <data name="Dialog.ProjectOptions.ReferencePaths.AddPath" xml:space="preserve">
     <value>新增路徑(&amp;A)</value>
@@ -2547,13 +2547,13 @@
     <value>.NET集合瀏覽器</value>
   </data>
   <data name="Dialog.SelectReferenceDialog.DialogName" xml:space="preserve">
-    <value>新增引用</value>
+    <value>新增參考</value>
   </data>
   <data name="Dialog.SelectReferenceDialog.GacReferencePanel.ChooseSpecificAssemblyVersion" xml:space="preserve">
     <value>選擇特定組件的版本</value>
   </data>
   <data name="Dialog.SelectReferenceDialog.GacReferencePanel.ReferenceHeader" xml:space="preserve">
-    <value>引用名稱</value>
+    <value>參考名稱</value>
   </data>
   <data name="Dialog.SelectReferenceDialog.GacReferencePanel.VersionHeader" xml:space="preserve">
     <value>版本</value>
@@ -2574,10 +2574,10 @@
     <value>專案</value>
   </data>
   <data name="Dialog.SelectReferenceDialog.ReferenceHeader" xml:space="preserve">
-    <value>引用名稱</value>
+    <value>參考名稱</value>
   </data>
   <data name="Dialog.SelectReferenceDialog.ReferencesLabel" xml:space="preserve">
-    <value>選擇引用</value>
+    <value>選擇參考</value>
   </data>
   <data name="Dialog.SelectReferenceDialog.SelectButton" xml:space="preserve">
     <value>選擇(&amp;E)</value>
@@ -2919,10 +2919,10 @@
     <value>在檔案"{1}"中沒有找到資源"{0}" .</value>
   </data>
   <data name="Hornung.ResourceToolkit.ReferencesToMissingKeys" xml:space="preserve">
-    <value>引用資源缺失</value>
+    <value>參考資源缺失</value>
   </data>
   <data name="Hornung.ResourceToolkit.ReferencesToResource" xml:space="preserve">
-    <value>引用到${ResourceKey} (在${ResourceFileName}中)</value>
+    <value>參考到${ResourceKey} (在${ResourceFileName}中)</value>
   </data>
   <data name="Hornung.ResourceToolkit.RenameKeyDefinitionNotFoundWarning" xml:space="preserve">
     <value>沒有查到該資源名稱或已被改名。</value>
@@ -3322,7 +3322,7 @@
     <value>發送到Python控制臺</value>
   </data>
   <data name="ICSharpCode.PythonBinding.UnknownTypeName" xml:space="preserve">
-    <value>找不到型別'{0}'。是否缺少組件引用?</value>
+    <value>找不到型別'{0}'。是否缺少組件參考?</value>
   </data>
   <data name="ICSharpCode.Refactoring.NoClassOrOverridableSymbolUnderCursorError" xml:space="preserve">
     <value>選中的物件不是類或者可多載的成員方法，因此無法顯示派生屬性。</value>
@@ -3440,7 +3440,7 @@
     <value>無法找到專案檔案</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.ProjectBrowser.ReferencesNodeText" xml:space="preserve">
-    <value>引用</value>
+    <value>參考</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Commands.ProjectBrowser.RefreshWebReference.ReadServiceDescriptionError" xml:space="preserve">
     <value>無法讀取Web服務的描述.地址='{0}'</value>
@@ -3726,7 +3726,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
 說明：此例外不影響原始碼。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.LoadErrorCheckSourceCodeForErrors" xml:space="preserve">
-    <value>載入設計器出錯. 請檢查源碼是否有符號錯誤, 以及是否所有有引用都仍然存在.</value>
+    <value>載入設計器出錯. 請檢查源碼是否有符號錯誤, 以及是否所有參考都仍然存在.</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.FormDesigner.ToolboxProvider.CantLoadSidbarComponentLibraryWarning" xml:space="preserve">
     <value>無法裝載側邊工具列的組件庫.
@@ -3749,7 +3749,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>正在建置</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.AddWebReferenceDialog.DialogTitle" xml:space="preserve">
-    <value>新增Web引用</value>
+    <value>新增Web參考</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.AddWebReferenceDialog.DocumentationProperty" xml:space="preserve">
     <value>文件</value>
@@ -3764,7 +3764,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>命名空間包含無效字元。命名空間只能包含字元，數字或下劃線。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.AddWebReferenceDialog.InvalidReferenceNameError" xml:space="preserve">
-    <value>引用名稱只能包含有效字元。</value>
+    <value>參考名稱只能包含有效字元。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.AddWebReferenceDialog.NamespaceLabel" xml:space="preserve">
     <value>命名空間(&amp;N):</value>
@@ -3776,7 +3776,7 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>屬性</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.AddWebReferenceDialog.ReferenceNameLabel" xml:space="preserve">
-    <value>引用名稱(&amp;R):</value>
+    <value>參考名稱(&amp;R):</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Gui.Dialogs.AddWebReferenceDialog.RefreshButtonTooltip" xml:space="preserve">
     <value>刷新</value>
@@ -3934,31 +3934,31 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>別名</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.Aliases.Description" xml:space="preserve">
-    <value>用逗號分隔的別名清單.如果你需要引用有類名和命名空間名稱衝突的組件(也就是僅僅是版本號不同的組件),請使用別名(aliases).</value>
+    <value>用逗號分隔的別名清單.如果你需要參考有類名和命名空間名稱衝突的組件(也就是僅僅是版本號不同的組件),請使用別名(aliases).</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.Culture" xml:space="preserve">
     <value>文化</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.Culture.Description" xml:space="preserve">
-    <value>此引用支援的語言</value>
+    <value>此參考支援的語言</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.EmbedInteropTypes" xml:space="preserve">
     <value>嵌入互操作(interop)型別</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.EmbedInteropTypes.Description" xml:space="preserve">
-    <value>請指定是否將定義在引用的組件中的COM交互型別嵌入到目標組件中</value>
+    <value>請指定是否將定義在參考的組件中的COM交互型別嵌入到目標組件中</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.LocalCopy" xml:space="preserve">
     <value>本地複製</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.LocalCopy.Description" xml:space="preserve">
-    <value>如果正確，引用的組件被複製到輸出路徑</value>
+    <value>如果正確，參考的組件被複製到輸出路徑</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.Name" xml:space="preserve">
     <value>(名稱)</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.Name.Description" xml:space="preserve">
-    <value>引用名稱</value>
+    <value>參考名稱</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.PublicKeyToken" xml:space="preserve">
     <value>公共密鑰令牌</value>
@@ -3970,25 +3970,25 @@ THIS DOES NOT AFFECT THE SOURCE CODE.
     <value>特定版本</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.SpecificVersion.Description" xml:space="preserve">
-    <value>指引用是否屬於某一特定版本的組件</value>
+    <value>指此參考是否屬於某一特定版本的組件</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.UrlBehaviour" xml:space="preserve">
     <value>URL地址</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.UrlBehaviour.Description" xml:space="preserve">
-    <value>Web引用URL行為</value>
+    <value>Web參考URL行為</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.Version" xml:space="preserve">
     <value>版本</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.Version.Description" xml:space="preserve">
-    <value>引用的主版本號,次版本號,修正號和建置號</value>
+    <value>參考的主版本號,次版本號,修正號和建置號</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.WebReferenceUrl" xml:space="preserve">
-    <value>Web引用URL</value>
+    <value>Web參考URL</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.WebReferenceUrl.Description" xml:space="preserve">
-    <value>Web引用URL</value>
+    <value>Web參考URL</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Templates.CombineDescriptor.OverwriteProjectQuestion" xml:space="preserve">
     <value>在路徑${combineLocation}上已存在一個方案的檔案, 您想覆寫已存在的檔案嗎?</value>
@@ -4682,7 +4682,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>顯示私有成員(&amp;R)</value>
   </data>
   <data name="MainWindow.Windows.ClassBrowser.ClassViewSettings.ShowProjectReferences.Label" xml:space="preserve">
-    <value>查看專案引用(&amp;P)</value>
+    <value>查看專案參考(&amp;P)</value>
   </data>
   <data name="MainWindow.Windows.ClassBrowser.ClassViewSettings.ShowProtectedMembers.Label" xml:space="preserve">
     <value>顯示保護成員(&amp;O)</value>
@@ -5210,7 +5210,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>轉到定義(&amp;G)</value>
   </data>
   <data name="NUnitPad.NUnitPadContent.ReferenceItem" xml:space="preserve">
-    <value>給當前選中專案新增一個引用到NUnit</value>
+    <value>給當前選中專案新增一個參考到NUnit</value>
   </data>
   <data name="NUnitPad.NUnitPadContent.RefreshItem" xml:space="preserve">
     <value>重新裝載測試組件</value>
@@ -5243,7 +5243,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>讀取集合...</value>
   </data>
   <data name="ObjectBrowser.Menu.LoadRef" xml:space="preserve">
-    <value>讀取引用裝配</value>
+    <value>讀取參考組件</value>
   </data>
   <data name="ObjectBrowser.Menu.LoadStd" xml:space="preserve">
     <value>讀取標準裝配</value>
@@ -5294,10 +5294,10 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>新增</value>
   </data>
   <data name="ProjectComponent.ContextMenu.AddReference" xml:space="preserve">
-    <value>新增引用</value>
+    <value>新增參考</value>
   </data>
   <data name="ProjectComponent.ContextMenu.AddWebReference" xml:space="preserve">
-    <value>新增Web引用</value>
+    <value>新增Web參考</value>
   </data>
   <data name="ProjectComponent.ContextMenu.Build" xml:space="preserve">
     <value>建置(&amp;U)</value>
@@ -5390,7 +5390,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>重新建置(&amp;E)</value>
   </data>
   <data name="ProjectComponent.ContextMenu.RefreshWebReference" xml:space="preserve">
-    <value>刷新網路引用</value>
+    <value>重新整理Web參考</value>
   </data>
   <data name="ProjectComponent.ContextMenu.Rename" xml:space="preserve">
     <value>重命名(&amp;N)</value>
@@ -5408,10 +5408,10 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>新資料夾</value>
   </data>
   <data name="ProjectComponent.ProjectComponent.RemoveAllWebReferences.RemoveAllWebReferencesQuestion" xml:space="preserve">
-    <value>你要刪除專案{0}中的所有Web引用嗎？</value>
+    <value>你要刪除專案{0}中的所有Web參考嗎？</value>
   </data>
   <data name="ProjectComponent.RemoveAllWebReferences.Title" xml:space="preserve">
-    <value>刪除所有Web引用</value>
+    <value>刪除所有Web參考</value>
   </data>
   <data name="RegExpTk.MainDialog.Assemblies" xml:space="preserve">
     <value>組件(*.dll)|*.dll</value>
@@ -5724,16 +5724,16 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>尋找派生符號</value>
   </data>
   <data name="SharpDevelop.Refactoring.FindingReferences" xml:space="preserve">
-    <value>尋找引用...</value>
+    <value>尋找參考...</value>
   </data>
   <data name="SharpDevelop.Refactoring.FindOverridesCommand" xml:space="preserve">
     <value>尋找多載方法(&amp;O)</value>
   </data>
   <data name="SharpDevelop.Refactoring.FindReferences" xml:space="preserve">
-    <value>尋找引用</value>
+    <value>尋找參考</value>
   </data>
   <data name="SharpDevelop.Refactoring.FindReferencesCommand" xml:space="preserve">
-    <value>尋找引用</value>
+    <value>尋找參考</value>
   </data>
   <data name="SharpDevelop.Refactoring.GoToBaseClassCommand" xml:space="preserve">
     <value>轉到基類(&amp;B)</value>
@@ -5763,7 +5763,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>名稱必須以字母或下劃線打頭</value>
   </data>
   <data name="SharpDevelop.Refactoring.LoadSolutionProjectsThreadRunning" xml:space="preserve">
-    <value>在所有檔案被解析完之前不能對尋找引用進行處理</value>
+    <value>在所有檔案被解析完之前不能對尋找參考進行處理</value>
   </data>
   <data name="SharpDevelop.Refactoring.MoveClassToFile" xml:space="preserve">
     <value>移動類到檔案'${FileName}'</value>
@@ -5772,7 +5772,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>覆寫${Name}</value>
   </data>
   <data name="SharpDevelop.Refactoring.ReferencesTo" xml:space="preserve">
-    <value>引用${Name}</value>
+    <value>參考${Name}</value>
   </data>
   <data name="SharpDevelop.Refactoring.RemoveUnusedImports" xml:space="preserve">
     <value>刪除未使用的import陳述式(&amp;U)</value>
@@ -7714,7 +7714,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>如果選擇了帶參數的構造函數，點擊確定後請填寫參數，然後繼續。</value>
   </data>
   <data name="ComponentInspector.FindDialog.AssembliesRadioButton" xml:space="preserve">
-    <value>程序集/型別</value>
+    <value>組件/型別</value>
   </data>
   <data name="ComponentInspector.InspectorMenu.TypeHandlerOptionsPanel.Title" xml:space="preserve">
     <value>型別處理程序</value>
@@ -7837,7 +7837,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>啟用更改標記邊距</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.General.OpenLensCheckBox" xml:space="preserve">
-    <value>顯示 OpenLens 引用/實作計數(&amp;O)</value>
+    <value>顯示 OpenLens 參考/實作計數(&amp;O)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.TextEditor.Markers.HighlightCurrentLineCheckBox" xml:space="preserve">
     <value>突出顯示當前行</value>
@@ -7849,10 +7849,10 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>顯示隱藏的定義(&amp;H)（僅括號）</value>
   </data>
   <data name="Dialog.ProjectOptions.AssemblyInfo.AssemblyInfoNotFound" xml:space="preserve">
-    <value>未找到程序集資訊文件。請確保專案包含程序集資訊文件。</value>
+    <value>未找到組件資訊文件。請確保專案包含組件資訊文件。</value>
   </data>
   <data name="Dialog.ProjectOptions.AssemblyInfo.AssemblyVersion" xml:space="preserve">
-    <value>程序集版本：</value>
+    <value>組件版本：</value>
   </data>
   <data name="Dialog.ProjectOptions.AssemblyInfo.ClsCompliant" xml:space="preserve">
     <value>符合 CLS</value>
@@ -7876,7 +7876,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>GUID：</value>
   </data>
   <data name="Dialog.ProjectOptions.AssemblyInfo.IncorrectValue" xml:space="preserve">
-    <value>某個程序集資訊值不正確。</value>
+    <value>某個組件資訊值不正確。</value>
   </data>
   <data name="Dialog.ProjectOptions.AssemblyInfo.InformationalVersion" xml:space="preserve">
     <value>資訊版本：</value>
@@ -7888,7 +7888,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>JIT 跟蹤</value>
   </data>
   <data name="Dialog.ProjectOptions.AssemblyInfo.MakeAssemblyCOMVisible" xml:space="preserve">
-    <value>使程序集對 COM 可見</value>
+    <value>使組件對 COM 可見</value>
   </data>
   <data name="Dialog.ProjectOptions.AssemblyInfo.NeutralLanguage" xml:space="preserve">
     <value>非特定語言：</value>
@@ -7954,7 +7954,7 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>在光標位置找不到型別定義或型別成員。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Dom.AssemblyInvalid" xml:space="preserve">
-    <value>{0} 不是有效的 .NET 程序集。</value>
+    <value>{0} 不是有效的 .NET 組件。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Dom.AssemblyNotAccessible" xml:space="preserve">
     <value>{0} 無法存取或已不存在。</value>
@@ -7963,10 +7963,10 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>嘗試刷新設計器內容時發生一個或多個錯誤。這可能是由於未處理的例外所致。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.ReferenceOutputAssembly" xml:space="preserve">
-    <value>引用程序集</value>
+    <value>參考組件</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Internal.Project.ProjectReference.ReferenceOutputAssembly.Description" xml:space="preserve">
-    <value>如果設定為 false，此引用僅指定生成順序依賴關係，而不引用程序集的輸出。</value>
+    <value>如果設定為 false，此參考僅指定生成順序依賴關係，而不參考組件的輸出。</value>
   </data>
   <data name="ICSharpCode.SharpDevelop.Project.CloseSolution" xml:space="preserve">
     <value>關閉方案</value>
@@ -8005,13 +8005,13 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
     <value>新增到工作區</value>
   </data>
   <data name="MainWindow.Windows.ClassBrowser.OpenAssemblyButton.ToolTip" xml:space="preserve">
-    <value>打開程序集</value>
+    <value>打開組件</value>
   </data>
   <data name="MainWindow.Windows.ClassBrowser.OpenAssemblyFromFile" xml:space="preserve">
-    <value>從文件打開程序集...</value>
+    <value>從文件打開組件...</value>
   </data>
   <data name="MainWindow.Windows.ClassBrowser.OpenAssemblyFromGAC" xml:space="preserve">
-    <value>從 GAC 打開程序集...</value>
+    <value>從 GAC 打開組件...</value>
   </data>
   <data name="MainWindow.Windows.ClassBrowser.Workspace" xml:space="preserve">
     <value>工作區 {0}</value>
@@ -9698,5 +9698,146 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
   </data>
   <data name="NewItem.AllTypes" xml:space="preserve">
     <value>所有項目類型</value>
+  </data>
+  <data name="FormsDesigner.DesignerStartupFailed" xml:space="preserve">
+    <value>無法啟動 WinForms 設計器：{0}</value>
+  </data>
+  <data name="FormsDesigner.LoadDesignerFailed" xml:space="preserve">
+    <value>載入設計器失敗：{0}</value>
+  </data>
+  <data name="WpfDesign.Status.StartingHost" xml:space="preserve">
+    <value>正在啟動 {0} 設計宿主…</value>
+  </data>
+  <data name="WpfDesign.Status.HostError" xml:space="preserve">
+    <value>{0} 設計宿主：{1}</value>
+  </data>
+  <data name="WpfDesign.Status.OperationRejected" xml:space="preserve">
+    <value>該操作被拒絕。</value>
+  </data>
+  <data name="WpfDesign.Status.NothingRenderedYet" xml:space="preserve">
+    <value>{0} 設計宿主：尚未算繪任何內容。</value>
+  </data>
+  <data name="WpfDesign.Status.RenderedByHost" xml:space="preserve">
+    <value>由 {0} 設計宿主算繪（{1}×{2}）。</value>
+  </data>
+  <data name="WpfDesign.Status.DropRejected" xml:space="preserve">
+    <value>該拖放被拒絕。</value>
+  </data>
+  <data name="Global.Designer.UnsupportedOnThisOS" xml:space="preserve">
+    <value>此專案使用 {0}，它只能在 Windows 上執行，因此在此作業系統上不支援其設計檢視。{1} 專案可在此處設計。</value>
+  </data>
+  <data name="CodeQuality.MainView.AddAssembly" xml:space="preserve">
+    <value>新增組件</value>
+  </data>
+  <data name="CodeQuality.MainView.AddCurrentProjectAssembly" xml:space="preserve">
+    <value>新增目前專案組件</value>
+  </data>
+  <data name="Profiler.Window.RunAndProfile" xml:space="preserve">
+    <value>執行並分析</value>
+  </data>
+  <data name="Profiler.Window.StopAndShutdown" xml:space="preserve">
+    <value>停止並關閉</value>
+  </data>
+  <data name="Profiler.Window.LoadSession" xml:space="preserve">
+    <value>載入工作階段</value>
+  </data>
+  <data name="Debugger.ObjectGraph.Expression" xml:space="preserve">
+    <value>運算式：</value>
+  </data>
+  <data name="Debugger.ObjectGraph.Layout" xml:space="preserve">
+    <value>版面配置：</value>
+  </data>
+  <data name="Debugger.ObjectGraph.Zoom" xml:space="preserve">
+    <value>縮放：</value>
+  </data>
+  <data name="Debugger.ObjectGraph.Error" xml:space="preserve">
+    <value>錯誤：</value>
+  </data>
+  <data name="Debugger.Visualizers.SelectDisplayedColumns" xml:space="preserve">
+    <value>選擇要顯示的欄</value>
+  </data>
+  <data name="AvalonEdit.ContextActions.AvailableActions" xml:space="preserve">
+    <value>可用動作 (Ctrl+T)</value>
+  </data>
+  <data name="Data.AddConnection" xml:space="preserve">
+    <value>新增連線...</value>
+  </data>
+  <data name="Data.TreeView.Local" xml:space="preserve">
+    <value>本機</value>
+  </data>
+  <data name="Data.TreeView.Tables" xml:space="preserve">
+    <value>資料表</value>
+  </data>
+  <data name="Data.TreeView.Views" xml:space="preserve">
+    <value>檢視</value>
+  </data>
+  <data name="Data.TreeView.Procedures" xml:space="preserve">
+    <value>預存程序</value>
+  </data>
+  <data name="Data.ConnectionWizard.DatabaseDriver" xml:space="preserve">
+    <value>資料庫驅動程式：</value>
+  </data>
+  <data name="Data.ConnectionWizard.DataSource" xml:space="preserve">
+    <value>資料來源：</value>
+  </data>
+  <data name="Data.ConnectionWizard.Database" xml:space="preserve">
+    <value>資料庫：</value>
+  </data>
+  <data name="Data.DemoApp.CreateEDM" xml:space="preserve">
+    <value>建立 EDM</value>
+  </data>
+  <data name="Data.EDMDesigner.ChooseConnection.Question" xml:space="preserve">
+    <value>您的應用程式應使用哪個資料庫連線？</value>
+  </data>
+  <data name="Data.EDMDesigner.NewConnection" xml:space="preserve">
+    <value>新增連線...</value>
+  </data>
+  <data name="Data.EDMDesigner.EntityConnectionString" xml:space="preserve">
+    <value>實體連接字串：</value>
+  </data>
+  <data name="Data.EDMDesigner.ChooseObjects.Question" xml:space="preserve">
+    <value>您要將哪些資料庫物件包含在模型中？</value>
+  </data>
+  <data name="Data.EDMDesigner.ModelNamespace" xml:space="preserve">
+    <value>模型命名空間：</value>
+  </data>
+  <data name="Data.EDMDesigner.ObjectContextName" xml:space="preserve">
+    <value>物件內容名稱：</value>
+  </data>
+  <data name="Data.EDMDesigner.ErrorDuringGeneration" xml:space="preserve">
+    <value>產生實體資料模型時發生下列錯誤：</value>
+  </data>
+  <data name="Data.SQLServer.UserId" xml:space="preserve">
+    <value>使用者 ID：</value>
+  </data>
+  <data name="Data.SQLServer.Password" xml:space="preserve">
+    <value>密碼：</value>
+  </data>
+  <data name="IconEditor.PickFormat.Width" xml:space="preserve">
+    <value>_寬度:</value>
+  </data>
+  <data name="IconEditor.PickFormat.Height" xml:space="preserve">
+    <value>_高度:</value>
+  </data>
+  <data name="IconEditor.PickFormat.Colors" xml:space="preserve">
+    <value>_色彩:</value>
+  </data>
+  <data name="IconEditor.PickFormat.Monochrome" xml:space="preserve">
+    <value>單色</value>
+  </data>
+  <data name="IconEditor.PickFormat.Depth4" xml:space="preserve">
+    <value>4 位元</value>
+  </data>
+  <data name="IconEditor.PickFormat.Depth8" xml:space="preserve">
+    <value>8 位元</value>
+  </data>
+  <data name="IconEditor.PickFormat.Depth24" xml:space="preserve">
+    <value>24 位元</value>
+  </data>
+  <data name="IconEditor.PickFormat.Depth32" xml:space="preserve">
+    <value>32 位元</value>
+  </data>
+  <data name="Global.OK" xml:space="preserve">
+    <value>確定</value>
   </data>
 </root>

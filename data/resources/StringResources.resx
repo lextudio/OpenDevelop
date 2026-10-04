@@ -10090,4 +10090,145 @@ Press Esc to cancel this operation.</value>
   <data name="NewItem.AllTypes" xml:space="preserve">
     <value>All item types</value>
   </data>
+  <data name="FormsDesigner.DesignerStartupFailed" xml:space="preserve">
+    <value>The WinForms designer could not be started: {0}</value>
+  </data>
+  <data name="FormsDesigner.LoadDesignerFailed" xml:space="preserve">
+    <value>Failed to load designer: {0}</value>
+  </data>
+  <data name="WpfDesign.Status.StartingHost" xml:space="preserve">
+    <value>Starting {0} design host…</value>
+  </data>
+  <data name="WpfDesign.Status.HostError" xml:space="preserve">
+    <value>{0} design host: {1}</value>
+  </data>
+  <data name="WpfDesign.Status.OperationRejected" xml:space="preserve">
+    <value>the operation was rejected.</value>
+  </data>
+  <data name="WpfDesign.Status.NothingRenderedYet" xml:space="preserve">
+    <value>{0} design host: nothing rendered yet.</value>
+  </data>
+  <data name="WpfDesign.Status.RenderedByHost" xml:space="preserve">
+    <value>Rendered by {0} design host ({1}×{2}).</value>
+  </data>
+  <data name="WpfDesign.Status.DropRejected" xml:space="preserve">
+    <value>the drop was rejected.</value>
+  </data>
+  <data name="Global.Designer.UnsupportedOnThisOS" xml:space="preserve">
+    <value>This project uses {0}, which runs only on Windows, so its design view is not supported on this OS. {1} projects can be designed here.</value>
+  </data>
+  <data name="CodeQuality.MainView.AddAssembly" xml:space="preserve">
+    <value>Add Assembly</value>
+  </data>
+  <data name="CodeQuality.MainView.AddCurrentProjectAssembly" xml:space="preserve">
+    <value>Add Current Project Assembly</value>
+  </data>
+  <data name="Profiler.Window.RunAndProfile" xml:space="preserve">
+    <value>Run and Profile</value>
+  </data>
+  <data name="Profiler.Window.StopAndShutdown" xml:space="preserve">
+    <value>Stop and Shutdown</value>
+  </data>
+  <data name="Profiler.Window.LoadSession" xml:space="preserve">
+    <value>Load session</value>
+  </data>
+  <data name="Debugger.ObjectGraph.Expression" xml:space="preserve">
+    <value>Expression:</value>
+  </data>
+  <data name="Debugger.ObjectGraph.Layout" xml:space="preserve">
+    <value>Layout:</value>
+  </data>
+  <data name="Debugger.ObjectGraph.Zoom" xml:space="preserve">
+    <value>Zoom:</value>
+  </data>
+  <data name="Debugger.ObjectGraph.Error" xml:space="preserve">
+    <value>Error:</value>
+  </data>
+  <data name="Debugger.Visualizers.SelectDisplayedColumns" xml:space="preserve">
+    <value>Select displayed columns</value>
+  </data>
+  <data name="AvalonEdit.ContextActions.AvailableActions" xml:space="preserve">
+    <value>Available actions (Ctrl+T)</value>
+  </data>
+  <data name="Data.AddConnection" xml:space="preserve">
+    <value>Add connection...</value>
+  </data>
+  <data name="Data.TreeView.Local" xml:space="preserve">
+    <value>Local</value>
+  </data>
+  <data name="Data.TreeView.Tables" xml:space="preserve">
+    <value>Tables</value>
+  </data>
+  <data name="Data.TreeView.Views" xml:space="preserve">
+    <value>Views</value>
+  </data>
+  <data name="Data.TreeView.Procedures" xml:space="preserve">
+    <value>Procedures</value>
+  </data>
+  <data name="Data.ConnectionWizard.DatabaseDriver" xml:space="preserve">
+    <value>Database driver:</value>
+  </data>
+  <data name="Data.ConnectionWizard.DataSource" xml:space="preserve">
+    <value>Data source:</value>
+  </data>
+  <data name="Data.ConnectionWizard.Database" xml:space="preserve">
+    <value>Database:</value>
+  </data>
+  <data name="Data.DemoApp.CreateEDM" xml:space="preserve">
+    <value>Create EDM</value>
+  </data>
+  <data name="Data.EDMDesigner.ChooseConnection.Question" xml:space="preserve">
+    <value>Which database connection should your application use?</value>
+  </data>
+  <data name="Data.EDMDesigner.NewConnection" xml:space="preserve">
+    <value>New Connection...</value>
+  </data>
+  <data name="Data.EDMDesigner.EntityConnectionString" xml:space="preserve">
+    <value>Entity connection string:</value>
+  </data>
+  <data name="Data.EDMDesigner.ChooseObjects.Question" xml:space="preserve">
+    <value>Which database objects do you want to include in your model?</value>
+  </data>
+  <data name="Data.EDMDesigner.ModelNamespace" xml:space="preserve">
+    <value>Model Namespace:</value>
+  </data>
+  <data name="Data.EDMDesigner.ObjectContextName" xml:space="preserve">
+    <value>Object context name:</value>
+  </data>
+  <data name="Data.EDMDesigner.ErrorDuringGeneration" xml:space="preserve">
+    <value>The following error(s) occured during generation of the Entity Data Model:</value>
+  </data>
+  <data name="Data.SQLServer.UserId" xml:space="preserve">
+    <value>User Id:</value>
+  </data>
+  <data name="Data.SQLServer.Password" xml:space="preserve">
+    <value>Password:</value>
+  </data>
+  <data name="IconEditor.PickFormat.Width" xml:space="preserve">
+    <value>_Width:</value>
+  </data>
+  <data name="IconEditor.PickFormat.Height" xml:space="preserve">
+    <value>_Height:</value>
+  </data>
+  <data name="IconEditor.PickFormat.Colors" xml:space="preserve">
+    <value>_Colors:</value>
+  </data>
+  <data name="IconEditor.PickFormat.Monochrome" xml:space="preserve">
+    <value>Monochrome</value>
+  </data>
+  <data name="IconEditor.PickFormat.Depth4" xml:space="preserve">
+    <value>4 bit</value>
+  </data>
+  <data name="IconEditor.PickFormat.Depth8" xml:space="preserve">
+    <value>8 bit</value>
+  </data>
+  <data name="IconEditor.PickFormat.Depth24" xml:space="preserve">
+    <value>24 bit</value>
+  </data>
+  <data name="IconEditor.PickFormat.Depth32" xml:space="preserve">
+    <value>32 bit</value>
+  </data>
+  <data name="Global.OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
 </root>
