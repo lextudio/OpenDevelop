@@ -37,12 +37,14 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 	// legitimately allowed to keep polling for, throwing a misleading "request failed" exception
 	// instead of the actual (or timed-out) result.
 	readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(240) };
+	readonly string _mutationLeaseId = Guid.NewGuid().ToString("N");
 	readonly object _outputLock = new();
 	readonly StringBuilder _appOutput = new();
 	Process? _app;
 	// Set for the lifetime of one launch; see AppLogPath.
 	string? _appLogPath;
 	DateTime _appStartedUtc;
+	readonly string _configDirectory = Path.Combine(Path.GetTempPath(), "od-integration-config", Guid.NewGuid().ToString("N"));
 
 	// The in-memory _appOutput ring buffer is only ever surfaced through an InvokeAsync exception -
 	// which means the one failure mode that matters most is exactly the one it cannot report: the
@@ -318,6 +320,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     async Task StartAsync()
     {
         _appStartedUtc = DateTime.UtcNow;
+		Directory.CreateDirectory(_configDirectory);
         var installedApp = ResolveInstalledOpenDevelop();
         ProcessStartInfo psi;
         if (installedApp is null)
@@ -356,11 +359,19 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             foreach (var a in new[] { "run", "--project", OpenDevelopProjectPath, "-f", "net10.0-windows", "--no-build" })
                 psi.ArgumentList.Add(a);
         }
+		// Keep a test run independent from the developer's persisted layout and UI language.
+		// ResourceService otherwise prefers CoreProperties.UILanguage from that profile over LANG.
+		psi.ArgumentList.Add("-configdir:" + _configDirectory);
         // Tells the app it is being driven by the integration-test agent: the main window shows
         // without activating (ShowActivated=false), so a test run never steals focus from whatever
         // the user is doing on the machine (measured annoyance - the WPF window grabs activation on
         // every fixture launch otherwise).
         psi.Environment["OD_TEST_MODE"] = "1";
+        // Integration assertions intentionally use the canonical English UI strings. Do not let
+        // the developer machine's locale (or a translated UI under test) turn those assertions
+        // into false product failures. This applies only to the OpenDevelop child process.
+        psi.Environment["LANG"] = "en_US.UTF-8";
+        psi.Environment["LC_ALL"] = "en_US.UTF-8";
         // An external add-in project opened by this instance is evaluated in this child process.
         // Forward the resolved installed app rather than requiring each add-in integration test to
         // duplicate OPENDEVELOP_APP_PATH in its shell invocation.
@@ -401,6 +412,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 		_app.BeginErrorReadLine();
 
         await WaitForAgentAsync(TimeSpan.FromSeconds(120));
+		await ClaimMutationLeaseAsync();
         await WaitForWorkbenchReadyAsync(TimeSpan.FromSeconds(120));
     }
 
@@ -451,6 +463,27 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             + DescribeAppFailureContext()
             + $"\nApp output:\n{GetRecentAppOutput()}");
     }
+
+	async Task ClaimMutationLeaseAsync()
+	{
+		using var content = new StringContent(
+			JsonSerializer.Serialize(new {
+				action = "claim",
+				leaseId = _mutationLeaseId,
+				holderKind = "integration-test",
+				label = "OpenDevelop integration tests",
+				force = true
+			}), Encoding.UTF8, "application/json");
+		using var response = await _http.PostAsync($"{BaseUrl}/api/v1/agent/lease", content);
+		var body = await response.Content.ReadAsStringAsync();
+		if (!response.IsSuccessStatusCode)
+			throw new InvalidOperationException("Could not claim the DevFlow mutation lease: " + body);
+		using var document = JsonDocument.Parse(body);
+		if (!document.RootElement.TryGetProperty("allowed", out var allowed) || !allowed.GetBoolean())
+			throw new InvalidOperationException("DevFlow mutation lease was not granted: " + body);
+		_http.DefaultRequestHeaders.Remove("X-DevFlow-Lease");
+		_http.DefaultRequestHeaders.Add("X-DevFlow-Lease", _mutationLeaseId);
+	}
 
     /// <summary>
     /// The DevFlow agent binds inside the App constructor - long BEFORE the workbench has
@@ -722,7 +755,13 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     {
         using var resp = await _http.GetAsync($"{BaseUrl}/api/v1/ui/tree");
         resp.EnsureSuccessStatusCode();
-        return await resp.Content.ReadFromJsonAsync<JsonElement>(DeepJsonOptions);
+        var tree = await resp.Content.ReadFromJsonAsync<JsonElement>(DeepJsonOptions);
+        // DevFlow 0.2.8 emits its top-level windows directly as an array; older agents use
+        // { elements: [...] }. Keep the fixture contract stable for tests which inspect windows.
+        if (tree.ValueKind != JsonValueKind.Array)
+            return tree;
+		using var normalized = JsonDocument.Parse("{\"elements\":" + tree.GetRawText() + "}", new JsonDocumentOptions { MaxDepth = 256 });
+        return normalized.RootElement.Clone();
     }
 
     // Tap by UI-tree element id. On macOS (DevFlow 0.2.7+) this is a real OS click at the element's
@@ -732,7 +771,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public async Task TapAsync(string elementId)
     {
         using var content = new StringContent(JsonSerializer.Serialize(new { id = elementId }), System.Text.Encoding.UTF8, "application/json");
-        using var resp = await _http.PostAsync($"{BaseUrl}/api/v1/ui/tap", content);
+        using var resp = await _http.PostAsync($"{BaseUrl}/api/v1/ui/actions/tap", content);
         var body = await resp.Content.ReadAsStringAsync();
         if (!resp.IsSuccessStatusCode || !JsonDocument.Parse(body).RootElement.GetProperty("success").GetBoolean())
             throw new InvalidOperationException($"ui/tap {elementId} failed ({(int)resp.StatusCode}): {body}");

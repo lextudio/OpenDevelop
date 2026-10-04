@@ -66,7 +66,7 @@
   <Target Name="BuildDesignerAddinsForIntegrationTests" BeforeTargets="Build"
           DependsOnTargets="RestoreIntegrationRuntimeProjects">
     <MSBuild Projects="@(_DesignerAddinProject)" Targets="Build" BuildInParallel="true"
-             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true" />
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true;ProGpuWpfUseCurrentRuntimeIdentifier=false" />
   </Target>
 
   <!-- Same deal for the language-service addins: FSharpBinding.csproj deploys its LSP-backed
@@ -101,7 +101,7 @@
   <Target Name="BuildLanguageAddinsForIntegrationTests" BeforeTargets="Build"
           DependsOnTargets="RestoreIntegrationRuntimeProjects">
     <MSBuild Projects="@(_LanguageAddinProject)" Targets="Build" BuildInParallel="true"
-             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true" />
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true;ProGpuWpfUseCurrentRuntimeIdentifier=false" />
   </Target>
 
   <!-- The WinForms and WinUI/Uno designers render through out-of-process child hosts that are
@@ -121,7 +121,7 @@
   <Target Name="BuildOutOfProcessHostsForIntegrationTests" BeforeTargets="Build"
           DependsOnTargets="RestoreIntegrationRuntimeProjects">
     <MSBuild Projects="@(_OutOfProcessHostProject)" Targets="Build" BuildInParallel="true"
-             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true" />
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true;ProGpuWpfUseCurrentRuntimeIdentifier=false" />
   </Target>
 
   <!-- The three Microsoft-backend out-of-process design hosts (WPF, WinUI, WinForms) cannot be
@@ -222,12 +222,12 @@
          purpose of this project-owned preparation step.  Restore the graph serially; the later
          Build targets remain parallel once every assets file is stable. -->
     <MSBuild Projects="@(_IntegrationRuntimeProject)" Targets="Restore" BuildInParallel="false"
-             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;RestoreDisableParallel=true" />
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;RestoreDisableParallel=true;RestoreForceEvaluate=true;ProGpuWpfUseCurrentRuntimeIdentifier=false" />
   </Target>
   <Target Name="BuildCoreAddinsForIntegrationTests" BeforeTargets="Build"
           DependsOnTargets="RestoreIntegrationRuntimeProjects">
     <MSBuild Projects="@(_CoreAddinProject)" Targets="Build" BuildInParallel="true"
-             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true" />
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true;ProGpuWpfUseCurrentRuntimeIdentifier=false" />
   </Target>
 
   <!-- Fixture apps that tests assert are ALREADY built (they run/decompile the real output rather

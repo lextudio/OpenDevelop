@@ -1309,7 +1309,7 @@ public sealed class AddInTests : IAsyncDisposable
 
         Assert.True(status.GetProperty("active").GetBoolean());
         Assert.True(status.GetProperty("designerLoaded").GetBoolean(),
-            "Expected the WPF design surface to load the XAML root (not fall back to WpfDocumentError)");
+            "Expected the WPF design surface to load the XAML root (not fall back to WpfDocumentError): " + status);
         Assert.Equal("Window", status.GetProperty("rootItemType").GetString());
 
         // Toolbox: the popular-controls group plus grouped controls populate WpfToolbox.Instance.
@@ -1687,17 +1687,17 @@ public sealed class AddInTests : IAsyncDisposable
     {
         await OpenUnoDesignerAsync();
 
-        // Go back to the Source tab and type into the real AvalonEdit document, exactly as a user
-        // switching tabs and editing would - writing to disk behind the IDE's back would not reach
-        // the open buffer at all, and would not be a test of the designer's refresh path.
+        // Make the Source pane the active view and type into the real AvalonEdit document, exactly
+        // as a user editing in the split layout would - writing to disk behind the IDE's back would
+        // not reach the open buffer at all, and would not be a test of the designer's refresh path.
         var switched = await _app.InvokeAsync("od.winui-designer.switch-to-source");
         Assert.True(switched.GetProperty("success").GetBoolean(), switched.ToString());
 
         var edit = await _app.InvokeAsync("od.search.replace", "Hello Uno", "Edited In Source", "solution");
         Assert.True(edit.GetProperty("success").GetBoolean(), edit.ToString());
 
-        // Re-activating the Design view is what makes SharpDevelop hand this secondary view the
-        // changed document; the designer must re-parse and re-render from it.
+        // The document edit flush hands the secondary view the changed document; the designer
+        // must re-parse and re-render from it without needing a pane switch.
         var status = await WaitForRenderedAsync();
         Assert.Null(status.GetProperty("documentError").GetString());
         AssertUnoRenderedBySelectedBackend(status);
@@ -1729,6 +1729,17 @@ public sealed class AddInTests : IAsyncDisposable
         var sourceFocusedProperties = await _app.InvokeAsync("od.property-pad.selected-object");
         Assert.True(sourceFocusedProperties.GetProperty("hasSelection").GetBoolean(), sourceFocusedProperties.ToString());
         Assert.Contains("WinUIXamlElementPropertyAdapter", sourceFocusedProperties.GetProperty("typeName").GetString());
+
+        // Document Outline is document-owned for the same reason: it must still show the
+        // designer's element tree, not the XAML text editor's one-to-one symbol list, while the
+        // source editor holds focus.
+        Assert.True((await _app.InvokeAsync("od.show-pad", "ICSharpCode.SharpDevelop.Gui.OutlinePad"))
+            .GetProperty("found").GetBoolean());
+        var sourceFocusedOutline = await _app.InvokeAsync("od.outline-pad.content");
+        Assert.True(sourceFocusedOutline.GetProperty("available").GetBoolean(), sourceFocusedOutline.ToString());
+        var sourceFocusedNames = sourceFocusedOutline.GetProperty("names").EnumerateArray()
+            .Select(n => n.GetString()).ToArray();
+        Assert.Contains("PrimaryButton", sourceFocusedNames);
 
         var beforeBounds = (await _app.InvokeAsync("od.winui-designer.describe-element", "PrimaryButton"))
             .GetProperty("description").GetString();
@@ -1999,18 +2010,38 @@ public sealed class AddInTests : IAsyncDisposable
             var toolboxBounds = await _app.InvokeAsync("od.winui-designer.toolbox.query-item-bounds", "TextBox");
             Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
 
-            // query-item-bounds activates the Design tab as a side effect (ActivateDesigner) -
+            // Choose a tool that is neither the first row nor the one this test drags, so a reset
+            // to "select first" is visible as a different selection rather than a coincidence.
+            var choseTool = await _app.InvokeAsync("od.tools-pad.select", "CheckBox");
+            Assert.True(choseTool.GetProperty("success").GetBoolean(), choseTool.ToString());
+            var designPanePad = await _app.InvokeAsync("od.tools-pad.status");
+            Assert.Equal("CheckBox", designPanePad.GetProperty("selectedTool").GetString());
+            var hostedBefore = designPanePad.GetProperty("hostedContentId").GetInt32();
+            Assert.NotEqual(0, hostedBefore);
+
+            // query-item-bounds activates the Design pane as a side effect (ActivateDesigner) -
             // switch back to Source, the actual drop target for this test.
             var switched = await _app.InvokeAsync("od.winui-designer.switch-to-source");
             Assert.True(switched.GetProperty("success").GetBoolean(), switched.ToString());
 
-			// Switching tabs replaces/re-arranges the Tools pad's visual tree. The bounds read
-			// above are only valid while the Design tab is active: using them after this switch
-			// occasionally pressed the row now occupying TextBox's *old* coordinates (observed
-			// as an unexpected AnimatedIcon insertion), then a retry inserted TextBox as well.
-			// Query the Source-owned toolbox without re-activating Design, so the drag starts on
-			// the item we assert and the returned coordinates remain valid.
-			toolboxBounds = await _app.InvokeAsync("od.winui-toolbox.query-item-bounds", "TextBox");
+            // Moving focus into the sibling pane must not re-host the pad's visual tree and must
+            // not reset the chosen tool: ToolsPadViewModel keeps the same SharedToolbox instance
+            // (same reference identity below) and SharedToolbox.SetActiveScopes returns early
+            // while owner+scopes are unchanged, so the filter, scroll and selection survive.
+            var sourcePanePad = await _app.InvokeAsync("od.tools-pad.status");
+            Assert.Equal("AvalonEditViewContent", sourcePanePad.GetProperty("activeView").GetString());
+            Assert.Equal(hostedBefore, sourcePanePad.GetProperty("hostedContentId").GetInt32());
+            Assert.Equal("CheckBox", sourcePanePad.GetProperty("selectedTool").GetString());
+            Assert.Equal(designPanePad.GetProperty("visibleItemCount").GetInt32(),
+                sourcePanePad.GetProperty("visibleItemCount").GetInt32());
+
+            // The pad is no longer re-hosted on a pane switch (ToolsPadViewModel keeps the
+            // same SharedToolbox instance, and SharedToolbox.SetActiveScopes returns early while
+            // owner+scopes are unchanged), so the bounds read above stay valid and no scroll
+            // offset is reset. Re-querying anyway, through the action that does not activate
+            // anything, keeps the drag anchored on the row this test asserts even if that ever
+            // changes back.
+            toolboxBounds = await _app.InvokeAsync("od.winui-toolbox.query-item-bounds", "TextBox");
             Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
 
             // Target the position right before "<TextBlock" - a sibling position where a
@@ -2700,30 +2731,21 @@ public sealed class AddInTests : IAsyncDisposable
             // rather than fine-tune a single "safe" coordinate that isn't guaranteed safe anyway.
             JsonElement statusAfterDrop = default;
             var outlineGrew = false;
+			string pointerEvents = "";
             for (int attempt = 1; attempt <= 4 && !outlineGrew; attempt++)
             {
                 // Re-activate before EVERY attempt: measured live on the Events-row double-click
                 // test, one up-front activate is not enough - focus drifts back between attempts
                 // and cliclick input then routes to whatever window IS frontmost.
                 await _app.InvokeAsync("od.activate");
+				await _app.InvokeAsync("od.pointer-events", true);
 
-                var pressed = await _app.PressPointerAsync(fromX, fromY);
-                Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
-
-                // Several intermediate steps: WpfToolbox.OnPreviewMouseMove starts DragDrop.DoDragDrop
-                // on the very first move while the item is selected+pressed, and PortableDragDropOperation
-                // hit-tests on every move - one big jump would still work, but stepping mirrors an
-                // actual drag gesture and gives DragEnter/DragOver a chance to run more than once.
-                for (int step = 1; step <= 6; step++)
-                {
-                    var t = step / 6.0;
-                    var moved = await _app.DragMovePointerAsync(fromX + (toX - fromX) * t, fromY + (toY - fromY) * t);
-                    Assert.True(moved.GetProperty("ok").GetBoolean(), moved.ToString());
-                    await Task.Delay(150);
-                }
-
-                var released = await _app.ReleasePointerAsync(toX, toY);
-                Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+				// A single native drag transaction is still real pointer input, but unlike a
+				// decomposed dd/dm/du sequence macOS delivers its press, moves and release to
+				// the same native window reliably. This is the CliclickInput.TryDrag path.
+				var dragged = await _app.DragPointerAsync(fromX, fromY, toX, toY, steps: 8);
+				Assert.True(dragged.GetProperty("ok").GetBoolean(), dragged.ToString());
+				pointerEvents = $"injected={fromX},{fromY}->{toX},{toY}; observed=" + (await _app.InvokeAsync("od.pointer-events", false));
 
                 // Confirm the dropped control actually landed in the live designer tree (outline) -
                 // it has no x:Name (nothing names a freshly-dropped item, mouse-driven or not), so
@@ -2739,6 +2761,7 @@ public sealed class AddInTests : IAsyncDisposable
             }
             Assert.True(outlineGrew,
                 "Expected a new element in the outline after the drag-drop, even after retries.\nBefore: " + string.Join(", ", outlineNamesBefore) +
+				"\nPointer: " + pointerEvents +
                 "\nAfter: " + statusAfterDrop);
 
             // The real drag-drop path (unlike a plain property edit alone) can leave a ChangeGroup
@@ -3004,12 +3027,12 @@ public sealed class AddInTests : IAsyncDisposable
             await _app.InvokeAsync("od.activate");
 
             // Query the drop target's bounds BEFORE the toolbox row's bounds, not after:
-            // od.forms-designer.query-control-screen-bounds switches the active tab to the
-            // FormsDesigner view (FindFormsDesignerViewContent's own SwitchView call), which
-            // re-hosts ToolsPad's content and resets the toolbox ListBox's scroll offset back to
-            // the top - querying the toolbox row afterward would return coordinates for whatever
-            // row now occupies that position post-reset, not NumericUpDown. Querying the toolbox
-            // row LAST, immediately before pressing, avoids that race.
+            // od.forms-designer.query-control-screen-bounds switches the active view to the
+            // FormsDesigner view (FindFormsDesignerViewContent's own SwitchView call), and a view
+            // switch is exactly what used to re-host ToolsPad's content and reset the toolbox
+            // ListBox's scroll offset back to the top. The Tools pad no longer re-hosts on such a
+            // switch, but querying the toolbox row LAST, immediately before pressing, keeps this
+            // drag anchored on NumericUpDown instead of whatever row occupies those coordinates.
             var targetBounds = await _app.InvokeAsync("od.forms-designer.query-control-screen-bounds", "dropPanel");
             Assert.True(targetBounds.GetProperty("success").GetBoolean(), targetBounds.ToString());
             var toX = targetBounds.GetProperty("x").GetDouble() + targetBounds.GetProperty("width").GetDouble() / 2;
@@ -3681,8 +3704,10 @@ public sealed class AddInTests : IAsyncDisposable
     {
         // The WinForms designer's shared pad now switches Properties/Events views through the
         // same od.forms-designer.pad-view-mode action as the WinUI designer, and the document
-        // view round-trips through switch-to-source/activate-design. The sample form binds
-        // Form1.Load already, so the Events view must surface it with its handler.
+        // view round-trips through switch-to-source/activate-design. (On the WPF/WinUI backends
+        // those two actions only retarget the active pane; the Forms one still re-loads.) The
+        // sample form binds Form1.Load already, so the Events view must surface it with its
+        // handler.
         var formCodePath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.cs");
 
         await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath);
@@ -3758,9 +3783,10 @@ public sealed class AddInTests : IAsyncDisposable
 
             // Undo/redo are implemented over whole-document session snapshots (matching the
             // WinForms designer), so the delete above must be undoable - and redo re-applies it.
-            // NOTE these must run BEFORE the Source/Design switch below: re-activating a view
-            // reloads it (LoadInternal clears the undo stack), which is also why a real user's
-            // undo history doesn't survive tab round trips on this backend.
+            // NOTE these run BEFORE the pane switch below only as a precaution: this backend's
+            // SwitchView re-enters LoadInternal, which clears the undo stack, and undo/redo are
+            // whole-document session snapshots. od.wpf-designer.switch-to-source no longer implies
+            // a reload, so the ordering is no longer required by the pad-stability rule.
             var undo = await _app.InvokeAsync("od.wpf-designer.undo");
             Assert.True(undo.GetProperty("success").GetBoolean(), undo.ToString());
             Assert.True(undo.GetProperty("canRedo").GetBoolean(), undo.ToString());
@@ -3771,9 +3797,18 @@ public sealed class AddInTests : IAsyncDisposable
             var redo = await _app.InvokeAsync("od.wpf-designer.redo");
             Assert.True(redo.GetProperty("success").GetBoolean(), redo.ToString());
 
-            // Source-then-Design round trip through the view tabs.
+            // Source-then-Design round trip through the view panes.
             var toSource = await _app.InvokeAsync("od.wpf-designer.switch-to-source");
             Assert.True(toSource.GetProperty("success").GetBoolean(), toSource.ToString());
+
+            // Properties is document-owned too: a selection made on the surface survives moving
+            // the caret into the source pane, so editing XAML does not silently drop the user out
+            // of the selected element's property adapter.
+            var reselected = await _app.InvokeAsync("od.wpf-designer.select", "PaneTitle");
+            Assert.True(reselected.GetProperty("success").GetBoolean(), reselected.ToString());
+            var sourceFocusedProperties = await _app.InvokeAsync("od.property-pad.selected-object");
+            Assert.True(sourceFocusedProperties.GetProperty("hasSelection").GetBoolean(), sourceFocusedProperties.ToString());
+            Assert.Contains("WpfSurfaceElementPropertyAdapter", sourceFocusedProperties.GetProperty("typeName").GetString());
 
             // Both panes remain visible, and Document Outline stays designer-owned while Source
             // is the active command target. Do not regress to replacing it with AvalonEdit's
@@ -3788,6 +3823,11 @@ public sealed class AddInTests : IAsyncDisposable
 
             var toDesign = await _app.InvokeAsync("od.wpf-designer.activate-design");
             Assert.True(toDesign.GetProperty("success").GetBoolean(), toDesign.ToString());
+
+            // Handing focus back to the document gives Properties to the designer again, without
+            // the user re-selecting anything.
+            var designProperties = await _app.InvokeAsync("od.property-pad.selected-object");
+            Assert.Contains("WpfSurfaceElementPropertyAdapter", designProperties.GetProperty("typeName").GetString());
 
             // Multi-select + layout ops are also real now (surface.SetMultiSelection /
             // AlignSelection / DistributeSelection / MatchSizeSelection).
@@ -3808,6 +3848,20 @@ public sealed class AddInTests : IAsyncDisposable
             var nudge = await _app.InvokeAsync("od.wpf-designer.nudge", 1.0, 1.0);
             Assert.False(nudge.GetProperty("success").GetBoolean(), nudge.ToString());
             Assert.False(nudge.GetProperty("supported").GetBoolean(), nudge.ToString());
+
+            // A real tool pane still wins over the split document's designer: Project Browser
+            // owns Properties while it has focus, even with an element selected on the surface.
+            // This is the precedence branch that deleting the old sticky "previous content"
+            // fallback had to make explicit. Checked last, because selecting a project node
+            // also changes the active project the designer below is working against.
+            Assert.True((await _app.InvokeAsync("od.show-pad", "Projects"))
+                .GetProperty("found").GetBoolean());
+            var projectNode = await _app.InvokeAsync("od.project-browser.select", "Project");
+            Assert.True(projectNode.GetProperty("success").GetBoolean(), projectNode.ToString());
+            var projectProperties = await _app.InvokeAsync("od.property-pad.selected-object");
+            Assert.True(projectProperties.GetProperty("hasSelection").GetBoolean(), projectProperties.ToString());
+            Assert.Equal("ICSharpCode.SharpDevelop.Services.ProjectBrowserNodeProperties",
+                projectProperties.GetProperty("typeName").GetString());
         } finally {
             await File.WriteAllTextAsync(xamlPath, originalXaml);
         }
@@ -4293,7 +4347,9 @@ public sealed class AddInTests : IAsyncDisposable
             }
             return false;
 		}, TimeSpan.FromSeconds(timeoutSeconds), initialDelayMs: 50, maxDelayMs: 250);
-		Assert.Equal(expectedBackend, status.GetProperty("backend").GetString());
+		Assert.True(status.TryGetProperty("backend", out var backend),
+			"WPF designer status did not include a backend: " + status);
+		Assert.Equal(expectedBackend, backend.GetString());
 		return status;
     }
 

@@ -70,7 +70,12 @@ public sealed class AddReferenceTests : IAsyncDisposable
         // Taps are real OS clicks, and OD_TEST_MODE never activates the app: an inactive app spends
         // the first click on activating itself, so the CheckBox tap below would be lost.
         var activated = await _app.InvokeAsync("od.activate");
-        Assert.True(activated.GetProperty("foregrounded").GetBoolean(), activated.ToString());
+        // "foregrounded" is the Windows GetForegroundWindow verification. The macOS backend
+        // verifies the equivalent native GLFW focus through "nativeFocused" instead.
+        var readyForNativeTap = OperatingSystem.IsWindows()
+            ? activated.GetProperty("foregrounded").GetBoolean()
+            : activated.GetProperty("nativeFocused").GetBoolean();
+        Assert.True(readyForNativeTap, activated.ToString());
 
         // The dialog is modal: the command only returns once it closes, so drive it meanwhile.
         var command = _app.InvokeAsync("od.menu.invoke", "ICSharpCode.SharpDevelop.Commands.AddReferenceProjectBrowserCommand");
