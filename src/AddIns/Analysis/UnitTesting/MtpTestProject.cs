@@ -15,13 +15,14 @@ using ICSharpCode.UnitTesting.Simple;
 
 namespace ICSharpCode.UnitTesting
 {
-	public class MtpTestProject : TestProjectBase
+	public class MtpTestProject : TestProjectBase, IDisposable
 	{
 		IReadOnlyDictionary<string, IReadOnlyList<MtpTestNode>> discoveredNodesByTargetFramework
 			= new Dictionary<string, IReadOnlyList<MtpTestNode>>(StringComparer.OrdinalIgnoreCase);
 		DateTime? lastBuildTime;
 		bool discoveryInProgress;
 		int suppressBuildDiscoveryCount;
+		bool disposed;
 
 		public MtpTestProject(IProject project)
 			: base(project)
@@ -29,6 +30,21 @@ namespace ICSharpCode.UnitTesting
 			lastBuildTime = GetAssemblyLastWriteTime();
 			SD.BuildService.BuildFinished += OnBuildFinished;
 			FileUtility.FileSaved += OnFileSaved;
+		}
+
+		/// <summary>
+		/// The test-tree model is recreated whenever a project leaves a solution or changes test
+		/// framework. It subscribes to process-wide events, so removing it from the visual tree is
+		/// not enough: without this teardown every stale instance re-runs discovery after later
+		/// builds of a project with the same output, multiplying MTP hosts and starving the IDE.
+		/// </summary>
+		public void Dispose()
+		{
+			if (disposed)
+				return;
+			disposed = true;
+			SD.BuildService.BuildFinished -= OnBuildFinished;
+			FileUtility.FileSaved -= OnFileSaved;
 		}
 
 		protected override void OnNestedTestsInitialized()
@@ -234,6 +250,8 @@ namespace ICSharpCode.UnitTesting
 
 		void OnBuildFinished(object? sender, BuildEventArgs args)
 		{
+			if (disposed)
+				return;
 			if (!args.Projects.Contains(Project))
 				return;
 			if (Volatile.Read(ref suppressBuildDiscoveryCount) != 0)
@@ -250,6 +268,8 @@ namespace ICSharpCode.UnitTesting
 
 		void OnFileSaved(object? sender, FileNameEventArgs e)
 		{
+			if (disposed)
+				return;
 			if (!NestedTestsInitialized)
 				return;
 			if (string.IsNullOrEmpty(e?.FileName))

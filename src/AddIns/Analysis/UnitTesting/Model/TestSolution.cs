@@ -32,7 +32,7 @@ namespace ICSharpCode.UnitTesting
 	/// <summary>
 	/// Manages the collection of TestProjects.
 	/// </summary>
-	sealed class TestSolution : TestBase, ITestSolution
+	sealed class TestSolution : TestBase, ITestSolution, IDisposable
 	{
 		readonly IResourceService resourceService;
 		readonly ITestService testService;
@@ -84,6 +84,15 @@ namespace ICSharpCode.UnitTesting
 			}
 			return null;
 		}
+
+		public void Dispose()
+		{
+			SD.ProjectService.AllProjects.CollectionChanged -= OnProjectsCollectionChanged;
+			SD.ParserService.LoadSolutionProjectsThread.Finished -= SD_ParserService_LoadSolutionProjectsThread_Finished;
+			foreach (var listener in changeListeners)
+				listener.Stop();
+			changeListeners.Clear();
+		}
 		
 		public IEnumerable<ITest> GetTestsForEntity(IEntity entity)
 		{
@@ -127,6 +136,7 @@ namespace ICSharpCode.UnitTesting
 				// Remove old testProject
 				if (testProject != null) {
 					testSolution.NestedTestCollection.Remove(testProject);
+					(testProject as IDisposable)?.Dispose();
 					testProject = null;
 				}
 			}
@@ -147,6 +157,7 @@ namespace ICSharpCode.UnitTesting
 				// Remove old testProject
 				if (testProject != null) {
 					testSolution.NestedTestCollection.Remove(testProject);
+					(testProject as IDisposable)?.Dispose();
 					testProject = null;
 				}
 				// Create new testProject

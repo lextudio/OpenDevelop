@@ -87,6 +87,7 @@ namespace ICSharpCode.UnitTesting
 		void ProjectServiceSolutionChanged(object sender, EventArgs e)
 		{
 			SD.MainThread.VerifyAccess();
+			(solution as IDisposable)?.Dispose();
 			solution = null;
 			OpenSolutionChanged(this, EventArgs.Empty);
 		}
