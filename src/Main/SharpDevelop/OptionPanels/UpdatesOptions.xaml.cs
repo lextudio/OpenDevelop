@@ -1,4 +1,5 @@
 using System;
+using ICSharpCode.Core;
 
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Updates;
@@ -22,14 +23,14 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 		async void CheckNowButton_Click(object sender, System.Windows.RoutedEventArgs e)
 		{
 			checkNowButton.IsEnabled = false;
-			checkResultText.Text = "Checking...";
+			checkResultText.Text = ResourceService.GetString("UpdatesOptions.Checking");
 			try {
 				string downloadUrl = await UpdateService.CheckForUpdatesAsync(new UpdateSettings());
 				checkResultText.Text = downloadUrl != null
 					? "A new version is available."
 					: "You have the latest version.";
 			} catch (Exception ex) {
-				checkResultText.Text = "Check failed: " + ex.Message;
+				checkResultText.Text = ResourceService.GetString("UpdatesOptions.CheckFailed") + ex.Message;
 			} finally {
 				checkNowButton.IsEnabled = true;
 			}

@@ -507,7 +507,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				ResizeBehavior = GridResizeBehavior.PreviousAndNext,
 				Background = Brushes.Transparent,
 				Cursor = splitHorizontal ? Cursors.SizeNS : Cursors.SizeWE,
-				ToolTip = "Drag to resize the Design and XAML views"
+				ToolTip = ResourceService.GetString("Workbench.DragToResizeToolTip")
 			};
 			Place(bar, splitter, 1);
 

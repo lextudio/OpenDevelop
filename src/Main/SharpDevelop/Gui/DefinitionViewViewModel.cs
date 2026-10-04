@@ -38,7 +38,7 @@ internal sealed class DefinitionViewViewModel : ToolPaneModel, IDisposable
 
     public DefinitionViewViewModel()
     {
-        Title = "Definition View";
+        Title = ResourceService.GetString("Pad.DefinitionView.Title");
         ContentId = "DefinitionView";
         IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Bottom, Hidden"`.
         IsCloseable = true;

@@ -1,4 +1,5 @@
 using System.Composition;
+using ICSharpCode.Core;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -23,7 +24,7 @@ internal sealed class BookmarkPadViewModel : BookmarkPadViewModelBase
 {
     public BookmarkPadViewModel()
     {
-        Title = "Bookmarks";
+        Title = ResourceService.GetString("Pad.Bookmarks.Title");
         ContentId = "BookmarkPad";
         IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Bottom, Hidden"`.
         IsCloseable = true;

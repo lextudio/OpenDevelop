@@ -1,4 +1,5 @@
 using System;
+using ICSharpCode.Core;
 using System.Collections;
 using System.Collections.Generic;
 using System.Composition;
@@ -41,7 +42,7 @@ internal sealed class SearchResultsPadViewModel : ToolPaneModel, ISearchResultsH
 
     public SearchResultsPadViewModel()
     {
-        Title = "Search Results";
+        Title = ResourceService.GetString("Pad.SearchResults.Title");
         ContentId = "SearchResultsPad";
         IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Bottom, Hidden"`.
         IsCloseable = true;

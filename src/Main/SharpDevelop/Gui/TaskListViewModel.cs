@@ -1,4 +1,5 @@
 using System;
+using ICSharpCode.Core;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -59,7 +60,7 @@ internal sealed class TaskListViewModel : ToolPaneModel
 
     public TaskListViewModel()
     {
-        Title = "Task List";
+        Title = ResourceService.GetString("Pad.TaskList.Title");
         ContentId = "TaskList";
         IsVisible = true; // Matches the legacy Pad's `defaultPosition = "Bottom"`.
         IsCloseable = true;

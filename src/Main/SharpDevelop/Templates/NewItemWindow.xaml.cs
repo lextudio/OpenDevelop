@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using ICSharpCode.Core;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -47,8 +48,8 @@ namespace ICSharpCode.SharpDevelop.Templates
             InitializeComponent();
             _service = service ?? throw new ArgumentNullException(nameof(service));
             _targetDirectory = targetDirectory ?? throw new ArgumentNullException(nameof(targetDirectory));
-            StatusText.Text = "Loading templates...";
-            CreatePathText.Text = "Create in: " + targetDirectory;
+            StatusText.Text = ResourceService.GetString("NewProject.Status.LoadingTemplates");
+            CreatePathText.Text = ResourceService.GetString("NewProject.CreateIn") + targetDirectory;
         }
 
         public static async Task<NewItemWindow?> ShowAsync(
@@ -191,7 +192,7 @@ namespace ICSharpCode.SharpDevelop.Templates
 
         static void AddCategoryTreeItems(System.Windows.Controls.TreeView tree, IEnumerable<string> categories)
         {
-            tree.Items.Add(new System.Windows.Controls.TreeViewItem { Header = AllCategories, Tag = AllCategories, IsSelected = true });
+            tree.Items.Add(new System.Windows.Controls.TreeViewItem { Header = ResourceService.GetString("NewItem.AllTypes"), Tag = AllCategories, IsSelected = true });
             var nodes = new Dictionary<string, System.Windows.Controls.TreeViewItem>(StringComparer.OrdinalIgnoreCase);
             foreach (var category in categories.Where(category => !string.IsNullOrWhiteSpace(category))
                 .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(category => category, StringComparer.OrdinalIgnoreCase))
@@ -216,7 +217,7 @@ namespace ICSharpCode.SharpDevelop.Templates
         {
             if (SelectedTemplate is null)
             {
-                TemplateTitleText.Text = "Select a template to see its description.";
+                TemplateTitleText.Text = ResourceService.GetString("NewItem.TemplateDescriptionHint");
                 TemplateDescriptionText.Text = string.Empty;
                 TemplateDetailsText.Text = string.Empty;
                 return;
@@ -224,7 +225,7 @@ namespace ICSharpCode.SharpDevelop.Templates
 
             TemplateTitleText.Text = SelectedTemplate.DisplayName;
             TemplateDescriptionText.Text = SelectedTemplate.Description ?? "No description was supplied by this template.";
-            TemplateDetailsText.Text = "Short name: " + SelectedTemplate.ShortName;
+            TemplateDetailsText.Text = ResourceService.GetString("NewItem.ShortName") + SelectedTemplate.ShortName;
         }
 
         void RenderTemplateOptions()
@@ -297,7 +298,7 @@ namespace ICSharpCode.SharpDevelop.Templates
 
             if (ItemName is "." or ".." || ItemName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
             {
-                StatusText.Text = "Enter a valid item name. It cannot contain file-name punctuation.";
+                StatusText.Text = ResourceService.GetString("NewItem.InvalidItemName");
                 return;
             }
 

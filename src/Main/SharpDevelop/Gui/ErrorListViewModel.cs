@@ -66,7 +66,7 @@ internal sealed class ErrorListViewModel : ToolPaneModel
 
     public ErrorListViewModel()
     {
-        Title = "Error List";
+        Title = ResourceService.GetString("Pad.ErrorList.Title");
         ContentId = "ErrorList";
         IsVisible = true; // Matches the legacy Pad's `defaultPosition = "Bottom"`.
         IsCloseable = true;

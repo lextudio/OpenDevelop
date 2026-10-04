@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using ICSharpCode.Core;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
@@ -79,7 +80,7 @@ namespace ICSharpCode.SharpDevelop.Templates
             SolutionNameBox.Visibility = createNewSolution ? Visibility.Visible : Visibility.Collapsed;
             CreateSolutionDirectoryBox.Visibility = createNewSolution ? Visibility.Visible : Visibility.Collapsed;
             UpdateCreatePath();
-            StatusText.Text = "Loading templates...";
+            StatusText.Text = ResourceService.GetString("NewProject.Status.LoadingTemplates");
         }
 
         public static async Task<NewProjectWindow?> ShowAsync(
@@ -185,7 +186,7 @@ namespace ICSharpCode.SharpDevelop.Templates
         {
             if (SelectedTemplate is null)
             {
-                TemplateTitleText.Text = "Select a template to see its description.";
+                TemplateTitleText.Text = ResourceService.GetString("NewProject.TemplateDescriptionHint");
                 TemplateDescriptionText.Text = string.Empty;
                 TemplateDetailsText.Text = string.Empty;
                 return;
@@ -213,7 +214,7 @@ namespace ICSharpCode.SharpDevelop.Templates
 
         static void AddCategoryTreeItems(System.Windows.Controls.TreeView tree, IEnumerable<string> categories)
         {
-            tree.Items.Add(new System.Windows.Controls.TreeViewItem { Header = AllCategories, Tag = AllCategories, IsSelected = true });
+            tree.Items.Add(new System.Windows.Controls.TreeViewItem { Header = ResourceService.GetString("NewProject.AllTypes"), Tag = AllCategories, IsSelected = true });
             var nodes = new Dictionary<string, System.Windows.Controls.TreeViewItem>(StringComparer.OrdinalIgnoreCase);
             foreach (var category in categories.Where(category => !string.IsNullOrWhiteSpace(category))
                 .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(category => category, StringComparer.OrdinalIgnoreCase))
@@ -359,7 +360,7 @@ namespace ICSharpCode.SharpDevelop.Templates
             var projectName = ProjectName;
             if (string.IsNullOrWhiteSpace(location) || string.IsNullOrWhiteSpace(projectName))
             {
-                CreatePathText.Text = "Specify a project name and location to preview the creation path.";
+                CreatePathText.Text = ResourceService.GetString("NewProject.CreatePathHint");
                 return;
             }
 
@@ -368,11 +369,11 @@ namespace ICSharpCode.SharpDevelop.Templates
             var root = _createNewSolution && CreateSolutionDirectory && !string.IsNullOrWhiteSpace(solutionName)
                     ? Path.Combine(location, solutionName)
                     : location;
-                CreatePathText.Text = "Create in: " + Path.Combine(root, projectName);
+                CreatePathText.Text = ResourceService.GetString("NewProject.CreateIn") + Path.Combine(root, projectName);
             }
             catch (ArgumentException)
             {
-                CreatePathText.Text = "Enter a valid project location.";
+                CreatePathText.Text = ResourceService.GetString("NewProject.InvalidLocation");
             }
         }
 
@@ -418,7 +419,7 @@ namespace ICSharpCode.SharpDevelop.Templates
             }
             catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
             {
-                StatusText.Text = "Enter a valid project location.";
+                StatusText.Text = ResourceService.GetString("NewProject.InvalidLocation");
                 return false;
             }
         }

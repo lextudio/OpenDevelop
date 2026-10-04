@@ -9624,4 +9624,79 @@ SharpDevelop 編譯資源時發現不對應：資源名稱不是檔案名，而�
   <data name="ServiceReference.SvcUtilConfiguration" xml:space="preserve">
     <value>SvcUtil 組態</value>
   </data>
+  <data name="Pad.TaskList.Title" xml:space="preserve">
+    <value>工作清單</value>
+  </data>
+  <data name="Pad.ErrorList.Title" xml:space="preserve">
+    <value>錯誤清單</value>
+  </data>
+  <data name="Pad.Outline.Title" xml:space="preserve">
+    <value>大綱</value>
+  </data>
+  <data name="Pad.Output.Title" xml:space="preserve">
+    <value>輸出</value>
+  </data>
+  <data name="Pad.Tools.Title" xml:space="preserve">
+    <value>工具箱</value>
+  </data>
+  <data name="Pad.Properties.Title" xml:space="preserve">
+    <value>屬性</value>
+  </data>
+  <data name="Pad.SearchResults.Title" xml:space="preserve">
+    <value>搜尋結果</value>
+  </data>
+  <data name="Pad.Bookmarks.Title" xml:space="preserve">
+    <value>書籤</value>
+  </data>
+  <data name="Pad.DefinitionView.Title" xml:space="preserve">
+    <value>定義檢視</value>
+  </data>
+  <data name="ToolsPad.FilterToolTip" xml:space="preserve">
+    <value>篩選控制項</value>
+  </data>
+  <data name="ToolsPad.ClearFilterToolTip" xml:space="preserve">
+    <value>清除工具箱篩選</value>
+  </data>
+  <data name="ToolsPad.NoMatchingControls" xml:space="preserve">
+    <value>沒有相符的控制項</value>
+  </data>
+  <data name="NewProject.Status.LoadingTemplates" xml:space="preserve">
+    <value>正在載入範本...</value>
+  </data>
+  <data name="NewProject.TemplateDescriptionHint" xml:space="preserve">
+    <value>選取範本以查看其說明。</value>
+  </data>
+  <data name="NewProject.CreatePathHint" xml:space="preserve">
+    <value>指定專案名稱和位置以預覽建立路徑。</value>
+  </data>
+  <data name="NewProject.CreateIn" xml:space="preserve">
+    <value>建立於：</value>
+  </data>
+  <data name="NewProject.InvalidLocation" xml:space="preserve">
+    <value>請輸入有效的專案位置。</value>
+  </data>
+  <data name="NewItem.TemplateDescriptionHint" xml:space="preserve">
+    <value>選取範本以查看其說明。</value>
+  </data>
+  <data name="NewItem.ShortName" xml:space="preserve">
+    <value>短名稱：</value>
+  </data>
+  <data name="NewItem.InvalidItemName" xml:space="preserve">
+    <value>請輸入有效的項目名稱。不能包含檔案名稱字元。</value>
+  </data>
+  <data name="UpdatesOptions.Checking" xml:space="preserve">
+    <value>正在檢查...</value>
+  </data>
+  <data name="UpdatesOptions.CheckFailed" xml:space="preserve">
+    <value>檢查失敗：</value>
+  </data>
+  <data name="Workbench.DragToResizeToolTip" xml:space="preserve">
+    <value>拖曳以調整設計和 XAML 檢視的大小</value>
+  </data>
+  <data name="NewProject.AllTypes" xml:space="preserve">
+    <value>所有專案類型</value>
+  </data>
+  <data name="NewItem.AllTypes" xml:space="preserve">
+    <value>所有項目類型</value>
+  </data>
 </root>

@@ -10015,4 +10015,79 @@ Press Esc to cancel this operation.</value>
   <data name="ServiceReference.SvcUtilConfiguration" xml:space="preserve">
     <value>SvcUtil Configuration</value>
   </data>
+  <data name="Pad.TaskList.Title" xml:space="preserve">
+    <value>Task List</value>
+  </data>
+  <data name="Pad.ErrorList.Title" xml:space="preserve">
+    <value>Error List</value>
+  </data>
+  <data name="Pad.Outline.Title" xml:space="preserve">
+    <value>Outline</value>
+  </data>
+  <data name="Pad.Output.Title" xml:space="preserve">
+    <value>Output</value>
+  </data>
+  <data name="Pad.Tools.Title" xml:space="preserve">
+    <value>Tools</value>
+  </data>
+  <data name="Pad.Properties.Title" xml:space="preserve">
+    <value>Properties</value>
+  </data>
+  <data name="Pad.SearchResults.Title" xml:space="preserve">
+    <value>Search Results</value>
+  </data>
+  <data name="Pad.Bookmarks.Title" xml:space="preserve">
+    <value>Bookmarks</value>
+  </data>
+  <data name="Pad.DefinitionView.Title" xml:space="preserve">
+    <value>Definition View</value>
+  </data>
+  <data name="ToolsPad.FilterToolTip" xml:space="preserve">
+    <value>Filter controls</value>
+  </data>
+  <data name="ToolsPad.ClearFilterToolTip" xml:space="preserve">
+    <value>Clear Toolbox filter</value>
+  </data>
+  <data name="ToolsPad.NoMatchingControls" xml:space="preserve">
+    <value>No matching controls</value>
+  </data>
+  <data name="NewProject.Status.LoadingTemplates" xml:space="preserve">
+    <value>Loading templates...</value>
+  </data>
+  <data name="NewProject.TemplateDescriptionHint" xml:space="preserve">
+    <value>Select a template to see its description.</value>
+  </data>
+  <data name="NewProject.CreatePathHint" xml:space="preserve">
+    <value>Specify a project name and location to preview the creation path.</value>
+  </data>
+  <data name="NewProject.CreateIn" xml:space="preserve">
+    <value>Create in: </value>
+  </data>
+  <data name="NewProject.InvalidLocation" xml:space="preserve">
+    <value>Enter a valid project location.</value>
+  </data>
+  <data name="NewItem.TemplateDescriptionHint" xml:space="preserve">
+    <value>Select a template to see its description.</value>
+  </data>
+  <data name="NewItem.ShortName" xml:space="preserve">
+    <value>Short name: </value>
+  </data>
+  <data name="NewItem.InvalidItemName" xml:space="preserve">
+    <value>Enter a valid item name. It cannot contain file-name punctuation.</value>
+  </data>
+  <data name="UpdatesOptions.Checking" xml:space="preserve">
+    <value>Checking...</value>
+  </data>
+  <data name="UpdatesOptions.CheckFailed" xml:space="preserve">
+    <value>Check failed: </value>
+  </data>
+  <data name="Workbench.DragToResizeToolTip" xml:space="preserve">
+    <value>Drag to resize the Design and XAML views</value>
+  </data>
+  <data name="NewProject.AllTypes" xml:space="preserve">
+    <value>All project types</value>
+  </data>
+  <data name="NewItem.AllTypes" xml:space="preserve">
+    <value>All item types</value>
+  </data>
 </root>

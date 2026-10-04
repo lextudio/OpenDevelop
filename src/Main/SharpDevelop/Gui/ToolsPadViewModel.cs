@@ -38,7 +38,7 @@ internal sealed class ToolsPadViewModel : ToolPaneModel, IToolsPadHost
 
     public ToolsPadViewModel()
     {
-        Title = "Tools";
+        Title = ResourceService.GetString("Pad.Tools.Title");
         ContentId = "ToolsPad";
         IsVisible = true; // Matches the legacy Pad's `defaultPosition = "Left"`.
         IsCloseable = true;
@@ -136,10 +136,10 @@ internal sealed class ToolsPadViewModel : ToolPaneModel, IToolsPadHost
         var header = new Grid { Margin = new Thickness(6) };
         header.ColumnDefinitions.Add(new ColumnDefinition());
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        searchBox = new TextBox { Text = filterable.FilterText, ToolTip = "Filter controls", MinHeight = 24 };
-        var clear = new Button { Content = "×", ToolTip = "Clear Toolbox filter", Margin = new Thickness(4, 0, 0, 0), MinWidth = 24 };
+        searchBox = new TextBox { Text = filterable.FilterText, ToolTip = ResourceService.GetString("ToolsPad.FilterToolTip"), MinHeight = 24 };
+        var clear = new Button { Content = "×", ToolTip = ResourceService.GetString("ToolsPad.ClearFilterToolTip"), Margin = new Thickness(4, 0, 0, 0), MinWidth = 24 };
         var body = new Grid();
-        var empty = new TextBlock { Text = "No matching controls", Margin = new Thickness(10), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var empty = new TextBlock { Text = ResourceService.GetString("ToolsPad.NoMatchingControls"), Margin = new Thickness(10), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         empty.SetResourceReference(TextBlock.ForegroundProperty, "MutedForeground");
         void ApplyFilter() { filterable.Filter(searchBox.Text); empty.Visibility = filterable.VisibleItemCount == 0 ? Visibility.Visible : Visibility.Collapsed; }
         searchBox.TextChanged += (_, _) => ApplyFilter();

@@ -25,8 +25,8 @@ internal sealed class OutlineViewModel : ToolPaneModel, IOutlinePadHost, IDispos
 
     public OutlineViewModel()
     {
-        Title = "Outline";
-        ContentId = "Outline";
+        Title = ResourceService.GetString("Pad.Outline.Title");
+        ContentId = ResourceService.GetString("Pad.Outline.Title");
         IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Left, Hidden"`.
         IsCloseable = true;
         PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Left;

@@ -252,7 +252,7 @@ internal sealed class CompilerMessageViewViewModel : ToolPaneModel, IOutputPad, 
 
     public CompilerMessageViewViewModel()
     {
-        Title = "Output";
+        Title = ResourceService.GetString("Pad.Output.Title");
         ContentId = "OutputPad";
         IsVisible = true; // Matches the legacy Pad's `defaultPosition = "Bottom"`.
         IsCloseable = true;

@@ -1,4 +1,5 @@
 using System;
+using ICSharpCode.Core;
 using System.Composition;
 using System.Windows;
 using System.Windows.Controls;
@@ -53,7 +54,7 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
 
     public PropertyPadViewModel()
     {
-        Title = "Properties";
+        Title = ResourceService.GetString("Pad.Properties.Title");
         ContentId = "PropertyPad";
         IsVisible = true; // Matches the legacy Pad's `defaultPosition = "Right"`.
         IsCloseable = true;
