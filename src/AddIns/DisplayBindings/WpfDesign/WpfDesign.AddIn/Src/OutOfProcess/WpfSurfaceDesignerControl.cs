@@ -9,12 +9,14 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Designer.Surface;
 using ICSharpCode.SharpDevelop.Widgets;
 using ICSharpCode.WpfDesign.SurfaceHost;
+using LeXtudio.DevFlow.Agent.Core;
 
 namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 {
@@ -175,7 +177,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// size presets (a WPF Window/UserControl carries its own size in the XAML) and visual
 			// states. The theme combo is per-project (DesignerSessionState.DesignThemes, see Show).
 			Capabilities = BaseCapabilities;
-			StatusText = $"Starting {BackendName} design host…";
+			StatusText = string.Format(ResourceService.GetString("WpfDesign.Status.StartingHost"), BackendName);
 			SetContextCommands(new[] { ("Delete", "delete") });
 
 			controller.SelectionChanged += (_, _) => OnCanvasSelectionChanged();
@@ -266,7 +268,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// document. Keep the last accepted frame and surface the rejection as status instead.
 			if (!newState.Accepted && state?.Render is { Data.Length: > 0 })
 			{
-				StatusText = $"{BackendName} design host: " + (newState.Error ?? "operation was rejected.");
+				StatusText = string.Format(ResourceService.GetString("WpfDesign.Status.HostError"), BackendName, newState.Error ?? ResourceService.GetString("WpfDesign.Status.OperationRejected"));
 				return;
 			}
 			state = newState;
@@ -280,7 +282,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			var render = newState.Render;
 			if (render == null || string.IsNullOrEmpty(render.Data) || render.Width <= 0 || render.Height <= 0)
 			{
-				StatusText = $"{BackendName} design host: nothing rendered yet.";
+				StatusText = string.Format(ResourceService.GetString("WpfDesign.Status.NothingRenderedYet"), BackendName);
 				controller.RestoreSelection(Array.Empty<string>());
 				HideContextMenuTray();
 				HideMenuTypeHereHotspot();
@@ -288,7 +290,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				SetGridGuideOverlay(null, default, Array.Empty<double>(), Array.Empty<double>());
 				return;
 			}
-			StatusText = $"Rendered by {BackendName} design host ({render.Width}×{render.Height}).";
+			StatusText = string.Format(ResourceService.GetString("WpfDesign.Status.RenderedByHost"), BackendName, render.Width, render.Height);
 			// A reload shows the loading overlay on this surface (WpfViewContent.LoadInternal); a
 			// frame is what ends it. Left up, it dims the design and swallows every press.
 			SetLoading(false);
@@ -460,6 +462,19 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				return null;
 			var topLeft = SurfacePointToScreen(node.X, node.Y);
 			var bottomRight = SurfacePointToScreen(node.X + node.Width, node.Y + node.Height);
+			// SurfacePointToScreen is correctly relative to the canvas, but LibreWPF can expose
+			// that point in client coordinates while its portable presentation source is active.
+			// DevFlow's raw pointer endpoints use Quartz screen coordinates, so calibrate both
+			// corners against the native content origin just as the Toolbox bounds probe does.
+			if (OperatingSystem.IsMacOS()
+				&& Window.GetWindow(this) is { } window
+				&& MacOSWindowOrigin.TryGetKeyWindowContentOrigin() is { } nativeOrigin)
+			{
+				var reportedOrigin = window.PointToScreen(new Point());
+				var delta = new Vector(nativeOrigin.X - reportedOrigin.X, nativeOrigin.Y - reportedOrigin.Y);
+				topLeft += delta;
+				bottomRight += delta;
+			}
 			return new Rect(topLeft, bottomRight);
 		}
 
@@ -1259,7 +1274,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			}
 			if (result == null || !result.Accepted)
 			{
-				StatusText = $"{BackendName} design host: " + (result?.Error ?? "drop was rejected.");
+				StatusText = string.Format(ResourceService.GetString("WpfDesign.Status.HostError"), BackendName, result?.Error ?? ResourceService.GetString("WpfDesign.Status.DropRejected"));
 				return;
 			}
 			Show(result);

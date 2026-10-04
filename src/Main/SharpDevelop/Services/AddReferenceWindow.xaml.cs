@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
+using ICSharpCode.Core;
 
 namespace ICSharpCode.SharpDevelop.Services
 {
@@ -39,7 +40,7 @@ namespace ICSharpCode.SharpDevelop.Services
         AddReferenceWindow(string projectName, IReadOnlyList<ProjectCandidate> projects)
         {
             InitializeComponent();
-            Title = "Add Reference - " + projectName;
+            Title = ResourceService.GetString("AddReference.Title") + " - " + projectName;
             _projects = projects;
             ProjectList.ItemsSource = projects;
             AssemblyList.ItemsSource = _assemblies;
@@ -57,7 +58,16 @@ namespace ICSharpCode.SharpDevelop.Services
             return dialog.ShowDialog() == true ? dialog : null;
         }
 
-        void OnSelectionChanged(object sender, RoutedEventArgs e) => UpdateState();
+        void OnSelectionChanged(object sender, RoutedEventArgs e)
+        {
+            // Checked/Unchecked can be raised before WPF commits the TwoWay binding source.
+            // Read the control's authoritative state here so the Add button and status line do
+            // not lag one click behind on native input backends.
+            if (sender is System.Windows.Controls.CheckBox checkBox
+                && checkBox.DataContext is ProjectCandidate candidate)
+                candidate.IsSelected = checkBox.IsChecked == true;
+            UpdateState();
+        }
 
         void OnBrowseClick(object sender, RoutedEventArgs e)
         {

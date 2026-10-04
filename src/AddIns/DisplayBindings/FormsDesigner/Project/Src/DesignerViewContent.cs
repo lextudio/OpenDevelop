@@ -749,7 +749,7 @@ namespace ICSharpCode.FormsDesigner
 					LoggingService.Error(exception);
 					loadingCanvas.SetLoading(false);
 					loadingCanvas.ShowStatusBar = true;
-					loadingCanvas.StatusText = "The WinForms designer could not be started: " + exception.Message;
+					loadingCanvas.StatusText = string.Format(ResourceService.GetString("FormsDesigner.DesignerStartupFailed"), exception.Message);
 				});
 				return;
 			}
@@ -766,7 +766,7 @@ namespace ICSharpCode.FormsDesigner
 					client.Dispose();
 					loadingCanvas.SetLoading(false);
 					loadingCanvas.ShowStatusBar = true;
-					loadingCanvas.StatusText = "Failed to load designer: " + state.Error;
+					loadingCanvas.StatusText = string.Format(ResourceService.GetString("FormsDesigner.LoadDesignerFailed"), state.Error);
 					return;
 				}
 				remoteClient = client;

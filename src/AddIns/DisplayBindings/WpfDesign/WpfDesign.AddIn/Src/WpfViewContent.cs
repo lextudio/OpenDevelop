@@ -171,7 +171,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 				canvas.ShowUnavailable(DesignerCanvas.UnsupportedOnThisOSMessage("Microsoft WPF", "LibreWPF"));
 				return;
 			}
-			canvas.SetLoading(true, "Starting " + WpfSurfaceHostClient.GetBackendName(backend) + " design host…");
+			canvas.SetLoading(true, string.Format(ResourceService.GetString("WpfDesign.Status.StartingHost"), WpfSurfaceHostClient.GetBackendName(backend)));
 
 			_ = LoadDesignerAsync(myGeneration, sourceText, backend);
 		}

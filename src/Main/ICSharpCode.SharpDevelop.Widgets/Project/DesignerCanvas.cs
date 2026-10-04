@@ -25,6 +25,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Automation;
 
+using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 
@@ -463,8 +464,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// (<paramref name="runtimeName"/> "Microsoft WPF" vs <paramref name="portableRuntimeName"/>
 		/// "LibreWPF", WinForms vs LibreWinForms, WinUI vs Uno Platform).</summary>
 		public static string UnsupportedOnThisOSMessage(string runtimeName, string portableRuntimeName)
-			=> "This project uses " + runtimeName + ", which runs only on Windows, so its design view is not supported on this OS. "
-				+ portableRuntimeName + " projects can be designed here.";
+			=> string.Format(ResourceService.GetString("Global.Designer.UnsupportedOnThisOS"), runtimeName, portableRuntimeName);
 
 		/// <summary>Shows the shared "please wait" chrome for a VisualState switch. The switch is an
 		/// async round-trip to the out-of-process child, so without this the canvas would keep

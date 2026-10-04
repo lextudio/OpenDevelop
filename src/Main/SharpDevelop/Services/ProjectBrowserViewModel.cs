@@ -45,7 +45,7 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
 
     public ProjectBrowserViewModel()
     {
-        Title = "Projects";
+        Title = ResourceService.GetString("ProjectBrowser.PadTitle");
         ContentId = "ProjectBrowser";
         IsVisible = true;
         IsCloseable = true;
