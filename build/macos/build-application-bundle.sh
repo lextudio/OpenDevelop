@@ -142,12 +142,23 @@ fi
 # These payload roots have a different source and their own rsync --delete pass below. Excluding
 # them here is load-bearing: otherwise the host sync would delete the previous AddIns tree before
 # the filtered AddIns sync can compare it, turning every bundle refresh back into a full copy.
+#
+# The host publish is RID-less, so it carries every platform's runtimes/ tree. Windows needs its
+# win-x64/win-arm64 trees (one payload serves both dotnet hosts there), but macOS can load none of
+# them: skip them exactly as the AddIns sync below does. They were ~530 MB of the bundle, including
+# a Windows libSkiaSharp.pdb and LibreWPF.Transport's full per-RID managed payload.
 rsync -a --delete \
   --exclude '/AddIns/***' \
   --exclude '/data/***' \
   --exclude '/Sdks/***' \
   --exclude '/SdkResolvers/***' \
+  --exclude '/runtimes/win*/***' \
+  --exclude '/runtimes/linux*/***' \
+  --exclude '/runtimes/unix*/***' \
   "$src/" "$bundle_macos/"
+# --delete leaves excluded paths alone (and --delete-excluded would also wipe the payload roots
+# above), so remove trees an older bundle already carries.
+rm -rf "$bundle_macos"/runtimes/win* "$bundle_macos"/runtimes/linux* "$bundle_macos"/runtimes/unix*
 
 # Make the Addin SDK part of the installed IDE rather than a separately published
 # NuGet package. The resolver is built as part of SharpDevelop's project graph.
