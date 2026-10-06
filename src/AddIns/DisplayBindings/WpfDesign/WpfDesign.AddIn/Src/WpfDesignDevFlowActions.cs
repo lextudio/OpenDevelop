@@ -485,7 +485,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			// a real drag never even raises the Toolbox's PreviewMouseDown handler.
 			if (OperatingSystem.IsMacOS()
 				&& Window.GetWindow(element) is { } window
-				&& MacOSWindowOrigin.TryGetKeyWindowContentOrigin() is { } nativeOrigin)
+				&& MacOSWindowOrigin.TryGetContentOrigin() is { } nativeOrigin)
 			{
 				var reportedOrigin = window.PointToScreen(new Point());
 				var delta = new Vector(nativeOrigin.X - reportedOrigin.X, nativeOrigin.Y - reportedOrigin.Y);
