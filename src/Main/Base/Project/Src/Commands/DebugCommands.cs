@@ -32,7 +32,13 @@ namespace ICSharpCode.SharpDevelop.Project.Commands
 	{
 		protected bool withDebugger = true;
 		protected bool withHotReload;
-		
+
+		// Run builds first, which cannot start while another build is running.
+		public override bool IsEnabled {
+			get { return !SD.BuildService.IsBuilding; }
+			set { }
+		}
+
 		public override void Run()
 		{
 			Build build = new BuildBeforeExecute();
@@ -85,6 +91,12 @@ namespace ICSharpCode.SharpDevelop.Project.Commands
 	
 	public class ContinueDebuggingCommand : AbstractMenuCommand
 	{
+		// When not debugging this starts Execute, which builds first.
+		public override bool IsEnabled {
+			get { return SD.Debugger.IsDebugging || !SD.BuildService.IsBuilding; }
+			set { }
+		}
+
 		public override void Run()
 		{
 			if (SD.Debugger.IsDebugging) {

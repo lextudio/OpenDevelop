@@ -38,6 +38,17 @@ namespace ICSharpCode.SharpDevelop.Project.Commands
 				return ProjectService.OpenSolution!=null;
 			}
 		}
+
+		/// <summary>
+		/// Only one GUI build can run at a time (a second one is rejected with
+		/// MSBuildAlreadyRunning), and builds are also started outside these commands - e.g. by
+		/// the designer's build-before-load gate. Disable every build menu/toolbar item while any
+		/// such build runs instead of letting the user start one that is bound to fail.
+		/// </summary>
+		public override bool IsEnabled {
+			get { return !SD.BuildService.IsBuilding; }
+			set { }
+		}
 		public virtual void BeforeBuild()
 		{
 			TaskService.BuildMessageViewCategory.ClearText();

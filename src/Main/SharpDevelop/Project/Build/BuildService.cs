@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Windows.Input;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -68,6 +69,10 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 			var projectsList = projects.ToList();
 			guiBuildCancellation = new CancellationTokenSource();
+			// Build menu/toolbar commands key their enabled state off IsBuilding; a build started
+			// programmatically (e.g. by the designer) raises no input event that would make WPF
+			// re-query them, so do it explicitly on both transitions.
+			CommandManager.InvalidateRequerySuggested();
 			try {
 				using (var progressMonitor = SD.StatusBar.CreateProgressMonitor(guiBuildCancellation.Token)) {
 					if (BuildStarted != null)
@@ -118,6 +123,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				}
 			} finally {
 				guiBuildCancellation = null;
+				CommandManager.InvalidateRequerySuggested();
 			}
 		}
 		
