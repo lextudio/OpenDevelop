@@ -361,7 +361,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		void UpdateMenu()
 		{
-			MenuService.UpdateStatus(mainMenu.ItemsSource);
+			MenuService.UpdateStatus(mainMenu.Items);
 			foreach (ToolBar tb in toolBars) {
 				ToolBarService.UpdateStatus(tb.ItemsSource);
 			}
@@ -498,7 +498,8 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		void OnLanguageChanged(object sender, EventArgs e)
 		{
-			MenuService.UpdateText(mainMenu.ItemsSource);
+			MenuService.UpdateText(mainMenu.Items);
+			SetProjectTitle(null, new PropertyChangedEventArgs<IProject>(null, SD.ProjectService.CurrentProject));
 			UpdateFlowDirection();
 		}
 		

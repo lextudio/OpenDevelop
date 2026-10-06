@@ -58,12 +58,21 @@ namespace ICSharpCode.Core.Presentation
 		
 		protected override void StartListening(object source)
 		{
-			resourceService.LanguageChanged += DeliverEvent;
+			resourceService.LanguageChanged += OnLanguageChanged;
 		}
-		
+
 		protected override void StopListening(object source)
 		{
-			resourceService.LanguageChanged -= DeliverEvent;
+			resourceService.LanguageChanged -= OnLanguageChanged;
+		}
+
+		// Listeners are registered against a null (static) source, and WeakEventManager looks
+		// listeners up by the sender it is given. Forwarding the resource service's own sender
+		// (wiring DeliverEvent directly) therefore matched no listener, so no Localize binding
+		// or localized view-content title ever followed a language change until restart.
+		void OnLanguageChanged(object sender, EventArgs e)
+		{
+			DeliverEvent(null, e);
 		}
 	}
 }

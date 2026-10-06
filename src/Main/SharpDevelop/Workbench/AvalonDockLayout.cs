@@ -155,10 +155,26 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			LoadConfiguration();
 			dockWorkspace.BindSources();
 			EnsureFloatingWindowsLocations();
+			SD.ResourceService.LanguageChanged += OnLanguageChanged;
 		}
-		
+
+		// Migrated pads are ToolPaneModels whose Title (bound to the tab header) is resolved once in
+		// each model's constructor. Re-resolve it from the pad's codon title (a ${res:...} string)
+		// so pad headers follow a UI language switch instead of waiting for a restart.
+		void OnLanguageChanged(object sender, EventArgs e)
+		{
+			foreach (var pane in dockWorkspace.ToolPanes) {
+				if (pane.LegacyPadClass == null)
+					continue;
+				var descriptor = workbench.PadContentCollection.FirstOrDefault(pd => pd.Class == pane.LegacyPadClass);
+				if (descriptor != null)
+					pane.Title = descriptor.Title;
+			}
+		}
+
 		public void Detach()
 		{
+			SD.ResourceService.LanguageChanged -= OnLanguageChanged;
 			StoreConfiguration();
 			this.workbench.mainContent.Content = null;
 			CommandManager.RemoveCanExecuteHandler(this.workbench, OnCanExecuteRoutedCommand);

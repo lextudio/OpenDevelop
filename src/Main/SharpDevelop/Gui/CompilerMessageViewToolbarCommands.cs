@@ -34,9 +34,12 @@ public class ShowOutputFromComboBox : ComboBox
                 Style = Application.Current.TryFindResource(typeof(ComboBox)) as Style;
         };
         SetItems();
+        this.SelectedIndex = 0;
         Host.MessageCategoryAdded += CompilerMessageViewMessageCategoryAdded;
         Host.SelectedCategoryIndexChanged += CompilerMessageViewSelectedCategoryIndexChanged;
-        this.SelectedIndex = 0;
+        // Display names are ${res:...} strings parsed into plain items; re-parse them when the
+        // UI language changes. The combo lives as long as the Output pad, i.e. the app.
+        SD.ResourceService.LanguageChanged += (_, _) => SetItems();
     }
 
     void CompilerMessageViewSelectedCategoryIndexChanged(object sender, EventArgs e)
@@ -61,11 +64,14 @@ public class ShowOutputFromComboBox : ComboBox
 
     void SetItems()
     {
+        // Rebuilding the items clears the selection; restore the host's current category rather
+        // than jumping back to the first one.
+        int selected = Host.SelectedCategoryIndex;
         this.Items.Clear();
         foreach (MessageViewCategory category in Host.MessageCategories) {
             this.Items.Add(StringParser.Parse(category.DisplayCategory));
         }
-        this.SelectedIndex = 0;
+        this.SelectedIndex = selected >= 0 && selected < this.Items.Count ? selected : 0;
     }
 }
 

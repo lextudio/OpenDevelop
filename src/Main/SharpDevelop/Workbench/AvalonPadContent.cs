@@ -59,6 +59,14 @@ namespace ICSharpCode.SharpDevelop.Workbench
 
 			this.IsActiveChanged += OnIsActiveChanged;
 			placeholder.IsVisibleChanged += AvalonPadContent_IsVisibleChanged;
+			SD.ResourceService.LanguageChanged += OnLanguageChanged;
+		}
+
+		void OnLanguageChanged(object sender, EventArgs e)
+		{
+			this.Title = StringParser.Parse(descriptor.Title);
+			if (placeholder != null)
+				placeholder.Text = this.Title;
 		}
 
 		void OnIsActiveChanged(object sender, EventArgs e)
@@ -110,6 +118,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 
 		public void Dispose()
 		{
+			SD.ResourceService.LanguageChanged -= OnLanguageChanged;
 			if (padInstance != null) {
 				padInstance.Dispose();
 			}

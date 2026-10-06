@@ -36,8 +36,19 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			if (statusBar == null)
 				throw new ArgumentNullException("statusBar");
 			this.statusBar = statusBar;
+			// Every panel text is a ${res:...} template parsed when it was set. Remember how each
+			// panel was last rendered and re-render it on a UI language switch, instead of keeping
+			// the old language until the next caret move / message.
+			SD.ResourceService.LanguageChanged += delegate {
+				refreshCaret?.Invoke();
+				refreshSelection?.Invoke();
+				refreshMode?.Invoke();
+				refreshMessage?.Invoke();
+			};
 		}
-		
+
+		Action refreshCaret, refreshSelection, refreshMode, refreshMessage;
+
 		public bool Visible {
 			get {
 				return statusBar.Visibility == Visibility.Visible;
@@ -49,45 +60,56 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public void SetCaretPosition(int x, int y, int charOffset)
 		{
-			statusBar.CursorStatusBarPanel.Content = StringParser.Parse(
+			refreshCaret = () => statusBar.CursorStatusBarPanel.Content = StringParser.Parse(
 				"${res:StatusBarService.CursorStatusBarPanelText}",
 				new StringTagPair("Line", String.Format("{0,-10}", y)),
 				new StringTagPair("Column", String.Format("{0,-5}", x)),
 				new StringTagPair("Character", String.Format("{0,-5}", charOffset))
 			);
+			refreshCaret();
 		}
-		
+
 		public void SetSelectionSingle(int length)
 		{
-			if (length > 0) {
-				statusBar.SelectionStatusBarPanel.Content = StringParser.Parse(
-					"${res:StatusBarService.SelectionStatusBarPanelTextSingle}",
-					new StringTagPair("Length", String.Format("{0,-10}", length)));
-			} else {
-				statusBar.SelectionStatusBarPanel.Content = null;
-			}
+			refreshSelection = () => {
+				if (length > 0) {
+					statusBar.SelectionStatusBarPanel.Content = StringParser.Parse(
+						"${res:StatusBarService.SelectionStatusBarPanelTextSingle}",
+						new StringTagPair("Length", String.Format("{0,-10}", length)));
+				} else {
+					statusBar.SelectionStatusBarPanel.Content = null;
+				}
+			};
+			refreshSelection();
 		}
-		
+
 		public void SetSelectionMulti(int rows, int cols)
 		{
-			if (rows > 0 && cols > 0) {
-				statusBar.SelectionStatusBarPanel.Content = StringParser.Parse(
-					"${res:StatusBarService.SelectionStatusBarPanelTextMulti}",
-					new StringTagPair("Rows", String.Format("{0}", rows)),
-					new StringTagPair("Cols", String.Format("{0}", cols)),
-					new StringTagPair("Total", String.Format("{0}", rows * cols)));
-			} else {
-				statusBar.SelectionStatusBarPanel.Content = null;
-			}
+			refreshSelection = () => {
+				if (rows > 0 && cols > 0) {
+					statusBar.SelectionStatusBarPanel.Content = StringParser.Parse(
+						"${res:StatusBarService.SelectionStatusBarPanelTextMulti}",
+						new StringTagPair("Rows", String.Format("{0}", rows)),
+						new StringTagPair("Cols", String.Format("{0}", cols)),
+						new StringTagPair("Total", String.Format("{0}", rows * cols)));
+				} else {
+					statusBar.SelectionStatusBarPanel.Content = null;
+				}
+			};
+			refreshSelection();
 		}
-		
+
 		public void SetInsertMode(bool insertMode)
 		{
-			statusBar.ModeStatusBarPanel.Content = insertMode ? StringParser.Parse("${res:StatusBarService.CaretModes.Insert}") : StringParser.Parse("${res:StatusBarService.CaretModes.Overwrite}");
+			refreshMode = () => statusBar.ModeStatusBarPanel.Content = insertMode ? StringParser.Parse("${res:StatusBarService.CaretModes.Insert}") : StringParser.Parse("${res:StatusBarService.CaretModes.Overwrite}");
+			refreshMode();
 		}
-		
+
 		public void SetMessage(string message, bool highlighted, IImage icon)
 		{
+			// Only re-render a ${res:...} template; a message the caller already resolved to plain
+			// text has nothing to re-localize (and re-parsing it could expand stray ${...}).
+			refreshMessage = message != null && message.Contains("${") ? () => statusBar.SetMessage(StringParser.Parse(message), highlighted) : null;
 			statusBar.SetMessage(StringParser.Parse(message), highlighted);
 		}
 		
