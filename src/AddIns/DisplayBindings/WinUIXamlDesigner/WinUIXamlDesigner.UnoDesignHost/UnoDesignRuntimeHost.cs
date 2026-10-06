@@ -744,6 +744,150 @@ sealed class UnoDesignRuntimeHost : IDesignCanvasBackend, IWinUIXamlRuntimeHost,
 	/// ARM64 commonly carries an x64 side install. Only when no matching-architecture SDK can be
 	/// found at all is this reported as a real mismatch.
 	/// </summary>
+	/// <summary>Major Windows App Runtime version this designer's WinUI host was built against
+	/// (<c>Microsoft.WindowsAppSDK</c> in Directory.Packages.props, and
+	/// <c>WindowsAppSdkHostVersion</c> in WinUIXamlDesigner.MicrosoftHost.csproj, which defaults to
+	/// the same value). Only used for the "not installed" and "older than" messages: any installed
+	/// major supplies the XAML framework, so an unexpected value is reported, never blocked.</summary>
+	const int RequiredWindowsAppRuntimeMajorVersion = 2;
+
+	/// <summary>
+	/// Whether a Windows App Runtime (the framework package behind Microsoft.UI.Xaml) is installed
+	/// on this machine, and the highest major version found.
+	/// </summary>
+	/// <remarks>
+	/// Enumerated as AppX packages, because that is how the runtime installs itself in practice: the
+	/// framework package registers under WindowsApps and writes no classic Uninstall entry. Reading
+	/// only HKLM/HKCU\SOFTWARE\...\Uninstall therefore reports "absent" on a machine that has the
+	/// runtime - verified on an ARM64 dev box carrying Microsoft.WindowsAppRuntime.2 2.4.0.0 arm64,
+	/// which a registry-only probe missed entirely. The uninstall key is still consulted as a
+	/// fallback for the older EXE-bootstrapper layout.
+	///
+	/// The distinction that matters is "enumerated and found nothing" from "could not enumerate".
+	/// Only the first may block; the second returns <c>true</c>, because this probe exists to
+	/// replace a useless message with a useful one and must never become the reason a working
+	/// preview stops working.
+	/// </remarks>
+	static bool WindowsAppRuntimeInstalled(out int majorVersion)
+	{
+		majorVersion = 0;
+		var enumerated = false;
+		foreach (var packageName in EnumerateAppRuntimePackageNames(out enumerated))
+		{
+			// "Microsoft.WindowsAppRuntime.2" -> 2. The CBS/framework variants
+			// ("Microsoft.WindowsAppRuntime.CBS.2") also carry a major and are wanted.
+			var dot = packageName.LastIndexOf('.');
+			var tail = dot < 0 ? "" : packageName.Substring(dot + 1);
+			var digits = new string(tail.TakeWhile(char.IsDigit).ToArray());
+			if (digits.Length == 0 || !int.TryParse(digits, out var packageMajor) || packageMajor <= 0)
+				continue;
+			if (packageMajor > majorVersion)
+				majorVersion = packageMajor;
+			return true;
+		}
+		if (enumerated)
+			return false;
+		// Could not enumerate: the registry fallback may still answer.
+		if (TryFindRuntimeInUninstallRegistry(out majorVersion))
+			return true;
+		return true;
+	}
+
+	/// <summary>Names of installed AppX packages that look like a Windows App Runtime, and whether
+	/// the package list could be read at all. Never throws.</summary>
+	static IEnumerable<string> EnumerateAppRuntimePackageNames(out bool enumerated)
+	{
+		enumerated = false;
+		var names = new List<string>();
+		try
+		{
+			// WinRT: Windows.Management.Deployment.PackageManager. Reached by reflection so this
+			// file keeps compiling where the Windows SDK projection is not referenced.
+			var packageManagerType = Type.GetType("Windows.Management.Deployment.PackageManager, Windows, ContentType=WindowsRuntime");
+			if (packageManagerType == null)
+				return names;
+			var findPackages = packageManagerType.GetMethod("FindPackages");
+			if (findPackages == null || findPackages.GetParameters().Length != 0)
+				return names;
+			foreach (var ctor in packageManagerType.GetConstructors())
+			{
+				var parameters = ctor.GetParameters();
+				if (parameters.Length != 0)
+					continue;
+				object? manager;
+				try
+				{
+					manager = ctor.Invoke(null);
+				}
+				catch (System.Reflection.TargetInvocationException)
+				{
+					continue;
+				}
+				if (manager == null)
+					continue;
+				if (findPackages.Invoke(manager, null) is not IList<object> packages)
+					continue;
+				enumerated = true;
+				foreach (var package in packages)
+				{
+					// Over reflection the projected PackageId surfaces as a string already.
+					var id = package?.GetType().GetProperty("Id")?.GetValue(package);
+					var name = id as string ?? id?.GetType().GetProperty("Name")?.GetValue(id) as string;
+					if (name != null && name.IndexOf("WindowsAppRuntime", StringComparison.OrdinalIgnoreCase) >= 0)
+						names.Add(name);
+				}
+				break;
+			}
+		}
+		catch (Exception)
+		{
+			// Any WinRT/permission failure leaves enumerated false: "cannot tell".
+		}
+		return names;
+	}
+
+	/// <summary>Looks for the runtime under the classic uninstall keys, which the EXE bootstrapper
+	/// layout writes. Returns false when nothing is found; never throws.</summary>
+	static bool TryFindRuntimeInUninstallRegistry(out int majorVersion)
+	{
+		majorVersion = 0;
+		var found = false;
+		foreach (var hive in new[] {
+			Microsoft.Win32.RegistryHive.LocalMachine,
+			Microsoft.Win32.RegistryHive.CurrentUser })
+		{
+			foreach (var view in new[] { Microsoft.Win32.RegistryView.Registry64, Microsoft.Win32.RegistryView.Registry32 })
+			{
+				try
+				{
+					using var baseKey = Microsoft.Win32.RegistryKey.OpenBaseKey(hive, view);
+					using var uninstall = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+					if (uninstall == null)
+						continue;
+					foreach (var name in uninstall.GetSubKeyNames())
+					{
+						using var entry = uninstall.OpenSubKey(name);
+						var displayName = entry?.GetValue("DisplayName") as string;
+						if (displayName == null || displayName.IndexOf("Windows App Runtime", StringComparison.OrdinalIgnoreCase) < 0)
+							continue;
+						found = true;
+						if (entry.GetValue("DisplayVersion") is string version
+							&& int.TryParse(version, out var parsedMajor)
+							&& parsedMajor > majorVersion)
+						{
+							majorVersion = parsedMajor;
+						}
+					}
+				}
+				catch (Exception)
+				{
+					// Restricted or unavailable hive/view: nothing learned here.
+				}
+			}
+		}
+		return found;
+	}
+
 	static bool CanHostRunOnAppArchitecture(string? appBin, out string appArchitecture, out string? dotnetHostPath, out Architecture? dotnetHostArchitecture)
 	{
 		appArchitecture = "an unknown architecture";
