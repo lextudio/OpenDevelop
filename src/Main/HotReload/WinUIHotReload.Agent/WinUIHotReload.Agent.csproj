@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Managed half of WinUI 3 Hot Reload (doc/technotes/hot-reload.md, "WinUI 3: XAML Diagnostics
+       agent"). It is injected into the application through DOTNET_STARTUP_HOOKS, asks WinUI to load
+       the native TAP into its own process, and serves the same pipe protocol as the WPF agent.
+
+       Deliberately references nothing from Windows App SDK: the agent is loaded into applications
+       built against any WinAppSDK version, so it reaches WinUI through XAML Diagnostics (via the
+       TAP) and through reflection over the application's own projection, never through a
+       compile-time reference that would pin a version. -->
+  <PropertyGroup>
+    <!-- The oldest runtime a WinUI 3 application can still be on; a startup hook must not need a
+         newer runtime than the application it is injected into. -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>WinUIHotReload</RootNamespace>
+    <AssemblyName>WinUIHotReload.Agent</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- AnyCPU, never RID-specific: one agent serves x86, x64 and ARM64 applications and picks the
+         matching TAP at run time. -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <!-- Built with WinUIXamlDesigner.AddIn on every OS; only Windows builds the native TAP. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <TapConfiguration Condition="'$(TapConfiguration)' == ''">$(Configuration)</TapConfiguration>
+    <TapProject>$(MSBuildThisFileDirectory)..\WinUIHotReload.Tap\WinUIHotReload.Tap.vcxproj</TapProject>
+    <TapOutputRoot>$(MSBuildThisFileDirectory)..\WinUIHotReload.Tap\bin\$(TapConfiguration)\</TapOutputRoot>
+  </PropertyGroup>
+
+  <!-- The TAP is a vcxproj, which only Visual Studio's MSBuild can build. Under it, build directly;
+       under dotnet build, locate Visual Studio with vswhere and run its MSBuild. One build per
+       architecture: the TAP is loaded into the application process and must match it. -->
+  <Target Name="BuildWinUIHotReloadTap" BeforeTargets="Build" Condition="$([MSBuild]::IsOSPlatform('Windows')) And '$(SkipWinUIHotReloadTap)' != 'true'">
+    <ItemGroup>
+      <_TapPlatform Include="Win32;x64;ARM64" />
+    </ItemGroup>
+    <MSBuild Condition="'$(MSBuildRuntimeType)' == 'Full'" Projects="$(TapProject)" Targets="Build"
+             Properties="Configuration=$(TapConfiguration);Platform=%(_TapPlatform.Identity)" />
+    <PropertyGroup Condition="'$(MSBuildRuntimeType)' != 'Full'">
+      <_VsWhere>$(MSBuildProgramFiles32)\Microsoft Visual Studio\Installer\vswhere.exe</_VsWhere>
+    </PropertyGroup>
+    <Exec Condition="'$(MSBuildRuntimeType)' != 'Full'" ConsoleToMSBuild="true" StandardOutputImportance="low"
+          Command="&quot;$(_VsWhere)&quot; -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find MSBuild\**\Bin\MSBuild.exe">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_VsMSBuildCandidates" />
+    </Exec>
+    <PropertyGroup Condition="'$(MSBuildRuntimeType)' != 'Full'">
+      <_VsMSBuild>$([System.String]::Copy('$(_VsMSBuildCandidates)').Split(';')[0])</_VsMSBuild>
+    </PropertyGroup>
+    <Error Condition="'$(MSBuildRuntimeType)' != 'Full' And !Exists('$(_VsMSBuild)')"
+           Text="WinUI Hot Reload: the native TAP needs Visual Studio with the C++ desktop workload (vswhere found no MSBuild). Pass -p:SkipWinUIHotReloadTap=true to build the agent without it." />
+    <Exec Condition="'$(MSBuildRuntimeType)' != 'Full'"
+          Command="&quot;$(_VsMSBuild)&quot; &quot;$(TapProject)&quot; -nologo -v:m -p:Configuration=$(TapConfiguration) -p:Platform=%(_TapPlatform.Identity)" />
+  </Target>
+
+  <!-- Deploy into the WinUI designer addin as HotReload/winui/, with the TAPs under tap/<arch>/ -
+       the layout WinUIHotReloadAgent.LocateTap expects. WinUIXamlDesigner.AddIn builds this project
+       and its adapter looks there. Like the WPF agent this is a plain copy: the agent is handed to
+       the application's runtime and is never loaded into the IDE. -->
+  <Target Name="DeployAgentToAddIn" AfterTargets="Build">
+    <PropertyGroup>
+      <_AddInHotReloadDir>$(MSBuildThisFileDirectory)..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\HotReload\winui\</_AddInHotReloadDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_AgentPayload Include="$(TargetDir)$(TargetName).dll" />
+      <_AgentPayload Include="$(TargetDir)$(TargetName).pdb" Condition="Exists('$(TargetDir)$(TargetName).pdb') And '$(OpenDevelopDistributionBuild)' != 'true'" />
+      <_TapPayload Include="$(TapOutputRoot)*\WinUIHotReload.Tap.dll" />
+    </ItemGroup>
+    <!-- tap/ beside the agent in its own output too, so a test can inject the agent straight from bin. -->
+    <Copy SourceFiles="@(_TapPayload)" DestinationFiles="@(_TapPayload->'$(TargetDir)tap\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_AgentPayload)" DestinationFolder="$(_AddInHotReloadDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_TapPayload)" DestinationFiles="@(_TapPayload->'$(_AddInHotReloadDir)tap\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

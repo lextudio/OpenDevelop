@@ -4,26 +4,29 @@ using System.Threading.Tasks;
 
 using ICSharpCode.Core;
 
-namespace ICSharpCode.SharpDevelop.Project.HotReload.Wpf
+namespace ICSharpCode.SharpDevelop.Project.HotReload
 {
 	/// <summary>
-	/// A live session with the in-process WPF agent. Readiness is proved by the agent answering on
-	/// its pipe, never by the application process merely existing.
+	/// A live session with an in-process Hot Reload agent that speaks the newline-delimited JSON
+	/// pipe protocol the WPF agent introduced and the WinUI agent shares. Framework adapters live in
+	/// their own addins and only configure the launch; this is the part they have in common.
+	/// Readiness is proved by the agent answering on its pipe, never by the application process
+	/// merely existing.
 	/// </summary>
-	sealed class WpfHotReloadSession : IHotReloadSession
+	public sealed class AgentPipeHotReloadSession : IHotReloadSession
 	{
-		readonly WpfHotReloadPipeClient client;
+		readonly AgentPipeClient client;
 		readonly CancellationTokenSource disposal = new CancellationTokenSource();
 		HotReloadSessionState state = HotReloadSessionState.Starting;
 
-		public WpfHotReloadSession(IApplicationHotReloadAdapter adapter, HotReloadCapabilities capabilities,
+		public AgentPipeHotReloadSession(IApplicationHotReloadAdapter adapter, HotReloadCapabilities capabilities,
 			string pipeName, string logFile)
 		{
 			Framework = adapter.Framework;
 			Capabilities = capabilities;
 			PipeName = pipeName;
 			LogFile = logFile;
-			client = new WpfHotReloadPipeClient(pipeName);
+			client = new AgentPipeClient(pipeName);
 		}
 
 		public string Framework { get; }
@@ -69,19 +72,33 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload.Wpf
 			try {
 				// "agent.ready" is answered on the UI thread of the target application, so a reply
 				// also proves the application is up and pumping, not merely that a socket exists.
-				var value = await client.QueryAsync("agent.ready", timeout, linked.Token).ConfigureAwait(false);
-				if (value == "1") {
-					State = HotReloadSessionState.Ready;
-					return true;
+				// "0" means "up, but not able to take a change yet" (no window, say) and is polled;
+				// only an error answer - an agent that knows it will never be ready - fails fast.
+				var deadline = DateTime.UtcNow + timeout;
+				while (true) {
+					var remaining = deadline - DateTime.UtcNow;
+					if (remaining <= TimeSpan.Zero)
+						throw new TimeoutException($"The {Framework} Hot Reload agent did not report ready within {timeout}.");
+					var response = await client.SendAsync(new AgentPipeClient.AgentRequest { Kind = "query", Query = "agent.ready" },
+						remaining, linked.Token).ConfigureAwait(false);
+					if (response.Value == "1") {
+						State = HotReloadSessionState.Ready;
+						return true;
+					}
+					if (!response.IsOk) {
+						LastError = response.Result;
+						LoggingService.Warn($"{Framework} Hot Reload: agent will not become ready: {response.Result}");
+						State = HotReloadSessionState.Failed;
+						return false;
+					}
+					await Task.Delay(200, linked.Token).ConfigureAwait(false);
 				}
-				State = HotReloadSessionState.Failed;
-				return false;
 			} catch (OperationCanceledException) {
 				State = HotReloadSessionState.Disconnected;
 				return false;
 			} catch (Exception ex) {
 				LastError = ex.Message;
-				LoggingService.Warn($"WPF Hot Reload: agent did not become ready: {ex.Message}");
+				LoggingService.Warn($"{Framework} Hot Reload: agent did not become ready: {ex.Message}");
 				State = HotReloadSessionState.Failed;
 				return false;
 			}
@@ -97,12 +114,12 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload.Wpf
 			using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, disposal.Token);
 			if (State != HotReloadSessionState.Ready
 				&& !await WaitForReadyAsync(TimeSpan.FromSeconds(30), linked.Token).ConfigureAwait(false)) {
-				return new HotReloadApplyResult(HotReloadOutcome.Failed, "The WPF Hot Reload agent is not ready.");
+				return new HotReloadApplyResult(HotReloadOutcome.Failed, $"The {Framework} Hot Reload agent is not ready.");
 			}
 
 			State = HotReloadSessionState.Applying;
 			try {
-				var response = await client.SendAsync(new WpfHotReloadPipeClient.AgentRequest {
+				var response = await client.SendAsync(new AgentPipeClient.AgentRequest {
 					Kind = "apply",
 					FilePath = change.FilePath,
 					XamlText = change.CurrentText,

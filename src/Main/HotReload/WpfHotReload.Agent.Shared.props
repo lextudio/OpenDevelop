@@ -32,21 +32,22 @@
     <Compile Include="$(MSBuildThisFileDirectory)..\..\..\externals\vscode-wpf\src\WpfHotReload.Runtime\StartupHook.cs" Link="StartupHook.cs" />
   </ItemGroup>
 
-  <!-- Deploy next to the IDE, under HotReload/<runtime>/, so the adapter can pick the variant that
-       matches the debuggee's runtime (WpfApplicationHotReloadAdapter.LocateAgent). The agent is
-       never loaded into the IDE: it is handed to the debuggee's runtime through
-       DOTNET_STARTUP_HOOKS, so it only has to exist on disk at a known path. That is also why this
-       is a plain copy and not a ProjectReference - referencing it would pull the agent's assembly
-       into the IDE's own load context for no reason. -->
-  <Target Name="DeployAgentToShell" AfterTargets="Build">
+  <!-- Deploy into the WPF designer addin, under HotReload/<runtime>/, so its adapter can pick the
+       variant that matches the debuggee's runtime (WpfApplicationHotReloadAdapter.LocateAgent, in
+       WpfDesign.AddIn, which builds this project). The agent is never loaded into the IDE: it is
+       handed to the debuggee's runtime through DOTNET_STARTUP_HOOKS, so it only has to exist on
+       disk at a known path. That is also why this is a plain copy of the agent assembly alone -
+       its build output also holds the whole framework it was compiled against, which the debuggee
+       brings itself. -->
+  <Target Name="DeployAgentToAddIn" AfterTargets="Build">
     <PropertyGroup>
-      <_ShellHotReloadDir>$(MSBuildThisFileDirectory)..\SharpDevelop\bin\$(Configuration)\$(TargetFramework)\HotReload\$(HotReloadAgentRuntime)\</_ShellHotReloadDir>
+      <_AddInHotReloadDir>$(MSBuildThisFileDirectory)..\..\..\AddIns\DisplayBindings\WpfDesign\HotReload\$(HotReloadAgentRuntime)\</_AddInHotReloadDir>
     </PropertyGroup>
     <ItemGroup>
       <_AgentPayload Include="$(TargetDir)$(TargetName).dll" />
-      <_AgentPayload Include="$(TargetDir)$(TargetName).pdb" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
+      <_AgentPayload Include="$(TargetDir)$(TargetName).pdb" Condition="Exists('$(TargetDir)$(TargetName).pdb') And '$(OpenDevelopDistributionBuild)' != 'true'" />
     </ItemGroup>
-    <Copy SourceFiles="@(_AgentPayload)" DestinationFolder="$(_ShellHotReloadDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_AgentPayload)" DestinationFolder="$(_AddInHotReloadDir)" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

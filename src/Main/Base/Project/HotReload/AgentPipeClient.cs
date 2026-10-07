@@ -7,16 +7,17 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace ICSharpCode.SharpDevelop.Project.HotReload.Wpf
+namespace ICSharpCode.SharpDevelop.Project.HotReload
 {
 	/// <summary>
-	/// Newline-delimited JSON client for the in-process WPF Hot Reload agent.
+	/// Newline-delimited JSON client for the in-process WPF Hot Reload agent, and for the WinUI agent,
+	/// which serves the same protocol.
 	/// The agent serves exactly one request per connection and then recreates its listener, so
 	/// every call connects afresh - and on Unix, where a .NET named pipe is a socket file under
 	/// $TMPDIR, the endpoint briefly does not exist between requests. A connect failure therefore
 	/// means "try again", not "the agent is gone", which is why <see cref="SendAsync"/> retries.
 	/// </summary>
-	sealed class WpfHotReloadPipeClient
+	internal sealed class AgentPipeClient
 	{
 		static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions {
 			PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -25,7 +26,7 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload.Wpf
 
 		readonly string pipeName;
 
-		public WpfHotReloadPipeClient(string pipeName)
+		public AgentPipeClient(string pipeName)
 		{
 			this.pipeName = pipeName ?? throw new ArgumentNullException(nameof(pipeName));
 		}
@@ -51,7 +52,7 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload.Wpf
 				}
 			}
 			throw new TimeoutException(
-				$"The WPF Hot Reload agent on pipe '{pipeName}' did not answer within {timeout}"
+				$"The Hot Reload agent on pipe '{pipeName}' did not answer within {timeout}"
 				+ (last is null ? "." : $"; last error: {last.GetType().Name}: {last.Message}"), last);
 		}
 
@@ -70,9 +71,9 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload.Wpf
 			var reader = new StreamReader(pipe, new UTF8Encoding(false));
 			var line = await reader.ReadLineAsync().ConfigureAwait(false);
 			if (string.IsNullOrEmpty(line))
-				throw new IOException("The WPF Hot Reload agent closed the connection without answering.");
+				throw new IOException("The Hot Reload agent closed the connection without answering.");
 			return JsonSerializer.Deserialize<AgentResponse>(line, JsonOptions)
-				?? throw new IOException("The WPF Hot Reload agent returned an unreadable response.");
+				?? throw new IOException("The Hot Reload agent returned an unreadable response.");
 		}
 
 		public async Task<string> QueryAsync(string query, TimeSpan timeout, CancellationToken token)

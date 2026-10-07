@@ -34,6 +34,11 @@
          they are separate processes. -->
     <ProjectReference Include="..\WpfDesign.LanguageServer.LibreWpf\WpfDesign.LanguageServer.LibreWpf.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" Private="false" />
     <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\src\XamlLanguageServer.Wpf\XamlLanguageServer.Wpf.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" Private="false" />
+    <!-- The Hot Reload agents this addin's WpfApplicationHotReloadAdapter injects: built with the
+         addin, and deployed into its HotReload/<runtime>/ by their own DeployAgentToAddIn. Never
+         referenced - they run inside the debuggee, not the IDE. -->
+    <ProjectReference Include="..\..\..\..\Main\HotReload\WpfHotReload.Agent\WpfHotReload.Agent.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" Private="false" />
+    <ProjectReference Include="..\..\..\..\Main\HotReload\WpfHotReload.Agent.Microsoft\WpfHotReload.Agent.Microsoft.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" Private="false" />
     <ProjectReference Include="..\..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" Private="False" />
     <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="False" />
     <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="False" />

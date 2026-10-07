@@ -59,11 +59,9 @@
 		</Import>
 	</Runtime>
 	
-	<!-- Hot Reload adapters, in the order they are offered a project. A new UI framework
-	     contributes here instead of editing the shared launch path. -->
-	<Path name="/SharpDevelop/HotReload/Adapters">
-		<Class id="WPF" class="ICSharpCode.SharpDevelop.Project.HotReload.Wpf.WpfApplicationHotReloadAdapter"/>
-	</Path>
+	<!-- Hot Reload adapters (/SharpDevelop/HotReload/Adapters) are contributed by each UI
+	     framework's own addin - WpfDesign.addin, WinUIXamlDesigner.addin - never registered here:
+	     the shared launch path and this assembly name no framework. -->
 
 	<Path name="/SharpDevelop/Services">
 		<Service id="ICSharpCode.SharpDevelop.Parser.IGlobalAssemblyCacheService"

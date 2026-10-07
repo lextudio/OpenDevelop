@@ -474,6 +474,22 @@ function Test-WindowsPayloadAssemblyArchitecture {
     }
 }
 
+function Get-ExpectedHotReloadFiles {
+    # Relative to the directory holding OpenDevelop.dll. Each framework addin builds its agents and
+    # deploys them beside itself (the agent projects' DeployAgentToAddIn); the solution build brings
+    # them in through those addins' non-referencing ProjectReferences. The WinUI TAP is native and
+    # must match the user's application, so all three Windows App SDK architectures ship.
+    if (-not $IsWindows) { return @('AddIns/DisplayBindings/WpfDesign/HotReload/librewpf/WpfHotReload.Agent.dll') }
+    return @(
+        'AddIns\DisplayBindings\WpfDesign\HotReload\librewpf\WpfHotReload.Agent.dll',
+        'AddIns\DisplayBindings\WpfDesign\HotReload\microsoft\WpfHotReload.Agent.dll',
+        'AddIns\DisplayBindings\WinUIXamlDesigner\HotReload\winui\WinUIHotReload.Agent.dll',
+        'AddIns\DisplayBindings\WinUIXamlDesigner\HotReload\winui\tap\x86\WinUIHotReload.Tap.dll',
+        'AddIns\DisplayBindings\WinUIXamlDesigner\HotReload\winui\tap\x64\WinUIHotReload.Tap.dll',
+        'AddIns\DisplayBindings\WinUIXamlDesigner\HotReload\winui\tap\arm64\WinUIHotReload.Tap.dll'
+    )
+}
+
 function Test-WindowsDistributionPayload {
     param([Parameter(Mandatory)][string]$PayloadRoot)
 
@@ -579,6 +595,15 @@ function Test-WindowsDistributionPayload {
         }
     }
 
+    # Hot Reload is offered only when the matching agent is found beside the IDE, so a missing
+    # agent fails no build of its own - it just quietly disables the feature. Check for every one.
+    foreach ($hotReloadFile in Get-ExpectedHotReloadFiles) {
+        $path = Join-Path $PayloadRoot $hotReloadFile
+        if (-not (Test-Path -LiteralPath $path)) {
+            throw "Distribution payload is missing a Hot Reload agent file: $path. The framework addin (WpfDesign / WinUIXamlDesigner) builds and deploys it."
+        }
+    }
+
     # PDBs, reference assemblies and foreign native assets are build-time artifacts. Their
     # presence means either an SDK target or the staging copy regressed, and makes the final ZIP
     # needlessly architecture/OS-agnostic rather than deployable.
@@ -631,6 +656,12 @@ function Test-WindowsDistributionZip {
                 throw "ZIP is missing a designer host: $path ($ZipPath)"
             }
         }
+        foreach ($hotReloadFile in Get-ExpectedHotReloadFiles) {
+            $path = $prefix + $hotReloadFile.Replace('\', '/')
+            if (-not ($archive.Entries.FullName -contains $path)) {
+                throw "ZIP is missing a Hot Reload agent file: $path ($ZipPath)"
+            }
+        }
         $forbidden = $archive.Entries.FullName | Where-Object {
             $name = $_.ToLowerInvariant()
             $name.EndsWith('.pdb') -or $name.EndsWith('.dylib') -or $name.EndsWith('.so') -or
@@ -674,6 +705,14 @@ function Invoke-MacPayload {
     } | ForEach-Object FullName)
     if ($childDepsPaths.Count -gt 0) {
         & $patchScript -DepsPath $childDepsPaths -NugetPackageRoot $nugetPackageRoot -Quiet
+    }
+
+    # Hot Reload is offered only when its addin finds the agent beside itself, so a missing agent
+    # fails no build of its own - it just quietly disables the feature. Check for every one.
+    foreach ($hotReloadFile in Get-ExpectedHotReloadFiles) {
+        if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "OpenDevelop.app/Contents/MacOS/$hotReloadFile"))) {
+            throw "App bundle is missing a Hot Reload agent file: $hotReloadFile. The framework addin (WpfDesign / WinUIXamlDesigner) builds and deploys it."
+        }
     }
     return (Join-Path $repoRoot 'OpenDevelop.app')
 }
@@ -759,6 +798,7 @@ function Invoke-WindowsPayload {
     # next to the executable so the walk resolves on the first step.
     Sync-WindowsDirectoryMirror -Source (Join-Path $repoRoot 'data') -Destination (Join-Path $payloadRoot 'data') -Description 'data into Windows payload'
     Write-DistributionStepElapsed $payloadStepStopwatch 'data mirror'
+
 
     # AddIn build outputs carry their full dependency closures. Anything already supplied by the
     # published host resolves from the application base directory, so skip those files by name
@@ -983,6 +1023,11 @@ function Invoke-RestorePhase {
     $microsoftHotReloadAgent = Join-Path $repoRoot 'src/Main/HotReload/WpfHotReload.Agent.Microsoft/WpfHotReload.Agent.Microsoft.csproj'
     Write-Host '==> Restoring Microsoft WPF hot-reload agent...'
     Invoke-Native $dotnet restore $microsoftHotReloadAgent '-p:ProGpuWpfUseCurrentRuntimeIdentifier=false'
+
+    if ($IsWindows) {
+        Write-Host '==> Restoring WinUI hot-reload agent...'
+        Invoke-Native $dotnet restore (Join-Path $repoRoot 'src/Main/HotReload/WinUIHotReload.Agent/WinUIHotReload.Agent.csproj')
+    }
 }
 
 function Invoke-HostPhase {

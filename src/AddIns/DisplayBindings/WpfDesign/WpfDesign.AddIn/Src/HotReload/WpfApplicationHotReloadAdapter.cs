@@ -7,14 +7,16 @@ using System.Threading.Tasks;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
+using ICSharpCode.SharpDevelop.Project.HotReload;
 
-namespace ICSharpCode.SharpDevelop.Project.HotReload.Wpf
+namespace ICSharpCode.WpfDesign.AddIn.HotReload
 {
 	/// <summary>
-	/// Hot Reload for WPF applications, including LibreWPF on macOS/Linux.
+	/// Hot Reload for WPF applications, LibreWPF (macOS/Linux/Windows) and Microsoft WPF alike.
 	/// The agent is injected with DOTNET_STARTUP_HOOKS and applies changes in the target process
 	/// using WPF's diagnostic APIs; OpenDevelop only sends XAML over a private pipe and never
-	/// touches the running application's visual tree itself.
+	/// touches the running application's visual tree itself. Contributed by this addin to
+	/// /SharpDevelop/HotReload/Adapters (WpfDesign.addin), so disabling the addin disables it.
 	/// </summary>
 	public sealed class WpfApplicationHotReloadAdapter : IApplicationHotReloadAdapter
 	{
@@ -43,7 +45,7 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload.Wpf
 			// against its own runtime. Route on the detected runtime, and refuse when the matching
 			// agent is not deployed rather than hand a Microsoft WPF debuggee the portable agent.
 			if (LocateAgent(framework.Runtime) == null) {
-				diagnostic = $"The {Describe(framework.Runtime)} Hot Reload agent was not found next to the IDE.";
+				diagnostic = $"The {Describe(framework.Runtime)} Hot Reload agent was not found in the WPF designer addin.";
 				return false;
 			}
 
@@ -74,7 +76,7 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload.Wpf
 			var runtime = RuntimeOf(context);
 			var agent = LocateAgent(runtime)
 				?? throw new InvalidOperationException(
-					$"The {Describe(runtime)} Hot Reload agent was not found next to the IDE.");
+					$"The {Describe(runtime)} Hot Reload agent was not found in the WPF designer addin.");
 
 			// Unguessable per-launch name: the agent's pipe is an unauthenticated local endpoint,
 			// so the name is the only thing keeping another process off this session.
@@ -100,7 +102,7 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload.Wpf
 
 			LoggingService.Info($"WPF Hot Reload: agent '{agent}' on pipe '{pipeName}', log '{logFile}'.");
 			return Task.FromResult<IHotReloadSession>(
-				new WpfHotReloadSession(this, GetCapabilities(context), pipeName, logFile));
+				new AgentPipeHotReloadSession(this, GetCapabilities(context), pipeName, logFile));
 		}
 
 		/// <summary>
@@ -124,9 +126,10 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload.Wpf
 			=> runtime == XamlRuntimeKind.MicrosoftWpf ? "Microsoft WPF" : "LibreWPF";
 
 		/// <summary>
-		/// The agent ships next to the IDE, one build per runtime under HotReload/&lt;runtime&gt;/.
-		/// It is a plain assembly loaded by the target runtime, so it only has to exist on disk - it
-		/// is never loaded into the IDE itself.
+		/// The agent ships inside this addin, one build per runtime under HotReload/&lt;runtime&gt;/
+		/// (deployed there by the agent projects, which this addin builds). It is a plain assembly
+		/// loaded by the target runtime, so it only has to exist on disk - it is never loaded into
+		/// the IDE itself.
 		/// </summary>
 		internal static string LocateAgent(XamlRuntimeKind runtime)
 		{
@@ -136,17 +139,11 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload.Wpf
 			if (!string.IsNullOrEmpty(configured) && File.Exists(configured))
 				return configured;
 
-			var baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
-			foreach (var candidate in new[] {
-				Path.Combine(baseDirectory, "HotReload", SubdirectoryFor(runtime), "WpfHotReload.Agent.dll"),
-				// Pre-variant layout, kept so an older deployment still resolves.
-				Path.Combine(baseDirectory, "HotReload", "WpfHotReload.Agent.dll"),
-				Path.Combine(baseDirectory, "WpfHotReload.Agent.dll"),
-			}) {
-				if (File.Exists(candidate))
-					return candidate;
-			}
-			return null;
+			var addinDirectory = Path.GetDirectoryName(typeof(WpfApplicationHotReloadAdapter).Assembly.Location);
+			if (string.IsNullOrEmpty(addinDirectory))
+				return null;
+			var candidate = Path.Combine(addinDirectory, "HotReload", SubdirectoryFor(runtime), "WpfHotReload.Agent.dll");
+			return File.Exists(candidate) ? candidate : null;
 		}
 	}
 }

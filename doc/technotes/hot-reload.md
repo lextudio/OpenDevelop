@@ -3,7 +3,8 @@
 ## Status
 
 **WPF (LibreWPF) is the active adapter.** Uno is paused and kept as the reference case for the
-framework-driven shape; WinUI remains research. The contract, registry, WPF adapter, Apply/Stop
+framework-driven shape; **WinUI 3 is in implementation** on the same IDE-driven agent shape as WPF (see
+"WinUI 3: XAML Diagnostics agent" below - the debugger-free mechanism was proven on 2026-10-07). The contract, registry, WPF adapter, Apply/Stop
 commands and Hot Reload output channel are in place and proven end to end. What is still
 missing against Visual Studio's own surfaces is the toolbar drop-down (restart, apply-on-save
 toggle, settings) and output verbosity - see "UX, security, and observability".
@@ -61,10 +62,43 @@ Two mechanics worth knowing before driving the pipe from a test:
 
 ### WPF adapter: built and proven end to end (phases 1-3)
 
-`src/Main/Base/Project/HotReload/` now holds the contract (`HotReloadContracts.cs`), the registry
-(`HotReloadService.cs`), the capability-driven command decisions (`HotReloadWorkflow.cs`), the
-commands and output channel (`HotReloadCommands.cs`), and the WPF adapter under
-`HotReload/Wpf/`. Adapters are contributed at `/SharpDevelop/HotReload/Adapters`.
+#### Where the code lives (moved 2026-10-07)
+
+Base holds only the parts that know no framework. The adapters live in their framework's own addin
+and register themselves at `/SharpDevelop/HotReload/Adapters`, so disabling an addin also disables
+its Hot Reload.
+
+| Location | Contents |
+| --- | --- |
+| `src/Main/Base/Project/HotReload/` | the contract (`HotReloadContracts.cs`), the registry (`HotReloadService.cs`), the capability-driven command decisions (`HotReloadWorkflow.cs`), the commands and output channel (`HotReloadCommands.cs`), and the shared agent session (`AgentPipeHotReloadSession.cs` / `AgentPipeClient.cs`) that WPF and WinUI both speak |
+| `WpfDesign.AddIn/Src/HotReload/` | `WpfApplicationHotReloadAdapter`, registered in `WpfDesign.addin`; its agents deploy to `AddIns/DisplayBindings/WpfDesign/HotReload/<runtime>/` |
+| `WinUIXamlDesigner.AddIn/HotReload/` | `WinUIApplicationHotReloadAdapter`, registered in `WinUIXamlDesigner.addin`; the agent and its TAPs deploy to `AddIns/DisplayBindings/WinUIXamlDesigner/HotReload/winui/` |
+
+Each addin builds its agents through a non-referencing `ProjectReference`
+(`ReferenceOutputAssembly="false"`), the same way it builds its language servers. The agent
+projects' `DeployAgentToAddIn` target copies only the agent assembly (plus WinUI's TAPs) beside the
+addin, and the adapters look for the agent relative to their own assembly. So the solution build,
+and therefore `dist.ps1`, produces them with no step of its own. Before this move no distribution
+shipped any agent.
+
+The one exception is Uno: `UnoHotReloadService` is still in Base. It is not a registered adapter;
+it is a static helper the host's DevFlow actions (`od.hot-reload.start` / `od.hot-reload.status`)
+call directly, and they share process state with `od.run-project` / `od.stop-project`. Moving it
+means redesigning those actions. That is deferred while Uno is paused (its only end-to-end test is
+skipped), and it is the step to take when Uno resumes as a real adapter (phase 5 below).
+
+#### Readiness means "can take a change now"
+
+`agent.ready` answers `1` only when a change can actually be applied. Before that, the agent answers
+`0` with an `ok` result, and the session keeps polling. An error result fails the session
+immediately: the WinUI agent sends one when its TAP could not be loaded.
+
+The WPF agent used to answer `1` as soon as its pipe was up, which is during the startup hook,
+about a second before the application creates its window. An apply or query in that window found
+nothing. This was measured on the LibreWPF fixture: ready at 0.2 s, window at about 1 s. It made
+`WpfHotReloadEndToEndTests` fail intermittently, depending on how fast the app started. Now it
+answers `1` once `Application.Current.MainWindow` exists. It does not check `IsLoaded`, because a
+preview host that starts hidden never loads but must still report ready.
 
 #### Agent variants: LibreWPF vs Microsoft WPF
 
@@ -73,8 +107,8 @@ twice, because the two runtimes need their own assembly even though the agent so
 
 | Variant | SDK | Deployed to | Runs on |
 | --- | --- | --- | --- |
-| `WpfHotReload.Agent` | `LibreWPF.Sdk` | `HotReload/librewpf/` | LibreWPF (macOS/Linux, and Windows) |
-| `WpfHotReload.Agent.Microsoft` | `Microsoft.NET.Sdk` | `HotReload/microsoft/` | Windows Desktop (Microsoft WPF) |
+| `WpfHotReload.Agent` | `LibreWPF.Sdk` | `AddIns/DisplayBindings/WpfDesign/HotReload/librewpf/` | LibreWPF (macOS/Linux, and Windows) |
+| `WpfHotReload.Agent.Microsoft` | `Microsoft.NET.Sdk` | `AddIns/DisplayBindings/WpfDesign/HotReload/microsoft/` | Windows Desktop (Microsoft WPF) |
 
 `WpfApplicationHotReloadAdapter` routes on `XamlFrameworkDetector`'s `Runtime`
 (`XamlRuntimeKind.LibreWpf` / `MicrosoftWpf`) and refuses (`CanHandle` → false) when the matching
@@ -234,7 +268,7 @@ distinct shapes, and the difference is *who owns change detection and who perfor
 | --- | --- | --- | --- | --- |
 | **IDE-driven agent** | the IDE (editor buffer) | in-process agent, over a private channel | no - unsaved buffer text can be sent | WPF / LibreWPF, via `DOTNET_STARTUP_HOOKS` + named pipe |
 | **Framework-driven sidecar** | the framework's own server | the framework | **yes** - it watches the filesystem | Uno, via DevServer |
-| **Debugger-mediated** | the debugger/IDE | the debugger channel | n/a | WinUI (research) |
+| ~~**Debugger-mediated**~~ | - | - | - | none: WinUI turned out not to need a debugger (see below) |
 
 Two consequences drive everything below:
 
@@ -355,11 +389,11 @@ One surface for every framework; the adapter only supplies data:
 
 | | WPF / LibreWPF | Uno | WinUI |
 | --- | --- | --- | --- |
-| `Delivery` | `IdePushesEdits` | `FrameworkWatchesFiles` | debugger-mediated (unmodelled until proven) |
-| `StartAsync` does | sets `DOTNET_STARTUP_HOOKS`, random pipe name, `ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO=1` | starts the DevServer sidecar, sets `UNO_DEV_SERVER_*`, `DOTNET_MODIFIABLE_ASSEMBLIES=debug`, `--metadata-updates true` | selects/validates debugger channel |
-| Reaches `Ready` when | the agent answers on its pipe | the DevServer reports it is watching | n/a |
-| `ApplyAsync` | sends XAML over the pipe, returns the agent's outcome | returns `Unsupported`; saving is the trigger | n/a |
-| `RequiresSavedFile` | no | yes | n/a |
+| `Delivery` | `IdePushesEdits` | `FrameworkWatchesFiles` | `IdePushesEdits` |
+| `StartAsync` does | sets `DOTNET_STARTUP_HOOKS`, random pipe name, `ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO=1` | starts the DevServer sidecar, sets `UNO_DEV_SERVER_*`, `DOTNET_MODIFIABLE_ASSEMBLIES=debug`, `--metadata-updates true` | sets `DOTNET_STARTUP_HOOKS`, random pipe name, `ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO=1` (same as WPF) |
+| Reaches `Ready` when | the agent answers on its pipe | the DevServer reports it is watching | the agent answers on its pipe *and* its TAP has a XamlDiagnostics site |
+| `ApplyAsync` | sends XAML over the pipe, returns the agent's outcome | returns `Unsupported`; saving is the trigger | sends XAML over the pipe; the agent patches properties through XamlOM and rebuilds changed child lists with `XamlReader` |
+| `RequiresSavedFile` | no | yes | no |
 
 ### Common change classifier
 
@@ -402,20 +436,121 @@ find live objects. It supports property, resource, subtree, and full-file fallba
 The runtime agent may use WPF diagnostic APIs only inside the application process; OpenDevelop must
 not mutate a running application's visual tree directly.
 
-### WinUI 3: debugger-backed research adapter
+### WinUI 3: XAML Diagnostics agent
 
-WinUI 3 supports XAML Hot Reload under supported debugging tooling, but Visual Studio's transport is
-not a public general-purpose application API. Loose-XAML parsing is not an equivalent replacement:
-it loses compiled-XAML semantics such as `x:Bind`, generated metadata, and native WinAppSDK state.
+**Finding (2026-10-07):** WinUI 3 Hot Reload does not need a debugger or any private Visual Studio
+channel. The WinUI source (`microsoft-ui-xaml`, vendored under
+`openavalon/LibreWPF/external/ProGPU/external/`) contains no Hot Reload logic at all. Visual
+Studio's Hot Reload sits on top of the **public XAML Diagnostics API** (`xamlOM.h`,
+`IVisualTreeService3` / `IXamlDiagnostics`). WinUI provides only the primitives; the IDE does the
+XAML diffing.
 
-1. Study Windows App SDK and WinUI XAML source to identify public extension points and debugger-
-   private mechanisms.
-2. Implement capability detection and lifecycle integration for an OpenDevelop-launched debugger.
-3. Bridge a supported debugger protocol only if one is stable and documented; do not reverse
-   engineer a private Visual Studio channel as a product dependency.
-4. Require the exact active TFM, RID, Windows App SDK graph, and architecture used to launch the
-   app. A mismatch is a hard failure.
-5. Validate with `x:Bind`, resource dictionaries, and a third-party compiled control.
+How the pieces fit, as read from the source and verified with a scratch PoC:
+
+1. `InitializeXamlDiagnosticsEx(endpoint, pid, xamlDll, tapDll, tapClsid, initData)` is exported by
+   **`Microsoft.Internal.FrameworkUdk.dll`**, not by `Microsoft.UI.Xaml.dll`. The endpoint name WinUI
+   uses is `WinUIVisualDiagConnection1` (see
+   `dxaml/xcp/dxaml/tools/xamldiagnostics/tap/XamlDiagnosticsLauncher.cpp`).
+2. The call sends `Msg_ConnectToVisualTree` to the target. WinUI's `DebugTool::CreateDiagnostics`
+   then `LoadLibraryEx`s the TAP DLL on the UI thread, calls its `DllGetClassObject(tapClsid)` and
+   hands an `IXamlDiagnostics` site to `IObjectWithSite::SetSite` (`dxaml/lib/DebugTool.cpp`, and
+   `Launch` in `components/xamlDiagnostics/XamlDiagnostics.cpp`).
+3. `ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO=1` makes every element carry `SrcInfo`
+   (`ms-appx:///MainWindow.xaml`, line, column). This is how an editor element maps to live objects
+   (`ShouldStoreSourceInformation` in `dxaml/lib/DXamlServices.cpp`).
+4. Mutation goes through `GetPropertyIndex` / `CreateInstance(typeName, string)` / `SetProperty`,
+   `AddChild` / `RemoveChild`, and `ReplaceResource` / `AddDictionaryItem`.
+
+There is no environment-variable-only way in. The `XamlDiagnostics` runtime feature is read only
+from HKLM (`RuntimeEnabledFeatures.cpp`), and `XAML_DM_PATH` alone does not load anything. So the
+`InitializeXamlDiagnosticsEx` call has to be made.
+
+Gotchas measured in the PoC, which the agent must handle:
+
+| Gotcha | Symptom | Rule |
+| --- | --- | --- |
+| `AdviseVisualTreeChange` replays the whole tree through the UI thread and blocks | deadlock if called from `SetSite` | call it from a worker thread |
+| `GetPropertyIndex` takes the **declaring type's** full name | `E_INVALIDARG` for `"Text"`; `Control.Background` on a `Grid` is also rejected | pass e.g. `Microsoft.UI.Xaml.Controls.TextBlock.Text`, `Microsoft.UI.Xaml.FrameworkElement.Margin` |
+| `SetProperty` off the UI thread | `E_FAIL` | marshal through `IXamlDiagnostics::GetDispatcher` → `Microsoft.UI.Dispatching.IDispatcherQueue.TryEnqueue` |
+| The `DispatcherQueueHandler` passed to `TryEnqueue` | `0x8000001C` | must be agile (free-threaded marshaller) |
+| Type names for `CreateInstance` | - | WinRT names: `Windows.Foundation.String`, `Windows.Foundation.Double`, ... |
+
+#### Architecture
+
+The same **IDE-driven agent** shape as WPF, so `AgentPipeHotReloadSession` and the pipe protocol are
+shared:
+
+```
+OpenDevelop ──pipe (JSON, same protocol as WPF)──► WinUIHotReload.Agent  (managed, DOTNET_STARTUP_HOOKS)
+                                                     │ 1. waits for Microsoft.UI.Xaml + FrameworkUdk to load
+                                                     │ 2. InitializeXamlDiagnosticsEx(OWN pid, tap/<arch>/WinUIHotReload.Tap.dll)
+                                                     ▼
+                                                   WinUIHotReload.Tap  (native C++, x86 / x64 / ARM64)
+                                                     • IObjectWithSite → IXamlDiagnostics / IVisualTreeService3
+                                                     • element table: handle, type, name, SrcInfo
+                                                     • flat C exports; mutations marshalled to the UI thread
+```
+
+Key decisions:
+
+- **Self-injection, not an external injector.** The agent calls `InitializeXamlDiagnosticsEx` on
+  its own PID, using the `FrameworkUdk` already loaded in the process. This removes the
+  architecture-matching problem on the injector side, needs no PID before launch (the adapter
+  contract only configures a `ProcessStartInfo`), and works the same with or without a debugger.
+- **A tiny TAP, logic in managed code.** WinUI requires the TAP to be a native COM DLL exporting
+  `DllGetClassObject`. Everything else (pipe, XAML diff, element mapping, type resolution) lives in
+  the managed agent. The agent reaches the TAP through `NativeLibrary` and flat exports, not COM
+  interop.
+- **Architecture.** Windows App SDK supports x86, x64 and ARM64, and both x64 and x86 apps run
+  emulated on ARM64 Windows. The TAP is built for all three and the agent picks
+  `tap/<RuntimeInformation.ProcessArchitecture>/`. The managed agent is AnyCPU.
+- **Property type resolution** uses reflection over the app's own CsWinRT projection (already
+  loaded in the process). It walks `BaseType` to find the declaring type for `GetPropertyIndex` and
+  maps the property's CLR type to the WinRT type name for `CreateInstance`.
+
+#### Apply strategy (`XamlDocumentPatcher`)
+
+The agent keeps each file's last **accepted** document. Every element in it is annotated with the
+live objects (XAML Diagnostics handles) it maps to. An apply diffs that document against the new
+text and plans the smallest correct update.
+
+1. **Mapping, first time per file.** The first `PreviousAcceptedText` the agent sees is what is on
+   disk, which is what the app was compiled from. Its elements are matched to live elements by
+   `SrcInfo`: same file (the `ms-appx:///` path suffix) and same line. The column is compared only
+   when several elements share a line. One element can be live several times (a page shown twice),
+   so it keeps all of its handles. Later applies carry annotations forward through the diff, so
+   moved lines don't matter.
+2. **Attribute change on a live element** → property patch (`GetPropertyIndex` / `CreateInstance` /
+   `SetProperty`, on the UI thread). Nothing else in the tree is touched.
+3. **Changed child list** (added, removed, reordered or replaced elements) → the element becomes a
+   *region owner*. Its children are rebuilt from the new markup with WinUI's own
+   `Microsoft.UI.Xaml.Markup.XamlReader.Load` and swapped into its content property (the projected
+   `[ContentProperty]`, else `Children` / `Items` / `Content` / `Child`). A property element
+   (`<Grid.RowDefinitions>`) is rebuilt into that property of its parent. Each child is serialized
+   with every namespace declaration in scope, so `x:`, `local:` and `using:` prefixes resolve as they
+   did in the document. The new objects are reached through `IXamlDiagnostics::GetIInspectableFromHandle`
+   and the app's own CsWinRT `MarshalInspectable<object>.FromAbi`, both by reflection. State inside a
+   rebuilt region (focus, text typed into a TextBox) is lost.
+4. **Edit inside a rebuilt region.** Those elements came from `XamlReader`, so they have no
+   `SrcInfo` and no handle. Any later edit inside one rebuilds the nearest region owner again.
+5. **Refusals, checked before anything is changed**, so a refused edit never leaves the UI
+   half-applied. These return `restart required`:
+   - `x:Class` / `x:Load` / `x:Phase` / `x:DeferLoadStrategy` / `x:FieldModifier`.
+   - `{x:Bind}`.
+   - Event attributes, resolved against the element's projected type. This check is necessary:
+     `XamlReader.Load` silently accepts `Click="OnGo"` and produces a button that does nothing, which
+     would otherwise be a false success.
+   - A markup extension as a property-patch value.
+   - Attached properties and removed attributes as property patches.
+   - A changed root element.
+   - An owner that is not live.
+6. **Code-behind.** Named elements created by a region rebuild are not connected to the generated
+   fields in code-behind. Those fields still point to the old objects.
+
+Not yet covered: MSIX-packaged apps (AppContainer may block loading the TAP), NativeAOT/trimmed apps
+(no startup hooks), C++/WinRT apps (no managed agent), resource dictionary edits (`ReplaceResource`),
+attached-property patches, and finer-grained child diffs (today a changed child list rebuilds all of
+the owner's children).
 
 ### Uno Platform: paused, and the reference case for a framework-driven adapter
 
@@ -687,7 +822,19 @@ the previous `ApplyXamlAsync`-for-everyone mistake happened.
    `FrameworkWatchesFiles`, `RequiresSavedFile` and reported readiness are enough to express it
    without special-casing. If the common UI needs a framework-specific branch to support it, the
    abstraction is wrong and gets fixed here, not worked around.
-6. **WinUI research/probe**: capability adapter and verified debugger-backed prototype.
+6. **WinUI 3** (in progress): property and subtree updates are done, and the agents ship.
+   - Native TAP: `src/Main/HotReload/WinUIHotReload.Tap`.
+   - Managed startup-hook agent: `src/Main/HotReload/WinUIHotReload.Agent`, which builds the TAP
+     through Visual Studio's MSBuild and deploys into the WinUI designer addin as `HotReload/winui/`.
+   - `WinUIApplicationHotReloadAdapter`.
+   - Proven by `WinUIHotReloadEndToEndTests` against `tests/fixtures/WinUIHotReloadFixture` on
+     x64, x86 and ARM64. ARM64 runs only on ARM64 hosts; the other two run emulated there.
+
+   - Packaging: the agents ship inside their framework addins, which the solution build builds (see
+     "Where the code lives"), and the `dist.ps1` payload, ZIP and macOS bundle checks fail if any
+     agent or TAP is missing. Before this, no distribution shipped any agent, the WPF ones included.
+
+   Next: resource dictionary edits, attached properties, and finer-grained child diffs.
 7. **Code updates** only after each adapter has a reliable supported delta path.
 
 ## WPF MVP acceptance criteria

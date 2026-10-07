@@ -12,6 +12,11 @@
     <Import assembly="ICSharpCode.WinUIXamlDesigner.ProGPUHost.dll" />
     <Import assembly="ICSharpCode.WinUIXamlDesigner.UnoDesignHost.dll" />
   </Runtime>
+  <!-- Runtime Hot Reload for Windows App SDK (WinUI 3) applications. The agent and its native
+       TAPs are deployed beside this addin under HotReload/winui/. -->
+  <Path name="/SharpDevelop/HotReload/Adapters">
+    <Class id="WinUI" class="ICSharpCode.WinUIXamlDesigner.HotReload.WinUIApplicationHotReloadAdapter" />
+  </Path>
   <Path name="/SharpDevelop/Workbench/DisplayBindings">
     <DisplayBinding id="WinUIXamlDesigner" type="Secondary" class="ICSharpCode.WinUIXamlDesigner.WinUIXamlDesignerDisplayBinding" fileNamePattern="\.xaml$" />
   </Path>

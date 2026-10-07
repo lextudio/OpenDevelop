@@ -1,0 +1,11 @@
+<!-- WinUIHotReloadEndToEndTests edits this file's text (in memory only) and asserts, by querying the
+     agent, that the running application shows the change. Keep the element names and the starting
+     values in sync with that test. -->
+<Window x:Class="WinUIHotReloadFixture.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <StackPanel Margin="24" Spacing="12">
+    <TextBlock x:Name="Heading" Text="WinUI Hot Reload fixture" FontSize="24" />
+    <TextBlock x:Name="Probe" Text="Before" />
+  </StackPanel>
+</Window>

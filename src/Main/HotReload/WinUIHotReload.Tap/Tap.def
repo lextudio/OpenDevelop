@@ -1,0 +1,9 @@
+EXPORTS
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow PRIVATE
+    WinUIHR_IsReady
+    WinUIHR_GetElements
+    WinUIHR_SetProperty
+    WinUIHR_GetStringProperty
+    WinUIHR_RunOnUiThread
+    WinUIHR_GetObject

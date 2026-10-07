@@ -21,6 +21,11 @@
 			<ConditionEvaluator name="IsOutlineOpen" class="ICSharpCode.WpfDesign.AddIn.Commands.IsOutlineOpen" />
 		</Import>
 	</Runtime>
+	<!-- Runtime Hot Reload for WPF applications (LibreWPF and Microsoft WPF). The agents it
+	     injects are deployed beside this addin under HotReload/<runtime>/. -->
+	<Path name="/SharpDevelop/HotReload/Adapters">
+		<Class id="WPF" class="ICSharpCode.WpfDesign.AddIn.HotReload.WpfApplicationHotReloadAdapter"/>
+	</Path>
 	<Path name="/SharpDevelop/Autostart">
 		<Class id="ICSharpCode.WpfDesign.AddIn.RegisterXamlLanguageServersCommand" class="ICSharpCode.WpfDesign.AddIn.RegisterXamlLanguageServersCommand" />
 	</Path>

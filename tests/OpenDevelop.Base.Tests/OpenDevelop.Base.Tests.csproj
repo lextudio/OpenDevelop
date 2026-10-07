@@ -26,6 +26,9 @@
     <ProjectReference Include="..\..\src\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" />
     <ProjectReference Include="..\..\src\Main\LanguageServices\Roslyn.Host\Roslyn.Host.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\AddIns\Analysis\UnitTesting\UnitTesting.csproj" />
+    <!-- The Hot Reload adapters live in their framework addins; the end-to-end tests drive them. -->
+    <ProjectReference Include="..\..\src\AddIns\DisplayBindings\WpfDesign\WpfDesign.AddIn\WpfDesign.AddIn.csproj" />
+    <ProjectReference Include="..\..\src\AddIns\DisplayBindings\WinUIXamlDesigner\WinUIXamlDesigner.AddIn\ICSharpCode.WinUIXamlDesigner.csproj" />
     <!-- Pure designer presentation logic (DesignerVerbMenuPlanner, ...), testable without booting
          any design surface. -->
     <ProjectReference Include="..\..\src\Main\Designer\Designer.Presentation\Designer.Presentation.csproj" />
@@ -75,6 +78,29 @@
           Condition="$([MSBuild]::IsOSPlatform('Windows'))">
     <MSBuild Projects="$(MSBuildThisFileDirectory)../../src/Main/HotReload/WpfHotReload.Agent.Microsoft/WpfHotReload.Agent.Microsoft.csproj"
              Targets="Build" Properties="Configuration=$(Configuration)" />
+  </Target>
+
+  <!-- WinUI Hot Reload: the agent (which also builds its native TAP for x86/x64/ARM64 through
+       Visual Studio's MSBuild) and the fixture application, once per architecture this machine can
+       run - ARM64 Windows runs all three, x64 Windows runs x64 and x86. Windows only: WinUI does
+       not run anywhere else, and WinUIHotReloadEndToEndTests skips there. -->
+  <PropertyGroup>
+    <_HostIsArm64>$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().Equals('Arm64'))</_HostIsArm64>
+  </PropertyGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <_WinUIHotReloadFixtureArch Include="x64" Rid="win-x64" />
+    <_WinUIHotReloadFixtureArch Include="x86" Rid="win-x86" />
+    <_WinUIHotReloadFixtureArch Include="ARM64" Rid="win-arm64" Condition="'$(_HostIsArm64)' == 'true'" />
+  </ItemGroup>
+  <Target Name="BuildWinUIHotReloadForTests" BeforeTargets="Build" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)../../src/Main/HotReload/WinUIHotReload.Agent/WinUIHotReload.Agent.csproj"
+             Targets="Restore" Properties="Configuration=$(Configuration);_RestoreOnly=true" />
+    <MSBuild Projects="$(MSBuildThisFileDirectory)../../src/Main/HotReload/WinUIHotReload.Agent/WinUIHotReload.Agent.csproj"
+             Targets="Build" Properties="Configuration=$(Configuration)" />
+    <MSBuild Projects="../fixtures/WinUIHotReloadFixture/WinUIHotReloadFixture.csproj" Targets="Restore"
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;_RestoreOnly=true" />
+    <MSBuild Projects="../fixtures/WinUIHotReloadFixture/WinUIHotReloadFixture.csproj" Targets="Build"
+             Properties="Configuration=$(Configuration);Platform=%(_WinUIHotReloadFixtureArch.Identity);RuntimeIdentifier=%(_WinUIHotReloadFixtureArch.Rid)" />
   </Target>
 
   <Target Name="RemoveDesktopRuntimeFramework" AfterTargets="ProcessFrameworkReferences" BeforeTargets="FixupRuntimeFrameworkVersions">

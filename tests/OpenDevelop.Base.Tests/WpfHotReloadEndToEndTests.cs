@@ -8,7 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using ICSharpCode.SharpDevelop.Project.HotReload;
-using ICSharpCode.SharpDevelop.Project.HotReload.Wpf;
+using ICSharpCode.WpfDesign.AddIn.HotReload;
 
 using Xunit;
 
