@@ -645,7 +645,9 @@ public sealed class AddInTests : IAsyncDisposable
         }, TimeSpan.FromSeconds(60));
 
         // The status bar text is a plain TextBlock ("Total: N"); poll the visual tree until it
-        // appears (the pad realizes its content only once shown).
+        // appears (the pad realizes its content only once shown) and carries the count. The pad
+        // shows "Total: 0" first and counts one test project per dispatcher turn so that opening
+        // a large solution does not freeze the window (doc/technotes/fast-mode.md step 3).
         string? totalText = null;
         await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
@@ -656,7 +658,7 @@ public sealed class AddInTests : IAsyncDisposable
                     && txt.GetString()?.StartsWith("Total: ", StringComparison.Ordinal) == true)
                 .Select(e => e.GetProperty("text").GetString())
                 .FirstOrDefault();
-            return totalText != null;
+            return totalText != null && totalText != "Total: 0";
         }, TimeSpan.FromSeconds(30));
 
         Assert.NotNull(totalText);

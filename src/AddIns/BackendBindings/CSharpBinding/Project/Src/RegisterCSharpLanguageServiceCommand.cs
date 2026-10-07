@@ -81,6 +81,8 @@ namespace CSharpBinding
 				// Only the snapshot construction moves off the dispatcher; there is deliberately no
 				// ConfigureAwait(false), so the loop below resumes on the UI thread as before.
 				var snapshots = await Task.Run(() => LanguageServiceProjectSnapshotFactory.FromSolution(solution));
+				PerfTimeline.Mark(PerfTimeline.SolutionOpen, "roslyn-snapshots-built",
+					snapshots.Count + " snapshots, " + LanguageServiceProjectSnapshotFactory.ReferenceCacheStatistics);
 				foreach (var snapshot in snapshots) {
 					if (generation != Volatile.Read(ref solutionGeneration))
 						return;
@@ -89,6 +91,7 @@ namespace CSharpBinding
 					else
 						await protocol.RoslynProjectLoadAsync(snapshot, CancellationToken.None);
 				}
+				PerfTimeline.Mark(PerfTimeline.SolutionOpen, "roslyn-projects-pushed");
 			} catch (Exception ex) {
 				LoggingService.Warn("Unable to synchronise the Roslyn host project graph: " + ex.Message);
 			}

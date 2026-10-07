@@ -23,8 +23,13 @@ namespace ICSharpCode.UnitTesting
 		public string SkippedText => skipped.ToString();
 		public string NotRunText => Math.Max(0, total - passed - failed - skipped).ToString();
 
+		/// <summary>Incremented by every <see cref="StartRun"/>, so a deferred discovery count can
+		/// tell whether a test run has started since it began and must not overwrite it.</summary>
+		public int RunVersion { get; private set; }
+
 		public void StartRun(int testCount)
 		{
+			RunVersion++;
 			total = testCount;
 			passed = failed = skipped = 0;
 			NotifyStatusChanged();

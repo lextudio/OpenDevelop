@@ -136,7 +136,12 @@ namespace ICSharpCode.SharpDevelop.Project
 				progress.TaskName = "Loading " + projectInfo.ProjectName;
 				using (projectInfo.ProgressMonitor = progress.CreateSubTask(1.0 / Math.Max(projectCount, 1)))
 				{
+					var loading = System.Diagnostics.Stopwatch.StartNew();
 					var solutionItem = LoadProjectWithErrorHandling(projectInfo);
+					// Projects are evaluated serially on the UI thread; record the slow ones
+					// (doc/technotes/fast-mode.md step 3).
+					if (loading.ElapsedMilliseconds >= 200)
+						PerfTimeline.Mark(PerfTimeline.SolutionOpen, "slow-project-load", projectInfo.ProjectName + " " + loading.ElapsedMilliseconds + "ms");
 					if (solutionItem != null)
 					{
 						if (projectToParentFolder.TryGetValue(projectInfo, out var parentFolder) && parentFolder != null)

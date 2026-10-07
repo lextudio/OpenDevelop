@@ -208,7 +208,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				return results;
 
 			try {
-				foreach (var path in RunResolveReferences(baseProject.FileName.ToString(), logErrorsToOutputPad)) {
+				foreach (var path in RunResolveReferences(baseProject.FileName.ToString(), InnerBuildTargetFramework(baseProject), logErrorsToOutputPad)) {
 					// Include is the assembly's simple name, matching what a hand-written
 					// <Reference Include="..."/> would carry; the resolved path goes in HintPath,
 					// which is what RoslynWorkspaceHelper.GetMetadataReferences reads.
@@ -226,7 +226,26 @@ namespace ICSharpCode.SharpDevelop.Project
 			return results;
 		}
 
-		static IEnumerable<string> RunResolveReferences(string projectFileName, bool logErrorsToOutputPad)
+		/// <summary>
+		/// The TargetFramework to pin when a project declares <c>TargetFrameworks</c> (plural) with a
+		/// single entry. Its unpinned evaluation is the multi-targeting outer build, which has no
+		/// ResolveReferences target: such a project failed with MSB4057 on every solution open (3 of
+		/// OpenDevelop.Mvp's projects) and reached Roslyn with no resolved references at all. Null
+		/// when the project already evaluates to a single TargetFramework.
+		/// </summary>
+		static string InnerBuildTargetFramework(MSBuildBasedProject project)
+		{
+			if (!string.IsNullOrWhiteSpace(project.GetEvaluatedProperty("TargetFramework")))
+				return null;
+			var frameworks = project.GetEvaluatedProperty("TargetFrameworks");
+			if (string.IsNullOrWhiteSpace(frameworks))
+				return null;
+			return frameworks.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+				.Select(framework => framework.Trim())
+				.FirstOrDefault(framework => framework.Length > 0);
+		}
+
+		static IEnumerable<string> RunResolveReferences(string projectFileName, string targetFramework, bool logErrorsToOutputPad)
 		{
 			var psi = CreateDotnetChildStartInfo();
 			psi.ArgumentList.Add("msbuild");
@@ -235,6 +254,8 @@ namespace ICSharpCode.SharpDevelop.Project
 			psi.ArgumentList.Add("-m:1");
 			psi.ArgumentList.Add("-p:BuildingInsideVisualStudio=true");
 			psi.ArgumentList.Add("-t:ResolveReferences");
+			if (!string.IsNullOrEmpty(targetFramework))
+				psi.ArgumentList.Add("-p:TargetFramework=" + targetFramework);
 			// -getItem makes MSBuild print the requested item list as JSON on stdout and suppresses
 			// normal build output, so no log parsing is involved.
 			psi.ArgumentList.Add("-getItem:ReferencePath");
@@ -301,6 +322,91 @@ namespace ICSharpCode.SharpDevelop.Project
 
 		const int ResolveReferencesTimeoutMilliseconds = 120_000;
 
+		/// <summary>
+		/// Set by <see cref="BuildEngine"/> on a project's options once a single up-front
+		/// <see cref="RestoreAsync"/> has restored it with the same global properties; the build then
+		/// passes --no-restore instead of restoring again. Never forwarded to MSBuild.
+		/// </summary>
+		internal const string RestoredUpFrontProperty = "_OpenDevelopRestoredUpFront";
+
+		/// <summary>
+		/// The global properties a restore/build of <paramref name="options"/> passes, as one string.
+		/// Two option sets with the same key restore identically.
+		/// </summary>
+		internal static string GlobalPropertiesKey(ProjectBuildOptions options)
+		{
+			var psi = new ProcessStartInfo();
+			AddGlobalProperties(psi, options);
+			return string.Join("\n", psi.ArgumentList);
+		}
+
+		/// <summary>
+		/// Restores <paramref name="solutionOrProject"/> (and, as dotnet restore always does, everything
+		/// it references) once, with the global properties of <paramref name="options"/>. Output goes to
+		/// the build log as plain messages; a failure is not a build error, because every project
+		/// then simply restores itself as part of its own build.
+		/// </summary>
+		internal async Task<bool> RestoreAsync(string solutionOrProject, ProjectBuildOptions options, IBuildFeedbackSink feedbackSink, CancellationToken cancellationToken)
+		{
+			var psi = CreateDotnetChildStartInfo();
+			psi.ArgumentList.Add("restore");
+			psi.ArgumentList.Add(solutionOrProject);
+			psi.ArgumentList.Add("--nologo");
+			AddGlobalProperties(psi, options);
+			var output = new List<string>();
+			try {
+				using var process = new Process { StartInfo = psi };
+				process.OutputDataReceived += (sender, e) => { if (e.Data != null) lock (output) output.Add(e.Data); };
+				process.ErrorDataReceived += (sender, e) => { if (e.Data != null) lock (output) output.Add(e.Data); };
+				process.Start();
+				process.BeginOutputReadLine();
+				process.BeginErrorReadLine();
+				await process.WaitForExitAsync(cancellationToken);
+				lock (output) {
+					foreach (string line in output)
+						feedbackSink?.ReportMessage(new RichText(line));
+				}
+				return process.ExitCode == 0;
+			} catch (OperationCanceledException) {
+				throw;
+			} catch (Exception ex) {
+				LoggingService.Warn("Up-front restore of " + solutionOrProject + " failed to run: " + ex.Message);
+				return false;
+			}
+		}
+
+		static void AddGlobalProperties(ProcessStartInfo psi, ProjectBuildOptions options)
+		{
+			// We always build a single .csproj directly (never a .sln), so the CurrentVersion.targets
+			// logic that synthesizes solution-dependency ProjectReferences and resolves their
+			// per-solution-configuration via AssignProjectConfiguration is pure overhead we don't
+			// need - and passing BuildingInsideVisualStudio=true (as any IDE driving single-project
+			// builds does) skips it, matching how this project is actually being built here.
+			psi.ArgumentList.Add("-p:BuildingInsideVisualStudio=true");
+			// -p:Configuration rather than -c: `dotnet restore` rejects -c, and both verbs must pass
+			// identical global properties for the up-front restore to stand in for a build's own.
+			if (!string.IsNullOrEmpty(options.Configuration)) {
+				psi.ArgumentList.Add("-p:Configuration=" + options.Configuration);
+			}
+			if (!string.IsNullOrEmpty(options.Platform) && options.Platform != "AnyCPU") {
+				psi.ArgumentList.Add("-p:Platform=" + options.Platform);
+			}
+			if (options.Properties != null) {
+				foreach (var kv in options.Properties.OrderBy(kv => kv.Key, StringComparer.Ordinal)) {
+					// MSBuildBasedProject.CreateProjectBuildOptions sets this to an XML blob
+					// describing the whole solution's project/configuration mapping, so that
+					// ProjectReferences resolve their configuration correctly when building a
+					// .sln directly. We always build one .csproj at a time here, so it's both
+					// unneeded and unsafe to forward: arbitrary XML can't be round-tripped through
+					// a single `-p:Name=Value` CLI token (no escaping for '{', ';', quotes, etc.),
+					// which is exactly what caused MSB3108 "unexpected token '{'" failures here.
+					if (kv.Key == "CurrentSolutionConfigurationContents" || kv.Key == RestoredUpFrontProperty)
+						continue;
+					psi.ArgumentList.Add($"-p:{kv.Key}={kv.Value}");
+				}
+			}
+		}
+
 		public async Task<bool> BuildAsync(IProject project, ProjectBuildOptions options, IBuildFeedbackSink feedbackSink, CancellationToken cancellationToken, IEnumerable<string> additionalTargetFiles = null)
 		{
 			var psi = CreateDotnetChildStartInfo();
@@ -311,33 +417,10 @@ namespace ICSharpCode.SharpDevelop.Project
 			// at the project level, and .NET SDK 10.0.301 on macOS can crash ResolvePackageFileConflicts
 			// while parallelizing multi-target SDK projects that include net462.
 			psi.ArgumentList.Add("-m:1");
-			// We always build a single .csproj directly (never a .sln), so the CurrentVersion.targets
-			// logic that synthesizes solution-dependency ProjectReferences and resolves their
-			// per-solution-configuration via AssignProjectConfiguration is pure overhead we don't
-			// need - and passing BuildingInsideVisualStudio=true (as any IDE driving single-project
-			// builds does) skips it, matching how this project is actually being built here.
-			psi.ArgumentList.Add("-p:BuildingInsideVisualStudio=true");
-			if (!string.IsNullOrEmpty(options.Configuration)) {
-				psi.ArgumentList.Add("-c");
-				psi.ArgumentList.Add(options.Configuration);
-			}
-			if (!string.IsNullOrEmpty(options.Platform) && options.Platform != "AnyCPU") {
-				psi.ArgumentList.Add("-p:Platform=" + options.Platform);
-			}
-			if (options.Properties != null) {
-				foreach (var kv in options.Properties) {
-					// MSBuildBasedProject.CreateProjectBuildOptions sets this to an XML blob
-					// describing the whole solution's project/configuration mapping, so that
-					// ProjectReferences resolve their configuration correctly when building a
-					// .sln directly. We always build one .csproj at a time here, so it's both
-					// unneeded and unsafe to forward: arbitrary XML can't be round-tripped through
-					// a single `-p:Name=Value` CLI token (no escaping for '{', ';', quotes, etc.),
-					// which is exactly what caused MSB3108 "unexpected token '{'" failures here.
-					if (kv.Key == "CurrentSolutionConfigurationContents")
-						continue;
-					psi.ArgumentList.Add($"-p:{kv.Key}={kv.Value}");
-				}
-			}
+			if (options.Properties != null && options.Properties.ContainsKey(RestoredUpFrontProperty)
+			    && options.Target != BuildTarget.Clean)
+				psi.ArgumentList.Add("--no-restore");
+			AddGlobalProperties(psi, options);
 
 			var outputLines = new List<string>();
 			bool success;
@@ -356,12 +439,15 @@ namespace ICSharpCode.SharpDevelop.Project
 							outputLines.Add(e.Data);
 					};
 
+					var started = Stopwatch.StartNew();
 					process.Start();
 					process.BeginOutputReadLine();
 					process.BeginErrorReadLine();
 
 					await process.WaitForExitAsync(cancellationToken);
 					success = process.ExitCode == 0;
+					PerfTimeline.Mark(PerfTimeline.Build, "project-built",
+						project.Name + " " + started.ElapsedMilliseconds + "ms " + (success ? "ok" : "failed"));
 				}
 			} catch (Exception ex) {
 				feedbackSink.ReportError(new BuildError(project.FileName.ToString(), ex.Message));

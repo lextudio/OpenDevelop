@@ -182,16 +182,21 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		void OpenSolutionInternal(FileName fileName)
 		{
+			PerfTimeline.Begin(PerfTimeline.SolutionOpen);
 			fileName = MigrateToSlnxIfPossible(fileName);
 			ISolution solution;
-			using (var progress = SD.StatusBar.CreateProgressMonitor()) {
+			using (var progress = SD.StatusBar.CreateProgressMonitor())
+			using (Environment.GetEnvironmentVariable("OD_SHARED_EVALUATION") == "0" ? null : MSBuildInternals.BeginSharedEvaluation())
+			using (Environment.GetEnvironmentVariable("OD_DEFER_PROJECT_WATCHERS") == "0" ? null : ProjectChangeWatcher.DeferEnabling()) {
 
 				solution = LoadSolutionFile(fileName, progress);
 
 				this.CurrentSolution = solution;
 			}
+			PerfTimeline.Mark(PerfTimeline.SolutionOpen, "projects-evaluated", solution.Projects.Count() + " projects");
 			WarnOnceIfNoCompatibleInProcessSdk();
 			OnSolutionOpened(solution);
+			PerfTimeline.Mark(PerfTimeline.SolutionOpen, "solution-opened-handlers-done");
 		}
 
 		static bool warnedAboutMissingCompatibleSdk;
@@ -349,13 +354,26 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		void OnSolutionOpened(ISolution solution)
 		{
+			// Every step here runs on the UI thread while the window waits; each one slower than
+			// SlowSolutionOpenedStepMilliseconds is recorded in PerfTimeline (fast-mode.md step 3).
+			var step = Stopwatch.StartNew();
 			foreach (var project in solution.Projects)
 				project.ProjectLoaded();
-			SolutionOpened(this, new SolutionEventArgs(solution));
+			MarkIfSlow(step, "ProjectLoaded (all projects)");
+			var args = new SolutionEventArgs(solution);
+			foreach (EventHandler<SolutionEventArgs> handler in SolutionOpened?.GetInvocationList() ?? Array.Empty<Delegate>()) {
+				step.Restart();
+				handler(this, args);
+				MarkIfSlow(step, "SolutionOpened: " + handler.Method.DeclaringType?.FullName + "." + handler.Method.Name);
+			}
 			ObserveConfigurationChanges(solution);
+			step.Restart();
 			MessageBus.Send(this, new SolutionOpenedMessageEventArgs(solution, NextLifecycleRevision()));
+			MarkIfSlow(step, "MessageBus SolutionOpenedMessage");
 			SD.FileService.RecentOpen.AddRecentProject(solution.FileName);
+			step.Restart();
 			Project.Converter.UpgradeViewContent.ShowIfRequired(solution);
+			MarkIfSlow(step, "UpgradeViewContent.ShowIfRequired");
 			foreach (var project in solution.Projects.OfType<ErrorProject>()) {
 				var error = project.Exception as ProjectLoadException;
 				if (error != null && error.CanShowDialog) {
@@ -365,6 +383,14 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 		}
 		
+		const int SlowSolutionOpenedStepMilliseconds = 50;
+
+		static void MarkIfSlow(Stopwatch step, string name)
+		{
+			if (step.ElapsedMilliseconds >= SlowSolutionOpenedStepMilliseconds)
+				PerfTimeline.Mark(PerfTimeline.SolutionOpen, "slow-step", name + " " + step.ElapsedMilliseconds + "ms");
+		}
+
 		void OpenProjectInternal(FileName fileName)
 		{
 			if (!Path.IsPathRooted(fileName))

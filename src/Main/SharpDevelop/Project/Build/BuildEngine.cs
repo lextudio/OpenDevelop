@@ -59,6 +59,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			
 			BuildEngine engine = new BuildEngine(options, project);
 			engine.buildStart = DateTime.Now;
+			PerfTimeline.Begin(PerfTimeline.Build);
 			engine.combinedBuildFeedbackSink = buildFeedbackSink;
 			engine.progressMonitor = progressMonitor;
 			try {
@@ -87,9 +88,67 @@ namespace ICSharpCode.SharpDevelop.Project
 			engine.cancellationRegistration = engine.progressMonitor.CancellationToken.Register(engine.BuildCancelled);
 			
 			engine.ReportMessageLine("${res:MainWindow.CompilerMessages.BuildStarted}");
-			engine.StartBuildProjects();
-			engine.UpdateProgressTaskName();
+			engine.RestoreUpFrontThenStartAsync();
 			return engine.tcs.Task;
+		}
+		
+		/// <summary>
+		/// `dotnet build` restores on every call, so building N projects ran N restores (a third of a
+		/// no-op build's time per project, measured). Restore the build's root once instead, and let
+		/// every project whose global properties match that restore build with --no-restore. A
+		/// project with different properties (restore output depends on them: a Platform or
+		/// RuntimeIdentifier changes the assets file's targets) restores itself as before, and so
+		/// does everything when the up-front restore fails or does not apply.
+		/// </summary>
+		async void RestoreUpFrontThenStartAsync()
+		{
+			try {
+				await RestoreUpFrontAsync();
+			} catch (OperationCanceledException) {
+				// Cancelled during restore: StartBuildProjects sees the cancellation and finishes.
+			} catch (Exception ex) {
+				LoggingService.Warn("Up-front restore skipped: " + ex.Message);
+			}
+			StartBuildProjects();
+			UpdateProgressTaskName();
+		}
+		
+		async Task RestoreUpFrontAsync()
+		{
+			if (!(SD.MSBuildEngine is MinimalMSBuildEngine msbuild))
+				return;
+			// Escape hatch, and the way to measure the per-project-restore baseline.
+			if (Environment.GetEnvironmentVariable("OD_BUILD_UPFRONT_RESTORE") == "0")
+				return;
+			// The root buildable is usually a BuildModifiedProjectsOnlyService wrapper, not the
+			// solution itself, so restore the open solution: it contains every project an IDE build
+			// can reach. Restoring a whole solution costs more than a few projects restoring
+			// themselves, so only do it when the build covers a good share of the solution.
+			var solution = SD.ProjectService.CurrentSolution;
+			if (solution?.FileName == null)
+				return;
+			var building = nodeDict.Values.Where(n => n.options != null && n.options.Target != BuildTarget.Clean).ToList();
+			int solutionProjects = solution.Projects.Count();
+			if (building.Count < 2 || building.Count * 2 < solutionProjects)
+				return;
+			// The properties most projects build with are the ones worth restoring with.
+			var template = building
+				.GroupBy(n => MinimalMSBuildEngine.GlobalPropertiesKey(n.options))
+				.OrderByDescending(g => g.Count())
+				.First();
+			string key = template.Key;
+			bool restored = await msbuild.RestoreAsync(solution.FileName.ToString(), template.First().options, combinedBuildFeedbackSink, progressMonitor.CancellationToken);
+			int skipping = 0;
+			if (restored) {
+				foreach (var node in building) {
+					if (MinimalMSBuildEngine.GlobalPropertiesKey(node.options) != key)
+						continue;
+					node.options.Properties[MinimalMSBuildEngine.RestoredUpFrontProperty] = "true";
+					skipping++;
+				}
+			}
+			PerfTimeline.Mark(PerfTimeline.Build, "restored-up-front",
+				(restored ? "ok" : "failed") + ", " + skipping + "/" + building.Count + " projects skip their own restore");
 		}
 		#endregion
 		
@@ -445,6 +504,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// </summary>
 		void ReportDone()
 		{
+			PerfTimeline.Mark(PerfTimeline.Build, "build-finished", results.Result.ToString());
 			tcs.SetResult(results);
 		}
 		#endregion

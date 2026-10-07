@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -157,12 +158,34 @@ namespace ICSharpCode.UnitTesting
 		{
 			treeView.TestSolution = testService.OpenSolution;
 			viewModel.IsLoading = false;
-			// The status bar's Total reflects the discovered test count (doc/technotes/ilspy.md,
-			// "Total: 0" fix, 2026-08-09): the tree the user sees is this same model, so count its
-			// leaf tests now - a pad showing test classes while reading "Total: 0" reads as broken.
-			// A run's own StartRunStatus/TestCountDiscovered overrides this when tests actually run.
-			int count = testService.OpenSolution == null ? 0 : CountLeafTests(testService.OpenSolution);
-			viewModel.StartRun(count);
+			viewModel.StartRun(0);
+			CountDiscoveredTestsAsync(testService.OpenSolution, viewModel.RunVersion);
+		}
+
+		/// <summary>
+		/// The status bar's Total reflects the discovered test count (doc/technotes/ilspy.md,
+		/// "Total: 0" fix, 2026-08-09): a pad showing test classes while reading "Total: 0" reads as
+		/// broken. Counting initializes every test project's nested tests, each an MSBuild
+		/// evaluation; done in one go on SolutionOpened it held the UI thread for 3.4 s on
+		/// OpenDevelop.Mvp (doc/technotes/fast-mode.md step 3). Count one project per dispatcher
+		/// turn instead, so the window stays responsive, and publish the total only if no test run
+		/// has started meanwhile (a run's own StartRun owns the status bar from then on).
+		/// </summary>
+		async void CountDiscoveredTestsAsync(ITest solution, int runVersion)
+		{
+			if (solution == null)
+				return;
+			int count = 0;
+			// A snapshot: the collection can change while this method is suspended.
+			var projects = ((IEnumerable<ITest>)solution.NestedTests ?? Array.Empty<ITest>()).ToArray();
+			foreach (var project in projects) {
+				await Dispatcher.Yield(DispatcherPriority.Background);
+				if (testService.OpenSolution != solution || viewModel.RunVersion != runVersion)
+					return;
+				count += CountLeafTests(project);
+			}
+			if (testService.OpenSolution == solution && viewModel.RunVersion == runVersion)
+				viewModel.StartRun(count);
 		}
 
 		static int CountLeafTests(ITest test)

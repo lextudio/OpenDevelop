@@ -253,6 +253,23 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 		}
 
+		/// <summary>
+		/// Every file the current configuration's evaluation read: the project file itself and each
+		/// import (SDK props/targets, Directory.Build.*, Directory.Packages.props, NuGet-generated
+		/// nuget.g.props/targets, ...). A result derived from the evaluation can only change when one
+		/// of these does, which is what makes them a cache key.
+		/// </summary>
+		public IReadOnlyList<string> GetEvaluationInputFiles()
+		{
+			using (var c = OpenCurrentConfiguration()) {
+				return new[] { c.Project.FullPath }
+					.Concat(c.Project.Imports.Select(import => import.ImportedProject.FullPath))
+					.Where(path => !string.IsNullOrEmpty(path))
+					.Distinct(StringComparer.OrdinalIgnoreCase)
+					.ToArray();
+			}
+		}
+
 		static EvaluatedProjectItem[] GetEvaluatedProjectItems(MSBuild.Project project)
 		{
 			return project.AllEvaluatedItems

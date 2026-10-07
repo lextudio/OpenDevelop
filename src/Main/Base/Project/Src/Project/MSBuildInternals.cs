@@ -240,11 +240,57 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 		}
 		
+		static MSBuild.Evaluation.Context.EvaluationContext sharedEvaluationContext;
+
+		/// <summary>
+		/// Shares one MSBuild <see cref="MSBuild.Evaluation.Context.EvaluationContext"/> across every
+		/// project evaluated until the returned scope is disposed. A shared context caches file-system
+		/// lookups, wildcard (glob) expansion and SDK resolution between evaluations; opening a
+		/// solution evaluates every project serially on the UI thread, and those were where the time
+		/// went (doc/technotes/fast-mode.md step 3). It caches file-system state, so it must not
+		/// outlive the batch: a context kept around would hide files added afterwards.
+		/// </summary>
+		public static IDisposable BeginSharedEvaluation()
+		{
+			lock (SolutionProjectCollectionLock) {
+				if (sharedEvaluationContext != null)
+					return new SharedEvaluationScope(owner: false); // nested: the outer scope owns it
+				sharedEvaluationContext = MSBuild.Evaluation.Context.EvaluationContext.Create(
+					MSBuild.Evaluation.Context.EvaluationContext.SharingPolicy.Shared);
+				return new SharedEvaluationScope(owner: true);
+			}
+		}
+
+		sealed class SharedEvaluationScope : IDisposable
+		{
+			bool owner;
+			public SharedEvaluationScope(bool owner) { this.owner = owner; }
+			public void Dispose()
+			{
+				if (!owner)
+					return;
+				owner = false;
+				lock (SolutionProjectCollectionLock)
+					sharedEvaluationContext = null;
+			}
+		}
+
 		internal static MSBuild.Evaluation.Project LoadProject(MSBuild.Evaluation.ProjectCollection projectCollection, ProjectRootElement rootElement, IDictionary<string, string> globalProps)
 		{
 			InitializeMSBuildEnvironment();
 			lock (SolutionProjectCollectionLock) {
 				string toolsVersion = ResolveSupportedToolsVersion(projectCollection, rootElement);
+				if (sharedEvaluationContext != null) {
+					return MSBuild.Evaluation.Project.FromProjectRootElement(rootElement, new MSBuild.Definition.ProjectOptions {
+						GlobalProperties = globalProps,
+						ToolsVersion = toolsVersion,
+						ProjectCollection = projectCollection,
+#if HAS_UNO
+						LoadSettings = MSBuild.Evaluation.ProjectLoadSettings.IgnoreMissingImports,
+#endif
+						EvaluationContext = sharedEvaluationContext
+					});
+				}
 #if HAS_UNO
 				// SDK resolvers (e.g. NuGet → Uno.Sdk) may not be available in-process.
 				// IgnoreMissingImports lets us read static XML properties (AssemblyName,

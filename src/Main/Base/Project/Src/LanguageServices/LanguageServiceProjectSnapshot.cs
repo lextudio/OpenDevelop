@@ -265,14 +265,20 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         {
             if (project is not MSBuildBasedProject msbuildProject)
                 return Array.Empty<string?>();
+            var fingerprint = ReferenceResolutionCache.Fingerprint(msbuildProject);
+            if (fingerprint is not null && ReferenceResolutionCache.TryLoad(msbuildProject, fingerprint) is { } cached)
+                return cached;
             try
             {
                 var engine = SD.GetService<IMSBuildEngine>();
                 if (engine == null)
                     return Array.Empty<string?>();
-                return engine.ResolveAssemblyReferences(msbuildProject)
+                var resolved = engine.ResolveAssemblyReferences(msbuildProject)
                     .Select(GetReferenceHintPath)
                     .ToArray();
+                if (fingerprint is not null)
+                    ReferenceResolutionCache.Save(msbuildProject, fingerprint, resolved);
+                return resolved;
             }
             catch (Exception ex)
             {
@@ -312,6 +318,136 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         static string? NullIfEmpty(string? value)
         {
             return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+
+        /// <summary>Reference-resolution cache hits and misses since the IDE started, for
+        /// od.perf.timeline.</summary>
+        public static string ReferenceCacheStatistics =>
+            $"reference cache {ReferenceResolutionCache.Hits} hit(s), {ReferenceResolutionCache.Misses} miss(es)";
+
+        /// <summary>
+        /// Persists MSBuild's ResolveReferences result per project. Resolving it costs a child
+        /// `dotnet msbuild` process (~0.7 s per project, the bulk of opening a solution: 62 s of 138 s
+        /// for 87 projects, doc/technotes/fast-mode.md), and its answer can only change when an input
+        /// of that evaluation does. So the key is those inputs: the SDK the child runs under, the
+        /// project file, every import its evaluation read (Directory.Build.*, Directory.Packages.props,
+        /// NuGet's generated nuget.g.props/targets, the SDK's own targets) and the restore output
+        /// project.assets.json. Files inside the solution directory are keyed by content, so a touched
+        /// but unchanged file is still a hit; files outside it (SDK installs, the NuGet package cache)
+        /// are immutable once installed and are keyed by path, size and write time, so they are not
+        /// read on every open. Nothing here is a timestamp of the cache entry itself.
+        /// </summary>
+        static class ReferenceResolutionCache
+        {
+            internal static int Hits, Misses;
+
+            sealed class Entry
+            {
+                public string Fingerprint { get; set; } = "";
+                public string?[] ReferencePaths { get; set; } = Array.Empty<string?>();
+            }
+
+            public static string? Fingerprint(MSBuildBasedProject project)
+            {
+                try
+                {
+                    var solutionDirectory = project.ParentSolution?.Directory.ToString();
+                    var inputs = project.GetEvaluationInputFiles().ToList();
+                    var assetsFile = project.GetEvaluatedProperty("ProjectAssetsFile");
+                    if (!string.IsNullOrWhiteSpace(assetsFile))
+                        inputs.Add(assetsFile);
+
+                    var sdk = Project.Sdk.DotNetSdkService.ResolveEffectiveSdk();
+                    var text = new StringBuilder();
+                    text.Append("v1|").Append(sdk.DotnetExecutablePath).Append('|').Append(sdk.HighestSdkVersion).Append('\n');
+                    foreach (var input in inputs.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+                    {
+                        text.Append(input).Append('|');
+                        var file = new FileInfo(input);
+                        if (!file.Exists)
+                            text.Append("absent");
+                        else if (solutionDirectory is not null && IsUnder(input, solutionDirectory))
+                            text.Append(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(input))));
+                        else
+                            text.Append(file.Length).Append('|').Append(file.LastWriteTimeUtc.Ticks);
+                        text.Append('\n');
+                    }
+                    return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));
+                }
+                catch (Exception ex)
+                {
+                    ICSharpCode.Core.LoggingService.Warn(
+                        $"LanguageServiceProjectSnapshot: cannot fingerprint '{project.FileName}', resolving references without the cache. {ex.Message}");
+                    return null;
+                }
+            }
+
+            public static string?[]? TryLoad(MSBuildBasedProject project, string fingerprint)
+            {
+                var path = GetCacheFilePath(project);
+                try
+                {
+                    if (path is not null && File.Exists(path))
+                    {
+                        var entry = JsonSerializer.Deserialize<Entry>(File.ReadAllText(path));
+                        if (entry is not null && entry.Fingerprint == fingerprint)
+                        {
+                            System.Threading.Interlocked.Increment(ref Hits);
+                            return entry.ReferencePaths;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ICSharpCode.Core.LoggingService.Warn(
+                        $"LanguageServiceProjectSnapshot: unreadable reference cache for '{project.FileName}', resolving again. {ex.Message}");
+                }
+                System.Threading.Interlocked.Increment(ref Misses);
+                return null;
+            }
+
+            public static void Save(MSBuildBasedProject project, string fingerprint, string?[] referencePaths)
+            {
+                // An empty resolution is what an unrestored (or mid-restore) project produces. Caching
+                // it would pin "no references" until an input changed; resolve again next time instead.
+                // (Same rule, and the same measured failure, as TfmEvaluationCache.TryLoad.)
+                if (!referencePaths.Any(path => !string.IsNullOrWhiteSpace(path)))
+                    return;
+                var path = GetCacheFilePath(project);
+                if (path is null)
+                    return;
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                    var temporary = path + ".tmp";
+                    File.WriteAllText(temporary, JsonSerializer.Serialize(new Entry { Fingerprint = fingerprint, ReferencePaths = referencePaths }));
+                    File.Move(temporary, path, overwrite: true);
+                }
+                catch (Exception ex)
+                {
+                    ICSharpCode.Core.LoggingService.Warn(
+                        $"LanguageServiceProjectSnapshot: failed to write the reference cache for '{project.FileName}'. {ex.Message}");
+                }
+            }
+
+            static string? GetCacheFilePath(MSBuildBasedProject project)
+            {
+                var solutionDirectory = project.ParentSolution?.Directory.ToString();
+                if (solutionDirectory is null)
+                    return null;
+                // Named by the project's path relative to the solution, so the entry survives the
+                // solution folder being moved or checked out elsewhere (the fingerprint decides
+                // whether it still applies there).
+                var relative = Path.GetRelativePath(solutionDirectory, project.FileName.ToString()).Replace('\\', '/');
+                var name = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(relative.ToUpperInvariant())));
+                return Path.Combine(solutionDirectory, ".od", "roslyn-reference-cache", name + ".json");
+            }
+
+            static bool IsUnder(string path, string directory)
+            {
+                var relative = Path.GetRelativePath(directory, path);
+                return !relative.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(relative);
+            }
         }
 
         /// <summary>

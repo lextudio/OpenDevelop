@@ -32,6 +32,8 @@ namespace ICSharpCode.SharpDevelop.Project
 #if HAS_UNO
 	sealed class ProjectChangeWatcher : IProjectChangeWatcher
 	{
+		public static IDisposable DeferEnabling() => null;
+
 		public ProjectChangeWatcher(string fileName)
 		{
 		}
@@ -55,6 +57,74 @@ namespace ICSharpCode.SharpDevelop.Project
 #else
 	public sealed class ProjectChangeWatcher : IProjectChangeWatcher
 	{
+		/// <summary>Watchers whose start is postponed by <see cref="DeferEnabling"/>; null when not deferring.</summary>
+		static List<ProjectChangeWatcher> deferredEnables;
+
+		/// <summary>
+		/// Postpones starting every watcher created or re-enabled until the returned scope is
+		/// disposed, then starts them one per idle dispatcher turn. Starting a FileSystemWatcher is
+		/// synchronous and slow on macOS (each one starts an FSEvents stream); opening a solution
+		/// started one per project on the UI thread, which was about half the time of that freeze
+		/// (doc/technotes/fast-mode.md step 3). A file changed while its watcher was postponed is
+		/// still reported: <see cref="EnableDeferred"/> compares the write time recorded when the
+		/// watcher was created.
+		/// </summary>
+		public static IDisposable DeferEnabling()
+		{
+			SD.MainThread.VerifyAccess();
+			if (deferredEnables != null)
+				return null; // nested: the outer scope starts them
+			deferredEnables = new List<ProjectChangeWatcher>();
+			return new DeferralScope();
+		}
+
+		sealed class DeferralScope : IDisposable
+		{
+			bool disposed;
+			public void Dispose()
+			{
+				if (disposed)
+					return;
+				disposed = true;
+				var pending = new Queue<ProjectChangeWatcher>(deferredEnables);
+				deferredEnables = null;
+				StartNextDeferred(pending);
+			}
+		}
+
+		static void StartNextDeferred(Queue<ProjectChangeWatcher> pending)
+		{
+			if (pending.Count == 0)
+				return;
+			pending.Dequeue().EnableDeferred();
+			SD.MainThread.InvokeAsyncAndForget(() => StartNextDeferred(pending), DispatcherPriority.Background);
+		}
+
+		void EnableDeferred()
+		{
+			// Disposed, disabled, or already started again by a later SetWatcher in the meantime.
+			if (disposed || !enabled || watcher == null || watcher.EnableRaisingEvents)
+				return;
+			// Unlike the immediate start in SetWatcher, this runs later, when the project's directory
+			// may already be gone (a solution closed and deleted, a temporary copy cleaned up):
+			// starting then throws DirectoryNotFoundException, an IOException but not a
+			// FileNotFoundException, which surfaced as an unhandled-exception dialog.
+			if (!Directory.Exists(watcher.Path)) {
+				watcher.Dispose();
+				watcher = null;
+				return;
+			}
+			try {
+				watcher.EnableRaisingEvents = true;
+			} catch (Exception ex) when (ex is PlatformNotSupportedException || ex is IOException || ex is ArgumentException) {
+				watcher.Dispose();
+				watcher = null;
+				return;
+			}
+			if (LastWriteTimeHasChanged())
+				OnFileChangedEvent(this, new FileSystemEventArgs(WatcherChangeTypes.Changed, Path.GetDirectoryName(fileName), Path.GetFileName(fileName)));
+		}
+
 		static readonly HashSet<ProjectChangeWatcher> activeWatchers = new HashSet<ProjectChangeWatcher>();
 		
 		internal static void OnAllChangeWatchersDisabledChanged()
@@ -145,7 +215,12 @@ namespace ICSharpCode.SharpDevelop.Project
 				}
 				watcher.Path = Path.GetDirectoryName(fileName);
 				watcher.Filter = Path.GetFileName(fileName);
-				watcher.EnableRaisingEvents = true;
+				if (deferredEnables != null) {
+					if (!deferredEnables.Contains(this))
+						deferredEnables.Add(this);
+				} else {
+					watcher.EnableRaisingEvents = true;
+				}
 			} catch (PlatformNotSupportedException) {
 				if (watcher != null) {
 					watcher.Dispose();
