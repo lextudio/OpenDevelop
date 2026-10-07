@@ -180,6 +180,8 @@ namespace ICSharpCode.SharpDevelop.Gui
 		public SharedToolboxItem SelectedItem => toolbox.SelectedItem as SharedToolboxItem;
 		public string FilterText => filterText;
 		public int VisibleItemCount => itemsView.View.Cast<object>().Count();
+		/// <summary>The rows the pad currently shows (active scopes, after the filter).</summary>
+		public IEnumerable<SharedToolboxItem> VisibleItems => itemsView.View.Cast<SharedToolboxItem>();
 
 		public int ItemCount(string scope) => items.Count(item => item.Scope == scope);
 

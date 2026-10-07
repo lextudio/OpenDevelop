@@ -52,10 +52,11 @@ public sealed class WinUIXamlToolbox
 			var category = string.IsNullOrEmpty(tool.Category) ? StandardControlsCategory : tool.Category;
 			newItems.Add(new SharedToolboxItem(category, tool.Name, Scope,
 				// WinUI has no per-control toolbox icon of its own to read, so this falls to the
-				// shared VS Image Library glyph for the control's type. tool.TypeName is the full
-				// XAML type name, which DesignerTypeIcons normalizes the same way as every other
-				// framework's.
-				icon: DesignerTypeIcons.GetIcon(tool.TypeName),
+				// shared VS Image Library glyph for the control's type. The design hosts' catalogs
+				// (DesignHost.BuildToolboxCatalog) do not fill TypeName, and Name is the control's
+				// type name there; looking up an empty TypeName gave every row the same fallback
+				// glyph.
+				icon: DesignerTypeIcons.GetIcon(string.IsNullOrEmpty(tool.TypeName) ? tool.Name : tool.TypeName),
 				payload: new WinUIToolboxItem(tool.Name, category, tool.Template),
 				packDragData: data => {
 					data.SetData(DragDataFormat, tool.Name);

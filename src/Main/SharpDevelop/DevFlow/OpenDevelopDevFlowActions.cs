@@ -3165,6 +3165,44 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { layoutName = LayoutConfiguration.CurrentLayoutName });
 		}
 
+		[DevFlowAction("od.toolbox.items", Description = "The rows the shared Toolbox pad currently shows - scope, name and whether a 16x16 icon is set - so a test can assert every designer's toolbox rows carry an icon")]
+		public static string GetToolboxItems()
+		{
+			// DesignerTypeIcons caches each glyph by name, so a row that fell back to the generic
+			// "Control" glyph holds that very instance: "has an icon" alone cannot tell it apart.
+			var generic = ICSharpCode.SharpDevelop.Designer.Presentation.DesignerTypeIcons.GetIcon(
+				ICSharpCode.SharpDevelop.Designer.Presentation.DesignerTypeIcons.FallbackIconName);
+			var rows = ICSharpCode.SharpDevelop.Gui.SharedToolbox.Instance.VisibleItems
+				.Select(item => new {
+					scope = item.Scope, category = item.CategoryName, name = item.DisplayName,
+					hasIcon = item.Icon != null,
+					genericIcon = item.Icon != null && ReferenceEquals(item.Icon, generic)
+				})
+				.ToArray();
+			return JsonSerializer.Serialize(new {
+				success = true,
+				count = rows.Length,
+				withoutIcon = rows.Count(row => !row.hasIcon),
+				withGenericIcon = rows.Count(row => row.genericIcon),
+				rows
+			});
+		}
+
+		[DevFlowAction("od.perf.timeline", Description = "Milestones (ms since start) of the latest solution open and build, plus this process's working set and managed heap - the baseline and regression signal for doc/technotes/fast-mode.md")]
+		public static string GetPerfTimeline()
+		{
+			var scopes = PerfTimeline.Snapshot().ToDictionary(
+				pair => pair.Key,
+				pair => pair.Value.Select(m => new { name = m.Name, ms = m.ElapsedMilliseconds, detail = m.Detail }).ToArray());
+			using var self = System.Diagnostics.Process.GetCurrentProcess();
+			return JsonSerializer.Serialize(new {
+				success = true,
+				scopes,
+				workingSetMB = self.WorkingSet64 / (1024 * 1024),
+				managedHeapMB = GC.GetTotalMemory(false) / (1024 * 1024)
+			});
+		}
+
 		// Verification-only state for the LayoutSnapshot round-trip (doc/technotes/ilspy.md,
 		// "Real versioned layout DTO" -> step 1): held in memory only, this session, not
 		// persisted - these actions exist so a test can prove Capture/Apply actually restores a

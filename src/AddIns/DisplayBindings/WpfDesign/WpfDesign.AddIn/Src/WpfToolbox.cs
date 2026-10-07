@@ -25,6 +25,7 @@ using System.Windows;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Designer;
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
@@ -87,6 +88,11 @@ namespace ICSharpCode.WpfDesign.AddIn
 		{
 			var tool = new CreateComponentTool(componentType);
 			return new SharedToolboxItem(categoryName, componentType.Name, WpfScope,
+				// The same VS glyph the WinUI/Uno, GTK and MewUI toolboxes use for this control;
+				// without one the row rendered with an empty icon slot.
+				// A project's own control has no glyph of its own name; a UserControl still reads as one.
+				icon: DesignerTypeIcons.GetIcon(componentType.Name,
+					typeof(System.Windows.Controls.UserControl).IsAssignableFrom(componentType) ? "UserControl" : DesignerTypeIcons.FallbackIconName),
 				payload: tool,
 				packDragData: data => {
 					data.SetData(tool);

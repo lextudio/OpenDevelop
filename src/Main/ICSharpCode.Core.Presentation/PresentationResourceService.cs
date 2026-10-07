@@ -121,6 +121,8 @@ namespace ICSharpCode.Core.Presentation
 			{ "Icons.16x16.FormsDesigner.MakeSameWidth", "AlignHorizontalStretch" },
 			{ "Icons.16x16.FormsDesigner.MakeSameSize", "AutoSizeStretch" },
 			{ "Icons.16x16.FormsDesigner.SizeToGrid", "GridGuide" },
+			// The toolbox "Pointer" row: VS draws it with the Cursor glyph; there is no Pointer icon.
+			{ "Icons.16x16.FormsDesigner.PointerIcon", "Cursor" },
 			{ "Icons.16x16.Warning", "StatusWarning" },
 			{ "Icons.16x16.Information", "StatusInformation" },
 			{ "Icons.16x16.Question", "HelpApplication" },

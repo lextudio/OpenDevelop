@@ -518,7 +518,8 @@ sealed class UnoDesignRuntimeHost : IDesignCanvasBackend, IWinUIXamlRuntimeHost,
 					DisplayName = tool.DisplayName,
 					Category = tool.Category,
 					Template = tool.Template,
-					XamlNamespace = tool.XamlNamespace
+					XamlNamespace = tool.XamlNamespace,
+					TypeName = tool.TypeName
 				}).ToList());
 			var appNote = await EnsureAppResourcesAsync();
 			SetStatus($"{hostDisplayName} ready ({capabilities.Runtime} {capabilities.Version}) for {kind}.{appNote}");
