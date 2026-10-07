@@ -41,6 +41,13 @@ namespace ICSharpCode.WpfDesign.AddIn.HotReload
 				return false;
 			}
 
+			// Microsoft WPF exists only on Windows. Without this check a Microsoft WPF project opened on
+			// macOS would offer Hot Reload and fail only when the application itself failed to start.
+			if (!XamlFrameworkDetector.IsRuntimeSupportedOnThisOS(framework.Runtime)) {
+				diagnostic = $"{Describe(framework.Runtime)} applications only run on Windows.";
+				return false;
+			}
+
 			// Both LibreWPF and Microsoft WPF use WPF markup, but each needs the agent built
 			// against its own runtime. Route on the detected runtime, and refuse when the matching
 			// agent is not deployed rather than hand a Microsoft WPF debuggee the portable agent.

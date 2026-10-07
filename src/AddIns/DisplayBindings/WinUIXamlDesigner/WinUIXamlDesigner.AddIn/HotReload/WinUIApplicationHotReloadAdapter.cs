@@ -38,7 +38,7 @@ namespace ICSharpCode.WinUIXamlDesigner.HotReload
 				diagnostic = $"The startup project is not a Windows App SDK WinUI project ({framework.Kind}: {framework.Evidence}).";
 				return false;
 			}
-			if (!OperatingSystem.IsWindows()) {
+			if (!XamlFrameworkDetector.IsRuntimeSupportedOnThisOS(framework.Runtime)) {
 				diagnostic = "WinUI applications only run on Windows.";
 				return false;
 			}

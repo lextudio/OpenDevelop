@@ -39,7 +39,10 @@
        disk at a known path. That is also why this is a plain copy of the agent assembly alone -
        its build output also holds the whole framework it was compiled against, which the debuggee
        brings itself. -->
-  <Target Name="DeployAgentToAddIn" AfterTargets="Build">
+  <!-- The Microsoft WPF agent still compiles on macOS/Linux (EnableWindowsTargeting) so its compile
+       errors surface there, but it is only deployed where Microsoft WPF can run. -->
+  <Target Name="DeployAgentToAddIn" AfterTargets="Build"
+          Condition="'$(HotReloadAgentRuntime)' != 'microsoft' Or $([MSBuild]::IsOSPlatform('Windows'))">
     <PropertyGroup>
       <_AddInHotReloadDir>$(MSBuildThisFileDirectory)..\..\..\AddIns\DisplayBindings\WpfDesign\HotReload\$(HotReloadAgentRuntime)\</_AddInHotReloadDir>
     </PropertyGroup>

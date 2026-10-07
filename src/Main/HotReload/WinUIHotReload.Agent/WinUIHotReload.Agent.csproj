@@ -56,7 +56,8 @@
        the layout WinUIHotReloadAgent.LocateTap expects. WinUIXamlDesigner.AddIn builds this project
        and its adapter looks there. Like the WPF agent this is a plain copy: the agent is handed to
        the application's runtime and is never loaded into the IDE. -->
-  <Target Name="DeployAgentToAddIn" AfterTargets="Build">
+  <!-- WinUI only runs on Windows: elsewhere the agent compiles (EnableWindowsTargeting) but ships nowhere. -->
+  <Target Name="DeployAgentToAddIn" AfterTargets="Build" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
     <PropertyGroup>
       <_AddInHotReloadDir>$(MSBuildThisFileDirectory)..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\HotReload\winui\</_AddInHotReloadDir>
     </PropertyGroup>
