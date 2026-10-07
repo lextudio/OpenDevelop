@@ -18,6 +18,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using ICSharpCode.Core;
 using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
@@ -198,10 +201,24 @@ namespace ICSharpCode.CodeCoverage
 		
 		static void SolutionLoaded(object sender, SolutionOpenedMessageEventArgs e)
 		{
-			var solutionCodeCoverageResults = new SolutionCodeCoverageResults(e.Solution);
-			foreach (CodeCoverageResults results in solutionCodeCoverageResults.GetCodeCoverageResultsForAllProjects()) {
-				ShowResults(results);
-			}
+			// Locating a project's coverage file needs its output path for the active configuration,
+			// which is a full MSBuild re-evaluation per project. Done here on the UI thread it froze
+			// the window for 9 s while opening OpenDevelop.Mvp's 87 projects - nearly every one of
+			// which has no coverage results at all (doc/technotes/fast-mode.md step 3). Look the
+			// results up on the thread pool, as the Roslyn snapshot push already evaluates projects,
+			// and show them back on the UI thread if the same solution is still open.
+			var solution = e.Solution;
+			Task.Run(() => new SolutionCodeCoverageResults(solution).GetCodeCoverageResultsForAllProjects().ToList())
+				.ContinueWith(lookup => {
+					if (lookup.IsFaulted) {
+						LoggingService.Warn("Loading code coverage results failed: " + lookup.Exception?.GetBaseException().Message);
+						return;
+					}
+					if (SD.ProjectService.CurrentSolution != solution)
+						return;
+					foreach (CodeCoverageResults results in lookup.Result)
+						ShowResults(results);
+				}, TaskScheduler.FromCurrentSynchronizationContext());
 		}
 	}
 }
