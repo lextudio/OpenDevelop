@@ -66,7 +66,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// synchronous and slow on macOS (each one starts an FSEvents stream); opening a solution
 		/// started one per project on the UI thread, which was about half the time of that freeze
 		/// (doc/technotes/fast-mode.md step 3). A file changed while its watcher was postponed is
-		/// still reported: <see cref="EnableDeferred"/> compares the write time recorded when the
+		/// still reported: <see cref="CompleteDeferredStart"/> compares the write time recorded when the
 		/// watcher was created.
 		/// </summary>
 		public static IDisposable DeferEnabling()
@@ -92,19 +92,58 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 		}
 
+		static long deferredStartTicks;
+		static int deferredStartCount;
+
+		/// <summary>
+		/// Starts the postponed watchers one after another. Starting a FileSystemWatcher costs ~75 ms
+		/// on macOS (6.5 s for OpenDevelop.Mvp's 88 projects); only the state checks around it run on
+		/// the UI thread, the start itself on the thread pool. While a watcher is starting in the
+		/// background, SetWatcher and Dispose leave its FileSystemWatcher alone (it is not thread-safe)
+		/// and CompleteDeferredStart reconciles afterwards.
+		/// </summary>
 		static void StartNextDeferred(Queue<ProjectChangeWatcher> pending)
 		{
-			if (pending.Count == 0)
+			while (pending.Count > 0) {
+				var next = pending.Dequeue();
+				var starting = System.Diagnostics.Stopwatch.StartNew();
+				var fileSystemWatcher = next.BeginDeferredStart();
+				deferredStartTicks += starting.Elapsed.Ticks;
+				if (fileSystemWatcher == null)
+					continue;
+				System.Threading.Tasks.Task.Run(() => {
+					try {
+						fileSystemWatcher.EnableRaisingEvents = true;
+						return (Exception)null;
+					} catch (Exception ex) {
+						return ex;
+					}
+				}).ContinueWith(start => SD.MainThread.InvokeAsyncAndForget(() => {
+					var completing = System.Diagnostics.Stopwatch.StartNew();
+					next.CompleteDeferredStart(fileSystemWatcher, start.Result);
+					deferredStartTicks += completing.Elapsed.Ticks;
+					deferredStartCount++;
+					StartNextDeferred(pending);
+				}, DispatcherPriority.Background));
 				return;
-			pending.Dequeue().EnableDeferred();
-			SD.MainThread.InvokeAsyncAndForget(() => StartNextDeferred(pending), DispatcherPriority.Background);
+			}
+			PerfTimeline.Mark(PerfTimeline.SolutionOpen, "project-watchers-started",
+				deferredStartCount + " watcher(s), " + TimeSpan.FromTicks(deferredStartTicks).TotalMilliseconds.ToString("0") + " ms on the UI thread");
+			deferredStartTicks = 0;
+			deferredStartCount = 0;
 		}
 
-		void EnableDeferred()
+		/// <summary>True while this watcher's FileSystemWatcher is being started on the thread pool.</summary>
+		bool startingInBackground;
+		/// <summary>A SetWatcher arrived while starting in the background; redo it afterwards.</summary>
+		bool resyncAfterStart;
+
+		/// <summary>The FileSystemWatcher to start in the background, or null if there is none to start.</summary>
+		FileSystemWatcher BeginDeferredStart()
 		{
 			// Disposed, disabled, or already started again by a later SetWatcher in the meantime.
 			if (disposed || !enabled || watcher == null || watcher.EnableRaisingEvents)
-				return;
+				return null;
 			// Unlike the immediate start in SetWatcher, this runs later, when the project's directory
 			// may already be gone (a solution closed and deleted, a temporary copy cleaned up):
 			// starting then throws DirectoryNotFoundException, an IOException but not a
@@ -112,16 +151,35 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (!Directory.Exists(watcher.Path)) {
 				watcher.Dispose();
 				watcher = null;
+				return null;
+			}
+			startingInBackground = true;
+			return watcher;
+		}
+
+		void CompleteDeferredStart(FileSystemWatcher started, Exception error)
+		{
+			startingInBackground = false;
+			if (disposed) {
+				started.Dispose();
+				if (watcher == started)
+					watcher = null;
 				return;
 			}
-			try {
-				watcher.EnableRaisingEvents = true;
-			} catch (Exception ex) when (ex is PlatformNotSupportedException || ex is IOException || ex is ArgumentException) {
-				watcher.Dispose();
-				watcher = null;
+			if (error != null) {
+				if (!(error is PlatformNotSupportedException || error is IOException || error is ArgumentException || error is ObjectDisposedException))
+					LoggingService.Warn("Starting the project file watcher for " + fileName + " failed: " + error.Message);
+				started.Dispose();
+				if (watcher == started)
+					watcher = null;
 				return;
 			}
-			if (LastWriteTimeHasChanged())
+			if (resyncAfterStart) {
+				resyncAfterStart = false;
+				SetWatcher();
+			}
+			// A file changed while its watcher was postponed is still reported.
+			if (enabled && LastWriteTimeHasChanged())
 				OnFileChangedEvent(this, new FileSystemEventArgs(WatcherChangeTypes.Changed, Path.GetDirectoryName(fileName), Path.GetFileName(fileName)));
 		}
 
@@ -189,6 +247,10 @@ namespace ICSharpCode.SharpDevelop.Project
 		void SetWatcher()
 		{
 			SD.MainThread.VerifyAccess();
+			if (startingInBackground) {
+				resyncAfterStart = true;
+				return;
+			}
 
 			if (watcher != null) {
 				watcher.EnableRaisingEvents = false;
@@ -226,8 +288,11 @@ namespace ICSharpCode.SharpDevelop.Project
 					watcher.Dispose();
 				}
 				watcher = null;
-			} catch (FileNotFoundException) {
-				// can occur if directory was deleted externally
+			} catch (IOException) {
+				// can occur if the directory was deleted externally: FileNotFoundException, and on
+				// macOS DirectoryNotFoundException from the FSEvents stream. The latter became
+				// reachable once SetWatcher also runs after a background start
+				// (CompleteDeferredStart), when the project's directory may already be gone.
 				if (watcher != null) {
 					watcher.Dispose();
 				}
@@ -386,7 +451,9 @@ namespace ICSharpCode.SharpDevelop.Project
 				SD.Workbench.MainWindow.Activated -= MainFormActivated;
 				activeWatchers.Remove(this);
 			}
-			if (watcher != null) {
+			// A background start owns the FileSystemWatcher until CompleteDeferredStart, which
+			// disposes it once it sees `disposed`.
+			if (watcher != null && !startingInBackground) {
 				watcher.Dispose();
 				watcher = null;
 			}

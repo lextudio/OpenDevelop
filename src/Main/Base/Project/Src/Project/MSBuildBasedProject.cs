@@ -248,7 +248,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			var targetFramework = ProjectTargetFrameworkService.GetActiveTargetFramework(this);
 			using (var c = string.IsNullOrEmpty(targetFramework)
 				? OpenCurrentConfiguration()
-				: OpenConfiguration(null, null, targetFramework)) {
+				: OpenConfiguration(null, null, targetFramework, reuseTargetFrameworkEvaluation: false)) {
 				return GetEvaluatedProjectItems(c.Project);
 			}
 		}
@@ -516,12 +516,60 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		MSBuild.Project currentlyOpenProject;
 		
+		/// <summary>
+		/// Per-TargetFramework evaluations of the active configuration, kept like
+		/// <see cref="currentlyOpenProject"/>. Every TFM-specific read (the active TFM's items for
+		/// Solution Explorer and the language service, an output path for the test runner, ...)
+		/// used to evaluate the whole project afresh and unload it again: a full MSBuild evaluation
+		/// per property read, on the UI thread while a solution opened (doc/technotes/fast-mode.md).
+		/// Keyed by configuration, platform and TFM; ReevaluateIfNecessary picks up edits.
+		/// </summary>
+		static readonly bool CacheTargetFrameworkEvaluations = Environment.GetEnvironmentVariable("OD_CACHE_TFM_EVALUATIONS") != "0";
+
+		readonly Dictionary<string, MSBuild.Project> targetFrameworkProjects = new Dictionary<string, MSBuild.Project>(StringComparer.OrdinalIgnoreCase);
+
+		readonly Dictionary<string, DateTime> targetFrameworkEvaluatedAt = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+
+		/// <summary>
+		/// True if a file may have been added, removed or renamed under the project directory since
+		/// <paramref name="sinceUtc"/>: each of those updates its directory's write time, while
+		/// editing a file's content (which cannot change an item list) does not. bin, obj and hidden
+		/// directories are skipped; they change on every build and hold no project items.
+		/// </summary>
+		bool ProjectTreeChangedSince(DateTime sinceUtc)
+		{
+			try {
+				var pending = new Stack<string>();
+				pending.Push(this.Directory.ToString());
+				while (pending.Count > 0) {
+					var directory = pending.Pop();
+					if (System.IO.Directory.GetLastWriteTimeUtc(directory) >= sinceUtc)
+						return true;
+					foreach (var child in System.IO.Directory.EnumerateDirectories(directory)) {
+						var name = System.IO.Path.GetFileName(child);
+						if (name.StartsWith(".", StringComparison.Ordinal)
+						    || string.Equals(name, "bin", StringComparison.OrdinalIgnoreCase)
+						    || string.Equals(name, "obj", StringComparison.OrdinalIgnoreCase))
+							continue;
+						pending.Push(child);
+					}
+				}
+				return false;
+			} catch (Exception) {
+				return true;
+			}
+		}
+
 		void UnloadCurrentlyOpenProject()
 		{
 			if (currentlyOpenProject != null) {
 				MSBuildInternals.UnloadProject(MSBuildProjectCollection, currentlyOpenProject);
 				currentlyOpenProject = null;
 			}
+			foreach (var project in targetFrameworkProjects.Values)
+				MSBuildInternals.UnloadProject(MSBuildProjectCollection, project);
+			targetFrameworkProjects.Clear();
+			targetFrameworkEvaluatedAt.Clear();
 		}
 		
 		/// <summary>
@@ -552,7 +600,12 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// This method is thread-safe: calling it locks the SyncRoot. You have to dispose
 		/// the ConfiguredProject instance to unlock the SyncRoot.
 		/// </summary>
-		ConfiguredProject OpenConfiguration(string configuration, string platform, string targetFramework = null)
+		/// <param name="reuseTargetFrameworkEvaluation">False for item lists: a kept evaluation does not
+		/// re-expand wildcards (ReevaluateIfNecessary only notices XML edits), so a file added to the
+		/// project directory would stay invisible - to Solution Explorer, the language service and
+		/// the fast up-to-date check alike. The kept evaluation is then forced to re-evaluate.
+		/// Properties do not depend on globs and may reuse it as is.</param>
+		ConfiguredProject OpenConfiguration(string configuration, string platform, string targetFramework = null, bool reuseTargetFrameworkEvaluation = true)
 		{
 			bool lockTaken = false;
 			try {
@@ -575,6 +628,22 @@ namespace ICSharpCode.SharpDevelop.Project
 					return new ConfiguredProject(this, currentlyOpenProject, false);
 				}
 				
+				// The active configuration with a pinned TargetFramework: reuse its evaluation.
+				bool cacheTargetFramework = CacheTargetFrameworkEvaluations && !string.IsNullOrEmpty(targetFramework)
+					&& new ConfigurationAndPlatform(configuration, platform) == this.ActiveConfiguration;
+				string targetFrameworkKey = configuration + "|" + platform + "|" + targetFramework;
+				if (cacheTargetFramework && targetFrameworkProjects.TryGetValue(targetFrameworkKey, out var cachedProject)) {
+					// An item list must see files added since the evaluation was made, which only a
+					// full re-evaluation re-expands. Re-evaluate the kept one: the collection refuses a
+					// second project with the same global properties.
+					if (!reuseTargetFrameworkEvaluation && ProjectTreeChangedSince(targetFrameworkEvaluatedAt.TryGetValue(targetFrameworkKey, out var evaluatedAt) ? evaluatedAt : DateTime.MinValue)) {
+						cachedProject.MarkDirty();
+						targetFrameworkEvaluatedAt[targetFrameworkKey] = DateTime.UtcNow;
+					}
+					cachedProject.ReevaluateIfNecessary();
+					return new ConfiguredProject(this, cachedProject, false);
+				}
+				
 				Dictionary<string, string> globalProps = new Dictionary<string, string>(MSBuildInternals.PropertyNameComparer);
 				var msbuildEngine = SD.Services.GetService<IMSBuildEngine>();
 				if (msbuildEngine != null) {
@@ -585,10 +654,15 @@ namespace ICSharpCode.SharpDevelop.Project
 				globalProps["Platform"] = platform;
 				if (!string.IsNullOrEmpty(targetFramework))
 					globalProps["TargetFramework"] = targetFramework;
+				var evaluationStartedUtc = DateTime.UtcNow; // before: a file added mid-evaluation must count as newer
 				MSBuild.Project project = MSBuildInternals.LoadProject(MSBuildProjectCollection, projectFile, globalProps);
 				if (openCurrentConfiguration)
 					currentlyOpenProject = project;
-				return new ConfiguredProject(this, project, !openCurrentConfiguration);
+				else if (cacheTargetFramework) {
+					targetFrameworkProjects[targetFrameworkKey] = project;
+					targetFrameworkEvaluatedAt[targetFrameworkKey] = evaluationStartedUtc;
+				}
+				return new ConfiguredProject(this, project, !openCurrentConfiguration && !cacheTargetFramework);
 			} catch {
 				// Leave lock only on exceptions.
 				// If there's no exception, the lock will be left when the ConfiguredProject

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ICSharpCode.Core;
@@ -80,21 +82,127 @@ namespace CSharpBinding
 				//
 				// Only the snapshot construction moves off the dispatcher; there is deliberately no
 				// ConfigureAwait(false), so the loop below resumes on the UI thread as before.
+				// Warm start: push what the last open of this solution produced right away, so the
+				// language service works before the fresh snapshots (tens of seconds on a large
+				// solution) exist. Only when the cached project set is exactly the current one: the
+				// host has no "remove project", and closing its workspace would drop unsaved buffers.
+				// The fresh snapshots below then replace whichever cached ones differ.
+				Dictionary<string, string> warm = null;
+				if (Environment.GetEnvironmentVariable("OD_WARM_START") != "0") {
+					var currentKeys = LanguageServiceProjectSnapshotFactory.CurrentSnapshotKeys(solution);
+					var cached = await Task.Run(() => LanguageServiceProjectSnapshotFactory.TryLoadSolutionSnapshots(solution));
+					if (cached != null && cached.Count > 0
+					    && currentKeys.SetEquals(cached.Select(LanguageServiceProjectSnapshotFactory.SnapshotKey))) {
+						var orderedCache = PrioritizeOpenDocuments(cached, out var cachedPriority);
+						if (!await PushSnapshotsAsync(protocol, orderedCache, cachedPriority, generation, "roslyn-cached-open-documents-ready", "roslyn-cached-projects-pushed"))
+							return;
+						warm = cached.ToDictionary(LanguageServiceProjectSnapshotFactory.SnapshotKey, SerializeSnapshot);
+					} else {
+						PerfTimeline.Mark(PerfTimeline.SolutionOpen, "roslyn-warm-start-skipped",
+							cached == null ? "no cache" : "project set changed");
+					}
+				}
+
+				// Built only after the cached push: building them alongside it (four
+				// ResolveReferences children against the host loading metadata) made the cached push
+				// itself twice as slow (20.6 s -> 40.6 s on OpenDevelop.Mvp), and being usable early
+				// is the point of the warm start; verifying it can come later.
 				var snapshots = await Task.Run(() => LanguageServiceProjectSnapshotFactory.FromSolution(solution));
 				PerfTimeline.Mark(PerfTimeline.SolutionOpen, "roslyn-snapshots-built",
 					snapshots.Count + " snapshots, " + LanguageServiceProjectSnapshotFactory.ReferenceCacheStatistics);
-				foreach (var snapshot in snapshots) {
-					if (generation != Volatile.Read(ref solutionGeneration))
-						return;
-					if (service is RemoteLanguageService remote)
-						await remote.LoadProjectAsync(snapshot, CancellationToken.None);
-					else
-						await protocol.RoslynProjectLoadAsync(snapshot, CancellationToken.None);
-				}
-				PerfTimeline.Mark(PerfTimeline.SolutionOpen, "roslyn-projects-pushed");
+				var fresh = snapshots;
+				_ = Task.Run(() => LanguageServiceProjectSnapshotFactory.SaveSolutionSnapshots(solution, fresh));
+				if (warm != null)
+					snapshots = snapshots
+						.Where(snapshot => !warm.TryGetValue(LanguageServiceProjectSnapshotFactory.SnapshotKey(snapshot), out var json) || json != SerializeSnapshot(snapshot))
+						.ToList();
+				// Active document first (C# Dev Kit's "the active file is ready at once"): the
+				// projects of open documents, the active one leading, and everything they reference
+				// go first; the rest follow in solution order. Read on the UI thread, which this
+				// continuation is on.
+				snapshots = PrioritizeOpenDocuments(snapshots, out var priorityCount);
+				await PushSnapshotsAsync(protocol, snapshots, priorityCount, generation, "roslyn-open-documents-ready", "roslyn-projects-pushed",
+					warm != null ? snapshots.Count + " changed since the cache" : null);
 			} catch (Exception ex) {
 				LoggingService.Warn("Unable to synchronise the Roslyn host project graph: " + ex.Message);
 			}
+		}
+
+		static string SerializeSnapshot(LanguageServiceProjectSnapshot snapshot) =>
+			System.Text.Json.JsonSerializer.Serialize(snapshot);
+
+		/// <summary>Pushes <paramref name="snapshots"/> to the host in order; false if a newer
+		/// solution open superseded this one meanwhile.</summary>
+		async Task<bool> PushSnapshotsAsync(IRoslynLanguageProtocol protocol, IReadOnlyList<LanguageServiceProjectSnapshot> snapshots,
+			int priorityCount, long generation, string priorityMark, string doneMark, string detail = null)
+		{
+			int pushedCount = 0;
+			var pushTimes = new List<(string Project, long Milliseconds)>();
+			// The pushes run on the thread pool: resuming each of them on the UI thread queued every
+			// project behind whatever the dispatcher was doing right after a solution open
+			// (doc/technotes/fast-mode.md). Nothing here touches the UI; RemoteLanguageService
+			// serializes its own updates under a lock.
+			await Task.Run(async () => {
+				foreach (var snapshot in snapshots) {
+					if (generation != Volatile.Read(ref solutionGeneration))
+						return;
+					var pushing = System.Diagnostics.Stopwatch.StartNew();
+					if (service is RemoteLanguageService remote)
+						await remote.LoadProjectAsync(snapshot, CancellationToken.None).ConfigureAwait(false);
+					else
+						await protocol.RoslynProjectLoadAsync(snapshot, CancellationToken.None).ConfigureAwait(false);
+					pushTimes.Add((System.IO.Path.GetFileNameWithoutExtension(snapshot.ProjectFileName), pushing.ElapsedMilliseconds));
+					if (++pushedCount == priorityCount)
+						PerfTimeline.Mark(PerfTimeline.SolutionOpen, priorityMark, priorityCount + " snapshot(s)");
+				}
+			});
+			if (generation != Volatile.Read(ref solutionGeneration))
+				return false;
+			PerfTimeline.Mark(PerfTimeline.SolutionOpen, doneMark,
+				(detail != null ? detail + "; " : "") + snapshots.Count + " pushed, slowest: "
+				+ string.Join(", ", pushTimes.OrderByDescending(t => t.Milliseconds).Take(5).Select(t => t.Project + " " + t.Milliseconds + "ms")));
+			return true;
+		}
+
+		IReadOnlyList<LanguageServiceProjectSnapshot> PrioritizeOpenDocuments(IReadOnlyList<LanguageServiceProjectSnapshot> snapshots, out int priorityCount)
+		{
+			priorityCount = 0;
+			var workbench = SD.Services.GetService(typeof(ICSharpCode.SharpDevelop.Workbench.IWorkbench)) as ICSharpCode.SharpDevelop.Workbench.IWorkbench;
+			if (workbench == null)
+				return snapshots;
+			var openFiles = new List<string>();
+			if (workbench.ActiveViewContent?.PrimaryFileName != null)
+				openFiles.Add(workbench.ActiveViewContent.PrimaryFileName.ToString());
+			openFiles.AddRange(workbench.ViewContentCollection
+				.Select(view => view.PrimaryFileName?.ToString())
+				.Where(fileName => fileName != null));
+			var roots = openFiles
+				.Select(fileName => projectService.FindProjectContainingFile(FileName.Create(fileName))?.FileName.ToString())
+				.Where(projectFile => projectFile != null)
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
+			if (roots.Count == 0)
+				return snapshots;
+
+			// Everything the open documents' projects reference, transitively: they cannot compile
+			// without it.
+			var byProject = snapshots.ToLookup(snapshot => snapshot.ProjectFileName, StringComparer.OrdinalIgnoreCase);
+			var rank = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+			var pending = new Queue<string>(roots);
+			while (pending.Count > 0) {
+				var projectFile = pending.Dequeue();
+				if (rank.ContainsKey(projectFile))
+					continue;
+				rank[projectFile] = rank.Count;
+				foreach (var reference in byProject[projectFile].SelectMany(snapshot => snapshot.ProjectReferenceFileNames))
+					pending.Enqueue(reference);
+			}
+			var prioritized = snapshots
+				.Where(snapshot => rank.ContainsKey(snapshot.ProjectFileName))
+				.OrderBy(snapshot => rank[snapshot.ProjectFileName])
+				.ToList();
+			priorityCount = prioritized.Count;
+			return prioritized.Concat(snapshots.Where(snapshot => !rank.ContainsKey(snapshot.ProjectFileName))).ToList();
 		}
 
 		void OnSolutionClosed(object sender, SolutionClosedMessageEventArgs e)

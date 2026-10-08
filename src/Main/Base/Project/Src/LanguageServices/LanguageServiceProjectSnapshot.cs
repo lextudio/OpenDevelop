@@ -18,10 +18,93 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
             if (solution is null)
                 throw new ArgumentNullException(nameof(solution));
 
+            // Most of the time per project is MSBuild's ResolveReferences in a child dotnet
+            // process (ReferenceResolutionCache misses, and every project whose resolution fails).
+            // Those children are independent, so run a few projects at once; the in-process
+            // evaluation reads still serialize on MSBuildInternals' lock. Ordered, so the push
+            // order (and with it which project becomes ready first) is unchanged.
             return solution.Projects
+                .ToArray()
+                .AsParallel()
+                .AsOrdered()
+                .WithDegreeOfParallelism(Math.Max(1, Math.Min(4, Environment.ProcessorCount)))
                 .SelectMany(FromProjectAllTargetFrameworks)
                 .Select(snapshot => snapshot.WithSolutionDirectory(solution.Directory.ToString()))
                 .ToArray();
+        }
+
+        /// <summary>Identifies one snapshot (a project, or one TFM of a multi-targeted project).</summary>
+        public static string SnapshotKey(LanguageServiceProjectSnapshot snapshot) =>
+            SnapshotKey(snapshot.ProjectFileName, snapshot.TargetFramework);
+
+        static string SnapshotKey(string projectFileName, string? targetFramework) =>
+            projectFileName.ToUpperInvariant() + "|" + targetFramework;
+
+        /// <summary>The keys <see cref="FromSolution"/> would produce, read from the projects'
+        /// existing evaluation without building any snapshot.</summary>
+        public static ISet<string> CurrentSnapshotKeys(ISolution solution)
+        {
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var project in solution.Projects)
+            {
+                var targetFrameworks = GetTargetFrameworks(project);
+                if (targetFrameworks.Count <= 1)
+                    keys.Add(SnapshotKey(project.FileName.ToString(), null));
+                else
+                    foreach (var targetFramework in targetFrameworks)
+                        keys.Add(SnapshotKey(project.FileName.ToString(), targetFramework));
+            }
+            return keys;
+        }
+
+        /// <summary>
+        /// The snapshots <see cref="FromSolution"/> produced the last time this solution was opened,
+        /// or null. Opening pushes these to the Roslyn host at once, so the language service is
+        /// usable before the fresh snapshots are built; the fresh ones then replace whichever
+        /// differ (C# Dev Kit's "every load after the first is served from the cache",
+        /// doc/technotes/fast-mode.md). They can be stale for those seconds, never afterwards.
+        /// </summary>
+        public static IReadOnlyList<LanguageServiceProjectSnapshot>? TryLoadSolutionSnapshots(ISolution solution)
+        {
+            var path = SolutionSnapshotsPath(solution);
+            try
+            {
+                if (path is null || !File.Exists(path))
+                    return null;
+                return JsonSerializer.Deserialize<LanguageServiceProjectSnapshot[]>(File.ReadAllText(path));
+            }
+            catch (Exception ex)
+            {
+                ICSharpCode.Core.LoggingService.Warn($"LanguageServiceProjectSnapshot: ignoring unreadable solution snapshot cache '{path}'. {ex.Message}");
+                return null;
+            }
+        }
+
+        public static void SaveSolutionSnapshots(ISolution solution, IReadOnlyList<LanguageServiceProjectSnapshot> snapshots)
+        {
+            var path = SolutionSnapshotsPath(solution);
+            if (path is null)
+                return;
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                var temporary = path + ".tmp";
+                File.WriteAllText(temporary, JsonSerializer.Serialize(snapshots));
+                File.Move(temporary, path, overwrite: true);
+            }
+            catch (Exception ex)
+            {
+                ICSharpCode.Core.LoggingService.Warn($"LanguageServiceProjectSnapshot: failed to write the solution snapshot cache '{path}'. {ex.Message}");
+            }
+        }
+
+        static string? SolutionSnapshotsPath(ISolution solution)
+        {
+            var solutionFile = solution?.FileName?.ToString();
+            if (solutionFile is null)
+                return null;
+            var name = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFileName(solutionFile).ToUpperInvariant())));
+            return Path.Combine(Path.GetDirectoryName(solutionFile)!, ".od", "roslyn-solution-snapshots", "v1-" + name + ".json");
         }
 
         /// <summary>

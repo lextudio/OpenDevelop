@@ -297,6 +297,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				|| !process.WaitForExit(Remaining())) {
 				try { process.Kill(entireProcessTree: true); } catch { }
 				LoggingService.Warn("ResolveAssemblyReferences timed out for " + projectFileName);
+				ReferenceResolutionDiagnostics.Failed(projectFileName, "error MSB0000: timed out after " + ResolveReferencesTimeoutMilliseconds / 1000 + " s");
 				return Array.Empty<string>();
 			}
 			string stdout = stdoutTask.Result;
@@ -307,8 +308,10 @@ namespace ICSharpCode.SharpDevelop.Project
 				// investigation will find it.
 				LoggingService.Warn("ResolveAssemblyReferences exited " + process.ExitCode + " for "
 					+ projectFileName + ". " + FirstLine(stderr.Length > 0 ? stderr : stdout));
+				ReferenceResolutionDiagnostics.Failed(projectFileName, stdout + "\n" + stderr);
 				return Array.Empty<string>();
 			}
+			ReferenceResolutionDiagnostics.Succeeded(projectFileName);
 			return MSBuildGetItemOutput.ParseItemIdentities(stdout, "ReferencePath");
 		}
 
@@ -409,6 +412,14 @@ namespace ICSharpCode.SharpDevelop.Project
 
 		public async Task<bool> BuildAsync(IProject project, ProjectBuildOptions options, IBuildFeedbackSink feedbackSink, CancellationToken cancellationToken, IEnumerable<string> additionalTargetFiles = null)
 		{
+			if (FastUpToDateCheck.IsUpToDate(project, options, out var notUpToDate)) {
+				feedbackSink.ReportMessage(new RichText(project.Name + " is up to date; skipped (fast up-to-date check)."));
+				PerfTimeline.Mark(PerfTimeline.Build, "project-up-to-date", project.Name);
+				return true;
+			}
+			if (options.Target == BuildTarget.Build)
+				LoggingService.Debug("Fast up-to-date check: building " + project.Name + " (" + notUpToDate + ")");
+			var buildStartedUtc = DateTime.UtcNow;
 			var psi = CreateDotnetChildStartInfo();
 			psi.ArgumentList.Add(TargetToVerb(options.Target));
 			psi.ArgumentList.Add(project.FileName.ToString());
@@ -449,6 +460,10 @@ namespace ICSharpCode.SharpDevelop.Project
 					PerfTimeline.Mark(PerfTimeline.Build, "project-built",
 						project.Name + " " + started.ElapsedMilliseconds + "ms " + (success ? "ok" : "failed"));
 				}
+				if (success && options.Target != BuildTarget.Clean)
+					FastUpToDateCheck.Succeeded(project, options, buildStartedUtc);
+				else
+					FastUpToDateCheck.Forget(project);
 			} catch (Exception ex) {
 				feedbackSink.ReportError(new BuildError(project.FileName.ToString(), ex.Message));
 				return false;

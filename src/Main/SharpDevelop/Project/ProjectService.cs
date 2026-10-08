@@ -183,6 +183,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		void OpenSolutionInternal(FileName fileName)
 		{
 			PerfTimeline.Begin(PerfTimeline.SolutionOpen);
+			ReferenceResolutionDiagnostics.Reset();
 			fileName = MigrateToSlnxIfPossible(fileName);
 			ISolution solution;
 			using (var progress = SD.StatusBar.CreateProgressMonitor())

@@ -13,6 +13,9 @@ od.build-solution → { success, result, errorCount, warningCount, diagnostics[]
 ```
 
 - Returns `result: "Success"|"Error"|"Cancelled"`, structured `diagnostics` array, and raw `buildLog` text.
+- A plain build skips projects the fast up-to-date check finds unchanged (`FastUpToDateCheck`; they log
+  "is up to date; skipped" instead of MSBuild output). Pass `{"args":["", "rebuild"]}` when a test needs
+  MSBuild to actually run, e.g. to assert on its own log lines.
 - Parse the JSON response; do **not** treat empty/silent output as success.
 - Use `od.output-text("Build")` to get the raw build log separately if needed.
 
@@ -177,8 +180,45 @@ does not have a blanket "let the user run tests" policy — that rule belongs to
 project's CLAUDE.md (the WXSG generator workspace one level up) and does not apply here. Conflating
 the two once led to skipping verification that was actually possible.
 
-- Plain xUnit unit-test projects (e.g. `WpfDesign.SurfaceHost.Tests`) run normally with
-  `dotnet test <project.csproj>`.
+**Which tests count.** Verification is done with the projects under `tests/`; a change is checked
+against them, and their failures block it:
+
+| Project | Run with |
+|---|---|
+| `tests/OpenDevelop.IntegrationTests` | the xUnit v3 in-process runner (below, and `TESTING.md`) |
+| `tests/OpenDevelop.Base.Tests` | `dotnet test --project <csproj>` (Microsoft.Testing.Platform: `--project` is required) |
+| `tests/OpenDevelop.AddinSdk.Tests` | `dotnet build` of `OpenDevelop.AddinSdk.Tests.proj` and `OpenDevelop.AddinSdk.Staging.Tests.proj`: MSBuild assertions, the `Build` target ends in `Assert` |
+| `tests/OpenDevelop.VSEditorCompat.Tests` | `dotnet test --project <csproj>` |
+
+The ~40 test projects elsewhere in the tree (`src/**/Test*`, `src/**/*.Tests`, AvalonDock's and
+AvalonEdit's own test apps) are **not important** for now: they are not maintained alongside the
+code, several do not even build (`UnitTesting.Tests` and `CodeCoverage.Tests` are SharpDevelop-era
+`net45` projects whose `ICSharpCode.SharpDevelop.Tests` dependency is incompatible with today's
+`net10.0` projects, NU1201), and their state says nothing about whether a change is good. Do not run
+them as verification, do not fix them as a side task, and do not report their failures as
+regressions; mention one only if it is the sole test of the code being changed. Plain xUnit
+projects among them (e.g. `WpfDesign.SurfaceHost.Tests`) still run with `dotnet test` when a
+focused check is wanted.
+
+**Full integration runs.** About 290 tests and 20 minutes; run it in the background and only when
+asked. Practicalities learned the hard way:
+
+- A modal dialog left open fails every later test with DevFlow's `ui-mutation-busy`. With the
+  DevFlow agent at 0.3.0, `AddReferenceTests.OpenSlnx_AddReference_ProjectAndBrowsedAssembly` does
+  exactly that (the agent rejects the test's `ui/tap` while the modal `od.menu.invoke` that opened
+  the dialog is still running; it passes with 0.2.13). Until that is fixed, exclude it:
+  `-filter '/*/*/*/!OpenSlnx_AddReference_ProjectAndBrowsedAssembly'`. A run whose failures start
+  at one modal test and then hit everything after it is this, not dozens of regressions.
+- Do not build anything while a run is in progress: builds overwrite the deployed AddIn DLLs the
+  running suite loads.
+- A test that fails in the run but passes alone (`-method <FQN>`) and in its own class (`-class`)
+  depends on state an earlier test left behind; that is a real defect of the suite, but not
+  evidence against the change being tested. Report it as such.
+- A plain `od.build-solution` skips projects the fast up-to-date check finds unchanged; a test that
+  asserts on MSBuild's own output passes `"rebuild"` as the second argument.
+- Pointer/drag tests fail when the screen is locked (see the machine notes); check before blaming
+  the code.
+
 - `tests/OpenDevelop.IntegrationTests` is the one project with a real constraint: see
   `tests/OpenDevelop.IntegrationTests/TESTING.md` — never use `dotnet test` there (build the test
   project itself first, since it deploys the addins/designer hosts the suite needs, then run via the

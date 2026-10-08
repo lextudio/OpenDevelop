@@ -120,6 +120,140 @@ agent pinned back to 0.2.13, `OpenSlnx_AddReference_ProjectAndBrowsedAssembly` p
 the agent rejects the test's `ui/tap` with `ui-mutation-busy` while the modal `od.menu.invoke` that
 opened the dialog is still running, and the dialog stays open for the tests that follow.
 
+**Roslyn push and snapshots.** After a solution opens, the snapshots are built and pushed to
+RoslynHost; on OpenDevelop.Mvp that took 138 s end to end.
+
+- Push, 46-55 s → 9 s. Per-project timing showed an even ~0.5 s per project, and sampling RoslynHost
+  showed it idle most of that time. `PushSolutionAsync` resumed after every project on the UI thread
+  (deliberately, "as before"), so each one queued behind whatever the dispatcher was doing right
+  after the open. The loop now runs on the thread pool; it touches no UI, and
+  `RemoteLanguageService` already serializes its updates under a lock. Async continuations do not
+  appear in stack samples, which is why measuring each push was needed to find this.
+- Snapshots, 52-57 s → 19-21 s. `LanguageServiceProjectSnapshotFactory.FromSolution` processes up to
+  four projects at once, ordered: the expensive part is the independent `dotnet msbuild
+  -t:ResolveReferences` child per project, while in-process evaluation still serializes on
+  `MSBuildInternals`' lock.
+
+Open until every project is pushed: 138 s → 48-54 s. The push now takes 18-25 s rather than 9 s;
+the likely reason, not yet proven, is that more projects reach it with resolved references (reference
+cache hits went from 16 to 32), so RoslynHost loads more metadata. 23 language-service, build,
+unit-test, coverage and solution tests pass.
+
+**More from C# Dev Kit: warm start, active document first, a "doctor".**
+
+- Warm start (`OD_WARM_START=0` disables). `FromSolution`'s result is cached per solution in
+  `.od/roslyn-solution-snapshots/`. On the next open, if the cached project set equals the current
+  one, the cached snapshots are pushed first; the fresh ones are then built and only those that
+  differ (compared as JSON) are pushed. A changed project set skips the warm start, because the host
+  cannot remove a project and closing its workspace would drop unsaved buffers. Building the fresh
+  snapshots alongside the cached push was tried and reverted: it doubled the cached push
+  (20.6 s → 40.6 s), and being usable early is the point. Verified on the 12-project chain: an added
+  `.cs` file re-pushes exactly that project, an added project skips the warm start, an unchanged
+  solution re-pushes nothing.
+
+  | OpenDevelop.Mvp | Cold | Warm |
+  |---|---|---|
+  | Every project usable in RoslynHost | 47.5 s | 20.6 s |
+
+- Active document first. Before pushing, snapshots are reordered: the projects of open documents
+  (the active one first) and everything they transitively reference, then the rest in solution
+  order. With one CSharpBinding file open, its 11 snapshots were ready at 32.3 s against 65.3 s for
+  all of them (`roslyn-open-documents-ready` / `roslyn-cached-open-documents-ready`).
+- Reference-resolution "doctor". A failed or timed-out `ResolveReferences` now adds one Error List
+  warning per project (`ReferenceResolutionDiagnostics`), naming the first MSBuild error and the
+  consequence for the language service; it is withdrawn when the resolution later succeeds and reset
+  on every open. On OpenDevelop.Mvp it lists 53 projects, all NETSDK1047.
+
+The 23 language-service, build, unit-test, coverage and solution tests and the Error List / Task
+List tests pass.
+
+**TFM-specific evaluations are kept, like the current one.** `MSBuildBasedProject.OpenConfiguration`
+kept the active configuration's evaluation (`currentlyOpenProject`) but evaluated the whole project
+afresh, and unloaded it again, for every read that pins a TargetFramework: the active TFM's items
+(Solution Explorer, the language service), `MtpTestProject`'s output path, ... The remaining 1.2 s
+in `MessageBus SolutionOpenedMessage` was `SDTestService` doing exactly that per test project on the
+UI thread. TFM-pinned evaluations of the active configuration are now cached per configuration,
+platform and TFM, `ReevaluateIfNecessary` picks up edits, and they are unloaded together with
+`currentlyOpenProject` (configuration change, disposal). `OD_CACHE_TFM_EVALUATIONS=0` disables.
+OpenDevelop.Mvp, two opens each:
+
+| | Off | On |
+|---|---|---|
+| `SolutionOpened` handlers done (window frozen until then) | 5.7-8.9 s | 4.2-5.9 s |
+| Cached snapshots pushed (language service usable) | 20.2-24.8 s | 14.8-15.5 s |
+| Every project pushed | 39.3-47.1 s | 30.7 s |
+| Managed heap | 549-652 MB | 797-835 MB |
+
+The cost is about 200 MB of managed heap on this 87-project solution. The IDE's working set was
+about 1 GB either way, against 716-858 MB in the step 0 baseline; that difference predates this
+change and is not yet attributed. The 22 solution/project and 23 language-service/build/test tests
+pass.
+
+**Project file watchers start off the UI thread.** Measured after the deferral above, the 88
+postponed `FileSystemWatcher` starts still took 6.5-7 s of UI-thread time (~75 ms each) in the
+seconds after an open. Each is now started on the thread pool, one after another; only the state
+checks around it run on the UI thread, now 3-7 ms in total (`project-watchers-started`). A
+FileSystemWatcher is not thread-safe, so while one is starting in the background `SetWatcher` only
+records that it must re-run and `Dispose` leaves the object to `CompleteDeferredStart`, which
+reconciles both and compares the recorded write time. All watchers are running 45-50 s after an open
+instead of ~20 s; the write-time check covers the gap (verified with edits during and after it). A
+single recursive watcher over the solution was considered and not done: it would receive every
+bin/obj event of a build and, on Windows, risk buffer overflows that lose events.
+
+Two crashes found on the way, both a directory deleted before a postponed watcher starts (a
+temporary solution copy cleaned up): `DirectoryNotFoundException` from the deferred start, and from
+`SetWatcher` re-run after it. `SetWatcher` caught only `FileNotFoundException`; it now catches
+`IOException`, which was enough only while it always ran at load time, when the directory existed.
+
+**Fast up-to-date check for builds (step 4 of the plan).** `FastUpToDateCheck` skips starting
+`dotnet build` for a project unchanged since its last successful build, as Visual Studio does:
+same global properties and SDK, same list of input files, every input written before that build
+started, output assembly present. Inputs are the project file and every import, the evaluated
+items that are files, every file under the project directory (excluding bin, obj and hidden
+directories), `project.assets.json`, and referenced projects' output assemblies, so a rebuilt
+dependency rebuilds its dependents. Multi-targeted projects and builds of a non-active configuration
+always build; Rebuild always runs MSBuild; `OD_FAST_UP_TO_DATE=0` disables. Records live in
+`.od/build-up-to-date/`. On the 12-project chain:
+
+| Build | Projects built | Time |
+|---|---|---|
+| First | all 12 | 20.6 s |
+| Nothing changed | none (12 skipped) | 1.7-2.2 s (was 12.8 s) |
+| File added / edited / deleted in L5 | L5-L12; L1-L4 skipped | 14-25 s |
+
+Each change was checked in the output assembly (added type present, renamed type present, deleted
+type gone). What is left of a no-op build is mostly the up-front restore (~1.5 s).
+`od.build-solution` takes an optional second argument, `rebuild`;
+`BuildSolution_ChecksResultOutputPadErrorListAndUnknownProject` uses it, because it asserts on
+MSBuild's own log, which a skipped build does not produce.
+
+Building this found a bug in the TFM-evaluation cache above: a kept MSBuild evaluation is not
+re-globbed by `ReevaluateIfNecessary`, so a file added to the project directory stayed out of the
+active TFM's item list (the up-to-date check called an L5 with a new `.cs` "up to date", and
+Solution Explorer would have missed it too). Item lists now force the kept evaluation to
+re-evaluate when a directory under the project (bin, obj and hidden ones excepted) was written since
+it was made: adding, removing or renaming a file updates its directory, editing content does not.
+Forcing it on every read instead cost the warm open its gain (cached push 14.6 s → 26-29 s). An
+externally added file appears in Solution Explorer with the cache on and off; the 32 solution,
+language-service, build and test integration tests pass.
+
+**Still open, in order of expected gain:**
+
+1. The OpenDevelop.Mvp projects whose reference resolution fails on every open (53, all NETSDK1047,
+   now listed in the Error List). Cause: LibreWPF.Sdk defaulted `ProGpuWpfUseCurrentRuntimeIdentifier`
+   to `true`, so the resolution child evaluated `osx-arm64` while this repository restores RID-less.
+   Root fix made in LibreWPF, not yet published: the default is now `false`, and RID-less output
+   registers Windows-only package assets as `unix` runtimeTargets so it starts on macOS/Linux (an
+   IDE built with a plain `dotnet build` starts and loads the LibreWPF designer; failures 53 → 4,
+   the 4 being projects whose own `global.json` pins LibreWPF.Sdk 0.1.0-preview.57). Pending: the
+   package version to publish under, the feed, Windows verification, and the preview.57 pins.
+2. Skip the up-front restore when every project of a build is up to date (~1.5 s of a no-op build).
+3. The IDE's working set, about 1 GB on OpenDevelop.Mvp against 716-858 MB in the step 0 baseline,
+   is not yet attributed.
+4. ReadyToRun for RoslynHost and the XAML language servers, and one XAML server per runtime.
+5. Re-sending every unsaved editor buffer after each pushed project (`RemoteLanguageService`), which
+   slowed the push with a document open.
+
 Still open in step 2: making the cache committable (keys still contain absolute paths), and
 covering the multi-target path's `TfmEvaluationCache`, which keeps its timestamp key.
 

@@ -2306,14 +2306,14 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
-		[DevFlowAction("od.build-solution", Description = "Build the current solution (or a single project by name) and return error/warning counts, diagnostics, and the raw build log")]
-		public static async Task<string> BuildSolutionAsync(string projectName = null)
+		[DevFlowAction("od.build-solution", Description = "Build the current solution (or a single project by name) and return error/warning counts, diagnostics, and the raw build log. Optional second argument 'rebuild' always runs MSBuild; a plain build skips projects the fast up-to-date check finds unchanged")]
+		public static async Task<string> BuildSolutionAsync(string projectName = null, string target = null)
 		{
 			var solution = SD.ProjectService.CurrentSolution;
 			if (solution == null)
 				return JsonSerializer.Serialize(new { success = false, error = "No solution is open." });
 
-			var options = new BuildOptions(BuildTarget.Build);
+			var options = new BuildOptions(string.Equals(target, "rebuild", StringComparison.OrdinalIgnoreCase) ? BuildTarget.Rebuild : BuildTarget.Build);
 
 			BuildResults results;
 			if (string.IsNullOrEmpty(projectName)) {

@@ -55,7 +55,9 @@ public sealed class WorkbenchTests
         await _app.InvokeAsync("od.error-list.clear");
 
         // --- was: BuildSolution_FixtureProjectBuildsSuccessfully ---
-        var result = await _app.InvokeAsync("od.build-solution");
+        // A rebuild: the assertions below read MSBuild's own log, and a plain build of an unchanged
+        // fixture is skipped by the fast up-to-date check without running MSBuild at all.
+        var result = await _app.InvokeAsync("od.build-solution", "", "rebuild");
         for (var attempt = 1;
              attempt < 3 && result.GetProperty("result").GetString() == "Cancelled";
              attempt++)
@@ -64,7 +66,7 @@ public sealed class WorkbenchTests
             // turns. A cancellation here means no compilation ran; wait for the reload queue and
             // retry the same clean build rather than treating that transient as a compiler result.
             await Task.Delay(500);
-            result = await _app.InvokeAsync("od.build-solution");
+            result = await _app.InvokeAsync("od.build-solution", "", "rebuild");
         }
 
         Assert.True(result.GetProperty("success").GetBoolean(), "od.build-solution reported an infrastructure failure, not a build failure");
