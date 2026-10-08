@@ -348,6 +348,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             var projectId = EnsureProject(projectSnapshot);
             var tfmKey = TfmKey(projectSnapshot.TargetFramework);
             RemoveProjectDocumentVariantsMissingFromSnapshot(projectSnapshot, tfmKey);
+            var pending = new List<(DocumentId Id, string FileName)>();
             foreach (var fileName in projectSnapshot.DocumentFileNames)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -404,8 +405,51 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                     RemoveDocumentVariant(documentId, tfmKey);
                 }
 
-                var text = await File.ReadAllTextAsync(fileName, cancellationToken);
-                AddDocument(projectId, projectSnapshot.ProjectFileName, documentId, text, tfmKey);
+                pending.Add((documentId, fileName));
+            }
+
+            // Add each document with a loader that reads the file when Roslyn first needs it - through
+            // AdhocWorkspace.AddDocument, not TryApplyChanges, which reads every added document's
+            // text right away to hand it to ApplyDocumentAdded. Reading every file up front cost ~4.4 ms a file
+            // even in parallel on a machine with on-access malware scanning - 16.7 s of the 20.9 s
+            // OpenDevelop.Mvp's 3,800 documents took to push (doc/technotes/fast-mode.md).
+
+            lock (_documentLock)
+            {
+
+                var solution = _workspace.CurrentSolution;
+                var added = new List<(DocumentId Id, RoslynDocumentId RoslynId)>();
+                var newDocuments = new List<DocumentInfo>();
+                for (int i = 0; i < pending.Count; i++)
+                {
+                    var (documentId, fileName) = pending[i];
+                    var loader = new FileTextLoader(fileName, defaultEncoding: null);
+                    // Idempotent like AddDocumentCore: a file already in this project gets the text.
+                    var existing = solution.GetDocumentIdsWithFilePath(fileName).FirstOrDefault(id => id.ProjectId == projectId);
+                    if (existing != null)
+                    {
+                        solution = solution.WithDocumentTextLoader(existing, loader, PreservationMode.PreserveValue);
+                        added.Add((documentId, existing));
+                        continue;
+                    }
+                    var roslynId = RoslynDocumentId.CreateNewId(projectId, fileName + "|" + tfmKey);
+                    newDocuments.Add(DocumentInfo.Create(roslynId, Path.GetFileName(fileName), filePath: fileName, loader: loader));
+                    added.Add((documentId, roslynId));
+                }
+                if (solution != _workspace.CurrentSolution)
+                    _workspace.TryApplyChanges(solution); // only text-loader changes of existing documents
+                foreach (var info in newDocuments)
+                    _workspace.AddDocument(info);
+                foreach (var (documentId, roslynId) in added)
+                {
+                    if (!_documentVariantsByTfm.TryGetValue(documentId, out var variants))
+                    {
+                        variants = new Dictionary<string, RoslynDocumentId>();
+                        _documentVariantsByTfm[documentId] = variants;
+                    }
+                    variants[tfmKey] = roslynId;
+                    _documentProjectFileNames[documentId] = projectSnapshot.ProjectFileName;
+                }
             }
         }
 
@@ -1834,11 +1878,29 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 .Select(assembly => MetadataReference.CreateFromFile(assembly.Location));
         }
 
+        // One MetadataReference per file for the whole host, not one per project that references
+        // it: 89 projects referencing the same framework and package assemblies read each of them
+        // again for every project, and kept a copy of its metadata per compilation. Keyed by the
+        // file's size and write time, so a rebuilt project output is read again.
+        static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (long Length, long WriteTicks, MetadataReference Reference)> s_metadataReferences =
+            new System.Collections.Concurrent.ConcurrentDictionary<string, (long, long, MetadataReference)>(StringComparer.Ordinal);
+
+        static MetadataReference GetMetadataReference(string fileName)
+        {
+            var file = new FileInfo(fileName);
+            long length = file.Length, writeTicks = file.LastWriteTimeUtc.Ticks;
+            if (s_metadataReferences.TryGetValue(fileName, out var cached) && cached.Length == length && cached.WriteTicks == writeTicks)
+                return cached.Reference;
+            var reference = MetadataReference.CreateFromFile(fileName);
+            s_metadataReferences[fileName] = (length, writeTicks, reference);
+            return reference;
+        }
+
         static IEnumerable<MetadataReference> CreateMetadataReferences(IReadOnlyList<string> referenceFileNames)
         {
             var resolved = referenceFileNames
                 .Where(File.Exists)
-                .Select(fileName => MetadataReference.CreateFromFile(fileName))
+                .Select(GetMetadataReference)
                 .GroupBy(reference => reference.Display, StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
                 .ToArray();

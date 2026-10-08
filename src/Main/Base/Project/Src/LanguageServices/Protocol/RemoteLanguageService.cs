@@ -45,6 +45,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
             }
         }
 
+        /// <summary>Time spent in project loads: waiting for earlier updates, and in the load RPC (Stopwatch ticks).</summary>
+        public static long LoadWaitTicks, LoadRpcTicks;
+
         public Task LoadProjectAsync(LanguageServiceProjectSnapshot snapshot, CancellationToken token)
         {
             lock (sync)
@@ -57,8 +60,12 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 
         async Task LoadProjectCoreAsync(Task previous, LanguageServiceProjectSnapshot snapshot, CancellationToken token)
         {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
             try { await previous.ConfigureAwait(false); } catch { }
+            Interlocked.Add(ref LoadWaitTicks, watch.ElapsedTicks);
+            watch.Restart();
             await Protocol.RoslynProjectLoadAsync(snapshot, token).ConfigureAwait(false);
+            Interlocked.Add(ref LoadRpcTicks, watch.ElapsedTicks);
             // Loading a project reads only its own documents from disk, so only its buffers need
             // restoring. Restoring every open buffer after every project made the solution push
             // cost (projects x open documents) round trips (doc/technotes/fast-mode.md).

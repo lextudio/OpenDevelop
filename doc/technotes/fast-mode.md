@@ -325,17 +325,49 @@ snapshots) now reject an entry naming a document that no longer exists. A file c
 around a cache write (the VSEditor tests' scratch files) otherwise stayed in the entry, Roslyn
 failed reading it, and that project lost outline and folding for good.
 
-### Idle CPU: the ProGPU render loop (LibreWPF, not fixed here)
+### Idle CPU: a layout clip that was "new" on every frame (fixed in LibreWPF)
 
-Measured 2026-10-08 on macOS: OpenDevelop sits at ~90-96% CPU while idle, with no solution open.
-`PROGPU_WPF_TRACE_NATIVE_LOOP=1` shows ~61 render callbacks a second, each ~14 ms, with the native
-event poll non-blocking, so the loop never sleeps. Every stack sample is in
-`ProGpuWpfWindowHost.OnRender` -> `_target.DetectWpfSourceChanges()` ->
-`WpfVisualInvalidationTracker.CaptureObjectVisualStateAndChildren`: a walk of the whole visual tree,
-done BEFORE `ShouldRenderFrame` decides whether a frame is needed at all. It also competes with
-everything the UI thread does during a solution open (the cold Roslyn push, ~45 s, did not get
-faster when the host side was optimised). Fix belongs in LibreWPF: skip the walk when no render was
-requested and nothing was invalidated, and block in the native poll when idle.
+OpenDevelop sat at ~90-96% CPU while idle, even with no solution open: ~61 render callbacks a
+second, each ~14 ms walking the whole visual tree (`WpfVisualInvalidationTracker`). It was a
+feedback loop, not a requester: each frame's change detection found "changed" visuals and requested
+the next frame. The same eight visuals every time - `Grid#PART_Indicator`, `ScrollContentPresenter`s,
+`Image`s - all elements with a layout clip. LibreWPF's `FrameworkElement.TryGetPortableVisualLayoutState`
+called `GetLayoutClip`, which builds a new `Geometry` on every call, and the tracker compares the
+clip by reference. Fix (LibreWPF, `FrameworkElement.cs`): keep the clip computed after the last
+arrange, as WPF's own `UIElement.ensureClip` does, and drop it at the start of `ArrangeCore`.
+
+How it was found, for next time: opt-in traces showed `MediaContext.PostRender` and the animation
+tick path were NOT involved (zero calls while idle); a stack on the render-scheduler request led to
+`DetectVersionChanges`, and logging the changed sources named the elements.
+
+Result on macOS: idle 90-96% -> 3-7% CPU (with or without a solution open); and since the UI
+thread is free, OpenDevelop.Mvp's cold open (until every project is pushed to Roslyn) 101-108 s ->
+42.6 s (push 47 s -> 9.3 s), warm cached push 63 s -> 25.5 s. Workbench, VSEditor, SolutionFolder,
+TaskListPad, ILSpy and OpenLens integration tests pass on it (WpfGalleryDesignerTests skip on this
+machine). Not yet in the feed: OpenDevelop gets it with the next LibreWPF publish; until then
+`openavalon/dev-overlay.sh <bin> PresentationFramework` applies it to a local build.
+
+### Pushing projects to the Roslyn host: read documents lazily
+
+With the UI thread free, a warm open of OpenDevelop.Mvp still spent ~20 s pushing the 89 cached
+snapshots (`roslyn-cached-projects-pushed` now reports the load-RPC total). Timing the host's
+`LoadProjectsAsync` by phase showed where: 16.7 s of 20.9 s was `File.ReadAllTextAsync` of the
+3,800 documents - ~4.4 ms a file even in parallel, on a machine with on-access malware scanning
+(Microsoft Defender's processes were at 40-56% CPU throughout). Two traps on the way to the fix:
+
+- Batching the adds into one `TryApplyChanges` changed nothing: the reads were the cost, not the
+  per-document solution versions.
+- Giving the documents a lazy `FileTextLoader` and adding them through `TryApplyChanges` only moved
+  the reads: applying an added document makes the workspace read its text synchronously to pass it
+  to `ApplyDocumentAdded`. `AdhocWorkspace.AddDocument(DocumentInfo)` keeps the loader unread.
+
+Now each new document is added with a `FileTextLoader` through `AdhocWorkspace.AddDocument`, so a
+file is read when Roslyn first needs it. Warm push 21.8 s -> 8.4 s (applying the documents: 14.7 s
+-> 0.2 s). The first diagnostics request on a Base file afterwards took 9.9 s, including the lazy
+reads of what it needed. Language-service (15), Workbench (28) and VSEditor (6) tests pass.
+
+The host also keeps one `MetadataReference` per reference file (keyed by size and write time)
+instead of creating one per project that references it.
 
 Two smaller things found on the way, both kept:
 - ILSpy's `SearchPane` subscribed to `CompositionTarget.Rendering` for its whole lifetime (forcing a

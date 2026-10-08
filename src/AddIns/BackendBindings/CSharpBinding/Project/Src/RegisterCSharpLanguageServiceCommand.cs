@@ -87,6 +87,7 @@ namespace CSharpBinding
 				// solution) exist. Only when the cached project set is exactly the current one: the
 				// host has no "remove project", and closing its workspace would drop unsaved buffers.
 				// The fresh snapshots below then replace whichever cached ones differ.
+				PerfTimeline.Mark(PerfTimeline.SolutionOpen, "roslyn-push-started");
 				Dictionary<string, string> warm = null;
 				if (Environment.GetEnvironmentVariable("OD_WARM_START") != "0") {
 					var currentKeys = LanguageServiceProjectSnapshotFactory.CurrentSnapshotKeys(solution);
@@ -107,6 +108,7 @@ namespace CSharpBinding
 				// ResolveReferences children against the host loading metadata) made the cached push
 				// itself twice as slow (20.6 s -> 40.6 s on OpenDevelop.Mvp), and being usable early
 				// is the point of the warm start; verifying it can come later.
+				PerfTimeline.Mark(PerfTimeline.SolutionOpen, "roslyn-snapshots-started");
 				var snapshots = await Task.Run(() => LanguageServiceProjectSnapshotFactory.FromSolution(solution));
 				PerfTimeline.Mark(PerfTimeline.SolutionOpen, "roslyn-snapshots-built",
 					snapshots.Count + " snapshots, " + LanguageServiceProjectSnapshotFactory.ReferenceCacheStatistics);
@@ -159,7 +161,9 @@ namespace CSharpBinding
 			if (generation != Volatile.Read(ref solutionGeneration))
 				return false;
 			PerfTimeline.Mark(PerfTimeline.SolutionOpen, doneMark,
-				(detail != null ? detail + "; " : "") + snapshots.Count + " pushed, slowest: "
+				(detail != null ? detail + "; " : "") + snapshots.Count + " pushed (load rpc "
+				+ (RemoteLanguageService.LoadRpcTicks * 1000 / System.Diagnostics.Stopwatch.Frequency) + "ms, waiting "
+				+ (RemoteLanguageService.LoadWaitTicks * 1000 / System.Diagnostics.Stopwatch.Frequency) + "ms), slowest: "
 				+ string.Join(", ", pushTimes.OrderByDescending(t => t.Milliseconds).Take(5).Select(t => t.Project + " " + t.Milliseconds + "ms")));
 			return true;
 		}
