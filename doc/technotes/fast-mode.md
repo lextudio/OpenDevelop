@@ -369,6 +369,47 @@ reads of what it needed. Language-service (15), Workbench (28) and VSEditor (6) 
 The host also keeps one `MetadataReference` per reference file (keyed by size and write time)
 instead of creating one per project that references it.
 
+### Batched project loads, and regression gates
+
+Timing the warm push by phase after the lazy reads: of 7.5 s, the host's own work was 2.1 s
+(creating projects 1.2 s, references 0.2 s, documents 0.7 s); the rest was one round trip per
+project - 4.3 s of RPCs plus the IDE's side of each. `roslyn/projects/load` carries several
+snapshots in one request; the host reconciles the graph once per request
+(`CSharpVBLanguageService.LoadProjectsAsync`, which always took a list). The push sends the open
+documents' projects as a first chunk of their own, then chunks of 16. `RecoveringRoslynTransport`
+records a batch as the single loads it stands for, so a restarted host gets them replayed as before.
+The protocol and argument interfaces have defaults that fall back to single loads, so other
+implementers need nothing. Warm push 7.5 s -> 3.1 s; Base.Tests cover the method name and the
+replay (`RecoveryTransport_ReplaysABatchedLoadAsSingleLoads`).
+
+`PerformanceGateTests` pins the behaviour behind the headline numbers rather than wall-clock times:
+
+- `IdleWindow_DoesNotKeepTheCpuBusy`: under 40% of a core while idle (measured 5%; 110-119% with
+  the layout-clip bug). "Idle" starts when this open's own milestones (`roslyn-projects-pushed`,
+  `project-watchers-started`) are in the timeline, polled with a 3-minute limit - a fixed delay
+  would report a slow machine's still-running load as an idle-CPU regression. The CPU time comes
+  from the app through `od.process.cpu`: the fixture's own process handle is `dotnet run`, whose
+  child is the app, and measuring it passed against the unfixed build. Note that building the shell
+  OR the integration-test project redeploys the package's PresentationFramework over a dev overlay.
+- `SecondBuildOfAnUnchangedSolution_SkipsEveryProject`: no `project-built` or one-process build on
+  the second build of SlnxFixture (fails with `OD_FAST_UP_TO_DATE=0`, as it should).
+
+### One evaluation per single-target project
+
+A gcdump after a warm open of OpenDevelop.Mvp: 628 MB GC heap, the largest share MSBuild's
+(212,766 `ProjectItem`s, 247,540 `ProjectMetadata`, 97,210 `ReaderWriterLockSlim`s) - from 176
+`Project` evaluations for 87 projects. The TFM-evaluation cache kept a second evaluation, with
+`TargetFramework` as a global property, even for a single-target project asking for its own
+framework. `MSBuildBasedProject.OpenConfiguration` now answers that from the active evaluation
+(re-evaluated for item lists when the project tree changed, like the kept TFM evaluations).
+Result: 94 evaluations, 113,837 items, GC heap 571 MB, working set 1,073 -> 927 MB.
+
+The no-op build gate caught what that exposed: the fast up-to-date check recorded a project's inputs
+from an evaluation made before the build, whose restore had just written `obj/*.nuget.g.props` and
+`.targets` that the project imports, so the next build saw "input files added". `Succeeded` now
+calls `MSBuildBasedProject.RefreshEvaluation()` before recording (~4 s over the 56 projects of the
+Designer.Remote edit: 96 s against 86 s; the no-op build stays at 3 s).
+
 Two smaller things found on the way, both kept:
 - ILSpy's `SearchPane` subscribed to `CompositionTarget.Rendering` for its whole lifetime (forcing a
   frame per tick under WPF's rules); it now subscribes only while a search has results to drain.
@@ -377,40 +418,41 @@ Two smaller things found on the way, both kept:
   document of every project for each one added; it uses Roslyn's file-path index now. No measurable
   change in the push (the bottleneck is elsewhere), but it removes a (documents)^2 term.
 
-**Still open, in order of expected gain:**
+**Still open, in order of expected gain** (refreshed 2026-10-08; measured on OpenDevelop.Mvp, macOS):
 
-1. The OpenDevelop.Mvp projects whose reference resolution fails on every open (53, all NETSDK1047,
-   now listed in the Error List). Cause: LibreWPF.Sdk defaulted `ProGpuWpfUseCurrentRuntimeIdentifier`
-   to `true`, so the resolution child evaluated `osx-arm64` while this repository restores RID-less.
-   Root fix made in LibreWPF, not yet published: the default is now `false`, and RID-less output
-   registers Windows-only package assets as `unix` runtimeTargets so it starts on macOS/Linux (an
-   IDE built with a plain `dotnet build` starts and loads the LibreWPF designer; failures 53 → 4,
-   the 4 being projects whose own `global.json` pins LibreWPF.Sdk 0.1.0-preview.57). Pending: the
-   package version to publish under, the feed, Windows verification, and the preview.57 pins.
-2. A wave waits for its slowest project; a dependent could start as soon as its own
-   dependencies finish (true graph scheduling inside the one process).
-3. The IDE's working set, about 1 GB on OpenDevelop.Mvp against 716-858 MB in the step 0 baseline,
-   is not yet attributed.
-4. ReadyToRun for RoslynHost and the XAML language servers, and one XAML server per runtime.
-5. Done: `RemoteLanguageService` re-sent every unsaved buffer (and asked each one's status) after
-   every pushed project, (projects x open documents) round trips. It now restores only the loaded
-   project's own documents - the host's `LoadProjectsAsync` reads only those from disk and leaves
-   other projects' documents and loose buffers alone. The 15 language-service integration tests
-   (C#/VB/F# completion, diagnostics, quick info, go to definition, rename, semantic tokens,
-   OpenLens) pass.
+1. Done: warm push 7.5 s -> 3.1 s by batching (`roslyn/projects/load`, see below).
+2. The 4 projects whose reference resolution fails on every open (global.json pins LibreWPF.Sdk
+   0.1.0-preview.57; NETSDK1047): each warm open starts an MSBuild process to fail again (~3-5 s).
+   The root fix (RID-less default and unix runtimeTargets) is in LibreWPF, unpublished; then the
+   preview.57 pins go.
+3. Graph scheduling inside the (already working) one-process build: today it builds dependency
+   waves, and each wave waits for its slowest project; a dependent could instead start as soon as
+   its own dependencies finish. An edit to Designer.Remote takes 86-96 s.
+4. Partly done: one MSBuild evaluation per single-target project instead of two (below). What is
+   left of the ~570 MB GC heap after an open is not attributed further yet.
+5. ReadyToRun for RoslynHost and the XAML language servers; one XAML server per runtime.
+6. Done: `PerformanceGateTests` (see below). The idle-CPU gate fails until OpenDevelop gets the
+   LibreWPF layout-clip fix from the feed (or `openavalon/dev-overlay.sh <bin> PresentationFramework`
+   after each shell build, which replaces the overlaid file with the package's).
+
+Done, for the record: batched reference resolution; fast up-to-date check (no-op build ~150 s ->
+2-3 s); one-process build; unsaved buffers re-sent only for the loaded project; idle CPU (LibreWPF
+layout clip, 90% -> 3-7%); lazy document reads in the host.
 
 Still open in step 2: making the cache committable (keys still contain absolute paths), and
 covering the multi-target path's `TfmEvaluationCache`, which keeps its timestamp key.
 
 ## The five techniques, and where OpenDevelop stands
 
-| C# Dev Kit 11 | OpenDevelop today | Transfers? |
-|---|---|---|
-| Persistent project cache: first load is evaluated, later loads come from the cache, and the cache can be committed | Partial. `TfmEvaluationCache` (`.od/roslyn-tfm-cache`) covers **multi-target projects only**, is keyed by absolute path and timestamps, and is gitignored. Single-target projects run an out-of-process `dotnet msbuild -t:ResolveReferences` on **every** load. | **Yes. Biggest win.** |
-| Active file first, rest asynchronous | No. `SlnxSolutionLoader.ReadSolution` evaluates projects serially, on the UI thread, in solution order. The Roslyn push follows `solution.Projects` order. | **Yes.** |
-| Fast up-to-date check, build acceleration | No. `MinimalMSBuildEngine.BuildAsync` starts `dotnet build` per project, with restore every time. `BuildModifiedProjectsOnlyService` only remembers "unmodified since last build" in memory. | **Yes.** |
-| Six processes consolidated into one Native AOT process | Not comparable. OpenDevelop's children exist for isolation (designers, per-runtime XAML servers) and are already lazy and pooled. | **Partly.** Startup of the hot children, not merging them. |
-| Compact in-memory project model | Unknown. Not measured. | Measure first. |
+| C# Dev Kit 11 | OpenDevelop today (2026-10-08) |
+|---|---|
+| Persistent project cache: later loads come from the cache, and the cache can be committed | Done for this machine: reference-resolution cache (`.od/roslyn-reference-cache`, content-keyed), solution snapshots for a warm start (`.od/roslyn-solution-snapshots`), TFM-evaluation reuse. Not committable: keys hold absolute paths. |
+| Active file first, rest asynchronous | Done: the open documents' projects (and what they reference) are pushed first; snapshots are built and pushed off the UI thread; documents are read lazily by the host. |
+| Fast up-to-date check, build acceleration | Done: `FastUpToDateCheck`, up-front restore only when needed, everything stale built in one MSBuild process. |
+| Six processes consolidated into one Native AOT process | Not pursued: OpenDevelop's children exist for isolation. Their start-up (ReadyToRun) is still open. |
+| Compact in-memory project model | Not measured beyond the working set; see "Still open". |
+
+The sections below are the original plan, kept for the reasoning behind each step.
 
 ## 0. Measure before changing anything
 
