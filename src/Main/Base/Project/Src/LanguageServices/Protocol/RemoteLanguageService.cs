@@ -45,8 +45,27 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
             }
         }
 
-        /// <summary>Time spent in project loads: waiting for earlier updates, and in the load RPC (Stopwatch ticks).</summary>
-        public static long LoadWaitTicks, LoadRpcTicks;
+        readonly object loadTimingSync = new();
+        long loadWaitTicks, loadRpcTicks;
+        int loadTimingGeneration;
+
+        /// <summary>Starts a fresh set of project-load timings for one solution-push phase.</summary>
+        public void ResetLoadTimings()
+        {
+            lock (loadTimingSync)
+            {
+                loadTimingGeneration++;
+                loadWaitTicks = 0;
+                loadRpcTicks = 0;
+            }
+        }
+
+        /// <summary>Gets aggregate queue-wait and RPC durations for the current solution-push phase.</summary>
+        public (long WaitTicks, long RpcTicks) GetLoadTimings()
+        {
+            lock (loadTimingSync)
+                return (loadWaitTicks, loadRpcTicks);
+        }
 
         public Task LoadProjectAsync(LanguageServiceProjectSnapshot snapshot, CancellationToken token)
         {
@@ -60,12 +79,15 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 
         async Task LoadProjectCoreAsync(Task previous, LanguageServiceProjectSnapshot snapshot, CancellationToken token)
         {
+            int timingGeneration;
+            lock (loadTimingSync)
+                timingGeneration = loadTimingGeneration;
             var watch = System.Diagnostics.Stopwatch.StartNew();
             try { await previous.ConfigureAwait(false); } catch { }
-            Interlocked.Add(ref LoadWaitTicks, watch.ElapsedTicks);
+            AddLoadTiming(timingGeneration, watch.ElapsedTicks, rpc: false);
             watch.Restart();
             await Protocol.RoslynProjectLoadAsync(snapshot, token).ConfigureAwait(false);
-            Interlocked.Add(ref LoadRpcTicks, watch.ElapsedTicks);
+            AddLoadTiming(timingGeneration, watch.ElapsedTicks, rpc: true);
             // Loading a project reads only its own documents from disk, so only its buffers need
             // restoring. Restoring every open buffer after every project made the solution push
             // cost (projects x open documents) round trips (doc/technotes/fast-mode.md).
@@ -81,6 +103,19 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
             // ordered stream used by editor updates and solution close.
             foreach (var buffer in current)
                 await SendUpdateAsync(Task.CompletedTask, buffer.Key, buffer.Value, token).ConfigureAwait(false);
+        }
+
+        void AddLoadTiming(int timingGeneration, long ticks, bool rpc)
+        {
+            lock (loadTimingSync)
+            {
+                if (timingGeneration != loadTimingGeneration)
+                    return;
+                if (rpc)
+                    loadRpcTicks += ticks;
+                else
+                    loadWaitTicks += ticks;
+            }
         }
 
         public Task CloseSolutionAsync(CancellationToken token)

@@ -138,6 +138,8 @@ namespace CSharpBinding
 		async Task<bool> PushSnapshotsAsync(IRoslynLanguageProtocol protocol, IReadOnlyList<LanguageServiceProjectSnapshot> snapshots,
 			int priorityCount, long generation, string priorityMark, string doneMark, string detail = null)
 		{
+			var remote = service as RemoteLanguageService;
+			remote?.ResetLoadTimings();
 			int pushedCount = 0;
 			var pushTimes = new List<(string Project, long Milliseconds)>();
 			// The pushes run on the thread pool: resuming each of them on the UI thread queued every
@@ -149,7 +151,7 @@ namespace CSharpBinding
 					if (generation != Volatile.Read(ref solutionGeneration))
 						return;
 					var pushing = System.Diagnostics.Stopwatch.StartNew();
-					if (service is RemoteLanguageService remote)
+					if (remote != null)
 						await remote.LoadProjectAsync(snapshot, CancellationToken.None).ConfigureAwait(false);
 					else
 						await protocol.RoslynProjectLoadAsync(snapshot, CancellationToken.None).ConfigureAwait(false);
@@ -160,10 +162,11 @@ namespace CSharpBinding
 			});
 			if (generation != Volatile.Read(ref solutionGeneration))
 				return false;
+			var timings = remote?.GetLoadTimings() ?? (WaitTicks: 0L, RpcTicks: 0L);
 			PerfTimeline.Mark(PerfTimeline.SolutionOpen, doneMark,
 				(detail != null ? detail + "; " : "") + snapshots.Count + " pushed (load rpc "
-				+ (RemoteLanguageService.LoadRpcTicks * 1000 / System.Diagnostics.Stopwatch.Frequency) + "ms, waiting "
-				+ (RemoteLanguageService.LoadWaitTicks * 1000 / System.Diagnostics.Stopwatch.Frequency) + "ms), slowest: "
+				+ (timings.RpcTicks * 1000 / System.Diagnostics.Stopwatch.Frequency) + "ms, waiting "
+				+ (timings.WaitTicks * 1000 / System.Diagnostics.Stopwatch.Frequency) + "ms), slowest: "
 				+ string.Join(", ", pushTimes.OrderByDescending(t => t.Milliseconds).Take(5).Select(t => t.Project + " " + t.Milliseconds + "ms")));
 			return true;
 		}

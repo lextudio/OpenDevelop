@@ -52,7 +52,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         readonly HashSet<string> _adoptedProjectFileNames;
         readonly IAnalyzerAssemblyLoader _analyzerAssemblyLoader = new DirectAnalyzerAssemblyLoader();
         // Serializes access to the dictionaries above (and the variants-check-then-add sequences
-        // built on them). LoadProjectDocumentsAsync (background project load) and
+        // built on them). LoadProjectDocuments (background project load) and
         // UpsertDocumentAsync (file opened) run concurrently and both add documents; without a
         // lock, a concurrent Dictionary mutation corrupts state and one of the two documents ends
         // up orphaned - doubling every OpenLens reference count (and raising "concurrent update
@@ -261,7 +261,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
 
             foreach (var projectSnapshot in projectSnapshots)
             {
-                await LoadProjectDocumentsAsync(projectSnapshot, cancellationToken);
+                LoadProjectDocuments(projectSnapshot, cancellationToken);
                 lock (_documentLock)
                 {
                     var key = ProjectKey(projectSnapshot.ProjectFileName, projectSnapshot.TargetFramework);
@@ -338,7 +338,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             }
         }
 
-        async Task LoadProjectDocumentsAsync(LanguageServiceProjectSnapshot projectSnapshot, CancellationToken cancellationToken)
+        void LoadProjectDocuments(LanguageServiceProjectSnapshot projectSnapshot, CancellationToken cancellationToken)
         {
             if (projectSnapshot is null)
                 throw new ArgumentNullException(nameof(projectSnapshot));
@@ -503,7 +503,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         /// <summary>
         /// If the file just registered as loose actually belongs to a project, load that project in
         /// the background so the document is re-registered where it belongs (see the
-        /// trackedAsLooseFile branch in LoadProjectDocumentsAsync, which replaces the loose copy
+        /// trackedAsLooseFile branch in LoadProjectDocuments, which replaces the loose copy
         /// rather than duplicating it).
         ///
         /// Without this, a file opened at a moment when its project's documents are NOT in the
@@ -1585,7 +1585,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
 
         void AddDocument(RoslynProjectId projectId, string projectFileName, DocumentId documentId, string text, string tfmKey)
         {
-            // UpsertDocumentAsync (file opened) and LoadProjectDocumentsAsync (project loaded) can
+            // UpsertDocumentAsync (file opened) and LoadProjectDocuments (project loaded) can
             // race: both may pass their variants check and both then call AddDocument, leaving two
             // workspace documents for one file - which silently doubles every reference count.
             // Make this idempotent: if the file is already registered for this project, just push
