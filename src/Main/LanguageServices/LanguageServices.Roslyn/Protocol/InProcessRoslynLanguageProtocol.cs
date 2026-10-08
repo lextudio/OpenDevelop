@@ -44,18 +44,21 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 		readonly ILanguageService service;
 		readonly Func<IReadOnlyList<ProjectStatus>>? projectStatusProvider;
 		readonly Func<LanguageServiceProjectSnapshot, CancellationToken, Task>? projectLoad;
+		readonly Func<IReadOnlyList<LanguageServiceProjectSnapshot>, CancellationToken, Task>? projectsLoad;
 		readonly Func<CancellationToken, Task>? solutionClosed;
 		readonly Func<WorkspaceStatus>? workspaceStatusProvider;
 
 		public InProcessRoslynLanguageProtocol(ILanguageService service,
 			Func<IReadOnlyList<ProjectStatus>>? projectStatusProvider = null,
 			Func<LanguageServiceProjectSnapshot, CancellationToken, Task>? projectLoad = null,
+			Func<IReadOnlyList<LanguageServiceProjectSnapshot>, CancellationToken, Task>? projectsLoad = null,
 			Func<CancellationToken, Task>? solutionClosed = null,
 			Func<WorkspaceStatus>? workspaceStatusProvider = null)
 		{
 			this.service = service ?? throw new ArgumentNullException(nameof(service));
 			this.projectStatusProvider = projectStatusProvider;
 			this.projectLoad = projectLoad;
+			this.projectsLoad = projectsLoad;
 			this.solutionClosed = solutionClosed;
 			this.workspaceStatusProvider = workspaceStatusProvider;
 		}
@@ -141,6 +144,16 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 		/// </summary>
 		public Task RoslynProjectLoadAsync(LanguageServiceProjectSnapshot snapshot, CancellationToken cancellationToken) =>
 			projectLoad != null ? projectLoad(snapshot, cancellationToken) : Task.CompletedTask;
+
+		public async Task RoslynProjectsLoadAsync(IReadOnlyList<LanguageServiceProjectSnapshot> snapshots, CancellationToken cancellationToken)
+		{
+			if (projectsLoad != null) {
+				await projectsLoad(snapshots, cancellationToken).ConfigureAwait(false);
+				return;
+			}
+			foreach (var snapshot in snapshots)
+				await RoslynProjectLoadAsync(snapshot, cancellationToken).ConfigureAwait(false);
+		}
 
 		public Task RoslynSolutionClosedAsync(CancellationToken cancellationToken) =>
 			solutionClosed != null ? solutionClosed(cancellationToken) : Task.CompletedTask;

@@ -53,6 +53,45 @@ public class RemoteProtocolLifecycleTests
 		Assert.Equal("slow", await slow);
 	}
 
+	sealed class RecordingHost : IRecoveringRoslynHost
+	{
+		public readonly List<(string Method, object Arguments)> Calls = new();
+		public bool IsAlive { get; set; } = true;
+		public Task EnsureStartedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+		public Task<T> InvokeAsync<T>(string method, object arguments, CancellationToken cancellationToken)
+		{
+			Calls.Add((method, arguments));
+			return Task.FromResult(default(T)!);
+		}
+		public void Dispose() { }
+	}
+
+	static LanguageServiceProjectSnapshot Project(string name) => new(
+		"/tmp/" + name + ".csproj", "C#", Array.Empty<string>(), Array.Empty<string>(),
+		Array.Empty<string>(), Array.Empty<string>(), null, null);
+
+	[Fact]
+	public async Task RecoveryTransport_ReplaysABatchedLoadAsSingleLoads()
+	{
+		// A batch is parent intent like the loads it stands for: a restarted host must receive
+		// every project in it, replayed the same way single loads are.
+		var hosts = new List<RecordingHost>();
+		using var transport = new RecoveringRoslynTransport(() => { var host = new RecordingHost(); hosts.Add(host); return host; });
+		var token = TestContext.Current.CancellationToken;
+		await transport.InvokeAsync<object?>(RoslynProtocolMethods.ProjectsLoad,
+			new RemoteRoslynLanguageProtocol.ProjectsUpdate(new[] { Project("A"), Project("B") }), token);
+		// (The first host also gets the recorded intent replayed on start, as with single loads.)
+		Assert.Equal(RoslynProtocolMethods.ProjectsLoad, hosts[0].Calls[^1].Method);
+
+		hosts[0].IsAlive = false;
+		await transport.InvokeAsync<object?>(RoslynProtocolMethods.Status, new object(), token);
+
+		var replayed = hosts[1].Calls.Where(call => call.Method == RoslynProtocolMethods.ProjectLoad)
+			.Select(call => ((RemoteRoslynLanguageProtocol.ProjectUpdate)call.Arguments).snapshot.ProjectFileName)
+			.OrderBy(name => name);
+		Assert.Equal(new[] { "/tmp/A.csproj", "/tmp/B.csproj" }, replayed);
+	}
+
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
     static WeakReference RegisterAndRelease(LanguageServiceRegistry registry)
     {

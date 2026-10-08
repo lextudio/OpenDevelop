@@ -70,6 +70,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 			RoslynProtocolMethods.Supertypes,
 			RoslynProtocolMethods.Subtypes,
 			RoslynProtocolMethods.ProjectLoad,
+			RoslynProtocolMethods.ProjectsLoad,
 			RoslynProtocolMethods.SolutionClosed,
 			RoslynProtocolMethods.Status,
 			RoslynProtocolMethods.LensDocument,
@@ -135,6 +136,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 				case RoslynProtocolMethods.ProjectLoad:
 					await protocol.RoslynProjectLoadAsync(arguments.Snapshot(), cancellationToken).ConfigureAwait(false);
 					return null;
+				case RoslynProtocolMethods.ProjectsLoad:
+					await protocol.RoslynProjectsLoadAsync(arguments.Snapshots(), cancellationToken).ConfigureAwait(false);
+					return null;
 				case RoslynProtocolMethods.SolutionClosed:
 					await protocol.RoslynSolutionClosedAsync(cancellationToken).ConfigureAwait(false);
 					return null;
@@ -173,6 +177,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 		string ActionId();
 		TextSpan? Span();
 		LanguageServiceProjectSnapshot Snapshot();
+		IReadOnlyList<LanguageServiceProjectSnapshot> Snapshots() => new[] { Snapshot() };
 		string TypeFullName();
 		string MethodName();
 		int? ParameterCount();

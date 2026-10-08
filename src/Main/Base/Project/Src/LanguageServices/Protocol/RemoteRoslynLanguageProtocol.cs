@@ -75,6 +75,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 		public Task<WorkspaceDocumentInfo?> RoslynDocumentStatusAsync(TextDocumentIdentifier document, CancellationToken cancellationToken, bool includeDiagnostics = false) =>
 			InvokeAsync<WorkspaceDocumentInfo?>(RoslynProtocolMethods.DocumentStatus, new { document, includeDiagnostics }, cancellationToken);
 		public sealed record ProjectUpdate(LanguageServiceProjectSnapshot snapshot);
+		public sealed record ProjectsUpdate(LanguageServiceProjectSnapshot[] snapshots);
 		public void Dispose()
 		{
 			if (Interlocked.Exchange(ref disposed, 1) != 0) return;
@@ -154,6 +155,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 
 		public Task RoslynProjectLoadAsync(LanguageServiceProjectSnapshot snapshot, CancellationToken cancellationToken) =>
 			InvokeAsync<object?>(RoslynProtocolMethods.ProjectLoad, new ProjectUpdate(snapshot), cancellationToken);
+
+		public Task RoslynProjectsLoadAsync(IReadOnlyList<LanguageServiceProjectSnapshot> snapshots, CancellationToken cancellationToken) =>
+			InvokeAsync<object?>(RoslynProtocolMethods.ProjectsLoad, new ProjectsUpdate(System.Linq.Enumerable.ToArray(snapshots)), cancellationToken);
 
 		public Task RoslynSolutionClosedAsync(CancellationToken cancellationToken) =>
 			InvokeAsync<object?>(RoslynProtocolMethods.SolutionClosed, new { }, cancellationToken);

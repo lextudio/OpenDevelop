@@ -31,6 +31,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
         public async Task<T> InvokeAsync<T>(string method, object arguments, CancellationToken cancellationToken)
         {
 			var isStateMutation = arguments is RemoteRoslynLanguageProtocol.ProjectUpdate
+				|| arguments is RemoteRoslynLanguageProtocol.ProjectsUpdate
 				|| arguments is RemoteRoslynLanguageProtocol.DocumentUpdate
 				|| method == RoslynProtocolMethods.SolutionClosed;
 			IRecoveringRoslynHost activeHost;
@@ -41,6 +42,10 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
                 // A later replay therefore restores the latest buffer instead of the last reply.
                 if (arguments is RemoteRoslynLanguageProtocol.ProjectUpdate project)
                     projects[(project.snapshot.ProjectFileName, project.snapshot.TargetFramework)] = project;
+                // A batch is replayed as single loads, like the loads it stands for.
+                if (arguments is RemoteRoslynLanguageProtocol.ProjectsUpdate batch)
+                    foreach (var snapshot in batch.snapshots)
+                        projects[(snapshot.ProjectFileName, snapshot.TargetFramework)] = new RemoteRoslynLanguageProtocol.ProjectUpdate(snapshot);
                 if (arguments is RemoteRoslynLanguageProtocol.DocumentUpdate document)
                     documents[document.document.Uri] = document;
                 if (method == RoslynProtocolMethods.SolutionClosed)

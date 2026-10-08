@@ -61,6 +61,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 		/// reason a stock LSP server is the wrong answer here (§4).
 		/// </summary>
 		public const string ProjectLoad = "roslyn/project/load";
+		/// <summary>Several <see cref="ProjectLoad"/>s in one request: one round trip, one reconciliation of the graph.</summary>
+		public const string ProjectsLoad = "roslyn/projects/load";
 
 		/// <summary><c>roslyn/solution/closed</c>: drop all project state.</summary>
 		public const string SolutionClosed = "roslyn/solution/closed";

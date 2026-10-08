@@ -67,17 +67,21 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
                 return (loadWaitTicks, loadRpcTicks);
         }
 
-        public Task LoadProjectAsync(LanguageServiceProjectSnapshot snapshot, CancellationToken token)
+        public Task LoadProjectAsync(LanguageServiceProjectSnapshot snapshot, CancellationToken token) =>
+            LoadProjectsAsync(new[] { snapshot }, token);
+
+        /// <summary>Loads several projects in one request (<c>roslyn/projects/load</c>).</summary>
+        public Task LoadProjectsAsync(IReadOnlyList<LanguageServiceProjectSnapshot> snapshots, CancellationToken token)
         {
             lock (sync)
             {
                 ObjectDisposedException.ThrowIf(disposed, this);
                 Interlocked.Increment(ref workspaceRevision);
-                return updates = LoadProjectCoreAsync(updates, snapshot, token);
+                return updates = LoadProjectCoreAsync(updates, snapshots, token);
             }
         }
 
-        async Task LoadProjectCoreAsync(Task previous, LanguageServiceProjectSnapshot snapshot, CancellationToken token)
+        async Task LoadProjectCoreAsync(Task previous, IReadOnlyList<LanguageServiceProjectSnapshot> snapshots, CancellationToken token)
         {
             int timingGeneration;
             lock (loadTimingSync)
@@ -86,12 +90,17 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
             try { await previous.ConfigureAwait(false); } catch { }
             AddLoadTiming(timingGeneration, watch.ElapsedTicks, rpc: false);
             watch.Restart();
-            await Protocol.RoslynProjectLoadAsync(snapshot, token).ConfigureAwait(false);
+            if (snapshots.Count == 1)
+                await Protocol.RoslynProjectLoadAsync(snapshots[0], token).ConfigureAwait(false);
+            else
+                await Protocol.RoslynProjectsLoadAsync(snapshots, token).ConfigureAwait(false);
             AddLoadTiming(timingGeneration, watch.ElapsedTicks, rpc: true);
             // Loading a project reads only its own documents from disk, so only its buffers need
             // restoring. Restoring every open buffer after every project made the solution push
             // cost (projects x open documents) round trips (doc/technotes/fast-mode.md).
-            var documents = new HashSet<string>(snapshot.DocumentFileNames, StringComparer.OrdinalIgnoreCase);
+            var documents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var snapshot in snapshots)
+                documents.UnionWith(snapshot.DocumentFileNames);
             KeyValuePair<DocumentId, string>[] current;
             lock (sync)
             {

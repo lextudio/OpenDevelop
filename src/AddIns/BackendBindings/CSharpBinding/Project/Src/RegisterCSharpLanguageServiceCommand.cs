@@ -135,6 +135,8 @@ namespace CSharpBinding
 
 		/// <summary>Pushes <paramref name="snapshots"/> to the host in order; false if a newer
 		/// solution open superseded this one meanwhile.</summary>
+		const int PushChunkSize = 16;
+
 		async Task<bool> PushSnapshotsAsync(IRoslynLanguageProtocol protocol, IReadOnlyList<LanguageServiceProjectSnapshot> snapshots,
 			int priorityCount, long generation, string priorityMark, string doneMark, string detail = null)
 		{
@@ -146,17 +148,27 @@ namespace CSharpBinding
 			// project behind whatever the dispatcher was doing right after a solution open
 			// (doc/technotes/fast-mode.md). Nothing here touches the UI; RemoteLanguageService
 			// serializes its own updates under a lock.
+			// In chunks, one roslyn/projects/load each: one round trip per project was most of a warm
+			// push (89 projects: 4.3 s of RPCs for 2.1 s of host work, plus the IDE's side of each
+			// trip). The open documents' projects form the first chunk of their own, so they are
+			// usable before the rest arrive.
+			var chunks = new List<IReadOnlyList<LanguageServiceProjectSnapshot>>();
+			if (priorityCount > 0)
+				chunks.Add(snapshots.Take(priorityCount).ToList());
+			foreach (var chunk in snapshots.Skip(priorityCount).Chunk(PushChunkSize))
+				chunks.Add(chunk);
 			await Task.Run(async () => {
-				foreach (var snapshot in snapshots) {
+				foreach (var chunk in chunks) {
 					if (generation != Volatile.Read(ref solutionGeneration))
 						return;
 					var pushing = System.Diagnostics.Stopwatch.StartNew();
 					if (remote != null)
-						await remote.LoadProjectAsync(snapshot, CancellationToken.None).ConfigureAwait(false);
+						await remote.LoadProjectsAsync(chunk, CancellationToken.None).ConfigureAwait(false);
 					else
-						await protocol.RoslynProjectLoadAsync(snapshot, CancellationToken.None).ConfigureAwait(false);
-					pushTimes.Add((System.IO.Path.GetFileNameWithoutExtension(snapshot.ProjectFileName), pushing.ElapsedMilliseconds));
-					if (++pushedCount == priorityCount)
+						await protocol.RoslynProjectsLoadAsync(chunk, CancellationToken.None).ConfigureAwait(false);
+					pushTimes.Add((System.IO.Path.GetFileNameWithoutExtension(chunk[0].ProjectFileName) + (chunk.Count > 1 ? " +" + (chunk.Count - 1) : ""), pushing.ElapsedMilliseconds));
+					pushedCount += chunk.Count;
+					if (priorityCount > 0 && pushedCount == priorityCount)
 						PerfTimeline.Mark(PerfTimeline.SolutionOpen, priorityMark, priorityCount + " snapshot(s)");
 				}
 			});

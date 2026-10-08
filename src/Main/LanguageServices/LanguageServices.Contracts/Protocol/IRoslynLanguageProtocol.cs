@@ -152,6 +152,17 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 		/// </summary>
 		Task RoslynProjectLoadAsync(LanguageServiceProjectSnapshot snapshot, CancellationToken cancellationToken);
 
+		/// <summary>
+		/// <c>roslyn/projects/load</c>: several project loads in one request. A solution push made
+		/// one round trip per project, and most of a warm push of 89 projects was that overhead
+		/// rather than the host's work (doc/technotes/fast-mode.md).
+		/// </summary>
+		async Task RoslynProjectsLoadAsync(IReadOnlyList<LanguageServiceProjectSnapshot> snapshots, CancellationToken cancellationToken)
+		{
+			foreach (var snapshot in snapshots)
+				await RoslynProjectLoadAsync(snapshot, cancellationToken).ConfigureAwait(false);
+		}
+
 		/// <summary><c>roslyn/solution/closed</c>: drop all project state.</summary>
 		Task RoslynSolutionClosedAsync(CancellationToken cancellationToken);
 

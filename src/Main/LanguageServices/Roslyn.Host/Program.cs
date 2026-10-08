@@ -72,6 +72,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Host
 				new InProcessRoslynLanguageProtocol(
 					languageService.Value,
 					projectLoad: languageService.Value.LoadProjectAsync,
+					projectsLoad: languageService.Value.LoadProjectsAsync,
 					solutionClosed: languageService.Value.CloseSolutionAsync,
 					workspaceStatusProvider: languageService.Value.GetWorkspaceStatus));
 			var dispatcher = new Lazy<RoslynProtocolDispatcher>(() =>
@@ -131,6 +132,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Host
 			public string? actionId { get; set; }
 			public TextSpan? span { get; set; }
 			public LanguageServiceProjectSnapshot? snapshot { get; set; }
+			public LanguageServiceProjectSnapshot[]? snapshots { get; set; }
 			public string? typeFullName { get; set; }
 			public string? methodName { get; set; }
 			public int? parameterCount { get; set; }
@@ -152,6 +154,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Host
 			TextSpan? IRoslynProtocolArguments.Span() => span;
 			LanguageServiceProjectSnapshot IRoslynProtocolArguments.Snapshot() =>
 				snapshot ?? throw new InvalidOperationException("Request is missing 'snapshot'.");
+			IReadOnlyList<LanguageServiceProjectSnapshot> IRoslynProtocolArguments.Snapshots() =>
+				snapshots ?? throw new InvalidOperationException("Request is missing 'snapshots'.");
 			string IRoslynProtocolArguments.TypeFullName() => typeFullName ?? string.Empty;
 			string IRoslynProtocolArguments.MethodName() => methodName ?? string.Empty;
 			int? IRoslynProtocolArguments.ParameterCount() => parameterCount;

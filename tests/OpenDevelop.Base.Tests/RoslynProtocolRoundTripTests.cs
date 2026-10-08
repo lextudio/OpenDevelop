@@ -60,6 +60,7 @@ public class RoslynProtocolRoundTripTests
         public string ActionId() => Get<string>("actionId");
         public TextSpan? Span() => Get<TextSpan?>("span");
         public LanguageServiceProjectSnapshot Snapshot() => Get<LanguageServiceProjectSnapshot>("snapshot");
+        public IReadOnlyList<LanguageServiceProjectSnapshot> Snapshots() => Get<LanguageServiceProjectSnapshot[]>("snapshots");
         public string TypeFullName() => Get<string>("typeFullName");
         public string MethodName() => Get<string>("methodName");
         public int? ParameterCount() => Get<int?>("parameterCount");
@@ -95,13 +96,16 @@ public class RoslynProtocolRoundTripTests
         await client.RoslynProjectLoadAsync(new LanguageServiceProjectSnapshot(
             "/tmp/RoundTrip.csproj", "C#", Array.Empty<string>(), Array.Empty<string>(),
             Array.Empty<string>(), Array.Empty<string>(), null, null), token);
+        await client.RoslynProjectsLoadAsync(new[] { new LanguageServiceProjectSnapshot(
+            "/tmp/RoundTrip.csproj", "C#", Array.Empty<string>(), Array.Empty<string>(),
+            Array.Empty<string>(), Array.Empty<string>(), null, null) }, token);
         await client.RoslynSolutionClosedAsync(token);
         await client.RoslynFindMemberAsync("RoundTrip", "Run", 0, token);
         await client.RoslynExtractInterfaceApplyAsync(Document, 0, "IRoundTrip", new[] { "member" }, true, false, token);
 
         Assert.Equal(new[] {
             "textDocument/didChange", "textDocument/definition", "roslyn/lens/document", "roslyn/status",
-            "roslyn/project/load", "roslyn/solution/closed", "roslyn/findMember", "roslyn/extractInterface/apply"
+            "roslyn/project/load", "roslyn/projects/load", "roslyn/solution/closed", "roslyn/findMember", "roslyn/extractInterface/apply"
         }, transport.Calls);
     }
 
