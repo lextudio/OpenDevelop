@@ -3532,12 +3532,13 @@ public sealed class AddInTests : IAsyncDisposable
                 Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
                 grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                     after = await _app.InvokeAsync("od.forms-designer.surface-geometry");
+                    if (!after.GetProperty("available").GetBoolean())
+                        return false;
                     var fw = after.GetProperty("frame").GetProperty("width").GetDouble();
                     var fh = after.GetProperty("frame").GetProperty("height").GetDouble();
                     var bw = effectiveBefore.GetProperty("frame").GetProperty("width").GetDouble();
                     var bh = effectiveBefore.GetProperty("frame").GetProperty("height").GetDouble();
-                    return after.GetProperty("available").GetBoolean()
-                        && fw > bw + 20
+                    return fw > bw + 20
                         && fh > bh + 20;
                 }, TimeSpan.FromSeconds(3), initialDelayMs: 100, maxDelayMs: 400);
             }
@@ -3573,7 +3574,7 @@ public sealed class AddInTests : IAsyncDisposable
             // exact-delta check above already covers the precise rendered-size assertion.
             // The frame is measured on screen at the zoom set above; the persisted size is in design
             // units.
-            const double viewZoom = 0.25;
+            const double viewZoom = 0.5;
             Assert.True(Math.Abs(persistedWidth - afterFrame.w / viewZoom) < 40,
                 $"Form1's persisted ClientSize width ({persistedWidth}) should roughly match the rendered post-drag width ({afterFrame.w / viewZoom}).");
             Assert.True(Math.Abs(persistedHeight - afterFrame.h / viewZoom) < 40,

@@ -1069,7 +1069,10 @@
 						             tooltip = "${res:XML.MainMenu.DebugMenu.RunWithoutDebug.Description}"
 						             class   = "ICSharpCode.SharpDevelop.Project.Commands.ExecuteWithoutDebugger"/>
 					</Condition>
-					<Condition name="HotReloadSupported" action="Disable">
+					<!-- A disabled Hot Reload button is visual noise for non-XAML projects. The command
+					     only applies when the startup project has a WPF/LibreWPF/WinUI adapter, so omit
+					     it from the main toolbar until then. -->
+					<Condition name="HotReloadSupported" action="Exclude">
 						<ToolbarItem id      = "StartHotReload"
 						             icon    = "Icons.16x16.HotReload"
 						             tooltip = "${res:XML.MainMenu.DebugMenu.StartHotReload.Description}"
