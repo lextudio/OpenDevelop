@@ -16,6 +16,10 @@ od.build-solution → { success, result, errorCount, warningCount, diagnostics[]
 - A plain build skips projects the fast up-to-date check finds unchanged (`FastUpToDateCheck`; they log
   "is up to date; skipped" instead of MSBuild output). Pass `{"args":["", "rebuild"]}` when a test needs
   MSBuild to actually run, e.g. to assert on its own log lines.
+- Projects that do need building (and everything depending on them) are built together in ONE
+  MSBuild process first (Build output: "Built N/M projects in one MSBuild process"); only failures
+  without an attributable error go through per-project builds. `OD_ONE_PROCESS_BUILD=0` disables it,
+  `OD_ONE_PROCESS_TRACE=<file>` logs what each run saw. Details: `doc/technotes/fast-mode.md`.
 - Parse the JSON response; do **not** treat empty/silent output as success.
 - Use `od.output-text("Build")` to get the raw build log separately if needed.
 

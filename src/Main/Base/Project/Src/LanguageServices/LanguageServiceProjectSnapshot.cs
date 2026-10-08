@@ -23,14 +23,50 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
             // Those children are independent, so run a few projects at once; the in-process
             // evaluation reads still serialize on MSBuildInternals' lock. Ordered, so the push
             // order (and with it which project becomes ready first) is unchanged.
-            return solution.Projects
-                .ToArray()
+            var projects = solution.Projects.ToArray();
+            batchedReferencePaths.Value = ResolveReferencePathsInOneProcess(projects);
+            try
+            {
+                return projects
                 .AsParallel()
                 .AsOrdered()
                 .WithDegreeOfParallelism(Math.Max(1, Math.Min(4, Environment.ProcessorCount)))
                 .SelectMany(FromProjectAllTargetFrameworks)
                 .Select(snapshot => snapshot.WithSolutionDirectory(solution.Directory.ToString()))
                 .ToArray();
+            }
+            finally
+            {
+                batchedReferencePaths.Value = null;
+            }
+        }
+
+        /// <summary>
+        /// References resolved ahead of the per-project snapshots by one MSBuild process for every
+        /// project that misses the reference cache (IBatchAssemblyReferenceResolver), consumed by
+        /// <see cref="ResolveReferencePaths"/>. AsyncLocal so it reaches FromSolution's PLINQ workers
+        /// and nothing else.
+        /// </summary>
+        static readonly System.Threading.AsyncLocal<IReadOnlyDictionary<MSBuildBasedProject, IReadOnlyList<string>>?> batchedReferencePaths = new();
+
+        static IReadOnlyDictionary<MSBuildBasedProject, IReadOnlyList<string>>? ResolveReferencePathsInOneProcess(IReadOnlyList<IProject> projects)
+        {
+            if (SD.GetService<IMSBuildEngine>() is not IBatchAssemblyReferenceResolver resolver)
+                return null;
+            // Only what FromProject would resolve itself: single-target MSBuild projects whose
+            // resolution is not already cached. Multi-targeted ones evaluate per TFM instead.
+            var misses = projects
+                .OfType<MSBuildBasedProject>()
+                .Where(project => GetTargetFrameworks(project).Count <= 1)
+                .Where(project => ReferenceResolutionCache.Fingerprint(project) is not { } fingerprint
+                                  || ReferenceResolutionCache.Peek(project, fingerprint) is null)
+                .ToList();
+            if (misses.Count < 2)
+                return null; // one project: a batch is no cheaper than resolving it directly
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var resolved = resolver.ResolveAssemblyReferencePaths(misses);
+            ICSharpCode.Core.LoggingService.Info($"LanguageServiceProjectSnapshot: resolved references of {resolved.Count}/{misses.Count} projects in one MSBuild process in {watch.ElapsedMilliseconds} ms.");
+            return resolved;
         }
 
         /// <summary>Identifies one snapshot (a project, or one TFM of a multi-targeted project).</summary>
@@ -71,7 +107,10 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
             {
                 if (path is null || !File.Exists(path))
                     return null;
-                return JsonSerializer.Deserialize<LanguageServiceProjectSnapshot[]>(File.ReadAllText(path));
+                var snapshots = JsonSerializer.Deserialize<LanguageServiceProjectSnapshot[]>(File.ReadAllText(path));
+                // Pushing a snapshot that names a deleted document breaks that project's outline
+                // until the fresh one replaces it; leave such a project to the fresh snapshot.
+                return snapshots?.Where(snapshot => snapshot.DocumentFileNames.All(File.Exists)).ToArray();
             }
             catch (Exception ex)
             {
@@ -351,6 +390,13 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
             var fingerprint = ReferenceResolutionCache.Fingerprint(msbuildProject);
             if (fingerprint is not null && ReferenceResolutionCache.TryLoad(msbuildProject, fingerprint) is { } cached)
                 return cached;
+            if (batchedReferencePaths.Value is { } batch && batch.TryGetValue(msbuildProject, out var batched))
+            {
+                var paths = batched.Select(path => (string?)path).ToArray();
+                if (fingerprint is not null)
+                    ReferenceResolutionCache.Save(msbuildProject, fingerprint, paths);
+                return paths;
+            }
             try
             {
                 var engine = SD.GetService<IMSBuildEngine>();
@@ -461,6 +507,23 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                 {
                     ICSharpCode.Core.LoggingService.Warn(
                         $"LanguageServiceProjectSnapshot: cannot fingerprint '{project.FileName}', resolving references without the cache. {ex.Message}");
+                    return null;
+                }
+            }
+
+            /// <summary>Like <see cref="TryLoad"/>, without counting a hit or a miss.</summary>
+            public static string?[]? Peek(MSBuildBasedProject project, string fingerprint)
+            {
+                var path = GetCacheFilePath(project);
+                try
+                {
+                    if (path is null || !File.Exists(path))
+                        return null;
+                    var entry = JsonSerializer.Deserialize<Entry>(File.ReadAllText(path));
+                    return entry is not null && entry.Fingerprint == fingerprint ? entry.ReferencePaths : null;
+                }
+                catch
+                {
                     return null;
                 }
             }
@@ -594,6 +657,13 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                             $"LanguageServiceProjectSnapshot: discarding .od TFM cache for '{projectFileName}' ({targetFramework}) - it holds no metadata references, which cannot be a real evaluation. Re-evaluating.");
                         return null;
                     }
+
+                    // A document that no longer exists means the entry was written from an
+                    // evaluation that still listed it (a file created and deleted around the write;
+                    // the directory-time check above cannot tell). Roslyn then fails reading it and
+                    // the whole project loses outline/folding (VSEditor tests' scratch files did).
+                    if (entry.Documents.Any(document => !File.Exists(document)))
+                        return null;
 
                     var language = string.Equals(Path.GetExtension(projectFileName), ".vbproj", StringComparison.OrdinalIgnoreCase)
                         ? "Visual Basic"

@@ -42,7 +42,7 @@ using ICSharpCode.SharpDevelop.Project.Sdk;
 
 namespace ICSharpCode.SharpDevelop.Project
 {
-	sealed class MinimalMSBuildEngine : IMSBuildEngine
+	sealed class MinimalMSBuildEngine : IMSBuildEngine, IBatchAssemblyReferenceResolver
 	{
 		public ISet<string> CompileTaskNames { get; } = new HashSet<string> { "Csc", "Vbc", "CoreCompile" };
 
@@ -245,6 +245,187 @@ namespace ICSharpCode.SharpDevelop.Project
 				.FirstOrDefault(framework => framework.Length > 0);
 		}
 
+		/// <summary>
+		/// One `dotnet msbuild` for many projects. A generated traversal project first runs every
+		/// project's ResolveReferences in parallel (-m), then asks each project again: those calls
+		/// are answered from MSBuild's results cache, and only they can label their outputs with the
+		/// requesting project - an item that came from a ProjectReference carries the REFERENCED
+		/// project in MSBuildSourceProjectFile, so grouping by that metadata misattributes it.
+		/// Measured on 12 OpenDevelop projects: 14.1 s one process each, 1.1 s batched, with
+		/// identical reference sets per project.
+		/// </summary>
+		public IReadOnlyDictionary<MSBuildBasedProject, IReadOnlyList<string>> ResolveAssemblyReferencePaths(IReadOnlyList<MSBuildBasedProject> projects)
+		{
+			var result = new Dictionary<MSBuildBasedProject, IReadOnlyList<string>>();
+			if (projects == null || projects.Count == 0)
+				return result;
+			// MSBuild's NuGet SDK resolver reads the msbuild-sdks pins of the global.json above the
+			// ENTRY project, for every project in the build. A traversal in the temp directory
+			// therefore resolved Sdk="LibreWPF.Sdk" to a version none of these projects pins (and
+			// brought back NETSDK1047 for 53 of them). One batch per global.json directory, each
+			// started from that directory, resolves exactly what each project's own build does.
+			// The batches are independent processes, so they run side by side.
+			var batches = projects.GroupBy(project => GlobalJsonDirectory(project.FileName.ToString()), StringComparer.Ordinal)
+				.Select(group => Task.Run(() => ResolveAssemblyReferencePathsFrom(group.Key, group.ToList())))
+				.ToArray();
+			foreach (var batch in batches) {
+				var resolved = batch.Result;
+				if (resolved == null)
+					continue; // that batch failed; its projects fall back to single resolution
+				foreach (var pair in resolved)
+					result[pair.Key] = pair.Value;
+			}
+			return result;
+		}
+
+		/// <summary>The nearest directory above <paramref name="projectFile"/> holding a global.json, or null.</summary>
+		static string GlobalJsonDirectory(string projectFile)
+		{
+			for (var directory = Path.GetDirectoryName(projectFile); !string.IsNullOrEmpty(directory); directory = Path.GetDirectoryName(directory)) {
+				if (File.Exists(Path.Combine(directory, "global.json")))
+					return directory;
+			}
+			return null;
+		}
+
+		Dictionary<MSBuildBasedProject, IReadOnlyList<string>> ResolveAssemblyReferencePathsFrom(string globalJsonDirectory, IReadOnlyList<MSBuildBasedProject> projects)
+		{
+			var result = new Dictionary<MSBuildBasedProject, IReadOnlyList<string>>();
+			// Under the global.json's directory so the SDK resolver sees it; .od is OpenDevelop's own
+			// scratch folder (gitignored in this repository). Removed again afterwards, together with
+			// .od itself when this created it, so nothing is left in a repository that does not
+			// ignore it.
+			string scratch = globalJsonDirectory != null ? Path.Combine(globalJsonDirectory, ".od") : Path.GetTempPath();
+			bool createdScratch = !Directory.Exists(scratch);
+			string traversal = Path.Combine(scratch, "resolve-references-" + Guid.NewGuid().ToString("N") + ".proj");
+			try {
+				Directory.CreateDirectory(scratch);
+				var requests = projects.Select(project => (Project: project, File: project.FileName.ToString(), TargetFramework: InnerBuildTargetFramework(project))).ToList();
+				File.WriteAllText(traversal, CreateResolveReferencesTraversal(requests.Select(r => (r.File, r.TargetFramework)).ToList()));
+
+				var psi = CreateDotnetChildStartInfo();
+				psi.ArgumentList.Add("msbuild");
+				psi.ArgumentList.Add(traversal);
+				psi.ArgumentList.Add("--nologo");
+				psi.ArgumentList.Add("-m:" + ResolveNodeCount());
+				psi.ArgumentList.Add("-t:Resolve");
+				psi.ArgumentList.Add("-getItem:ODReferencePath");
+				using var process = Process.Start(psi);
+				if (process == null)
+					return null;
+				var stdoutTask = process.StandardOutput.ReadToEndAsync();
+				var stderrTask = process.StandardError.ReadToEndAsync();
+				int timeout = Math.Min(600_000, ResolveReferencesTimeoutMilliseconds + 2_000 * projects.Count);
+				if (!Task.WaitAll(new Task[] { stdoutTask, stderrTask }, timeout) || !process.WaitForExit(timeout)) {
+					try { process.Kill(entireProcessTree: true); } catch { }
+					LoggingService.Warn("Batched ResolveReferences timed out for " + projects.Count + " projects; resolving them one by one.");
+					return null;
+				}
+				string stdout = stdoutTask.Result, stderr = stderrTask.Result;
+				var items = ParseLabelledReferencePaths(stdout);
+				if (items == null) {
+					LoggingService.Warn("Batched ResolveReferences produced no item list (exit " + process.ExitCode + "); resolving one by one. "
+						+ FirstLine(stderr.Length > 0 ? stderr : stdout));
+					return null;
+				}
+				string diagnostics = stdout + "\n" + stderr;
+				foreach (var request in requests) {
+					items.TryGetValue(request.File, out var paths);
+					var errors = ErrorLinesFor(diagnostics, request.File);
+					if ((paths == null || paths.Count == 0) && errors.Length > 0) {
+						LoggingService.Warn("ResolveAssemblyReferences (batched) failed for " + request.File + ". " + FirstLine(errors));
+						ReferenceResolutionDiagnostics.Failed(request.File, errors);
+						result[request.Project] = Array.Empty<string>();
+					} else {
+						ReferenceResolutionDiagnostics.Succeeded(request.File);
+						result[request.Project] = (IReadOnlyList<string>)paths ?? Array.Empty<string>();
+					}
+				}
+				return result;
+			} catch (Exception ex) {
+				LoggingService.Warn("Batched ResolveReferences failed: " + ex.Message + "; resolving one by one.");
+				return null;
+			} finally {
+				try {
+					File.Delete(traversal);
+					if (createdScratch && !Directory.EnumerateFileSystemEntries(scratch).Any())
+						Directory.Delete(scratch);
+				} catch { }
+			}
+		}
+
+		static int ResolveNodeCount() =>
+			int.TryParse(Environment.GetEnvironmentVariable("OD_RESOLVE_NODES"), out var nodes) && nodes > 0
+				? nodes : Math.Max(1, Math.Min(4, Environment.ProcessorCount));
+
+		static string CreateResolveReferencesTraversal(IReadOnlyList<(string File, string TargetFramework)> projects)
+		{
+			string Escape(string value) => System.Security.SecurityElement.Escape(value);
+			string PropertiesFor(string targetFramework) =>
+				"BuildingInsideVisualStudio=true" + (string.IsNullOrEmpty(targetFramework) ? "" : ";TargetFramework=" + targetFramework);
+			var text = new StringBuilder();
+			text.AppendLine("<Project>");
+			text.AppendLine("  <ItemGroup>");
+			foreach (var project in projects)
+				text.AppendLine("    <ODProject Include=\"" + Escape(project.File) + "\" Properties=\"" + Escape(PropertiesFor(project.TargetFramework)) + "\" />");
+			text.AppendLine("  </ItemGroup>");
+			var calls = new List<string>();
+			for (int i = 0; i < projects.Count; i++) {
+				// Same global properties as the parallel pass, so this is a results-cache hit.
+				text.AppendLine("  <Target Name=\"R" + i + "\">");
+				text.AppendLine("    <MSBuild Projects=\"" + Escape(projects[i].File) + "\" Targets=\"ResolveReferences\" Properties=\"" + Escape(PropertiesFor(projects[i].TargetFramework))
+					+ "\" SkipNonexistentTargets=\"true\" ContinueOnError=\"WarnAndContinue\"><Output TaskParameter=\"TargetOutputs\" ItemName=\"_R" + i + "\" /></MSBuild>");
+				text.AppendLine("    <ItemGroup><ODReferencePath Include=\"@(_R" + i + ")\" ODProject=\"" + Escape(projects[i].File) + "\" /></ItemGroup>");
+				text.AppendLine("  </Target>");
+				calls.Add("R" + i);
+			}
+			text.AppendLine("  <Target Name=\"Resolve\">");
+			// Batched per distinct global-property set, since the MSBuild task's Properties apply to all.
+			text.AppendLine("    <MSBuild Projects=\"@(ODProject)\" Targets=\"ResolveReferences\" Properties=\"%(ODProject.Properties)\" BuildInParallel=\"true\" SkipNonexistentTargets=\"true\" ContinueOnError=\"WarnAndContinue\" />");
+			text.AppendLine("    <CallTarget Targets=\"" + string.Join(";", calls) + "\" />");
+			text.AppendLine("  </Target>");
+			text.AppendLine("</Project>");
+			return text.ToString();
+		}
+
+		/// <summary>The -getItem JSON's ODReferencePath items grouped by ODProject, or null if absent.</summary>
+		static Dictionary<string, List<string>> ParseLabelledReferencePaths(string stdout)
+		{
+			int start = stdout.IndexOf('{');
+			if (start < 0)
+				return null;
+			try {
+				using var document = System.Text.Json.JsonDocument.Parse(stdout.Substring(start));
+				if (!document.RootElement.TryGetProperty("Items", out var itemsElement)
+				    || !itemsElement.TryGetProperty("ODReferencePath", out var list))
+					return null;
+				var grouped = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+				foreach (var item in list.EnumerateArray()) {
+					if (!item.TryGetProperty("Identity", out var identity) || !item.TryGetProperty("ODProject", out var owner))
+						continue;
+					var key = owner.GetString();
+					if (!grouped.TryGetValue(key, out var paths))
+						grouped[key] = paths = new List<string>();
+					paths.Add(identity.GetString());
+				}
+				return grouped;
+			} catch (System.Text.Json.JsonException) {
+				return null;
+			}
+		}
+
+		/// <summary>MSBuild error lines attributed to <paramref name="projectFile"/>: either starting
+		/// with its path or carrying it as the trailing [project] marker.</summary>
+		static string ErrorLinesFor(string output, string projectFile)
+		{
+			var lines = output.Split('\n')
+				.Where(line => line.Contains(": error ", StringComparison.Ordinal)
+				               && (line.TrimStart().StartsWith(projectFile, StringComparison.OrdinalIgnoreCase)
+				                   || line.Contains("[" + projectFile + "]", StringComparison.OrdinalIgnoreCase)))
+				.Select(line => line.Trim());
+			return string.Join("\n", lines);
+		}
+
 		static IEnumerable<string> RunResolveReferences(string projectFileName, string targetFramework, bool logErrorsToOutputPad)
 		{
 			var psi = CreateDotnetChildStartInfo();
@@ -386,6 +567,13 @@ namespace ICSharpCode.SharpDevelop.Project
 			// need - and passing BuildingInsideVisualStudio=true (as any IDE driving single-project
 			// builds does) skips it, matching how this project is actually being built here.
 			psi.ArgumentList.Add("-p:BuildingInsideVisualStudio=true");
+			// ...but BuildingInsideVisualStudio also makes _ComputeNonExistentFileProperty add a
+			// nonexistent output to CoreCompile (Visual Studio's host compiler does its own change
+			// detection), so every build recompiled and rewrote the assembly, and every dependent
+			// then rebuilt too. The legacy in-process engine overrode that target with an empty one
+			// (MSBuildEngineWorker); its condition also requires UseHostCompilerIfAvailable, so
+			// turning that off restores MSBuild's incremental compile the same way.
+			psi.ArgumentList.Add("-p:UseHostCompilerIfAvailable=false");
 			// -p:Configuration rather than -c: `dotnet restore` rejects -c, and both verbs must pass
 			// identical global properties for the up-front restore to stand in for a build's own.
 			if (!string.IsNullOrEmpty(options.Configuration)) {
@@ -408,6 +596,216 @@ namespace ICSharpCode.SharpDevelop.Project
 					psi.ArgumentList.Add($"-p:{kv.Key}={kv.Value}");
 				}
 			}
+		}
+
+		/// <summary>
+		/// Builds <paramref name="projects"/> in ONE MSBuild process (`-m`), as `dotnet build` of a
+		/// solution does, and records each one that succeeded with the fast up-to-date check, so
+		/// the per-project builds that follow skip it. Ten `dotnet build` processes side by side
+		/// each repeat evaluation and reference resolution and contend for the CPU: a project
+		/// that builds in 3-5 s alone took 15-45 s that way (doc/technotes/fast-mode.md).
+		///
+		/// The projects come in dependency waves and are built with exactly the global properties of
+		/// a per-project build (BuildingInsideVisualStudio included, so MSBuild does not build
+		/// references itself): each wave in parallel, after the one before it. Letting MSBuild
+		/// follow ProjectReferences instead built a project referenced with different global
+		/// properties twice at once into the same output (MC1000 on ICSharpCode.Core.Presentation).
+		/// Output lines reach <paramref name="reportLine"/> and diagnostics <paramref name="reportError"/>
+		/// while the build runs, attributed by the project MSBuild appends to each one. Returns the
+		/// projects that built and those that failed with an error of their own; any other failed
+		/// one is built again on its own. Never throws.
+		/// </summary>
+		public async Task<(ISet<IProject> Built, ISet<IProject> FailedWithErrors)> BuildInOneProcessAsync(string solutionFile, IReadOnlyList<IReadOnlyList<IProject>> waves, ProjectBuildOptions options,
+			Action<string> reportLine, Action<IProject, BuildError> reportError, CancellationToken cancellationToken)
+		{
+			var built = new HashSet<IProject>();
+			var failedWithErrors = new HashSet<IProject>();
+			var nothing = ((ISet<IProject>)built, (ISet<IProject>)failedWithErrors);
+			// The traversal must sit under the global.json its projects use (msbuild-sdks pins are
+			// read from the entry project's directory); others keep the per-project path.
+			string globalJsonDirectory = GlobalJsonDirectory(solutionFile);
+			bool SameGlobalJson(IProject project) => string.Equals(GlobalJsonDirectory(project.FileName.ToString()), globalJsonDirectory, StringComparison.Ordinal);
+			var includedWaves = waves.Select(wave => wave.Where(SameGlobalJson).ToList()).Where(wave => wave.Count > 0).ToList();
+			var included = includedWaves.SelectMany(wave => wave).ToList();
+			if (included.Count == 0)
+				return nothing;
+			var byFile = included.ToDictionary(project => project.FileName.ToString(), StringComparer.OrdinalIgnoreCase);
+			var withErrors = new HashSet<IProject>();
+			var seenDiagnostics = new HashSet<string>(StringComparer.Ordinal);
+			string scratch = globalJsonDirectory != null ? Path.Combine(globalJsonDirectory, ".od") : Path.GetTempPath();
+			bool createdScratch = !Directory.Exists(scratch);
+			string id = Guid.NewGuid().ToString("N");
+			string traversal = Path.Combine(scratch, "build-" + id + ".proj");
+			// Results go to a file, not -getItem: that switches the console log off, and with it
+			// the diagnostics streamed below.
+			string resultFile = Path.Combine(scratch, "build-" + id + ".results");
+			var buildStartedUtc = DateTime.UtcNow;
+			try {
+				Directory.CreateDirectory(scratch);
+				File.WriteAllText(traversal, CreateBuildTraversal(includedWaves.Select(wave => (IReadOnlyList<string>)wave.Select(project => project.FileName.ToString()).ToList()).ToList()));
+				var psi = CreateDotnetChildStartInfo();
+				psi.ArgumentList.Add("msbuild");
+				psi.ArgumentList.Add(traversal);
+				psi.ArgumentList.Add("--nologo");
+				psi.ArgumentList.Add("-m:" + Environment.ProcessorCount);
+				psi.ArgumentList.Add("-t:BuildAll");
+				psi.ArgumentList.Add("-v:m");
+				psi.ArgumentList.Add("-clp:NoSummary");
+				psi.ArgumentList.Add("-p:ODResultFile=" + resultFile);
+				// Restore is a separate step here (BuildEngine restores up front, or each project
+				// restores in its own build); a traversal has nothing of its own to restore.
+				AddGlobalProperties(psi, options);
+				var started = Stopwatch.StartNew();
+				var stdout = new StringBuilder();
+				var stderr = new StringBuilder();
+				// The output threads only queue lines; they are reported on the caller's thread (see the
+				// loop below). Reporting them straight from the output threads, a few hundred at a
+				// time, hung the IDE: the UI thread blocked for good on a lock in Visual.GetDpi.
+				var pending = new System.Collections.Concurrent.ConcurrentQueue<(string Line, StringBuilder Buffer)>();
+				void OnLine(string line, StringBuilder buffer)
+				{
+					lock (buffer)
+						buffer.AppendLine(line);
+					reportLine(line);
+					var trimmed = line.Trim();
+					var match = DiagnosticLine.Match(trimmed);
+					if (!match.Success)
+						return;
+					var owner = DiagnosticProject.Match(trimmed);
+					if (!owner.Success || !byFile.TryGetValue(owner.Groups["project"].Value, out var project))
+						return;
+					lock (seenDiagnostics) {
+						// MSBuild repeats every diagnostic in its closing summary, and a multi-targeted
+						// project reports it once per TFM.
+						if (!seenDiagnostics.Add(owner.Groups["project"].Value + "|" + match.Groups["file"].Value + "|" + match.Groups["line"].Value
+						    + "|" + match.Groups["column"].Value + "|" + match.Groups["code"].Value))
+							return;
+						bool isWarning = match.Groups["severity"].Value == "warning";
+						// A restore problem is not final: the traversal restores nothing, and the
+						// project's own build (which restores) may well succeed.
+						if (!isWarning && !IsRestoreError(match.Groups["code"].Value))
+							withErrors.Add(project);
+						reportError(project, new BuildError(match.Groups["file"].Value,
+							int.Parse(match.Groups["line"].Value), int.Parse(match.Groups["column"].Value),
+							match.Groups["code"].Value, match.Groups["text"].Value.Trim()) { IsWarning = isWarning });
+					}
+				}
+				using var process = new Process { StartInfo = psi };
+				process.OutputDataReceived += (sender, e) => { if (e.Data != null) pending.Enqueue((e.Data, stdout)); };
+				process.ErrorDataReceived += (sender, e) => { if (e.Data != null) pending.Enqueue((e.Data, stderr)); };
+				void Drain()
+				{
+					while (pending.TryDequeue(out var item))
+						OnLine(item.Line, item.Buffer);
+				}
+				process.Start();
+				process.BeginOutputReadLine();
+				process.BeginErrorReadLine();
+				var exited = process.WaitForExitAsync(cancellationToken);
+				while (await Task.WhenAny(exited, Task.Delay(200, cancellationToken)) != exited)
+					Drain();
+				await exited;
+				Drain();
+				var results = ParseBuildResults(resultFile);
+				var trace = Environment.GetEnvironmentVariable("OD_ONE_PROCESS_TRACE");
+				if (!string.IsNullOrEmpty(trace)) {
+					File.AppendAllText(trace, "== " + DateTime.Now + " exit " + process.ExitCode + " stdout lines " + stdout.ToString().Split('\n').Length
+						+ "\nresults:\n" + (File.Exists(resultFile) ? File.ReadAllText(resultFile) : "(none)")
+						+ "\nwithErrors: " + string.Join(", ", withErrors.Select(p => p.Name))
+						+ "\nincluded: " + string.Join(", ", included.Select(p => p.FileName.ToString())) + "\n"
+						+ "stdout head:\n" + string.Join("\n", stdout.ToString().Split('\n').Take(40)) + "\n");
+				}
+				if (results == null) {
+					LoggingService.Warn("One-process build produced no result list (exit " + process.ExitCode + "); building one by one. " + FirstLine(stderr.Length > 0 ? stderr.ToString() : stdout.ToString()));
+					return nothing;
+				}
+				foreach (var project in included) {
+					if (results.TryGetValue(project.FileName.ToString(), out var ok) && ok) {
+						FastUpToDateCheck.Succeeded(project, options, buildStartedUtc);
+						built.Add(project);
+					} else {
+						FastUpToDateCheck.Forget(project);
+						if (withErrors.Contains(project))
+							failedWithErrors.Add(project);
+						reportLine(project.Name + " failed in the one-process build ("
+							+ (results.ContainsKey(project.FileName.ToString()) ? "result false" : "no result")
+							+ (withErrors.Contains(project) ? ", errors reported" : ", no errors of its own") + ")");
+					}
+				}
+				reportLine("Built " + built.Count + "/" + included.Count + " projects in one MSBuild process in " + started.ElapsedMilliseconds + " ms.");
+				PerfTimeline.Mark(PerfTimeline.Build, "built-in-one-process", built.Count + "/" + included.Count + " in " + started.ElapsedMilliseconds + "ms");
+				return (built, failedWithErrors);
+			} catch (OperationCanceledException) {
+				throw;
+			} catch (Exception ex) {
+				LoggingService.Warn("One-process build failed: " + ex.Message + "; building one by one.");
+				return nothing;
+			} finally {
+				try {
+					File.Delete(traversal);
+					File.Delete(resultFile);
+					if (createdScratch && !Directory.EnumerateFileSystemEntries(scratch).Any())
+						Directory.Delete(scratch);
+				} catch { }
+			}
+		}
+
+		static bool IsRestoreError(string code) =>
+			code.StartsWith("NU", StringComparison.OrdinalIgnoreCase)
+			|| code is "NETSDK1004" or "NETSDK1005" or "NETSDK1047";
+
+		/// <summary>The project MSBuild appends to a diagnostic: "... [/path/x.csproj::TargetFramework=net10.0]".</summary>
+		static readonly Regex DiagnosticProject = new Regex(@"\[(?<project>[^\[\]]+?)(::[^\]]*)?\]$", RegexOptions.Compiled);
+
+		static string CreateBuildTraversal(IReadOnlyList<IReadOnlyList<string>> waves)
+		{
+			string Escape(string value) => System.Security.SecurityElement.Escape(value);
+			var text = new StringBuilder();
+			text.AppendLine("<Project>");
+			var calls = new List<string>();
+			int index = 0;
+			for (int w = 0; w < waves.Count; w++) {
+				foreach (var file in waves[w]) {
+					// Results-cache hits after the waves; MSBuildLastTaskResult says whether it built.
+					// ErrorAndContinue, not true (= WarnAndContinue): that turns the errors into
+					// warnings and MSBuildLastTaskResult into true, so a failed project was recorded
+					// as built. A project of a wave that never ran gets no line, and so is built on
+					// its own afterwards (or skipped there, when one of its dependencies failed).
+					text.AppendLine("  <Target Name=\"B" + index + "\" Condition=\"'$(ODWave" + w + "Ran)' == 'true'\">");
+					text.AppendLine("    <MSBuild Projects=\"" + Escape(file) + "\" Targets=\"Build\" ContinueOnError=\"ErrorAndContinue\" />");
+					text.AppendLine("    <WriteLinesToFile File=\"$(ODResultFile)\" Lines=\"$(MSBuildLastTaskResult)|" + Escape(file) + "\" />");
+					text.AppendLine("  </Target>");
+					calls.Add("B" + index++);
+				}
+			}
+			// The waves are their own target and the result targets follow it through
+			// DependsOnTargets: a target run by CallTarget does not see properties its caller set.
+			text.AppendLine("  <Target Name=\"BuildAll\" DependsOnTargets=\"Waves;" + string.Join(";", calls) + "\" />");
+			text.AppendLine("  <Target Name=\"Waves\">");
+			for (int w = 0; w < waves.Count; w++) {
+				// After a failure the later waves are not started: they hold its dependents (or would
+				// be built against outputs that are about to be rebuilt).
+				string condition = w == 0 ? "" : " Condition=\"'$(ODFailed)' != 'true'\"";
+				text.AppendLine("    <MSBuild Projects=\"" + string.Join(";", waves[w].Select(Escape)) + "\" Targets=\"Build\" BuildInParallel=\"true\" ContinueOnError=\"ErrorAndContinue\"" + condition + " />");
+				text.AppendLine("    <PropertyGroup" + condition + "><ODWave" + w + "Ran>true</ODWave" + w + "Ran><ODFailed Condition=\"'$(MSBuildLastTaskResult)' == 'false'\">true</ODFailed></PropertyGroup>");
+			}
+			text.AppendLine("  </Target>");
+			text.AppendLine("</Project>");
+			return text.ToString();
+		}
+
+		/// <summary>The traversal's "succeeded|project file" lines, or null if it wrote none.</summary>
+		static Dictionary<string, bool> ParseBuildResults(string resultFile)
+		{
+			if (!File.Exists(resultFile))
+				return null;
+			var results = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+			foreach (var line in File.ReadAllLines(resultFile)) {
+				int bar = line.IndexOf('|');
+				if (bar > 0)
+					results[line.Substring(bar + 1)] = string.Equals(line.Substring(0, bar), "true", StringComparison.OrdinalIgnoreCase);
+			}
+			return results;
 		}
 
 		public async Task<bool> BuildAsync(IProject project, ProjectBuildOptions options, IBuildFeedbackSink feedbackSink, CancellationToken cancellationToken, IEnumerable<string> additionalTargetFiles = null)

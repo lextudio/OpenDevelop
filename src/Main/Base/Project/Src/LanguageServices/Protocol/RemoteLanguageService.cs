@@ -59,11 +59,16 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
         {
             try { await previous.ConfigureAwait(false); } catch { }
             await Protocol.RoslynProjectLoadAsync(snapshot, token).ConfigureAwait(false);
+            // Loading a project reads only its own documents from disk, so only its buffers need
+            // restoring. Restoring every open buffer after every project made the solution push
+            // cost (projects x open documents) round trips (doc/technotes/fast-mode.md).
+            var documents = new HashSet<string>(snapshot.DocumentFileNames, StringComparer.OrdinalIgnoreCase);
             KeyValuePair<DocumentId, string>[] current;
             lock (sync)
             {
-                current = new List<KeyValuePair<DocumentId, string>>(buffers).ToArray();
-                states.Clear();
+                current = new List<KeyValuePair<DocumentId, string>>(buffers).FindAll(buffer => documents.Contains(buffer.Key.FileName)).ToArray();
+                foreach (var key in new List<DocumentId>(states.Keys))
+                    if (documents.Contains(key.FileName)) states.Remove(key);
             }
             // Project preparation reads disk. Restore unsaved buffers after it, in the same
             // ordered stream used by editor updates and solution close.

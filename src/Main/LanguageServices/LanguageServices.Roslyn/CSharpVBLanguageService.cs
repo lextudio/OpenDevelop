@@ -1555,10 +1555,15 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         void AddDocumentCore(RoslynProjectId projectId, string projectFileName, DocumentId documentId, string text, string tfmKey)
         {
             var sourceText = SourceText.From(text);
-            var existing = _workspace.CurrentSolution.Projects
-                .SelectMany(p => p.Documents)
-                .FirstOrDefault(d => d.Project.Id == projectId
-                    && string.Equals(d.FilePath, documentId.FileName, StringComparison.OrdinalIgnoreCase));
+            // The solution's file-path index, not a scan of every document of every project: that
+            // scan ran once per added document, so loading a solution cost (documents)^2 string
+            // compares - most of the ~45 s cold push of OpenDevelop.Mvp (doc/technotes/fast-mode.md).
+            // The index matches paths case-insensitively, as the scan did.
+            var solution = _workspace.CurrentSolution;
+            var existing = solution.GetDocumentIdsWithFilePath(documentId.FileName)
+                .Where(id => id.ProjectId == projectId)
+                .Select(solution.GetDocument)
+                .FirstOrDefault(document => document != null);
             if (existing != null)
             {
                 _workspace.TryApplyChanges(_workspace.CurrentSolution.WithDocumentText(existing.Id, sourceText));

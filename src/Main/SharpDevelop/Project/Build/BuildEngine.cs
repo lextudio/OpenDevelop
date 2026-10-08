@@ -103,7 +103,9 @@ namespace ICSharpCode.SharpDevelop.Project
 		async void RestoreUpFrontThenStartAsync()
 		{
 			try {
+				await CheckUpToDateUpFrontAsync();
 				await RestoreUpFrontAsync();
+				await BuildUpFrontAsync();
 			} catch (OperationCanceledException) {
 				// Cancelled during restore: StartBuildProjects sees the cancellation and finishes.
 			} catch (Exception ex) {
@@ -127,7 +129,10 @@ namespace ICSharpCode.SharpDevelop.Project
 			var solution = SD.ProjectService.CurrentSolution;
 			if (solution?.FileName == null)
 				return;
-			var building = nodeDict.Values.Where(n => n.options != null && n.options.Target != BuildTarget.Clean).ToList();
+			// Projects the fast up-to-date check will skip need no restore either: a no-op build of
+			// an unchanged solution would otherwise spend its longest step restoring it.
+			var building = nodeDict.Values.Where(n => n.options != null && n.options.Target != BuildTarget.Clean
+				&& !(BuildModifiedProjectsOnlyService.ProjectOf(n.project) is IProject p && FastUpToDateCheck.IsUpToDate(p, n.options, out _))).ToList();
 			int solutionProjects = solution.Projects.Count();
 			if (building.Count < 2 || building.Count * 2 < solutionProjects)
 				return;
@@ -150,6 +155,99 @@ namespace ICSharpCode.SharpDevelop.Project
 			PerfTimeline.Mark(PerfTimeline.Build, "restored-up-front",
 				(restored ? "ok" : "failed") + ", " + skipping + "/" + building.Count + " projects skip their own restore");
 		}
+		
+		/// <summary>
+		/// Answers the fast up-to-date check for every project once, off the UI thread and four at
+		/// a time; the restore and one-process decisions and the per-project builds then reuse the
+		/// answers (FastUpToDateCheck keeps them per build). Sequentially on the UI thread this was
+		/// ~3 s of a no-op build of OpenDevelop.Mvp, with the window frozen.
+		/// </summary>
+		Task CheckUpToDateUpFrontAsync()
+		{
+			var work = nodeDict.Values
+				.Where(n => n.options != null && n.options.Target == BuildTarget.Build)
+				.Select(n => (Options: n.options, Project: BuildModifiedProjectsOnlyService.ProjectOf(n.project)))
+				.Where(w => w.Project is MSBuildBasedProject)
+				.ToList();
+			return Task.Run(() => Parallel.ForEach(work, new ParallelOptions { MaxDegreeOfParallelism = 4 },
+				w => FastUpToDateCheck.IsUpToDate(w.Project, w.Options, out _)));
+		}
+		
+		/// <summary>
+		/// Builds the projects that are not up to date in one MSBuild process before the
+		/// per-project scheduling starts; that then finds them up to date and skips them, and
+		/// builds only what failed here on its own (doc/technotes/fast-mode.md).
+		/// OD_ONE_PROCESS_BUILD=0 disables it.
+		/// </summary>
+		async Task BuildUpFrontAsync()
+		{
+			if (!(SD.MSBuildEngine is MinimalMSBuildEngine msbuild))
+				return;
+			if (Environment.GetEnvironmentVariable("OD_ONE_PROCESS_BUILD") == "0")
+				return;
+			var solution = SD.ProjectService.CurrentSolution;
+			if (solution?.FileName == null)
+				return;
+			var candidates = nodeDict.Values
+				.Where(n => n.options != null && n.options.Target == BuildTarget.Build)
+				.Select(n => (Node: n, Project: BuildModifiedProjectsOnlyService.ProjectOf(n.project)))
+				.Where(c => c.Project is MSBuildBasedProject && !FastUpToDateCheck.IsUpToDate(c.Project, c.Node.options, out _))
+				.ToList();
+			if (candidates.Count == 0)
+				return;
+			// Everything above a project that rebuilds goes too: its references' outputs are
+			// about to change, so the check would send it to a process of its own afterwards.
+			// MSBuild skips its compile cheaply when the reference assembly did not change.
+			var stale = new HashSet<BuildNode>(candidates.Select(c => c.Node));
+			bool added;
+			do {
+				added = false;
+				foreach (var node in nodeDict.Values) {
+					if (stale.Contains(node) || node.options == null || node.options.Target != BuildTarget.Build || node.dependencies == null)
+						continue;
+					if (node.dependencies.Any(stale.Contains) && BuildModifiedProjectsOnlyService.ProjectOf(node.project) is MSBuildBasedProject project) {
+						stale.Add(node);
+						candidates.Add((node, project));
+						added = true;
+					}
+				}
+			} while (added);
+			// One project gains nothing from a shared process. Counted after the closure: an edit
+			// to one library leaves only that library stale until it has rebuilt.
+			if (candidates.Count < 3)
+				return;
+			var group = candidates
+				.GroupBy(c => MinimalMSBuildEngine.GlobalPropertiesKey(c.Node.options))
+				.OrderByDescending(g => g.Count())
+				.First()
+				.ToList();
+			var nodeOf = group.ToDictionary(c => c.Project, c => c.Node);
+			// Dependency waves within the group: a project goes one wave after the last of its
+			// dependencies in the group.
+			var inGroup = new HashSet<BuildNode>(group.Select(c => c.Node));
+			var depth = new Dictionary<BuildNode, int>();
+			int Depth(BuildNode node)
+			{
+				if (depth.TryGetValue(node, out var known))
+					return known;
+				depth[node] = 0; // a cycle is reported by the graph builder; do not loop on it here
+				int value = (node.dependencies ?? Array.Empty<BuildNode>()).Where(inGroup.Contains).Select(d => Depth(d) + 1).DefaultIfEmpty(0).Max();
+				return depth[node] = value;
+			}
+			var waves = group.GroupBy(c => Depth(c.Node)).OrderBy(g => g.Key)
+				.Select(g => (IReadOnlyList<IProject>)g.Select(c => c.Project).ToList()).ToList();
+			var result = await msbuild.BuildInOneProcessAsync(solution.FileName.ToString(), waves,
+				group[0].Node.options,
+				line => combinedBuildFeedbackSink?.ReportMessage(new RichText(line)),
+				(project, error) => {
+					results.Add(error);
+					combinedBuildFeedbackSink?.ReportError(error);
+				},
+				progressMonitor.CancellationToken);
+			// Their errors are already in the Error List; building them again would only repeat them.
+			foreach (var project in result.FailedWithErrors)
+				nodeOf[project].failedUpFront = true;
+		}
 		#endregion
 		
 		#region inner class BuildNode
@@ -169,6 +267,8 @@ namespace ICSharpCode.SharpDevelop.Project
 			
 			/// <summary>specifies whether the node produces build errors</summary>
 			internal bool hasErrors;
+			/// <summary>Failed, with its errors reported, in the one-process build; not built again.</summary>
+			internal bool failedUpFront;
 			
 			/// <summary>The number of dependencies missing until this node can be built</summary>
 			internal int outstandingDependencies;
@@ -221,6 +321,11 @@ namespace ICSharpCode.SharpDevelop.Project
 				string name = string.Empty;
 				try {
 					name = project.Name;
+					if (failedUpFront) {
+						ReportMessage(new RichText(name + " failed in the one-process build; its errors are listed above."));
+						Done(false);
+						return;
+					}
 					bool success = await project.BuildAsync(options, this, perNodeProgressMonitor).ConfigureAwait(false);
 					Done(success);
 				} catch (ObjectDisposedException) {

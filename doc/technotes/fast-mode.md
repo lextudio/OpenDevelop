@@ -237,6 +237,114 @@ Forcing it on every read instead cost the warm open its gain (cached push 14.6 s
 externally added file appears in Solution Explorer with the cache on and off; the 32 solution,
 language-service, build and test integration tests pass.
 
+### Whole-solution no-op build: 150 s → 12 s
+
+Measured on OpenDevelop.Mvp (87 projects), the "no-op" build above only held for the 12-project
+chain; across the whole solution the up-to-date check skipped 24-30 projects and a build with
+nothing changed still took 150-170 s. Four causes, all fixed:
+
+- `MinimalMSBuildEngine` passes `BuildingInsideVisualStudio=true`, which makes
+  `_ComputeNonExistentFileProperty` add `__NonExistentFile__` to `CoreCompile`'s outputs (Visual
+  Studio's host compiler does its own change detection). Every project MSBuild did build therefore
+  recompiled and rewrote its assembly, and every dependent then saw a changed input. The legacy
+  in-process engine overrode that target (`MSBuildEngineWorker`); the minimal engine now passes
+  `UseHostCompilerIfAvailable=false`, which turns the target's condition off. This alone was the
+  cascade: the two multi-targeted Designer projects the check cannot judge rebuilt everything above
+  them.
+- Referenced projects outside the solution (OpenDevelop.Mvp.slnx leaves out Widgets,
+  DesignerCanvas, ...) made the check give up. Their project trees, their own references' trees
+  (read from the XML, conditions ignored, a missing file skipped) and the Directory.Build files above
+  them now count as inputs.
+- `OutputAssemblyFullPath` says `X.exe` for an SDK Exe project whose output is `X.dll`, so 11
+  projects were "output missing" forever. The check uses the evaluated `TargetPath`.
+- A nested project's `bin`/`obj` (AspNetCore/Tests) made its parent's tree change on every build;
+  every `bin`/`obj` directory is now skipped.
+
+Multi-targeted projects are judged too (every TFM's `TargetPath` must exist). The up-front restore
+is skipped when every project of the build is up to date. Result: 87/87 projects skipped, 7-9 s; touching, adding or removing one file rebuilds exactly that project.
+
+### One MSBuild process for everything that rebuilds
+
+An edit to a library low in the graph (Designer.Remote) rebuilds ~55 dependents. As ten `dotnet
+build` processes side by side, each repeating evaluation and reference resolution, a project that
+builds in 3-5 s alone took 15-45 s, and the edit took 166-173 s. `BuildEngine.BuildUpFrontAsync`
+now builds every project that is not up to date, plus everything that depends on one of them, in
+one `dotnet msbuild` of a generated traversal (`MinimalMSBuildEngine.BuildInOneProcessAsync`,
+`-m`, under the solution's global.json directory, removed afterwards). Each project that built is
+recorded with the up-to-date check, so the per-project scheduling that follows skips it.
+`OD_ONE_PROCESS_TRACE=<file>` appends what each run saw (result lines, attributed errors).
+
+How the traversal is shaped, and why - each point was a real failure first:
+
+- Projects go in **dependency waves** computed from the build graph, each wave in parallel, with
+  exactly the per-project global properties (`BuildingInsideVisualStudio=true` included). Letting
+  MSBuild follow ProjectReferences instead built a project referenced with different global
+  properties twice at once into the same output (MC1000 on ICSharpCode.Core.Presentation).
+- `ContinueOnError="ErrorAndContinue"`, never `true`: `true` is WarnAndContinue, which turns the
+  errors into warnings and `MSBuildLastTaskResult` into true. A project with a compile error was
+  recorded as built and then skipped as up to date.
+- After a wave with a failure, later waves do not start (they hold its dependents). Projects that
+  did not run get no result and go to the per-project path, which skips dependents of a failure.
+- Per-project results go to a file written by `WriteLinesToFile`, not `-getItem`, which switches
+  the console log off. Result targets follow the waves through `DependsOnTargets`; a target run by
+  `CallTarget` does not see properties its caller set, which silently disabled every result.
+- Diagnostics are attributed to their project from the `[project::props]` suffix MSBuild appends
+  and reported as they arrive, once per project/file/position/code (a multi-targeted project
+  reports each once per TFM). A project that failed with an error of its own is not built again;
+  restore errors (`NU*`, NETSDK1004/1005/1047) do not count, since the traversal restores nothing.
+- Output lines are queued by the process's output threads and reported every 200 ms on the
+  thread that started the build. Reporting a few hundred lines straight from the output threads
+  hung the IDE for good: the UI thread blocked on a lock in LibreWPF's `Visual.GetDpi` during
+  rendering (stack in the investigation notes; a LibreWPF issue worth reporting on its own).
+
+Measured on OpenDevelop.Mvp: the Designer.Remote edit 166-173 s → 86 s, all 56 in one process; a
+build with a compile error in Designer.Remote 80-123 s → 10-14 s, the error listed once; a no-op
+build 3 s. `OD_ONE_PROCESS_BUILD=0` disables it.
+
+The up-to-date answers are now computed once per build, off the UI thread and four projects at a
+time (`BuildEngine.CheckUpToDateUpFrontAsync`), and kept per build until anything is built or
+forgotten; the restore and one-process decisions and the per-project builds reuse them. Before,
+each project's tree walk ran up to three times, sequentially on the UI thread: a no-op build of
+OpenDevelop.Mvp took 9-11 s with the window frozen for ~3 s; it now takes 2.0 s.
+
+For this the check compares a referenced project's output with the write time recorded after the
+build, not with the build's start: inside one process the references are rebuilt during it. The
+default parallel project count is now the core count (was `min(4, cores)`); measured alone it did
+not help the per-project path, whose cost was contention, not the limit.
+
+Batched reference resolution (one `dotnet msbuild` for all projects that miss the cache) must run
+from each project's own global.json directory: the NuGet SDK resolver reads `msbuild-sdks` pins
+from the entry project's directory, so a traversal in the temp directory resolved LibreWPF.Sdk to
+the wrong version and brought NETSDK1047 back for 53 projects. Projects are grouped by their nearest
+global.json; the traversal file is written to that directory's `.od` and removed. With every
+project resolving for real, one batch costs ~32 s for 85 projects (an earlier 12.6 s figure was
+inflated by the failing half), and the cold snapshot phase is ~36-40 s against ~48 s before.
+
+Both Roslyn snapshot caches (the `.od/roslyn-tfm-cache` entries and the warm-start solution
+snapshots) now reject an entry naming a document that no longer exists. A file created and deleted
+around a cache write (the VSEditor tests' scratch files) otherwise stayed in the entry, Roslyn
+failed reading it, and that project lost outline and folding for good.
+
+### Idle CPU: the ProGPU render loop (LibreWPF, not fixed here)
+
+Measured 2026-10-08 on macOS: OpenDevelop sits at ~90-96% CPU while idle, with no solution open.
+`PROGPU_WPF_TRACE_NATIVE_LOOP=1` shows ~61 render callbacks a second, each ~14 ms, with the native
+event poll non-blocking, so the loop never sleeps. Every stack sample is in
+`ProGpuWpfWindowHost.OnRender` -> `_target.DetectWpfSourceChanges()` ->
+`WpfVisualInvalidationTracker.CaptureObjectVisualStateAndChildren`: a walk of the whole visual tree,
+done BEFORE `ShouldRenderFrame` decides whether a frame is needed at all. It also competes with
+everything the UI thread does during a solution open (the cold Roslyn push, ~45 s, did not get
+faster when the host side was optimised). Fix belongs in LibreWPF: skip the walk when no render was
+requested and nothing was invalidated, and block in the native poll when idle.
+
+Two smaller things found on the way, both kept:
+- ILSpy's `SearchPane` subscribed to `CompositionTarget.Rendering` for its whole lifetime (forcing a
+  frame per tick under WPF's rules); it now subscribes only while a search has results to drain.
+  Not the idle cause - the pane is not created at startup - but a real one once it is.
+- `CSharpVBLanguageService.AddDocumentCore` looked for an existing document by scanning every
+  document of every project for each one added; it uses Roslyn's file-path index now. No measurable
+  change in the push (the bottleneck is elsewhere), but it removes a (documents)^2 term.
+
 **Still open, in order of expected gain:**
 
 1. The OpenDevelop.Mvp projects whose reference resolution fails on every open (53, all NETSDK1047,
@@ -247,12 +355,17 @@ language-service, build and test integration tests pass.
    IDE built with a plain `dotnet build` starts and loads the LibreWPF designer; failures 53 → 4,
    the 4 being projects whose own `global.json` pins LibreWPF.Sdk 0.1.0-preview.57). Pending: the
    package version to publish under, the feed, Windows verification, and the preview.57 pins.
-2. Skip the up-front restore when every project of a build is up to date (~1.5 s of a no-op build).
+2. A wave waits for its slowest project; a dependent could start as soon as its own
+   dependencies finish (true graph scheduling inside the one process).
 3. The IDE's working set, about 1 GB on OpenDevelop.Mvp against 716-858 MB in the step 0 baseline,
    is not yet attributed.
 4. ReadyToRun for RoslynHost and the XAML language servers, and one XAML server per runtime.
-5. Re-sending every unsaved editor buffer after each pushed project (`RemoteLanguageService`), which
-   slowed the push with a document open.
+5. Done: `RemoteLanguageService` re-sent every unsaved buffer (and asked each one's status) after
+   every pushed project, (projects x open documents) round trips. It now restores only the loaded
+   project's own documents - the host's `LoadProjectsAsync` reads only those from disk and leaves
+   other projects' documents and loose buffers alone. The 15 language-service integration tests
+   (C#/VB/F# completion, diagnostics, quick info, go to definition, rename, semantic tokens,
+   OpenLens) pass.
 
 Still open in step 2: making the cache committable (keys still contain absolute paths), and
 covering the multi-target path's `TfmEvaluationCache`, which keeps its timestamp key.

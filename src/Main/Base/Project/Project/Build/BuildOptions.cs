@@ -39,7 +39,9 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		public static int DefaultParallelProjectCount {
 			get {
-				return PropertyService.Get("SharpDevelop.BuildParallelProjectCount", Math.Min(4, Environment.ProcessorCount));
+				// One project per core, as Visual Studio's default: each project here is its own
+				// `dotnet build` process, mostly waiting on start-up and evaluation, not on the CPU.
+				return PropertyService.Get("SharpDevelop.BuildParallelProjectCount", Environment.ProcessorCount);
 			}
 			set {
 				PropertyService.Set("SharpDevelop.BuildParallelProjectCount", value);

@@ -118,6 +118,12 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 		}
 		
+		/// <summary>The project a build graph node builds, looking through this service's wrapper.</summary>
+		internal static IProject ProjectOf(IBuildable buildable)
+		{
+			return (buildable is Wrapper wrapper ? wrapper.wrapped : buildable) as IProject;
+		}
+		
 		sealed class DummyBuildable : IBuildable
 		{
 			IBuildable wrappedBuildable;
