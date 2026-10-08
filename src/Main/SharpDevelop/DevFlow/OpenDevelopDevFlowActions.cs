@@ -3188,6 +3188,13 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.process.cpu", Description = "This process's id and total CPU time (ms). Call twice and divide the difference by the elapsed time for its CPU use: what PerformanceGateTests asserts on an idle window. The test fixture's own process handle is `dotnet run`, not this one")]
+		public static string GetProcessCpu()
+		{
+			using var process = System.Diagnostics.Process.GetCurrentProcess();
+			return JsonSerializer.Serialize(new { processId = Environment.ProcessId, totalProcessorTimeMs = process.TotalProcessorTime.TotalMilliseconds });
+		}
+
 		[DevFlowAction("od.perf.timeline", Description = "Milestones (ms since start) of the latest solution open and build, plus this process's working set and managed heap - the baseline and regression signal for doc/technotes/fast-mode.md")]
 		public static string GetPerfTimeline()
 		{
