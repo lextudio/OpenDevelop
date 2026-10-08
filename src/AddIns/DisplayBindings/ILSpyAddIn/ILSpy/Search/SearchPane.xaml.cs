@@ -78,8 +78,27 @@ namespace ICSharpCode.ILSpy.Search
 			ContextMenuProvider.Add(listBox);
 			MessageBus<CurrentAssemblyListChangedEventArgs>.Subscribers += (sender, e) => CurrentAssemblyList_Changed(e);
 			MessageBus<SettingsChangedEventArgs>.Subscribers += (sender, e) => Settings_PropertyChanged(sender, e);
+		}
 
+		// Subscribed only while a search has results to drain: a CompositionTarget.Rendering
+		// handler makes WPF render a frame on every tick, and under ProGPU each frame walks the
+		// whole visual tree - a permanent subscription kept OpenDevelop at ~95% CPU while idle.
+		bool renderingSubscribed;
+
+		void SubscribeRendering()
+		{
+			if (renderingSubscribed)
+				return;
+			renderingSubscribed = true;
 			CompositionTarget.Rendering += UpdateResults;
+		}
+
+		void UnsubscribeRendering()
+		{
+			if (!renderingSubscribed)
+				return;
+			renderingSubscribed = false;
+			CompositionTarget.Rendering -= UpdateResults;
 		}
 
 		void CurrentAssemblyList_Changed(CurrentAssemblyListChangedEventArgs e)
@@ -252,7 +271,15 @@ namespace ICSharpCode.ILSpy.Search
 		void UpdateResults(object sender, EventArgs e)
 		{
 			if (currentSearch == null)
+			{
+				UnsubscribeRendering();
 				return;
+			}
+			if (currentSearch.IsFinished && currentSearch.ResultQueue.Count == 0)
+			{
+				UnsubscribeRendering();
+				return;
+			}
 
 			var timer = Stopwatch.StartNew();
 			int resultsAdded = 0;
@@ -303,6 +330,7 @@ namespace ICSharpCode.ILSpy.Search
 					treeNodeFactory,
 					settingsService);
 				currentSearch = startedSearch;
+				SubscribeRendering();
 
 				await startedSearch.Run();
 			}
@@ -550,7 +578,14 @@ namespace ICSharpCode.ILSpy.Search
 				{
 					// ignore cancellation
 				}
+				finally
+				{
+					IsFinished = true;
+				}
 			}
+
+			/// <summary>True once <see cref="Run"/> has returned; the queue may still hold results.</summary>
+			public volatile bool IsFinished;
 
 			AbstractSearchStrategy GetSearchStrategy(SearchRequest request)
 			{
