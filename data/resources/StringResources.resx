@@ -10231,4 +10231,28 @@ Press Esc to cancel this operation.</value>
   <data name="Global.OK" xml:space="preserve">
     <value>OK</value>
   </data>
+  <data name="ProjectBrowser.Dependencies" xml:space="preserve">
+    <value>Dependencies</value>
+  </data>
+  <data name="ProjectBrowser.Dependencies.Analyzers" xml:space="preserve">
+    <value>Analyzers</value>
+  </data>
+  <data name="ProjectBrowser.Dependencies.Assemblies" xml:space="preserve">
+    <value>Assemblies</value>
+  </data>
+  <data name="ProjectBrowser.Dependencies.FrameworkAssemblies" xml:space="preserve">
+    <value>Framework Assemblies</value>
+  </data>
+  <data name="ProjectBrowser.Dependencies.Frameworks" xml:space="preserve">
+    <value>Frameworks</value>
+  </data>
+  <data name="ProjectBrowser.Dependencies.Packages" xml:space="preserve">
+    <value>Packages</value>
+  </data>
+  <data name="ProjectBrowser.Dependencies.Projects" xml:space="preserve">
+    <value>Projects</value>
+  </data>
+  <data name="ProjectBrowser.Dependencies.Imports" xml:space="preserve">
+    <value>Imports</value>
+  </data>
 </root>

@@ -9837,4 +9837,28 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   <data name="Global.OK" xml:space="preserve">
     <value>确定</value>
   </data>
+  <data name="ProjectBrowser.Dependencies" xml:space="preserve">
+    <value>依赖项</value>
+  </data>
+  <data name="ProjectBrowser.Dependencies.Analyzers" xml:space="preserve">
+    <value>分析器</value>
+  </data>
+  <data name="ProjectBrowser.Dependencies.Assemblies" xml:space="preserve">
+    <value>程序集</value>
+  </data>
+  <data name="ProjectBrowser.Dependencies.FrameworkAssemblies" xml:space="preserve">
+    <value>框架程序集</value>
+  </data>
+  <data name="ProjectBrowser.Dependencies.Frameworks" xml:space="preserve">
+    <value>框架</value>
+  </data>
+  <data name="ProjectBrowser.Dependencies.Packages" xml:space="preserve">
+    <value>包</value>
+  </data>
+  <data name="ProjectBrowser.Dependencies.Projects" xml:space="preserve">
+    <value>项目</value>
+  </data>
+  <data name="ProjectBrowser.Dependencies.Imports" xml:space="preserve">
+    <value>导入</value>
+  </data>
 </root>

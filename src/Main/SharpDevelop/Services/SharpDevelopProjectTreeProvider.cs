@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Project;
 using Microsoft.VisualStudio.ProjectSystem;
 using Microsoft.VisualStudio.ProjectSystem.Tree.Dependencies;
@@ -367,6 +368,9 @@ internal sealed class SharpDevelopProjectTreeProvider : ProjectTreeProviderBase
 
     private static void NormalizeDependencyTree(MutableProjectTree dependenciesNode)
     {
+        // The caption comes from the CPS dependency tree, whose resources are English only, so
+        // override it with the Projects pad's own localized name.
+        dependenciesNode.Caption = ResourceService.GetString("ProjectBrowser.Dependencies");
         dependenciesNode.Flags += ProjectTreeFlags.Common.DependenciesFolder;
         NormalizeDependencyChildren(dependenciesNode);
     }
@@ -377,9 +381,26 @@ internal sealed class SharpDevelopProjectTreeProvider : ProjectTreeProviderBase
         {
             child.Flags += GetDependencyGroupFlag(child.Caption);
             child.Flags += GetDependencyLeafFlag(child.BrowseObjectProperties?.ItemType);
+            // The group captions come from the CPS dependency tree, whose resources are English
+            // only, so translate them here. The leaf nodes below a group carry package, assembly or
+            // framework names, which are not translated.
+            child.Caption = LocalizeDependencyGroup(child.Caption);
             NormalizeDependencyChildren(child);
         }
     }
+
+    private static string LocalizeDependencyGroup(string caption) => caption switch
+    {
+        "Analyzers" => ResourceService.GetString("ProjectBrowser.Dependencies.Analyzers"),
+        "Assemblies" => ResourceService.GetString("ProjectBrowser.Dependencies.Assemblies"),
+        "Framework Assemblies" => ResourceService.GetString("ProjectBrowser.Dependencies.FrameworkAssemblies"),
+        "Frameworks" => ResourceService.GetString("ProjectBrowser.Dependencies.Frameworks"),
+        "Packages" => ResourceService.GetString("ProjectBrowser.Dependencies.Packages"),
+        "Projects" => ResourceService.GetString("ProjectBrowser.Dependencies.Projects"),
+        "Imports" => ResourceService.GetString("ProjectBrowser.Dependencies.Imports"),
+        // "COM" and "SDK" read the same in every language.
+        _ => caption,
+    };
 
     private IEnumerable<string> GetTargetFrameworks(string projectFile)
     {
