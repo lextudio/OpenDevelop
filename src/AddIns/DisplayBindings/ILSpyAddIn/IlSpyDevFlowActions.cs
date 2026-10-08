@@ -33,8 +33,7 @@ namespace ICSharpCode.ILSpyAddIn
 		[DevFlowAction("od.ilspy.show-pane", Description = "Activate a hosted ILSpy pane by title, re-registering it with the dock so AvalonDock deterministically materializes its anchorable content (needed before inspecting panes via od.ui.tree, since runtime-added panes can fail to materialize depending on dock state)")]
 		public static string ShowPane(string title)
 		{
-			var pane = IlSpyWorkspaceHost.Panes.FirstOrDefault(p =>
-				string.Equals(p.Title, title, StringComparison.OrdinalIgnoreCase));
+			var pane = IlSpyWorkspaceHost.FindPane(title);
 			if (pane == null)
 				return JsonSerializer.Serialize(new { found = false, title });
 
@@ -125,8 +124,7 @@ namespace ICSharpCode.ILSpyAddIn
 		[DevFlowAction("od.ilspy.pane-position", Description = "Report where a hosted ILSpy pad's anchorable actually sits in the live AvalonDock layout (side, named LayoutAnchorablePane, tab index, floating/auto-hidden/hidden) - used to catch the \"layout lost\" failure mode (pad visible/titled/content-correct but docked in the wrong place, or floating/auto-hidden) that plain visibility/title checks can't")]
 		public static string GetPanePosition(string title)
 		{
-			var pane = IlSpyWorkspaceHost.Panes.FirstOrDefault(p =>
-				string.Equals(p.Title, title, StringComparison.OrdinalIgnoreCase));
+			var pane = IlSpyWorkspaceHost.FindPane(title);
 			if (pane == null)
 				return JsonSerializer.Serialize(new { found = false, error = "No ILSpy pane titled '" + title + "'." });
 			return JsonSerializer.Serialize(ReadPanePosition(pane.ContentId));
@@ -135,8 +133,7 @@ namespace ICSharpCode.ILSpyAddIn
 		[DevFlowAction("od.ilspy.activate-pane", Description = "Activate a hosted ILSpy pane by title WITHOUT re-registering it (unlike od.ilspy.show-pane, which removes and re-adds the anchorable). Re-registration is destructive: after the first show-pane, switching to a different pane fails to materialize it at all, so this is the path to use when a pane needs activating more than once in a session")]
 		public static string ActivatePane(string title)
 		{
-			var pane = IlSpyWorkspaceHost.Panes.FirstOrDefault(p =>
-				string.Equals(p.Title, title, StringComparison.OrdinalIgnoreCase));
+			var pane = IlSpyWorkspaceHost.FindPane(title);
 			if (pane == null)
 				return JsonSerializer.Serialize(new { found = false, title });
 

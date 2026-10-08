@@ -77,7 +77,7 @@ namespace ICSharpCode.ILSpyAddIn
 			// .NavigateToModule (doc/technotes/ilspy.md "Unify C# document hosting" step 3), so this
 			// was a real but previously-unexercised bug (confirmed live: NullReferenceException).
 			this.TitleName = typeName.IsWholeModule
-				? "[Module]"
+				? "[" + ResourceService.GetString("ILSpy.ModuleTab") + "]"
 				: "[" + ReflectionHelper.SplitTypeParameterCountFromReflectionName(typeName.Type.Name) + "]";
 
 			this.DecompilationTask = InitializeView();

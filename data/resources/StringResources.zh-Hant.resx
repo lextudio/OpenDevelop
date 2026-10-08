@@ -4562,6 +4562,9 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>設定ILSpy路徑</value>
   </data>
   <data name="ILSpy.Toolbar.Back" xml:space="preserve"><value>上一頁</value></data>
+  <data name="ILSpy.Toolbar.OpenAssembly" xml:space="preserve"><value>開啟組件...</value></data>
+  <data name="ILSpy.ModuleTab" xml:space="preserve"><value>模組</value></data>
+  <data name="ILSpy.LayoutName" xml:space="preserve"><value>ILSpy 版面配置</value></data>
   <data name="ILSpy.Toolbar.Forward" xml:space="preserve"><value>下一頁</value></data>
   <data name="ILSpy.Toolbar.ReloadAssemblies" xml:space="preserve"><value>重新載入所有組件</value></data>
   <data name="ILSpy.Toolbar.SortAssemblies" xml:space="preserve"><value>依名稱排序組件清單</value></data>

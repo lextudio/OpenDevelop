@@ -67,19 +67,24 @@ namespace ICSharpCode.ILSpy.Search
 			e.SessionSettings.SelectedSearchMode = SessionSettings.SelectedSearchMode;
 		}
 
+		// Upstream ILSpy hardcodes these English names; the resource lookup goes through the
+		// ResourceManager because Resources.Designer.cs is checked in and not regenerated.
+		static string SearchModeName(string key, string english) =>
+			Properties.Resources.ResourceManager.GetString("SearchMode_" + key, Properties.Resources.Culture) ?? english;
+
 		public SearchModeModel[] SearchModes { get; } = [
-			new() { Mode = SearchMode.TypeAndMember, Image = Images.Library, Name = "Types and Members" },
-			new() { Mode = SearchMode.Type, Image = Images.Class, Name = "Type" },
-			new() { Mode = SearchMode.Member, Image = Images.Property, Name = "Member" },
-			new() { Mode = SearchMode.Method, Image = Images.Method, Name = "Method" },
-			new() { Mode = SearchMode.Field, Image = Images.Field, Name = "Field" },
-			new() { Mode = SearchMode.Property, Image = Images.Property, Name = "Property" },
-			new() { Mode = SearchMode.Event, Image = Images.Event, Name = "Event" },
-			new() { Mode = SearchMode.Literal, Image = Images.Literal, Name = "Constant" },
-			new() { Mode = SearchMode.Token, Image = Images.Library, Name = "Metadata Token" },
-			new() { Mode = SearchMode.Resource, Image = Images.Resource, Name = "Resource" },
-			new() { Mode = SearchMode.Assembly, Image = Images.Assembly, Name = "Assembly" },
-			new() { Mode = SearchMode.Namespace, Image = Images.Namespace, Name = "Namespace" }
+			new() { Mode = SearchMode.TypeAndMember, Image = Images.Library, Name = SearchModeName("TypesAndMembers", "Types and Members") },
+			new() { Mode = SearchMode.Type, Image = Images.Class, Name = SearchModeName("Type", "Type") },
+			new() { Mode = SearchMode.Member, Image = Images.Property, Name = SearchModeName("Member", "Member") },
+			new() { Mode = SearchMode.Method, Image = Images.Method, Name = SearchModeName("Method", "Method") },
+			new() { Mode = SearchMode.Field, Image = Images.Field, Name = SearchModeName("Field", "Field") },
+			new() { Mode = SearchMode.Property, Image = Images.Property, Name = SearchModeName("Property", "Property") },
+			new() { Mode = SearchMode.Event, Image = Images.Event, Name = SearchModeName("Event", "Event") },
+			new() { Mode = SearchMode.Literal, Image = Images.Literal, Name = SearchModeName("Constant", "Constant") },
+			new() { Mode = SearchMode.Token, Image = Images.Library, Name = SearchModeName("MetadataToken", "Metadata Token") },
+			new() { Mode = SearchMode.Resource, Image = Images.Resource, Name = SearchModeName("Resource", "Resource") },
+			new() { Mode = SearchMode.Assembly, Image = Images.Assembly, Name = SearchModeName("Assembly", "Assembly") },
+			new() { Mode = SearchMode.Namespace, Image = Images.Namespace, Name = SearchModeName("Namespace", "Namespace") }
 		];
 
 		public SessionSettings SessionSettings => settingsService.SessionSettings;

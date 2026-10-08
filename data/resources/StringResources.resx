@@ -5186,6 +5186,9 @@ Unable to find 'WelcomeDialogId' in Dialogs.wxs</comment>
     <value>Set path to ILSpy</value>
   </data>
   <data name="ILSpy.Toolbar.Back" xml:space="preserve"><value>Back</value></data>
+  <data name="ILSpy.Toolbar.OpenAssembly" xml:space="preserve"><value>Open assembly...</value></data>
+  <data name="ILSpy.ModuleTab" xml:space="preserve"><value>Module</value></data>
+  <data name="ILSpy.LayoutName" xml:space="preserve"><value>ILSpy layout</value></data>
   <data name="ILSpy.Toolbar.Forward" xml:space="preserve"><value>Forward</value></data>
   <data name="ILSpy.Toolbar.ReloadAssemblies" xml:space="preserve"><value>Reload all assemblies</value></data>
   <data name="ILSpy.Toolbar.SortAssemblies" xml:space="preserve"><value>Sort assembly list by name</value></data>

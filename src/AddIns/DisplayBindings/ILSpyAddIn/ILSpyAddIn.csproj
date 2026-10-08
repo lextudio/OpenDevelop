@@ -226,6 +226,15 @@
       <Generator>PublicResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
+    <!-- The translations need the same name with their culture in it, or their satellite
+         assembly holds "ICSharpCode.ILSpyAddIn.ILSpy.Properties.Resources.<culture>.resources",
+         which the ResourceManager never asks for, and every ILSpy string stays English.
+         zh-Hans is upstream ILSpy's last translation (icsharpcode/ILSpy 0167489f44, since removed
+         there) plus the keys added after it; zh-Hant is converted from it (OpenCC s2twp, with
+         OpenDevelop's terms: 組件, 清單, 執行階段). -->
+    <EmbeddedResource Remove="ILSpy\Properties\Resources.*.resx" />
+    <EmbeddedResource Include="ILSpy\Properties\Resources.zh-Hans.resx" LogicalName="ICSharpCode.ILSpy.Properties.Resources.zh-Hans.resources" WithCulture="true" Culture="zh-Hans" DependentUpon="Resources.resx" />
+    <EmbeddedResource Include="ILSpy\Properties\Resources.zh-Hant.resx" LogicalName="ICSharpCode.ILSpy.Properties.Resources.zh-Hant.resources" WithCulture="true" Culture="zh-Hant" DependentUpon="Resources.resx" />
 
     <!-- Root-level supporting files (excluding App/MainWindow/AboutPage/Program). -->
     <!-- ILSpyTraceListener.cs excluded: only used by App.xaml.cs (excluded) and CustomDialog.cs

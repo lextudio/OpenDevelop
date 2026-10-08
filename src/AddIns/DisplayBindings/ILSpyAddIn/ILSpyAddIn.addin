@@ -81,7 +81,7 @@
 		<ToolbarItem id = "NavigationSeparator" type = "Separator"/>
 		<ToolbarItem id = "OpenAssembly"
 		             icon = "Assembly"
-		             tooltip = "Open Assembly..."
+		             tooltip = "${res:ILSpy.Toolbar.OpenAssembly}"
 		             class = "ICSharpCode.ILSpyAddIn.Commands.OpenAssemblyCommand"/>
 		<ToolbarItem id = "Refresh"
 		             type = "Custom"

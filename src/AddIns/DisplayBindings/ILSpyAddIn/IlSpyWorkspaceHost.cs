@@ -144,11 +144,30 @@ namespace ICSharpCode.ILSpyAddIn
 		/// </summary>
 		public static void ActivatePane(string title)
 		{
-			var pane = Panes.FirstOrDefault(p => string.Equals(p.Title, title, StringComparison.OrdinalIgnoreCase));
+			var pane = FindPane(title);
 			if (pane == null)
 				return;
 			pane.Show();
 			pane.IsActive = true;
+		}
+
+		// The panes' English names, kept as stable aliases: the titles themselves are now
+		// localized (ILSpy's own Resources), so "Search" no longer matches a zh-Hant title.
+		static readonly Dictionary<string, string> paneAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+			{ "Assemblies", ICSharpCode.ILSpy.AssemblyTree.AssemblyTreeModel.PaneContentId },
+			{ "Search", ICSharpCode.ILSpy.Search.SearchPaneModel.PaneContentId },
+			{ "Analyze", ICSharpCode.ILSpy.Analyzers.AnalyzerTreeViewModel.PaneContentId },
+			{ "Debug Steps", ICSharpCode.ILSpy.ViewModels.DebugStepsPaneModel.PaneContentId },
+		};
+
+		/// <summary>A pane by its content id, its English name, or its (localized) title.</summary>
+		public static ICSharpCode.ILSpy.ViewModels.ToolPaneModel FindPane(string nameOrId)
+		{
+			if (string.IsNullOrEmpty(nameOrId))
+				return null;
+			var contentId = paneAliases.TryGetValue(nameOrId, out var alias) ? alias : nameOrId;
+			return Panes.FirstOrDefault(p => string.Equals(p.ContentId, contentId, StringComparison.OrdinalIgnoreCase))
+				?? Panes.FirstOrDefault(p => string.Equals(p.Title, nameOrId, StringComparison.OrdinalIgnoreCase));
 		}
 
 		/// <summary>
@@ -289,12 +308,10 @@ namespace ICSharpCode.ILSpyAddIn
 
 			decompilerTextView = new DecompilerTextView(exportProvider);
 
-			// SearchPaneModel/AnalyzerTreeViewModel set their own real ILSpy titles ("Search",
-			// "Analyze") in their constructors, so no override is needed for them. AssemblyTreeModel
-			// sets Title = Resources.Assemblies (an ILSpy-localized string, not necessarily
-			// "Assemblies") - override it explicitly, matching what the (now-removed)
-			// IlSpyToolPaneAdapter used to do for this pane.
-			assemblyTreeModel.Title = "Assemblies";
+			// All four titles come from ILSpy's own localized Resources (Properties/Resources.<culture>.resx),
+			// like SearchPaneModel/AnalyzerTreeViewModel set theirs. Code that looks a pane up goes
+			// through FindPane (content id or English alias), never through the displayed title.
+			assemblyTreeModel.Title = ICSharpCode.ILSpy.Properties.Resources.Assemblies;
 			assembliesPane = assemblyTreeModel;
 			searchPane = searchPaneModel;
 			analyzerPane = analyzerTreeViewModel;

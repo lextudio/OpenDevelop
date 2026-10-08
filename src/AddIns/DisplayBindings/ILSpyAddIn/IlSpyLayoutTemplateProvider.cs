@@ -26,6 +26,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.ILSpyAddIn
@@ -40,7 +41,7 @@ namespace ICSharpCode.ILSpyAddIn
 		{
 			// DisplayName matches the shell's own entries ("Default layout"/"Debug layout"/...)
 			// whose displayName comes from LayoutConfig.xml resource keys.
-			yield return new LayoutTemplateDescriptor("ILSpy", "ILSpy layout", TemplateFilePath, readOnly: false,
+			yield return new LayoutTemplateDescriptor("ILSpy", ResourceService.GetString("ILSpy.LayoutName"), TemplateFilePath, readOnly: false,
 				onActivating: IlSpyWorkspaceHost.EnsureInitialized);
 		}
 	}
