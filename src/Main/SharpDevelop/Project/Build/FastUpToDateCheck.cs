@@ -117,6 +117,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			System.Threading.Interlocked.Increment(ref generation);
 			if (!Enabled || options.Target == BuildTarget.Clean)
 				return;
+			(project as MSBuildBasedProject)?.RefreshEvaluation();
 			var inputs = Collect(project, options, out _);
 			var path = RecordPath(project);
 			if (inputs == null || path == null)

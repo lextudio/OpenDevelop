@@ -526,6 +526,25 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// </summary>
 		static readonly bool CacheTargetFrameworkEvaluations = Environment.GetEnvironmentVariable("OD_CACHE_TFM_EVALUATIONS") != "0";
 
+		DateTime currentlyOpenEvaluatedAt = DateTime.MinValue;
+
+		/// <summary>
+		/// Re-evaluates the kept evaluations on their next use. A build changes what a project
+		/// imports - restore writes obj/*.nuget.g.props/.targets - so whoever records a project's
+		/// inputs right after a build (FastUpToDateCheck) must not read them from an evaluation
+		/// made before it.
+		/// </summary>
+		public void RefreshEvaluation()
+		{
+			lock (SyncRoot) {
+				currentlyOpenProject?.MarkDirty();
+				currentlyOpenEvaluatedAt = DateTime.UtcNow;
+				foreach (var key in new List<string>(targetFrameworkProjects.Keys)) {
+					targetFrameworkProjects[key].MarkDirty();
+					targetFrameworkEvaluatedAt[key] = DateTime.UtcNow;
+				}
+			}
+		}
 		readonly Dictionary<string, MSBuild.Project> targetFrameworkProjects = new Dictionary<string, MSBuild.Project>(StringComparer.OrdinalIgnoreCase);
 
 		readonly Dictionary<string, DateTime> targetFrameworkEvaluatedAt = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
@@ -628,6 +647,23 @@ namespace ICSharpCode.SharpDevelop.Project
 					return new ConfiguredProject(this, currentlyOpenProject, false);
 				}
 				
+				// A single-target project asked for its own TargetFramework: that IS the active
+				// evaluation. A second one with TargetFramework as a global property evaluated every
+				// project twice and kept both - 176 MSBuild projects (~45 MB of items and metadata) for
+				// OpenDevelop.Mvp's 87 (doc/technotes/fast-mode.md).
+				if (!string.IsNullOrEmpty(targetFramework) && currentlyOpenProject != null
+				    && new ConfigurationAndPlatform(configuration, platform) == this.ActiveConfiguration
+				    && string.IsNullOrEmpty(currentlyOpenProject.GetPropertyValue("TargetFrameworks"))
+				    && string.Equals(currentlyOpenProject.GetPropertyValue("TargetFramework"), targetFramework, StringComparison.OrdinalIgnoreCase)) {
+					// Same rule as a kept TFM evaluation below: item lists must see added files.
+					if (!reuseTargetFrameworkEvaluation && ProjectTreeChangedSince(currentlyOpenEvaluatedAt)) {
+						currentlyOpenProject.MarkDirty();
+						currentlyOpenEvaluatedAt = DateTime.UtcNow;
+					}
+					currentlyOpenProject.ReevaluateIfNecessary();
+					return new ConfiguredProject(this, currentlyOpenProject, false);
+				}
+
 				// The active configuration with a pinned TargetFramework: reuse its evaluation.
 				bool cacheTargetFramework = CacheTargetFrameworkEvaluations && !string.IsNullOrEmpty(targetFramework)
 					&& new ConfigurationAndPlatform(configuration, platform) == this.ActiveConfiguration;
@@ -656,8 +692,10 @@ namespace ICSharpCode.SharpDevelop.Project
 					globalProps["TargetFramework"] = targetFramework;
 				var evaluationStartedUtc = DateTime.UtcNow; // before: a file added mid-evaluation must count as newer
 				MSBuild.Project project = MSBuildInternals.LoadProject(MSBuildProjectCollection, projectFile, globalProps);
-				if (openCurrentConfiguration)
+				if (openCurrentConfiguration) {
 					currentlyOpenProject = project;
+					currentlyOpenEvaluatedAt = evaluationStartedUtc;
+				}
 				else if (cacheTargetFramework) {
 					targetFrameworkProjects[targetFrameworkKey] = project;
 					targetFrameworkEvaluatedAt[targetFrameworkKey] = evaluationStartedUtc;
