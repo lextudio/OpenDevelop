@@ -132,7 +132,7 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 	public sealed class IlSpyAssemblyListComboBox : IlSpyToolBarComboBoxBase
 	{
 		protected override double ComboWidth => 150;
-		protected override string ToolTipText => "Select assembly list";
+		protected override string ToolTipText => ResourceService.GetString("ILSpy.Toolbar.SelectAssemblyList");
 
 		protected override void Bind()
 		{
@@ -170,7 +170,7 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 	public sealed class IlSpyManageAssemblyListsToolBarButton : IlSpyToolBarButtonBase
 	{
 		protected override string IconName => "Library_16x";
-		protected override string ToolTipText => "Manage assembly lists";
+		protected override string ToolTipText => ResourceService.GetString("ILSpy.Toolbar.ManageAssemblyLists");
 
 		protected override void Execute()
 		{
@@ -191,7 +191,7 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 	public sealed class IlSpyLanguageComboBox : IlSpyToolBarComboBoxBase
 	{
 		protected override double ComboWidth => 110;
-		protected override string ToolTipText => "Select language";
+		protected override string ToolTipText => ResourceService.GetString("ILSpy.Toolbar.SelectLanguage");
 
 		protected override void Bind()
 		{
@@ -234,7 +234,7 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 		IlSpyLanguage boundLanguage;
 
 		protected override double ComboWidth => 130;
-		protected override string ToolTipText => "Select language version";
+		protected override string ToolTipText => ResourceService.GetString("ILSpy.Toolbar.SelectLanguageVersion");
 
 		protected override void Bind()
 		{

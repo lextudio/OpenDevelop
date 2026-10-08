@@ -69,12 +69,21 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
 
         propertyGrid.IsCategorized = true;
         propertyGrid.ShowSearchBox = true;
+        propertyGrid.PropertyChanged += (_, e) => {
+            if (e.PropertyName == nameof(XceedPropertyGrid.ViewMode))
+                UpdateFilterWatermark();
+        };
         // The grid already sits inside the AvalonDock pane's own bordered ContentPanel
         // (AnchorablePaneControlStyle, src/Libraries/AvalonDock/.../Themes/generic.xaml) - its
         // own default 1px BorderThickness (Xceed's PropertyGrid style) just doubled that line.
         // Zeroing the instance property (not overriding the Style/Template) leaves the rest of
         // the default look intact.
         propertyGrid.BorderThickness = new Thickness(0);
+        UpdateFilterWatermark();
+        // The Xceed PropertyGrid template hard-codes its four toolbar tooltips in English.
+        // Keep the third-party template intact (including its theme resources) and replace just
+        // those instantiated controls with OpenDevelop-localized strings once it is realized.
+        propertyGrid.Loaded += OnPropertyGridLoaded;
         propertyGridContainer.Children.Add(propertyGrid);
         contentPresenter.Content = propertyGridContainer;
         Content = contentPresenter;
@@ -89,6 +98,36 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
         propertyGrid.PreviewMouseLeftButtonDown += OnGridPreviewMouseLeftButtonDown;
 
         SD.Services.AddService(typeof(IPropertyPadHost), this);
+    }
+
+    void OnPropertyGridLoaded(object sender, RoutedEventArgs e)
+    {
+        LocalizeToolbarToolTips(propertyGrid);
+    }
+
+    void UpdateFilterWatermark()
+    {
+        propertyGrid.FilterWatermark = propertyGrid.ViewMode == Xceed.Wpf.Toolkit.PropertyGrid.PropertyGridMode.Events
+            ? ResourceService.GetString("PropertyPad.SearchEvents")
+            : ResourceService.GetString("PropertyPad.SearchProperties");
+    }
+
+    static void LocalizeToolbarToolTips(DependencyObject element)
+    {
+        if (element is RadioButton button && button.ToolTip is string toolTip) {
+            string resourceKey = toolTip switch {
+                "Categorized" => "PropertyPad.Toolbar.Categorized",
+                "Alphabetical" => "PropertyPad.Toolbar.Alphabetical",
+                "Properties" => "PropertyPad.Toolbar.Properties",
+                "Events" => "PropertyPad.Toolbar.Events",
+                _ => null
+            };
+            if (resourceKey != null)
+                button.ToolTip = ResourceService.GetString(resourceKey);
+        }
+
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++)
+            LocalizeToolbarToolTips(VisualTreeHelper.GetChild(element, i));
     }
 
     DateTime lastEventsRowPressUtc = DateTime.MinValue;

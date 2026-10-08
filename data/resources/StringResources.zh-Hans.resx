@@ -4561,6 +4561,19 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
   <data name="ILSpyAddIn.SetILSpyPathDialogTitle" xml:space="preserve">
     <value>设置ILSpy路径</value>
   </data>
+  <data name="ILSpy.Toolbar.Back" xml:space="preserve"><value>后退</value></data>
+  <data name="ILSpy.Toolbar.Forward" xml:space="preserve"><value>前进</value></data>
+  <data name="ILSpy.Toolbar.ReloadAssemblies" xml:space="preserve"><value>重新加载所有程序集</value></data>
+  <data name="ILSpy.Toolbar.SortAssemblies" xml:space="preserve"><value>按名称排序程序集列表</value></data>
+  <data name="ILSpy.Toolbar.CollapseTreeNodes" xml:space="preserve"><value>折叠树节点</value></data>
+  <data name="ILSpy.Toolbar.SearchAssemblies" xml:space="preserve"><value>搜索程序集</value></data>
+  <data name="ILSpy.Toolbar.ShowPublicOnly" xml:space="preserve"><value>显示公共类型和成员</value></data>
+  <data name="ILSpy.Toolbar.ShowPublicAndInternal" xml:space="preserve"><value>显示公共和内部类型及成员</value></data>
+  <data name="ILSpy.Toolbar.ShowAll" xml:space="preserve"><value>显示所有类型和成员</value></data>
+  <data name="ILSpy.Toolbar.SelectAssemblyList" xml:space="preserve"><value>选择程序集列表</value></data>
+  <data name="ILSpy.Toolbar.ManageAssemblyLists" xml:space="preserve"><value>管理程序集列表</value></data>
+  <data name="ILSpy.Toolbar.SelectLanguage" xml:space="preserve"><value>选择语言</value></data>
+  <data name="ILSpy.Toolbar.SelectLanguageVersion" xml:space="preserve"><value>选择语言版本</value></data>
   <data name="Internal.ExternalTool.CantLoadToolConfigWarining" xml:space="preserve">
     <value>无法加载外部工具配置文件</value>
   </data>
@@ -6131,6 +6144,15 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   </data>
   <data name="StartPage.StartPageContentName" xml:space="preserve">
     <value>起始页</value>
+  </data>
+  <data name="StartPage.Copyright" xml:space="preserve">
+    <value>© 2000–2026 AlphaSierraPapa（SharpDevelop 团队）。© 2026 LeXtudio Inc.</value>
+  </data>
+  <data name="StartPage.License" xml:space="preserve">
+    <value>OpenDevelop 采用 MIT 许可证。</value>
+  </data>
+  <data name="StartPage.Version" xml:space="preserve">
+    <value>OpenDevelop {0}</value>
   </data>
   <data name="StatusBarService.CaretModes.Insert" xml:space="preserve">
     <value>插入</value>
@@ -9638,6 +9660,24 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   </data>
   <data name="Pad.Properties.Title" xml:space="preserve">
     <value>属性</value>
+  </data>
+  <data name="PropertyPad.Toolbar.Categorized" xml:space="preserve">
+    <value>按类别</value>
+  </data>
+  <data name="PropertyPad.Toolbar.Alphabetical" xml:space="preserve">
+    <value>按字母顺序</value>
+  </data>
+  <data name="PropertyPad.Toolbar.Properties" xml:space="preserve">
+    <value>属性</value>
+  </data>
+  <data name="PropertyPad.Toolbar.Events" xml:space="preserve">
+    <value>事件</value>
+  </data>
+  <data name="PropertyPad.SearchProperties" xml:space="preserve">
+    <value>搜索属性</value>
+  </data>
+  <data name="PropertyPad.SearchEvents" xml:space="preserve">
+    <value>搜索事件</value>
   </data>
   <data name="Pad.SearchResults.Title" xml:space="preserve">
     <value>搜索结果</value>

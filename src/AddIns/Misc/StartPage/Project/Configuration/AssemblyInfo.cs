@@ -25,7 +25,7 @@ using System.Reflection;
 // you compile.
 
 [assembly: AssemblyTitle("StartPage")]
-[assembly: AssemblyDescription("VS style Start Page for #develop")]
+[assembly: AssemblyDescription("Visual Studio-style Start Page for OpenDevelop")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]

@@ -100,7 +100,7 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 	public sealed class IlSpyBrowseBackToolBarButton : IlSpyToolBarButtonBase
 	{
 		protected override string IconName => "Backward_16x";
-		protected override string ToolTipText => "Back";
+		protected override string ToolTipText => ResourceService.GetString("ILSpy.Toolbar.Back");
 		protected override bool CanExecute() => IlSpyWorkspaceHost.AssemblyTreeModel.CanNavigateBack;
 		protected override void Execute() => IlSpyWorkspaceHost.AssemblyTreeModel.NavigateHistory(forward: false);
 	}
@@ -109,7 +109,7 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 	public sealed class IlSpyBrowseForwardToolBarButton : IlSpyToolBarButtonBase
 	{
 		protected override string IconName => "Forward_16x";
-		protected override string ToolTipText => "Forward";
+		protected override string ToolTipText => ResourceService.GetString("ILSpy.Toolbar.Forward");
 		protected override bool CanExecute() => IlSpyWorkspaceHost.AssemblyTreeModel.CanNavigateForward;
 		protected override void Execute() => IlSpyWorkspaceHost.AssemblyTreeModel.NavigateHistory(forward: true);
 	}
@@ -118,7 +118,7 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 	public sealed class IlSpyRefreshToolBarButton : IlSpyToolBarButtonBase
 	{
 		protected override string IconName => "Refresh_16x";
-		protected override string ToolTipText => "Reload all assemblies";
+		protected override string ToolTipText => ResourceService.GetString("ILSpy.Toolbar.ReloadAssemblies");
 		protected override void Execute() => IlSpyWorkspaceHost.AssemblyTreeModel.Refresh();
 	}
 
@@ -126,7 +126,7 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 	public sealed class IlSpySortAssemblyListToolBarButton : IlSpyToolBarButtonBase
 	{
 		protected override string IconName => "SortAscending_16x";
-		protected override string ToolTipText => "Sort assembly list by name";
+		protected override string ToolTipText => ResourceService.GetString("ILSpy.Toolbar.SortAssemblies");
 		protected override void Execute() => IlSpyWorkspaceHost.AssemblyTreeModel.SortAssemblyList();
 	}
 
@@ -134,7 +134,7 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 	public sealed class IlSpyCollapseAllToolBarButton : IlSpyToolBarButtonBase
 	{
 		protected override string IconName => "CollapseAll_16x";
-		protected override string ToolTipText => "Collapse tree nodes";
+		protected override string ToolTipText => ResourceService.GetString("ILSpy.Toolbar.CollapseTreeNodes");
 		protected override void Execute() => IlSpyWorkspaceHost.AssemblyTreeModel.CollapseAll();
 	}
 
@@ -146,7 +146,7 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 	public sealed class IlSpyShowSearchToolBarButton : IlSpyToolBarButtonBase
 	{
 		protected override string IconName => "Search";
-		protected override string ToolTipText => "Search assemblies";
+		protected override string ToolTipText => ResourceService.GetString("ILSpy.Toolbar.SearchAssemblies");
 		protected override void Execute() => IlSpyWorkspaceHost.ActivatePane("Search");
 	}
 
@@ -252,7 +252,7 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 		public IlSpyShowPublicOnlyToggle() => IlSpyApiVisibilityToggles.Register(this);
 		// Plain (unadorned) VS2017 member icon - in VS iconography that means public.
 		protected override string IconName => "Method_16x";
-		protected override string ToolTipText => "Show public types and members";
+		protected override string ToolTipText => ResourceService.GetString("ILSpy.Toolbar.ShowPublicOnly");
 		protected override ICSharpCode.ILSpyX.ApiVisibility Level => ICSharpCode.ILSpyX.ApiVisibility.PublicOnly;
 	}
 
@@ -262,7 +262,7 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 		public IlSpyShowPublicAndInternalToggle() => IlSpyApiVisibilityToggles.Register(this);
 		// "Friend" is VS iconography's name for internal - the lowest visibility this level includes.
 		protected override string IconName => "MethodFriend_16x";
-		protected override string ToolTipText => "Show public and internal types and members";
+		protected override string ToolTipText => ResourceService.GetString("ILSpy.Toolbar.ShowPublicAndInternal");
 		protected override ICSharpCode.ILSpyX.ApiVisibility Level => ICSharpCode.ILSpyX.ApiVisibility.PublicAndInternal;
 	}
 
@@ -272,7 +272,7 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 		public IlSpyShowAllToggle() => IlSpyApiVisibilityToggles.Register(this);
 		// Private is the lowest visibility this level includes.
 		protected override string IconName => "MethodPrivate_16x";
-		protected override string ToolTipText => "Show all types and members";
+		protected override string ToolTipText => ResourceService.GetString("ILSpy.Toolbar.ShowAll");
 		protected override ICSharpCode.ILSpyX.ApiVisibility Level => ICSharpCode.ILSpyX.ApiVisibility.All;
 	}
 }

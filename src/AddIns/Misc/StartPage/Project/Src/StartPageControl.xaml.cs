@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Windows.Controls;
 
 using ICSharpCode.Core;
@@ -40,11 +39,10 @@ namespace ICSharpCode.StartPage
 			List<BoxEntry> entries = items.ConvertAll(control => new BoxEntry { Control = control } );
 			startPageItems.ItemsSource = entries;
 			
-			var aca = (AssemblyCopyrightAttribute)typeof(SD).Assembly.GetCustomAttributes(typeof(AssemblyCopyrightAttribute), false)[0];
-			copyrightText.Text = aca.Copyright;
-			licenseText.Text = "SharpDevelop is licensed under the MIT license.";
-			
-			versionTextBlock.Text = "SharpDevelop " + RevisionClass.FullVersion;
+			copyrightText.Text = ResourceService.GetString("StartPage.Copyright");
+			licenseText.Text = ResourceService.GetString("StartPage.License");
+
+			versionTextBlock.Text = string.Format(ResourceService.GetString("StartPage.Version"), RevisionClass.FullVersion);
 		}
 		
 		sealed class BoxEntry

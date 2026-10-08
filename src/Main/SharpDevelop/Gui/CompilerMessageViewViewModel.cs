@@ -266,6 +266,11 @@ internal sealed class CompilerMessageViewViewModel : ToolPaneModel, IOutputPad, 
         AddCategory(TaskService.BuildMessageViewCategory);
 
         textEditor.IsReadOnly = true;
+        // LibreWPF's Display formatter can select the primary monospaced face (Menlo on macOS)
+        // but fail to fall back for CJK punctuation such as U+3002 IDEOGRAPHIC FULL STOP. The
+        // Output pad is where localized build messages most visibly mix CJK and ASCII, so use
+        // the same Ideal formatting mode already required by the localized menu chrome.
+        TextOptions.SetTextFormattingMode(textEditor, TextFormattingMode.Ideal);
         textEditor.ContextMenu = MenuService.CreateContextMenu(this, "/SharpDevelop/Pads/CompilerMessageView/ContextMenu");
 
         properties = ICSharpCode.Core.PropertyService.NestedProperties(OutputWindowOptionsPanel.OutputWindowsProperty);
