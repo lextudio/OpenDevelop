@@ -104,6 +104,23 @@ namespace ICSharpCode.WpfDesign.AddIn
 		/// through this rather than reaching into <see cref="client"/> directly.</summary>
 		public WpfSurfaceDesignerControl? SurfaceControl => surfaceControl;
 		public string BackendName => surfaceControl?.BackendName ?? WpfSurfaceHostClient.GetBackendName(backend);
+		/// <summary>Diagnostics for the shared child lease, exposed to the designer status surface
+		/// so recovery can be observed without giving a test any RPC that the production child
+		/// understands.</summary>
+		public int HostProcessId => client?.ProcessId ?? 0;
+		public int HostRecoveryCount => client?.RecoveryCount ?? 0;
+		public bool IsHostAlive => client?.IsAlive == true;
+
+	/// <summary>Terminates the current shared child through the normal process-client lifecycle.
+	/// This is deliberately an IDE-side diagnostic operation: it does not add a test command to
+	/// the production DDP protocol, and production recovery follows the identical exit path.</summary>
+	public bool TerminateDesignHost()
+	{
+		if (client == null)
+			return false;
+		client.TerminateHost();
+		return true;
+	}
 
 		/// <summary>Surface geometry for the resize-drag smoke test: the rendered design bitmap
 		/// bounds (frame), the selected element's rendered bounds (element) and its selection
@@ -246,6 +263,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 					client.Recovered += OnHostRecovered;
 					surfaceControl = new WpfSurfaceDesignerControl(client, WpfSurfaceHostClient.GetBackendName(selectedBackend));
 					surfaceControl.SelectionChanged += OnSelectionChanged;
+					surfaceControl.RenameRequestedByUser += OnRenameRequested;
 					surfaceControl.DocumentChanged += OnDocumentChanged;
 					surfaceControl.UndoRedoRequested += OnUndoRedoRequested;
 					InitPropertyEditor();
@@ -407,7 +425,14 @@ namespace ICSharpCode.WpfDesign.AddIn
 
 			foreach (var diagnostic in diagnostics)
 			{
-				var task = new SDTask(PrimaryFile.FileName, diagnostic.Message, Math.Max(0, diagnostic.Column - 1), diagnostic.Line, SharpDevelop.TaskType.Error);
+				FileName fileName = string.IsNullOrWhiteSpace(diagnostic.FileName)
+					? PrimaryFile.FileName : FileName.Create(diagnostic.FileName);
+				var taskType = string.Equals(diagnostic.Severity, "Warning", StringComparison.OrdinalIgnoreCase)
+					? SharpDevelop.TaskType.Warning : SharpDevelop.TaskType.Error;
+				// DDP diagnostics, SDTask and FileService all use 1-based columns. Do not adjust this
+				// value as though it were an editor offset, or Error List navigation lands one character
+				// before the parser's reported token.
+				var task = new SDTask(fileName, diagnostic.Message, Math.Max(1, diagnostic.Column), diagnostic.Line, taskType);
 				tasks.Add(task);
 				TaskService.Add(task);
 			}
@@ -430,6 +455,36 @@ namespace ICSharpCode.WpfDesign.AddIn
 			try { outline.SelectNodeById(surfaceControl?.SelectedElementId); }
 			finally { syncingOutlineSelection = false; }
 			CommandManager.InvalidateRequerySuggested();
+		}
+
+		/// <summary>F2 uses the same <c>design/rename</c> mutation as Properties, then asks Roslyn
+		/// to rename a matching code-behind field. Keeping the dialog in the view makes the canvas
+		/// reusable by non-WPF backends, which may use a different identity or no rename at all.</summary>
+		void OnRenameRequested(object? sender, EventArgs e)
+		{
+			if (surfaceControl?.SelectedNode?.Name is not { Length: > 0 } oldName)
+				return;
+			var newName = MessageService.ShowInputBox("Rename", "Enter a new element name:", oldName)?.Trim();
+			if (string.IsNullOrEmpty(newName) || string.Equals(oldName, newName, StringComparison.Ordinal))
+				return;
+			try
+			{
+				var changed = surfaceControl.RenameSelectedAsync(newName).GetAwaiter().GetResult();
+				if (changed == null || !changed.Accepted)
+				{
+					if (changed != null && !string.IsNullOrWhiteSpace(changed.Error))
+						MessageService.ShowError(changed.Error);
+					return;
+				}
+				surfaceControl.Show(changed);
+				surfaceControl.NotifyDocumentChanged(changed);
+				WpfControlRenameSync.RenameAsync(PrimaryFile.FileName, oldName, newName).FireAndForget();
+			}
+			catch (Exception exception)
+			{
+				LoggingService.Error(exception);
+				MessageService.ShowError(exception.Message);
+			}
 		}
 
 		/// <summary>Marks the file dirty after any accepted mutation (bounds/add/delete/rename/
@@ -585,6 +640,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			if (surfaceControl != null)
 			{
 				surfaceControl.SelectionChanged -= OnSelectionChanged;
+				surfaceControl.RenameRequestedByUser -= OnRenameRequested;
 				surfaceControl.DocumentChanged -= OnDocumentChanged;
 				surfaceControl.UndoRedoRequested -= OnUndoRedoRequested;
 			}

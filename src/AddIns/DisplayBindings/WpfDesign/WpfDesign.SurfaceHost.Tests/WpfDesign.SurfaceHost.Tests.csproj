@@ -10,6 +10,10 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
+	<!-- The add-in's discovery helper is deliberately dependency-free PE metadata code. Link it
+	     here so its no-runtime-load behavior is covered without making the host test assembly
+	     reference the full workbench add-in. -->
+	<Compile Include="..\WpfDesign.AddIn\Src\WpfToolboxMetadataDiscovery.cs" Link="WpfToolboxMetadataDiscovery.cs" />
     <!-- Fixtures/CustomControlFixture is its own project with its own compilation; without this,
          MSBuild's default **/*.cs glob here would also compile its sources into this project. -->
     <Compile Remove="Fixtures\**\*.cs" />

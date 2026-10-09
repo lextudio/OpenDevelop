@@ -289,29 +289,20 @@ namespace ICSharpCode.WpfDesign.AddIn
 			if (project == null)
 				return;
 
-			var typeResolutionService = new TypeResolutionService(file.FileName);
-
 			// Enumerate the project's referenced assemblies from MSBuild's ResolveAssemblyReferences
 			// target (the Roslyn-aligned reference source) instead of the old NRefactory
 			// ICompilation.ReferencedAssemblies, which is null now that C# projects use Roslyn/LSP.
-			foreach (var reference in project.ResolveAssemblyReferences(System.Threading.CancellationToken.None)) {
-				string assemblyFileName = reference.FileName;
-
-				if (string.IsNullOrEmpty(assemblyFileName) || !System.IO.File.Exists(assemblyFileName) || addedAssemblies.Contains(assemblyFileName))
+			var references = project.ResolveAssemblyReferences(System.Threading.CancellationToken.None)
+				.Select(reference => reference.FileName.ToString())
+				.Where(path => !string.IsNullOrEmpty(path) && System.IO.File.Exists(path))
+				.ToArray();
+			foreach (var assemblyFileName in references) {
+				if (addedAssemblies.Contains(assemblyFileName))
 					continue;
 
 				try {
-					// DO NOT USE Assembly.LoadFrom!!!
-					// see http://community.sharpdevelop.net/forums/t/19968.aspx
-					Assembly assembly = typeResolutionService.LoadAssembly(assemblyFileName);
-					if (assembly == null) continue;
-
-					string categoryName = StringParser.Parse(assembly.FullName.Split(new[] { ',' })[0]);
-					var controlTypes = new List<Type>();
-					foreach (var t in assembly.GetExportedTypes()) {
-						if (IsControl(t))
-							controlTypes.Add(t);
-					}
+					var controlTypes = WpfToolboxMetadataDiscovery.Discover(assemblyFileName, references);
+					string categoryName = StringParser.Parse(System.IO.Path.GetFileNameWithoutExtension(assemblyFileName));
 
 					if (controlTypes.Count > 0) {
 						var items = new List<SharedToolboxItem>();
@@ -325,6 +316,16 @@ namespace ICSharpCode.WpfDesign.AddIn
 					WpfViewContent.DllLoadErrors.Add(new SDTask(new BuildError(assemblyFileName, ex.Message)));
 				}
 			}
+		}
+
+		SharedToolboxItem CreateWpfItem(string categoryName, WpfToolboxMetadataDiscovery.ControlInfo componentType)
+		{
+			var item = BuildToolboxItemInfo(componentType);
+			return new SharedToolboxItem(categoryName, componentType.Name, WpfScope,
+				icon: DesignerTypeIcons.GetIcon(componentType.Name,
+					componentType.IsUserControl ? "UserControl" : DesignerTypeIcons.FallbackIconName),
+				payload: item,
+				packDragData: data => data.SetData(typeof(ICSharpCode.SharpDevelop.Designer.Remote.DesignerToolboxItemInfo), item));
 		}
 
 		/// <summary>Maps a real CLR control type to the DDP <c>DesignerToolboxItemInfo</c> shape
@@ -349,6 +350,16 @@ namespace ICSharpCode.WpfDesign.AddIn
 				DisplayName = componentType.Name,
 				TypeName = componentType.Name,
 				XamlNamespace = xamlNamespace
+			};
+		}
+
+		static ICSharpCode.SharpDevelop.Designer.Remote.DesignerToolboxItemInfo BuildToolboxItemInfo(WpfToolboxMetadataDiscovery.ControlInfo componentType)
+		{
+			return new ICSharpCode.SharpDevelop.Designer.Remote.DesignerToolboxItemInfo {
+				Name = componentType.Name,
+				DisplayName = componentType.Name,
+				TypeName = componentType.Name,
+				XamlNamespace = $"clr-namespace:{componentType.Namespace};assembly={componentType.AssemblyName}"
 			};
 		}
 

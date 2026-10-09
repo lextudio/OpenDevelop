@@ -114,6 +114,9 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			return JsonSerializer.Serialize(new {
 				active = true,
 				backend = viewContent.BackendName,
+				hostProcessId = viewContent.HostProcessId,
+				hostRecoveryCount = viewContent.HostRecoveryCount,
+				hostAlive = viewContent.IsHostAlive,
 				designerLoaded,
 				// A non-empty outline is not proof the renderer succeeded: the historical native
 				// all-black-frame failure built the complete tree before returning a deceptive
@@ -137,10 +140,11 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true,
 				outlineRootName = outlineNodes.FirstOrDefault()?.Name ?? outlineNodes.FirstOrDefault()?.Type,
 				outlineChildCount = outlineNodes.Count(node => node.Depth == 1),
-				// The out-of-process WPF host has no undo/redo RPC, so these are always false -
-				// reported so the status shape matches od.winui-designer.status.
-				canUndo = false,
-				canRedo = false,
+				// WPF's source-authoritative undo stack lives in WpfViewContent, not the child
+				// host. Report that real command state so this general status action agrees with
+				// od.wpf-designer.undo/redo and with the visible Edit commands.
+				canUndo = viewContent.CanUndo,
+				canRedo = viewContent.CanRedo,
 				// Whether the opened project embeds any design-time theme
 				// (see WpfSurfaceHostService.ResolveThemes) - the toolbar's theme combo
 				// is only shown when this is true.
@@ -149,6 +153,15 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				// element shows up in the outline tree without knowing its exact nesting depth.
 				outlineNames = outlineNodes.Select(node => string.IsNullOrEmpty(node.Name) ? node.Type : node.Name).ToArray()
 			});
+		}
+
+		[DevFlowAction("od.wpf-designer.terminate-host", Description = "Terminate the shared WPF child from the IDE process to verify normal automatic recovery; this does not add a test RPC to the production protocol")]
+		public static string TerminateHost()
+		{
+			var viewContent = FindWpfViewContent();
+			var oldHostProcessId = viewContent?.HostProcessId ?? 0;
+			var success = viewContent?.TerminateDesignHost() == true;
+			return JsonSerializer.Serialize(new { success, oldHostProcessId });
 		}
 
 		[DevFlowAction("od.wpf-designer.toolbox.filter", Description = "Filter the active WPF Toolbox by control or category name")]
@@ -674,6 +687,34 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.wpf-designer.properties-pad.bind-event", Description = "Bind an unhandled WPF XAML event through the live Properties pad adapter; writes only the XAML handler attribute and never generates or executes project code")]
+		public static string BindEventThroughPropertiesPad(string eventName)
+		{
+			var grid = PropertyPadGrid;
+			if (grid == null)
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad is not available" });
+			if (!(grid.SelectedObject is WpfSurfaceElementPropertyAdapter selectedObject))
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
+
+			var events = TypeDescriptor.GetEvents(selectedObject);
+			if (events.Find(eventName, ignoreCase: false) == null)
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad event not found: " + eventName });
+
+			var eventSource = (IPropertyGridEventSource)selectedObject;
+			var before = eventSource.GetEventHandler(eventName);
+			if (string.IsNullOrEmpty(before))
+				((IEventBindingHost)selectedObject).BindEvent(eventName);
+			var handler = eventSource.GetEventHandler(eventName);
+
+			return JsonSerializer.Serialize(new {
+				success = !string.IsNullOrEmpty(handler),
+				selectedName = selectedObject.GetComponentName(),
+				eventName,
+				before,
+				handler
+			});
+		}
+
 		/// <summary>
 		/// The WPF designer registers as a secondary view content alongside the primary AvalonEdit
 		/// text view for .xaml files. Both are mounted in the split layout, but this helper still
@@ -821,12 +862,9 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		}
 
 		/// <summary>
-		/// Capabilities not (or no longer) requiring this fallback: multi-select, undo/redo, and
-		/// align/distribute/match-size are all now supported (see <see cref="MultiSelect"/>,
-		/// <see cref="Undo"/>/<see cref="Redo"/>, <see cref="Align"/>/<see cref="Distribute"/>/
-		/// <see cref="MatchSize"/>) - only <see cref="Nudge"/> remains genuinely unimplemented.
-		/// The action is still registered so all three designers expose the same DevFlow surface
-		/// and a caller gets a deterministic answer rather than a missing-action error.
+		/// The actions below share the same canvas operations as user input.  Keep failures
+		/// deterministic for an operation a host truly cannot provide instead of exposing a
+		/// missing action at the automation boundary.
 		/// </summary>
 		static string NotSupported(string capability)
 			=> JsonSerializer.Serialize(new { success = false, supported = false, error = "Not supported by the out-of-process WPF design host: " + capability });
@@ -897,7 +935,18 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			return JsonSerializer.Serialize(new { success = true });
 		}
 
-		[DevFlowAction("od.wpf-designer.nudge", Description = "Nudge the selected elements - not supported by the out-of-process host (reported deterministically so the three designers' surfaces stay aligned)")]
-		public static string Nudge(double dx, double dy) => NotSupported("nudge");
+		[DevFlowAction("od.wpf-designer.nudge", Description = "Nudge the selected elements by a design-space delta, using the same atomic placement path as the arrow-key gesture")]
+		public static string Nudge(double dx, double dy)
+		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
+			var state = surface.NudgeSelection(dx, dy);
+			return JsonSerializer.Serialize(new {
+				success = state?.Accepted == true,
+				error = state?.Error ?? (state == null ? "No movable WPF designer selection" : ""),
+				selectedIds = surface.SelectedElementIds
+			});
+		}
 	}
 }

@@ -9,7 +9,7 @@ public sealed class WpfSurfaceHostRpcTests
 {
 	const string Xaml = """
 		<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="400" Height="300">
-		  <TextBlock x:Name="greeting" Text="Hello" Width="200" Height="30" Background="White"/>
+		  <TextBlock x:Name="greeting" Text="Hello" Width="200" Height="30" Background="White" Canvas.ZIndex="7"/>
 		  <Button x:Name="go" Content="Go" Width="80" Height="24"/>
 		</Grid>
 		""";
@@ -28,7 +28,7 @@ public sealed class WpfSurfaceHostRpcTests
 	/// (MicrosoftHost/SurfaceHost), which source-links this same host implementation. The DDP
 	/// contract is what is being verified and it is identical for both, so the tests are shared
 	/// rather than duplicated - only the child binary changes.</summary>
-	static string HostDll() =>
+	internal static string HostDll() =>
 		Environment.GetEnvironmentVariable("OPENDEVELOP_WPFSURFACEHOST_DLL") is { Length: > 0 } overridden
 			? Path.GetFullPath(overridden)
 		#if MICROSOFT_WPF_DESIGNER_HOST
@@ -39,7 +39,7 @@ public sealed class WpfSurfaceHostRpcTests
 				"../../../../WpfDesign.SurfaceHost/bin/Debug/net10.0-windows/WpfDesign.SurfaceHost.dll"));
 		#endif
 
-	static DesignerDocumentSnapshot Snapshot(long version, string xaml, string projectAssemblyPath = "") => new() {
+	internal static DesignerDocumentSnapshot Snapshot(long version, string xaml, string projectAssemblyPath = "") => new() {
 		Version = version,
 		PrimaryFileName = "/project/Page.xaml",
 		ProjectAssemblyPath = projectAssemblyPath,
@@ -72,12 +72,57 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.Equal(client.DocumentId, opened.DocumentId);
 		Assert.Equal("System.Windows.Controls.Grid", opened.RootType);
 		Assert.NotNull(opened.Tree);
-		Assert.NotNull(FindByName(opened.Tree!, "greeting"));
+		Assert.Equal(DesignerLayoutMode.Grid, FindByName(opened.Tree!, "greeting")!.LayoutMode);
+		var greetingInsets = FindByName(opened.Tree!, "greeting")!.LayoutInsets;
+		Assert.NotNull(greetingInsets);
+		Assert.Equal("Margin", greetingInsets!.Kind);
+		Assert.Equal(7, FindByName(opened.Tree!, "greeting")!.ZIndex);
+		Assert.True(FindByName(opened.Tree!, "greeting")!.BaselineOffset > 0);
 		Assert.NotNull(FindByName(opened.Tree!, "go"));
 		// RenderTargetBitmap doesn't work headlessly on macOS, but the ProGPU composition path
 		// does (see wpf-designer.md's Phase 1 progress notes) - render is no longer best-effort.
 		Assert.NotNull(opened.Render);
 		Assert.False(string.IsNullOrEmpty(opened.Render!.Data));
+	}
+
+	[Fact]
+	public async Task ChildHost_PublishesMeasuredCanvasPositionInsets()
+	{
+		const string canvasXaml = """
+			<Canvas xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="200" Height="100">
+			  <Button x:Name="positioned" Canvas.Left="20" Canvas.Top="30" Width="40" Height="20" />
+			</Canvas>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, canvasXaml), timeout.Token);
+
+		Assert.True(opened.Accepted, opened.Error);
+		var insets = FindByName(opened.Tree!, "positioned")!.LayoutInsets;
+		Assert.NotNull(insets);
+		Assert.Equal("CanvasPosition", insets!.Kind);
+		Assert.Equal(20, insets.Left, 3);
+		Assert.Equal(30, insets.Top, 3);
+		Assert.Equal(140, insets.Right, 3);
+		Assert.Equal(50, insets.Bottom, 3);
+	}
+
+	[Fact]
+	public async Task ChildHost_ReportsDeclaredBindingsWithoutClaimingRuntimeSuccess()
+	{
+		const string bindingXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="100" Height="40">
+			  <TextBlock x:Name="bound" Text="{Binding Title}" />
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, bindingXaml), timeout.Token);
+
+		Assert.True(opened.Accepted, opened.Error);
+		var binding = Assert.Single(FindByName(opened.Tree!, "bound")!.Bindings);
+		Assert.Equal("Text", binding.Property);
+		Assert.Equal("Declared", binding.Status);
 	}
 
 	[Fact]
@@ -156,6 +201,101 @@ public sealed class WpfSurfaceHostRpcTests
 		var flushed = await client.FlushAsync(1, timeout.Token);
 		Assert.Contains("Edited", flushed.Files.Single().Text, StringComparison.Ordinal);
 	}
+
+	[Fact]
+	public async Task DesignSetEvent_PublishesAndRoundTripsAnExistingHandlerName()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		Assert.IsAssignableFrom<IDesignHostEventBinding>(client);
+		var greeting = FindByName(opened.Tree!, "greeting")!;
+		Assert.Contains(greeting.Events, item => item.Name == "TargetUpdated");
+
+		var bound = await client.SetEventAsync(1, greeting.Id, "TargetUpdated", "greeting_TargetUpdated", timeout.Token);
+		Assert.True(bound.Accepted, bound.Error);
+		Assert.Equal("greeting_TargetUpdated", FindByName(bound.Tree!, "greeting")!.Events.Single(item => item.Name == "TargetUpdated").Handler);
+		var flushed = await client.FlushAsync(1, timeout.Token);
+		Assert.Contains("TargetUpdated=\"greeting_TargetUpdated\"", flushed.Files.Single().Text, StringComparison.Ordinal);
+
+		var cleared = await client.SetEventAsync(1, greeting.Id, "TargetUpdated", "", timeout.Token);
+		Assert.True(cleared.Accepted, cleared.Error);
+		Assert.DoesNotContain("TargetUpdated=\"greeting_TargetUpdated\"", (await client.FlushAsync(1, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task DesignResetProperty_RemovesTheExplicitValueFromSavedXaml()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var greetingPath = FindByName(opened.Tree!, "greeting")!.Id;
+
+		var edited = await client.SetPropertyAsync(1, greetingPath, "Text", "Edited", timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var reset = await client.ResetPropertyAsync(1, greetingPath, "Text", timeout.Token);
+		Assert.True(reset.Accepted, reset.Error);
+
+		var flushed = await client.FlushAsync(1, timeout.Token);
+		Assert.DoesNotContain("Text=\"Edited\"", flushed.Files.Single().Text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task EnumProperty_ReportsFiniteChoicesForTheRemotePropertiesPad()
+	{
+		const string enumXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <Button x:Name="go" HorizontalAlignment="Left" Content="Go" />
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, enumXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+
+		var alignment = FindByName(opened.Tree!, "go")!.Properties.Single(property => property.Name == "HorizontalAlignment");
+		Assert.Equal("Enum", alignment.Kind);
+		Assert.True(alignment.IsEnum);
+		Assert.Contains("Left", alignment.AllowedValues);
+		Assert.Contains("Stretch", alignment.AllowedValues);
+	}
+
+	[Fact]
+	public async Task ScalarWpfValues_ReportTheirCommonPropertyKinds()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+
+		var greeting = FindByName(opened.Tree!, "greeting")!;
+		Assert.Equal("Brush", greeting.Properties.Single(property => property.Name == "Background").Kind);
+		Assert.Equal("Thickness", greeting.Properties.Single(property => property.Name == "Margin").Kind);
+		Assert.Equal("Number", greeting.Properties.Single(property => property.Name == "Width").Kind);
+		Assert.Equal("Boolean", greeting.Properties.Single(property => property.Name == "IsEnabled").Kind);
+	}
+
+	[Fact]
+	public async Task ScalarWpfValues_RoundTripFromTypedPropertyTextIntoSavedXaml()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var greeting = FindByName(opened.Tree!, "greeting")!;
+
+		var brush = await client.SetPropertyAsync(1, greeting.Id, "Background", "Red", timeout.Token);
+		Assert.True(brush.Accepted, brush.Error);
+		var thickness = await client.SetPropertyAsync(1, greeting.Id, "Margin", "1,2,3,4", timeout.Token);
+		Assert.True(thickness.Accepted, thickness.Error);
+
+		var saved = (await client.FlushAsync(1, timeout.Token)).Files.Single().Text;
+		Assert.Contains("Background=\"Red\"", saved, StringComparison.Ordinal);
+		Assert.Contains("Margin=\"1,2,3,4\"", saved, StringComparison.Ordinal);
+	}
+
 
 	[Fact]
 	public async Task MenuItem_Header_IsAnEditablePlainStringAndRoundTrips()
@@ -350,6 +490,24 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.Equal("Edited", editedGreeting.Properties.Single(p => p.Name == "Text").Value);
 	}
 
+	[Fact]
+	public async Task Tree_ReportsNestedBindingValuesAsReadOnlyReferences()
+	{
+		const string xaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <TextBlock x:Name="bound" Text="{Binding Title}" />
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+
+		Assert.True(opened.Accepted, opened.Error);
+		var text = FindByName(opened.Tree!, "bound")!.Properties.Single(property => property.Name == "Text");
+		Assert.Equal("Reference", text.Kind);
+		Assert.True(text.IsReadOnly);
+	}
+
 	/// <summary>
 	/// Tree_ nodes must report whether they are actually ON SCREEN, because the AddIn draws
 	/// overlays (tab-order badges today) positioned from each node's X/Y. A hidden element still
@@ -447,6 +605,34 @@ public sealed class WpfSurfaceHostRpcTests
 		// ...and it still round-trips into the saved document.
 		var flushed = await client.FlushAsync(1, timeout.Token);
 		Assert.Contains("Margin=", flushed.Files.Single().Text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task DesignSetBoundsBatch_MovesAllTargetsOrRejectsWithoutAPartialEdit()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var greeting = FindByName(opened.Tree!, "greeting")!;
+		var go = FindByName(opened.Tree!, "go")!;
+
+		var moved = await client.SetBoundsBatchAsync(1, new[] {
+			new DesignerBoundsEdit { ElementId = greeting.Id, X = 11, Y = 12, Width = 201, Height = 31 },
+			new DesignerBoundsEdit { ElementId = go.Id, X = 22, Y = 23, Width = 82, Height = 25 }
+		}, timeout.Token);
+		Assert.True(moved.Accepted, moved.Error);
+		Assert.Equal(11, FindByName(moved.Tree!, "greeting")!.X, 1);
+		Assert.Equal(22, FindByName(moved.Tree!, "go")!.X, 1);
+
+		var rejected = await client.SetBoundsBatchAsync(1, new[] {
+			new DesignerBoundsEdit { ElementId = greeting.Id, X = 99, Y = 99, Width = 1, Height = 1 },
+			new DesignerBoundsEdit { ElementId = "missing", X = 0, Y = 0, Width = 1, Height = 1 }
+		}, timeout.Token);
+		Assert.False(rejected.Accepted);
+		Assert.Contains("not found", rejected.Error, StringComparison.OrdinalIgnoreCase);
+		var afterRejected = await client.FlushAsync(1, timeout.Token);
+		Assert.DoesNotContain("Width=\"1\"", afterRejected.Files.Single().Text, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -861,6 +1047,26 @@ public sealed class WpfSurfaceHostRpcTests
 		var sibling = (await second.FlushAsync(1, timeout.Token)).Files.Single().Text;
 		Assert.Contains("Sibling", sibling, StringComparison.Ordinal);
 		Assert.DoesNotContain("Hello", sibling, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task SharedClient_RecoveryRestoresTheLastAcceptedDesignTheme()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.AcquireSharedAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, ThemedXaml, WpfThemeFixtureDll()), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var themed = await client.SetThemeAsync(1, "Midnight", timeout.Token);
+		Assert.True(themed.Accepted, themed.Error);
+		var expectedFrame = themed.Render!.Data;
+		var recovered = new TaskCompletionSource<DesignerSessionState>(TaskCreationOptions.RunContinuationsAsynchronously);
+		client.Recovered += (_, state) => recovered.TrySetResult(state);
+
+		client.TerminateHost();
+		var afterRecovery = await recovered.Task.WaitAsync(timeout.Token);
+
+		Assert.True(afterRecovery.Accepted, afterRecovery.Error);
+		Assert.Equal(expectedFrame, afterRecovery.Render!.Data);
 	}
 
 	[Fact]

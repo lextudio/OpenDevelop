@@ -52,6 +52,10 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, double x, double y) => Checked(sessionId, documentId).HitTest(sessionId, documentId, baseVersion, x, y);
 	[JsonRpcMethod("design/set-property")]
 	public DesignerSessionState SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value) => Checked(sessionId, documentId).SetProperty(baseVersion, elementId, propertyName, value);
+	[JsonRpcMethod("design/reset-property")]
+	public DesignerSessionState ResetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName) => Checked(sessionId, documentId).ResetProperty(baseVersion, elementId, propertyName);
+	[JsonRpcMethod("design/set-event")]
+	public DesignerSessionState SetEvent(string sessionId, string documentId, long baseVersion, string elementId, string eventName, string handlerName) => Checked(sessionId, documentId).SetEvent(baseVersion, elementId, eventName, handlerName);
 	[JsonRpcMethod("design/add-element")]
 	public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget) => Checked(sessionId, documentId).AddElement(baseVersion, parentId, item, proposedName, x, y, dropTarget);
 	[JsonRpcMethod("design/add-menu-item")]
@@ -62,10 +66,14 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerSessionState AddStripItem(string sessionId, string documentId, long baseVersion, string parentId, string text) => Checked(sessionId, documentId).AddStripItem(baseVersion, parentId, text);
 	[JsonRpcMethod("design/set-bounds")]
 	public DesignerSessionState SetBounds(string sessionId, string documentId, long baseVersion, string elementId, double x, double y, double width, double height) => Checked(sessionId, documentId).SetBounds(baseVersion, elementId, x, y, width, height);
+	[JsonRpcMethod("design/set-bounds-batch")]
+	public DesignerSessionState SetBoundsBatch(string sessionId, string documentId, long baseVersion, DesignerBoundsEdit[] edits) => Checked(sessionId, documentId).SetBoundsBatch(baseVersion, edits);
 	[JsonRpcMethod("design/query-grid-guides")]
 	public DesignerGridGuides QueryGridGuides(string sessionId, string documentId, long baseVersion, string elementId) => Checked(sessionId, documentId).QueryGridGuides(baseVersion, elementId);
 	[JsonRpcMethod("design/set-grid-track-size")]
 	public DesignerSessionState SetGridTrackSize(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index, double pixels) => Checked(sessionId, documentId).SetGridTrackSize(baseVersion, elementId, isRow, index, pixels);
+	[JsonRpcMethod("design/split-grid-track")]
+	public DesignerSessionState SplitGridTrack(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, double position) => Checked(sessionId, documentId).SplitGridTrack(baseVersion, elementId, isRow, position);
 	[JsonRpcMethod("design/delete-elements")]
 	public DesignerSessionState DeleteElements(string sessionId, string documentId, long baseVersion, string[] elementIds) => Checked(sessionId, documentId).DeleteElements(baseVersion, elementIds);
 	[JsonRpcMethod("design/rename")]

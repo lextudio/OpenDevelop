@@ -17,7 +17,7 @@ public enum WpfSurfaceHostBackend { LibreWpf, MicrosoftWpf }
 /// seam). Lives in its own WPF-free Remote project, mirroring FormsDesigner.Remote/
 /// WinUIXamlDesigner.UnoDesignHost.Remote, so it can be referenced by both tests and
 /// WpfDesign.AddIn without pulling in the child's own WPF/designer-engine dependencies.</summary>
-public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient, IDesignHostClient, IDesignHostBounds, IDesignHostHitTesting
+public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient, IDesignHostClient, IDesignHostBounds, IDesignHostHitTesting, IDesignHostPropertyReset, IDesignHostEventBinding
 {
 	/// <summary>IDE-owned sink for a child's stdout/stderr. The Remote assembly deliberately does
 	/// not reference the workbench, so WpfViewContent supplies the Output-pad implementation.</summary>
@@ -39,6 +39,9 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	static readonly Dictionary<CompatibilityKey, SharedDesignerHostRecovery<WpfSurfaceHostClient, Connection>> recoveries = new();
 	Connection connection;
 	readonly CompatibilityKey? poolKey;
+	// Themes are process-local dictionaries.  The source snapshot alone therefore cannot restore
+	// what the user was looking at when a shared child is replaced.
+	string? recoveryTheme;
 	bool disposed;
 
 	WpfSurfaceHostClient(Connection connection, CompatibilityKey? poolKey) : base(connection)
@@ -166,11 +169,30 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> SetPropertyAsync(long baseVersion, string elementId, string propertyName, string value, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(Document.SetPropertyAsync(baseVersion, elementId, propertyName, value, cancellationToken), cancellationToken);
 
+	/// <summary>Removes an explicitly authored WPF property value, letting the design model restore
+	/// its normal default. The child records this as its native undoable property transaction.</summary>
+	public Task<DesignerSessionState> ResetPropertyAsync(long baseVersion, string elementId, string propertyName, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/reset-property",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName }, cancellationToken), cancellationToken);
+
+	/// <summary>Writes an already-known handler name to a WPF XAML event attribute. This does not
+	/// execute project code or synthesize code-behind; the editor remains source-authoritative.</summary>
+	public Task<DesignerSessionState> SetEventAsync(long baseVersion, string elementId, string eventName, string handlerName, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-event",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, eventName, handlerName }, cancellationToken), cancellationToken);
+
 	public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget = null, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(Document.AddElementAsync(baseVersion, parentId, item, proposedName, x, y, dropTarget, cancellationToken), cancellationToken);
 
 	public Task<DesignerSessionState> SetBoundsAsync(long baseVersion, string elementId, double x, double y, double width, double height, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(Document.SetBoundsAsync(baseVersion, elementId, x, y, width, height, cancellationToken), cancellationToken);
+
+	/// <summary>Commits a multi-element placement as one host transaction and one recovery-tracked
+	/// mutation. This is deliberately WPF-specific until other hosts can make the same atomic
+	/// source/model guarantee.</summary>
+	public Task<DesignerSessionState> SetBoundsBatchAsync(long baseVersion, DesignerBoundsEdit[] edits, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-bounds-batch",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, edits }, cancellationToken), cancellationToken);
 
 	/// <summary>Appends one more MenuItem sibling under an existing Menu/ContextMenu/MenuItem - the
 	/// WPF-specific "Type Here" insertion slot's commit action (see WpfSurfaceDesignerControl and
@@ -203,6 +225,12 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> SetGridTrackSizeAsync(long baseVersion, string elementId, bool isRow, int index, double pixels, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-grid-track-size", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, index, pixels }, cancellationToken), cancellationToken);
 
+	/// <summary>Splits the row/column containing a local Grid coordinate. The host adjusts attached
+	/// row/column indices atomically, so a client never has to reconstruct layout semantics from a
+	/// bitmap snapshot.</summary>
+	public Task<DesignerSessionState> SplitGridTrackAsync(long baseVersion, string elementId, bool isRow, double position, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/split-grid-track", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, position }, cancellationToken), cancellationToken);
+
 	public Task<DesignerSessionState> DeleteElementsAsync(long baseVersion, string[] elementIds, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(Document.DeleteElementsAsync(baseVersion, elementIds, cancellationToken), cancellationToken);
 
@@ -212,8 +240,14 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	/// <summary>Switches the design-time theme by name - only has an effect for a project that
 	/// embeds <c>themes/*.xaml</c> resources; the response's <c>DesignThemes</c> tells the caller
 	/// which themes the project has at all, so the IDE can show exactly those in its combo.</summary>
-	public Task<DesignerSessionState> SetThemeAsync(long baseVersion, string theme, CancellationToken cancellationToken = default)
-		=> HostConnection.InvokeAsync<DesignerSessionState>("design/theme", new { sessionId = SessionId, documentId = DocumentId, baseVersion, theme }, cancellationToken);
+	public async Task<DesignerSessionState> SetThemeAsync(long baseVersion, string theme, CancellationToken cancellationToken = default)
+	{
+		var state = await HostConnection.InvokeAsync<DesignerSessionState>("design/theme",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, theme }, cancellationToken).ConfigureAwait(false);
+		if (state.Accepted)
+			recoveryTheme = theme;
+		return state;
+	}
 
 	public Task<DesignerHitTestResult> HitTestAsync(long baseVersion, double x, double y, CancellationToken cancellationToken = default)
 		=> Document.HitTestAsync(baseVersion, x, y, cancellationToken);
@@ -257,6 +291,15 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		RebindConnection(replacement);
 		replacement.HostExited += OnConnectionExited;
 		var state = await Document.OpenAsync(RecoverySnapshot!, RecoveryViewport, cancellationToken).ConfigureAwait(false);
+		if (state.Accepted && recoveryTheme != null)
+		{
+			// The fresh session starts with no merged project theme.  Replay only a theme which was
+			// successfully applied before the crash; an unavailable theme in newly rebuilt project
+			// output must not turn an otherwise usable document recovery into a failure.
+			var themed = await SetThemeAsync(state.Version, recoveryTheme, cancellationToken).ConfigureAwait(false);
+			if (themed.Accepted)
+				state = themed;
+		}
 		RecoveryCount++;
 		Recovered?.Invoke(this, state);
 	}

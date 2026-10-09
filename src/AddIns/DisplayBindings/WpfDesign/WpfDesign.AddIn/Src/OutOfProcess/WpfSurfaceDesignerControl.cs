@@ -37,7 +37,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 	/// document root is "", so "no selection" is null, never ""). Every mutation is a BLOCKING call
 	/// on the dispatcher thread followed by <see cref="Show"/> - see its remarks for why.
 	/// </summary>
-	public sealed class WpfSurfaceDesignerControl : DesignSurface, IDesignCanvasBackend
+	public sealed class WpfSurfaceDesignerControl : DesignSurface
 	{
 		readonly WpfSurfaceHostClient client;
 		readonly DesignSurfaceController controller;
@@ -153,7 +153,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// A WPF Page/UserControl/Window has no Background of its own unless the design sets
 			// one; without an opaque page the canvas pattern shows through its transparent parts.
 			FrameBackground = Brushes.White;
-			controller = new DesignSurfaceController(this, this, DesignSurfaceKeying.Id) {
+			controller = new DesignSurfaceController(this, DesignSurfaceKeying.Id) {
 				// A plain click that hits nothing clears the selection, as in every WPF designer.
 				ClearsSelectionOnEmptyClick = true
 			};
@@ -179,6 +179,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			Capabilities = BaseCapabilities;
 			StatusText = string.Format(ResourceService.GetString("WpfDesign.Status.StartingHost"), BackendName);
 			SetContextCommands(new[] { ("Delete", "delete") });
+			RenameRequested += (_, _) => RequestRename();
 
 			controller.SelectionChanged += (_, _) => OnCanvasSelectionChanged();
 			controller.ElementPicked += (_, id) => {
@@ -197,12 +198,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				.Where(move => move.Node != null)
 				.Select(move => (move.Node!.Id, new Rect(move.Node.X + move.DX, move.Node.Y + move.DY, move.Node.Width, move.Node.Height)))
 				.ToList());
-			controller.NudgeRequested += (_, delta) => CommitBoundsForEach(SelectedBoundsForLayout()
-				.Where(item => item.Path != RootElementId)
-				.Select(item => (item.Path, new Rect(item.Bounds.X + delta.DX, item.Bounds.Y + delta.DY, item.Bounds.Width, item.Bounds.Height)))
-				.ToList());
+			controller.NudgeRequested += (_, delta) => NudgeSelection(delta.DX, delta.DY);
 			controller.ElementDoubleClicked += (_, info) => OnElementDoubleClicked(info);
 			controller.GridGuideDragCommitted += (_, guide) => CommitGridGuide(guide.IsRow, guide.Index, guide.Position);
+			controller.GridTrackSplitRequested += (_, split) => CommitGridTrackSplit(split.IsRow, split.Position);
 			controller.ContextCommandRequested += (_, command) => {
 				if (command.Command == "delete")
 					CommitDelete();
@@ -217,21 +216,6 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		}
 
 		public DesignerSessionState? State => state;
-
-		/// <summary>
-		/// Answers the canvas's hit test from the design host (<c>design/hit-test</c>). Blocking:
-		/// the canvas asks from a pointer handler on the dispatcher thread and needs the answer
-		/// before it can pick; the client's RPC does not resume on the dispatcher, so it cannot
-		/// deadlock.
-		/// </summary>
-		DesignCanvasHit? IDesignCanvasBackend.HitTest(double x, double y)
-		{
-			if (state == null)
-				return null;
-			var hit = client.HitTestAsync(state.Version, x, y).GetAwaiter().GetResult();
-			// Hit, not PickPath emptiness: the root's own path is "".
-			return new DesignCanvasHit(hit.Hit, hit.Hit ? hit.PickPath : null, Array.Empty<string>());
-		}
 
 		/// <summary>Opens a document from a host-owned snapshot. Does NOT render the returned
 		/// frame itself - see the note on <see cref="Show"/> for why every caller of this and the
@@ -316,7 +300,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 
 		#region Selection
 
-		DesignerElementNode? SelectedNode => NodeById(controller.SelectedElementName);
+		internal DesignerElementNode? SelectedNode => NodeById(controller.SelectedElementName);
 
 		/// <summary>The node with this <see cref="DesignerElementNode.Id"/> (falling back to a tree
 		/// path, which is the same thing for every WPF element but a header group), or null.</summary>
@@ -367,6 +351,11 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		}
 
 		public event EventHandler? SelectionChanged;
+		/// <summary>Raised for F2 after the canvas has confirmed that an element is selected. The
+		/// view owns the modal name editor and keeps this bitmap-only control free of shell UI.</summary>
+		public event EventHandler? RenameRequestedByUser;
+
+		void RequestRename() => RenameRequestedByUser?.Invoke(this, EventArgs.Empty);
 
 		/// <summary>Raises <see cref="SelectionChanged"/> and round-trips the new selection to the
 		/// child (<c>design/select</c>) so a collapsed <c>Expander</c> ancestor of the selection
@@ -621,6 +610,20 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			var trackStart = (isRow ? gridGuideRect.Y : gridGuideRect.X) + offsets[index];
 			var newSize = Math.Max(1, position - trackStart);
 			var result = client.SetGridTrackSizeAsync(state.Version, elementId, isRow, index, newSize).GetAwaiter().GetResult();
+			if (!result.Accepted) { Show(result); return; }
+			Show(result);
+			DocumentChanged?.Invoke(this, result);
+		}
+
+		/// <summary>Ctrl-clicking a highlighted insertion rail atomically splits its measured row;
+		/// Ctrl+Shift-click does the same for a column.  The host owns child-cell adjustment so the
+		/// client only ever submits the Grid-local coordinate the pointer identified.</summary>
+		void CommitGridTrackSplit(bool isRow, double localPosition)
+		{
+			if (gridGuideElementId is not { } elementId || state == null)
+				return;
+			var result = client.SplitGridTrackAsync(state.Version, elementId, isRow, localPosition).GetAwaiter().GetResult();
+			if (!result.Accepted) { Show(result); return; }
 			Show(result);
 			DocumentChanged?.Invoke(this, result);
 		}
@@ -809,6 +812,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			{
 				result = client.SetPropertyAsync(RequireVersion(), elementId!, propertyName, text).GetAwaiter().GetResult();
 			}
+			if (!result.Accepted) { Show(result); return; }
 			if (refreshContextMenuTray)
 				contextMenuTrayRootId = null;
 			Show(result);
@@ -1023,8 +1027,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			if (state == null)
 				return;
 			var result = client.MoveElementAsync(RequireVersion(), elementId, delta).GetAwaiter().GetResult();
-			if (result.Accepted)
-				contextMenuTrayRootId = null;
+			if (!result.Accepted) { Show(result); return; }
+			contextMenuTrayRootId = null;
 			Show(result);
 			DocumentChanged?.Invoke(this, result);
 		}
@@ -1157,16 +1161,22 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// design units. Does NOT render the result - see <see cref="Show"/>.</summary>
 		public async Task<DesignerSessionState> SetBoundsAsync(string elementId, double x, double y, double width, double height, CancellationToken cancellationToken = default)
 		{
-			state = await client.SetBoundsAsync(RequireVersion(), elementId, x, y, width, height, cancellationToken).ConfigureAwait(false);
-			return state;
+			var result = await client.SetBoundsAsync(RequireVersion(), elementId, x, y, width, height, cancellationToken).ConfigureAwait(false);
+			// A stale/rejected mutation describes no new design frame.  Keep the last accepted
+			// state as the authority for following gestures instead of poisoning it with the
+			// rejection's caller version.
+			if (result.Accepted)
+				state = result;
+			return result;
 		}
 
 		/// <summary>Inserts a new element under <paramref name="parentId"/> (<c>design/add-element</c>).
 		/// Does not change the selection. Does NOT render the result - see <see cref="Show"/>.</summary>
 		public async Task<DesignerSessionState> AddElementAsync(string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, CancellationToken cancellationToken = default)
 		{
-			state = await client.AddElementAsync(RequireVersion(), parentId, item, proposedName, x, y, dropTarget: null, cancellationToken).ConfigureAwait(false);
-			return state;
+			var result = await client.AddElementAsync(RequireVersion(), parentId, item, proposedName, x, y, dropTarget: null, cancellationToken).ConfigureAwait(false);
+			if (result.Accepted) state = result;
+			return result;
 		}
 
 		/// <summary>Removes the whole selection (<c>design/delete-elements</c>). Clears the
@@ -1179,8 +1189,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			if (ids.Length == 0)
 				return null;
 			controller.RestoreSelection(Array.Empty<string>());
-			state = await client.DeleteElementsAsync(RequireVersion(), ids, cancellationToken).ConfigureAwait(false);
-			return state;
+			var result = await client.DeleteElementsAsync(RequireVersion(), ids, cancellationToken).ConfigureAwait(false);
+			if (result.Accepted) state = result;
+			else controller.RestoreSelection(ids);
+			return result;
 		}
 
 		/// <summary>Renames the selected element (<c>design/rename</c>), keeping the selection.
@@ -1189,16 +1201,30 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		{
 			if (controller.SelectedElementName is not { } id)
 				return null;
-			state = await client.RenameAsync(RequireVersion(), id, newName, cancellationToken).ConfigureAwait(false);
-			return state;
+			var result = await client.RenameAsync(RequireVersion(), id, newName, cancellationToken).ConfigureAwait(false);
+			if (result.Accepted) state = result;
+			return result;
+		}
+
+		/// <summary>Moves every selected non-root element by the requested design-space delta.
+		/// Keyboard input and automation intentionally share this path so a multi-selection is
+		/// committed through the host's single atomic bounds transaction, never as one RPC per
+		/// element.</summary>
+		public DesignerSessionState? NudgeSelection(double dx, double dy)
+		{
+			return CommitBoundsForEach(SelectedBoundsForLayout()
+				.Where(item => item.Path != RootElementId)
+				.Select(item => (item.Path, new Rect(item.Bounds.X + dx, item.Bounds.Y + dy, item.Bounds.Width, item.Bounds.Height)))
+				.ToList());
 		}
 
 		/// <summary>Switches the design-time theme by name (<c>design/theme</c>) - rejected when the
 		/// project embeds no such theme. Does NOT render - see <see cref="Show"/>.</summary>
 		public async Task<DesignerSessionState> SetThemeAsync(string theme, CancellationToken cancellationToken = default)
 		{
-			state = await client.SetThemeAsync(RequireVersion(), theme, cancellationToken).ConfigureAwait(false);
-			return state;
+			var result = await client.SetThemeAsync(RequireVersion(), theme, cancellationToken).ConfigureAwait(false);
+			if (result.Accepted) state = result;
+			return result;
 		}
 
 		long RequireVersion() => state?.Version
@@ -1210,28 +1236,33 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			if (state == null)
 				return;
 			var result = SetBoundsAsync(elementId, bounds.X, bounds.Y, bounds.Width, bounds.Height).GetAwaiter().GetResult();
+			if (!result.Accepted) { Show(result); return; }
 			Show(result);
 			DocumentChanged?.Invoke(this, result);
 		}
 
 		/// <summary>Commits a batch of bounds edits with a single re-render at the end - safe to
 		/// compute every target up front: a bounds-only edit changes no element's tree path.</summary>
-		void CommitBoundsForEach(IReadOnlyList<(string Path, Rect NewBounds)> edits)
+		DesignerSessionState? CommitBoundsForEach(IReadOnlyList<(string Path, Rect NewBounds)> edits)
 		{
 			if (edits.Count == 0 || state == null)
-				return;
-			var result = state;
-			foreach (var (path, bounds) in edits)
-				result = SetBoundsAsync(path, bounds.X, bounds.Y, bounds.Width, bounds.Height).GetAwaiter().GetResult();
+				return null;
+			var result = edits.Count == 1
+				? SetBoundsAsync(edits[0].Path, edits[0].NewBounds.X, edits[0].NewBounds.Y, edits[0].NewBounds.Width, edits[0].NewBounds.Height).GetAwaiter().GetResult()
+				: client.SetBoundsBatchAsync(RequireVersion(), edits.Select(edit => new DesignerBoundsEdit {
+					ElementId = edit.Path, X = edit.NewBounds.X, Y = edit.NewBounds.Y,
+					Width = edit.NewBounds.Width, Height = edit.NewBounds.Height
+				}).ToArray()).GetAwaiter().GetResult();
+			if (!result.Accepted) { Show(result); return result; }
 			Show(result);
 			DocumentChanged?.Invoke(this, result);
+			return result;
 		}
 
 		void CommitDelete()
 		{
 			var result = DeleteSelectedAsync().GetAwaiter().GetResult();
-			if (result == null)
-				return;
+			if (result is not { Accepted: true }) { if (result != null) Show(result); return; }
 			NotifySelectionChanged();
 			Show(result);
 			DocumentChanged?.Invoke(this, result);
@@ -1242,6 +1273,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			if (state == null)
 				return;
 			var result = SetThemeAsync(theme).GetAwaiter().GetResult();
+			if (!result.Accepted) { Show(result); return; }
 			Show(result);
 			DocumentChanged?.Invoke(this, result);
 		}
@@ -1270,8 +1302,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// new child (PlacementOperation), so no container knowledge is duplicated here.</summary>
 		void CommitDrop(DesignerToolboxItemInfo item, double designX, double designY)
 		{
-			var hit = client.HitTestAsync(state!.Version, designX, designY).GetAwaiter().GetResult();
-			var initialParentId = string.IsNullOrEmpty(hit.PickPath) ? OutlineRoot?.Id ?? "" : hit.PickPath;
+			var hit = controller.FindNodeAtDesignPoint(designX, designY);
+			var initialParentId = String.IsNullOrEmpty(hit?.Path) ? OutlineRoot?.Id ?? "" : hit.Path;
 			// The visual hit is commonly a leaf (TextBlock inside a Button), not the panel the user
 			// visually dropped onto: try the hit first, then each structural ancestor.
 			var candidateParents = new List<string>();

@@ -50,6 +50,24 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 	/// </summary>
 	sealed class WpfSurfaceHostService : IDesignerChildService
 	{
+		// Tree rebuilds happen for every small placement edit. TypeDescriptor metadata is invariant
+		// per CLR type, so do not reflect the same property/event table once per element per frame.
+		static readonly Dictionary<Type, PropertyDescriptor[]> browsablePropertiesByType = new();
+		static readonly Dictionary<Type, EventDescriptor[]> browsableEventsByType = new();
+
+		static PropertyDescriptor[] BrowsableProperties(Type type)
+		{
+			if (!browsablePropertiesByType.TryGetValue(type, out var descriptors))
+				browsablePropertiesByType[type] = descriptors = TypeDescriptor.GetProperties(type).Cast<PropertyDescriptor>().Where(descriptor => descriptor.IsBrowsable).ToArray();
+			return descriptors;
+		}
+
+		static EventDescriptor[] BrowsableEvents(Type type)
+		{
+			if (!browsableEventsByType.TryGetValue(type, out var descriptors))
+				browsableEventsByType[type] = descriptors = TypeDescriptor.GetEvents(type).Cast<EventDescriptor>().Where(descriptor => descriptor.IsBrowsable).ToArray();
+			return descriptors;
+		}
 		readonly string expectedToken;
 		readonly WpfHeadlessDispatcher dispatcher;
 		readonly ManualResetEventSlim shutdown = new(false);
@@ -239,7 +257,13 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				if (parseErrors != null)
 				{
 					foreach (var error in parseErrors)
-						state.Diagnostics.Add(new DesignerDiagnostic { Message = error.Message, Line = error.Line, Column = error.Column });
+						state.Diagnostics.Add(new DesignerDiagnostic {
+							Message = error.Message, FileName = snapshot.PrimaryFileName,
+							Line = error.Line, Column = error.Column,
+							// XamlErrorService identifies a point, not a token span. Preserve the
+							// explicit one-character range rather than fabricating a wider location.
+							EndColumn = error.Column > 0 ? error.Column + 1 : 0
+						});
 				}
 				state.Accepted = current.RootItem != null;
 				if (!state.Accepted)
@@ -251,7 +275,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				current = null;
 				state.Accepted = false;
 				state.Error = e.GetBaseException().Message;
-				state.Diagnostics.Add(new DesignerDiagnostic { Message = state.Error });
+				state.Diagnostics.Add(new DesignerDiagnostic { Message = state.Error, FileName = snapshot.PrimaryFileName });
 			}
 			return state;
 		}
@@ -927,6 +951,65 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		/// <summary>Removes an explicit local value through the design model instead of assigning a
+		/// guessed CLR default. This preserves inherited/default-property semantics and produces the
+		/// same native undo transaction as an in-process WPF designer reset.</summary>
+		[JsonRpcMethod("design/reset-property")]
+		public DesignerSessionState ResetProperty(long baseVersion, string elementId, string propertyName)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item))
+					return NotFound(state, "Element not found: " + elementId);
+				var property = item.Properties[propertyName];
+				if (property == null)
+					return NotFound(state, "Property not found: " + propertyName);
+				if (!property.IsSet)
+					return NotFound(state, "Property is not explicitly set: " + propertyName);
+				try
+				{
+					property.Reset();
+				}
+				catch (Exception e)
+				{
+					return NotFound(state, e.GetBaseException().Message);
+				}
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
+		/// <summary>Sets or clears a XAML event attribute through the design model. The host does
+		/// not generate a code-behind method: callers supply an existing handler name, so no user
+		/// code is run or authored inside this isolated process.</summary>
+		[JsonRpcMethod("design/set-event")]
+		public DesignerSessionState SetEvent(long baseVersion, string elementId, string eventName, string handlerName)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item))
+					return NotFound(state, "Element not found: " + elementId);
+				var property = item.Properties[eventName];
+				if (property == null || !property.IsEvent)
+					return NotFound(state, "Event not found: " + eventName);
+				try
+				{
+					if (string.IsNullOrWhiteSpace(handlerName))
+						property.Reset();
+					else
+						property.SetValue(handlerName);
+				}
+				catch (Exception e)
+				{
+					return NotFound(state, e.GetBaseException().Message);
+				}
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
 		/// <summary>Notifies the child of the current selection so it can temporarily expand any
 		/// collapsed <see cref="Expander"/> ancestor of the selected element (including the element
 		/// itself, if it is one) - the design-time-only equivalent of Blend's "selecting inside a
@@ -1339,6 +1422,58 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		/// <summary>Applies all bounds under one <see cref="PlacementOperation"/>. A group drag is
+		/// one user edit: validating every id before starting means an invalid target leaves the
+		/// document untouched, and committing once preserves the designer's native undo boundary.</summary>
+		[JsonRpcMethod("design/set-bounds-batch")]
+		public DesignerSessionState SetBoundsBatch(long baseVersion, DesignerBoundsEdit[] edits)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (edits == null || edits.Length == 0)
+					return NotFound(state, "At least one bounds edit is required.");
+				if (edits.Any(edit => string.IsNullOrEmpty(edit.ElementId)))
+					return NotFound(state, "A bounds edit has no element id.");
+				var distinct = edits.GroupBy(edit => edit.ElementId, StringComparer.Ordinal).ToArray();
+				if (distinct.Any(group => group.Count() != 1))
+					return NotFound(state, "A bounds batch cannot contain the same element twice.");
+				var items = new DesignItem[edits.Length];
+				for (var i = 0; i < edits.Length; i++)
+				{
+					if (!pathToItem.TryGetValue(edits[i].ElementId, out var item))
+						return NotFound(state, "Element not found: " + edits[i].ElementId);
+					items[i] = item;
+				}
+				try
+				{
+					// PlacementOperation deliberately filters descendants and groups by container.
+					// Its PlacedItems sequence therefore is not index-aligned with the caller's edits.
+					// Run one native placement transaction per explicitly addressed item so a bounds
+					// rectangle can never be applied to a different sibling/parent.
+					for (var i = 0; i < items.Length; i++)
+					{
+						var operation = PlacementOperation.Start(new[] { items[i] }, PlacementType.Resize);
+						try
+						{
+							var info = operation.PlacedItems.Single();
+							var edit = edits[i];
+							info.Bounds = new Rect(edit.X, edit.Y, edit.Width, edit.Height);
+							operation.CurrentContainerBehavior.SetPosition(info);
+							operation.Commit();
+						}
+						catch { operation.Abort(); throw; }
+					}
+				}
+				catch (Exception e)
+				{
+					return NotFound(state, e.GetBaseException().Message);
+				}
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
 		/// <summary>Reports the given Grid's current row/column track geometry (real post-layout
 		/// <c>Offset</c>/<c>ActualHeight</c>/<c>ActualWidth</c> off the live <see cref="Grid"/> -
 		/// <c>RowDefinition.Offset</c>/<c>ColumnDefinition.Offset</c> are already cumulative, no
@@ -1360,15 +1495,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					return new DesignerGridGuides { Accepted = false, Error = "Element not found: " + elementId };
 				if (item.Component is not Grid grid)
 					return new DesignerGridGuides { Accepted = false, Error = "Element is not a Grid: " + elementId };
-				return new DesignerGridGuides {
-					Accepted = true,
-					RowTracks = grid.RowDefinitions
-						.Select(r => new DesignerGridTrackInfo { Offset = r.Offset, Size = r.ActualHeight })
-						.ToList(),
-					ColumnTracks = grid.ColumnDefinitions
-						.Select(c => new DesignerGridTrackInfo { Offset = c.Offset, Size = c.ActualWidth })
-						.ToList()
-				};
+				return BuildGridTracks(grid);
 			});
 
 		/// <summary>Commits a Grid row's/column's new pixel size (a completed divider drag) -
@@ -1404,6 +1531,83 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				state.Accepted = true;
 				return state;
 			});
+
+		/// <summary>Splits one measured Grid track at its local pixel <paramref name="position"/>.
+		/// The definition insertion and every affected attached Row/Column/Span update share one
+		/// design-model change group, so a rejected request cannot leave child indices half-shifted.
+	/// Child placement follows the rendered child bounds: a child which occupies the first half of
+	/// the split cell extends its span, while one wholly in the second half moves with that half.
+	/// This preserves the pre-split visual placement rather than merely preserving logical indices.</summary>
+		[JsonRpcMethod("design/split-grid-track")]
+		public DesignerSessionState SplitGridTrack(long baseVersion, string elementId, bool isRow, double position)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item) || item.Component is not Grid grid)
+					return NotFound(state, "Element is not a Grid: " + elementId);
+				var definitions = isRow ? grid.RowDefinitions.Cast<DefinitionBase>().ToArray() : grid.ColumnDefinitions.Cast<DefinitionBase>().ToArray();
+				if (definitions.Length == 0)
+					return NotFound(state, "A Grid needs an explicit row/column before it can be split.");
+				var splitIndex = Array.FindIndex(definitions, definition => {
+					var offset = isRow ? ((RowDefinition)definition).Offset : ((ColumnDefinition)definition).Offset;
+					var size = isRow ? ((RowDefinition)definition).ActualHeight : ((ColumnDefinition)definition).ActualWidth;
+					return position > offset && position < offset + size;
+				});
+				if (splitIndex < 0)
+					return NotFound(state, "The split position must be inside a Grid track.");
+				try {
+					using var changeGroup = item.OpenGroup(isRow ? "Split grid row" : "Split grid column");
+					var collection = item.Properties[isRow ? "RowDefinitions" : "ColumnDefinitions"];
+					var oldDefinition = definitions[splitIndex];
+					var offset = isRow ? ((RowDefinition)oldDefinition).Offset : ((ColumnDefinition)oldDefinition).Offset;
+					var actual = isRow ? ((RowDefinition)oldDefinition).ActualHeight : ((ColumnDefinition)oldDefinition).ActualWidth;
+					var oldLength = isRow ? ((RowDefinition)oldDefinition).Height : ((ColumnDefinition)oldDefinition).Width;
+					var ratio = (position - offset) / actual;
+					if (oldLength.IsAuto) oldLength = new GridLength(actual, GridUnitType.Pixel);
+					var first = new GridLength(oldLength.Value * ratio, oldLength.GridUnitType);
+					var second = new GridLength(oldLength.Value - first.Value, oldLength.GridUnitType);
+					var inserted = item.Services.Component.RegisterComponentForDesigner(isRow ? new RowDefinition() : new ColumnDefinition());
+					collection.CollectionElements.Insert(splitIndex + 1, inserted);
+					collection.CollectionElements[splitIndex].Properties[isRow ? RowDefinition.HeightProperty : ColumnDefinition.WidthProperty].SetValue(first);
+					inserted.Properties[isRow ? RowDefinition.HeightProperty : ColumnDefinition.WidthProperty].SetValue(second);
+					FixGridChildIndicesAfterSplit(item, grid, splitIndex,
+						isRow ? Grid.RowProperty : Grid.ColumnProperty,
+						isRow ? Grid.RowSpanProperty : Grid.ColumnSpanProperty, isRow, position);
+					changeGroup.Commit();
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
+		/// <summary>Moves or extends children after inserting a track.  A logical Grid span alone
+		/// is insufficient here: controls may be aligned, margined, or occupy only one end of a
+		/// spanned cell.  Use their measured bounds to retain which side of the new divider they
+		/// visibly occupied, matching the legacy Grid adorner's split behavior.</summary>
+		static void FixGridChildIndicesAfterSplit(DesignItem gridItem, Grid grid, int splitIndex,
+			DependencyProperty indexProperty, DependencyProperty spanProperty, bool isRow, double position)
+		{
+			foreach (var child in gridItem.Properties["Children"].CollectionElements)
+			{
+				var index = child.Properties.GetAttachedProperty(indexProperty);
+				var spanPropertyValue = child.Properties.GetAttachedProperty(spanProperty);
+				var start = index.GetConvertedValueOnInstance<int>();
+				var span = Math.Max(1, spanPropertyValue.GetConvertedValueOnInstance<int>());
+				if (start > splitIndex)
+				{
+					index.SetValue(start + 1);
+					continue;
+				}
+					if (splitIndex >= start + span)
+						continue;
+					// The split lies inside this child's declared cell span.  Keep its leading cell
+					// and extend the span over the new track; measured pixels cannot change that
+					// logical ownership (especially for a child spanning the split boundary).
+					spanPropertyValue.SetValue(span + 1);
+			}
+		}
 
 		[JsonRpcMethod("design/delete-elements")]
 		public DesignerSessionState DeleteElements(long baseVersion, string[] elementIds)
@@ -1615,10 +1819,8 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			if (item.ComponentType == null)
 				return new List<DesignerPropertyInfo>();
 			var result = new List<DesignerPropertyInfo>();
-			foreach (PropertyDescriptor descriptor in TypeDescriptor.GetProperties(item.ComponentType))
+			foreach (var descriptor in BrowsableProperties(item.ComponentType))
 			{
-				if (!descriptor.IsBrowsable)
-					continue;
 				DesignItemProperty? property;
 				try
 				{
@@ -1631,6 +1833,32 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				if (property == null || property.IsEvent)
 					continue;
 				result.Add(ToPropertyInfo(property));
+			}
+			return result;
+		}
+
+		/// <summary>Publishes WPF's browsable XAML events separately from ordinary properties.
+		/// Handler names are source text, never runtime delegates, so listing them cannot invoke
+		/// project code.</summary>
+		static List<DesignerEventInfo> BuildEvents(DesignItem item)
+		{
+			if (item.ComponentType == null)
+				return new List<DesignerEventInfo>();
+			var result = new List<DesignerEventInfo>();
+			foreach (var descriptor in BrowsableEvents(item.ComponentType))
+			{
+				try
+				{
+					var property = item.Properties[descriptor.Name];
+					if (property?.IsEvent == true)
+						result.Add(new DesignerEventInfo {
+							Name = descriptor.Name,
+							Category = string.IsNullOrEmpty(descriptor.Category) ? "Events" : descriptor.Category,
+							HandlerTypeName = descriptor.EventType?.FullName ?? "",
+							Handler = property.TextValue ?? ""
+						});
+				}
+				catch { /* one lazy event must not prevent the rest of the snapshot */ }
 			}
 			return result;
 		}
@@ -1655,6 +1883,16 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			};
 			try
 			{
+				// DesignItemProperty.Value is the design-model value.  ValueOnInstance can flatten
+				// a Binding to its runtime string representation, which is useful for display but
+				// loses the distinction between editable literal text and an object reference.
+				if (property.Value is DesignItem reference)
+				{
+					info.Kind = "Reference";
+					info.IsReadOnly = true;
+					info.Value = reference.ToString() ?? "";
+					return info;
+				}
 				var value = property.ValueOnInstance;
 				if (value == null)
 				{
@@ -1681,15 +1919,30 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					info.Kind = "String";
 					return info;
 				}
+				// A nested DesignItem is a source/model reference (the normal shape for a Binding,
+				// object-valued Content, Transform, etc.), not an opaque conversion failure.  It is
+				// intentionally read-only until the protocol grows a structured reference editor:
+				// serializing ToString() back into XAML would corrupt the document.  Publishing the
+				// distinct kind lets the shell explain that limitation instead of claiming the value
+				// is unsupported by the runtime.
+				if (value is DesignItem)
+				{
+					info.Kind = "Reference";
+					info.IsReadOnly = true;
+					info.Value = value.ToString() ?? "";
+					return info;
+				}
 				var converter = property.ReturnType != null ? TypeDescriptor.GetConverter(property.ReturnType) : null;
 				if (converter != null && converter.CanConvertTo(typeof(string)) && converter.CanConvertFrom(typeof(string)))
 				{
 					info.Value = converter.ConvertToInvariantString(value) ?? "";
 					info.IsEnum = property.ReturnType!.IsEnum;
-					info.Kind = property.ReturnType == typeof(bool) ? "Boolean"
-						: info.IsEnum ? "Enum"
-						: IsNumericType(property.ReturnType) ? "Number"
-						: "String";
+					info.Kind = PropertyKind(property.ReturnType, info.IsEnum);
+					// The wire value for an enum is intentionally still its invariant XAML text;
+					// AllowedValues supplies the presentation contract that lets a remote property
+					// grid render a constrained drop-down without loading the child's CLR type.
+					if (info.IsEnum)
+						info.AllowedValues.AddRange(Enum.GetNames(property.ReturnType));
 				}
 				else
 				{
@@ -1712,6 +1965,23 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			type == typeof(byte) || type == typeof(sbyte) || type == typeof(short) || type == typeof(ushort) ||
 			type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(ulong) ||
 			type == typeof(float) || type == typeof(double) || type == typeof(decimal);
+
+		/// <summary>Maps only values whose TypeConverter already gives us a lossless text round-trip
+		/// to the common Properties-pad vocabulary. Nested design items deliberately remain
+		/// <c>Unsupported</c>; presenting their <see cref="object.ToString"/> output as editable
+		/// text would be a lossy write path.</summary>
+		static string PropertyKind(Type type, bool isEnum) =>
+			type == typeof(bool) ? "Boolean"
+			: isEnum ? "Enum"
+			: IsNumericType(type) ? "Number"
+			: type == typeof(System.Windows.Media.Color) ? "Color"
+			: typeof(Brush).IsAssignableFrom(type) ? "Brush"
+			: type == typeof(Uri) ? "Uri"
+			: type == typeof(Point) ? "Point"
+			: type == typeof(Size) ? "Size"
+			: type == typeof(Rect) ? "Rect"
+			: type == typeof(Thickness) ? "Thickness"
+			: "String";
 
 		void EnsureInitialized()
 		{
@@ -1805,7 +2075,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					desired.Height > 0 ? desired.Height : effectiveHeight));
 				root.UpdateLayout();
 			}
-			state.Tree = BuildNode(current.RootItem, current.RootItem, "");
+			state.Tree = BuildNode(current.RootItem, current.RootItem, "", DesignerLayoutMode.Unknown);
 			state.TrayComponents = BuildTrayComponents(state.Tree);
 			state.Render = Render(current.RootItem.View as FrameworkElement, state.Tree);
 			#if !MICROSOFT_WPF
@@ -1855,7 +2125,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		}
 		#endif
 
-		DesignerElementNode BuildNode(DesignItem item, DesignItem root, string path)
+		DesignerElementNode BuildNode(DesignItem item, DesignItem root, string path, string layoutMode)
 		{
 			pathToItem[path] = item;
 			var node = new DesignerElementNode {
@@ -1863,6 +2133,13 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				Name = string.IsNullOrEmpty(item.Name) ? null : item.Name,
 				Type = item.ComponentType?.Name ?? "",
 				Path = path,
+				LayoutMode = layoutMode,
+				ZIndex = path.Length == 0 ? null : item.View is UIElement visual ? Panel.GetZIndex(visual) : null,
+				BaselineOffset = item.View is TextBlock text ? text.BaselineOffset : null,
+				GridTracks = item.Component is Grid grid ? BuildGridTracks(grid) : null,
+				LayoutInsets = BuildLayoutInsets(item),
+				Bindings = BuildBindingTelemetry(item),
+				Events = BuildEvents(item),
 				Properties = BuildProperties(item)
 			};
 			if (item.View is FrameworkElement element && root.View is Visual rootVisual)
@@ -1904,20 +2181,83 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					foreach (var child in contentProperty.CollectionElements)
 					{
 						var childPath = path.Length == 0 ? index.ToString(CultureInfo.InvariantCulture) : path + "," + index;
-						node.Children.Add(BuildNode(child, root, childPath));
+						node.Children.Add(BuildNode(child, root, childPath,
+							DesignerLayoutMode.InferFromContainerType(node.Type)));
 						index++;
 					}
 				}
 				else if (contentProperty.Value != null)
 				{
 					var childPath = path.Length == 0 ? "0" : path + ",0";
-					node.Children.Add(BuildNode(contentProperty.Value, root, childPath));
+				node.Children.Add(BuildNode(contentProperty.Value, root, childPath,
+					DesignerLayoutMode.InferFromContainerType(node.Type)));
 				}
 			}
 			AppendAttachedContextMenu(item, root, path, node);
 			AppendHeaderContent(item, root, path, node);
 			return node;
 		}
+
+		/// <summary>Reports bindings from the design model, not from a runtime value. A headless
+		/// preview can intentionally lack a DataContext, so claiming Success/Error from the rendered
+		/// value would be misleading and could run user converters. This still gives the shell an
+		/// authoritative, child-owned explanation of which source properties are data-bound.</summary>
+		static List<DesignerBindingInfo> BuildBindingTelemetry(DesignItem item)
+		{
+			if (item.ComponentType == null)
+				return new List<DesignerBindingInfo>();
+			var result = new List<DesignerBindingInfo>();
+			foreach (var descriptor in BrowsableProperties(item.ComponentType))
+			{
+				try
+				{
+					var property = item.Properties[descriptor.Name];
+					if (property?.Value is DesignItem reference && reference.Component is System.Windows.Data.BindingBase)
+						result.Add(new DesignerBindingInfo { Property = descriptor.Name });
+				}
+				catch { /* a lazy/non-WPF property is not binding telemetry */ }
+			}
+			return result;
+		}
+
+		/// <summary>Publishes only edge measurements whose container semantics WPF can state
+		/// unambiguously.  Margin is useful as an editable design fact for Grid children; Canvas
+		/// position is measured from the actual arranged rectangle so Right/Bottom authored forms
+		/// remain intelligible without inventing a Left/Top source value.</summary>
+		static DesignerLayoutInsets? BuildLayoutInsets(DesignItem item)
+		{
+			if (item.View is not FrameworkElement element || item.Parent?.Component is not FrameworkElement parent)
+				return null;
+			if (parent is Grid)
+			{
+				var margin = element.Margin;
+				return new DesignerLayoutInsets {
+					Kind = "Margin", Left = margin.Left, Top = margin.Top,
+					Right = margin.Right, Bottom = margin.Bottom
+				};
+			}
+			if (parent is Canvas canvas)
+			{
+				var point = element.TranslatePoint(new Point(0, 0), canvas);
+				return new DesignerLayoutInsets {
+					Kind = "CanvasPosition", Left = point.X, Top = point.Y,
+					Right = Math.Max(0, canvas.ActualWidth - point.X - element.ActualWidth),
+					Bottom = Math.Max(0, canvas.ActualHeight - point.Y - element.ActualHeight)
+				};
+			}
+			return null;
+		}
+
+		static DesignerGridGuides BuildGridTracks(Grid grid)
+			=> new DesignerGridGuides {
+				Accepted = true,
+				RowTracks = grid.RowDefinitions
+					.Select(row => new DesignerGridTrackInfo { Offset = row.Offset, Size = row.ActualHeight })
+					.ToList(),
+				ColumnTracks = grid.ColumnDefinitions
+					.Select(column => new DesignerGridTrackInfo { Offset = column.Offset, Size = column.ActualWidth })
+					.ToList()
+			};
 
 		/// <summary>Adds the one detached strip that WPF deliberately keeps outside an owner's
 		/// visual/content tree. An assigned <see cref="ContextMenu"/> is a regular design item
@@ -1940,7 +2280,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			if (contextMenu?.ComponentType == null || !typeof(ContextMenu).IsAssignableFrom(contextMenu.ComponentType))
 				return;
 			var contextMenuPath = path.Length == 0 ? "@context-menu" : path + ",@context-menu";
-			var contextMenuNode = BuildNode(contextMenu, root, contextMenuPath);
+			var contextMenuNode = BuildNode(contextMenu, root, contextMenuPath, DesignerLayoutMode.Unknown);
 			// ContextMenu is detached from its owner's visual tree. It is therefore exposed through
 			// the common component tray while retaining its existing tree/menu-editor representation.
 			contextMenuNode.IsTrayComponent = true;
@@ -1984,8 +2324,10 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				Id = headerPath + "-group",
 				Type = "Header",
 				Path = headerPath,
+				LayoutMode = DesignerLayoutMode.Unknown,
 			};
-			headerGroupNode.Children.Add(BuildNode(header, root, headerPath));
+			headerGroupNode.Children.Add(BuildNode(header, root, headerPath,
+				DesignerLayoutMode.Content));
 			node.Children.Add(headerGroupNode);
 		}
 
