@@ -427,10 +427,19 @@ Two smaller things found on the way, both kept:
    preview.57 pins go.
 3. Graph scheduling inside the (already working) one-process build: today it builds dependency
    waves, and each wave waits for its slowest project; a dependent could instead start as soon as
-   its own dependencies finish. An edit to Designer.Remote takes 86-96 s.
+   its own dependencies finish. An edit to Designer.Remote takes 86-96 s. Tried as a shortcut:
+   a traversal listing the 56 projects as ProjectReferences, built with `msbuild -graph -m` and the
+   IDE's global properties - it failed (MSB3030: dependents copied `ICSharpCode.Designer.Remote.dll`
+   while the multi-targeted Designer.Remote was rebuilding it), so static graph builds do not order
+   this repository safely as they are. Doing it properly means our own scheduler: per-project
+   MSBuild requests issued from the IDE as each project's dependencies finish, inside one
+   long-lived MSBuild node (e.g. the in-process BuildManager), which is a larger change.
 4. Partly done: one MSBuild evaluation per single-target project instead of two (below). What is
    left of the ~570 MB GC heap after an open is not attributed further yet.
-5. ReadyToRun for RoslynHost and the XAML language servers; one XAML server per runtime.
+5. ReadyToRun for RoslynHost: checked, little to gain. The Roslyn assemblies it loads
+   (Microsoft.CodeAnalysis, .CSharp, .VisualBasic, .Workspaces, .Features: ~35 MB) already ship
+   ReadyToRun; what is left to precompile is the host's own small assemblies. One XAML server per
+   runtime is still open.
 6. Done: `PerformanceGateTests` (see below). The idle-CPU gate fails until OpenDevelop gets the
    LibreWPF layout-clip fix from the feed (or `openavalon/dev-overlay.sh <bin> PresentationFramework`
    after each shell build, which replaces the overlaid file with the package's).
