@@ -59,16 +59,72 @@ public sealed class PerformanceGateTests : IAsyncDisposable
     {
         Assert.True((await _app.InvokeAsync("od.open-solution", _slnx)).GetProperty("success").GetBoolean());
         var first = await _app.InvokeAsync("od.build-solution");
-        Assert.True(first.GetProperty("success").GetBoolean(), first.ToString());
+        Assert.Equal("Success", first.GetProperty("result").GetString());
 
         var second = await _app.InvokeAsync("od.build-solution");
-        Assert.True(second.GetProperty("success").GetBoolean(), second.ToString());
+        Assert.Equal("Success", second.GetProperty("result").GetString());
         var build = (await _app.InvokeAsync("od.perf.timeline")).GetProperty("scopes").GetProperty("build")
             .EnumerateArray().Select(mark => mark.GetProperty("name").GetString()).ToList();
 
         Assert.Contains("project-up-to-date", build);
         Assert.DoesNotContain("project-built", build);
         Assert.DoesNotContain("built-in-one-process", build);
+    }
+
+    // The counter-cases of the gate above: a change must never be skipped. "Built" is every project
+    // of the solution the timeline does not report up to date - independent of whether the build ran
+    // per project or in one MSBuild process, which later optimizations may change.
+
+    [Fact]
+    public async Task ChangedSourceFile_IsBuilt()
+    {
+        await BuildOnceAsync();
+        AppendLine(Path.Combine(_dir, "App", "Program.cs"), "// changed");
+        Assert.Equal(new[] { "App" }, await BuildAndListBuiltProjectsAsync());
+    }
+
+    [Fact]
+    public async Task AddedOrRemovedGlobbedSourceFile_IsBuilt()
+    {
+        await BuildOnceAsync();
+        var added = Path.Combine(_dir, "Lib", "AddedByGate.cs");
+        File.WriteAllText(added, "namespace Lib { public static class AddedByGate { } }\n");
+        Assert.Contains("Lib", await BuildAndListBuiltProjectsAsync());
+
+        File.Delete(added);
+        Assert.Contains("Lib", await BuildAndListBuiltProjectsAsync());
+    }
+
+    [Fact]
+    public async Task ChangedReferencedProject_BuildsItsDependentsToo()
+    {
+        await BuildOnceAsync();
+        AppendLine(Path.Combine(_dir, "Lib", "Class1.cs"), "// changed");
+        Assert.Equal(new[] { "App", "Lib" }, await BuildAndListBuiltProjectsAsync());
+    }
+
+    async Task BuildOnceAsync()
+    {
+        Assert.True((await _app.InvokeAsync("od.open-solution", _slnx)).GetProperty("success").GetBoolean());
+        var first = await _app.InvokeAsync("od.build-solution");
+        Assert.Equal("Success", first.GetProperty("result").GetString());
+    }
+
+    async Task<string[]> BuildAndListBuiltProjectsAsync()
+    {
+        var result = await _app.InvokeAsync("od.build-solution");
+        Assert.Equal("Success", result.GetProperty("result").GetString());
+        var upToDate = (await _app.InvokeAsync("od.perf.timeline")).GetProperty("scopes").GetProperty("build")
+            .EnumerateArray()
+            .Where(mark => mark.GetProperty("name").GetString() == "project-up-to-date")
+            .Select(mark => mark.GetProperty("detail").GetString())
+            .ToHashSet();
+        return new[] { "App", "Lib" }.Where(project => !upToDate.Contains(project)).ToArray();
+    }
+
+    static void AppendLine(string file, string line)
+    {
+        File.AppendAllText(file, Environment.NewLine + line + Environment.NewLine);
     }
 
     static readonly string[] SettledMilestones = { "roslyn-projects-pushed", "project-watchers-started" };

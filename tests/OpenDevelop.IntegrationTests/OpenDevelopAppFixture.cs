@@ -1256,7 +1256,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             "Could not locate tests/fixtures/SampleTestProject/Sample.xml by walking up from " + AppContext.BaseDirectory);
     }
 
-    static string ResolveDotNetHost()
+    internal static string ResolveDotNetHost()
     {
         var envHost = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
         if (!string.IsNullOrEmpty(envHost) && File.Exists(envHost) && DotNetHostResolvesSdk(envHost))
