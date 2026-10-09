@@ -262,7 +262,10 @@ sealed class DesignerHostService : IDesignerChildService
 			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
 		var property = TypeDescriptor.GetProperties(component)[propertyName]
 			?? throw new ArgumentException("Property not found: " + propertyName, nameof(propertyName));
-		if (property.IsReadOnly)
+		// Keep the image mutation boundary aligned with DescribeProperties: an image is exposed as
+		// an opaque Unsupported value even though the underlying WinForms descriptor is writable.
+		// It must never accept the display token as a scalar edit.
+		if (property.IsReadOnly || typeof(Image).IsAssignableFrom(property.PropertyType))
 			throw new InvalidOperationException($"Property {elementId}.{propertyName} is read-only.");
 		var converted = ConvertPropertyValue(property, value);
 		if (component == host.RootComponent && propertyName == "AutoScaleDimensions" && converted is SizeF scale)

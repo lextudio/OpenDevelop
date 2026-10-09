@@ -676,6 +676,13 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Equal("/project/Form1.resx", imageProperty.ResourceFileName);
 		Assert.Equal("button1.Image", imageProperty.ResourceKey);
 		Assert.Equal("ResourceImage", imageProperty.EditorKind);
+		// The resource capability is editor eligibility for the IDE, not permission for a
+		// generic child/property RPC to submit its opaque display token as text.
+		var rejectedImageEdit = await Assert.ThrowsAnyAsync<Exception>(() =>
+			client.SetPropertyAsync(9, "button1", "Image", "[binary]", timeout.Token));
+		Assert.Contains("read-only", rejectedImageEdit.Message, StringComparison.OrdinalIgnoreCase);
+		var afterRejectedImageEdit = await client.FlushAsync(9, timeout.Token);
+		Assert.Contains("resources.GetObject(\"button1.Image\")", DesignerText(afterRejectedImageEdit), StringComparison.Ordinal);
 		var textProperty = Assert.Single(resourceButton.Properties, property => property.Name == "Text");
 		Assert.Equal("/project/Form1.resx", textProperty.ResourceFileName);
 		Assert.Equal("button1.Text", textProperty.ResourceKey);
