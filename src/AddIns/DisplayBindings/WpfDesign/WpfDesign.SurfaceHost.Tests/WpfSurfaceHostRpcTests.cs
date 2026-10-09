@@ -115,6 +115,115 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task DesignSetLayoutInset_ChangesOnlyTheRequestedGridMarginEdge()
+	{
+		const string gridXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="200" Height="100">
+			  <Button x:Name="target" Margin="1,2,3,4" Width="40" Height="20" />
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, gridXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var target = FindByName(opened.Tree!, "target")!;
+
+		var changed = await client.SetLayoutInsetAsync(1, target.Id, "Margin", "Right", 30, timeout.Token);
+
+		Assert.True(changed.Accepted, changed.Error);
+		var insets = FindByName(changed.Tree!, "target")!.LayoutInsets!;
+		Assert.Equal(1, insets.Left, 3);
+		Assert.Equal(2, insets.Top, 3);
+		Assert.Equal(30, insets.Right, 3);
+		Assert.Equal(4, insets.Bottom, 3);
+		var saved = (await client.FlushAsync(1, timeout.Token)).Files.Single().Text;
+		Assert.Contains("Margin=\"1,2,30,4\"", saved, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task DesignSetLayoutInset_PreservesCanvasRightBottomAnchors()
+	{
+		const string canvasXaml = """
+			<Canvas xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="200" Height="100">
+			  <Button x:Name="target" Canvas.Right="20" Canvas.Bottom="10" Margin="5" Width="40" Height="20" />
+			</Canvas>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, canvasXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var target = FindByName(opened.Tree!, "target")!;
+
+		// Canvas.Right positions the margin box. The visible left edge is 135; moving it
+		// to 125 must update the authored Right anchor to 30 rather than silently adding
+		// Canvas.Left="125" (and it must account for Margin.Right).
+		var changed = await client.SetLayoutInsetAsync(1, target.Id, "CanvasPosition", "Left", 125, timeout.Token);
+
+		Assert.True(changed.Accepted, changed.Error);
+		var insets = FindByName(changed.Tree!, "target")!.LayoutInsets!;
+		Assert.Equal(125, insets.Left, 3);
+		Assert.Equal(35, insets.Right, 3);
+		var saved = (await client.FlushAsync(1, timeout.Token)).Files.Single().Text;
+		Assert.Contains("Canvas.Right=\"30\"", saved, StringComparison.Ordinal);
+		Assert.DoesNotContain("Canvas.Left=", saved, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task DesignSetLayoutInset_UsesTheEffectiveCanvasAnchorAndPreservesOverflow()
+	{
+		const string canvasXaml = """
+			<Canvas xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="200" Height="100">
+			  <Button x:Name="both" Canvas.Left="10" Canvas.Right="20" Width="40" Height="20" />
+			  <Button x:Name="overflow" Canvas.Left="190" Width="40" Height="20" />
+			</Canvas>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, canvasXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var both = FindByName(opened.Tree!, "both")!;
+		var overflow = FindByName(opened.Tree!, "overflow")!;
+		Assert.Equal(-30, overflow.LayoutInsets!.Right, 3);
+
+		// WPF gives Canvas.Left precedence when both horizontal anchors are authored.
+		// Dragging the visible right edge therefore updates Left, not ineffective Right.
+		var changed = await client.SetLayoutInsetAsync(1, both.Id, "CanvasPosition", "Right", 140, timeout.Token);
+		Assert.True(changed.Accepted, changed.Error);
+		var changedBoth = FindByName(changed.Tree!, "both")!;
+		Assert.Equal(140, changedBoth.LayoutInsets!.Right, 3);
+		var saved = (await client.FlushAsync(changed.Version, timeout.Token)).Files.Single().Text;
+		Assert.Contains("Canvas.Left=\"20\"", saved, StringComparison.Ordinal);
+		Assert.Contains("Canvas.Right=\"20\"", saved, StringComparison.Ordinal);
+
+		// An overflow distance remains a real negative value and can be used as the drag input.
+		var movedOverflow = await client.SetLayoutInsetAsync(changed.Version, overflow.Id, "CanvasPosition", "Right", -25, timeout.Token);
+		Assert.True(movedOverflow.Accepted, movedOverflow.Error);
+		Assert.Equal(-25, FindByName(movedOverflow.Tree!, "overflow")!.LayoutInsets!.Right, 3);
+	}
+
+	[Fact]
+	public async Task DesignSetLayoutInset_HidesAndRejectsTransformedElements()
+	{
+		const string canvasXaml = """
+			<Canvas xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="200" Height="100">
+			  <Button x:Name="target" Canvas.Left="10" Width="40" Height="20">
+			    <Button.RenderTransform><TranslateTransform X="50" /></Button.RenderTransform>
+			  </Button>
+			</Canvas>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, canvasXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var target = FindByName(opened.Tree!, "target")!;
+		Assert.Null(target.LayoutInsets);
+
+		var rejected = await client.SetLayoutInsetAsync(1, target.Id, "CanvasPosition", "Left", 65, timeout.Token);
+		Assert.False(rejected.Accepted);
+		Assert.Contains("transformed", rejected.Error, StringComparison.OrdinalIgnoreCase);
+	}
+
+	[Fact]
 	public async Task ChildHost_ReportsDeclaredBindingsWithoutClaimingRuntimeSuccess()
 	{
 		const string bindingXaml = """

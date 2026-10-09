@@ -68,6 +68,8 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerSessionState SetBounds(string sessionId, string documentId, long baseVersion, string elementId, double x, double y, double width, double height) => Checked(sessionId, documentId).SetBounds(baseVersion, elementId, x, y, width, height);
 	[JsonRpcMethod("design/set-bounds-batch")]
 	public DesignerSessionState SetBoundsBatch(string sessionId, string documentId, long baseVersion, DesignerBoundsEdit[] edits) => Checked(sessionId, documentId).SetBoundsBatch(baseVersion, edits);
+	[JsonRpcMethod("design/set-layout-inset")]
+	public DesignerSessionState SetLayoutInset(string sessionId, string documentId, long baseVersion, string elementId, string kind, string edge, double value) => Checked(sessionId, documentId).SetLayoutInset(baseVersion, elementId, kind, edge, value);
 	[JsonRpcMethod("design/query-grid-guides")]
 	public DesignerGridGuides QueryGridGuides(string sessionId, string documentId, long baseVersion, string elementId) => Checked(sessionId, documentId).QueryGridGuides(baseVersion, elementId);
 	[JsonRpcMethod("design/set-grid-track-size")]

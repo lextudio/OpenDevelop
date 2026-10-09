@@ -194,6 +194,12 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-bounds-batch",
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, edits }, cancellationToken), cancellationToken);
 
+	/// <summary>Sets one visible Margin/Canvas edge while preserving the source's existing layout
+	/// anchor. WPF-specific: other runtimes do not share the same Margin/attached-property model.</summary>
+	public Task<DesignerSessionState> SetLayoutInsetAsync(long baseVersion, string elementId, string kind, string edge, double value, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-layout-inset",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, kind, edge, value }, cancellationToken), cancellationToken);
+
 	/// <summary>Appends one more MenuItem sibling under an existing Menu/ContextMenu/MenuItem - the
 	/// WPF-specific "Type Here" insertion slot's commit action (see WpfSurfaceDesignerControl and
 	/// StripTypeHereCommit.Resolve, which the caller runs on the typed text before calling this).

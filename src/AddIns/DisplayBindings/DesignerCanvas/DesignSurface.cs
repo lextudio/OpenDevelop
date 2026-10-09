@@ -57,10 +57,10 @@ public class DesignSurface : DesignerCanvas
 	static readonly string[] HandleNames = { "nw", "n", "ne", "e", "se", "s", "sw", "w" };
 
 	readonly DesignFramePresenter framePresenter = new(Stretch.Fill, snapsToDevicePixels: true);
-	readonly Canvas overlay = new() {
-		IsHitTestVisible = false,
-		IsEnabled = false
-	};
+	// The canvas itself stays visually transparent, and every passive overlay child explicitly
+	// opts out of hit testing. Keeping this parent enabled lets the four layout-inset labels be
+	// real drag targets without swallowing clicks on the rendered design underneath.
+	readonly Canvas overlay = new();
 	readonly GridlineOverlay gridlineOverlay = new();
 	readonly Border frameBackdrop = new() { IsHitTestVisible = false };
 	readonly Canvas viewportCanvas = new();
@@ -170,6 +170,7 @@ public class DesignSurface : DesignerCanvas
 		PreviewMouseMove += OnMouseMove;
 		PreviewMouseUp += OnMouseUp;
 		PreviewMouseLeftButtonDown += OnMouseLeftButtonDown;
+		LostMouseCapture += (_, _) => CancelLayoutInsetDrag();
 		scroller.ScrollChanged += OnScrollChanged;
 		scroller.SizeChanged += (_, _) => ApplyViewport();
 		// A designer may receive its first frame while its document tab is still hidden.  In
@@ -281,6 +282,10 @@ public class DesignSurface : DesignerCanvas
 
 	/// <summary>Raised when a drag ends (with the final cumulative surface delta).</summary>
 	public event EventHandler<(double DX, double DY)> SurfaceElementDragCommitted;
+
+	/// <summary>Raised when an L/T/R/B layout-inset label is dragged. The edge and value are in
+	/// design coordinates; the controller supplies the selected element and inset kind.</summary>
+	public event EventHandler<(string Edge, double Value)> SurfaceLayoutInsetDragCommitted;
 
 	/// <summary>Raised on a double-click, with the surface-local point.</summary>
 	public event EventHandler<Vector2> SurfaceElementDoubleClicked;
@@ -533,7 +538,8 @@ public class DesignSurface : DesignerCanvas
 	}
 
 	/// <summary>Shows host-measured Margin or Canvas-position values next to the primary
-	/// selection. Editing continues through the existing placement-aware drag path.</summary>
+	/// selection. Their L/T/R/B labels can be dragged; the backend owns the source-model
+	/// mutation because the same visible edge can be represented by different layout anchors.</summary>
 	public void SetLayoutInsets(DesignerLayoutInsets? insets, Rect selection, IReadOnlyList<DesignerBindingInfo>? bindings = null)
 	{
 		layoutInsets = insets;
@@ -547,6 +553,9 @@ public class DesignSurface : DesignerCanvas
 		foreach (var label in layoutInsetLabels)
 			overlay.Children.Remove(label);
 		layoutInsetLabels.Clear();
+		foreach (var stub in layoutInsetStubs)
+			overlay.Children.Remove(stub);
+		layoutInsetStubs.Clear();
 		if (layoutInsetSelection.IsEmpty || pixelWidth == 0 || pixelHeight == 0)
 			return;
 		var scale = EffectiveScale();
@@ -556,10 +565,18 @@ public class DesignSurface : DesignerCanvas
 		var bottom = (layoutInsetSelection.Y + layoutInsetSelection.Height) * scale;
 		if (layoutInsets != null)
 		{
-			var values = new[] { ("L", layoutInsets.Left, left - 26, top + (bottom - top) / 2), ("T", layoutInsets.Top, left + (right - left) / 2, top - 18), ("R", layoutInsets.Right, right + 4, top + (bottom - top) / 2), ("B", layoutInsets.Bottom, left + (right - left) / 2, bottom + 4) };
-			foreach (var (edge, value, x, y) in values)
+			// The labels are the precise drag handles; these thin rulers make the underlying
+			// relationship visible. A zero margin/position is still shown as a short outward
+			// stub, matching the old designer's distinction between a present handle and a
+			// zero-length edge without creating another hit target.
+			AddLayoutInsetStub(left, (left - layoutInsets.Left * scale), (top + bottom) / 2, horizontal: true, outward: -1);
+			AddLayoutInsetStub(right, (right + layoutInsets.Right * scale), (top + bottom) / 2, horizontal: true, outward: 1);
+			AddLayoutInsetStub(top, (top - layoutInsets.Top * scale), (left + right) / 2, horizontal: false, outward: -1);
+			AddLayoutInsetStub(bottom, (bottom + layoutInsets.Bottom * scale), (left + right) / 2, horizontal: false, outward: 1);
+			var values = new[] { ("Left", "L", layoutInsets.Left, left - 26, top + (bottom - top) / 2), ("Top", "T", layoutInsets.Top, left + (right - left) / 2, top - 18), ("Right", "R", layoutInsets.Right, right + 4, top + (bottom - top) / 2), ("Bottom", "B", layoutInsets.Bottom, left + (right - left) / 2, bottom + 4) };
+			foreach (var (edge, shortEdge, value, x, y) in values)
 			{
-				var label = new TextBlock { Text = edge + " " + value.ToString("0.##", CultureInfo.InvariantCulture), FontSize = 9, Foreground = Brushes.DarkOrange, Background = new SolidColorBrush(Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF)), Padding = new Thickness(2, 0, 2, 0), IsHitTestVisible = false };
+				var label = new TextBlock { Text = shortEdge + " " + value.ToString("0.##", CultureInfo.InvariantCulture), FontSize = 9, Foreground = Brushes.DarkOrange, Background = new SolidColorBrush(Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF)), Padding = new Thickness(2, 0, 2, 0), Tag = (edge, value) };
 				layoutInsetLabels.Add(label);
 				overlay.Children.Add(label);
 				Canvas.SetLeft(label, x);
@@ -574,6 +591,36 @@ public class DesignSurface : DesignerCanvas
 			Canvas.SetLeft(label, left);
 			Canvas.SetTop(label, bottom + 19);
 		}
+	}
+
+	void AddLayoutInsetStub(double selectionEdge, double containerEdge, double crossAxis, bool horizontal, int outward)
+	{
+		// When the measured distance is exactly zero the endpoints coincide. Keep a small
+		// directional stub so the edge remains discoverable, but preserve signed non-zero
+		// measurements (an overflowing Canvas child can legitimately have a negative inset).
+		if (Math.Abs(selectionEdge - containerEdge) < 0.01)
+			containerEdge = selectionEdge + outward * 6;
+		var stub = new Line {
+			Stroke = Brushes.DarkOrange,
+			StrokeThickness = 1,
+			StrokeDashArray = new DoubleCollection { 2, 1 },
+			Opacity = 0.8,
+			IsHitTestVisible = false
+		};
+		if (horizontal)
+		{
+			stub.X1 = selectionEdge;
+			stub.X2 = containerEdge;
+			stub.Y1 = stub.Y2 = crossAxis;
+		}
+		else
+		{
+			stub.X1 = stub.X2 = crossAxis;
+			stub.Y1 = selectionEdge;
+			stub.Y2 = containerEdge;
+		}
+		layoutInsetStubs.Add(stub);
+		overlay.Children.Add(stub);
 	}
 
 	void LayoutSelection()
@@ -649,10 +696,13 @@ public class DesignSurface : DesignerCanvas
 	readonly List<Rectangle> gridSplitColRails = new();
 	bool gridSplitRailsVisible;
 	readonly List<TextBlock> layoutInsetLabels = new();
+	readonly List<Line> layoutInsetStubs = new();
 	DesignerLayoutInsets? layoutInsets;
 	IReadOnlyList<DesignerBindingInfo> bindingTelemetry = Array.Empty<DesignerBindingInfo>();
 	Rect layoutInsetSelection;
 	bool gridGuidesHitTest;
+	string? layoutInsetDragEdge;
+	double layoutInsetDragValue;
 	int gridGuideIndex = -1;
 	bool gridGuideIsRow;
 	string gridGuideName;
@@ -1238,6 +1288,12 @@ public class DesignSurface : DesignerCanvas
 			return;
 		if (e.Key is Key.LeftCtrl or Key.RightCtrl)
 			UpdateGridSplitRailVisibility(Mouse.GetPosition(this));
+		if (e.Key == Key.Escape && layoutInsetDragEdge != null)
+		{
+			CancelLayoutInsetDrag();
+			e.Handled = true;
+			return;
+		}
 		if (e.Key == Key.Space)
 		{
 			spacePanning = true;
@@ -1309,6 +1365,14 @@ public class DesignSurface : DesignerCanvas
 
 	void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
 	{
+		// A layout-inset drag stores its starting surface point and converts the completed
+		// delta at the current scale. Letting scroll/zoom change the viewport in between would
+		// turn an otherwise motionless pointer into a source edit, so the drag owns the wheel.
+		if (layoutInsetDragEdge != null)
+		{
+			e.Handled = true;
+			return;
+		}
 		if (HasRender && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
 		{
 			ZoomAt(e.GetPosition(this), e.Delta > 0 ? 1.1 : 1 / 1.1);
@@ -1322,6 +1386,13 @@ public class DesignSurface : DesignerCanvas
 		Focus();
 		if (textEditing || IsOverToolbar(e.GetPosition(this)) || !IsDesignInteraction(e))
 			return;
+		// An inset edit owns the mouse until its left-button completion/cancellation. Starting a
+		// second gesture here would make the middle-button release bypass the normal pan cleanup.
+		if (layoutInsetDragEdge != null)
+		{
+			e.Handled = true;
+			return;
+		}
 		if (e.ChangedButton == MouseButton.Middle)
 		{
 			middlePanning = true;
@@ -1345,6 +1416,20 @@ public class DesignSurface : DesignerCanvas
 			middlePanning = true;
 			CaptureMouse();
 			Cursor = Cursors.SizeAll;
+			e.Handled = true;
+			return;
+		}
+		if (TryGetLayoutInsetLabel(e.OriginalSource, out var insetEdge, out var insetValue))
+		{
+			// Insets are measured from their own edge, so dragging right/bottom outward
+			// decreases their displayed value. Pan owns the pointer above; never start a
+			// second gesture while Space/middle-button panning is active.
+			layoutInsetDragEdge = insetEdge;
+			layoutInsetDragValue = insetValue;
+			dragStartSurface = position;
+			dragPossible = false;
+			CaptureMouse();
+			Cursor = insetEdge is "Left" or "Right" ? Cursors.SizeWE : Cursors.SizeNS;
 			e.Handled = true;
 			return;
 		}
@@ -1411,6 +1496,11 @@ public class DesignSurface : DesignerCanvas
 		if (textEditing)
 			return;
 		var position = e.GetPosition(this);
+		if (layoutInsetDragEdge != null)
+		{
+			e.Handled = true;
+			return;
+		}
 		if (middlePanning)
 		{
 			panX += position.X - lastPanPoint.X;
@@ -1458,6 +1548,23 @@ public class DesignSurface : DesignerCanvas
 
 	void OnMouseUp(object sender, MouseButtonEventArgs e)
 	{
+		if (layoutInsetDragEdge != null)
+		{
+			if (e.ChangedButton != MouseButton.Left)
+				return;
+			var edge = layoutInsetDragEdge;
+			var delta = e.GetPosition(this) - dragStartSurface;
+			var designDelta = (edge is "Left" or "Right" ? delta.X : delta.Y) / EffectiveScale();
+			var value = layoutInsetDragValue + (edge is "Right" or "Bottom" ? -designDelta : designDelta);
+			layoutInsetDragEdge = null;
+			if (IsMouseCaptured)
+				ReleaseMouseCapture();
+			Cursor = Cursors.Arrow;
+			if (Math.Abs(value - layoutInsetDragValue) >= 0.01)
+				SurfaceLayoutInsetDragCommitted?.Invoke(this, (edge, value));
+			e.Handled = true;
+			return;
+		}
 		if (middlePanning && e.ChangedButton is MouseButton.Middle or MouseButton.Left)
 		{
 			middlePanning = false;
@@ -1507,6 +1614,32 @@ public class DesignSurface : DesignerCanvas
 		dragActive = false;
 		Cursor = Cursors.Arrow;
 		e.Handled = true;
+	}
+
+	void CancelLayoutInsetDrag()
+	{
+		if (layoutInsetDragEdge == null)
+			return;
+		layoutInsetDragEdge = null;
+		if (IsMouseCaptured)
+			ReleaseMouseCapture();
+		Cursor = Cursors.Arrow;
+	}
+
+	static bool TryGetLayoutInsetLabel(object source, out string edge, out double value)
+	{
+		for (var element = source as DependencyObject; element != null; element = VisualTreeHelper.GetParent(element))
+		{
+			if (element is FrameworkElement { Tag: ValueTuple<string, double> tag })
+			{
+				edge = tag.Item1;
+				value = tag.Item2;
+				return true;
+			}
+		}
+		edge = "";
+		value = 0;
+		return false;
 	}
 
 	void BeginDrag()

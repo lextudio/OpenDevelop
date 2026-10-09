@@ -193,6 +193,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			};
 			controller.ElementDragCommitted += (_, drag) =>
 				CommitBounds(drag.Name, new Rect(drag.EndX, drag.EndY, drag.EndWidth, drag.EndHeight));
+			controller.LayoutInsetEditCommitted += (_, edit) => CommitLayoutInset(edit);
 			controller.ElementGroupDragCommitted += (_, moves) => CommitBoundsForEach(moves
 				.Select(move => (Node: NodeById(move.Name), move.DX, move.DY))
 				.Where(move => move.Node != null)
@@ -1170,6 +1171,16 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			return result;
 		}
 
+		/// <summary>Commits one Margin/Canvas edge edit without allowing a rejected response to
+		/// replace the current render state.</summary>
+		public async Task<DesignerSessionState> SetLayoutInsetAsync(string elementId, string kind, string edge, double value, CancellationToken cancellationToken = default)
+		{
+			var result = await client.SetLayoutInsetAsync(RequireVersion(), elementId, kind, edge, value, cancellationToken).ConfigureAwait(false);
+			if (result.Accepted)
+				state = result;
+			return result;
+		}
+
 		/// <summary>Inserts a new element under <paramref name="parentId"/> (<c>design/add-element</c>).
 		/// Does not change the selection. Does NOT render the result - see <see cref="Show"/>.</summary>
 		public async Task<DesignerSessionState> AddElementAsync(string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, CancellationToken cancellationToken = default)
@@ -1236,6 +1247,16 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			if (state == null)
 				return;
 			var result = SetBoundsAsync(elementId, bounds.X, bounds.Y, bounds.Width, bounds.Height).GetAwaiter().GetResult();
+			if (!result.Accepted) { Show(result); return; }
+			Show(result);
+			DocumentChanged?.Invoke(this, result);
+		}
+
+		void CommitLayoutInset(LayoutInsetEditInfo edit)
+		{
+			if (state == null)
+				return;
+			var result = SetLayoutInsetAsync(edit.Name, edit.Kind, edit.Edge, edit.Value).GetAwaiter().GetResult();
 			if (!result.Accepted) { Show(result); return; }
 			Show(result);
 			DocumentChanged?.Invoke(this, result);

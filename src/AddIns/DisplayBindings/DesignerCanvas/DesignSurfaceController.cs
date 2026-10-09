@@ -58,6 +58,7 @@ public sealed class DesignSurfaceController : IDisposable
 		surface.SurfaceElementDragStarted += OnSurfaceElementDragStarted;
 		surface.SurfaceElementDragDelta += OnSurfaceElementDragDelta;
 		surface.SurfaceElementDragCommitted += OnSurfaceElementDragCommitted;
+		surface.SurfaceLayoutInsetDragCommitted += OnSurfaceLayoutInsetDragCommitted;
 		surface.SurfaceElementDoubleClicked += OnSurfaceElementDoubleClicked;
 		surface.TextEditCommitted += OnSurfaceTextEditCommitted;
 		surface.GridGuideDragCommitted += OnSurfaceGridGuideDragCommitted;
@@ -88,6 +89,8 @@ public sealed class DesignSurfaceController : IDisposable
 	public event EventHandler<IReadOnlyList<string>>? SelectionChanged;
 	/// <summary>A single-element move or resize committed.</summary>
 	public event EventHandler<ElementDragInfo>? ElementDragCommitted;
+	/// <summary>A primary-selection Margin/Canvas inset drag ready for a backend-specific mutation.</summary>
+	public event EventHandler<LayoutInsetEditInfo>? LayoutInsetEditCommitted;
 	/// <summary>A multi-selection group move committed, with each element's delta.</summary>
 	public event EventHandler<IReadOnlyList<(string Name, double DX, double DY)>>? ElementGroupDragCommitted;
 	/// <summary>A double-click on an element (null: empty space).</summary>
@@ -110,7 +113,15 @@ public sealed class DesignSurfaceController : IDisposable
 	void OnSurfaceGridTrackSplitRequested(object? sender, (string Name, bool IsRow, double Position) args) => GridTrackSplitRequested?.Invoke(this, args);
 	void OnSurfaceNudgeRequested(object? sender, (double DX, double DY) delta) => NudgeRequested?.Invoke(this, delta);
 	void OnSurfaceUndoRedoRequested(object? sender, bool undo) => UndoRedoRequested?.Invoke(this, undo);
-
+	void OnSurfaceLayoutInsetDragCommitted(object? sender, (string Edge, double Value) edit)
+	{
+		if (SelectedElementName is not { } name || !nodesByName.TryGetValue(name, out var node)
+			|| node.LayoutInsets is not { Kind.Length: > 0 } insets)
+			return;
+		LayoutInsetEditCommitted?.Invoke(this, new LayoutInsetEditInfo {
+			Name = name, Kind = insets.Kind, Edge = edit.Edge, Value = edit.Value
+		});
+	}
 	#endregion
 
 	#region State
@@ -804,6 +815,7 @@ public sealed class DesignSurfaceController : IDisposable
 		Surface.SurfaceElementDragStarted -= OnSurfaceElementDragStarted;
 		Surface.SurfaceElementDragDelta -= OnSurfaceElementDragDelta;
 		Surface.SurfaceElementDragCommitted -= OnSurfaceElementDragCommitted;
+		Surface.SurfaceLayoutInsetDragCommitted -= OnSurfaceLayoutInsetDragCommitted;
 		Surface.SurfaceElementDoubleClicked -= OnSurfaceElementDoubleClicked;
 		Surface.TextEditCommitted -= OnSurfaceTextEditCommitted;
 		Surface.GridGuideDragCommitted -= OnSurfaceGridGuideDragCommitted;

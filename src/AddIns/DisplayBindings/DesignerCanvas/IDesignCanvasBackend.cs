@@ -17,6 +17,18 @@ public sealed class ElementDragInfo
 	public double EndHeight { get; set; }
 }
 
+/// <summary>A committed drag of one displayed layout inset. The values are in design units;
+/// the backend, not the common surface, decides whether that means Margin, Canvas.Left, or an
+/// opposite-side anchor such as Canvas.Right.</summary>
+public sealed class LayoutInsetEditInfo
+{
+	public string Name { get; set; } = "";
+	public string Kind { get; set; } = "";
+	/// <summary>One of <c>Left</c>, <c>Top</c>, <c>Right</c>, or <c>Bottom</c>.</summary>
+	public string Edge { get; set; } = "";
+	public double Value { get; set; }
+}
+
 /// <summary>
 /// A double-click on a design element: its name and design rect. A null value means the
 /// double-click hit empty space.

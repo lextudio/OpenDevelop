@@ -1492,6 +1492,87 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		/// <summary>Writes an edge that the common canvas displayed from actual WPF layout. This is
+		/// intentionally distinct from <see cref="SetBounds"/>: a Canvas can be authored with
+		/// Right/Bottom rather than Left/Top, and replacing the effective anchor during an edge drag
+		/// would make a later parent resize behave differently. The public measurements describe the
+		/// visible border, while Canvas positions the margin box, so conversions deliberately account
+		/// for the relevant margin edge. Grid edges are simply Thickness members.
+		/// Every edit is one design-model group, preserving the native undo boundary.</summary>
+		[JsonRpcMethod("design/set-layout-inset")]
+		public DesignerSessionState SetLayoutInset(long baseVersion, string elementId, string kind, string edge, double value)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item))
+					return NotFound(state, "Element not found: " + elementId);
+				if (!double.IsFinite(value))
+					return NotFound(state, "Layout inset value must be finite.");
+				if (item.View is FrameworkElement transformed
+					&& (transformed.LayoutTransform.Value != Matrix.Identity || transformed.RenderTransform.Value != Matrix.Identity))
+					return NotFound(state, "Layout insets are unavailable for transformed elements.");
+				if (edge is not ("Left" or "Top" or "Right" or "Bottom"))
+					return NotFound(state, "Unknown layout inset edge: " + edge);
+				try
+				{
+					using var changeGroup = item.OpenGroup("Set layout inset");
+					if (kind == "Margin" && item.Parent?.Component is Grid && item.View is FrameworkElement element)
+					{
+						var margin = element.Margin;
+						margin = edge switch {
+							"Left" => new Thickness(value, margin.Top, margin.Right, margin.Bottom),
+							"Top" => new Thickness(margin.Left, value, margin.Right, margin.Bottom),
+							"Right" => new Thickness(margin.Left, margin.Top, value, margin.Bottom),
+							_ => new Thickness(margin.Left, margin.Top, margin.Right, value)
+						};
+						item.Properties["Margin"].SetValue(margin);
+					}
+					else if (kind == "CanvasPosition" && item.Parent?.Component is Canvas canvas && item.View is FrameworkElement canvasElement)
+					{
+						var left = item.Properties.GetAttachedProperty(Canvas.LeftProperty);
+						var right = item.Properties.GetAttachedProperty(Canvas.RightProperty);
+						var top = item.Properties.GetAttachedProperty(Canvas.TopProperty);
+						var bottom = item.Properties.GetAttachedProperty(Canvas.BottomProperty);
+						var margin = canvasElement.Margin;
+						// Canvas itself gives Left/Top precedence when both opposing properties are
+						// authored. Match that effective anchor rather than accepting a source edit
+						// which has no visual effect.
+						var useLeft = left.IsSet || !right.IsSet;
+						var useTop = top.IsSet || !bottom.IsSet;
+						switch (edge)
+						{
+							case "Left":
+								if (useLeft) left.SetValue(value - margin.Left);
+								else right.SetValue(canvas.ActualWidth - value - canvasElement.ActualWidth - margin.Right);
+								break;
+							case "Right":
+								if (useLeft) left.SetValue(canvas.ActualWidth - value - canvasElement.ActualWidth - margin.Left);
+								else right.SetValue(value - margin.Right);
+								break;
+							case "Top":
+								if (useTop) top.SetValue(value - margin.Top);
+								else bottom.SetValue(canvas.ActualHeight - value - canvasElement.ActualHeight - margin.Bottom);
+								break;
+							default:
+								if (useTop) top.SetValue(canvas.ActualHeight - value - canvasElement.ActualHeight - margin.Top);
+								else bottom.SetValue(value - margin.Bottom);
+								break;
+						}
+					}
+					else
+						return NotFound(state, "The element's current layout does not support " + kind + " insets.");
+					changeGroup.Commit();
+				}
+				catch (Exception e)
+				{
+					return NotFound(state, e.GetBaseException().Message);
+				}
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
 		/// <summary>Reports the given Grid's current row/column track geometry (real post-layout
 		/// <c>Offset</c>/<c>ActualHeight</c>/<c>ActualWidth</c> off the live <see cref="Grid"/> -
 		/// <c>RowDefinition.Offset</c>/<c>ColumnDefinition.Offset</c> are already cumulative, no
@@ -2224,6 +2305,13 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		{
 			if (item.View is not FrameworkElement element || item.Parent?.Component is not FrameworkElement parent)
 				return null;
+			// The displayed Canvas edges are visual coordinates. A non-identity transform makes
+			// TranslatePoint include that visual offset/rotation while Canvas.Left/Right still
+			// describe pre-transform layout coordinates, so no source edit can faithfully map a
+			// dragged displayed edge back to the attached property. Match the legacy handle rule:
+			// suppress this affordance rather than performing a surprising jump.
+			if (element.LayoutTransform.Value != Matrix.Identity || element.RenderTransform.Value != Matrix.Identity)
+				return null;
 			if (parent is Grid)
 			{
 				var margin = element.Margin;
@@ -2237,8 +2325,10 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				var point = element.TranslatePoint(new Point(0, 0), canvas);
 				return new DesignerLayoutInsets {
 					Kind = "CanvasPosition", Left = point.X, Top = point.Y,
-					Right = Math.Max(0, canvas.ActualWidth - point.X - element.ActualWidth),
-					Bottom = Math.Max(0, canvas.ActualHeight - point.Y - element.ActualHeight)
+					// Do not clamp overflow. A negative visual distance is a real, editable
+					// measurement and is needed for a drag to round-trip an out-of-bounds child.
+					Right = canvas.ActualWidth - point.X - element.ActualWidth,
+					Bottom = canvas.ActualHeight - point.Y - element.ActualHeight
 				};
 			}
 			return null;
