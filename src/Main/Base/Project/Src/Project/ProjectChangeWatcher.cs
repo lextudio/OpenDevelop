@@ -356,8 +356,15 @@ namespace ICSharpCode.SharpDevelop.Project
 			var solution = ProjectService.OpenSolution;
 			if (solution == null)
 				return;
-			// Re-reading the whole solution is what the reload prompt does too; there is no
-			// single-project reload to call here.
+			// Just this project, in place: reloading the solution closed every document - asking to
+			// save each modified one, for a change the user did not make in the IDE - and re-pushed
+			// every project to the language service (doc/technotes/fast-mode.md).
+			var project = System.Linq.Enumerable.FirstOrDefault(solution.Projects, p => string.Equals(
+				Path.GetFullPath(p.FileName.ToString()), Path.GetFullPath(fileName), StringComparison.OrdinalIgnoreCase));
+			if (project != null && SD.ProjectService.ReloadProject(project)) {
+				LoggingService.Info("Reloaded " + project.Name + " after " + fileName + " changed.");
+				return;
+			}
 			LoggingService.Info("Reloading solution after " + fileName + " changed.");
 			SD.ProjectService.OpenSolutionOrProject(solution.FileName);
 		}

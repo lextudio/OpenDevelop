@@ -18,6 +18,7 @@ namespace CSharpBinding
 		IDisposable registration;
 		IDisposable solutionOpenedSubscription;
 		IDisposable solutionClosedSubscription;
+		IDisposable projectReloadedSubscription;
 		IProjectService projectService;
 		LanguageServiceRegistry registry;
 		long solutionGeneration;
@@ -42,12 +43,37 @@ namespace CSharpBinding
 			registration = registry.RegisterExtension(".cs", service);
 			solutionOpenedSubscription = MessageBus<SolutionOpenedMessageEventArgs>.Subscribe(OnSolutionOpened);
 			solutionClosedSubscription = MessageBus<SolutionClosedMessageEventArgs>.Subscribe(OnSolutionClosed);
+			projectReloadedSubscription = MessageBus<ProjectReloadedMessageEventArgs>.Subscribe(OnProjectReloaded);
 			if (projectService.CurrentSolution != null)
 				QueueSolution(projectService.CurrentSolution);
 		}
 
 		void OnSolutionOpened(object sender, SolutionOpenedMessageEventArgs e) =>
 			QueueSolution(e.Solution);
+
+		// A project re-read in place (its file changed outside the IDE): push just that project,
+		// chained behind any solution push still running so the two cannot interleave.
+		void OnProjectReloaded(object sender, ProjectReloadedMessageEventArgs e)
+		{
+			if (!(service is RemoteLanguageService remote))
+				return;
+			var generation = Volatile.Read(ref solutionGeneration);
+			var project = e.Project;
+			solutionSync = PushReloadedProjectAsync(solutionSync, remote, project, generation);
+		}
+
+		async Task PushReloadedProjectAsync(Task previous, RemoteLanguageService remote, IProject project, long generation)
+		{
+			try { await previous; } catch { }
+			if (generation != Volatile.Read(ref solutionGeneration))
+				return;
+			try {
+				var snapshots = await Task.Run(() => LanguageServiceProjectSnapshotFactory.FromProjectAllTargetFrameworks(project));
+				await Task.Run(() => remote.LoadProjectsAsync(snapshots, CancellationToken.None));
+			} catch (Exception ex) {
+				LoggingService.Warn("Unable to push the reloaded project " + project.Name + " to the Roslyn host: " + ex.Message);
+			}
+		}
 
 		void QueueSolution(ISolution solution)
 		{
@@ -252,6 +278,7 @@ namespace CSharpBinding
 			Interlocked.Increment(ref solutionGeneration);
 			solutionOpenedSubscription?.Dispose();
 			solutionClosedSubscription?.Dispose();
+			projectReloadedSubscription?.Dispose();
 			registration?.Dispose();
 			(service as IDisposable)?.Dispose();
 		}

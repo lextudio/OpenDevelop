@@ -200,7 +200,6 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 		}
 		
-#if HAS_UNO
 		/// <summary>
 		/// Re-reads this project's .csproj (and .csproj.user, if present) from disk and rebuilds
 		/// the in-memory Items list from the fresh evaluation — for when the project file changes
@@ -234,7 +233,6 @@ namespace ICSharpCode.SharpDevelop.Project
 				}
 			});
 		}
-#endif
 
 		// OpenConfiguration/OpenCurrentConfiguration (used below) are used unconditionally elsewhere
 		// in this class (e.g. GetEvaluatedProperty) and already proven to work under HAS_UNO - see

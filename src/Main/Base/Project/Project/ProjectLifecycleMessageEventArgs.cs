@@ -25,6 +25,17 @@ namespace ICSharpCode.SharpDevelop.Project
 		public ISolution Solution { get; }
 	}
 
+	/// <summary>
+	/// One project of the open solution was re-read from disk (its project file changed outside the
+	/// IDE) without reloading the solution: open documents stayed open, and listeners that keep a
+	/// per-project model (the language service) refresh just this project.
+	/// </summary>
+	public sealed class ProjectReloadedMessageEventArgs : ProjectLifecycleMessageEventArgs
+	{
+		public ProjectReloadedMessageEventArgs(IProject project, long revision) : base(revision) => Project = project ?? throw new ArgumentNullException(nameof(project));
+		public IProject Project { get; }
+	}
+
 	public sealed class SolutionClosedMessageEventArgs : ProjectLifecycleMessageEventArgs
 	{
 		public SolutionClosedMessageEventArgs(ISolution solution, long revision) : base(revision) => Solution = solution ?? throw new ArgumentNullException(nameof(solution));

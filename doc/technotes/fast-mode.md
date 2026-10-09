@@ -410,6 +410,24 @@ from an evaluation made before the build, whose restore had just written `obj/*.
 calls `MSBuildBasedProject.RefreshEvaluation()` before recording (~4 s over the 56 projects of the
 Designer.Remote edit: 96 s against 86 s; the no-op build stays at 3 s).
 
+### An edited project file reloads that project, not the solution
+
+`ProjectChangeWatcher` reloaded the whole solution whenever an SDK-style project file changed outside
+the IDE: every project re-evaluated and re-pushed to the language service, and every document
+closed - with a save prompt for each modified one (`CloseAllSolutionViews(force: false)`), which
+`OD_TEST_MODE` answers by discarding the edits. Now `IProjectService.ReloadProject` re-reads that
+project in place (`MSBuildBasedProject.ReloadFromDisk`, previously compiled only under `HAS_UNO`),
+rebuilds its items, refreshes Solution Explorer, and publishes `ProjectReloadedMessageEventArgs`; the
+C# language service pushes just that project, chained behind any solution push. The solution
+reload stays as the fallback: solution files, legacy projects, a failed reload - and an edit that
+changes the project's set of language-service slices (a framework added to or removed from
+`TargetFrameworks`, or single <-> multi-targeted), because the host can add and update slices but
+not drop one, and a stale slice would keep its reference graph. A removed ProjectReference is fine
+in place: each slice's reference list is replaced as a whole.
+`ProjectReloadTests` covers it: after a new file and a touched .csproj, both edited documents stay
+dirty with their text, and the language service resolves the new file's class and the unsaved one;
+and a TargetFramework -> TargetFrameworks edit falls back to the solution reload.
+
 Two smaller things found on the way, both kept:
 - ILSpy's `SearchPane` subscribed to `CompositionTarget.Rendering` for its whole lifetime (forcing a
   frame per tick under WPF's rules); it now subscribes only while a search has results to drain.
@@ -421,10 +439,11 @@ Two smaller things found on the way, both kept:
 **Still open, in order of expected gain** (refreshed 2026-10-08; measured on OpenDevelop.Mvp, macOS):
 
 1. Done: warm push 7.5 s -> 3.1 s by batching (`roslyn/projects/load`, see below).
-2. The 4 projects whose reference resolution fails on every open (global.json pins LibreWPF.Sdk
-   0.1.0-preview.57; NETSDK1047): each warm open starts an MSBuild process to fail again (~3-5 s).
-   The root fix (RID-less default and unix runtimeTargets) is in LibreWPF, unpublished; then the
-   preview.57 pins go.
+2. Done (2026-10-08): LibreWPF published to the local feed as 0.1.0-preview.65 with the RID-less
+   SDK default and the layout-clip fix; the AvalonEdit and WpfDesigner submodules' global.json
+   pins moved from preview.57 to preview.65. Reference resolution: 0 failures on a cold open
+   (was 4 on every open); a warm open serves all 85 projects from the cache, so no MSBuild
+   process starts. The idle-CPU gate passes without a dev overlay.
 3. Graph scheduling inside the (already working) one-process build: today it builds dependency
    waves, and each wave waits for its slowest project; a dependent could instead start as soon as
    its own dependencies finish. An edit to Designer.Remote takes 86-96 s. Tried as a shortcut:

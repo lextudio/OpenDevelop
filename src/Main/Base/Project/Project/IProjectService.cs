@@ -97,6 +97,14 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// If any errors occur, this method may display an error dialog.
 		/// </remarks>
 		bool OpenSolutionOrProject(FileName fileName);
+
+		/// <summary>
+		/// Re-reads one project of the open solution from disk in place, without closing the
+		/// solution or any document, and publishes <see cref="ProjectReloadedMessageEventArgs"/>.
+		/// Returns false when the project cannot be reloaded on its own (the caller then reloads
+		/// the solution). May only be called on the main thread.
+		/// </summary>
+		bool ReloadProject(IProject project) => false;
 		
 		/// <summary>
 		/// Opens a solution in the IDE.

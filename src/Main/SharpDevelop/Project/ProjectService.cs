@@ -500,6 +500,42 @@ namespace ICSharpCode.SharpDevelop.Project
 
 		long NextLifecycleRevision() => ++lifecycleRevision;
 
+		/// <summary>The keys of the project's language-service slices: one per TargetFramework when
+		/// multi-targeted, a single unnamed one otherwise (LanguageServiceProjectSnapshotFactory).</summary>
+		static HashSet<string> LanguageServiceSlices(IProject project)
+		{
+			var frameworks = ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceProjectSnapshotFactory.GetTargetFrameworks(project);
+			return frameworks.Count <= 1
+				? new HashSet<string> { "" }
+				: new HashSet<string>(frameworks, StringComparer.OrdinalIgnoreCase);
+		}
+
+		public bool ReloadProject(IProject project)
+		{
+			SD.MainThread.VerifyAccess();
+			if (!(project is MSBuildBasedProject msbuildProject) || project.ParentSolution == null || project.ParentSolution != CurrentSolution)
+				return false;
+			var slicesBefore = LanguageServiceSlices(project);
+			try {
+				msbuildProject.ReloadFromDisk();
+			} catch (Exception ex) {
+				LoggingService.Warn("Reloading " + project.FileName + " in place failed; reloading the solution instead.", ex);
+				return false;
+			}
+			// The language service can add and update a project's per-TargetFramework slices but not
+			// drop one (the protocol has no "remove project"), so an edit that changes the set - a
+			// framework removed from TargetFrameworks, or single <-> multi-targeted - would leave the
+			// old slice and its reference graph in the host. The solution reload rebuilds the
+			// host's workspace from scratch. (Removed ProjectReferences are fine in place: each
+			// slice's reference list is replaced as a whole.)
+			if (!slicesBefore.SetEquals(LanguageServiceSlices(project))) {
+				LoggingService.Info("The target frameworks of " + project.Name + " changed; reloading the solution.");
+				return false;
+			}
+			MessageBus.Send(this, new ProjectReloadedMessageEventArgs(project, NextLifecycleRevision()));
+			return true;
+		}
+
 		void ObserveConfigurationChanges(ISolution solution)
 		{
 			if (ReferenceEquals(configurationObservedSolution, solution))
