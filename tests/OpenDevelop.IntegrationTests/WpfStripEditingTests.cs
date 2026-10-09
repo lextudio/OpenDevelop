@@ -7,6 +7,107 @@ namespace OpenDevelop.IntegrationTests;
 public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
 {
     [Fact]
+    public async Task SnapshotSelection_RemainsResponsiveWhileTheWpfHostRecovers()
+    {
+        // OpenDevelopAppFixture selects Microsoft WPF on Windows and LibreWPF elsewhere.
+        // This journey touches only the protocol snapshot/canvas and normal process lifecycle,
+        // so it is deliberately exercised by both hosts.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Snapshot selection">
+              <Grid><Button x:Name="owner" Width="120" Height="40" Content="Open" /></Grid>
+            </Window>
+            """);
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean()
+                    && status.GetProperty("hostAlive").GetBoolean() && status.GetProperty("hostProcessId").GetInt32() > 0;
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            var failedProcessId = status.GetProperty("hostProcessId").GetInt32();
+
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "owner")).GetProperty("success").GetBoolean());
+            var terminated = await app.InvokeAsync("od.wpf-designer.terminate-host");
+            Assert.True(terminated.GetProperty("success").GetBoolean(), terminated.ToString());
+            Assert.Equal(failedProcessId, terminated.GetProperty("oldHostProcessId").GetInt32());
+
+            // Selection is computed from the last accepted DDP tree in the IDE, not by a blocking
+            // child hit-test. It must therefore return immediately even while the shared process
+            // has been killed and its automatic replacement is still starting.
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var selectedDuringRecovery = await app.InvokeAsync("od.wpf-designer.select", "owner");
+            stopwatch.Stop();
+            Assert.True(selectedDuringRecovery.GetProperty("success").GetBoolean(), selectedDuringRecovery.ToString());
+            Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2), "Snapshot selection waited for the dead child: " + stopwatch.Elapsed);
+
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("designerLoaded").GetBoolean()
+                    && status.GetProperty("hostAlive").GetBoolean()
+                    && status.GetProperty("hostRecoveryCount").GetInt32() > 0
+                    && status.GetProperty("hostProcessId").GetInt32() != failedProcessId;
+            }, TimeSpan.FromSeconds(30)), status.ToString());
+            var geometry = await app.InvokeAsync("od.wpf-designer.surface-geometry");
+            Assert.True(geometry.GetProperty("selection").GetProperty("width").GetDouble() > 0, geometry.ToString());
+            await app.InvokeAsync("od.close-active-view");
+        } finally {
+            await File.WriteAllTextAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
+    public async Task PropertiesPad_BindEvent_WritesOnlyTheXamlHandlerAttribute()
+    {
+        // The published TargetUpdated event is available through LibreWPF's design model too;
+        // keep this source-only event-binding contract covered on macOS as well as Windows.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Event binding">
+              <Grid><Button x:Name="owner" Content="Open" /></Grid>
+            </Window>
+            """);
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "owner"))
+                .GetProperty("success").GetBoolean());
+            var binding = await app.InvokeAsync("od.wpf-designer.properties-pad.bind-event", "TargetUpdated");
+            Assert.True(binding.GetProperty("success").GetBoolean(), binding.ToString());
+            Assert.Equal("owner_TargetUpdated", binding.GetProperty("handler").GetString());
+
+            await app.InvokeAsync("od.file.save", xamlPath);
+            var saved = await File.ReadAllTextAsync(xamlPath);
+            Assert.Contains("TargetUpdated=\"owner_TargetUpdated\"", saved, StringComparison.Ordinal);
+            // The designer must not synthesize an implementation in the project's code-behind:
+            // binding an event is deliberately a source attribute operation until a transactional
+            // child-to-host code-edit contract exists.
+            Assert.DoesNotContain("owner_TargetUpdated", await File.ReadAllTextAsync(Path.Combine(sample, "MainWindow.xaml.cs")), StringComparison.Ordinal);
+            await app.InvokeAsync("od.close-active-view");
+        } finally {
+            await File.WriteAllTextAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task MenuItem_DoubleClick_InlineEditsHeader_AndUndoRestoresIt()
     {
         if (!OperatingSystem.IsWindows()) return;
@@ -56,11 +157,16 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
 
             Assert.True((await app.InvokeAsync("od.wpf-designer.inline-editor-input", "Project", false))
                 .GetProperty("success").GetBoolean());
+            status = await app.InvokeAsync("od.wpf-designer.status");
+            Assert.True(status.GetProperty("canUndo").GetBoolean(), status.ToString());
+            Assert.False(status.GetProperty("canRedo").GetBoolean(), status.ToString());
             await app.InvokeAsync("od.file.save", xamlPath);
             Assert.Contains("Header=\"Project\"", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
 
             var undo = await app.InvokeAsync("od.wpf-designer.undo");
             Assert.True(undo.GetProperty("success").GetBoolean(), undo.ToString());
+            status = await app.InvokeAsync("od.wpf-designer.status");
+            Assert.True(status.GetProperty("canRedo").GetBoolean(), status.ToString());
             await app.InvokeAsync("od.file.save", xamlPath);
             Assert.Contains("Header=\"File\"", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
 

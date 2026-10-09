@@ -77,6 +77,13 @@ public sealed class PerformanceGateTests : IAsyncDisposable
         // ILSpy's search pane drains results on CompositionTarget.Rendering; subscribed for good,
         // that handler kept a frame scheduled every tick. After a search has finished and its
         // results are drained, the window must be idle again.
+        // Earlier tests on this shared instance leave builds and indexing behind; start from quiet
+        // so what is measured afterwards is what the search left running.
+        var baseline = 1.0;
+        var settle = Stopwatch.StartNew();
+        while (settle.Elapsed < TimeSpan.FromMinutes(3) && (baseline = await CpuOverAsync(TimeSpan.FromSeconds(4))) >= 0.40) { }
+        Assert.True(baseline < 0.40, $"OpenDevelop never went idle before the search ({baseline:P0} of a core).");
+
         var assembly = typeof(Assert).Assembly.Location;
         Assert.True((await _app.InvokeAsync("od.ilspy.open-assembly", assembly)).GetProperty("opened").GetBoolean());
         await _app.InvokeAsync("od.ilspy.show-pane", "Search"); // results live on the pane's view
@@ -93,12 +100,21 @@ public sealed class PerformanceGateTests : IAsyncDisposable
         }
         Assert.True(stablePolls >= 2, $"The search did not settle (last count {previous}).");
 
+        // The search itself ends with a short burst (measured: ~+12 points for under 4 s); a handler
+        // left subscribed shows up as a lasting rise over the pre-search baseline instead. Compare
+        // with that baseline - this machine's idle floor is already ~34% of a core.
+        await Task.Delay(TimeSpan.FromSeconds(4));
+        var busy = await CpuOverAsync(TimeSpan.FromSeconds(8));
+        Assert.True(busy < baseline + 0.15, $"After an ILSpy search OpenDevelop used {busy:P0} of a core while idle (before the search: {baseline:P0}).");
+    }
+
+    async Task<double> CpuOverAsync(TimeSpan period)
+    {
         var before = (await _app.InvokeAsync("od.process.cpu")).GetProperty("totalProcessorTimeMs").GetDouble();
         var sample = Stopwatch.StartNew();
-        await Task.Delay(TimeSpan.FromSeconds(8));
+        await Task.Delay(period);
         var after = (await _app.InvokeAsync("od.process.cpu")).GetProperty("totalProcessorTimeMs").GetDouble();
-        var busy = (after - before) / sample.Elapsed.TotalMilliseconds;
-        Assert.True(busy < 0.40, $"After an ILSpy search OpenDevelop used {busy:P0} of a core while idle.");
+        return (after - before) / sample.Elapsed.TotalMilliseconds;
     }
 
     // The counter-cases of the gate above: a change must never be skipped. "Built" is every project

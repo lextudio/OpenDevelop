@@ -3824,12 +3824,11 @@ public sealed class AddInTests : IAsyncDisposable
             var match = await _app.InvokeAsync("od.wpf-designer.match-size", "both");
             Assert.True(match.GetProperty("success").GetBoolean(), match.ToString());
 
-            // Nudge is the one capability the out-of-process host genuinely lacks; it must keep
-            // reporting a deterministic supported=false rather than failing with a missing-action
-            // error (this is what keeps all three designers' DevFlow surfaces aligned).
+            // Nudge shares the canvas's arrow-key path: it must be exposed as a real operation,
+            // rather than being the sole WPF designer command that falsely reports unsupported.
             var nudge = await _app.InvokeAsync("od.wpf-designer.nudge", 1.0, 1.0);
-            Assert.False(nudge.GetProperty("success").GetBoolean(), nudge.ToString());
-            Assert.False(nudge.GetProperty("supported").GetBoolean(), nudge.ToString());
+            Assert.True(nudge.GetProperty("success").GetBoolean(), nudge.ToString());
+            Assert.Equal(2, nudge.GetProperty("selectedIds").GetArrayLength());
 
             // A real tool pane still wins over the split document's designer: Project Browser
             // owns Properties while it has focus, even with an element selected on the surface.
