@@ -23,6 +23,13 @@ public sealed class WpfSurfaceHostRpcTests
 		</Grid>
 		""";
 
+	const string HitTestXaml = """
+		<Canvas xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="400" Height="300">
+		  <TextBlock x:Name="greeting" Text="Hello" Width="100" Height="30" Background="White" Canvas.Left="20" Canvas.Top="30"/>
+		  <Button x:Name="go" Content="Go" Width="80" Height="24" Canvas.Left="240" Canvas.Top="180"/>
+		</Canvas>
+		""";
+
 	/// <summary>The child host binary under test. Defaults to the LibreWPF host; setting
 	/// OPENDEVELOP_WPFSURFACEHOST_DLL points the very same suite at the Microsoft WPF host
 	/// (MicrosoftHost/SurfaceHost), which source-links this same host implementation. The DDP
@@ -152,38 +159,18 @@ public sealed class WpfSurfaceHostRpcTests
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
 		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
-		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, HitTestXaml), timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
-
-		// Plain VisualTreeHelper.HitTest never descends past the root visual under headless
-		// LibreWPF on macOS (confirmed by direct run; see wpf-designer.md). The fix is
-		// ProGpuWpfCompositionTarget.TryHitTestOwner, which answers per-element hit-testing
-		// straight from the GPU-side hit-test data ReplayVisualSubtree already builds - no
-		// PresentationSource needed. This stays deliberately position-agnostic even though the
-		// old tree-bounds-vs-rendered-pixels mismatch is now fixed (see
-		// RenderedContent_LandsExactlyAtTheBoundsTheElementTreeReports, which asserts that
-		// alignment directly): what this scenario is about is that hit-testing *distinguishes
-		// children at all*, so it scans for two points resolving to two different, non-background
-		// pick paths rather than hardcoding where those points are.
-		var background = await client.HitTestAsync(1, 0, 0, timeout.Token);
-		Assert.True(string.IsNullOrEmpty(background.PickPath));
-
-		string? firstPath = null, secondPath = null;
-		for (var y = 0; y < 300 && secondPath == null; y += 5)
+		var rootHit = await client.HitTestAsync(1, 0, 0, timeout.Token);
+		Assert.True(rootHit.Hit, "The root canvas should resolve at its origin.");
+		Assert.Equal(opened.Tree!.Id, rootHit.PickPath);
+		foreach (var name in new[] { "greeting", "go" })
 		{
-			for (var x = 0; x < 400 && secondPath == null; x += 5)
-			{
-				var hit = await client.HitTestAsync(1, x, y, timeout.Token);
-				if (string.IsNullOrEmpty(hit.PickPath))
-					continue;
-				if (firstPath == null)
-					firstPath = hit.PickPath;
-				else if (hit.PickPath != firstPath)
-					secondPath = hit.PickPath;
-			}
+			var node = FindByName(opened.Tree!, name)!;
+			var hit = await client.HitTestAsync(1, node.X + node.Width / 2, node.Y + node.Height / 2, timeout.Token);
+			Assert.True(hit.Hit, $"The centre of '{name}' did not resolve to a design item.");
+			Assert.Equal(node.Id, hit.PickPath);
 		}
-		Assert.False(firstPath is null, "No point in the frame resolved to any element - hit-testing found nothing at all.");
-		Assert.False(secondPath is null, "Only one distinct element was ever resolved across the whole frame - hit-testing is not distinguishing children.");
 	}
 
 	[Fact]
