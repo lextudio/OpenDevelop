@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Reflection;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using ProGPU.Scene;
 
 namespace ICSharpCode.WinUIXamlDesigner.ProGPUHost;
@@ -35,7 +36,7 @@ sealed class ProGpuDesignTree
 	{
 		var tree = new ProGpuDesignTree(root);
 		tree.CollectSourceBacked(root, 0);
-		tree.Tree = tree.BuildNode(root, "", 0, names);
+		tree.Tree = tree.BuildNode(root, "", 0, names, DesignerLayoutMode.Unknown);
 		return tree;
 	}
 
@@ -62,7 +63,7 @@ sealed class ProGpuDesignTree
 		return (pickPath != null, pickPath, chain);
 	}
 
-	DesignerElementNode BuildNode(Visual node, string path, int depth, IReadOnlyDictionary<FrameworkElement, string> names)
+	DesignerElementNode BuildNode(Visual node, string path, int depth, IReadOnlyDictionary<FrameworkElement, string> names, string layoutMode)
 	{
 		pathOf[node] = path;
 		var info = new DesignerElementNode {
@@ -70,7 +71,11 @@ sealed class ProGpuDesignTree
 			Id = path,
 			Type = node.GetType().Name,
 			IsDesignable = sourceBacked.Contains(node),
+			IsTemplatePart = !sourceBacked.Contains(node),
 			IsVisible = IsEffectivelyVisible(node),
+			LayoutMode = layoutMode,
+			ZIndex = path.Length == 0 ? null : node is FrameworkElement zOrdered ? Canvas.GetZIndex(zOrdered) : null,
+			BaselineOffset = node is TextBlock text ? text.BaselineOffset : null,
 		};
 		if (node is FrameworkElement element)
 		{
@@ -90,7 +95,8 @@ sealed class ProGpuDesignTree
 		foreach (var child in container.Children)
 		{
 			if (child is UIElement)
-				info.Children.Add(BuildNode(child, path.Length == 0 ? index.ToString(CultureInfo.InvariantCulture) : path + "," + index, depth + 1, names));
+				info.Children.Add(BuildNode(child, path.Length == 0 ? index.ToString(CultureInfo.InvariantCulture) : path + "," + index, depth + 1, names,
+					DesignerLayoutMode.InferFromContainerType(info.Type)));
 			index++;
 		}
 		return info;

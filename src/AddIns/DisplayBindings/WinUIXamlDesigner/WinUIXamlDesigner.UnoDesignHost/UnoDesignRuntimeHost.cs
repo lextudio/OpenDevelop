@@ -37,7 +37,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 /// XamlReader, lays it out and renders it to a PNG that is displayed here. All state
 /// crossings are JSON over loopback TCP - no WinUI type ever enters this process.
 /// </summary>
-sealed class UnoDesignRuntimeHost : IDesignCanvasBackend, IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay, IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlToolboxCatalog, IWinUIXamlLifecycleProbe, IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlVisualStates, IWinUIXamlMultiSelection, IWinUIXamlContextCommands, IWinUIXamlGridGuides, IWinUIXamlDiagnostics, IWinUIXamlIncrementalRender
+sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay, IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlToolboxCatalog, IWinUIXamlLifecycleProbe, IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlVisualStates, IWinUIXamlMultiSelection, IWinUIXamlContextCommands, IWinUIXamlGridGuides, IWinUIXamlDiagnostics, IWinUIXamlIncrementalRender
 {
 	// The shared design canvas (ICSharpCode.DesignerCanvas addin): the surface, and the controller
 	// that owns selection, drags and picking over it. This class is only the Uno/WinUI backend:
@@ -84,7 +84,7 @@ sealed class UnoDesignRuntimeHost : IDesignCanvasBackend, IWinUIXamlRuntimeHost,
 		surface.DesignThemeRequested += OnSurfaceThemeRequested;
 		surface.DesignVisualStateRequested += OnSurfaceVisualStateRequested;
 		surface.SizePresetRequested += OnSurfaceSizePresetRequested;
-		canvas = new DesignSurfaceController(surface, this);
+		canvas = new DesignSurfaceController(surface);
 		canvas.ElementPicked += (_, name) => ElementPicked?.Invoke(this, name);
 		canvas.ElementPathPicked += (_, path) => ElementPathPicked?.Invoke(this, path);
 		canvas.SelectionChanged += (_, names) => SelectionChanged?.Invoke(this, names);
@@ -420,24 +420,6 @@ sealed class UnoDesignRuntimeHost : IDesignCanvasBackend, IWinUIXamlRuntimeHost,
 	#region IWinUIXamlPathPick
 
 	public event EventHandler<string> ElementPathPicked;
-
-	/// <summary>
-	/// IDesignCanvasBackend: the child's hit test at a design point. Called from the pointer-pressed
-	/// handler, i.e. ON the UI thread, so the wait freezes the whole IDE window for as long as it
-	/// lasts. The transport's own limit is the 30s operation timeout, which is an eternity to sit on
-	/// a click: an unresponsive child made the main window look hung. Give up quickly instead and
-	/// treat it as "nothing picked"; the next click issues a fresh request.
-	/// </summary>
-	public DesignCanvasHit HitTest(double x, double y)
-	{
-		if (client == null)
-			return null;
-		var pending = client.HitTestAsync(Volatile.Read(ref version), x, y);
-		if (!pending.Wait(TimeSpan.FromSeconds(2)))
-			return null;
-		var result = pending.GetAwaiter().GetResult();
-		return new DesignCanvasHit(result.Hit, result.PickPath, result.Chain);
-	}
 
 	public IReadOnlyList<(string Type, int TypeIndex, string Path)> GetPickChain(string path) => canvas.GetPickChain(path);
 
@@ -1025,10 +1007,11 @@ sealed class UnoDesignRuntimeHost : IDesignCanvasBackend, IWinUIXamlRuntimeHost,
 	/// <summary>Last lines of the child host's stdout/stderr (ready banners, render logs).</summary>
 	public string ChildLog => client?.ChildLog ?? "(child not started)";
 
-	/// <summary>The last render's diagnostics (message + source line/column when known).</summary>
-	public IReadOnlyList<(string Message, int Line, int Column)> LastDiagnostics
+	/// <summary>The last render's diagnostics, retaining the source file and optional end column
+	/// supplied by the common DDP model rather than reducing a range to a point in this adapter.</summary>
+	public IReadOnlyList<(string Message, string FileName, int Line, int Column, int EndColumn)> LastDiagnostics
 		=> (lastSnapshot?.Diagnostics ?? new List<DesignDiagnostic>())
-			.Select(d => (d.Message, d.Line, d.Column)).ToList();
+			.Select(d => (d.Message, d.FileName, d.Line, d.Column, d.EndColumn)).ToList();
 
 	/// <summary>Exports the current design to a PNG file via the child host.</summary>
 	public string ExportPng(string path)

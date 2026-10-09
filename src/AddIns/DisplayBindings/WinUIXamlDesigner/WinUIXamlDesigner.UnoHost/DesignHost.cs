@@ -71,6 +71,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 		FrameworkElement? root;
 		long frameSequence;
+		string lastPrimaryFileName = "";
 
 		public DesignerCapabilities GetCapabilities()
 			=> HeadlessDispatcher.Dispatch(() => BuildCapabilities());
@@ -80,12 +81,12 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 		/// <summary>Session-aware first load (session/open): stamps the returned snapshot with
 		/// the session/document ids and the initial version.</summary>
-		public DesignerSessionState OpenSession(string sessionId, string documentId, string xaml, double width, double height, double dpi)
+		public DesignerSessionState OpenSession(string sessionId, string documentId, string fileName, string xaml, double width, double height, double dpi)
 		{
 			this.sessionId = sessionId;
 			this.documentId = documentId;
 			var snapshot = HeadlessDispatcher.DispatchAsync(() => LoadDesignAsync(new LoadDesignRequest {
-				SessionId = sessionId, DocumentId = documentId, Version = 1, Xaml = xaml, Width = width, Height = height, Dpi = dpi
+				SessionId = sessionId, DocumentId = documentId, FileName = fileName, Version = 1, Xaml = xaml, Width = width, Height = height, Dpi = dpi
 			})).GetAwaiter().GetResult();
 			version = 1;
 			snapshot.SessionId = sessionId;
@@ -96,13 +97,13 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 		/// <summary>Session-aware subsequent full-document push (session/update): replaces
 		/// design/load for theme reloads, size-preset changes and any other full re-render.</summary>
-		public DesignerSessionState UpdateSession(string sessionId, string documentId, string xaml, double width, double height, double dpi, long baseVersion)
+		public DesignerSessionState UpdateSession(string sessionId, string documentId, string fileName, string xaml, double width, double height, double dpi, long baseVersion)
 		{
 			EnsureOwnSession(sessionId, documentId);
 			if (RejectIfStale(sessionId, documentId, baseVersion, allowNewerVersion: true) is { } stale)
 				return stale;
 			var snapshot = HeadlessDispatcher.DispatchAsync(() => LoadDesignAsync(new LoadDesignRequest {
-				SessionId = sessionId, DocumentId = documentId, Version = baseVersion, Xaml = xaml, Width = width, Height = height, Dpi = dpi
+				SessionId = sessionId, DocumentId = documentId, FileName = fileName, Version = baseVersion, Xaml = xaml, Width = width, Height = height, Dpi = dpi
 			})).GetAwaiter().GetResult();
 			version = baseVersion;
 			snapshot.SessionId = sessionId;
@@ -484,6 +485,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			try
 			{
 				lastXaml = request.Xaml;
+				lastPrimaryFileName = request.FileName;
 				var source = InjectDesignData(request.Xaml, out var designWidth, out var designHeight);
 				designWidthOverride = designWidth;
 				designHeightOverride = designHeight;
@@ -548,6 +550,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 					root = null;
 					HostVisualRoot?.Invoke(previousRoot, null);
 					snapshot.Diagnostics.Add(new DesignerDiagnostic {
+						FileName = request.FileName,
 						Message = $"This file has no visual root to preview: its top-level element"
 							+ $" is '{loaded?.GetType().Name ?? "null"}', not a page, control, or"
 							+ " other FrameworkElement. Files like this (a plain ResourceDictionary"
@@ -581,12 +584,17 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				// evidence available for deciding whether a failure is type resolution,
 				// a component PRI lookup, or a control-template resource failure.
 				LogXamlLoadException(e);
-				var diagnostic = ToDiagnostic(e.GetBaseException());
+				var diagnostic = ToDiagnostic(e.GetBaseException(), request.FileName);
 				// A page whose root element is its own abstract base class fails with WinRT's bare
 				// "No matching constructor found on type 'X'", which reads like a XAML authoring
 				// mistake. Name the real, unfixable-in-XAML reason instead.
 				if (DescribeUninstantiableRoot(request.Xaml) is { } explanation)
 					diagnostic.Message = explanation;
+				// A load exception must reject session/open/update. Leaving the optimistic initial
+				// value here made a malformed document look successfully rendered even though the
+				// host had already removed its visual root and returned only a diagnostic.
+				snapshot.Accepted = false;
+				snapshot.Error = diagnostic.Message;
 				snapshot.Diagnostics.Add(diagnostic);
 				return snapshot;
 			}
@@ -760,9 +768,9 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 		/// <summary>Builds a diagnostic from a XAML load exception, extracting the line/position
 		/// from the message text ("Line N, position M") so the shell can jump to the error.</summary>
-		static DesignerDiagnostic ToDiagnostic(Exception e)
+		static DesignerDiagnostic ToDiagnostic(Exception e, string fileName = "")
 		{
-			var diagnostic = new DesignerDiagnostic { Message = e.Message };
+			var diagnostic = new DesignerDiagnostic { Message = e.Message, FileName = fileName };
 			var match = System.Text.RegularExpressions.Regex.Match(e.Message,
 				@"[Ll]ine\s+(\d+)(?:[,;]\s*[Pp]osition\s+(\d+))?");
 			if (match.Success)
@@ -770,7 +778,12 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				if (int.TryParse(match.Groups[1].Value, out var line))
 					diagnostic.Line = Math.Max(1, line);
 				if (match.Groups[2].Success && int.TryParse(match.Groups[2].Value, out var column))
+				{
 					diagnostic.Column = Math.Max(1, column);
+					// Native WinUI exceptions identify a point. Represent it as a one-character
+					// range so all consumers can use one source-range contract.
+					diagnostic.EndColumn = diagnostic.Column + 1;
+				}
 			}
 			return diagnostic;
 		}
@@ -885,7 +898,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				// a clean document, after which every state still held is applied on top. It also
 				// makes "(none)" fall out for free: nothing left to apply for that group.
 				var reloaded = await LoadDesignAsync(new LoadDesignRequest {
-					Xaml = lastXaml, Width = lastWidth, Height = lastHeight, Dpi = lastDpi
+					FileName = lastPrimaryFileName, Xaml = lastXaml, Width = lastWidth, Height = lastHeight, Dpi = lastDpi
 				});
 				if (forcedVisualStates.Count == 0)
 					return reloaded;
@@ -1093,6 +1106,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				SetApplicationThemeReflectively(theme);
 				return await LoadDesignAsync(new LoadDesignRequest
 				{
+					FileName = lastPrimaryFileName,
 					Xaml = lastXaml,
 					Width = lastWidth,
 					Height = lastHeight,
@@ -1752,7 +1766,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		}
 
 		static DesignerElementNode BuildTree(DependencyObject node, UIElement root, string path, int depth,
-			HashSet<DependencyObject> sourceBacked)
+			HashSet<DependencyObject> sourceBacked, string layoutMode = DesignerLayoutMode.Unknown)
 		{
 			var nodeInfo = new DesignerElementNode {
 				Path = path,
@@ -1762,7 +1776,9 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				Id = path,
 				// A template part is visible and hit-testable but is not in the user's document, so
 				// it must never become the selection - see sourceBackedElements.
-				IsDesignable = sourceBacked.Contains(node)
+				IsDesignable = sourceBacked.Contains(node),
+				IsTemplatePart = !sourceBacked.Contains(node),
+				LayoutMode = layoutMode
 			};
 			if (node is FrameworkElement fe)
 			{
@@ -1773,6 +1789,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				nodeInfo.Y = bounds.Y;
 				nodeInfo.Width = bounds.Width;
 				nodeInfo.Height = bounds.Height;
+				nodeInfo.ZIndex = path.Length == 0 ? null : Canvas.GetZIndex(fe);
+				nodeInfo.BaselineOffset = fe is TextBlock text ? text.BaselineOffset : null;
 				// Only TabIndex is populated here (not the WPF host's full property reflection) -
 				// this designer's Properties pad is driven off WinUIXamlElementPropertyAdapter
 				// reading the host-owned XAML document directly, not this per-node list; TabIndex
@@ -1807,7 +1825,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				if (child is UIElement)
 				{
 					var childPath = path.Length == 0 ? i.ToString() : path + "," + i;
-					nodeInfo.Children.Add(BuildTree(child, root, childPath, depth + 1, sourceBacked));
+					nodeInfo.Children.Add(BuildTree(child, root, childPath, depth + 1, sourceBacked,
+						DesignerLayoutMode.InferFromContainerType(nodeInfo.Type)));
 				}
 			}
 			return nodeInfo;

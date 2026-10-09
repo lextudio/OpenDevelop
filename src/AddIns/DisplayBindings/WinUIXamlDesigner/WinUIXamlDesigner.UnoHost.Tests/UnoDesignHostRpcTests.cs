@@ -12,7 +12,7 @@ public sealed class UnoDesignHostRpcTests
 	static string Fixture(string text) =>
 		$"""
 		<Grid xmlns="{Ns}" xmlns:x="{XNs}" x:Name="root">
-		    <TextBlock x:Name="greeting" Text="{text}"/>
+		    <TextBlock x:Name="greeting" Text="{text}" Canvas.ZIndex="7"/>
 		</Grid>
 		""";
 
@@ -110,6 +110,75 @@ public sealed class UnoDesignHostRpcTests
 		var updated = await client.UpdateAsync(Document(client, Fixture("Updated"), version: 2), timeout.Token);
 		Assert.True(updated.Accepted, updated.Error);
 		Assert.Equal(775, updated.Render!.Width);
+	}
+
+	[Fact]
+	public async Task ChildHost_DesignDataChangesOnlyThePreviewAndPreservesTheSourceSnapshot()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await StartAsync(timeout.Token);
+		var blank = $"""
+		<Grid xmlns="{Ns}" xmlns:x="{XNs}">
+		    <ListView x:Name="items" />
+		</Grid>
+		""";
+		var designData = $"""
+		<Grid xmlns="{Ns}" xmlns:x="{XNs}"
+		      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+		      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+		      mc:Ignorable="d" d:DesignWidth="410" d:DesignHeight="125">
+		    <ListView x:Name="items" d:DesignData="3;Alpha,Beta,Gamma" />
+		</Grid>
+		""";
+
+		var emptyPreview = await client.OpenAsync(Document(client, blank), timeout.Token);
+		Assert.True(emptyPreview.Accepted, emptyPreview.Error);
+		var preview = await client.UpdateAsync(Document(client, designData, version: 2), timeout.Token);
+		Assert.True(preview.Accepted, preview.Error);
+		Assert.NotNull(preview.Render);
+		Assert.Equal(410, preview.Render!.Width);
+		Assert.Equal(125, preview.Render.Height);
+		// Placeholder items are injected into the child-only XDocument, so they must alter the
+		// raster but never become an authored source edit.
+		Assert.NotEqual(emptyPreview.Render!.Data, preview.Render.Data);
+		var flushed = await client.FlushAsync(2, timeout.Token);
+		var source = Assert.Single(flushed.Files).Text;
+		Assert.Contains("d:DesignData=\"3;Alpha,Beta,Gamma\"", source, StringComparison.Ordinal);
+		Assert.Contains("d:DesignWidth=\"410\"", source, StringComparison.Ordinal);
+		Assert.DoesNotContain("<String", source, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task ChildHost_NonVisualRootDiagnosticRetainsThePrimarySourceFile()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await StartAsync(timeout.Token);
+		var xaml = $"<ResourceDictionary xmlns=\"{Ns}\" xmlns:x=\"{XNs}\"/>";
+
+		var opened = await client.OpenAsync(Document(client, xaml), timeout.Token);
+
+		Assert.True(opened.Accepted, opened.Error);
+		var diagnostic = Assert.Single(opened.Diagnostics);
+		Assert.Equal("MainPage.xaml", diagnostic.FileName);
+		Assert.Contains("no visual root", diagnostic.Message, StringComparison.OrdinalIgnoreCase);
+	}
+
+	[Fact]
+	public async Task ChildHost_MalformedXamlReportsASourceDiagnosticWithoutTerminatingTheSession()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await StartAsync(timeout.Token);
+		var malformed = $"<Grid xmlns=\"{Ns}\" xmlns:x=\"{XNs}\"><TextBlock";
+
+		var failed = await client.OpenAsync(Document(client, malformed), timeout.Token);
+
+		Assert.False(failed.Accepted);
+		var diagnostic = Assert.Single(failed.Diagnostics);
+		Assert.Equal("MainPage.xaml", diagnostic.FileName);
+		Assert.False(string.IsNullOrWhiteSpace(diagnostic.Message));
+		Assert.True(diagnostic.Line >= 0);
+		Assert.True(diagnostic.EndColumn == 0 || diagnostic.EndColumn > diagnostic.Column);
+		Assert.True(client.IsAlive);
 	}
 
 	[Theory]

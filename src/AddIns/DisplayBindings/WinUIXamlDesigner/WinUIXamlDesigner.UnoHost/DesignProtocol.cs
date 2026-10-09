@@ -14,6 +14,9 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 	{
 		public string SessionId { get; set; } = "";
 		public string DocumentId { get; set; } = "";
+		/// <summary>Host-owned primary source path, retained solely for diagnostics. It is not a
+		/// child filesystem authority and must never be opened by the renderer.</summary>
+		public string FileName { get; set; } = "";
 		public long Version { get; set; }
 		public string Xaml { get; set; } = "";
 		public double Width { get; set; } = 640;

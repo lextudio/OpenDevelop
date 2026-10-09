@@ -292,10 +292,10 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	/// <summary>Last lines of the Uno child host's stdout/stderr, for diagnosing render issues.</summary>
 	public string ChildLog => runtime.ChildLog;
 
-	/// <summary>The last render's diagnostics (message + source line/column when known).</summary>
-	public IReadOnlyList<(string Message, int Line, int Column)> LastDiagnostics => runtime is IWinUIXamlDiagnostics diagnostics
+	/// <summary>The last render's diagnostics with source file and optional end column retained.</summary>
+	public IReadOnlyList<(string Message, string FileName, int Line, int Column, int EndColumn)> LastDiagnostics => runtime is IWinUIXamlDiagnostics diagnostics
 		? diagnostics.LastDiagnostics
-		: Array.Empty<(string, int, int)>();
+		: Array.Empty<(string, string, int, int, int)>();
 
 	/// <summary>Exports the current design to a PNG file (via the child host).</summary>
 	public string ExportPng(string path) => runtime.ExportPng(path);
@@ -686,11 +686,11 @@ public interface IWinUIXamlGridGuides
 
 /// <summary>
 /// Optional capability: the runtime reports its last render diagnostics (message plus
-/// source line/column when the XAML parser provided them).
+/// source file and range when the XAML parser provided them).
 /// </summary>
 public interface IWinUIXamlDiagnostics
 {
-	IReadOnlyList<(string Message, int Line, int Column)> LastDiagnostics { get; }
+	IReadOnlyList<(string Message, string FileName, int Line, int Column, int EndColumn)> LastDiagnostics { get; }
 }
 
 /// <summary>

@@ -50,6 +50,10 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	Connection connection;
 	readonly CompatibilityKey? poolKey;
 	DesignerCapabilities capabilities;
+	// Theme and forced visual states exist only in the child process.  Keep the last successful
+	// user choices in the parent so a crash recovery restores the design the user was inspecting.
+	string? recoveryTheme;
+	readonly Dictionary<string, string> recoveryVisualStates = new(StringComparer.Ordinal);
 	bool disposed;
 
 	// DocumentId deliberately comes from DesignerDocumentHostClient and is NOT redeclared here.
@@ -185,8 +189,10 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	public async Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, DesignerViewport viewport, CancellationToken cancellationToken = default)
 	{
 		var state = await Document.OpenAsync(snapshot, viewport, cancellationToken).ConfigureAwait(false);
-		if (state.Accepted)
-			SetRecoverySnapshot(snapshot, viewport);
+		// Even a rejected initial parse needs a recovery authority. The shared child can later
+		// crash while this malformed document is open; without this snapshot the client remains
+		// permanently attached to the dead connection and can never accept a corrected update.
+		SetRecoverySnapshot(snapshot, viewport);
 		return state;
 	}
 
@@ -199,8 +205,7 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	public async Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, DesignerViewport viewport, CancellationToken cancellationToken = default)
 	{
 		var state = await Document.UpdateAsync(snapshot, viewport, cancellationToken).ConfigureAwait(false);
-		if (state.Accepted)
-			SetRecoverySnapshot(snapshot, viewport);
+		SetRecoverySnapshot(snapshot, viewport);
 		return state;
 	}
 
@@ -245,15 +250,27 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		=> connection.InvokeAsync<DesignerAppResourcesResult>("app/resources",
 			new { sessionId = SessionId, documentId = DocumentId, xaml }, cancellationToken);
 
-	public Task<DesignerSessionState> SetThemeAsync(long baseVersion, string theme, CancellationToken cancellationToken = default)
-		=> connection.InvokeAsync<DesignerSessionState>("design/theme",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, theme }, cancellationToken);
+	public async Task<DesignerSessionState> SetThemeAsync(long baseVersion, string theme, CancellationToken cancellationToken = default)
+	{
+		var state = await connection.InvokeAsync<DesignerSessionState>("design/theme",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, theme }, cancellationToken).ConfigureAwait(false);
+		if (state.Accepted)
+			recoveryTheme = theme;
+		return state;
+	}
 
 	/// <summary>Previews one VisualState. A null <paramref name="state"/> stops forcing that group
 	/// and returns it to however the document naturally loads.</summary>
-	public Task<DesignerSessionState> GoToStateAsync(long baseVersion, string group, string? state, CancellationToken cancellationToken = default)
-		=> connection.InvokeAsync<DesignerSessionState>("design/go-to-state",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, group, state = state ?? "" }, cancellationToken);
+	public async Task<DesignerSessionState> GoToStateAsync(long baseVersion, string group, string? state, CancellationToken cancellationToken = default)
+	{
+		var result = await connection.InvokeAsync<DesignerSessionState>("design/go-to-state",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, group, state = state ?? "" }, cancellationToken).ConfigureAwait(false);
+		if (result.Accepted) {
+			if (string.IsNullOrEmpty(state)) recoveryVisualStates.Remove(group);
+			else recoveryVisualStates[group] = state;
+		}
+		return result;
+	}
 
 	public Task<string> ExportPngAsync(string path, CancellationToken cancellationToken = default)
 		=> connection.InvokeAsync<string>("design/export-png",
@@ -295,6 +312,16 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		RebindConnection(replacement);
 		replacement.HostExited += OnConnectionExited;
 		var state = await Document.OpenAsync(RecoverySnapshot!, RecoveryViewport, cancellationToken).ConfigureAwait(false);
+		if (state.Accepted && recoveryTheme != null) {
+			var themed = await SetThemeAsync(state.Version, recoveryTheme, cancellationToken).ConfigureAwait(false);
+			if (themed.Accepted) state = themed;
+		}
+		if (state.Accepted) {
+			foreach (var visualState in recoveryVisualStates.ToArray()) {
+				var previewed = await GoToStateAsync(state.Version, visualState.Key, visualState.Value, cancellationToken).ConfigureAwait(false);
+				if (previewed.Accepted) state = previewed;
+			}
+		}
 		Volatile.Write(ref consecutiveFailedRecoveries, 0);
 		RecoveryCount++;
 		Recovered?.Invoke(this, state);

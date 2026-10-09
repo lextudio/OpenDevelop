@@ -79,6 +79,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		Grid.SetRow(status, 1);
 		root.Children.Add(previewHost);
 		root.Children.Add(status);
+		root.PreviewKeyDown += OnPreviewKeyDown;
 		status.Text = previewHost.StatusText;
 		outline.SelectedItemChanged += OnOutlineSelectionChanged;
 		outline.AllowDrop = true;
@@ -185,7 +186,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public string GetDesignTheme() => previewHost.GetDesignTheme();
 	public string ChildLog => previewHost.ChildLog;
 	public string RenderSample() => previewHost.RenderSample();
-	public IReadOnlyList<(string Message, int Line, int Column)> LastDiagnostics => previewHost.LastDiagnostics;
+	public IReadOnlyList<(string Message, string FileName, int Line, int Column, int EndColumn)> LastDiagnostics => previewHost.LastDiagnostics;
 	public string ExportPng(string path) => previewHost.ExportPng(path);
 	public (double RenderMs, int Width, int Height, double Dpi, int CompressedBytes, int RawBytes) RenderTiming()
 		=> previewHost.RenderTiming();
@@ -209,12 +210,21 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	}
 
 	/// <summary>
-	/// Switches to the document's Source view and jumps its caret to the 1-based
-	/// line/column (used by error navigation). The source editor belongs to another AddIn
-	/// (AvalonEdit), reached reflectively through its TextEditor.Caret.
+	/// Switches to the diagnostic source file and jumps its caret to the 1-based line/column.
+	/// A child can diagnose App.xaml or another supplied source file, so it is incorrect to always
+	/// navigate the active document's paired Source view. The primary-document source editor belongs
+	/// to another AddIn (AvalonEdit), reached reflectively through its TextEditor.Caret.
 	/// </summary>
-	public string GotoSourceLocation(int line, int column)
+	public string GotoSourceLocation(int line, int column, string? diagnosticFileName = null)
 	{
+		var primaryFileName = PrimaryFile.FileName.ToString();
+		if (!string.IsNullOrWhiteSpace(diagnosticFileName)
+			&& !FileUtility.IsEqualFileName(primaryFileName, ResolveDiagnosticFileName(diagnosticFileName)))
+		{
+			var fileName = ResolveDiagnosticFileName(diagnosticFileName);
+			SD.FileService.JumpToFilePosition(FileName.Create(fileName), Math.Max(1, line), Math.Max(1, column));
+			return $"Jumped to {fileName}, line {line}, column {column}";
+		}
 		var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow;
 		if (window == null)
 			return "No active document window";
@@ -248,6 +258,11 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		}
 		return "No source view found";
 	}
+
+	string ResolveDiagnosticFileName(string diagnosticFileName)
+		=> Path.IsPathRooted(diagnosticFileName)
+			? diagnosticFileName
+			: Path.Combine(Path.GetDirectoryName(PrimaryFile.FileName.ToString()) ?? "", diagnosticFileName);
 	public bool Gridlines => previewHost.Gridlines;
 	public void SetGridlines(bool show) => previewHost.SetGridlines(show);
 	public bool ShowTabOrder => previewHost.ShowTabOrder;
@@ -286,6 +301,32 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			syncingSelection = false;
 		}
 		return true;
+	}
+
+	void OnPreviewKeyDown(object sender, KeyEventArgs e)
+	{
+		if (e.Key != Key.F2 || e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase)
+			return;
+		RenameSelectedElement();
+		e.Handled = true;
+	}
+
+	void RenameSelectedElement()
+	{
+		var oldName = SelectedElementName;
+		if (string.IsNullOrEmpty(oldName) || editor.FindElement(oldName) == null)
+			return;
+		var newName = MessageService.ShowInputBox("Rename", "Enter a new element name:", oldName)?.Trim();
+		if (string.IsNullOrEmpty(newName) || string.Equals(oldName, newName, StringComparison.Ordinal))
+			return;
+		if (!editor.Rename(oldName, newName, out var error)) {
+			MessageService.ShowError(error);
+			return;
+		}
+		// The local editor is authoritative; the child call is an optimization that preserves its
+		// live visual identity while the full source remains the fallback for a rejected refresh.
+		ApplyDocumentChange(text => previewHost.TryRename(oldName, newName, text));
+		SelectElement(newName);
 	}
 
 	/// <summary>
@@ -1299,6 +1340,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 
 	public override void Dispose()
 	{
+		root.PreviewKeyDown -= OnPreviewKeyDown;
 		previewHost.StateChanged -= OnPreviewStateChanged;
 		previewHost.ElementPicked -= OnElementPickedOnSurface;
 		previewHost.ElementPathPicked -= OnElementPathPickedOnSurface;
@@ -1416,8 +1458,11 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			Y = node.Y,
 			Width = node.Width,
 			Height = node.Height,
+			ZIndex = node.ZIndex,
+			BaselineOffset = node.BaselineOffset,
 			IsDesignable = node.IsDesignable,
 			IsVisible = node.IsVisible,
+			LayoutMode = node.LayoutMode,
 			IsTrayComponent = node.IsTrayComponent
 		};
 
@@ -1426,7 +1471,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	/// not individually selectable, matching the runtime's name-based picking. Resource
 	/// definitions are not visual elements and elements the source marks not-visible are not on
 	/// the design surface, so neither is part of the design outline.</summary>
-	static DesignerElementNode XmlOutlineNode(XElement element)
+	static DesignerElementNode XmlOutlineNode(XElement element, string layoutMode = DesignerLayoutMode.Unknown)
 	{
 		var name = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
 		return new DesignerElementNode {
@@ -1434,11 +1479,12 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			Name = name,
 			Type = element.Name.LocalName,
 			IsDesignable = true,
+			LayoutMode = layoutMode,
 			Children = element.Elements()
 				.Where(child => !IsResourceDefinitionElement(child)
 					&& !IsVisualStateElement(child)
 					&& !IsHiddenSourceElement(child))
-				.Select(XmlOutlineNode).ToList()
+				.Select(child => XmlOutlineNode(child, DesignerLayoutMode.InferFromContainerType(element.Name.LocalName))).ToList()
 		};
 	}
 

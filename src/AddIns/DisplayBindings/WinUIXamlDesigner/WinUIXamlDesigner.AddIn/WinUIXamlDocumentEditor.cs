@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace ICSharpCode.WinUIXamlDesigner;
@@ -125,6 +126,29 @@ sealed class WinUIXamlDocumentEditor
 		BeginChange();
 		element.Remove();
 		CommitChange();
+	}
+
+	/// <summary>Renames an existing <c>x:Name</c> while preserving the editor's one-operation
+	/// undo boundary. The caller remains responsible for refreshing the isolated runtime.</summary>
+	public bool Rename(string oldName, string newName, out string error)
+	{
+		error = "";
+		newName = newName?.Trim() ?? "";
+		if (string.IsNullOrEmpty(newName)) { error = "A name is required."; return false; }
+		try { XmlConvert.VerifyNCName(newName); }
+		catch (Exception) { error = $"'{newName}' is not a valid XAML name."; return false; }
+		var element = FindElement(oldName);
+		if (element == null) { error = $"Element '{oldName}' was not found."; return false; }
+		if (!string.Equals(oldName, newName, StringComparison.Ordinal) && FindElement(newName) != null) {
+			error = $"An element named '{newName}' already exists.";
+			return false;
+		}
+		if (string.Equals(oldName, newName, StringComparison.Ordinal))
+			return true;
+		BeginChange();
+		element.SetAttributeValue(NameDirective, newName);
+		CommitChange();
+		return true;
 	}
 
 	public bool Undo() => Move(undoStack, redoStack);

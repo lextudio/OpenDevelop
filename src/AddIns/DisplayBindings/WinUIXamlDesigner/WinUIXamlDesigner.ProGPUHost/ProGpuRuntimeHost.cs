@@ -46,9 +46,9 @@ public static class ProGpuRuntimeHostBootstrap
 /// (<see cref="DesignSurfaceController"/>) - the same state an out-of-process host sends over DDP.
 /// So a ProGPU page gets exactly the canvas every other designer has: toolbar, zoom and Fit, design
 /// sizes, theme, gridlines, selection with handles, multi-select, drag and resize, inline text,
-/// tab order. It answers the canvas's hit tests from its live tree.
+/// tab order. The shared canvas derives hits from the same published design tree.
 /// </summary>
-sealed class ProGpuRuntimeHost : IDesignCanvasBackend, IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay,
+sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay,
 	IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlLifecycleProbe,
 	IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlMultiSelection, IWinUIXamlContextCommands,
 	IWinUIXamlGridGuides, IWinUIXamlNudge
@@ -109,7 +109,7 @@ sealed class ProGpuRuntimeHost : IDesignCanvasBackend, IWinUIXamlRuntimeHost, IW
         // scale still reads 1: render again once it is, at the real scale.
         surface.Loaded += (_, _) => { if (Math.Abs(EffectiveDisplayDpi - lastRenderDpi) > 0.01) Present(); };
 
-        canvas = new DesignSurfaceController(surface, this);
+        canvas = new DesignSurfaceController(surface);
         canvas.ElementPicked += (_, name) => ElementPicked?.Invoke(this, name);
         canvas.ElementPathPicked += (_, path) => ElementPathPicked?.Invoke(this, path);
         canvas.SelectionChanged += (_, names) => SelectionChanged?.Invoke(this, names);
@@ -283,18 +283,6 @@ sealed class ProGpuRuntimeHost : IDesignCanvasBackend, IWinUIXamlRuntimeHost, IW
     {
         simulatedDpi = dpi;
         Present();
-    }
-
-    #endregion
-
-    #region IDesignCanvasBackend
-
-    public DesignCanvasHit HitTest(double x, double y)
-    {
-        if (designTree == null)
-            return null;
-        var (hit, pickPath, chain) = designTree.HitTest(new System.Numerics.Vector2((float)x, (float)y), namesByElement);
-        return new DesignCanvasHit(hit, pickPath, chain);
     }
 
     #endregion

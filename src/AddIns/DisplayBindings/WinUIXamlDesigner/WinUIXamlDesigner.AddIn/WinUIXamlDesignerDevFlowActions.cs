@@ -733,7 +733,7 @@ public static class WinUIXamlDesignerDevFlowActions
 	}
 
 	[DevFlowAction("od.winui-designer.diagnostics",
-		Description = "Return the design host's diagnostics: the document parse error (documentError) and the render diagnostics (message, line, column)")]
+		Description = "Return the design host's diagnostics: the document parse error (documentError) and the render diagnostic source ranges")]
 	public static string Diagnostics()
 	{
 		var view = ActivateDesigner();
@@ -742,7 +742,7 @@ public static class WinUIXamlDesignerDevFlowActions
 		var documentError = view.DocumentErrorWithLocation is { } doc
 			? new { message = doc.Message, line = doc.Line, column = doc.Column }
 			: null;
-		var list = view.LastDiagnostics.Select(d => new { message = d.Message, line = d.Line, column = d.Column }).ToList();
+		var list = view.LastDiagnostics.Select(d => new { message = d.Message, fileName = d.FileName, line = d.Line, column = d.Column, endColumn = d.EndColumn }).ToList();
 		return JsonSerializer.Serialize(new { success = true, documentError, renderDiagnostics = list });
 	}
 
@@ -753,17 +753,17 @@ public static class WinUIXamlDesignerDevFlowActions
 		var view = ActivateDesigner();
 		if (view == null)
 			return Failure("No WinUI/Uno designer is active");
-		(string Message, int Line, int Column) target;
+		(string Message, string FileName, int Line, int Column, int EndColumn) target;
 		if (view.DocumentErrorWithLocation is { } doc)
-			target = (doc.Message, doc.Line, doc.Column);
+			target = (doc.Message, "", doc.Line, doc.Column, doc.Column > 0 ? doc.Column + 1 : 0);
 		else if (index >= 0 && index < view.LastDiagnostics.Count)
 			target = view.LastDiagnostics[index];
 		else
 			return Failure("No design error to jump to (count: " + view.LastDiagnostics.Count + ")");
 		var line = target.Line > 0 ? target.Line : 1;
 		var column = target.Column > 0 ? target.Column : 1;
-		var result = view.GotoSourceLocation(line, column);
-		return JsonSerializer.Serialize(new { success = true, result, diagnostic = new { message = target.Message, line = target.Line, column = target.Column } });
+		var result = view.GotoSourceLocation(line, column, target.FileName);
+		return JsonSerializer.Serialize(new { success = true, result, diagnostic = new { message = target.Message, fileName = target.FileName, line = target.Line, column = target.Column, endColumn = target.EndColumn } });
 	}
 
 	[DevFlowAction("od.winui-designer.render-timing",

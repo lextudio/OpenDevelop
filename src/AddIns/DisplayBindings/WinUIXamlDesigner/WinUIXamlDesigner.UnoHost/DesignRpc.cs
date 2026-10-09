@@ -90,7 +90,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			var height = viewport.Height;
 			var dpi = viewport.Dpi;
 			Console.Error.WriteLine($"{LogPrefix}: session/open received ({xaml.Length} chars, {width}x{height} @ dpi {dpi:0.##})");
-			try { return OpenHost(sessionId, documentId).OpenSession(sessionId, documentId, xaml, width, height, dpi); }
+			try { return OpenHost(sessionId, documentId).OpenSession(sessionId, documentId, snapshot.PrimaryFileName, xaml, width, height, dpi); }
 			catch (Exception e) { LogRpcError("session/open", e); throw; }
 		}
 
@@ -106,7 +106,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			var dpi = viewport.Dpi;
 			var baseVersion = snapshot.Version;
 			Console.Error.WriteLine($"{LogPrefix}: session/update received ({xaml.Length} chars, {width}x{height} @ dpi {dpi:0.##}, v{baseVersion})");
-			try { return ExistingHost(sessionId, documentId).UpdateSession(sessionId, documentId, xaml, width, height, dpi, baseVersion); }
+			try { return ExistingHost(sessionId, documentId).UpdateSession(sessionId, documentId, snapshot.PrimaryFileName, xaml, width, height, dpi, baseVersion); }
 			catch (Exception e) { LogRpcError("session/update", e); throw; }
 		}
 
