@@ -2220,7 +2220,10 @@ namespace ICSharpCode.FormsDesigner
 
 		static bool CanCopyRemoteProperty(DesignerPropertyInfo property)
 		{
-			if (!property.ShouldSerialize || property.IsReadOnly || property.IsNull
+			// Copy/paste is another generic scalar-edit path.  Keep its eligibility on the
+			// same protocol boundary as the Properties pad so an opaque/read-only value from
+			// a host that omitted IsReadOnly cannot be copied and later submitted as text.
+			if (!property.ShouldSerialize || DesignerPropertySemantics.IsReadOnly(property) || property.IsNull
 				|| property.Name is "Name" or "Location" or "Size" or "Bounds" or "Parent") return false;
 			var type = property.TypeName;
 			return type == "System.String" || type == "System.Boolean" || type == "System.Char"
