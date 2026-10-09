@@ -71,6 +71,36 @@ public sealed class PerformanceGateTests : IAsyncDisposable
         Assert.DoesNotContain("built-in-one-process", build);
     }
 
+    [Fact]
+    public async Task IdleAfterAnIlSpySearch_DoesNotKeepTheCpuBusy()
+    {
+        // ILSpy's search pane drains results on CompositionTarget.Rendering; subscribed for good,
+        // that handler kept a frame scheduled every tick. After a search has finished and its
+        // results are drained, the window must be idle again.
+        var assembly = typeof(Assert).Assembly.Location;
+        Assert.True((await _app.InvokeAsync("od.ilspy.open-assembly", assembly)).GetProperty("opened").GetBoolean());
+        await _app.InvokeAsync("od.ilspy.show-pane", "Search"); // results live on the pane's view
+        await _app.InvokeAsync("od.ilspy.search", "String");
+
+        int previous = -1, stablePolls = 0;
+        var watch = Stopwatch.StartNew();
+        while (watch.Elapsed < TimeSpan.FromSeconds(60) && stablePolls < 2) {
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+            var results = await _app.InvokeAsync("od.ilspy.search-results");
+            var count = results.TryGetProperty("count", out var value) ? value.GetInt32() : 0;
+            stablePolls = count > 0 && count == previous ? stablePolls + 1 : 0;
+            previous = count;
+        }
+        Assert.True(stablePolls >= 2, $"The search did not settle (last count {previous}).");
+
+        var before = (await _app.InvokeAsync("od.process.cpu")).GetProperty("totalProcessorTimeMs").GetDouble();
+        var sample = Stopwatch.StartNew();
+        await Task.Delay(TimeSpan.FromSeconds(8));
+        var after = (await _app.InvokeAsync("od.process.cpu")).GetProperty("totalProcessorTimeMs").GetDouble();
+        var busy = (after - before) / sample.Elapsed.TotalMilliseconds;
+        Assert.True(busy < 0.40, $"After an ILSpy search OpenDevelop used {busy:P0} of a core while idle.");
+    }
+
     // The counter-cases of the gate above: a change must never be skipped. "Built" is every project
     // of the solution the timeline does not report up to date - independent of whether the build ran
     // per project or in one MSBuild process, which later optimizations may change.
