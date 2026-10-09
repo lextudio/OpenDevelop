@@ -644,6 +644,8 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 					propertyNames = grid.Properties?.Cast<object>().Select(candidate =>
 						(candidate as PropertyItem)?.PropertyName ?? candidate?.GetType().FullName).ToArray()
 				});
+			if (item.PropertyDescriptor?.IsReadOnly == true)
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad property is read-only: " + propertyName });
 
 			var before = item.Value;
 			object convertedValue;
@@ -661,17 +663,18 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			item.Value = convertedValue;
 			var after = item.Value;
 
-			// The Value binding has ValidatesOnExceptions=true (DescriptorPropertyDefinition.
-			// CreateValueBinding), so if the descriptor's own SetValue - which calls
+			// The descriptor definition's binding to the selected object has
+			// ValidatesOnExceptions=true (DescriptorPropertyDefinition.CreateValueBinding), so if
+			// its own SetValue - which calls
 			// WpfSurfaceElementPropertyAdapter.SetProperty, i.e. the real design/set-property RPC -
 			// throws, WPF's binding engine swallows it into a validation error rather than letting
 			// it propagate here. `after` still reflects the target-side DP's own local value
 			// regardless, so a caller checking only before/after cannot tell a real commit from a
 			// silently-failed one. Surface that explicitly instead of assuming success.
-			var bindingExpression = item.GetBindingExpression(PropertyItem.ValueProperty);
 			string bindingError = null;
-			if (bindingExpression?.DataItem is System.Windows.DependencyObject dataItem && System.Windows.Controls.Validation.GetHasError(dataItem)) {
-				var errors = System.Windows.Controls.Validation.GetErrors(dataItem);
+			var bindingTarget = item.GetBindingExpression(PropertyItem.ValueProperty)?.DataItem as DependencyObject;
+			if (bindingTarget != null && System.Windows.Controls.Validation.GetHasError(bindingTarget)) {
+				var errors = System.Windows.Controls.Validation.GetErrors(bindingTarget);
 				bindingError = errors.Count > 0 ? errors[0].ErrorContent?.ToString() : "Unknown validation error";
 			}
 

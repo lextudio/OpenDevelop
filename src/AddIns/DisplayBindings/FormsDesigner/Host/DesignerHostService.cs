@@ -27,6 +27,7 @@ sealed class DesignerHostService : IDesignerChildService
 	string? sessionId;
 	DesignerDocumentSnapshot? current;
 	DesignSurface? designSurface;
+	SnapshotDesignerLoader? snapshotLoader;
 	ProjectAssemblyLoadContext? projectLoadContext;
 	Assembly? projectAssembly;
 	readonly List<Assembly> referencedAssemblies = new();
@@ -282,6 +283,7 @@ sealed class DesignerHostService : IDesignerChildService
 			property.SetValue(component, converted);
 			transaction.Commit();
 		}
+		snapshotLoader?.ClearResourceOrigin(component, propertyName);
 		RewriteProperty(elementId, propertyName, converted);
 		return CurrentState(baseVersion);
 	}
@@ -347,6 +349,7 @@ sealed class DesignerHostService : IDesignerChildService
 				property.SetValue(component, freshDefault);
 			transaction.Commit();
 		}
+		snapshotLoader?.ClearResourceOrigin(component, propertyName);
 		RewriteResetProperty(elementId, propertyName);
 		return CurrentState(baseVersion);
 	}
@@ -478,6 +481,7 @@ sealed class DesignerHostService : IDesignerChildService
 			control.Bounds = new Rectangle(x, y, width, height);
 			transaction.Commit();
 		}
+		ClearResourceOriginsForBounds(control);
 		RewriteBounds(elementId, x, y, width, height);
 		return CurrentState(baseVersion);
 	}
@@ -559,8 +563,21 @@ sealed class DesignerHostService : IDesignerChildService
 			transaction.Commit();
 		}
 		foreach (var control in controls)
+			ClearResourceOriginsForBounds(control);
+		foreach (var control in controls)
 			RewriteBounds(control.Site!.Name!, control.Left, control.Top, control.Width, control.Height);
 		return CurrentState(baseVersion);
+	}
+
+	/// <summary>A bounds mutation writes the same source properties that localized forms can
+	/// obtain through <c>ApplyResources</c>. The live value is now authoritative, so it must no
+	/// longer be advertised as resource-backed until a fresh snapshot proves that again.</summary>
+	void ClearResourceOriginsForBounds(Control control)
+	{
+		snapshotLoader?.ClearResourceOrigin(control, "Location");
+		snapshotLoader?.ClearResourceOrigin(control, "Size");
+		snapshotLoader?.ClearResourceOrigin(control, "Bounds");
+		snapshotLoader?.ClearResourceOrigin(control, "ClientSize");
 	}
 
 	/// <summary>Generic smart-tag listing: works for any component with registered
@@ -1114,6 +1131,7 @@ sealed class DesignerHostService : IDesignerChildService
 		if (designSurface?.GetService(typeof(IMenuCommandService)) is DesignerMenuCommandService commands)
 			commands.DisposingSurface = true;
 		designSurface?.Dispose();
+		snapshotLoader = null;
 	}
 
 	sealed class DesignerMenuCommandService(IServiceProvider provider) : MenuCommandService(provider)
@@ -1771,7 +1789,8 @@ sealed class DesignerHostService : IDesignerChildService
 		Trace("CreateDesignSurface constructing DesignSurface");
 		designSurface = new DesignSurface();
 		Trace("CreateDesignSurface beginning loader");
-		designSurface.BeginLoad(new SnapshotDesignerLoader(snapshot, ResolveProjectType));
+		snapshotLoader = new SnapshotDesignerLoader(snapshot, ResolveProjectType);
+		designSurface.BeginLoad(snapshotLoader);
 		Trace("CreateDesignSurface loader completed");
 		if (!designSurface.IsLoaded) {
 			var errors = designSurface.LoadErrors?.Cast<object>().Select(item => item?.ToString()).Where(item => !String.IsNullOrEmpty(item));
@@ -2456,7 +2475,7 @@ sealed class DesignerHostService : IDesignerChildService
 				else if (property.Converter.CanConvertTo(typeof(string))) serialized = property.Converter.ConvertToInvariantString(value) ?? "";
 				else serialized = "[binary]";
 			} catch { continue; }
-			result.Add(new DesignerPropertyInfo {
+			var info = new DesignerPropertyInfo {
 				Name = property.Name,
 				DisplayName = property.DisplayName ?? property.Name,
 				Description = property.Description ?? "",
@@ -2472,7 +2491,12 @@ sealed class DesignerHostService : IDesignerChildService
 				ShouldSerialize = assignedInSource,
 				IsEnum = property.PropertyType.IsEnum,
 				Kind = PropertyKind(property.PropertyType)
-			});
+			};
+			if (snapshotLoader?.TryGetResourceOrigin(component, property.Name, out var resourceFileName, out var resourceKey) == true) {
+				info.ResourceFileName = resourceFileName;
+				info.ResourceKey = resourceKey;
+			}
+			result.Add(info);
 			if (property.PropertyType.IsEnum)
 				result[^1].AllowedValues.AddRange(Enum.GetNames(property.PropertyType));
 		}

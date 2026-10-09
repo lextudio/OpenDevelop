@@ -564,11 +564,26 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 					error = "Properties pad property not found: " + propertyName,
 					propertyNames = grid.Properties?.OfType<PropertyItem>().Select(p => p.PropertyName).ToArray()
 				});
+			if (item.PropertyDescriptor?.IsReadOnly == true)
+				return Failure("Properties pad property is read-only: " + propertyName);
 
 			var before = item.Value?.ToString();
-			item.Value = value;
+			try {
+				item.Value = value;
+			} catch (Exception exception) {
+				return Failure(exception.Message);
+			}
+			// The descriptor definition's binding to the selected object carries
+			// ValidatesOnExceptions. Its error is not copied to PropertyItem's forwarding binding.
+			string bindingError = null;
+			var bindingTarget = item.GetBindingExpression(PropertyItem.ValueProperty)?.DataItem as DependencyObject;
+			if (bindingTarget != null && System.Windows.Controls.Validation.GetHasError(bindingTarget)) {
+				var errors = System.Windows.Controls.Validation.GetErrors(bindingTarget);
+				bindingError = errors.Count > 0 ? errors[0].ErrorContent?.ToString() : "Unknown validation error";
+			}
 			return JsonSerializer.Serialize(new {
-				success = true,
+				success = bindingError == null,
+				error = bindingError,
 				selectedName = viewContent.RemoteDesignerSelectedComponent,
 				propertyName = item.PropertyName,
 				before,

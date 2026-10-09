@@ -21,7 +21,11 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 	readonly DesignerDocumentSnapshot snapshot;
 	readonly Func<string, Type?> projectTypeResolver;
 	readonly Dictionary<string, IComponent> components = new(StringComparer.Ordinal);
-	readonly Dictionary<string, object> resources = new(StringComparer.Ordinal);
+	readonly Dictionary<string, ResourceValue> resources = new(StringComparer.Ordinal);
+	readonly Dictionary<IComponent, Dictionary<string, ResourceOrigin>> resourceOrigins = new();
+
+	record ResourceValue(object Value, string FileName);
+	record ResourceOrigin(string FileName, string Key);
 
 	public SnapshotDesignerLoader(DesignerDocumentSnapshot snapshot, Func<string, Type?> projectTypeResolver)
 	{
@@ -90,7 +94,13 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 			var property = owner == null ? null : TypeDescriptor.GetProperties(owner)[name];
 			if (property != null && !property.IsReadOnly) {
 				var value = Evaluate(assignment.Right);
-				if (value != null) property.SetValue(owner, ConvertValue(value, property.PropertyType));
+				if (value != null)
+					property.SetValue(owner, ConvertValue(value, property.PropertyType));
+				if (owner is IComponent component) {
+					if (TryGetResourceOrigin(assignment.Right, out var origin))
+						SetResourceOrigin(component, name, origin);
+					else ClearResourceOrigin(component, name);
+				}
 			}
 			return;
 		}
@@ -127,7 +137,13 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 			var property = owner == null ? null : TypeDescriptor.GetProperties(owner)[name];
 			if (property != null && !property.IsReadOnly) {
 				var value = EvaluateVisualBasic(assignment.Right);
-				if (value != null) property.SetValue(owner, ConvertValue(value, property.PropertyType));
+				if (value != null)
+					property.SetValue(owner, ConvertValue(value, property.PropertyType));
+				if (owner is IComponent component) {
+					if (TryGetResourceOrigin(assignment.Right, out var origin))
+						SetResourceOrigin(component, name, origin);
+					else ClearResourceOrigin(component, name);
+				}
 			}
 			return;
 		}
@@ -163,8 +179,8 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 						&& (typeName.Contains("Image", StringComparison.OrdinalIgnoreCase)
 							|| typeName.Contains("Bitmap", StringComparison.OrdinalIgnoreCase))) {
 						var imageStream = new MemoryStream(Convert.FromBase64String(value));
-						resources[name] = Image.FromStream(imageStream);
-					} else resources[name] = value;
+						resources[name] = new ResourceValue(Image.FromStream(imageStream), file.FileName);
+					} else resources[name] = new ResourceValue(value, file.FileName);
 				}
 			} catch { }
 		}
@@ -173,12 +189,73 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 	void ApplyResources(IComponent component, string key)
 	{
 		foreach (PropertyDescriptor property in TypeDescriptor.GetProperties(component)) {
-			if (property.IsReadOnly || !resources.TryGetValue(key + "." + property.Name, out var value)) continue;
+			if (property.IsReadOnly || !resources.TryGetValue(key + "." + property.Name, out var resource)) continue;
 			try {
-				if (property.PropertyType.IsInstanceOfType(value)) property.SetValue(component, value);
-				else if (value is string text && property.Converter.CanConvertFrom(typeof(string))) property.SetValue(component, property.Converter.ConvertFromInvariantString(text));
+				if (property.PropertyType.IsInstanceOfType(resource.Value)) property.SetValue(component, resource.Value);
+				else if (resource.Value is string text && property.Converter.CanConvertFrom(typeof(string))) property.SetValue(component, property.Converter.ConvertFromInvariantString(text));
+				else continue;
+				SetResourceOrigin(component, property.Name, new ResourceOrigin(resource.FileName, key + "." + property.Name));
 			} catch { }
 		}
+	}
+
+	void SetResourceOrigin(IComponent component, string propertyName, ResourceOrigin origin)
+	{
+		if (!resourceOrigins.TryGetValue(component, out var properties))
+			resourceOrigins[component] = properties = new Dictionary<string, ResourceOrigin>(StringComparer.Ordinal);
+		properties[propertyName] = origin;
+	}
+
+	public void ClearResourceOrigin(IComponent component, string propertyName)
+	{
+		if (resourceOrigins.TryGetValue(component, out var properties))
+			properties.Remove(propertyName);
+	}
+
+	public bool TryGetResourceOrigin(IComponent component, string propertyName, out string fileName, out string key)
+	{
+		if (resourceOrigins.TryGetValue(component, out var properties)
+			&& properties.TryGetValue(propertyName, out var origin)) {
+			fileName = origin.FileName;
+			key = origin.Key;
+			return true;
+		}
+		fileName = key = "";
+		return false;
+	}
+
+	bool TryGetResourceOrigin(ExpressionSyntax expression, out ResourceOrigin origin)
+	{
+		if (expression is CastExpressionSyntax cast)
+			return TryGetResourceOrigin(cast.Expression, out origin);
+		if (expression is InvocationExpressionSyntax invocation
+			&& invocation.Expression is MemberAccessExpressionSyntax member
+			&& member.Name.Identifier.ValueText == "GetObject"
+			&& invocation.ArgumentList.Arguments.Count == 1
+			&& Evaluate(invocation.ArgumentList.Arguments[0].Expression) is string key
+			&& resources.TryGetValue(key, out var resource)) {
+			origin = new ResourceOrigin(resource.FileName, key);
+			return true;
+		}
+		origin = null!;
+		return false;
+	}
+
+	bool TryGetResourceOrigin(VbSyntax.ExpressionSyntax expression, out ResourceOrigin origin)
+	{
+		if (expression is VbSyntax.CTypeExpressionSyntax cast)
+			return TryGetResourceOrigin(cast.Expression, out origin);
+		if (expression is VbSyntax.InvocationExpressionSyntax invocation
+			&& invocation.Expression is VbSyntax.MemberAccessExpressionSyntax member
+			&& member.Name.Identifier.ValueText == "GetObject"
+			&& invocation.ArgumentList.Arguments.Count == 1
+			&& EvaluateVisualBasic(VbArgument(invocation, 0)) is string key
+			&& resources.TryGetValue(key, out var resource)) {
+			origin = new ResourceOrigin(resource.FileName, key);
+			return true;
+		}
+		origin = null!;
+		return false;
 	}
 
 	object? Evaluate(ExpressionSyntax expression) => expression switch {
@@ -191,7 +268,7 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		CastExpressionSyntax cast => Evaluate(cast.Expression),
 		InvocationExpressionSyntax invocation when invocation.Expression is MemberAccessExpressionSyntax member
 			&& member.Name.Identifier.ValueText == "GetObject" && invocation.ArgumentList.Arguments.Count == 1
-			=> Evaluate(invocation.ArgumentList.Arguments[0].Expression) is string key && resources.TryGetValue(key, out var resource) ? resource : null,
+			=> Evaluate(invocation.ArgumentList.Arguments[0].Expression) is string key && resources.TryGetValue(key, out var resource) ? resource.Value : null,
 		InvocationExpressionSyntax invocation when invocation.Expression is IdentifierNameSyntax identifier
 			&& identifier.Identifier.ValueText == "nameof" && invocation.ArgumentList.Arguments.Count == 1
 			=> NameOf(invocation.ArgumentList.Arguments[0].Expression),
@@ -210,7 +287,7 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		VbSyntax.GetTypeExpressionSyntax getType => ResolveType(getType.Type.ToString()),
 		VbSyntax.InvocationExpressionSyntax invocation when invocation.Expression is VbSyntax.MemberAccessExpressionSyntax member
 			&& member.Name.Identifier.ValueText == "GetObject" && invocation.ArgumentList.Arguments.Count == 1
-			=> EvaluateVisualBasic(VbArgument(invocation, 0)) is string key && resources.TryGetValue(key, out var resource) ? resource : null,
+			=> EvaluateVisualBasic(VbArgument(invocation, 0)) is string key && resources.TryGetValue(key, out var resource) ? resource.Value : null,
 		VbSyntax.InvocationExpressionSyntax invocation when invocation.Expression is VbSyntax.IdentifierNameSyntax identifier
 			&& identifier.Identifier.ValueText.Equals("NameOf", StringComparison.OrdinalIgnoreCase) && invocation.ArgumentList.Arguments.Count == 1
 			=> NameOfVisualBasic(VbArgument(invocation, 0)),

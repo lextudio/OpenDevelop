@@ -533,6 +533,14 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public bool IsReadOnly { get; set; }
 		public bool ShouldSerialize { get; set; }
 		public bool IsEnum { get; set; }
+		/// <summary>Snapshot resource file that supplied this value, when the child can prove
+		/// its origin from <c>ApplyResources</c> or <c>ResourceManager.GetObject</c>. Empty
+		/// means that a generic editor must not infer a resource-backed value from its display
+		/// text, type, or property name.</summary>
+		public string ResourceFileName { get; set; } = "";
+		/// <summary>Key in <see cref="ResourceFileName"/> that supplied this value. This is
+		/// descriptive metadata only: the isolated child remains unable to write resources.</summary>
+		public string ResourceKey { get; set; } = "";
 	}
 
 	/// <summary>Versioned edit set returned by session/flush; applied atomically at BaseVersion.</summary>

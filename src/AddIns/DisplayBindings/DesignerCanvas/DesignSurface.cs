@@ -575,14 +575,44 @@ public class DesignSurface : DesignerCanvas
 			AddLayoutInsetStub(right, (right + layoutInsets.Right * scale), (top + bottom) / 2, horizontal: true, outward: 1);
 			AddLayoutInsetStub(top, (top - layoutInsets.Top * scale), (left + right) / 2, horizontal: false, outward: -1);
 			AddLayoutInsetStub(bottom, (bottom + layoutInsets.Bottom * scale), (left + right) / 2, horizontal: false, outward: 1);
-			var values = new[] { ("Left", "L", layoutInsets.Left, left - 26, top + (bottom - top) / 2), ("Top", "T", layoutInsets.Top, left + (right - left) / 2, top - 18), ("Right", "R", layoutInsets.Right, right + 4, top + (bottom - top) / 2), ("Bottom", "B", layoutInsets.Bottom, left + (right - left) / 2, bottom + 4) };
-			foreach (var (edge, shortEdge, value, x, y) in values)
+			var values = new[] { ("Left", "L", layoutInsets.Left), ("Top", "T", layoutInsets.Top), ("Right", "R", layoutInsets.Right), ("Bottom", "B", layoutInsets.Bottom) };
+			foreach (var (edge, shortEdge, value) in values)
 			{
-				var label = new TextBlock { Text = shortEdge + " " + value.ToString("0.##", CultureInfo.InvariantCulture), FontSize = 9, Foreground = Brushes.DarkOrange, Background = new SolidColorBrush(Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF)), Padding = new Thickness(2, 0, 2, 0), Tag = (edge, value) };
-				layoutInsetLabels.Add(label);
-				overlay.Children.Add(label);
-				Canvas.SetLeft(label, x);
-				Canvas.SetTop(label, y);
+				// These are operation handles, not merely annotations. A compact bordered chip keeps
+				// them discoverable against both light and dark render frames and gives the text a
+				// comfortably-sized hit target without adding a second, competing overlay control.
+				var label = new TextBlock { Text = shortEdge + " " + value.ToString("0.##", CultureInfo.InvariantCulture), FontSize = 9, Foreground = Brushes.DarkOrange };
+				var handle = new Border {
+					Child = label,
+					Background = new SolidColorBrush(Color.FromArgb(0xE8, 0xFF, 0xFF, 0xFF)),
+					BorderBrush = Brushes.DarkOrange,
+					BorderThickness = new Thickness(1),
+					CornerRadius = new CornerRadius(2),
+					Padding = new Thickness(3, 1, 3, 1),
+					Tag = (edge, value),
+					ToolTip = layoutInsets.Kind == "Margin"
+						? "Drag to edit " + edge + "; click to toggle its Grid anchor."
+						: "Drag to edit " + edge + "."
+				};
+				// The chip's opaque padded area must stay outside the selection frame: otherwise it
+				// can win hit testing over a resize handle. Measure before adding to the Canvas so
+				// each formatted value, including long negative margins, gets its real footprint.
+				handle.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+				var size = handle.DesiredSize;
+				var x = edge switch {
+					"Left" => left - size.Width - 4,
+					"Right" => right + 4,
+					_ => (left + right - size.Width) / 2
+				};
+				var y = edge switch {
+					"Top" => top - size.Height - 4,
+					"Bottom" => bottom + 4,
+					_ => (top + bottom - size.Height) / 2
+				};
+				layoutInsetLabels.Add(handle);
+				overlay.Children.Add(handle);
+				Canvas.SetLeft(handle, x);
+				Canvas.SetTop(handle, y);
 			}
 		}
 		if (bindingTelemetry.Count != 0)
@@ -697,7 +727,7 @@ public class DesignSurface : DesignerCanvas
 	readonly List<Rectangle> gridSplitRowRails = new();
 	readonly List<Rectangle> gridSplitColRails = new();
 	bool gridSplitRailsVisible;
-	readonly List<TextBlock> layoutInsetLabels = new();
+	readonly List<FrameworkElement> layoutInsetLabels = new();
 	readonly List<Line> layoutInsetStubs = new();
 	DesignerLayoutInsets? layoutInsets;
 	IReadOnlyList<DesignerBindingInfo> bindingTelemetry = Array.Empty<DesignerBindingInfo>();

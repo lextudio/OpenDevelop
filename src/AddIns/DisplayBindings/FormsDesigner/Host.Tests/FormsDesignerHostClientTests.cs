@@ -659,11 +659,13 @@ public sealed class FormsDesignerHostClientTests
 			FileName = "/project/Form1.resx", Kind = "Resource",
 			Base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(
 				$"<root><data name=\"button1.Text\"><value>localized text</value></data>" +
+				$"<data name=\"button1.Location\"><value>1, 2</value></data>" +
 				$"<data name=\"button1.Image\" type=\"System.Drawing.Bitmap, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>{Convert.ToBase64String(png)}</value></data></root>"))
 		});
 		var resourceLoaded = await client.UpdateAsync(resourceSnapshot, timeout.Token);
-		Assert.Contains(resourceLoaded.Components, component => component.Name == "button1" && component.Text == "localized text");
-		var imageProperty = Assert.Single(resourceLoaded.Components.Single(component => component.Name == "button1").Properties,
+		var resourceButton = Assert.Single(resourceLoaded.Components, component => component.Name == "button1");
+		Assert.Equal("localized text", resourceButton.Text);
+		var imageProperty = Assert.Single(resourceButton.Properties,
 			property => property.Name == "Image");
 		Assert.False(imageProperty.IsNull);
 		Assert.Equal("[binary]", imageProperty.Value);
@@ -671,12 +673,38 @@ public sealed class FormsDesignerHostClientTests
 		// explicit so a generic Properties pad never posts the display token back as text.
 		Assert.Equal("Unsupported", imageProperty.Kind);
 		Assert.True(imageProperty.IsReadOnly);
-		Assert.Contains((await client.FlushAsync(9, timeout.Token)).Files, item => item.Kind == "Resource" && !String.IsNullOrEmpty(item.Base64));
+		Assert.Equal("/project/Form1.resx", imageProperty.ResourceFileName);
+		Assert.Equal("button1.Image", imageProperty.ResourceKey);
+		var textProperty = Assert.Single(resourceButton.Properties, property => property.Name == "Text");
+		Assert.Equal("/project/Form1.resx", textProperty.ResourceFileName);
+		Assert.Equal("button1.Text", textProperty.ResourceKey);
+		var liveEdit = await client.SetPropertyAsync(9, "button1", "Text", "overridden", timeout.Token);
+		var liveTextProperty = Assert.Single(liveEdit.Components.Single(component => component.Name == "button1").Properties,
+			property => property.Name == "Text");
+		Assert.Equal("", liveTextProperty.ResourceFileName);
+		Assert.Equal("", liveTextProperty.ResourceKey);
+		var resourceMoved = await client.SetBoundsAsync(9, "button1", 30, 40, 100, 25, timeout.Token);
+		var movedLocation = Assert.Single(resourceMoved.Components.Single(component => component.Name == "button1").Properties,
+			property => property.Name == "Location");
+		Assert.Equal("", movedLocation.ResourceFileName);
+		Assert.Equal("", movedLocation.ResourceKey);
+
+		var unrecognisedValueSnapshot = resourceSnapshot;
+		unrecognisedValueSnapshot.Version = 10;
+		unrecognisedValueSnapshot.Files.Single(item => item.Kind == "Designer").Text = resourceDesigner.Text.Replace(
+			"(System.Drawing.Image)resources.GetObject(\"button1.Image\")",
+			"GetImage()", StringComparison.Ordinal);
+		var unrecognisedValue = await client.UpdateAsync(unrecognisedValueSnapshot, timeout.Token);
+		var unrecognisedImage = Assert.Single(unrecognisedValue.Components.Single(component => component.Name == "button1").Properties,
+			property => property.Name == "Image");
+		Assert.Equal("", unrecognisedImage.ResourceFileName);
+		Assert.Equal("", unrecognisedImage.ResourceKey);
+		Assert.Contains((await client.FlushAsync(10, timeout.Token)).Files, item => item.Kind == "Resource" && !String.IsNullOrEmpty(item.Base64));
 
 		var fixtureAssembly = CustomControlFixtureDll();
 		Assert.True(File.Exists(fixtureAssembly));
 		Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), assembly => assembly.GetName().Name == "FormsDesigner.CustomControlFixture");
-		var customSnapshot = Snapshot(10, "custom");
+		var customSnapshot = Snapshot(11, "custom");
 		customSnapshot.ProjectAssemblyPath = fixtureAssembly;
 		var customDesigner = customSnapshot.Files.Single(item => item.Kind == "Designer");
 		customDesigner.Text = customDesigner.Text
