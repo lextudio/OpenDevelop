@@ -107,4 +107,12 @@ public static class MewUIControlCatalog
 
 	public static bool IsSupported(string type, string property)
 		=> KindOf(type, property) != MxamlPropertyKind.Unsupported;
+
+	/// <summary>Finite source tokens for a catalogued enum. This is deliberately source-facing:
+	/// MXAML emits <c>Property.Value</c>, so the designer must not expose CLR display names or
+	/// fabricate a value it cannot round-trip.</summary>
+	public static IReadOnlyList<string> EnumValuesOf(string type, string property)
+		=> type == "StackPanel" && property == "Orientation"
+			? new[] { "Horizontal", "Vertical" }
+			: Array.Empty<string>();
 }

@@ -135,6 +135,9 @@ public sealed class MxamlDocument
 
 			if (!isEvent && !MewUIControlCatalog.IsSupported(type, name))
 				AddDiagnostic(attribute, MxamlDiagnosticSeverity.Warning, $"'{type}.{name}' has no registered kind - generated as a comment.");
+			else if (!isEvent && MewUIControlCatalog.KindOf(type, name) == MxamlPropertyKind.Enum
+				&& !MewUIControlCatalog.EnumValuesOf(type, name).Contains(attribute.Value, StringComparer.Ordinal))
+				AddDiagnostic(attribute, MxamlDiagnosticSeverity.Error, $"{type}.{name}: '{attribute.Value}' is not a supported value.");
 		}
 
 		if (string.IsNullOrEmpty(result.Name))
@@ -206,6 +209,9 @@ public sealed class MxamlDocument
 						break;
 					case MxamlPropertyKind.Boolean when a.Value is not ("true" or "false" or "True" or "False"):
 						diagnostics.Add(new(MxamlDiagnosticSeverity.Error, $"{o.Type}.{a.Name}: '{a.Value}' is not a boolean."));
+						break;
+					case MxamlPropertyKind.Enum when !MewUIControlCatalog.EnumValuesOf(o.Type, a.Name).Contains(a.Value, StringComparer.Ordinal):
+						diagnostics.Add(new(MxamlDiagnosticSeverity.Error, $"{o.Type}.{a.Name}: '{a.Value}' is not a supported value."));
 						break;
 				}
 			}

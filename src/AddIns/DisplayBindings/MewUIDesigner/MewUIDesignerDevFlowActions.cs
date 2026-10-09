@@ -52,7 +52,12 @@ public static class MewUIDesignerDevFlowActions
 		var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(property => property.PropertyName == propertyName);
 		if (item == null) return JsonSerializer.Serialize(new { success = false, error = "Property not found", propertyNames = grid.Properties?.OfType<PropertyItem>().Select(property => property.PropertyName).ToArray() });
 		item.Value = value;
-		return JsonSerializer.Serialize(new { success = true, selectedIds = view.SelectedIds, propertyName, after = item.Value?.ToString() });
+		// A descriptor can reject a source mutation. Read through the descriptor again rather
+		// than trusting PropertyItem's optimistic assignment, so DevFlow reports the same outcome
+		// the user sees in the Properties pad.
+		var after = item.PropertyDescriptor?.GetValue(grid.SelectedObject)?.ToString();
+		var accepted = string.Equals(after, value, StringComparison.Ordinal);
+		return JsonSerializer.Serialize(new { success = accepted, selectedIds = view.SelectedIds, propertyName, after, error = accepted ? null : "The designer rejected the property value." });
 	}
 	[DevFlowAction("od.mewui-designer.delete", Description = "Delete the selected MewUI element")]
 	public static string Delete() { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.DeleteSelected() == true, elementCount = v?.ElementCount ?? 0 }); }

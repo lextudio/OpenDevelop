@@ -1573,6 +1573,107 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		/// <summary>Switches one Grid edge between its alignment anchor and Stretch. The current
+		/// rendered rectangle is measured before changing the source, so the click changes only the
+		/// layout representation, not what the designer shows. This deliberately applies only to a
+		/// Grid child: Canvas has independent attached-property anchor semantics.</summary>
+		[JsonRpcMethod("design/toggle-layout-inset-anchor")]
+		public DesignerSessionState ToggleLayoutInsetAnchor(long baseVersion, string elementId, string edge)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item) || item.Parent?.Component is not Grid grid || item.View is not FrameworkElement element)
+					return NotFound(state, "The element is not a Grid child.");
+				if (edge is not ("Left" or "Top" or "Right" or "Bottom"))
+					return NotFound(state, "Unknown layout inset edge: " + edge);
+				if (element.LayoutTransform.Value != Matrix.Identity || element.RenderTransform.Value != Matrix.Identity)
+					return NotFound(state, "Layout insets are unavailable for transformed elements.");
+				if (edge is "Left" or "Right"
+					&& (element.MinWidth > 0 || !double.IsPositiveInfinity(element.MaxWidth)))
+					return NotFound(state, "Layout anchor toggles are unavailable for width-constrained elements.");
+				if (edge is "Top" or "Bottom"
+					&& (element.MinHeight > 0 || !double.IsPositiveInfinity(element.MaxHeight)))
+					return NotFound(state, "Layout anchor toggles are unavailable for height-constrained elements.");
+				try
+				{
+					var origin = element.TranslatePoint(new Point(), grid);
+					var bounds = new Rect(origin, new Size(element.ActualWidth, element.ActualHeight));
+					var column = Grid.GetColumn(element);
+					var row = Grid.GetRow(element);
+					var cellLeft = GridOffset(grid.ColumnDefinitions, column, grid.ActualWidth);
+					var cellRight = GridOffset(grid.ColumnDefinitions, column + Math.Max(1, Grid.GetColumnSpan(element)), grid.ActualWidth);
+					var cellTop = GridOffset(grid.RowDefinitions, row, grid.ActualHeight);
+					var cellBottom = GridOffset(grid.RowDefinitions, row + Math.Max(1, Grid.GetRowSpan(element)), grid.ActualHeight);
+					var margin = element.Margin;
+					using var changeGroup = item.OpenGroup("Toggle layout inset anchor");
+					switch (edge)
+					{
+						case "Left":
+							ToggleHorizontal(item, element, HorizontalAlignment.Left, bounds, cellLeft, cellRight, margin);
+							break;
+						case "Right":
+							ToggleHorizontal(item, element, HorizontalAlignment.Right, bounds, cellLeft, cellRight, margin);
+							break;
+						case "Top":
+							ToggleVertical(item, element, VerticalAlignment.Top, bounds, cellTop, cellBottom, margin);
+							break;
+						default:
+							ToggleVertical(item, element, VerticalAlignment.Bottom, bounds, cellTop, cellBottom, margin);
+							break;
+					}
+					changeGroup.Commit();
+				}
+				catch (Exception e)
+				{
+					return NotFound(state, e.GetBaseException().Message);
+				}
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
+		static double GridOffset(IList<ColumnDefinition> definitions, int index, double extent)
+			=> index <= 0 ? 0 : index >= definitions.Count ? extent : definitions[index].Offset;
+		static double GridOffset(IList<RowDefinition> definitions, int index, double extent)
+			=> index <= 0 ? 0 : index >= definitions.Count ? extent : definitions[index].Offset;
+
+		static void ToggleHorizontal(DesignItem item, FrameworkElement element, HorizontalAlignment anchor, Rect bounds, double cellLeft, double cellRight, Thickness margin)
+		{
+			if (element.HorizontalAlignment == anchor)
+			{
+				item.Properties["Margin"].SetValue(new Thickness(bounds.Left - cellLeft, margin.Top, cellRight - bounds.Right, margin.Bottom));
+				item.Properties["HorizontalAlignment"].SetValue(HorizontalAlignment.Stretch);
+				item.Properties["Width"].Reset();
+			}
+			else
+			{
+				item.Properties["Margin"].SetValue(anchor == HorizontalAlignment.Left
+					? new Thickness(bounds.Left - cellLeft, margin.Top, 0, margin.Bottom)
+					: new Thickness(0, margin.Top, cellRight - bounds.Right, margin.Bottom));
+				item.Properties["HorizontalAlignment"].SetValue(anchor);
+				item.Properties["Width"].SetValue(bounds.Width);
+			}
+		}
+
+		static void ToggleVertical(DesignItem item, FrameworkElement element, VerticalAlignment anchor, Rect bounds, double cellTop, double cellBottom, Thickness margin)
+		{
+			if (element.VerticalAlignment == anchor)
+			{
+				item.Properties["Margin"].SetValue(new Thickness(margin.Left, bounds.Top - cellTop, margin.Right, cellBottom - bounds.Bottom));
+				item.Properties["VerticalAlignment"].SetValue(VerticalAlignment.Stretch);
+				item.Properties["Height"].Reset();
+			}
+			else
+			{
+				item.Properties["Margin"].SetValue(anchor == VerticalAlignment.Top
+					? new Thickness(margin.Left, bounds.Top - cellTop, margin.Right, 0)
+					: new Thickness(margin.Left, 0, margin.Right, cellBottom - bounds.Bottom));
+				item.Properties["VerticalAlignment"].SetValue(anchor);
+				item.Properties["Height"].SetValue(bounds.Height);
+			}
+		}
+
 		/// <summary>Reports the given Grid's current row/column track geometry (real post-layout
 		/// <c>Offset</c>/<c>ActualHeight</c>/<c>ActualWidth</c> off the live <see cref="Grid"/> -
 		/// <c>RowDefinition.Offset</c>/<c>ColumnDefinition.Offset</c> are already cumulative, no

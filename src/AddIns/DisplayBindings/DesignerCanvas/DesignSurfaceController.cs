@@ -59,6 +59,7 @@ public sealed class DesignSurfaceController : IDisposable
 		surface.SurfaceElementDragDelta += OnSurfaceElementDragDelta;
 		surface.SurfaceElementDragCommitted += OnSurfaceElementDragCommitted;
 		surface.SurfaceLayoutInsetDragCommitted += OnSurfaceLayoutInsetDragCommitted;
+		surface.SurfaceLayoutInsetAnchorToggleRequested += OnSurfaceLayoutInsetAnchorToggleRequested;
 		surface.SurfaceElementDoubleClicked += OnSurfaceElementDoubleClicked;
 		surface.TextEditCommitted += OnSurfaceTextEditCommitted;
 		surface.GridGuideDragCommitted += OnSurfaceGridGuideDragCommitted;
@@ -91,6 +92,8 @@ public sealed class DesignSurfaceController : IDisposable
 	public event EventHandler<ElementDragInfo>? ElementDragCommitted;
 	/// <summary>A primary-selection Margin/Canvas inset drag ready for a backend-specific mutation.</summary>
 	public event EventHandler<LayoutInsetEditInfo>? LayoutInsetEditCommitted;
+	/// <summary>A requested switch between a Grid edge anchor and Stretch.</summary>
+	public event EventHandler<LayoutInsetAnchorToggleInfo>? LayoutInsetAnchorToggleRequested;
 	/// <summary>A multi-selection group move committed, with each element's delta.</summary>
 	public event EventHandler<IReadOnlyList<(string Name, double DX, double DY)>>? ElementGroupDragCommitted;
 	/// <summary>A double-click on an element (null: empty space).</summary>
@@ -121,6 +124,13 @@ public sealed class DesignSurfaceController : IDisposable
 		LayoutInsetEditCommitted?.Invoke(this, new LayoutInsetEditInfo {
 			Name = name, Kind = insets.Kind, Edge = edit.Edge, Value = edit.Value
 		});
+	}
+	void OnSurfaceLayoutInsetAnchorToggleRequested(object? sender, string edge)
+	{
+		if (SelectedElementName is not { } name || !nodesByName.TryGetValue(name, out var node)
+			|| node.LayoutInsets is not { Kind: "Margin" })
+			return;
+		LayoutInsetAnchorToggleRequested?.Invoke(this, new LayoutInsetAnchorToggleInfo { Name = name, Edge = edge });
 	}
 	#endregion
 
@@ -816,6 +826,7 @@ public sealed class DesignSurfaceController : IDisposable
 		Surface.SurfaceElementDragDelta -= OnSurfaceElementDragDelta;
 		Surface.SurfaceElementDragCommitted -= OnSurfaceElementDragCommitted;
 		Surface.SurfaceLayoutInsetDragCommitted -= OnSurfaceLayoutInsetDragCommitted;
+		Surface.SurfaceLayoutInsetAnchorToggleRequested -= OnSurfaceLayoutInsetAnchorToggleRequested;
 		Surface.SurfaceElementDoubleClicked -= OnSurfaceElementDoubleClicked;
 		Surface.TextEditCommitted -= OnSurfaceTextEditCommitted;
 		Surface.GridGuideDragCommitted -= OnSurfaceGridGuideDragCommitted;

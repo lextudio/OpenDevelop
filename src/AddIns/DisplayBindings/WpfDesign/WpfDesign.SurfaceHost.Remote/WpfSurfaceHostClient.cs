@@ -200,6 +200,10 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-layout-inset",
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, kind, edge, value }, cancellationToken), cancellationToken);
 
+	public Task<DesignerSessionState> ToggleLayoutInsetAnchorAsync(long baseVersion, string elementId, string edge, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/toggle-layout-inset-anchor",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, edge }, cancellationToken), cancellationToken);
+
 	/// <summary>Appends one more MenuItem sibling under an existing Menu/ContextMenu/MenuItem - the
 	/// WPF-specific "Type Here" insertion slot's commit action (see WpfSurfaceDesignerControl and
 	/// StripTypeHereCommit.Resolve, which the caller runs on the typed text before calling this).

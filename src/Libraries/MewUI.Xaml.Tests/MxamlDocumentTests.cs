@@ -47,6 +47,20 @@ public sealed class MxamlDocumentTests
 	}
 
 	[Fact]
+	public void Orientation_UsesFiniteCatalogueValues_AndRejectsUnknownTokens()
+	{
+		Assert.Equal(new[] { "Horizontal", "Vertical" }, MewUIControlCatalog.EnumValuesOf("StackPanel", "Orientation"));
+		var valid = NewDoc();
+		Assert.False(valid.SetProperty("toolRow", "Orientation", "Diagonal"));
+		Assert.False(valid.SetProperty("toolRow", "Orientation", "horizontal"));
+		Assert.Equal("Horizontal", valid.Find("toolRow")!.FindAttribute("Orientation")!.Value);
+		var bad = Source.Replace("Orientation=\"Horizontal\"", "Orientation=\"Diagonal\"");
+		var doc = MxamlDocument.Parse(bad);
+		Assert.Contains(doc.Diagnostics, diagnostic => diagnostic.Severity == MxamlDiagnosticSeverity.Error
+			&& diagnostic.Message.Contains("Orientation") && diagnostic.Message.Contains("not a supported value"));
+	}
+
+	[Fact]
 	public void Add_CreatesUniqueName_AndGeneratorEmitsStrictGrammar()
 	{
 		var doc = NewDoc();

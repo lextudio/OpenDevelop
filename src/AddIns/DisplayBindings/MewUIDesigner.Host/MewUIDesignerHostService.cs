@@ -49,8 +49,14 @@ sealed class MewUIDesignerHostService : IDesignerChildService
 	static void Mutated(DocumentSession session) { session.UndoDepth++; session.RedoDepth = 0; session.Version++; }
 	// An unnamed element gets a synthetic, path-based id ("#0,2,1") so siblings stay distinct on the
 	// canvas; Name stays empty, and mutations addressed to such an id are rejected by the document.
-	static DesignerElementNode Node(MxamlObject n, string path) => new() { Id = string.IsNullOrEmpty(n.Name) ? "#" + path : n.Name, Name = n.Name, Type = n.Type, Properties = n.Attributes.Where(a => !a.IsEvent).Select(a => new DesignerPropertyInfo { Name = a.Name, DisplayName = a.Name, Value = a.Value, Category = "MewUI", Kind = PropertyKind(a.Name) }).Prepend(new DesignerPropertyInfo { Name = "$name", DisplayName = "Name", Value = n.Name, Category = "Identity" }).ToList(), Events = MewUIControlCatalog.Events.Select(name => new DesignerEventInfo { Name = name, Category = "MewUI Events", Handler = n.Attributes.FirstOrDefault(a => a.IsEvent && string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase))?.Value ?? "" }).ToList(), Children = n.Children.Select((c, i) => Node(c, path + "," + i)).ToList() };
-	static string PropertyKind(string name) => name switch { "IsEnabled" or "IsVisible" or "IsChecked" => "Boolean", "Spacing" or "Width" or "Height" or "Opacity" => "Number", "Margin" or "Padding" => "Thickness", "Background" or "Foreground" => "Color", _ => "String" };
+	static DesignerElementNode Node(MxamlObject n, string path) => new() { Id = string.IsNullOrEmpty(n.Name) ? "#" + path : n.Name, Name = n.Name, Type = n.Type, Properties = n.Attributes.Where(a => !a.IsEvent).Select(a => Property(n.Type, a)).Prepend(new DesignerPropertyInfo { Name = "$name", DisplayName = "Name", Value = n.Name, Category = "Identity", ShouldSerialize = true }).ToList(), Events = MewUIControlCatalog.Events.Select(name => new DesignerEventInfo { Name = name, Category = "MewUI Events", Handler = n.Attributes.FirstOrDefault(a => a.IsEvent && string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase))?.Value ?? "" }).ToList(), Children = n.Children.Select((c, i) => Node(c, path + "," + i)).ToList() };
+	static DesignerPropertyInfo Property(string type, MxamlAttribute attribute)
+	{
+		var kind = MewUIControlCatalog.KindOf(type, attribute.Name);
+		var info = new DesignerPropertyInfo { Name = attribute.Name, DisplayName = attribute.Name, Value = attribute.Value, Category = "MewUI", Kind = kind switch { MxamlPropertyKind.Boolean => "Boolean", MxamlPropertyKind.Double or MxamlPropertyKind.Int32 => "Number", MxamlPropertyKind.Enum => "Enum", _ => "String" }, ShouldSerialize = true };
+		if (kind == MxamlPropertyKind.Enum) info.AllowedValues.AddRange(MewUIControlCatalog.EnumValuesOf(type, attribute.Name));
+		return info;
+	}
 	static int Count(MxamlObject n) => 1 + n.Children.Sum(Count);
 	void EnsureSession(string candidate) => documents.ValidateSession(candidate);
 	DocumentSession GetOrCreate(string documentId) => documents.GetOrAdd(sessionId, documentId, () => new DocumentSession(documentId));

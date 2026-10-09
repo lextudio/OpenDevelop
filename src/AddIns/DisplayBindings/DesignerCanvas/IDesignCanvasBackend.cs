@@ -29,6 +29,14 @@ public sealed class LayoutInsetEditInfo
 	public double Value { get; set; }
 }
 
+/// <summary>A click (rather than drag) on a Grid Margin inset label. The WPF backend switches
+/// the requested edge between an explicit alignment anchor and Stretch while preserving bounds.</summary>
+public sealed class LayoutInsetAnchorToggleInfo
+{
+	public string Name { get; set; } = "";
+	public string Edge { get; set; } = "";
+}
+
 /// <summary>
 /// A double-click on a design element: its name and design rect. A null value means the
 /// double-click hit empty space.

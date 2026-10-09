@@ -98,9 +98,20 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 
 		var selected = await app.InvokeAsync("od.mewui-designer.select", "rootPanel");
 		Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+		// Orientation is absent in the fixture. The StackPanel fallback must surface the catalogue's
+		// finite enum choices through the real Properties pad and write the source token.
+		var orientation = await app.InvokeAsync("od.mewui-designer.properties.edit", "Orientation", "Horizontal");
+		Assert.True(orientation.GetProperty("success").GetBoolean(), orientation.ToString());
+		var rejectedOrientation = await app.InvokeAsync("od.mewui-designer.properties.edit", "Orientation", "Diagonal");
+		Assert.False(rejectedOrientation.GetProperty("success").GetBoolean(), rejectedOrientation.ToString());
 		var propertySelection = await app.InvokeAsync("od.mewui-designer.select", "heading");
 		Assert.True(propertySelection.GetProperty("success").GetBoolean(), propertySelection.ToString());
 		Assert.Contains("MewUIPropertyAdapter", propertySelection.GetProperty("propertyPadSelectedType").GetString());
+		// Margin is absent from the fixture's Label markup. The MewUI snapshot only publishes
+		// authored attributes, so this exercises the adapter's fundamental-property fallback via
+		// the real shared Properties pad rather than the direct source mutation action.
+		var addedMargin = await app.InvokeAsync("od.mewui-designer.properties.edit", "Margin", "4");
+		Assert.True(addedMargin.GetProperty("success").GetBoolean(), addedMargin.ToString());
 		var multi = await app.InvokeAsync("od.mewui-designer.multi-select", "heading,nameBox"); Assert.True(multi.GetProperty("success").GetBoolean(), multi.ToString());
 		Assert.Equal(2, multi.GetProperty("selectedIds").GetArrayLength());
 		status = await app.InvokeAsync("od.mewui-designer.status"); Assert.Equal(2, status.GetProperty("selectedIds").GetArrayLength()); Assert.True(status.GetProperty("propertyPadPropertyCount").GetInt32() > 0, status.ToString());
@@ -138,7 +149,9 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
 		var mxamlContent = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
 		Assert.Contains("Name=\"textBox1\"", mxamlContent);
+		Assert.Contains("Name=\"rootPanel\" Spacing=\"8\" Orientation=\"Horizontal\"", mxamlContent);
 		Assert.Contains("Text=\"Configured\"", mxamlContent);
+		Assert.Contains("Name=\"heading\" Text=\"Configured\" Margin=\"4\"", mxamlContent);
 		Assert.Contains("Loaded=\"heading_Loaded\"", mxamlContent);
 		Assert.Contains("Name=\"nameBox\" Text=\"Shared note\"", mxamlContent);
 		// The pre-existing nested status bar must survive edits untouched.

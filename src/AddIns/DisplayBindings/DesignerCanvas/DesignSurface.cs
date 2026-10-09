@@ -286,6 +286,8 @@ public class DesignSurface : DesignerCanvas
 	/// <summary>Raised when an L/T/R/B layout-inset label is dragged. The edge and value are in
 	/// design coordinates; the controller supplies the selected element and inset kind.</summary>
 	public event EventHandler<(string Edge, double Value)> SurfaceLayoutInsetDragCommitted;
+	/// <summary>Raised for a click on a layout-inset label without a drag.</summary>
+	public event EventHandler<string> SurfaceLayoutInsetAnchorToggleRequested;
 
 	/// <summary>Raised on a double-click, with the surface-local point.</summary>
 	public event EventHandler<Vector2> SurfaceElementDoubleClicked;
@@ -1560,8 +1562,15 @@ public class DesignSurface : DesignerCanvas
 			if (IsMouseCaptured)
 				ReleaseMouseCapture();
 			Cursor = Cursors.Arrow;
-			if (Math.Abs(value - layoutInsetDragValue) >= 0.01)
+			// Classify with the edge's physical axis, not the rounded design value: at a small
+			// zoom a real pointer drag can round to less than one hundredth of a DIP. A drag
+			// perpendicular to the edge is neither a click nor an edit.
+			var primaryDelta = edge is "Left" or "Right" ? delta.X : delta.Y;
+			var perpendicularDelta = edge is "Left" or "Right" ? delta.Y : delta.X;
+			if (Math.Abs(primaryDelta) >= DragThreshold)
 				SurfaceLayoutInsetDragCommitted?.Invoke(this, (edge, value));
+			else if (Math.Abs(perpendicularDelta) < DragThreshold)
+				SurfaceLayoutInsetAnchorToggleRequested?.Invoke(this, edge);
 			e.Handled = true;
 			return;
 		}

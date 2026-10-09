@@ -224,6 +224,72 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task DesignToggleLayoutInsetAnchor_PreservesGridChildBounds()
+	{
+		const string gridXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="200" Height="100">
+			  <Grid.RowDefinitions><RowDefinition Height="20" /><RowDefinition Height="80" /></Grid.RowDefinitions>
+			  <Grid.ColumnDefinitions><ColumnDefinition Width="50" /><ColumnDefinition Width="150" /></Grid.ColumnDefinitions>
+			  <Button x:Name="target" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Top" Width="40" Height="20" Margin="10,5,0,0" />
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, gridXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var target = FindByName(opened.Tree!, "target")!;
+		Assert.Equal(60, target.X, 3);
+		Assert.Equal(25, target.Y, 3);
+		Assert.Equal(40, target.Width, 3);
+
+		var stretched = await client.ToggleLayoutInsetAnchorAsync(1, target.Id, "Left", timeout.Token);
+		Assert.True(stretched.Accepted, stretched.Error);
+		var stretchedTarget = FindByName(stretched.Tree!, "target")!;
+		Assert.Equal(60, stretchedTarget.X, 3);
+		Assert.Equal(40, stretchedTarget.Width, 3);
+		Assert.Equal(10, stretchedTarget.LayoutInsets!.Left, 3);
+		Assert.Equal(100, stretchedTarget.LayoutInsets.Right, 3);
+
+		var anchored = await client.ToggleLayoutInsetAnchorAsync(stretched.Version, target.Id, "Left", timeout.Token);
+		Assert.True(anchored.Accepted, anchored.Error);
+		var anchoredTarget = FindByName(anchored.Tree!, "target")!;
+		Assert.Equal(60, anchoredTarget.X, 3);
+		Assert.Equal(40, anchoredTarget.Width, 3);
+		Assert.Equal(10, anchoredTarget.LayoutInsets!.Left, 3);
+		Assert.Equal(0, anchoredTarget.LayoutInsets.Right, 3);
+		var bottomAnchored = await client.ToggleLayoutInsetAnchorAsync(anchored.Version, target.Id, "Bottom", timeout.Token);
+		Assert.True(bottomAnchored.Accepted, bottomAnchored.Error);
+		var bottomTarget = FindByName(bottomAnchored.Tree!, "target")!;
+		Assert.Equal(25, bottomTarget.Y, 3);
+		Assert.Equal(20, bottomTarget.Height, 3);
+		Assert.Equal(0, bottomTarget.LayoutInsets!.Top, 3);
+		Assert.Equal(55, bottomTarget.LayoutInsets.Bottom, 3);
+		var saved = (await client.FlushAsync(bottomAnchored.Version, timeout.Token)).Files.Single().Text;
+		Assert.Contains("HorizontalAlignment=\"Left\"", saved, StringComparison.Ordinal);
+		Assert.Contains("VerticalAlignment=\"Bottom\"", saved, StringComparison.Ordinal);
+		Assert.Contains("Width=\"40\"", saved, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task DesignToggleLayoutInsetAnchor_RejectsAConstrainedAxis()
+	{
+		const string gridXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="200" Height="100">
+			  <Button x:Name="target" HorizontalAlignment="Left" Width="40" MinWidth="20" />
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, gridXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+
+		var rejected = await client.ToggleLayoutInsetAnchorAsync(1, FindByName(opened.Tree!, "target")!.Id, "Left", timeout.Token);
+
+		Assert.False(rejected.Accepted);
+		Assert.Contains("width-constrained", rejected.Error, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public async Task ChildHost_ReportsDeclaredBindingsWithoutClaimingRuntimeSuccess()
 	{
 		const string bindingXaml = """
