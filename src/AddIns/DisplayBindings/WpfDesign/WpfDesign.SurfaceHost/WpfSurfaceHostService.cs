@@ -1447,23 +1447,36 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				}
 				try
 				{
-					// PlacementOperation deliberately filters descendants and groups by container.
-					// Its PlacedItems sequence therefore is not index-aligned with the caller's edits.
-					// Run one native placement transaction per explicitly addressed item so a bounds
-					// rectangle can never be applied to a different sibling/parent.
+					// PlacementOperation filters descendants and groups by container, with no
+					// public item identity on PlacementInformation. Apply one explicit target at
+					// a time rather than pairing two unrelated indices, but keep all of those
+					// native placements in one design-model group: a later failure rolls back
+					// earlier targets and the user gets exactly one undo entry.
+					using var changeGroup = items[0].OpenGroup("Set multiple bounds");
 					for (var i = 0; i < items.Length; i++)
 					{
-						var operation = PlacementOperation.Start(new[] { items[i] }, PlacementType.Resize);
+						var edit = edits[i];
 						try
 						{
-							var info = operation.PlacedItems.Single();
-							var edit = edits[i];
-							info.Bounds = new Rect(edit.X, edit.Y, edit.Width, edit.Height);
-							operation.CurrentContainerBehavior.SetPosition(info);
-							operation.Commit();
+							var operation = PlacementOperation.Start(new[] { items[i] }, PlacementType.Resize);
+							try
+							{
+								var info = operation.PlacedItems.Single();
+								info.Bounds = new Rect(edit.X, edit.Y, edit.Width, edit.Height);
+								operation.CurrentContainerBehavior.SetPosition(info);
+								operation.Commit();
+							}
+							catch { operation.Abort(); throw; }
 						}
-						catch { operation.Abort(); throw; }
+						catch
+						{
+							// Match the single-element RPC: a container that cannot place still
+							// permits a size-only edit rather than rejecting the whole gesture.
+							items[i].Properties["Width"].SetValue(edit.Width);
+							items[i].Properties["Height"].SetValue(edit.Height);
+						}
 					}
+					changeGroup.Commit();
 				}
 				catch (Exception e)
 				{
@@ -1571,9 +1584,9 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					collection.CollectionElements.Insert(splitIndex + 1, inserted);
 					collection.CollectionElements[splitIndex].Properties[isRow ? RowDefinition.HeightProperty : ColumnDefinition.WidthProperty].SetValue(first);
 					inserted.Properties[isRow ? RowDefinition.HeightProperty : ColumnDefinition.WidthProperty].SetValue(second);
-					FixGridChildIndicesAfterSplit(item, grid, splitIndex,
+					FixGridChildIndicesAfterSplit(item, splitIndex,
 						isRow ? Grid.RowProperty : Grid.ColumnProperty,
-						isRow ? Grid.RowSpanProperty : Grid.ColumnSpanProperty, isRow, position);
+						isRow ? Grid.RowSpanProperty : Grid.ColumnSpanProperty);
 					changeGroup.Commit();
 				}
 				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
@@ -1586,8 +1599,8 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// is insufficient here: controls may be aligned, margined, or occupy only one end of a
 		/// spanned cell.  Use their measured bounds to retain which side of the new divider they
 		/// visibly occupied, matching the legacy Grid adorner's split behavior.</summary>
-		static void FixGridChildIndicesAfterSplit(DesignItem gridItem, Grid grid, int splitIndex,
-			DependencyProperty indexProperty, DependencyProperty spanProperty, bool isRow, double position)
+			static void FixGridChildIndicesAfterSplit(DesignItem gridItem, int splitIndex,
+				DependencyProperty indexProperty, DependencyProperty spanProperty)
 		{
 			foreach (var child in gridItem.Properties["Children"].CollectionElements)
 			{
@@ -1595,16 +1608,14 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				var spanPropertyValue = child.Properties.GetAttachedProperty(spanProperty);
 				var start = index.GetConvertedValueOnInstance<int>();
 				var span = Math.Max(1, spanPropertyValue.GetConvertedValueOnInstance<int>());
-				if (start > splitIndex)
-				{
-					index.SetValue(start + 1);
-					continue;
-				}
+					if (start > splitIndex) {
+						index.SetValue(start + 1);
+						continue;
+					}
 					if (splitIndex >= start + span)
 						continue;
-					// The split lies inside this child's declared cell span.  Keep its leading cell
-					// and extend the span over the new track; measured pixels cannot change that
-					// logical ownership (especially for a child spanning the split boundary).
+					// The split lies inside this child's declared cell span. Keep its leading cell
+					// and extend the span over the new track.
 					spanPropertyValue.SetValue(span + 1);
 			}
 		}
@@ -1814,8 +1825,9 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// way any .NET property grid would) to get the full candidate name list, then looks each
 		/// one up through `item.Properties[name]` - which, unlike enumeration, creates the wrapper
 		/// on demand for any valid name (`GetProperty` calls `FindOrCreateProperty`).</summary>
-		static List<DesignerPropertyInfo> BuildProperties(DesignItem item)
+		static List<DesignerPropertyInfo> BuildProperties(DesignItem item, out List<DesignerBindingInfo> bindings)
 		{
+			bindings = new List<DesignerBindingInfo>();
 			if (item.ComponentType == null)
 				return new List<DesignerPropertyInfo>();
 			var result = new List<DesignerPropertyInfo>();
@@ -1832,6 +1844,8 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				}
 				if (property == null || property.IsEvent)
 					continue;
+				if (property.Value is DesignItem reference && reference.Component is System.Windows.Data.BindingBase)
+					bindings.Add(new DesignerBindingInfo { Property = descriptor.Name });
 				result.Add(ToPropertyInfo(property));
 			}
 			return result;
@@ -2128,6 +2142,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		DesignerElementNode BuildNode(DesignItem item, DesignItem root, string path, string layoutMode)
 		{
 			pathToItem[path] = item;
+			var properties = BuildProperties(item, out var bindings);
 			var node = new DesignerElementNode {
 				Id = path,
 				Name = string.IsNullOrEmpty(item.Name) ? null : item.Name,
@@ -2138,9 +2153,9 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				BaselineOffset = item.View is TextBlock text ? text.BaselineOffset : null,
 				GridTracks = item.Component is Grid grid ? BuildGridTracks(grid) : null,
 				LayoutInsets = BuildLayoutInsets(item),
-				Bindings = BuildBindingTelemetry(item),
+				Bindings = bindings,
 				Events = BuildEvents(item),
-				Properties = BuildProperties(item)
+				Properties = properties
 			};
 			if (item.View is FrameworkElement element && root.View is Visual rootVisual)
 			{
