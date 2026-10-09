@@ -63,6 +63,10 @@ namespace ICSharpCode.SharpDevelop.Startup
 		[STAThread()]
 		public static void Main(string[] args)
 		{
+			mainEnteredTimestamp = Stopwatch.GetTimestamp();
+			try {
+				mainEnteredSinceProcessStart = (long)(DateTime.Now - Process.GetCurrentProcess().StartTime).TotalMilliseconds;
+			} catch { }
 			commandLineArgs = args; // Needed by UseExceptionBox
 			
 			// Do not use LoggingService here (see comment in Run(string[]))
@@ -124,6 +128,9 @@ namespace ICSharpCode.SharpDevelop.Startup
 			return true;
 		}
 		
+		static long mainEnteredTimestamp;
+		static long mainEnteredSinceProcessStart = -1;
+
 		static void RunApplication()
 		{
 			// The output encoding differs based on whether SharpDevelop is a console app (debug mode)
@@ -142,6 +149,9 @@ namespace ICSharpCode.SharpDevelop.Startup
 			#endif
 			
 			LoggingService.Info("Starting SharpDevelop...");
+			PerfTimeline.Begin(PerfTimeline.Startup, mainEnteredTimestamp);
+			PerfTimeline.Mark(PerfTimeline.Startup, "main-entered",
+			                  mainEnteredSinceProcessStart >= 0 ? mainEnteredSinceProcessStart + "ms after the process started" : null);
 			try {
 				StartupSettings startup = new StartupSettings();
 				#if DEBUG

@@ -59,6 +59,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			ComponentDispatcher.ThreadIdle -= ComponentDispatcher_ThreadIdle; // ensure we don't register twice
 			ComponentDispatcher.ThreadIdle += ComponentDispatcher_ThreadIdle;
 			LayoutConfiguration.LoadLayoutConfiguration();
+			PerfTimeline.Mark(PerfTimeline.Startup, "wb-layout-configuration");
 			// SynchronizationContext.Current is captured here before the WPF Dispatcher has ever
 			// pumped a message on this thread (that's normally what installs a
 			// DispatcherSynchronizationContext as the ambient one) - so it was always null at this
@@ -68,7 +69,11 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// the sync context explicitly from the dispatcher instead of relying on ambient state.
 			SD.Services.AddService(typeof(IMessageLoop), new DispatcherMessageLoop(app.Dispatcher, new DispatcherSynchronizationContext(app.Dispatcher)));
 			var messageService = (WpfMessageService)SD.MessageService;
-			InitializeWorkbench(new WpfWorkbench(), new AvalonDockLayout(), messageService);
+			var workbench = new WpfWorkbench();
+			PerfTimeline.Mark(PerfTimeline.Startup, "wb-workbench-created");
+			var layout = new AvalonDockLayout();
+			PerfTimeline.Mark(PerfTimeline.Startup, "wb-layout-created");
+			InitializeWorkbench(workbench, layout, messageService);
 		}
 		
 		static void InitializeWorkbench(WpfWorkbench workbench, IWorkbenchLayout layout, WpfMessageService messageService)
@@ -92,15 +97,20 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// the WinForms designer surface inside a WPF-hosted view (SD.WinForms.CreateWindowsFormsHost).
 			SD.Services.AddService(typeof(IWinFormsService), new WinFormsService());
 			messageService.Attach(workbench.MainWindow.Dispatcher, workbench.MainWindow);
+			PerfTimeline.Mark(PerfTimeline.Startup, "wb-services-attached");
 			
 			UILanguageService.ValidateLanguage();
 			
 			TaskService.Initialize();
 			Project.CustomToolsService.Initialize();
+			PerfTimeline.Mark(PerfTimeline.Startup, "wb-task-and-custom-tools");
 			
 			workbench.Initialize();
+			PerfTimeline.Mark(PerfTimeline.Startup, "wb-workbench-initialize");
 			workbench.SetMemento(SD.PropertyService.NestedProperties(workbenchMemento));
+			PerfTimeline.Mark(PerfTimeline.Startup, "wb-memento");
 			workbench.WorkbenchLayout = layout;
+			PerfTimeline.Mark(PerfTimeline.Startup, "wb-layout-attached");
 
 			// The eager-load hack this replaced ("pad services cannot be instantiated from
 			// background threads") is no longer needed (doc/technotes/ilspy.md "Docking and layout
@@ -125,7 +135,9 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				applicationStateInfoService.RegisterStateGetter(activeContentState, delegate { return SD.Workbench.ActiveContent; });
 			}
 			
+			PerfTimeline.Mark(PerfTimeline.Startup, "wb-msbuild-engine");
 			WorkbenchSingleton.OnWorkbenchCreated();
+			PerfTimeline.Mark(PerfTimeline.Startup, "wb-workbench-created-event");
 			
 			// initialize workbench-dependent services:
 			NavigationService.InitializeService();
@@ -237,6 +249,13 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			});
 
 			// finally run the workbench window ...
+			PerfTimeline.Mark(PerfTimeline.Startup, "main-window-showing");
+			EventHandler onFirstRender = null;
+			onFirstRender = (sender, e) => {
+				SD.Workbench.MainWindow.ContentRendered -= onFirstRender;
+				PerfTimeline.Mark(PerfTimeline.Startup, "main-window-rendered");
+			};
+			SD.Workbench.MainWindow.ContentRendered += onFirstRender;
 			if (ExternalRunLoop) {
 				// The startup splash owns the run loop (SharpDevelopMain.RunApplication started it
 				// with the splash as the first window); reveal the workbench and let the caller

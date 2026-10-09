@@ -73,6 +73,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		void dockingManager_Loaded(object sender, RoutedEventArgs e)
 		{
+			PerfTimeline.Mark(PerfTimeline.Startup, "layout-loaded");
 			// LoadConfiguration doesn't do anything until the docking manager is loaded,
 			// so we have to load the configuration now
 			LoggingService.Info("dockingManager_Loaded");
@@ -151,9 +152,13 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			} finally {
 				Busy = false;
 			}
+			PerfTimeline.Mark(PerfTimeline.Startup, "attach-pads-shown");
 			dockWorkspace.InitializeLayout();
+			PerfTimeline.Mark(PerfTimeline.Startup, "attach-layout-initialized");
 			LoadConfiguration();
+			PerfTimeline.Mark(PerfTimeline.Startup, "attach-configuration-loaded");
 			dockWorkspace.BindSources();
+			PerfTimeline.Mark(PerfTimeline.Startup, "attach-sources-bound");
 			EnsureFloatingWindowsLocations();
 			SD.ResourceService.LanguageChanged += OnLanguageChanged;
 		}

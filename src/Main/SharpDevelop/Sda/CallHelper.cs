@@ -204,6 +204,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 			FileUtility.FileSaved  += delegate(object sender, FileNameEventArgs e) { this.callback.FileSaved(e.FileName); };
 			
 			LoggingService.Info("InitSharpDevelop finished");
+			PerfTimeline.Mark(PerfTimeline.Startup, "core-initialized");
 			ICSharpCode.Core.StartupProgress.Report("OpenDevelop core ready");
 		}
 		#endregion
@@ -228,9 +229,12 @@ namespace ICSharpCode.SharpDevelop.Sda
 			
 			WorkbenchStartup wbc = new WorkbenchStartup();
 			LoggingService.Info("Initializing workbench...");
+			PerfTimeline.Mark(PerfTimeline.Startup, "workbench-initializing");
 			wbc.InitializeWorkbench();
+			PerfTimeline.Mark(PerfTimeline.Startup, "workbench-initialized");
 			
 			RunWorkbenchInitializedCommands();
+			PerfTimeline.Mark(PerfTimeline.Startup, "workbench-initialized-commands-done");
 			
 			LoggingService.Info("Starting workbench...");
 			Exception exception = null;

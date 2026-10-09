@@ -428,6 +428,36 @@ in place: each slice's reference list is replaced as a whole.
 dirty with their text, and the language service resolves the new file's class and the unsaved one;
 and a TargetFramework -> TargetFrameworks edit falls back to the solution reload.
 
+### Start-up, measured
+
+A `startup` scope in `PerfTimeline` (read with `od.perf.timeline`), clocked from `Main` but begun only
+once logging is safe (`RunApplication`, so `Main` stays free of Core/log4net): `main-entered`
+(with the time the host took to reach `Main`), `core-initialized`, `workbench-initializing` /
+`-initialized`, `workbench-initialized-commands-done`, `main-window-showing`, `layout-loaded`,
+`main-window-rendered` (first render only). Measured on macOS under `OD_TEST_MODE`, no solution:
+
+| | process -> Main | core + AddIn tree | InitializeWorkbench | window rendered |
+|---|---|---|---|---|
+| first launch after a build | 1.6 s | 2.7 s | 19.5 s | 23.9 s |
+| next launches (3 runs) | 0.06-0.09 s* | 0.65-0.74 s | 2.2-2.3 s | 4.2-4.5 s |
+
+\* ms on the scope's own clock; the host itself took ~0.4 s to reach `Main`.
+
+The 10 s silent gap first seen in the app log was the first-launch case: right after a build, every
+freshly written assembly is loaded for the first time (and, on this machine, scanned by on-access
+malware protection). A warm start is ~4.3 s to a rendered window, half of it `InitializeWorkbench`.
+
+Broken down further (`wb-*` and `attach-*` marks): ~1.2 s of `InitializeWorkbench` is MEF
+constructing the tool panes on the first `DockWorkspace.ToolPanes` access, and nearly all of that is
+the first AvalonEdit `TextEditor` of the process - created by the Output pad
+(`CompilerMessageViewViewModel`); a second editor takes ~2 ms. It is UI-thread work (theme,
+templates, visual tree): warming the types on a background thread (static constructors and JIT)
+took ~45 ms and changed nothing. Creating the Output pad's and the Definition View's editors lazily
+was tried and reverted: `InitializeWorkbench` dropped to ~1.2 s, but the Output pad is visible by
+default, so its editor was then created during the first layout pass instead (even when queued at
+`ApplicationIdle`, which still runs before ProGPU presents the first frame), and the window was not
+rendered any sooner (~4.2 s either way). It would only pay off with the Output pad hidden.
+
 Two smaller things found on the way, both kept:
 - ILSpy's `SearchPane` subscribed to `CompositionTarget.Rendering` for its whole lifetime (forcing a
   frame per tick under WPF's rules); it now subscribes only while a search has results to drain.

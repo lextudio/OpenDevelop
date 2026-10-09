@@ -26,13 +26,17 @@ namespace ICSharpCode.SharpDevelop
 
 		sealed class Scope
 		{
-			public readonly Stopwatch Clock = Stopwatch.StartNew();
+			public long StartTimestamp;
+			public long ElapsedMilliseconds => (Stopwatch.GetTimestamp() - StartTimestamp) * 1000 / Stopwatch.Frequency;
 			public readonly List<Milestone> Milestones = new List<Milestone>();
 			public long Generation;
 		}
 
 		public const string SolutionOpen = "solution-open";
 		public const string Build = "build";
+		/// <summary>Main to a usable main window. Begun once logging is safe, with its clock backdated
+		/// to Main's entry; its first milestone's detail says how long the host took to reach Main.</summary>
+		public const string Startup = "startup";
 
 		static readonly object gate = new object();
 		static readonly Dictionary<string, Scope> scopes = new Dictionary<string, Scope>(StringComparer.Ordinal);
@@ -40,10 +44,14 @@ namespace ICSharpCode.SharpDevelop
 
 		/// <summary>Restarts <paramref name="scope"/> and returns its generation, which
 		/// <see cref="Mark(string, long, string, string)"/> uses to drop milestones of a superseded run.</summary>
-		public static long Begin(string scope)
+		public static long Begin(string scope) => Begin(scope, Stopwatch.GetTimestamp());
+
+		/// <summary>Restarts <paramref name="scope"/> with its clock starting at
+		/// <paramref name="startTimestamp"/> (a <see cref="Stopwatch.GetTimestamp"/> value).</summary>
+		public static long Begin(string scope, long startTimestamp)
 		{
 			lock (gate) {
-				var started = new Scope { Generation = ++generationCounter };
+				var started = new Scope { Generation = ++generationCounter, StartTimestamp = startTimestamp };
 				scopes[scope] = started;
 				LoggingService.Info("perf: " + scope + " started");
 				return started.Generation;
@@ -65,7 +73,7 @@ namespace ICSharpCode.SharpDevelop
 					return;
 				var milestone = new Milestone {
 					Name = name,
-					ElapsedMilliseconds = current.Clock.ElapsedMilliseconds,
+					ElapsedMilliseconds = current.ElapsedMilliseconds,
 					Detail = detail
 				};
 				current.Milestones.Add(milestone);
