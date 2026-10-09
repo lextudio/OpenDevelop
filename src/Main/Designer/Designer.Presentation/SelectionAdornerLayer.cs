@@ -22,13 +22,14 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 	/// </summary>
 	public sealed class SelectionAdornerLayer
 	{
-		const double HandleSize = 7;
+		const double HandleSize = SelectionAdornerPlacementCalculator.DefaultHandleSize;
 
 		public Canvas Visual { get; } = new() { IsHitTestVisible = false };
 
 		readonly Rectangle selectionBox;
 		readonly TextBlock? selectionLabel;
 		readonly Dictionary<string, Rectangle> handles = new(StringComparer.Ordinal);
+		readonly string[] handleNames;
 		readonly Brush secondaryBrush;
 		readonly Dictionary<string, Rectangle> secondaryBoxes = new(StringComparer.Ordinal);
 		Rect designSelection;
@@ -64,6 +65,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 		/// true; WinForms: false - it has no label element today).</param>
 		public SelectionAdornerLayer(IReadOnlyList<string> handleNames, Brush selectionBrush, bool showLabel = true)
 		{
+			this.handleNames = handleNames.ToArray();
 			secondaryBrush = selectionBrush;
 			selectionBox = new Rectangle {
 				Stroke = selectionBrush,
@@ -85,7 +87,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 				};
 				Visual.Children.Add(selectionLabel);
 			}
-			foreach (var name in handleNames)
+			foreach (var name in this.handleNames)
 			{
 				var handle = new Rectangle {
 					Width = HandleSize,
@@ -149,11 +151,11 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 					secondaryBoxes[id] = box;
 					Visual.Children.Add(box);
 				}
-				var (left, top) = viewport.DesignToSurface(bounds.X, bounds.Y);
-				box.Width = bounds.Width * viewport.Scale;
-				box.Height = bounds.Height * viewport.Scale;
-				Canvas.SetLeft(box, left);
-				Canvas.SetTop(box, top);
+				var placement = SelectionAdornerPlacementCalculator.MapRect(bounds, viewport);
+				box.Width = placement.Width;
+				box.Height = placement.Height;
+				Canvas.SetLeft(box, placement.X);
+				Canvas.SetTop(box, placement.Y);
 				box.Visibility = Visibility.Visible;
 			}
 			foreach (var id in secondaryBoxes.Keys)
@@ -189,51 +191,30 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 				ClearSelection();
 				return;
 			}
-			var scale = viewport.Scale;
-			var (left, top) = viewport.DesignToSurface(designSelection.X, designSelection.Y);
-			var w = designSelection.Width * scale;
-			var h = designSelection.Height * scale;
+			var placement = SelectionAdornerPlacementCalculator.Calculate(designSelection, viewport, handleNames);
 
-			selectionBox.Width = w;
-			selectionBox.Height = h;
-			Canvas.SetLeft(selectionBox, left);
-			Canvas.SetTop(selectionBox, top);
+			selectionBox.Width = placement.Selection.Width;
+			selectionBox.Height = placement.Selection.Height;
+			Canvas.SetLeft(selectionBox, placement.Selection.X);
+			Canvas.SetTop(selectionBox, placement.Selection.Y);
 			selectionBox.Visibility = Visibility.Visible;
 
 			if (selectionLabel != null)
 			{
-				Canvas.SetLeft(selectionLabel, left);
-				Canvas.SetTop(selectionLabel, Math.Max(0, top - 17));
+				Canvas.SetLeft(selectionLabel, placement.LabelOrigin.X);
+				Canvas.SetTop(selectionLabel, placement.LabelOrigin.Y);
 				selectionLabel.Text = selectionName ?? "";
 				UpdateLabelVisibility();
 			}
 
-			foreach (var (name, (hx, hy)) in HandlePositions())
+			foreach (var (name, center) in placement.Handles)
 			{
 				if (!handles.TryGetValue(name, out var handle))
 					continue;
-				var (sx, sy) = viewport.DesignToSurface(hx, hy);
-				Canvas.SetLeft(handle, sx - HandleSize / 2);
-				Canvas.SetTop(handle, sy - HandleSize / 2);
+				Canvas.SetLeft(handle, center.X - HandleSize / 2);
+				Canvas.SetTop(handle, center.Y - HandleSize / 2);
 				handle.Visibility = ShowHandles ? Visibility.Visible : Visibility.Collapsed;
 			}
-		}
-
-		/// <summary>The eight resize-handle anchor points in design coordinates (only the ones
-		/// this instance was constructed with are actually shown).</summary>
-		IEnumerable<(string Name, (double X, double Y))> HandlePositions()
-		{
-			var (x, y) = (designSelection.X, designSelection.Y);
-			var (w, h) = (designSelection.Width, designSelection.Height);
-			var (cx, cy) = (x + w / 2, y + h / 2);
-			yield return ("nw", (x, y));
-			yield return ("n", (cx, y));
-			yield return ("ne", (x + w, y));
-			yield return ("e", (x + w, cy));
-			yield return ("se", (x + w, y + h));
-			yield return ("s", (cx, y + h));
-			yield return ("sw", (x, y + h));
-			yield return ("w", (x, cy));
 		}
 
 		/// <summary>The resize handle under a design-space point, or null - same tolerance and
@@ -242,21 +223,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 		{
 			if (!ShowHandles || designSelection.IsEmpty || string.IsNullOrEmpty(selectionName))
 				return null;
-			var scale = viewport.Scale;
-			var tolerance = (HandleSize / 2 + 2) / scale;
-			var (x, y) = (designSelection.X, designSelection.Y);
-			var (w, h) = (designSelection.Width, designSelection.Height);
-			var (cx, cy) = (x + w / 2, y + h / 2);
-			if (Math.Abs(designPoint.X - cx) < w / 3 && Math.Abs(designPoint.Y - cy) < h / 3)
-				return null;
-			foreach (var (name, (hx, hy)) in HandlePositions())
-			{
-				if (!handles.ContainsKey(name))
-					continue;
-				if (Math.Abs(designPoint.X - hx) <= tolerance && Math.Abs(designPoint.Y - hy) <= tolerance)
-					return name;
-			}
-			return null;
+			return SelectionAdornerPlacementCalculator.HandleAt(designSelection, designPoint, viewport, handleNames, HandleSize);
 		}
 	}
 }

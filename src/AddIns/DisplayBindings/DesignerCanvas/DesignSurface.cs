@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using System.Windows;
@@ -221,6 +222,10 @@ public class DesignSurface : DesignerCanvas
 
 	/// <summary>Raised with the selected element when a context-menu command is invoked.</summary>
 	public event EventHandler<(string Command, string Name)> ContextCommandRequested;
+	/// <summary>Requests an in-place/backend-specific rename of the primary selection. The canvas
+	/// owns the F2 gesture but deliberately not the editor: only a backend knows whether its
+	/// identity is a CLR field, x:Name, GTK id, or something that cannot be renamed.</summary>
+	public event EventHandler<string>? RenameRequested;
 
 	ContextMenu BuildContextMenu()
 	{
@@ -524,6 +529,51 @@ public class DesignSurface : DesignerCanvas
 		selectionName = name;
 		selectionLabel = label ?? name;
 		LayoutSelection();
+		LayoutLayoutInsets();
+	}
+
+	/// <summary>Shows host-measured Margin or Canvas-position values next to the primary
+	/// selection. Editing continues through the existing placement-aware drag path.</summary>
+	public void SetLayoutInsets(DesignerLayoutInsets? insets, Rect selection, IReadOnlyList<DesignerBindingInfo>? bindings = null)
+	{
+		layoutInsets = insets;
+		layoutInsetSelection = selection;
+		bindingTelemetry = bindings ?? Array.Empty<DesignerBindingInfo>();
+		LayoutLayoutInsets();
+	}
+
+	void LayoutLayoutInsets()
+	{
+		foreach (var label in layoutInsetLabels)
+			overlay.Children.Remove(label);
+		layoutInsetLabels.Clear();
+		if (layoutInsetSelection.IsEmpty || pixelWidth == 0 || pixelHeight == 0)
+			return;
+		var scale = EffectiveScale();
+		var left = layoutInsetSelection.X * scale;
+		var top = layoutInsetSelection.Y * scale;
+		var right = (layoutInsetSelection.X + layoutInsetSelection.Width) * scale;
+		var bottom = (layoutInsetSelection.Y + layoutInsetSelection.Height) * scale;
+		if (layoutInsets != null)
+		{
+			var values = new[] { ("L", layoutInsets.Left, left - 26, top + (bottom - top) / 2), ("T", layoutInsets.Top, left + (right - left) / 2, top - 18), ("R", layoutInsets.Right, right + 4, top + (bottom - top) / 2), ("B", layoutInsets.Bottom, left + (right - left) / 2, bottom + 4) };
+			foreach (var (edge, value, x, y) in values)
+			{
+				var label = new TextBlock { Text = edge + " " + value.ToString("0.##", CultureInfo.InvariantCulture), FontSize = 9, Foreground = Brushes.DarkOrange, Background = new SolidColorBrush(Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF)), Padding = new Thickness(2, 0, 2, 0), IsHitTestVisible = false };
+				layoutInsetLabels.Add(label);
+				overlay.Children.Add(label);
+				Canvas.SetLeft(label, x);
+				Canvas.SetTop(label, y);
+			}
+		}
+		if (bindingTelemetry.Count != 0)
+		{
+			var label = new TextBlock { Text = "Binding: " + string.Join(", ", bindingTelemetry.Select(binding => binding.Property)), FontSize = 9, Foreground = Brushes.MediumPurple, Background = new SolidColorBrush(Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF)), Padding = new Thickness(2, 0, 2, 0), IsHitTestVisible = false };
+			layoutInsetLabels.Add(label);
+			overlay.Children.Add(label);
+			Canvas.SetLeft(label, left);
+			Canvas.SetTop(label, bottom + 19);
+		}
 	}
 
 	void LayoutSelection()
@@ -595,6 +645,13 @@ public class DesignSurface : DesignerCanvas
 	(double X, double Y, double W, double H) gridGuideRect;
 	double[] gridRowOffsets = Array.Empty<double>();
 	double[] gridColOffsets = Array.Empty<double>();
+	readonly List<Rectangle> gridSplitRowRails = new();
+	readonly List<Rectangle> gridSplitColRails = new();
+	bool gridSplitRailsVisible;
+	readonly List<TextBlock> layoutInsetLabels = new();
+	DesignerLayoutInsets? layoutInsets;
+	IReadOnlyList<DesignerBindingInfo> bindingTelemetry = Array.Empty<DesignerBindingInfo>();
+	Rect layoutInsetSelection;
 	bool gridGuidesHitTest;
 	int gridGuideIndex = -1;
 	bool gridGuideIsRow;
@@ -609,8 +666,15 @@ public class DesignSurface : DesignerCanvas
 			overlay.Children.Remove(guide);
 		foreach (var guide in colGuides)
 			overlay.Children.Remove(guide);
+		foreach (var rail in gridSplitRowRails)
+			overlay.Children.Remove(rail);
+		foreach (var rail in gridSplitColRails)
+			overlay.Children.Remove(rail);
 		rowGuides.Clear();
 		colGuides.Clear();
+		gridSplitRowRails.Clear();
+		gridSplitColRails.Clear();
+		gridSplitRailsVisible = false;
 		gridGuideName = name;
 		gridGuideRect = (x, y, width, height);
 		gridRowOffsets = rowOffsets ?? Array.Empty<double>();
@@ -619,15 +683,48 @@ public class DesignSurface : DesignerCanvas
 			return;
 		for (var i = 1; i < gridRowOffsets.Length - 1; i++)
 		{
-			var guide = new Rectangle { Width = 1, Fill = new SolidColorBrush(Color.FromArgb(0xC0, 0x00, 0x78, 0xD4)), IsHitTestVisible = false };
+			var guide = new Rectangle { Height = 1, Fill = new SolidColorBrush(Color.FromArgb(0xC0, 0x00, 0x78, 0xD4)), IsHitTestVisible = false };
 			rowGuides.Add(guide);
 			overlay.Children.Add(guide);
 		}
 		for (var i = 1; i < gridColOffsets.Length - 1; i++)
 		{
-			var guide = new Rectangle { Height = 1, Fill = new SolidColorBrush(Color.FromArgb(0xC0, 0x00, 0x78, 0xD4)), IsHitTestVisible = false };
+			var guide = new Rectangle { Width = 1, Fill = new SolidColorBrush(Color.FromArgb(0xC0, 0x00, 0x78, 0xD4)), IsHitTestVisible = false };
 			colGuides.Add(guide);
 			overlay.Children.Add(guide);
+		}
+		LayoutGridGuides();
+	}
+
+	/// <summary>Shows the insertion rails while Ctrl is held over a selected Grid.  The existing
+	/// blue lines remain the resize affordance; these amber mid-track rails make the otherwise
+	/// invisible Ctrl-click split target discoverable without competing with ordinary selection.</summary>
+	void SetGridSplitRailsVisible(bool visible)
+	{
+		if (gridSplitRailsVisible == visible)
+			return;
+		gridSplitRailsVisible = visible;
+		if (!visible)
+		{
+			foreach (var rail in gridSplitRowRails)
+				overlay.Children.Remove(rail);
+			foreach (var rail in gridSplitColRails)
+				overlay.Children.Remove(rail);
+			gridSplitRowRails.Clear();
+			gridSplitColRails.Clear();
+			return;
+		}
+		for (var i = 0; i + 1 < gridRowOffsets.Length; i++)
+		{
+			var rail = new Rectangle { Height = 2, Fill = new SolidColorBrush(Color.FromArgb(0xD0, 0xF5, 0x9E, 0x0B)), IsHitTestVisible = false };
+			gridSplitRowRails.Add(rail);
+			overlay.Children.Add(rail);
+		}
+		for (var i = 0; i + 1 < gridColOffsets.Length; i++)
+		{
+			var rail = new Rectangle { Width = 2, Fill = new SolidColorBrush(Color.FromArgb(0xD0, 0xF5, 0x9E, 0x0B)), IsHitTestVisible = false };
+			gridSplitColRails.Add(rail);
+			overlay.Children.Add(rail);
 		}
 		LayoutGridGuides();
 	}
@@ -643,37 +740,72 @@ public class DesignSurface : DesignerCanvas
 		{
 			Canvas.SetLeft(rowGuides[i], left);
 			Canvas.SetTop(rowGuides[i], top + gridRowOffsets[i + 1] * scale);
-			rowGuides[i].Height = gw * scale;
+			rowGuides[i].Width = gw * scale;
 		}
 		for (var i = 0; i < colGuides.Count; i++)
 		{
 			Canvas.SetLeft(colGuides[i], left + gridColOffsets[i + 1] * scale);
 			Canvas.SetTop(colGuides[i], top);
-			colGuides[i].Width = gh * scale;
+			colGuides[i].Height = gh * scale;
+		}
+		for (var i = 0; i < gridSplitRowRails.Count; i++)
+		{
+			var middle = (gridRowOffsets[i] + gridRowOffsets[i + 1]) / 2;
+			Canvas.SetLeft(gridSplitRowRails[i], left);
+			Canvas.SetTop(gridSplitRowRails[i], top + middle * scale - 1);
+			gridSplitRowRails[i].Width = gw * scale;
+		}
+		for (var i = 0; i < gridSplitColRails.Count; i++)
+		{
+			var middle = (gridColOffsets[i] + gridColOffsets[i + 1]) / 2;
+			Canvas.SetLeft(gridSplitColRails[i], left + middle * scale - 1);
+			Canvas.SetTop(gridSplitColRails[i], top);
+			gridSplitColRails[i].Height = gh * scale;
 		}
 	}
 
 	/// <summary>Raised when a Grid row/column divider drag commits: (grid name, isRow, index, design position).</summary>
 	public event EventHandler<(string Name, bool IsRow, int Index, double Position)> GridGuideDragCommitted;
+	/// <summary>Raised when Ctrl-clicking an amber Grid insertion rail. Shift chooses a column;
+	/// otherwise the click splits a row. Position is local to the Grid.</summary>
+	public event EventHandler<(string Name, bool IsRow, double Position)> GridTrackSplitRequested;
+
+	bool TryRequestGridTrackSplit(Vector2 designPoint)
+	{
+		if (gridGuideName == null || (gridRowOffsets.Length == 0 && gridColOffsets.Length == 0))
+			return false;
+		var (gx, gy, gw, gh) = gridGuideRect;
+		if (designPoint.X <= gx || designPoint.X >= gx + gw || designPoint.Y <= gy || designPoint.Y >= gy + gh)
+			return false;
+		var isRow = !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+		var offsets = isRow ? gridRowOffsets : gridColOffsets;
+		var local = isRow ? designPoint.Y - gy : designPoint.X - gx;
+		var tolerance = 4 / EffectiveScale();
+		var onInsertionRail = Enumerable.Range(0, Math.Max(0, offsets.Length - 1))
+			.Any(index => Math.Abs(local - (offsets[index] + offsets[index + 1]) / 2) <= tolerance);
+		if (!onInsertionRail)
+			return false;
+		GridTrackSplitRequested?.Invoke(this, (gridGuideName, isRow, local));
+		return true;
+	}
+
+	void UpdateGridSplitRailVisibility(Point surfacePoint)
+	{
+		var designPoint = ToDesignPoint(surfacePoint);
+		var (gx, gy, gw, gh) = gridGuideRect;
+		SetGridSplitRailsVisible(Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
+			&& designPoint.X > gx && designPoint.X < gx + gw && designPoint.Y > gy && designPoint.Y < gy + gh);
+	}
 
 	/// <summary>The design-space divider under a point, as (isRow, index), or null.</summary>
 	(bool IsRow, int Index)? GridGuideAt(Vector2 designPoint)
 	{
 		if (gridRowOffsets.Length == 0 && gridColOffsets.Length == 0)
 			return null;
-		var (gx, gy, _, _) = gridGuideRect;
+		var (gx, gy, gw, gh) = gridGuideRect;
 		var tolerance = 4 / EffectiveScale();
-		for (var i = 1; i < gridColOffsets.Length - 1; i++)
-		{
-			if (Math.Abs(designPoint.X - (gx + gridColOffsets[i])) <= tolerance)
-				return (false, i - 1);
-		}
-		for (var i = 1; i < gridRowOffsets.Length - 1; i++)
-		{
-			if (Math.Abs(designPoint.Y - (gy + gridRowOffsets[i])) <= tolerance)
-				return (true, i - 1);
-		}
-		return null;
+		return GridGuideHitTester.Find(designPoint.X, designPoint.Y, gx, gy, gw, gh,
+			gridRowOffsets, gridColOffsets, tolerance);
 	}
 
 	bool gridGuideDragActive;
@@ -703,7 +835,7 @@ public class DesignSurface : DesignerCanvas
 			if (gridGuideIndex < rowGuides.Count)
 			{
 				Canvas.SetTop(rowGuides[gridGuideIndex], y);
-				rowGuides[gridGuideIndex].Height = gw * scale;
+				rowGuides[gridGuideIndex].Width = gw * scale;
 			}
 		}
 		else
@@ -712,7 +844,7 @@ public class DesignSurface : DesignerCanvas
 			if (gridGuideIndex < colGuides.Count)
 			{
 				Canvas.SetLeft(colGuides[gridGuideIndex], x);
-				colGuides[gridGuideIndex].Width = gh * scale;
+				colGuides[gridGuideIndex].Height = gh * scale;
 			}
 		}
 	}
@@ -814,6 +946,7 @@ public class DesignSurface : DesignerCanvas
 		selectionName = null;
 		selectionLabel = null;
 		adornerLayer.ClearSelection();
+		SetLayoutInsets(null, Rect.Empty);
 	}
 
 	/// <summary>The selected element's key, or null when nothing is selected.</summary>
@@ -964,6 +1097,7 @@ public class DesignSurface : DesignerCanvas
 		foreach (var name in tabOrderBounds.Keys)
 			LayoutTabOrderBadge(name);
 		LayoutGridGuides();
+		LayoutLayoutInsets();
 		foreach (var guide in snapGuides)
 			LayoutSnapGuideFromStored(guide);
 		LayoutTextEditor();
@@ -1102,6 +1236,8 @@ public class DesignSurface : DesignerCanvas
 		// the extension layer) are text, not canvas commands: Space must not start panning.
 		if (textEditing || e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase)
 			return;
+		if (e.Key is Key.LeftCtrl or Key.RightCtrl)
+			UpdateGridSplitRailVisibility(Mouse.GetPosition(this));
 		if (e.Key == Key.Space)
 		{
 			spacePanning = true;
@@ -1132,6 +1268,12 @@ public class DesignSurface : DesignerCanvas
 			e.Handled = true;
 			return;
 		}
+		if (e.Key == Key.F2 && selectionName != null && RenameRequested != null)
+		{
+			RenameRequested.Invoke(this, selectionName);
+			e.Handled = true;
+			return;
+		}
 		// Arrow keys nudge the selection in design units (Ctrl = 10px step), raising the
 		// request only when something is selected.
 		if (selectionName != null)
@@ -1155,6 +1297,8 @@ public class DesignSurface : DesignerCanvas
 
 	void OnKeyUp(object sender, KeyEventArgs e)
 	{
+		if (e.Key is Key.LeftCtrl or Key.RightCtrl)
+			SetGridSplitRailsVisible(false);
 		if (e.Key == Key.Space)
 		{
 			spacePanning = false;
@@ -1221,6 +1365,12 @@ public class DesignSurface : DesignerCanvas
 		// delivered, and the Preview handlers keep receiving them without capture.
 		CancelStuckDrag();
 		var designPoint = ToDesignPoint(position);
+		if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && TryRequestGridTrackSplit(designPoint))
+		{
+			dragPossible = false;
+			e.Handled = true;
+			return;
+		}
 		if (DesignPressInterceptor?.Invoke(new Point(designPoint.X, designPoint.Y)) == true)
 		{
 			dragPossible = false;
@@ -1302,6 +1452,7 @@ public class DesignSurface : DesignerCanvas
 			e.Handled = true;
 			return;
 		}
+		UpdateGridSplitRailVisibility(position);
 		UpdateCursor(position);
 	}
 

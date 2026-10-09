@@ -26,27 +26,29 @@ public enum DesignSurfaceKeying
 /// state a backend produces (a <see cref="DesignerSessionState"/>: frame + element tree in design
 /// units) and turns the user's gestures on it into intents - selection, single and group drags with
 /// snapping, handle resizes, double-clicks, inline text, Grid guides, nudges, undo/redo, context
-/// commands. It knows no UI framework: the only thing it asks its <see cref="IDesignCanvasBackend"/>
-/// is a hit test. A designer owns one per document and forwards its own view contract to it.
+/// commands. It knows no UI framework. Selection and hit testing are derived from the snapshot
+/// locally; a pointer press must never wait for a child-process RPC. A designer owns one controller
+/// per document and forwards its own view contract to it.
 /// </summary>
 public sealed class DesignSurfaceController : IDisposable
 {
-	readonly IDesignCanvasBackend backend;
 	readonly DesignSurfaceKeying keying;
 	readonly Dispatcher dispatcher;
 	readonly HashSet<string> selectableNames = new(StringComparer.Ordinal);
 	readonly List<string> multiSelectionNames = new();
 	Dictionary<string, DesignerElementNode> nodesByName = new(StringComparer.Ordinal);
 	bool showTabOrder;
+	bool snapToGrid;
+	bool snapToGuides = true;
+	double gridCellSize = 20;
 	bool disposed;
 
 	/// <param name="keying">What selection, drags and events are keyed by: an element's x:Name
 	/// (the default) or its backend Id. Every "name" this class reports is that key.</param>
-	public DesignSurfaceController(DesignSurface surface, IDesignCanvasBackend backend, DesignSurfaceKeying keying = DesignSurfaceKeying.Name)
+	public DesignSurfaceController(DesignSurface surface, DesignSurfaceKeying keying = DesignSurfaceKeying.Name)
 	{
 		this.keying = keying;
 		Surface = surface ?? throw new ArgumentNullException(nameof(surface));
-		this.backend = backend ?? throw new ArgumentNullException(nameof(backend));
 		dispatcher = surface.Dispatcher;
 		surface.SurfacePointerPressed += OnSurfacePointerPressed;
 		// What a drag picks up: the element under the pointer, but never the design root - dragging
@@ -59,6 +61,7 @@ public sealed class DesignSurfaceController : IDisposable
 		surface.SurfaceElementDoubleClicked += OnSurfaceElementDoubleClicked;
 		surface.TextEditCommitted += OnSurfaceTextEditCommitted;
 		surface.GridGuideDragCommitted += OnSurfaceGridGuideDragCommitted;
+		surface.GridTrackSplitRequested += OnSurfaceGridTrackSplitRequested;
 		surface.ContextCommandRequested += OnSurfaceContextCommandRequested;
 		surface.NudgeRequested += OnSurfaceNudgeRequested;
 		surface.UndoRedoRequested += OnSurfaceUndoRedoRequested;
@@ -93,6 +96,8 @@ public sealed class DesignSurfaceController : IDisposable
 	public event EventHandler<string>? TextEditCommitted;
 	/// <summary>A Grid row/column divider drag committed (name, isRow, index, design position).</summary>
 	public event EventHandler<(string Name, bool IsRow, int Index, double Position)>? GridGuideDragCommitted;
+	/// <summary>A requested atomic split inside a selected Grid (name, row/column, local position).</summary>
+	public event EventHandler<(string Name, bool IsRow, double Position)>? GridTrackSplitRequested;
 	/// <summary>Arrow-key nudge of the selection (design units).</summary>
 	public event EventHandler<(double DX, double DY)>? NudgeRequested;
 	/// <summary>Ctrl+Z (true) / Ctrl+Y (false) on the surface.</summary>
@@ -102,6 +107,7 @@ public sealed class DesignSurfaceController : IDisposable
 
 	void OnSurfaceContextCommandRequested(object? sender, (string Command, string Name) args) => ContextCommandRequested?.Invoke(this, args);
 	void OnSurfaceGridGuideDragCommitted(object? sender, (string Name, bool IsRow, int Index, double Position) args) => GridGuideDragCommitted?.Invoke(this, args);
+	void OnSurfaceGridTrackSplitRequested(object? sender, (string Name, bool IsRow, double Position) args) => GridTrackSplitRequested?.Invoke(this, args);
 	void OnSurfaceNudgeRequested(object? sender, (double DX, double DY) delta) => NudgeRequested?.Invoke(this, delta);
 	void OnSurfaceUndoRedoRequested(object? sender, bool undo) => UndoRedoRequested?.Invoke(this, undo);
 
@@ -147,6 +153,11 @@ public sealed class DesignSurfaceController : IDisposable
 			return null;
 		return (node.X, node.Y, node.Width, node.Height);
 	}
+
+	/// <summary>Finds the topmost source-backed node at a design-space point in the latest
+	/// snapshot. Non-pointer gestures such as a toolbox drop use this rather than opening a second
+	/// child-process hit-test round-trip.</summary>
+	public DesignerElementNode? FindNodeAtDesignPoint(double x, double y) => DesignerSnapshotHitTester.FindNodeAt(LastSnapshot?.Tree, x, y);
 
 	public string DescribeElementState(string name)
 	{
@@ -198,10 +209,7 @@ public sealed class DesignSurfaceController : IDisposable
 
 	#region Picking
 
-	/// <summary>
-	/// Answers a click with the innermost named element that also exists in the source
-	/// document; a hit usually lands on a control-template part that has no x:Name.
-	/// </summary>
+	/// <summary>Answers a click with the innermost source-backed snapshot node.</summary>
 	public string? ResolveNameAt(Vector2 point) => ResolveNameAtWithPath(point).Name;
 
 	/// <summary>The source element under a point relative to the surface: by name when it has one
@@ -209,42 +217,18 @@ public sealed class DesignSurfaceController : IDisposable
 	public (string? Name, string? PickPath) ResolveNameAtWithPath(Vector2 point)
 	{
 		var design = Surface.ToDesignPoint(new Point(point.X, point.Y));
-		DesignCanvasHit? result;
-		try
+		var picked = DesignerSnapshotHitTester.FindNodeAt(LastSnapshot?.Tree, design.X, design.Y);
+		if (picked == null)
 		{
-			result = backend.HitTest(design.X, design.Y);
-		}
-		catch (Exception e)
-		{
-			LastPickDiagnostic = "hit-test failed: " + e.Message;
+			LastPickDiagnostic = $"point={design.X:F0},{design.Y:F0} local snapshot: empty";
 			return (null, null);
 		}
-		if (result == null)
-		{
-			LastPickDiagnostic = "hit-test did not answer";
-			return (null, null);
-		}
-		LastPickDiagnostic = $"point={design.X:F0},{design.Y:F0} chain=[{string.Join(",", result.Chain)}] pickPath={result.PickPath}";
-		// PickPath is the innermost element the DOCUMENT itself declares - the backend skips
-		// control-template parts - so it, not the chain, is what the user aimed at. The chain is
-		// only consulted for a backend that reports no path at all, because its entries come from
-		// walking UP to the nearest NAMED ancestor: with a named page root (the usual case),
-		// scanning it first made every click on an unnamed element select that root.
-		if (result.Hit || !string.IsNullOrEmpty(result.PickPath))
-		{
-			var picked = FindNodeByPath(result.PickPath);
-			// Prefer the element's own name when it has one: selection, the Properties pad, the
-			// outline and multi-select are all keyed by name.
-			return picked != null && KeyOf(picked, keying) is { } pickedKey && HasKey(pickedKey) && IsSelectable(pickedKey)
-				? (pickedKey, null)
-				: (null, result.PickPath);
-		}
-		foreach (var name in result.Chain)
-		{
-			if (IsSelectable(name))
-				return (name, null);
-		}
-		return (null, null);
+		LastPickDiagnostic = $"point={design.X:F0},{design.Y:F0} local snapshot path={picked.Path}";
+		// Prefer the element's own name when it has one: selection, the Properties pad, the
+		// outline and multi-select are all keyed by name.
+		return KeyOf(picked, keying) is { } pickedKey && HasKey(pickedKey) && IsSelectable(pickedKey)
+			? (pickedKey, null)
+			: (null, picked.Path);
 	}
 
 	/// <summary>The node whose own <see cref="DesignerElementNode.Path"/> equals
@@ -382,6 +366,7 @@ public sealed class DesignSurfaceController : IDisposable
 			return;
 		}
 		Surface.ShowSelection(node.X, node.Y, node.Width, node.Height, name, LabelOf(name));
+		Surface.SetLayoutInsets(node.LayoutInsets, new Rect(node.X, node.Y, node.Width, node.Height), node.Bindings);
 	}
 
 	/// <summary>
@@ -553,11 +538,20 @@ public sealed class DesignSurfaceController : IDisposable
 		var scale = Surface.ViewportScale;
 		dragDeltaX = delta.DX / scale;
 		dragDeltaY = delta.DY / scale;
-		// Snap the primary element's edges/centre to nearby elements' and show alignment guides
-		// while dragging (move only - resizes are not snapped).
+		// Snap the primary element's edges/centre to nearby elements and show alignment guides.
 		var guides = (IReadOnlyList<(bool, double)>)Array.Empty<(bool, double)>();
 		if (string.IsNullOrEmpty(dragHandle))
-			(dragDeltaX, dragDeltaY, guides) = ApplySnap(dragDeltaX, dragDeltaY);
+		{
+			if (snapToGrid)
+				(dragDeltaX, dragDeltaY) = RasterGridCalculator.SnapMove(
+					dragStartRect.X, dragStartRect.Y, dragDeltaX, dragDeltaY, gridCellSize);
+			if (snapToGuides)
+				(dragDeltaX, dragDeltaY, guides) = ApplySnap(dragDeltaX, dragDeltaY);
+		}
+		else
+			(dragDeltaX, dragDeltaY, guides) = snapToGuides
+				? ApplyResizeSnap(dragDeltaX, dragDeltaY)
+				: (dragDeltaX, dragDeltaY, guides);
 		Surface.SetSnapGuides(guides);
 		var rect = ApplyHandle(dragStartRect, dragDeltaX, dragDeltaY);
 		Surface.ShowSelection(rect.X, rect.Y, rect.Width, rect.Height, dragName, LabelOf(dragName));
@@ -582,7 +576,34 @@ public sealed class DesignSurfaceController : IDisposable
 		var siblingBounds = nodesByName
 			.Where(entry => entry.Key != dragName)
 			.Select(entry => (entry.Value.X, entry.Value.Y, entry.Value.Width, entry.Value.Height));
-		return SnapGuideCalculator.ApplySnap(start, deltaX, deltaY, siblingBounds);
+		// Alignment guides should describe a relationship visible to the user: do not snap an
+		// element to an unrelated row/column that happens to share an edge coordinate.
+		return SnapGuideCalculator.ApplySnap(start, deltaX, deltaY, siblingBounds, requireOverlap: true);
+	}
+
+	(double DX, double DY, IReadOnlyList<(bool IsVertical, double Position)> Guides) ApplyResizeSnap(double deltaX, double deltaY)
+	{
+		if (dragName == null || !dragGroupStart.TryGetValue(dragName, out var start) || string.IsNullOrEmpty(dragHandle))
+			return (deltaX, deltaY, Array.Empty<(bool, double)>());
+		var siblings = nodesByName.Where(entry => entry.Key != dragName)
+			.Select(entry => (entry.Value.X, entry.Value.Y, entry.Value.Width, entry.Value.Height)).ToArray();
+		var raw = ApplyHandle(start, deltaX, deltaY);
+		var guides = new List<(bool, double)>();
+		if (dragHandle.Contains('e') || dragHandle.Contains('w'))
+		{
+			var edge = dragHandle.Contains('e') ? raw.X + raw.Width : raw.X;
+			var snapped = SnapGuideCalculator.SnapEdge(true, edge, raw.Y, raw.Y + raw.Height, siblings);
+			deltaX += snapped.Correction;
+			if (snapped.Guide is double guide) guides.Add((true, guide));
+		}
+		if (dragHandle.Contains('n') || dragHandle.Contains('s'))
+		{
+			var edge = dragHandle.Contains('s') ? raw.Y + raw.Height : raw.Y;
+			var snapped = SnapGuideCalculator.SnapEdge(false, edge, raw.X, raw.X + raw.Width, siblings);
+			deltaY += snapped.Correction;
+			if (snapped.Guide is double guide) guides.Add((false, guide));
+		}
+		return (deltaX, deltaY, guides);
 	}
 
 	void OnSurfaceElementDragCommitted(object? sender, (double DX, double DY) delta)
@@ -680,6 +701,32 @@ public sealed class DesignSurfaceController : IDisposable
 
 	public void SetGridlines(bool show) => dispatcher.BeginInvoke(() => Surface.SetGridlines(show));
 
+	/// <summary>Whether free-form move drags snap to the design raster. This is deliberately
+	/// independent of <see cref="Gridlines"/>: showing a visual aid must not alter placement until
+	/// the owning designer explicitly opts in.</summary>
+	public bool SnapToGrid
+	{
+		get => snapToGrid;
+		set => snapToGrid = value;
+	}
+
+	/// <summary>Whether free-form drags use sibling alignment guides. It remains on by default so
+	/// existing designers retain their current behavior; a backend with an established preference
+	/// can explicitly turn it off without also disabling raster snapping.</summary>
+	public bool SnapToGuides
+	{
+		get => snapToGuides;
+		set => snapToGuides = value;
+	}
+
+	/// <summary>Raster cell size in design units. Invalid/non-positive values disable raster
+	/// correction even when <see cref="SnapToGrid"/> is enabled.</summary>
+	public double GridCellSize
+	{
+		get => gridCellSize;
+		set => gridCellSize = value;
+	}
+
 	/// <summary>Shows the row/column divider guides over a Grid (design rect plus divider offsets).</summary>
 	public void SetGridGuides(string name, double x, double y, double width, double height, double[] rowOffsets, double[] colOffsets)
 		=> dispatcher.BeginInvoke(() => Surface.SetGridGuides(name, x, y, width, height, rowOffsets, colOffsets));
@@ -760,6 +807,7 @@ public sealed class DesignSurfaceController : IDisposable
 		Surface.SurfaceElementDoubleClicked -= OnSurfaceElementDoubleClicked;
 		Surface.TextEditCommitted -= OnSurfaceTextEditCommitted;
 		Surface.GridGuideDragCommitted -= OnSurfaceGridGuideDragCommitted;
+		Surface.GridTrackSplitRequested -= OnSurfaceGridTrackSplitRequested;
 		Surface.ContextCommandRequested -= OnSurfaceContextCommandRequested;
 		Surface.NudgeRequested -= OnSurfaceNudgeRequested;
 		Surface.UndoRedoRequested -= OnSurfaceUndoRedoRequested;
