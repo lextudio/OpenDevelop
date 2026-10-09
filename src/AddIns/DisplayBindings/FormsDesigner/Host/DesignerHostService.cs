@@ -2290,18 +2290,21 @@ sealed class DesignerHostService : IDesignerChildService
 	/// below (built from host.Container.Components, which never contains this scaffolding because
 	/// it was never sited through it), a naive Controls/Items walk cannot tell them apart from
 	/// genuine children by type or position - only container membership distinguishes them.</summary>
-	static DesignerElementNode BuildElementTree(Control control, string path, IContainer? container)
+	static DesignerElementNode BuildElementTree(Control control, string path, IContainer? container,
+		string layoutMode = DesignerLayoutMode.Unknown)
 	{
 		var children = control.Controls.Cast<Control>()
 			.Where(child => container == null || container.Components.Cast<IComponent>().Contains(child))
-			.Select((child, index) => BuildElementTree(child, ChildPath(path, index), container));
+			.Select((child, index) => BuildElementTree(child, ChildPath(path, index), container,
+				DesignerLayoutMode.InferFromContainerType(control.GetType().Name)));
 		// The portable LibreWinForms ToolStripItem does not expose Bounds/Owner/OwnerItem or
 		// ToolStripDropDownItem at all, so this walk only exists for the real Microsoft backend.
 		if (control is ToolStrip toolStrip) {
 			var offset = control.Controls.Count;
 			children = children.Concat(toolStrip.Items.Cast<ToolStripItem>()
 				.Where(item => container == null || container.Components.Cast<IComponent>().Contains(item))
-				.Select((item, index) => BuildToolStripItemNode(item, ChildPath(path, offset + index), container)));
+				.Select((item, index) => BuildToolStripItemNode(item, ChildPath(path, offset + index), container,
+					DesignerLayoutMode.InferFromContainerType(control.GetType().Name))));
 		}
 		return new DesignerElementNode {
 			Id = control.Site?.Name ?? control.GetType().Name,
@@ -2313,6 +2316,7 @@ sealed class DesignerHostService : IDesignerChildService
 			Height = control.Height,
 			Path = path,
 			IsDesignable = true,
+			LayoutMode = layoutMode,
 			Children = children.ToList()
 		};
 	}
@@ -2324,12 +2328,14 @@ sealed class DesignerHostService : IDesignerChildService
 	/// DropDownItems, not Items - only ToolStrip/MenuStrip/StatusStrip themselves use Items.
 	/// Same container-membership filtering as BuildElementTree: a submenu can carry the same
 	/// unsited ItemTypeToolStripMenuItem/DesignerToolStripControlHost design-time scaffolding.</summary>
-	static DesignerElementNode BuildToolStripItemNode(ToolStripItem item, string path, IContainer? container)
+	static DesignerElementNode BuildToolStripItemNode(ToolStripItem item, string path, IContainer? container,
+		string layoutMode)
 	{
 		var children = item is ToolStripDropDownItem dropDown
 			? dropDown.DropDownItems.Cast<ToolStripItem>()
 				.Where(child => container == null || container.Components.Cast<IComponent>().Contains(child))
-				.Select((child, index) => BuildToolStripItemNode(child, ChildPath(path, index), container))
+				.Select((child, index) => BuildToolStripItemNode(child, ChildPath(path, index), container,
+					DesignerLayoutMode.InferFromContainerType(item.GetType().Name)))
 				.ToList()
 			: [];
 		return new DesignerElementNode {
@@ -2342,6 +2348,7 @@ sealed class DesignerHostService : IDesignerChildService
 			Height = item.Bounds.Height,
 			Path = path,
 			IsDesignable = true,
+			LayoutMode = layoutMode,
 			Children = children
 		};
 	}
@@ -2463,11 +2470,29 @@ sealed class DesignerHostService : IDesignerChildService
 				// The source assignment is authoritative. Some LibreWinForms
 				// descriptors keep returning true after ResetValue.
 				ShouldSerialize = assignedInSource,
-				IsEnum = property.PropertyType.IsEnum
+				IsEnum = property.PropertyType.IsEnum,
+				Kind = PropertyKind(property.PropertyType)
 			});
+			if (property.PropertyType.IsEnum)
+				result[^1].AllowedValues.AddRange(Enum.GetNames(property.PropertyType));
 		}
 		return result;
 	}
+
+	static string PropertyKind(Type type) =>
+		type == typeof(bool) ? "Boolean"
+		: type.IsEnum ? "Enum"
+		: type == typeof(byte) || type == typeof(sbyte) || type == typeof(short) || type == typeof(ushort)
+			|| type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(ulong)
+			|| type == typeof(float) || type == typeof(double) || type == typeof(decimal) ? "Number"
+		: type == typeof(Color) ? "Color"
+		: type == typeof(Padding) ? "Thickness"
+		: type == typeof(Point) ? "Point"
+		: type == typeof(Size) || type == typeof(SizeF) ? "Size"
+		: type == typeof(Rectangle) || type == typeof(RectangleF) ? "Rect"
+		: type == typeof(Uri) ? "Uri"
+		: typeof(Image).IsAssignableFrom(type) ? "Unsupported"
+		: "String";
 
 	/// <summary>Position relative to the ROOT design component, which is the coordinate space the
 	/// render frame and hit-testing both use.

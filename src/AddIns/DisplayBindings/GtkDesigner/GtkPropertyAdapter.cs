@@ -19,20 +19,20 @@ namespace ICSharpCode.GtkDesigner;
 /// </summary>
 public sealed class GtkPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost
 {
-	readonly DesignerElementNode node; readonly Action<string, string> set; readonly Action<string, string> setEvent; readonly Action<string>? reset;
+	readonly DesignerElementNode node; readonly Func<string, string, bool> set; readonly Func<string, string, bool> setEvent; readonly Func<string, bool>? reset;
 	PropertyDescriptorCollection? properties;
 
-	public GtkPropertyAdapter(DesignerElementNode node, Action<string, string> set, Action<string, string>? setEvent = null, Action<string>? reset = null)
+	public GtkPropertyAdapter(DesignerElementNode node, Func<string, string, bool> set, Func<string, string, bool>? setEvent = null, Func<string, bool>? reset = null)
 	{
 		this.node = node; this.set = set; this.setEvent = setEvent ?? set; this.reset = reset;
 	}
 
-	[Category("Identity")] public string Id { get => node.Id; set => set("$id", value); }
+	[Category("Identity")] public string Id { get => node.Id; set => Set("$id", value); }
 	[Category("Identity"), ReadOnly(true)] public string Class => node.Type;
 
-	internal void Set(string gtkName, string value) => set(gtkName, value);
+	internal bool Set(string gtkName, string value) => set(gtkName, value);
 	internal bool CanReset => reset != null;
-	internal void Reset(string gtkName) => reset?.Invoke(gtkName);
+	internal bool Reset(string gtkName) => reset?.Invoke(gtkName) == true;
 
 	/// <summary>"placeholder-text" -> "PlaceholderText": the descriptor name (Gir.Core's and .NET's
 	/// convention, and what automation addresses); the grid shows <see cref="DisplayNameOf"/>.</summary>
@@ -70,7 +70,7 @@ public sealed class GtkPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEve
 	public PropertyDescriptorCollection GetProperties(Attribute[]? attributes) => GetProperties();
 
 	string IPropertyGridEventSource.GetEventHandler(string eventName) => node.Events.FirstOrDefault(e => e.Name == eventName)?.Handler ?? "";
-	void IPropertyGridEventSource.SetEventHandler(string eventName, string handlerName) { setEvent(eventName, handlerName); var item = node.Events.FirstOrDefault(e => e.Name == eventName); if (item != null) item.Handler = handlerName; }
+	void IPropertyGridEventSource.SetEventHandler(string eventName, string handlerName) { var item = node.Events.FirstOrDefault(e => e.Name == eventName); if (item != null && item.Handler != handlerName && setEvent(eventName, handlerName)) item.Handler = handlerName; }
 	void IEventBindingHost.BindEvent(string eventName) { if (string.IsNullOrEmpty(((IPropertyGridEventSource)this).GetEventHandler(eventName))) ((IPropertyGridEventSource)this).SetEventHandler(eventName, node.Id.TrimStart('$') + "_" + eventName.Replace('-', '_')); }
 	public EventDescriptorCollection GetEvents() => new(node.Events.Select(e => (EventDescriptor)new RemoteEventDescriptor(e)).ToArray(), true);
 	public EventDescriptorCollection GetEvents(Attribute[]? attributes) => GetEvents();
@@ -109,12 +109,17 @@ sealed class GtkPropertyDescriptor : PropertyDescriptor
 			new DisplayNameAttribute(GtkPropertyAdapter.DisplayNameOf(info.Name)),
 			// The GTK name stays visible: it is what the .ui file, the GTK docs and code use.
 			new DescriptionAttribute(string.IsNullOrEmpty(info.Description) ? info.Name : info.Name + " - " + info.Description),
-			new ReadOnlyAttribute(info.IsReadOnly)
+			new ReadOnlyAttribute(IsProtocolReadOnly(info))
 		};
 		if (info.Kind == "Enum" && info.AllowedValues.Count > 0)
 			attributes.Add(new TypeConverterAttribute(typeof(GtkEnumConverter)));
 		return attributes.ToArray();
 	}
+
+	// Kind is an edit contract shared by every snapshot-driven Properties pad.  Do not
+	// send an opaque/reference token back to GtkBuilder if a host omitted IsReadOnly.
+	static bool IsProtocolReadOnly(DesignerPropertyInfo info)
+		=> info.IsReadOnly || info.Kind is "Unsupported" or "Reference" or "ReadOnly";
 
 	internal IReadOnlyList<string> AllowedValues => info.AllowedValues;
 	/// <summary>Flags combine with '|', so their text is free; a plain enum is one of its nicks.</summary>
@@ -122,8 +127,8 @@ sealed class GtkPropertyDescriptor : PropertyDescriptor
 
 	public override Type ComponentType => typeof(GtkPropertyAdapter);
 	public override Type PropertyType => type;
-	public override bool IsReadOnly => info.IsReadOnly;
-	public override bool CanResetValue(object component) => owner.CanReset && info.ShouldSerialize && !info.IsReadOnly;
+	public override bool IsReadOnly => IsProtocolReadOnly(info);
+	public override bool CanResetValue(object component) => owner.CanReset && info.ShouldSerialize && !IsReadOnly;
 	public override bool ShouldSerializeValue(object component) => info.ShouldSerialize;
 
 	public override object? GetValue(object component)
@@ -139,6 +144,7 @@ sealed class GtkPropertyDescriptor : PropertyDescriptor
 
 	public override void SetValue(object? component, object? value)
 	{
+		if (IsReadOnly) return;
 		var text = value switch {
 			bool b => b ? "True" : "False",
 			System.Windows.Media.Color c => GtkColorText.Format(c),
@@ -146,7 +152,7 @@ sealed class GtkPropertyDescriptor : PropertyDescriptor
 			IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
 			_ => Convert.ToString(value, CultureInfo.InvariantCulture) ?? ""
 		};
-		owner.Set(info.Name, text);
+		if (!owner.Set(info.Name, text)) return;
 		// The grid re-reads right after commit; the snapshot this descriptor holds is the one taken
 		// at selection time, so reflect the accepted edit (an exception would have left it as-is).
 		info.Value = text; info.ShouldSerialize = true;
@@ -155,7 +161,8 @@ sealed class GtkPropertyDescriptor : PropertyDescriptor
 
 	public override void ResetValue(object component)
 	{
-		owner.Reset(info.Name);
+		if (!CanResetValue(component)) return;
+		if (!owner.Reset(info.Name)) return;
 		info.ShouldSerialize = false;
 		OnValueChanged(component, EventArgs.Empty);
 	}

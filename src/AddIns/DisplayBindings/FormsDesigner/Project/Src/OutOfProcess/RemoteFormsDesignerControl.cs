@@ -18,6 +18,7 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using System.Drawing.Design;
 
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Widgets;
@@ -26,7 +27,7 @@ using System.Threading.Tasks;
 
 namespace ICSharpCode.FormsDesigner.OutOfProcess
 {
-	sealed class RemoteFormsDesignerControl : DesignSurface, IDesignCanvasBackend
+	sealed class RemoteFormsDesignerControl : DesignSurface
 	{
 		readonly FormsDesignerHostClient client;
 		readonly Canvas adorners;
@@ -250,10 +251,18 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		{
 			this.client = client;
 			BackendName = backendName;
-			controller = new DesignSurfaceController(this, this, DesignSurfaceKeying.Name);
+			controller = new DesignSurfaceController(this, DesignSurfaceKeying.Name);
+			// Preserve the long-standing WinForms designer options in the OOP canvas. These used to
+			// be consumed only by the in-process DesignSurface, so the bitmap canvas silently ignored
+			// ShowGrid/SnapToGrid/UseSnapLines even though its Options dialog still advertised them.
+			controller.GridCellSize = Math.Max(1, PropertyService.Get("FormsDesigner.DesignerOptions.GridSizeWidth", 8));
+			var useSnapLines = PropertyService.Get("FormsDesigner.DesignerOptions.UseSnapLines", true);
+			controller.SnapToGrid = PropertyService.Get("FormsDesigner.DesignerOptions.SnapToGrid", true) && !useSnapLines;
+			controller.SnapToGuides = useSnapLines;
+			controller.SetGridlines(PropertyService.Get("FormsDesigner.DesignerOptions.ShowGrid", false) && !useSnapLines);
 			adorners = ExtensionLayer;
 			Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit
-				| DesignerCanvasCapabilities.StatusBar | DesignerCanvasCapabilities.ShowNames;
+				| DesignerCanvasCapabilities.StatusBar | DesignerCanvasCapabilities.ShowNames | DesignerCanvasCapabilities.Gridlines;
 			StatusText = $"Starting {BackendName} design host…";
 			// Undo/redo is an IDE command for this designer, and Delete, arrows, Tab, Esc, F2 and
 			// Ctrl+. are its own (OnKeyDown): the canvas must not consume them first. Right-click
@@ -463,7 +472,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				.GroupBy(item => item.Parent, StringComparer.Ordinal)
 				.ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
 			var paths = new Dictionary<string, string>(StringComparer.Ordinal);
-			DesignerElementNode Build(DesignerComponentInfo component, string path, int depth)
+			DesignerElementNode Build(DesignerComponentInfo component, string path, int depth, string layoutMode)
 			{
 				paths[component.Name] = path;
 				var node = new DesignerElementNode {
@@ -476,7 +485,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 					Height = component.Height,
 					Path = path,
 					IsDesignable = true,
-					IsVisible = component.IsVisible
+					IsVisible = component.IsVisible,
+					LayoutMode = layoutMode
 				};
 				// TabIndex is all the tab-order badges read; the root has no badge.
 				if (depth > 0 && component.Properties.FirstOrDefault(item => item.Name == "TabIndex") is { } tabIndex)
@@ -484,11 +494,12 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				if (depth < 64 && children.TryGetValue(component.Name, out var list)) {
 					for (var index = 0; index < list.Count; index++)
 						node.Children.Add(Build(list[index], path.Length == 0 ? index.ToString(System.Globalization.CultureInfo.InvariantCulture)
-							: path + "," + index.ToString(System.Globalization.CultureInfo.InvariantCulture), depth + 1));
+							: path + "," + index.ToString(System.Globalization.CultureInfo.InvariantCulture), depth + 1,
+							DesignerLayoutMode.InferFromContainerType(component.Type)));
 				}
 				return node;
 			}
-			var tree = root == null ? null : Build(root, "", 0);
+			var tree = root == null ? null : Build(root, "", 0, DesignerLayoutMode.Unknown);
 			pathByName = paths;
 			DesignerRenderFrame frame = null;
 			if (session.Render != null && (!String.IsNullOrEmpty(session.Render.Data) || !String.IsNullOrEmpty(session.Render.PngBase64))
@@ -504,21 +515,6 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				Render = frame,
 				Tree = tree
 			};
-		}
-
-		/// <summary>Answers the canvas's hit test from the design host (<c>design/hit-test</c>).
-		/// Off the dispatcher thread, so the RPC's continuation cannot need the thread it blocks.</summary>
-		DesignCanvasHit IDesignCanvasBackend.HitTest(double x, double y)
-		{
-			if (state == null)
-				return null;
-			var result = Task.Run(() => client.HitTestAsync(version, (int)x, (int)y, CancellationToken.None)).GetAwaiter().GetResult();
-			var name = result.ComponentName;
-			if (String.IsNullOrEmpty(name))
-				return new DesignCanvasHit(false, null, Array.Empty<string>());
-			return pathByName.TryGetValue(name, out var path)
-				? new DesignCanvasHit(true, path, new[] { name })
-				: new DesignCanvasHit(false, null, new[] { name });
 		}
 
 		/// <summary>The canvas changed the selection (click, Ctrl-click, marquee): mirror it into
@@ -1399,11 +1395,9 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 
 
 		/// <summary>Right-click: select whatever is under the pointer, then ask the host to show a
-		/// context menu for it. Real VS does both from one press, and selecting first is what makes
-		/// the menu's contents well-defined - designer verbs (Add Tab/Remove Tab) are a property of
-		/// the SELECTED component. Routed through the host's hit test: only the child process knows
-		/// which component owns a pixel. Presses on the tray (its own menus) and on the extension
-		/// layer's editors are not the surface's.</summary>
+		/// context menu for it. The latest snapshot is the authoritative canvas hit-test, so this
+		/// does not block the UI thread on the child process. Presses on the tray (its own menus) and
+		/// on the extension layer's editors are not the surface's.</summary>
 		void OnCanvasRightButtonDown(object sender, MouseButtonEventArgs e)
 		{
 			if (state == null || !HasRender || IsWithin(e.OriginalSource, trayRegion) || !IsWithin(e.OriginalSource, canvasScroller)
@@ -1411,12 +1405,12 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				return;
 			try {
 				var designPoint = ToDesignPoint(e.GetPosition(this));
-				var hit = Task.Run(() => client.HitTestAsync(version, (int)designPoint.X, (int)designPoint.Y, CancellationToken.None)).GetAwaiter().GetResult();
-				if (!String.IsNullOrEmpty(hit.ComponentName) && hit.ComponentName != SelectedComponentName)
-					SelectSingleComponent(hit.ComponentName, takeFocus: false);
+				var name = controller.FindNodeAtDesignPoint(designPoint.X, designPoint.Y)?.Name ?? "";
+				if (!String.IsNullOrEmpty(name) && name != SelectedComponentName)
+					SelectSingleComponent(name, takeFocus: false);
 				Focus();
 				e.Handled = true;
-				ContextMenuRequested?.Invoke(this, new RemoteComponentEventArgs(hit.ComponentName ?? ""));
+				ContextMenuRequested?.Invoke(this, new RemoteComponentEventArgs(name));
 			} catch (Exception exception) {
 				// A faulted hit-test RPC must not silently swallow the gesture with no trail.
 				ICSharpCode.Core.LoggingService.Warn("RemoteFormsDesignerControl.OnCanvasRightButtonDown: " + exception.Message);
@@ -1919,18 +1913,18 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			}
 		}
 
-		async void OnDrop(object sender, System.Windows.DragEventArgs e)
+		void OnDrop(object sender, System.Windows.DragEventArgs e)
 		{
 			if (e.Data.GetData(typeof(ToolboxItem)) is not ToolboxItem item || String.IsNullOrEmpty(item.TypeName) || state == null)
 				return;
 			e.Handled = true;
 			try {
-				// The child's hit-testing and the drop position are design-space.
+				// The latest snapshot and the drop position are design-space.
 				var design = ToDesignPoint(e.GetPosition(this));
 				var designX = (double)design.X;
 				var designY = (double)design.Y;
-				var hit = await client.HitTestAsync(version, (int)designX, (int)designY, CancellationToken.None);
-				var target = state.Components.FirstOrDefault(component => component.Name == hit.ComponentName);
+				var hitName = controller.FindNodeAtDesignPoint(designX, designY)?.Name;
+				var target = state.Components.FirstOrDefault(component => component.Name == hitName);
 				if (target != null && !IsContainer(target.Type))
 					target = state.Components.FirstOrDefault(component => component.Name == target.Parent);
 				target ??= state.Components.FirstOrDefault(component => String.IsNullOrEmpty(component.Parent) && component.IsControl && !component.IsTrayComponent);

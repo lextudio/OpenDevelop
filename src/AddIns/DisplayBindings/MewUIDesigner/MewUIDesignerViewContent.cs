@@ -1,12 +1,13 @@
 using System; using System.Collections.Generic; using System.IO; using System.Linq; using System.Windows; using System.Windows.Controls; using System.Windows.Input; using System.Windows.Media;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Designer.Presentation; using ICSharpCode.SharpDevelop.Designer.Remote; using ICSharpCode.SharpDevelop.Designer.Shell; using ICSharpCode.SharpDevelop.Gui; using ICSharpCode.SharpDevelop.WinForms; using ICSharpCode.SharpDevelop.Workbench;
 using ICSharpCode.SharpDevelop.Widgets;
 using ICSharpCode.SharpDevelop.Designer.Surface;
 using System.Threading.Tasks;
 namespace ICSharpCode.MewUIDesigner;
 
-public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadErrors, IOutlineContentHost, IToolsHost, IHasPropertyContainer, IUndoHandler, IFilterableToolbox, IDesignCanvasBackend, IToolboxSourceDropHandler
+public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadErrors, IOutlineContentHost, IToolsHost, IHasPropertyContainer, IUndoHandler, IFilterableToolbox, IToolboxSourceDropHandler
 {
 	public static readonly string[] ToolNames = { "StackPanel", "Grid", "DockPanel", "WrapPanel", "Border", "ScrollViewer", "Label", "Button", "TextBox", "CheckBox", "RadioButton", "Slider", "ProgressBar", "ComboBox", "ListBox", "Image" };
 	readonly DocumentOutlineControl outline = new() { IconMapper = MewUIControlMapper.Instance }; readonly PropertyContainer properties = new(); readonly TextBlock diagnostic = new() { Foreground = Brushes.OrangeRed, Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap }; readonly OpenedFile mxamlFile;
@@ -28,11 +29,11 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		tools.SetScopes("mewui");
 		tools.ItemInvoked += (_, item) => Add(item.TypeName);
 		selection = new DesignerSelectionController(node => Adapter(node), nodes => new DesignerMultiPropertyAdapter(nodes.Select(node => (object)Adapter(node))));
-		commands.RegisterStandard(() => host?.IsAlive == true && state.CanUndo, () => { Mutate(() => host!.UndoAsync(state.Version).GetAwaiter().GetResult()); return true; },
-			() => host?.IsAlive == true && state.CanRedo, () => { Mutate(() => host!.RedoAsync(state.Version).GetAwaiter().GetResult()); return true; },
+		commands.RegisterStandard(() => host?.IsAlive == true && state.CanUndo, () => Mutate(() => host!.UndoAsync(state.Version).GetAwaiter().GetResult()),
+			() => host?.IsAlive == true && state.CanRedo, () => Mutate(() => host!.RedoAsync(state.Version).GetAwaiter().GetResult()),
 			() => selection.SelectedIds.Count > 0 && host?.IsAlive == true, DeleteSelectedCore);
 		pads = new DesignerPadController(selection, outline.SetRoots, value => properties.SelectedObject = value, outline.SelectNodeById, node => { selected = node; canvasController?.RestoreSelection(selection.SelectedIds); });
-		canvasController = new DesignSurfaceController(canvas, this, DesignSurfaceKeying.Id);
+		canvasController = new DesignSurfaceController(canvas, DesignSurfaceKeying.Id);
 		mxamlFile = file; TabPageText = "Design";
 		ConfigureCanvas(); var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition()); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.Children.Add(canvas); Grid.SetRow(diagnostic, 1); grid.Children.Add(diagnostic); UserContent = grid;
 		outline.SelectionCommitted += (_, _) => pads.CommitOutlineSelection(outline.SelectedNode?.Id);
@@ -85,22 +86,24 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	public string HostSessionId => host?.SessionId ?? ""; public string HostDocumentId => host?.DocumentId ?? ""; public string HostPoolKey => host?.PoolKey ?? "mewui"; public int ActiveHostLeases => MewUIDesignerHostClient.ActiveLeaseCount; public int HostRecoveryCount => host?.RecoveryCount ?? 0;
 	public bool EnableUndo => commands.CanExecute("Undo"); public bool EnableRedo => commands.CanExecute("Redo");
 	public void Undo() => commands.Execute("Undo"); public void Redo() => commands.Execute("Redo");
-	public bool Add(string type) { if (host == null || state.Tree == null) return false; var parent = (selected != null ? NearestContainer(selected) : null) ?? Flatten(state.Tree).FirstOrDefault(IsContainer); if (parent == null) return false; var before = Flatten(state.Tree).Select(n => n.Id).ToHashSet(); Mutate(() => host.AddElementAsync(state.Version, parent.Id, new DesignerToolboxItemInfo { Name = type, TypeName = type }, "", 0, 0).GetAwaiter().GetResult()); var added = state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => !before.Contains(n.Id)); if (added != null) Select(added); return added != null; }
+	public bool Add(string type) { if (host == null || state.Tree == null) return false; var parent = (selected != null ? NearestContainer(selected) : null) ?? Flatten(state.Tree).FirstOrDefault(IsContainer); if (parent == null) return false; var before = Flatten(state.Tree).Select(n => n.Id).ToHashSet(); if (!Mutate(() => host.AddElementAsync(state.Version, parent.Id, new DesignerToolboxItemInfo { Name = type, TypeName = type }, "", 0, 0).GetAwaiter().GetResult())) return false; var added = state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => !before.Contains(n.Id)); if (added != null) Select(added); return added != null; }
 	public bool SetSelectedProperty(string name, string value) => selected != null && SetProperty(selected.Id, name, value);
-	bool SetProperty(string id, string name, string value) { if (host == null) return false; Mutate(() => host.SetPropertyAsync(state.Version, id, name, value).GetAwaiter().GetResult()); return name == "$name" ? SelectByName(value) : selection.Find(id) != null; }
+	bool SetProperty(string id, string name, string value) { if (host == null || !Mutate(() => host.SetPropertyAsync(state.Version, id, name, value).GetAwaiter().GetResult())) return false; return name == "$name" ? SelectByName(value) : selection.Find(id) != null; }
 	public bool SetSelectedEvent(string name, string handler) => selected != null && SetEvent(selected.Id, name, handler);
 	MewUIPropertyAdapter Adapter(DesignerElementNode node) => new(node, (name, value) => SetProperty(node.Id, name, value), (name, value) => SetEvent(node.Id, name, value));
-	bool SetEvent(string id, string name, string handler) { if (host == null) return false; Mutate(() => host.SetEventAsync(state.Version, id, name, handler).GetAwaiter().GetResult()); return selection.Find(id) != null; }
+	bool SetEvent(string id, string name, string handler) { if (host == null || !Mutate(() => host.SetEventAsync(state.Version, id, name, handler).GetAwaiter().GetResult())) return false; return selection.Find(id) != null; }
 	public bool SelectByName(string name) { var node = selection.Flatten().FirstOrDefault(n => n.Name == name || n.Id == name); return node != null && selection.Select(node); }
 	public IReadOnlyList<string> SelectedIds => selection.SelectedIds;
 	public bool SelectByNames(IEnumerable<string> names) { var ids = names.Select(name => selection.Flatten().FirstOrDefault(node => node.Name == name || node.Id == name)?.Id).Where(id => id != null).Cast<string>().ToArray(); return ids.Length > 0 && pads.CommitSelection(ids); }
 	public bool DeleteSelected() => commands.Execute("Delete");
-	bool DeleteSelectedCore() { if (selection.SelectedIds.Count == 0 || host == null) return false; var ids = selection.SelectedIds.ToArray(); Mutate(() => host.DeleteElementsAsync(state.Version, ids).GetAwaiter().GetResult()); return true; }
-	public bool ReorderSelected(int delta) { if (selected == null || host == null) return false; var id = selected.Id; Mutate(() => host.ReorderAsync(state.Version, id, delta).GetAwaiter().GetResult()); return SelectByName(id); }
+	bool DeleteSelectedCore() { if (selection.SelectedIds.Count == 0 || host == null) return false; var ids = selection.SelectedIds.ToArray(); return Mutate(() => host.DeleteElementsAsync(state.Version, ids).GetAwaiter().GetResult()); }
+	public bool ReorderSelected(int delta) { if (selected == null || host == null) return false; var id = selected.Id; return Mutate(() => host.ReorderAsync(state.Version, id, delta).GetAwaiter().GetResult()) && SelectByName(id); }
+	bool RenameSelected(string newName) { if (selected == null || host == null || selected.Id == "$window") return false; var oldId = selected.Id; return Mutate(() => host.RenameAsync(state.Version, oldId, newName).GetAwaiter().GetResult()) && SelectByName(newName); }
+	void RequestRename() { if (selected == null || selected.Id == "$window") return; var newName = MessageService.ShowInputBox("Rename", "Enter a new element name:", selected.Name ?? selected.Id)?.Trim(); if (!string.IsNullOrEmpty(newName) && !string.Equals(newName, selected.Id, StringComparison.Ordinal) && !RenameSelected(newName)) MessageService.ShowError(state.Error); }
 	public void RefreshDesign() { if (host == null) return; var text = host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; state = host.UpdateAsync(Snapshot(text, state.Version + 1)).GetAwaiter().GetResult(); loadedMxamlText = text; Rebuild(); }
 	public void RestartDesignHost() { if (host == null) return; state = host.RestartPoolAsync().GetAwaiter().GetResult(); loadedMxamlText = host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; Rebuild(); }
 	public void TerminateDesignHost() { if (host == null) return; state = host.TerminateAndRecoverAsync().GetAwaiter().GetResult(); Rebuild(); }
-	void Mutate(Func<DesignerSessionState> action) { state = action(); mxamlFile.MakeDirty(); Rebuild(); commands.Invalidate(); }
+	bool Mutate(Func<DesignerSessionState> action) { state = action(); if (state.Accepted) mxamlFile.MakeDirty(); Rebuild(); commands.Invalidate(); return state.Accepted; }
 	void Rebuild()
 	{
 		diagnostic.Text = HasNativeFrame ? Status : Status + " - no MewUI frame: the MewUI runtime could not render this document on this platform.";
@@ -117,7 +120,7 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		DesignerElementNode Copy(DesignerElementNode node, string path)
 		{
 			paths[node.Id] = path;
-			var copy = new DesignerElementNode { Id = node.Id, Name = node.Name, Type = node.Type, X = node.X, Y = node.Y, Width = node.Width, Height = node.Height, Path = path, IsDesignable = true, IsVisible = node.IsVisible };
+			var copy = new DesignerElementNode { Id = node.Id, Name = node.Name, Type = node.Type, X = node.X, Y = node.Y, Width = node.Width, Height = node.Height, ZIndex = node.ZIndex, BaselineOffset = node.BaselineOffset, Path = path, IsDesignable = true, IsVisible = node.IsVisible, LayoutMode = node.LayoutMode };
 			for (var index = 0; index < node.Children.Count; index++)
 				copy.Children.Add(Copy(node.Children[index], path.Length == 0 ? index.ToString(System.Globalization.CultureInfo.InvariantCulture) : path + "," + index.ToString(System.Globalization.CultureInfo.InvariantCulture)));
 			return copy;
@@ -125,15 +128,6 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		var tree = state.Tree == null ? null : Copy(state.Tree, "");
 		pathById = paths;
 		return new DesignerSessionState { Accepted = true, Version = state.Version, Render = HasNativeFrame ? state.Render : null, Tree = tree };
-	}
-
-	/// <summary>The canvas's hit test. It runs on the UI thread from a pointer press, so it is
-	/// answered locally from the real MewUI layout the host already sent with the frame (the same
-	/// bounds its design/hit-test RPC uses), never with a blocking round-trip.</summary>
-	DesignCanvasHit? IDesignCanvasBackend.HitTest(double x, double y)
-	{
-		var hit = state.Tree == null ? null : NodeAt(state.Tree, new Point(x, y));
-		return hit != null && pathById.TryGetValue(hit.Id, out var path) ? new DesignCanvasHit(true, path, new[] { hit.Id }) : new DesignCanvasHit(false, null, Array.Empty<string>());
 	}
 
 	/// <summary>A committed canvas drag: dropping an element onto a sibling moves it to that
@@ -157,6 +151,7 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		canvasController.ElementDragCommitted += (_, drag) => CommitCanvasDrag(drag);
 		canvasController.ElementGroupDragCommitted += (_, _) => canvasController.RestoreSelection(selection.SelectedIds);
 		canvasController.ContextCommandRequested += (_, command) => { if (command.Command == "delete") DeleteSelected(); };
+		canvas.RenameRequested += (_, _) => RequestRename();
 		canvasController.UndoRedoRequested += (_, undo) => { if (undo) Undo(); else Redo(); };
 		canvas.AllowDrop = true;
 		canvas.DragOver += (_, e) => { e.Effects = ToolboxDragData.GetTypeName(e.Data) is { } dragged && ToolNames.Contains(dragged, StringComparer.Ordinal) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };

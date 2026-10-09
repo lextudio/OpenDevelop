@@ -512,12 +512,14 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("button1.Enabled = false;", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 		var anchored = await client.SetPropertyAsync(7, "button1", "Anchor", "Top, Left", timeout.Token);
 		Assert.Contains(anchored.Components.Single(component => component.Name == "button1").Properties,
-			property => property.Name == "Anchor" && property.IsEnum);
+			property => property.Name == "Anchor" && property.IsEnum && property.Kind == "Enum"
+				&& property.AllowedValues.Contains("Top"));
 		Assert.Contains("button1.Anchor = (System.Windows.Forms.AnchorStyles)5;",
 			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 		var padded = await client.SetPropertyAsync(7, "button1", "Padding", "1, 2, 3, 4", timeout.Token);
 		Assert.Contains(padded.Components.Single(component => component.Name == "button1").Properties,
-			property => property.Name == "Padding" && property.Value.Contains("1", StringComparison.Ordinal));
+			property => property.Name == "Padding" && property.Kind == "Thickness"
+				&& property.Value.Contains("1", StringComparison.Ordinal));
 		Assert.Contains("button1.Padding = new System.Windows.Forms.Padding(1, 2, 3, 4);",
 			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 		var resetEnabled = await client.ResetPropertyAsync(7, "button1", "Enabled", timeout.Token);
@@ -661,8 +663,14 @@ public sealed class FormsDesignerHostClientTests
 		});
 		var resourceLoaded = await client.UpdateAsync(resourceSnapshot, timeout.Token);
 		Assert.Contains(resourceLoaded.Components, component => component.Name == "button1" && component.Text == "localized text");
-		Assert.Contains(resourceLoaded.Components.Single(component => component.Name == "button1").Properties,
-			property => property.Name == "Image" && !property.IsNull && property.Value == "[binary]");
+		var imageProperty = Assert.Single(resourceLoaded.Components.Single(component => component.Name == "button1").Properties,
+			property => property.Name == "Image");
+		Assert.False(imageProperty.IsNull);
+		Assert.Equal("[binary]", imageProperty.Value);
+		// An image resource has no portable scalar representation.  The host must make that
+		// explicit so a generic Properties pad never posts the display token back as text.
+		Assert.Equal("Unsupported", imageProperty.Kind);
+		Assert.True(imageProperty.IsReadOnly);
 		Assert.Contains((await client.FlushAsync(9, timeout.Token)).Files, item => item.Kind == "Resource" && !String.IsNullOrEmpty(item.Base64));
 
 		var fixtureAssembly = CustomControlFixtureDll();

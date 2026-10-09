@@ -9,6 +9,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
@@ -21,7 +22,7 @@ using ICSharpCode.SharpDevelop.Designer.Surface;
 
 namespace ICSharpCode.GtkDesigner;
 
-public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErrors, IOutlineContentHost, IToolsHost, IHasPropertyContainer, IUndoHandler, IFilterableToolbox, IDesignCanvasBackend, IToolboxSourceDropHandler
+public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErrors, IOutlineContentHost, IToolsHost, IHasPropertyContainer, IUndoHandler, IFilterableToolbox, IToolboxSourceDropHandler
 {
 	public static readonly string[] ToolNames = { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkLabel", "GtkButton", "GtkEntry", "GtkPasswordEntry", "GtkCheckButton", "GtkSwitch", "GtkSpinButton", "GtkDropDown", "GtkListBox", "GtkListView", "GtkGridView", "GtkImage", "GtkPicture", "GtkProgressBar", "GtkSeparator" };
 	/// <summary>Libadwaita widgets, offered only for a document that declares &lt;requires lib="libadwaita"&gt;.</summary>
@@ -78,11 +79,11 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		tools.ItemInvoked += (_, item) => Add(item.TypeName);
 		RefreshToolbox();
 		selection = new DesignerSelectionController(node => Adapter(node), nodes => new DesignerMultiPropertyAdapter(nodes.Select(node => (object)Adapter(node))));
-		commands.RegisterStandard(() => host?.IsAlive == true && state.CanUndo, () => { Mutate(() => host!.UndoAsync(state.Version).GetAwaiter().GetResult()); return true; },
-			() => host?.IsAlive == true && state.CanRedo, () => { Mutate(() => host!.RedoAsync(state.Version).GetAwaiter().GetResult()); return true; },
+		commands.RegisterStandard(() => host?.IsAlive == true && state.CanUndo, () => Mutate(() => host!.UndoAsync(state.Version).GetAwaiter().GetResult()),
+			() => host?.IsAlive == true && state.CanRedo, () => Mutate(() => host!.RedoAsync(state.Version).GetAwaiter().GetResult()),
 			() => selection.SelectedIds.Count > 0 && host?.IsAlive == true, DeleteSelectedCore);
 		pads = new DesignerPadController(selection, outline.SetRoots, value => properties.SelectedObject = value, outline.SelectNodeById, node => { selected = node; canvasController?.RestoreSelection(selection.SelectedIds); });
-		canvasController = new DesignSurfaceController(canvas, this, DesignSurfaceKeying.Id);
+		canvasController = new DesignSurfaceController(canvas, DesignSurfaceKeying.Id);
 		TabPageText = "Design"; ConfigureCanvas(); var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition()); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 		grid.Children.Add(canvas); Grid.SetRow(diagnostic, 1); grid.Children.Add(diagnostic); UserContent = grid;
 		outline.SelectionCommitted += (_, _) => pads.CommitOutlineSelection(outline.SelectedNode?.Id);
@@ -165,26 +166,27 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	public IReadOnlyList<string> SelectedIds => selection.SelectedIds;
 	public bool SelectByIds(IEnumerable<string> ids) => pads.CommitSelection(ids);
 	public DesignerElementNode? FindById(string id) => selection.Find(id);
-	public bool HitTest(double x, double y) { if (host == null) return false; var result = host.HitTestAsync(state.Version, x, y).GetAwaiter().GetResult(); return result.Hit && SelectById(result.ComponentName); }
+	public bool HitTest(double x, double y) { var hit = canvasController.FindNodeAtDesignPoint(x, y); return hit != null && SelectById(hit.Id); }
 	public bool SetSelectedProperty(string name, string value) => selected != null && SetProperty(selected.Id, name, value);
-	bool SetProperty(string id, string name, string value) { if (host == null) return false; Mutate(() => host.SetPropertyAsync(state.Version, id, name, value).GetAwaiter().GetResult()); return name == "$id" ? SelectById(value) : selection.Find(id) != null; }
+	bool SetProperty(string id, string name, string value) { if (host == null || !Mutate(() => host.SetPropertyAsync(state.Version, id, name, value).GetAwaiter().GetResult())) return false; return name == "$id" ? SelectById(value) : selection.Find(id) != null; }
 	public bool Add(string type) { if (host == null || state.Tree == null) return false; var parent = selected == null ? Flatten(state.Tree).FirstOrDefault(IsContainer) : NearestContainer(selected); if (parent == null) return false; return AddTo(parent.Id, type, -1, -1); }
 	/// <summary>Adds <paramref name="type"/> to the container <paramref name="parentId"/>; a drop
 	/// passes its design point so the host places it by the container's child policy (GtkDropPlanner),
 	/// a toolbox click passes (-1, -1) to append.</summary>
-	bool AddTo(string parentId, string type, double x, double y) { if (host == null || state.Tree == null) return false; var before = Flatten(state.Tree).Select(n => n.Id).ToHashSet(StringComparer.Ordinal); Mutate(() => host.AddElementAsync(state.Version, parentId, new DesignerToolboxItemInfo { Name = type, TypeName = type }, "", x, y,
-			ToDropTarget(GtkDropPlanner.Plan(ToDropNode(state.Tree), x, y))).GetAwaiter().GetResult()); var added = state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => !before.Contains(n.Id)); if (added != null) Select(added); return added != null; }
+	bool AddTo(string parentId, string type, double x, double y) { if (host == null || state.Tree == null) return false; var before = Flatten(state.Tree).Select(n => n.Id).ToHashSet(StringComparer.Ordinal); if (!Mutate(() => host.AddElementAsync(state.Version, parentId, new DesignerToolboxItemInfo { Name = type, TypeName = type }, "", x, y,
+			ToDropTarget(GtkDropPlanner.Plan(ToDropNode(state.Tree), x, y))).GetAwaiter().GetResult())) return false; var added = state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => !before.Contains(n.Id)); if (added != null) Select(added); return added != null; }
 	public bool DeleteSelected() => commands.Execute("Delete");
-	bool DeleteSelectedCore() { if (selection.SelectedIds.Count == 0 || host == null) return false; var ids = selection.SelectedIds.ToArray(); Mutate(() => host.DeleteElementsAsync(state.Version, ids).GetAwaiter().GetResult()); return true; }
-	public bool SetSelectedSignal(string signal, string handler) { if (selected == null || host == null) return false; var id = selected.Id; Mutate(() => host.SetEventAsync(state.Version, id, signal, handler).GetAwaiter().GetResult()); return SelectById(id); }
+	bool DeleteSelectedCore() { if (selection.SelectedIds.Count == 0 || host == null) return false; var ids = selection.SelectedIds.ToArray(); return Mutate(() => host.DeleteElementsAsync(state.Version, ids).GetAwaiter().GetResult()); }
+	public bool SetSelectedSignal(string signal, string handler) { if (selected == null || host == null) return false; var id = selected.Id; return Mutate(() => host.SetEventAsync(state.Version, id, signal, handler).GetAwaiter().GetResult()) && SelectById(id); }
 	GtkPropertyAdapter Adapter(DesignerElementNode node) => new(node, (name, value) => SetProperty(node.Id, name, value), (name, value) => SetEvent(node.Id, name, value), name => ResetProperty(node.Id, name));
 	/// <summary>Removes a property so GTK's default applies (design/reset-property).</summary>
-	bool ResetProperty(string id, string name) { if (host == null) return false; Mutate(() => host.ResetPropertyAsync(state.Version, id, name).GetAwaiter().GetResult()); return selection.Find(id) != null; }
-	void SetEvent(string id, string signal, string handler)
+	bool ResetProperty(string id, string name) { if (host == null || !Mutate(() => host.ResetPropertyAsync(state.Version, id, name).GetAwaiter().GetResult())) return false; return selection.Find(id) != null; }
+	bool SetEvent(string id, string signal, string handler)
 	{
-		if (host == null) return;
-		Mutate(() => host.SetEventAsync(state.Version, id, signal, handler).GetAwaiter().GetResult());
-		if (!string.IsNullOrEmpty(handler)) UpdateCodeBehind(handler);
+		if (host == null) return false;
+		var accepted = Mutate(() => host.SetEventAsync(state.Version, id, signal, handler).GetAwaiter().GetResult());
+		if (accepted && !string.IsNullOrEmpty(handler)) UpdateCodeBehind(handler);
+		return accepted;
 	}
 
 	/// <summary>Keeps X.cs and X.ui.cs in step with the .ui's signals (see GtkCodeBehind): with
@@ -216,13 +218,15 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			ICSharpCode.Core.LoggingService.Warn("GTK designer: could not update the code-behind for " + uiPath + ": " + ex.Message);
 		}
 	}
-	public bool ReorderSelected(int delta) { if (selected == null || host == null) return false; var id = selected.Id; Mutate(() => host.ReorderAsync(state.Version, id, delta).GetAwaiter().GetResult()); return SelectById(id); }
+	public bool ReorderSelected(int delta) { if (selected == null || host == null) return false; var id = selected.Id; return Mutate(() => host.ReorderAsync(state.Version, id, delta).GetAwaiter().GetResult()) && SelectById(id); }
+	bool RenameSelected(string newId) { if (selected == null || host == null || selected.Id.StartsWith("$", StringComparison.Ordinal)) return false; var oldId = selected.Id; return Mutate(() => host.RenameAsync(state.Version, oldId, newId).GetAwaiter().GetResult()) && SelectById(newId); }
+	void RequestRename() { if (selected == null || selected.Id.StartsWith("$", StringComparison.Ordinal)) return; var newId = MessageService.ShowInputBox("Rename", "Enter a new object id:", selected.Name ?? selected.Id)?.Trim(); if (!string.IsNullOrEmpty(newId) && !string.Equals(newId, selected.Id, StringComparison.Ordinal) && !RenameSelected(newId)) MessageService.ShowError(state.Error); }
 	public bool PointerReorder(string sourceId, string targetId) { if (state.Tree == null) return false; var source = FindById(sourceId); var target = FindById(targetId); return source != null && target != null && ReorderBetween(state.Tree, source, target); }
 	public void RefreshDesign() { if (host == null) return; var text = host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; state = host.UpdateAsync(Snapshot(text, state.Version + 1)).GetAwaiter().GetResult(); loadedText = text; Rebuild(); }
 	public void RestartDesignHost() { if (host == null) return; state = host.RestartPoolAsync().GetAwaiter().GetResult(); loadedText = host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; Rebuild(); }
 	public void TerminateDesignHost() { if (host == null) return; state = host.TerminateAndRecoverAsync().GetAwaiter().GetResult(); requestedRenderRevision = renderedRevision = state.Render?.Sequence ?? 0; Rebuild(); }
 	public void ShowSource() { var window = WorkbenchWindow; if (window == null) return; for (var i = 0; i < window.ViewContents.Count; i++) if (!ReferenceEquals(window.ViewContents[i], this)) { window.SwitchView(i); return; } }
-	void Mutate(Func<DesignerSessionState> action) { state = action(); PrimaryFile?.MakeDirty(); Rebuild(); QueueRender(); commands.Invalidate(); }
+	bool Mutate(Func<DesignerSessionState> action) { state = action(); if (state.Accepted) { PrimaryFile?.MakeDirty(); QueueRender(); } Rebuild(); commands.Invalidate(); return state.Accepted; }
 	void QueueRender()
 	{
 		if (host == null || !state.Accepted) return;
@@ -255,7 +259,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		DesignerElementNode Copy(DesignerElementNode node, string path)
 		{
 			paths[node.Id] = path;
-			var copy = new DesignerElementNode { Id = node.Id, Name = node.Name, Type = node.Type, X = node.X, Y = node.Y, Width = node.Width, Height = node.Height, Path = path, IsDesignable = node.Id != "$interface", IsVisible = node.IsVisible };
+			var copy = new DesignerElementNode { Id = node.Id, Name = node.Name, Type = node.Type, X = node.X, Y = node.Y, Width = node.Width, Height = node.Height, ZIndex = node.ZIndex, BaselineOffset = node.BaselineOffset, Path = path, IsDesignable = node.Id != "$interface", IsVisible = node.IsVisible, LayoutMode = node.LayoutMode };
 			for (var index = 0; index < node.Children.Count; index++)
 				copy.Children.Add(Copy(node.Children[index], path.Length == 0 ? index.ToString(System.Globalization.CultureInfo.InvariantCulture) : path + "," + index.ToString(System.Globalization.CultureInfo.InvariantCulture)));
 			return copy;
@@ -263,16 +267,6 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		var tree = root == null ? null : Copy(root, "");
 		pathById = paths;
 		return new DesignerSessionState { Accepted = true, Version = state.Version, Render = HasNativeFrame ? state.Render : null, Tree = tree };
-	}
-
-	/// <summary>The canvas's hit test. It runs on the UI thread from a pointer press, so it is
-	/// answered locally from the native GTK bounds the host already sent with the frame (the same
-	/// bounds its design/hit-test RPC uses), never with a blocking round-trip.</summary>
-	DesignCanvasHit? IDesignCanvasBackend.HitTest(double x, double y)
-	{
-		var root = state.Tree?.Id == "$interface" ? state.Tree.Children.FirstOrDefault() : state.Tree;
-		var hit = root == null ? null : NativeNodeAt(root, new Point(x, y));
-		return hit != null && pathById.TryGetValue(hit.Id, out var path) ? new DesignCanvasHit(true, path, new[] { hit.Id }) : new DesignCanvasHit(false, null, Array.Empty<string>());
 	}
 
 	/// <summary>A committed canvas drag: GTK positions nothing freely, so dropping an object onto a
@@ -300,6 +294,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		canvasController.ElementDragCommitted += (_, drag) => CommitCanvasDrag(drag);
 		canvasController.ElementGroupDragCommitted += (_, _) => canvasController.RestoreSelection(selection.SelectedIds);
 		canvasController.ContextCommandRequested += (_, command) => { if (command.Command == "delete") DeleteSelected(); };
+		canvas.RenameRequested += (_, _) => RequestRename();
 		canvasController.UndoRedoRequested += (_, undo) => { if (undo) Undo(); else Redo(); };
 		canvas.AllowDrop = true;
 		canvas.DragOver += (_, e) => {

@@ -1957,23 +1957,40 @@ namespace ICSharpCode.FormsDesigner
 			readonly Type propertyType;
 
 			public RemotePropertyDescriptor(FormsDesignerViewContent owner, string componentName, DesignerPropertyInfo property)
-				: base(property.Name, new Attribute[] { new CategoryAttribute(property.Category), new DescriptionAttribute(property.Description ?? ""), new ReadOnlyAttribute(property.IsReadOnly) })
+				: base(property.Name, CreateAttributes(property))
 			{
 				this.owner = owner;
 				this.componentName = componentName;
 				this.property = property;
-				propertyType = property.TypeName switch {
+				propertyType = property.Kind == "Enum" ? typeof(string) : property.TypeName switch {
 					"System.Boolean" => typeof(bool), "System.Byte" => typeof(byte), "System.Int16" => typeof(short),
 					"System.Int32" => typeof(int), "System.Int64" => typeof(long), "System.Single" => typeof(float),
 					"System.Double" => typeof(double), "System.Decimal" => typeof(decimal), _ => typeof(string)
 				};
 			}
 
+			static Attribute[] CreateAttributes(DesignerPropertyInfo property)
+			{
+				var attributes = new List<Attribute> { new CategoryAttribute(property.Category), new DescriptionAttribute(property.Description ?? ""), new ReadOnlyAttribute(IsProtocolReadOnly(property)) };
+				if (property.Kind == "Enum" && property.AllowedValues.Count > 0)
+					attributes.Add(new TypeConverterAttribute(typeof(RemoteEnumConverter)));
+				return attributes.ToArray();
+			}
+
+			// The DDP Kind is a contract, not merely a presentation hint.  A generic
+			// Properties pad must never submit an opaque display token (for example an
+			// image resource's "[binary]") if a host accidentally omitted IsReadOnly.
+			// Keep this equivalent to the WPF remote-property adapter.
+			static bool IsProtocolReadOnly(DesignerPropertyInfo property)
+				=> property.IsReadOnly || property.Kind is "Unsupported" or "Reference" or "ReadOnly";
+
+			internal IReadOnlyList<string> AllowedValues => property.AllowedValues;
+
 			public override Type ComponentType => typeof(RemoteComponentPropertyProxy);
 			public override string DisplayName => String.IsNullOrEmpty(property.DisplayName) ? property.Name : property.DisplayName;
-			public override bool IsReadOnly => property.IsReadOnly;
+			public override bool IsReadOnly => IsProtocolReadOnly(property);
 			public override Type PropertyType => propertyType;
-			public override bool CanResetValue(object component) => property.ShouldSerialize && !property.IsReadOnly;
+			public override bool CanResetValue(object component) => property.ShouldSerialize && !IsReadOnly;
 			public override object GetValue(object component)
 			{
 				if (property.IsNull) return null;
@@ -1982,12 +1999,14 @@ namespace ICSharpCode.FormsDesigner
 			}
 			public override void ResetValue(object component)
 			{
+				if (!CanResetValue(component)) return;
 				owner.ResetRemoteProperty(componentName, property.Name);
 				property.ShouldSerialize = false;
 				OnValueChanged(component, EventArgs.Empty);
 			}
 			public override void SetValue(object component, object value)
 			{
+				if (IsReadOnly) return;
 				var serialized = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? "";
 				owner.SetRemoteProperty(componentName, property.Name, serialized);
 				property.Value = serialized;
@@ -1995,6 +2014,16 @@ namespace ICSharpCode.FormsDesigner
 				OnValueChanged(component, EventArgs.Empty);
 			}
 			public override bool ShouldSerializeValue(object component) => property.ShouldSerialize;
+		}
+
+		sealed class RemoteEnumConverter : StringConverter
+		{
+			public override bool GetStandardValuesSupported(ITypeDescriptorContext context)
+				=> context?.PropertyDescriptor is RemotePropertyDescriptor;
+			public override bool GetStandardValuesExclusive(ITypeDescriptorContext context)
+				=> context?.PropertyDescriptor is RemotePropertyDescriptor;
+			public override StandardValuesCollection GetStandardValues(ITypeDescriptorContext context)
+				=> new((context?.PropertyDescriptor as RemotePropertyDescriptor)?.AllowedValues.ToArray() ?? Array.Empty<string>());
 		}
 
 		#region IUndoHandler implementation
