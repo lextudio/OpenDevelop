@@ -1790,7 +1790,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				nodeInfo.Width = bounds.Width;
 				nodeInfo.Height = bounds.Height;
 				nodeInfo.ZIndex = path.Length == 0 ? null : Canvas.GetZIndex(fe);
-				nodeInfo.BaselineOffset = fe is TextBlock text ? text.BaselineOffset : null;
+				nodeInfo.BaselineOffset = GetBaselineOffset(fe);
 				// Only TabIndex is populated here (not the WPF host's full property reflection) -
 				// this designer's Properties pad is driven off WinUIXamlElementPropertyAdapter
 				// reading the host-owned XAML document directly, not this per-node list; TabIndex
@@ -1830,6 +1830,21 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				}
 			}
 			return nodeInfo;
+		}
+
+		// BaselineOffset is native WinUI telemetry, but compatible runtimes can omit it. Keep
+		// the wire field optional so a LibreWPF host remains loadable and simply reports no
+		// baseline for that runtime.
+		static double? GetBaselineOffset(FrameworkElement element)
+		{
+			if (element is not TextBlock)
+				return null;
+			try {
+				var property = element.GetType().GetProperty("BaselineOffset", BindingFlags.Instance | BindingFlags.Public);
+				return property?.GetValue(element) is double baseline ? baseline : null;
+			} catch {
+				return null;
+			}
 		}
 
 		/// <summary>Whether this element is actually on screen - see DesignerElementNode.IsVisible

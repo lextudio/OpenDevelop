@@ -108,6 +108,53 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
+    public async Task PropertiesPad_ResetProperty_RemovesTheAuthoredXamlValue()
+    {
+        // Reset must travel through the same visible PropertyGrid descriptor that exposes the
+        // user-facing reset command, rather than calling the child's reset RPC directly.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Property reset">
+              <Grid><TextBlock x:Name="owner" Text="Authored text" /></Grid>
+            </Window>
+            """);
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+
+            JsonElement selected = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                selected = await app.InvokeAsync("od.wpf-designer.select", "owner");
+                return selected.GetProperty("success").GetBoolean()
+                    && selected.GetProperty("propertiesPadSelectedName").GetString() == "owner";
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), selected.ToString());
+            var reset = await app.InvokeAsync("od.wpf-designer.properties-pad.reset", "Text");
+            Assert.True(reset.GetProperty("success").GetBoolean(), reset.ToString());
+            Assert.Equal("owner", reset.GetProperty("selectedName").GetString());
+
+            var savedResult = await app.InvokeAsync("od.file.save", xamlPath);
+            Assert.True(savedResult.GetProperty("success").GetBoolean(), savedResult.ToString());
+            var saved = await File.ReadAllTextAsync(xamlPath);
+            Assert.Contains("x:Name=\"owner\"", saved, StringComparison.Ordinal);
+            Assert.DoesNotContain("Text=", saved, StringComparison.Ordinal);
+            Assert.DoesNotContain("Authored text", saved, StringComparison.Ordinal);
+        } finally {
+            await app.InvokeAsync("od.close-active-view");
+            await File.WriteAllTextAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task MenuItem_DoubleClick_InlineEditsHeader_AndUndoRestoresIt()
     {
         if (!OperatingSystem.IsWindows()) return;

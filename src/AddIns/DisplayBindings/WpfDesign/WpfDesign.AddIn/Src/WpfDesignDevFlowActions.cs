@@ -715,6 +715,34 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.wpf-designer.properties-pad.reset", Description = "Reset a serializable WPF property through the live Properties pad descriptor; uses the same ResetValue path as the Properties pad reset command")]
+		public static string ResetPropertyThroughPropertiesPad(string propertyName)
+		{
+			var grid = PropertyPadGrid;
+			if (grid == null)
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad is not available" });
+			if (!(grid.SelectedObject is WpfSurfaceElementPropertyAdapter selectedObject))
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
+
+			var item = grid.Properties?.OfType<PropertyItem>()
+				.FirstOrDefault(candidate => candidate.PropertyName == propertyName);
+			if (item?.PropertyDescriptor == null)
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad property not found: " + propertyName });
+			if (!item.PropertyDescriptor.CanResetValue(selectedObject))
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad property cannot be reset: " + propertyName });
+
+			try {
+				item.PropertyDescriptor.ResetValue(selectedObject);
+				return JsonSerializer.Serialize(new {
+					success = true,
+					selectedName = selectedObject.GetComponentName(),
+					propertyName = item.PropertyName
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+			}
+		}
+
 		/// <summary>
 		/// The WPF designer registers as a secondary view content alongside the primary AvalonEdit
 		/// text view for .xaml files. Both are mounted in the split layout, but this helper still

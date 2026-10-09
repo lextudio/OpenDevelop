@@ -75,7 +75,7 @@ sealed class ProGpuDesignTree
 			IsVisible = IsEffectivelyVisible(node),
 			LayoutMode = layoutMode,
 			ZIndex = path.Length == 0 ? null : node is FrameworkElement zOrdered ? Canvas.GetZIndex(zOrdered) : null,
-			BaselineOffset = node is TextBlock text ? text.BaselineOffset : null,
+			BaselineOffset = GetBaselineOffset(node),
 		};
 		if (node is FrameworkElement element)
 		{
@@ -100,6 +100,21 @@ sealed class ProGpuDesignTree
 			index++;
 		}
 		return info;
+	}
+
+	// BaselineOffset exists on native WinUI TextBlock but is not implemented by every
+	// Microsoft.UI.Xaml-compatible runtime. It is optional snapshot telemetry, so omit it
+	// when unavailable instead of making the design host unloadable.
+	static double? GetBaselineOffset(Visual node)
+	{
+		if (node is not TextBlock)
+			return null;
+		try {
+			var property = node.GetType().GetProperty("BaselineOffset", BindingFlags.Instance | BindingFlags.Public);
+			return property?.GetValue(node) is double baseline ? baseline : null;
+		} catch {
+			return null;
+		}
 	}
 
 	/// <summary>Collapsed anywhere up the chain means not on screen (the root excluded: it is the
