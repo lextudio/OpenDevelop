@@ -1468,12 +1468,17 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 							}
 							catch { operation.Abort(); throw; }
 						}
-						catch
+						catch (Exception placementFailure)
 						{
 							// Match the single-element RPC: a container that cannot place still
-							// permits a size-only edit rather than rejecting the whole gesture.
+							// permits a size-only edit rather than rejecting the whole gesture. Keep
+							// the original placement failure visible for diagnostics.
 							items[i].Properties["Width"].SetValue(edit.Width);
 							items[i].Properties["Height"].SetValue(edit.Height);
+							state.Diagnostics.Add(new DesignerDiagnostic {
+								Severity = "Warning",
+								Message = "Placement failed; applied size-only bounds fallback: " + placementFailure.GetBaseException().Message
+							});
 						}
 					}
 					changeGroup.Commit();
@@ -1595,12 +1600,10 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
-		/// <summary>Moves or extends children after inserting a track.  A logical Grid span alone
-		/// is insufficient here: controls may be aligned, margined, or occupy only one end of a
-		/// spanned cell.  Use their measured bounds to retain which side of the new divider they
-		/// visibly occupied, matching the legacy Grid adorner's split behavior.</summary>
-			static void FixGridChildIndicesAfterSplit(DesignItem gridItem, int splitIndex,
-				DependencyProperty indexProperty, DependencyProperty spanProperty)
+		/// <summary>Updates logical Grid indices after inserting a track: children after the split
+		/// move with it, while a child spanning the split retains its leading cell and gains one span.</summary>
+		static void FixGridChildIndicesAfterSplit(DesignItem gridItem, int splitIndex,
+			DependencyProperty indexProperty, DependencyProperty spanProperty)
 		{
 			foreach (var child in gridItem.Properties["Children"].CollectionElements)
 			{
@@ -1608,15 +1611,15 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				var spanPropertyValue = child.Properties.GetAttachedProperty(spanProperty);
 				var start = index.GetConvertedValueOnInstance<int>();
 				var span = Math.Max(1, spanPropertyValue.GetConvertedValueOnInstance<int>());
-					if (start > splitIndex) {
-						index.SetValue(start + 1);
-						continue;
-					}
-					if (splitIndex >= start + span)
-						continue;
-					// The split lies inside this child's declared cell span. Keep its leading cell
-					// and extend the span over the new track.
-					spanPropertyValue.SetValue(span + 1);
+				if (start > splitIndex) {
+					index.SetValue(start + 1);
+					continue;
+				}
+				if (splitIndex >= start + span)
+					continue;
+				// The split lies inside this child's declared cell span. Keep its leading cell
+				// and extend the span over the new track.
+				spanPropertyValue.SetValue(span + 1);
 			}
 		}
 
@@ -2211,28 +2214,6 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			AppendAttachedContextMenu(item, root, path, node);
 			AppendHeaderContent(item, root, path, node);
 			return node;
-		}
-
-		/// <summary>Reports bindings from the design model, not from a runtime value. A headless
-		/// preview can intentionally lack a DataContext, so claiming Success/Error from the rendered
-		/// value would be misleading and could run user converters. This still gives the shell an
-		/// authoritative, child-owned explanation of which source properties are data-bound.</summary>
-		static List<DesignerBindingInfo> BuildBindingTelemetry(DesignItem item)
-		{
-			if (item.ComponentType == null)
-				return new List<DesignerBindingInfo>();
-			var result = new List<DesignerBindingInfo>();
-			foreach (var descriptor in BrowsableProperties(item.ComponentType))
-			{
-				try
-				{
-					var property = item.Properties[descriptor.Name];
-					if (property?.Value is DesignItem reference && reference.Component is System.Windows.Data.BindingBase)
-						result.Add(new DesignerBindingInfo { Property = descriptor.Name });
-				}
-				catch { /* a lazy/non-WPF property is not binding telemetry */ }
-			}
-			return result;
 		}
 
 		/// <summary>Publishes only edge measurements whose container semantics WPF can state
