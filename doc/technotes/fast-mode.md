@@ -667,3 +667,28 @@ created by `TryEvaluateForTargetFramework` (`LanguageServiceProjectSnapshot.cs:1
 | 5 | ReadyToRun RoslynHost and XAML servers; shared XAML server | Cold-start cost of the children |
 | 6 | Defer non-essential Autostart work | Window shows sooner |
 | 7 | Build acceleration, graph build | Only if 1 and 4 are not enough |
+
+## Regression coverage
+
+Each optimization above has a test that fails if it is undone or if it skips real work:
+
+| Area | Test |
+|---|---|
+| Fast up-to-date check, positive case | `PerformanceGateTests.SecondBuildOfAnUnchangedSolution_SkipsEveryProject` |
+| ...counter-cases (must build) | `ChangedSourceFile_IsBuilt`, `AddedOrRemovedGlobbedSourceFile_IsBuilt`, `ChangedReferencedProject_BuildsItsDependentsToo` |
+| One-process build, end to end (App → Feature → Core, then running App) | `OneProcessBuildTests.ChangeAtTheBottomOfTheChain_RebuildsEverythingInOneProcess` |
+| One-process build failure and recovery (exact file/line/code, no stale up-to-date record) | `OneProcessBuildTests.FailureInTheSharedBuild_IsReportedAndRecoveredFrom` |
+| Batched reference resolution, global.json batching | `OpenDevelop.Base.Tests/ReferenceResolutionBatchTests` (pure functions in `ReferenceResolutionBatch`, plus one real `dotnet msbuild` run) |
+| Hot Reload platform gating | `OpenDevelop.Base.Tests/HotReloadAdapterPlatformTests` |
+| Idle CPU after solution open / after an ILSpy search | `IdleWindow_DoesNotKeepTheCpuBusy`, `IdleAfterAnIlSpySearch_DoesNotKeepTheCpuBusy` |
+
+Found by the end-to-end test: under a symlinked path (macOS `/var` → `/private/var`) the one-process
+traversal produced a `deps.json` without the project references, so App failed at run time with
+`FileNotFoundException` for Feature. The traversal now uses real paths (`MinimalMSBuildEngine.RealPath`).
+
+The ILSpy idle gate compares against a baseline measured just before the search, not an absolute
+threshold: on the development Mac the idle floor of the test instance is already ~34% of a core,
+and a finished search adds a burst of ~12 points that is gone within 4 s.
+
+Known imprecision, not fixed: a project's own restore rewriting `project.assets.json` makes the
+next fast up-to-date check rebuild it once.
