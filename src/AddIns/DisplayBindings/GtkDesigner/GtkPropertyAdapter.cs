@@ -119,7 +119,7 @@ sealed class GtkPropertyDescriptor : PropertyDescriptor
 	// Kind is an edit contract shared by every snapshot-driven Properties pad.  Do not
 	// send an opaque/reference token back to GtkBuilder if a host omitted IsReadOnly.
 	static bool IsProtocolReadOnly(DesignerPropertyInfo info)
-		=> info.IsReadOnly || info.Kind is "Unsupported" or "Reference" or "ReadOnly";
+		=> DesignerPropertySemantics.IsReadOnly(info);
 
 	internal IReadOnlyList<string> AllowedValues => info.AllowedValues;
 	/// <summary>Flags combine with '|', so their text is free; a plain enum is one of its nicks.</summary>

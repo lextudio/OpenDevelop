@@ -193,7 +193,7 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor
 		// opaque diagnostic display value into an editable string if a child omitted the
 		// redundant IsReadOnly flag; Forms applies the same defensive rule.
 		static bool IsProtocolReadOnly(DesignerPropertyInfo property)
-			=> property.IsReadOnly || property.Kind is "Unsupported" or "Reference" or "ReadOnly";
+			=> DesignerPropertySemantics.IsReadOnly(property);
 
 		internal System.Collections.Generic.IReadOnlyList<string> AllowedValues => property.AllowedValues;
 

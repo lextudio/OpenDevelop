@@ -123,7 +123,7 @@ sealed class MewUIPropertyDescriptor : PropertyDescriptor
 		if (info.Kind == "Enum" && info.AllowedValues.Count > 0) attributes.Add(new TypeConverterAttribute(typeof(MewUIEnumConverter)));
 		return attributes.ToArray();
 	}
-	static bool IsProtocolReadOnly(DesignerPropertyInfo info) => info.IsReadOnly || info.Kind is "Unsupported" or "Reference" or "ReadOnly";
+	static bool IsProtocolReadOnly(DesignerPropertyInfo info) => DesignerPropertySemantics.IsReadOnly(info);
 	internal IReadOnlyList<string> AllowedValues => info.AllowedValues;
 	public override Type ComponentType => typeof(MewUIPropertyAdapter);
 	public override Type PropertyType => type;

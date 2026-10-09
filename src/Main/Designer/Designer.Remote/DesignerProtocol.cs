@@ -547,6 +547,22 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public string EditorKind { get; set; } = "";
 	}
 
+	/// <summary>
+	/// Defines the property kinds a snapshot consumer must never submit through a generic scalar
+	/// editor.  <see cref="DesignerPropertyInfo.IsReadOnly"/> remains the host's explicit flag,
+	/// but opaque and reference-shaped values are an edit boundary even when an older or faulty
+	/// host omits that redundant flag.
+	/// </summary>
+	public static class DesignerPropertySemantics
+	{
+		public static bool IsReadOnly(DesignerPropertyInfo property)
+		{
+			if (property == null)
+				throw new ArgumentNullException(nameof(property));
+			return property.IsReadOnly || property.Kind is "Unsupported" or "Reference" or "ReadOnly";
+		}
+	}
+
 	/// <summary>Versioned edit set returned by session/flush; applied atomically at BaseVersion.</summary>
 	public sealed class DesignerEditSet
 	{

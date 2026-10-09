@@ -2019,7 +2019,7 @@ namespace ICSharpCode.FormsDesigner
 			// image resource's "[binary]") if a host accidentally omitted IsReadOnly.
 			// Keep this equivalent to the WPF remote-property adapter.
 			static bool IsProtocolReadOnly(DesignerPropertyInfo property)
-				=> property.IsReadOnly || property.Kind is "Unsupported" or "Reference" or "ReadOnly";
+				=> DesignerPropertySemantics.IsReadOnly(property);
 
 			internal IReadOnlyList<string> AllowedValues => property.AllowedValues;
 
