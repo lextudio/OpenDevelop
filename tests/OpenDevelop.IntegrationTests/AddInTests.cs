@@ -1779,6 +1779,7 @@ public sealed class AddInTests : IAsyncDisposable
     public async Task WinUIDesigner_PropertiesPadReset_RemovesTheAuthoredXamlValue()
     {
         var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
+        var bodySucceeded = false;
         try
         {
             await OpenUnoDesignerAsync();
@@ -1800,11 +1801,31 @@ public sealed class AddInTests : IAsyncDisposable
             var primaryButton = savedDocument.Descendants()
                 .Single(element => element.Attributes().Any(attribute => attribute.Name.LocalName == "Name" && attribute.Value == "PrimaryButton"));
             Assert.Null(primaryButton.Attribute("Content"));
+            bodySucceeded = true;
         }
         finally
         {
-            await _app.InvokeAsync("od.close-active-view");
-            await File.WriteAllTextAsync(_unoPagePath, originalXaml);
+            JsonElement closed = default;
+            try
+            {
+                // Close every document window, not the cached active view: a half-loaded
+                // designer can otherwise stay open and retain a stale buffer into the next test.
+                // The action force-closes without a save prompt.
+                closed = await _app.InvokeAsync("od.close-all-document-views");
+            }
+            catch when (!bodySucceeded)
+            {
+                // Preserve the assertion that originally failed; fixture restoration below still
+                // runs, and a close failure is secondary to that test result.
+            }
+            finally
+            {
+                // Restore even when the close action itself fails, so cleanup never turns a
+                // transient UI failure into a modified shared fixture for later tests.
+                await File.WriteAllTextAsync(_unoPagePath, originalXaml);
+            }
+            if (bodySucceeded)
+                Assert.True(closed.GetProperty("success").GetBoolean(), closed.ToString());
         }
     }
 
@@ -3605,6 +3626,7 @@ public sealed class AddInTests : IAsyncDisposable
         var designerPath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.Designer.cs");
         var originalForm = await File.ReadAllTextAsync(formCodePath);
         var originalDesigner = await File.ReadAllTextAsync(designerPath);
+        var bodySucceeded = false;
 
         try {
             await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath);
@@ -3732,9 +3754,26 @@ public sealed class AddInTests : IAsyncDisposable
             savedDesigner = await File.ReadAllTextAsync(designerPath);
             Assert.DoesNotContain("nudged-label", savedDesigner, StringComparison.Ordinal);
             Assert.DoesNotContain("label1.Text", savedDesigner, StringComparison.Ordinal);
+            bodySucceeded = true;
         } finally {
-            await File.WriteAllTextAsync(formCodePath, originalForm);
-            await File.WriteAllTextAsync(designerPath, originalDesigner);
+            JsonElement closed = default;
+            try
+            {
+                // Force-close all document windows because ActiveViewContent is cached and can
+                // identify a just-closed tab during a long integration run.
+                closed = await _app.InvokeAsync("od.close-all-document-views");
+            }
+            catch when (!bodySucceeded)
+            {
+                // Do not replace the journey's original failure with a secondary close error.
+            }
+            finally
+            {
+                await File.WriteAllTextAsync(formCodePath, originalForm);
+                await File.WriteAllTextAsync(designerPath, originalDesigner);
+            }
+            if (bodySucceeded)
+                Assert.True(closed.GetProperty("success").GetBoolean(), closed.ToString());
         }
     }
 
