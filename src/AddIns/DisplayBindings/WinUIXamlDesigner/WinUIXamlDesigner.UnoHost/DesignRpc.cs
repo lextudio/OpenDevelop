@@ -9,6 +9,7 @@
 // LogPrefix is the one thing a host sets, so stderr diagnostics still name the right child.
 
 using System;
+using System.Linq;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using StreamJsonRpc;
 using System.Security.Cryptography;
@@ -21,19 +22,19 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 		public static void RegisterRpcMethods(JsonRpc rpc, string expectedToken)
 		{
-			rpc.AddLocalRpcMethod("initialize", new Func<string, int, string, DesignerCapabilities>((token, protocolVersion, sessionId) => Initialize(expectedToken, token, protocolVersion, sessionId)));
-			rpc.AddLocalRpcMethod("session/open", new Func<string, string, string, double, double, double, DesignerSessionState>(OpenSession));
-			rpc.AddLocalRpcMethod("session/update", new Func<string, string, string, double, double, double, long, DesignerSessionState>(UpdateSession));
+			rpc.AddLocalRpcMethod("initialize", new Func<string, int, string, HostHandshake>((token, protocolVersion, sessionId) => Initialize(expectedToken, token, protocolVersion, sessionId)));
+			rpc.AddLocalRpcMethod("session/open", new Func<DesignerDocumentRequest, DesignerSessionState>(OpenSession));
+			rpc.AddLocalRpcMethod("session/update", new Func<DesignerDocumentRequest, DesignerSessionState>(UpdateSession));
 			rpc.AddLocalRpcMethod("session/flush", new Func<string, string, long, DesignerEditSet>(FlushSession));
 			rpc.AddLocalRpcMethod("session/close", new Action<string, string>(CloseSession));
 			rpc.AddLocalRpcMethod("design/set-property", new Func<string, string, long, string, string, string, DesignerSessionState>(SetProperty));
 			rpc.AddLocalRpcMethod("design/set-event", new Func<string, string, long, string, string, string, DesignerSessionState>(SetEvent));
-			rpc.AddLocalRpcMethod("design/add-element", new Func<string, string, long, string, DesignerToolboxItemInfo, double, double, DesignerSessionState>(AddElement));
+			rpc.AddLocalRpcMethod("design/add-element", new Func<string, string, long, string, DesignerToolboxItemInfo, string, double, double, DesignerDropTarget, DesignerSessionState>(AddElement));
 			rpc.AddLocalRpcMethod("design/set-bounds", new Func<string, string, long, string, double, double, double, double, DesignerSessionState>(SetBounds));
 			rpc.AddLocalRpcMethod("design/delete-elements", new Func<string, string, long, string[], DesignerSessionState>(DeleteElements));
 			rpc.AddLocalRpcMethod("design/rename", new Func<string, string, long, string, string, DesignerSessionState>(Rename));
-			rpc.AddLocalRpcMethod("design/theme", new Func<string, string, string, DesignerSessionState>(SetTheme));
-			rpc.AddLocalRpcMethod("design/go-to-state", new Func<string, string, string, string, DesignerSessionState>(GoToState));
+			rpc.AddLocalRpcMethod("design/theme", new Func<string, string, long, string, DesignerSessionState>(SetTheme));
+			rpc.AddLocalRpcMethod("design/go-to-state", new Func<string, string, long, string, string, DesignerSessionState>(GoToState));
 			rpc.AddLocalRpcMethod("app/resources", new Func<string, string, string, DesignerAppResourcesResult>(LoadAppResources));
 			rpc.AddLocalRpcMethod("design/hit-test", new Func<string, string, long, double, double, DesignerHitTestResult>(HitTest));
 			rpc.AddLocalRpcMethod("design/export-png", new Func<string, string, string, string>(ExportPng));
@@ -57,13 +58,19 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		/// then returns the runtime capabilities - one round trip for handshake + capabilities,
 		/// matching the common designer protocol's initialize contract.
 		/// </summary>
-		static DesignerCapabilities Initialize(string expectedToken, string token, int protocolVersion, string sessionId)
+		static HostHandshake Initialize(string expectedToken, string token, int protocolVersion, string sessionId)
 		{
 			DesignerHostHandshakeValidator.Validate(expectedToken, token, protocolVersion);
 			var capabilities = Capabilities();
 			hosts.Initialize(sessionId);
 			capabilities.SessionId = sessionId;
-			return capabilities;
+			return new HostHandshake {
+				ProtocolVersion = DesignerProtocol.Version,
+				Runtime = capabilities.Runtime,
+				ProcessId = Environment.ProcessId,
+				SessionId = sessionId,
+				Capabilities = capabilities
+			};
 		}
 
 		static DesignerCapabilities Capabilities()
@@ -72,18 +79,43 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			catch (Exception e) { LogRpcError("initialize", e); throw; }
 		}
 
-		static DesignerSessionState OpenSession(string sessionId, string documentId, string xaml, double width, double height, double dpi)
+		static DesignerSessionState OpenSession(DesignerDocumentRequest request)
 		{
+			var snapshot = request.Snapshot;
+			var viewport = request.Viewport ?? new DesignerViewport { Width = 1280, Height = 720 };
+			var xaml = PrimaryText(snapshot);
+			var sessionId = snapshot.SessionId;
+			var documentId = snapshot.DocumentId;
+			var width = viewport.Width;
+			var height = viewport.Height;
+			var dpi = viewport.Dpi;
 			Console.Error.WriteLine($"{LogPrefix}: session/open received ({xaml.Length} chars, {width}x{height} @ dpi {dpi:0.##})");
 			try { return OpenHost(sessionId, documentId).OpenSession(sessionId, documentId, xaml, width, height, dpi); }
 			catch (Exception e) { LogRpcError("session/open", e); throw; }
 		}
 
-		static DesignerSessionState UpdateSession(string sessionId, string documentId, string xaml, double width, double height, double dpi, long baseVersion)
+		static DesignerSessionState UpdateSession(DesignerDocumentRequest request)
 		{
+			var snapshot = request.Snapshot;
+			var viewport = request.Viewport ?? new DesignerViewport { Width = 1280, Height = 720 };
+			var xaml = PrimaryText(snapshot);
+			var sessionId = snapshot.SessionId;
+			var documentId = snapshot.DocumentId;
+			var width = viewport.Width;
+			var height = viewport.Height;
+			var dpi = viewport.Dpi;
+			var baseVersion = snapshot.Version;
 			Console.Error.WriteLine($"{LogPrefix}: session/update received ({xaml.Length} chars, {width}x{height} @ dpi {dpi:0.##}, v{baseVersion})");
 			try { return ExistingHost(sessionId, documentId).UpdateSession(sessionId, documentId, xaml, width, height, dpi, baseVersion); }
 			catch (Exception e) { LogRpcError("session/update", e); throw; }
+		}
+
+		static string PrimaryText(DesignerDocumentSnapshot snapshot)
+		{
+			var file = snapshot.Files.FirstOrDefault(item => item.FileName == snapshot.PrimaryFileName)
+				?? snapshot.Files.FirstOrDefault(item => item.Kind == "Source")
+				?? snapshot.Files.FirstOrDefault();
+			return file?.Text ?? "";
 		}
 
 		static DesignerEditSet FlushSession(string sessionId, string documentId, long baseVersion)
@@ -103,7 +135,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			try { return ExistingHost(sessionId, documentId).SetEvent(sessionId, documentId, baseVersion, elementId, eventName, handlerName); }
 			catch (Exception e) { LogRpcError("design/set-event", e); throw; }
 		}
-		static DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, double x, double y)
+		static DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget)
 		{
 			try { return ExistingHost(sessionId, documentId).AddElement(sessionId, documentId, baseVersion, parentId, item, x, y); }
 			catch (Exception e) { LogRpcError("design/add-element", e); throw; }
@@ -143,16 +175,16 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			try { return OpenHost(sessionId, documentId).LoadAppResources(xaml); }
 			catch (Exception e) { LogRpcError("app/resources", e); throw; }
 		}
-		static DesignerSessionState SetTheme(string sessionId, string documentId, string theme)
+		static DesignerSessionState SetTheme(string sessionId, string documentId, long baseVersion, string theme)
 		{
 			Console.Error.WriteLine($"{LogPrefix}: design/theme received ({theme})");
-			try { return ExistingHost(sessionId, documentId).SetTheme(theme); }
+			try { return ExistingHost(sessionId, documentId).SetTheme(sessionId, documentId, baseVersion, theme); }
 			catch (Exception e) { LogRpcError("design/theme", e); throw; }
 		}
-		static DesignerSessionState GoToState(string sessionId, string documentId, string group, string state)
+		static DesignerSessionState GoToState(string sessionId, string documentId, long baseVersion, string group, string state)
 		{
 			Console.Error.WriteLine($"{LogPrefix}: design/go-to-state received (group={group}, state={(string.IsNullOrEmpty(state) ? "(none)" : state)})");
-			try { return ExistingHost(sessionId, documentId).GoToState(group, state); }
+			try { return ExistingHost(sessionId, documentId).GoToState(sessionId, documentId, baseVersion, group, state); }
 			catch (Exception e) { LogRpcError("design/go-to-state", e); throw; }
 		}
 

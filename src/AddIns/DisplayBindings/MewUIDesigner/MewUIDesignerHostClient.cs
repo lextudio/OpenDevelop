@@ -10,8 +10,8 @@ sealed class MewUIDesignerHostClient : RecoverableDesignerDocumentHostClient, ID
 	MewUIDesignerHostClient(Connection connection) : base(connection) { this.connection = connection; connection.HostExited += OnHostExited; lock (clientsGate) clients.Add(this); }
 	public static async Task<MewUIDesignerHostClient> CreateAsync(CancellationToken token = default) => new(await broker.AcquireAsync(token).ConfigureAwait(false));
 	static async Task<Connection> StartConnectionAsync(CancellationToken token) { var path = Path.Combine(Path.GetDirectoryName(typeof(MewUIDesignerHostClient).Assembly.Location)!, "Host", "MewUIDesigner.Host.dll"); var connection = new Connection(path); await connection.StartConnectionAsync(token).ConfigureAwait(false); return connection; }
-	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot s, CancellationToken t = default) => OpenRecoverableAsync(s, t);
-	public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot s, CancellationToken t = default) => UpdateRecoverableAsync(s, t);
+	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot s, CancellationToken t = default, DesignerViewport? viewport = null) => OpenRecoverableAsync(s, t, viewport);
+	public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot s, CancellationToken t = default, DesignerViewport? viewport = null) => UpdateRecoverableAsync(s, t, viewport);
 	public Task<DesignerEditSet> FlushAsync(long v, CancellationToken t = default) => Document.FlushAsync(v, t);
 	public Task<DesignerSessionState> SetPropertyAsync(long v, string id, string p, string value, CancellationToken t = default) => TrackMutationAsync(Document.SetPropertyAsync(v, id, p, value, t), t);
 	public Task<DesignerSessionState> AddElementAsync(long v, string parent, DesignerToolboxItemInfo item, string name, double x, double y, DesignerDropTarget dropTarget = null, CancellationToken t = default) => TrackMutationAsync(Document.AddElementAsync(v, parent, item, name, x, y, dropTarget, t), t);
@@ -33,7 +33,7 @@ sealed class MewUIDesignerHostClient : RecoverableDesignerDocumentHostClient, ID
 		return recoveredState ?? throw new IOException("MewUI designer document was not recovered after host termination.");
 	}
 	static MewUIDesignerHostClient[] GetAffectedClients(Connection failed) { lock (clientsGate) return clients.Where(c => !c.disposed && ReferenceEquals(c.connection, failed)).ToArray(); }
-	async Task RestoreAsync(Connection replacement, CancellationToken token) { connection.HostExited -= OnHostExited; connection = replacement; RebindConnection(replacement); replacement.HostExited += OnHostExited; recoveredState = await Document.OpenAsync(RecoverySnapshot!, token).ConfigureAwait(false); RecoveryCount++; Recovered?.Invoke(this, recoveredState); }
+	async Task RestoreAsync(Connection replacement, CancellationToken token) { connection.HostExited -= OnHostExited; connection = replacement; RebindConnection(replacement); replacement.HostExited += OnHostExited; recoveredState = await Document.OpenAsync(RecoverySnapshot!, RecoveryViewport, token).ConfigureAwait(false); RecoveryCount++; Recovered?.Invoke(this, recoveredState); }
 	public void Dispose() { if (disposed) return; disposed = true; connection.HostExited -= OnHostExited; DetachHostConnection(); lock (clientsGate) clients.Remove(this); try { ShutdownAsync(CancellationToken.None).Wait(TimeSpan.FromSeconds(3)); } catch { } broker.Release(connection); }
 	void OnHostExited(object? sender, EventArgs e) { _ = recovery.RecoverAllAsync(connection, false, CancellationToken.None); }
 	void OnRecoveryFailed(Exception exception) => RecoveryFailed?.Invoke(this, exception);

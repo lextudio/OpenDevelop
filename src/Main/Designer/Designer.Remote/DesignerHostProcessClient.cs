@@ -29,6 +29,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		Process process = null!;
 		TcpClient tcp = null!;
 		JsonRpc rpc = null!;
+		/// <summary>The authenticated common handshake for the current child connection. Runtime
+		/// adapters may read its optional capabilities, but must not replace the common validation.
+		/// </summary>
+		protected HostHandshake Handshake { get; private set; } = null!;
 		volatile bool disposing;
 		bool started;
 
@@ -111,6 +115,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				throw new InvalidDataException("The designer host returned an incompatible handshake.");
 			if (handshake.SessionId != SessionId)
 				throw new InvalidDataException("The designer host did not echo the expected session id.");
+			Handshake = handshake;
 		}
 
 		/// <summary>Spawns the child and completes the authenticated handshake.</summary>

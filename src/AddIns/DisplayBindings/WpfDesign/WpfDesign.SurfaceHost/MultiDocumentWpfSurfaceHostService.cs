@@ -41,9 +41,9 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	}
 
 	[JsonRpcMethod("session/open")]
-	public DesignerSessionState Open(DesignerDocumentSnapshot snapshot) => Get(snapshot.SessionId, snapshot.DocumentId).Open(snapshot);
+	public DesignerSessionState Open(DesignerDocumentRequest request) => Get(request.Snapshot.SessionId, request.Snapshot.DocumentId).Open(request);
 	[JsonRpcMethod("session/update")]
-	public DesignerSessionState Update(DesignerDocumentSnapshot snapshot) => Checked(snapshot.SessionId, snapshot.DocumentId).Update(snapshot);
+	public DesignerSessionState Update(DesignerDocumentRequest request) => Checked(request.Snapshot.SessionId, request.Snapshot.DocumentId).Update(request);
 	[JsonRpcMethod("session/flush")]
 	public DesignerEditSet Flush(string sessionId, string documentId, long baseVersion) => Checked(sessionId, documentId).Flush(sessionId, documentId, baseVersion);
 	[JsonRpcMethod("session/close")]

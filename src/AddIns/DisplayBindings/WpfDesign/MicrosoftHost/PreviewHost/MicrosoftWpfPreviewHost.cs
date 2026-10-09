@@ -22,8 +22,8 @@ sealed class Service(string expectedToken) : IDesignerChildService {
 		sessionId = session;
 		return new HostHandshake { ProtocolVersion = DesignerProtocol.Version, Runtime = "WPF", ProcessId = Environment.ProcessId, SessionId = session };
 	}
-	[JsonRpcMethod("session/open")] public DesignerSessionState Open(DesignerDocumentSnapshot s) => Load(s, create: true);
-	[JsonRpcMethod("session/update")] public DesignerSessionState Update(DesignerDocumentSnapshot s) => Load(s, create: false);
+	[JsonRpcMethod("session/open")] public DesignerSessionState Open(DesignerDocumentRequest request) => Load(request.Snapshot, create: true);
+	[JsonRpcMethod("session/update")] public DesignerSessionState Update(DesignerDocumentRequest request) => Load(request.Snapshot, create: false);
 	DesignerSessionState Load(DesignerDocumentSnapshot s, bool create) {
 		try {
 			if (create) documents.GetOrAdd(s.SessionId, s.DocumentId, static () => new object());

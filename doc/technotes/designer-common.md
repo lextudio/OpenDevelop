@@ -1505,13 +1505,23 @@ scaffolding, and DevFlow plumbing.
 2. **RPC parameter names differ across the three clients** even though the DTOs are shared:
    `version` (WinForms/Uno) vs `baseVersion` (WPF), `componentName` vs `elementName` vs
    `elementId`, `controlType` vs `itemXaml` vs `item`. "JSON field names are the contract" —
-   then there are three contracts. Unify toward the superset; WinForms/Uno then converge into a
-   shared template. (open)
+   then there are three contracts. **The `session/open` and `session/update` part is now done
+   (2026-10-08):** all backends accept `DesignerDocumentRequest { Snapshot, Viewport }`; the
+   public `IDesignHostClient` lifecycle methods expose the optional viewport as well, and the
+   recoverable clients retain the last accepted viewport when reopening a crashed child.
+   `UnoDesignHostRpcTests.SharedHost_RecoversEveryOpenDocumentAfterTheChildExits` covers an
+   explicit viewport across a shared-child restart and a following source-only update.
+   `design/add-element` and `design/delete-elements` now also use the common `proposedName` /
+   `dropTarget` / `elementIds` fields, and theme/state mutations carry `baseVersion`.
+   Remaining backend-specific mutation payloads still need convergence toward the superset; WinForms/Uno then converge into
+   a shared template. (open)
 3. ~~**WPF event-binding capability declaration.**~~ Done: `design/set-event` lives on the
    optional `IDesignHostEventBinding`. Forms, Uno, GTK and MewUI opt in; WPF does not advertise
    a callable operation until it has a real child-to-host event-binding implementation.
-4. **WinUI skips the handshake protocol-version check** (only echoes `SessionId`); WPF checks.
-   Align on the DDP rule (reject mismatched version, report both ranges).
+4. ~~**WinUI skips the handshake protocol-version check** (only echoes `SessionId`); WPF checks.~~
+   **Done (2026-10-08):** every child returns the common `HostHandshake`; WinUI/Uno puts its
+   toolbox/runtime capabilities in `HostHandshake.Capabilities` and reuses the shared client
+   validation of protocol version, spawned PID and session echo.
 
 ## Shared helpers that should exist (Designer.Presentation / Designer.Remote)
 
@@ -1520,11 +1530,9 @@ scaffolding, and DevFlow plumbing.
    `DesignerSurfaceGeometry` record and `DesignerSurfaceGeometryProbe` in
    `Designer.Presentation` (`ScreenBoundsOf`, `DesignRectToScreen` with an optional scroll
    offset, `ToJson`); the three DevFlow `surface-geometry` actions each shrank to ~3 lines.
-2. **`DesignViewport.BaseOrigin`**: `(Math.Max(0, OriginX) + PanX, Math.Max(0, OriginY) + PanY)`
-   is written out verbatim in `RemoteFormsDesignerControl.Show` and `WpfSurfaceDesignerControl.Show`
-   (identical `Thickness` formula, identical comment) and again inside `DesignToSurface` and the
-   WinUI canvas placement. One property kills three copies; the WinUI `CanvasMargin` difference
-   stays explicit at the call site.
+2. ~~**`DesignViewport.BaseOrigin`**~~ **Done (2026-10-08):** the clamped origin-plus-pan
+   calculation is now one `DesignViewport.BaseOrigin` property, used by both coordinate conversion
+   directions. Callers retain only their intentional framework-specific canvas placement.
 3. **Zoom state machine in `DesignerCanvas`**: `ZoomPresets`/`ZoomLabels`/`fitMode`/`zoomScale`/
    `RebuildViewport` + the combo/fit handlers are byte-for-byte identical in
    `RemoteFormsDesignerControl` and `WpfSurfaceDesignerControl` (comments acknowledge the
@@ -1573,8 +1581,9 @@ scaffolding, and DevFlow plumbing.
 - **Action bodies**: `query-toolbox-item-bounds`, `query-element-screen-bounds`, and
   `properties-pad.edit` are near-duplicates between WinUI and WPF (the WPF versions carry
   `FindRealizedContainer`/`WaitUntilHitTestableAt` hardening that should be back-ported to the
-  shared implementation); the three outline probes should all go through one
-  `DocumentOutlineControl.Snapshot()`.
+  shared implementation). ~~The three outline probes should all go through one
+  `DocumentOutlineControl.Snapshot()`.~~ **Done (2026-10-08):** Forms, WPF and WinUI status
+  probes now project the same mounted, filtered Outline-pad tree through that API.
 
 ## Open task list (2026-08-18)
 
@@ -1654,19 +1663,20 @@ acceptance check, so the list can be resumed by a fresh session at any point.
    only runtime-specific RPCs and compatibility-key policy; `SharedDesignerHostRecovery` owns
    restart ordering for all five.
 
-9. **Child-process DTO sharing policy.** `FormsDesigner.Host` and `WinUIXamlDesigner.UnoHost`
-   each carry a hand-written DTO file (JSON is the contract, per `DesignProtocol`); the
-   WinForms host just gained a local `DesignerToolboxItemInfo` copy. Decide whether the child
-   projects should ProjectReference `Designer.Remote` (type identity still irrelevant across
-   the wire) or keep local copies — then document it here.
-   **Acceptance:** stated policy; both child projects follow it.
+9. ~~**Child-process DTO sharing policy.**~~ **Done (2026-10-08):** `FormsDesigner.Host` and
+   `WinUIXamlDesigner.UnoHost` both ProjectReference `Designer.Remote` and consume its DDP DTOs
+   directly. WinUI's local `DesignProtocol.cs` contains only non-serialized child-internal layout
+   request types; no child keeps a duplicate of `DesignerSessionState`, `DesignerDocumentSnapshot`,
+   `DesignerEditSet`, or `DesignerToolboxItemInfo`.
 
 ### P3 — Test and DevFlow plumbing
 
 10. **`ResizeDragTestBase`.** The three resize-drag tests share ~80% verbatim (Part IV
     "Test scaffolding"): parameterize action prefix, selection action, growth field, deltas;
     make the WPF `od.activate` + retry loop an optional `RetryDragGestureAsync` and give
-    WinUI the same robustness.
+    WinUI the same robustness. **Partial (2026-10-08):** `OpenDevelopAppFixture` now owns the
+    stepped native drag delivery and the common `element` / `selection` / `handle` geometry
+    assertion; backend-specific selection, retry and persistence checks remain local.
     **Acceptance:** three tests inherit one base, no duplicated drag/assert loops.
 
 11. **`RegisterDevFlowActionsCommand` collapse.** The empty `Run` classes are duplicated
@@ -1674,10 +1684,10 @@ acceptance check, so the list can be resumed by a fresh session at any point.
     **Acceptance:** no new addin adds a fourth copy.
 
 12. **Action-body convergence.** `query-toolbox-item-bounds`, `query-element-screen-bounds`,
-    and `properties-pad.edit` are near-duplicates between WinUI and WPF (back-port the WPF
-    `FindRealizedContainer`/`WaitUntilHitTestableAt` hardening); the three outline probes all
-    go through one `DocumentOutlineControl.Snapshot()`.
-    **Acceptance:** each probe exists once, in `Designer.Presentation` or its DevFlow layer.
+    and `properties-pad.edit` are near-duplicates between WinUI and WPF; back-port the WPF
+    `FindRealizedContainer`/`WaitUntilHitTestableAt` hardening into their shared implementation.
+    **Done (outline portion, 2026-10-08):** Forms, WPF and WinUI now use
+    `DocumentOutlineControl.Snapshot()` for the visible outline tree.
 
 ### Done (2026-08-18)
 

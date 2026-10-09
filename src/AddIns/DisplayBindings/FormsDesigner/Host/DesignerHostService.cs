@@ -21,7 +21,7 @@ namespace ICSharpCode.FormsDesigner.Host;
 
 sealed class DesignerHostService : IDesignerChildService
 {
-	const int ProtocolVersion = 2;
+	const int ProtocolVersion = DesignerProtocol.Version;
 	readonly string expectedToken;
 	readonly ManualResetEventSlim shutdown = new(false);
 	string? sessionId;
@@ -69,8 +69,9 @@ sealed class DesignerHostService : IDesignerChildService
 	}
 
 	[JsonRpcMethod("session/open")]
-	public DesignerSessionState Open(DesignerDocumentSnapshot snapshot)
+	public DesignerSessionState Open(DesignerDocumentRequest request)
 	{
+		var snapshot = request.Snapshot;
 		Trace("session/open received");
 		EnsureInitialized();
 		EnsureOwnSession(snapshot);
@@ -90,8 +91,9 @@ sealed class DesignerHostService : IDesignerChildService
 	}
 
 	[JsonRpcMethod("session/update")]
-	public DesignerSessionState Update(DesignerDocumentSnapshot snapshot)
+	public DesignerSessionState Update(DesignerDocumentRequest request)
 	{
+		var snapshot = request.Snapshot;
 		EnsureInitialized();
 		EnsureOwnSession(snapshot);
 		Validate(snapshot);
@@ -424,8 +426,9 @@ sealed class DesignerHostService : IDesignerChildService
 	}
 
 	[JsonRpcMethod("design/add-element")]
-	public DesignerSessionState AddControl(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string elementId, int x, int y, DesignerDropTarget dropTarget)
+	public DesignerSessionState AddControl(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, int x, int y, DesignerDropTarget dropTarget)
 	{
+		var elementId = proposedName;
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
 		if (!IsValidIdentifier(elementId))
 			throw new ArgumentException("A valid component name is required.", nameof(elementId));
@@ -480,8 +483,11 @@ sealed class DesignerHostService : IDesignerChildService
 	}
 
 	[JsonRpcMethod("design/delete-elements")]
-	public DesignerSessionState DeleteComponent(string sessionId, string documentId, long baseVersion, string elementId)
+	public DesignerSessionState DeleteElements(string sessionId, string documentId, long baseVersion, string[] elementIds)
 	{
+		if (elementIds == null || elementIds.Length != 1)
+			throw new NotSupportedException("WinForms currently requires exactly one element per delete operation.");
+		var elementId = elementIds[0];
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
 		var host = GetHost();
 		var component = host.Container.Components[elementId]

@@ -161,8 +161,8 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 
 	// Viewport (surface size and DPI) is presentation state, deliberately kept out of the
 	// document snapshot: the DDP document/model protocol must not carry presenter-specific
-	// state. The presenter pushes it here with SetViewport and the client folds it into the
-	// session/open|update wire object the Uno child expects.
+	// state. The presenter pushes it here with SetViewport and the client sends it in the shared
+	// session request's Viewport field.
 	double viewportWidth = 1280;
 	double viewportHeight = 720;
 	double viewportDpi = 1.0;
@@ -175,39 +175,36 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		viewportDpi = dpi;
 	}
 
-	/// <summary>Picks the document text out of a snapshot: the primary file when named,
-	/// else the first source file, else whatever the snapshot carries.</summary>
-	static string PrimaryText(DesignerDocumentSnapshot snapshot)
-	{
-		if (snapshot?.Files == null || snapshot.Files.Count == 0)
-			return "";
-		DesignerSourceFileSnapshot file = null;
-		if (!string.IsNullOrEmpty(snapshot.PrimaryFileName))
-			file = snapshot.Files.Find(f => string.Equals(f.FileName, snapshot.PrimaryFileName, StringComparison.OrdinalIgnoreCase));
-		file ??= snapshot.Files.Find(f => f.Kind == "Source") ?? snapshot.Files[0];
-		return file.Text ?? "";
-	}
-
 	/// <summary>First load for a session (session/open) - the initial render of a document.</summary>
-	public async Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
+	public async Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default, DesignerViewport? viewport = null)
+		=> await OpenAsync(snapshot, viewport ?? Viewport(), cancellationToken).ConfigureAwait(false);
+
+	/// <summary>First load with an explicit viewport. This is the common
+	/// <see cref="DesignerDocumentRequest.Viewport"/> payload, exposed for callers that already
+	/// have the surface metrics rather than storing them through <see cref="SetViewport"/>.</summary>
+	public async Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, DesignerViewport viewport, CancellationToken cancellationToken = default)
 	{
-		var state = await connection.InvokeAsync<DesignerSessionState>("session/open",
-			new { sessionId = SessionId, documentId = DocumentId, xaml = PrimaryText(snapshot), width = viewportWidth, height = viewportHeight, dpi = viewportDpi }, cancellationToken).ConfigureAwait(false);
+		var state = await Document.OpenAsync(snapshot, viewport, cancellationToken).ConfigureAwait(false);
 		if (state.Accepted)
-			SetRecoverySnapshot(snapshot);
+			SetRecoverySnapshot(snapshot, viewport);
 		return state;
 	}
 
 	/// <summary>Subsequent full-document push for an already-open session (session/update) -
 	/// theme reloads, size-preset changes and any other full re-render after the first load.</summary>
-	public async Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
+	public async Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default, DesignerViewport? viewport = null)
+		=> await UpdateAsync(snapshot, viewport ?? RecoveryViewport ?? Viewport(), cancellationToken).ConfigureAwait(false);
+
+	/// <summary>Updates with an explicit common document-request viewport.</summary>
+	public async Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, DesignerViewport viewport, CancellationToken cancellationToken = default)
 	{
-		var state = await connection.InvokeAsync<DesignerSessionState>("session/update",
-			new { sessionId = SessionId, documentId = DocumentId, xaml = PrimaryText(snapshot), width = viewportWidth, height = viewportHeight, dpi = viewportDpi, baseVersion = snapshot?.Version ?? 0 }, cancellationToken).ConfigureAwait(false);
+		var state = await Document.UpdateAsync(snapshot, viewport, cancellationToken).ConfigureAwait(false);
 		if (state.Accepted)
-			SetRecoverySnapshot(snapshot);
+			SetRecoverySnapshot(snapshot, viewport);
 		return state;
 	}
+
+	DesignerViewport Viewport() => new() { Width = viewportWidth, Height = viewportHeight, Dpi = viewportDpi };
 
 	/// <summary>Stub: this host holds no independent child-side edit buffer, so this reports
 	/// the current XAML as the sole file - lands the wire shape now.</summary>
@@ -229,8 +226,7 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	/// <paramref name="proposedName"/> is ignored: this markup backend derives the element name
 	/// from the parsed XAML (which already carries x:Name).</summary>
 	public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget = null, CancellationToken cancellationToken = default)
-		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/add-element",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, item, x, y }, cancellationToken), cancellationToken);
+		=> TrackMutationAsync(Document.AddElementAsync(baseVersion, parentId, item, proposedName, x, y, dropTarget, cancellationToken), cancellationToken);
 
 	/// <summary>Sets an element's width/height directly, and its Canvas position when its
 	/// parent is a Canvas, then re-renders.</summary>
@@ -249,15 +245,15 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		=> connection.InvokeAsync<DesignerAppResourcesResult>("app/resources",
 			new { sessionId = SessionId, documentId = DocumentId, xaml }, cancellationToken);
 
-	public Task<DesignerSessionState> SetThemeAsync(string theme, CancellationToken cancellationToken = default)
+	public Task<DesignerSessionState> SetThemeAsync(long baseVersion, string theme, CancellationToken cancellationToken = default)
 		=> connection.InvokeAsync<DesignerSessionState>("design/theme",
-			new { sessionId = SessionId, documentId = DocumentId, theme }, cancellationToken);
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, theme }, cancellationToken);
 
 	/// <summary>Previews one VisualState. A null <paramref name="state"/> stops forcing that group
 	/// and returns it to however the document naturally loads.</summary>
-	public Task<DesignerSessionState> GoToStateAsync(string group, string? state, CancellationToken cancellationToken = default)
+	public Task<DesignerSessionState> GoToStateAsync(long baseVersion, string group, string? state, CancellationToken cancellationToken = default)
 		=> connection.InvokeAsync<DesignerSessionState>("design/go-to-state",
-			new { sessionId = SessionId, documentId = DocumentId, group, state = state ?? "" }, cancellationToken);
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, group, state = state ?? "" }, cancellationToken);
 
 	public Task<string> ExportPngAsync(string path, CancellationToken cancellationToken = default)
 		=> connection.InvokeAsync<string>("design/export-png",
@@ -298,7 +294,7 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		capabilities = replacement.Capabilities;
 		RebindConnection(replacement);
 		replacement.HostExited += OnConnectionExited;
-		var state = await OpenAsync(RecoverySnapshot!, cancellationToken).ConfigureAwait(false);
+		var state = await Document.OpenAsync(RecoverySnapshot!, RecoveryViewport, cancellationToken).ConfigureAwait(false);
 		Volatile.Write(ref consecutiveFailedRecoveries, 0);
 		RecoveryCount++;
 		Recovered?.Invoke(this, state);
@@ -386,10 +382,8 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		protected override TimeSpan HandshakeTimeout => TimeSpan.FromSeconds(60);
 		protected override async Task OnConnectedAsync(JsonRpc rpc, string token, CancellationToken cancellationToken)
 		{
-			Capabilities = await rpc.InvokeWithParameterObjectAsync<DesignerCapabilities>("initialize",
-				new { token, protocolVersion = DesignerProtocol.Version, sessionId = SessionId }, cancellationToken)
-				.WaitAsync(HandshakeTimeout, cancellationToken).ConfigureAwait(false);
-			if (Capabilities.SessionId != SessionId) throw new InvalidOperationException("The design host echoed an unexpected session id during handshake.");
+			await base.OnConnectedAsync(rpc, token, cancellationToken).ConfigureAwait(false);
+			Capabilities = Handshake.Capabilities;
 		}
 	}
 }

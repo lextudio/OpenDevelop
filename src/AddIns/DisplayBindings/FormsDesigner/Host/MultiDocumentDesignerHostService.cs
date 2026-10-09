@@ -9,7 +9,7 @@ namespace ICSharpCode.FormsDesigner.Host;
 /// design surface and collectible project load context.</summary>
 sealed class MultiDocumentDesignerHostService : IDesignerChildService
 {
-	const int ProtocolVersion = 2;
+	const int ProtocolVersion = DesignerProtocol.Version;
 	readonly string expectedToken;
 	readonly ManualResetEventSlim shutdown = new(false);
 	readonly DesignerDocumentRegistry<DesignerHostService> documents = new();
@@ -34,9 +34,9 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	}
 
 	[JsonRpcMethod("session/open")]
-	public DesignerSessionState Open(DesignerDocumentSnapshot snapshot) => Get(snapshot.SessionId, snapshot.DocumentId).Open(snapshot);
+	public DesignerSessionState Open(DesignerDocumentRequest request) => Get(request.Snapshot.SessionId, request.Snapshot.DocumentId).Open(request);
 	[JsonRpcMethod("session/update")]
-	public DesignerSessionState Update(DesignerDocumentSnapshot snapshot) => GetChecked(snapshot.SessionId, snapshot.DocumentId).Update(snapshot);
+	public DesignerSessionState Update(DesignerDocumentRequest request) => GetChecked(request.Snapshot.SessionId, request.Snapshot.DocumentId).Update(request);
 	[JsonRpcMethod("session/flush")]
 	public DesignerEditSet Flush(string sessionId, string documentId, long baseVersion) => GetChecked(sessionId, documentId).Flush(sessionId, documentId, baseVersion);
 	[JsonRpcMethod("session/close")]
@@ -60,11 +60,11 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("design/activate-default-event")]
 	public DesignerSessionState ActivateDefaultEvent(string sessionId, string documentId, long baseVersion, string elementId) => GetChecked(sessionId, documentId).ActivateDefaultEvent(sessionId, documentId, baseVersion, elementId);
 	[JsonRpcMethod("design/add-element")]
-	public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string elementId, int x, int y, DesignerDropTarget dropTarget) => GetChecked(sessionId, documentId).AddControl(sessionId, documentId, baseVersion, parentId, item, elementId, x, y, dropTarget);
+	public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, int x, int y, DesignerDropTarget dropTarget) => GetChecked(sessionId, documentId).AddControl(sessionId, documentId, baseVersion, parentId, item, proposedName, x, y, dropTarget);
 	[JsonRpcMethod("design/set-bounds")]
 	public DesignerSessionState SetBounds(string sessionId, string documentId, long baseVersion, string elementId, int x, int y, int width, int height) => GetChecked(sessionId, documentId).SetBounds(sessionId, documentId, baseVersion, elementId, x, y, width, height);
 	[JsonRpcMethod("design/delete-elements")]
-	public DesignerSessionState DeleteElements(string sessionId, string documentId, long baseVersion, string elementId) => GetChecked(sessionId, documentId).DeleteComponent(sessionId, documentId, baseVersion, elementId);
+	public DesignerSessionState DeleteElements(string sessionId, string documentId, long baseVersion, string[] elementIds) => GetChecked(sessionId, documentId).DeleteElements(sessionId, documentId, baseVersion, elementIds);
 	[JsonRpcMethod("design/set-z-order")]
 	public DesignerSessionState SetZOrder(string sessionId, string documentId, long baseVersion, string elementId, bool bringToFront) => GetChecked(sessionId, documentId).SetZOrder(sessionId, documentId, baseVersion, elementId, bringToFront);
 	[JsonRpcMethod("design/apply-layout")]

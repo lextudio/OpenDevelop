@@ -154,11 +154,11 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 
 		static string Normalize(string path) => String.IsNullOrEmpty(path) ? "" : Path.GetFullPath(path);
 
-		public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken)
-			=> OpenRecoverableAsync(snapshot, cancellationToken);
+		public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default, DesignerViewport? viewport = null)
+			=> OpenRecoverableAsync(snapshot, cancellationToken, viewport);
 
-		public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken)
-			=> UpdateRecoverableAsync(snapshot, cancellationToken);
+		public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default, DesignerViewport? viewport = null)
+			=> UpdateRecoverableAsync(snapshot, cancellationToken, viewport);
 
 		public Task<DesignerEditSet> FlushAsync(long baseVersion, CancellationToken cancellationToken)
 			=> Document.FlushAsync(baseVersion, cancellationToken);
@@ -209,7 +209,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		/// <summary>Inserts a control; the WinForms backend needs only the toolbox item's CLR type
 		/// name plus the proposed component name.</summary>
 		public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string elementId, double x, double y, DesignerDropTarget dropTarget = null, CancellationToken cancellationToken = default)
-			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/add-element", new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, item, elementId, x = Round(x), y = Round(y), dropTarget }, cancellationToken), cancellationToken);
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/add-element", new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, item, proposedName = elementId, x = Round(x), y = Round(y), dropTarget }, cancellationToken), cancellationToken);
 
 		public Task<DesignerSessionState> SetBoundsAsync(long baseVersion, string elementId, double x, double y, double width, double height, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-bounds", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, x = Round(x), y = Round(y), width = Round(width), height = Round(height) }, cancellationToken), cancellationToken);
@@ -228,7 +228,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		}
 
 		Task<DesignerSessionState> DeleteComponentAsync(long baseVersion, string elementId, CancellationToken cancellationToken)
-			=> connection.InvokeAsync<DesignerSessionState>("design/delete-elements", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken);
+			=> connection.InvokeAsync<DesignerSessionState>("design/delete-elements", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds = new[] { elementId } }, cancellationToken);
 
 		public Task<DesignerSessionState> SetZOrderAsync(long baseVersion, string elementId, bool bringToFront, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-z-order", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, bringToFront }, cancellationToken), cancellationToken);
@@ -334,7 +334,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			connection = replacement;
 			RebindConnection(replacement);
 			replacement.HostExited += OnConnectionExited;
-			var state = await Document.OpenAsync(RecoverySnapshot!, cancellationToken).ConfigureAwait(false);
+			var state = await Document.OpenAsync(RecoverySnapshot!, RecoveryViewport, cancellationToken).ConfigureAwait(false);
 			RecoveryCount++;
 			Recovered?.Invoke(this, state);
 		}

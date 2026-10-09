@@ -3465,22 +3465,6 @@ public sealed class AddInTests : IAsyncDisposable
                     g.GetProperty(name).GetProperty("width").GetDouble(),
                     g.GetProperty(name).GetProperty("height").GetDouble());
 
-            void AssertConsistent(JsonElement g, string label)
-            {
-                var e = Bounds(g, "element");
-                var s = Bounds(g, "selection");
-                var hx = g.GetProperty("handle").GetProperty("x").GetDouble();
-                var hy = g.GetProperty("handle").GetProperty("y").GetDouble();
-                Assert.True(e.w > 0 && e.h > 0, label + ": selected element has zero size: " + g);
-                // Selection outline must coincide with the selected element (allow 1px).
-                Assert.True(Math.Abs(s.x - e.x) <= 1 && Math.Abs(s.y - e.y) <= 1
-                    && Math.Abs(s.w - e.w) <= 1 && Math.Abs(s.h - e.h) <= 1,
-                    label + ": selection outline drifted from rendered element.\nelement=" + e + "\nselection=" + s + "\n" + g);
-                // Resize handle must sit at the element's bottom-right corner (allow 2px).
-                Assert.True(Math.Abs(hx - (e.x + e.w)) <= 2 && Math.Abs(hy - (e.y + e.h)) <= 2,
-                    label + ": resize handle not at element bottom-right.\nelement=" + e + "\nhandle=(" + hx + "," + hy + ")\n" + g);
-            }
-
             // Zoom out enough that the whole form and its bottom-right handle stay visible, but
             // retain a human-sized hit target.  25% technically fit but made the handle nearly
             // impossible to see or grab; a fixed 50% scale (not Fit) still lets the rendered
@@ -3488,7 +3472,7 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True((await _app.InvokeAsync("od.forms-designer.view", "0.5")).GetProperty("success").GetBoolean());
             var before = await _app.InvokeAsync("od.forms-designer.surface-geometry");
             Assert.True(before.GetProperty("available").GetBoolean(), before.ToString());
-            AssertConsistent(before, "before");
+			OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(before, "before");
             var beforeFrame = Bounds(before, "frame");
             var beforeSelection = Bounds(before, "selection");
             Assert.True(Math.Abs(beforeFrame.x - beforeSelection.x) <= 1
@@ -3521,15 +3505,7 @@ public sealed class AddInTests : IAsyncDisposable
                 var pressed = await _app.PressPointerAsync(hx, hy);
                 Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
                 pointerEvents = (await _app.InvokeAsync("od.pointer-events", false)).ToString();
-                for (int step = 1; step <= 6; step++)
-                {
-                    var t = step / 6.0;
-                    var moved = await _app.DragMovePointerAsync(hx + dx * t, hy + dy * t);
-                    Assert.True(moved.GetProperty("ok").GetBoolean(), moved.ToString());
-                    await Task.Delay(80);
-                }
-                var released = await _app.ReleasePointerAsync(hx + dx, hy + dy);
-                Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+                await _app.DragPointerInStepsAsync(hx, hy, hx + dx, hy + dy);
                 grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                     after = await _app.InvokeAsync("od.forms-designer.surface-geometry");
                     if (!after.GetProperty("available").GetBoolean())
@@ -3545,7 +3521,7 @@ public sealed class AddInTests : IAsyncDisposable
             before = effectiveBefore;
             var afterFrameStr = after.TryGetProperty("frame", out var af) ? $"({af.GetProperty("width").GetDouble():F1},{af.GetProperty("height").GetDouble():F1})" : "N/A";
 			Assert.True(grew, "The resize drag did not grow the rendered frame.\nbefore=" + before + "\nPointer=" + pointerEvents + "\nafter=" + after);
-            AssertConsistent(after, "after");
+			OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(after, "after");
 
             // The native gesture is expressed in screen pixels while the Forms canvas may be
             // zoomed; therefore its exact design-unit delta is scale-dependent.  `grew` above
@@ -3939,34 +3915,13 @@ public sealed class AddInTests : IAsyncDisposable
         await _app.InvokeAsync("od.winui-designer.activate-design");
         await _app.InvokeAsync("od.winui-designer.select", "PrimaryButton");
 
-        static (double x, double y, double w, double h) Bounds(JsonElement g, string name)
-            => (g.GetProperty(name).GetProperty("x").GetDouble(),
-                g.GetProperty(name).GetProperty("y").GetDouble(),
-                g.GetProperty(name).GetProperty("width").GetDouble(),
-                g.GetProperty(name).GetProperty("height").GetDouble());
-
-        void AssertHandleAtSelectionBottomRight(JsonElement g, string label)
-        {
-            var e = Bounds(g, "element");
-            var s = Bounds(g, "selection");
-            var hx = g.GetProperty("handle").GetProperty("x").GetDouble();
-            var hy = g.GetProperty("handle").GetProperty("y").GetDouble();
-            Assert.True(s.w > 0 && s.h > 0, label + ": selection has zero size: " + g);
-            // The selection outline must hug the selected element (allow 1px).
-            Assert.True(Math.Abs(e.x - s.x) <= 1 && Math.Abs(e.y - s.y) <= 1
-                && Math.Abs(e.w - s.w) <= 1 && Math.Abs(e.h - s.h) <= 1,
-                label + ": element drifted from selection outline.\nelement=" + e + "\nselection=" + s + "\n" + g);
-            Assert.True(Math.Abs(hx - (s.x + s.w)) <= 2 && Math.Abs(hy - (s.y + s.h)) <= 2,
-                label + ": resize handle not at selection bottom-right.\nselection=" + s + "\nhandle=(" + hx + "," + hy + ")\n" + g);
-        }
-
-        var before = await _app.InvokeAsync("od.winui-designer.surface-geometry");
+		var before = await _app.InvokeAsync("od.winui-designer.surface-geometry");
         Assert.True(before.GetProperty("available").GetBoolean(), before.ToString());
-        AssertHandleAtSelectionBottomRight(before, "before");
+		OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(before, "before");
 
         // Concern 0 - the reported tree must actually POSITION its elements, not just size them.
         //
-        // AssertHandleAtSelectionBottomRight above cannot catch this on its own: `selection` and
+		// The shared geometry assertion above cannot catch this on its own: `selection` and
         // `element` are both derived from the same reported bounds, so they agree with each other
         // even when that shared source is wrong for every element at once. This block compares
         // two DIFFERENT elements instead, which is what makes a collapsed tree observable.
@@ -4014,14 +3969,7 @@ public sealed class AddInTests : IAsyncDisposable
 
             var pressed = await _app.PressPointerAsync(hx, hy);
             Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
-            for (int step = 1; step <= 6; step++) {
-                var t = step / 6.0;
-                var moved = await _app.DragMovePointerAsync(hx + dx * t, hy + dy * t);
-                Assert.True(moved.GetProperty("ok").GetBoolean(), moved.ToString());
-                await Task.Delay(80);
-            }
-            var released = await _app.ReleasePointerAsync(hx + dx, hy + dy);
-            Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+            await _app.DragPointerInStepsAsync(hx, hy, hx + dx, hy + dy);
 
             grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 after = await _app.InvokeAsync("od.winui-designer.surface-geometry");
@@ -4031,7 +3979,7 @@ public sealed class AddInTests : IAsyncDisposable
             }, TimeSpan.FromSeconds(8), initialDelayMs: 100, maxDelayMs: 400);
         }
         Assert.True(grew, "The resize drag did not grow the selected element, even after retries. before=" + before);
-        AssertHandleAtSelectionBottomRight(after, "after");
+		OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(after, "after");
 
         // A real OS pointer is measured in physical screen pixels, while Width/Height are
         // XAML design units.  Those differ at non-100% DPI, so do not assert dx directly here;
@@ -4116,30 +4064,9 @@ public sealed class AddInTests : IAsyncDisposable
             // frontmost instead.
             await _app.InvokeAsync("od.activate");
 
-            static (double x, double y, double w, double h) Bounds(JsonElement g, string name)
-                => (g.GetProperty(name).GetProperty("x").GetDouble(),
-                    g.GetProperty(name).GetProperty("y").GetDouble(),
-                    g.GetProperty(name).GetProperty("width").GetDouble(),
-                    g.GetProperty(name).GetProperty("height").GetDouble());
-
-            void AssertConsistent(JsonElement g, string label)
-            {
-                var e = Bounds(g, "element");
-                var s = Bounds(g, "selection");
-                var hx = g.GetProperty("handle").GetProperty("x").GetDouble();
-                var hy = g.GetProperty("handle").GetProperty("y").GetDouble();
-                Assert.True(e.w > 0 && e.h > 0, label + ": selected element has zero size: " + g);
-                // WPF's adorner hugs the element: selection == element.
-                Assert.True(Math.Abs(s.x - e.x) <= 1 && Math.Abs(s.y - e.y) <= 1
-                    && Math.Abs(s.w - e.w) <= 1 && Math.Abs(s.h - e.h) <= 1,
-                    label + ": selection outline drifted from rendered element.\nelement=" + e + "\nselection=" + s + "\n" + g);
-                Assert.True(Math.Abs(hx - (e.x + e.w)) <= 2 && Math.Abs(hy - (e.y + e.h)) <= 2,
-                    label + ": resize handle not at element bottom-right.\nelement=" + e + "\nhandle=(" + hx + "," + hy + ")\n" + g);
-            }
-
-            var before = await _app.InvokeAsync("od.wpf-designer.surface-geometry");
+			var before = await _app.InvokeAsync("od.wpf-designer.surface-geometry");
             Assert.True(before.GetProperty("available").GetBoolean(), before.ToString());
-            AssertConsistent(before, "before");
+			OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(before, "before");
 
             const double dx = 50, dy = 40;
 
@@ -4171,21 +4098,14 @@ public sealed class AddInTests : IAsyncDisposable
                 Assert.True(sel.GetProperty("success").GetBoolean(), sel.ToString());
                 var current = await _app.InvokeAsync("od.wpf-designer.surface-geometry");
                 Assert.True(current.GetProperty("available").GetBoolean(), current.ToString());
-                AssertConsistent(current, $"attempt {attempt}");
+				OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(current, $"attempt {attempt}");
                 effectiveBefore = current;
                 var hx = current.GetProperty("handle").GetProperty("x").GetDouble();
                 var hy = current.GetProperty("handle").GetProperty("y").GetDouble();
 
                 var pressed = await _app.PressPointerAsync(hx, hy);
                 Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
-                for (int step = 1; step <= 6; step++) {
-                    var t = step / 6.0;
-                    var moved = await _app.DragMovePointerAsync(hx + dx * t, hy + dy * t);
-                    Assert.True(moved.GetProperty("ok").GetBoolean(), moved.ToString());
-                    await Task.Delay(80);
-                }
-                var released = await _app.ReleasePointerAsync(hx + dx, hy + dy);
-                Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+                await _app.DragPointerInStepsAsync(hx, hy, hx + dx, hy + dy);
 
                 grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                     after = await _app.InvokeAsync("od.wpf-designer.surface-geometry");
@@ -4195,7 +4115,7 @@ public sealed class AddInTests : IAsyncDisposable
                 }, TimeSpan.FromSeconds(8), initialDelayMs: 100, maxDelayMs: 400);
             }
             Assert.True(grew, "The resize drag did not grow the selected element, even after retries. before=" + before);
-            AssertConsistent(after, "after");
+			OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(after, "after");
 
             // OS pointer coordinates are physical screen pixels, whereas Width/Height are XAML
             // design units.  At non-100% DPI they are intentionally not numerically identical;

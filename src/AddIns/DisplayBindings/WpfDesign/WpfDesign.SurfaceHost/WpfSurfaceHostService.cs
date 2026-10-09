@@ -155,12 +155,12 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		}
 
 		[JsonRpcMethod("session/open")]
-		public DesignerSessionState Open(DesignerDocumentSnapshot snapshot)
-			=> dispatcher.Dispatch(() => OpenCore(snapshot));
+		public DesignerSessionState Open(DesignerDocumentRequest request)
+			=> dispatcher.Dispatch(() => OpenCore(request.Snapshot));
 
 		[JsonRpcMethod("session/update")]
-		public DesignerSessionState Update(DesignerDocumentSnapshot snapshot)
-			=> dispatcher.Dispatch(() => OpenCore(snapshot));
+		public DesignerSessionState Update(DesignerDocumentRequest request)
+			=> dispatcher.Dispatch(() => OpenCore(request.Snapshot));
 
 		DesignerSessionState OpenCore(DesignerDocumentSnapshot snapshot)
 		{

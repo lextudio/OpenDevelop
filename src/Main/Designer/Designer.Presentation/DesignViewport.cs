@@ -29,6 +29,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 		public double PanX { get; }
 		public double PanY { get; }
 
+		/// <summary>Clamped frame placement before design coordinates are scaled. Negative fit
+		/// origins are intentionally clipped rather than shifting the design outside its host.</summary>
+		public (double X, double Y) BaseOrigin => (Math.Max(0, OriginX) + PanX, Math.Max(0, OriginY) + PanY);
+
 		DesignViewport(double designWidth, double designHeight, double scale, double originX, double originY, double panX, double panY)
 		{
 			DesignWidth = designWidth;
@@ -95,18 +99,16 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 		/// callers with those apply them on top of this).</summary>
 		public (double X, double Y) DesignToSurface(double x, double y)
 		{
-			var baseX = Math.Max(0, OriginX);
-			var baseY = Math.Max(0, OriginY);
-			return (baseX + PanX + x * Scale, baseY + PanY + y * Scale);
+			var origin = BaseOrigin;
+			return (origin.X + x * Scale, origin.Y + y * Scale);
 		}
 
 		/// <summary>Surface-local coordinates to design-space point (inverse of
 		/// <see cref="DesignToSurface"/>).</summary>
 		public (double X, double Y) SurfaceToDesign(double x, double y)
 		{
-			var baseX = Math.Max(0, OriginX);
-			var baseY = Math.Max(0, OriginY);
-			return ((x - baseX - PanX) / Scale, (y - baseY - PanY) / Scale);
+			var origin = BaseOrigin;
+			return ((x - origin.X) / Scale, (y - origin.Y) / Scale);
 		}
 	}
 }

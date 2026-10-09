@@ -151,24 +151,14 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			if (outline == null)
 				return JsonSerializer.Serialize(new { present = false, visible = false });
 
-			var root = outline.Items.Count > 0
-				? (outline.Items[0] as System.Windows.Controls.TreeViewItem)?.Tag as ICSharpCode.SharpDevelop.Designer.Remote.DesignerElementNode
-				: null;
-			var nodes = new System.Collections.Generic.List<object>();
-			void Collect(ICSharpCode.SharpDevelop.Designer.Remote.DesignerElementNode node)
-			{
-				nodes.Add(new { name = node.Name, type = node.Type });
-				foreach (var child in node.Children)
-					Collect(child);
-			}
-			if (root != null)
-				Collect(root);
+			var snapshot = outline.Snapshot();
+			var root = snapshot.Nodes.FirstOrDefault();
 			return JsonSerializer.Serialize(new {
 				present = true,
 				visible = outline.IsVisible,
 				root = root == null ? null : root.Name,
 				rootType = root?.Type,
-				nodes = nodes.ToArray()
+				nodes = snapshot.Nodes.Select(node => new { name = node.Name, type = node.Type }).ToArray()
 			});
 		}
 

@@ -827,6 +827,48 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public Task<JsonElement> DragMovePointerAsync(double x, double y) => PostPointActionAsync("drag-move", x, y);
     public Task<JsonElement> ReleasePointerAsync(double x, double y) => PostPointActionAsync("release", x, y);
 
+    /// <summary>Delivers the move/release half of a decomposed native drag with evenly-spaced
+    /// points. Callers deliberately keep the press, geometry lookup, retry policy and post-drag
+    /// assertions local to their designer-specific test.</summary>
+    public async Task DragPointerInStepsAsync(double fromX, double fromY, double toX, double toY,
+        int steps = 6, int stepDelayMs = 80)
+    {
+        for (var step = 1; step <= steps; step++)
+        {
+            var t = step / (double)steps;
+            var moved = await DragMovePointerAsync(fromX + (toX - fromX) * t, fromY + (toY - fromY) * t);
+            if (!moved.GetProperty("ok").GetBoolean())
+                throw new InvalidOperationException("ui/actions/drag-move failed: " + moved);
+            await Task.Delay(stepDelayMs);
+        }
+        var released = await ReleasePointerAsync(toX, toY);
+        if (!released.GetProperty("ok").GetBoolean())
+            throw new InvalidOperationException("ui/actions/release failed: " + released);
+    }
+
+    /// <summary>Checks the common surface-geometry protocol invariant used by every visual
+    /// designer: selection encloses the selected element and the resize handle is its bottom
+    /// right corner. Geometry actions remain backend-specific; their JSON contract is not.</summary>
+    public static void AssertSurfaceGeometryConsistent(JsonElement geometry, string label)
+    {
+        static (double x, double y, double width, double height) Bounds(JsonElement value, string name)
+            => (value.GetProperty(name).GetProperty("x").GetDouble(),
+                value.GetProperty(name).GetProperty("y").GetDouble(),
+                value.GetProperty(name).GetProperty("width").GetDouble(),
+                value.GetProperty(name).GetProperty("height").GetDouble());
+
+        var element = Bounds(geometry, "element");
+        var selection = Bounds(geometry, "selection");
+        var handleX = geometry.GetProperty("handle").GetProperty("x").GetDouble();
+        var handleY = geometry.GetProperty("handle").GetProperty("y").GetDouble();
+        Assert.True(element.width > 0 && element.height > 0, label + ": selected element has zero size: " + geometry);
+        Assert.True(Math.Abs(selection.x - element.x) <= 1 && Math.Abs(selection.y - element.y) <= 1
+            && Math.Abs(selection.width - element.width) <= 1 && Math.Abs(selection.height - element.height) <= 1,
+            label + ": selection outline drifted from rendered element.\nelement=" + element + "\nselection=" + selection + "\n" + geometry);
+        Assert.True(Math.Abs(handleX - (element.x + element.width)) <= 2 && Math.Abs(handleY - (element.y + element.height)) <= 2,
+            label + ": resize handle not at element bottom-right.\nelement=" + element + "\nhandle=(" + handleX + "," + handleY + ")\n" + geometry);
+    }
+
     public async Task<JsonElement> DragPointerAsync(double fromX, double fromY, double toX, double toY, int steps = 6)
     {
         var body = JsonSerializer.Serialize(new { global = true, fromX, fromY, toX, toY, steps });

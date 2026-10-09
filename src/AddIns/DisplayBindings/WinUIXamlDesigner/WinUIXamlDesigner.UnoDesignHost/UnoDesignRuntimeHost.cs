@@ -149,7 +149,7 @@ sealed class UnoDesignRuntimeHost : IDesignCanvasBackend, IWinUIXamlRuntimeHost,
 		_ = Task.Run(async () => {
 			try
 			{
-				var snapshot = await client.GoToStateAsync(group, state);
+				var snapshot = await client.GoToStateAsync(requested, group, state);
 				dispatcher.BeginInvoke(() => {
 					ApplySnapshot(snapshot, requested);
 					// ApplySnapshot can decline a stale snapshot; end the overlay either way so a
@@ -239,7 +239,7 @@ sealed class UnoDesignRuntimeHost : IDesignCanvasBackend, IWinUIXamlRuntimeHost,
 		DesignSnapshot snapshot;
 		try
 		{
-			snapshot = await client.SetThemeAsync(theme);
+			snapshot = await client.SetThemeAsync(requested, theme);
 		}
 		catch (Exception e)
 		{

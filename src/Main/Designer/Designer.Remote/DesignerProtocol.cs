@@ -20,7 +20,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		public const int Version = 2;
+		public const int Version = 3;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -32,6 +32,11 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>Session identity minted once per child lifetime; echoed back on every
 		/// subsequent call so the host can detect a stale/reused child.</summary>
 		public string SessionId { get; set; } = "";
+		/// <summary>Optional runtime-specific capabilities discovered during the authenticated
+		/// handshake. Keeping them inside the common handshake preserves one initialize response
+		/// shape for every child host while still allowing a backend to expose its toolbox catalog.
+		/// </summary>
+		public DesignerCapabilities Capabilities { get; set; } = new DesignerCapabilities();
 	}
 
 	/// <summary>Host-authoritative document snapshot. The child never writes files.</summary>
@@ -60,6 +65,23 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>"Enabled" or "Disabled" (safe mode without project code).</summary>
 		public string ProjectCodeMode { get; set; } = "Enabled";
 		public List<DesignerSourceFileSnapshot> Files { get; set; } = new List<DesignerSourceFileSnapshot>();
+	}
+
+	/// <summary>Common <c>session/open</c> and <c>session/update</c> request. The source model
+	/// always travels as a complete host-owned snapshot; a frame-based backend may additionally
+	/// receive the presenter viewport without turning it into document state.</summary>
+	public sealed class DesignerDocumentRequest
+	{
+		public DesignerDocumentSnapshot Snapshot { get; set; } = new DesignerDocumentSnapshot();
+		public DesignerViewport? Viewport { get; set; }
+	}
+
+	/// <summary>Presenter dimensions used only while materializing a rendered design frame.</summary>
+	public sealed class DesignerViewport
+	{
+		public double Width { get; set; }
+		public double Height { get; set; }
+		public double Dpi { get; set; } = 1.0;
 	}
 
 	/// <summary>One file inside a snapshot/edit set. Text is the source when textual,

@@ -33,16 +33,16 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			SessionId = replacement.SessionId;
 		}
 
-		public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
+		public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, DesignerViewport? viewport = null, CancellationToken cancellationToken = default)
 		{
 			SetIdentity(snapshot);
-			return connection.InvokeAsync<DesignerSessionState>("session/open", new { snapshot }, cancellationToken);
+			return connection.InvokeAsync<DesignerSessionState>("session/open", new { request = new DesignerDocumentRequest { Snapshot = snapshot, Viewport = viewport } }, cancellationToken);
 		}
 
-		public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
+		public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, DesignerViewport? viewport = null, CancellationToken cancellationToken = default)
 		{
 			SetIdentity(snapshot);
-			return connection.InvokeAsync<DesignerSessionState>("session/update", new { snapshot }, cancellationToken);
+			return connection.InvokeAsync<DesignerSessionState>("session/update", new { request = new DesignerDocumentRequest { Snapshot = snapshot, Viewport = viewport } }, cancellationToken);
 		}
 
 		public Task<DesignerEditSet> FlushAsync(long baseVersion, CancellationToken cancellationToken = default)

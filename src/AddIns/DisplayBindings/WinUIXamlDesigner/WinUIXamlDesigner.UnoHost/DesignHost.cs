@@ -161,11 +161,11 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		public DesignerSessionState Layout(double width, double height, double dpi)
 			=> HeadlessDispatcher.DispatchAsync(() => LayoutAsync(new LayoutRequest { Width = width, Height = height, Dpi = dpi })).GetAwaiter().GetResult();
 
-		public DesignerSessionState SetTheme(string theme)
-			=> HeadlessDispatcher.DispatchAsync(() => SetThemeAsync(theme)).GetAwaiter().GetResult();
+		public DesignerSessionState SetTheme(string sessionId, string documentId, long baseVersion, string theme)
+			=> HeadlessDispatcher.Dispatch(() => RejectIfStale(sessionId, documentId, baseVersion) is { } stale ? stale : SetThemeAsync(theme).GetAwaiter().GetResult());
 
-		public DesignerSessionState GoToState(string group, string state)
-			=> HeadlessDispatcher.DispatchAsync(() => GoToStateAsync(group, state)).GetAwaiter().GetResult();
+		public DesignerSessionState GoToState(string sessionId, string documentId, long baseVersion, string group, string state)
+			=> HeadlessDispatcher.Dispatch(() => RejectIfStale(sessionId, documentId, baseVersion) is { } stale ? stale : GoToStateAsync(group, state).GetAwaiter().GetResult());
 
 		public DesignerAppResourcesResult LoadAppResources(string xaml)
 			=> HeadlessDispatcher.Dispatch(() => LoadAppResourcesCore(xaml));

@@ -107,9 +107,9 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			var toolboxControl = WpfToolbox.Instance.ToolboxControl as ListBox;
 			var toolboxItems = toolboxControl?.Items.OfType<SharedToolboxItem>().ToArray() ?? Array.Empty<SharedToolboxItem>();
 
-			var outlineNames = new List<string>();
-			if (state?.Tree != null)
-				CollectOutlineNames(state.Tree, outlineNames);
+			var outline = viewContent.OutlineContent as ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl;
+			var outlineSnapshot = outline?.Snapshot();
+			var outlineNodes = outlineSnapshot?.Nodes ?? new List<ICSharpCode.SharpDevelop.Widgets.DocumentOutlineSnapshotNode>();
 
 			return JsonSerializer.Serialize(new {
 				active = true,
@@ -135,8 +135,8 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				toolboxFilterText = SharedToolbox.Instance.FilterText,
 				toolboxDrag = SharedToolbox.Instance.DragDiagnostic,
 				toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true,
-				outlineRootName = state?.Tree?.Name ?? state?.Tree?.Type,
-				outlineChildCount = state?.Tree?.Children.Count ?? 0,
+				outlineRootName = outlineNodes.FirstOrDefault()?.Name ?? outlineNodes.FirstOrDefault()?.Type,
+				outlineChildCount = outlineNodes.Count(node => node.Depth == 1),
 				// The out-of-process WPF host has no undo/redo RPC, so these are always false -
 				// reported so the status shape matches od.winui-designer.status.
 				canUndo = false,
@@ -147,7 +147,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				supportsThemeSwitch = state?.SupportsThemeSwitch ?? false,
 				// Flattened (root + every descendant, depth-first) so tests can assert a named
 				// element shows up in the outline tree without knowing its exact nesting depth.
-				outlineNames = outlineNames.ToArray()
+				outlineNames = outlineNodes.Select(node => string.IsNullOrEmpty(node.Name) ? node.Type : node.Name).ToArray()
 			});
 		}
 

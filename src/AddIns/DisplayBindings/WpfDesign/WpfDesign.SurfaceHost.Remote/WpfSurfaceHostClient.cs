@@ -154,11 +154,11 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	static void RouteOutput(Connection connection)
 		=> connection.OutputLineReceived += (_, line) => OutputLineSink?.Invoke(line);
 
-	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
-		=> OpenRecoverableAsync(snapshot, cancellationToken);
+	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default, DesignerViewport? viewport = null)
+		=> OpenRecoverableAsync(snapshot, cancellationToken, viewport);
 
-	public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
-		=> UpdateRecoverableAsync(snapshot, cancellationToken);
+	public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default, DesignerViewport? viewport = null)
+		=> UpdateRecoverableAsync(snapshot, cancellationToken, viewport);
 
 	public Task<DesignerEditSet> FlushAsync(long baseVersion, CancellationToken cancellationToken = default)
 		=> Document.FlushAsync(baseVersion, cancellationToken);
@@ -256,7 +256,7 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		connection = replacement;
 		RebindConnection(replacement);
 		replacement.HostExited += OnConnectionExited;
-		var state = await Document.OpenAsync(RecoverySnapshot!, cancellationToken).ConfigureAwait(false);
+		var state = await Document.OpenAsync(RecoverySnapshot!, RecoveryViewport, cancellationToken).ConfigureAwait(false);
 		RecoveryCount++;
 		Recovered?.Invoke(this, state);
 	}

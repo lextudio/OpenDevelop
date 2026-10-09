@@ -71,14 +71,14 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 	static bool IsMissingGtk(Exception ex) => ex.ToString().Contains("DllNotFoundException", StringComparison.Ordinal)
 		&& ex.ToString().Contains("gtk", StringComparison.OrdinalIgnoreCase);
 
-	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken token = default)
+	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken token = default, DesignerViewport? viewport = null)
 	{
-		return OpenRecoverableAsync(snapshot, token);
+		return OpenRecoverableAsync(snapshot, token, viewport);
 	}
 
-	public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken token = default)
+	public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken token = default, DesignerViewport? viewport = null)
 	{
-		return UpdateRecoverableAsync(snapshot, token);
+		return UpdateRecoverableAsync(snapshot, token, viewport);
 	}
 
 	public Task<DesignerEditSet> FlushAsync(long version, CancellationToken token = default) => Document.FlushAsync(version, token);
@@ -122,7 +122,7 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 		connection = replacement;
 		RebindConnection(replacement);
 		replacement.HostExited += OnConnectionExited;
-		recoveredState = await Document.OpenAsync(RecoverySnapshot!, token).ConfigureAwait(false);
+		recoveredState = await Document.OpenAsync(RecoverySnapshot!, RecoveryViewport, token).ConfigureAwait(false);
 		RecoveryCount++;
 		Recovered?.Invoke(this, recoveredState);
 	}

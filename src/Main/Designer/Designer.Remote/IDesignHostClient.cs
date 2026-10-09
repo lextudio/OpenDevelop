@@ -56,10 +56,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		#region Document (session/*)
 
 		/// <summary>Opens a document from a host-owned snapshot (<c>session/open</c>).</summary>
-		Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default);
+		Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default, DesignerViewport? viewport = null);
 
 		/// <summary>Delivers newer source for an open document (<c>session/update</c>).</summary>
-		Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default);
+		Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default, DesignerViewport? viewport = null);
 
 		/// <summary>Commits the child's current state back as an edit set (<c>session/flush</c>).
 		/// A stale <paramref name="baseVersion"/> fails without a partial write.</summary>
@@ -158,7 +158,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// <summary>Optional: Light/Dark design theme switching (<c>design/theme</c>).</summary>
 	public interface IDesignHostTheme
 	{
-		Task<DesignerSessionState> SetThemeAsync(string theme, CancellationToken cancellationToken = default);
+		Task<DesignerSessionState> SetThemeAsync(long baseVersion, string theme, CancellationToken cancellationToken = default);
 	}
 
 	/// <summary>Optional: rendering the design to a PNG file (diagnostics/tests).</summary>

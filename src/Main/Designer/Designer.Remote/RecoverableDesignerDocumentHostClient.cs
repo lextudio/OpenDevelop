@@ -15,6 +15,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		protected RecoverableDesignerDocumentHostClient(DesignerHostProcessClient connection) : base(connection) { }
 
 		protected DesignerDocumentSnapshot? RecoverySnapshot { get; private set; }
+		/// <summary>Viewport accepted with <see cref="RecoverySnapshot"/>. It is recovery state,
+		/// not source state: a restarted child must render the same parent viewport before its next
+		/// layout notification arrives.</summary>
+		protected DesignerViewport? RecoveryViewport { get; private set; }
 
 		/// <summary>The primary file's text in the last recovery snapshot - the latest source the
 		/// child accepted, refreshed after every accepted mutation. A view uses it to hand over its
@@ -40,28 +44,33 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 
 		/// <summary>Records the parent-owned source authority for adapters whose open/update wire
 		/// payload extends the common snapshot (for example viewport-aware markup hosts).</summary>
-		protected void SetRecoverySnapshot(DesignerDocumentSnapshot snapshot)
+		protected void SetRecoverySnapshot(DesignerDocumentSnapshot snapshot, DesignerViewport? viewport = null)
 		{
 			RecoverySnapshot = snapshot ?? throw new System.ArgumentNullException(nameof(snapshot));
+			RecoveryViewport = viewport;
 		}
 
 		protected async Task<DesignerSessionState> OpenRecoverableAsync(DesignerDocumentSnapshot snapshot,
-			CancellationToken cancellationToken = default)
+			CancellationToken cancellationToken = default, DesignerViewport? viewport = null)
 		{
-			var state = await Document.OpenAsync(snapshot, cancellationToken).ConfigureAwait(false);
+			var state = await Document.OpenAsync(snapshot, viewport, cancellationToken).ConfigureAwait(false);
 			if (state.Accepted)
-				SetRecoverySnapshot(snapshot);
+				SetRecoverySnapshot(snapshot, viewport);
 			return state;
 		}
 
 		protected async Task<DesignerSessionState> UpdateRecoverableAsync(DesignerDocumentSnapshot snapshot,
-			CancellationToken cancellationToken = default)
+			CancellationToken cancellationToken = default, DesignerViewport? viewport = null)
 		{
-			var state = await Document.UpdateAsync(snapshot, cancellationToken).ConfigureAwait(false);
+			// Source-only updates normally have no reason to repeat immutable surface metrics. Keep
+			// the last accepted viewport so a later host recovery cannot silently fall back to the
+			// child default just because this particular update omitted it.
+			var effectiveViewport = viewport ?? RecoveryViewport;
+			var state = await Document.UpdateAsync(snapshot, effectiveViewport, cancellationToken).ConfigureAwait(false);
 			// A rejected stale/invalid source update must never become the next crash-recovery
 			// authority. Retain the last accepted snapshot until the child accepts a replacement.
 			if (state.Accepted)
-				SetRecoverySnapshot(snapshot);
+				SetRecoverySnapshot(snapshot, effectiveViewport);
 			return state;
 		}
 

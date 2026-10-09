@@ -33,9 +33,9 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	}
 
 	[JsonRpcMethod("session/open")]
-	public DesignerSessionState Open(DesignerDocumentSnapshot snapshot) => Load(snapshot, create: true);
+	public DesignerSessionState Open(DesignerDocumentRequest request) => Load(request.Snapshot, create: true);
 	[JsonRpcMethod("session/update")]
-	public DesignerSessionState Update(DesignerDocumentSnapshot snapshot) => Load(snapshot, create: false);
+	public DesignerSessionState Update(DesignerDocumentRequest request) => Load(request.Snapshot, create: false);
 	DesignerSessionState Load(DesignerDocumentSnapshot snapshot, bool create)
 	{
 		EnsureSession(snapshot.SessionId);

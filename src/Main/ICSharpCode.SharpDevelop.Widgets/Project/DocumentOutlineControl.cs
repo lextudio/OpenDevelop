@@ -122,6 +122,22 @@ namespace ICSharpCode.SharpDevelop.Widgets
 				selected.IsSelected = false;
 		}
 
+		/// <summary>Returns the nodes the control is actually displaying, in depth-first order.
+		/// This intentionally walks the realized tree rather than retaining the last protocol tree:
+		/// non-designable children are filtered while rows are created, so the latter is not a
+		/// faithful representation of what the Document Outline pad shows.</summary>
+		public DocumentOutlineSnapshot Snapshot()
+		{
+			var nodes = new List<DocumentOutlineSnapshotNode>();
+			foreach (TreeViewItem root in Items)
+				CollectSnapshotNodes(root, nodes, depth: 0);
+			return new DocumentOutlineSnapshot {
+				RootCount = Items.Count,
+				Nodes = nodes,
+				SelectedId = SelectedNode?.Id
+			};
+		}
+
 		TreeViewItem CreateItem(DesignerElementNode node)
 		{
 			var item = new TreeViewItem { Tag = node, IsExpanded = true };
@@ -174,5 +190,38 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			}
 			return null;
 		}
+
+		static void CollectSnapshotNodes(TreeViewItem item, List<DocumentOutlineSnapshotNode> nodes, int depth)
+		{
+			if (item.Tag is DesignerElementNode node) {
+				nodes.Add(new DocumentOutlineSnapshotNode {
+					Id = node.Id,
+					Name = node.Name,
+					Type = node.Type,
+					Label = GetDisplayText(node),
+					Depth = depth
+				});
+			}
+			foreach (TreeViewItem child in item.Items)
+				CollectSnapshotNodes(child, nodes, depth + 1);
+		}
+	}
+
+	/// <summary>Read-only, UI-neutral projection of a live <see cref="DocumentOutlineControl"/>.
+	/// Used by DevFlow diagnostics so every designer reports the same visible element tree.</summary>
+	public sealed class DocumentOutlineSnapshot
+	{
+		public int RootCount { get; set; }
+		public List<DocumentOutlineSnapshotNode> Nodes { get; set; } = new List<DocumentOutlineSnapshotNode>();
+		public string SelectedId { get; set; }
+	}
+
+	public sealed class DocumentOutlineSnapshotNode
+	{
+		public string Id { get; set; }
+		public string Name { get; set; }
+		public string Type { get; set; }
+		public string Label { get; set; }
+		public int Depth { get; set; }
 	}
 }

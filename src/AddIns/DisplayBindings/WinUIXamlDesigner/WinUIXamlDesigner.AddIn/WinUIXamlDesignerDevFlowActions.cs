@@ -34,6 +34,9 @@ public static class WinUIXamlDesignerDevFlowActions
 			return JsonSerializer.Serialize(new { active = false });
 
 		var toolbox = WinUIXamlToolbox.Instance;
+		var outline = view.OutlineContent as ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl;
+		var outlineSnapshot = outline?.Snapshot();
+		var outlineNodes = (outlineSnapshot?.Nodes ?? new System.Collections.Generic.List<ICSharpCode.SharpDevelop.Widgets.DocumentOutlineSnapshotNode>()).ToArray();
 		return JsonSerializer.Serialize(new {
 			active = true,
 			framework = view.Framework.Kind.ToString(),
@@ -48,8 +51,8 @@ public static class WinUIXamlDesignerDevFlowActions
 			toolboxGroupCount = toolbox.GroupCount,
 			toolboxFilterText = SharedToolbox.Instance.FilterText,
 			toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true,
-			outlineChildCount = view.OutlineChildCount,
-			outlineNames = view.OutlineNames(),
+			outlineChildCount = outlineNodes.Count(node => node.Depth == 1),
+			outlineNames = outlineNodes.Select(node => string.IsNullOrEmpty(node.Name) ? node.Type : node.Name).ToArray(),
 			elementNames = view.ElementNames(),
 			selectedName = view.SelectedElementName,
 			resolvedNameCount = view.ResolvedNameCount,

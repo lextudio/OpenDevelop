@@ -61,8 +61,8 @@ public sealed class UnoDesignHostRpcTests
 			HostDll(),
 			Environment.GetEnvironmentVariable("OD_GEOMETRY_APP_BIN"));
 
-	/// <summary>Wraps fixture XAML as a single-file document snapshot (the DDP document shape);
-	/// the surface size/DPI is presentation state and goes through SetViewport instead.</summary>
+	/// <summary>Wraps fixture XAML as a single-file document snapshot. Viewport metrics travel in
+	/// the sibling <see cref="DesignerDocumentRequest.Viewport"/> field of the common DDP request.</summary>
 	static DesignerDocumentSnapshot Document(UnoDesignClient client, string xaml, long version = 1)
 	{
 		client.SetViewport(320, 240, 1.0);
@@ -74,6 +74,42 @@ public sealed class UnoDesignHostRpcTests
 			Language = "",
 			Files = { new DesignerSourceFileSnapshot { FileName = "MainPage.xaml", Kind = "Source", Text = xaml } }
 		};
+	}
+
+	[Fact]
+	public async Task ChildHost_HandshakePublishesCapabilitiesThroughCommonEnvelope()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await StartAsync(timeout.Token);
+
+		var capabilities = await client.GetCapabilitiesAsync(timeout.Token);
+
+		Assert.Equal(client.SessionId, capabilities.SessionId);
+		Assert.False(string.IsNullOrWhiteSpace(capabilities.Runtime));
+	}
+
+	[Fact]
+	public async Task ChildHost_OpenAcceptsViewportThroughCommonDocumentRequest()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await StartAsync(timeout.Token);
+		var snapshot = Document(client, Fixture("Viewport"));
+		var viewport = new DesignerViewport { Width = 517, Height = 293, Dpi = 1.5 };
+
+		var opened = await client.OpenAsync(snapshot, viewport, timeout.Token);
+
+		Assert.True(opened.Accepted, opened.Error);
+		Assert.NotNull(opened.Render);
+		Assert.Equal(775, opened.Render!.Width);
+		// The fixture root has no explicit Height, so it intentionally sizes to content instead
+		// of the viewport's height. Width still proves the explicit request viewport was used.
+		Assert.True(opened.Render.Height > 0);
+
+		// A later source-only update must retain the explicitly accepted viewport rather than
+		// reverting to the legacy SetViewport value that Document(client, ...) initialized.
+		var updated = await client.UpdateAsync(Document(client, Fixture("Updated"), version: 2), timeout.Token);
+		Assert.True(updated.Accepted, updated.Error);
+		Assert.Equal(775, updated.Render!.Width);
 	}
 
 	[Theory]
@@ -313,6 +349,8 @@ public sealed class UnoDesignHostRpcTests
 			("set-bounds", await client.SetBoundsAsync(1, "greeting", 0, 0, 11, 22, timeout.Token)),
 			("delete-elements", await client.DeleteElementsAsync(1, new[] { "greeting" }, timeout.Token)),
 			("rename", await client.RenameAsync(1, "greeting", "clobbered", timeout.Token)),
+			("theme", await client.SetThemeAsync(1, "Dark", timeout.Token)),
+			("go-to-state", await client.GoToStateAsync(1, "CommonStates", "Normal", timeout.Token)),
 		})
 		{
 			Assert.False(stale.Accepted, $"design/{name} accepted a stale base version");
@@ -388,7 +426,10 @@ public sealed class UnoDesignHostRpcTests
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
 		using var first = await UnoDesignClient.AcquireSharedAsync("", "", timeout.Token, HostDll());
 		using var second = await UnoDesignClient.AcquireSharedAsync("", "", timeout.Token, HostDll());
-		Assert.True((await first.OpenAsync(Document(first, Fixture("First")), timeout.Token)).Accepted);
+		var recoveryViewport = new DesignerViewport { Width = 517, Height = 293, Dpi = 1.5 };
+		var firstOpened = await first.OpenAsync(Document(first, Fixture("First")), recoveryViewport, timeout.Token);
+		Assert.True(firstOpened.Accepted, firstOpened.Error);
+		Assert.Equal(775, firstOpened.Render!.Width);
 		Assert.True((await second.OpenAsync(Document(second, Fixture("Second")), timeout.Token)).Accepted);
 		var failedProcessId = first.ProcessId;
 
@@ -398,7 +439,12 @@ public sealed class UnoDesignHostRpcTests
 
 		Assert.Equal(first.ProcessId, second.ProcessId);
 		Assert.NotEqual(failedProcessId, first.ProcessId);
-		Assert.Contains("First", Assert.Single((await first.FlushAsync(1, timeout.Token)).Files).Text, StringComparison.Ordinal);
+		// Document(first, ...) initializes the legacy mutable viewport to 320×240. The update
+		// must nevertheless keep using the explicit 517×293 viewport recorded before the crash.
+		var afterRecovery = await first.UpdateAsync(Document(first, Fixture("First recovered"), version: 2), timeout.Token);
+		Assert.True(afterRecovery.Accepted, afterRecovery.Error);
+		Assert.Equal(775, afterRecovery.Render!.Width);
+		Assert.Contains("First", Assert.Single((await first.FlushAsync(2, timeout.Token)).Files).Text, StringComparison.Ordinal);
 		var sibling = Assert.Single((await second.FlushAsync(1, timeout.Token)).Files).Text;
 		Assert.Contains("Second", sibling, StringComparison.Ordinal);
 		Assert.DoesNotContain("First", sibling, StringComparison.Ordinal);
