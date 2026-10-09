@@ -1775,6 +1775,39 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Contains("Content=\"Changed through Properties\"", savedXaml, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task WinUIDesigner_PropertiesPadReset_RemovesTheAuthoredXamlValue()
+    {
+        var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
+        try
+        {
+            await OpenUnoDesignerAsync();
+            var selected = await _app.InvokeAsync("od.winui-designer.select", "PrimaryButton");
+            Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+
+            JsonElement reset = default;
+            var resetOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                reset = await _app.InvokeAsync("od.winui-designer.properties-pad.reset", "Content");
+                return reset.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250);
+            Assert.True(resetOk, reset.ToString());
+            Assert.Equal("PrimaryButton", reset.GetProperty("selectedName").GetString());
+
+            var saved = await _app.InvokeAsync("od.file.save", _unoPagePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var savedXaml = await File.ReadAllTextAsync(_unoPagePath);
+            var savedDocument = XDocument.Parse(savedXaml);
+            var primaryButton = savedDocument.Descendants()
+                .Single(element => element.Attributes().Any(attribute => attribute.Name.LocalName == "Name" && attribute.Value == "PrimaryButton"));
+            Assert.Null(primaryButton.Attribute("Content"));
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.close-active-view");
+            await File.WriteAllTextAsync(_unoPagePath, originalXaml);
+        }
+    }
+
     /// <summary>
     /// Technote acceptance item: invalid XAML must produce a diagnostic without taking the IDE
     /// down, and going back to valid XAML must recover the preview.
@@ -3630,6 +3663,15 @@ public sealed class AddInTests : IAsyncDisposable
 
             var nudged = await _app.InvokeAsync("od.forms-designer.nudge", 15, 5);
             Assert.True(nudged.GetProperty("success").GetBoolean(), nudged.ToString());
+            // The accepted layout edit refreshes metadata asynchronously. It must preserve the
+            // selected set in the shared Properties pad, not collapse it to label1's proxy.
+            JsonElement multiProperties = default;
+            var multiPropertiesRestored = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                multiProperties = await _app.InvokeAsync("od.property-pad.selected-object");
+                return multiProperties.GetProperty("hasSelection").GetBoolean()
+                    && multiProperties.GetProperty("typeName").GetString()!.EndsWith("DesignerMultiPropertyAdapter", StringComparison.Ordinal);
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250);
+            Assert.True(multiPropertiesRestored, "Properties pad must preserve multi-selection after a remote edit: " + multiProperties);
             double left1AfterNudge = 0, left2AfterNudge = 0;
             var moved = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 var b1 = await _app.InvokeAsync("od.forms-designer.query-control-screen-bounds", "label1");
@@ -3675,6 +3717,21 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.Contains("label1.Text = \"nudged-label\"", savedDesigner, StringComparison.Ordinal);
             Assert.Contains("label1.Location = new System.Drawing.Point(45, 35)", savedDesigner, StringComparison.Ordinal);
             Assert.Contains("label2.Location = new System.Drawing.Point(45, 35)", savedDesigner, StringComparison.Ordinal);
+
+            // The edit refreshes the selected proxy from the accepted host state, so the live
+            // Properties pad now exposes Reset for the source-authored value.
+            JsonElement reset = default;
+            var resetOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                reset = await _app.InvokeAsync("od.forms-designer.properties-pad.reset", "Text");
+                return reset.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250);
+            Assert.True(resetOk, reset.ToString());
+            Assert.Equal("label1", reset.GetProperty("selectedName").GetString());
+            var savedAfterReset = await _app.InvokeAsync("od.file.save", formCodePath);
+            Assert.True(savedAfterReset.GetProperty("success").GetBoolean(), savedAfterReset.ToString());
+            savedDesigner = await File.ReadAllTextAsync(designerPath);
+            Assert.DoesNotContain("nudged-label", savedDesigner, StringComparison.Ordinal);
+            Assert.DoesNotContain("label1.Text", savedDesigner, StringComparison.Ordinal);
         } finally {
             await File.WriteAllTextAsync(formCodePath, originalForm);
             await File.WriteAllTextAsync(designerPath, originalDesigner);

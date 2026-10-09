@@ -181,6 +181,33 @@ public static class WinUIXamlDesignerDevFlowActions
 		});
 	}
 
+	[DevFlowAction("od.winui-designer.properties-pad.reset", Description = "Reset an authored WinUI/Uno property through the real shared Properties pad descriptor")]
+	public static string ResetPropertyThroughPropertiesPad(string propertyName)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		var grid = PropertyPadGrid;
+		if (grid?.SelectedObject is not WinUIXamlElementPropertyAdapter selectedObject)
+			return Failure("Properties pad has no selected WinUI/Uno element");
+		var item = grid.Properties?.OfType<PropertyItem>()
+			.FirstOrDefault(candidate => candidate.PropertyName == propertyName);
+		if (item?.PropertyDescriptor == null)
+			return Failure("Properties pad property not found: " + propertyName);
+		if (!item.PropertyDescriptor.CanResetValue(selectedObject))
+			return Failure("Properties pad property cannot be reset: " + propertyName);
+		try {
+			item.PropertyDescriptor.ResetValue(selectedObject);
+			return JsonSerializer.Serialize(new {
+				success = true,
+				selectedName = view.SelectedElementName,
+				propertyName = item.PropertyName
+			});
+		} catch (Exception exception) {
+			return Failure(exception.Message);
+		}
+	}
+
 	[DevFlowAction("od.winui-designer.toolbox.query-item-bounds", Description = "Get the real on-screen bounds of a WinUI/Uno Toolbox row, for driving a synthetic mouse drag onto the design surface")]
 	public static string QueryToolboxItemBounds(string controlName)
 	{

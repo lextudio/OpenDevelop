@@ -576,6 +576,33 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.forms-designer.properties-pad.reset", Description = "Reset a serializable WinForms property through the live shared Properties pad descriptor")]
+		public static string ResetPropertyThroughPropertiesPad(string propertyName)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent?.IsRemoteDesignerLoaded != true)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			var grid = PropertyPadGrid;
+			if (grid?.SelectedObject == null)
+				return Failure("Properties pad has no selected WinForms design item");
+			var item = grid.Properties?.OfType<PropertyItem>()
+				.FirstOrDefault(candidate => candidate.PropertyName == propertyName);
+			if (item?.PropertyDescriptor == null)
+				return Failure("Properties pad property not found: " + propertyName);
+			if (!item.PropertyDescriptor.CanResetValue(grid.SelectedObject))
+				return Failure("Properties pad property cannot be reset: " + propertyName);
+			try {
+				item.PropertyDescriptor.ResetValue(grid.SelectedObject);
+				return JsonSerializer.Serialize(new {
+					success = true,
+					selectedName = viewContent.RemoteDesignerSelectedComponent,
+					propertyName = item.PropertyName
+				});
+			} catch (Exception exception) {
+				return Failure(exception.Message);
+			}
+		}
+
 		[DevFlowAction("od.forms-designer.pad-view-mode", Description = "Switch the shared Properties pad grid between its Properties and Events views; optionally set a Click handler name and report the events - mirrors od.winui-designer.pad-view-mode")]
 		public static string PadViewMode(string mode, string handlerName = null)
 		{

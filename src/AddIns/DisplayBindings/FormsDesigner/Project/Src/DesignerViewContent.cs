@@ -375,6 +375,12 @@ namespace ICSharpCode.FormsDesigner
 				throw new FormsDesignerLoadException(state.Error);
 			var rootComp = state.Components?.FirstOrDefault(c => c.Name == remoteControl.SelectedComponentName);
 			remoteControl.Show(state);
+			// Show replaces the component metadata, but keeps the existing selection and therefore
+			// does not raise SelectionChanged. Refresh the proxy so Properties-pad descriptors see
+			// the accepted state (in particular ShouldSerialize/Reset availability). Defer the
+			// replacement until the PropertyGrid's current SetValue/ResetValue call returns; replacing
+			// SelectedObject synchronously from inside that descriptor call can re-enter the grid.
+			QueuePropertyPadRefresh();
 			UpdateOutline(state);
 			SynchronizeRemoteEdits();
 			MakeDirty();
@@ -1659,13 +1665,8 @@ namespace ICSharpCode.FormsDesigner
 
 		void RemoteSelectionChanged(object sender, EventArgs e)
 		{
-			var component = RemoteDesignerState?.Components.FirstOrDefault(item => item.Name == remoteControl.SelectedComponentName);
-			if (component == null) {
-				propertyContainer.Clear();
-				return;
-			}
-			var proxies = remoteControl.SelectedComponentNames.Select(name => RemoteDesignerState?.Components.FirstOrDefault(item => item.Name == name)).Where(item => item != null).Select(item => (object)new RemoteComponentPropertyProxy(this, item)).ToArray();
-			propertyContainer.SelectedObject = proxies.Length > 1 ? new DesignerMultiPropertyAdapter(proxies) : proxies.FirstOrDefault();
+			var component = RefreshPropertyPadFromSelection();
+			if (component == null) return;
 			shellSelection.Select(remoteControl.SelectedComponentNames);
 			// Design surface -> Document Outline: mirror the selection without re-triggering
 			// the outline->surface path (same element, no-op anyway).
@@ -1786,13 +1787,43 @@ namespace ICSharpCode.FormsDesigner
 			// is what actually drives the property grid; that dropdown is not ported. The remote
 			// designer drives the pad via RemoteSelectionChanged; this method only serves as a
 			// refresh hook for legacy consumers such as WixBinding.
-			if (remoteControl != null && remoteControl.SelectedComponentName is { Length: > 0 } selectedName
-				&& RemoteDesignerState?.Components.FirstOrDefault(item => item.Name == selectedName) is { } component) {
-				propertyContainer.SelectedObject = new RemoteComponentPropertyProxy(this, component);
-				System.Windows.Input.CommandManager.InvalidateRequerySuggested();
-			} else {
+			RefreshPropertyPadFromSelection();
+		}
+
+		bool propertyPadRefreshPending;
+
+		void QueuePropertyPadRefresh()
+		{
+			if (propertyPadRefreshPending || remoteControl == null) return;
+			propertyPadRefreshPending = true;
+			remoteControl.Dispatcher.BeginInvoke(new Action(() => {
+				propertyPadRefreshPending = false;
+				// A pending descriptor refresh may outlive a close/disconnect. Do not repopulate
+				// the shared pad with an orphaned proxy after the design surface has gone away.
+				if (disposing || remoteControl == null) return;
+				UpdatePropertyPad();
+			}), System.Windows.Threading.DispatcherPriority.Background);
+		}
+
+		DesignerComponentInfo? RefreshPropertyPadFromSelection()
+		{
+			if (remoteControl == null || String.IsNullOrEmpty(remoteControl.SelectedComponentName)) {
 				propertyContainer.Clear();
+				return null;
 			}
+			var component = RemoteDesignerState?.Components.FirstOrDefault(item => item.Name == remoteControl.SelectedComponentName);
+			if (component == null) {
+				propertyContainer.Clear();
+				return null;
+			}
+			var proxies = remoteControl.SelectedComponentNames
+				.Select(name => RemoteDesignerState?.Components.FirstOrDefault(item => item.Name == name))
+				.Where(item => item != null)
+				.Select(item => (object)new RemoteComponentPropertyProxy(this, item!))
+				.ToArray();
+			propertyContainer.SelectedObject = proxies.Length > 1 ? new DesignerMultiPropertyAdapter(proxies) : proxies.FirstOrDefault();
+			System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+			return component;
 		}
 
 		sealed class RemoteComponentPropertyProxy : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost
@@ -1894,7 +1925,13 @@ namespace ICSharpCode.FormsDesigner
 
 			PropertyDescriptorCollection GetRemotePropertyDescriptors()
 			{
-				var descriptors = TypeDescriptor.GetProperties(typeof(RemoteComponentPropertyProxy)).Cast<PropertyDescriptor>().ToList();
+				// Text used to be a fixed CLR descriptor like X/Y/Width/Height. Unlike bounds,
+				// though, it has ordinary source-serialization semantics, including ResetValue.
+				// Let the remote descriptor represent it so the Properties pad can expose the
+				// authored-value reset affordance instead of permanently treating Text as a CLR
+				// property with no reset contract.
+				var descriptors = TypeDescriptor.GetProperties(typeof(RemoteComponentPropertyProxy)).Cast<PropertyDescriptor>()
+					.Where(item => item.Name != nameof(Text)).ToList();
 				var fixedNames = new HashSet<string>(descriptors.Select(item => item.Name), StringComparer.Ordinal);
 				foreach (var property in remoteProperties.Where(item => !fixedNames.Contains(item.Name)))
 					descriptors.Add(new RemotePropertyDescriptor(owner, name, property));

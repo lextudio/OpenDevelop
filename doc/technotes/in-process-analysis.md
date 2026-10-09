@@ -542,6 +542,22 @@ Properties-pad snapshot, and WPF's adapter rejects before entering `OnPropertyEd
 signal bind therefore cannot create a GTK code-behind method or show a handler that the child did
 not accept.
 
+**C2 verification update (2026-10-09).** The macOS Uno journey now selects `PrimaryButton` in the
+shared Properties pad, resets its authored `Content` through that live `PropertyItem` descriptor,
+saves, and verifies that the named element remains while the XAML attribute is removed. The test
+restores its copied fixture in `finally`; it proves reset is a source edit rather than a runtime-only
+preview change.
+
+The LibreWinForms journey also now verifies the visible `Text` descriptor end to end: after its
+Properties-pad edit commits, the refreshed accepted snapshot exposes Reset; reset removes the
+`label1.Text` source assignment. This prevents the fixed client-side `Text` proxy from masking the
+remote descriptor's serialisation and reset semantics.
+
+**C3 compatibility note (2026-10-09).** WPF always publishes its native text baseline. WinUI
+hosts publish `BaselineOffset` only when the active compatible runtime exposes that optional
+`TextBlock` member; otherwise they send null rather than failing a design session or inventing a
+measurement. Consumers must continue to treat the field as nullable telemetry.
+
 ### Why this order
 
 `C1` removes a correctness and responsiveness hazard in every click path. `C2` then closes the
