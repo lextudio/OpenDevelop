@@ -232,6 +232,22 @@ asked. Practicalities learned the hard way:
   environment (e.g. it needs a live Windows UI session this sandbox doesn't have) — say so
   explicitly and why, rather than defaulting to it out of caution.
 
+### Two .NET SDKs on one machine: `MSB4018 NullReferenceException` in `ResolvePackageAssets`
+
+On macOS a plain `dotnet` can resolve to a different SDK than `build.ps1` uses (observed:
+`/usr/local/share/dotnet` with 10.0.200 on `PATH`, Homebrew's 10.0.302 under `pwsh`). The older SDK
+then fails reading the asset cache (`obj/*.assets.cache`) the newer one wrote, in many projects at
+once:
+
+```text
+Microsoft.PackageDependencyResolution.targets(266,5): error MSB4018: System.NullReferenceException
+   at Microsoft.NET.Build.Tasks.ResolvePackageAssets.CacheReader.CreateReaderFromDisk(...)
+```
+
+That is not a code or restore problem. Check the SDK path in the error (`.../sdk/<version>/Sdks/...`)
+against the one the last build used, and run every step with the same `dotnet`, e.g.
+`/opt/homebrew/Cellar/dotnet/<version>/libexec/dotnet test --project ...`.
+
 ### Finding and adding VS toolbar/menu icons
 
 Source library: `/Users/lextm/Downloads/Visual Studio 2026 Image Library/images/` — a **flat**

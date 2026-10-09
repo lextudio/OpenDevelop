@@ -256,36 +256,15 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// </summary>
 		public IReadOnlyDictionary<MSBuildBasedProject, IReadOnlyList<string>> ResolveAssemblyReferencePaths(IReadOnlyList<MSBuildBasedProject> projects)
 		{
-			var result = new Dictionary<MSBuildBasedProject, IReadOnlyList<string>>();
 			if (projects == null || projects.Count == 0)
-				return result;
+				return new Dictionary<MSBuildBasedProject, IReadOnlyList<string>>();
 			// MSBuild's NuGet SDK resolver reads the msbuild-sdks pins of the global.json above the
 			// ENTRY project, for every project in the build. A traversal in the temp directory
 			// therefore resolved Sdk="LibreWPF.Sdk" to a version none of these projects pins (and
 			// brought back NETSDK1047 for 53 of them). One batch per global.json directory, each
 			// started from that directory, resolves exactly what each project's own build does.
 			// The batches are independent processes, so they run side by side.
-			var batches = projects.GroupBy(project => GlobalJsonDirectory(project.FileName.ToString()), StringComparer.Ordinal)
-				.Select(group => Task.Run(() => ResolveAssemblyReferencePathsFrom(group.Key, group.ToList())))
-				.ToArray();
-			foreach (var batch in batches) {
-				var resolved = batch.Result;
-				if (resolved == null)
-					continue; // that batch failed; its projects fall back to single resolution
-				foreach (var pair in resolved)
-					result[pair.Key] = pair.Value;
-			}
-			return result;
-		}
-
-		/// <summary>The nearest directory above <paramref name="projectFile"/> holding a global.json, or null.</summary>
-		static string GlobalJsonDirectory(string projectFile)
-		{
-			for (var directory = Path.GetDirectoryName(projectFile); !string.IsNullOrEmpty(directory); directory = Path.GetDirectoryName(directory)) {
-				if (File.Exists(Path.Combine(directory, "global.json")))
-					return directory;
-			}
-			return null;
+			return ReferenceResolutionBatch.ResolveInGlobalJsonBatches(projects, project => project.FileName.ToString(), ResolveAssemblyReferencePathsFrom);
 		}
 
 		Dictionary<MSBuildBasedProject, IReadOnlyList<string>> ResolveAssemblyReferencePathsFrom(string globalJsonDirectory, IReadOnlyList<MSBuildBasedProject> projects)
@@ -301,7 +280,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			try {
 				Directory.CreateDirectory(scratch);
 				var requests = projects.Select(project => (Project: project, File: project.FileName.ToString(), TargetFramework: InnerBuildTargetFramework(project))).ToList();
-				File.WriteAllText(traversal, CreateResolveReferencesTraversal(requests.Select(r => (r.File, r.TargetFramework)).ToList()));
+				File.WriteAllText(traversal, ReferenceResolutionBatch.CreateResolveReferencesTraversal(requests.Select(r => (r.File, r.TargetFramework)).ToList()));
 
 				var psi = CreateDotnetChildStartInfo();
 				psi.ArgumentList.Add("msbuild");
@@ -322,7 +301,7 @@ namespace ICSharpCode.SharpDevelop.Project
 					return null;
 				}
 				string stdout = stdoutTask.Result, stderr = stderrTask.Result;
-				var items = ParseLabelledReferencePaths(stdout);
+				var items = ReferenceResolutionBatch.ParseLabelledReferencePaths(stdout);
 				if (items == null) {
 					LoggingService.Warn("Batched ResolveReferences produced no item list (exit " + process.ExitCode + "); resolving one by one. "
 						+ FirstLine(stderr.Length > 0 ? stderr : stdout));
@@ -357,62 +336,6 @@ namespace ICSharpCode.SharpDevelop.Project
 		static int ResolveNodeCount() =>
 			int.TryParse(Environment.GetEnvironmentVariable("OD_RESOLVE_NODES"), out var nodes) && nodes > 0
 				? nodes : Math.Max(1, Math.Min(4, Environment.ProcessorCount));
-
-		static string CreateResolveReferencesTraversal(IReadOnlyList<(string File, string TargetFramework)> projects)
-		{
-			string Escape(string value) => System.Security.SecurityElement.Escape(value);
-			string PropertiesFor(string targetFramework) =>
-				"BuildingInsideVisualStudio=true" + (string.IsNullOrEmpty(targetFramework) ? "" : ";TargetFramework=" + targetFramework);
-			var text = new StringBuilder();
-			text.AppendLine("<Project>");
-			text.AppendLine("  <ItemGroup>");
-			foreach (var project in projects)
-				text.AppendLine("    <ODProject Include=\"" + Escape(project.File) + "\" Properties=\"" + Escape(PropertiesFor(project.TargetFramework)) + "\" />");
-			text.AppendLine("  </ItemGroup>");
-			var calls = new List<string>();
-			for (int i = 0; i < projects.Count; i++) {
-				// Same global properties as the parallel pass, so this is a results-cache hit.
-				text.AppendLine("  <Target Name=\"R" + i + "\">");
-				text.AppendLine("    <MSBuild Projects=\"" + Escape(projects[i].File) + "\" Targets=\"ResolveReferences\" Properties=\"" + Escape(PropertiesFor(projects[i].TargetFramework))
-					+ "\" SkipNonexistentTargets=\"true\" ContinueOnError=\"WarnAndContinue\"><Output TaskParameter=\"TargetOutputs\" ItemName=\"_R" + i + "\" /></MSBuild>");
-				text.AppendLine("    <ItemGroup><ODReferencePath Include=\"@(_R" + i + ")\" ODProject=\"" + Escape(projects[i].File) + "\" /></ItemGroup>");
-				text.AppendLine("  </Target>");
-				calls.Add("R" + i);
-			}
-			text.AppendLine("  <Target Name=\"Resolve\">");
-			// Batched per distinct global-property set, since the MSBuild task's Properties apply to all.
-			text.AppendLine("    <MSBuild Projects=\"@(ODProject)\" Targets=\"ResolveReferences\" Properties=\"%(ODProject.Properties)\" BuildInParallel=\"true\" SkipNonexistentTargets=\"true\" ContinueOnError=\"WarnAndContinue\" />");
-			text.AppendLine("    <CallTarget Targets=\"" + string.Join(";", calls) + "\" />");
-			text.AppendLine("  </Target>");
-			text.AppendLine("</Project>");
-			return text.ToString();
-		}
-
-		/// <summary>The -getItem JSON's ODReferencePath items grouped by ODProject, or null if absent.</summary>
-		static Dictionary<string, List<string>> ParseLabelledReferencePaths(string stdout)
-		{
-			int start = stdout.IndexOf('{');
-			if (start < 0)
-				return null;
-			try {
-				using var document = System.Text.Json.JsonDocument.Parse(stdout.Substring(start));
-				if (!document.RootElement.TryGetProperty("Items", out var itemsElement)
-				    || !itemsElement.TryGetProperty("ODReferencePath", out var list))
-					return null;
-				var grouped = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-				foreach (var item in list.EnumerateArray()) {
-					if (!item.TryGetProperty("Identity", out var identity) || !item.TryGetProperty("ODProject", out var owner))
-						continue;
-					var key = owner.GetString();
-					if (!grouped.TryGetValue(key, out var paths))
-						grouped[key] = paths = new List<string>();
-					paths.Add(identity.GetString());
-				}
-				return grouped;
-			} catch (System.Text.Json.JsonException) {
-				return null;
-			}
-		}
 
 		/// <summary>MSBuild error lines attributed to <paramref name="projectFile"/>: either starting
 		/// with its path or carrying it as the trailing [project] marker.</summary>
@@ -623,13 +546,33 @@ namespace ICSharpCode.SharpDevelop.Project
 			var nothing = ((ISet<IProject>)built, (ISet<IProject>)failedWithErrors);
 			// The traversal must sit under the global.json its projects use (msbuild-sdks pins are
 			// read from the entry project's directory); others keep the per-project path.
-			string globalJsonDirectory = GlobalJsonDirectory(solutionFile);
-			bool SameGlobalJson(IProject project) => string.Equals(GlobalJsonDirectory(project.FileName.ToString()), globalJsonDirectory, StringComparison.Ordinal);
+			string globalJsonDirectory = ReferenceResolutionBatch.GlobalJsonDirectory(solutionFile);
+			bool SameGlobalJson(IProject project) => string.Equals(ReferenceResolutionBatch.GlobalJsonDirectory(project.FileName.ToString()), globalJsonDirectory, StringComparison.Ordinal);
 			var includedWaves = waves.Select(wave => wave.Where(SameGlobalJson).ToList()).Where(wave => wave.Count > 0).ToList();
 			var included = includedWaves.SelectMany(wave => wave).ToList();
 			if (included.Count == 0)
 				return nothing;
-			var byFile = included.ToDictionary(project => project.FileName.ToString(), StringComparer.OrdinalIgnoreCase);
+			// The traversal names each project by its real path (symlinks resolved), and MSBuild reports
+			// diagnostics and results under that name; map both spellings back to the project.
+			var realPathOf = included.ToDictionary(project => project, project => RealPath(project.FileName.ToString()));
+			var realDirectoryOf = included.ToDictionary(project => project, project => RealPath(project.Directory.ToString()));
+			var byFile = new Dictionary<string, IProject>(StringComparer.OrdinalIgnoreCase);
+			foreach (var project in included) {
+				byFile[project.FileName.ToString()] = project;
+				byFile[realPathOf[project]] = project;
+			}
+			string ReportedPath(IProject project, string path)
+			{
+				// The traversal must use the real path, but BuildError paths are navigation targets.
+				// Return to the spelling through which the project was opened, so this agrees with
+				// per-project builds and locates an existing, possibly unsaved editor document.
+				string realDirectory = realDirectoryOf[project];
+				string realPrefix = realDirectory.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
+					? realDirectory : realDirectory + Path.DirectorySeparatorChar;
+				if (!path.StartsWith(realPrefix, StringComparison.OrdinalIgnoreCase))
+					return path;
+				return Path.Combine(project.Directory.ToString(), path.Substring(realPrefix.Length));
+			}
 			var withErrors = new HashSet<IProject>();
 			var seenDiagnostics = new HashSet<string>(StringComparer.Ordinal);
 			string scratch = globalJsonDirectory != null ? Path.Combine(globalJsonDirectory, ".od") : Path.GetTempPath();
@@ -642,7 +585,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			var buildStartedUtc = DateTime.UtcNow;
 			try {
 				Directory.CreateDirectory(scratch);
-				File.WriteAllText(traversal, CreateBuildTraversal(includedWaves.Select(wave => (IReadOnlyList<string>)wave.Select(project => project.FileName.ToString()).ToList()).ToList()));
+				File.WriteAllText(traversal, CreateBuildTraversal(includedWaves.Select(wave => (IReadOnlyList<string>)wave.Select(project => realPathOf[project]).ToList()).ToList()));
 				var psi = CreateDotnetChildStartInfo();
 				psi.ArgumentList.Add("msbuild");
 				psi.ArgumentList.Add(traversal);
@@ -685,7 +628,7 @@ namespace ICSharpCode.SharpDevelop.Project
 						// project's own build (which restores) may well succeed.
 						if (!isWarning && !IsRestoreError(match.Groups["code"].Value))
 							withErrors.Add(project);
-						reportError(project, new BuildError(match.Groups["file"].Value,
+						reportError(project, new BuildError(ReportedPath(project, match.Groups["file"].Value),
 							int.Parse(match.Groups["line"].Value), int.Parse(match.Groups["column"].Value),
 							match.Groups["code"].Value, match.Groups["text"].Value.Trim()) { IsWarning = isWarning });
 					}
@@ -720,7 +663,7 @@ namespace ICSharpCode.SharpDevelop.Project
 					return nothing;
 				}
 				foreach (var project in included) {
-					if (results.TryGetValue(project.FileName.ToString(), out var ok) && ok) {
+					if (results.TryGetValue(realPathOf[project], out var ok) && ok) {
 						FastUpToDateCheck.Succeeded(project, options, buildStartedUtc);
 						built.Add(project);
 					} else {
@@ -728,7 +671,7 @@ namespace ICSharpCode.SharpDevelop.Project
 						if (withErrors.Contains(project))
 							failedWithErrors.Add(project);
 						reportLine(project.Name + " failed in the one-process build ("
-							+ (results.ContainsKey(project.FileName.ToString()) ? "result false" : "no result")
+							+ (results.ContainsKey(realPathOf[project]) ? "result false" : "no result")
 							+ (withErrors.Contains(project) ? ", errors reported" : ", no errors of its own") + ")");
 					}
 				}
@@ -792,6 +735,35 @@ namespace ICSharpCode.SharpDevelop.Project
 			text.AppendLine("  </Target>");
 			text.AppendLine("</Project>");
 			return text.ToString();
+		}
+
+		/// <summary>
+		/// <paramref name="path"/> with every symbolic link along it resolved. A project reached through
+		/// a symlinked directory (on macOS /var and /tmp are links to /private/...) is restored under
+		/// its real path, so project.assets.json records its ProjectReferences by real path; built from
+		/// a traversal under the linked path, those references no longer match and drop out of the
+		/// .deps.json - an executable then fails to load its own referenced projects at run time.
+		/// A per-project `dotnet build` does not show this.
+		/// </summary>
+		internal static string RealPath(string path)
+		{
+			try {
+				var full = Path.GetFullPath(path);
+				var root = Path.GetPathRoot(full) ?? "";
+				var current = root;
+				foreach (var part in full.Substring(root.Length).Split(new[] { Path.DirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries)) {
+					current = Path.Combine(current, part);
+					FileSystemInfo info = Directory.Exists(current) ? new DirectoryInfo(current) : new FileInfo(current);
+					if (info.LinkTarget != null) {
+						var target = info.ResolveLinkTarget(returnFinalTarget: true);
+						if (target != null)
+							current = RealPath(target.FullName);
+					}
+				}
+				return current;
+			} catch (Exception) {
+				return path;
+			}
 		}
 
 		/// <summary>The traversal's "succeeded|project file" lines, or null if it wrote none.</summary>
