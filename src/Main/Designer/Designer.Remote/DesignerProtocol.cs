@@ -541,6 +541,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>Key in <see cref="ResourceFileName"/> that supplied this value. This is
 		/// descriptive metadata only: the isolated child remains unable to write resources.</summary>
 		public string ResourceKey { get; set; } = "";
+		/// <summary>Optional IDE-owned editor capability for a proven resource-backed value.
+		/// The first defined value is <c>ResourceImage</c>. Empty means no specialized editor is
+		/// available; clients must keep the normal read-only/value-kind contract.</summary>
+		public string EditorKind { get; set; } = "";
 	}
 
 	/// <summary>Versioned edit set returned by session/flush; applied atomically at BaseVersion.</summary>

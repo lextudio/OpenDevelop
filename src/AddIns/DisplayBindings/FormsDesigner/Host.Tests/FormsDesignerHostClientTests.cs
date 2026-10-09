@@ -675,9 +675,11 @@ public sealed class FormsDesignerHostClientTests
 		Assert.True(imageProperty.IsReadOnly);
 		Assert.Equal("/project/Form1.resx", imageProperty.ResourceFileName);
 		Assert.Equal("button1.Image", imageProperty.ResourceKey);
+		Assert.Equal("ResourceImage", imageProperty.EditorKind);
 		var textProperty = Assert.Single(resourceButton.Properties, property => property.Name == "Text");
 		Assert.Equal("/project/Form1.resx", textProperty.ResourceFileName);
 		Assert.Equal("button1.Text", textProperty.ResourceKey);
+		Assert.Equal("", textProperty.EditorKind);
 		var liveEdit = await client.SetPropertyAsync(9, "button1", "Text", "overridden", timeout.Token);
 		var liveTextProperty = Assert.Single(liveEdit.Components.Single(component => component.Name == "button1").Properties,
 			property => property.Name == "Text");

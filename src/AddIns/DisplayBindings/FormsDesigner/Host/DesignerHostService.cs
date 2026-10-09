@@ -2495,6 +2495,10 @@ sealed class DesignerHostService : IDesignerChildService
 			if (snapshotLoader?.TryGetResourceOrigin(component, property.Name, out var resourceFileName, out var resourceKey) == true) {
 				info.ResourceFileName = resourceFileName;
 				info.ResourceKey = resourceKey;
+				// This capability grants no child write access. The IDE must still own any
+				// resource transaction, after preserving source/resource atomicity and undo.
+				if (isImageProperty)
+					info.EditorKind = "ResourceImage";
 			}
 			result.Add(info);
 			if (property.PropertyType.IsEnum)
