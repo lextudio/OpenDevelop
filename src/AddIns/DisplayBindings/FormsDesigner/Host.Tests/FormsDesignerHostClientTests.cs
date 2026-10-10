@@ -529,6 +529,16 @@ public sealed class FormsDesignerHostClientTests
 				property => property.Name == "AutoScaleDimensions" && property.Value == "8, 16");
 		Assert.Contains("AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);",
 			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
+		var rootText = await client.SetPropertyAsync(7, "Form1", "Text", "root caption", timeout.Token);
+		Assert.Contains(rootText.Components.Single(component => component.Name == "Form1").Properties,
+			property => property.Name == "Text" && property.Value == "root caption" && property.ShouldSerialize);
+		var rootTextSource = DesignerText(await client.FlushAsync(7, timeout.Token));
+		Assert.Contains("Text = \"root caption\";", rootTextSource, StringComparison.Ordinal);
+		Assert.DoesNotContain("Form1.Text", rootTextSource, StringComparison.Ordinal);
+		var resetRootText = await client.ResetPropertyAsync(7, "Form1", "Text", timeout.Token);
+		Assert.Contains(resetRootText.Components.Single(component => component.Name == "Form1").Properties,
+			property => property.Name == "Text" && !property.ShouldSerialize);
+		Assert.DoesNotContain("Text = \"root caption\";", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 
 		var edited = await client.SetPropertyAsync(7, "button1", "Text", "edited in child", timeout.Token);
 		Assert.True(edited.Accepted);
@@ -2049,6 +2059,16 @@ public sealed class FormsDesignerHostClientTests
 		// Flush normalizes the VB Me. qualifiers away, like the C# this. pass.
 		Assert.Contains("button1.Text = \"button1\"", DesignerText(await client.FlushAsync(7, timeout.Token)),
 			StringComparison.Ordinal);
+		var rootText = await client.SetPropertyAsync(7, "Form1", "Text", "root caption", timeout.Token);
+		Assert.Contains(rootText.Components.Single(component => component.Name == "Form1").Properties,
+			property => property.Name == "Text" && property.Value == "root caption" && property.ShouldSerialize);
+		var rootTextSource = DesignerText(await client.FlushAsync(7, timeout.Token));
+		Assert.Contains("Text = \"root caption\"", rootTextSource, StringComparison.Ordinal);
+		Assert.DoesNotContain("Form1.Text", rootTextSource, StringComparison.Ordinal);
+		var resetRootText = await client.ResetPropertyAsync(7, "Form1", "Text", timeout.Token);
+		Assert.Contains(resetRootText.Components.Single(component => component.Name == "Form1").Properties,
+			property => property.Name == "Text" && !property.ShouldSerialize);
+		Assert.DoesNotContain("Text = \"root caption\"", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 
 		var edited = await client.SetPropertyAsync(7, "button1", "Text", "edited in child", timeout.Token);
 		Assert.True(edited.Accepted);

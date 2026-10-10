@@ -260,6 +260,7 @@ sealed class DesignerHostService : IDesignerChildService
 		var component = host.Container.Components.Cast<IComponent>()
 			.FirstOrDefault(item => String.Equals(item.Site?.Name, elementId, StringComparison.Ordinal))
 			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
+		var isRootComponent = component == host.RootComponent;
 		var property = TypeDescriptor.GetProperties(component)[propertyName]
 			?? throw new ArgumentException("Property not found: " + propertyName, nameof(propertyName));
 		// Keep the image mutation boundary aligned with DescribeProperties: an image is exposed as
@@ -278,7 +279,7 @@ sealed class DesignerHostService : IDesignerChildService
 		// on the surface. See shadowedVisible for why this is Libre-only.
 		if (IsShadowedVisible(component, propertyName) && converted is bool visible) {
 			shadowedVisible[elementId] = visible;
-			RewriteProperty(elementId, propertyName, converted);
+			RewriteProperty(elementId, propertyName, converted, isRootComponent);
 			return CurrentState(baseVersion);
 		}
 #endif
@@ -287,7 +288,7 @@ sealed class DesignerHostService : IDesignerChildService
 			transaction.Commit();
 		}
 		snapshotLoader?.ClearResourceOrigin(component, propertyName);
-		RewriteProperty(elementId, propertyName, converted);
+		RewriteProperty(elementId, propertyName, converted, isRootComponent);
 		return CurrentState(baseVersion);
 	}
 
@@ -353,7 +354,7 @@ sealed class DesignerHostService : IDesignerChildService
 			transaction.Commit();
 		}
 		snapshotLoader?.ClearResourceOrigin(component, propertyName);
-		RewriteResetProperty(elementId, propertyName);
+		RewriteResetProperty(elementId, propertyName, component == host.RootComponent);
 		return CurrentState(baseVersion);
 	}
 
@@ -1187,13 +1188,13 @@ sealed class DesignerHostService : IDesignerChildService
 	IDesignerHost GetHost() => designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost
 		?? throw new InvalidOperationException("The designer surface is unavailable.");
 
-	void RewriteProperty(string elementId, string propertyName, object value)
+	void RewriteProperty(string elementId, string propertyName, object value, bool isRootComponent = false)
 	{
-		if (IsVisualBasic) { RewritePropertyVisualBasic(elementId, propertyName, value); return; }
+		if (IsVisualBasic) { RewritePropertyVisualBasic(elementId, propertyName, value, isRootComponent); return; }
 		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
 			?? current.Files.First();
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
-		var target = elementId + "." + propertyName;
+		var target = PropertyTarget(elementId, propertyName, isRootComponent);
 		var assignment = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
 			.FirstOrDefault(item => NormalizeTarget(item.Left.ToString()) == target);
 		var expression = SerializeValue(value);
@@ -1210,12 +1211,12 @@ sealed class DesignerHostService : IDesignerChildService
 			.NormalizeWhitespace().ToFullString();
 	}
 
-	void RewritePropertyVisualBasic(string elementId, string propertyName, object value)
+	void RewritePropertyVisualBasic(string elementId, string propertyName, object value, bool isRootComponent)
 	{
 		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
 			?? current.Files.First();
 		var root = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
-		var target = elementId + "." + propertyName;
+		var target = PropertyTarget(elementId, propertyName, isRootComponent);
 		var assignment = root.DescendantNodes().OfType<VbSyntax.AssignmentStatementSyntax>()
 			.FirstOrDefault(item => NormalizeTarget(item.Left.ToString()) == target);
 		var expression = SerializeValueVisualBasic(value);
@@ -1256,10 +1257,10 @@ sealed class DesignerHostService : IDesignerChildService
 		file.Text = root.NormalizeWhitespace().ToFullString();
 	}
 
-	void RewriteResetProperty(string elementId, string propertyName)
+	void RewriteResetProperty(string elementId, string propertyName, bool isRootComponent)
 	{
 		var file = CurrentDesignerFile();
-		var target = elementId + "." + propertyName;
+		var target = PropertyTarget(elementId, propertyName, isRootComponent);
 		if (IsVisualBasic) {
 			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
 			var vbStatements = vbRoot.DescendantNodes().OfType<VbSyntax.AssignmentStatementSyntax>()
@@ -1277,6 +1278,9 @@ sealed class DesignerHostService : IDesignerChildService
 
 	static string NormalizeTarget(string target) => target.StartsWith("this.", StringComparison.Ordinal) ? target[5..]
 		: target.StartsWith("Me.", StringComparison.Ordinal) ? target[3..] : target;
+
+	static string PropertyTarget(string elementId, string propertyName, bool isRootComponent)
+		=> isRootComponent ? propertyName : elementId + "." + propertyName;
 
 	static ExpressionSyntax SerializeValue(object value) => value switch {
 		string text => SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(text)),
@@ -2054,7 +2058,8 @@ sealed class DesignerHostService : IDesignerChildService
 		var assignedTargets = BuildAssignedTargetIndex();
 		var eventHandlers = BuildEventHandlerIndex();
 		var components = host?.Container?.Components.Cast<IComponent>().Select(component => {
-			var properties = DescribeProperties(component, assignedTargets);
+			var properties = DescribeProperties(component, assignedTargets,
+				component == host.RootComponent);
 			if (component == host.RootComponent && rootAutoScaleDimensions.HasValue) {
 				var scale = properties.FirstOrDefault(item => item.Name == "AutoScaleDimensions");
 				if (scale != null)
@@ -2447,13 +2452,13 @@ sealed class DesignerHostService : IDesignerChildService
 		return targets;
 	}
 
-	List<DesignerPropertyInfo> DescribeProperties(IComponent component, HashSet<string> assignedTargets)
+	List<DesignerPropertyInfo> DescribeProperties(IComponent component, HashSet<string> assignedTargets, bool isRootComponent)
 	{
 		var result = new List<DesignerPropertyInfo>();
 		var elementId = component.Site?.Name ?? "";
 		foreach (PropertyDescriptor property in TypeDescriptor.GetProperties(component)) {
 			if (!property.IsBrowsable || property.Name is "Site" or "Container" or "Parent") continue;
-			var assignedInSource = assignedTargets.Contains(elementId + "." + property.Name);
+			var assignedInSource = assignedTargets.Contains(PropertyTarget(elementId, property.Name, isRootComponent));
 			var isImageProperty = IsResourceImageProperty(property.PropertyType);
 			object? value;
 			string serialized;
