@@ -1801,6 +1801,30 @@ public sealed class AddInTests : IAsyncDisposable
             var primaryButton = savedDocument.Descendants()
                 .Single(element => element.Attributes().Any(attribute => attribute.Name.LocalName == "Name" && attribute.Value == "PrimaryButton"));
             Assert.Null(primaryButton.Attribute("Content"));
+
+            // Reset participates in the same source-authoritative document history as every
+            // other designer edit: undo restores the attribute and redo removes it again.
+            var undo = await _app.InvokeAsync("od.winui-designer.undo");
+            Assert.True(undo.GetProperty("success").GetBoolean(), undo.ToString());
+            Assert.False(undo.GetProperty("canUndo").GetBoolean(), undo.ToString());
+            Assert.True(undo.GetProperty("canRedo").GetBoolean(), undo.ToString());
+            saved = await _app.InvokeAsync("od.file.save", _unoPagePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            savedDocument = XDocument.Parse(await File.ReadAllTextAsync(_unoPagePath));
+            primaryButton = savedDocument.Descendants()
+                .Single(element => element.Attributes().Any(attribute => attribute.Name.LocalName == "Name" && attribute.Value == "PrimaryButton"));
+            Assert.Equal("Hello Uno", primaryButton.Attribute("Content")?.Value);
+
+            var redo = await _app.InvokeAsync("od.winui-designer.redo");
+            Assert.True(redo.GetProperty("success").GetBoolean(), redo.ToString());
+            Assert.True(redo.GetProperty("canUndo").GetBoolean(), redo.ToString());
+            Assert.False(redo.GetProperty("canRedo").GetBoolean(), redo.ToString());
+            saved = await _app.InvokeAsync("od.file.save", _unoPagePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            savedDocument = XDocument.Parse(await File.ReadAllTextAsync(_unoPagePath));
+            primaryButton = savedDocument.Descendants()
+                .Single(element => element.Attributes().Any(attribute => attribute.Name.LocalName == "Name" && attribute.Value == "PrimaryButton"));
+            Assert.Null(primaryButton.Attribute("Content"));
             bodySucceeded = true;
         }
         finally
