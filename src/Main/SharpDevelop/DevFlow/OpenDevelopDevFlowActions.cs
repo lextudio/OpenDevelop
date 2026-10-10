@@ -2888,6 +2888,27 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { success = true, gesture });
 		}
 
+		[DevFlowAction("od.debug.run-without-debugging", Description = "Start the project without debugging (Run Without Debugging); the process runs to completion and its exit is reported")]
+		public static string RunWithoutDebugging(string projectPath = null)
+		{
+			var debugger = SD.Debugger;
+			if (debugger == null) {
+				return JsonSerializer.Serialize(new { success = false, error = "Debugger service not available." });
+			}
+			if (debugger.IsDebugging) {
+				return JsonSerializer.Serialize(new { success = false, error = "Already debugging." });
+			}
+			var project = ResolveProject(projectPath);
+			if (project == null) {
+				return JsonSerializer.Serialize(new { success = false, error = "No project to run." });
+			}
+			if (project is not AbstractProject abstractProject) {
+				return JsonSerializer.Serialize(new { success = false, error = "The project cannot produce a start info." });
+			}
+			debugger.StartWithoutDebugging(abstractProject.CreateStartInfo());
+			return JsonSerializer.Serialize(new { success = true });
+		}
+		
 		[DevFlowAction("od.debug.stop", Description = "Stop the current debug session")]
 		public static string StopDebug()
 		{
