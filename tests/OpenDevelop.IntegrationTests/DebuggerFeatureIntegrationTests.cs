@@ -124,8 +124,15 @@ public sealed class DebuggerFeatureIntegrationTests
         }
     }
 
-    string ProgramPath => Path.Combine(Path.GetDirectoryName(_app.DebugTestProjectPath)!, "Program.cs");
+    [Fact]
+    public async Task RunWithoutDebugging_StartsTheProjectWithoutABreakpoint()
+    {
+        await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+        var result = await _app.InvokeAsync("od.debug.run-without-debugging", _app.DebugTestProjectPath);
+        Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
+    }
 
+    string ProgramPath => Path.Combine(Path.GetDirectoryName(_app.DebugTestProjectPath)!, "Program.cs");
     static int FindLine(string path, string marker)
     {
         var lines = File.ReadAllLines(path);
