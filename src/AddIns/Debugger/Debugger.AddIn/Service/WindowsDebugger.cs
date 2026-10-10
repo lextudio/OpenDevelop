@@ -119,6 +119,45 @@ namespace ICSharpCode.SharpDevelop.Services
 			return CurrentSession.GetModulesAsync();
 		}
 
+		/// <summary>Restart the current debug session (relaunch or re-attach).</summary>
+		public async Task RestartAsync()
+		{
+			if (CurrentSession != null) {
+				await CurrentSession.RestartAsync().ConfigureAwait(false);
+			}
+		}
+
+		/// <summary>"Set Next Statement": move the instruction pointer to the first goto target on
+		/// <paramref name="file"/>:<paramref name="line"/>.</summary>
+		public async Task<bool> SetNextStatementAsync(string file, int line, int? column = null)
+		{
+			if (CurrentSession == null) {
+				return false;
+			}
+			var targets = await CurrentSession.GetGotoTargetsAsync(file, line, column).ConfigureAwait(false);
+			if (targets.Count == 0) {
+				return false;
+			}
+			await CurrentSession.GotoAsync(CurrentThreadId, targets[0].Id).ConfigureAwait(false);
+			return true;
+		}
+
+		public Task<IReadOnlyList<string>> GetLoadedSourcesAsync()
+		{
+			if (CurrentSession == null) {
+				return Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+			}
+			return CurrentSession.GetLoadedSourcesAsync();
+		}
+
+		public Task<IReadOnlyList<DapBreakpointLocation>> GetBreakpointLocationsAsync(string file, int line, int? endLine = null)
+		{
+			if (CurrentSession == null) {
+				return Task.FromResult<IReadOnlyList<DapBreakpointLocation>>(Array.Empty<DapBreakpointLocation>());
+			}
+			return CurrentSession.GetBreakpointLocationsAsync(file, line, endLine);
+		}
+
 		public static void RefreshPads()
 		{
 			RefreshingPads?.Invoke();

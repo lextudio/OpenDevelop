@@ -89,6 +89,22 @@ namespace Debugger.AddIn.Service.Dap
 		public bool IsOptimized { get; set; }
 	}
 
+	public sealed class DapGotoTarget
+	{
+		public int Id { get; set; }
+		public string Label { get; set; }
+		public int Line { get; set; }
+		public int Column { get; set; }
+	}
+
+	public sealed class DapBreakpointLocation
+	{
+		public int Line { get; set; }
+		public int Column { get; set; }
+		public int EndLine { get; set; }
+		public int EndColumn { get; set; }
+	}
+
 	public sealed class DapEvaluateResult
 	{
 		public string Value { get; set; }

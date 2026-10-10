@@ -603,6 +603,83 @@ namespace Debugger.AddIn.Service.Dap
 			}
 		}
 
+		/// <summary>Restart the debug session (relaunch or re-attach).</summary>
+		public async Task RestartAsync()
+		{
+			if (client == null) return;
+			await client.SendRequestAsync("restart", new JsonObject()).ConfigureAwait(false);
+		}
+
+		/// <summary>Candidate positions ("Set Next Statement" targets) on a source line.</summary>
+		public async Task<IReadOnlyList<DapGotoTarget>> GetGotoTargetsAsync(string fileName, int line, int? column = null)
+		{
+			if (client == null) return Array.Empty<DapGotoTarget>();
+			var args = new JsonObject { ["source"] = new JsonObject { ["path"] = fileName }, ["line"] = line };
+			if (column is int c) args["column"] = c;
+			JsonObject response = await client.SendRequestAsync("gotoTargets", args).ConfigureAwait(false);
+			var body = response?["body"] as JsonObject;
+			var targets = body?["targets"] as JsonArray;
+			var result = new List<DapGotoTarget>();
+			if (targets != null) {
+				foreach (var t in targets.OfType<JsonObject>()) {
+					result.Add(new DapGotoTarget {
+						Id = t["id"] != null ? t["id"].GetValue<int>() : 0,
+						Label = t["label"] != null ? t["label"].GetValue<string>() : null,
+						Line = t["line"] != null ? t["line"].GetValue<int>() : 0,
+						Column = t["column"] != null ? t["column"].GetValue<int>() : 0
+					});
+				}
+			}
+			return result;
+		}
+
+		/// <summary>Move the instruction pointer to a goto target ("Set Next Statement").</summary>
+		public async Task GotoAsync(int threadId, int targetId)
+		{
+			if (client == null) return;
+			await client.SendRequestAsync("goto", new JsonObject { ["threadId"] = threadId, ["targetId"] = targetId }).ConfigureAwait(false);
+		}
+
+		/// <summary>Source files known to the debuggee (from loaded symbols).</summary>
+		public async Task<IReadOnlyList<string>> GetLoadedSourcesAsync()
+		{
+			if (client == null) return Array.Empty<string>();
+			JsonObject response = await client.SendRequestAsync("loadedSources", new JsonObject()).ConfigureAwait(false);
+			var body = response?["body"] as JsonObject;
+			var sources = body?["sources"] as JsonArray;
+			var result = new List<string>();
+			if (sources != null) {
+				foreach (var s in sources.OfType<JsonObject>()) {
+					var path = s["path"] != null ? s["path"].GetValue<string>() : null;
+					if (!string.IsNullOrEmpty(path)) result.Add(path);
+				}
+			}
+			return result;
+		}
+
+		/// <summary>Valid breakpoint positions in a source range.</summary>
+		public async Task<IReadOnlyList<DapBreakpointLocation>> GetBreakpointLocationsAsync(string fileName, int line, int? endLine = null)
+		{
+			if (client == null) return Array.Empty<DapBreakpointLocation>();
+			var args = new JsonObject { ["source"] = new JsonObject { ["path"] = fileName }, ["line"] = line };
+			if (endLine is int el) args["endLine"] = el;
+			JsonObject response = await client.SendRequestAsync("breakpointLocations", args).ConfigureAwait(false);
+			var body = response?["body"] as JsonObject;
+			var locations = body?["breakpoints"] as JsonArray;
+			var result = new List<DapBreakpointLocation>();
+			if (locations != null) {
+				foreach (var l in locations.OfType<JsonObject>()) {
+					result.Add(new DapBreakpointLocation {
+						Line = l["line"] != null ? l["line"].GetValue<int>() : 0,
+						Column = l["column"] != null ? l["column"].GetValue<int>() : 0,
+						EndLine = l["endLine"] != null ? l["endLine"].GetValue<int>() : 0,
+						EndColumn = l["endColumn"] != null ? l["endColumn"].GetValue<int>() : 0
+					});
+				}
+			}
+			return result;
+		}
+
 		public async Task<DapExceptionInfo> GetExceptionInfoAsync(int threadId)
 		{
 			if (client == null) {
