@@ -657,7 +657,10 @@ string.
 The first capability value is now `ResourceImage`: Forms emits it only for an `Image` or `Icon`
 property with proven `ResourceFileName` and `ResourceKey`; scalar resource values intentionally
 leave it empty. The IDE renders an explicit replace button in that property's row; it is an
-IDE-editor eligibility signal, not permission for the child to mutate resources.
+IDE-editor eligibility signal, not permission for the child to mutate resources. The LibreWinForms
+integration journey now uses actual PNG and ICO payloads to prove both a child control's `Image`
+and the root Form's `$this.Icon` replace, save, undo and redo independently, including the
+invariant that undoing Icon leaves the preceding image replacement intact.
 
 ### 9.2 Tooling notes for whoever continues this
 
