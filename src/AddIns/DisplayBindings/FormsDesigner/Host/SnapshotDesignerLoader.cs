@@ -170,19 +170,26 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 				using var stream = new MemoryStream(Convert.FromBase64String(file.Base64));
 				var document = XDocument.Load(stream);
 				foreach (var data in document.Root?.Elements("data") ?? []) {
-					var name = (string?)data.Attribute("name");
-					var value = data.Element("value")?.Value;
-					if (name == null || value == null) continue;
-					var mimeType = (string?)data.Attribute("mimetype") ?? "";
-					var typeName = (string?)data.Attribute("type") ?? "";
-					if (mimeType.Contains("base64", StringComparison.OrdinalIgnoreCase)
-						&& (typeName.Contains("Image", StringComparison.OrdinalIgnoreCase)
-							|| typeName.Contains("Bitmap", StringComparison.OrdinalIgnoreCase)
-							|| typeName.Contains("Icon", StringComparison.OrdinalIgnoreCase))) {
-						var imageStream = new MemoryStream(Convert.FromBase64String(value));
-						resources[name] = new ResourceValue(typeName.Contains("Icon", StringComparison.OrdinalIgnoreCase)
-							? new Icon(imageStream) : Image.FromStream(imageStream), file.FileName);
-					} else resources[name] = new ResourceValue(value, file.FileName);
+					// A .resx can contain obsolete or framework-specific entries beside resources the
+					// current document actually uses. One malformed image must not hide every valid
+					// entry after it, or an otherwise editable resource property loses its capability.
+					try {
+						var name = (string?)data.Attribute("name");
+						var value = data.Element("value")?.Value;
+						if (name == null || value == null) continue;
+						var mimeType = (string?)data.Attribute("mimetype") ?? "";
+						var typeName = (string?)data.Attribute("type") ?? "";
+						if (mimeType.Contains("base64", StringComparison.OrdinalIgnoreCase)
+							&& (typeName.Contains("Image", StringComparison.OrdinalIgnoreCase)
+								|| typeName.Contains("Bitmap", StringComparison.OrdinalIgnoreCase)
+								|| typeName.Contains("Icon", StringComparison.OrdinalIgnoreCase))) {
+							var imageStream = new MemoryStream(Convert.FromBase64String(value));
+							resources[name] = new ResourceValue(typeName.Contains("Icon", StringComparison.OrdinalIgnoreCase)
+								? new Icon(imageStream) : Image.FromStream(imageStream), file.FileName);
+						} else resources[name] = new ResourceValue(value, file.FileName);
+					} catch {
+						// Invalid/unsupported individual resource: retain all independently valid entries.
+					}
 				}
 			} catch { }
 		}

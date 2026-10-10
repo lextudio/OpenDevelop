@@ -117,6 +117,38 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains(button1.Properties, property => property.Name == "Font" && !property.IsNull);
 	}
 
+	/// <summary>A malformed or legacy image payload must not make the loader discard every later
+	/// resource in the same .resx file. In particular, a valid image after it must remain eligible
+	/// for the IDE-owned resource editor.</summary>
+	[Fact]
+	public async Task ChildHost_BadImageResourceDoesNotHideLaterEditableImage()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text.Replace("this.button1.Text = \"button1\";",
+			"this.button1.Image = (System.Drawing.Image)resources.GetObject(\"button1.Image\");",
+			StringComparison.Ordinal);
+		var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLk2QAAAABJRU5ErkJggg==");
+		snapshot.Files.Add(new DesignerSourceFileSnapshot {
+			FileName = "/project/Form1.resx", Kind = "Resource",
+			Base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(
+				"<root>"
+				+ "<data name=\"obsolete.Image\" type=\"System.Drawing.Bitmap, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>not-base64</value></data>"
+				+ "<data name=\"button1.Image\" type=\"System.Drawing.Bitmap, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>" + Convert.ToBase64String(png) + "</value></data>"
+				+ "</root>"))
+		});
+
+		var loaded = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(loaded.Accepted);
+		var image = Assert.Single(Assert.Single(loaded.Components, component => component.Name == "button1").Properties,
+			property => property.Name == "Image");
+		Assert.Equal("[binary]", image.Value);
+		Assert.Equal("ResourceImage", image.EditorKind);
+		Assert.Equal("button1.Image", image.ResourceKey);
+	}
+
 	/// <summary>
 	/// Regression test: JexusManager's MainForm.Designer.cs populates its MenuStrip via
 	/// "menuStrip1.Items.AddRange(new ToolStripItem[] { fileToolStripMenuItem, ... });" and adds the
@@ -651,6 +683,7 @@ public sealed class FormsDesignerHostClientTests
 
 		var resourceSnapshot = Snapshot(9, "fallback");
 		var resourceDesigner = resourceSnapshot.Files.Single(item => item.Kind == "Designer");
+		var icon = Convert.FromBase64String("AAABAAEAEBAQAAAAAAAoAQAAFgAAACgAAAAQAAAAIAAAAAEABAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAACAAAAAgIAAgAAAAIAAgACAgAAAwMDAAICAgAAAAP8AAP8AAAD//wD/AAAA/wD/AP//AAD///8AAAAAAAAAAAAAAAAAAAAAAAC7u7u7sAAAALu7u7uwAAAAu7u7u7AAAAC7u7u7sAAAALu7u7uwAAAAu7u7u7AAAAAAAAAAAAAAAAu7sAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD//wAAgA8AAIAPAACADwAAgA8AAIANAACACwAAgAcAAIAaAADA1wAA4asAAP99AAD/7wAA//8AAP/vAAD//wAA");
 		resourceDesigner.Text = resourceDesigner.Text.Replace(
 			"this.button1.Text = \"fallback\";",
 			"resources.ApplyResources(this.button1, nameof(button1));\n        this.button1.Image = (System.Drawing.Image)resources.GetObject(\"button1.Image\");",
@@ -665,7 +698,7 @@ public sealed class FormsDesignerHostClientTests
 				$"<root><data name=\"button1.Text\"><value>localized text</value></data>" +
 				$"<data name=\"button1.Location\"><value>1, 2</value></data>" +
 				$"<data name=\"button1.Image\" type=\"System.Drawing.Bitmap, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>{Convert.ToBase64String(png)}</value></data>" +
-				"<data name=\"$this.Icon\" type=\"System.Drawing.Icon, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>AAAAAA==</value></data></root>"))
+				"<data name=\"$this.Icon\" type=\"System.Drawing.Icon, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>" + Convert.ToBase64String(icon) + "</value></data></root>"))
 		});
 		var resourceLoaded = await client.UpdateAsync(resourceSnapshot, timeout.Token);
 		var resourceButton = Assert.Single(resourceLoaded.Components, component => component.Name == "button1");
@@ -681,7 +714,8 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Equal("/project/Form1.resx", imageProperty.ResourceFileName);
 		Assert.Equal("button1.Image", imageProperty.ResourceKey);
 		Assert.Equal("ResourceImage", imageProperty.EditorKind);
-		var iconProperty = Assert.Single(loadedForm.Properties, property => property.Name == "Icon");
+		var resourceForm = Assert.Single(resourceLoaded.Components, component => component.Name == "Form1");
+		var iconProperty = Assert.Single(resourceForm.Properties, property => property.Name == "Icon");
 		Assert.Equal("[binary]", iconProperty.Value);
 		Assert.Equal("Unsupported", iconProperty.Kind);
 		Assert.True(iconProperty.IsReadOnly);
