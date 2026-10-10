@@ -46,6 +46,61 @@ namespace Debugger.AddIn
 			SD.Debugger.SetInstructionPointer(textEditor.FileName, textEditor.Caret.Line, textEditor.Caret.Column, false);
 		}
 	}
+
+	/// <summary>Restart the current debug session (relaunch or re-attach), like VS's Ctrl+Shift+F5.</summary>
+	public class RestartDebuggerCommand : AbstractMenuCommand
+	{
+		public override void Run()
+		{
+			if (SD.Debugger is ICSharpCode.SharpDevelop.Services.WindowsDebugger windowsDebugger)
+				windowsDebugger.RestartAsync().FireAndForget();
+		}
+	}
+
+	/// <summary>Run to Cursor: continue until the caret line is reached, using a temporary
+	/// breakpoint that is removed once the debugger next stops (like VS's Ctrl+F10).</summary>
+	public class RunToCursorCommand : AbstractMenuCommand
+	{
+		static ITextEditor runToCursorEditor;
+		static int runToCursorLine;
+		static bool runToCursorAdded;
+
+		public override void Run()
+		{
+			ITextEditor editor = SD.GetActiveViewContentService<ITextEditor>();
+			if (editor == null || SD.Debugger == null || !SD.Debugger.IsDebugging)
+				return;
+
+			ClearRunToCursor();
+			runToCursorEditor = editor;
+			runToCursorLine = editor.Caret.Line;
+			bool alreadySet = SD.BookmarkManager.Bookmarks.OfType<BreakpointBookmark>()
+				.Any(b => b.FileName == editor.FileName && b.LineNumber == runToCursorLine);
+			if (!alreadySet) {
+				SD.Debugger.ToggleBreakpointAt(editor, runToCursorLine); // adds and syncs with the adapter
+				runToCursorAdded = true;
+			}
+			SD.Debugger.IsProcessRunningChanged += OnRunToCursorProcessRunningChanged;
+			SD.Debugger.Continue();
+		}
+
+		static void OnRunToCursorProcessRunningChanged(object sender, EventArgs e)
+		{
+			if (SD.Debugger != null && !SD.Debugger.IsProcessRunning)
+				ClearRunToCursor();
+		}
+
+		static void ClearRunToCursor()
+		{
+			if (SD.Debugger != null)
+				SD.Debugger.IsProcessRunningChanged -= OnRunToCursorProcessRunningChanged;
+			if (runToCursorAdded && runToCursorEditor != null && SD.Debugger != null) {
+				SD.Debugger.ToggleBreakpointAt(runToCursorEditor, runToCursorLine); // removes and syncs
+				runToCursorAdded = false;
+			}
+			runToCursorEditor = null;
+		}
+	}
 	
 	public static class BreakpointUtil
 	{

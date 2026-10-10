@@ -30,7 +30,11 @@
 				          icon = "Icons.16x16.Debug.StepInto"
 				          class = "Debugger.AddIn.SetCurrentStatementCommand"/>
 			</Condition>
-			<!-- DebuggerRunToCursor removed: "run to cursor" has no standard DAP request. -->
+			<MenuItem id = "DebuggerRunToCursor"
+			          label = "${res:MainWindow.Windows.Debug.RunToCursor}"
+			          icon = "Icons.16x16.Debug.StepInto"
+			          shortcut = "Ctrl|F10"
+			          class = "Debugger.AddIn.RunToCursorCommand"/>
 			<!-- insertbefore="Refactoring" removed - MVP: that menu item no longer exists -->
 			<MenuItem id = "DebuggerSeparator"
 			          type = "Separator"/>
@@ -60,6 +64,12 @@
 			          insertbefore = "ExecutionControlSeparator"
 			          label = "${res:MainWindow.Windows.Debug.DebugExecutable}"
 			          class = "Debugger.AddIn.DebugExecutableMenuCommand"/>
+		</Condition>
+		<Condition name = "IsProcessRunning" isdebugging="True">
+			<MenuItem id = "DebuggerRestart"
+			          label = "${res:MainWindow.Windows.Debug.Restart}"
+			          shortcut = "Ctrl|Shift|F5"
+			          class = "Debugger.AddIn.RestartDebuggerCommand"/>
 		</Condition>
 		<!--		<MenuItem id="AddExpressionBreakpoint"
 		          insertafter="Toggle Breakpoint"

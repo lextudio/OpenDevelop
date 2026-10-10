@@ -4982,6 +4982,9 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
   <data name="MainWindow.Windows.Debug.RunToCursor" xml:space="preserve">
     <value>运行到光标处</value>
   </data>
+  <data name="MainWindow.Windows.Debug.Restart" xml:space="preserve">
+    <value>重新启动</value>
+  </data>
   <data name="MainWindow.Windows.Debug.SetCurrentStatement" xml:space="preserve">
     <value>设置当前语句</value>
   </data>
