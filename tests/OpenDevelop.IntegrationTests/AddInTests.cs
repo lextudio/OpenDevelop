@@ -3792,16 +3792,25 @@ public sealed class AddInTests : IAsyncDisposable
         var originalResource = resourceExisted ? await File.ReadAllBytesAsync(resourcePath) : null;
         const string originalImage = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLk2QAAAABJRU5ErkJggg==";
         const string replacementImage = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl8tWQAAAAASUVORK5CYII=";
+        // Small valid ICO payloads. Do not use the host test's short invalid placeholder here:
+        // this journey must load the Form's Icon and round-trip an actual Icon resource.
+        const string originalIcon = "AAABAAEAEBAQAAAAAAAoAQAAFgAAACgAAAAQAAAAIAAAAAEABAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAACAAAAAgIAAgAAAAIAAgACAgAAAwMDAAICAgAAAAP8AAP8AAAD//wD/AAAA/wD/AP//AAD///8AAAAAAAAAAAAAAAAAAAAAAAC7u7u7sAAAALu7u7uwAAAAu7u7u7AAAAC7u7u7sAAAALu7u7uwAAAAu7u7u7AAAAAAAAAAAAAAAAu7sAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD//wAAgA8AAIAPAACADwAAgA8AAIANAACACwAAgAcAAIAaAADA1wAA4asAAP99AAD/7wAA//8AAP/vAAD//wAA";
+        const string replacementIcon = "AAABAAEAEBAQAAAAAAAoAQAAFgAAACgAAAAQAAAAIAAAAAEABAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAACAAAAAgIAAgAAAAIAAgACAgAAAwMDAAICAgAAAAP8AAP8AAAD//wD/AAAA/wD/AP//AAD///8AAAAAAAAAAAAAAAAAAAAAAAC7u7u7u7uwALu7u7u7u7AAu7sAAAC7sAC7uwu7u7uwALu7C7u7u7AAuwAAC7u7sAC7sAC7u7uwALu7C7u7u7AAu7u7u7u7sAAAAAAAAAAAAAu7uwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD//wAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIABAADAfwAA4P8AAP//AAD//wAA";
 
         try {
-            await File.WriteAllTextAsync(resourcePath, "<root><data name=\"dropPanel.BackgroundImage\" type=\"System.Drawing.Bitmap, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>" + originalImage + "</value></data></root>");
+            await File.WriteAllTextAsync(resourcePath,
+                "<root><data name=\"dropPanel.BackgroundImage\" type=\"System.Drawing.Bitmap, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>" + originalImage + "</value></data>"
+                + "<data name=\"$this.Icon\" type=\"System.Drawing.Icon, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>" + originalIcon + "</value></data></root>");
             var resourceDeclaration = "            var resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));\n";
             var imageAssignment = "            dropPanel.BackgroundImage = (System.Drawing.Image)resources.GetObject(\"dropPanel.BackgroundImage\");\n";
+            var iconAssignment = "            this.Icon = (System.Drawing.Icon)resources.GetObject(\"$this.Icon\");\n";
             var resourceDesigner = originalDesigner.Replace("\r\n", "\n", StringComparison.Ordinal)
                 .Replace("            dropPanel = new System.Windows.Forms.Panel();\n", "            dropPanel = new System.Windows.Forms.Panel();\n" + resourceDeclaration, StringComparison.Ordinal)
-                .Replace("            dropPanel.Size = new System.Drawing.Size(260, 150);\n", "            dropPanel.Size = new System.Drawing.Size(260, 150);\n" + imageAssignment, StringComparison.Ordinal);
+                .Replace("            dropPanel.Size = new System.Drawing.Size(260, 150);\n", "            dropPanel.Size = new System.Drawing.Size(260, 150);\n" + imageAssignment, StringComparison.Ordinal)
+                .Replace("            ClientSize = new System.Drawing.Size(400, 300);\n", iconAssignment + "            ClientSize = new System.Drawing.Size(400, 300);\n", StringComparison.Ordinal);
             Assert.Contains(resourceDeclaration, resourceDesigner, StringComparison.Ordinal);
             Assert.Contains(imageAssignment, resourceDesigner, StringComparison.Ordinal);
+            Assert.Contains(iconAssignment, resourceDesigner, StringComparison.Ordinal);
             await File.WriteAllTextAsync(designerPath, resourceDesigner);
 
             Assert.True((await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath)).GetProperty("success").GetBoolean());
@@ -3833,6 +3842,35 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True((await _app.InvokeAsync("od.forms-designer.redo")).GetProperty("success").GetBoolean());
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
             Assert.Contains(replacementImage, await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
+
+            // Icon has the same parent-owned resource boundary as Image, but is a distinct
+            // System.Drawing type and used by the Form root instead of a child control.
+            Assert.True((await _app.InvokeAsync("od.forms-designer.outline-select", "Form1")).GetProperty("success").GetBoolean());
+            JsonElement iconReplaced = default;
+            var iconReplacedOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                iconReplaced = await _app.InvokeAsync("od.forms-designer.properties-pad.replace-resource-image", "Icon", replacementIcon);
+                return iconReplaced.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 300);
+            Assert.True(iconReplacedOk, iconReplaced.ToString());
+            Assert.Equal("$this.Icon", iconReplaced.GetProperty("ResourceKey").GetString());
+            Assert.True(iconReplaced.GetProperty("hasReplaceButton").GetBoolean(), iconReplaced.ToString());
+
+            Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
+            Assert.Contains(replacementIcon, await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
+            Assert.True((await _app.InvokeAsync("od.forms-designer.undo")).GetProperty("success").GetBoolean());
+            Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
+            var resourcesAfterIconUndo = await File.ReadAllTextAsync(resourcePath);
+            Assert.Contains(originalIcon, resourcesAfterIconUndo, StringComparison.Ordinal);
+            // The resource editor replaces just the .resx base64 payload; exact bytes are a
+            // deliberate contract, not a comparison of a reserialized System.Drawing.Icon.
+            // Icon undo is its own document transaction, so it must not consume the earlier image
+            // replacement that is still at the bottom of the parent-owned undo stack.
+            Assert.Contains(replacementImage, resourcesAfterIconUndo, StringComparison.Ordinal);
+            Assert.True((await _app.InvokeAsync("od.forms-designer.redo")).GetProperty("success").GetBoolean());
+            Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
+            var resourcesAfterIconRedo = await File.ReadAllTextAsync(resourcePath);
+            Assert.Contains(replacementIcon, resourcesAfterIconRedo, StringComparison.Ordinal);
+            Assert.Contains(replacementImage, resourcesAfterIconRedo, StringComparison.Ordinal);
         }
         finally {
             await _app.InvokeAsync("od.close-all-document-views");
