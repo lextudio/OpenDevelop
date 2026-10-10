@@ -65,14 +65,15 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 		public string Address { get { return string.Empty; } }
 		public string Path { get; private set; }
 		public string Order { get { return string.Empty; } }
-		public string Symbols { get { return string.Empty; } }
+		public string Symbols { get; private set; }
 
-		// DAP's "modules" request only gives id/name/path - base address, load order and symbol
-		// status (all ICorDebug-specific) are not available, so those columns render blank. Known gap.
+		// DAP's "modules" request gives id/name/path/symbolStatus. Base address and load order
+		// (ICorDebug-specific) are not available, so those columns render blank.
 		public ModuleItem(DapModuleInfo module)
 		{
 			this.Name = module.Name;
 			this.Path = module.Path;
+			this.Symbols = module.SymbolStatus;
 		}
 	}
 }

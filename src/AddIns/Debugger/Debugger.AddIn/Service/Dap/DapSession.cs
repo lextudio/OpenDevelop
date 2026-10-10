@@ -568,9 +568,26 @@ namespace Debugger.AddIn.Service.Dap
 			};
 		}
 
+		/// <summary>Sends the "modules" request and returns the modules with their symbol status.</summary>
+		public async Task<IReadOnlyList<DapModuleInfo>> GetModulesRequestAsync()
+		{
+			if (client == null) {
+				return Array.Empty<DapModuleInfo>();
+			}
+			JsonObject response = await client.SendRequestAsync("modules", new JsonObject()).ConfigureAwait(false);
+			var result = new List<DapModuleInfo>();
+			JsonArray modules = response?["body"]?["modules"] as JsonArray;
+			if (modules != null) {
+				foreach (var node in modules) {
+					if (node is JsonObject obj)
+						result.Add(ParseModule(obj));
+				}
+			}
+			return result;
+		}
+
 		public Task<IReadOnlyList<DapModuleInfo>> GetModulesAsync()
 		{
-			// Return the set accumulated from "module" events (see HandleModuleEvent) rather than
 			// issuing a "modules" request - SharpDbg never answers that request, so awaiting it hung
 			// forever. No round-trip needed, so this completes synchronously.
 			lock (modulesLock) {
@@ -592,7 +609,8 @@ namespace Debugger.AddIn.Service.Dap
 				Id = module["id"]?.ToString(),
 				Name = module["name"] != null ? module["name"].GetValue<string>() : string.Empty,
 				Path = module["path"] != null ? module["path"].GetValue<string>() : null,
-				IsOptimized = module["isOptimized"] != null && module["isOptimized"].GetValue<bool>()
+				IsOptimized = module["isOptimized"] != null && module["isOptimized"].GetValue<bool>(),
+				SymbolStatus = module["symbolStatus"] != null ? module["symbolStatus"].GetValue<string>() : null
 			};
 		}
 

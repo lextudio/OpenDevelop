@@ -111,12 +111,17 @@ namespace ICSharpCode.SharpDevelop.Services
 			return CurrentSession.GetThreadsAsync();
 		}
 
-		public Task<IReadOnlyList<DapModuleInfo>> GetModulesAsync()
+		public async Task<IReadOnlyList<DapModuleInfo>> GetModulesAsync()
 		{
 			if (CurrentSession == null) {
-				return Task.FromResult<IReadOnlyList<DapModuleInfo>>(Array.Empty<DapModuleInfo>());
+				return Array.Empty<DapModuleInfo>();
 			}
-			return CurrentSession.GetModulesAsync();
+			try {
+				// Prefer the "modules" request: it carries symbolStatus, which the module events do not.
+				return await CurrentSession.GetModulesRequestAsync().ConfigureAwait(false);
+			} catch {
+				return await CurrentSession.GetModulesAsync().ConfigureAwait(false);
+			}
 		}
 
 		/// <summary>Restart the current debug session (relaunch or re-attach).</summary>

@@ -91,6 +91,8 @@ namespace Debugger.AddIn.Service.Dap
 		public string Name { get; set; }
 		public string Path { get; set; }
 		public bool IsOptimized { get; set; }
+		/// <summary>DAP symbolStatus (e.g. "loaded"/"not loaded").</summary>
+		public string SymbolStatus { get; set; }
 	}
 
 	public sealed class DapGotoTarget
