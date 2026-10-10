@@ -145,6 +145,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				// od.wpf-designer.undo/redo and with the visible Edit commands.
 				canUndo = viewContent.CanUndo,
 				canRedo = viewContent.CanRedo,
+				selectedIds = viewContent.SurfaceControl?.SelectedElementIds ?? Array.Empty<string>(),
 				// Whether the opened project embeds any design-time theme
 				// (see WpfSurfaceHostService.ResolveThemes) - the toolbar's theme combo
 				// is only shown when this is true.

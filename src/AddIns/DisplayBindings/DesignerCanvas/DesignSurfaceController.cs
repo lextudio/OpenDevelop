@@ -435,14 +435,21 @@ public sealed class DesignSurfaceController : IDisposable
 			return;
 		if (ctrl)
 		{
-			if (!multiSelectionNames.Remove(name))
-				multiSelectionNames.Add(name);
-			if (multiSelectionNames.Count == 0)
+			if (multiSelectionNames.Contains(name))
 			{
-				// Ctrl-clicked the last one away: nothing selected.
-				ClearSelectionInternal();
-				return;
+				if (multiSelectionNames.Count == 1)
+				{
+					ClearSelectionInternal();
+					return;
+				}
+				// Selection is deferred until mouse-up. A Ctrl-drag takes the drag path instead,
+				// so this is the click-only parity behaviour: clicking an already selected member
+				// makes it the sole selection instead of leaving the primary outside SelectedNames.
+				multiSelectionNames.Clear();
+				multiSelectionNames.Add(name);
 			}
+			else
+				multiSelectionNames.Add(name);
 		}
 		else
 		{

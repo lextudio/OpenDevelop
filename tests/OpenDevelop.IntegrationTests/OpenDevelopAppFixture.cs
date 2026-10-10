@@ -803,6 +803,21 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             && native.ValueKind == JsonValueKind.True;
     }
 
+    async Task EnsureForegroundForPointerInputAsync()
+    {
+        JsonElement activation = default;
+        var foregrounded = false;
+        for (var attempt = 0; attempt < 3 && !foregrounded; attempt++)
+        {
+            activation = await InvokeAsync("od.activate");
+            foregrounded = IsForegrounded(activation);
+            if (!foregrounded)
+                await Task.Delay(100);
+        }
+        if (!foregrounded)
+            throw new InvalidOperationException("OpenDevelop could not be brought to the OS foreground before pointer input: " + activation);
+    }
+
     public async Task<JsonElement> PressPointerAsync(double x, double y, bool ensureForeground = true)
     {
         // The click begins a real OS gesture. Bring the native OpenDevelop window to the actual
@@ -826,6 +841,17 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     }
     public Task<JsonElement> DragMovePointerAsync(double x, double y) => PostPointActionAsync("drag-move", x, y);
     public Task<JsonElement> ReleasePointerAsync(double x, double y) => PostPointActionAsync("release", x, y);
+
+    /// <summary>Holds a real OS key across later native pointer actions (for example Ctrl-click
+    /// and Ctrl-drag), rather than sending an element-scoped semantic key event.</summary>
+    public async Task<JsonElement> KeyDownAsync(string key)
+    {
+        await EnsureForegroundForPointerInputAsync();
+        return await PostKeyActionAsync("keydown", key);
+    }
+
+    /// <summary>Releases a key previously held by <see cref="KeyDownAsync"/>.</summary>
+    public Task<JsonElement> KeyUpAsync(string key) => PostKeyActionAsync("keyup", key);
 
     /// <summary>Delivers the move/release half of a decomposed native drag with evenly-spaced
     /// points. Callers deliberately keep the press, geometry lookup, retry policy and post-drag
@@ -912,6 +938,19 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         // global flag; adding that flag to this protocol prevents the embedded Forms HWND from
         // receiving the mouse messages.
         var body = JsonSerializer.Serialize(new { x, y });
+        using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+        using var resp = await _http.PostAsync($"{BaseUrl}/api/v1/ui/actions/{action}", content);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            throw new InvalidOperationException($"ui/actions/{action} failed ({(int)resp.StatusCode}): {err}\n{DescribeAppFailureContext()}\nRecent app output:\n{GetRecentAppOutput()}");
+        }
+        return await resp.Content.ReadFromJsonAsync<JsonElement>();
+    }
+
+    async Task<JsonElement> PostKeyActionAsync(string action, string key)
+    {
+        var body = JsonSerializer.Serialize(new { key });
         using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
         using var resp = await _http.PostAsync($"{BaseUrl}/api/v1/ui/actions/{action}", content);
         if (!resp.IsSuccessStatusCode)

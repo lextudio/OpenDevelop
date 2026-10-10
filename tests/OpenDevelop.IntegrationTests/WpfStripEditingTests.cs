@@ -6,6 +6,104 @@ namespace OpenDevelop.IntegrationTests;
 [Collection("30 Add-ins and specialized fixtures")]
 public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
 {
+	[Fact]
+	public async Task CtrlPointerGestures_DistinguishClickCollapseFromGroupDrag()
+	{
+		// The packaged native key holder currently backs keydown/keyup on macOS. Windows has
+		// native mouse injection but does not yet implement the matching held-key endpoint.
+		if (!OperatingSystem.IsMacOS()) return;
+
+		// Exercise the actual native modifier state. The shared canvas delays selection until
+		// mouse-up: a Ctrl-click on a selected member collapses to it, while a Ctrl-drag takes
+		// the group-drag path and must keep the whole selection.
+		var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+		var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+		var originalXaml = await File.ReadAllTextAsync(xamlPath);
+		try {
+			await File.WriteAllTextAsync(xamlPath, """
+			<Window x:Class="sample.MainWindow"
+			        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+			        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+			        Width="420" Height="220" Title="Ctrl pointer gestures">
+			  <Canvas>
+			    <Button x:Name="first" Canvas.Left="30" Canvas.Top="30" Width="100" Height="40" Content="First" />
+			    <Button x:Name="second" Canvas.Left="220" Canvas.Top="30" Width="100" Height="40" Content="Second" />
+			  </Canvas>
+			</Window>
+			""");
+			Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+			Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+			JsonElement status = default;
+			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				status = await app.InvokeAsync("od.wpf-designer.status");
+				return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+			}, TimeSpan.FromSeconds(90)), status.ToString());
+
+			var initial = await app.InvokeAsync("od.wpf-designer.multi-select", "first,second");
+			var initialIds = initial.GetProperty("selectedIds").EnumerateArray().Select(id => id.GetString()).ToArray();
+			Assert.Equal(2, initialIds.Length);
+			var second = await app.InvokeAsync("od.wpf-designer.query-element-screen-bounds", "second");
+			Assert.True(second.GetProperty("success").GetBoolean(), second.ToString());
+			var secondX = second.GetProperty("centerX").GetDouble();
+			var secondY = second.GetProperty("centerY").GetDouble();
+
+			Assert.True((await app.KeyDownAsync("ctrl")).GetProperty("ok").GetBoolean());
+			Exception? clickFailure = null;
+			try {
+				Assert.True((await app.PressPointerAsync(secondX, secondY, ensureForeground: false)).GetProperty("ok").GetBoolean());
+				Assert.True((await app.ReleasePointerAsync(secondX, secondY)).GetProperty("ok").GetBoolean());
+			}
+			catch (Exception ex) {
+				clickFailure = ex;
+				throw;
+			}
+			finally {
+				var released = await app.KeyUpAsync("ctrl");
+				if (clickFailure is null)
+					Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+			}
+
+			// This catches the former state where second was reported as primary although only
+			// first remained selected, without adding a document mutation just to inspect it.
+			var collapsed = await app.InvokeAsync("od.wpf-designer.status");
+			Assert.Equal(new[] { initialIds[1] }, collapsed.GetProperty("selectedIds").EnumerateArray().Select(id => id.GetString()).ToArray());
+
+			var regrouped = await app.InvokeAsync("od.wpf-designer.multi-select", "first,second");
+			Assert.Equal(2, regrouped.GetProperty("selectionCount").GetInt32());
+			var first = await app.InvokeAsync("od.wpf-designer.query-element-screen-bounds", "first");
+			Assert.True(first.GetProperty("success").GetBoolean(), first.ToString());
+			var firstX = first.GetProperty("centerX").GetDouble();
+			var firstY = first.GetProperty("centerY").GetDouble();
+
+			Assert.True((await app.KeyDownAsync("ctrl")).GetProperty("ok").GetBoolean());
+			Exception? dragFailure = null;
+			try {
+				Assert.True((await app.PressPointerAsync(firstX, firstY, ensureForeground: false)).GetProperty("ok").GetBoolean());
+				await app.DragPointerInStepsAsync(firstX, firstY, firstX + 24, firstY + 12, steps: 4);
+			}
+			catch (Exception ex) {
+				dragFailure = ex;
+				throw;
+			}
+			finally {
+				var released = await app.KeyUpAsync("ctrl");
+				if (dragFailure is null)
+					Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+			}
+
+			var retained = await app.InvokeAsync("od.wpf-designer.status");
+			Assert.Equal(initialIds, retained.GetProperty("selectedIds").EnumerateArray().Select(id => id.GetString()).ToArray());
+		} finally {
+			try {
+				await app.InvokeAsync("od.close-active-view");
+			}
+			catch {
+				// Preserve the original test failure; the source restoration below is still required.
+			}
+			await File.WriteAllTextAsync(xamlPath, originalXaml);
+		}
+	}
+
     [Fact]
     public async Task SnapshotSelection_RemainsResponsiveWhileTheWpfHostRecovers()
     {
