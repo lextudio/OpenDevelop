@@ -28,6 +28,7 @@ namespace WinFormsSample
         private void InitializeComponent()
         {
             dropPanel = new System.Windows.Forms.Panel();
+            var resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             SuspendLayout();
             //
             // dropPanel
@@ -35,12 +36,14 @@ namespace WinFormsSample
             dropPanel.Location = new System.Drawing.Point(12, 12);
             dropPanel.Name = "dropPanel";
             dropPanel.Size = new System.Drawing.Size(260, 150);
+            dropPanel.BackgroundImage = (System.Drawing.Image)resources.GetObject("dropPanel.BackgroundImage");
             dropPanel.TabIndex = 0;
             //
             // Form1
             //
             AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.Icon = (System.Drawing.Icon)resources.GetObject("$this.Icon");
             ClientSize = new System.Drawing.Size(400, 300);
             Controls.Add(dropPanel);
             Name = "Form1";
