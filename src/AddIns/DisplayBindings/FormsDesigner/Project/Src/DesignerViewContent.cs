@@ -2134,6 +2134,7 @@ namespace ICSharpCode.FormsDesigner
 
 			internal IReadOnlyList<string> AllowedValues => property.AllowedValues;
 			string IResourceImageProperty.EditorKind => property.EditorKind;
+			string IResourceImageProperty.TypeName => property.TypeName;
 			string IResourceImageProperty.ResourceFileName => property.ResourceFileName;
 			string IResourceImageProperty.ResourceKey => property.ResourceKey;
 

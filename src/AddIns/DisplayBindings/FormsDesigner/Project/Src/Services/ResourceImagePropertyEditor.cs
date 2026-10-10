@@ -26,6 +26,10 @@ namespace ICSharpCode.FormsDesigner.Services
 		// sets this and always follows the OpenFileDialog path below.
 		internal static Func<string> TestFileNameSelector;
 		internal static Exception TestException;
+		internal static string FileFilterFor(PropertyItem propertyItem)
+			=> propertyItem?.PropertyDescriptor is IResourceImageProperty { TypeName: "System.Drawing.Icon" }
+				? "Icon files|*.ico|All files|*.*"
+				: "Image files|*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.ico|All files|*.*";
 
 		public FrameworkElement ResolveEditor(PropertyItem propertyItem)
 		{
@@ -66,7 +70,7 @@ namespace ICSharpCode.FormsDesigner.Services
 				if (String.IsNullOrEmpty(fileName)) {
 					var dialog = new OpenFileDialog {
 						Title = "Replace resource image",
-						Filter = "Image files|*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.ico|All files|*.*",
+						Filter = FileFilterFor(propertyItem),
 						CheckFileExists = true,
 						Multiselect = false
 					};

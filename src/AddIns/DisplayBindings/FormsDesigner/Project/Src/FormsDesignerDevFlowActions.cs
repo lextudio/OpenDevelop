@@ -656,6 +656,7 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 					propertyName,
 					resourceProperty.ResourceFileName,
 					resourceProperty.ResourceKey,
+					fileFilter = ResourceImagePropertyEditor.FileFilterFor(item),
 					hasReplaceButton = true
 				});
 			} catch (Exception exception) {

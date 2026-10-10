@@ -3831,6 +3831,7 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True(replacedOk, replaced.ToString());
             Assert.Equal("dropPanel.BackgroundImage", replaced.GetProperty("ResourceKey").GetString());
             Assert.True(replaced.GetProperty("hasReplaceButton").GetBoolean(), replaced.ToString());
+            Assert.Equal("Image files|*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.ico|All files|*.*", replaced.GetProperty("fileFilter").GetString());
 
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
             Assert.Contains(replacementImage, await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
@@ -3854,6 +3855,7 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True(iconReplacedOk, iconReplaced.ToString());
             Assert.Equal("$this.Icon", iconReplaced.GetProperty("ResourceKey").GetString());
             Assert.True(iconReplaced.GetProperty("hasReplaceButton").GetBoolean(), iconReplaced.ToString());
+            Assert.Equal("Icon files|*.ico|All files|*.*", iconReplaced.GetProperty("fileFilter").GetString());
 
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
             Assert.Contains(replacementIcon, await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);

@@ -198,6 +198,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	public interface IResourceImageProperty
 	{
 		string EditorKind { get; }
+		/// <summary>The declared resource property type, used only to constrain the IDE picker.</summary>
+		string TypeName { get; }
 		string ResourceFileName { get; }
 		string ResourceKey { get; }
 	}
