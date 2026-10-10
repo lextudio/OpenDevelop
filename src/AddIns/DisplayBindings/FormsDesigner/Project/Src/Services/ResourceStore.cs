@@ -100,6 +100,35 @@ namespace ICSharpCode.FormsDesigner.Services
 		{
 			resourceByFile[file].Save(stream, this);
 		}
+
+		/// <summary>Gets the authoritative in-memory bytes for a registered resource file.
+		/// Remote snapshots and undo must use this rather than <see cref="OpenedFile.OpenRead"/>,
+		/// because the latter can fall back to stale on-disk data after an editor view closes.</summary>
+		public bool TryGetBytes(OpenedFile file, out byte[] bytes)
+		{
+			if (!resourceByFile.TryGetValue(file, out var storage)) {
+				bytes = null;
+				return false;
+			}
+			bytes = storage.GetBytes();
+			return true;
+		}
+
+		/// <summary>Restores a registered resource as one logical in-memory value. Keeping the
+		/// store buffer and OpenedFile cache together prevents a later Save from overwriting an
+		/// undo-restored preview with stale resource bytes.</summary>
+		public bool Restore(OpenedFile file, byte[] bytes)
+		{
+			if (!resourceByFile.TryGetValue(file, out var storage))
+				return false;
+			// A separately opened .resx editor owns the bytes that OpenedFile will save. Do not
+			// silently replace only our cache and let that editor write its stale document later.
+			if (file.CurrentView != null && !ReferenceEquals(file.CurrentView, viewContent))
+				throw new InvalidOperationException("Cannot restore a designer resource while it is open in another editor: " + file.FileName);
+			storage.ReplaceBytes(bytes);
+			file.SetData(bytes);
+			return true;
+		}
 		
 		public void MarkResourceFilesAsDirty()
 		{
@@ -160,6 +189,21 @@ namespace ICSharpCode.FormsDesigner.Services
 					this.stream.Dispose();
 					this.stream = null;
 				}
+			}
+
+			public byte[] GetBytes()
+			{
+				WriteResourcesToBuffer();
+				if (buffer != null)
+					return (byte[])buffer.Clone();
+				using var stream = OpenFileContentAsMemoryStream(OpenedFile);
+				return stream.ToArray();
+			}
+
+			public void ReplaceBytes(byte[] bytes)
+			{
+				WriteResourcesToBuffer();
+				buffer = (byte[])bytes.Clone();
 			}
 			
 			// load from OpenedFile into memory

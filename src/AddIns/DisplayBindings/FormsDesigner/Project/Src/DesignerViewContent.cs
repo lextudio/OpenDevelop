@@ -75,9 +75,9 @@ namespace ICSharpCode.FormsDesigner
 		// tabs/files again, or edited the source, before an in-flight acquire+open completed) -
 		// see doc/technotes/designer-common.md's Design-tab-activation convention.
 		long loadGeneration;
-		Dictionary<string, string> lastLoadedTexts;
-		readonly Stack<Dictionary<string, string>> remoteUndo = new Stack<Dictionary<string, string>>();
-			readonly Stack<Dictionary<string, string>> remoteRedo = new Stack<Dictionary<string, string>>();
+		RemoteDocumentSet lastLoadedDocuments;
+		readonly Stack<RemoteDocumentSet> remoteUndo = new Stack<RemoteDocumentSet>();
+		readonly Stack<RemoteDocumentSet> remoteRedo = new Stack<RemoteDocumentSet>();
 			readonly DesignerCommandController commands = new DesignerCommandController();
 		List<DesignerComponentInfo> remoteClipboard;
 		
@@ -392,19 +392,75 @@ namespace ICSharpCode.FormsDesigner
 				throw new InvalidOperationException("The out-of-process WinForms designer is not loaded.");
 		}
 
-		Dictionary<string, string> CaptureRemoteDocuments() => SourceFiles.ToDictionary(
-			item => item.Key.FileName.ToString(), item => item.Value.Text, StringComparer.OrdinalIgnoreCase);
-
-		void RestoreRemoteDocuments(Dictionary<string, string> documents)
+		sealed class RemoteDocumentSet
 		{
+			public Dictionary<string, string> SourceTexts { get; } = new(StringComparer.OrdinalIgnoreCase);
+			public Dictionary<string, byte[]> ResourceBytes { get; } = new(StringComparer.OrdinalIgnoreCase);
+		}
+
+		RemoteDocumentSet CaptureRemoteDocuments()
+		{
+			var result = new RemoteDocumentSet();
 			foreach (var source in SourceFiles)
-				if (documents.TryGetValue(source.Key.FileName.ToString(), out var text)) source.Value.Text = text;
-			var snapshot = CreateRemoteSnapshot(++remoteDocumentVersion);
-			var state = remoteClient.UpdateAsync(snapshot, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
-			if (!state.Accepted) throw new FormsDesignerLoadException(state.Error);
-			remoteControl.Show(state);
-			UpdateOutline(state);
-			MakeDirty();
+				result.SourceTexts.Add(source.Key.FileName.ToString(), source.Value.Text);
+			foreach (var resource in Files.Where(file => !sourceCodeStorage.ContainsFile(file)))
+				result.ResourceBytes.Add(resource.FileName.ToString(), ReadResourceBytes(resource));
+			return result;
+		}
+
+		byte[] ReadResourceBytes(OpenedFile resource)
+		{
+			if (resourceStore.TryGetBytes(resource, out var bytes))
+				return bytes;
+			using var stream = resource.OpenRead();
+			using var memory = new MemoryStream();
+			stream.CopyTo(memory);
+			return memory.ToArray();
+		}
+
+		void EnsureResourceIsNotOwnedByAnotherEditor(OpenedFile resource)
+		{
+			if (resource.CurrentView != null && !ReferenceEquals(resource.CurrentView, this))
+				throw new InvalidOperationException("Cannot use a designer resource while it is open in another editor: " + resource.FileName);
+		}
+
+		void EnsureAllResourcesAreAvailable()
+		{
+			foreach (var resource in Files.Where(file => !sourceCodeStorage.ContainsFile(file)))
+				EnsureResourceIsNotOwnedByAnotherEditor(resource);
+		}
+
+		DesignerSessionState RestoreRemoteDocuments(RemoteDocumentSet documents)
+		{
+			var before = CaptureRemoteDocuments();
+			DesignerSessionState state;
+			try {
+				ApplyRemoteDocumentsLocally(documents);
+				var snapshot = CreateRemoteSnapshot(++remoteDocumentVersion);
+				state = remoteClient.UpdateAsync(snapshot, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+				if (!state.Accepted) throw new FormsDesignerLoadException(state.Error);
+			} catch {
+				// A rejected update has not changed the child. Restore the local source/resource
+				// pair before letting the caller retain its original undo/redo stacks.
+				ApplyRemoteDocumentsLocally(before);
+				throw;
+			}
+			// Once the child accepted, local source/resource state is authoritative. Keep
+			// presentation refresh outside the rollback scope: a broken outline must not undo
+			// documents after the child already applied the update.
+			return state;
+		}
+
+		void ApplyRemoteDocumentsLocally(RemoteDocumentSet documents)
+		{
+			// Validate the whole resource set before changing even one source document. This makes
+			// a separately-opened .resx a normal rejected transaction, not a half-applied restore.
+			EnsureAllResourcesAreAvailable();
+			foreach (var source in SourceFiles)
+				if (documents.SourceTexts.TryGetValue(source.Key.FileName.ToString(), out var text)) source.Value.Text = text;
+			foreach (var resource in Files.Where(file => !sourceCodeStorage.ContainsFile(file)))
+				if (documents.ResourceBytes.TryGetValue(resource.FileName.ToString(), out var bytes)
+					&& !resourceStore.Restore(resource, bytes)) resource.SetData(bytes);
 		}
 		
 		public OpenedFile DesignerCodeFile {
@@ -658,12 +714,17 @@ namespace ICSharpCode.FormsDesigner
 			// designer is handled inside the out-of-process host.
 		}
 
-		static bool RemoteDocumentsUnchanged(Dictionary<string, string> current, Dictionary<string, string> previous)
+		static bool RemoteDocumentsUnchanged(RemoteDocumentSet current, RemoteDocumentSet previous)
 		{
-			if (previous == null || current.Count != previous.Count)
+			if (previous == null || current.SourceTexts.Count != previous.SourceTexts.Count
+				|| current.ResourceBytes.Count != previous.ResourceBytes.Count)
 				return false;
-			foreach (var pair in current) {
-				if (!previous.TryGetValue(pair.Key, out var text) || !String.Equals(text, pair.Value, StringComparison.Ordinal))
+			foreach (var pair in current.SourceTexts) {
+				if (!previous.SourceTexts.TryGetValue(pair.Key, out var text) || !String.Equals(text, pair.Value, StringComparison.Ordinal))
+					return false;
+			}
+			foreach (var pair in current.ResourceBytes) {
+				if (!previous.ResourceBytes.TryGetValue(pair.Key, out var bytes) || !pair.Value.SequenceEqual(bytes))
 					return false;
 			}
 			return true;
@@ -682,7 +743,7 @@ namespace ICSharpCode.FormsDesigner
 		{
 			var backend = GetProjectBackend();
 			var currentTexts = CaptureRemoteDocuments();
-			if (IsRemoteDesignerLoaded && RemoteDocumentsUnchanged(currentTexts, lastLoadedTexts)) {
+			if (IsRemoteDesignerLoaded && RemoteDocumentsUnchanged(currentTexts, lastLoadedDocuments)) {
 				base.UserContent = remoteControl;
 				return;
 			}
@@ -711,7 +772,7 @@ namespace ICSharpCode.FormsDesigner
 			_ = LoadRemoteDesignerAsync(myGeneration, currentTexts, snapshot, canvas, oldClient, backend);
 		}
 
-		async System.Threading.Tasks.Task LoadRemoteDesignerAsync(long generation, Dictionary<string, string> texts,
+		async System.Threading.Tasks.Task LoadRemoteDesignerAsync(long generation, RemoteDocumentSet documents,
 			DesignerDocumentSnapshot snapshot, DesignerCanvas loadingCanvas, FormsDesignerHostClient oldClient,
 			FormsDesignerBackend backend)
 		{
@@ -811,7 +872,7 @@ namespace ICSharpCode.FormsDesigner
 				UpdateOutline(state);
 				base.UserContent = remoteControl;
 				hasUnmergedChanges = false;
-				lastLoadedTexts = texts;
+				lastLoadedDocuments = documents;
 			});
 		}
 
@@ -904,14 +965,11 @@ namespace ICSharpCode.FormsDesigner
 				});
 			}
 			foreach (var resource in Files.Where(file => !sourceCodeStorage.ContainsFile(file))) {
-				using (var stream = resource.OpenRead())
-				using (var memory = new System.IO.MemoryStream()) {
-					stream.CopyTo(memory);
-					snapshot.Files.Add(new DesignerSourceFileSnapshot {
+				var bytes = ReadResourceBytes(resource);
+				snapshot.Files.Add(new DesignerSourceFileSnapshot {
 						FileName = resource.FileName.ToString(), Kind = "Resource",
-						Base64 = Convert.ToBase64String(memory.ToArray())
+						Base64 = Convert.ToBase64String(bytes)
 					});
-				}
 			}
 			return snapshot;
 		}
@@ -2077,18 +2135,33 @@ namespace ICSharpCode.FormsDesigner
 			public virtual void Undo() => commands.Execute("Undo");
 			bool UndoCore()
 			{
-				remoteRedo.Push(CaptureRemoteDocuments());
-				RestoreRemoteDocuments(remoteUndo.Pop());
+				var before = CaptureRemoteDocuments();
+				var target = remoteUndo.Peek();
+				var state = RestoreRemoteDocuments(target);
+				remoteUndo.Pop();
+				remoteRedo.Push(before);
+				ApplyRestoredRemoteState(state);
 				return true;
 			}
 
 			public virtual void Redo() => commands.Execute("Redo");
 			bool RedoCore()
 			{
-				remoteUndo.Push(CaptureRemoteDocuments());
-				RestoreRemoteDocuments(remoteRedo.Pop());
+				var before = CaptureRemoteDocuments();
+				var target = remoteRedo.Peek();
+				var state = RestoreRemoteDocuments(target);
+				remoteRedo.Pop();
+				remoteUndo.Push(before);
+				ApplyRestoredRemoteState(state);
 				return true;
-		}
+			}
+
+			void ApplyRestoredRemoteState(DesignerSessionState state)
+			{
+				remoteControl.Show(state);
+				UpdateOutline(state);
+				MakeDirty();
+			}
 		#endregion
 
 		#region IClipboardHandler implementation
