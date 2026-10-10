@@ -3754,6 +3754,38 @@ public sealed class AddInTests : IAsyncDisposable
             savedDesigner = await File.ReadAllTextAsync(designerPath);
             Assert.DoesNotContain("nudged-label", savedDesigner, StringComparison.Ordinal);
             Assert.DoesNotContain("label1.Text", savedDesigner, StringComparison.Ordinal);
+
+            // Component-reference properties use the same real Properties-pad editor, but their
+            // constrained values must become a source reference rather than a display string.
+            var addAcceptButton = await _app.InvokeAsync("od.forms-designer.add-control", "Form1",
+                "System.Windows.Forms.Button", "acceptButton", 30, 100);
+            Assert.True(addAcceptButton.GetProperty("success").GetBoolean(), addAcceptButton.ToString());
+            JsonElement acceptEdited = default;
+            var acceptEditedOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                var selected = await _app.InvokeAsync("od.forms-designer.select", "Form1");
+                if (!selected.GetProperty("success").GetBoolean())
+                    return false;
+                acceptEdited = await _app.InvokeAsync("od.forms-designer.properties-pad.edit", "AcceptButton", "acceptButton");
+                return acceptEdited.GetProperty("success").GetBoolean()
+                    && acceptEdited.GetProperty("selectedName").GetString() == "Form1";
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 300);
+            Assert.True(acceptEditedOk, "Editing Form.AcceptButton through the shared Properties pad failed: " + acceptEdited);
+            Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
+            savedDesigner = await File.ReadAllTextAsync(designerPath);
+            Assert.Contains("acceptButton = new System.Windows.Forms.Button()", savedDesigner, StringComparison.Ordinal);
+            Assert.Contains("AcceptButton = acceptButton", savedDesigner, StringComparison.Ordinal);
+
+            JsonElement resetAccept = default;
+            var resetAcceptOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                resetAccept = await _app.InvokeAsync("od.forms-designer.properties-pad.reset", "AcceptButton");
+                return resetAccept.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250);
+            Assert.True(resetAcceptOk, resetAccept.ToString());
+            Assert.Equal("Form1", resetAccept.GetProperty("selectedName").GetString());
+            Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
+            savedDesigner = await File.ReadAllTextAsync(designerPath);
+            Assert.DoesNotContain("AcceptButton =", savedDesigner, StringComparison.Ordinal);
+            Assert.Contains("acceptButton = new System.Windows.Forms.Button()", savedDesigner, StringComparison.Ordinal);
             bodySucceeded = true;
         } finally {
             JsonElement closed = default;
