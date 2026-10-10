@@ -548,6 +548,10 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains(accepted.Components.Single(component => component.Name == "Form1").Properties,
 			property => property.Name == "AcceptButton" && property.Value == "button1" && property.ShouldSerialize);
 		Assert.Contains("AcceptButton = button1;", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
+		var resetAcceptButton = await client.ResetPropertyAsync(7, "Form1", "AcceptButton", timeout.Token);
+		Assert.Contains(resetAcceptButton.Components.Single(component => component.Name == "Form1").Properties,
+			property => property.Name == "AcceptButton" && property.IsNull && !property.ShouldSerialize);
+		Assert.DoesNotContain("AcceptButton =", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 
 		var edited = await client.SetPropertyAsync(7, "button1", "Text", "edited in child", timeout.Token);
 		Assert.True(edited.Accepted);
