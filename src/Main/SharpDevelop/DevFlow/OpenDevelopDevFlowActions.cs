@@ -2930,7 +2930,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				isProcessRunning = debugger.IsProcessRunning
 			});
 		}
-		
+
 		[DevFlowAction("od.debug.stop", Description = "Stop the current debug session")]
 		public static string StopDebug()
 		{

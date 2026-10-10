@@ -96,7 +96,7 @@
 		          label = "${res:MainWindow.Windows.Debug.CallStack.ShowExternalCode}"
 		          class = "Debugger.AddIn.ToggleShowExternalCodeCommand"/>
 	</Path>
-	
+
 	<Path name="/SharpDevelop/Pads/BreakpointPad/Toolbar">
 		<ToolbarItem id = "EnableAllBreakpoints"
 		             icon    = "Icons.16x16.Debug.EnableAllBreakpoints"
@@ -111,7 +111,7 @@
 		             tooltip = "${res:MainWindow.Windows.Debug.DeleteAllBreakpoints}"
 		             class = "Debugger.AddIn.DeleteAllBreakpointsCommand"/>
 	</Path>
-	
+
 	<Path name="/SharpDevelop/Pads/ClassBrowser/Toolbar">
 		<Condition name = "IsProcessRunning" isdebugging="False" action="Disable">
 			<ToolbarItem id = "DebugExecutable"
