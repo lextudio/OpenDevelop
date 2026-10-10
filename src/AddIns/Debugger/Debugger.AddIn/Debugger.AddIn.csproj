@@ -52,9 +52,9 @@
          NRefactory-based type system reflection; DAP only exposes a flat module list (see
          Pads/LoadedModulesPad.cs). Known capability gap, kept on disk for reference. -->
     <Compile Remove="Pads\ClassBrowserSupport.cs" />
-    <!-- AbstractAttachToProcessForm is already excluded from ICSharpCode.SharpDevelop.csproj in this
-         repo, and the bundled SharpDbg DAP adapter does not implement the "attach" request either.
-         Attach-to-process is a known, pre-existing capability gap independent of this migration. -->
+    <!-- The WinForms process picker is excluded (WinForms hosting is out of MVP scope);
+         AttachToProcessWindow.xaml replaces it in WPF, and SharpDbg implements the "attach"
+         request, so attach-to-process is available. -->
     <Compile Remove="Service\AttachToProcessForm.cs" />
     <!-- WinForms hosting (SD.WinForms/IWinFormsService) was already removed from the SharpDevelop
          shell in this repo ("out of MVP scope"), independent of this migration - so the WinForms

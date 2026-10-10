@@ -5716,6 +5716,15 @@ Shows the full callstack of the error.</comment>
   <data name="MainWindow.Windows.Debug.CallStack.ShowExternalCode" xml:space="preserve">
     <value>Show External Code</value>
   </data>
+  <data name="MainWindow.Windows.Debug.AttachProcess.Title" xml:space="preserve">
+    <value>Attach to Process</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.AttachProcess.ListLabel" xml:space="preserve">
+    <value>Available processes:</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.AttachProcess.AttachButton" xml:space="preserve">
+    <value>Attach</value>
+  </data>
   <data name="MainWindow.Windows.Debug.SetCurrentStatement" xml:space="preserve">
     <value>Set current statement</value>
   </data>

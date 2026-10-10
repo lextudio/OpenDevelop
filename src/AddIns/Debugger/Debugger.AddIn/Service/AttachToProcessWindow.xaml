@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+	x:Class="ICSharpCode.SharpDevelop.Services.AttachToProcessWindow"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:core="http://icsharpcode.net/sharpdevelop/core"
+	Title="{core:Localize MainWindow.Windows.Debug.AttachProcess.Title}"
+	WindowStartupLocation="CenterOwner"
+	WindowState="Normal"
+	WindowStyle="ToolWindow"
+	ShowInTaskbar="False"
+	Height="380"
+	Width="560">
+	<Grid Margin="8">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto" />
+			<RowDefinition Height="*" />
+			<RowDefinition Height="Auto" />
+		</Grid.RowDefinitions>
+		<TextBlock
+			Grid.Row="0"
+			Margin="0,0,0,6"
+			Text="{core:Localize MainWindow.Windows.Debug.AttachProcess.ListLabel}" />
+		<ListView
+			x:Name="processList"
+			Grid.Row="1">
+			<ListView.View>
+				<GridView>
+					<GridViewColumn
+						Header="{core:Localize Global.Name}"
+						Width="200"
+						DisplayMemberBinding="{Binding Name}" />
+					<GridViewColumn
+						Header="{core:Localize Global.ID}"
+						Width="70"
+						DisplayMemberBinding="{Binding Id}" />
+					<GridViewColumn
+						Header="{core:Localize Global.Path}"
+						Width="260"
+						DisplayMemberBinding="{Binding Path}" />
+				</GridView>
+			</ListView.View>
+		</ListView>
+		<StackPanel
+			Grid.Row="2"
+			Margin="0,8,0,0"
+			Orientation="Horizontal"
+			HorizontalAlignment="Right">
+			<Button
+				x:Name="attachButton"
+				Width="90"
+				Margin="0,0,8,0"
+				IsDefault="True"
+				Click="AttachClick"
+				Content="{core:Localize MainWindow.Windows.Debug.AttachProcess.AttachButton}" />
+			<Button
+				Width="90"
+				IsCancel="True"
+				Content="{core:Localize Global.Cancel}" />
+		</StackPanel>
+	</Grid>
+</Window>

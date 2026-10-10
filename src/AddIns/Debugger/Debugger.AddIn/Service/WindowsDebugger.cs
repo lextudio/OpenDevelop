@@ -452,10 +452,14 @@ namespace ICSharpCode.SharpDevelop.Services
 
 		public override void ShowAttachDialog()
 		{
-			// The WinForms process-picker (AttachToProcessForm/AbstractAttachToProcessForm) is
-			// excluded from this build (WinForms hosting is out of MVP scope), so there is no process
-			// list to show. Attaching by process id still works (od.debug.attach / Attach(Process)).
-			MessageService.ShowMessage("Attach by process id is available (the process-picker dialog is not built in this configuration).");
+			// A WPF process picker (the WinForms AttachToProcessForm is not built in this
+			// configuration). Attaching is otherwise available via od.debug.attach / Attach(Process).
+			var window = new AttachToProcessWindow();
+			var mainWindow = SD.Workbench?.MainWindow;
+			if (mainWindow != null && mainWindow != window)
+				window.Owner = mainWindow;
+			if (window.ShowDialog() == true && window.SelectedProcess != null)
+				Attach(window.SelectedProcess);
 		}
 
 		public override void Attach(Process existingProcess)
