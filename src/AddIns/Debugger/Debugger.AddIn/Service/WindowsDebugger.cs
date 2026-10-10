@@ -202,7 +202,6 @@ namespace ICSharpCode.SharpDevelop.Services
 		public override bool Supports(DebuggerFeatures feature)
 		{
 			switch (feature) {
-				case DebuggerFeatures.Attaching:
 				case DebuggerFeatures.Detaching:
 					return false;
 				default:
@@ -453,12 +452,47 @@ namespace ICSharpCode.SharpDevelop.Services
 
 		public override void ShowAttachDialog()
 		{
-			MessageService.ShowMessage("Attach to process is not supported by the DAP debugger.");
+			// The WinForms process-picker (AttachToProcessForm/AbstractAttachToProcessForm) is
+			// excluded from this build (WinForms hosting is out of MVP scope), so there is no process
+			// list to show. Attaching by process id still works (od.debug.attach / Attach(Process)).
+			MessageService.ShowMessage("Attach by process id is available (the process-picker dialog is not built in this configuration).");
 		}
 
 		public override void Attach(Process existingProcess)
 		{
-			throw new NotSupportedException("Attach to process is not supported by the DAP debugger.");
+			if (IsDebugging) {
+				MessageService.ShowMessage(errorDebugging);
+				return;
+			}
+			OnDebugStarting(EventArgs.Empty);
+			AttachAsync(existingProcess.Id).FireAndForget();
+		}
+
+		public async Task AttachAsync(int processId)
+		{
+			DapSession session = null;
+			try {
+				PrintDebugMessage("> Attaching to process " + processId + "...\n");
+				session = new DapSession();
+				CurrentSession = session;
+				CurrentSession.Started += SessionStarted;
+				CurrentSession.Stopped += SessionStopped;
+				CurrentSession.Continued += SessionContinued;
+				CurrentSession.Exited += SessionExited;
+				CurrentSession.OutputReceived += PrintDebugMessage;
+
+				await CurrentSession.StartAsync(null, null, false, null, DapLaunchMode.AttachToProcess, default, null, false, processId).ConfigureAwait(false);
+				await SyncAllBreakpointsBeforeLaunchAsync();
+				await CurrentSession.SetExceptionBreakpointsAsync(new[] { "user-unhandled" }).ConfigureAwait(false);
+				await CurrentSession.ConfigurationDoneAsync().ConfigureAwait(false);
+				PrintDebugMessage("> Attached to process " + processId + "\n");
+			} catch (Exception ex) {
+				if (session != null && ReferenceEquals(stopRequestedFor, session))
+					return;
+				PrintDebugMessage("ERROR: " + ex + "\n");
+				session?.Stop();
+				SessionExited();
+			}
 		}
 
 		public override void Detach()

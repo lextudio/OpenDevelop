@@ -48,7 +48,13 @@ namespace Debugger.AddIn.Service.Dap
 		/// (<see cref="DiagnosticsClient.ResumeRuntime"/>) once the DAP configuration window closes.
 		/// Matches SharpDbg's own out-of-process test practice more closely than a plain "launch".
 		/// </summary>
-		AttachToSuspendedProcess
+		AttachToSuspendedProcess,
+
+		/// <summary>
+		/// Attach to an already-running process by id (the extra argument on
+		/// <see cref="DapSession.StartAsync"/>). The session does not spawn or suspend the debuggee.
+		/// </summary>
+		AttachToProcess
 	}
 
 	/// <summary>
@@ -130,7 +136,8 @@ namespace Debugger.AddIn.Service.Dap
 			IEnumerable<string> arguments = null,
 			DapLaunchMode launchMode = DapLaunchMode.Launch, CancellationToken cancellationToken = default,
 			IEnumerable<KeyValuePair<string, string>> launchEnvironment = null,
-			bool noDebug = false)
+			bool noDebug = false,
+			int? attachProcessId = null)
 		{
 			var argumentList = arguments != null ? arguments.ToList() : new List<string>();
 			string adapterDll = ResolveAdapterDll();
@@ -141,7 +148,7 @@ namespace Debugger.AddIn.Service.Dap
 			this.launchMode = launchMode;
 			launchTarget = targetPath;
 			cancellationTokenSource = new CancellationTokenSource();
-			string debuggeeHost = ResolveDebuggeeHost(targetPath);
+			string debuggeeHost = launchMode == DapLaunchMode.AttachToProcess ? ResolveDotNetHost() : ResolveDebuggeeHost(targetPath);
 			adapterLogPath = CreateAdapterLogPath();
 			adapterProcess = LaunchAdapter(adapterDll, debuggeeHost, adapterLogPath);
 			// Surface the adapter's (and, since the debuggee inherits it, the debuggee's) stderr to
@@ -177,7 +184,13 @@ namespace Debugger.AddIn.Service.Dap
 			}, cancellationToken).ConfigureAwait(false);
 			Capabilities = ParseCapabilities(initializeResponse);
 
-			if (launchMode == DapLaunchMode.AttachToSuspendedProcess) {
+			if (launchMode == DapLaunchMode.AttachToProcess) {
+				await client.SendRequestAsync("attach", new JsonObject {
+					["processId"] = attachProcessId,
+					["console"] = "internalConsole",
+					["justMyCode"] = true
+				}, cancellationToken).ConfigureAwait(false);
+			} else if (launchMode == DapLaunchMode.AttachToSuspendedProcess) {
 				debuggeeProcess = LaunchDebuggeeSuspended(debuggeeHost, targetPath, workingDirectory, argumentList, launchEnvironment);
 				await client.SendRequestAsync("attach", new JsonObject {
 					["processId"] = debuggeeProcess.Id,

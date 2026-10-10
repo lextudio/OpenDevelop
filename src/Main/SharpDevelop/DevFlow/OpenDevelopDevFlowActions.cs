@@ -2909,6 +2909,28 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { success = true });
 		}
 		
+		[DevFlowAction("od.debug.attach", Description = "Attach to a running process by id")]
+		public static async Task<string> AttachDebugAsync(int processId, bool waitForStop = false, int timeoutSeconds = 30)
+		{
+			var debugger = SD.Debugger;
+			if (debugger == null) {
+				return JsonSerializer.Serialize(new { attached = false, error = "Debugger service not available." });
+			}
+			if (debugger.IsDebugging) {
+				return JsonSerializer.Serialize(new { attached = false, error = "Already debugging." });
+			}
+			int stopSequence = GetIntProperty(debugger, "CurrentStopSequence");
+			var wait = waitForStop ? WaitForStopAsync(debugger, timeoutSeconds, stopSequence) : Task.FromResult(true);
+			await InvokeTaskAsync(debugger, "AttachAsync", processId);
+			bool stopped = waitForStop && await wait;
+			return JsonSerializer.Serialize(new {
+				attached = debugger.IsDebugging || stopped,
+				stopped,
+				isDebugging = debugger.IsDebugging,
+				isProcessRunning = debugger.IsProcessRunning
+			});
+		}
+		
 		[DevFlowAction("od.debug.stop", Description = "Stop the current debug session")]
 		public static string StopDebug()
 		{
