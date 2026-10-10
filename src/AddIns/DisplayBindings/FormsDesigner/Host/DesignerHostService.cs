@@ -265,7 +265,7 @@ sealed class DesignerHostService : IDesignerChildService
 		// Keep the image mutation boundary aligned with DescribeProperties: an image is exposed as
 		// an opaque Unsupported value even though the underlying WinForms descriptor is writable.
 		// It must never accept the display token as a scalar edit.
-		if (property.IsReadOnly || typeof(Image).IsAssignableFrom(property.PropertyType))
+		if (property.IsReadOnly || IsResourceImageProperty(property.PropertyType))
 			throw new InvalidOperationException($"Property {elementId}.{propertyName} is read-only.");
 		var converted = ConvertPropertyValue(property, value);
 		if (component == host.RootComponent && propertyName == "AutoScaleDimensions" && converted is SizeF scale)
@@ -2454,7 +2454,7 @@ sealed class DesignerHostService : IDesignerChildService
 		foreach (PropertyDescriptor property in TypeDescriptor.GetProperties(component)) {
 			if (!property.IsBrowsable || property.Name is "Site" or "Container" or "Parent") continue;
 			var assignedInSource = assignedTargets.Contains(elementId + "." + property.Name);
-			var isImageProperty = typeof(Image).IsAssignableFrom(property.PropertyType);
+			var isImageProperty = IsResourceImageProperty(property.PropertyType);
 			object? value;
 			string serialized;
 			try {
@@ -2522,8 +2522,11 @@ sealed class DesignerHostService : IDesignerChildService
 		: type == typeof(Size) || type == typeof(SizeF) ? "Size"
 		: type == typeof(Rectangle) || type == typeof(RectangleF) ? "Rect"
 		: type == typeof(Uri) ? "Uri"
-		: typeof(Image).IsAssignableFrom(type) ? "Unsupported"
+		: IsResourceImageProperty(type) ? "Unsupported"
 		: "String";
+
+	static bool IsResourceImageProperty(Type type)
+		=> typeof(Image).IsAssignableFrom(type) || type == typeof(Icon);
 
 	/// <summary>Position relative to the ROOT design component, which is the coordinate space the
 	/// render frame and hit-testing both use.

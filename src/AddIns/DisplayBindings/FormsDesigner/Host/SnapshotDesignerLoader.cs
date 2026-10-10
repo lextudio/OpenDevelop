@@ -177,9 +177,11 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 					var typeName = (string?)data.Attribute("type") ?? "";
 					if (mimeType.Contains("base64", StringComparison.OrdinalIgnoreCase)
 						&& (typeName.Contains("Image", StringComparison.OrdinalIgnoreCase)
-							|| typeName.Contains("Bitmap", StringComparison.OrdinalIgnoreCase))) {
+							|| typeName.Contains("Bitmap", StringComparison.OrdinalIgnoreCase)
+							|| typeName.Contains("Icon", StringComparison.OrdinalIgnoreCase))) {
 						var imageStream = new MemoryStream(Convert.FromBase64String(value));
-						resources[name] = new ResourceValue(Image.FromStream(imageStream), file.FileName);
+						resources[name] = new ResourceValue(typeName.Contains("Icon", StringComparison.OrdinalIgnoreCase)
+							? new Icon(imageStream) : Image.FromStream(imageStream), file.FileName);
 					} else resources[name] = new ResourceValue(value, file.FileName);
 				}
 			} catch { }

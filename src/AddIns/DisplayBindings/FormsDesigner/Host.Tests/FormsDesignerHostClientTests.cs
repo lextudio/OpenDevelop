@@ -655,12 +655,17 @@ public sealed class FormsDesignerHostClientTests
 			"this.button1.Text = \"fallback\";",
 			"resources.ApplyResources(this.button1, nameof(button1));\n        this.button1.Image = (System.Drawing.Image)resources.GetObject(\"button1.Image\");",
 			StringComparison.Ordinal);
+		resourceDesigner.Text = resourceDesigner.Text.Replace(
+			"this.Controls.Add(this.button1);",
+			"this.Icon = (System.Drawing.Icon)resources.GetObject(\"$this.Icon\");\n        this.Controls.Add(this.button1);",
+			StringComparison.Ordinal);
 		resourceSnapshot.Files.Add(new DesignerSourceFileSnapshot {
 			FileName = "/project/Form1.resx", Kind = "Resource",
 			Base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(
 				$"<root><data name=\"button1.Text\"><value>localized text</value></data>" +
 				$"<data name=\"button1.Location\"><value>1, 2</value></data>" +
-				$"<data name=\"button1.Image\" type=\"System.Drawing.Bitmap, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>{Convert.ToBase64String(png)}</value></data></root>"))
+				$"<data name=\"button1.Image\" type=\"System.Drawing.Bitmap, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>{Convert.ToBase64String(png)}</value></data>" +
+				"<data name=\"$this.Icon\" type=\"System.Drawing.Icon, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>AAAAAA==</value></data></root>"))
 		});
 		var resourceLoaded = await client.UpdateAsync(resourceSnapshot, timeout.Token);
 		var resourceButton = Assert.Single(resourceLoaded.Components, component => component.Name == "button1");
@@ -676,6 +681,13 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Equal("/project/Form1.resx", imageProperty.ResourceFileName);
 		Assert.Equal("button1.Image", imageProperty.ResourceKey);
 		Assert.Equal("ResourceImage", imageProperty.EditorKind);
+		var iconProperty = Assert.Single(loadedForm.Properties, property => property.Name == "Icon");
+		Assert.Equal("[binary]", iconProperty.Value);
+		Assert.Equal("Unsupported", iconProperty.Kind);
+		Assert.True(iconProperty.IsReadOnly);
+		Assert.Equal("/project/Form1.resx", iconProperty.ResourceFileName);
+		Assert.Equal("$this.Icon", iconProperty.ResourceKey);
+		Assert.Equal("ResourceImage", iconProperty.EditorKind);
 		// The resource capability is editor eligibility for the IDE, not permission for a
 		// generic child/property RPC to submit its opaque display token as text.
 		var rejectedImageEdit = await Assert.ThrowsAnyAsync<Exception>(() =>
