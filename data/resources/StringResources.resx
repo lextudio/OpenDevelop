@@ -5704,6 +5704,9 @@ Shows the full callstack of the error.</comment>
   <data name="MainWindow.Windows.Debug.InsertLogpoint" xml:space="preserve">
     <value>Insert Logpoint</value>
   </data>
+  <data name="MainWindow.Windows.Debug.DeleteAllBreakpoints" xml:space="preserve">
+    <value>Delete all breakpoints</value>
+  </data>
   <data name="MainWindow.Windows.Debug.SetCurrentStatement" xml:space="preserve">
     <value>Set current statement</value>
   </data>

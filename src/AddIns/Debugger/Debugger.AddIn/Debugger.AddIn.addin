@@ -89,6 +89,21 @@
 		</Condition>
 	</Path>
 	
+	<Path name="/SharpDevelop/Pads/BreakpointPad/Toolbar">
+		<ToolbarItem id = "EnableAllBreakpoints"
+		             icon    = "Icons.16x16.Debug.EnableAllBreakpoints"
+		             tooltip = "${res:MainWindow.Windows.Debug.Conditional.Breakpoints.EnableBreakpoint}"
+		             class = "Debugger.AddIn.EnableAllBreakpointsCommand"/>
+		<ToolbarItem id = "DisableAllBreakpoints"
+		             icon    = "Icons.16x16.Debug.DisableAllBreakpoints"
+		             tooltip = "${res:MainWindow.Windows.Debug.Conditional.Breakpoints.DisableBreakpoint}"
+		             class = "Debugger.AddIn.DisableAllBreakpointsCommand"/>
+		<ToolbarItem id = "DeleteAllBreakpoints"
+		             icon    = "Icons.16x16.Debug.DeleteAllBreakpoints"
+		             tooltip = "${res:MainWindow.Windows.Debug.DeleteAllBreakpoints}"
+		             class = "Debugger.AddIn.DeleteAllBreakpointsCommand"/>
+	</Path>
+	
 	<Path name="/SharpDevelop/Pads/ClassBrowser/Toolbar">
 		<Condition name = "IsProcessRunning" isdebugging="False" action="Disable">
 			<ToolbarItem id = "DebugExecutable"

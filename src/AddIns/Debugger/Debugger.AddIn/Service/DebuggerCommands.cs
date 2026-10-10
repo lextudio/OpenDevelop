@@ -136,6 +136,36 @@ namespace Debugger.AddIn
 		}
 	}
 	
+	/// <summary>Enables every breakpoint.</summary>
+	public class EnableAllBreakpointsCommand : AbstractMenuCommand
+	{
+		public override void Run()
+		{
+			foreach (BreakpointBookmark bp in SD.BookmarkManager.Bookmarks.OfType<BreakpointBookmark>())
+				bp.IsEnabled = true;
+		}
+	}
+
+	/// <summary>Disables every breakpoint.</summary>
+	public class DisableAllBreakpointsCommand : AbstractMenuCommand
+	{
+		public override void Run()
+		{
+			foreach (BreakpointBookmark bp in SD.BookmarkManager.Bookmarks.OfType<BreakpointBookmark>())
+				bp.IsEnabled = false;
+		}
+	}
+
+	/// <summary>Deletes every breakpoint.</summary>
+	public class DeleteAllBreakpointsCommand : AbstractMenuCommand
+	{
+		public override void Run()
+		{
+			foreach (BreakpointBookmark bp in SD.BookmarkManager.Bookmarks.OfType<BreakpointBookmark>().ToList())
+				SD.BookmarkManager.RemoveMark(bp);
+		}
+	}
+
 	public class EnableBreakpointMenuCommand : AbstractMenuCommand
 	{
 		public override void Run()
