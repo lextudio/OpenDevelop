@@ -84,7 +84,13 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 			var session = WindowsDebugger.CurrentSession;
 			var loadedModules = new List<ModuleItem>();
 			if (session != null && session.IsPaused) {
-				var modules = await session.GetModulesAsync().ConfigureAwait(true);
+				// Prefer the "modules" request: it carries symbolStatus, unlike the module events.
+				IReadOnlyList<DapModuleInfo> modules;
+				try {
+					modules = await session.GetModulesRequestAsync().ConfigureAwait(true);
+				} catch {
+					modules = await session.GetModulesAsync().ConfigureAwait(true);
+				}
 				foreach (var module in modules) {
 					loadedModules.Add(new ModuleItem(module));
 				}
@@ -97,7 +103,7 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 		public async Task<IEnumerable<object>> GetSnapshotAsync()
 		{
 			var items = await RefreshPadAsync().ConfigureAwait(true);
-			return items.Select(i => (object)new { i.Name, i.Path });
+			return items.Select(i => (object)new { i.Name, i.Path, i.Symbols });
 		}
 	}
 }

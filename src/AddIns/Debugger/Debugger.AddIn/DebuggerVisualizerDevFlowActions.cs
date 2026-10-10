@@ -26,6 +26,34 @@ namespace Debugger.AddIn
 	[DevFlowUIThread]
 	public static class DebuggerVisualizerDevFlowActions
 	{
+		[DevFlowAction("od.debug.set-all-breakpoints-enabled", Description = "Enable or disable every breakpoint, resyncing with the adapter")]
+		public static string SetAllBreakpointsEnabled(bool enabled)
+		{
+			var all = SD.BookmarkManager.Bookmarks.OfType<BreakpointBookmark>().ToList();
+			foreach (var bp in all)
+				bp.IsEnabled = enabled;
+			ResyncBreakpoints(all);
+			return JsonSerializer.Serialize(new { success = true, count = all.Count });
+		}
+
+		[DevFlowAction("od.debug.delete-all-breakpoints", Description = "Delete every breakpoint")]
+		public static string DeleteAllBreakpoints()
+		{
+			var all = SD.BookmarkManager.Bookmarks.OfType<BreakpointBookmark>().ToList();
+			foreach (var bp in all)
+				SD.BookmarkManager.RemoveMark(bp);
+			ResyncBreakpoints(all);
+			return JsonSerializer.Serialize(new { success = true, count = all.Count });
+		}
+
+		static void ResyncBreakpoints(IEnumerable<BreakpointBookmark> bookmarks)
+		{
+			if (SD.Debugger is WindowsDebugger windowsDebugger && windowsDebugger.IsDebugging) {
+				foreach (var file in bookmarks.Where(b => b.FileName != null).Select(b => b.FileName.ToString()).Distinct(StringComparer.OrdinalIgnoreCase))
+					windowsDebugger.SyncBreakpointsForFileAsync(file).FireAndForget();
+			}
+		}
+
 		[DevFlowAction("od.debug.show-external-code", Description = "Enable or disable the Call Stack pad's Show External Code filter")]
 		public static string ShowExternalCode(bool enabled)
 		{
