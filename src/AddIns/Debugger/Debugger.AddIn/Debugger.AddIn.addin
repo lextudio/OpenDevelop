@@ -71,6 +71,7 @@
 		<Condition name = "IsProcessRunning" isdebugging="True">
 			<MenuItem id = "DebuggerRestart"
 			          label = "${res:MainWindow.Windows.Debug.Restart}"
+			          icon = "Icons.16x16.Debug.Restart"
 			          shortcut = "Ctrl|Shift|F5"
 			          class = "Debugger.AddIn.RestartDebuggerCommand"/>
 		</Condition>
