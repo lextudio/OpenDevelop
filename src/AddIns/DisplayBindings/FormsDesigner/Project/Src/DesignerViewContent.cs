@@ -139,6 +139,40 @@ namespace ICSharpCode.FormsDesigner
 				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
 		}
 
+		/// <summary>Replaces the bytes of a proven, existing resource-backed image as one IDE-owned
+		/// document transaction. The child only receives the completed resource snapshot; it never
+		/// receives a resource-writing RPC or filesystem authority.</summary>
+		internal void ReplaceRemoteResourceImage(string componentName, DesignerPropertyInfo property, byte[] imageBytes)
+		{
+			EnsureRemoteDesignerLoaded();
+			if (property == null || !String.Equals(property.EditorKind, "ResourceImage", StringComparison.Ordinal)
+				|| String.IsNullOrEmpty(property.ResourceFileName) || String.IsNullOrEmpty(property.ResourceKey))
+				throw new InvalidOperationException("This property is not an editable resource image.");
+			// Resource provenance originates in the child, but it is not a write capability. Limit
+			// it to the property currently being edited and the standard WinForms resource naming
+			// convention. "$this" is the conventional ApplyResources key for the form root.
+			var expectedSuffix = "." + property.Name;
+			if (!property.ResourceKey.EndsWith(expectedSuffix, StringComparison.Ordinal)
+				|| (property.ResourceKey[..^expectedSuffix.Length] != componentName
+					&& property.ResourceKey[..^expectedSuffix.Length] != "$this"))
+				throw new InvalidOperationException("The image resource does not belong to this property.");
+			var resource = Files.FirstOrDefault(file => !sourceCodeStorage.ContainsFile(file)
+				&& String.Equals(file.FileName.ToString(), property.ResourceFileName, StringComparison.OrdinalIgnoreCase));
+			if (resource == null)
+				throw new InvalidOperationException("The image resource is not part of this designer document.");
+
+			var before = CaptureRemoteDocuments();
+			var target = CaptureRemoteDocuments();
+			target.ResourceBytes[resource.FileName.ToString()] = resourceStore.CreateExistingImageReplacement(resource, property.ResourceKey, imageBytes);
+			var state = RestoreRemoteDocuments(target);
+			remoteUndo.Push(before);
+			remoteRedo.Clear();
+			// The child has already accepted a complete document snapshot. Use the same post-commit
+			// presentation path as undo/redo: a flush here could fail after acceptance and falsely
+			// report this committed resource edit as rejected.
+			ApplyRestoredRemoteState(state);
+		}
+
 		internal void RenameRemoteComponent(string componentName, string newName)
 		{
 			EnsureRemoteDesignerLoaded();
@@ -1885,7 +1919,7 @@ namespace ICSharpCode.FormsDesigner
 			return component;
 		}
 
-		sealed class RemoteComponentPropertyProxy : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost
+		sealed class RemoteComponentPropertyProxy : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IResourceImageEditorHost
 		{
 			readonly FormsDesignerViewContent owner;
 			string name;
@@ -1982,6 +2016,15 @@ namespace ICSharpCode.FormsDesigner
 				remoteEvent.Handler = handlerName;
 			}
 
+			void IResourceImageEditorHost.ReplaceResourceImage(string propertyName, byte[] imageBytes)
+			{
+				var imageProperty = remoteProperties.SingleOrDefault(item => String.Equals(item.Name, propertyName, StringComparison.Ordinal)
+					&& String.Equals(item.EditorKind, "ResourceImage", StringComparison.Ordinal));
+				if (imageProperty == null)
+					throw new InvalidOperationException("This property is not an editable resource image.");
+				owner.ReplaceRemoteResourceImage(name, imageProperty, imageBytes);
+			}
+
 			PropertyDescriptorCollection GetRemotePropertyDescriptors()
 			{
 				// Text used to be a fixed CLR descriptor like X/Y/Width/Height. Unlike bounds,
@@ -2045,7 +2088,7 @@ namespace ICSharpCode.FormsDesigner
 			}
 		}
 
-		sealed class RemotePropertyDescriptor : PropertyDescriptor
+		sealed class RemotePropertyDescriptor : PropertyDescriptor, IResourceImageProperty
 		{
 			readonly FormsDesignerViewContent owner;
 			readonly string componentName;
@@ -2081,6 +2124,9 @@ namespace ICSharpCode.FormsDesigner
 				=> DesignerPropertySemantics.IsReadOnly(property);
 
 			internal IReadOnlyList<string> AllowedValues => property.AllowedValues;
+			string IResourceImageProperty.EditorKind => property.EditorKind;
+			string IResourceImageProperty.ResourceFileName => property.ResourceFileName;
+			string IResourceImageProperty.ResourceKey => property.ResourceKey;
 
 			public override Type ComponentType => typeof(RemoteComponentPropertyProxy);
 			public override string DisplayName => String.IsNullOrEmpty(property.DisplayName) ? property.Name : property.DisplayName;
@@ -2160,6 +2206,7 @@ namespace ICSharpCode.FormsDesigner
 			void ApplyRestoredRemoteState(DesignerSessionState state)
 			{
 				remoteControl.Show(state);
+				QueuePropertyPadRefresh();
 				UpdateOutline(state);
 				MakeDirty();
 			}

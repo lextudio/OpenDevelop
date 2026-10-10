@@ -155,6 +155,19 @@ namespace ICSharpCode.FormsDesigner.Services
 		{
 			return resourceByFile.ContainsKey(file);
 		}
+
+		/// <summary>Builds, but does not apply, an update for a supported existing image resource.
+		/// The caller owns the surrounding source/resource transaction and child reload.</summary>
+		public byte[] CreateExistingImageReplacement(OpenedFile file, string resourceKey, byte[] imageBytes)
+		{
+			if (!resourceByFile.ContainsKey(file))
+				throw new InvalidOperationException("The resource file is not owned by this designer: " + file.FileName);
+			if (!String.Equals(Path.GetExtension(file.FileName), ".resx", StringComparison.OrdinalIgnoreCase))
+				throw new NotSupportedException("Only .resx image resources are supported.");
+			if (!TryGetBytes(file, out var resourceBytes))
+				throw new InvalidOperationException("The resource bytes are unavailable: " + file.FileName);
+			return ResxImageResourceEditor.ReplaceExistingImage(resourceBytes, resourceKey, imageBytes);
+		}
 		
 		public void MarkResourceFilesAsDirty()
 		{

@@ -184,4 +184,21 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// and persists the binding through the design session.</summary>
 		void BindEvent(string eventName);
 	}
+
+	/// <summary>Implemented by a Properties-pad selection whose proven resource-backed image can
+	/// be replaced by an IDE-owned editor. The host process is deliberately not part of this API.
+	/// </summary>
+	public interface IResourceImageEditorHost
+	{
+		void ReplaceResourceImage(string propertyName, byte[] imageBytes);
+	}
+
+	/// <summary>Metadata exposed by a property descriptor that is eligible for the narrowly scoped
+	/// IDE image-resource editor. Empty values mean the usual read-only property contract applies.</summary>
+	public interface IResourceImageProperty
+	{
+		string EditorKind { get; }
+		string ResourceFileName { get; }
+		string ResourceKey { get; }
+	}
 }
