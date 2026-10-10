@@ -570,7 +570,7 @@ namespace ICSharpCode.SharpDevelop.Services
 			}
 		}
 
-		async Task SyncBreakpointsForFileAsync(string fileName)
+		internal async Task SyncBreakpointsForFileAsync(string fileName)
 		{
 			if (CurrentSession == null) {
 				return;
@@ -588,7 +588,7 @@ namespace ICSharpCode.SharpDevelop.Services
 			// calls .ToList(), not inside the InvokeIfRequired lambda that only protected the
 			// Bookmarks collection access itself.
 			var requested = SD.MainThread.InvokeIfRequired(() =>
-				bookmarks.Select(b => (Line: b.LineNumber, Condition: b.Condition, HitCondition: b.HitCondition)).ToList());
+				bookmarks.Select(b => (Line: b.LineNumber, Condition: b.Condition, HitCondition: b.HitCondition, LogMessage: b.LogMessage)).ToList());
 			var verified = await CurrentSession.SetBreakpointsAsync(fileName, requested).ConfigureAwait(false);
 
 			SD.MainThread.InvokeAsyncAndForget(() => {

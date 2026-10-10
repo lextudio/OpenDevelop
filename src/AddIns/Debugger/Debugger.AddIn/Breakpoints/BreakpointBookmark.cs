@@ -39,9 +39,25 @@ namespace Debugger.AddIn.Breakpoints
 		bool isEnabled = true;
 		string condition;
 		string hitCondition;
+		string logMessage;
 
 		public event EventHandler<EventArgs> ConditionChanged;
 		public event EventHandler<EventArgs> HitConditionChanged;
+		public event EventHandler<EventArgs> LogMessageChanged;
+
+		/// <summary>A DAP logpoint message: when set, the breakpoint logs the message (with {expr}
+		/// interpolation) and continues instead of stopping (a "tracepoint").</summary>
+		public string LogMessage {
+			get { return logMessage; }
+			set {
+				if (logMessage != value) {
+					logMessage = value;
+					if (LogMessageChanged != null)
+						LogMessageChanged(this, EventArgs.Empty);
+					Redraw();
+				}
+			}
+		}
 
 		public string Condition {
 			get { return condition; }

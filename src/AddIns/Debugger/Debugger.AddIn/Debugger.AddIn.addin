@@ -40,6 +40,9 @@
 			          type = "Separator"/>
 		</Condition>
 		<MenuItem id="BreakpointSeparator" type = "Separator" />
+		<MenuItem id="InsertLogpoint"
+		          class="Debugger.AddIn.InsertLogpointCommand"
+		          label= "${res:MainWindow.Windows.Debug.InsertLogpoint}" />
 		<Include id="SetBreakpoint" item="/SharpDevelop/Workbench/MainMenu/Debug/Toggle Breakpoint" />
 		<Condition name="IsBreakpointSet">
 			<Condition name="IsBreakpointActive">

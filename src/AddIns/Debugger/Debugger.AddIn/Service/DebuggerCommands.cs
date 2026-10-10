@@ -102,6 +102,27 @@ namespace Debugger.AddIn
 		}
 	}
 	
+	/// <summary>Insert a logpoint at the caret: a breakpoint that logs a message and continues.</summary>
+	public class InsertLogpointCommand : AbstractMenuCommand
+	{
+		public override void Run()
+		{
+			ITextEditor editor = SD.GetActiveViewContentService<ITextEditor>();
+			if (editor == null)
+				return;
+
+			var bookmark = BreakpointUtil.BreakpointsOnCaret.FirstOrDefault();
+			if (bookmark == null) {
+				bookmark = new BreakpointBookmark();
+				SD.BookmarkManager.AddMark(bookmark, editor.Document, editor.Caret.Line);
+			}
+			if (string.IsNullOrEmpty(bookmark.LogMessage))
+				bookmark.LogMessage = "logpoint hit";
+			if (SD.Debugger is ICSharpCode.SharpDevelop.Services.WindowsDebugger windowsDebugger && windowsDebugger.IsDebugging)
+				windowsDebugger.SyncBreakpointsForFileAsync(editor.FileName.ToString()).FireAndForget();
+		}
+	}
+
 	public static class BreakpointUtil
 	{
 		public static IEnumerable<BreakpointBookmark> BreakpointsOnCaret {

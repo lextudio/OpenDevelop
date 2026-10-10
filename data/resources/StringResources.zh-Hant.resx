@@ -4985,6 +4985,9 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
   <data name="MainWindow.Windows.Debug.Restart" xml:space="preserve">
     <value>重新啟動</value>
   </data>
+  <data name="MainWindow.Windows.Debug.InsertLogpoint" xml:space="preserve">
+    <value>插入記錄點</value>
+  </data>
   <data name="MainWindow.Windows.Debug.SetCurrentStatement" xml:space="preserve">
     <value>設定目前陳述式</value>
   </data>

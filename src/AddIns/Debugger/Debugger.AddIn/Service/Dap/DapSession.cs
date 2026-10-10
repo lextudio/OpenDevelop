@@ -390,7 +390,7 @@ namespace Debugger.AddIn.Service.Dap
 		/// and hit conditions are evaluated by the adapter itself, not by the IDE - and only sent
 		/// at all if <see cref="Capabilities"/> says the connected adapter supports them.
 		/// </summary>
-		public async Task<IReadOnlyList<DapBreakpointVerification>> SetBreakpointsAsync(string fileName, IReadOnlyList<(int Line, string Condition, string HitCondition)> breakpoints)
+		public async Task<IReadOnlyList<DapBreakpointVerification>> SetBreakpointsAsync(string fileName, IReadOnlyList<(int Line, string Condition, string HitCondition, string LogMessage)> breakpoints)
 		{
 			if (client == null) {
 				return Array.Empty<DapBreakpointVerification>();
@@ -413,6 +413,9 @@ namespace Debugger.AddIn.Service.Dap
 				}
 				if (!string.IsNullOrEmpty(bp.HitCondition) && Capabilities.SupportsHitConditionalBreakpoints) {
 					entry["hitCondition"] = bp.HitCondition;
+				}
+				if (!string.IsNullOrEmpty(bp.LogMessage)) {
+					entry["logMessage"] = bp.LogMessage;
 				}
 				breakpointsArray.Add(entry);
 			}

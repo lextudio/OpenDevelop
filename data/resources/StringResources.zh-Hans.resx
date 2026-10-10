@@ -4985,6 +4985,9 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
   <data name="MainWindow.Windows.Debug.Restart" xml:space="preserve">
     <value>重新启动</value>
   </data>
+  <data name="MainWindow.Windows.Debug.InsertLogpoint" xml:space="preserve">
+    <value>插入日志断点</value>
+  </data>
   <data name="MainWindow.Windows.Debug.SetCurrentStatement" xml:space="preserve">
     <value>设置当前语句</value>
   </data>
