@@ -243,6 +243,8 @@
        prerequisite. -->
   <ItemGroup>
     <_FixtureProject Include="../fixtures/DebugTestApp/DebugTestApp.csproj" />
+    <!-- A long-running managed program the attach test starts itself, then attaches to. -->
+    <_FixtureProject Include="../fixtures/AttachFixture/AttachFixture.csproj" />
     <_FixtureProject Include="../fixtures/SampleTestProject/SampleTestProject.csproj" />
 	<_FixtureProject Include="../fixtures/UnoHotReloadFixture/UnoHotReloadFixture.csproj" />
     <!-- The WPF Hot Reload journey launches this fixture for real and hot-reloads it, so the test

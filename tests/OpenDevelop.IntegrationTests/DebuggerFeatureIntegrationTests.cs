@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 
 using Xunit;
@@ -157,6 +158,43 @@ public sealed class DebuggerFeatureIntegrationTests
         finally
         {
             await _app.InvokeAsync("od.debug.stop");
+        }
+    }
+
+    [Fact]
+    public async Task Attach_ToRunningProcess_StopsAtBreakpoint()
+    {
+        var dir = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(_app.DebugTestProjectPath)!, "..", "AttachFixture"));
+        var program = Path.Combine(dir, "Program.cs");
+        var dll = Path.Combine(dir, "bin", "Debug", "net10.0", "AttachFixture.dll");
+        Assert.True(File.Exists(dll), "AttachFixture was not built: " + dll);
+        var line = FindLine(program, "var attachMarker = 7;");
+
+        using var process = Process.Start(new ProcessStartInfo(OpenDevelopAppFixture.ResolveDotNetHost())
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            ArgumentList = { dll }
+        })!;
+        try
+        {
+            await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+            await _app.InvokeAsync("od.open-file", program);
+            await _app.InvokeAsync("od.debug.clear-breakpoints");
+
+            var attach = await _app.InvokeAsync("od.debug.attach", process.Id);
+            Assert.True(attach.GetProperty("attached").GetBoolean(), attach.ToString());
+
+            await _app.InvokeAsync("od.debug.set-breakpoint", program, line);
+            var continued = await _app.InvokeAsync("od.debug.continue", true, 30);
+            Assert.Equal(line, continued.GetProperty("currentLine").GetInt32());
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.debug.stop");
+            try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { /* already gone */ }
         }
     }
 
