@@ -458,8 +458,15 @@ namespace ICSharpCode.SharpDevelop.Services
 			var mainWindow = SD.Workbench?.MainWindow;
 			if (mainWindow != null && mainWindow != window)
 				window.Owner = mainWindow;
-			if (window.ShowDialog() == true && window.SelectedProcess != null)
-				Attach(window.SelectedProcess);
+			if (window.ShowDialog() != true || window.SelectedProcessId is not int processId)
+				return;
+			try {
+				// Re-open by id (the picker keeps only metadata) and dispose it once Attach has read it.
+				using (var process = Process.GetProcessById(processId))
+					Attach(process);
+			} catch (ArgumentException) {
+				MessageService.ShowMessage("The selected process is no longer running.");
+			}
 		}
 
 		public override void Attach(Process existingProcess)

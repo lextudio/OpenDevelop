@@ -35,7 +35,6 @@ namespace ICSharpCode.SharpDevelop.Services
 			public string Name { get; set; }
 			public int Id { get; set; }
 			public string Path { get; set; }
-			public Process Process { get; set; }
 		}
 
 		public AttachToProcessWindow()
@@ -46,12 +45,12 @@ namespace ICSharpCode.SharpDevelop.Services
 				processList.SelectedIndex = 0;
 		}
 
-		public Process SelectedProcess { get; private set; }
+		public int? SelectedProcessId { get; private set; }
 
 		void AttachClick(object sender, RoutedEventArgs e)
 		{
 			if (processList.SelectedItem is ProcessRow row) {
-				SelectedProcess = row.Process;
+				SelectedProcessId = row.Id;
 				DialogResult = true;
 			}
 		}
@@ -69,14 +68,14 @@ namespace ICSharpCode.SharpDevelop.Services
 					rows.Add(new ProcessRow {
 						Name = process.ProcessName,
 						Id = process.Id,
-						Path = path,
-						Process = process
+						Path = path
 					});
-					continue; // ownership passed to the row
 				} catch {
 					// the process ended or is inaccessible
+				} finally {
+					// Dispose every handle: the rows keep only metadata, so nothing else owns it.
+					process.Dispose();
 				}
-				process.Dispose();
 			}
 			return rows.OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Id).ToList();
 		}
