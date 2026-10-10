@@ -3799,7 +3799,8 @@ public sealed class AddInTests : IAsyncDisposable
 
         try {
             await File.WriteAllTextAsync(resourcePath,
-                "<root><data name=\"dropPanel.BackgroundImage\" type=\"System.Drawing.Bitmap, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>" + originalImage + "</value></data>"
+                "<root><data name=\"obsolete.Image\" type=\"System.Drawing.Bitmap, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>not-base64</value></data>"
+                + "<data name=\"dropPanel.BackgroundImage\" type=\"System.Drawing.Bitmap, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>" + originalImage + "</value></data>"
                 + "<data name=\"$this.Icon\" type=\"System.Drawing.Icon, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>" + originalIcon + "</value></data></root>");
             var resourceDeclaration = "            var resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));\n";
             var imageAssignment = "            dropPanel.BackgroundImage = (System.Drawing.Image)resources.GetObject(\"dropPanel.BackgroundImage\");\n";
@@ -3834,7 +3835,10 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.Equal("Image files|*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.ico|All files|*.*", replaced.GetProperty("fileFilter").GetString());
 
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
-            Assert.Contains(replacementImage, await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
+            var resourcesAfterImageSave = await File.ReadAllTextAsync(resourcePath);
+            Assert.Contains(replacementImage, resourcesAfterImageSave, StringComparison.Ordinal);
+            Assert.Contains("obsolete.Image", resourcesAfterImageSave, StringComparison.Ordinal);
+            Assert.Contains("not-base64", resourcesAfterImageSave, StringComparison.Ordinal);
 
             Assert.True((await _app.InvokeAsync("od.forms-designer.undo")).GetProperty("success").GetBoolean());
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
