@@ -133,6 +133,13 @@ namespace ICSharpCode.SharpDevelop.Project
 			// Determinism is already achieved by the explicit locale, without disabling ICU.
 			psi.EnvironmentVariables["LANG"] = "en_US.UTF-8";
 			psi.EnvironmentVariables["LC_ALL"] = "en_US.UTF-8";
+			// Keep LANG/LC_ALL at en_US for the deterministic internal parsing above, but let
+			// MSBuild's own messages follow the IDE language, so the Output pad is not a mix of
+			// localized IDE lines and English MSBuild/SDK lines. The per-diagnostic lines keep
+			// their English "error"/"warning" severity tokens, so DiagnosticLine still matches.
+			string uiLanguage = ResourceService.Language;
+			if (!string.IsNullOrEmpty(uiLanguage))
+				psi.EnvironmentVariables["DOTNET_CLI_UI_LANGUAGE"] = uiLanguage;
 			// The LibreWPF SDK compiles a tiny native Win32-compat shim with `cc` on macOS. With no
 			// SDKROOT, clang falls back to its own SDK search order and picks the CommandLineTools
 			// SDK, which on this toolchain carries architectures the installed linker rejects

@@ -226,12 +226,20 @@ namespace ICSharpCode.Core
 		void LoadLanguageResources(string language)
 		{
 			lock (loadLock) {
+				System.Globalization.CultureInfo uiCulture = null;
 				try {
-					Thread.CurrentThread.CurrentUICulture = new System.Globalization.CultureInfo(language);
+					uiCulture = new System.Globalization.CultureInfo(language);
 				} catch (Exception) {
 					try {
-						Thread.CurrentThread.CurrentUICulture = new System.Globalization.CultureInfo(language.Split('-')[0]);
+						uiCulture = new System.Globalization.CultureInfo(language.Split('-')[0]);
 					} catch (Exception) {}
+				}
+				if (uiCulture != null) {
+					Thread.CurrentThread.CurrentUICulture = uiCulture;
+					// Also make it the process-wide default, so threads created after the UI
+					// language is applied (background work, resources loaded off the UI thread)
+					// resolve the same culture instead of the OS locale.
+					System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = uiCulture;
 				}
 				
 				localStrings = LoadWithLanguageFallback(stringResources, language);
