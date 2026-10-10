@@ -160,6 +160,16 @@ public sealed class DebuggerFeatureIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task ShowExternalCode_Toggles()
+    {
+        var hidden = await _app.InvokeAsync("od.debug.show-external-code", false);
+        Assert.False(hidden.GetProperty("showExternalCode").GetBoolean(), hidden.ToString());
+        var shown = await _app.InvokeAsync("od.debug.show-external-code", true);
+        Assert.True(shown.GetProperty("showExternalCode").GetBoolean(), shown.ToString());
+        await _app.InvokeAsync("od.debug.show-external-code", false); // restore the default
+    }
+
     string ProgramPath => Path.Combine(Path.GetDirectoryName(_app.DebugTestProjectPath)!, "Program.cs");
     static int FindLine(string path, string marker)
     {
