@@ -6,8 +6,13 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 
+using Debugger.AddIn.Breakpoints;
 using Debugger.AddIn.TreeModel;
+using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Debugging;
+using ICSharpCode.SharpDevelop.Editor;
+using ICSharpCode.SharpDevelop.Services;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
 
@@ -21,6 +26,26 @@ namespace Debugger.AddIn
 	[DevFlowUIThread]
 	public static class DebuggerVisualizerDevFlowActions
 	{
+		[DevFlowAction("od.debug.add-logpoint", Description = "Add a logpoint (a breakpoint that logs a message with {expr} interpolation and continues) at file:line")]
+		public static string AddLogpoint(string filePath, int line, string message)
+		{
+			var fileName = FileName.Create(filePath);
+			var viewContent = SD.FileService.OpenFile(fileName);
+			var editor = viewContent?.GetService<ITextEditor>();
+			if (editor == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No text editor for " + filePath });
+
+			var bookmark = SD.BookmarkManager.GetBookmarks(fileName).OfType<BreakpointBookmark>().FirstOrDefault(b => b.LineNumber == line);
+			if (bookmark == null) {
+				bookmark = new BreakpointBookmark();
+				SD.BookmarkManager.AddMark(bookmark, editor.Document, line);
+			}
+			bookmark.LogMessage = message;
+			if (SD.Debugger is WindowsDebugger windowsDebugger && windowsDebugger.IsDebugging)
+				windowsDebugger.SyncBreakpointsForFileAsync(fileName.ToString()).FireAndForget();
+			return JsonSerializer.Serialize(new { success = true, file = filePath, line });
+		}
+
 		[DevFlowAction("od.debug.visualizer.inspect", Description = "Execute a real paused-local visualizer, inspect its modal WPF window while displayed, and close it for SharpDbg integration testing")]
 		public static string InspectVisualizer(string variableName, string visualizerName)
 		{

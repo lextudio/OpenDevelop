@@ -132,6 +132,34 @@ public sealed class DebuggerFeatureIntegrationTests
         Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
     }
 
+    [Fact]
+    public async Task Logpoint_LogsItsMessageAndContinues()
+    {
+        var program = ProgramPath;
+        var line = FindLine(program, "var message = ComputeGreeting(\"World\");");
+
+        await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+        await _app.InvokeAsync("od.open-file", program);
+        await _app.InvokeAsync("od.debug.clear-breakpoints");
+        var added = await _app.InvokeAsync("od.debug.add-logpoint", program, line, "logpoint {answer}");
+        Assert.True(added.GetProperty("success").GetBoolean(), added.ToString());
+
+        try
+        {
+            // The logpoint continues rather than stopping, so start without waiting for a stop.
+            await _app.InvokeAsync("od.debug.start", _app.DebugTestProjectPath, false, 45);
+            var logged = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                var output = await _app.InvokeAsync("od.debug.output");
+                return (output.GetProperty("text").GetString() ?? string.Empty).Contains("logpoint 42", StringComparison.Ordinal);
+            }, TimeSpan.FromSeconds(30));
+            Assert.True(logged, "the logpoint should have written its interpolated message to the Debug output");
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.debug.stop");
+        }
+    }
+
     string ProgramPath => Path.Combine(Path.GetDirectoryName(_app.DebugTestProjectPath)!, "Program.cs");
     static int FindLine(string path, string marker)
     {
