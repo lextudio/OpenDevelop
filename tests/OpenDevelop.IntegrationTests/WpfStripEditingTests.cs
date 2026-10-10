@@ -68,6 +68,32 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
 			var collapsed = await app.InvokeAsync("od.wpf-designer.status");
 			Assert.Equal(new[] { initialIds[1] }, collapsed.GetProperty("selectedIds").EnumerateArray().Select(id => id.GetString()).ToArray());
 
+			// A lone selection keeps the established Ctrl-toggle semantics. Poll because the
+			// selection owner refreshes the exposed status on the next UI dispatch turn.
+			// The surface also recognizes a double-click within 500 ms for inline edit, so make
+			// this an independent Ctrl-click rather than accidentally taking that gesture path.
+			await Task.Delay(550);
+			Assert.True((await app.KeyDownAsync("ctrl")).GetProperty("ok").GetBoolean());
+			Exception? deselectFailure = null;
+			try {
+				Assert.True((await app.PressPointerAsync(secondX, secondY, ensureForeground: false)).GetProperty("ok").GetBoolean());
+				Assert.True((await app.ReleasePointerAsync(secondX, secondY)).GetProperty("ok").GetBoolean());
+			}
+			catch (Exception ex) {
+				deselectFailure = ex;
+				throw;
+			}
+			finally {
+				var released = await app.KeyUpAsync("ctrl");
+				if (deselectFailure is null)
+					Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+			}
+			JsonElement deselected = default;
+			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				deselected = await app.InvokeAsync("od.wpf-designer.status");
+				return deselected.GetProperty("selectedIds").GetArrayLength() == 0;
+			}, TimeSpan.FromSeconds(5)), deselected.ToString());
+
 			var regrouped = await app.InvokeAsync("od.wpf-designer.multi-select", "first,second");
 			Assert.Equal(2, regrouped.GetProperty("selectionCount").GetInt32());
 			var first = await app.InvokeAsync("od.wpf-designer.query-element-screen-bounds", "first");
