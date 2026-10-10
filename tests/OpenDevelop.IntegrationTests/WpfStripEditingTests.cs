@@ -148,6 +148,28 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             Assert.Contains("x:Name=\"owner\"", saved, StringComparison.Ordinal);
             Assert.DoesNotContain("Text=", saved, StringComparison.Ordinal);
             Assert.DoesNotContain("Authored text", saved, StringComparison.Ordinal);
+
+            // Reset is a regular source-authoritative designer mutation. Undo restores the
+            // authored value, and redo removes it again rather than only changing the preview.
+            var undo = await app.InvokeAsync("od.wpf-designer.undo");
+            Assert.True(undo.GetProperty("success").GetBoolean(), undo.ToString());
+            Assert.False(undo.GetProperty("canUndo").GetBoolean(), undo.ToString());
+            Assert.True(undo.GetProperty("canRedo").GetBoolean(), undo.ToString());
+            savedResult = await app.InvokeAsync("od.file.save", xamlPath);
+            Assert.True(savedResult.GetProperty("success").GetBoolean(), savedResult.ToString());
+            saved = await File.ReadAllTextAsync(xamlPath);
+            Assert.Contains("Text=\"Authored text\"", saved, StringComparison.Ordinal);
+
+            var redo = await app.InvokeAsync("od.wpf-designer.redo");
+            Assert.True(redo.GetProperty("success").GetBoolean(), redo.ToString());
+            Assert.True(redo.GetProperty("canUndo").GetBoolean(), redo.ToString());
+            Assert.False(redo.GetProperty("canRedo").GetBoolean(), redo.ToString());
+            savedResult = await app.InvokeAsync("od.file.save", xamlPath);
+            Assert.True(savedResult.GetProperty("success").GetBoolean(), savedResult.ToString());
+            saved = await File.ReadAllTextAsync(xamlPath);
+            Assert.Contains("x:Name=\"owner\"", saved, StringComparison.Ordinal);
+            Assert.DoesNotContain("Text=", saved, StringComparison.Ordinal);
+            Assert.DoesNotContain("Authored text", saved, StringComparison.Ordinal);
         } finally {
             await app.InvokeAsync("od.close-active-view");
             await File.WriteAllTextAsync(xamlPath, originalXaml);
