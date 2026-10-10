@@ -424,12 +424,6 @@ namespace ICSharpCode.FormsDesigner
 				throw new InvalidOperationException("Cannot use a designer resource while it is open in another editor: " + resource.FileName);
 		}
 
-		void EnsureAllResourcesAreAvailable()
-		{
-			foreach (var resource in Files.Where(file => !sourceCodeStorage.ContainsFile(file)))
-				EnsureResourceIsNotOwnedByAnotherEditor(resource);
-		}
-
 		DesignerSessionState RestoreRemoteDocuments(RemoteDocumentSet documents)
 		{
 			var before = CaptureRemoteDocuments();
@@ -453,9 +447,12 @@ namespace ICSharpCode.FormsDesigner
 
 		void ApplyRemoteDocumentsLocally(RemoteDocumentSet documents)
 		{
-			// Validate the whole resource set before changing even one source document. This makes
-			// a separately-opened .resx a normal rejected transaction, not a half-applied restore.
-			EnsureAllResourcesAreAvailable();
+			// Validate only resources whose bytes would actually change before editing source. A
+			// snapshot-only .resx may be open in another editor without blocking a source-only undo.
+			foreach (var resource in Files.Where(file => !sourceCodeStorage.ContainsFile(file)))
+				if (documents.ResourceBytes.TryGetValue(resource.FileName.ToString(), out var bytes)
+					&& (!resourceStore.Contains(resource) || resourceStore.WouldRestoreChange(resource, bytes)))
+					EnsureResourceIsNotOwnedByAnotherEditor(resource);
 			foreach (var source in SourceFiles)
 				if (documents.SourceTexts.TryGetValue(source.Key.FileName.ToString(), out var text)) source.Value.Text = text;
 			foreach (var resource in Files.Where(file => !sourceCodeStorage.ContainsFile(file)))
@@ -610,6 +607,10 @@ namespace ICSharpCode.FormsDesigner
 					}
 					
 					this.sourceCodeStorage.DesignerCodeFile = newDesignerCodeFile;
+					// Resource editor capability must be based on an explicit, existing IDE-owned
+					// resource file. Registering it here makes it part of the child snapshot without
+					// creating files or granting the child any write authority.
+					this.resourceStore.RegisterExistingNeutralResource();
 					
 					this.LoadRemoteDesigner();
 					

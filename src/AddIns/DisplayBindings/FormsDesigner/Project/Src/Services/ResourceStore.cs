@@ -69,6 +69,20 @@ namespace ICSharpCode.FormsDesigner.Services
 		{
 			return this.GetResourceStorage(info).GetWriter();
 		}
+
+		/// <summary>Registers the form's existing neutral resource file for snapshotting. The
+		/// out-of-process child can only read resources that the IDE deliberately includes; unlike
+		/// <see cref="GetResourceStorage"/>, this never creates a new resource file.</summary>
+		public void RegisterExistingNeutralResource()
+		{
+			if (resources.ContainsKey(CultureInfo.InvariantCulture.Name))
+				return;
+			string fileName = CalcResourceFileName(viewContent.PrimaryFileName, CultureInfo.InvariantCulture.Name);
+			if (!File.Exists(fileName))
+				return;
+			var storage = resources[CultureInfo.InvariantCulture.Name] = new ResourceStorage(CultureInfo.InvariantCulture.Name, viewContent.PrimaryFileName);
+			CreateOpenedFileForStorage(storage, fileName, isExistingFile: true);
+		}
 		
 		void CreateOpenedFileForStorage(ResourceStorage storage, string fileName, bool isExistingFile)
 		{
@@ -121,6 +135,8 @@ namespace ICSharpCode.FormsDesigner.Services
 		{
 			if (!resourceByFile.TryGetValue(file, out var storage))
 				return false;
+			if (!storage.WouldChange(bytes))
+				return true;
 			// A separately opened .resx editor owns the bytes that OpenedFile will save. Do not
 			// silently replace only our cache and let that editor write its stale document later.
 			if (file.CurrentView != null && !ReferenceEquals(file.CurrentView, viewContent))
@@ -129,11 +145,21 @@ namespace ICSharpCode.FormsDesigner.Services
 			file.SetData(bytes);
 			return true;
 		}
+
+		public bool WouldRestoreChange(OpenedFile file, byte[] bytes)
+		{
+			return resourceByFile.TryGetValue(file, out var storage) && storage.WouldChange(bytes);
+		}
+
+		public bool Contains(OpenedFile file)
+		{
+			return resourceByFile.ContainsKey(file);
+		}
 		
 		public void MarkResourceFilesAsDirty()
 		{
 			foreach (ResourceStorage rs in resourceByFile.Values) {
-				if (rs.OpenedFile != null) {
+				if (rs.HasPendingChanges && rs.OpenedFile != null) {
 					rs.OpenedFile.MakeDirty();
 				}
 			}
@@ -152,6 +178,7 @@ namespace ICSharpCode.FormsDesigner.Services
 			MemoryStream stream;
 			IResourceWriter writer;
 			byte[] buffer;
+			bool hasLocalChanges;
 			readonly string cultureName;
 			FileName parentDesignerSourceFileName;
 			internal OpenedFile OpenedFile;
@@ -204,6 +231,48 @@ namespace ICSharpCode.FormsDesigner.Services
 			{
 				WriteResourcesToBuffer();
 				buffer = (byte[])bytes.Clone();
+				hasLocalChanges = true;
+			}
+
+			public bool HasPendingChanges {
+				get {
+					if (!hasLocalChanges)
+						return false;
+					if (stream != null)
+						return true;
+					return !BytesEqual(buffer, ReadDiskBytes());
+				}
+			}
+
+			public bool WouldChange(byte[] bytes)
+			{
+				if (stream != null)
+					return true;
+				byte[] current;
+				if (buffer != null) {
+					current = buffer;
+				} else {
+					using var stream = OpenFileContentAsMemoryStream(OpenedFile);
+					current = stream.ToArray();
+				}
+				return !BytesEqual(current, bytes);
+			}
+
+			byte[] ReadDiskBytes()
+			{
+				return File.Exists(OpenedFile.FileName) ? File.ReadAllBytes(OpenedFile.FileName) : null;
+			}
+
+			static bool BytesEqual(byte[] left, byte[] right)
+			{
+				if (ReferenceEquals(left, right))
+					return true;
+				if (left == null || right == null || left.Length != right.Length)
+					return false;
+				for (int i = 0; i < left.Length; i++)
+					if (left[i] != right[i])
+						return false;
+				return true;
 			}
 			
 			// load from OpenedFile into memory
@@ -215,6 +284,7 @@ namespace ICSharpCode.FormsDesigner.Services
 				int pos = 0;
 				while (pos < buffer.Length)
 					pos += stream.Read(buffer, pos, buffer.Length - pos);
+				hasLocalChanges = false;
 			}
 			
 			/// <summary>
@@ -267,13 +337,16 @@ namespace ICSharpCode.FormsDesigner.Services
 			{
 				this.stream = new MemoryStream();
 				this.writer = CreateResourceWriter(this.stream, GetResourceType(OpenedFile.FileName), parentDesignerSourceFileName);
+				this.hasLocalChanges = true;
 				return this.writer;
 			}
 			
 			public void Save(Stream stream, ResourceStore resourceStore)
 			{
 				this.WriteResourcesToBuffer();
-				if (buffer == null || buffer.Length == 0) return;
+				if (buffer == null || buffer.Length == 0) {
+					return;
+				}
 				stream.Write(buffer, 0, buffer.Length);
 				// SD2-1588:
 				// The possible call to AddFileToProject below
