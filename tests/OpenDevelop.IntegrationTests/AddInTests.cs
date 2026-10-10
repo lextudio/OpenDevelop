@@ -3760,20 +3760,52 @@ public sealed class AddInTests : IAsyncDisposable
             var addAcceptButton = await _app.InvokeAsync("od.forms-designer.add-control", "Form1",
                 "System.Windows.Forms.Button", "acceptButton", 30, 100);
             Assert.True(addAcceptButton.GetProperty("success").GetBoolean(), addAcceptButton.ToString());
+            JsonElement acceptSelected = default;
             JsonElement acceptEdited = default;
             var acceptEditedOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
-                var selected = await _app.InvokeAsync("od.forms-designer.select", "Form1");
-                if (!selected.GetProperty("success").GetBoolean())
+                acceptSelected = await _app.InvokeAsync("od.forms-designer.select", "Form1");
+                if (!acceptSelected.GetProperty("success").GetBoolean()
+                    || acceptSelected.GetProperty("selectedName").GetString() != "Form1")
                     return false;
                 acceptEdited = await _app.InvokeAsync("od.forms-designer.properties-pad.edit", "AcceptButton", "acceptButton");
-                return acceptEdited.GetProperty("success").GetBoolean()
-                    && acceptEdited.GetProperty("selectedName").GetString() == "Form1";
+                // A successful edit is a committed host transaction. Stop retrying as soon as
+                // one is accepted, then make a wrong selectedName an explicit assertion below
+                // instead of risking a duplicate undo entry by submitting it again.
+                return acceptEdited.GetProperty("success").GetBoolean();
             }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 300);
-            Assert.True(acceptEditedOk, "Editing Form.AcceptButton through the shared Properties pad failed: " + acceptEdited);
+            Assert.True(acceptEditedOk, "Editing Form.AcceptButton through the shared Properties pad failed; selection: " + acceptSelected + "; edit: " + acceptEdited);
+            Assert.Equal("Form1", acceptEdited.GetProperty("selectedName").GetString());
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
             savedDesigner = await File.ReadAllTextAsync(designerPath);
             Assert.Contains("acceptButton = new System.Windows.Forms.Button()", savedDesigner, StringComparison.Ordinal);
             Assert.Contains("AcceptButton = acceptButton", savedDesigner, StringComparison.Ordinal);
+
+            // Component references are normal designer mutations: undo and redo must update the
+            // source just like scalar property edits, without undoing the newly added component.
+            var undoneAccept = await _app.InvokeAsync("od.forms-designer.undo");
+            Assert.True(undoneAccept.GetProperty("success").GetBoolean(), undoneAccept.ToString());
+            Assert.True(undoneAccept.GetProperty("canRedo").GetBoolean(), undoneAccept.ToString());
+            var undoFlushed = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                var saved = await _app.InvokeAsync("od.file.save", formCodePath);
+                if (!saved.GetProperty("success").GetBoolean()) return false;
+                savedDesigner = await File.ReadAllTextAsync(designerPath);
+                return !savedDesigner.Contains("AcceptButton =", StringComparison.Ordinal)
+                    && savedDesigner.Split("acceptButton = new System.Windows.Forms.Button()", StringSplitOptions.None).Length - 1 == 1
+                    && savedDesigner.Split("Controls.Add(acceptButton)", StringSplitOptions.None).Length - 1 == 1;
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250);
+            Assert.True(undoFlushed, "Undo did not flush the expected component-reference source state: " + savedDesigner);
+
+            var redoneAccept = await _app.InvokeAsync("od.forms-designer.redo");
+            Assert.True(redoneAccept.GetProperty("success").GetBoolean(), redoneAccept.ToString());
+            var redoFlushed = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                var saved = await _app.InvokeAsync("od.file.save", formCodePath);
+                if (!saved.GetProperty("success").GetBoolean()) return false;
+                savedDesigner = await File.ReadAllTextAsync(designerPath);
+                return savedDesigner.Contains("AcceptButton = acceptButton", StringComparison.Ordinal)
+                    && savedDesigner.Split("acceptButton = new System.Windows.Forms.Button()", StringSplitOptions.None).Length - 1 == 1
+                    && savedDesigner.Split("Controls.Add(acceptButton)", StringSplitOptions.None).Length - 1 == 1;
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250);
+            Assert.True(redoFlushed, "Redo did not flush the expected component-reference source state: " + savedDesigner);
 
             JsonElement resetAccept = default;
             var resetAcceptOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
