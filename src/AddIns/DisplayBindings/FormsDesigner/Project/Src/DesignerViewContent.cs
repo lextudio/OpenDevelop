@@ -690,9 +690,16 @@ namespace ICSharpCode.FormsDesigner
 			} else {
 				this.resourceStore.Save(file, stream);
 			}
-			if (remoteControl != null && file == PrimaryFile && DesignerCodeFile != null
-				&& DesignerCodeFile != file && DesignerCodeFile.IsDirty) {
-				DesignerCodeFile.SaveToDisk();
+			if (file == PrimaryFile) {
+				if (remoteControl != null && DesignerCodeFile != null
+					&& DesignerCodeFile != file && DesignerCodeFile.IsDirty)
+					DesignerCodeFile.SaveToDisk();
+				// A resource-image edit belongs to the same user command as its designer source
+				// snapshot. Saving the primary form must therefore also persist every dirty
+				// registered .resx; otherwise only an explicit second save of an invisible file
+				// reaches disk.
+				foreach (var resource in Files.Where(item => resourceStore.Contains(item) && item.IsDirty))
+					resource.SaveToDisk();
 			}
 		}
 		

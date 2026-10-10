@@ -3778,6 +3778,72 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
+    public async Task WinFormsDesigner_ResourceImageThroughPropertiesPad_RoundTripsAndUndoes()
+    {
+        // This is deliberately a Properties-pad journey rather than a child-RPC test. The child
+        // may prove the resource origin, but replacement bytes must travel through the IDE-owned
+        // ResourceStore transaction, be reloaded as one snapshot, and participate in parent undo.
+        var directory = Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!;
+        var formCodePath = Path.Combine(directory, "Form1.cs");
+        var designerPath = Path.Combine(directory, "Form1.Designer.cs");
+        var resourcePath = Path.Combine(directory, "Form1.resx");
+        var originalDesigner = await File.ReadAllTextAsync(designerPath);
+        var resourceExisted = File.Exists(resourcePath);
+        var originalResource = resourceExisted ? await File.ReadAllBytesAsync(resourcePath) : null;
+        const string originalImage = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLk2QAAAABJRU5ErkJggg==";
+        const string replacementImage = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl8tWQAAAAASUVORK5CYII=";
+
+        try {
+            await File.WriteAllTextAsync(resourcePath, "<root><data name=\"dropPanel.BackgroundImage\" type=\"System.Drawing.Bitmap, System.Drawing.Common\" mimetype=\"application/x-microsoft.net.object.bytearray.base64\"><value>" + originalImage + "</value></data></root>");
+            var resourceDeclaration = "            var resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));\n";
+            var imageAssignment = "            dropPanel.BackgroundImage = (System.Drawing.Image)resources.GetObject(\"dropPanel.BackgroundImage\");\n";
+            var resourceDesigner = originalDesigner.Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace("            dropPanel = new System.Windows.Forms.Panel();\n", "            dropPanel = new System.Windows.Forms.Panel();\n" + resourceDeclaration, StringComparison.Ordinal)
+                .Replace("            dropPanel.Size = new System.Drawing.Size(260, 150);\n", "            dropPanel.Size = new System.Drawing.Size(260, 150);\n" + imageAssignment, StringComparison.Ordinal);
+            Assert.Contains(resourceDeclaration, resourceDesigner, StringComparison.Ordinal);
+            Assert.Contains(imageAssignment, resourceDesigner, StringComparison.Ordinal);
+            await File.WriteAllTextAsync(designerPath, resourceDesigner);
+
+            Assert.True((await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath)).GetProperty("success").GetBoolean());
+            await _app.InvokeAsync("od.open-file", formCodePath);
+            JsonElement status = default;
+            var loaded = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await _app.InvokeAsync("od.forms-designer.status");
+                return status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000);
+            Assert.True(loaded, "The WinForms designer did not load: " + status);
+
+            Assert.True((await _app.InvokeAsync("od.forms-designer.select", "dropPanel")).GetProperty("success").GetBoolean());
+            JsonElement replaced = default;
+            var replacedOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                replaced = await _app.InvokeAsync("od.forms-designer.properties-pad.replace-resource-image", "BackgroundImage", replacementImage);
+                return replaced.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 300);
+            Assert.True(replacedOk, replaced.ToString());
+            Assert.Equal("dropPanel.BackgroundImage", replaced.GetProperty("ResourceKey").GetString());
+
+            Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
+            Assert.Contains(replacementImage, await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
+
+            Assert.True((await _app.InvokeAsync("od.forms-designer.undo")).GetProperty("success").GetBoolean());
+            Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
+            Assert.Contains(originalImage, await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
+
+            Assert.True((await _app.InvokeAsync("od.forms-designer.redo")).GetProperty("success").GetBoolean());
+            Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
+            Assert.Contains(replacementImage, await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
+        }
+        finally {
+            await _app.InvokeAsync("od.close-all-document-views");
+            await File.WriteAllTextAsync(designerPath, originalDesigner);
+            if (resourceExisted)
+                await File.WriteAllBytesAsync(resourcePath, originalResource!);
+            else if (File.Exists(resourcePath))
+                File.Delete(resourcePath);
+        }
+    }
+
+    [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
     public async Task WinFormsDesigner_PadViewModeAndViewSwitching_RoundTrip()
     {
         // The WinForms designer's shared pad now switches Properties/Events views through the

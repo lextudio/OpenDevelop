@@ -618,6 +618,34 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.forms-designer.properties-pad.replace-resource-image", Description = "Replace a supported image resource through the selected real Properties-pad descriptor; this drives the IDE-owned resource transaction, not a child-host write RPC")]
+		public static string ReplaceResourceImageThroughPropertiesPad(string propertyName, string base64ImageBytes)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent?.IsRemoteDesignerLoaded != true)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			var grid = PropertyPadGrid;
+			if (grid?.SelectedObject is not IResourceImageEditorHost host)
+				return Failure("Properties pad has no editable WinForms resource image selection");
+			var item = grid.Properties?.OfType<PropertyItem>()
+				.FirstOrDefault(candidate => candidate.PropertyName == propertyName);
+			if (item?.PropertyDescriptor is not IResourceImageProperty resourceProperty
+				|| !String.Equals(resourceProperty.EditorKind, "ResourceImage", StringComparison.Ordinal))
+				return Failure("Properties pad property is not an editable resource image: " + propertyName);
+			try {
+				host.ReplaceResourceImage(propertyName, Convert.FromBase64String(base64ImageBytes));
+				return JsonSerializer.Serialize(new {
+					success = true,
+					selectedName = viewContent.RemoteDesignerSelectedComponent,
+					propertyName,
+					resourceProperty.ResourceFileName,
+					resourceProperty.ResourceKey
+				});
+			} catch (Exception exception) {
+				return Failure(exception.Message);
+			}
+		}
+
 		[DevFlowAction("od.forms-designer.pad-view-mode", Description = "Switch the shared Properties pad grid between its Properties and Events views; optionally set a Click handler name and report the events - mirrors od.winui-designer.pad-view-mode")]
 		public static string PadViewMode(string mode, string handlerName = null)
 		{
