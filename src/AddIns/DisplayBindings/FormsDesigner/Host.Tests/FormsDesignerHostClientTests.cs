@@ -2086,6 +2086,26 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains(resetRootText.Components.Single(component => component.Name == "Form1").Properties,
 			property => property.Name == "Text" && !property.ShouldSerialize);
 		Assert.DoesNotContain("Text = \"root caption\"", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
+		var acceptButton = opened.Components.Single(component => component.Name == "Form1").Properties
+			.Single(property => property.Name == "AcceptButton");
+		Assert.Equal("ComponentReference", acceptButton.EditorKind);
+		Assert.Contains("button1", acceptButton.AllowedValues);
+		Assert.DoesNotContain("Form1", acceptButton.AllowedValues);
+		Assert.DoesNotContain("AcceptButton =", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
+		var rejectedReference = await Assert.ThrowsAnyAsync<Exception>(() =>
+			client.SetPropertyAsync(7, "Form1", "AcceptButton", "notAComponent", timeout.Token));
+		Assert.Contains("Unknown component reference: notAComponent", rejectedReference.Message, StringComparison.Ordinal);
+		Assert.DoesNotContain("AcceptButton =", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
+		var acceptedReference = await client.SetPropertyAsync(7, "Form1", "AcceptButton", "button1", timeout.Token);
+		Assert.Contains(acceptedReference.Components.Single(component => component.Name == "Form1").Properties,
+			property => property.Name == "AcceptButton" && property.Value == "button1" && property.ShouldSerialize);
+		var acceptedReferenceSource = DesignerText(await client.FlushAsync(7, timeout.Token));
+		Assert.Contains(acceptedReferenceSource.Split('\n'), line => String.Equals(line.Trim(), "AcceptButton = button1", StringComparison.Ordinal));
+		Assert.DoesNotContain("Me.", acceptedReferenceSource, StringComparison.Ordinal);
+		var resetAcceptButton = await client.ResetPropertyAsync(7, "Form1", "AcceptButton", timeout.Token);
+		Assert.Contains(resetAcceptButton.Components.Single(component => component.Name == "Form1").Properties,
+			property => property.Name == "AcceptButton" && property.IsNull && !property.ShouldSerialize);
+		Assert.DoesNotContain("AcceptButton =", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 
 		var edited = await client.SetPropertyAsync(7, "button1", "Text", "edited in child", timeout.Token);
 		Assert.True(edited.Accepted);
