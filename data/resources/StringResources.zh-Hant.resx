@@ -4991,6 +4991,12 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
   <data name="MainWindow.Windows.Debug.DeleteAllBreakpoints" xml:space="preserve">
     <value>刪除所有中斷點</value>
   </data>
+  <data name="BreakpointEditor.Log" xml:space="preserve">
+    <value>記錄</value>
+  </data>
+  <data name="BreakpointEditor.Log.ToolTip" xml:space="preserve">
+    <value>記錄訊息而不中斷</value>
+  </data>
   <data name="MainWindow.Windows.Debug.SetCurrentStatement" xml:space="preserve">
     <value>設定目前陳述式</value>
   </data>

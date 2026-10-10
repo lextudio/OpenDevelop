@@ -50,6 +50,7 @@ namespace Debugger.AddIn.Breakpoints
 			else
 				conditionalAction.IsChecked = true;
 			hitCountCheck.IsChecked = target.HitCondition != null;
+			logCheck.IsChecked = target.LogMessage != null;
 		}
 
 		public bool CloseWhenMouseMovesAway {
@@ -72,6 +73,17 @@ namespace Debugger.AddIn.Breakpoints
 					bookmark.HitCondition = "";
 			} else {
 				bookmark.HitCondition = null;
+			}
+		}
+
+		void LogChecked(object sender, System.Windows.RoutedEventArgs e)
+		{
+			var bookmark = (BreakpointBookmark)DataContext;
+			if (logCheck.IsChecked == true) {
+				if (bookmark.LogMessage == null)
+					bookmark.LogMessage = "logpoint hit";
+			} else {
+				bookmark.LogMessage = null;
 			}
 		}
 	}

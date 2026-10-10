@@ -26,6 +26,11 @@
 				          Unchecked="HitCountChecked"
 				          Content="{core:Localize BreakpointEditor.HitCount}"
 				          ToolTip="{core:Localize BreakpointEditor.HitCount.ToolTip}" />
+				<CheckBox x:Name="logCheck"
+				          Checked="LogChecked"
+				          Unchecked="LogChecked"
+				          Content="{core:Localize BreakpointEditor.Log}"
+				          ToolTip="{core:Localize BreakpointEditor.Log.ToolTip}" />
 				<Separator />
 				<CheckBox Content="{core:Localize BreakpointEditor.Enabled}"
 				          IsChecked="{Binding IsEnabled}"
@@ -49,6 +54,16 @@
 				BorderThickness="1">
 				<TextBox x:Name="hitCondition" Text="{Binding HitCondition}"
 				         ToolTip="{core:Localize BreakpointEditor.HitCountExpression.ToolTip}" />
+			</Border>
+			<Border
+				Margin="2"
+				CornerRadius="2"
+				BorderBrush="DarkGray"
+				Padding="2"
+				Visibility="{Binding IsChecked, ElementName=logCheck, Converter={StaticResource showWhenTrue}}"
+				BorderThickness="1">
+				<TextBox x:Name="logMessage" Text="{Binding LogMessage}"
+				         ToolTip="{core:Localize BreakpointEditor.Log.ToolTip}" />
 			</Border>
 		</StackPanel>
 	</Border>
