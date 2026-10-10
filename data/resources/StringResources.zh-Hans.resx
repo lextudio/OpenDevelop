@@ -4997,6 +4997,9 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
   <data name="BreakpointEditor.Log.ToolTip" xml:space="preserve">
     <value>记录消息而不中断</value>
   </data>
+  <data name="MainWindow.Windows.Debug.CallStack.ShowExternalCode" xml:space="preserve">
+    <value>显示外部代码</value>
+  </data>
   <data name="MainWindow.Windows.Debug.SetCurrentStatement" xml:space="preserve">
     <value>设置当前语句</value>
   </data>

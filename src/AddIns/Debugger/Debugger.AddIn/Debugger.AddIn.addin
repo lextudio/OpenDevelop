@@ -90,6 +90,13 @@
 		</Condition>
 	</Path>
 	
+	<Path name = "/SharpDevelop/Services/DebuggerService/CallStackContextMenu">
+		<MenuItem id = "ShowExternalCode"
+		          type = "CheckBox"
+		          label = "${res:MainWindow.Windows.Debug.CallStack.ShowExternalCode}"
+		          class = "Debugger.AddIn.ToggleShowExternalCodeCommand"/>
+	</Path>
+	
 	<Path name="/SharpDevelop/Pads/BreakpointPad/Toolbar">
 		<ToolbarItem id = "EnableAllBreakpoints"
 		             icon    = "Icons.16x16.Debug.EnableAllBreakpoints"

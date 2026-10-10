@@ -488,7 +488,8 @@ namespace Debugger.AddIn.Service.Dap
 						Line = obj["line"] != null ? obj["line"].GetValue<int>() : 0,
 						Column = obj["column"] != null ? obj["column"].GetValue<int>() : 0,
 						EndLine = obj["endLine"] != null ? obj["endLine"].GetValue<int>() : 0,
-						EndColumn = obj["endColumn"] != null ? obj["endColumn"].GetValue<int>() : 0
+						EndColumn = obj["endColumn"] != null ? obj["endColumn"].GetValue<int>() : 0,
+						IsExternalCode = IsSubtleFrame(obj["presentationHint"] as JsonObject)
 					});
 				}
 			}
@@ -575,6 +576,12 @@ namespace Debugger.AddIn.Service.Dap
 			lock (modulesLock) {
 				return Task.FromResult<IReadOnlyList<DapModuleInfo>>(modules.ToList());
 			}
+		}
+
+		static bool IsSubtleFrame(JsonObject presentationHint)
+		{
+			var attributes = presentationHint?["attributes"] as JsonArray;
+			return attributes != null && attributes.Any(a => a != null && a.GetValue<string>() == "subtle");
 		}
 
 		static DapModuleInfo ParseModule(JsonObject module)

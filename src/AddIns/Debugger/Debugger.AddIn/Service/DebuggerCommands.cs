@@ -25,6 +25,7 @@ using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Debugging;
 using ICSharpCode.SharpDevelop.Editor;
+using ICSharpCode.SharpDevelop.Gui.Pads;
 using Microsoft.Win32;
 using Debugger.AddIn.Breakpoints;
 using ICSharpCode.SharpDevelop.Services;
@@ -164,6 +165,23 @@ namespace Debugger.AddIn
 			foreach (BreakpointBookmark bp in SD.BookmarkManager.Bookmarks.OfType<BreakpointBookmark>().ToList())
 				SD.BookmarkManager.RemoveMark(bp);
 		}
+	}
+
+	/// <summary>Toggles the Call Stack pad's "Show External Code" (VS-like): hides frames the
+	/// adapter marks as external until enabled.</summary>
+	public class ToggleShowExternalCodeCommand : AbstractCheckableMenuCommand
+	{
+		public override bool IsChecked {
+			get { return CallStackPadViewModel.ShowExternalCode; }
+			set {
+				if (CallStackPadViewModel.ShowExternalCode != value) {
+					CallStackPadViewModel.ShowExternalCode = value;
+					ICSharpCode.SharpDevelop.Services.WindowsDebugger.RefreshPads();
+				}
+			}
+		}
+
+		public override void Run() => IsChecked = !IsChecked;
 	}
 
 	public class EnableBreakpointMenuCommand : AbstractMenuCommand

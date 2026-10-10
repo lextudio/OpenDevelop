@@ -26,6 +26,14 @@ namespace Debugger.AddIn
 	[DevFlowUIThread]
 	public static class DebuggerVisualizerDevFlowActions
 	{
+		[DevFlowAction("od.debug.show-external-code", Description = "Enable or disable the Call Stack pad's Show External Code filter")]
+		public static string ShowExternalCode(bool enabled)
+		{
+			ICSharpCode.SharpDevelop.Gui.Pads.CallStackPadViewModel.ShowExternalCode = enabled;
+			WindowsDebugger.RefreshPads();
+			return JsonSerializer.Serialize(new { success = true, showExternalCode = ICSharpCode.SharpDevelop.Gui.Pads.CallStackPadViewModel.ShowExternalCode });
+		}
+
 		[DevFlowAction("od.debug.add-logpoint", Description = "Add a logpoint (a breakpoint that logs a message with {expr} interpolation and continues) at file:line")]
 		public static string AddLogpoint(string filePath, int line, string message)
 		{

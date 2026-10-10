@@ -44,6 +44,10 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 	{
 		readonly ListView listView;
 
+		/// <summary>VS's "Show External Code": when false (the default) frames the adapter marks as
+		/// external are hidden from the call stack.</summary>
+		public static bool ShowExternalCode { get; set; }
+
 		public CallStackPadViewModel()
 		{
 			Title = "Call Stack";
@@ -59,11 +63,18 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 			listView = new ListView();
 			listView.View = (GridView)res["callstackGridView"];
 			listView.MouseDoubleClick += listView_MouseDoubleClick;
+			listView.MouseRightButtonUp += listView_MouseRightButtonUp;
 			listView.SetValue(GridViewColumnAutoSize.AutoWidthProperty, "100%");
 			Content = listView;
 
 			WindowsDebugger.RefreshingPads += RefreshPad;
 			RefreshPad();
+		}
+
+		void listView_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+		{
+			MenuService.ShowContextMenu(listView, this, "/SharpDevelop/Services/DebuggerService/CallStackContextMenu");
+			e.Handled = true;
 		}
 
 		void listView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -99,6 +110,8 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 			var frames = await session.GetStackFramesAsync(thread.Id).ConfigureAwait(true);
 			var items = new ObservableCollection<CallStackItem>();
 			foreach (var frame in frames) {
+				if (!ShowExternalCode && frame.IsExternalCode)
+					continue;
 				items.Add(new CallStackItem {
 					Frame = frame,
 					ImageSource = SD.ResourceService.GetImageSource("Icons.16x16.Method"),

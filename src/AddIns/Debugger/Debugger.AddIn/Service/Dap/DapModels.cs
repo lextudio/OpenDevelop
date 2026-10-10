@@ -63,6 +63,10 @@ namespace Debugger.AddIn.Service.Dap
 		public int Column { get; set; }
 		public int EndLine { get; set; }
 		public int EndColumn { get; set; }
+
+		/// <summary>True when the frame is external (non-user) code — the adapter marks it with a
+		/// "subtle" presentation hint — so "Show External Code" can hide it by default.</summary>
+		public bool IsExternalCode { get; set; }
 	}
 
 	public sealed class DapScopeInfo
