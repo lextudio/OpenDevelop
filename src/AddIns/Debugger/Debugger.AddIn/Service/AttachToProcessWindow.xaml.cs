@@ -57,7 +57,9 @@ namespace ICSharpCode.SharpDevelop.Services
 
 		static IReadOnlyList<ProcessRow> EnumerateProcesses()
 		{
-			var currentId = Process.GetCurrentProcess().Id;
+			int currentId;
+			using (var current = Process.GetCurrentProcess())
+				currentId = current.Id;
 			var rows = new List<ProcessRow>();
 			foreach (var process in Process.GetProcesses()) {
 				try {
