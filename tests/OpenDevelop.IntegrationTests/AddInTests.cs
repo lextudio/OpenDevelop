@@ -2513,6 +2513,69 @@ public sealed class AddInTests : IAsyncDisposable
         return status;
     }
 
+    /// <summary>
+    /// A brush already authored as a local resource reference must use the Properties pad's
+    /// standard-values editor rather than degrading to an unbounded text field.  The values have
+    /// to retain the original StaticResource syntax so choosing one remains a source-valid XAML
+    /// edit, and changing it must be visible after the normal re-render/save pipeline.
+    /// </summary>
+    [Fact]
+    public async Task WinUIDesigner_PropertiesPad_OffersLocalResourceReferences()
+    {
+        var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
+        var bodySucceeded = false;
+        try
+        {
+            var xamlWithLocalResources = originalXaml
+                .Replace("    <Grid>", "    <Page.Resources>\n" +
+                    "        <SolidColorBrush x:Key=\"AccentBrush\" Color=\"#FF4488FF\" />\n" +
+                    "        <SolidColorBrush x:Key=\"AlternateBrush\" Color=\"#FFFF8844\" />\n" +
+                    "    </Page.Resources>\n" +
+                    "    <Grid>")
+                .Replace("Background=\"{StaticResource PrimaryButtonBrush}\"", "Background=\"{StaticResource AccentBrush}\"");
+            await File.WriteAllTextAsync(_unoPagePath, xamlWithLocalResources);
+
+            await OpenUnoDesignerAsync();
+            var selected = await _app.InvokeAsync("od.winui-designer.select", "PrimaryButton");
+            Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+
+            JsonElement choices = default;
+            var choicesReady = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+            {
+                choices = await _app.InvokeAsync("od.winui-designer.properties-pad.standard-values", "Background");
+                return choices.GetProperty("success").GetBoolean()
+                    && choices.GetProperty("values").EnumerateArray()
+                        .Select(value => value.GetString())
+                        .Contains("{StaticResource AccentBrush}")
+                    && choices.GetProperty("values").EnumerateArray()
+                        .Select(value => value.GetString())
+                        .Contains("{StaticResource AlternateBrush}");
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250);
+            Assert.True(choicesReady, choices.ToString());
+            Assert.False(choices.GetProperty("hasExclusiveStandardValues").GetBoolean(), choices.ToString());
+
+            var changed = await WaitForWinUIPropertiesPadEditAsync("Background", "{StaticResource AlternateBrush}", timeoutSeconds: 10);
+            Assert.True(changed.GetProperty("success").GetBoolean(), changed.ToString());
+
+            var saved = await _app.InvokeAsync("od.file.save", _unoPagePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            Assert.Contains("Background=\"{StaticResource AlternateBrush}\"", await File.ReadAllTextAsync(_unoPagePath));
+            bodySucceeded = true;
+        }
+        finally
+        {
+            try
+            {
+                await _app.InvokeAsync("od.close-all-document-views");
+                await File.WriteAllTextAsync(_unoPagePath, originalXaml);
+            }
+            catch when (!bodySucceeded)
+            {
+                // Keep the test's original failure; disposal will still remove the copied fixture.
+            }
+        }
+    }
+
     [Fact]
     public async Task OpenAppXaml_ShowsCodeEditorOutline()
     {

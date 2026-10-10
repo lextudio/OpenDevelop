@@ -284,6 +284,8 @@ namespace ICSharpCode.WinUIXamlDesigner
 			{
 				get
 				{
+					if (TryGetResourceReference(currentValue, out _))
+						return typeof(string);
 					if (EnumMappings.TryGetValue(attributeName.LocalName, out var enumType))
 						return enumType;
 					if (IsThicknessProperty(attributeName.LocalName))
@@ -298,6 +300,8 @@ namespace ICSharpCode.WinUIXamlDesigner
 			{
 				get
 				{
+					if (TryGetResourceReference(currentValue, out var resourceReferenceKind))
+						return new ResourceReferenceValueConverter(resourceKeys, resourceReferenceKind);
 					if (EnumMappings.TryGetValue(attributeName.LocalName, out var enumType))
 						return new EnumValueConverter(enumType);
 					if (IsThicknessProperty(attributeName.LocalName))
@@ -308,10 +312,29 @@ namespace ICSharpCode.WinUIXamlDesigner
 				}
 			}
 
+			static bool TryGetResourceReference(string value, out string kind)
+			{
+				kind = null;
+				if (string.IsNullOrWhiteSpace(value))
+					return false;
+				foreach (var candidate in new[] { "StaticResource", "ThemeResource" })
+				{
+					if (value.StartsWith("{" + candidate + " ", StringComparison.Ordinal)
+						&& value.EndsWith("}", StringComparison.Ordinal))
+					{
+						kind = candidate;
+						return true;
+					}
+				}
+				return false;
+			}
+
 			public override object GetValue(object component)
 			{
 				if (isNew)
 					return null;
+				if (TryGetResourceReference(currentValue, out _))
+					return element.Attribute(attributeName)?.Value;
 				if (EnumMappings.TryGetValue(attributeName.LocalName, out var enumType))
 				{
 					var text = element.Attribute(attributeName)?.Value;
@@ -361,6 +384,35 @@ namespace ICSharpCode.WinUIXamlDesigner
 			public override bool CanResetValue(object component) => element.Attribute(attributeName) != null;
 			public override void ResetValue(object component) => setAttribute(element, attributeName, null);
 			public override bool ShouldSerializeValue(object component) => element.Attribute(attributeName) != null;
+		}
+
+		/// <summary>
+		/// Supplies local XAML resource keys as actual PropertyGrid standard values for an existing
+		/// resource reference.  Keep the reference kind chosen by the author: changing a
+		/// <c>ThemeResource</c> must not silently turn it into a <c>StaticResource</c>.
+		/// </summary>
+		sealed class ResourceReferenceValueConverter : StringConverter
+		{
+			readonly IReadOnlyList<string> resourceKeys;
+			readonly string resourceReferenceKind;
+
+			public ResourceReferenceValueConverter(IReadOnlyList<string> resourceKeys, string resourceReferenceKind)
+			{
+				this.resourceKeys = resourceKeys;
+				this.resourceReferenceKind = resourceReferenceKind;
+			}
+
+			public override bool GetStandardValuesSupported(ITypeDescriptorContext context) => true;
+			// The page cannot see all resources that the XAML loader can resolve (App.xaml,
+			// merged dictionaries and theme resources are outside documentRoot).  These are useful
+			// suggestions, not an exhaustive domain: keep the normal text editor available for
+			// those valid external references and for switching back to a literal brush value.
+			public override bool GetStandardValuesExclusive(ITypeDescriptorContext context) => false;
+
+			public override StandardValuesCollection GetStandardValues(ITypeDescriptorContext context)
+				=> new StandardValuesCollection(resourceKeys
+					.Select(key => "{" + resourceReferenceKind + " " + key + "}")
+					.ToArray());
 		}
 
 		/// <summary>
