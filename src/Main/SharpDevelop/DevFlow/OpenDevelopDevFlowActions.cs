@@ -2949,6 +2949,43 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return SerializeDebugLocation(await wait);
 		}
 		
+		[DevFlowAction("od.debug.restart", Description = "Restart the current debug session (relaunch or re-attach)")]
+		public static async Task<string> RestartDebugAsync()
+		{
+			if (!SD.Debugger.IsDebugging) {
+				return JsonSerializer.Serialize(new { success = false, reason = "no active debug session" });
+			}
+			await InvokeTaskAsync(SD.Debugger, "RestartAsync");
+			return JsonSerializer.Serialize(new {
+				success = true,
+				isDebugging = SD.Debugger.IsDebugging,
+				isProcessRunning = SD.Debugger.IsProcessRunning
+			});
+		}
+		
+		[DevFlowAction("od.debug.set-next-statement", Description = "Set Next Statement: move the instruction pointer to a source line and wait for the goto stop")]
+		public static async Task<string> SetNextStatementDebugAsync(string file, int line, int? column = null)
+		{
+			int stopSequence = GetIntProperty(SD.Debugger, "CurrentStopSequence");
+			var wait = WaitForStopAsync(SD.Debugger, 10, stopSequence);
+			await InvokeTaskAsync(SD.Debugger, "SetNextStatementAsync", file, line, column);
+			return SerializeDebugLocation(await wait);
+		}
+		
+		[DevFlowAction("od.debug.loaded-sources", Description = "Return source files known to the debuggee from loaded symbols")]
+		public static async Task<string> GetDebugLoadedSourcesAsync()
+		{
+			var sources = await InvokeEnumerableTaskAsync(SD.Debugger, "GetLoadedSourcesAsync");
+			return JsonSerializer.Serialize(sources.Cast<string>().ToArray());
+		}
+		
+		[DevFlowAction("od.debug.breakpoint-locations", Description = "Return valid breakpoint positions in a source range")]
+		public static async Task<string> GetDebugBreakpointLocationsAsync(string file, int line, int? endLine = null)
+		{
+			var locations = await InvokeEnumerableTaskAsync(SD.Debugger, "GetBreakpointLocationsAsync", file, line, endLine);
+			return JsonSerializer.Serialize(locations.Select(ToPropertyDictionary).ToArray());
+		}
+		
 		[DevFlowAction("od.debug.call-stack", Description = "Return current call stack")]
 		public static async Task<string> GetDebugCallStackAsync()
 		{
