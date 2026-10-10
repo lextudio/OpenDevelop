@@ -38,8 +38,41 @@ namespace ICSharpCode.SharpDevelop.Logging
 			if (File.Exists(configFile))
 				XmlConfigurator.ConfigureAndWatch(new FileInfo(configFile));
 			else
-				log4net.Config.BasicConfigurator.Configure();
+				ConfigureDefaultLogging();
 			log = LogManager.GetLogger(typeof(log4netLoggingService));
+		}
+
+		/// <summary>
+		/// Logs to a flushed file as well as the console. The packaged app has no .config, so the
+		/// old BasicConfigurator (console only, buffered) meant a startup failure that shut the
+		/// process down before the buffer flushed left NO trace - the app "exited during startup
+		/// (status 0)" with empty output. The file is written with ImmediateFlush so the last line
+		/// before an abrupt shutdown is always on disk.
+		/// </summary>
+		static void ConfigureDefaultLogging()
+		{
+			var hierarchy = (log4net.Repository.Hierarchy.Hierarchy)LogManager.GetRepository();
+			var layout = new log4net.Layout.PatternLayout("%date [%thread] %-5level %logger - %message%newline%exception");
+			layout.ActivateOptions();
+
+			var fileAppender = new log4net.Appender.FileAppender {
+				File = Path.Combine(Path.GetTempPath(), "OpenDevelop.log"),
+				AppendToFile = false,
+				ImmediateFlush = true,
+				Layout = layout
+			};
+			fileAppender.ActivateOptions();
+			var consoleAppender = new log4net.Appender.ConsoleAppender {
+				Target = log4net.Appender.ConsoleAppender.ConsoleOut,
+				Layout = layout
+			};
+			consoleAppender.ActivateOptions();
+
+			hierarchy.Root.RemoveAllAppenders();
+			hierarchy.Root.AddAppender(fileAppender);
+			hierarchy.Root.AddAppender(consoleAppender);
+			hierarchy.Root.Level = log4net.Core.Level.Debug;
+			hierarchy.Configured = true;
 		}
 		
 		public void Debug(object message)
