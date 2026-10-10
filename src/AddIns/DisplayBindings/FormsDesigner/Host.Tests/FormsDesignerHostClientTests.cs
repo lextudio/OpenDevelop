@@ -544,6 +544,10 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Equal("ComponentReference", acceptButton.EditorKind);
 		Assert.Contains("button1", acceptButton.AllowedValues);
 		Assert.DoesNotContain("Form1", acceptButton.AllowedValues);
+		var rejectedReference = await Assert.ThrowsAnyAsync<Exception>(() =>
+			client.SetPropertyAsync(7, "Form1", "AcceptButton", "notAComponent", timeout.Token));
+		Assert.Contains("Unknown component reference: notAComponent", rejectedReference.Message, StringComparison.Ordinal);
+		Assert.DoesNotContain("AcceptButton =", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 		var accepted = await client.SetPropertyAsync(7, "Form1", "AcceptButton", "button1", timeout.Token);
 		Assert.Contains(accepted.Components.Single(component => component.Name == "Form1").Properties,
 			property => property.Name == "AcceptButton" && property.Value == "button1" && property.ShouldSerialize);
