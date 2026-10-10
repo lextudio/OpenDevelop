@@ -268,7 +268,11 @@ sealed class DesignerHostService : IDesignerChildService
 		// It must never accept the display token as a scalar edit.
 		if (property.IsReadOnly || IsResourceImageProperty(property.PropertyType))
 			throw new InvalidOperationException($"Property {elementId}.{propertyName} is read-only.");
-		var converted = ConvertPropertyValue(property, value);
+		var referenceCandidates = ComponentReferenceCandidates(host, component, property);
+		var converted = referenceCandidates == null ? ConvertPropertyValue(property, value)
+			: String.IsNullOrEmpty(value) ? null
+			: referenceCandidates.FirstOrDefault(candidate => String.Equals(candidate.Site?.Name, value, StringComparison.Ordinal))
+				?? throw new ArgumentException($"Unknown component reference: {value}", nameof(value));
 		if (component == host.RootComponent && propertyName == "AutoScaleDimensions" && converted is SizeF scale)
 			rootAutoScaleDimensions = scale;
 		// Validate source serialization before mutating the live component. A
@@ -327,6 +331,16 @@ sealed class DesignerHostService : IDesignerChildService
 		}
 		return property.Converter.ConvertFromInvariantString(value)
 			?? throw new InvalidOperationException($"Cannot convert '{value}' to {property.PropertyType.FullName}.");
+	}
+
+	static List<IComponent>? ComponentReferenceCandidates(IDesignerHost host, IComponent owner, PropertyDescriptor property)
+	{
+		if (property.PropertyType == typeof(object))
+			return null;
+		var candidates = host.Container.Components.Cast<IComponent>()
+			.Where(candidate => candidate != owner && candidate != host.RootComponent && property.PropertyType.IsAssignableFrom(candidate.GetType())
+				&& !String.IsNullOrEmpty(candidate.Site?.Name)).ToList();
+		return candidates.Count == 0 ? null : candidates;
 	}
 
 	[JsonRpcMethod("design/reset-property")]
@@ -1188,7 +1202,7 @@ sealed class DesignerHostService : IDesignerChildService
 	IDesignerHost GetHost() => designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost
 		?? throw new InvalidOperationException("The designer surface is unavailable.");
 
-	void RewriteProperty(string elementId, string propertyName, object value, bool isRootComponent = false)
+	void RewriteProperty(string elementId, string propertyName, object? value, bool isRootComponent = false)
 	{
 		if (IsVisualBasic) { RewritePropertyVisualBasic(elementId, propertyName, value, isRootComponent); return; }
 		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
@@ -1211,7 +1225,7 @@ sealed class DesignerHostService : IDesignerChildService
 			.NormalizeWhitespace().ToFullString();
 	}
 
-	void RewritePropertyVisualBasic(string elementId, string propertyName, object value, bool isRootComponent)
+	void RewritePropertyVisualBasic(string elementId, string propertyName, object? value, bool isRootComponent)
 	{
 		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
 			?? current.Files.First();
@@ -1282,7 +1296,9 @@ sealed class DesignerHostService : IDesignerChildService
 	static string PropertyTarget(string elementId, string propertyName, bool isRootComponent)
 		=> isRootComponent ? propertyName : elementId + "." + propertyName;
 
-	static ExpressionSyntax SerializeValue(object value) => value switch {
+	static ExpressionSyntax SerializeValue(object? value) => value switch {
+		null => SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression),
+		IComponent component when component.Site?.Name is { Length: > 0 } name => SyntaxFactory.ParseExpression("this." + name),
 		string text => SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(text)),
 		bool boolean => SyntaxFactory.LiteralExpression(boolean ? SyntaxKind.TrueLiteralExpression : SyntaxKind.FalseLiteralExpression),
 		char character => SyntaxFactory.LiteralExpression(SyntaxKind.CharacterLiteralExpression, SyntaxFactory.Literal(character)),
@@ -1300,7 +1316,9 @@ sealed class DesignerHostService : IDesignerChildService
 
 	/// <summary>VB expression form: literals use True/False/Nothing and the character/float
 	/// suffixes ("c, !, R), casts are CType, and struct values use New.</summary>
-	static VbSyntax.ExpressionSyntax SerializeValueVisualBasic(object value) => value switch {
+	static VbSyntax.ExpressionSyntax SerializeValueVisualBasic(object? value) => value switch {
+		null => Vb.SyntaxFactory.NothingLiteralExpression(Vb.SyntaxFactory.Token(Vb.SyntaxKind.NothingKeyword)),
+		IComponent component when component.Site?.Name is { Length: > 0 } name => Vb.SyntaxFactory.ParseExpression("Me." + name),
 		string text => Vb.SyntaxFactory.StringLiteralExpression(Vb.SyntaxFactory.Literal(text)),
 		bool boolean => boolean
 			? Vb.SyntaxFactory.TrueLiteralExpression(Vb.SyntaxFactory.Token(Vb.SyntaxKind.TrueKeyword))
@@ -2460,6 +2478,7 @@ sealed class DesignerHostService : IDesignerChildService
 			if (!property.IsBrowsable || property.Name is "Site" or "Container" or "Parent") continue;
 			var assignedInSource = assignedTargets.Contains(PropertyTarget(elementId, property.Name, isRootComponent));
 			var isImageProperty = IsResourceImageProperty(property.PropertyType);
+			var referenceCandidates = ComponentReferenceCandidates(GetHost(), component, property);
 			object? value;
 			string serialized;
 			try {
@@ -2472,6 +2491,7 @@ sealed class DesignerHostService : IDesignerChildService
 					value = shadowed;
 #endif
 				if (value == null) serialized = isImageProperty && assignedInSource ? "[binary]" : "";
+				else if (referenceCandidates != null) serialized = (value as IComponent)?.Site?.Name ?? "";
 				// Portable resource loading can materialize an image entry as a byte-backed
 				// object rather than a concrete System.Drawing.Image. The property contract is
 				// still Image, so expose it as an opaque binary DDP value instead of leaking an
@@ -2491,7 +2511,7 @@ sealed class DesignerHostService : IDesignerChildService
 				TypeName = property.PropertyType.FullName ?? property.PropertyType.Name,
 				Value = serialized,
 				IsNull = value == null && !(isImageProperty && assignedInSource),
-				IsReadOnly = property.IsReadOnly || (!property.Converter.CanConvertFrom(typeof(string))
+				IsReadOnly = property.IsReadOnly || (referenceCandidates == null && !property.Converter.CanConvertFrom(typeof(string))
 					&& property.PropertyType != typeof(Padding) && property.PropertyType != typeof(Font)
 					&& property.PropertyType != typeof(SizeF)),
 				// The source assignment is authoritative. Some LibreWinForms
@@ -2511,6 +2531,11 @@ sealed class DesignerHostService : IDesignerChildService
 			result.Add(info);
 			if (property.PropertyType.IsEnum)
 				result[^1].AllowedValues.AddRange(Enum.GetNames(property.PropertyType));
+			if (referenceCandidates != null) {
+				result[^1].EditorKind = "ComponentReference";
+				result[^1].AllowedValues.Add("");
+				result[^1].AllowedValues.AddRange(referenceCandidates.Select(candidate => candidate.Site!.Name!));
+			}
 		}
 		return result;
 	}

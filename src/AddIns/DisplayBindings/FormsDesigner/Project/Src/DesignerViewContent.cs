@@ -2118,7 +2118,8 @@ namespace ICSharpCode.FormsDesigner
 			static Attribute[] CreateAttributes(DesignerPropertyInfo property)
 			{
 				var attributes = new List<Attribute> { new CategoryAttribute(property.Category), new DescriptionAttribute(property.Description ?? ""), new ReadOnlyAttribute(IsProtocolReadOnly(property)) };
-				if (property.Kind == "Enum" && property.AllowedValues.Count > 0)
+				if ((property.Kind == "Enum" || String.Equals(property.EditorKind, "ComponentReference", StringComparison.Ordinal))
+					&& property.AllowedValues.Count > 0)
 					attributes.Add(new TypeConverterAttribute(typeof(RemoteEnumConverter)));
 				if (String.Equals(property.EditorKind, "ResourceImage", StringComparison.Ordinal))
 					attributes.Add(new EditorAttribute(typeof(ResourceImagePropertyEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
