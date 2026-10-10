@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows;
 using ICSharpCode.Core;
 using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop;
@@ -208,17 +209,22 @@ namespace ICSharpCode.CodeCoverage
 			// results up on the thread pool, as the Roslyn snapshot push already evaluates projects,
 			// and show them back on the UI thread if the same solution is still open.
 			var solution = e.Solution;
+			var dispatcher = Application.Current?.Dispatcher;
 			Task.Run(() => new SolutionCodeCoverageResults(solution).GetCodeCoverageResultsForAllProjects().ToList())
 				.ContinueWith(lookup => {
-					if (lookup.IsFaulted) {
-						LoggingService.Warn("Loading code coverage results failed: " + lookup.Exception?.GetBaseException().Message);
+					if (dispatcher == null || dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished)
 						return;
-					}
-					if (SD.ProjectService.CurrentSolution != solution)
-						return;
-					foreach (CodeCoverageResults results in lookup.Result)
-						ShowResults(results);
-				}, TaskScheduler.FromCurrentSynchronizationContext());
+					_ = dispatcher.BeginInvoke(new Action(() => {
+						if (lookup.IsFaulted) {
+							LoggingService.Warn("Loading code coverage results failed: " + lookup.Exception?.GetBaseException().Message);
+							return;
+						}
+						if (SD.ProjectService.CurrentSolution != solution)
+							return;
+						foreach (CodeCoverageResults results in lookup.Result)
+							ShowResults(results);
+					}));
+				}, TaskScheduler.Default);
 		}
 	}
 }

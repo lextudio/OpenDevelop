@@ -245,6 +245,18 @@ foreach ($tfm in @($deps['targets'].Keys)) {
         $key = "$($asset.PackageId)/$($asset.Version)"
         if (-not $libs.ContainsKey($key)) { $libs[$key] = @{} }
         if (-not $libs[$key].ContainsKey('runtime')) { $libs[$key]['runtime'] = @{} }
+        # On non-Windows the selected lib/net10.0 asset is the portable implementation.  A
+        # stale Unix runtimeTarget for the same file wins RID resolution over this entry, but the
+        # corresponding runtimes/unix file is not deployed (and may not exist in the package).
+        # Remove that competing RID asset so CoreCLR resolves the portable copy beside the app.
+        if (-not $IsWindows -and $asset.RelativeDir -eq 'lib/net10.0' -and $libs[$key].ContainsKey('runtimeTargets')) {
+            foreach ($runtimeTarget in @($libs[$key]['runtimeTargets'].Keys)) {
+                if ($runtimeTarget.EndsWith("/$($asset.File)", [StringComparison]::OrdinalIgnoreCase)) {
+                    $libs[$key]['runtimeTargets'].Remove($runtimeTarget)
+                }
+            }
+            if ($libs[$key]['runtimeTargets'].Count -eq 0) { $libs[$key].Remove('runtimeTargets') }
+        }
         $libs[$key]['runtime']["$($asset.RelativeDir)/$($asset.File)"] = @{}
     }
 }
