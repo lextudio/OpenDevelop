@@ -216,7 +216,7 @@ namespace ICSharpCode.SharpDevelop.Services
 			StartAsync(processStartInfo).FireAndForget();
 		}
 
-		async Task StartAsync(ProcessStartInfo processStartInfo)
+		async Task StartAsync(ProcessStartInfo processStartInfo, bool noDebug = false)
 		{
 			DapSession session = null;
 			try {
@@ -259,12 +259,15 @@ namespace ICSharpCode.SharpDevelop.Services
 					if (nativeHost)
 						PrintDebugMessage("> " + Path.GetFileName(targetPath) + " is a native program; debugging starts once it loads the .NET runtime.\n");
 					await CurrentSession.StartAsync(targetPath, processStartInfo.WorkingDirectory, breakAtBeginning, arguments,
-						nativeHost ? DapLaunchMode.Launch : DapLaunchMode.AttachToSuspendedProcess, default, hotReloadEnvironment).ConfigureAwait(false);
+						nativeHost ? DapLaunchMode.Launch : DapLaunchMode.AttachToSuspendedProcess, default, hotReloadEnvironment, noDebug).ConfigureAwait(false);
 
 				// Breakpoints must be sent after "launch" but before "configurationDone" -
-				// most DAP adapters (including SharpDbg) ignore breakpoints set any later.
-				await SyncAllBreakpointsBeforeLaunchAsync();
-				await CurrentSession.SetExceptionBreakpointsAsync(new[] { "user-unhandled" }).ConfigureAwait(false);
+				// most DAP adapters (including SharpDbg) ignore breakpoints set any later. Run
+				// Without Debugging has no debugger, so neither breakpoints nor filters apply.
+				if (!noDebug) {
+					await SyncAllBreakpointsBeforeLaunchAsync();
+					await CurrentSession.SetExceptionBreakpointsAsync(new[] { "user-unhandled" }).ConfigureAwait(false);
+				}
 
 				await CurrentSession.ConfigurationDoneAsync().ConfigureAwait(false);
 
@@ -460,7 +463,13 @@ namespace ICSharpCode.SharpDevelop.Services
 
 		public override void StartWithoutDebugging(ProcessStartInfo processStartInfo)
 		{
-			Process.Start(processStartInfo);
+			if (IsDebugging) {
+				MessageService.ShowMessage(errorDebugging);
+				return;
+			}
+			// Run through the adapter's noDebug launch so the IDE captures stdout/stderr and the
+			// exit code, instead of a bare Process.Start it cannot observe.
+			StartAsync(processStartInfo, noDebug: true).FireAndForget();
 		}
 
 		// The session the user asked to stop, so StartAsync can tell that from the adapter dying
@@ -511,8 +520,21 @@ namespace ICSharpCode.SharpDevelop.Services
 
 		public override bool SetInstructionPointer(string filename, int line, int column, bool dryRun)
 		{
-			// Not supported by the standard DAP surface (would require a SharpDbg-specific extension).
-			return false;
+			if (CurrentSession == null) return false;
+			int? targetColumn = column > 0 ? column : (int?)null;
+			// The DAP round trip must not block the UI thread (menu commands run on it), so run it
+			// on the thread pool where there is no synchronization context to return to.
+			return Task.Run(() => dryRun
+				? CanSetNextStatementAsync(filename, line, targetColumn)
+				: SetNextStatementAsync(filename, line, targetColumn)).GetAwaiter().GetResult();
+		}
+
+		/// <summary>Whether "Set Next Statement" has a target on the given line (used for the menu's dry run).</summary>
+		public async Task<bool> CanSetNextStatementAsync(string file, int line, int? column = null)
+		{
+			if (CurrentSession == null) return false;
+			var targets = await CurrentSession.GetGotoTargetsAsync(file, line, column).ConfigureAwait(false);
+			return targets.Count > 0;
 		}
 
 		public override void ToggleBreakpointAt(ITextEditor editor, int lineNumber)

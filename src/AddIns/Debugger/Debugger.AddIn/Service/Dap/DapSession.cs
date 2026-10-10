@@ -129,7 +129,8 @@ namespace Debugger.AddIn.Service.Dap
 		public async Task StartAsync(string targetPath, string workingDirectory, bool breakAtBeginning,
 			IEnumerable<string> arguments = null,
 			DapLaunchMode launchMode = DapLaunchMode.Launch, CancellationToken cancellationToken = default,
-			IEnumerable<KeyValuePair<string, string>> launchEnvironment = null)
+			IEnumerable<KeyValuePair<string, string>> launchEnvironment = null,
+			bool noDebug = false)
 		{
 			var argumentList = arguments != null ? arguments.ToList() : new List<string>();
 			string adapterDll = ResolveAdapterDll();
@@ -198,7 +199,8 @@ namespace Debugger.AddIn.Service.Dap
 					["cwd"] = workingDirectory ?? Path.GetDirectoryName(targetPath),
 					["env"] = env,
 					["stopAtEntry"] = breakAtBeginning,
-					["console"] = "internalConsole"
+					["console"] = "internalConsole",
+					["noDebug"] = noDebug
 				}, cancellationToken).ConfigureAwait(false);
 			}
 		}
