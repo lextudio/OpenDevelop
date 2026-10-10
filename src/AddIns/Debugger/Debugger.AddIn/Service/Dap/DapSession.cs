@@ -502,7 +502,7 @@ namespace Debugger.AddIn.Service.Dap
 						Column = obj["column"] != null ? obj["column"].GetValue<int>() : 0,
 						EndLine = obj["endLine"] != null ? obj["endLine"].GetValue<int>() : 0,
 						EndColumn = obj["endColumn"] != null ? obj["endColumn"].GetValue<int>() : 0,
-						IsExternalCode = IsSubtleFrame(obj["presentationHint"] as JsonObject)
+						IsExternalCode = IsSubtleFrame(obj["presentationHint"])
 					});
 				}
 			}
@@ -608,10 +608,19 @@ namespace Debugger.AddIn.Service.Dap
 			}
 		}
 
-		static bool IsSubtleFrame(JsonObject presentationHint)
+		// The Microsoft DAP library serializes a stack frame's presentation hint as the bare string
+		// "subtle" (StackFrame.PresentationHintValue), but a spec-shaped adapter may send
+		// {"attributes":["subtle"]}; accept either.
+		static bool IsSubtleFrame(JsonNode presentationHint)
 		{
-			var attributes = presentationHint?["attributes"] as JsonArray;
-			return attributes != null && attributes.Any(a => a != null && a.GetValue<string>() == "subtle");
+			if (presentationHint is JsonValue value) {
+				return value.TryGetValue<string>(out var text)
+					&& string.Equals(text, "subtle", StringComparison.OrdinalIgnoreCase);
+			}
+			if (presentationHint is JsonObject obj && obj["attributes"] is JsonArray attributes) {
+				return attributes.Any(a => a != null && string.Equals(a.GetValue<string>(), "subtle", StringComparison.OrdinalIgnoreCase));
+			}
+			return false;
 		}
 
 		static DapModuleInfo ParseModule(JsonObject module)
