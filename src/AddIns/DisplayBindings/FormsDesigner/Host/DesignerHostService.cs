@@ -333,13 +333,18 @@ sealed class DesignerHostService : IDesignerChildService
 			?? throw new InvalidOperationException($"Cannot convert '{value}' to {property.PropertyType.FullName}.");
 	}
 
-	static List<IComponent>? ComponentReferenceCandidates(IDesignerHost host, IComponent owner, PropertyDescriptor property)
+	static List<IComponent>? ComponentReferenceCandidates(IDesignerHost host, IComponent owner, PropertyDescriptor property,
+		Dictionary<Type, List<IComponent>>? candidatesByType = null)
 	{
 		if (property.PropertyType == typeof(object))
 			return null;
+		if (candidatesByType?.TryGetValue(property.PropertyType, out var cached) == true)
+			return cached.Where(candidate => candidate != owner).ToList() is { Count: > 0 } eligible ? eligible : null;
 		var candidates = host.Container.Components.Cast<IComponent>()
-			.Where(candidate => candidate != owner && candidate != host.RootComponent && property.PropertyType.IsAssignableFrom(candidate.GetType())
+			.Where(candidate => candidate != host.RootComponent && property.PropertyType.IsAssignableFrom(candidate.GetType())
 				&& !String.IsNullOrEmpty(candidate.Site?.Name)).ToList();
+		candidatesByType?.Add(property.PropertyType, candidates);
+		candidates = candidates.Where(candidate => candidate != owner).ToList();
 		return candidates.Count == 0 ? null : candidates;
 	}
 
@@ -2075,9 +2080,10 @@ sealed class DesignerHostService : IDesignerChildService
 		// completing and the process dying silently inside this very step.
 		var assignedTargets = BuildAssignedTargetIndex();
 		var eventHandlers = BuildEventHandlerIndex();
+		var referenceCandidatesByType = new Dictionary<Type, List<IComponent>>();
 		var components = host?.Container?.Components.Cast<IComponent>().Select(component => {
 			var properties = DescribeProperties(component, assignedTargets,
-				component == host.RootComponent);
+				component == host.RootComponent, referenceCandidatesByType);
 			if (component == host.RootComponent && rootAutoScaleDimensions.HasValue) {
 				var scale = properties.FirstOrDefault(item => item.Name == "AutoScaleDimensions");
 				if (scale != null)
@@ -2470,7 +2476,8 @@ sealed class DesignerHostService : IDesignerChildService
 		return targets;
 	}
 
-	List<DesignerPropertyInfo> DescribeProperties(IComponent component, HashSet<string> assignedTargets, bool isRootComponent)
+	List<DesignerPropertyInfo> DescribeProperties(IComponent component, HashSet<string> assignedTargets, bool isRootComponent,
+		Dictionary<Type, List<IComponent>> referenceCandidatesByType)
 	{
 		var result = new List<DesignerPropertyInfo>();
 		var elementId = component.Site?.Name ?? "";
@@ -2478,7 +2485,7 @@ sealed class DesignerHostService : IDesignerChildService
 			if (!property.IsBrowsable || property.Name is "Site" or "Container" or "Parent") continue;
 			var assignedInSource = assignedTargets.Contains(PropertyTarget(elementId, property.Name, isRootComponent));
 			var isImageProperty = IsResourceImageProperty(property.PropertyType);
-			var referenceCandidates = ComponentReferenceCandidates(GetHost(), component, property);
+			var referenceCandidates = ComponentReferenceCandidates(GetHost(), component, property, referenceCandidatesByType);
 			object? value;
 			string serialized;
 			try {
