@@ -654,9 +654,10 @@ images, and apply the edited resource plus any required reference rewrite as one
 issuing `session/update`. Do not infer an origin from `[binary]`, a property name, or a converter
 string.
 
-The first capability value is now `ResourceImage`: Forms emits it only for an `Image` property with
-proven `ResourceFileName` and `ResourceKey`; scalar resource values intentionally leave it empty.
-It is an IDE-editor eligibility signal, not permission for the child to mutate resources.
+The first capability value is now `ResourceImage`: Forms emits it only for an `Image` or `Icon`
+property with proven `ResourceFileName` and `ResourceKey`; scalar resource values intentionally
+leave it empty. The IDE renders an explicit replace button in that property's row; it is an
+IDE-editor eligibility signal, not permission for the child to mutate resources.
 
 ### 9.2 Tooling notes for whoever continues this
 

@@ -5,9 +5,11 @@
 
 using System;
 using System.ComponentModel.Design;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
@@ -17,6 +19,7 @@ using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Designer.Shell;
 using ICSharpCode.SharpDevelop.Workbench;
 using ICSharpCode.FormsDesigner.OutOfProcess;
+using ICSharpCode.FormsDesigner.Services;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
 using Xceed.Wpf.Toolkit.PropertyGrid;
@@ -625,24 +628,46 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			if (viewContent?.IsRemoteDesignerLoaded != true)
 				return Failure("The out-of-process WinForms designer is not loaded");
 			var grid = PropertyPadGrid;
-			if (grid?.SelectedObject is not IResourceImageEditorHost host)
+			if (grid?.SelectedObject is not IResourceImageEditorHost)
 				return Failure("Properties pad has no editable WinForms resource image selection");
 			var item = grid.Properties?.OfType<PropertyItem>()
 				.FirstOrDefault(candidate => candidate.PropertyName == propertyName);
 			if (item?.PropertyDescriptor is not IResourceImageProperty resourceProperty
 				|| !String.Equals(resourceProperty.EditorKind, "ResourceImage", StringComparison.Ordinal))
 				return Failure("Properties pad property is not an editable resource image: " + propertyName);
+			// This is deliberately checked on the live Xceed item rather than inferred from the
+			// protocol flag: a ResourceImage descriptor must render the explicit picker button,
+			// while the opaque [binary] token stays read-only to generic scalar editing.
+			var replaceButton = (item.Editor as DockPanel)?.Children.OfType<Button>()
+				.FirstOrDefault(button => button.Name == ResourceImagePropertyEditor.ReplaceButtonName);
+			if (replaceButton == null || !replaceButton.IsEnabled)
+				return Failure("Properties pad did not render an enabled resource-image replace button: " + propertyName);
+			var temporaryFileName = Path.GetTempFileName();
 			try {
-				host.ReplaceResourceImage(propertyName, Convert.FromBase64String(base64ImageBytes));
+				File.WriteAllBytes(temporaryFileName, Convert.FromBase64String(base64ImageBytes));
+				ResourceImagePropertyEditor.TestException = null;
+				ResourceImagePropertyEditor.TestFileNameSelector = () => temporaryFileName;
+				replaceButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+				if (ResourceImagePropertyEditor.TestException != null)
+					return Failure(ResourceImagePropertyEditor.TestException.Message);
 				return JsonSerializer.Serialize(new {
 					success = true,
 					selectedName = viewContent.RemoteDesignerSelectedComponent,
 					propertyName,
 					resourceProperty.ResourceFileName,
-					resourceProperty.ResourceKey
+					resourceProperty.ResourceKey,
+					hasReplaceButton = true
 				});
 			} catch (Exception exception) {
 				return Failure(exception.Message);
+			} finally {
+				ResourceImagePropertyEditor.TestFileNameSelector = null;
+				ResourceImagePropertyEditor.TestException = null;
+				try {
+					File.Delete(temporaryFileName);
+				} catch (Exception exception) {
+					LoggingService.Warn("Could not delete the temporary resource-image test file: " + exception.Message);
+				}
 			}
 		}
 

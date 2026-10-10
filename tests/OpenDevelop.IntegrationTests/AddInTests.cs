@@ -3821,6 +3821,7 @@ public sealed class AddInTests : IAsyncDisposable
             }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 300);
             Assert.True(replacedOk, replaced.ToString());
             Assert.Equal("dropPanel.BackgroundImage", replaced.GetProperty("ResourceKey").GetString());
+            Assert.True(replaced.GetProperty("hasReplaceButton").GetBoolean(), replaced.ToString());
 
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
             Assert.Contains(replacementImage, await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);

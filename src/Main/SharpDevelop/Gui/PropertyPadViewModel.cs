@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using ICSharpCode.Core;
 using System.Composition;
 using System.Windows;
@@ -7,7 +6,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using Microsoft.Win32;
 
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.ILSpy.Util;
@@ -93,10 +91,8 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
 
         // VS-style double-click on an Events row: the selected object (e.g. the WinForms
         // designer's remote component proxy) creates and binds the conventional handler.
-        // Both the routed MouseDoubleClick and a manual press-timing check are wired, because
-        // LibreWPF's ClickCount/MouseDoubleClick delivery is not reliable across control
-        // subtypes - whichever fires first wins, and the manual path only counts presses that
-        // actually landed on an Events row.
+        // Both the routed MouseDoubleClick and a manual press-timing check are wired because
+        // LibreWPF's ClickCount/MouseDoubleClick delivery is not reliable across control types.
         propertyGrid.MouseDoubleClick += OnGridMouseDoubleClick;
         propertyGrid.PreviewMouseLeftButtonDown += OnGridPreviewMouseLeftButtonDown;
 
@@ -134,52 +130,14 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
     }
 
     DateTime lastEventsRowPressUtc = DateTime.MinValue;
-	// PreviewMouseLeftButtonDown opens the modal picker for LibreWPF's manual double-click
-	// recognition. Suppress precisely the matching MouseDoubleClick that WPF raises after that
-	// picker returns; a time window expires while a user is choosing a file and opens it twice.
-    Xceed.Wpf.Toolkit.PropertyGrid.PropertyItem suppressResourceImageDoubleClickItem;
-    Xceed.Wpf.Toolkit.PropertyGrid.PropertyItem lastResourceImagePressItem;
-    Point lastResourceImagePressPoint;
-    DateTime lastResourceImagePressUtc = DateTime.MinValue;
-    const long MaxResourceImageBytes = 20L * 1024 * 1024;
-
     void OnGridMouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-		if (TryGetResourceImageItem(e.OriginalSource, out var imageItem)
-			&& ReferenceEquals(suppressResourceImageDoubleClickItem, imageItem)) {
-			suppressResourceImageDoubleClickItem = null;
-            e.Handled = true;
-            return;
-        }
-        if (BindEventFromRow(e.OriginalSource) || EditResourceImageFromRow(e.OriginalSource))
+        if (BindEventFromRow(e.OriginalSource))
             e.Handled = true;
     }
 
     void OnGridPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-		if (TryGetResourceImageItem(e.OriginalSource, out var imageItem)) {
-			var imagePressTime = DateTime.UtcNow;
-			var point = e.GetPosition(propertyGrid);
-			var isImageDoubleClick = ReferenceEquals(lastResourceImagePressItem, imageItem)
-				&& (imagePressTime - lastResourceImagePressUtc).TotalMilliseconds < 800
-				&& (point - lastResourceImagePressPoint).Length <= 4;
-			lastResourceImagePressItem = imageItem;
-			lastResourceImagePressPoint = point;
-			lastResourceImagePressUtc = imagePressTime;
-			if (isImageDoubleClick) {
-				lastResourceImagePressUtc = DateTime.MinValue;
-				suppressResourceImageDoubleClickItem = imageItem;
-				if (EditResourceImage(imageItem))
-					e.Handled = true;
-				// MouseDoubleClick is raised while WPF completes this input route. If a framework
-				// variant does not raise it, do not leave a later click on this row suppressed.
-				_ = propertyGrid.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => {
-					if (ReferenceEquals(suppressResourceImageDoubleClickItem, imageItem))
-						suppressResourceImageDoubleClickItem = null;
-				}));
-			}
-			return;
-		}
         // LibreWPF does not reliably populate ClickCount on MouseLeftButtonDown; detect the
         // double click manually by press timing (same pattern as the WinForms design surface).
         var now = DateTime.UtcNow;
@@ -187,7 +145,7 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
         lastEventsRowPressUtc = now;
         if (!isDoubleClick)
             return;
-        if (BindEventFromRow(e.OriginalSource) || EditResourceImageFromRow(e.OriginalSource))
+        if (BindEventFromRow(e.OriginalSource))
             e.Handled = true;
     }
 
@@ -225,52 +183,6 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
         }
         ICSharpCode.Core.LoggingService.Debug("[PropertyGrid] double-click on '" + eventItem.Descriptor.Name + "' but SelectedObject is not IEventBindingHost");
         return false;
-    }
-
-    bool EditResourceImageFromRow(object originalSource)
-    {
-        return TryGetResourceImageItem(originalSource, out var item) && EditResourceImage(item);
-    }
-
-    bool TryGetResourceImageItem(object originalSource, out Xceed.Wpf.Toolkit.PropertyGrid.PropertyItem result)
-    {
-        var hit = originalSource as DependencyObject;
-        while (hit != null) {
-            var item = (hit as FrameworkElement)?.DataContext as Xceed.Wpf.Toolkit.PropertyGrid.PropertyItem
-                ?? (hit as ContentPresenter)?.Content as Xceed.Wpf.Toolkit.PropertyGrid.PropertyItem;
-            if (item?.PropertyDescriptor is IResourceImageProperty imageProperty
-                && string.Equals(imageProperty.EditorKind, "ResourceImage", StringComparison.Ordinal)) {
-                result = item;
-                return true;
-            }
-            hit = VisualTreeHelper.GetParent(hit);
-        }
-        result = null;
-        return false;
-    }
-
-    bool EditResourceImage(Xceed.Wpf.Toolkit.PropertyGrid.PropertyItem item)
-    {
-        if (propertyGrid.SelectedObject is not IResourceImageEditorHost host)
-            return false;
-        var dialog = new OpenFileDialog {
-            Title = "Replace resource image",
-            Filter = "Image files|*.png;*.bmp;*.gif;*.jpg;*.jpeg;*.ico|All files|*.*",
-            CheckFileExists = true,
-            Multiselect = false
-        };
-        if (dialog.ShowDialog() != true)
-            return true;
-        try {
-            var file = new FileInfo(dialog.FileName);
-            if (file.Length > MaxResourceImageBytes)
-                throw new InvalidOperationException("The replacement image is larger than 20 MiB.");
-            host.ReplaceResourceImage(item.PropertyDescriptor.Name, File.ReadAllBytes(dialog.FileName));
-        } catch (Exception exception) {
-            LoggingService.Error(exception);
-            MessageService.ShowError(exception.Message);
-        }
-        return true;
     }
 
     /// <summary>
