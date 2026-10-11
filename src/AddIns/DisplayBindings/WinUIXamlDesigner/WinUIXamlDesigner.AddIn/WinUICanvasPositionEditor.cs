@@ -46,9 +46,12 @@ public static class WinUICanvasPositionEditor
 		if ((leading != null && !TryParse(leading.Value, out leadingValue))
 			|| (trailing != null && !TryParse(trailing.Value, out trailingValue)))
 			return;
+		// WinUI's Canvas resolves Left/Top before Right/Bottom when both are authored. Keep the
+		// non-winning anchor untouched: rewriting it would leave an inert, stale value that
+		// becomes observable if the winning anchor is later removed.
 		if (leading != null)
 			changes.Add(new Change(leadingAttribute, Format(leadingValue + roundedDelta)));
-		if (trailing != null)
+		else if (trailing != null)
 			changes.Add(new Change(trailingAttribute, Format(trailingValue - roundedDelta)));
 		if (leading == null && trailing == null)
 			changes.Add(new Change(leadingAttribute, Format(roundedDelta)));

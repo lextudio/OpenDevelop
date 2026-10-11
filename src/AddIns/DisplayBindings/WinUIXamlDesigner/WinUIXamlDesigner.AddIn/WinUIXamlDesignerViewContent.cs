@@ -62,6 +62,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		previewHost.SelectionChanged += OnSelectionChangedOnSurface;
 		previewHost.ElementDragCommitted += OnElementDragCommittedOnSurface;
 		previewHost.ElementGroupDragCommitted += OnElementGroupDragCommittedOnSurface;
+		previewHost.LayoutInsetEditCommitted += OnLayoutInsetEditCommittedOnSurface;
 		previewHost.GridGuideDragCommitted += OnGridGuideDragCommittedOnSurface;
 		previewHost.ElementDoubleClicked += OnElementDoubleClickedOnSurface;
 		previewHost.TextEditCommitted += OnTextEditCommittedOnSurface;
@@ -623,6 +624,29 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		SelectElement(list[0].Name);
 	}
 
+	void OnLayoutInsetEditCommittedOnSurface(object sender, LayoutInsetEditInfo edit)
+	{
+		if (edit.Kind != "CanvasPosition" || editor.FindElement(edit.Name) is not { } element)
+			return;
+		var node = FindRuntimeCanvasNode(previewHost.ElementTree, edit.Name, out var ambiguous);
+		if (ambiguous || node?.LayoutInsets is not { } insets)
+			return;
+		var (dx, dy) = edit.Edge switch {
+			"Left" => (edit.Value - insets.Left, 0d),
+			"Right" => (insets.Right - edit.Value, 0d),
+			"Top" => (0d, edit.Value - insets.Top),
+			"Bottom" => (0d, insets.Bottom - edit.Value),
+			_ => (0d, 0d)
+		};
+		var changes = WinUICanvasPositionEditor.PositionDelta(element, dx, dy);
+		if (changes.Count == 0)
+			return;
+		foreach (var change in changes)
+			editor.SetAttribute(element, change.Attribute, change.Value);
+		ApplyDocumentChange();
+		SelectElement(edit.Name);
+	}
+
 	/// <summary>Shows Grid divider guides when a Grid is selected, hiding them otherwise.</summary>
 	void RefreshGridGuides(string selectedName)
 	{
@@ -932,6 +956,26 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			if (current == null || hasAmbiguity) return;
 			if (current.IsDesignable && string.Equals(current.Type, "Grid", StringComparison.Ordinal)
 				&& string.Equals(current.Name, name, StringComparison.Ordinal)) {
+				if (match != null) { hasAmbiguity = true; return; }
+				match = current;
+			}
+			foreach (var child in current.Children)
+				Visit(child);
+		}
+		Visit(node);
+		ambiguous = hasAmbiguity;
+		return hasAmbiguity ? null : match;
+	}
+
+	static DesignerElementNode? FindRuntimeCanvasNode(DesignerElementNode? node, string name, out bool ambiguous)
+	{
+		DesignerElementNode? match = null;
+		var hasAmbiguity = false;
+		void Visit(DesignerElementNode? current)
+		{
+			if (current == null || hasAmbiguity) return;
+			if (current.IsDesignable && string.Equals(current.Name, name, StringComparison.Ordinal)
+				&& current.LayoutInsets?.Kind == "CanvasPosition") {
 				if (match != null) { hasAmbiguity = true; return; }
 				match = current;
 			}

@@ -31,15 +31,14 @@ public sealed class WinUICanvasPositionEditorTests
 	}
 
 	[Fact]
-	public void PositionDelta_MovesBothSidesOfAnAnchoredCanvasChild()
+	public void PositionDelta_MovesOnlyTheEffectiveLeadingAnchorWhenBothSidesAreAuthored()
 	{
 		var element = Canvas("<Button Canvas.Left=\"20\" Canvas.Right=\"40\" />");
 
 		var changes = WinUICanvasPositionEditor.PositionDelta(element.Elements().Single(), 12, 0);
 
-		Assert.Collection(changes,
-			change => Assert.Equal(("Canvas.Left", "32"), (change.Attribute, change.Value)),
-			change => Assert.Equal(("Canvas.Right", "28"), (change.Attribute, change.Value)));
+		var change = Assert.Single(changes);
+		Assert.Equal(("Canvas.Left", "32"), (change.Attribute, change.Value));
 	}
 
 	[Fact]

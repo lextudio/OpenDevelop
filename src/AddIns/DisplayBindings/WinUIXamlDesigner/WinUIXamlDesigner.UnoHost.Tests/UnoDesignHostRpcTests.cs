@@ -300,6 +300,28 @@ public sealed class UnoDesignHostRpcTests
 	}
 
 	[Fact]
+	public async Task ChildHost_PublishesMeasuredCanvasPositionInsets()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await StartAsync(timeout.Token);
+		var xaml = $"""
+		<Canvas xmlns="{Ns}" xmlns:x="{XNs}" Width="320" Height="200">
+		    <Border x:Name="marker" Canvas.Left="110" Canvas.Top="70" Width="60" Height="40" />
+		</Canvas>
+		""";
+		var opened = await client.OpenAsync(Document(client, xaml), timeout.Token);
+
+		Assert.True(opened.Accepted, opened.Error);
+		var insets = FindByName(opened.Tree!, "marker")!.LayoutInsets;
+		Assert.NotNull(insets);
+		Assert.Equal("CanvasPosition", insets!.Kind);
+		Assert.Equal(110, insets.Left, 3);
+		Assert.Equal(70, insets.Top, 3);
+		Assert.Equal(150, insets.Right, 3);
+		Assert.Equal(90, insets.Bottom, 3);
+	}
+
+	[Fact]
 	public async Task ChildHost_HandshakesAndOpensUpdatesFlushesASession()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));

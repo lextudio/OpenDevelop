@@ -613,6 +613,12 @@ the inverse direction. The shared drag path no longer creates a `Margin` on Canv
 layout containers retain the existing alignment-aware Margin behaviour. The same source edit path
 serves both single-element and same-parent multi-selection drags.
 
+**C3 WinUI Canvas insets (2026-10-11).** The Uno host now publishes measured Canvas child edge
+distances as `CanvasPosition`, and the shared L/T/R/B labels are a real source-edit path rather
+than a read-only overlay: a released edge label converts its measured distance into a Canvas move
+delta, preserving the source's Left/Right and Top/Bottom anchoring form. A binding/resource
+expression remains untouched because it cannot be safely offset as a numeric source edit.
+
 ### Why this order
 
 `C1` removes a correctness and responsiveness hazard in every click path. `C2` then closes the

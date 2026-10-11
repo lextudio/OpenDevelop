@@ -1796,6 +1796,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				// both values from this live Grid so raster clients can draw guides without reparsing
 				// or approximating star/auto track arithmetic from source text.
 				nodeInfo.GridTracks = fe is Grid grid ? BuildGridTracks(grid) : null;
+				nodeInfo.LayoutInsets = BuildCanvasInsets(fe, root);
 				// Only TabIndex is populated here (not the WPF host's full property reflection) -
 				// this designer's Properties pad is driven off WinUIXamlElementPropertyAdapter
 				// reading the host-owned XAML document directly, not this per-node list; TabIndex
@@ -1835,6 +1836,21 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				}
 			}
 			return nodeInfo;
+		}
+
+		static DesignerLayoutInsets? BuildCanvasInsets(FrameworkElement element, UIElement root)
+		{
+			if (VisualTreeHelper.GetParent(element) is not Canvas canvas)
+				return null;
+			var child = GetBoundsInRoot(element, root);
+			var parent = GetBoundsInRoot(canvas, root);
+			return new DesignerLayoutInsets {
+				Kind = "CanvasPosition",
+				Left = child.X - parent.X,
+				Top = child.Y - parent.Y,
+				Right = parent.Width - (child.X - parent.X) - child.Width,
+				Bottom = parent.Height - (child.Y - parent.Y) - child.Height
+			};
 		}
 
 		// BaselineOffset is native WinUI telemetry, but compatible runtimes can omit it. Keep

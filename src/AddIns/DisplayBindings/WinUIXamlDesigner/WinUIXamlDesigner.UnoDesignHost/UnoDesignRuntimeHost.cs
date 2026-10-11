@@ -93,6 +93,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		canvas.SelectionChanged += (_, names) => SelectionChanged?.Invoke(this, names);
 		canvas.ElementDragCommitted += (_, info) => ElementDragCommitted?.Invoke(this, info);
 		canvas.ElementGroupDragCommitted += (_, moves) => ElementGroupDragCommitted?.Invoke(this, moves);
+		canvas.LayoutInsetEditCommitted += (_, edit) => LayoutInsetEditCommitted?.Invoke(this, edit);
 		canvas.ElementDoubleClicked += (_, info) => ElementDoubleClicked?.Invoke(this, info);
 		canvas.TextEditCommitted += (_, text) => TextEditCommitted?.Invoke(this, text);
 		canvas.GridGuideDragCommitted += (_, args) => GridGuideDragCommitted?.Invoke(this, args);
@@ -1575,6 +1576,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	public void SelectElements(IReadOnlyList<string> names) => canvas.SelectElements(names);
 
 	public event EventHandler<IReadOnlyList<(string Name, double DX, double DY)>> ElementGroupDragCommitted;
+	public event EventHandler<LayoutInsetEditInfo> LayoutInsetEditCommitted;
 
 	public event EventHandler<ElementDragInfo> ElementDragCommitted;
 

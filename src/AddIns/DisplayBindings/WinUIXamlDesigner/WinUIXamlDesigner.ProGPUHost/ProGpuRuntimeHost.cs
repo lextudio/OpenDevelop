@@ -119,6 +119,7 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverl
         canvas.SelectionChanged += (_, names) => SelectionChanged?.Invoke(this, names);
         canvas.ElementDragCommitted += (_, info) => ElementDragCommitted?.Invoke(this, info);
         canvas.ElementGroupDragCommitted += (_, moves) => ElementGroupDragCommitted?.Invoke(this, moves);
+		canvas.LayoutInsetEditCommitted += (_, edit) => LayoutInsetEditCommitted?.Invoke(this, edit);
         canvas.ElementDoubleClicked += (_, info) => ElementDoubleClicked?.Invoke(this, info);
         canvas.TextEditCommitted += (_, text) => TextEditCommitted?.Invoke(this, text);
         canvas.GridGuideDragCommitted += (_, args) => GridGuideDragCommitted?.Invoke(this, args);
@@ -370,6 +371,7 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverl
     public void ClearSelection() => canvas.ClearSelection();
     public event EventHandler<ElementDragInfo> ElementDragCommitted;
     public event EventHandler<IReadOnlyList<(string Name, double DX, double DY)>> ElementGroupDragCommitted;
+    public event EventHandler<LayoutInsetEditInfo> LayoutInsetEditCommitted;
     public event EventHandler<(string Name, bool IsRow, int Index, double Position)> GridGuideDragCommitted;
     public event EventHandler<ElementDoubleClickInfo> ElementDoubleClicked;
     public void BeginTextEdit(double x, double y, double width, double height, string text) => canvas.BeginTextEdit(x, y, width, height, text);

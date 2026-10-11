@@ -57,6 +57,7 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 			if (runtime is IWinUIXamlDirectManipulation manipulation) {
 				manipulation.ElementDragCommitted += OnRuntimeElementDragCommitted;
 				manipulation.ElementGroupDragCommitted += OnRuntimeElementGroupDragCommitted;
+				manipulation.LayoutInsetEditCommitted += OnRuntimeLayoutInsetEditCommitted;
 				manipulation.GridGuideDragCommitted += OnRuntimeGridGuideDragCommitted;
 			}
 			if (runtime is IWinUIXamlTextEditing textEditing) {
@@ -150,9 +151,13 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 
 	/// <summary>Raised when a multi-selection group drag commits, with each element's delta.</summary>
 	public event EventHandler<IReadOnlyList<(string Name, double DX, double DY)>> ElementGroupDragCommitted;
+	public event EventHandler<LayoutInsetEditInfo> LayoutInsetEditCommitted;
 
 	void OnRuntimeElementGroupDragCommitted(object sender, IReadOnlyList<(string Name, double DX, double DY)> deltas)
 		=> ElementGroupDragCommitted?.Invoke(this, deltas);
+
+	void OnRuntimeLayoutInsetEditCommitted(object sender, LayoutInsetEditInfo edit)
+		=> LayoutInsetEditCommitted?.Invoke(this, edit);
 
 	/// <summary>Raised when a Grid row/column divider drag commits (name, isRow, index, design position).</summary>
 	public event EventHandler<(string Name, bool IsRow, int Index, double Position)> GridGuideDragCommitted;
@@ -539,6 +544,7 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		if (runtime is IWinUIXamlDirectManipulation manipulation) {
 			manipulation.ElementDragCommitted -= OnRuntimeElementDragCommitted;
 			manipulation.ElementGroupDragCommitted -= OnRuntimeElementGroupDragCommitted;
+			manipulation.LayoutInsetEditCommitted -= OnRuntimeLayoutInsetEditCommitted;
 		}
 			if (runtime is IWinUIXamlTextEditing textEditing) {
 				textEditing.ElementDoubleClicked -= OnRuntimeElementDoubleClicked;
@@ -806,6 +812,7 @@ public interface IWinUIXamlDirectManipulation
 	event EventHandler<ElementDragInfo> ElementDragCommitted;
 	/// <summary>Raised when a multi-selection group drag commits, with each element's delta.</summary>
 	event EventHandler<IReadOnlyList<(string Name, double DX, double DY)>> ElementGroupDragCommitted;
+	event EventHandler<LayoutInsetEditInfo> LayoutInsetEditCommitted;
 	/// <summary>Raised when a Grid row/column divider drag commits (name, isRow, index, design position).</summary>
 	event EventHandler<(string Name, bool IsRow, int Index, double Position)> GridGuideDragCommitted;
 }
