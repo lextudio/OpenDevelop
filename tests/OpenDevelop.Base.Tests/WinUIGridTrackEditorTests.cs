@@ -196,6 +196,40 @@ public sealed class WinUIGridTrackEditorTests
 	}
 
 	[Fact]
+	public void MoveToEdge_CommitsAndRoundTripsACollectionItem()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"><Button.ContextFlyout><MenuFlyout x:Name="MenuFlyout1"><MenuFlyoutItem x:Name="First" Text="First"/><MenuFlyoutItem x:Name="Second" Text="Second"/><MenuFlyoutItem x:Name="Third" Text="Third"/></MenuFlyout></Button.ContextFlyout></Button></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		Assert.True(editor.MoveToEdge(editor.FindElement("Second")!, front: true));
+		var moved = editor.Text;
+		Assert.Equal(new[] { "First", "Third", "Second" }, editor.FindElement("MenuFlyout1")!.Elements()
+			.Select(item => (string?)item.Attribute(WinUIXamlDocumentEditor.NameDirective)));
+		Assert.True(editor.Undo());
+		Assert.Equal(source, editor.Text);
+		Assert.True(editor.Redo());
+		Assert.Equal(moved, editor.Text);
+
+		Assert.True(editor.MoveToEdge(editor.FindElement("Third")!, front: false));
+		Assert.Equal(new[] { "Third", "First", "Second" }, editor.FindElement("MenuFlyout1")!.Elements()
+			.Select(item => (string?)item.Attribute(WinUIXamlDocumentEditor.NameDirective)));
+		Assert.False(editor.MoveToEdge(editor.FindElement("Third")!, front: false));
+	}
+
+	[Fact]
+	public void MoveToEdge_LeavesTheNamedRootUntouched()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="Root"><Button x:Name="Child"/></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		Assert.False(editor.MoveToEdge(editor.FindElement("Root")!, front: true));
+		Assert.Equal(source, editor.Text);
+		Assert.False(editor.CanUndo);
+	}
+
+	[Fact]
 	public void ContextFlyoutDeletion_RemovesItsEmptyPropertyElementInOneUndoEntry()
 	{
 		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"/></Grid>""";

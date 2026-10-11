@@ -226,6 +226,34 @@ sealed class WinUIXamlDocumentEditor
 		CommitChange();
 	}
 
+	/// <summary>Moves a source element to either edge of its direct source sibling collection.
+	/// The structural mutation and its serialization are one document-history entry.</summary>
+	public bool MoveToEdge(XElement element, bool front)
+	{
+		if (element == null)
+			throw new ArgumentNullException(nameof(element));
+		if (element.Document != Document)
+			throw new ArgumentException("An element from this document is required.", nameof(element));
+		// A named root is selectable from Document Outline, but it has no sibling order to edit.
+		// Treat its edge command as an inert UI request instead of surfacing an exception there.
+		if (element == Document?.Root)
+			return false;
+		if (element.Parent is not XElement parent)
+			return false;
+		var edge = front ? parent.Elements().LastOrDefault() : parent.Elements().FirstOrDefault();
+		if (edge == element)
+			return false;
+
+		BeginChange();
+		element.Remove();
+		if (front)
+			parent.Add(element);
+		else
+			parent.AddFirst(element);
+		CommitChange();
+		return true;
+	}
+
 	/// <summary>Renames an existing <c>x:Name</c> while preserving the editor's one-operation
 	/// undo boundary. The caller remains responsible for refreshing the isolated runtime.</summary>
 	public bool Rename(string oldName, string newName, out string error)

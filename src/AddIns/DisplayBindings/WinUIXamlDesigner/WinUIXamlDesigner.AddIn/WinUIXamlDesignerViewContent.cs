@@ -916,15 +916,16 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	void MoveSelectedToEdge(string name, bool front)
 	{
 		var element = editor.FindElement(name);
-		if (element?.Parent is not XContainer parent)
+		if (element == null)
 			return;
-		element.Remove();
-		if (front)
-			parent.Add(element);
-		else
-			parent.AddFirst(element);
+		var sourceOnly = componentTraySelection && string.Equals(SelectedElementName, name, StringComparison.Ordinal);
+		if (!editor.MoveToEdge(element, front))
+			return;
 		ApplyDocumentChange();
-		SelectElement(name);
+		if (sourceOnly)
+			SelectComponentTrayElement(element);
+		else
+			SelectElement(name);
 	}
 
 	/// <summary>Wraps the selected element in a new Grid or StackPanel container.</summary>

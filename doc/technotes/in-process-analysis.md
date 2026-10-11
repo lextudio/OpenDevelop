@@ -441,7 +441,8 @@ source element and refreshes the tray. The Toolbox now also has source-owned `Co
 under that control's property element; selecting that flyout in the tray makes it the explicit
 target for the latter. Both select their source-backed result in the tray and keep undo/redo
 entirely in the document model.
-Further component-specific creation and well-defined reorder semantics remain separate work;
+Further component-specific creation remains separate work; source-order moves now commit through
+the document editor as one undoable change rather than being a transient preview-only reorder.
 basic visibility, selection, rename, deletion and this first property-owned creation flow need no
 child write capability. Deleting that tray flyout removes its now-empty single-value property
 element in the same undo entry, so deletion restores the exact pre-insertion source shape.
