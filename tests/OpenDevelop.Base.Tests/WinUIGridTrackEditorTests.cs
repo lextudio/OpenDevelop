@@ -254,6 +254,25 @@ public sealed class WinUIGridTrackEditorTests
 	}
 
 	[Fact]
+	public void CommandBarFlyoutInsertion_IsSourceOwnedAndUndoable()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"/></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		var flyout = editor.InsertCommandBarFlyout(editor.FindElement("Target")!);
+		Assert.Equal("CommandBarFlyout1", (string?)flyout.Attribute(WinUIXamlDocumentEditor.NameDirective));
+		Assert.Contains("<Button.Flyout>", editor.Text);
+		Assert.Contains("<CommandBarFlyout", editor.Text);
+		Assert.Contains("<AppBarButton Label=\"Command\"", editor.Text);
+
+		Assert.True(editor.Undo());
+		Assert.Equal(source, editor.Text);
+		Assert.True(editor.Redo());
+		Assert.Throws<InvalidOperationException>(() => editor.InsertCommandBarFlyout(editor.FindElement("Target")!));
+	}
+
+	[Fact]
 	public void MenuFlyoutItemInsertion_IsSourceOwnedAndUndoable()
 	{
 		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"><Button.ContextFlyout><MenuFlyout x:Name="MenuFlyout1"><MenuFlyoutItem Text="First"/></MenuFlyout></Button.ContextFlyout></Button></Grid>""";

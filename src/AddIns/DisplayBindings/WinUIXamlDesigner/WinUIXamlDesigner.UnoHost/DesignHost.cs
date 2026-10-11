@@ -260,6 +260,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			var catalog = new List<DesignerToolboxItemInfo> {
 				new() { Name = "ContextFlyout", DisplayName = "ContextFlyout", Category = "Components" },
 				new() { Name = "Flyout", DisplayName = "Flyout", Category = "Components" },
+				new() { Name = "CommandBarFlyout", DisplayName = "CommandBarFlyout", Category = "Components" },
 				new() { Name = "MenuFlyoutItem", DisplayName = "MenuFlyoutItem", Category = "Components" },
 				new() { Name = "MenuFlyoutSubItem", DisplayName = "MenuFlyoutSubItem", Category = "Components" }
 			};

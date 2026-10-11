@@ -406,6 +406,15 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			SelectComponentTrayElement(flyout);
 			return (string)flyout.Attribute(WinUIXamlDocumentEditor.NameDirective);
 		}
+		if (string.Equals(controlName, "CommandBarFlyout", StringComparison.Ordinal))
+		{
+			if (container == null)
+				throw new InvalidOperationException("Drop CommandBarFlyout onto a named Button or AppBarButton.");
+			var flyout = editor.InsertCommandBarFlyout(container);
+			ApplyDocumentChange();
+			SelectComponentTrayElement(flyout);
+			return (string)flyout.Attribute(WinUIXamlDocumentEditor.NameDirective);
+		}
 		if (string.Equals(controlName, "MenuFlyoutItem", StringComparison.Ordinal))
 		{
 			// A MenuFlyout is source-only and has no surface bounds to receive a drop. Its tray

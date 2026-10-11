@@ -62,6 +62,7 @@ public sealed class WinUIXamlToolbox
 					data.SetData(DragDataFormat, tool.Name);
 					if (string.Equals(tool.Name, "ContextFlyout", System.StringComparison.Ordinal)
 						|| string.Equals(tool.Name, "Flyout", System.StringComparison.Ordinal)
+						|| string.Equals(tool.Name, "CommandBarFlyout", System.StringComparison.Ordinal)
 						|| string.Equals(tool.Name, "MenuFlyoutItem", System.StringComparison.Ordinal)
 						|| string.Equals(tool.Name, "MenuFlyoutSubItem", System.StringComparison.Ordinal))
 						return;

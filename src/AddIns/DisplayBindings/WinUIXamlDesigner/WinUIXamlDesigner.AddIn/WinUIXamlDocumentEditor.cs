@@ -144,24 +144,37 @@ sealed class WinUIXamlDocumentEditor
 	/// ContextFlyout, this popup is source-owned and has no preview-tree identity.</summary>
 	public XElement InsertFlyout(XElement target)
 	{
+		return InsertFlyoutBase(target, "Flyout", flyout => flyout.Add(
+			new XElement(Document.Root.GetDefaultNamespace() + "TextBlock", new XAttribute("Text", "Flyout content"))));
+	}
+
+	/// <summary>Adds a named <c>CommandBarFlyout</c> through a control's Flyout property.
+	/// The popup and its command bar are source-owned rather than preview-tree children.</summary>
+	public XElement InsertCommandBarFlyout(XElement target)
+	{
+		return InsertFlyoutBase(target, "CommandBarFlyout", flyout => flyout.Add(
+			new XElement(Document.Root.GetDefaultNamespace() + "AppBarButton", new XAttribute("Label", "Command"))));
+	}
+
+	XElement InsertFlyoutBase(XElement target, string flyoutType, Action<XElement> addDefaultContent)
+	{
 		if (Document?.Root == null)
 			throw new InvalidOperationException("The document has no root to add a component to.");
 		if (target == null || target.Document != Document || target.Name.LocalName.Contains('.', StringComparison.Ordinal))
 			throw new ArgumentException("A source control is required.", nameof(target));
 		if (!IsFlyoutTarget(target.Name.LocalName))
-			throw new ArgumentException("Flyout can only be added to a Button or AppBarButton.", nameof(target));
+			throw new ArgumentException(flyoutType + " can only be added to a Button or AppBarButton.", nameof(target));
 		if (string.IsNullOrEmpty((string)target.Attribute(NameDirective)))
-			throw new InvalidOperationException("The target control needs an x:Name before a Flyout can be added.");
+			throw new InvalidOperationException("The target control needs an x:Name before a " + flyoutType + " can be added.");
 		var propertyName = target.Name.LocalName + ".Flyout";
 		if (target.Attribute("Flyout") != null
 			|| target.Elements().Any(element => string.Equals(element.Name.LocalName, propertyName, StringComparison.Ordinal)))
 			throw new InvalidOperationException("The target control already has a Flyout.");
 
 		BeginChange();
-		var flyout = new XElement(Document.Root.GetDefaultNamespace() + "Flyout");
-		flyout.SetAttributeValue(NameDirective, UniqueName("Flyout"));
-		flyout.Add(new XElement(Document.Root.GetDefaultNamespace() + "TextBlock",
-			new XAttribute("Text", "Flyout content")));
+		var flyout = new XElement(Document.Root.GetDefaultNamespace() + flyoutType);
+		flyout.SetAttributeValue(NameDirective, UniqueName(flyoutType));
+		addDefaultContent(flyout);
 		target.Add(new XElement(target.Name.Namespace + propertyName, flyout));
 		CommitChange();
 		return flyout;
