@@ -255,10 +255,11 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		/// </summary>
 		List<DesignerToolboxItemInfo> BuildToolboxCatalog()
 		{
-			// ContextFlyout is a property-owned nonvisual component, so reflection cannot find it.
-			// The shell handles this catalog item through a dedicated source mutation.
+			// These are property-owned/nonvisual components, so reflection cannot find them.
+			// The shell handles each catalog item through its dedicated source mutation.
 			var catalog = new List<DesignerToolboxItemInfo> {
-				new() { Name = "ContextFlyout", DisplayName = "ContextFlyout", Category = "Components" }
+				new() { Name = "ContextFlyout", DisplayName = "ContextFlyout", Category = "Components" },
+				new() { Name = "MenuFlyoutItem", DisplayName = "MenuFlyoutItem", Category = "Components" }
 			};
 			foreach (var t in typeof(FrameworkElement).Assembly.GetTypes())
 			{

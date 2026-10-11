@@ -167,6 +167,35 @@ public sealed class WinUIGridTrackEditorTests
 	}
 
 	[Fact]
+	public void MenuFlyoutItemInsertion_IsSourceOwnedAndUndoable()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"><Button.ContextFlyout><MenuFlyout x:Name="MenuFlyout1"><MenuFlyoutItem Text="First"/></MenuFlyout></Button.ContextFlyout></Button></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		var item = editor.InsertMenuFlyoutItem(editor.FindElement("MenuFlyout1")!);
+		Assert.Equal("MenuFlyoutItem1", (string?)item.Attribute(WinUIXamlDocumentEditor.NameDirective));
+		Assert.Equal("Menu item", (string?)item.Attribute("Text"));
+		Assert.Equal(2, editor.FindElement("MenuFlyout1")!.Elements().Count());
+
+		Assert.True(editor.Undo());
+		Assert.Equal(source, editor.Text);
+		Assert.True(editor.Redo());
+		Assert.Contains("x:Name=\"MenuFlyoutItem1\"", editor.Text);
+	}
+
+	[Fact]
+	public void MenuFlyoutItemInsertion_RejectsAVisualControl()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"/></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		Assert.Throws<ArgumentException>(() => editor.InsertMenuFlyoutItem(editor.FindElement("Target")!));
+		Assert.Equal(source, editor.Text);
+	}
+
+	[Fact]
 	public void ContextFlyoutDeletion_RemovesItsEmptyPropertyElementInOneUndoEntry()
 	{
 		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"/></Grid>""";

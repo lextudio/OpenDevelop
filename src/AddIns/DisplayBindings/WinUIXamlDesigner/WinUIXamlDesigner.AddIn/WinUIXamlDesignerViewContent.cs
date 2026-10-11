@@ -393,6 +393,19 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			SelectComponentTrayElement(flyout);
 			return (string)flyout.Attribute(WinUIXamlDocumentEditor.NameDirective);
 		}
+		if (string.Equals(controlName, "MenuFlyoutItem", StringComparison.Ordinal))
+		{
+			// A MenuFlyout is source-only and has no surface bounds to receive a drop. Its tray
+			// selection is therefore the explicit insertion target; do not reinterpret the visual
+			// control under the cursor as the flyout's parent.
+			var flyout = componentTraySelection ? editor.FindElement(SelectedElementName) : container;
+			if (flyout == null || !string.Equals(flyout.Name.LocalName, "MenuFlyout", StringComparison.Ordinal))
+				throw new InvalidOperationException("Select a MenuFlyout in the component tray before adding a MenuFlyoutItem.");
+			var item = editor.InsertMenuFlyoutItem(flyout);
+			ApplyDocumentChange();
+			SelectComponentTrayElement(item);
+			return (string)item.Attribute(WinUIXamlDocumentEditor.NameDirective);
+		}
 		// A drop resolves to the nearest NAMED source element under the cursor
 		// (WinUIXamlHost.OnDrop -> ProGpuRuntimeHost.ResolveNameAt), which is very often a leaf
 		// control - dropping onto PrimaryButton previously tried to insert a second child directly

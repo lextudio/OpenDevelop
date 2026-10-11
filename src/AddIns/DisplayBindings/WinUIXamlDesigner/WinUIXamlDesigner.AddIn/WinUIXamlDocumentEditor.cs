@@ -140,6 +140,25 @@ sealed class WinUIXamlDocumentEditor
 		return flyout;
 	}
 
+	/// <summary>Adds a named item to a source-owned <c>MenuFlyout</c>. Like the flyout itself,
+	/// the item is selected through the component tray rather than a preview-tree identity.</summary>
+	public XElement InsertMenuFlyoutItem(XElement flyout)
+	{
+		if (Document?.Root == null)
+			throw new InvalidOperationException("The document has no root to add a MenuFlyoutItem to.");
+		if (flyout == null || flyout.Document != Document
+			|| !string.Equals(flyout.Name.LocalName, "MenuFlyout", StringComparison.Ordinal))
+			throw new ArgumentException("A source MenuFlyout is required.", nameof(flyout));
+
+		BeginChange();
+		var item = new XElement(Document.Root.GetDefaultNamespace() + "MenuFlyoutItem");
+		item.SetAttributeValue(NameDirective, UniqueName("MenuFlyoutItem"));
+		item.SetAttributeValue("Text", "Menu item");
+		flyout.Add(item);
+		CommitChange();
+		return item;
+	}
+
 	/// <summary>
 	/// Gives an inserted control a meaningful default so the design surface shows something
 	/// real instead of an empty shell: Content for button-like controls, Text for

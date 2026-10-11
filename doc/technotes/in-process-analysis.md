@@ -436,9 +436,11 @@ rectangle. This works in both the Uno/Microsoft out-of-process runtime and ProGP
 erase it because the source projection is re-applied after every render. Selected tray objects now
 also support the normal F2 rename and Delete commands as source edits: rename deliberately reloads
 the document instead of addressing a nonexistent visual node, while delete removes the selected
-source element and refreshes the tray. The Toolbox now also has a source-owned `ContextFlyout`
-component: dropping it onto a named control authors a named `MenuFlyout` under that control's
-property element, selects it in the tray, and keeps undo/redo entirely in the document model.
+source element and refreshes the tray. The Toolbox now also has source-owned `ContextFlyout` and
+`MenuFlyoutItem` components: dropping the former onto a named control authors a named `MenuFlyout`
+under that control's property element; selecting that flyout in the tray makes it the explicit
+target for the latter. Both select their source-backed result in the tray and keep undo/redo
+entirely in the document model.
 Further component-specific creation and well-defined reorder semantics remain separate work;
 basic visibility, selection, rename, deletion and this first property-owned creation flow need no
 child write capability. Deleting that tray flyout removes its now-empty single-value property
