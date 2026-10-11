@@ -24,6 +24,7 @@ public sealed class DesignerToolboxScope
 	readonly object owner;
 	readonly IDesignerControlMapper? mapper;
 	readonly HashSet<string> registeredScopes = new(StringComparer.Ordinal);
+	readonly Dictionary<string, int> categoryPriorities = new(StringComparer.Ordinal);
 	string[] activeScopes = Array.Empty<string>();
 
 	/// <param name="owner">The designer this toolbox belongs to.</param>
@@ -64,10 +65,21 @@ public sealed class DesignerToolboxScope
 		if (IsActive) Activate();
 	}
 
+	/// <summary>Moves a category ahead of categories without an explicit priority for this
+	/// document's shared toolbox view. Lower values appear first; item order inside each category
+	/// remains unchanged.</summary>
+	public void SetCategoryPriority(string category, int priority)
+	{
+		if (string.IsNullOrWhiteSpace(category))
+			throw new ArgumentException("A category name is required.", nameof(category));
+		categoryPriorities[category] = priority;
+		if (IsActive) Activate();
+	}
+
 	/// <summary>Shows this designer's scopes and returns the control for <see cref="IToolsHost.ToolsContent"/>.</summary>
 	public object Activate()
 	{
-		Toolbox.SetActiveScopes(owner, false, activeScopes);
+		Toolbox.SetActiveScopes(owner, false, categoryPriorities, activeScopes);
 		return Toolbox.ToolboxControl;
 	}
 

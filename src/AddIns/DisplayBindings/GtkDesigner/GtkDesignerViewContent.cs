@@ -76,6 +76,10 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	public GtkDesignerViewContent(OpenedFile file) : base(file)
 	{
 		tools = new DesignerToolboxScope(this, GtkControlMapper.Instance);
+		// A blank GTK document needs a host container before any input or display widget can be
+		// useful. Keep that authoring path first without changing the curated order inside either
+		// category (the shared scope makes this a per-document preference, not a global sort).
+		tools.SetCategoryPriority("Containers", 0);
 		tools.ItemInvoked += (_, item) => Add(item.TypeName);
 		RefreshToolbox();
 		selection = new DesignerSelectionController(node => Adapter(node), nodes => new DesignerMultiPropertyAdapter(nodes.Select(node => (object)Adapter(node))));

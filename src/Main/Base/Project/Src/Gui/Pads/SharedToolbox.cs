@@ -38,6 +38,9 @@ namespace ICSharpCode.SharpDevelop.Gui
 		public string CategoryName { get; }
 		public string DisplayName { get; }
 		public ImageSource Icon { get; }
+		// Assigned once when the row enters SharedToolbox. It keeps the existing, curated item
+		// order stable when a document has not requested a category priority.
+		internal int InsertionOrder { get; set; } = -1;
 
 		/// <summary>Which facade this item belongs to ("wpf", "winforms", "winui", ...) - used
 		/// only by <see cref="SharedToolbox.SetActiveScopes"/> to filter the shared list, never
@@ -94,6 +97,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 		readonly CollectionViewSource itemsView = new();
 		readonly List<SharedToolboxItem> items = new();
 		HashSet<string> activeScopes;
+		IReadOnlyDictionary<string, int>? activeCategoryPriorities;
 		bool resetSelectsFirst = true;
 		string filterText = "";
 
@@ -128,6 +132,8 @@ namespace ICSharpCode.SharpDevelop.Gui
 		{
 			itemsView.Source = items;
 			itemsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(SharedToolboxItem.CategoryName)));
+			if (itemsView.View is System.Windows.Data.ListCollectionView view)
+				view.CustomSort = Comparer<SharedToolboxItem>.Create(CompareItems);
 			itemsView.Filter += (_, e) => {
 				var item = (SharedToolboxItem)e.Item;
 				e.Accepted = (activeScopes == null || activeScopes.Contains(item.Scope))
@@ -203,8 +209,10 @@ namespace ICSharpCode.SharpDevelop.Gui
 			foreach (var item in newItems)
 				if (!items.Any(existing => existing.Scope == item.Scope
 					&& existing.CategoryName == item.CategoryName
-					&& existing.DisplayName == item.DisplayName))
+					&& existing.DisplayName == item.DisplayName)) {
+					item.InsertionOrder = items.Count;
 					items.Add(item);
+				}
 			// List<T> raises no collection-change notification, so the CollectionViewSource.View
 			// bound as the ListBox's ItemsSource won't pick up these .Add()s on its own.
 			itemsView.View.Refresh();
@@ -257,16 +265,29 @@ namespace ICSharpCode.SharpDevelop.Gui
 		/// (<paramref name="selectFirst"/>); one without that row leaves nothing selected, so a stray
 		/// Enter does not insert whatever control happens to come first.</summary>
 		public void SetActiveScopes(object owner, bool selectFirst, params string[] scopes)
+			=> SetActiveScopes(owner, selectFirst, categoryPriorities: null, scopes);
+
+		/// <summary>Like <see cref="SetActiveScopes(object,bool,string[])"/>, but lets the active
+		/// document put selected categories before the otherwise curated insertion order. A priority
+		/// only affects category order; rows within a category retain their original order. This is
+		/// deliberately scoped to <paramref name="owner"/>, because one shared ListBox can serve
+		/// documents with different toolbox conventions.</summary>
+		public void SetActiveScopes(object owner, bool selectFirst, IReadOnlyDictionary<string, int>? categoryPriorities, params string[] scopes)
 		{
 			var nextScopes = new HashSet<string>(scopes, StringComparer.Ordinal);
+			var nextPriorities = categoryPriorities == null || categoryPriorities.Count == 0
+				? null
+				: new Dictionary<string, int>(categoryPriorities, StringComparer.Ordinal);
 			// Source and Design now remain mounted side by side. They return this same control,
 			// so a focus-only transition within one facade must not refresh the view or reset the
 			// user's selected tool back to Pointer. A different owner or scope still changes the
 			// drag destination/filter and follows the normal reset path.
-			if (ReferenceEquals(ActiveOwner, owner) && activeScopes != null && activeScopes.SetEquals(nextScopes))
+			if (ReferenceEquals(ActiveOwner, owner) && activeScopes != null && activeScopes.SetEquals(nextScopes)
+				&& SamePriorities(activeCategoryPriorities, nextPriorities))
 				return;
 			ActiveOwner = owner;
 			activeScopes = nextScopes;
+			activeCategoryPriorities = nextPriorities;
 			itemsView.View.Refresh();
 			resetSelectsFirst = selectFirst;
 			if (selectFirst)
@@ -274,6 +295,27 @@ namespace ICSharpCode.SharpDevelop.Gui
 			else if (toolbox.SelectedItem is SharedToolboxItem selected && !activeScopes.Contains(selected.Scope))
 				toolbox.SelectedItem = null;
 		}
+
+		static bool SamePriorities(IReadOnlyDictionary<string, int>? left, IReadOnlyDictionary<string, int>? right)
+		{
+			if (ReferenceEquals(left, right)) return true;
+			if (left == null || right == null || left.Count != right.Count) return false;
+			return left.All(pair => right.TryGetValue(pair.Key, out var priority) && priority == pair.Value);
+		}
+
+		int CompareItems(SharedToolboxItem? left, SharedToolboxItem? right)
+		{
+			if (ReferenceEquals(left, right)) return 0;
+			if (left == null) return -1;
+			if (right == null) return 1;
+			var leftPriority = CategoryPriority(left.CategoryName);
+			var rightPriority = CategoryPriority(right.CategoryName);
+			var priority = leftPriority.CompareTo(rightPriority);
+			return priority != 0 ? priority : left.InsertionOrder.CompareTo(right.InsertionOrder);
+		}
+
+		int CategoryPriority(string category) => activeCategoryPriorities != null
+			&& activeCategoryPriorities.TryGetValue(category, out var priority) ? priority : int.MaxValue;
 
 		/// <summary>True when <paramref name="scope"/> is one of the scopes currently shown.</summary>
 		public bool IsScopeActive(string scope) => activeScopes != null && activeScopes.Contains(scope);

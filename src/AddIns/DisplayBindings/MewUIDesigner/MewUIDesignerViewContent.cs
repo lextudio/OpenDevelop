@@ -25,6 +25,7 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	public MewUIDesignerViewContent(OpenedFile file) : base(file)
 	{
 		tools = new DesignerToolboxScope(this, MewUIControlMapper.Instance);
+		tools.SetCategoryPriority("Containers", 0);
 		tools.Register("mewui", ToolNames.Select(name => new DesignerToolboxItemInfo { Name = name, DisplayName = name, TypeName = name, Category = DesignerToolboxCatalog.ResolveCategory(MewUIControlMapper.Instance, name) }));
 		tools.SetScopes("mewui");
 		tools.ItemInvoked += (_, item) => Add(item.TypeName);
