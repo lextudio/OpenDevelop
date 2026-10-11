@@ -112,6 +112,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		internal void SetBindingDelay(string propertyName, int delay)
+		{
+			var state = client.SetBindingDelayAsync(currentBaseVersion(), node.Id, propertyName, delay)
+				.GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		// A rejected DDP mutation is not an edit.  In particular, do not send it through
 		// OnPropertyEdited: that path marks the document dirty and refreshes the pad from a
 		// state which the host explicitly says was not applied.  Forms follows the same rule
@@ -300,6 +308,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor
 				owner.SetBindingNotifyOnValidationError(property.BindingPropertyName, Convert.ToBoolean(value, CultureInfo.InvariantCulture));
 			else if (property.EditorKind == "BindingValidationOption")
 				owner.SetBindingValidationOption(property.BindingPropertyName, property.BindingOptionName, Convert.ToBoolean(value, CultureInfo.InvariantCulture));
+			else if (property.EditorKind == "BindingDelay")
+				owner.SetBindingDelay(property.BindingPropertyName, Convert.ToInt32(value, CultureInfo.InvariantCulture));
 			else
 				owner.SetProperty(property.Name, serialized);
 			// The WPF TwoWay Value binding re-reads GetValue() right after a successful commit to

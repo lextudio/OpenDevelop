@@ -753,36 +753,48 @@ public sealed class WpfSurfaceHostRpcTests
 		var validationCleared = await client.SetBindingValidationOptionAsync(validationEnabled.Version, bound.Id, validationOption.BindingPropertyName, validationOption.BindingOptionName, false, timeout.Token);
 		Assert.True(validationCleared.Accepted, validationCleared.Error);
 		Assert.DoesNotContain("ValidatesOnExceptions", (await client.FlushAsync(validationCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		var unsupportedValidation = await client.SetBindingValidationOptionAsync(validationCleared.Version, bound.Id, "Text", "Mode", true, timeout.Token);
+		var delay = FindByName(validationCleared.Tree!, "bound")!.Properties.Single(property => property.EditorKind == "BindingDelay");
+		Assert.Equal("Number", delay.Kind);
+		Assert.Equal("0", delay.Value);
+		var delayed = await client.SetBindingDelayAsync(validationCleared.Version, bound.Id, delay.BindingPropertyName, 250, timeout.Token);
+		Assert.True(delayed.Accepted, delayed.Error);
+		Assert.Contains("Delay=250", (await client.FlushAsync(delayed.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var delayCleared = await client.SetBindingDelayAsync(delayed.Version, bound.Id, delay.BindingPropertyName, 0, timeout.Token);
+		Assert.True(delayCleared.Accepted, delayCleared.Error);
+		Assert.DoesNotContain("Delay=", (await client.FlushAsync(delayCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var negativeDelay = await client.SetBindingDelayAsync(delayCleared.Version, bound.Id, delay.BindingPropertyName, -1, timeout.Token);
+		Assert.False(negativeDelay.Accepted);
+		Assert.Contains("Delay must be non-negative", negativeDelay.Error, StringComparison.Ordinal);
+		var unsupportedValidation = await client.SetBindingValidationOptionAsync(delayCleared.Version, bound.Id, "Text", "Mode", true, timeout.Token);
 		Assert.False(unsupportedValidation.Accepted);
 		Assert.Contains("Unsupported Binding validation option", unsupportedValidation.Error, StringComparison.Ordinal);
-		var genericNotify = await client.SetBindingValidationOptionAsync(validationCleared.Version, bound.Id, "Text", "NotifyOnValidationError", true, timeout.Token);
+		var genericNotify = await client.SetBindingValidationOptionAsync(delayCleared.Version, bound.Id, "Text", "NotifyOnValidationError", true, timeout.Token);
 		Assert.False(genericNotify.Accepted);
 		Assert.Contains("Unsupported Binding validation option", genericNotify.Error, StringComparison.Ordinal);
-		Assert.DoesNotContain("NotifyOnValidationError", (await client.FlushAsync(validationCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		var badTrigger = await client.SetBindingUpdateSourceTriggerAsync(validationCleared.Version, bound.Id, "Text", "NotATrigger", timeout.Token);
+		Assert.DoesNotContain("NotifyOnValidationError", (await client.FlushAsync(delayCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var badTrigger = await client.SetBindingUpdateSourceTriggerAsync(delayCleared.Version, bound.Id, "Text", "NotATrigger", timeout.Token);
 		Assert.False(badTrigger.Accepted);
-		Assert.DoesNotContain("NotATrigger", (await client.FlushAsync(validationCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		var numericTrigger = await client.SetBindingUpdateSourceTriggerAsync(validationCleared.Version, bound.Id, "Text", "99", timeout.Token);
+		Assert.DoesNotContain("NotATrigger", (await client.FlushAsync(delayCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var numericTrigger = await client.SetBindingUpdateSourceTriggerAsync(delayCleared.Version, bound.Id, "Text", "99", timeout.Token);
 		Assert.False(numericTrigger.Accepted);
-		Assert.DoesNotContain("99", (await client.FlushAsync(validationCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		var combinedTrigger = await client.SetBindingUpdateSourceTriggerAsync(validationCleared.Version, bound.Id, "Text", "PropertyChanged,LostFocus", timeout.Token);
+		Assert.DoesNotContain("99", (await client.FlushAsync(delayCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var combinedTrigger = await client.SetBindingUpdateSourceTriggerAsync(delayCleared.Version, bound.Id, "Text", "PropertyChanged,LostFocus", timeout.Token);
 		Assert.False(combinedTrigger.Accepted);
-		Assert.DoesNotContain("UpdateSourceTrigger=Explicit", (await client.FlushAsync(validationCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		var badMode = await client.SetBindingModeAsync(validationCleared.Version, bound.Id, "Text", "NotAMode", timeout.Token);
+		Assert.DoesNotContain("UpdateSourceTrigger=Explicit", (await client.FlushAsync(delayCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var badMode = await client.SetBindingModeAsync(delayCleared.Version, bound.Id, "Text", "NotAMode", timeout.Token);
 		Assert.False(badMode.Accepted);
-		Assert.DoesNotContain("NotAMode", (await client.FlushAsync(validationCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		var numericMode = await client.SetBindingModeAsync(validationCleared.Version, bound.Id, "Text", "99", timeout.Token);
+		Assert.DoesNotContain("NotAMode", (await client.FlushAsync(delayCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var numericMode = await client.SetBindingModeAsync(delayCleared.Version, bound.Id, "Text", "99", timeout.Token);
 		Assert.False(numericMode.Accepted);
-		Assert.DoesNotContain("99", (await client.FlushAsync(validationCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		var combinedMode = await client.SetBindingModeAsync(validationCleared.Version, bound.Id, "Text", "OneWay,OneTime", timeout.Token);
+		Assert.DoesNotContain("99", (await client.FlushAsync(delayCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var combinedMode = await client.SetBindingModeAsync(delayCleared.Version, bound.Id, "Text", "OneWay,OneTime", timeout.Token);
 		Assert.False(combinedMode.Accepted);
-		Assert.DoesNotContain("Mode=OneWayToSource", (await client.FlushAsync(validationCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("Mode=OneWayToSource", (await client.FlushAsync(delayCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
 
-		var rejected = await client.SetBindingPathAsync(validationCleared.Version, bound.Id, "Width", "NotAPath", timeout.Token);
+		var rejected = await client.SetBindingPathAsync(delayCleared.Version, bound.Id, "Width", "NotAPath", timeout.Token);
 		Assert.False(rejected.Accepted);
 		Assert.Contains("not an editable Binding", rejected.Error, StringComparison.Ordinal);
-		Assert.DoesNotContain("NotAPath", (await client.FlushAsync(validationCleared.Version, timeout.Token)).Files.Single().Text,
+		Assert.DoesNotContain("NotAPath", (await client.FlushAsync(delayCleared.Version, timeout.Token)).Files.Single().Text,
 			StringComparison.Ordinal);
 	}
 

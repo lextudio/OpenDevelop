@@ -567,6 +567,10 @@ versioned child-host path as the other narrow Binding editors.
 strictly whitelisted nested-Binding RPC. The host rejects any other requested member; disabling a
 validation option resets its nested property instead of serializing a redundant false value.
 
+**C2 Binding delay update (2026-10-11).** WPF also exposes `Binding.Delay` as a native numeric
+Properties-pad row. Its versioned, Binding-only mutation rejects negative durations, while zero
+resets the nested design property so the default delay is not redundantly serialized.
+
 Mutation acceptance is a shell-side invariant, not merely a host detail: GTK/MewUI now make all
 ordinary edit paths return the host's `Accepted` result before dirtying or changing their local
 Properties-pad snapshot, and WPF's adapter rejects before entering `OnPropertyEdited`. A failed

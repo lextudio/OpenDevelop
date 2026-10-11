@@ -1092,6 +1092,29 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				RebuildTreeAndRender(state); state.Accepted = true; return state;
 			});
 
+		/// <summary>Sets the bounded millisecond debounce delay on an existing Binding. Zero is
+		/// represented as a design-model reset so the default is not redundantly serialized.</summary>
+		[JsonRpcMethod("design/set-binding-delay")]
+		public DesignerSessionState SetBindingDelay(long baseVersion, string elementId, string propertyName, int delay)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale) return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
+				if (delay < 0) return NotFound(state, "Binding Delay must be non-negative: " + delay);
+				var property = item.Properties[propertyName];
+				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding)
+					return NotFound(state, "Property is not an editable Binding: " + propertyName);
+				try
+				{
+					if (delay == 0)
+						bindingItem.Properties["Delay"].Reset();
+					else
+						bindingItem.Properties["Delay"].SetValue(delay);
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state); state.Accepted = true; return state;
+			});
+
 		/// <summary>Removes an explicit local value through the design model instead of assigning a
 		/// guessed CLR default. This preserves inherited/default-property semantics and produces the
 		/// same native undo transaction as an in-process WPF designer reset.</summary>
@@ -2221,6 +2244,13 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 								BindingOptionName = optionName, ShouldSerialize = false
 							});
 						}
+						result.Add(new DesignerPropertyInfo {
+							Name = descriptor.Name + ".Delay", DisplayName = descriptor.Name + " Delay",
+							Category = "Binding", TypeName = typeof(int).FullName ?? "",
+							Kind = "Number", EditorKind = "BindingDelay",
+							Value = binding.Delay.ToString(CultureInfo.InvariantCulture), BindingPropertyName = descriptor.Name,
+							ShouldSerialize = false
+						});
 					}
 				}
 				result.Add(ToPropertyInfo(property));
