@@ -113,6 +113,8 @@ public class DesignSurface : DesignerCanvas
 	bool dragActive;
 	string dragHandle;
 	Point dragStartSurface;
+	string? pageResizeEdge;
+	(double Width, double Height) pageResizeStart;
 	Cursor previousCursor;
 	// The selection state at drag start, restored if a drag is interrupted (LibreWPF
 	// occasionally loses the mouse-up, which would otherwise leave the preview rect stuck).
@@ -170,7 +172,10 @@ public class DesignSurface : DesignerCanvas
 		PreviewMouseMove += OnMouseMove;
 		PreviewMouseUp += OnMouseUp;
 		PreviewMouseLeftButtonDown += OnMouseLeftButtonDown;
-		LostMouseCapture += (_, _) => CancelLayoutInsetDrag();
+		LostMouseCapture += (_, _) => {
+			CancelLayoutInsetDrag();
+			CancelPageResize();
+		};
 		scroller.ScrollChanged += OnScrollChanged;
 		scroller.SizeChanged += (_, _) => ApplyViewport();
 		// A designer may receive its first frame while its document tab is still hidden.  In
@@ -290,6 +295,8 @@ public class DesignSurface : DesignerCanvas
 	public event EventHandler<(string Edge, double Value)> SurfaceLayoutInsetDragCommitted;
 	/// <summary>Raised for a click on a layout-inset label without a drag.</summary>
 	public event EventHandler<string> SurfaceLayoutInsetAnchorToggleRequested;
+	/// <summary>Raised after a frame-edge drag requests a preview-only design size.</summary>
+	public event EventHandler<(double Width, double Height)>? PageResizeRequested;
 
 	/// <summary>Raised on a double-click, with the surface-local point.</summary>
 	public event EventHandler<Vector2> SurfaceElementDoubleClicked;
@@ -1356,6 +1363,11 @@ public class DesignSurface : DesignerCanvas
 	/// <summary>Raised when the user picks a canvas size preset; arg is "phone"/"tablet"/"desktop"/"reset".</summary>
 	public event EventHandler<string> SizePresetRequested;
 
+	/// <summary>Enables right, bottom and corner frame-edge drags that resize a backend's
+	/// preview-only design viewport. This is off by default because most designers bind root size
+	/// directly to authored source rather than to a design-size setting.</summary>
+	public bool PageResizeEnabled { get; set; }
+
 	bool syncingSizeCombo;
 
 	void OnSizePresetSelected(object sender, SelectionChangedEventArgs e)
@@ -1515,6 +1527,10 @@ public class DesignSurface : DesignerCanvas
 	{
 		if (!HasRender || textEditing)
 			return;
+		// PreviewMouseLeftButtonDown is raised before PreviewMouseDown. Clear a stale edge drag
+		// here, before this press can start the next one; doing it in OnMouseDown would cancel the
+		// page-resize gesture below during the very same routed input event.
+		CancelPageResize();
 		var position = e.GetPosition(this);
 		if (IsOverToolbar(position) || !IsDesignInteraction(e))
 			return;
@@ -1579,8 +1595,20 @@ public class DesignSurface : DesignerCanvas
 			e.Handled = true;
 			return;
 		}
+		var elementHandle = HandleAt(designPoint);
+		if (PageResizeEnabled && elementHandle == null && FrameResizeEdgeAt(designPoint) is { } edge)
+		{
+			pageResizeEdge = edge;
+			pageResizeStart = (pixelWidth, pixelHeight);
+			dragStartSurface = position;
+			dragPossible = false;
+			CaptureMouse();
+			Cursor = edge == "se" ? Cursors.SizeNWSE : edge == "e" ? Cursors.SizeWE : Cursors.SizeNS;
+			e.Handled = true;
+			return;
+		}
 		dragStartSurface = position;
-		dragHandle = HandleAt(designPoint) ?? "";
+		dragHandle = elementHandle ?? "";
 		dragPossible = true;
 		dragActive = false;
 		e.Handled = true;
@@ -1604,6 +1632,12 @@ public class DesignSurface : DesignerCanvas
 		if (textEditing)
 			return;
 		var position = e.GetPosition(this);
+		if (pageResizeEdge != null)
+		{
+			Cursor = pageResizeEdge == "se" ? Cursors.SizeNWSE : pageResizeEdge == "e" ? Cursors.SizeWE : Cursors.SizeNS;
+			e.Handled = true;
+			return;
+		}
 		if (layoutInsetDragEdge != null)
 		{
 			e.Handled = true;
@@ -1656,6 +1690,31 @@ public class DesignSurface : DesignerCanvas
 
 	void OnMouseUp(object sender, MouseButtonEventArgs e)
 	{
+		if (pageResizeEdge != null)
+		{
+			if (e.ChangedButton != MouseButton.Left)
+				return;
+			var edge = pageResizeEdge;
+			pageResizeEdge = null;
+			if (IsMouseCaptured)
+				ReleaseMouseCapture();
+			var delta = e.GetPosition(this) - dragStartSurface;
+			var scale = EffectiveScale();
+			var width = pageResizeStart.Width + (edge.Contains('e') ? delta.X / scale : 0);
+			var height = pageResizeStart.Height + (edge.Contains('s') ? delta.Y / scale : 0);
+			if (DesignerFrameResizeCalculator.HasExceededDragThreshold(edge, delta.X, delta.Y, DragThreshold))
+				PageResizeRequested?.Invoke(this, (Math.Max(1, width), Math.Max(1, height)));
+			else
+			{
+				// Reserving a small edge hit band must not make the element under it impossible
+				// to select. A press that did not become an edge resize is the normal click path.
+				var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+				SurfacePointerPressed?.Invoke(this, (new Vector2((float)dragStartSurface.X, (float)dragStartSurface.Y), ctrl));
+			}
+			Cursor = Cursors.Arrow;
+			e.Handled = true;
+			return;
+		}
 		if (layoutInsetDragEdge != null)
 		{
 			if (e.ChangedButton != MouseButton.Left)
@@ -1729,6 +1788,23 @@ public class DesignSurface : DesignerCanvas
 		dragActive = false;
 		Cursor = Cursors.Arrow;
 		e.Handled = true;
+	}
+
+	/// <summary>Returns the design-frame edge under a pointer, using a screen-constant hit target
+	/// even while zoomed. It runs after selection and Grid-guide hits, so it cannot steal an
+	/// element resize handle that happens to sit on the root's bottom-right corner.</summary>
+	string? FrameResizeEdgeAt(Vector2 point)
+		=> DesignerFrameResizeCalculator.EdgeAt(point.X, point.Y, pixelWidth, pixelHeight, EffectiveScale());
+
+	void CancelPageResize()
+	{
+		if (pageResizeEdge == null)
+			return;
+		pageResizeEdge = null;
+		dragPossible = false;
+		if (IsMouseCaptured)
+			ReleaseMouseCapture();
+		Cursor = Cursors.Arrow;
 	}
 
 	void CancelLayoutInsetDrag()

@@ -84,6 +84,8 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		surface.DesignThemeRequested += OnSurfaceThemeRequested;
 		surface.DesignVisualStateRequested += OnSurfaceVisualStateRequested;
 		surface.SizePresetRequested += OnSurfaceSizePresetRequested;
+		surface.PageResizeEnabled = true;
+		surface.PageResizeRequested += (_, size) => SetDesignSize(size.Width, size.Height);
 		surface.ComponentTraySelectionRequested += (_, id) => ComponentTrayItemSelected?.Invoke(this, id);
 		canvas = new DesignSurfaceController(surface);
 		canvas.ElementPicked += (_, name) => ElementPicked?.Invoke(this, name);

@@ -598,6 +598,14 @@ The canvas reports a released divider in design-canvas coordinates, so the commi
 selected Grid's measured X/Y origin before comparing it with its Grid-local track boundaries; this
 is what makes the same interaction round-trip for a nested Grid rather than only a root Grid.
 
+**C3 page-edge update (2026-10-11).** WinUI and ProGPU now opt into the shared canvas's preview
+frame right, bottom and corner drag affordance. Its hit target stays six screen pixels wide at every
+zoom level; an overlapping selected-element resize thumb wins, so the new affordance cannot steal a
+normal element resize. Releasing a real drag updates only the runtime's configured design size and
+re-renders; it deliberately does not author a root `Width`/`Height`, so pages that declare their own
+size keep source authority. The edge-hit calculator has focused unit coverage for all edges, zoom
+scaling and out-of-range rejection.
+
 ### Why this order
 
 `C1` removes a correctness and responsiveness hazard in every click path. `C2` then closes the

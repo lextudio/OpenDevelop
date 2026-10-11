@@ -106,6 +106,8 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverl
             if (width > 0 && height > 0)
                 SetDesignSize(width, height);
         };
+        surface.PageResizeEnabled = true;
+        surface.PageResizeRequested += (_, size) => SetDesignSize(size.Width, size.Height);
 
         // The first render usually happens before the surface is in a window, where the display
         // scale still reads 1: render again once it is, at the real scale.
