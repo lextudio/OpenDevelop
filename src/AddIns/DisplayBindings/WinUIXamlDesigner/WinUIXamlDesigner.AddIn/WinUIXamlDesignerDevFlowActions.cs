@@ -132,8 +132,8 @@ public static class WinUIXamlDesignerDevFlowActions
 		if (view == null)
 			return Failure("No WinUI/Uno designer is active");
 		try {
-			view.DeleteSelected();
-			return JsonSerializer.Serialize(new { success = true, elementNames = view.ElementNames() });
+			var deleted = view.DeleteSelected();
+			return JsonSerializer.Serialize(new { success = deleted, elementNames = view.ElementNames() });
 		} catch (Exception exception) {
 			return Failure(exception.Message);
 		}

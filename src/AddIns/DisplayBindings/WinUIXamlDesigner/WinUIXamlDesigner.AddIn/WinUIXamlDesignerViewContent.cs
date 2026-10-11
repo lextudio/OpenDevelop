@@ -375,26 +375,24 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		return name;
 	}
 
-	public void DeleteSelected()
-	{
-		commands.Execute("Delete");
-	}
+	public bool DeleteSelected() => commands.Execute("Delete");
 
-	bool DeleteSelectedCore() { DeleteElement(SelectedElementName); return true; }
+	bool DeleteSelectedCore() => DeleteElement(SelectedElementName);
 
 	/// <summary>Deletes the named element as a source edit and clears the selection.</summary>
-	public void DeleteElement(string name)
+	public bool DeleteElement(string name)
 	{
 		if (string.IsNullOrEmpty(name))
-			return;
+			return false;
 		var element = editor.FindElement(name);
 		if (element == null)
-			return;
+			return false;
 		editor.Remove(element);
 		SelectedElementName = null;
 		propertyContainer.SelectedObject = null;
 		previewHost.ClearSelection();
 		ApplyDocumentChange(xaml => previewHost.TryDeleteElements(new[] { name }, xaml));
+		return true;
 	}
 
 	public bool Undo() => commands.Execute("Undo");
