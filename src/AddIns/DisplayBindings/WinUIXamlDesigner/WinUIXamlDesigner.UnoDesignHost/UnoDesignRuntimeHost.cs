@@ -37,7 +37,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 /// XamlReader, lays it out and renders it to a PNG that is displayed here. All state
 /// crossings are JSON over loopback TCP - no WinUI type ever enters this process.
 /// </summary>
-sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay, IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlToolboxCatalog, IWinUIXamlLifecycleProbe, IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlVisualStates, IWinUIXamlMultiSelection, IWinUIXamlContextCommands, IWinUIXamlGridGuides, IWinUIXamlDiagnostics, IWinUIXamlIncrementalRender, IWinUIXamlComponentTray
+sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay, IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlToolboxCatalog, IWinUIXamlLifecycleProbe, IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlVisualStates, IWinUIXamlMultiSelection, IWinUIXamlContextCommands, IWinUIXamlGridGuides, IWinUIXamlGridTrackSplit, IWinUIXamlDiagnostics, IWinUIXamlIncrementalRender, IWinUIXamlComponentTray
 {
 	// The shared design canvas (ICSharpCode.DesignerCanvas addin): the surface, and the controller
 	// that owns selection, drags and picking over it. This class is only the Uno/WinUI backend:
@@ -97,6 +97,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		canvas.ElementDoubleClicked += (_, info) => ElementDoubleClicked?.Invoke(this, info);
 		canvas.TextEditCommitted += (_, text) => TextEditCommitted?.Invoke(this, text);
 		canvas.GridGuideDragCommitted += (_, args) => GridGuideDragCommitted?.Invoke(this, args);
+		canvas.GridTrackSplitRequested += (_, args) => GridTrackSplitRequested?.Invoke(this, args);
 		canvas.ContextCommandRequested += (_, args) => ContextCommandRequested?.Invoke(this, args);
 		canvas.NudgeRequested += (_, delta) => NudgeRequested?.Invoke(this, delta);
 		canvas.UndoRedoRequested += (_, undo) => UndoRedoRequested?.Invoke(this, undo);
@@ -179,6 +180,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 
 	/// <summary>Raised when a Grid row/column divider drag commits (name, isRow, index, design position).</summary>
 	public event EventHandler<(string Name, bool IsRow, int Index, double Position)> GridGuideDragCommitted;
+	public event EventHandler<(string Name, bool IsRow, double Position)> GridTrackSplitRequested;
 
 
 	/// <summary>Shows the row/column divider guides over the named Grid (design-space rect

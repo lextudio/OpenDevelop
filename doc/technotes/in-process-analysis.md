@@ -619,6 +619,13 @@ than a read-only overlay: a released edge label converts its measured distance i
 delta, preserving the source's Left/Right and Top/Bottom anchoring form. A binding/resource
 expression remains untouched because it cannot be safely offset as a numeric source edit.
 
+**C3 WinUI Grid track split (2026-10-11).** The Uno/WinUI surface now consumes the shared
+Ctrl/Ctrl+Shift insertion rails when its snapshot supplies measured tracks. Splitting inserts a
+source `RowDefinition` or `ColumnDefinition` at the real measured position, preserves pixel/star
+units (materialising `Auto` to its measured pixels), and adjusts affected `Grid.Row`/`Column` and
+span attributes in the same document-history edit. ProGPU deliberately does not opt in: its
+source-only guide approximation is insufficient evidence for a safe structural mutation.
+
 ### Why this order
 
 `C1` removes a correctness and responsiveness hazard in every click path. `C2` then closes the

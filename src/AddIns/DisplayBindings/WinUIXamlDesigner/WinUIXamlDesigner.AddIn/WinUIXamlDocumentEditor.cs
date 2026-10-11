@@ -150,6 +150,19 @@ sealed class WinUIXamlDocumentEditor
 		CommitChange();
 	}
 
+	/// <summary>Commits a structural source mutation as one undoable document edit. The callback
+	/// must leave the document untouched when it returns <see langword="false"/>.</summary>
+	public bool TryMutate(Func<bool> mutation)
+	{
+		if (mutation == null)
+			throw new ArgumentNullException(nameof(mutation));
+		if (!mutation())
+			return false;
+		BeginChange();
+		CommitChange();
+		return true;
+	}
+
 	public void Remove(XElement element)
 	{
 		if (element == null)

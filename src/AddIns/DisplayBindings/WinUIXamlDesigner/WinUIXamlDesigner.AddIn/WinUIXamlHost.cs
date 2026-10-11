@@ -60,6 +60,8 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 				manipulation.LayoutInsetEditCommitted += OnRuntimeLayoutInsetEditCommitted;
 				manipulation.GridGuideDragCommitted += OnRuntimeGridGuideDragCommitted;
 			}
+			if (runtime is IWinUIXamlGridTrackSplit gridTrackSplit)
+				gridTrackSplit.GridTrackSplitRequested += OnRuntimeGridTrackSplitRequested;
 			if (runtime is IWinUIXamlTextEditing textEditing) {
 				textEditing.ElementDoubleClicked += OnRuntimeElementDoubleClicked;
 				textEditing.TextEditCommitted += OnRuntimeTextEditCommitted;
@@ -164,6 +166,11 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 
 	void OnRuntimeGridGuideDragCommitted(object sender, (string Name, bool IsRow, int Index, double Position) args)
 		=> GridGuideDragCommitted?.Invoke(this, args);
+
+	public event EventHandler<(string Name, bool IsRow, double Position)> GridTrackSplitRequested;
+
+	void OnRuntimeGridTrackSplitRequested(object sender, (string Name, bool IsRow, double Position) args)
+		=> GridTrackSplitRequested?.Invoke(this, args);
 
 	/// <summary>Shows the Grid row/column divider guides (design rect + offsets).</summary>
 	public void SetGridGuides(string name, double x, double y, double width, double height, double[] rowOffsets, double[] colOffsets)
@@ -545,7 +552,10 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 			manipulation.ElementDragCommitted -= OnRuntimeElementDragCommitted;
 			manipulation.ElementGroupDragCommitted -= OnRuntimeElementGroupDragCommitted;
 			manipulation.LayoutInsetEditCommitted -= OnRuntimeLayoutInsetEditCommitted;
+			manipulation.GridGuideDragCommitted -= OnRuntimeGridGuideDragCommitted;
 		}
+			if (runtime is IWinUIXamlGridTrackSplit gridTrackSplit)
+				gridTrackSplit.GridTrackSplitRequested -= OnRuntimeGridTrackSplitRequested;
 			if (runtime is IWinUIXamlTextEditing textEditing) {
 				textEditing.ElementDoubleClicked -= OnRuntimeElementDoubleClicked;
 				textEditing.TextEditCommitted -= OnRuntimeTextEditCommitted;
@@ -722,6 +732,13 @@ public interface IWinUIXamlGridGuides
 {
 	void SetGridGuides(string name, double x, double y, double width, double height, double[] rowOffsets, double[] colOffsets);
 	void ClearGridGuides();
+}
+
+/// <summary>Optional capability: the runtime supplies measured Grid tracks and can therefore
+/// safely forward Ctrl insertion rails as source-track split requests.</summary>
+public interface IWinUIXamlGridTrackSplit
+{
+	event EventHandler<(string Name, bool IsRow, double Position)> GridTrackSplitRequested;
 }
 
 /// <summary>

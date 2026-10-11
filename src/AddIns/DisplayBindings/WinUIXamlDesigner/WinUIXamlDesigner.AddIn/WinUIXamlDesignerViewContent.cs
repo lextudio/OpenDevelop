@@ -64,6 +64,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		previewHost.ElementGroupDragCommitted += OnElementGroupDragCommittedOnSurface;
 		previewHost.LayoutInsetEditCommitted += OnLayoutInsetEditCommittedOnSurface;
 		previewHost.GridGuideDragCommitted += OnGridGuideDragCommittedOnSurface;
+		previewHost.GridTrackSplitRequested += OnGridTrackSplitRequestedOnSurface;
 		previewHost.ElementDoubleClicked += OnElementDoubleClickedOnSurface;
 		previewHost.TextEditCommitted += OnTextEditCommittedOnSurface;
 		previewHost.ElementPathPicked += OnElementPathPickedOnSurface;
@@ -686,6 +687,12 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		RefreshGridGuides(args.Name);
 	}
 
+	void OnGridTrackSplitRequestedOnSurface(object sender, (string Name, bool IsRow, double Position) args)
+	{
+		status.Text = SplitGridTrack(args.Name, args.IsRow, args.Position);
+		RefreshGridGuides(args.Name);
+	}
+
 	void OnNudgeRequestedOnSurface(object sender, (double DX, double DY) delta)
 		=> NudgeSelection(delta.DX, delta.DY);
 
@@ -1105,6 +1112,26 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		editor.SetAttribute(items[index], attribute, Math.Round(newSize).ToString(CultureInfo.InvariantCulture));
 		ApplyDocumentChange();
 		return $"{gridName} {(isRow ? "row" : "column")} {index} -> {Math.Round(newSize)}";
+	}
+
+	/// <summary>Splits the measured Grid track under a Ctrl insertion rail. The source update,
+	/// including all affected attached indices/spans, is one document-history entry.</summary>
+	public string SplitGridTrack(string name, bool isRow, double position)
+	{
+		var grid = editor.FindElement(name);
+		var node = FindRuntimeGridNode(previewHost.ElementTree, name, out var ambiguous);
+		var gridTracks = node?.GridTracks;
+		var tracks = isRow ? gridTracks?.RowTracks : gridTracks?.ColumnTracks;
+		if (grid == null || node == null || ambiguous || gridTracks is not { Accepted: true } || tracks == null)
+			return "Grid track geometry unavailable";
+		// The shared canvas reports the insertion rail in Grid-local design coordinates.
+		// Unlike a divider drag, this is not a canvas-space point and must not subtract
+		// the Grid's origin again (nested Grids otherwise choose the wrong track).
+		var error = "";
+		if (!editor.TryMutate(() => WinUIGridTrackEditor.TrySplit(grid, isRow, tracks, position, out error)))
+			return error;
+		ApplyDocumentChange();
+		return $"{name} {(isRow ? "row" : "column")} split";
 	}
 
 	/// <summary>
@@ -1563,6 +1590,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		previewHost.ComponentTrayItemSelected -= OnComponentTrayItemSelected;
 		previewHost.ElementPicked -= OnElementPickedOnSurface;
 		previewHost.ElementPathPicked -= OnElementPathPickedOnSurface;
+		previewHost.GridGuideDragCommitted -= OnGridGuideDragCommittedOnSurface;
+		previewHost.GridTrackSplitRequested -= OnGridTrackSplitRequestedOnSurface;
 		previewHost.ControlDropped -= OnControlDroppedOnSurface;
 		outline.SelectedItemChanged -= OnOutlineSelectionChanged;
 		propertyContainer.Clear();
