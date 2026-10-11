@@ -540,6 +540,7 @@ public sealed class DesignSurfaceController : IDisposable
 	// Multi-selection drag: the elements being dragged as a group (primary + secondaries).
 	List<string> dragGroup = new();
 	HashSet<string> dragGroupNames = new(StringComparer.Ordinal);
+	HashSet<string> dragGroupSubtreeNames = new(StringComparer.Ordinal);
 	Dictionary<string, (double X, double Y, double Width, double Height)> dragGroupStart = new();
 	double dragDeltaX;
 	double dragDeltaY;
@@ -555,11 +556,30 @@ public sealed class DesignSurfaceController : IDisposable
 			: Surface.CurrentSelection;
 		// Dragging a multi-selected element moves the whole group; otherwise it is a plain
 		// single-element drag. Handle resizes stay single-element.
-		dragGroup = string.IsNullOrEmpty(dragHandle) && multiSelectionNames.Contains(info.Name)
-			? new List<string>(multiSelectionNames)
-			: new List<string> { info.Name };
+		if (string.IsNullOrEmpty(dragHandle) && multiSelectionNames.Contains(info.Name))
+		{
+			// A group move has one layout coordinate system. Keeping only the primary
+			// element's direct siblings makes every backend receive the same valid batch:
+			// WPF rejects mixed-parent placement, while source-backed designers must not
+			// silently rewrite margins in unrelated containers.
+			parentByName.TryGetValue(info.Name, out var primaryParent);
+			dragGroup = multiSelectionNames
+				.Where(name => name == info.Name
+					|| (parentByName.TryGetValue(name, out var parent)
+						&& ReferenceEquals(parent, primaryParent)))
+				.Distinct(StringComparer.Ordinal)
+				.ToList();
+		}
+		else
+			dragGroup = new List<string> { info.Name };
 		dragGroupNames.Clear();
 		dragGroupNames.UnionWith(dragGroup);
+		dragGroupSubtreeNames.Clear();
+		foreach (var name in dragGroupNames)
+		{
+			if (nodesByName.TryGetValue(name, out var root))
+				AddDragSubtreeNames(root);
+		}
 		dragGroupStart = new Dictionary<string, (double, double, double, double)>(StringComparer.Ordinal);
 		foreach (var name in dragGroup)
 		{
@@ -569,6 +589,15 @@ public sealed class DesignSurfaceController : IDisposable
 		}
 		// Selecting the dragged element keeps the Properties pad and outline in sync.
 		ElementPicked?.Invoke(this, info.Name);
+	}
+
+	void AddDragSubtreeNames(DesignerElementNode node)
+	{
+		var key = KeyOf(node, keying);
+		if (key != null)
+			dragGroupSubtreeNames.Add(key);
+		foreach (var child in node.Children)
+			AddDragSubtreeNames(child);
 	}
 
 	void OnSurfaceElementDragDelta(object? sender, (double DX, double DY) delta)
@@ -618,7 +647,7 @@ public sealed class DesignSurfaceController : IDisposable
 		// therefore not a stationary alignment target for the primary element.
 		var siblingBounds = nodesByName
 			.Where(entry => entry.Key != dragName
-				&& !dragGroupNames.Contains(entry.Key)
+				&& !dragGroupSubtreeNames.Contains(entry.Key)
 				&& parentByName.TryGetValue(entry.Key, out var parent)
 				&& ReferenceEquals(parent, selectedParent))
 			.Select(entry => new SnapGuideCalculator.Target(entry.Value.X, entry.Value.Y,
@@ -678,6 +707,7 @@ public sealed class DesignSurfaceController : IDisposable
 			dragName = null;
 			dragGroup = new();
 			dragGroupNames.Clear();
+			dragGroupSubtreeNames.Clear();
 			dragGroupStart.Clear();
 			return;
 		}
@@ -697,6 +727,7 @@ public sealed class DesignSurfaceController : IDisposable
 		dragName = null;
 		dragGroup = new();
 		dragGroupNames.Clear();
+		dragGroupSubtreeNames.Clear();
 		dragGroupStart.Clear();
 	}
 
