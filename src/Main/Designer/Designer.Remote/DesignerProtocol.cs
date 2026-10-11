@@ -20,10 +20,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		// v12 adds WPF's optional design/set-binding-element-name mutation. A stale pooled child
+		// v13 adds WPF's optional design/set-binding-notify-on-validation-error mutation. A stale pooled child
 		// must fail the handshake rather than reject a newly-visible binding editor after the
 		// Properties pad has already presented it.
-		public const int Version = 12;
+		public const int Version = 13;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

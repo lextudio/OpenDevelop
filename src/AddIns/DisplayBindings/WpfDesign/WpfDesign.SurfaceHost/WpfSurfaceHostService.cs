@@ -1046,6 +1046,26 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				RebuildTreeAndRender(state); state.Accepted = true; return state;
 			});
 
+		[JsonRpcMethod("design/set-binding-notify-on-validation-error")]
+		public DesignerSessionState SetBindingNotifyOnValidationError(long baseVersion, string elementId, string propertyName, bool notify)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale) return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
+				var property = item.Properties[propertyName];
+				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding)
+					return NotFound(state, "Property is not an editable Binding: " + propertyName);
+				try
+				{
+					if (notify)
+						bindingItem.Properties["NotifyOnValidationError"].SetValue(true);
+					else
+						bindingItem.Properties["NotifyOnValidationError"].Reset();
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state); state.Accepted = true; return state;
+			});
+
 		/// <summary>Removes an explicit local value through the design model instead of assigning a
 		/// guessed CLR default. This preserves inherited/default-property semantics and produces the
 		/// same native undo transaction as an in-process WPF designer reset.</summary>
@@ -2155,6 +2175,13 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 								ShouldSerialize = false
 							});
 						}
+						result.Add(new DesignerPropertyInfo {
+							Name = descriptor.Name + ".NotifyOnValidationError", DisplayName = descriptor.Name + " Notify On Validation Error",
+							Category = "Binding", TypeName = typeof(bool).FullName ?? "",
+							Kind = "Boolean", EditorKind = "BindingNotifyOnValidationError",
+							Value = binding.NotifyOnValidationError.ToString(CultureInfo.InvariantCulture), BindingPropertyName = descriptor.Name,
+							ShouldSerialize = false
+						});
 					}
 				}
 				result.Add(ToPropertyInfo(property));
