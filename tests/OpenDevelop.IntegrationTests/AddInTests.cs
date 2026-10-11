@@ -5774,6 +5774,19 @@ EndGlobal
         {
             Assert.Contains(expectedTitle, paneTitles);
         }
+
+        // Leave the shared app instance as close to how this test found it as the assertions
+        // above allow: switching to the "ILSpy" layout opens all three panes, and the Search pane
+        // in particular stays open for every later test in the run (the app process is shared),
+        // squeezing the document area and skewing viewport-scoped assertions elsewhere. The pane
+        // is a dock PaneModel, not a legacy Pad, so this needs the addin's own hide action - and
+        // the assertion keeps the cleanup from failing silently (a renamed action would otherwise
+        // just leave the pane open, which is the state this is here to prevent).
+        var hidden = await _app.InvokeAsync("od.ilspy.hide-pane", "Search");
+        Assert.True(hidden.GetProperty("found").GetBoolean(),
+            "Expected the hosted \"Search\" pane to exist after switching to the \"ILSpy\" layout so the cleanup can hide it: " + hidden);
+        Assert.False(hidden.GetProperty("isVisible").GetBoolean(),
+            "Expected od.ilspy.hide-pane to hide the \"Search\" pane: " + hidden);
     }
 
     /// <summary>

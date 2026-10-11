@@ -143,6 +143,35 @@ namespace ICSharpCode.ILSpyAddIn
 			return JsonSerializer.Serialize(new { found = true, title = pane.Title, isVisible = pane.IsVisible, activation });
 		}
 
+		[DevFlowAction("od.ilspy.hide-pane", Description = "Hide a hosted ILSpy pane by title, returning its space to the rest of the workbench. The counterpart to od.ilspy.activate-pane, and the cleanup a test needs when it leaves the ILSpy layout active: a hosted pane is a dock PaneModel, not a legacy Pad, so od.hide-pad (PadContentCollection) cannot reach it. Hides both the model (IsVisible=false) and its live AvalonDock LayoutAnchorable")]
+		public static string HidePane(string title)
+		{
+			var pane = IlSpyWorkspaceHost.FindPane(title);
+			if (pane == null)
+				return JsonSerializer.Serialize(new { found = false, title });
+
+			// The model first, so a later activate/Show() finds a consistent state, then the live
+			// anchorable: the AnchorablesSource binding hides the pane when the model says so, but
+			// driving the anchorable directly is what guarantees the space comes back now rather
+			// than on the next layout pass.
+			pane.IsVisible = false;
+			pane.IsActive = false;
+
+			var manager = GetDockingManager();
+			var anchorable = manager?.Layout?.Descendents()
+				.OfType<AvalonDock.Layout.LayoutAnchorable>()
+				.FirstOrDefault(a => string.Equals(a.ContentId, pane.ContentId, StringComparison.Ordinal));
+			anchorable?.Hide();
+
+			return JsonSerializer.Serialize(new {
+				found = true,
+				title = pane.Title,
+				contentId = pane.ContentId,
+				isVisible = pane.IsVisible,
+				anchorableHidden = anchorable?.IsHidden ?? false
+			});
+		}
+
 		[DevFlowAction("od.ilspy.activate-decompiled-document", Description = "Re-activate the decompiled-code document tab. Activating a tool pane (od.ilspy.show-pane) makes that pane the dock's ActiveContent and leaves the workbench with no active document, so a test that inspected a pad uses this to restore state for whatever runs next against the same shared app instance")]
 		public static string ActivateDecompiledDocument()
 		{
