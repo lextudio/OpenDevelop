@@ -105,7 +105,8 @@ namespace ICSharpCode.SharpDevelop.Services
 			return items.Select(item => {
 				if (!string.IsNullOrWhiteSpace(item.DependentUpon))
 					return item;
-				var parentPath = GetConventionParentPath(item.DisplayPath);
+				var parentPath = GetConventionParentPath(item.DisplayPath)
+					?? GetResourceParentPath(item.DisplayPath, displayPaths);
 				if (parentPath is null || !displayPaths.Contains(parentPath))
 					return item;
 				return item with { DependentUpon = parentPath.Split('\\', '/').Last() };
@@ -121,6 +122,23 @@ namespace ICSharpCode.SharpDevelop.Services
 				return displayPath.Substring(0, displayPath.Length - ".Designer.cs".Length) + ".cs";
 			if (displayPath.EndsWith(".Designer.vb", StringComparison.OrdinalIgnoreCase))
 				return displayPath.Substring(0, displayPath.Length - ".Designer.vb".Length) + ".vb";
+			return null;
+		}
+
+		// A .resx nests under the code file with the same base name - Form1.resx under Form1.cs
+		// (or .vb/.fs) - matching VS's WinForms/designer resource nesting, so a form shows one
+		// node with its .Designer.cs and .resx beneath it. The sibling's extension is the project
+		// language, which this convention cannot assume, so probe the actual project items.
+		private static string? GetResourceParentPath(string displayPath, HashSet<string> displayPaths)
+		{
+			if (!displayPath.EndsWith(".resx", StringComparison.OrdinalIgnoreCase))
+				return null;
+			string baseName = displayPath.Substring(0, displayPath.Length - ".resx".Length);
+			foreach (string extension in new[] { ".cs", ".vb", ".fs" }) {
+				string candidate = baseName + extension;
+				if (displayPaths.Contains(candidate))
+					return candidate;
+			}
 			return null;
 		}
 
