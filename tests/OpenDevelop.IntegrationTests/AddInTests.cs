@@ -1545,22 +1545,34 @@ public sealed class AddInTests : IAsyncDisposable
 			Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
 			Assert.Equal("ActionsFlyout", selected.GetProperty("selectedName").GetString());
 			Assert.Contains("WinUIXamlElementPropertyAdapter", selected.GetProperty("propertyPadSelectedType").GetString());
+			var renamed = await _app.InvokeAsync("od.winui-designer.rename", "RenamedActionsFlyout");
+			Assert.True(renamed.GetProperty("success").GetBoolean(), renamed.ToString());
+			Assert.Equal("RenamedActionsFlyout", renamed.GetProperty("selectedName").GetString());
+			var savedAfterRename = await _app.InvokeAsync("od.file.save", _unoPagePath);
+			Assert.True(savedAfterRename.GetProperty("success").GetBoolean(), savedAfterRename.ToString());
+			Assert.Contains("RenamedActionsFlyout", await File.ReadAllTextAsync(_unoPagePath), StringComparison.Ordinal);
+			var renamedTrayItem = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				var refreshed = await _app.InvokeAsync("od.winui-designer.status");
+				return refreshed.GetProperty("componentTrayItems").EnumerateArray()
+					.Any(item => item.GetProperty("name").GetString() == "RenamedActionsFlyout");
+			}, TimeSpan.FromSeconds(20));
+			Assert.True(renamedTrayItem, "Renamed component did not remain in the component tray.");
 			var deleted = await _app.InvokeAsync("od.winui-designer.delete");
 			Assert.True(deleted.GetProperty("success").GetBoolean(), deleted.ToString());
 			var savedAfterDelete = await _app.InvokeAsync("od.file.save", _unoPagePath);
 			Assert.True(savedAfterDelete.GetProperty("success").GetBoolean(), savedAfterDelete.ToString());
-			Assert.DoesNotContain("ActionsFlyout", await File.ReadAllTextAsync(_unoPagePath), StringComparison.Ordinal);
+			Assert.DoesNotContain("RenamedActionsFlyout", await File.ReadAllTextAsync(_unoPagePath), StringComparison.Ordinal);
 			var trayRefreshed = await OpenDevelopAppFixture.PollUntilAsync(async () => {
 				var refreshed = await _app.InvokeAsync("od.winui-designer.status");
 				return !refreshed.GetProperty("componentTrayItems").EnumerateArray()
-					.Any(item => item.GetProperty("name").GetString() == "ActionsFlyout");
+					.Any(item => item.GetProperty("name").GetString() == "RenamedActionsFlyout");
 			}, TimeSpan.FromSeconds(20));
 			Assert.True(trayRefreshed, "Deleted component remained in the component tray.");
 			var undone = await _app.InvokeAsync("od.winui-designer.undo");
 			Assert.True(undone.GetProperty("success").GetBoolean(), undone.ToString());
 			var savedAfterUndo = await _app.InvokeAsync("od.file.save", _unoPagePath);
 			Assert.True(savedAfterUndo.GetProperty("success").GetBoolean(), savedAfterUndo.ToString());
-			Assert.Contains("ActionsFlyout", await File.ReadAllTextAsync(_unoPagePath), StringComparison.Ordinal);
+			Assert.Contains("RenamedActionsFlyout", await File.ReadAllTextAsync(_unoPagePath), StringComparison.Ordinal);
             Assert.DoesNotContain(status.GetProperty("componentTrayItems").EnumerateArray(),
                 item => item.GetProperty("name").GetString() == "PrimaryButton");
         }

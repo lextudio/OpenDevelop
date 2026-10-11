@@ -1455,8 +1455,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	}
 
 	/// <summary>DDP design/rename as a render-refresh optimization; see
-	/// <see cref="TrySetProperty"/> for the fallback contract. Landed as an unused capability - no
-	/// call site in this shell renames an already-named element today.</summary>
+	/// <see cref="TrySetProperty"/> for the fallback contract.</summary>
 	public void TryRename(string elementName, string newName, string fallbackXaml)
 	{
 		ObjectDisposedException.ThrowIf(disposed, this);

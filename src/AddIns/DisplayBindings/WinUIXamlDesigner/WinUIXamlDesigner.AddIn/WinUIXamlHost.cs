@@ -520,8 +520,7 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	}
 
 	/// <summary>Renames an element in the live render without a full XAML reparse, when the
-	/// runtime supports it; otherwise falls back to <paramref name="fallbackXaml"/>. Landed as an
-	/// unused capability - no call site in this shell renames an already-named element today.</summary>
+	/// runtime supports it; otherwise falls back to <paramref name="fallbackXaml"/>.</summary>
 	public void TryRename(string elementName, string newName, string fallbackXaml)
 	{
 		if (runtime is IWinUIXamlIncrementalRender incremental)
@@ -837,8 +836,7 @@ public interface IWinUIXamlIncrementalRender
 	void TryAddElement(string containerName, string itemXaml, string fallbackXaml);
 	/// <summary>DDP design/delete-elements: removes each named element from its Panel parent.</summary>
 	void TryDeleteElements(string[] elementNames, string fallbackXaml);
-	/// <summary>DDP design/rename: renames the live element. Landed as an unused capability - no
-	/// call site in this shell renames an already-named element today.</summary>
+	/// <summary>DDP design/rename: renames the live element.</summary>
 	void TryRename(string elementName, string newName, string fallbackXaml);
 }
 

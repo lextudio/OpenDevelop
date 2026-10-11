@@ -277,6 +277,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	#region Editing operations
 
 	bool syncingSelection;
+	// A component-tray item has no corresponding design-surface rectangle. Keep that distinction
+	// while it remains selected so a later render never asks the runtime to draw a phantom outline.
+	bool componentTraySelection;
 
 	public bool SelectElement(string name)
 	{
@@ -291,6 +294,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		}
 		syncingSelection = true;
 		try {
+			componentTraySelection = false;
 			SelectedElementName = name;
 			shellSelection.Select(name);
 			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor);
@@ -322,14 +326,46 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		var newName = MessageService.ShowInputBox("Rename", "Enter a new element name:", oldName)?.Trim();
 		if (string.IsNullOrEmpty(newName) || string.Equals(oldName, newName, StringComparison.Ordinal))
 			return;
-		if (!editor.Rename(oldName, newName, out var error)) {
+		if (!RenameSelectedElement(newName, out var error))
+		{
 			MessageService.ShowError(error);
-			return;
 		}
+	}
+
+	/// <summary>Renames the current selection as one source edit. Component-tray items deliberately
+	/// use a full document refresh because they have no live visual identity for <c>design/rename</c>
+	/// to address.</summary>
+	public bool RenameSelectedElement(string newName, out string error)
+	{
+		var oldName = SelectedElementName;
+		if (string.IsNullOrEmpty(oldName))
+		{
+			error = "No element is selected.";
+			return false;
+		}
+		newName = newName?.Trim() ?? "";
+		if (string.Equals(oldName, newName, StringComparison.Ordinal))
+		{
+			error = "";
+			return true;
+		}
+		if (!editor.Rename(oldName, newName, out error))
+			return false;
 		// The local editor is authoritative; the child call is an optimization that preserves its
 		// live visual identity while the full source remains the fallback for a rejected refresh.
-		ApplyDocumentChange(text => previewHost.TryRename(oldName, newName, text));
-		SelectElement(newName);
+		if (componentTraySelection)
+		{
+			SelectedElementName = newName;
+			ApplyDocumentChange();
+			previewHost.ClearSelection();
+			previewHost.ClearGridGuides();
+		}
+		else
+		{
+			ApplyDocumentChange(text => previewHost.TryRename(oldName, newName, text));
+			SelectElement(newName);
+		}
+		return true;
 	}
 
 	/// <summary>
@@ -492,7 +528,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		RefreshComponentTray();
 		// A settled render may have moved or resized the selected element; re-apply the
 		// outline and Grid guides from the freshly indexed tree.
-		if (SelectedElementName != null)
+		if (SelectedElementName != null && !componentTraySelection)
 		{
 			previewHost.ShowSelection(SelectedElementName);
 			RefreshGridGuides(SelectedElementName);
@@ -553,6 +589,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		try {
 			// A tray item intentionally has no design rectangle. Select its source adapter without
 			// pretending that a visual overlay could represent it.
+			componentTraySelection = true;
 			SelectedElementName = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
 			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor);
 			previewHost.ClearSelection();
@@ -1070,6 +1107,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			return;
 		syncingSelection = true;
 		try {
+		componentTraySelection = false;
 			SelectedElementName = null;
 			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor);
 			previewHost.ShowSelectionAtPath(path, element.Name.LocalName);

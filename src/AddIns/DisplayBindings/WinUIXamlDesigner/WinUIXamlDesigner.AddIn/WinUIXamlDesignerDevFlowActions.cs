@@ -139,6 +139,17 @@ public static class WinUIXamlDesignerDevFlowActions
 		}
 	}
 
+	[DevFlowAction("od.winui-designer.rename", Description = "Rename the currently selected WinUI/Uno designer element as a XAML source edit")]
+	public static string Rename(string newName)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		if (!view.RenameSelectedElement(newName, out var error))
+			return Failure(error);
+		return JsonSerializer.Serialize(new { success = true, selectedName = view.SelectedElementName, elementNames = view.ElementNames() });
+	}
+
 	[DevFlowAction("od.winui-designer.undo", Description = "Undo the last WinUI/Uno designer edit")]
 	public static string Undo() => History(view => view.Undo());
 
