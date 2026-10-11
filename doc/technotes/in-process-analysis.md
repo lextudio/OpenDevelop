@@ -433,8 +433,11 @@ with the rendered tree and projects source-only, non-resource/non-template objec
 named `ContextFlyout`) into the shared tray. Its ID is a document-local sibling-index path, so
 clicking an item selects its source-backed Properties adapter without inventing a visual selection
 rectangle. This works in both the Uno/Microsoft out-of-process runtime and ProGPU; a snapshot cannot
-erase it because the source projection is re-applied after every render. The remaining work is
-component-specific creation, deletion and reorder semantics, not basic visibility or selection.
+erase it because the source projection is re-applied after every render. Selected tray objects now
+also support the normal F2 rename and Delete commands as source edits: rename deliberately reloads
+the document instead of addressing a nonexistent visual node, while delete removes the selected
+source element and refreshes the tray. The remaining work is component-specific creation and
+well-defined reorder semantics, not basic visibility, selection, rename, or deletion.
 
 ---
 
