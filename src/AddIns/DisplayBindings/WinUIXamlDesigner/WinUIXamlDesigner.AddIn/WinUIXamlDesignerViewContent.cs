@@ -533,7 +533,12 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		var (rows, cols) = GridGuides(selectedName);
 		var bounds = previewHost.QueryElementBounds(selectedName);
 		if (bounds == null)
+		{
+			// A snapshot refresh can remove the selected Grid (or leave it without a
+			// renderable node). Do not leave the previous frame's dividers behind.
+			previewHost.ClearGridGuides();
 			return;
+		}
 		previewHost.SetGridGuides(selectedName, bounds.Value.X, bounds.Value.Y, bounds.Value.Width, bounds.Value.Height, rows, cols);
 	}
 
