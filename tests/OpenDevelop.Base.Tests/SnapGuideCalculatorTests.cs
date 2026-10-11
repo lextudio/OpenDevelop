@@ -55,4 +55,28 @@ public sealed class SnapGuideCalculatorTests
 		Assert.Equal(-1, result.Correction);
 		Assert.Equal(100, result.Guide);
 	}
+
+	[Fact]
+	public void Baseline_SnapsOnlyToAnotherBaseline()
+	{
+		var result = SnapGuideCalculator.ApplySnap(
+			(0, 0, 40, 20), 0, 101,
+			new[] { new SnapGuideCalculator.Target(0, 100, 40, 20, BaselineOffset: 12) },
+			ownBaselineOffset: 10, requireOverlap: true);
+
+		Assert.Equal(102, result.DY);
+		Assert.Contains(result.Guides, guide => guide is (false, 112));
+	}
+
+	[Fact]
+	public void Baseline_DoesNotSnapToSiblingEdges()
+	{
+		var result = SnapGuideCalculator.ApplySnap(
+			(0, 0, 40, 20), 0, 86,
+			new[] { new SnapGuideCalculator.Target(0, 100, 40, 20) },
+			ownBaselineOffset: 10, tolerance: 2, requireOverlap: true);
+
+		Assert.Equal(86, result.DY);
+		Assert.DoesNotContain(result.Guides, guide => !guide.IsVertical);
+	}
 }

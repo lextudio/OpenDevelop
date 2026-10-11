@@ -608,10 +608,13 @@ public sealed class DesignSurfaceController : IDisposable
 			return (deltaX, deltaY, Array.Empty<(bool, double)>());
 		var siblingBounds = nodesByName
 			.Where(entry => entry.Key != dragName)
-			.Select(entry => (entry.Value.X, entry.Value.Y, entry.Value.Width, entry.Value.Height));
+			.Select(entry => new SnapGuideCalculator.Target(entry.Value.X, entry.Value.Y,
+				entry.Value.Width, entry.Value.Height, entry.Value.BaselineOffset));
 		// Alignment guides should describe a relationship visible to the user: do not snap an
 		// element to an unrelated row/column that happens to share an edge coordinate.
-		return SnapGuideCalculator.ApplySnap(start, deltaX, deltaY, siblingBounds, requireOverlap: true);
+		return SnapGuideCalculator.ApplySnap(start, deltaX, deltaY, siblingBounds,
+			nodesByName.TryGetValue(dragName, out var selected) ? selected.BaselineOffset : null,
+			requireOverlap: true);
 	}
 
 	(double DX, double DY, IReadOnlyList<(bool IsVertical, double Position)> Guides) ApplyResizeSnap(double deltaX, double deltaY)
