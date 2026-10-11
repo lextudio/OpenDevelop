@@ -1019,6 +1019,33 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				RebuildTreeAndRender(state); state.Accepted = true; return state;
 			});
 
+		[JsonRpcMethod("design/set-binding-element-name")]
+		public DesignerSessionState SetBindingElementName(long baseVersion, string elementId, string propertyName, string elementName)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale) return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
+				var property = item.Properties[propertyName];
+				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding binding
+					|| binding.Source != null || binding.RelativeSource != null)
+					return NotFound(state, "Property is not an editable ElementName Binding: " + propertyName);
+				if (!string.IsNullOrWhiteSpace(elementName))
+				{
+					elementName = elementName.Trim();
+					try { XmlConvert.VerifyNCName(elementName); }
+					catch (Exception) { return NotFound(state, "Invalid Binding ElementName: " + elementName); }
+				}
+				try
+				{
+					if (string.IsNullOrWhiteSpace(elementName))
+						bindingItem.Properties["ElementName"].Reset();
+					else
+						bindingItem.Properties["ElementName"].SetValue(elementName);
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state); state.Accepted = true; return state;
+			});
+
 		/// <summary>Removes an explicit local value through the design model instead of assigning a
 		/// guessed CLR default. This preserves inherited/default-property semantics and produces the
 		/// same native undo transaction as an in-process WPF designer reset.</summary>
@@ -2118,6 +2145,16 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 							ShouldSerialize = false,
 							AllowedValues = Enum.GetNames(typeof(System.Windows.Data.UpdateSourceTrigger)).ToList()
 						});
+						if (binding.Source == null && binding.RelativeSource == null)
+						{
+							result.Add(new DesignerPropertyInfo {
+								Name = descriptor.Name + ".ElementName", DisplayName = descriptor.Name + " Element Name",
+								Category = "Binding", TypeName = typeof(string).FullName ?? "",
+								Kind = "String", EditorKind = "BindingElementName",
+								Value = binding.ElementName ?? "", BindingPropertyName = descriptor.Name,
+								ShouldSerialize = false
+							});
+						}
 					}
 				}
 				result.Add(ToPropertyInfo(property));

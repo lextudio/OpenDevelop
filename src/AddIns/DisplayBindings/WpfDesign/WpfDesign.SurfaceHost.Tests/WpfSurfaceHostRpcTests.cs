@@ -677,7 +677,9 @@ public sealed class WpfSurfaceHostRpcTests
 	{
 		const string xaml = """
 			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <TextBlock x:Name="source" Text="A source" />
 			  <TextBlock x:Name="bound" Text="{Binding Title}" />
+			  <TextBlock x:Name="relative" Text="{Binding RelativeSource={RelativeSource Self}, Path=Text}" />
 			</Grid>
 			""";
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
@@ -686,6 +688,12 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.True(opened.Accepted, opened.Error);
 		Assert.IsAssignableFrom<IDesignHostBindingPath>(client);
 		var bound = FindByName(opened.Tree!, "bound")!;
+		var relative = FindByName(opened.Tree!, "relative")!;
+		Assert.DoesNotContain(relative.Properties,
+			property => property.EditorKind == "BindingElementName");
+		var relativeEdit = await client.SetBindingElementNameAsync(1, relative.Id, "Text", "source", timeout.Token);
+		Assert.False(relativeEdit.Accepted);
+		Assert.Contains("editable ElementName Binding", relativeEdit.Error, StringComparison.Ordinal);
 
 		var edited = await client.SetBindingPathAsync(1, bound.Id, "Text", "Customer.Name", timeout.Token);
 		Assert.True(edited.Accepted, edited.Error);
@@ -708,29 +716,42 @@ public sealed class WpfSurfaceHostRpcTests
 		var triggerEdited = await client.SetBindingUpdateSourceTriggerAsync(modeEdited.Version, bound.Id, trigger.BindingPropertyName, "PropertyChanged", timeout.Token);
 		Assert.True(triggerEdited.Accepted, triggerEdited.Error);
 		Assert.Contains("UpdateSourceTrigger=PropertyChanged", (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		var badTrigger = await client.SetBindingUpdateSourceTriggerAsync(triggerEdited.Version, bound.Id, "Text", "NotATrigger", timeout.Token);
+		var elementName = FindByName(triggerEdited.Tree!, "bound")!.Properties.Single(property => property.EditorKind == "BindingElementName");
+		Assert.Equal("Text", elementName.BindingPropertyName);
+		Assert.False(elementName.ShouldSerialize);
+		var elementNameEdited = await client.SetBindingElementNameAsync(triggerEdited.Version, bound.Id, elementName.BindingPropertyName, "source", timeout.Token);
+		Assert.True(elementNameEdited.Accepted, elementNameEdited.Error);
+		Assert.Contains("ElementName=source", (await client.FlushAsync(elementNameEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var elementNameCleared = await client.SetBindingElementNameAsync(elementNameEdited.Version, bound.Id, elementName.BindingPropertyName, "", timeout.Token);
+		Assert.True(elementNameCleared.Accepted, elementNameCleared.Error);
+		Assert.DoesNotContain("ElementName", (await client.FlushAsync(elementNameCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var injectedElementName = await client.SetBindingElementNameAsync(elementNameCleared.Version, bound.Id, elementName.BindingPropertyName, "source,Path=X", timeout.Token);
+		Assert.False(injectedElementName.Accepted);
+		Assert.Contains("Invalid Binding ElementName", injectedElementName.Error, StringComparison.Ordinal);
+		Assert.DoesNotContain("ElementName", (await client.FlushAsync(elementNameCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var badTrigger = await client.SetBindingUpdateSourceTriggerAsync(elementNameCleared.Version, bound.Id, "Text", "NotATrigger", timeout.Token);
 		Assert.False(badTrigger.Accepted);
-		Assert.DoesNotContain("NotATrigger", (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		var numericTrigger = await client.SetBindingUpdateSourceTriggerAsync(triggerEdited.Version, bound.Id, "Text", "99", timeout.Token);
+		Assert.DoesNotContain("NotATrigger", (await client.FlushAsync(elementNameCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var numericTrigger = await client.SetBindingUpdateSourceTriggerAsync(elementNameCleared.Version, bound.Id, "Text", "99", timeout.Token);
 		Assert.False(numericTrigger.Accepted);
-		Assert.DoesNotContain("99", (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		var combinedTrigger = await client.SetBindingUpdateSourceTriggerAsync(triggerEdited.Version, bound.Id, "Text", "PropertyChanged,LostFocus", timeout.Token);
+		Assert.DoesNotContain("99", (await client.FlushAsync(elementNameCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var combinedTrigger = await client.SetBindingUpdateSourceTriggerAsync(elementNameCleared.Version, bound.Id, "Text", "PropertyChanged,LostFocus", timeout.Token);
 		Assert.False(combinedTrigger.Accepted);
-		Assert.DoesNotContain("UpdateSourceTrigger=Explicit", (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		var badMode = await client.SetBindingModeAsync(triggerEdited.Version, bound.Id, "Text", "NotAMode", timeout.Token);
+		Assert.DoesNotContain("UpdateSourceTrigger=Explicit", (await client.FlushAsync(elementNameCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var badMode = await client.SetBindingModeAsync(elementNameCleared.Version, bound.Id, "Text", "NotAMode", timeout.Token);
 		Assert.False(badMode.Accepted);
-		Assert.DoesNotContain("NotAMode", (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		var numericMode = await client.SetBindingModeAsync(triggerEdited.Version, bound.Id, "Text", "99", timeout.Token);
+		Assert.DoesNotContain("NotAMode", (await client.FlushAsync(elementNameCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var numericMode = await client.SetBindingModeAsync(elementNameCleared.Version, bound.Id, "Text", "99", timeout.Token);
 		Assert.False(numericMode.Accepted);
-		Assert.DoesNotContain("99", (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		var combinedMode = await client.SetBindingModeAsync(triggerEdited.Version, bound.Id, "Text", "OneWay,OneTime", timeout.Token);
+		Assert.DoesNotContain("99", (await client.FlushAsync(elementNameCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var combinedMode = await client.SetBindingModeAsync(elementNameCleared.Version, bound.Id, "Text", "OneWay,OneTime", timeout.Token);
 		Assert.False(combinedMode.Accepted);
-		Assert.DoesNotContain("Mode=OneWayToSource", (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("Mode=OneWayToSource", (await client.FlushAsync(elementNameCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
 
-		var rejected = await client.SetBindingPathAsync(triggerEdited.Version, bound.Id, "Width", "NotAPath", timeout.Token);
+		var rejected = await client.SetBindingPathAsync(elementNameCleared.Version, bound.Id, "Width", "NotAPath", timeout.Token);
 		Assert.False(rejected.Accepted);
 		Assert.Contains("not an editable Binding", rejected.Error, StringComparison.Ordinal);
-		Assert.DoesNotContain("NotAPath", (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text,
+		Assert.DoesNotContain("NotAPath", (await client.FlushAsync(elementNameCleared.Version, timeout.Token)).Files.Single().Text,
 			StringComparison.Ordinal);
 	}
 
