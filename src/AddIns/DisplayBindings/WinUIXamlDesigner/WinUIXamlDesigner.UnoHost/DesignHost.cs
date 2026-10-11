@@ -259,6 +259,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			// The shell handles each catalog item through its dedicated source mutation.
 			var catalog = new List<DesignerToolboxItemInfo> {
 				new() { Name = "ContextFlyout", DisplayName = "ContextFlyout", Category = "Components" },
+				new() { Name = "Flyout", DisplayName = "Flyout", Category = "Components" },
 				new() { Name = "MenuFlyoutItem", DisplayName = "MenuFlyoutItem", Category = "Components" }
 			};
 			foreach (var t in typeof(FrameworkElement).Assembly.GetTypes())

@@ -61,6 +61,7 @@ public sealed class WinUIXamlToolbox
 				packDragData: data => {
 					data.SetData(DragDataFormat, tool.Name);
 					if (string.Equals(tool.Name, "ContextFlyout", System.StringComparison.Ordinal)
+						|| string.Equals(tool.Name, "Flyout", System.StringComparison.Ordinal)
 						|| string.Equals(tool.Name, "MenuFlyoutItem", System.StringComparison.Ordinal))
 						return;
 					// Also carries "ComponentTypeName" (the same format WpfToolbox uses) so

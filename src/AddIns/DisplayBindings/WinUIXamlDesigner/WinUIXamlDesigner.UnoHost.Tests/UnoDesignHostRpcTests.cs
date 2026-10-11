@@ -95,6 +95,7 @@ public sealed class UnoDesignHostRpcTests
 		using var client = await StartAsync(timeout.Token);
 		var capabilities = await client.GetCapabilitiesAsync(timeout.Token);
 		Assert.Contains(capabilities.Toolbox, item => item.Name == "ContextFlyout" && item.Category == "Components");
+		Assert.Contains(capabilities.Toolbox, item => item.Name == "Flyout" && item.Category == "Components");
 		Assert.Contains(capabilities.Toolbox, item => item.Name == "MenuFlyoutItem" && item.Category == "Components");
 		var xaml = $"""
 		<Button xmlns="{Ns}" xmlns:x="{XNs}" x:Name="Target" Content="Open">

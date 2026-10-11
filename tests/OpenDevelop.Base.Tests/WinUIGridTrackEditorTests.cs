@@ -223,6 +223,37 @@ public sealed class WinUIGridTrackEditorTests
 	}
 
 	[Fact]
+	public void FlyoutInsertion_IsSourceOwnedAndUndoable()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"/></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		var flyout = editor.InsertFlyout(editor.FindElement("Target")!);
+		Assert.Equal("Flyout1", (string?)flyout.Attribute(WinUIXamlDocumentEditor.NameDirective));
+		Assert.Contains("<Button.Flyout>", editor.Text);
+		Assert.Contains("<TextBlock Text=\"Flyout content\"", editor.Text);
+
+		Assert.True(editor.Undo());
+		Assert.Equal(source, editor.Text);
+		Assert.True(editor.Redo());
+		Assert.Contains("<Button.Flyout>", editor.Text);
+		Assert.Throws<InvalidOperationException>(() => editor.InsertFlyout(editor.FindElement("Target")!));
+	}
+
+	[Fact]
+	public void FlyoutInsertion_RejectsUnsupportedOrAssignedTarget()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><TextBlock x:Name="Text"/><Button x:Name="Target" Flyout="{StaticResource ExistingFlyout}"/></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		Assert.Throws<ArgumentException>(() => editor.InsertFlyout(editor.FindElement("Text")!));
+		Assert.Throws<InvalidOperationException>(() => editor.InsertFlyout(editor.FindElement("Target")!));
+		Assert.Equal(source, editor.Text);
+	}
+
+	[Fact]
 	public void MenuFlyoutItemInsertion_IsSourceOwnedAndUndoable()
 	{
 		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"><Button.ContextFlyout><MenuFlyout x:Name="MenuFlyout1"><MenuFlyoutItem Text="First"/></MenuFlyout></Button.ContextFlyout></Button></Grid>""";
@@ -353,6 +384,21 @@ public sealed class WinUIGridTrackEditorTests
 		Assert.True(editor.Redo());
 		Assert.Equal(XDocument.Parse(source).ToString(SaveOptions.DisableFormatting),
 			XDocument.Parse(editor.Text).ToString(SaveOptions.DisableFormatting));
+	}
+
+	[Fact]
+	public void FlyoutDeletion_RemovesItsEmptyPropertyElementInOneUndoEntry()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"/></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+		var flyout = editor.InsertFlyout(editor.FindElement("Target")!);
+		var withFlyout = editor.Text;
+
+		editor.Remove(flyout);
+		Assert.DoesNotContain("<Button.Flyout>", editor.Text);
+		Assert.True(editor.Undo());
+		Assert.Equal(withFlyout, editor.Text);
 	}
 
 	[Fact]

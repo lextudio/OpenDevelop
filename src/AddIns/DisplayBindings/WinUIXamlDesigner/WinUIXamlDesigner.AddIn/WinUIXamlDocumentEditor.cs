@@ -140,6 +140,39 @@ sealed class WinUIXamlDocumentEditor
 		return flyout;
 	}
 
+	/// <summary>Adds a named <c>Flyout</c> through a control's Flyout property. Like a
+	/// ContextFlyout, this popup is source-owned and has no preview-tree identity.</summary>
+	public XElement InsertFlyout(XElement target)
+	{
+		if (Document?.Root == null)
+			throw new InvalidOperationException("The document has no root to add a component to.");
+		if (target == null || target.Document != Document || target.Name.LocalName.Contains('.', StringComparison.Ordinal))
+			throw new ArgumentException("A source control is required.", nameof(target));
+		if (!IsFlyoutTarget(target.Name.LocalName))
+			throw new ArgumentException("Flyout can only be added to a Button or AppBarButton.", nameof(target));
+		if (string.IsNullOrEmpty((string)target.Attribute(NameDirective)))
+			throw new InvalidOperationException("The target control needs an x:Name before a Flyout can be added.");
+		var propertyName = target.Name.LocalName + ".Flyout";
+		if (target.Attribute("Flyout") != null
+			|| target.Elements().Any(element => string.Equals(element.Name.LocalName, propertyName, StringComparison.Ordinal)))
+			throw new InvalidOperationException("The target control already has a Flyout.");
+
+		BeginChange();
+		var flyout = new XElement(Document.Root.GetDefaultNamespace() + "Flyout");
+		flyout.SetAttributeValue(NameDirective, UniqueName("Flyout"));
+		flyout.Add(new XElement(Document.Root.GetDefaultNamespace() + "TextBlock",
+			new XAttribute("Text", "Flyout content")));
+		target.Add(new XElement(target.Name.Namespace + propertyName, flyout));
+		CommitChange();
+		return flyout;
+	}
+
+	static bool IsFlyoutTarget(string typeName)
+	{
+		return string.Equals(typeName, "Button", StringComparison.Ordinal)
+			|| string.Equals(typeName, "AppBarButton", StringComparison.Ordinal);
+	}
+
 	/// <summary>Adds a named item to a source-owned <c>MenuFlyout</c>. Like the flyout itself,
 	/// the item is selected through the component tray rather than a preview-tree identity.</summary>
 	public XElement InsertMenuFlyoutItem(XElement flyout)
@@ -282,7 +315,8 @@ sealed class WinUIXamlDocumentEditor
 		// source component must remove the now-empty property element as part of the same history
 		// entry; otherwise a tray Delete leaves redundant markup behind. Preserve comments or other
 		// meaningful nodes, but do not let pretty-printing whitespace keep an empty property alive.
-		if (property?.Name.LocalName.EndsWith(".ContextFlyout", StringComparison.Ordinal) == true
+		if ((property?.Name.LocalName.EndsWith(".ContextFlyout", StringComparison.Ordinal) == true
+			|| property?.Name.LocalName.EndsWith(".Flyout", StringComparison.Ordinal) == true)
 			&& property.Nodes().All(node => node is XText text && string.IsNullOrWhiteSpace(text.Value)))
 			property.Remove();
 		CommitChange();
