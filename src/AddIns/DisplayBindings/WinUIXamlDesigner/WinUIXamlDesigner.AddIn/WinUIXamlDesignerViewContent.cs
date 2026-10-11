@@ -384,6 +384,15 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		var container = containerName == null ? null : editor.FindElement(containerName);
 		if (containerName != null && container == null)
 			throw new InvalidOperationException("No element named '" + containerName + "' to insert into.");
+		if (string.Equals(controlName, "ContextFlyout", StringComparison.Ordinal))
+		{
+			if (container == null)
+				throw new InvalidOperationException("Drop ContextFlyout onto a named control.");
+			var flyout = editor.InsertContextFlyout(container);
+			ApplyDocumentChange();
+			SelectComponentTrayElement(flyout);
+			return (string)flyout.Attribute(WinUIXamlDocumentEditor.NameDirective);
+		}
 		// A drop resolves to the nearest NAMED source element under the cursor
 		// (WinUIXamlHost.OnDrop -> ProGpuRuntimeHost.ResolveNameAt), which is very often a leaf
 		// control - dropping onto PrimaryButton previously tried to insert a second child directly
@@ -585,6 +594,11 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	void OnComponentTrayItemSelected(object sender, string id)
 	{
 		var element = editor.FindElementAtPath(id);
+		SelectComponentTrayElement(element);
+	}
+
+	void SelectComponentTrayElement(XElement element)
+	{
 		if (element == null || syncingSelection)
 			return;
 		syncingSelection = true;

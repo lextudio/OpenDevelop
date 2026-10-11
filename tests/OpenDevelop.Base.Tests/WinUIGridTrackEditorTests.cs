@@ -135,4 +135,34 @@ public sealed class WinUIGridTrackEditorTests
 		Assert.True(editor.Redo());
 		Assert.Equal(changed, editor.Text);
 	}
+
+	[Fact]
+	public void ContextFlyoutInsertion_IsSourceOwnedAndUndoable()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"/></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		var flyout = editor.InsertContextFlyout(editor.FindElement("Target")!);
+		Assert.Equal("MenuFlyout1", (string?)flyout.Attribute(WinUIXamlDocumentEditor.NameDirective));
+		Assert.Contains("<Button.ContextFlyout>", editor.Text);
+		Assert.Contains("<MenuFlyoutItem Text=\"Menu item\"", editor.Text);
+
+		Assert.True(editor.Undo());
+		Assert.Equal(source, editor.Text);
+		Assert.True(editor.Redo());
+		Assert.Contains("<Button.ContextFlyout>", editor.Text);
+		Assert.Throws<InvalidOperationException>(() => editor.InsertContextFlyout(editor.FindElement("Target")!));
+	}
+
+	[Fact]
+	public void ContextFlyoutInsertion_RejectsAnExistingAttributeAssignment()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target" ContextFlyout="{StaticResource ExistingFlyout}"/></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		Assert.Throws<InvalidOperationException>(() => editor.InsertContextFlyout(editor.FindElement("Target")!));
+		Assert.Equal(source, editor.Text);
+	}
 }

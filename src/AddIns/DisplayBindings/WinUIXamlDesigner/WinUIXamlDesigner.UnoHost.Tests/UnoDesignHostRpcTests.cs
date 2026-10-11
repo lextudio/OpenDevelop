@@ -89,6 +89,25 @@ public sealed class UnoDesignHostRpcTests
 	}
 
 	[Fact]
+	public async Task ChildHost_AcceptsSourceOwnedContextFlyoutAndAdvertisesItsToolboxItem()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await StartAsync(timeout.Token);
+		var capabilities = await client.GetCapabilitiesAsync(timeout.Token);
+		Assert.Contains(capabilities.Toolbox, item => item.Name == "ContextFlyout" && item.Category == "Components");
+		var xaml = $"""
+		<Button xmlns="{Ns}" xmlns:x="{XNs}" x:Name="Target" Content="Open">
+		    <Button.ContextFlyout>
+		        <MenuFlyout x:Name="MenuFlyout1"><MenuFlyoutItem Text="Menu item" /></MenuFlyout>
+		    </Button.ContextFlyout>
+		</Button>
+		""";
+
+		var opened = await client.OpenAsync(Document(client, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+	}
+
+	[Fact]
 	public async Task ChildHost_OpenAcceptsViewportThroughCommonDocumentRequest()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));

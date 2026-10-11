@@ -115,6 +115,31 @@ sealed class WinUIXamlDocumentEditor
 		return element;
 	}
 
+	/// <summary>Adds a named MenuFlyout through a source control's ContextFlyout property.
+	/// This is source-owned because the component has no visual-tree identity in the preview.</summary>
+	public XElement InsertContextFlyout(XElement target)
+	{
+		if (Document?.Root == null)
+			throw new InvalidOperationException("The document has no root to add a component to.");
+		if (target == null || target.Document != Document || target.Name.LocalName.Contains('.', StringComparison.Ordinal))
+			throw new ArgumentException("A source control is required.", nameof(target));
+		if (string.IsNullOrEmpty((string)target.Attribute(NameDirective)))
+			throw new InvalidOperationException("The target control needs an x:Name before a ContextFlyout can be added.");
+		var propertyName = target.Name.LocalName + ".ContextFlyout";
+		if (target.Attribute("ContextFlyout") != null
+			|| target.Elements().Any(element => string.Equals(element.Name.LocalName, propertyName, StringComparison.Ordinal)))
+			throw new InvalidOperationException("The target control already has a ContextFlyout.");
+
+		BeginChange();
+		var flyout = new XElement(Document.Root.GetDefaultNamespace() + "MenuFlyout");
+		flyout.SetAttributeValue(NameDirective, UniqueName("MenuFlyout"));
+		flyout.Add(new XElement(Document.Root.GetDefaultNamespace() + "MenuFlyoutItem",
+			new XAttribute("Text", "Menu item")));
+		target.Add(new XElement(target.Name.Namespace + propertyName, flyout));
+		CommitChange();
+		return flyout;
+	}
+
 	/// <summary>
 	/// Gives an inserted control a meaningful default so the design surface shows something
 	/// real instead of an empty shell: Content for button-like controls, Text for

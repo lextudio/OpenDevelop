@@ -60,6 +60,8 @@ public sealed class WinUIXamlToolbox
 				payload: new WinUIToolboxItem(tool.Name, category, tool.Template),
 				packDragData: data => {
 					data.SetData(DragDataFormat, tool.Name);
+					if (string.Equals(tool.Name, "ContextFlyout", System.StringComparison.Ordinal))
+						return;
 					// Also carries "ComponentTypeName" (the same format WpfToolbox uses) so
 					// dropping a WinUI/Uno tool onto the plain XAML source editor -
 					// AvalonEditViewContent.TextArea_Drop, which only ever looks for that one
