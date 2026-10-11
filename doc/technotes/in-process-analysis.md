@@ -441,7 +441,8 @@ component: dropping it onto a named control authors a named `MenuFlyout` under t
 property element, selects it in the tray, and keeps undo/redo entirely in the document model.
 Further component-specific creation and well-defined reorder semantics remain separate work;
 basic visibility, selection, rename, deletion and this first property-owned creation flow need no
-child write capability.
+child write capability. Deleting that tray flyout removes its now-empty single-value property
+element in the same undo entry, so deletion restores the exact pre-insertion source shape.
 
 ---
 

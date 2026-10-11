@@ -195,7 +195,15 @@ sealed class WinUIXamlDocumentEditor
 		if (element == Document?.Root)
 			throw new InvalidOperationException("The root element cannot be deleted.");
 		BeginChange();
+		var property = element.Parent as XElement;
 		element.Remove();
+		// A ContextFlyout is a single-value property, not a collection. Deleting its selected
+		// source component must remove the now-empty property element as part of the same history
+		// entry; otherwise a tray Delete leaves redundant markup behind. Preserve comments or other
+		// meaningful nodes, but do not let pretty-printing whitespace keep an empty property alive.
+		if (property?.Name.LocalName.EndsWith(".ContextFlyout", StringComparison.Ordinal) == true
+			&& property.Nodes().All(node => node is XText text && string.IsNullOrWhiteSpace(text.Value)))
+			property.Remove();
 		CommitChange();
 	}
 

@@ -165,4 +165,47 @@ public sealed class WinUIGridTrackEditorTests
 		Assert.Throws<InvalidOperationException>(() => editor.InsertContextFlyout(editor.FindElement("Target")!));
 		Assert.Equal(source, editor.Text);
 	}
+
+	[Fact]
+	public void ContextFlyoutDeletion_RemovesItsEmptyPropertyElementInOneUndoEntry()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"/></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+		var flyout = editor.InsertContextFlyout(editor.FindElement("Target")!);
+		var withFlyout = editor.Text;
+
+		editor.Remove(flyout);
+		Assert.DoesNotContain("ContextFlyout", editor.Text);
+		Assert.True(editor.Undo());
+		Assert.Equal(withFlyout, editor.Text);
+		Assert.True(editor.Redo());
+		Assert.Equal(XDocument.Parse(source).ToString(SaveOptions.DisableFormatting),
+			XDocument.Parse(editor.Text).ToString(SaveOptions.DisableFormatting));
+	}
+
+	[Fact]
+	public void ContextFlyoutDeletion_RemovesAWhitespaceOnlyHandAuthoredPropertyElement()
+	{
+		const string source = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+			  <Button x:Name="Target">
+			    <Button.ContextFlyout>
+			      <MenuFlyout x:Name="HandAuthoredFlyout">
+			        <MenuFlyoutItem Text="Menu item"/>
+			      </MenuFlyout>
+			    </Button.ContextFlyout>
+			  </Button>
+			</Grid>
+			""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		editor.Remove(editor.FindElement("HandAuthoredFlyout")!);
+		Assert.DoesNotContain("ContextFlyout", editor.Text);
+		Assert.True(editor.Undo());
+		Assert.Equal(source, editor.Text);
+		Assert.True(editor.Redo());
+		Assert.DoesNotContain("ContextFlyout", editor.Text);
+	}
 }
