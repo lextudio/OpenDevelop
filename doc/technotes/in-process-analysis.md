@@ -584,6 +584,10 @@ normal Uno/WinUI path. Runtime telemetry is accepted only for one unambiguous so
 with the selected name; a duplicate x:Name in a template/data-template namescope falls back rather
 than applying the wrong Grid's measured tracks.
 
+The resize commit now reuses those same guide boundaries to calculate the edited row or column
+size. This keeps a drag over an `Auto`, star, or constrained track from looking correct on the
+surface yet serializing a size reconstructed from a different source-only approximation.
+
 ### Why this order
 
 `C1` removes a correctness and responsiveness hazard in every click path. `C2` then closes the

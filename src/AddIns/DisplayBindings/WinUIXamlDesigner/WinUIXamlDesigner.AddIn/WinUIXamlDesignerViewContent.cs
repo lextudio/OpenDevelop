@@ -918,14 +918,17 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			.ToList();
 		if (index < 0 || index >= items.Count)
 			return "Index out of range";
-		var bounds = previewHost.QueryElementBounds(gridName);
-		if (bounds == null)
-			return "Grid bounds unknown";
-		var lengths = ParseGridLengths(definitions, isRow ? bounds.Value.Height : bounds.Value.Width, isRow);
+		// Use the exact same boundaries the visible divider used. In particular, a runtime
+		// GridTracks snapshot may contain Auto/min/max-constrained track sizes that cannot be
+		// reconstructed from source text; recomputing them here made a correct-looking drag
+		// write the wrong pixel value.
+		var guides = GridGuides(gridName);
+		var boundaries = isRow ? guides.RowOffsets : guides.ColOffsets;
+		if (boundaries.Length != items.Count + 1)
+			return "Grid track geometry unavailable";
 		// Convert the divider position into a size for THIS row/column: its share is the
 		// difference between the new divider and the previous divider.
-		var prev = index > 0 ? lengths[index] : 0;
-		var next = index + 1 < lengths.Length ? lengths[index + 1] : (isRow ? bounds.Value.Height : bounds.Value.Width);
+		var prev = boundaries[index];
 		var newSize = Math.Max(1, position - prev);
 		var attribute = isRow ? "Height" : "Width";
 		editor.SetAttribute(items[index], attribute, Math.Round(newSize).ToString(CultureInfo.InvariantCulture));
