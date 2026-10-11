@@ -701,14 +701,36 @@ public sealed class WpfSurfaceHostRpcTests
 		var modeEdited = await client.SetBindingModeAsync(edited.Version, bound.Id, mode.BindingPropertyName, "TwoWay", timeout.Token);
 		Assert.True(modeEdited.Accepted, modeEdited.Error);
 		Assert.Contains("Mode=TwoWay", (await client.FlushAsync(modeEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		var badMode = await client.SetBindingModeAsync(modeEdited.Version, bound.Id, "Text", "NotAMode", timeout.Token);
+		var trigger = FindByName(modeEdited.Tree!, "bound")!.Properties.Single(property => property.EditorKind == "BindingUpdateSourceTrigger");
+		Assert.Equal("Text", trigger.BindingPropertyName);
+		Assert.False(trigger.ShouldSerialize);
+		Assert.Contains("PropertyChanged", trigger.AllowedValues);
+		var triggerEdited = await client.SetBindingUpdateSourceTriggerAsync(modeEdited.Version, bound.Id, trigger.BindingPropertyName, "PropertyChanged", timeout.Token);
+		Assert.True(triggerEdited.Accepted, triggerEdited.Error);
+		Assert.Contains("UpdateSourceTrigger=PropertyChanged", (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var badTrigger = await client.SetBindingUpdateSourceTriggerAsync(triggerEdited.Version, bound.Id, "Text", "NotATrigger", timeout.Token);
+		Assert.False(badTrigger.Accepted);
+		Assert.DoesNotContain("NotATrigger", (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var numericTrigger = await client.SetBindingUpdateSourceTriggerAsync(triggerEdited.Version, bound.Id, "Text", "99", timeout.Token);
+		Assert.False(numericTrigger.Accepted);
+		Assert.DoesNotContain("99", (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var combinedTrigger = await client.SetBindingUpdateSourceTriggerAsync(triggerEdited.Version, bound.Id, "Text", "PropertyChanged,LostFocus", timeout.Token);
+		Assert.False(combinedTrigger.Accepted);
+		Assert.DoesNotContain("UpdateSourceTrigger=Explicit", (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var badMode = await client.SetBindingModeAsync(triggerEdited.Version, bound.Id, "Text", "NotAMode", timeout.Token);
 		Assert.False(badMode.Accepted);
-		Assert.DoesNotContain("NotAMode", (await client.FlushAsync(modeEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("NotAMode", (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var numericMode = await client.SetBindingModeAsync(triggerEdited.Version, bound.Id, "Text", "99", timeout.Token);
+		Assert.False(numericMode.Accepted);
+		Assert.DoesNotContain("99", (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var combinedMode = await client.SetBindingModeAsync(triggerEdited.Version, bound.Id, "Text", "OneWay,OneTime", timeout.Token);
+		Assert.False(combinedMode.Accepted);
+		Assert.DoesNotContain("Mode=OneWayToSource", (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
 
-		var rejected = await client.SetBindingPathAsync(modeEdited.Version, bound.Id, "Width", "NotAPath", timeout.Token);
+		var rejected = await client.SetBindingPathAsync(triggerEdited.Version, bound.Id, "Width", "NotAPath", timeout.Token);
 		Assert.False(rejected.Accepted);
 		Assert.Contains("not an editable Binding", rejected.Error, StringComparison.Ordinal);
-		Assert.DoesNotContain("NotAPath", (await client.FlushAsync(edited.Version, timeout.Token)).Files.Single().Text,
+		Assert.DoesNotContain("NotAPath", (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text,
 			StringComparison.Ordinal);
 	}
 

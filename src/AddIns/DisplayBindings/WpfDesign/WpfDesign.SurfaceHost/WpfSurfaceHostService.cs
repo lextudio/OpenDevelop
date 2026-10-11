@@ -991,12 +991,30 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				if (RejectIfStale(baseVersion) is { } stale) return stale;
 				var state = NewState(baseVersion);
 				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
-				if (!Enum.TryParse<System.Windows.Data.BindingMode>(mode, ignoreCase: false, out var parsed))
+				if (!Enum.IsDefined(typeof(System.Windows.Data.BindingMode), mode)
+					|| !Enum.TryParse<System.Windows.Data.BindingMode>(mode, ignoreCase: false, out var parsed))
 					return NotFound(state, "Invalid Binding mode: " + mode);
 				var property = item.Properties[propertyName];
 				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding)
 					return NotFound(state, "Property is not an editable Binding: " + propertyName);
 				try { bindingItem.Properties["Mode"].SetValue(parsed); }
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state); state.Accepted = true; return state;
+			});
+
+		[JsonRpcMethod("design/set-binding-update-source-trigger")]
+		public DesignerSessionState SetBindingUpdateSourceTrigger(long baseVersion, string elementId, string propertyName, string trigger)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale) return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
+				if (!Enum.IsDefined(typeof(System.Windows.Data.UpdateSourceTrigger), trigger)
+					|| !Enum.TryParse<System.Windows.Data.UpdateSourceTrigger>(trigger, ignoreCase: false, out var parsed))
+					return NotFound(state, "Invalid Binding UpdateSourceTrigger: " + trigger);
+				var property = item.Properties[propertyName];
+				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding)
+					return NotFound(state, "Property is not an editable Binding: " + propertyName);
+				try { bindingItem.Properties["UpdateSourceTrigger"].SetValue(parsed); }
 				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
 				RebuildTreeAndRender(state); state.Accepted = true; return state;
 			});
@@ -2091,6 +2109,14 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 							Value = binding.Mode.ToString(), BindingPropertyName = descriptor.Name,
 							ShouldSerialize = false,
 							AllowedValues = Enum.GetNames(typeof(System.Windows.Data.BindingMode)).ToList()
+						});
+						result.Add(new DesignerPropertyInfo {
+							Name = descriptor.Name + ".UpdateSourceTrigger", DisplayName = descriptor.Name + " Update Source Trigger",
+							Category = "Binding", TypeName = typeof(System.Windows.Data.UpdateSourceTrigger).FullName ?? "",
+							Kind = "Enum", IsEnum = true, EditorKind = "BindingUpdateSourceTrigger",
+							Value = binding.UpdateSourceTrigger.ToString(), BindingPropertyName = descriptor.Name,
+							ShouldSerialize = false,
+							AllowedValues = Enum.GetNames(typeof(System.Windows.Data.UpdateSourceTrigger)).ToList()
 						});
 					}
 				}
