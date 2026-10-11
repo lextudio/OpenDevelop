@@ -606,6 +606,13 @@ re-renders; it deliberately does not author a root `Width`/`Height`, so pages th
 size keep source authority. The edge-hit calculator has focused unit coverage for all edges, zoom
 scaling and out-of-range rejection.
 
+**C3 Canvas-position correction (2026-10-11).** WinUI canvas drags now preserve Canvas's actual
+attached-property contract: a child with `Canvas.Left`/`Canvas.Top` moves those values, while a
+child deliberately anchored with `Canvas.Right`/`Canvas.Bottom` updates the opposite distance in
+the inverse direction. The shared drag path no longer creates a `Margin` on Canvas children; normal
+layout containers retain the existing alignment-aware Margin behaviour. The same source edit path
+serves both single-element and same-parent multi-selection drags.
+
 ### Why this order
 
 `C1` removes a correctness and responsiveness hazard in every click path. `C2` then closes the

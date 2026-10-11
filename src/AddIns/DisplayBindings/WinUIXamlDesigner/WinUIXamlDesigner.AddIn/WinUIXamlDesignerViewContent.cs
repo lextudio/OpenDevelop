@@ -1133,40 +1133,28 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		var sizeDeltaX = info.EndWidth - info.StartWidth;
 		var sizeDeltaY = info.EndHeight - info.StartHeight;
 
-		var (left, top, right, bottom) = ParseMargin((string)element.Attribute("Margin"));
-		var deltaX = (int)Math.Round(positionDeltaX);
-		var deltaY = (int)Math.Round(positionDeltaY);
-		switch ((string)element.Attribute("HorizontalAlignment"))
-		{
-			case "Right":
-				right -= deltaX;
-				break;
-			case "Center":
-				left += deltaX;
-				right -= deltaX;
-				break;
-			default:
-				left += deltaX;
-				break;
-		}
-		switch ((string)element.Attribute("VerticalAlignment"))
-		{
-			case "Bottom":
-				bottom -= deltaY;
-				break;
-			case "Center":
-				top += deltaY;
-				bottom -= deltaY;
-				break;
-			default:
-				top += deltaY;
-				break;
-		}
+		if (!ApplyCanvasPositionDelta(element, positionDeltaX, positionDeltaY)) {
+			var (left, top, right, bottom) = ParseMargin((string)element.Attribute("Margin"));
+			var deltaX = (int)Math.Round(positionDeltaX);
+			var deltaY = (int)Math.Round(positionDeltaY);
+			switch ((string)element.Attribute("HorizontalAlignment"))
+			{
+				case "Right": right -= deltaX; break;
+				case "Center": left += deltaX; right -= deltaX; break;
+				default: left += deltaX; break;
+			}
+			switch ((string)element.Attribute("VerticalAlignment"))
+			{
+				case "Bottom": bottom -= deltaY; break;
+				case "Center": top += deltaY; bottom -= deltaY; break;
+				default: top += deltaY; break;
+			}
 
-		if (left != 0 || top != 0 || right != 0 || bottom != 0)
-			editor.SetAttribute(element, "Margin", FormatMargin(left, top, right, bottom));
-		else
-			editor.SetAttribute(element, "Margin", null);
+			if (left != 0 || top != 0 || right != 0 || bottom != 0)
+				editor.SetAttribute(element, "Margin", FormatMargin(left, top, right, bottom));
+			else
+				editor.SetAttribute(element, "Margin", null);
+		}
 		var sizeChanged = Math.Abs(sizeDeltaX) > 0.01 || Math.Abs(sizeDeltaY) > 0.01;
 		if (sizeChanged)
 		{
@@ -1190,6 +1178,18 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			ApplyDocumentChange();
 		}
 		SelectElement(info.Name);
+	}
+
+	/// <summary>Applies a Canvas-specific position delta, returning false for normal layout
+	/// containers that continue to use this designer's alignment-aware Margin convention.</summary>
+	bool ApplyCanvasPositionDelta(XElement element, double deltaX, double deltaY)
+	{
+		var changes = WinUICanvasPositionEditor.PositionDelta(element, deltaX, deltaY);
+		if (changes.Count == 0)
+			return WinUICanvasPositionEditor.IsCanvasChild(element);
+		foreach (var change in changes)
+			editor.SetAttribute(element, change.Attribute, change.Value);
+		return true;
 	}
 
 	/// <summary>
@@ -1318,6 +1318,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		{
 			var element = editor.FindElement(name);
 			if (element == null)
+				continue;
+			if (ApplyCanvasPositionDelta(element, dx, dy))
 				continue;
 			var (left, top, right, bottom) = ParseMargin((string)element.Attribute("Margin"));
 			var deltaX = (int)Math.Round(dx);
