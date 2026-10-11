@@ -283,6 +283,29 @@ public sealed class WinUIGridTrackEditorTests
 	}
 
 	[Fact]
+	public void MenuFlyoutSubItemInsertion_BuildsNestedSourceOwnedMenuAndUndo()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"><Button.ContextFlyout><MenuFlyout x:Name="MenuFlyout1"><MenuFlyoutItem Text="First"/></MenuFlyout></Button.ContextFlyout></Button></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		var submenu = editor.InsertMenuFlyoutSubItem(editor.FindElement("MenuFlyout1")!);
+		Assert.Equal("MenuFlyoutSubItem1", (string?)submenu.Attribute(WinUIXamlDocumentEditor.NameDirective));
+		Assert.Equal("Submenu", (string?)submenu.Attribute("Text"));
+		var item = editor.InsertMenuFlyoutItem(submenu);
+		Assert.Equal("MenuFlyoutItem1", (string?)item.Attribute(WinUIXamlDocumentEditor.NameDirective));
+		Assert.Single(submenu.Elements());
+
+		Assert.True(editor.Undo());
+		Assert.Empty(editor.FindElement("MenuFlyoutSubItem1")!.Elements());
+		Assert.True(editor.Undo());
+		Assert.Equal(source, editor.Text);
+		Assert.True(editor.Redo());
+		Assert.True(editor.Redo());
+		Assert.Contains("<MenuFlyoutSubItem", editor.Text);
+	}
+
+	[Fact]
 	public void MoveToEdge_CommitsAndRoundTripsACollectionItem()
 	{
 		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"><Button.ContextFlyout><MenuFlyout x:Name="MenuFlyout1"><MenuFlyoutItem x:Name="First" Text="First"/><MenuFlyoutItem x:Name="Second" Text="Second"/><MenuFlyoutItem x:Name="Third" Text="Third"/></MenuFlyout></Button.ContextFlyout></Button></Grid>""";

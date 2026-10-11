@@ -411,10 +411,20 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			// A MenuFlyout is source-only and has no surface bounds to receive a drop. Its tray
 			// selection is therefore the explicit insertion target; do not reinterpret the visual
 			// control under the cursor as the flyout's parent.
-			var flyout = componentTraySelection ? editor.FindElement(SelectedElementName) : container;
-			if (flyout == null || !string.Equals(flyout.Name.LocalName, "MenuFlyout", StringComparison.Ordinal))
-				throw new InvalidOperationException("Select a MenuFlyout in the component tray before adding a MenuFlyoutItem.");
-			var item = editor.InsertMenuFlyoutItem(flyout);
+			var menu = componentTraySelection ? editor.FindElement(SelectedElementName) : container;
+			if (!IsMenuFlyoutContainer(menu))
+				throw new InvalidOperationException("Select a MenuFlyout or MenuFlyoutSubItem in the component tray before adding a MenuFlyoutItem.");
+			var item = editor.InsertMenuFlyoutItem(menu);
+			ApplyDocumentChange();
+			SelectComponentTrayElement(item);
+			return (string)item.Attribute(WinUIXamlDocumentEditor.NameDirective);
+		}
+		if (string.Equals(controlName, "MenuFlyoutSubItem", StringComparison.Ordinal))
+		{
+			var menu = componentTraySelection ? editor.FindElement(SelectedElementName) : container;
+			if (!IsMenuFlyoutContainer(menu))
+				throw new InvalidOperationException("Select a MenuFlyout or MenuFlyoutSubItem in the component tray before adding a MenuFlyoutSubItem.");
+			var item = editor.InsertMenuFlyoutSubItem(menu);
 			ApplyDocumentChange();
 			SelectComponentTrayElement(item);
 			return (string)item.Attribute(WinUIXamlDocumentEditor.NameDirective);
@@ -446,6 +456,12 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		}
 		SelectElement(name);
 		return name;
+	}
+
+	static bool IsMenuFlyoutContainer(XElement element)
+	{
+		return element != null && (string.Equals(element.Name.LocalName, "MenuFlyout", StringComparison.Ordinal)
+			|| string.Equals(element.Name.LocalName, "MenuFlyoutSubItem", StringComparison.Ordinal));
 	}
 
 	public bool DeleteSelected() => commands.Execute("Delete");

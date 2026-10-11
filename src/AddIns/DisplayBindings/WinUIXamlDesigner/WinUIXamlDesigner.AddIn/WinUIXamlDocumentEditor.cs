@@ -173,23 +173,46 @@ sealed class WinUIXamlDocumentEditor
 			|| string.Equals(typeName, "AppBarButton", StringComparison.Ordinal);
 	}
 
-	/// <summary>Adds a named item to a source-owned <c>MenuFlyout</c>. Like the flyout itself,
+	/// <summary>Adds a named item to a source-owned menu container. Like the flyout itself,
 	/// the item is selected through the component tray rather than a preview-tree identity.</summary>
-	public XElement InsertMenuFlyoutItem(XElement flyout)
+	public XElement InsertMenuFlyoutItem(XElement menu)
 	{
 		if (Document?.Root == null)
 			throw new InvalidOperationException("The document has no root to add a MenuFlyoutItem to.");
-		if (flyout == null || flyout.Document != Document
-			|| !string.Equals(flyout.Name.LocalName, "MenuFlyout", StringComparison.Ordinal))
-			throw new ArgumentException("A source MenuFlyout is required.", nameof(flyout));
+		if (!IsMenuFlyoutContainer(menu))
+			throw new ArgumentException("A source MenuFlyout or MenuFlyoutSubItem is required.", nameof(menu));
 
 		BeginChange();
 		var item = new XElement(Document.Root.GetDefaultNamespace() + "MenuFlyoutItem");
 		item.SetAttributeValue(NameDirective, UniqueName("MenuFlyoutItem"));
 		item.SetAttributeValue("Text", "Menu item");
-		flyout.Add(item);
+		menu.Add(item);
 		CommitChange();
 		return item;
+	}
+
+	/// <summary>Adds a named submenu to a source-owned menu container.</summary>
+	public XElement InsertMenuFlyoutSubItem(XElement menu)
+	{
+		if (Document?.Root == null)
+			throw new InvalidOperationException("The document has no root to add a MenuFlyoutSubItem to.");
+		if (!IsMenuFlyoutContainer(menu))
+			throw new ArgumentException("A source MenuFlyout or MenuFlyoutSubItem is required.", nameof(menu));
+
+		BeginChange();
+		var item = new XElement(Document.Root.GetDefaultNamespace() + "MenuFlyoutSubItem");
+		item.SetAttributeValue(NameDirective, UniqueName("MenuFlyoutSubItem"));
+		item.SetAttributeValue("Text", "Submenu");
+		menu.Add(item);
+		CommitChange();
+		return item;
+	}
+
+	bool IsMenuFlyoutContainer(XElement element)
+	{
+		return element != null && element.Document == Document
+			&& (string.Equals(element.Name.LocalName, "MenuFlyout", StringComparison.Ordinal)
+				|| string.Equals(element.Name.LocalName, "MenuFlyoutSubItem", StringComparison.Ordinal));
 	}
 
 	/// <summary>Inserts a copied XAML element as a source edit. The returned element receives a
