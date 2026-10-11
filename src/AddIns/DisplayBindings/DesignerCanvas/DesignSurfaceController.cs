@@ -647,6 +647,10 @@ public sealed class DesignSurfaceController : IDisposable
 			var snapped = SnapGuideCalculator.SnapEdge(true, edge, raw.Y, raw.Y + raw.Height, siblings);
 			deltaX += snapped.Correction;
 			if (snapped.Guide is double guide) guides.Add((true, guide));
+			// The vertical-edge correction can move the horizontal overlap interval used by
+			// the next snap. Rebuild the rect so a corner drag evaluates the second guide
+			// against the geometry the user will actually receive.
+			raw = ApplyHandle(start, deltaX, deltaY);
 		}
 		if (dragHandle.Contains('n') || dragHandle.Contains('s'))
 		{
