@@ -116,11 +116,11 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 				: new[] { (bounds.Y, bounds.X, bounds.X + bounds.Width), (bounds.Y + bounds.Height / 2, bounds.X, bounds.X + bounds.Width), (bounds.Y + bounds.Height, bounds.X, bounds.X + bounds.Width) });
 			if (requireOverlap)
 				candidates = candidates.Where(candidate => Overlaps(orthogonalStart, orthogonalEnd, candidate.Item2, candidate.Item3));
-		var matches = candidates.OrderBy(candidate => Math.Abs(candidate.Item1 - position)).ToArray();
-		if (matches.Length == 0)
-			return (0, null);
-		var nearest = matches[0];
-		return Math.Abs(nearest.Item1 - position) > tolerance
+			var matches = candidates.OrderBy(candidate => Math.Abs(candidate.Item1 - position)).ToArray();
+			if (matches.Length == 0)
+				return (0, null);
+			var nearest = matches[0];
+			return Math.Abs(nearest.Item1 - position) > tolerance
 				? (0, null)
 				: (nearest.Item1 - position, nearest.Item1);
 		}
