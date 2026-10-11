@@ -91,4 +91,17 @@ public sealed class SnapGuideCalculatorTests
 		Assert.Equal(100, result.DY);
 		Assert.Contains(result.Guides, guide => guide is (false, 100));
 	}
+
+	[Fact]
+	public void RequireOverlap_UsesTheAcceptedVerticalCorrectionForHorizontalGuides()
+	{
+		var result = SnapGuideCalculator.ApplySnap(
+			(0, 0, 10, 10), 112, 85,
+			new[] { (105d, 90d, 0d, 10d), (106d, 100d, 4d, 10d) },
+			requireOverlap: true);
+
+		Assert.Equal(105, result.DX);
+		Assert.Contains(result.Guides, guide => guide is (true, 105));
+		Assert.Contains(result.Guides, guide => guide is (false, 100));
+	}
 }

@@ -76,6 +76,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 				guides.Add((true, vertical.Candidate.Position));
 			}
 
+			// Horizontal candidates require overlap on X. That test must see the accepted vertical
+			// correction above: a drag can become horizontally aligned with another sibling before
+			// it is close enough to that sibling's top/middle/bottom guide.
+			ex = startRect.X + deltaX;
 			var horizontalMatches = (requireOverlap
 				? horizontalCandidates.Where(c => Overlaps(ex, ex + ew, c.OrthogonalStart, c.OrthogonalEnd))
 				: horizontalCandidates)
