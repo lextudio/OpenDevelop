@@ -53,6 +53,39 @@ sealed class WinUIXamlDocumentEditor
 			.FirstOrDefault(e => string.Equals((string)e.Attribute(NameDirective), name, StringComparison.Ordinal));
 	}
 
+	/// <summary>Returns a document-local element path made only from sibling element indices.
+	/// Unlike x:Name this is stable for unnamed source objects and never refers to a runtime node.</summary>
+	public string GetElementPath(XElement element)
+	{
+		if (element == null || element.Document != Document || Document?.Root == null)
+			return null;
+		var indices = new Stack<int>();
+		for (var current = element; current != Document.Root; current = current.Parent)
+		{
+			if (current.Parent == null)
+				return null;
+			indices.Push(current.Parent.Elements().TakeWhile(sibling => sibling != current).Count());
+		}
+		return string.Join("/", indices);
+	}
+
+	/// <summary>Finds an element previously identified by <see cref="GetElementPath"/>.</summary>
+	public XElement FindElementAtPath(string path)
+	{
+		var current = Document?.Root;
+		if (current == null || path == null)
+			return null;
+		foreach (var part in path.Split('/', StringSplitOptions.RemoveEmptyEntries))
+		{
+			if (!int.TryParse(part, out var index) || index < 0)
+				return null;
+			current = current.Elements().ElementAtOrDefault(index);
+			if (current == null)
+				return null;
+		}
+		return current;
+	}
+
 	public IReadOnlyList<string> ElementNames() =>
 		Document?.Root == null
 			? Array.Empty<string>()
