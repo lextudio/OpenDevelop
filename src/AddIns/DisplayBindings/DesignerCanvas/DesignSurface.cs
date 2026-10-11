@@ -195,6 +195,8 @@ public class DesignSurface : DesignerCanvas
 
 	/// <summary>Raised with a design-unit delta when the user nudges the selection with arrow keys.</summary>
 	public event EventHandler<(double DX, double DY)> NudgeRequested;
+	/// <summary>Raised for Tab (false) and Shift+Tab (true) primary-selection navigation.</summary>
+	public event EventHandler<bool>? FocusNavigationRequested;
 
 	/// <summary>
 	/// Surface geometry for the resize-drag integration tests: the rendered design bitmap
@@ -1423,6 +1425,16 @@ public class DesignSurface : DesignerCanvas
 		if (e.Key == Key.F2 && selectionName != null && RenameRequested != null)
 		{
 			RenameRequested.Invoke(this, selectionName);
+			e.Handled = true;
+			return;
+		}
+		// The canvas itself owns keyboard focus while no inline editor is active. Tab navigates the
+		// snapshot's primary selection rather than leaving the design surface for the next shell
+		// control; the controller deliberately owns which nodes are selectable for each backend.
+		if (e.Key == Key.Tab && !Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
+			&& !Keyboard.Modifiers.HasFlag(ModifierKeys.Alt))
+		{
+			FocusNavigationRequested?.Invoke(this, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
 			e.Handled = true;
 			return;
 		}

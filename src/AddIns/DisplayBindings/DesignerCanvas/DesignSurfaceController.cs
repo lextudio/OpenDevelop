@@ -68,6 +68,7 @@ public sealed class DesignSurfaceController : IDisposable
 		surface.ContextCommandRequested += OnSurfaceContextCommandRequested;
 		surface.NudgeRequested += OnSurfaceNudgeRequested;
 		surface.UndoRedoRequested += OnSurfaceUndoRedoRequested;
+		surface.FocusNavigationRequested += OnFocusNavigationRequested;
 	}
 
 	public DesignSurface Surface { get; }
@@ -122,6 +123,13 @@ public sealed class DesignSurfaceController : IDisposable
 	void OnSurfaceGridTrackSplitRequested(object? sender, (string Name, bool IsRow, double Position) args) => GridTrackSplitRequested?.Invoke(this, args);
 	void OnSurfaceNudgeRequested(object? sender, (double DX, double DY) delta) => NudgeRequested?.Invoke(this, delta);
 	void OnSurfaceUndoRedoRequested(object? sender, bool undo) => UndoRedoRequested?.Invoke(this, undo);
+	void OnFocusNavigationRequested(object? sender, bool backwards)
+	{
+		var next = DesignerFocusNavigator.Next(LastSnapshot?.Tree, SelectedElementName, backwards,
+			node => KeyOf(node, keying), IsSelectable);
+		if (next != null)
+			SelectElement(next);
+	}
 	void OnSurfaceLayoutInsetDragCommitted(object? sender, (string Edge, double Value) edit)
 	{
 		if (SelectedElementName is not { } name || !nodesByName.TryGetValue(name, out var node)
@@ -888,6 +896,7 @@ public sealed class DesignSurfaceController : IDisposable
 		Surface.ContextCommandRequested -= OnSurfaceContextCommandRequested;
 		Surface.NudgeRequested -= OnSurfaceNudgeRequested;
 		Surface.UndoRedoRequested -= OnSurfaceUndoRedoRequested;
+		Surface.FocusNavigationRequested -= OnFocusNavigationRequested;
 		nodesByName.Clear();
 		parentByName.Clear();
 		LastSnapshot = null;
