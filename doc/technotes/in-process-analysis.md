@@ -576,6 +576,14 @@ interpretation: the focused Uno child-host test shows that its root grid is meas
 from the document's `Width` attribute. An empty definition collection remains an accepted Grid
 with zero explicitly declared tracks. The Microsoft-host leg remains a Windows verification item.
 
+**C3 follow-up (2026-10-11).** The WinUI designer now consumes those snapshot tracks when drawing
+Grid divider guides: it converts each measured track start plus the measured far edge into the
+shared canvas boundary form. The former XAML `Auto`/star approximation remains only as a fallback
+for ProGPU or an unavailable/older runtime that does not publish `GridTracks`; it is no longer the
+normal Uno/WinUI path. Runtime telemetry is accepted only for one unambiguous source-backed Grid
+with the selected name; a duplicate x:Name in a template/data-template namescope falls back rather
+than applying the wrong Grid's measured tracks.
+
 ### Why this order
 
 `C1` removes a correctness and responsiveness hazard in every click path. `C2` then closes the

@@ -788,12 +788,53 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		var element = editor.FindElement(name);
 		if (element == null || !string.Equals(element.Name.LocalName, "Grid", StringComparison.Ordinal))
 			return (Array.Empty<double>(), Array.Empty<double>());
+		// An out-of-process Uno/WinUI host can now tell us the resolved Grid layout. Prefer
+		// that snapshot over source arithmetic: Auto rows, min/max constraints, pixel rounding
+		// and a host-imposed root size all make a faithful answer impossible to derive from
+		// RowDefinition/ColumnDefinition text. ProGPU and an unavailable/older runtime have no
+		// such node telemetry yet, so retain the existing source-only fallback for them.
+		if (FindRuntimeGridNode(previewHost.ElementTree, name)?.GridTracks is { Accepted: true } measured)
+			return (GridGuideBoundaries(measured.RowTracks),
+				GridGuideBoundaries(measured.ColumnTracks));
 		var bounds = previewHost.QueryElementBounds(name);
 		if (bounds == null)
 			return (Array.Empty<double>(), Array.Empty<double>());
 		var rows = ParseGridLengths(element.Elements().FirstOrDefault(e => IsNamedElement(e, "RowDefinitions")), bounds.Value.Height, isRow: true);
 		var cols = ParseGridLengths(element.Elements().FirstOrDefault(e => IsNamedElement(e, "ColumnDefinitions")), bounds.Value.Width, isRow: false);
 		return (rows, cols);
+	}
+
+	/// <summary>Names are unique only inside a XAML namescope. A template/data-template can
+	/// therefore contain the same name as the selected source Grid; only trust runtime telemetry
+	/// when the tree has exactly one source-backed Grid with that name. Ambiguity deliberately
+	/// returns null so <see cref="GridGuides"/> takes its source-only fallback.</summary>
+	static DesignerElementNode? FindRuntimeGridNode(DesignerElementNode? node, string name)
+	{
+		DesignerElementNode? match = null;
+		var ambiguous = false;
+		void Visit(DesignerElementNode? current)
+		{
+			if (current == null || ambiguous) return;
+			if (current.IsDesignable && string.Equals(current.Type, "Grid", StringComparison.Ordinal)
+				&& string.Equals(current.Name, name, StringComparison.Ordinal)) {
+				if (match != null) { ambiguous = true; return; }
+				match = current;
+			}
+			foreach (var child in current.Children)
+				Visit(child);
+		}
+		Visit(node);
+		return ambiguous ? null : match;
+	}
+
+	/// <summary>Converts track start offsets into the boundary list the shared raster canvas
+	/// expects: every explicit track start followed by the measured Grid far edge.</summary>
+	static double[] GridGuideBoundaries(IReadOnlyList<DesignerGridTrackInfo> tracks)
+	{
+		if (tracks.Count == 0) return Array.Empty<double>();
+		var farEdge = tracks[^1].Offset + tracks[^1].Size;
+		if (!double.IsFinite(farEdge) || farEdge < 0) return Array.Empty<double>();
+		return tracks.Select(track => track.Offset).Append(farEdge).ToArray();
 	}
 
 	static double[] ParseGridLengths(XElement definitions, double total, bool isRow)
