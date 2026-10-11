@@ -86,7 +86,14 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		status.Text = previewHost.StatusText;
 		outline.SelectedItemChanged += OnOutlineSelectionChanged;
 		outline.AllowDrop = true;
-		outline.ContextMenuFactory = node => BuildOutlineContextMenu(node.Name);
+		// Existing outline verbs are name-addressed. An unnamed row now has safe source-path
+		// selection/drag support, but must not expose a menu whose empty name makes “Paste Into”
+		// silently target the document root. It needs an explicit disabled empty menu rather than
+		// null: a null WPF ContextMenu bubbles to a named TreeViewItem ancestor and would make its
+		// destructive verbs operate on the parent. Source-path-aware verbs remain separate work.
+		outline.ContextMenuFactory = node => string.IsNullOrEmpty(node.Name)
+			? new ContextMenu { IsEnabled = false }
+			: BuildOutlineContextMenu(node.Name);
 		outline.PreviewMouseLeftButtonDown += OnOutlineMouseDown;
 		outline.PreviewMouseMove += OnOutlineMouseMove;
 		outline.DragOver += OnOutlineDragOver;
