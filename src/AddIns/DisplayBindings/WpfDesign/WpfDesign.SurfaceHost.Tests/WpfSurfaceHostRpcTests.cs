@@ -739,7 +739,12 @@ public sealed class WpfSurfaceHostRpcTests
 		var notifyCleared = await client.SetBindingNotifyOnValidationErrorAsync(notifyEnabled.Version, bound.Id, notify.BindingPropertyName, false, timeout.Token);
 		Assert.True(notifyCleared.Accepted, notifyCleared.Error);
 		Assert.DoesNotContain("NotifyOnValidationError", (await client.FlushAsync(notifyCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		var validationOption = FindByName(notifyCleared.Tree!, "bound")!.Properties.Single(property => property.BindingOptionName == "ValidatesOnExceptions");
+		var validationOptions = FindByName(notifyCleared.Tree!, "bound")!.Properties
+			.Where(property => property.EditorKind == "BindingValidationOption")
+			.ToDictionary(property => property.BindingOptionName, StringComparer.Ordinal);
+		Assert.Equal(new[] { "ValidatesOnDataErrors", "ValidatesOnExceptions", "ValidatesOnNotifyDataErrors" },
+			validationOptions.Keys.OrderBy(name => name, StringComparer.Ordinal));
+		var validationOption = validationOptions["ValidatesOnExceptions"];
 		Assert.Equal("BindingValidationOption", validationOption.EditorKind);
 		Assert.Equal("Boolean", validationOption.Kind);
 		var validationEnabled = await client.SetBindingValidationOptionAsync(notifyCleared.Version, bound.Id, validationOption.BindingPropertyName, validationOption.BindingOptionName, true, timeout.Token);
@@ -751,6 +756,10 @@ public sealed class WpfSurfaceHostRpcTests
 		var unsupportedValidation = await client.SetBindingValidationOptionAsync(validationCleared.Version, bound.Id, "Text", "Mode", true, timeout.Token);
 		Assert.False(unsupportedValidation.Accepted);
 		Assert.Contains("Unsupported Binding validation option", unsupportedValidation.Error, StringComparison.Ordinal);
+		var genericNotify = await client.SetBindingValidationOptionAsync(validationCleared.Version, bound.Id, "Text", "NotifyOnValidationError", true, timeout.Token);
+		Assert.False(genericNotify.Accepted);
+		Assert.Contains("Unsupported Binding validation option", genericNotify.Error, StringComparison.Ordinal);
+		Assert.DoesNotContain("NotifyOnValidationError", (await client.FlushAsync(validationCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
 		var badTrigger = await client.SetBindingUpdateSourceTriggerAsync(validationCleared.Version, bound.Id, "Text", "NotATrigger", timeout.Token);
 		Assert.False(badTrigger.Accepted);
 		Assert.DoesNotContain("NotATrigger", (await client.FlushAsync(validationCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
