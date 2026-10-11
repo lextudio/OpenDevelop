@@ -37,6 +37,7 @@ public sealed class DesignSurfaceController : IDisposable
 	readonly HashSet<string> selectableNames = new(StringComparer.Ordinal);
 	readonly List<string> multiSelectionNames = new();
 	Dictionary<string, DesignerElementNode> nodesByName = new(StringComparer.Ordinal);
+	Dictionary<string, DesignerElementNode?> parentByName = new(StringComparer.Ordinal);
 	bool showTabOrder;
 	bool snapToGrid;
 	bool snapToGuides = true;
@@ -150,7 +151,7 @@ public sealed class DesignSurfaceController : IDisposable
 		if (disposed || snapshot == null)
 			return;
 		LastSnapshot = snapshot;
-		nodesByName = IndexTree(snapshot.Tree, keying);
+		(nodesByName, parentByName) = IndexTree(snapshot.Tree, keying);
 		// Only snapshots that actually describe the document carry the groups. An early-return
 		// error snapshot (no Tree) has an empty list that means "nothing to say", not "this
 		// document has no states" - repopulating from one of those blanked the whole states panel
@@ -214,21 +215,24 @@ public sealed class DesignSurfaceController : IDisposable
 		return node.Name ?? node.Type;
 	}
 
-	static Dictionary<string, DesignerElementNode> IndexTree(DesignerElementNode? node, DesignSurfaceKeying keying)
+	static (Dictionary<string, DesignerElementNode> Nodes, Dictionary<string, DesignerElementNode?> Parents) IndexTree(DesignerElementNode? node, DesignSurfaceKeying keying)
 	{
 		var index = new Dictionary<string, DesignerElementNode>(StringComparer.Ordinal);
+		var parents = new Dictionary<string, DesignerElementNode?>(StringComparer.Ordinal);
 		if (node == null)
-			return index;
-		void Walk(DesignerElementNode current)
+			return (index, parents);
+		void Walk(DesignerElementNode current, DesignerElementNode? parent)
 		{
 			var key = KeyOf(current, keying);
-			if (keying == DesignSurfaceKeying.Id ? key != null : !string.IsNullOrEmpty(key))
+			if (keying == DesignSurfaceKeying.Id ? key != null : !string.IsNullOrEmpty(key)) {
 				index[key!] = current;
+				parents[key!] = parent;
+			}
 			foreach (var child in current.Children)
-				Walk(child);
+				Walk(child, current);
 		}
-		Walk(node);
-		return index;
+		Walk(node, null);
+		return (index, parents);
 	}
 
 	#endregion
@@ -606,8 +610,11 @@ public sealed class DesignSurfaceController : IDisposable
 	{
 		if (dragName == null || !dragGroupStart.TryGetValue(dragName, out var start))
 			return (deltaX, deltaY, Array.Empty<(bool, double)>());
+		parentByName.TryGetValue(dragName, out var selectedParent);
 		var siblingBounds = nodesByName
-			.Where(entry => entry.Key != dragName)
+			.Where(entry => entry.Key != dragName
+				&& parentByName.TryGetValue(entry.Key, out var parent)
+				&& ReferenceEquals(parent, selectedParent))
 			.Select(entry => new SnapGuideCalculator.Target(entry.Value.X, entry.Value.Y,
 				entry.Value.Width, entry.Value.Height, entry.Value.BaselineOffset));
 		// Alignment guides should describe a relationship visible to the user: do not snap an
@@ -621,7 +628,10 @@ public sealed class DesignSurfaceController : IDisposable
 	{
 		if (dragName == null || !dragGroupStart.TryGetValue(dragName, out var start) || string.IsNullOrEmpty(dragHandle))
 			return (deltaX, deltaY, Array.Empty<(bool, double)>());
-		var siblings = nodesByName.Where(entry => entry.Key != dragName)
+		parentByName.TryGetValue(dragName, out var selectedParent);
+		var siblings = nodesByName.Where(entry => entry.Key != dragName
+			&& parentByName.TryGetValue(entry.Key, out var parent)
+			&& ReferenceEquals(parent, selectedParent))
 			.Select(entry => (entry.Value.X, entry.Value.Y, entry.Value.Width, entry.Value.Height)).ToArray();
 		var raw = ApplyHandle(start, deltaX, deltaY);
 		var guides = new List<(bool, double)>();
@@ -850,6 +860,7 @@ public sealed class DesignSurfaceController : IDisposable
 		Surface.NudgeRequested -= OnSurfaceNudgeRequested;
 		Surface.UndoRedoRequested -= OnSurfaceUndoRedoRequested;
 		nodesByName.Clear();
+		parentByName.Clear();
 		LastSnapshot = null;
 	}
 }
