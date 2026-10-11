@@ -931,6 +931,13 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		var boundaries = isRow ? guides.RowOffsets : guides.ColOffsets;
 		if (boundaries.Length != items.Count + 1)
 			return "Grid track geometry unavailable";
+		var bounds = previewHost.QueryElementBounds(gridName);
+		if (bounds == null)
+			return "Grid bounds unknown";
+		// DesignSurface reports the released divider in design-canvas coordinates, while
+		// GridTracks (and the source definition) are local to the Grid. A nested Grid
+		// must therefore remove its own origin before the track math below.
+		position -= isRow ? bounds.Value.Y : bounds.Value.X;
 		// Convert the divider position into a size for THIS row/column: its share is the
 		// difference between the new divider and the previous divider.
 		var prev = boundaries[index];

@@ -587,6 +587,9 @@ than applying the wrong Grid's measured tracks.
 The resize commit now reuses those same guide boundaries to calculate the edited row or column
 size. This keeps a drag over an `Auto`, star, or constrained track from looking correct on the
 surface yet serializing a size reconstructed from a different source-only approximation.
+The canvas reports a released divider in design-canvas coordinates, so the commit also removes the
+selected Grid's measured X/Y origin before comparing it with its Grid-local track boundaries; this
+is what makes the same interaction round-trip for a nested Grid rather than only a root Grid.
 
 ### Why this order
 
