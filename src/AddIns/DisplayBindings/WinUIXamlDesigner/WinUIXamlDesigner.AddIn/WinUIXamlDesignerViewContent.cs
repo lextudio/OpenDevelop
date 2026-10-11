@@ -86,14 +86,11 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		status.Text = previewHost.StatusText;
 		outline.SelectedItemChanged += OnOutlineSelectionChanged;
 		outline.AllowDrop = true;
-		// Existing outline verbs are name-addressed. An unnamed row now has safe source-path
-		// selection/drag support, but must not expose a menu whose empty name makes “Paste Into”
-		// silently target the document root. It needs an explicit disabled empty menu rather than
-		// null: a null WPF ContextMenu bubbles to a named TreeViewItem ancestor and would make its
-		// destructive verbs operate on the parent. Source-path-aware verbs remain separate work.
-		outline.ContextMenuFactory = node => string.IsNullOrEmpty(node.Name)
-			? new ContextMenu { IsEnabled = false }
-			: BuildOutlineContextMenu(node.Name);
+		// Existing outline verbs are name-addressed. Unnamed rows use a source-owned menu; when
+		// resolution fails they still need an explicit disabled empty menu rather than null: a null
+		// WPF ContextMenu bubbles to a named TreeViewItem ancestor and would make its destructive
+		// verbs operate on the parent.
+		outline.ContextMenuFactory = BuildOutlineContextMenu;
 		outline.PreviewMouseLeftButtonDown += OnOutlineMouseDown;
 		outline.PreviewMouseMove += OnOutlineMouseMove;
 		outline.DragOver += OnOutlineDragOver;
@@ -885,6 +882,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 
 	/// <summary>Inserts the clipboard element into the selected container (or the root).</summary>
 	void PasteElement(string containerName)
+		=> PasteElement(editor.FindElement(containerName) ?? editor.Document.Root);
+
+	void PasteElement(XElement container)
 	{
 		var clipboardText = GetClipboardText();
 		if (string.IsNullOrWhiteSpace(clipboardText))
@@ -892,10 +892,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			status.Text = "Designer clipboard is empty";
 			return;
 		}
-		var container = editor.FindElement(containerName) ?? editor.Document.Root;
 		if (container == null)
 		{
-			status.Text = "Cannot paste into " + (containerName ?? "root");
+			status.Text = "Cannot paste into the selected element";
 			return;
 		}
 		try
@@ -928,6 +927,14 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			SelectElement(name);
 	}
 
+	void MoveToEdge(XElement element, bool front)
+	{
+		if (element == null || !editor.MoveToEdge(element, front))
+			return;
+		ApplyDocumentChange();
+		SelectSourceElement(element, path: null);
+	}
+
 	/// <summary>Wraps the selected element in a new Grid or StackPanel container.</summary>
 	void WrapSelected(string name, string containerType)
 	{
@@ -935,6 +942,15 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		if (element == null)
 			return;
 		var wrapper = editor.WrapInContainer(element, containerType);
+		if (wrapper == null)
+			return;
+		ApplyDocumentChange();
+		SelectElement((string)wrapper.Attribute(WinUIXamlDocumentEditor.NameDirective));
+	}
+
+	void WrapElement(XElement element, string containerType)
+	{
+		var wrapper = element == null ? null : editor.WrapInContainer(element, containerType);
 		if (wrapper == null)
 			return;
 		ApplyDocumentChange();
@@ -1826,6 +1842,78 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	}
 
 	#region Outline context menu
+
+	ContextMenu BuildOutlineContextMenu(DesignerElementNode node)
+	{
+		if (!string.IsNullOrEmpty(node.Name))
+			return BuildOutlineContextMenu(node.Name);
+		var element = ResolveOutlineSourceElement(node);
+		if (element == null)
+			return new ContextMenu { IsEnabled = false };
+		var menu = new ContextMenu();
+		void Add(string header, string command)
+		{
+			var entry = new MenuItem { Header = header };
+			entry.Click += (_, _) => ExecuteSourceOutlineCommand(element, command);
+			menu.Items.Add(entry);
+		}
+		Add("Copy", "copy");
+		Add("Paste Into", "paste");
+		menu.Items.Add(new Separator());
+		Add("Delete", "delete");
+		Add("Bring to Front", "bring-to-front");
+		Add("Send to Back", "send-to-back");
+		menu.Items.Add(new Separator());
+		Add("Wrap in Grid", "wrap-grid");
+		Add("Wrap in StackPanel", "wrap-stackpanel");
+		return menu;
+	}
+
+	/// <summary>Runs an Outline verb against an unnamed source element. The element was captured
+	/// when the row's menu was built; after a source reload its document identity differs, so an
+	/// old menu is rejected instead of resolving a recycled sibling-index path.</summary>
+	void ExecuteSourceOutlineCommand(XElement element, string command)
+	{
+		if (element == null || element.Document != editor.Document)
+		{
+			status.Text = "The source changed; reopen the Outline menu";
+			return;
+		}
+		switch (command)
+		{
+			case "copy":
+				SetClipboardText(element.ToString(SaveOptions.DisableFormatting));
+				status.Text = "Copied " + element.Name.LocalName;
+				break;
+			case "paste":
+				PasteElement(element);
+				break;
+			case "delete":
+				if (element == editor.Document?.Root)
+				{
+					status.Text = "The document root cannot be deleted";
+					return;
+				}
+				editor.Remove(element);
+				SelectedElementName = null;
+				propertyContainer.SelectedObject = null;
+				previewHost.ClearSelection();
+				ApplyDocumentChange();
+				break;
+			case "bring-to-front":
+				MoveToEdge(element, front: true);
+				break;
+			case "send-to-back":
+				MoveToEdge(element, front: false);
+				break;
+			case "wrap-grid":
+				WrapElement(element, "Grid");
+				break;
+			case "wrap-stackpanel":
+				WrapElement(element, "StackPanel");
+				break;
+		}
+	}
 
 	ContextMenu BuildOutlineContextMenu(string name)
 	{
