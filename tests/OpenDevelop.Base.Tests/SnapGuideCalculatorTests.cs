@@ -79,4 +79,16 @@ public sealed class SnapGuideCalculatorTests
 		Assert.Equal(86, result.DY);
 		Assert.DoesNotContain(result.Guides, guide => !guide.IsVertical);
 	}
+
+	[Fact]
+	public void Baseline_OutOfRangeFallsBackToNearestBoxEdge()
+	{
+		var result = SnapGuideCalculator.ApplySnap(
+			(0, 0, 40, 20), 0, 95,
+			new[] { new SnapGuideCalculator.Target(0, 100, 40, 20, BaselineOffset: 30) },
+			ownBaselineOffset: 10, tolerance: 8, requireOverlap: true);
+
+		Assert.Equal(100, result.DY);
+		Assert.Contains(result.Guides, guide => guide is (false, 100));
+	}
 }
