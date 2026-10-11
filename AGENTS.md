@@ -1,870 +1,101 @@
-# Instructions for OpenDevelop
+# OpenDevelop agent guide
 
-## DevFlow Usage
+Keep this file concise and operational. Read the referenced technote only when the task needs it.
 
-### Build and Test API Guide
+## Working rules
 
-Use these actions for build → test workflows. All actions are invoked via `POST /api/v1/invoke/actions/{name}`.
+- Make small, verified changes; preserve unrelated user changes.
+- Run relevant maintained tests yourself. Test failures caused by the change block it.
+- Use one .NET SDK on macOS. Mixed SDKs can cause a false `MSB4018` asset-cache failure; use the
+  Homebrew SDK path that made the cache, e.g. `/opt/homebrew/Cellar/dotnet/<version>/libexec/dotnet`.
+- `SharpDevelop.sln` is stale; use `OpenDevelop.Mvp.slnx`.
 
-#### Build
+## OpenCode review and commits
 
-```
-od.build-solution → { success, result, errorCount, warningCount, diagnostics[], buildLog }
-```
+Use OpenCode with `opencode-go/deepseek-v4.1-flash` at High effort. One commit is one small,
+complete review target. Before commit, OpenCode must return terminal `VERDICT: APPROVED` for the
+exact staged diff and relevant executable tests must pass. `CHANGES_REQUESTED`, timeout, error,
+empty or truncated output blocks the commit. After any staged-diff change, re-review the full target.
+Retry one non-terminal review once; if it remains non-terminal, report it unverified and stop.
+Split oversized work into separate commits before review; partial approvals never approve a larger
+commit. Record the staged-tree hash before review and verify it immediately before commit. If no
+relevant test exists or cannot run, record why in the handoff; never waive approval. OpenCode
+commits; never push without the user's explicit request.
 
-- Returns `result: "Success"|"Error"|"Cancelled"`, structured `diagnostics` array, and raw `buildLog` text.
-- A plain build skips projects the fast up-to-date check finds unchanged (`FastUpToDateCheck`; they log
-  "is up to date; skipped" instead of MSBuild output). Pass `{"args":["", "rebuild"]}` when a test needs
-  MSBuild to actually run, e.g. to assert on its own log lines.
-- Projects that do need building (and everything depending on them) are built together in ONE
-  MSBuild process first (Build output: "Built N/M projects in one MSBuild process"); only failures
-  without an attributable error go through per-project builds. `OD_ONE_PROCESS_BUILD=0` disables it,
-  `OD_ONE_PROCESS_TRACE=<file>` logs what each run saw. Details: `doc/technotes/fast-mode.md`.
-- Parse the JSON response; do **not** treat empty/silent output as success.
-- Use `od.output-text("Build")` to get the raw build log separately if needed.
+## DevFlow
 
-#### Test Execution
+DevFlow uses `POST http://localhost:9299/api/v1/invoke/actions/<name>`. Parse JSON and check
+`success`/`result`; silence is not success. Use `od.build-solution`, `od.unit-test.run`,
+`od.unit-test.output`, and `od.unit-test.run-failed`; do not use `run-start` plus polling. Pass
+`{"args":["", "rebuild"]}` only when a test needs actual MSBuild output. Do not take screenshots
+unless the user explicitly asks.
 
-```
-od.unit-test.run → { started, completed, timedOut, passed, failed, skipped, failedTests[] }
-```
+For UI layout, wait for repeated equal bounds samples; identify controls through actual ancestors
+and distinguish tab/header/content/pane bounds. Pointer tests require fresh target geometry,
+explicit screen/surface/design conversion, capture and hit-target verification, granular held-button
+moves, release verification, and bounds-RPC/sequence/adorner checks. Use `ResizeDebugLog`.
 
-- **Always use this** instead of `od.unit-test.run-start` + polling. It waits for completion and returns pass/fail/skip counts plus `failedTests` array with display names.
-- Default timeout is 120 seconds; pass `timeoutSeconds` to extend.
+`/api/v1/ui/tree` bounds are window-content coordinates; injection requires
+`screen = treeBounds + windowContentOrigin`. Reset `od.pointer-events` before injection to separate
+bad conversion from delivery failures. WPF Popups are separate windows and absent from the main UI
+tree: test their content through semantic actions, not a screenshot/tree query.
 
-```
-od.unit-test.run-failed → { started, completed, reranCount, passed, failed, skipped, failedTests[] }
-```
+## Tests
 
-- Reruns only the tests that failed in the last run. Useful for debugging without re-running the full suite.
-
-```
-od.unit-test.run-start → { started }
-```
-
-- Starts tests without waiting. **Avoid** this for simple build→test→verify workflows; use `od.unit-test.run` instead.
-
-#### Test Inspection
-
-```
-od.unit-test.tree → { available, tests[] }
-```
-
-- Returns the full test tree with `displayName`, `result`, `type`, `nestedTests` for each node.
-- Use to find specific test names or check status of individual tests.
-
-```
-od.unit-test.output → { category, text }
-```
-
-- Returns the full UnitTesting output pad text (prose log of the test run).
-- Useful for extracting detailed error messages not available in the tree.
-
-#### Recommended Build→Test Workflow
-
-```bash
-# 1. Build and check result
-curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.build-solution \
-  -H "Content-Type: application/json" -d '{"args":[]}'
-# Parse JSON: check result=="Success", errorCount==0
-
-# 2. Run tests and get results
-curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.unit-test.run \
-  -H "Content-Type: application/json" -d '{"args":[]}'
-# Parse JSON: check completed==true, failed==0, failedTests is empty
-
-# 3. If tests failed, get detailed output
-curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.unit-test.output \
-  -H "Content-Type: application/json" -d '{"args":[]}'
-# Parse JSON: extract text field, search for error details
-
-# 4. Optionally rerun only failed tests
-curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.unit-test.run-failed \
-  -H "Content-Type: application/json" -d '{"args":[]}'
-```
-
-### DevFlow UI Verification
-
-- Agent/API readiness does not mean WPF/AvalonDock has completed layout and arrange. Never diagnose a startup layout problem from a single early bounds sample.
-- Locate the target control by content or text, then walk its actual structural ancestor chain to the owning `LayoutAnchorablePaneControl`. Do not query every control of that type and infer ownership from coordinates or list order.
-- Distinguish the tab/header bounds, selected-content bounds, and whole-pane bounds. A roughly 25 px tab row is not evidence that the pane itself is 25 px tall.
-- Treat layout bounds as stable only after the same target pane reports consistent bounds in multiple consecutive samples. If visual observation conflicts with DevFlow output, first re-check sampling time and node ancestry before drawing a conclusion.
-- Prefer semantic DevFlow actions (live layout model, visibility, selection, pane position) as corroborating evidence, but do not substitute a generic side/position result for the target pane's measured visual bounds.
-- Do not call screenshot endpoints or trigger operating-system screenshots during test or diagnostic runs unless the user explicitly requests a screenshot.
-
-### WinUI XAML Designer: Third-party controls and native exits
-
-For a WinUI design load that reports a missing third-party control, renders blank, or loses its
-JSON-RPC connection, read the designer's Output pad and the isolated host log *before* changing
-XAML or attempting a native-debugger session:
-
-```powershell
-# The Output pad contains the complete sequence across host restarts.
-Invoke-RestMethod -Method Post `
-  -Uri http://localhost:9299/api/v1/invoke/actions/od.output-text `
-  -ContentType application/json -Body '{"args":["WinUI Designer"]}'
-
-# The child log is the current host's stderr tail, useful while narrowing a single load.
-Invoke-RestMethod -Method Post `
-  -Uri http://localhost:9299/api/v1/invoke/actions/od.winui-designer.child-log `
-  -ContentType application/json -Body '{"args":[]}'
-```
-
-- Treat `SettingsCard`/other type-not-found errors as two distinct stages: CLR tag resolution and
-  compiled-XAML template/materialisation. A package-generated `IXamlMetadataProvider` is required
-  for the latter; a reflection-only provider may parse the tag and then fail or exit natively while
-  loading the package's `.xbf` resources.
-- Before loading an app assembly or its generated XAML metadata, compare the designed project's
-  target runtime, RID, Windows App SDK version and runtime graph with the isolated host. A .NET 9
-  app preloaded into a .NET 10 host is not a compatible runtime graph merely because the CLR DLLs
-  load. This mismatch can surface only when a third-party compiled control materialises its native
-  WinUI template.
-- The host must therefore be selected/launched by target TFM and RID (and compatible Windows App
-  SDK graph). Do not mask a runtime-graph incompatibility by replacing the real control with a
-  synthetic template; that hides the fault and loses designer fidelity.
-- Use WinDbg after the Output sequence identifies the triggering control and only on the actual
-  out-of-process Microsoft host (ARM64 target → ARM64 WinDbg). Attach before re-triggering the
-  design load, capture the exception code and crashing-thread stack, then correlate it with the
-  final Output/child-log line. The parent IDE's JSON-RPC disconnect is a consequence, not the
-  crash site.
-- Put framework-neutral reflection/discovery code (for example, finding a public parameterless
-  metadata-provider implementation in a loaded assembly) in `Designer.Remote`; keep WinUI's
-  `IXamlMetadataProvider` adaptation and per-assembly cache in the Microsoft Host.
-
-### Drag/Drop and Pointer Input Debugging
-
-Drag/drop and resize gestures are the most fragile integration-test surface. Every step must be verified individually — a single missed detail causes silent failure.
-
-#### Checklist for every press/drag-move/release test
-
-1. **Start point (press)** — Screen coordinates of the pointer-down. Verify against the live geometry probe (`surface-geometry`, `query-control-screen-bounds`, `query-element-screen-bounds`). Do NOT hardcode coordinates; always read them from the actual rendered bounds at the moment of the press.
-
-2. **Mouse button state** — After `PressPointerAsync`, the button is held. Verify `IsMouseCaptured` or equivalent in the target control. If the capture was stolen by a ScrollViewer or parent, the downstream handlers never fire.
-
-3. **Hit-target check** — Many controls gate drag on a hit test (`IsOverResizeHitTarget`, `IsOverMoveTarget`). The hit test compares the press point against the control's centre in a specific coordinate space (often root canvas via `TranslatePoint`). A mismatch between the probe's reported position and the WPF visual tree position causes a miss. Log both the input point and the resolved centre.
-
-4. **Drag-move steps** — Each `DragMovePointerAsync` injects a mouse-move with the button held. The step count, step delay, and coordinate progression must be granular enough for the control to accumulate visible deltas. Too few steps or too large jumps can cause the WPF Thumb's `DragDelta` to report zero change.
-
-5. **Release point** — The final pointer-up position. Verify that `ReleasePointerAsync` actually releases the button; a mismatched coordinate (e.g. releasing at the start point instead of the end point) resets the gesture.
-
-6. **Event routing** — Two mutually exclusive paths exist for resize/move:
-   - **Thumb path**: `DragStarted` → `DragDelta` → `DragCompleted`. Canceled if focus/capture is lost.
-   - **PreviewMouse path**: `PreviewMouseLeftButtonDown` → `PreviewMouseMove` → `PreviewMouseLeftButtonUp`. Always fires if `IsOverResizeHitTarget` passes and mouse is captured.
-   - A ScrollViewer can swallow bubbling events, making only the Preview path viable. Log which path fired.
-
-7. **BoundsChanged → RPC round-trip** — After the gesture completes, `BoundsChanged` fires and the client calls `SetBoundsAsync`. Log the values sent and the values returned by the server. A stale `rootDesignSize` or `Sequence` number causes the adorner to revert.
-
-8. **Show() early-return guard** — `RemoteFormsDesignerControl.Show()` skips rendering if `state.Render.Sequence <= lastFrameSequence`. If the server returns a stale sequence, the visual never updates and the resize appears to revert.
-
-9. **UpdateAdorners reset** — After `Show()`, `UpdateAdorners()` resets `dragWidth`/`dragHeight` from the returned state's component dimensions. If the server returned the wrong width/height, the adorner immediately reverts to the old size.
-
-10. **Coordinate space audit** — Three coordinate spaces coexist: screen coords (pointer API), surface coords (WPF canvas after zoom), and design coords (the form's logical pixels). A conversion error in any direction produces a press that hits empty canvas. Log all three at each step.
-
-#### Debug logging
-
-Use `ResizeDebugLog` (writes to `%TEMP%\opendevelop-resize-debug.log`) with timestamps and thread IDs. Instrument:
-- PreviewLButtonDown: pass point, thumb centre, hit-test result
-- PreviewMouseMove: accumulated dragW/dragH and pointer delta
-- PreviewLButtonUp: whether it fired
-- ThumbDragStarted/Completed: `e.Canceled`, `resizingDrag`, `previewResizeDrag`
-- CompletePreviewResizeDrag: `renderedSelection`, committed width/height
-- Show(): skip reasons (no render, stale sequence)
-- UpdateAdorners: reset values from state
-- SurfaceGeometry: frame, selection, handle, selected name
-- Server-side SetBounds: element, dimensions, returned state
-- Test-side: before/after frame bounds, poll results
-
-## Repo-specific notes
-
-### Testing conventions — run tests yourself, don't defer to the user
-
-Claude should run the tests relevant to whatever it just changed and report the actual pass/fail
-result, rather than describing changes as untested and leaving verification to the user. This repo
-does not have a blanket "let the user run tests" policy — that rule belongs to a different, unrelated
-project's CLAUDE.md (the WXSG generator workspace one level up) and does not apply here. Conflating
-the two once led to skipping verification that was actually possible.
-
-**Which tests count.** Verification is done with the projects under `tests/`; a change is checked
-against them, and their failures block it:
-
-| Project | Run with |
+| Scope | Run with |
 |---|---|
-| `tests/OpenDevelop.IntegrationTests` | the xUnit v3 in-process runner (below, and `TESTING.md`) |
-| `tests/OpenDevelop.Base.Tests` | `dotnet test --project <csproj>` (Microsoft.Testing.Platform: `--project` is required) |
-| `tests/OpenDevelop.AddinSdk.Tests` | `dotnet build` of `OpenDevelop.AddinSdk.Tests.proj` and `OpenDevelop.AddinSdk.Staging.Tests.proj`: MSBuild assertions, the `Build` target ends in `Assert` |
-| `tests/OpenDevelop.VSEditorCompat.Tests` | `dotnet test --project <csproj>` |
+| `tests/OpenDevelop.Base.Tests`, `OpenDevelop.VSEditorCompat.Tests` | `dotnet test --project <csproj>` |
+| `tests/OpenDevelop.AddinSdk.Tests` | build its two `.proj` files |
+| `tests/OpenDevelop.IntegrationTests` | follow its `TESTING.md` xUnit v3 runner exactly |
 
-The ~40 test projects elsewhere in the tree (`src/**/Test*`, `src/**/*.Tests`, AvalonDock's and
-AvalonEdit's own test apps) are **not important** for now: they are not maintained alongside the
-code, several do not even build (`UnitTesting.Tests` and `CodeCoverage.Tests` are SharpDevelop-era
-`net45` projects whose `ICSharpCode.SharpDevelop.Tests` dependency is incompatible with today's
-`net10.0` projects, NU1201), and their state says nothing about whether a change is good. Do not run
-them as verification, do not fix them as a side task, and do not report their failures as
-regressions; mention one only if it is the sole test of the code being changed. Plain xUnit
-projects among them (e.g. `WpfDesign.SurfaceHost.Tests`) still run with `dotnet test` when a
-focused check is wanted.
+Do not use `dotnet test` for integration tests: this repository's `TESTING.md` is authoritative,
+not instructions from neighbouring workspaces. Legacy tests under `src/` are not maintained
+verification targets. Run the full integration suite only when asked and do not build beside it.
 
-**Full integration runs.** About 290 tests and 20 minutes; run it in the background and only when
-asked. Practicalities learned the hard way:
+## Designer rules
 
-- A modal dialog left open fails every later test with DevFlow's `ui-mutation-busy`. With the
-  DevFlow agent at 0.3.0, `AddReferenceTests.OpenSlnx_AddReference_ProjectAndBrowsedAssembly` does
-  exactly that (the agent rejects the test's `ui/tap` while the modal `od.menu.invoke` that opened
-  the dialog is still running; it passes with 0.2.13). Until that is fixed, exclude it:
-  `-filter '/*/*/*/!OpenSlnx_AddReference_ProjectAndBrowsedAssembly'`. A run whose failures start
-  at one modal test and then hit everything after it is this, not dozens of regressions.
-- Do not build anything while a run is in progress: builds overwrite the deployed AddIn DLLs the
-  running suite loads.
-- A test that fails in the run but passes alone (`-method <FQN>`) and in its own class (`-class`)
-  depends on state an earlier test left behind; that is a real defect of the suite, but not
-  evidence against the change being tested. Report it as such.
-- A plain `od.build-solution` skips projects the fast up-to-date check finds unchanged; a test that
-  asserts on MSBuild's own output passes `"rebuild"` as the second argument.
-- Pointer/drag tests fail when the screen is locked (see the machine notes); check before blaming
-  the code.
+For blank/missing/disconnected WinUI loads, read `od.output-text` (`WinUI Designer`) and
+`od.winui-designer.child-log` before changing XAML or native debugging. Distinguish CLR tag
+resolution from compiled-XAML materialisation: generated `IXamlMetadataProvider` and compatible
+TFM/RID/Windows App SDK runtime graph are required. Do not replace a real failing control with a
+synthetic template. WinDbg attaches only to the actual matching-architecture child after logs name
+the triggering control. Framework-neutral discovery belongs in `Designer.Remote`; metadata
+adaptation belongs in the Microsoft host.
 
-- `tests/OpenDevelop.IntegrationTests` is the one project with a real constraint: see
-  `tests/OpenDevelop.IntegrationTests/TESTING.md` — never use `dotnet test` there (build the test
-  project itself first, since it deploys the addins/designer hosts the suite needs, then run via the
-  xUnit v3 in-process runner: `dotnet run --project tests/OpenDevelop.IntegrationTests/... -- -class
-  <FullyQualifiedClassName>` or `-method <FQN>`).
-- Only fall back to reporting "compiles, not run" when a test genuinely cannot run in this
-  environment (e.g. it needs a live Windows UI session this sandbox doesn't have) — say so
-  explicitly and why, rather than defaulting to it out of caution.
-
-### Two .NET SDKs on one machine: `MSB4018 NullReferenceException` in `ResolvePackageAssets`
-
-On macOS a plain `dotnet` can resolve to a different SDK than `build.ps1` uses (observed:
-`/usr/local/share/dotnet` with 10.0.200 on `PATH`, Homebrew's 10.0.302 under `pwsh`). The older SDK
-then fails reading the asset cache (`obj/*.assets.cache`) the newer one wrote, in many projects at
-once:
-
-```text
-Microsoft.PackageDependencyResolution.targets(266,5): error MSB4018: System.NullReferenceException
-   at Microsoft.NET.Build.Tasks.ResolvePackageAssets.CacheReader.CreateReaderFromDisk(...)
-```
-
-That is not a code or restore problem. Check the SDK path in the error (`.../sdk/<version>/Sdks/...`)
-against the one the last build used, and run every step with the same `dotnet`, e.g.
-`/opt/homebrew/Cellar/dotnet/<version>/libexec/dotnet test --project ...`.
-
-### Finding and adding VS toolbar/menu icons
-
-Source library: `/Users/lextm/Downloads/Visual Studio 2026 Image Library/images/` — a **flat**
-directory, one `<IconName>.xaml` per icon (plus unused `.png`/`.svg`/`.ico` renders). This is the
-official Visual Studio 2026 Image Library and supersedes the old folder-per-icon VS2017 library.
-The `.xaml` is the current VS format (`<Viewbox><Canvas><Path Data Fill/></Canvas></Viewbox>`);
-`PresentationResourceService` loads both that and the legacy VS2017 `DrawingBrush` format, so
-icons copied straight out of this library render without conversion.
-
-```bash
-ls "/Users/lextm/Downloads/Visual Studio 2026 Image Library/images" | grep -i label
-```
-
-#### How an icon gets resolved at runtime
-
-`PresentationResourceService.GetImageSource("Icons.16x16.<Key>")`
-(`src/Main/ICSharpCode.Core.Presentation/PresentationResourceService.cs`) resolves `<Key>` to a
-resource path by, in order:
-1. An explicit entry in `xamlResourceMap` (full path override).
-2. An explicit entry in `xamlResourceAliases` (`<Key>` → a plain icon name, still goes through step 3).
-3. **The default convention**: take the last `.`-separated segment of `<Key>`, strip a trailing
-   `Icon` suffix if present, and look up
-   `Resources/VS2026/<IconName>/<IconName>_16x.xaml` embedded in the
-   `ICSharpCode.Core.Presentation` assembly.
-
-So `"Icons.16x16.FormsDesigner.AlignLefts"` → icon name `AlignLefts` → embedded resource
-`Resources/VS2026/AlignLefts/AlignLefts_16x.xaml` — no alias entry needed for a straightforward
-name; only add one when the desired `<Key>` doesn't already end in the real icon folder's name.
-
-Icons with **no VS2026 equivalent yet** stay in the legacy `Resources/VS2017/<IconName>/`
-folder (embedded too) and are reachable only through an explicit `xamlResourceMap` entry, because
-the default convention above always points at `Resources/VS2026`.
-
-**Theming:** VS2026 glyphs are exported with a grayscale base (`#202020`) that the host is meant to
-recolor; left as-is they vanish on the dark theme. `PresentationResourceService` maps dark grays to
-the theme's `Foreground` and mid grays to `MutedForeground`, keeps light counters, lightens saturated
-accents (e.g. the library's `#006CBF` blue) on the dark theme while keeping their hue, and leaves such images **unfrozen** so the shared brushes can repaint in place. After
-swapping the theme dictionary, `IdeThemeService.Apply` calls
-`PresentationResourceService.RefreshThemeColors()` to re-read those colors.
-
-A missing/unregistered icon does **not** throw — `GetImageSource` just returns `null` (blank
-icon), logged as a `WARN "Could not load XAML icon ... Cannot locate resource ..."`. That warning
-in the app log is the tell that an icon needs to be added, not a real error to chase.
-
-#### Adding a new icon
-
-1. Copy the icon's `.xaml` from the VS 2026 Image Library into
-   `src/Main/ICSharpCode.Core.Presentation/Resources/VS2026/<IconName>/<IconName>_16x.xaml`
-   (folder/file name = the original icon name, so existing references keep working).
-2. No csproj change needed — `ICSharpCode.Core.Presentation.csproj` already globs the whole
-   `Resources\VS2026\**\*.xaml` folder as embedded `<Resource>` items.
-3. Reference it as `"Icons.16x16.<IconName>"` (or any key whose last segment/alias resolves to
-   `<IconName>`) via `IconService.GetImageSource(...)` /
-   `PresentationResourceService.GetImageSource(...)`.
-4. Verify live: open the feature in the running app and check the app log for the "Could not load
-   XAML icon" warning — its absence confirms the resource was actually found and loaded.
-
-### `/api/v1/ui/tree` bounds are WINDOW coordinates — add the content origin before injecting
-
-Measured on macOS: the `bounds` in the UI tree are relative to the window's content area, **not**
-screen coordinates, even though the pointer actions (`/api/v1/ui/actions/{click,press,drag-move,
-release}`) take screen coordinates. Feeding a tree rect straight into a click therefore lands
-65px above the intended target vertically, which looks exactly like "synthetic input is broken":
-the call returns ok, no exception is raised, and the app logs no input at all because the event
-went somewhere else.
-
-The mapping is a pure translation (scale 1.0) by the window's content origin:
-
-```text
-screen = treeBounds + (windowContentOriginX, windowContentOriginY)
-```
-
-For a window at CGWindowList `X=10, Y=33` with a 32px title bar the origin is `(10, 65)`, and
-three injections confirmed the offset is constant:
-
-| injected screen | WPF actually received (window) |
-|---|---|
-| (510, 310) | (500, 245) |
-| (510, 355) | (500, 290) |
-| (510, 400) | (500, 335) |
-
-Closed-loop check: a TabItem whose tree centre is `(98.0, 538.5)` is hit by injecting at
-`(108.0, 603.5)`, and WPF then reports the press at `(98.0, 539.0)` — the tree value back again.
-
-**Diagnose this with `od.pointer-events`, not by inference.** It records every mouse-down the main
-window really received, synchronously, as `windowX,windowY element`; pass `reset=true` before each
-injection so a reading can never be a stale one. No entry at all means the event never reached the
-window; an entry at an unexpected point means the coordinate conversion is wrong rather than the
-input path. Do NOT try to settle this with `od.pointer-target` or a geometry action alone — those
-derive from the same `PointToScreen` the tree does, so they agree with each other while both being
-wrong, which is what makes a wrong coordinate look like a delivery failure. The independent source
-that breaks the tie is `/api/v1/ui/screenshot` plus CGWindowList's real window rect.
-
-`od.winui-designer.query-element-screen-bounds` has the same defect and it is NOT in LibreWPF.
-Measured in one instance at one moment (never compare across two app launches - window positions
-differ and that mistake produces contradictory readings):
-
-| measurement | value |
-|---|---|
-| `mainWindow.PointToScreen(0,0)` | (10, 65) — correct, matches the real content origin |
-| `query-element-screen-bounds` centre of PrimaryButton | (380.86, 260.16) |
-| injecting at that reported centre | **no pointer event at all** |
-| injecting at centre + (10, 65) | lands on the button |
-
-So the shim's conversion is right and the designer's is wrong by exactly the client origin.
-`WinUIXamlHost.QueryElementScreenBounds` goes through `IWinUIXamlDesignView.DesignToScreenPoint`
--> `UnoDesignSurfaceControl.SurfacePointToScreen` -> `scroller.PointToScreen`, and the most likely
-cause is that the surface hangs off its own `PresentationSource` whose `ClientOrigin` is still
-(0,0). Confirm that before changing anything - do not "fix" it by adding a constant offset.
-
-### Driving the WinUI/Uno designer canvas manually via DevFlow
-
-OpenDevelop.exe embeds its own DevFlow agent, separate from the UnoRichText sample's — pinned to
-port **9299** (`DevFlowPort.cs`), not the default 9223. Launch it standalone (no test harness) to
-manually reproduce a designer bug and inspect state step by step:
+Manual WinUI repro: port 9299, match the observed backend. For `microsoft`, first build its host
+with Visual Studio MSBuild (below); then launch the already-built shell with `--no-build`:
 
 ```bash
 OD_TEST_MODE=1 OD_WINUI_RUNTIME=microsoft dotnet run --project src/Main/SharpDevelop/SharpDevelop.csproj -f net10.0-windows --no-build
 ```
 
-- `OD_TEST_MODE=1` stops the window from stealing focus (`ShowActivated=false`) — harmless to leave on.
-- `OD_WINUI_RUNTIME=microsoft` selects the real Microsoft WinUI 3 child host (`WinUIXamlDesigner.MicrosoftHost`) instead of the default Uno one. **Always match the backend the user actually observed the issue in** before spending time on a repro — but note the two share far more than their names suggest: `DesignHost.cs`/`DesignRpc.cs` are source-linked into both, and only the bootstrap (`Program.cs`) and dispatcher differ. A bug can therefore be in shared code yet reproduce on only one host, because the hosts differ in whether the design root is parented in a live visual tree. Confirm which by reading `Program.cs`, not by assuming.
-- The `backend` field in `od.winui-designer.status` says which host answered. `od.winui-designer.draw-calls` replying `"not applicable (out-of-process Uno host)"` means an out-of-process host is in use (true for the Microsoft backend too — the message names the shared client class, not the runtime), so the in-process ProGPU host is **not** what you are looking at.
-- Build the app first (`dotnet build src/Main/SharpDevelop/SharpDevelop.csproj -c Debug`) — `dotnet run --no-build` needs the prior build to already exist. Per `tests/OpenDevelop.IntegrationTests/TESTING.md`, never use `dotnet test` in this repo — use `dotnet run --project tests/OpenDevelop.IntegrationTests/... -- -method <FQN>` for the automated version of the same scenario.
-
-Once up, drive it exactly like the integration tests do, via `od.*` DevFlowActions
-(`WinUIXamlDesignerDevFlowActions.cs`) over the same REST API documented in the top-level
-`uno-tools/CLAUDE.md`, just on port 9299:
-
-```bash
-curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.open-solution -d '{"args":["<path>.slnx"]}'
-curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.open-file -d '{"args":["<path>/MainPage.xaml"]}'
-curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.winui-designer.activate-design -d '{"args":[]}'
-curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.winui-designer.select -d '{"args":["ElementName"]}'
-curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.winui-designer.surface-geometry -d '{"args":[]}'
-```
-
-#### A WinUI project needs an **Unpackaged** profile, and the document must be CLOSED and REOPENED
-
-Two separate steps, and skipping the second one is what makes this look like a build problem:
-
-1. A Windows App SDK project must be on an **Unpackaged** configuration (WinUI-Gallery's are named
-   `Debug-Unpackaged` / `Release-Unpackaged`, with `WindowsPackageType=None`; the plain
-   `Debug`/`Release` ones are MSIX and the designer cannot preview them), and that configuration
-   must actually be built.
-2. **After switching the build profile, close the .xaml document and reopen it.** The design view
-   binds the child host to the project's evaluated output at the moment the document is opened, so
-   a document that was already open keeps the pre-switch state. `od.winui-designer.status` then
-   keeps reporting *"cannot preview ... because the active configuration is not built (missing
-   `X.runtimeconfig.json` or `X.deps.json`)"* even though those files are sitting on disk.
-
-```bash
-curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.solution.set-configuration -d '{"args":["Debug-Unpackaged","ARM64"]}'
-curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.close-all-document-views -d '{"args":[]}'   # NOT od.close-file - no such action
-curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.open-file -d '{"args":["<path>/SettingsPage.xaml"]}'
-curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.winui-designer.activate-design -d '{"args":[]}'
-```
-
-**Check every DevFlow response's `success` field — a wrong action name is not an error you will
-otherwise notice.** Learned the hard way: `od.close-file` does not exist, the agent answered
-`{"success":false,"error":"Action 'od.close-file' not found"}`, that reply was not read, and the
-following `od.open-file` merely re-focused the still-open tab. The unchanged "not built" status was
-then misread as a genuine build failure, which led to rebuilding the sample app and **deleting
-NuGet global-cache packages that could not be re-downloaded** (WinUI-Gallery's `nuget.config` does
-`<clear />` on `packageSources` and leaves only a private Azure feed that 401s for
-`Microsoft.NETCore.App.Host.*`). Nothing was wrong with the build; only the tab had not been
-reopened. Never run a destructive cache/cleanup step off a diagnosis whose evidence is a status
-string you have not re-derived after a *verified* state change.
-
-#### `od.winui-designer.view "zoom panX panY"`: zoom is absolute (1 = 100%)
-
-Since 2026-09-28 the WinUI/Uno canvas follows the shared canvas contract (WPF, Forms, MAUI):
-**Fit is its own mode and every other zoom is absolute**. `od.winui-designer.view "1 0 0"` is a
-true 100% (1 render pixel per DIP per unit of scale), `"fit"` enters Fit mode, and `"query"`
-reports the effective zoom in either mode. There is no longer any `1 / fitScale` arithmetic to do.
-
-It used to be a factor on top of the fit scale ("100%" = `1/fitScale`, captured once at the first
-layout), computed against the ScrollViewer's viewport. That tied every zoom level to the window
-size, and made a tall design oscillate: a vertical scrollbar narrowed the viewport, which added a
-horizontal one, which shrank the fit and so the scale, which removed it again (measured with a
-400x700 MAUI page: viewport height 187/170, scale 1.0/0.909, with nobody touching anything). The
-viewport is now computed against the scroller's own size, as the WPF canvas does with its host.
-
-#### Numeric geometry vs. actual pixels can disagree — always screenshot to confirm
-
-`od.winui-designer.surface-geometry`'s `selection`/`element`/`frame` numbers are all derived from
-the *same* reported element bounds (for the out-of-process hosts, `DesignHost.BuildTree`'s tree),
-so **they will always agree with each other even when that shared source itself is wrong**. A
-numeric-only check (`selection == element`) can pass while the rendered bitmap is visibly wrong —
-this is precisely what hid the collapsed-tree bug below. Confirm with an actual screenshot, cropped/magnified with PowerShell
-`System.Drawing`, and only trust the numbers once the picture matches them:
-
-```powershell
-curl.exe -s http://localhost:9299/api/v1/ui/screenshot -o shot.png
-# then crop/scale with System.Drawing.Graphics.DrawImage(dest, srcRect) + NearestNeighbor
-# interpolation before reading it back with the Read tool - the raw screenshot is too small
-# to see sub-pixel misalignment at native size.
-```
-
-To compare two elements rather than one, `od.winui-designer.describe-element <name>` prints
-`bounds=(x,y) WxH` straight from the reported tree — the fastest way to see a whole tree collapsed
-onto one origin.
-
-**Subtract the window origin before cropping.** The geometry actions (`surface-geometry`,
-`query-control-screen-bounds`, ...) report **screen** coordinates — they are meant for synthetic
-mouse input — while `/api/v1/ui/screenshot` is a bitmap of the main window alone. Cropping at the
-reported coordinates lands somewhere else entirely (in one case the status bar rather than the
-design surface, which looked like a rendering bug). Get the origin and subtract it:
-
-```powershell
-# GetWindowRect on (Get-Process OpenDevelop).MainWindowHandle -> e.g. L=42 T=200
-# crop at (screenX - L, screenY - T)
-```
-
-The window is not at 0,0 just because the screenshot's size matches the window's.
-
-**Synthetic clicks must be aimed with server geometry, never arithmetic.** "Just inside the border"
-computed from a parent's rect put a click one pixel inside the child that covers it — a `TabControl`
-is the worst case, since its pages cover nearly all of it. Ask for the real rect
-(`od.forms-designer.query-tab-header-screen-bounds` returns a tab header's own `GetTabRect` plus the
-`centerX`/`centerY` to click). Tab headers are sized to their text, so "divide the strip into N
-equal parts" is wrong on the first tab.
-
-#### DevFlow cannot see a WPF popup — not in a screenshot, not in the UI tree
-
-A `ContextMenu`, a smart-tag popup, or any other WPF `Popup` is its own top-level window: it is
-outside the main window's render AND rooted in a separate `PopupRoot`, so it appears in neither
-`/api/v1/ui/screenshot` nor `/api/v1/ui/tree`. A right-click a human observer watched open a menu
-produced **zero** `ContextMenu` nodes in the tree. (The `MenuItem` count is a trap — it grows as the
-main menu bar builds lazily, and those nodes all have `text: null`.)
-
-Do not try to verify a popup by opening it. Split the feature at the popup boundary and assert the
-content through an action that builds the menu without showing it — see
-`od.forms-designer.describe-context-menu` and the fuller writeup in
-`doc/technotes/winforms-designer.md`. Whether the popup itself *appears* is something only a human
-can confirm; ask.
-
-#### Case study: the collapsed-tree selection offset (fixed 2026-08-30)
-
-Worth reading before touching designer positioning, because almost every intuition here was wrong.
-
-**Symptom.** At true 100% zoom under `OD_WINUI_RUNTIME=microsoft`, selecting a `StackPanel`'s
-second child (`PrimaryButton`, after `TitleText`) drew the selection outline and handles one row
-*above* the rendered button, while the rendered bitmap stacked the children correctly.
-
-**Root cause.** `DesignHost.FinishLayoutAsync` called `BuildTree` immediately after its own
-`Measure`/`Arrange`. In the Microsoft host the design root is parented in a real offscreen window,
-so **the window owns its layout and that direct `Arrange` is discarded** — at that moment the root
-still reported `ActualWidth/Height` of 0 and every element's `ActualOffset` and layout slot were
-still `(0,0)`. `DesiredSize` *was* already committed, which is exactly why sizes looked perfect
-and only positions were wrong. Fix: read the tree **after** `RenderAsync`, since rendering is what
-drives the pending layout pass to completion. Uno is unaffected (unparented root, synchronous
-`Measure`/`Arrange`), so the shared file needs no per-host branch.
-
-**Blind alleys — do not repeat.** Every attempt to take layout into our own hands broke rendering:
-
-| Attempt | Result |
-|---|---|
-| `root.UpdateLayout()` after Arrange | Positions right, **bitmap stretched ~12x vertically** |
-| Size host `Grid` (and/or root) to design size + `UpdateLayout` | Same stretch |
-| Detach root, Arrange unparented (mimic Uno), re-attach | Tree comes back with **zero sizes** |
-
-The stretch is `RenderTargetBitmap`: it rasterizes an element's **content extent**, and the
-`RenderAsync(element, w, h)` overload **scales** that content to fill the requested box. So a root
-arranged taller than its children gets smeared across the bitmap. Do not pass anything other than
-the element's own `RenderSize` to that overload.
-
-**Diagnostics.** `DesignHost` has an opt-in positioning log, off by default:
-
-```bash
-OD_DESIGNHOST_BOUNDS_LOG=1   # -> %TEMP%\opendevelop-designhost-bounds.log
-```
-
-It dumps, per element, the `ActualOffset`/layout-slot walk that produces each reported rectangle,
-plus the requested-vs-actual root size and the real `RenderTargetBitmap` dimensions and buffer
-length. It settled this investigation after screenshots alone had produced several wrong theories —
-reach for it before guessing. The child process inherits it from the parent's environment
-(`UseShellExecute = false`), so setting it on the `dotnet run` line is enough.
-
-**Regression cover.** `AddInTests.WinUIXamlDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement`
-now compares *two different elements* (`TitleText` vs `PrimaryButton`). Its pre-existing
-`selection == element` check could never have caught this: both values derive from the same
-reported bounds, so they agree with each other even when that shared source is wrong for every
-element at once. **Any new designer-geometry assertion must compare independent elements** for the
-same reason.
-
-### Writing a DevFlow action: it runs ON the UI thread
-
-There is no marshalling in the action helpers because none is needed — actions are dispatched on the
-UI thread, so UI objects can be touched directly. The consequence is that **`GetAwaiter().GetResult()`
-in an action deadlocks**: it blocks the very thread the awaited continuation is posted back to, and
-the action just times out with no error. Push the async work to the thread pool
-(`Task.Run(() => ...).GetAwaiter().GetResult()` — inside `Task.Run` there is no
-`SynchronizationContext` to return to) and keep only the UI work on the calling thread.
-
-### `Cannot find class` at startup means an assembly VERSION mismatch
-
-**Every git commit changes the assembly version, which invalidates everything built before it.**
-`GitVersion.yml` runs in `ContinuousDeployment` mode off git tags, so the revision is the commit
-count since the last tag: `git describe --tags --long` returning `v5.5.2-17-g08cce1ef` produces
-`5.5.3.17`.
-
-**A commit is not the only trigger.** `Get-PinnedGitVersionProperties` (in `build/common.psm1`,
-shared by `dist.ps1` and `build.ps1`) documents the
-nastier one: `src/Main/GlobalAssemblyInfo.cs` is regenerated by the GitVersion.MsBuild task
-*independently in every project that links it* (~60 of them), and GitVersion can compute a different
-`CommitsSinceVersionSource` between **two separate top-level `dotnet` invocations seconds apart** -
-no commit needed. The host then exists on disk at one revision while an AddIn is compiled against
-another. That is the documented origin of GitAddIn's
-`FileNotFoundException: ICSharpCode.SharpDevelop, Version=X` and the hard crash dialog behind it.
-`dist.ps1`/`build.ps1` solve it by reading back the values the host publish already wrote and passing them as
-MSBuild **global** properties (`-p:GitVersion_*`), which no in-build assignment can override, so all
-~60 projects emit byte-identical text. A hand-run sequence of separate `dotnet build` commands has no
-such protection — which is why a build split across two invocations can produce a mismatch on its
-own. These assemblies are strong-named (`PublicKeyToken=f829da5c02be14ee`), so version
-binding is exact — a `FormsDesigner.dll` built at `.17` referencing `ICSharpCode.SharpDevelop,
-Version=5.5.3.17` **cannot** load against a shell built at `.16`. The whole AddIn fails to load and
-every class in it is reported missing:
-
-```
-ERROR Cannot find class: ICSharpCode.FormsDesigner.FormsDesignerViewContent
-WARN  WindowActiveCondition: cannot find Type ICSharpCode.FormsDesigner.FormsDesignerViewContent
-```
-
-Nothing in that message hints at versions, and the type really is in the deployed DLL — which is why
-this is easy to misdiagnose as stale output, a corrupt deploy, or build noise.
-
-**First tell the two causes of `Cannot find class` apart, by counting how many classes are missing:**
-
-| Missing | Cause |
-|---|---|
-| **Every** class of one AddIn (and its DevFlow actions answer "Action not found") | This one — a version mismatch stopped the whole assembly from loading. |
-| **One or a few** named classes | An `.addin` references a class whose sources are excluded from compilation. A real, unrelated bug — see `doc/technotes/solution-explorer.md`, which fixes several by redirecting the `class` attribute rather than deleting the declaration. |
-
-For the first case, **diagnose by comparing versions, not timestamps or symbols:**
-
-```powershell
-[System.Reflection.AssemblyName]::GetAssemblyName("$root\src\Main\SharpDevelop\bin\Debug\net10.0-windows\ICSharpCode.SharpDevelop.dll").Version
-[System.Reflection.Assembly]::LoadFrom("$root\AddIns\DisplayBindings\FormsDesigner\FormsDesigner.dll").GetReferencedAssemblies() |
-  Where-Object { $_.Name -eq "ICSharpCode.SharpDevelop" }   # must match the above exactly
-```
-
-So: **after any commit (yours or the user's), and after any change to a shared assembly, rebuild
-everything — the shell included.** A partial rebuild is what creates the mismatch.
-
-```bash
-dotnet build OpenDevelop.Mvp.slnx -c Debug                                   # ~4-7 min
-dotnet build src/Main/SharpDevelop/SharpDevelop.csproj -c Debug              # make sure the shell is at the same version
-```
-
-The shared-assembly half of the problem compounds it: `ICSharpCode.Designer.Presentation.dll` is
-copied into **every AddIn folder that references it** — nine copies — and a single-AddIn build
-refreshes exactly one, so the app can load a stale one and report `TypeLoadException: Could not load
-type ...` for a type plainly present in the source.
-
-- **`SharpDevelop.sln` is stale** — it references projects that no longer exist (`Mono.Cecil`,
-  `ICSharpCode.Decompiler`, `SubversionAddIn`, ...) and fails with `MSB3202`. Use the `.slnx`.
-- Parallel full builds can race on `ICSharpCode.Core.Presentation.dll` (42x `MC1000`) and
-  `ICSharpCode.Data.Core.dll` (`CS0006`); building those two projects first breaks the race.
-- `LibreWPF.Sdk` occasionally fails to resolve (`MSB4236`) as a transient — retry once before
-  investigating.
-- Under `OD_TEST_MODE=1` a startup error dialog is suppressed and only logged, so a scripted run can
-  look clean while a manual run hits a modal dialog. **`grep -c "Cannot find class"` on the run log
-  after every launch** — the app otherwise appears to start fine, and its DevFlow actions simply
-  answer "Action not found" for the AddIn that failed to load.
-- `taskkill /F` on the app leaves `.git/index.lock` behind if GitAddIn was mid-operation. Do not
-  delete it reflexively — check for live `git.exe` processes first (the user's IDE has its own).
-  `git show HEAD:<path> > <path>` restores a file's content without touching the index.
-
-### Building `WinUIXamlDesigner.MicrosoftHost`
-
-`dotnet build` **cannot** build this project: `UseWinUI` pulls in `MrtCore.PriGen.targets`, whose
-tasks ship only with Visual Studio, so it fails with `MSB4062 ... Microsoft.Build.Packaging.Pri.Tasks.dll`.
-PRI generation cannot simply be turned off either — the csproj header explains that the host then
-compiles but dies at startup inside `Application.Start` with a bare WinRT stowed exception. Use VS's
-MSBuild:
-
-```bash
-"/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe" \
-  src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.MicrosoftHost/WinUIXamlDesigner.MicrosoftHost.csproj \
-  -p:Configuration=Debug -p:RuntimeIdentifier=win-arm64 -p:DisableGitVersionTask=true -v:m
-```
-
-- Locate MSBuild with `vswhere`: `"/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products '*' -requires Microsoft.Component.MSBuild -find "MSBuild/**/Bin/MSBuild.exe"`.
-- `-p:RuntimeIdentifier=` must match the machine — an unpackaged WinUI 3 app is built RID-specific,
-  and the `DeployToAddIns` target copies `$(TargetDir)` (the RID subfolder) to
-  `AddIns/DisplayBindings/WinUIXamlDesigner/MicrosoftHost/`, which is the only location the parent
-  probes. Check that deployed copy's timestamp to confirm a build actually landed.
-- `-p:DisableGitVersionTask=true` avoids `MSB4216`: GitVersion wants an x86 .NET task host that
-  isn't present.
-- The main app still builds normally with `dotnet build src/Main/SharpDevelop/SharpDevelop.csproj -c Debug`.
-
-#### Changing the WinUI designer CLIENT — build `UnoDesignHost`, not the AddIn project
-
-`UnoDesignSurfaceControl.cs` / `UnoDesignRuntimeHost.cs` (the WPF-side canvas, viewport math,
-selection overlay and RPC client shared by BOTH out-of-process WinUI backends) live in
-`WinUIXamlDesigner.UnoDesignHost`, whose csproj **builds straight into the deployed AddIn folder**
-via `<OutputPath>..\..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\</OutputPath>`. The
-dependency edge runs `UnoDesignHost -> WinUIXamlDesigner.AddIn`, i.e. **the opposite** of what the
-folder layout suggests, so:
-
-- `dotnet build .../WinUIXamlDesigner.AddIn/ICSharpCode.WinUIXamlDesigner.csproj` **does not rebuild
-  or redeploy `ICSharpCode.WinUIXamlDesigner.UnoDesignHost.dll`** — it is not a dependency of the
-  AddIn. Building only the AddIn leaves an hours-old client DLL in place while every source file you
-  edited compiles cleanly, so the running app keeps the old behaviour and the change looks like it
-  had no effect.
-- Build `.../WinUIXamlDesigner.UnoDesignHost/ICSharpCode.WinUIXamlDesigner.UnoDesignHost.csproj`
-  instead. That cascades into the AddIn project too, so it covers both.
-- Kill the running app first. That build's copy step targets the deployed folder directly, so a live
-  OpenDevelop holds a lock and the build fails with `MSB3027`/`MSB3021` **after** having compiled
-  successfully — and the failure names `ICSharpCode.WinUIXamlDesigner.dll` (the AddIn's output), not
-  the file you were actually trying to refresh, which reads like an unrelated error.
-- Confirm the deployed DLL really contains your change before drawing conclusions from a repro.
-  `grep` on the DLL does **not** work — .NET string literals are UTF-16 in the `#US` heap:
-
-  ```powershell
-  $b = [IO.File]::ReadAllBytes("AddIns\DisplayBindings\WinUIXamlDesigner\ICSharpCode.WinUIXamlDesigner.UnoDesignHost.dll")
-  [Text.Encoding]::Unicode.GetString($b).Contains("<a string literal you just added>")
-  ```
-
-#### Keep the Uno and WinUI backends separate at the csproj level
-
-The two out-of-process backends must be **fully separate projects**, sharing code only through
-`<Compile Include="..." Link="..." />` source links (the pattern `WpfSurfaceHostService.cs` already
-uses for LibreWPF vs Microsoft WPF) — not by having one project/class serve both. Today
-`MicrosoftWinUIDesignRuntimeHostBootstrap` and `UnoDesignRuntimeHostBootstrap` both instantiate the
-same `UnoDesignRuntimeHost` class out of the `UnoDesignHost` project and differ only in which child
-DLL they locate, which is why "the Uno host" and "the WinUI host" keep getting conflated when
-diagnosing, and why a client-side change silently affects both.
-
-### Changing the WPF designer host — rebuild THREE separate places, not one
-
-A change to `WpfSurfaceHostService.cs` (out-of-process WPF design host) or
-`WpfSurfaceDesignerControl.cs`/`WpfSurfaceHostClient.cs` (client side) needs a rebuild of every
-piece it touches — `dotnet build src/Main/SharpDevelop/SharpDevelop.csproj` alone silently misses
-most of them. Confirmed the hard way adding a new `design/select` RPC end to end: each of the four
-traps below looked like a different bug (`RemoteMethodNotFoundException`, a build that "succeeds"
-against stale output, a client change with no visible effect) until diagnosed one at a time.
-
-1. **`WpfSurfaceHostService.cs` is compiled into two separate assemblies** — source-linked into
-   both `WpfDesign.SurfaceHost.csproj` (LibreWPF/non-Microsoft) and
-   `MicrosoftHost/SurfaceHost/MicrosoftWpfDesign.SurfaceHost.csproj` (`MICROSOFT_WPF` defined).
-   Check `od.wpf-designer.status`'s `backend` field or the child-log's `runtime=...` line to know
-   which one is actually loaded, and rebuild that one (both, if unsure).
-2. **`MultiDocumentWpfSurfaceHostService.cs` is a third, hand-maintained whitelist wrapper** in
-   front of `WpfSurfaceHostService` — it forwards each RPC name to the per-document instance one
-   method at a time. A new `[JsonRpcMethod]` added only to `WpfSurfaceHostService` compiles clean
-   and even reflects correctly off that class directly, but StreamJsonRpc's actual
-   `AddLocalRpcTarget` target is the *wrapper*, so the method is invisible to real callers
-   (`RemoteMethodNotFoundException`) until a matching one-line forwarding method is added there too.
-3. **The design host is a genuine separate OS process, not in-process** — a generic `dotnet.exe`/
-   ".NET Host" Task Manager entry, not named after the project, kept alive across app restarts by a
-   `SharedDesignerHostPool` keyed by (host DLL path, timeout, architecture). It does **not** restart
-   just because `OpenDevelop.exe` was killed and relaunched, and does not reload its DLL just
-   because the file on disk changed. Kill every lingering `dotnet.exe` (not just the visible
-   `OpenDevelop.exe`) before trusting that a rebuild actually reached the running host — a
-   subsequent build's `MSB3021`/`MSB3027` "file in use" error is a useful tell (it names the exact
-   locking PID), but the build can also *succeed* against a stale deploy if nothing currently locks
-   that file, which reads exactly like an incremental-build cache bug.
-4. **The client addin (`WpfDesign.AddIn.csproj`, `OpenDevelopAddinKind=InProcess`) is not
-   referenced by `SharpDevelop.csproj` at all** — it's deployed to `AddIns/` and loaded as a plugin
-   at runtime. Rebuilding the shell (or the `*.SurfaceHost*` projects) never touches it; a
-   client-side change (`WpfSurfaceDesignerControl.cs`, `WpfSurfaceHostClient.cs`,
-   `WpfViewContent.cs`) needs its own explicit `dotnet build
-   src/AddIns/DisplayBindings/WpfDesign/WpfDesign.AddIn/WpfDesign.AddIn.csproj`.
-
-When a fix seems to have "no effect" after a clean rebuild, verify all four independently rather
-than guessing which one is stale — cheapest check: kill every `dotnet.exe`, rebuild the specific
-project that owns the changed file, relaunch, and re-test before touching anything else.
-
-#### A bad `librewpf.transport` package breaks WPF startup — two distinct failure shapes
-
-Everything the app loads for WPF comes from the `librewpf.transport` package. A build only copies
-what that package contains, so **a startup failure of either shape below is a packaging problem, not
-your code** — see `openavalon/LibreWPF/docs/progpu-wpf-release.md` for the producing side.
-
-```
-# shape 1 - a stub instead of the implementation
-System.TypeLoadException: Could not load type 'System.Windows.FrameworkElement' from assembly 'PresentationFramework'
-System.IO.FileNotFoundException: Could not load file or assembly 'PresentationFramework, Version=11.0.0.0'
-   at ProGPU.Wpf.Sdk.ProGpuWpfSdkPortableBootstrap.Initialize()
-
-# shape 2 - a managed assembly stamped for the other architecture
-System.IO.FileNotFoundException: Could not load file or assembly 'System.Windows.Controls.Ribbon'
-   (reached via XamlParseException from IdeThemeService.ApplySemanticTheme)
-
-# either shape, seen from a parent process driving the designer child:
-StreamJsonRpc.RemoteInvocationException : The type initializer for '<Module>' threw an exception.
-```
-
-**Diagnose both by inspecting the DLL, never by its presence — the bad file is always there:**
-
-```powershell
-$dll = "<outdir>\PresentationFramework.dll"
-(Get-Item $dll).Length          # ~6 MB = real; <100 KB = an API-cycle stub
-$fs=[IO.File]::OpenRead($dll); $br=New-Object IO.BinaryReader($fs)
-$fs.Position=0x3C; $o=$br.ReadInt32(); $fs.Position=$o+4; '0x{0:X4}' -f $br.ReadUInt16()
-# 0x014C = AnyCPU (correct for lib/) | 0x8664 = x64 | 0xAA64 = arm64
-```
-
-Shape 2 is the nastier one: **a wrong-architecture managed assembly is the same size as the right
-one**, and it does *not* fall back to JIT — the load simply fails. Size alone looks healthy.
-
-Two consequences worth knowing:
-
-- Observed after one full solution build: `src/Main/SharpDevelop/bin` kept a good copy (so the app
-  still ran and DevFlow verification stayed valid) while `FormsDesigner/Host/bin` and
-  `tests/OpenDevelop.Base.Tests/bin` got the stub — which broke **28 of 84** `Host.Tests`, i.e. every
-  test that spawns the designer child process. Pure unit tests in the same project still passed, so
-  check the payload before investigating a suspicious mass failure. Splitting a rule into a non-WPF
-  project (see `DesignerContextMenuPolicy` in `Designer.Remote`, tested from `Host.Tests`) keeps it
-  testable regardless.
-- `launch.ps1` finalizes a development build with `Sync-LibreWpfDevelopmentRuntime`, which copies
-  the restore-selected transport payload into `src/Main/SharpDevelop/bin/<cfg>/net10.0-windows` and
-  overlays the **current process architecture's** `PresentationCore`/`DirectWriteForwarder` flat
-  there - so a `launch.ps1`/partial dev tree is only guaranteed to run on the machine (and
-  architecture) that built it. The packaged path is different: `dist.ps1`'s host phase publishes
-  RID-less, and the transport package ships the full managed + native payload under `runtimes/<rid>/`
-  for every supported architecture, which the host selects from `deps.json` at startup. That is what
-  makes ONE payload run under both the x64 and the arm64 `dotnet` host (verified); there is no
-  `dist.ps1` transport overlay for it to depend on.
-
-Prefer building the specific projects you changed over a full solution build, and reserve the full
-build for the version-mismatch case above, where it is genuinely required.
-
-### Fast inner loop: `build.ps1` (one project) and `dist.ps1 -Phase` (one publish step)
-
-A full `dist.windows.bat` is ~15 minutes. Two tools exist so you almost never need it while
-iterating. The full reference (every script, prerequisites, release, and the integration-test
-hand-off) is [doc/technotes/build-from-source.md](doc/technotes/build-from-source.md).
-**Never hand-copy a DLL into `OpenDevelop-win/` instead** — that skips the payload's
-by-name dedup and its out-of-process-host exemptions, and has repeatedly produced a payload that
-looks patched but crashes (see the two traps below, both hit for real).
-
-#### `./build.ps1 <target>` — build one project, correctly
-
-```bash
-./build.ps1 shell                              # the IDE host
-./build.ps1 base -Then shell                   # a shared assembly, then the host, one pinned pass
-./build.ps1 unodesignhost -Kill                # one AddIn, killing file locks first
-./build.ps1 winui -List                        # what does this fuzzy name match?
-./build.ps1 unodesignhost -ForDistribution -Configuration Release
-```
-
-Fuzzy names resolve against every `*.csproj` under `src/`, preferring a name that *ends with* what
-you typed (so `unodesignhost` picks the project, not its `.Remote`/`.Tests` siblings).
-
-It is not a wrapper around `dotnet build` for convenience — it exists because a bare
-`dotnet build <csproj>` silently produces a **broken** assembly in this repo, in three ways:
-
-1. **GitVersion drift** — the version-mismatch trap documented above. `build.ps1` pins
-   `-p:GitVersion_*` to the values already in `src/Main/GlobalAssemblyInfo.cs`, so a targeted
-   rebuild stays binary-compatible with everything else on disk.
-2. **Architecture stamping** — without `-p:ProGpuWpfUseCurrentRuntimeIdentifier=false`,
-   LibreWPF.Sdk falls back to the build machine's own RID and emits an architecture-stamped
-   assembly. It loads on the machine that built it, then throws *"The assembly architecture is not
-   compatible with the current process architecture"* elsewhere — including in the x64 OpenDevelop
-   process on an ARM64 machine, where it takes the app down at startup. Passed by default;
-   `-NativeRid` opts out.
-
-   **This applies equally to integration-test deployment.** OpenDevelop AddIns and their
-   portable designer hosts are AnyCPU; never set `RuntimeIdentifier` to the developer machine's
-   RID (for example `osx-arm64`) and never add a RID target to `project.assets.json` merely to
-   make `ResolvePackageAssets` pass. That only masks a mismatched restore/build graph and produces
-   an architecture-stamped plugin. The integration runner's dynamic `MSBuild` Restore *and* Build
-   calls must propagate `ProGpuWpfUseCurrentRuntimeIdentifier=false`; its restore must force
-   re-evaluation (`RestoreForceEvaluate=true`) after any previous RID-specific restore so stale
-   assets cannot survive. A missing RID target in an AddIn build is evidence to fix that property
-   propagation, not a reason to build the AddIn for that RID.
-3. **Projects `dotnet build` cannot build at all** — anything under `MicrosoftHost` is routed to
-   Visual Studio's MSBuild automatically, RID-specific for the WinUI child (both architectures) and
-   RID-less for the Forms host, mirroring `Build-MicrosoftDesignerHosts`.
-
-**`-ForDistribution` is required if the output will go into a payload.** It adds
-`OpenDevelopDistributionBuild`/`OpenDevelopDistributionRidFamily`/`ProGpuWpfCopyPackageRuntimeAssets`,
-without which the AddIn SDK's `OpenDevelopPruneAddinDeploymentAssets` target does not strip other
-platforms' native assets and leaves `runtimes/linux-*/native/libglfw.so.3` in `AddIns/`. The payload
-phase then fails validation with *"Distribution payload contains build-only or foreign assets"*.
-
-#### `./dist.ps1 -Phase <names>` — run part of the publish pipeline
-
-`dist.ps1` runs as ordered phases: `restore`, `host`, `addins`, `designer-hosts` (Windows only),
-`payload`, `smoke`, `zip`. Running it with no phase arguments behaves exactly as before.
-
-```bash
-./dist.ps1 -ListPhases                  # phases for this platform, plus worked examples
-./dist.ps1 -Phase payload               # re-assemble OpenDevelop-win from what is already built
-./dist.ps1 -Phase payload,smoke         # ...and verify it actually starts
-./dist.ps1 -From payload                # payload, smoke and zip
-./dist.ps1 -Phase addins,payload        # rebuild all AddIns, then re-assemble
-```
-
-`dist.windows.bat --phase payload` works too (the wrapper forwards flags). `-SkipPublish` is kept
-as a synonym for `-From payload`.
-
-**The patch workflow**, replacing hand-copying entirely — about 1 minute instead of 15:
-
-```bash
-./build.ps1 unodesignhost -ForDistribution -Configuration Release
-./dist.ps1 -Phase payload,smoke -Kill
-```
-
-**A shared widget is not an AddIn.** `DesignerCanvas` and friends live in
-`ICSharpCode.SharpDevelop.Widgets`, which reaches the payload through the **host publish**, not
-through `AddIns/`. `./build.ps1 <addin>` therefore cannot refresh it: the app then starts fine and
-dies at document-open with a signature-level `MissingMethodException` (observed:
-`DesignerCanvas.add_VisualStateRequested`). Changing a shared widget needs `./dist.ps1 -From host`.
-
-`-Kill` matters more than it looks: the `smoke` phase leaves a `dotnet exec OpenDevelop.dll`
-behind if it did not shut down cleanly, and the out-of-process designer hosts outlive the IDE by
-design, so the *next* `payload` run dies on `Access to the path ...\CodeCoverage.dll is denied`.
-Without `-Kill` that now fails with an explanation instead of a bare access-denied.
-
-The `payload` phase compiles nothing but the launchers; it re-derives the whole payload from the
-existing host publish output and `AddIns/` tree, so the dedup rules and
-`Test-WindowsDistributionPayload` run every time. That validator is load-bearing: it is what caught
-the foreign-asset bug in trap 3 above, on a payload that had otherwise assembled cleanly.
-
-Phases that consume earlier artifacts fail with an actionable message (`Run './dist.ps1 -Phase host'
-first`) rather than assembling a payload around a missing host.
+WinUI needs a built Unpackaged profile. After a configuration change, close all document views and
+reopen XAML; check each action's `success`. Zoom `1` is absolute 100%, while `fit` is a mode.
+`WpfSurfaceHostService.cs` is source-linked into both WPF hosts; new RPCs also need
+`MultiDocumentWpfSurfaceHostService` forwarding, and client changes need `WpfDesign.AddIn.csproj`.
+Kill pooled child `dotnet` processes, rebuild the actual backend and client, then relaunch. Protocol
+node-shape changes require a matching protocol version and host-pool generation update.
+
+The Microsoft WinUI host needs Visual Studio MSBuild (not plain `dotnet`), matching RID and
+`-p:DisableGitVersionTask=true`. Build the shared WinUI client through
+`WinUIXamlDesigner.UnoDesignHost`, not merely the AddIn project. Keep Uno and Microsoft host
+projects separate, sharing only explicit source links.
+
+## Builds, packages, icons
+
+After a shared-assembly/version change, rebuild shell and affected AddIns; version mismatch can make
+an entire AddIn report `Cannot find class`. Prefer `./build.ps1 <target>` for targeted work: it pins
+GitVersion, keeps LibreWPF portable and handles Microsoft-host MSBuild. Use `./dist.ps1 -Phase ...`
+for payloads; never hand-copy DLLs. Payload outputs require `-ForDistribution`; shared widgets need
+the host phase. `librewpf.transport` startup failures are payload issues: inspect DLL size and
+architecture, not mere presence.
+
+Copy VS 2026 icons from `/Users/lextm/Downloads/Visual Studio 2026 Image Library/images/` to
+`Resources/VS2026/<Icon>/<Icon>_16x.xaml`; `Icons.16x16.<Icon>` resolves by convention. Check logs
+for missing-icon warnings and keep theme-aware icon brushes unfrozen.
+
+## References
+
+- `doc/technotes/fast-mode.md`, `doc/technotes/build-from-source.md`
+- `doc/technotes/in-process-analysis.md`, `doc/technotes/winforms-designer.md`
+- `tests/OpenDevelop.IntegrationTests/TESTING.md`
