@@ -558,6 +558,9 @@ public class DesignSurface : DesignerCanvas
 		foreach (var stub in layoutInsetStubs)
 			overlay.Children.Remove(stub);
 		layoutInsetStubs.Clear();
+		foreach (var endpoint in layoutInsetEndpoints)
+			overlay.Children.Remove(endpoint);
+		layoutInsetEndpoints.Clear();
 		if (layoutInsetSelection.IsEmpty || pixelWidth == 0 || pixelHeight == 0)
 			return;
 		var scale = EffectiveScale();
@@ -630,7 +633,8 @@ public class DesignSurface : DesignerCanvas
 		// When the measured distance is exactly zero the endpoints coincide. Keep a small
 		// directional stub so the edge remains discoverable, but preserve signed non-zero
 		// measurements (an overflowing Canvas child can legitimately have a negative inset).
-		if (Math.Abs(selectionEdge - containerEdge) < 0.01)
+		var isZeroLength = Math.Abs(selectionEdge - containerEdge) < 0.01;
+		if (isZeroLength)
 			containerEdge = selectionEdge + outward * 6;
 		var stub = new Line {
 			Stroke = Brushes.DarkOrange,
@@ -653,6 +657,65 @@ public class DesignSurface : DesignerCanvas
 		}
 		layoutInsetStubs.Add(stub);
 		overlay.Children.Add(stub);
+		AddLayoutInsetEndpoint(selectionEdge, containerEdge, crossAxis, horizontal, isZeroLength);
+	}
+
+	void AddLayoutInsetEndpoint(double selectionEdge, double containerEdge, double crossAxis,
+		bool horizontal, bool isZeroLength)
+	{
+		if (isZeroLength)
+		{
+			// The legacy MarginStub used a compact circle when an explicit edge measured zero.
+			// Keep it presentational here: the nearby label remains the sole drag/click target.
+			var dot = new Ellipse {
+				Width = 6,
+				Height = 6,
+				Fill = Brushes.White,
+				Stroke = Brushes.DarkOrange,
+				StrokeThickness = 1,
+				IsHitTestVisible = false
+			};
+			Canvas.SetLeft(dot, horizontal ? selectionEdge - 3 : crossAxis - 3);
+			Canvas.SetTop(dot, horizontal ? crossAxis - 3 : selectionEdge - 3);
+			layoutInsetEndpoints.Add(dot);
+			overlay.Children.Add(dot);
+			return;
+		}
+		var tipX = horizontal ? containerEdge : crossAxis;
+		var tipY = horizontal ? crossAxis : containerEdge;
+		// The endpoint points along the measured ruler rather than the nominal L/T/R/B side;
+		// an overflowing child legitimately reverses that direction through a negative inset.
+		var direction = Math.Sign(containerEdge - selectionEdge);
+		PointCollection points;
+		double left;
+		double top;
+		if (horizontal)
+		{
+			left = direction < 0 ? tipX : tipX - 6;
+			top = tipY - 3;
+			points = direction < 0
+				? new PointCollection { new(0, 3), new(6, 0), new(6, 6) }
+				: new PointCollection { new(6, 3), new(0, 0), new(0, 6) };
+		}
+		else
+		{
+			left = tipX - 3;
+			top = direction < 0 ? tipY : tipY - 6;
+			points = direction < 0
+				? new PointCollection { new(3, 0), new(0, 6), new(6, 6) }
+				: new PointCollection { new(3, 6), new(0, 0), new(6, 0) };
+		}
+		var arrow = new Polygon {
+			Fill = Brushes.DarkOrange,
+			Stroke = Brushes.White,
+			StrokeThickness = 0.5,
+			IsHitTestVisible = false,
+			Points = points
+		};
+		Canvas.SetLeft(arrow, left);
+		Canvas.SetTop(arrow, top);
+		layoutInsetEndpoints.Add(arrow);
+		overlay.Children.Add(arrow);
 	}
 
 	void LayoutSelection()
@@ -729,6 +792,7 @@ public class DesignSurface : DesignerCanvas
 	bool gridSplitRailsVisible;
 	readonly List<FrameworkElement> layoutInsetLabels = new();
 	readonly List<Line> layoutInsetStubs = new();
+	readonly List<Shape> layoutInsetEndpoints = new();
 	DesignerLayoutInsets? layoutInsets;
 	IReadOnlyList<DesignerBindingInfo> bindingTelemetry = Array.Empty<DesignerBindingInfo>();
 	Rect layoutInsetSelection;
