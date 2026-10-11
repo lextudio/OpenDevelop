@@ -375,10 +375,12 @@ function Test-WindowsLaunchersCurrent {
 
 function Test-PackagedAppStartup {
     <#
-      Launch the packaged app and require it to STAY up. A distribution that is missing or
-      mismatching a runtime assembly does not fail the build — it throws at boot, which is exactly
-      what the deps.json patch exists to prevent. Dump the captured output on an early exit so the
-      cause is visible without re-running by hand.
+      Launch the packaged app and require its WPF workbench to finish rendering. A distribution
+      that is missing or mismatching a runtime assembly does not fail the build — it throws at
+      boot, which is exactly what the deps.json patch exists to prevent. Merely remaining alive
+      for a few seconds is insufficient: workbench XAML is loaded after add-in startup, well after
+      the process has become live. Dump the captured output on an early exit or readiness timeout
+      so the cause is visible without re-running by hand.
 
       The payload is apphost-free, so callers pass the user's dotnet host and the app dll - EXCEPT
       when testing a launcher (OpenDevelop.exe/OpenDevelopARM64.exe): that process itself spawns a
@@ -408,13 +410,30 @@ function Test-PackagedAppStartup {
     if ($WorkingDirectory) { $startArgs.WorkingDirectory = $WorkingDirectory }
     $proc = Start-Process @startArgs
 
-    $ok = $true
-    for ($i = 0; $i -lt 10; $i++) {
+    $ready = $false
+    for ($i = 0; $i -lt 45; $i++) {
         Start-Sleep -Seconds 1
-        if ($proc.HasExited) { $ok = $false; break }
+        if ($proc.HasExited) { break }
+        # WorkbenchStartup emits this only after the main Window has loaded and rendered. Reading
+        # both redirected streams also preserves the diagnostic when a framework writes an
+        # unhandled exception directly to stderr instead of the application logger.
+        $startupOutput = foreach ($log in $outLog, $errLog) {
+            if (Test-Path -LiteralPath $log) {
+                Get-Content -LiteralPath $log -Raw -ErrorAction SilentlyContinue
+            }
+        }
+        if ($startupOutput -match 'startup/main-window-rendered') {
+            $ready = $true
+            break
+        }
     }
-    if (-not $ok) {
-        Write-Host "dist.ps1: packaged app exited during startup (status $($proc.ExitCode))" -ForegroundColor Red
+    if (-not $ready) {
+        $reason = if ($proc.HasExited) {
+            "exited during startup (status $($proc.ExitCode))"
+        } else {
+            'did not render its main window within 45 seconds'
+        }
+        Write-Host "dist.ps1: packaged app $reason" -ForegroundColor Red
         foreach ($log in $outLog, $errLog) {
             if (Test-Path $log) { Get-Content $log -TotalCount 160 | Write-Host }
         }
