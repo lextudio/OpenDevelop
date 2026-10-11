@@ -20,10 +20,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		// v9 adds WPF's optional design/set-binding-path mutation. A stale pooled child would
-		// otherwise let a Binding editor route a structured value through design/set-property,
-		// which turns markup into a literal string instead of a Binding object.
-		public const int Version = 9;
+		// v10 adds WPF's optional design/set-binding-mode mutation and BindingPropertyName
+		// descriptor field. A stale pooled child must fail the handshake rather than reject a
+		// newly-visible Mode editor after the Properties pad has already presented it.
+		public const int Version = 10;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -536,6 +536,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public bool IsReadOnly { get; set; }
 		public bool ShouldSerialize { get; set; }
 		public bool IsEnum { get; set; }
+		/// <summary>For a structured child descriptor, the owning authored property (for example
+		/// a Binding's target property). Empty means this is an ordinary scalar descriptor.</summary>
+		public string BindingPropertyName { get; set; } = "";
 		/// <summary>Snapshot resource file that supplied this value, when the child can prove
 		/// its origin from <c>ApplyResources</c> or <c>ResourceManager.GetObject</c>. Empty
 		/// means that a generic editor must not infer a resource-backed value from its display

@@ -985,6 +985,22 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		[JsonRpcMethod("design/set-binding-mode")]
+		public DesignerSessionState SetBindingMode(long baseVersion, string elementId, string propertyName, string mode)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale) return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
+				if (!Enum.TryParse<System.Windows.Data.BindingMode>(mode, ignoreCase: false, out var parsed))
+					return NotFound(state, "Invalid Binding mode: " + mode);
+				var property = item.Properties[propertyName];
+				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding)
+					return NotFound(state, "Property is not an editable Binding: " + propertyName);
+				try { bindingItem.Properties["Mode"].SetValue(parsed); }
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state); state.Accepted = true; return state;
+			});
+
 		/// <summary>Removes an explicit local value through the design model instead of assigning a
 		/// guessed CLR default. This preserves inherited/default-property semantics and produces the
 		/// same native undo transaction as an in-process WPF designer reset.</summary>
@@ -2064,7 +2080,19 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				if (property == null || property.IsEvent)
 					continue;
 				if (property.Value is DesignItem reference && reference.Component is System.Windows.Data.BindingBase)
+				{
 					bindings.Add(new DesignerBindingInfo { Property = descriptor.Name });
+					if (reference.Component is System.Windows.Data.Binding binding)
+					{
+						result.Add(new DesignerPropertyInfo {
+							Name = descriptor.Name + ".Mode", DisplayName = descriptor.Name + " Mode",
+							Category = "Binding", TypeName = typeof(System.Windows.Data.BindingMode).FullName ?? "",
+							Kind = "Enum", IsEnum = true, EditorKind = "BindingMode",
+							Value = binding.Mode.ToString(), BindingPropertyName = descriptor.Name,
+							AllowedValues = Enum.GetNames(typeof(System.Windows.Data.BindingMode)).ToList()
+						});
+					}
+				}
 				result.Add(ToPropertyInfo(property));
 			}
 			return result;

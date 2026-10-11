@@ -58,6 +58,8 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerSessionState SetEvent(string sessionId, string documentId, long baseVersion, string elementId, string eventName, string handlerName) => Checked(sessionId, documentId).SetEvent(baseVersion, elementId, eventName, handlerName);
 	[JsonRpcMethod("design/set-binding-path")]
 	public DesignerSessionState SetBindingPath(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string path) => Checked(sessionId, documentId).SetBindingPath(baseVersion, elementId, propertyName, path);
+	[JsonRpcMethod("design/set-binding-mode")]
+	public DesignerSessionState SetBindingMode(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string mode) => Checked(sessionId, documentId).SetBindingMode(baseVersion, elementId, propertyName, mode);
 	[JsonRpcMethod("design/add-element")]
 	public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget) => Checked(sessionId, documentId).AddElement(baseVersion, parentId, item, proposedName, x, y, dropTarget);
 	[JsonRpcMethod("design/add-menu-item")]

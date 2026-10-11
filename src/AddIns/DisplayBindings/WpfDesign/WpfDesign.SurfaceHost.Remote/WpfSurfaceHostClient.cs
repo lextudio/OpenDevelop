@@ -188,6 +188,10 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-path",
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, path }, cancellationToken), cancellationToken);
 
+	public Task<DesignerSessionState> SetBindingModeAsync(long baseVersion, string elementId, string propertyName, string mode, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-mode",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, mode }, cancellationToken), cancellationToken);
+
 	public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget = null, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(Document.AddElementAsync(baseVersion, parentId, item, proposedName, x, y, dropTarget, cancellationToken), cancellationToken);
 
