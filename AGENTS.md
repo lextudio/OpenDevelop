@@ -16,10 +16,19 @@ Use OpenCode with `opencode-go/deepseek-v4.1-flash` at High effort. One commit i
 complete review target. Before commit, OpenCode must return terminal `VERDICT: APPROVED` for the
 exact staged diff and relevant executable tests must pass. `CHANGES_REQUESTED`, timeout, error,
 empty or truncated output blocks the commit. After any staged-diff change, re-review the full target.
-Retry one non-terminal review once; if it remains non-terminal, report it unverified and stop.
+The command's streamed output is not the record of approval: it can be truncated while OpenCode is
+still working. Record the review launch time and distinctive prompt title; after its process exits,
+locate the matching newly-created session in `opencode session list`, then inspect its final assistant
+message with `opencode export <session-id>`. Only an explicit final `VERDICT: APPROVED` in that
+exported session is approval. Do not start another review while the first is running, and do not infer
+approval from exit status, a partial transcript, or an empty final tool response. Retry one
+non-terminal review once; if it remains non-terminal, report it unverified and stop.
 Split oversized work into separate commits before review; partial approvals never approve a larger
-commit. Record the staged-tree hash before review and verify it immediately before commit. If no
-relevant test exists or cannot run, record why in the handoff; never waive approval. OpenCode
+commit. Record the staged-tree hash before review and verify it immediately before commit; a changed
+hash invalidates the approval. The OpenCode commit agent must first verify that exact hash and the
+intended staged paths (however many), commit only those paths, then report the new commit hash and
+`git status`.
+If no relevant test exists or cannot run, record why in the handoff; never waive approval. OpenCode
 commits; never push without the user's explicit request.
 
 ## DevFlow
