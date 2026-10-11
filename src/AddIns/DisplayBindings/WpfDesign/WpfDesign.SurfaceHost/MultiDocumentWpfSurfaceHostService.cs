@@ -66,6 +66,8 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerSessionState SetBindingElementName(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string elementName) => Checked(sessionId, documentId).SetBindingElementName(baseVersion, elementId, propertyName, elementName);
 	[JsonRpcMethod("design/set-binding-notify-on-validation-error")]
 	public DesignerSessionState SetBindingNotifyOnValidationError(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, bool notify) => Checked(sessionId, documentId).SetBindingNotifyOnValidationError(baseVersion, elementId, propertyName, notify);
+	[JsonRpcMethod("design/set-binding-validation-option")]
+	public DesignerSessionState SetBindingValidationOption(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string optionName, bool enabled) => Checked(sessionId, documentId).SetBindingValidationOption(baseVersion, elementId, propertyName, optionName, enabled);
 	[JsonRpcMethod("design/add-element")]
 	public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget) => Checked(sessionId, documentId).AddElement(baseVersion, parentId, item, proposedName, x, y, dropTarget);
 	[JsonRpcMethod("design/add-menu-item")]

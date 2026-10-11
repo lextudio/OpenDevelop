@@ -1066,6 +1066,32 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				RebuildTreeAndRender(state); state.Accepted = true; return state;
 			});
 
+		static readonly string[] bindingValidationOptionNames = {
+			"ValidatesOnDataErrors", "ValidatesOnExceptions", "ValidatesOnNotifyDataErrors"
+		};
+		static readonly HashSet<string> bindingValidationOptions = new(bindingValidationOptionNames, StringComparer.Ordinal);
+
+		[JsonRpcMethod("design/set-binding-validation-option")]
+		public DesignerSessionState SetBindingValidationOption(long baseVersion, string elementId, string propertyName, string optionName, bool enabled)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale) return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
+				if (!bindingValidationOptions.Contains(optionName)) return NotFound(state, "Unsupported Binding validation option: " + optionName);
+				var property = item.Properties[propertyName];
+				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding)
+					return NotFound(state, "Property is not an editable Binding: " + propertyName);
+				try
+				{
+					if (enabled)
+						bindingItem.Properties[optionName].SetValue(true);
+					else
+						bindingItem.Properties[optionName].Reset();
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state); state.Accepted = true; return state;
+			});
+
 		/// <summary>Removes an explicit local value through the design model instead of assigning a
 		/// guessed CLR default. This preserves inherited/default-property semantics and produces the
 		/// same native undo transaction as an in-process WPF designer reset.</summary>
@@ -2182,6 +2208,19 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 							Value = binding.NotifyOnValidationError.ToString(CultureInfo.InvariantCulture), BindingPropertyName = descriptor.Name,
 							ShouldSerialize = false
 						});
+						foreach (var optionName in bindingValidationOptionNames)
+						{
+							var option = reference.Properties[optionName];
+							if (option?.ValueOnInstance is not bool enabled)
+								continue;
+							result.Add(new DesignerPropertyInfo {
+								Name = descriptor.Name + "." + optionName, DisplayName = descriptor.Name + " " + optionName,
+								Category = "Binding", TypeName = typeof(bool).FullName ?? "",
+								Kind = "Boolean", EditorKind = "BindingValidationOption",
+								Value = enabled.ToString(CultureInfo.InvariantCulture), BindingPropertyName = descriptor.Name,
+								BindingOptionName = optionName, ShouldSerialize = false
+							});
+						}
 					}
 				}
 				result.Add(ToPropertyInfo(property));

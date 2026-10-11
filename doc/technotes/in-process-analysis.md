@@ -562,6 +562,11 @@ enough to verify in the affected host tests plus one focused integration journey
 resets the nested design property so no explicit false value remains in source. It follows the same
 versioned child-host path as the other narrow Binding editors.
 
+**C2 Binding validation update (2026-10-11).** The WPF Properties pad also exposes
+`ValidatesOnDataErrors`, `ValidatesOnExceptions`, and `ValidatesOnNotifyDataErrors` through a
+strictly whitelisted nested-Binding RPC. The host rejects any other requested member; disabling a
+validation option resets its nested property instead of serializing a redundant false value.
+
 Mutation acceptance is a shell-side invariant, not merely a host detail: GTK/MewUI now make all
 ordinary edit paths return the host's `Accepted` result before dirtying or changing their local
 Properties-pad snapshot, and WPF's adapter rejects before entering `OnPropertyEdited`. A failed
