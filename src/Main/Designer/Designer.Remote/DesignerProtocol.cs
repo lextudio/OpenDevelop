@@ -20,10 +20,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		// v8 changes WinForms design/delete-elements from one component per request to an
-		// atomic selection. A stale pooled child must fail its handshake rather than accepting
-		// the endpoint and rejecting every multi-selection at mutation time.
-		public const int Version = 8;
+		// v9 adds WPF's optional design/set-binding-path mutation. A stale pooled child would
+		// otherwise let a Binding editor route a structured value through design/set-property,
+		// which turns markup into a literal string instead of a Binding object.
+		public const int Version = 9;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

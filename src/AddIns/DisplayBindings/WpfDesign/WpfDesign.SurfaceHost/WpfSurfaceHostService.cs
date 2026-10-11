@@ -951,6 +951,40 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		/// <summary>Edits the path of an existing <see cref="System.Windows.Data.Binding"/> through
+		/// its nested design item. Unlike <see cref="SetProperty"/>, this never hands a markup
+		/// extension string to a string-valued dependency property: doing that serializes the braces
+		/// literally and destroys the Binding. The child owns both type validation and the nested
+		/// object-model mutation, so rejection leaves the source untouched.</summary>
+		[JsonRpcMethod("design/set-binding-path")]
+		public DesignerSessionState SetBindingPath(long baseVersion, string elementId, string propertyName, string path)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item))
+					return NotFound(state, "Element not found: " + elementId);
+				if (String.IsNullOrWhiteSpace(propertyName))
+					return NotFound(state, "A Binding property name is required.");
+				var property = item.Properties[propertyName];
+				if (property?.Value is not DesignItem bindingItem
+					|| bindingItem.Component is not System.Windows.Data.Binding)
+					return NotFound(state, "Property is not an editable Binding: " + propertyName);
+				try
+				{
+					// Mutate Path on the Binding's nested DesignItem, not Binding.Path on its live CLR
+					// instance. The former updates XamlDom and participates in native undo/flush.
+					bindingItem.Properties["Path"].SetValue(path ?? "");
+				}
+				catch (Exception e)
+				{
+					return NotFound(state, e.GetBaseException().Message);
+				}
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
 		/// <summary>Removes an explicit local value through the design model instead of assigning a
 		/// guessed CLR default. This preserves inherited/default-property semantics and produces the
 		/// same native undo transaction as an in-process WPF designer reset.</summary>
@@ -2087,6 +2121,17 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				// loses the distinction between editable literal text and an object reference.
 				if (property.Value is DesignItem reference)
 				{
+					// Binding has one deliberately narrow structured editor: its Path. The host
+					// changes that nested design item through design/set-binding-path; exposing
+					// arbitrary markup here would let a Properties-pad string edit turn the
+					// Binding into literal text. Other nested values stay read-only References.
+					if (reference.Component is System.Windows.Data.Binding binding)
+					{
+						info.Kind = "String";
+						info.EditorKind = "BindingPath";
+						info.Value = binding.Path?.Path ?? "";
+						return info;
+					}
 					info.Kind = "Reference";
 					info.IsReadOnly = true;
 					info.Value = reference.ToString() ?? "";

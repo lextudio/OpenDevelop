@@ -17,7 +17,7 @@ public enum WpfSurfaceHostBackend { LibreWpf, MicrosoftWpf }
 /// seam). Lives in its own WPF-free Remote project, mirroring FormsDesigner.Remote/
 /// WinUIXamlDesigner.UnoDesignHost.Remote, so it can be referenced by both tests and
 /// WpfDesign.AddIn without pulling in the child's own WPF/designer-engine dependencies.</summary>
-public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient, IDesignHostClient, IDesignHostBounds, IDesignHostHitTesting, IDesignHostPropertyReset, IDesignHostEventBinding
+public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient, IDesignHostClient, IDesignHostBounds, IDesignHostHitTesting, IDesignHostPropertyReset, IDesignHostEventBinding, IDesignHostBindingPath
 {
 	/// <summary>IDE-owned sink for a child's stdout/stderr. The Remote assembly deliberately does
 	/// not reference the workbench, so WpfViewContent supplies the Output-pad implementation.</summary>
@@ -180,6 +180,13 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> SetEventAsync(long baseVersion, string elementId, string eventName, string handlerName, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-event",
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, eventName, handlerName }, cancellationToken), cancellationToken);
+
+	/// <summary>Updates an existing WPF Binding through the child's design model. The RPC accepts
+	/// only a property path, never arbitrary markup, so a Properties-pad edit cannot replace a
+	/// Binding object with a literal <c>{Binding ...}</c> string.</summary>
+	public Task<DesignerSessionState> SetBindingPathAsync(long baseVersion, string elementId, string propertyName, string path, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-path",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, path }, cancellationToken), cancellationToken);
 
 	public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget = null, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(Document.AddElementAsync(baseVersion, parentId, item, proposedName, x, y, dropTarget, cancellationToken), cancellationToken);

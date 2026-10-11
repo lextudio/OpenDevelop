@@ -64,6 +64,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		internal void SetBindingPath(string propertyName, string path)
+		{
+			var state = client.SetBindingPathAsync(currentBaseVersion(), node.Id, propertyName, path)
+				.GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		// A rejected DDP mutation is not an edit.  In particular, do not send it through
 		// OnPropertyEdited: that path marks the document dirty and refreshes the pad from a
 		// state which the host explicitly says was not applied.  Forms follows the same rule
@@ -240,7 +248,10 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor
 			var serialized = converter.CanConvertTo(typeof(string))
 				? converter.ConvertToInvariantString(value) ?? ""
 				: Convert.ToString(value, CultureInfo.InvariantCulture) ?? "";
-			owner.SetProperty(property.Name, serialized);
+			if (property.EditorKind == "BindingPath")
+				owner.SetBindingPath(property.Name, serialized);
+			else
+				owner.SetProperty(property.Name, serialized);
 			// The WPF TwoWay Value binding re-reads GetValue() right after a successful commit to
 			// refresh its target - but property (this DesignerPropertyInfo) is the snapshot
 			// captured when this descriptor was built, at SELECTION time, not a live view of the

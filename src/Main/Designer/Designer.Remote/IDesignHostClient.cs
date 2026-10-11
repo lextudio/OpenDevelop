@@ -127,6 +127,14 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		Task<DesignerSessionState> SetEventAsync(long baseVersion, string elementId, string eventName, string handlerName, CancellationToken cancellationToken = default);
 	}
 
+	/// <summary>Optional: updates the path of an already-authored Binding (<c>design/set-binding-path</c>).
+	/// This deliberately carries a path, not arbitrary XAML markup: the child keeps ownership of the
+	/// Binding object graph and rejects non-Binding properties.</summary>
+	public interface IDesignHostBindingPath
+	{
+		Task<DesignerSessionState> SetBindingPathAsync(long baseVersion, string elementId, string propertyName, string path, CancellationToken cancellationToken = default);
+	}
+
 	/// <summary>Optional: moving or resizing an element (<c>design/set-bounds</c>). Coordinates
 	/// are design units; backends with integer layout round on their own side.</summary>
 	public interface IDesignHostBounds

@@ -653,7 +653,7 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
-	public async Task Tree_ReportsNestedBindingValuesAsReadOnlyReferences()
+	public async Task Tree_ReportsNestedBindingValuesWithPathEditor()
 	{
 		const string xaml = """
 			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
@@ -666,8 +666,40 @@ public sealed class WpfSurfaceHostRpcTests
 
 		Assert.True(opened.Accepted, opened.Error);
 		var text = FindByName(opened.Tree!, "bound")!.Properties.Single(property => property.Name == "Text");
-		Assert.Equal("Reference", text.Kind);
-		Assert.True(text.IsReadOnly);
+		Assert.Equal("String", text.Kind);
+		Assert.Equal("BindingPath", text.EditorKind);
+		Assert.False(text.IsReadOnly);
+		Assert.Equal("Title", text.Value);
+	}
+
+	[Fact]
+	public async Task ChildHost_UpdatesBindingPathWithoutReplacingBindingObject()
+	{
+		const string xaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <TextBlock x:Name="bound" Text="{Binding Title}" />
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		Assert.IsAssignableFrom<IDesignHostBindingPath>(client);
+		var bound = FindByName(opened.Tree!, "bound")!;
+
+		var edited = await client.SetBindingPathAsync(1, bound.Id, "Text", "Customer.Name", timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var text = FindByName(edited.Tree!, "bound")!.Properties.Single(property => property.Name == "Text");
+		Assert.Equal("BindingPath", text.EditorKind);
+		Assert.Equal("Customer.Name", text.Value);
+		Assert.Contains("Text=\"{Binding Customer.Name}\"", (await client.FlushAsync(1, timeout.Token)).Files.Single().Text,
+			StringComparison.Ordinal);
+
+		var rejected = await client.SetBindingPathAsync(edited.Version, bound.Id, "Width", "NotAPath", timeout.Token);
+		Assert.False(rejected.Accepted);
+		Assert.Contains("not an editable Binding", rejected.Error, StringComparison.Ordinal);
+		Assert.DoesNotContain("NotAPath", (await client.FlushAsync(edited.Version, timeout.Token)).Files.Single().Text,
+			StringComparison.Ordinal);
 	}
 
 	/// <summary>
