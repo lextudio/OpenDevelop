@@ -113,6 +113,42 @@ public sealed class UnoDesignHostRpcTests
 	}
 
 	[Fact]
+	public async Task ChildHost_PublishesMeasuredGridTracksInTheSnapshot()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await StartAsync(timeout.Token);
+		var xaml = $"""
+		<Grid xmlns="{Ns}" xmlns:x="{XNs}" x:Name="root" Width="300" Height="120">
+		    <Grid.RowDefinitions>
+		        <RowDefinition Height="40" />
+		        <RowDefinition Height="*" />
+		        <RowDefinition Height="20" />
+		    </Grid.RowDefinitions>
+		    <Grid.ColumnDefinitions>
+		        <ColumnDefinition Width="80" />
+		        <ColumnDefinition Width="*" />
+		        <ColumnDefinition Width="50" />
+		    </Grid.ColumnDefinitions>
+		</Grid>
+		""";
+
+		var opened = await client.OpenAsync(Document(client, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var tracks = Assert.IsType<DesignerGridGuides>(opened.Tree!.GridTracks);
+		Assert.Collection(tracks.RowTracks,
+			row => { Assert.Equal(0, row.Offset); Assert.Equal(40, row.Size); },
+			row => { Assert.Equal(40, row.Offset); Assert.Equal(60, row.Size); },
+			row => { Assert.Equal(100, row.Offset); Assert.Equal(20, row.Size); });
+		Assert.Collection(tracks.ColumnTracks,
+			column => { Assert.Equal(0, column.Offset); Assert.Equal(80, column.Size); },
+			// The root is measured to the 320px presenter viewport in the headless host; this
+			// deliberately asserts the resolved 190px star column, not source arithmetic based
+			// on the document's Width attribute.
+			column => { Assert.Equal(80, column.Offset); Assert.Equal(190, column.Size); },
+			column => { Assert.Equal(270, column.Offset); Assert.Equal(50, column.Size); });
+	}
+
+	[Fact]
 	public async Task ChildHost_DesignDataChangesOnlyThePreviewAndPreservesTheSourceSnapshot()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));

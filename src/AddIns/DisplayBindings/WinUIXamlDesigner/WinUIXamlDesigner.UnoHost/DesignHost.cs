@@ -1791,6 +1791,11 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				nodeInfo.Height = bounds.Height;
 				nodeInfo.ZIndex = path.Length == 0 ? null : Canvas.GetZIndex(fe);
 				nodeInfo.BaselineOffset = GetBaselineOffset(fe);
+				// RowDefinition/ColumnDefinition expose their resolved pixel lengths after the
+				// host's layout pass, but unlike WPF they do not expose cumulative offsets. Publish
+				// both values from this live Grid so raster clients can draw guides without reparsing
+				// or approximating star/auto track arithmetic from source text.
+				nodeInfo.GridTracks = fe is Grid grid ? BuildGridTracks(grid) : null;
 				// Only TabIndex is populated here (not the WPF host's full property reflection) -
 				// this designer's Properties pad is driven off WinUIXamlElementPropertyAdapter
 				// reading the host-owned XAML document directly, not this per-node list; TabIndex
@@ -1846,6 +1851,27 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				return null;
 			}
 		}
+
+		static DesignerGridGuides BuildGridTracks(Grid grid)
+		{
+			var tracks = new DesignerGridGuides { Accepted = true };
+			var offset = 0.0;
+			foreach (var row in grid.RowDefinitions) {
+				var size = FiniteNonNegative(row.ActualHeight);
+				tracks.RowTracks.Add(new DesignerGridTrackInfo { Offset = offset, Size = size });
+				offset += size;
+			}
+			offset = 0;
+			foreach (var column in grid.ColumnDefinitions) {
+				var size = FiniteNonNegative(column.ActualWidth);
+				tracks.ColumnTracks.Add(new DesignerGridTrackInfo { Offset = offset, Size = size });
+				offset += size;
+			}
+			return tracks;
+		}
+
+		static double FiniteNonNegative(double value)
+			=> double.IsFinite(value) ? Math.Max(0, value) : 0;
 
 		/// <summary>Whether this element is actually on screen - see DesignerElementNode.IsVisible
 		/// for why a client cannot safely draw coordinate-keyed overlays without it.

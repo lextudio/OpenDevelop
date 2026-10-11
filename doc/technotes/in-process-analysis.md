@@ -568,6 +568,14 @@ hosts publish `BaselineOffset` only when the active compatible runtime exposes t
 `TextBlock` member; otherwise they send null rather than failing a design session or inventing a
 measurement. Consumers must continue to treat the field as nullable telemetry.
 
+**C3 update (2026-10-11).** The shared Uno/WinUI `BuildTree` now publishes measured `GridTracks`
+for every live `Grid`: `RowDefinition.ActualHeight` and `ColumnDefinition.ActualWidth`, with
+cumulative offsets computed in the host. This is deliberately layout telemetry, not a source
+interpretation: the focused Uno child-host test shows that its root grid is measured to the active
+320px viewport, so a star column reports its actual 190px extent rather than an extent inferred
+from the document's `Width` attribute. An empty definition collection remains an accepted Grid
+with zero explicitly declared tracks. The Microsoft-host leg remains a Windows verification item.
+
 ### Why this order
 
 `C1` removes a correctness and responsiveness hazard in every click path. `C2` then closes the
