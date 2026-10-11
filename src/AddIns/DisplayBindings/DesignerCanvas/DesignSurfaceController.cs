@@ -562,12 +562,8 @@ public sealed class DesignSurfaceController : IDisposable
 			// element's direct siblings makes every backend receive the same valid batch:
 			// WPF rejects mixed-parent placement, while source-backed designers must not
 			// silently rewrite margins in unrelated containers.
-			parentByName.TryGetValue(info.Name, out var primaryParent);
-			dragGroup = multiSelectionNames
-				.Where(name => name == info.Name
-					|| (parentByName.TryGetValue(name, out var parent)
-						&& ReferenceEquals(parent, primaryParent)))
-				.Distinct(StringComparer.Ordinal)
+			dragGroup = DesignerDragGroupPlanner
+				.SameParentGroup(multiSelectionNames, info.Name, parentByName)
 				.ToList();
 		}
 		else
@@ -575,11 +571,8 @@ public sealed class DesignSurfaceController : IDisposable
 		dragGroupNames.Clear();
 		dragGroupNames.UnionWith(dragGroup);
 		dragGroupSubtreeNames.Clear();
-		foreach (var name in dragGroupNames)
-		{
-			if (nodesByName.TryGetValue(name, out var root))
-				AddDragSubtreeNames(root);
-		}
+		dragGroupSubtreeNames.UnionWith(DesignerDragGroupPlanner.CollectMovingSubtreeKeys(
+			dragGroupNames, nodesByName, node => KeyOf(node, keying)));
 		dragGroupStart = new Dictionary<string, (double, double, double, double)>(StringComparer.Ordinal);
 		foreach (var name in dragGroup)
 		{
@@ -589,15 +582,6 @@ public sealed class DesignSurfaceController : IDisposable
 		}
 		// Selecting the dragged element keeps the Properties pad and outline in sync.
 		ElementPicked?.Invoke(this, info.Name);
-	}
-
-	void AddDragSubtreeNames(DesignerElementNode node)
-	{
-		var key = KeyOf(node, keying);
-		if (key != null)
-			dragGroupSubtreeNames.Add(key);
-		foreach (var child in node.Children)
-			AddDragSubtreeNames(child);
 	}
 
 	void OnSurfaceElementDragDelta(object? sender, (double DX, double DY) delta)
