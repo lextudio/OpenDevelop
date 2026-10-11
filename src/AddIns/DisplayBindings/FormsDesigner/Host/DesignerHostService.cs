@@ -512,21 +512,94 @@ sealed class DesignerHostService : IDesignerChildService
 	[JsonRpcMethod("design/delete-elements")]
 	public DesignerSessionState DeleteElements(string sessionId, string documentId, long baseVersion, string[] elementIds)
 	{
-		if (elementIds == null || elementIds.Length != 1)
-			throw new NotSupportedException("WinForms currently requires exactly one element per delete operation.");
-		var elementId = elementIds[0];
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
 		var host = GetHost();
-		var component = host.Container.Components[elementId]
-			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
-		if (component == host.RootComponent) throw new InvalidOperationException("The root component cannot be deleted.");
-		using (var transaction = host.CreateTransaction("Delete " + elementId)) {
-			host.DestroyComponent(component);
-			transaction.Commit();
+		if (elementIds == null || elementIds.Length == 0)
+			return Rejected(baseVersion, "Select at least one component to delete.");
+		if (elementIds.Any(String.IsNullOrWhiteSpace))
+			return Rejected(baseVersion, "Every component selected for deletion must have an identifier.");
+
+		// Resolve and validate every name before the first DestroyComponent call. In particular,
+		// do not let a later missing/root component turn an otherwise ordinary multi-selection
+		// delete into a partially committed source edit.
+		var selected = new Dictionary<string, IComponent>(StringComparer.Ordinal);
+		foreach (var elementId in elementIds.Distinct(StringComparer.Ordinal)) {
+			var component = host.Container.Components[elementId];
+			if (component == null)
+				return Rejected(baseVersion, "Component not found: " + elementId);
+			if (component == host.RootComponent)
+				return Rejected(baseVersion, "The root component cannot be deleted.");
+			selected[elementId] = component;
 		}
-		RewriteDeletedComponent(elementId);
-		return CurrentState(baseVersion);
+		if (selected.Count == 0)
+			return Rejected(baseVersion, "Select at least one component to delete.");
+
+		// A selected child is already destroyed with a selected parent. Only destroy the outer
+		// roots, but collect their complete live descendant set before doing so: every declaration
+		// and collection attachment for those descendants must leave the designer source too.
+		var roots = selected.Values.Where(component => !HasSelectedAncestor(component, selected)).ToArray();
+		var deletedElementIds = host.Container.Components.Cast<IComponent>()
+			.Where(component => roots.Any(root => ReferenceEquals(component, root) || HasAncestor(component, root)))
+			.Select(component => component.Site?.Name)
+			.Where(name => !String.IsNullOrEmpty(name))
+			.OrderByDescending(name => ComponentDepth(selected.TryGetValue(name!, out var component) ? component : host.Container.Components[name!]))
+			.ToArray();
+		var designerFile = CurrentDesignerFile();
+		var originalSource = designerFile.Text;
+		try {
+			using (var transaction = host.CreateTransaction("Delete " + String.Join(", ", roots.Select(component => component.Site?.Name)))) {
+				foreach (var component in roots)
+					host.DestroyComponent(component);
+				transaction.Commit();
+			}
+			foreach (var elementId in deletedElementIds)
+				RewriteDeletedComponent(elementId!);
+			return CurrentState(baseVersion);
+		} catch (Exception exception) {
+			// DestroyComponent transactions are not proven to restore all nested Control and
+			// ToolStrip state on every backend. Restore the source first, then rebuild from that
+			// authority rather than returning a rejection backed by a partially deleted live tree.
+			designerFile.Text = originalSource;
+			try {
+				CreateDesignSurface(current!);
+			} catch (Exception recoveryException) {
+				return Rejected(baseVersion, "Delete failed and the design surface could not be restored: " + recoveryException.Message);
+			}
+			return Rejected(baseVersion, "Delete failed: " + exception.Message);
+		}
 	}
+
+	static bool HasSelectedAncestor(IComponent component, Dictionary<string, IComponent> selected)
+	{
+		for (var parent = ComponentParent(component); parent != null; parent = ComponentParent(parent)) {
+			if (parent.Site?.Name is { Length: > 0 } name && selected.ContainsKey(name))
+				return true;
+		}
+		return false;
+	}
+
+	static bool HasAncestor(IComponent component, IComponent ancestor)
+	{
+		for (var parent = ComponentParent(component); parent != null; parent = ComponentParent(parent)) {
+			if (ReferenceEquals(parent, ancestor)) return true;
+		}
+		return false;
+	}
+
+	static int ComponentDepth(IComponent? component)
+	{
+		var depth = 0;
+		for (var parent = component == null ? null : ComponentParent(component); parent != null; parent = ComponentParent(parent))
+			depth++;
+		return depth;
+	}
+
+	static IComponent? ComponentParent(IComponent component) => component switch {
+		Control control => control.Parent,
+		ToolStripItem item when item.OwnerItem != null => item.OwnerItem,
+		ToolStripItem item when item.Owner != null => item.Owner,
+		_ => null
+	};
 
 	[JsonRpcMethod("design/set-z-order")]
 	public DesignerSessionState SetZOrder(string sessionId, string documentId, long baseVersion, string elementId, bool bringToFront)

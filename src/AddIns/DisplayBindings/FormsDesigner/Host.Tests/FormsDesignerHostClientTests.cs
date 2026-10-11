@@ -1594,6 +1594,41 @@ public sealed class FormsDesignerHostClientTests
 	}
 
 	/// <summary>
+	/// A multi-selection delete is one logical mutation, not the former client-side sequence of
+	/// single-name RPCs. A bad name (or root) later in that former sequence used to let the earlier
+	/// delete persist before the call failed. Parent/child selection must likewise erase the whole
+	/// authored subtree rather than leaving a child declaration behind after its parent disappears.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_BatchDelete_PrevalidatesAndRemovesSelectedSubtreeAtomically()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var opened = await client.OpenAsync(Snapshot(1, "button1"), timeout.Token);
+		Assert.True(opened.Accepted);
+
+		// The root is deliberately second: this is the order that previously deleted button1
+		// first and then failed, leaving a rejected operation with changed child state/source.
+		var rejected = await client.DeleteElementsAsync(1, new[] { "button1", "Form1" }, timeout.Token);
+		Assert.False(rejected.Accepted);
+		Assert.Contains("button1", DesignerText(await client.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+
+		var withPanel = await client.AddElementAsync(1, "Form1", new DesignerToolboxItemInfo { TypeName = "Panel" }, "panel1", 10, 10,
+			cancellationToken: timeout.Token);
+		// The next accepted frame is the authoritative live-state check for the rejected
+		// request: button1 must still exist in the child, not merely in its retained source.
+		Assert.Contains(withPanel.Components, component => component.Name == "button1");
+		await client.AddElementAsync(1, "panel1", new DesignerToolboxItemInfo { TypeName = "Button" }, "nestedButton", 5, 5,
+			cancellationToken: timeout.Token);
+		var deleted = await client.DeleteElementsAsync(1, new[] { "panel1", "nestedButton" }, timeout.Token);
+		Assert.True(deleted.Accepted);
+		Assert.DoesNotContain(deleted.Components, component => component.Name == "panel1" || component.Name == "nestedButton");
+		var source = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.DoesNotContain("panel1", source, StringComparison.Ordinal);
+		Assert.DoesNotContain("nestedButton", source, StringComparison.Ordinal);
+	}
+
+	/// <summary>
 	/// Drag-to-reorder on a ToolStrip whose items are declared as separate consecutive
 	/// "toolStrip1.Items.Add(x)" statements (the shape ChildHost_SupportsSmartTagActionsAndToolStripItemInsertion's
 	/// own AddToolStripItemAsync calls produce, and one of the two declaration shapes real designer

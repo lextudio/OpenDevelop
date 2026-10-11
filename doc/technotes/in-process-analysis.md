@@ -542,6 +542,16 @@ Properties-pad snapshot, and WPF's adapter rejects before entering `OnPropertyEd
 signal bind therefore cannot create a GTK code-behind method or show a handler that the child did
 not accept.
 
+**C4 update (2026-10-11).** The earlier C4 table text describing WinForms multi-selection delete
+as non-atomic is superseded. Under protocol **v8**, one `design/delete-elements` request
+prevalidates every identifier before the first `DestroyComponent`, reduces selected
+parents/children to outer roots, removes the complete logical control/ToolStrip subtree from source
+deepest-first, and uses one designer transaction. If a live-model or source-rewrite step fails, the
+host restores the original source and rebuilds from that authority before returning rejection. The
+v8 handshake prevents a newly deployed client from sending this array form to an old pooled child.
+A focused LibreWinForms host test proves a root rejection retains both source and live state, then
+proves selected parent/child declarations disappear together.
+
 **C2 verification update (2026-10-09).** The macOS Uno journey now selects `PrimaryButton` in the
 shared Properties pad, resets its authored `Content` through that live `PropertyItem` descriptor,
 saves, and verifies that the named element remains while the XAML attribute is removed. The test

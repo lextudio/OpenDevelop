@@ -214,21 +214,13 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public Task<DesignerSessionState> SetBoundsAsync(long baseVersion, string elementId, double x, double y, double width, double height, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-bounds", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, x = Round(x), y = Round(y), width = Round(width), height = Round(height) }, cancellationToken), cancellationToken);
 
-		/// <summary>Deletes elements one RPC at a time: the child's <c>design/delete-elements</c>
-		/// takes a single name, and deletes do not bump the document version, so every call in
-		/// the loop validates against the same <paramref name="baseVersion"/>. The last child state wins.</summary>
-		public async Task<DesignerSessionState> DeleteElementsAsync(long baseVersion, string[] elementIds, CancellationToken cancellationToken)
-		{
-			DesignerSessionState state = null;
-			if (elementIds != null) {
-				foreach (var elementId in elementIds)
-					state = await DeleteComponentAsync(baseVersion, elementId, cancellationToken).ConfigureAwait(false);
-			}
-			return state == null ? null : await TrackMutationAsync(Task.FromResult(state), cancellationToken).ConfigureAwait(false);
-		}
-
-		Task<DesignerSessionState> DeleteComponentAsync(long baseVersion, string elementId, CancellationToken cancellationToken)
-			=> connection.InvokeAsync<DesignerSessionState>("design/delete-elements", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds = new[] { elementId } }, cancellationToken);
+		/// <summary>Deletes the complete logical selection in one child mutation. The child
+		/// prevalidates every requested component before changing its live design surface and
+		/// restores that surface from the authoritative source snapshot if a later model/source
+		/// step fails, so a rejected multi-delete cannot leave the parent and child disagreeing.</summary>
+		public Task<DesignerSessionState> DeleteElementsAsync(long baseVersion, string[] elementIds, CancellationToken cancellationToken)
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/delete-elements",
+				new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds }, cancellationToken), cancellationToken);
 
 		public Task<DesignerSessionState> SetZOrderAsync(long baseVersion, string elementId, bool bringToFront, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-z-order", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, bringToFront }, cancellationToken), cancellationToken);

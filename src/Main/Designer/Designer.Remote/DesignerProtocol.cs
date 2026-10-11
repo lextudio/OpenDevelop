@@ -20,7 +20,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		public const int Version = 7;
+		// v8 changes WinForms design/delete-elements from one component per request to an
+		// atomic selection. A stale pooled child must fail its handshake rather than accepting
+		// the endpoint and rejecting every multi-selection at mutation time.
+		public const int Version = 8;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
