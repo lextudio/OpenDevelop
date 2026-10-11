@@ -581,8 +581,8 @@ Grid divider guides: it converts each measured track start plus the measured far
 shared canvas boundary form. The former XAML `Auto`/star approximation remains only as a fallback
 for ProGPU or an unavailable/older runtime that does not publish `GridTracks`; it is no longer the
 normal Uno/WinUI path. Runtime telemetry is accepted only for one unambiguous source-backed Grid
-with the selected name; a duplicate x:Name in a template/data-template namescope falls back rather
-than applying the wrong Grid's measured tracks.
+with the selected name; a duplicate x:Name in a template/data-template namescope suppresses the
+guides rather than combining one instance's bounds or tracks with another's source definitions.
 
 The resize commit now reuses those same guide boundaries to calculate the edited row or column
 size. This keeps a drag over an `Auto`, star, or constrained track from looking correct on the
