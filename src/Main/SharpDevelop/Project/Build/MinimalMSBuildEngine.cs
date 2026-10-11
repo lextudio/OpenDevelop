@@ -94,6 +94,11 @@ namespace ICSharpCode.SharpDevelop.Project
 				RedirectStandardError = true,
 				CreateNoWindow = true
 			};
+			// The dotnet/MSBuild child writes UTF-8, but a redirected process is decoded with
+			// the console OEM code page by default - CP936/GBK on a Chinese Windows - which turned
+			// its localized output into mojibake (issue #17). Decode the captured streams as UTF-8.
+			psi.StandardOutputEncoding = Encoding.UTF8;
+			psi.StandardErrorEncoding = Encoding.UTF8;
 			// This app's own process is launched with DOTNET_ROOT/DOTNET_HOST_PATH/MSBuildSDKsPath-
 			// family variables pointing at whatever SDK launch.sh pinned it to; a child process
 			// inherits them by default, which would make the dotnet muxer resolve right back to
@@ -138,8 +143,20 @@ namespace ICSharpCode.SharpDevelop.Project
 			// localized IDE lines and English MSBuild/SDK lines. The per-diagnostic lines keep
 			// their English "error"/"warning" severity tokens, so DiagnosticLine still matches.
 			string uiLanguage = ResourceService.Language;
-			if (!string.IsNullOrEmpty(uiLanguage))
-				psi.EnvironmentVariables["DOTNET_CLI_UI_LANGUAGE"] = uiLanguage;
+			if (!string.IsNullOrEmpty(uiLanguage)) {
+				// MSBuild forwards the UI language to the C# compiler as PreferredUILang, and csc
+				// rejects a full culture such as "zh-Hant-TW" with warning CS2038 ("invalid language
+				// name"). Pass the neutral language csc accepts; MSBuild still localizes to it.
+				string compilerLanguage = uiLanguage;
+				try {
+					var culture = System.Globalization.CultureInfo.GetCultureInfo(uiLanguage);
+					if (!culture.IsNeutralCulture && culture.Parent != System.Globalization.CultureInfo.InvariantCulture)
+						compilerLanguage = culture.Parent.Name;
+				} catch (Exception) {
+					// Keep the original language if it is not a resolvable culture.
+				}
+				psi.EnvironmentVariables["DOTNET_CLI_UI_LANGUAGE"] = compilerLanguage;
+			}
 			// The LibreWPF SDK compiles a tiny native Win32-compat shim with `cc` on macOS. With no
 			// SDKROOT, clang falls back to its own SDK search order and picks the CommandLineTools
 			// SDK, which on this toolchain carries architectures the installed linker rejects
