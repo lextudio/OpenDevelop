@@ -248,6 +248,21 @@ sealed class WinUIXamlDocumentEditor
 		return pasted;
 	}
 
+	/// <summary>Replaces the direct text content of a leaf element in one source-history entry.
+	/// This deliberately refuses mixed/object content so an inline edit cannot discard a child
+	/// control, property element, comment, or markup extension.</summary>
+	public void SetTextContent(XElement element, string text)
+	{
+		if (element == null || element.Document != Document)
+			throw new ArgumentException("An element from this document is required.", nameof(element));
+		if (element.Elements().Any() || element.Nodes().Any(node => node is not XText))
+			throw new InvalidOperationException("Only direct text content can be edited inline.");
+		BeginChange();
+		element.RemoveNodes();
+		element.Add(new XText(text ?? ""));
+		CommitChange();
+	}
+
 	/// <summary>Wraps a non-root source element in a named container, preserving the original
 	/// sibling position and recording the complete structural change as one undo entry.</summary>
 	public XElement WrapInContainer(XElement element, string containerType)

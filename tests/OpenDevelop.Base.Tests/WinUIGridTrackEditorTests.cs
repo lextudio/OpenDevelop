@@ -273,6 +273,34 @@ public sealed class WinUIGridTrackEditorTests
 	}
 
 	[Fact]
+	public void InlineTextEditing_PreservesDirectTextContentAndUndo()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target">Save</Button></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+		var button = editor.FindElement("Target")!;
+
+		Assert.True(WinUIXamlDesignerViewContent.TryGetInlineText(button, out var attribute, out var text));
+		Assert.Null(attribute);
+		Assert.Equal("Save", text);
+		editor.SetTextContent(button, "Save all");
+		Assert.Contains(">Save all</Button>", editor.Text);
+		Assert.DoesNotContain("Content=", editor.Text);
+		Assert.True(editor.Undo());
+		Assert.Equal(source, editor.Text);
+		Assert.True(editor.Redo());
+		Assert.Contains(">Save all</Button>", editor.Text);
+	}
+
+	[Fact]
+	public void InlineTextEditing_RejectsObjectContent()
+	{
+		var button = XElement.Parse("""<Button xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><TextBlock Text="Save"/></Button>""");
+
+		Assert.False(WinUIXamlDesignerViewContent.TryGetInlineText(button, out _, out _));
+	}
+
+	[Fact]
 	public void MenuFlyoutItemInsertion_IsSourceOwnedAndUndoable()
 	{
 		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"><Button.ContextFlyout><MenuFlyout x:Name="MenuFlyout1"><MenuFlyoutItem Text="First"/></MenuFlyout></Button.ContextFlyout></Button></Grid>""";

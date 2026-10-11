@@ -779,8 +779,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	}
 	/// <summary>
 	/// A double-click on the design surface starts inline text editing for text-bearing
-	/// elements (TextBlock/TextBox/Button-like: Text or Content attribute); anything else
-	/// or empty space resets the viewport to fit.
+	/// elements (TextBlock/TextBox/Button-like: Text or Content attribute, or authored direct
+	/// leaf text); anything else or empty space resets the viewport to fit.
 	/// </summary>
 	void OnElementDoubleClickedOnSurface(object sender, ElementDoubleClickInfo info)
 	{
@@ -790,9 +790,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			return;
 		}
 		var element = editor.FindElement(info.Name);
-		var attribute = element == null ? null : TextAttributeFor(element);
-		var text = attribute == null ? null : (string)element.Attribute(attribute);
-		if (attribute == null || text == null)
+		if (element == null || !TryGetInlineText(element, out _, out var text))
 		{
 			previewHost.FitView();
 			return;
@@ -806,9 +804,15 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		var element = editor.FindElement(SelectedElementName);
 		if (element == null)
 			return;
-		var attribute = TextAttributeFor(element);
-		if (attribute == null)
+		if (!TryGetInlineText(element, out var attribute, out _))
 			return;
+		if (attribute == null)
+		{
+			editor.SetTextContent(element, text);
+			ApplyDocumentChange();
+			SelectElement(SelectedElementName);
+			return;
+		}
 		editor.SetAttribute(element, attribute, text);
 		var propertyName = attribute.LocalName;
 		var elementName = SelectedElementName;
@@ -838,6 +842,31 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			default:
 				return null;
 		}
+	}
+
+	/// <summary>Returns the text an inline editor may safely replace. Attribute-backed text keeps
+	/// its attribute form; a leaf with authored direct text preserves that form. Object/mixed
+	/// content is excluded because a text edit must never erase a child element.</summary>
+	internal static bool TryGetInlineText(XElement element, out XName attribute, out string text)
+	{
+		attribute = TextAttributeFor(element);
+		text = "";
+		if (attribute == null)
+			return false;
+		if (element.Attribute(attribute) is { } value)
+		{
+			text = value.Value;
+			return true;
+		}
+		if (element.Elements().Any() || element.Nodes().Any(node => node is not XText))
+			return false;
+		var directText = string.Concat(element.Nodes().OfType<XText>().Select(node => node.Value));
+		if (!string.IsNullOrWhiteSpace(directText))
+		{
+			attribute = null;
+			text = directText;
+		}
+		return true;
 	}
 
 	/// <summary>Invokes a context command as if it came from the surface menu (scriptable).</summary>
