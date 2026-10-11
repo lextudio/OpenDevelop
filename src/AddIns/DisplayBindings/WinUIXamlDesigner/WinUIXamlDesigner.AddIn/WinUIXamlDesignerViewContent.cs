@@ -534,7 +534,16 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			return;
 		}
 		var (rows, cols) = GridGuides(selectedName);
-		var bounds = previewHost.QueryElementBounds(selectedName);
+		var runtimeGrid = FindRuntimeGridNode(previewHost.ElementTree, selectedName, out var ambiguousRuntimeGrid);
+		if (ambiguousRuntimeGrid)
+		{
+			// A name is only namescope-local. Do not combine one template instance's
+			// rectangle with another's source definitions.
+			previewHost.ClearGridGuides();
+			return;
+		}
+		var bounds = runtimeGrid == null ? previewHost.QueryElementBounds(selectedName)
+			: (runtimeGrid.X, runtimeGrid.Y, runtimeGrid.Width, runtimeGrid.Height);
 		if (bounds == null)
 		{
 			// A snapshot refresh can remove the selected Grid (or leave it without a
@@ -801,7 +810,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		// and a host-imposed root size all make a faithful answer impossible to derive from
 		// RowDefinition/ColumnDefinition text. ProGPU and an unavailable/older runtime have no
 		// such node telemetry yet, so retain the existing source-only fallback for them.
-		if (FindRuntimeGridNode(previewHost.ElementTree, name)?.GridTracks is { Accepted: true } measured)
+		if (FindRuntimeGridNode(previewHost.ElementTree, name, out _)?.GridTracks is { Accepted: true } measured)
 			return (GridGuideBoundaries(measured.RowTracks),
 				GridGuideBoundaries(measured.ColumnTracks));
 		var bounds = previewHost.QueryElementBounds(name);
@@ -815,24 +824,25 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	/// <summary>Names are unique only inside a XAML namescope. A template/data-template can
 	/// therefore contain the same name as the selected source Grid; only trust runtime telemetry
 	/// when the tree has exactly one source-backed Grid with that name. Ambiguity deliberately
-	/// returns null so <see cref="GridGuides"/> takes its source-only fallback.</summary>
-	static DesignerElementNode? FindRuntimeGridNode(DesignerElementNode? node, string name)
+	/// returns null and tells the caller not to combine a name-indexed rectangle with it.</summary>
+	static DesignerElementNode? FindRuntimeGridNode(DesignerElementNode? node, string name, out bool ambiguous)
 	{
 		DesignerElementNode? match = null;
-		var ambiguous = false;
+		var hasAmbiguity = false;
 		void Visit(DesignerElementNode? current)
 		{
-			if (current == null || ambiguous) return;
+			if (current == null || hasAmbiguity) return;
 			if (current.IsDesignable && string.Equals(current.Type, "Grid", StringComparison.Ordinal)
 				&& string.Equals(current.Name, name, StringComparison.Ordinal)) {
-				if (match != null) { ambiguous = true; return; }
+				if (match != null) { hasAmbiguity = true; return; }
 				match = current;
 			}
 			foreach (var child in current.Children)
 				Visit(child);
 		}
 		Visit(node);
-		return ambiguous ? null : match;
+		ambiguous = hasAmbiguity;
+		return hasAmbiguity ? null : match;
 	}
 
 	/// <summary>Converts track start offsets into the boundary list the shared raster canvas
