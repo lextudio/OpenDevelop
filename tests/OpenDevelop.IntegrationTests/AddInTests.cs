@@ -1541,6 +1541,10 @@ public sealed class AddInTests : IAsyncDisposable
             var flyout = status.GetProperty("componentTrayItems").EnumerateArray()
                 .Single(item => item.GetProperty("name").GetString() == "ActionsFlyout");
             Assert.Equal("Flyout", flyout.GetProperty("type").GetString());
+			var selected = await _app.InvokeAsync("od.winui-designer.component-tray.select", flyout.GetProperty("id").GetString());
+			Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+			Assert.Equal("ActionsFlyout", selected.GetProperty("selectedName").GetString());
+			Assert.Contains("WinUIXamlElementPropertyAdapter", selected.GetProperty("propertyPadSelectedType").GetString());
             Assert.DoesNotContain(status.GetProperty("componentTrayItems").EnumerateArray(),
                 item => item.GetProperty("name").GetString() == "PrimaryButton");
         }

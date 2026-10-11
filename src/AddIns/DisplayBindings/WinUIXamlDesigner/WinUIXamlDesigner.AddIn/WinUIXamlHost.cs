@@ -208,6 +208,10 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		=> (runtime?.WpfSurface as ICSharpCode.SharpDevelop.Widgets.DesignerCanvas)?.ComponentTrayItems
 			?? Array.Empty<(string Id, string Name, string Type)>();
 
+	/// <summary>Selects a currently visible tray item through the canvas's normal button path.</summary>
+	public bool SelectComponentTrayItem(string id)
+		=> runtime is IWinUIXamlComponentTray componentTray && componentTray.SelectComponentTrayItem(id);
+
 	/// <summary>
 	/// Draws a selection outline over the named element on the design surface. Optional:
 	/// runtimes that do not implement <see cref="IWinUIXamlSelectionOverlay"/> ignore it.
@@ -667,6 +671,7 @@ public interface IWinUIXamlComponentTray
 {
 	event EventHandler<string> ComponentTrayItemSelected;
 	void SetComponentTray(IReadOnlyList<(string Id, string Name, string Type)> items);
+	bool SelectComponentTrayItem(string id);
 }
 
 /// <summary>

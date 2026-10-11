@@ -90,6 +90,20 @@ public static class WinUIXamlDesignerDevFlowActions
 		});
 	}
 
+	[DevFlowAction("od.winui-designer.component-tray.select", Description = "Select a currently visible WinUI/Uno component-tray item through the same event path as its tray button")]
+	public static string SelectComponentTrayItem(string id)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		var selected = view.SelectComponentTrayItem(id);
+		return JsonSerializer.Serialize(new {
+			success = selected,
+			selectedName = view.SelectedElementName,
+			propertyPadSelectedType = PropertyPadGrid?.SelectedObject?.GetType().FullName
+		});
+	}
+
 	[DevFlowAction("od.winui-designer.toolbox.insert", Description = "Insert the named Toolbox control into a container element (or the root when container is omitted) in the active WinUI/Uno designer, landing the change as a XAML source edit")]
 	public static string ToolboxInsert(string controlName, string containerName = null)
 	{

@@ -163,6 +163,8 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverl
     public void SetComponentTray(IReadOnlyList<(string Id, string Name, string Type)> items)
         => canvas.SetComponentTray(items);
 
+    public bool SelectComponentTrayItem(string id) => surface.SelectComponentTrayItem(id);
+
     /// <summary>There is no child host process in this in-process runtime.</summary>
     public string ChildLog => "(in-process host)";
     public bool IsChildProcessAlive => true;

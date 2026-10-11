@@ -121,6 +121,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public string DocumentError => documentError;
 	public IReadOnlyList<string> ElementNames() => editor.ElementNames();
 	public IReadOnlyList<(string Id, string Name, string Type)> ComponentTrayItems => previewHost.ComponentTrayItems;
+	public bool SelectComponentTrayItem(string id) => previewHost.SelectComponentTrayItem(id);
 
 	public Rect? QueryElementScreenBounds(string name) => previewHost.QueryElementScreenBounds(name);
 	public string DescribeElementState(string name) => previewHost.DescribeElementState(name);

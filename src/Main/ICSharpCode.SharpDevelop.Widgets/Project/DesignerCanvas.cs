@@ -254,6 +254,17 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// an item has a design-surface rectangle.</summary>
 		public IReadOnlyList<(string Id, string Name, string Type)> ComponentTrayItems => trayItems;
 
+		/// <summary>Invokes the same selection path as a component-tray button. The identity is
+		/// checked against the currently materialized items so automation cannot select a stale
+		/// source path after a document refresh.</summary>
+		public bool SelectComponentTrayItem(string id)
+		{
+			if (string.IsNullOrEmpty(id) || !trayItems.Any(item => item.Id == id))
+				return false;
+			ComponentTraySelectionRequested?.Invoke(this, id);
+			return true;
+		}
+
 		/// <summary>Replaces the non-visual component tray. An empty list removes the row completely,
 		/// preserving the canvas size for designers that do not expose non-visual objects.</summary>
 		public void SetComponentTray(IEnumerable<(string Id, string Name, string Type)> items)
@@ -280,7 +291,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 					ToolTip = string.IsNullOrEmpty(item.Type) ? item.Name : item.Type,
 					Tag = item.Id, Margin = new Thickness(0, 0, 4, 0), Padding = new Thickness(6, 2, 6, 2) };
 				AutomationProperties.SetName(button, "Component " + (string.IsNullOrEmpty(item.Name) ? item.Type : item.Name));
-				button.Click += (_, _) => ComponentTraySelectionRequested?.Invoke(this, item.Id);
+				button.Click += (_, _) => SelectComponentTrayItem(item.Id);
 				componentTrayItems.Children.Add(button);
 			}
 			componentTray.Visibility = Visibility.Visible;

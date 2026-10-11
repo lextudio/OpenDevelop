@@ -1044,6 +1044,8 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	public void SetComponentTray(IReadOnlyList<(string Id, string Name, string Type)> items)
 		=> canvas.SetComponentTray(items);
 
+	public bool SelectComponentTrayItem(string id) => surface.SelectComponentTrayItem(id);
+
 	public void LoadXaml(string text)
 	{
 		ObjectDisposedException.ThrowIf(disposed, this);
