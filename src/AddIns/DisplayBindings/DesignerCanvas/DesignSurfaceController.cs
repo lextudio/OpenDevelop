@@ -539,6 +539,7 @@ public sealed class DesignSurfaceController : IDisposable
 	(double X, double Y, double Width, double Height) dragStartRect;
 	// Multi-selection drag: the elements being dragged as a group (primary + secondaries).
 	List<string> dragGroup = new();
+	HashSet<string> dragGroupNames = new(StringComparer.Ordinal);
 	Dictionary<string, (double X, double Y, double Width, double Height)> dragGroupStart = new();
 	double dragDeltaX;
 	double dragDeltaY;
@@ -557,6 +558,8 @@ public sealed class DesignSurfaceController : IDisposable
 		dragGroup = string.IsNullOrEmpty(dragHandle) && multiSelectionNames.Contains(info.Name)
 			? new List<string>(multiSelectionNames)
 			: new List<string> { info.Name };
+		dragGroupNames.Clear();
+		dragGroupNames.UnionWith(dragGroup);
 		dragGroupStart = new Dictionary<string, (double, double, double, double)>(StringComparer.Ordinal);
 		foreach (var name in dragGroup)
 		{
@@ -611,8 +614,11 @@ public sealed class DesignSurfaceController : IDisposable
 		if (dragName == null || !dragGroupStart.TryGetValue(dragName, out var start))
 			return (deltaX, deltaY, Array.Empty<(bool, double)>());
 		parentByName.TryGetValue(dragName, out var selectedParent);
+		// Every member of a group move travels by the same delta. Its pre-drag bounds are
+		// therefore not a stationary alignment target for the primary element.
 		var siblingBounds = nodesByName
 			.Where(entry => entry.Key != dragName
+				&& !dragGroupNames.Contains(entry.Key)
 				&& parentByName.TryGetValue(entry.Key, out var parent)
 				&& ReferenceEquals(parent, selectedParent))
 			.Select(entry => new SnapGuideCalculator.Target(entry.Value.X, entry.Value.Y,
@@ -667,6 +673,7 @@ public sealed class DesignSurfaceController : IDisposable
 			ElementGroupDragCommitted?.Invoke(this, committed);
 			dragName = null;
 			dragGroup = new();
+			dragGroupNames.Clear();
 			dragGroupStart.Clear();
 			return;
 		}
@@ -684,6 +691,9 @@ public sealed class DesignSurfaceController : IDisposable
 			EndHeight = end.Height
 		});
 		dragName = null;
+		dragGroup = new();
+		dragGroupNames.Clear();
+		dragGroupStart.Clear();
 	}
 
 	/// <summary>Applies a move/resize delta to a design rect for the drag's handle, keeping the
