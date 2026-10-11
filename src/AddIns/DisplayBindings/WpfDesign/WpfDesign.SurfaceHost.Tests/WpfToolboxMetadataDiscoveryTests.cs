@@ -32,6 +32,10 @@ public sealed class WpfToolboxMetadataDiscoveryTests
 		Assert.Equal("CustomControlFixture", badge.Namespace);
 		Assert.Equal("CustomControlFixture", badge.AssemblyName);
 		Assert.False(badge.IsUserControl);
+		Assert.Collection(badge.Filters,
+			allow => { Assert.Equal("WpfDesigner", allow.FilterString); Assert.Equal("Allow", allow.FilterType); },
+			prevent => { Assert.Equal("WinFormsDesigner", prevent.FilterString); Assert.Equal("Prevent", prevent.FilterType); },
+			require => { Assert.Equal("WpfSurface", require.FilterString); Assert.Equal("Require", require.FilterType); });
 		Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), assembly =>
 			string.Equals(assembly.GetName().Name, "CustomControlFixture", StringComparison.Ordinal));
 	}

@@ -359,7 +359,8 @@ namespace ICSharpCode.WpfDesign.AddIn
 				Name = componentType.Name,
 				DisplayName = componentType.Name,
 				TypeName = componentType.Name,
-				XamlNamespace = $"clr-namespace:{componentType.Namespace};assembly={componentType.AssemblyName}"
+				XamlNamespace = $"clr-namespace:{componentType.Namespace};assembly={componentType.AssemblyName}",
+				Filters = componentType.Filters
 			};
 		}
 

@@ -25,6 +25,7 @@ public sealed class DesignerToolboxScope
 	readonly IDesignerControlMapper? mapper;
 	readonly HashSet<string> registeredScopes = new(StringComparer.Ordinal);
 	readonly Dictionary<string, int> categoryPriorities = new(StringComparer.Ordinal);
+	readonly List<DesignerToolboxFilterInfo> consumerFilters = new();
 	string[] activeScopes = Array.Empty<string>();
 
 	/// <param name="owner">The designer this toolbox belongs to.</param>
@@ -54,7 +55,8 @@ public sealed class DesignerToolboxScope
 			scope,
 			icon: DesignerTypeIcons.GetIcon(info, mapper),
 			payload: info,
-			packDragData: data => ToolboxDragData.Pack(data, info.TypeName))));
+			packDragData: data => ToolboxDragData.Pack(data, info.TypeName),
+			filters: info.Filters)));
 	}
 
 	/// <summary>The scopes this document shows - e.g. the Libadwaita rows only for a document that
@@ -76,10 +78,19 @@ public sealed class DesignerToolboxScope
 		if (IsActive) Activate();
 	}
 
+	/// <summary>Declares the filters implemented by this document's active designer. Rules are
+	/// evaluated with the item's rules by <see cref="SharedToolbox"/> before a row is shown.</summary>
+	public void SetConsumerFilters(IEnumerable<DesignerToolboxFilterInfo> filters)
+	{
+		consumerFilters.Clear();
+		consumerFilters.AddRange(filters ?? Array.Empty<DesignerToolboxFilterInfo>());
+		if (IsActive) Activate();
+	}
+
 	/// <summary>Shows this designer's scopes and returns the control for <see cref="IToolsHost.ToolsContent"/>.</summary>
 	public object Activate()
 	{
-		Toolbox.SetActiveScopes(owner, false, categoryPriorities, activeScopes);
+		Toolbox.SetActiveScopes(owner, false, categoryPriorities, consumerFilters, activeScopes);
 		return Toolbox.ToolboxControl;
 	}
 

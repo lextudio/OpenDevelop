@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 
 namespace ICSharpCode.WpfDesign.AddIn
 {
@@ -21,6 +22,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			public string Namespace { get; init; } = "";
 			public string AssemblyName { get; init; } = "";
 			public bool IsUserControl { get; init; }
+			public List<DesignerToolboxFilterInfo> Filters { get; init; } = new();
 		}
 
 		sealed class AssemblyImage : IDisposable
@@ -78,7 +80,8 @@ namespace ICSharpCode.WpfDesign.AddIn
 						Name = name,
 						Namespace = @namespace,
 						AssemblyName = root.Name,
-						IsUserControl = IsUserControlBase(root, definition.BaseType, pathsByAssemblyName, images, new HashSet<string>(StringComparer.Ordinal))
+						IsUserControl = IsUserControlBase(root, definition.BaseType, pathsByAssemblyName, images, new HashSet<string>(StringComparer.Ordinal)),
+						Filters = ReadToolboxFilters(root.Metadata, definition)
 					});
 				}
 				return result;
@@ -86,6 +89,55 @@ namespace ICSharpCode.WpfDesign.AddIn
 				foreach (var image in images.Values)
 					image.Dispose();
 			}
+		}
+
+		static List<DesignerToolboxFilterInfo> ReadToolboxFilters(MetadataReader metadata, TypeDefinition definition)
+		{
+			var filters = new List<DesignerToolboxFilterInfo>();
+			foreach (var handle in definition.GetCustomAttributes()) {
+				var attribute = metadata.GetCustomAttribute(handle);
+				if (AttributeTypeName(metadata, attribute.Constructor) != "System.ComponentModel.ToolboxItemFilterAttribute")
+					continue;
+				var bytes = metadata.GetBlobBytes(attribute.Value);
+				if (bytes.Length < 3 || bytes[0] != 1 || bytes[1] != 0) continue;
+				var offset = 2;
+				var value = ReadSerializedString(bytes, ref offset);
+				if (string.IsNullOrEmpty(value)) continue;
+				var type = bytes.Length >= offset + 4 ? BitConverter.ToInt32(bytes, offset) switch {
+					1 => "Custom", 2 => "Prevent", 3 => "Require", _ => "Allow"
+				} : "Allow";
+				filters.Add(new DesignerToolboxFilterInfo { FilterString = value, FilterType = type });
+			}
+			return filters;
+		}
+
+		static string? AttributeTypeName(MetadataReader metadata, EntityHandle constructor)
+		{
+			if (constructor.Kind == HandleKind.MethodDefinition) {
+				var method = metadata.GetMethodDefinition((MethodDefinitionHandle)constructor);
+				var type = metadata.GetTypeDefinition(method.GetDeclaringType());
+				return FullName(metadata, type.Namespace, type.Name);
+			}
+			if (constructor.Kind != HandleKind.MemberReference) return null;
+			var member = metadata.GetMemberReference((MemberReferenceHandle)constructor);
+			if (member.Parent.Kind != HandleKind.TypeReference) return null;
+			var referencedType = metadata.GetTypeReference((TypeReferenceHandle)member.Parent);
+			return FullName(metadata, referencedType.Namespace, referencedType.Name);
+		}
+
+		static string? ReadSerializedString(byte[] bytes, ref int offset)
+		{
+			if (offset >= bytes.Length || bytes[offset] == 0xff) { offset++; return null; }
+			var first = bytes[offset++];
+			int length;
+			if ((first & 0x80) == 0) length = first;
+			else if ((first & 0xc0) == 0x80 && offset < bytes.Length) length = ((first & 0x3f) << 8) | bytes[offset++];
+			else if ((first & 0xe0) == 0xc0 && offset + 2 < bytes.Length) length = ((first & 0x1f) << 24) | (bytes[offset++] << 16) | (bytes[offset++] << 8) | bytes[offset++];
+			else return null;
+			if (length < 0 || offset + length > bytes.Length) return null;
+			var result = System.Text.Encoding.UTF8.GetString(bytes, offset, length);
+			offset += length;
+			return result;
 		}
 
 		static bool IsPublicTopLevel(TypeDefinition definition) =>

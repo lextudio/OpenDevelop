@@ -680,6 +680,18 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public string Template { get; set; } = "";
 		public string XamlNamespace { get; set; } = "";
 		public string TypeName { get; set; } = "";
+		/// <summary>Declarative Toolbox filters advertised by this item. These are data only: the
+		/// workbench evaluates them against the active designer's declared consumer filters and
+		/// never loads the item's assembly merely to decide whether to show it.</summary>
+		public List<DesignerToolboxFilterInfo> Filters { get; set; } = new();
+	}
+
+	/// <summary>A transport-safe form of <c>ToolboxItemFilterAttribute</c>. Custom filters are
+	/// intentionally not treated as a string match: they require a designer-provided evaluator.</summary>
+	public sealed class DesignerToolboxFilterInfo
+	{
+		public string FilterString { get; set; } = "";
+		public string FilterType { get; set; } = "Require";
 	}
 
 	/// <summary>Workflow-level argument projection. It deliberately carries no CoreWF runtime

@@ -26,6 +26,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 
 namespace ICSharpCode.SharpDevelop.Gui
 {
@@ -50,6 +51,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 		/// <summary>The owning facade's own tool/component identity (an <c>ITool</c>, a
 		/// <c>System.Drawing.Design.ToolboxItem</c>, a catalog entry, ...) - opaque here.</summary>
 		public object Payload { get; }
+		public IReadOnlyList<DesignerToolboxFilterInfo> Filters { get; }
 
 		/// <summary>True for a real draggable row; false for the per-category "Pointer" row
 		/// (no <see cref="Payload"/>, exists only to let the user switch back to selection mode).</summary>
@@ -66,7 +68,8 @@ namespace ICSharpCode.SharpDevelop.Gui
 
 		public SharedToolboxItem(string categoryName, string displayName, string scope,
 			ImageSource icon = null, object payload = null,
-			Action<DataObject> packDragData = null, Action onActivated = null)
+			Action<DataObject> packDragData = null, Action onActivated = null,
+			IReadOnlyList<DesignerToolboxFilterInfo> filters = null)
 		{
 			CategoryName = categoryName ?? throw new ArgumentNullException(nameof(categoryName));
 			DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
@@ -75,6 +78,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 			Payload = payload;
 			PackDragData = packDragData;
 			OnActivated = onActivated;
+			Filters = filters ?? Array.Empty<DesignerToolboxFilterInfo>();
 		}
 
 		public override string ToString() => DisplayName;
@@ -98,6 +102,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 		readonly List<SharedToolboxItem> items = new();
 		HashSet<string> activeScopes;
 		IReadOnlyDictionary<string, int>? activeCategoryPriorities;
+		IReadOnlyList<DesignerToolboxFilterInfo> activeConsumerFilters = Array.Empty<DesignerToolboxFilterInfo>();
 		bool resetSelectsFirst = true;
 		string filterText = "";
 
@@ -137,6 +142,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 			itemsView.Filter += (_, e) => {
 				var item = (SharedToolboxItem)e.Item;
 				e.Accepted = (activeScopes == null || activeScopes.Contains(item.Scope))
+					&& IsPermitted(item)
 					&& (String.IsNullOrEmpty(filterText)
 						|| item.DisplayName.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0
 						|| item.CategoryName.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0);
@@ -273,6 +279,10 @@ namespace ICSharpCode.SharpDevelop.Gui
 		/// deliberately scoped to <paramref name="owner"/>, because one shared ListBox can serve
 		/// documents with different toolbox conventions.</summary>
 		public void SetActiveScopes(object owner, bool selectFirst, IReadOnlyDictionary<string, int>? categoryPriorities, params string[] scopes)
+			=> SetActiveScopes(owner, selectFirst, categoryPriorities, Array.Empty<DesignerToolboxFilterInfo>(), scopes);
+
+		public void SetActiveScopes(object owner, bool selectFirst, IReadOnlyDictionary<string, int>? categoryPriorities,
+			IReadOnlyList<DesignerToolboxFilterInfo>? consumerFilters, params string[] scopes)
 		{
 			var nextScopes = new HashSet<string>(scopes, StringComparer.Ordinal);
 			var nextPriorities = categoryPriorities == null || categoryPriorities.Count == 0
@@ -283,11 +293,13 @@ namespace ICSharpCode.SharpDevelop.Gui
 			// user's selected tool back to Pointer. A different owner or scope still changes the
 			// drag destination/filter and follows the normal reset path.
 			if (ReferenceEquals(ActiveOwner, owner) && activeScopes != null && activeScopes.SetEquals(nextScopes)
-				&& SamePriorities(activeCategoryPriorities, nextPriorities))
+				&& SamePriorities(activeCategoryPriorities, nextPriorities)
+				&& SameFilters(activeConsumerFilters, consumerFilters))
 				return;
 			ActiveOwner = owner;
 			activeScopes = nextScopes;
 			activeCategoryPriorities = nextPriorities;
+			activeConsumerFilters = consumerFilters ?? Array.Empty<DesignerToolboxFilterInfo>();
 			itemsView.View.Refresh();
 			resetSelectsFirst = selectFirst;
 			if (selectFirst)
@@ -296,11 +308,37 @@ namespace ICSharpCode.SharpDevelop.Gui
 				toolbox.SelectedItem = null;
 		}
 
+		bool IsPermitted(SharedToolboxItem item)
+		{
+			if (activeConsumerFilters.Count == 0)
+				return true;
+			foreach (var rule in item.Filters) {
+				if (string.IsNullOrWhiteSpace(rule.FilterString)) continue;
+				var hasConsumerRule = activeConsumerFilters.Any(candidate =>
+					string.Equals(candidate.FilterString, rule.FilterString, StringComparison.OrdinalIgnoreCase));
+				if (string.Equals(rule.FilterType, "Require", StringComparison.OrdinalIgnoreCase) && !hasConsumerRule)
+					return false;
+				if (string.Equals(rule.FilterType, "Prevent", StringComparison.OrdinalIgnoreCase) && hasConsumerRule)
+					return false;
+				// Custom needs an explicit designer evaluator. Until one exists it must not hide
+				// a previously visible toolbox item.
+			}
+			return true;
+		}
+
 		static bool SamePriorities(IReadOnlyDictionary<string, int>? left, IReadOnlyDictionary<string, int>? right)
 		{
 			if (ReferenceEquals(left, right)) return true;
 			if (left == null || right == null || left.Count != right.Count) return false;
 			return left.All(pair => right.TryGetValue(pair.Key, out var priority) && priority == pair.Value);
+		}
+
+		static bool SameFilters(IReadOnlyList<DesignerToolboxFilterInfo> left, IReadOnlyList<DesignerToolboxFilterInfo>? right)
+		{
+			right ??= Array.Empty<DesignerToolboxFilterInfo>();
+			if (left.Count != right.Count) return false;
+			return left.Zip(right, (a, b) => string.Equals(a.FilterString, b.FilterString, StringComparison.OrdinalIgnoreCase)
+				&& string.Equals(a.FilterType, b.FilterType, StringComparison.OrdinalIgnoreCase)).All(equal => equal);
 		}
 
 		int CompareItems(SharedToolboxItem? left, SharedToolboxItem? right)
