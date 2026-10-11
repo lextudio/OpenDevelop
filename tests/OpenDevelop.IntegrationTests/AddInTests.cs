@@ -1511,6 +1511,45 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Contains("1280", resetStatus);
     }
 
+    /// <summary>A named Flyout is a source object owned by Button.ContextFlyout, not a child of
+    /// the rendered visual tree. It must therefore appear in the shared component tray rather
+    /// than being silently lost just because it has no design-surface bounds.</summary>
+    [Fact]
+    public async Task WinUIDesigner_ComponentTray_ProjectsNamedNonVisualSourceObjects()
+    {
+        var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
+        try
+        {
+            var withFlyout = originalXaml.Replace(
+                "<Button x:Name=\"PrimaryButton\" Content=\"Hello Uno\" Background=\"{StaticResource PrimaryButtonBrush}\" />",
+                "<Button x:Name=\"PrimaryButton\" Content=\"Hello Uno\" Background=\"{StaticResource PrimaryButtonBrush}\">\n" +
+                "                <Button.ContextFlyout>\n" +
+                "                    <Flyout x:Name=\"ActionsFlyout\"><TextBlock Text=\"Actions\" /></Flyout>\n" +
+                "                </Button.ContextFlyout>\n" +
+                "            </Button>");
+            await File.WriteAllTextAsync(_unoPagePath, withFlyout);
+
+            await OpenUnoDesignerAsync();
+            JsonElement status = default;
+            var projected = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+            {
+                status = await _app.InvokeAsync("od.winui-designer.status");
+                return status.TryGetProperty("componentTrayItems", out var items)
+                    && items.EnumerateArray().Any(item => item.GetProperty("name").GetString() == "ActionsFlyout");
+            }, TimeSpan.FromSeconds(30));
+            Assert.True(projected, status.ToString());
+            var flyout = status.GetProperty("componentTrayItems").EnumerateArray()
+                .Single(item => item.GetProperty("name").GetString() == "ActionsFlyout");
+            Assert.Equal("Flyout", flyout.GetProperty("type").GetString());
+            Assert.DoesNotContain(status.GetProperty("componentTrayItems").EnumerateArray(),
+                item => item.GetProperty("name").GetString() == "PrimaryButton");
+        }
+        finally
+        {
+            await File.WriteAllTextAsync(_unoPagePath, originalXaml);
+        }
+    }
+
     /// <summary>A divider drag reaches the view as a canvas-space coordinate, but Grid track
     /// definitions are local to the nested Grid. Lock that conversion with a Grid deliberately
     /// offset from the page origin: moving the first boundary to local 150 must author 150,

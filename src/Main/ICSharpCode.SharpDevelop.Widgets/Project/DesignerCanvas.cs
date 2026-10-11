@@ -90,6 +90,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		};
 		readonly Border componentTray = new() { BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(6, 4, 6, 4) };
 		readonly WrapPanel componentTrayItems = new() { Orientation = Orientation.Horizontal };
+		IReadOnlyList<(string Id, string Name, string Type)> trayItems = Array.Empty<(string Id, string Name, string Type)>();
 		// Shared "please wait" chrome for the async acquire/open/update round-trip every
 		// out-of-process designer backend performs (see doc/technotes/designer-common.md's
 		// Design-tab-activation convention) - lets a backend show feedback immediately instead of
@@ -248,6 +249,11 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// the item's normal DDP identity to synchronize their existing selection model.</summary>
 		public event EventHandler<string> ComponentTraySelectionRequested;
 
+		/// <summary>The source/backend items currently materialized in the visible component tray.
+		/// Exposed as data for automation; callers must select through the tray rather than assuming
+		/// an item has a design-surface rectangle.</summary>
+		public IReadOnlyList<(string Id, string Name, string Type)> ComponentTrayItems => trayItems;
+
 		/// <summary>Replaces the non-visual component tray. An empty list removes the row completely,
 		/// preserving the canvas size for designers that do not expose non-visual objects.</summary>
 		public void SetComponentTray(IEnumerable<(string Id, string Name, string Type)> items)
@@ -257,9 +263,11 @@ namespace ICSharpCode.SharpDevelop.Widgets
 				.Where(item => !string.IsNullOrEmpty(item.Id)).ToArray();
 			if (!capabilities.HasFlag(DesignerCanvasCapabilities.ComponentTray) || materialized.Length == 0)
 			{
+				trayItems = Array.Empty<(string Id, string Name, string Type)>();
 				componentTray.Visibility = Visibility.Collapsed;
 				return;
 			}
+			trayItems = materialized;
 			foreach (var item in materialized)
 			{
 				// The object's Document Outline glyph before its name.

@@ -203,6 +203,11 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 			componentTray.SetComponentTray(items);
 	}
 
+	/// <summary>Source-only objects currently visible in the shared component tray.</summary>
+	public IReadOnlyList<(string Id, string Name, string Type)> ComponentTrayItems
+		=> (runtime?.WpfSurface as ICSharpCode.SharpDevelop.Widgets.DesignerCanvas)?.ComponentTrayItems
+			?? Array.Empty<(string Id, string Name, string Type)>();
+
 	/// <summary>
 	/// Draws a selection outline over the named element on the design surface. Optional:
 	/// runtimes that do not implement <see cref="IWinUIXamlSelectionOverlay"/> ignore it.

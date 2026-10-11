@@ -54,6 +54,7 @@ public static class WinUIXamlDesignerDevFlowActions
 			outlineChildCount = outlineNodes.Count(node => node.Depth == 1),
 			outlineNames = outlineNodes.Select(node => string.IsNullOrEmpty(node.Name) ? node.Type : node.Name).ToArray(),
 			elementNames = view.ElementNames(),
+			componentTrayItems = view.ComponentTrayItems.Select(item => new { id = item.Id, name = item.Name, type = item.Type }).ToArray(),
 			selectedName = view.SelectedElementName,
 			resolvedNameCount = view.ResolvedNameCount,
 			lastPick = view.LastPickDiagnostic,
