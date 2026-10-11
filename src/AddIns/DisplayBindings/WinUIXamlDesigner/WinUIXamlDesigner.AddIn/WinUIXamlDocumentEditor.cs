@@ -201,6 +201,26 @@ sealed class WinUIXamlDocumentEditor
 		return wrapper;
 	}
 
+	/// <summary>Moves an existing source element under a different source parent. Cycles, self
+	/// moves and root moves are rejected without changing the document or its history.</summary>
+	public bool Reparent(XElement element, XElement target)
+	{
+		if (element == null)
+			throw new ArgumentNullException(nameof(element));
+		if (target == null)
+			throw new ArgumentNullException(nameof(target));
+		if (element.Document != Document || target.Document != Document)
+			throw new ArgumentException("Both elements must belong to this document.");
+		if (element == Document?.Root || element == target || element.Descendants().Contains(target))
+			return false;
+
+		BeginChange();
+		element.Remove();
+		target.Add(element);
+		CommitChange();
+		return true;
+	}
+
 	/// <summary>
 	/// Gives an inserted control a meaningful default so the design surface shows something
 	/// real instead of an empty shell: Content for button-like controls, Text for

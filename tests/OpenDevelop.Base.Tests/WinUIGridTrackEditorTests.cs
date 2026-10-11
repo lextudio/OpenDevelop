@@ -262,6 +262,26 @@ public sealed class WinUIGridTrackEditorTests
 	}
 
 	[Fact]
+	public void Reparent_IsSourceOwnedUndoableAndRejectsCycles()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><StackPanel x:Name="Left"><Button x:Name="Target"/></StackPanel><StackPanel x:Name="Right"/></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		Assert.True(editor.Reparent(editor.FindElement("Target")!, editor.FindElement("Right")!));
+		var changed = editor.Text;
+		Assert.Empty(editor.FindElement("Left")!.Elements());
+		Assert.Equal("Target", (string?)editor.FindElement("Right")!.Elements().Single().Attribute(WinUIXamlDocumentEditor.NameDirective));
+		Assert.True(editor.Undo());
+		Assert.Equal(source, editor.Text);
+		Assert.True(editor.Redo());
+		Assert.Equal(changed, editor.Text);
+
+		Assert.False(editor.Reparent(editor.FindElement("Right")!, editor.FindElement("Target")!));
+		Assert.False(editor.Reparent(editor.Document.Root!, editor.FindElement("Right")!));
+	}
+
+	[Fact]
 	public void ContextFlyoutDeletion_RemovesItsEmptyPropertyElementInOneUndoEntry()
 	{
 		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"/></Grid>""";

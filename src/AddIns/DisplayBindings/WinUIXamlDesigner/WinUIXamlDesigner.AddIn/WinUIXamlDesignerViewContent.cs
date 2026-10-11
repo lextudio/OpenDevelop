@@ -1868,29 +1868,36 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	}
 
 	/// <summary>Moves an element under another as a source edit (scriptable outline re-parent).</summary>
-	public string ReparentElement(string name, string targetContainer)
+	public bool ReparentElement(string name, string targetContainer, out string result)
 	{
 		var element = editor.FindElement(name);
 		var target = editor.FindElement(targetContainer);
 		if (element == null || target == null)
-			return "Element or target not found";
-		MoveElementUnder(element, target);
-		return $"moved {name} under {targetContainer}";
+		{
+			result = "Element or target not found";
+			return false;
+		}
+		if (MoveElementUnder(element, target))
+		{
+			result = $"moved {name} under {targetContainer}";
+			return true;
+		}
+		result = "Cannot move an element under itself, its descendant, or from the document root";
+		return false;
 	}
 
 	/// <summary>Moves an element under <paramref name="target"/> as a source
 	/// edit (re-parenting in the Outline tree), refusing cycles and self-moves.</summary>
-	void MoveElementUnder(XElement element, XElement target)
+	bool MoveElementUnder(XElement element, XElement target)
 	{
-		if (element == target || target.Descendants().Contains(element))
-			return;
+		if (!editor.Reparent(element, target))
+			return false;
 		var name = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
-		element.Remove();
-		target.Add(element);
 		ApplyDocumentChange();
 		RebuildOutline();
 		if (name != null)
 			SelectElement(name);
+		return true;
 	}
 
 	#endregion

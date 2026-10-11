@@ -788,8 +788,8 @@ public static class WinUIXamlDesignerDevFlowActions
 		var view = ActivateDesigner();
 		if (view == null)
 			return Failure("No WinUI/Uno designer is active");
-		var result = view.ReparentElement(name, targetContainer);
-		return JsonSerializer.Serialize(new { success = true, result });
+		var success = view.ReparentElement(name, targetContainer, out var result);
+		return JsonSerializer.Serialize(new { success, result });
 	}
 
 	[DevFlowAction("od.winui-designer.grid-resize",
