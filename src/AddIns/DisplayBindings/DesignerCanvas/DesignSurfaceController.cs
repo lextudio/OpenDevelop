@@ -74,6 +74,11 @@ public sealed class DesignSurfaceController : IDisposable
 	/// <summary>The last state applied, or null before the first render.</summary>
 	public DesignerSessionState? LastSnapshot { get; private set; }
 
+	/// <summary>Projects source-authoritative non-visual items into the shared tray when a
+	/// backend has no runtime-tree representation for them.</summary>
+	public void SetComponentTray(IEnumerable<(string Id, string Name, string Type)> items)
+		=> Surface.SetComponentTray(items);
+
 	/// <summary>How many named elements the last tree indexed, for DevFlow.</summary>
 	public int IndexedNameCount => nodesByName.Count;
 
