@@ -167,7 +167,7 @@ Theme | ShowNames | DesignSize | StatusBar | VisualStates | ComponentTray`):
 
 | Designer | Declared | Count |
 |---|---|---|
-| WinUI ProGPU | `All & ~VisualStates & ~ComponentTray` | 7 |
+| WinUI ProGPU | `All & ~VisualStates` | 8 |
 | WPF | `Zoom\|Fit\|Gridlines\|ShowNames\|StatusBar` (+`Theme` when the document declares themes) | 5–6 |
 | Forms | `Zoom\|Fit\|ShowNames\|StatusBar` | 4 |
 | GTK | `Zoom\|Fit\|Gridlines` | 3 |
@@ -427,10 +427,14 @@ dictionary and calls `GoToState` on a `Control`, so it cannot preview states on 
 `UserControl` — the common WinUI root. Ours reports per **group** (`DesignerVisualStateGroup`),
 which is correct because groups are orthogonal.
 
-**The genuine WinUI capability gap is `ComponentTray`**, and it is WinUI-side only:
-`TrayComponents` / `IsTrayComponent` is populated solely by
-`WpfDesign.SurfaceHost/WpfSurfaceHostService.cs:1809-1826,1946` and
-`FormsDesigner/Host/DesignerHostService.cs:2080,2107,2214`. Nothing in `WinUIXamlDesigner` sets it.
+`ComponentTray` is now present for WinUI, but deliberately source-driven rather than a transport
+protocol field. After each snapshot, `WinUIXamlDesignerViewContent` compares named source elements
+with the rendered tree and projects source-only, non-resource/non-template objects (for example a
+named `ContextFlyout`) into the shared tray. Its ID is a document-local sibling-index path, so
+clicking an item selects its source-backed Properties adapter without inventing a visual selection
+rectangle. This works in both the Uno/Microsoft out-of-process runtime and ProGPU; a snapshot cannot
+erase it because the source projection is re-applied after every render. The remaining work is
+component-specific creation, deletion and reorder semantics, not basic visibility or selection.
 
 ---
 
@@ -601,7 +605,7 @@ hardens the boundary that motivated process isolation in the first place.
 
 Framework-specific work belongs inside these phases rather than becoming a competing roadmap:
 WinForms needs complete resize parity; WPF needs event binding and richer keyboard/multi-selection
-interaction; WinUI needs Component Tray and edge-drag page resizing. GTK and MewUI should receive
+interaction; WinUI needs component-specific tray mutations and edge-drag page resizing. GTK and MewUI should receive
 the shared C1/C2/C3 capabilities before new framework-specific surface features.
 
 ## 8. Uncertainties
@@ -622,8 +626,8 @@ Stated plainly, because the report's value depends on reliability rather than co
 - **`XamlRenderServiceTests.Resources.cs` / `.Bindings.cs` were enumerated, not read** — they are
   characterised here as a spec for binding-telemetry and resource-injection behaviour, unverified.
 - **Whether the Microsoft host populates `VisualStateGroups` in practice is unverified** — the code
-  is present via source-linking, but the host was not run. The same applies to `ComponentTray`,
-  where only the absence of any writer in `WinUIXamlDesigner/` was verified.
+  is present via source-linking, but the host was not run. The source-driven ComponentTray path
+  compiles in the common host surface but still needs a live Microsoft-host interaction check.
 - **xamlstudio's property-grid internals** were read only around the visual-state block; the "already
   have it" verdict rests on the existence of `WinUIXamlElementPropertyAdapter.cs`, which was not
   opened.

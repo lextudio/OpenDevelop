@@ -37,7 +37,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 /// XamlReader, lays it out and renders it to a PNG that is displayed here. All state
 /// crossings are JSON over loopback TCP - no WinUI type ever enters this process.
 /// </summary>
-sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay, IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlToolboxCatalog, IWinUIXamlLifecycleProbe, IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlVisualStates, IWinUIXamlMultiSelection, IWinUIXamlContextCommands, IWinUIXamlGridGuides, IWinUIXamlDiagnostics, IWinUIXamlIncrementalRender
+sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay, IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlToolboxCatalog, IWinUIXamlLifecycleProbe, IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlVisualStates, IWinUIXamlMultiSelection, IWinUIXamlContextCommands, IWinUIXamlGridGuides, IWinUIXamlDiagnostics, IWinUIXamlIncrementalRender, IWinUIXamlComponentTray
 {
 	// The shared design canvas (ICSharpCode.DesignerCanvas addin): the surface, and the controller
 	// that owns selection, drags and picking over it. This class is only the Uno/WinUI backend:
@@ -84,6 +84,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		surface.DesignThemeRequested += OnSurfaceThemeRequested;
 		surface.DesignVisualStateRequested += OnSurfaceVisualStateRequested;
 		surface.SizePresetRequested += OnSurfaceSizePresetRequested;
+		surface.ComponentTraySelectionRequested += (_, id) => ComponentTrayItemSelected?.Invoke(this, id);
 		canvas = new DesignSurfaceController(surface);
 		canvas.ElementPicked += (_, name) => ElementPicked?.Invoke(this, name);
 		canvas.ElementPathPicked += (_, path) => ElementPathPicked?.Invoke(this, path);
@@ -1033,11 +1034,15 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	}
 	public event EventHandler StateChanged;
 	public event EventHandler<string> ElementPicked;
+	public event EventHandler<string> ComponentTrayItemSelected;
 
 	public int ResolvedNameCount => canvas.IndexedNameCount;
 	public string LastPickDiagnostic => canvas.LastPickDiagnostic;
 
 	public void SetSelectableNames(IReadOnlyList<string> names) => canvas.SetSelectableNames(names);
+
+	public void SetComponentTray(IReadOnlyList<(string Id, string Name, string Type)> items)
+		=> canvas.SetComponentTray(items);
 
 	public void LoadXaml(string text)
 	{

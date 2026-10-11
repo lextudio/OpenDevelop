@@ -48,6 +48,8 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		if (runtime != null) {
 			runtime.StateChanged += OnRuntimeStateChanged;
 			runtime.ElementPicked += OnRuntimeElementPicked;
+			if (runtime is IWinUIXamlComponentTray componentTray)
+				componentTray.ComponentTrayItemSelected += OnRuntimeComponentTrayItemSelected;
 			if (runtime is IWinUIXamlMultiSelection multi)
 				multi.SelectionChanged += OnRuntimeSelectionChanged;
 			if (runtime is IWinUIXamlContextCommands context)
@@ -85,6 +87,12 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	public event EventHandler<string> ElementPicked;
 
 	void OnRuntimeElementPicked(object sender, string name) => ElementPicked?.Invoke(this, name);
+
+	/// <summary>Raised when the user selects a source-only object from the component tray.</summary>
+	public event EventHandler<string> ComponentTrayItemSelected;
+
+	void OnRuntimeComponentTrayItemSelected(object sender, string id)
+		=> ComponentTrayItemSelected?.Invoke(this, id);
 
 	/// <summary>Raised with a design-surface context-menu command and the primary selection.</summary>
 	public event EventHandler<(string Command, string Name)> ContextCommandRequested;
@@ -187,6 +195,13 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 
 	public void SetSelectableNames(IReadOnlyList<string> names) =>
 		runtime?.SetSelectableNames(names);
+
+	/// <summary>Projects source-only non-visual XAML objects into the shared tray.</summary>
+	public void SetComponentTray(IReadOnlyList<(string Id, string Name, string Type)> items)
+	{
+		if (runtime is IWinUIXamlComponentTray componentTray)
+			componentTray.SetComponentTray(items);
+	}
 
 	/// <summary>
 	/// Draws a selection outline over the named element on the design surface. Optional:
@@ -637,6 +652,16 @@ public interface IWinUIXamlTheme
 {
 	void SetDesignTheme(string theme);
 	string GetDesignTheme();
+}
+
+/// <summary>
+/// Optional capability: a runtime hosts the shared component tray for source objects which have
+/// no visual-tree node (for example a named ContextFlyout).
+/// </summary>
+public interface IWinUIXamlComponentTray
+{
+	event EventHandler<string> ComponentTrayItemSelected;
+	void SetComponentTray(IReadOnlyList<(string Id, string Name, string Type)> items);
 }
 
 /// <summary>

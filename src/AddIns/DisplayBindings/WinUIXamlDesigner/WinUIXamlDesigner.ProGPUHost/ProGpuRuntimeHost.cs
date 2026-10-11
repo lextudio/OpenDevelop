@@ -51,7 +51,7 @@ public static class ProGpuRuntimeHostBootstrap
 sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay,
 	IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlLifecycleProbe,
 	IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlMultiSelection, IWinUIXamlContextCommands,
-	IWinUIXamlGridGuides, IWinUIXamlNudge
+	IWinUIXamlGridGuides, IWinUIXamlNudge, IWinUIXamlComponentTray
 {
     readonly DesignSurface surface = new();
     readonly DesignSurfaceController canvas;
@@ -90,9 +90,11 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverl
         StatusText = "ProGPU WinUI host ready.";
 
         surface.BackendName = "ProGPU";
-        // No visual-state or component-tray support in this backend yet: show only what it does.
-        surface.Capabilities = DesignerCanvasCapabilities.All & ~DesignerCanvasCapabilities.VisualStates & ~DesignerCanvasCapabilities.ComponentTray;
+        // Visual states still depend on the out-of-process host. The tray itself is source-driven,
+        // though, so this backend can host it just like the isolated runtimes do.
+        surface.Capabilities = DesignerCanvasCapabilities.All & ~DesignerCanvasCapabilities.VisualStates;
         surface.SetDesignThemes(new[] { "Light", "Dark" });
+		surface.ComponentTraySelectionRequested += (_, id) => ComponentTrayItemSelected?.Invoke(this, id);
         surface.DesignThemeRequested += (_, requested) => SetDesignTheme(requested);
         surface.SizePresetRequested += (_, preset) => {
             var (width, height) = preset switch {
@@ -153,9 +155,13 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverl
     public string StatusText { get; private set; }
     public event EventHandler StateChanged;
     public event EventHandler<string> ElementPicked;
+    public event EventHandler<string> ComponentTrayItemSelected;
 
     public DesignerElementNode? ElementTree => canvas.LastSnapshot?.Tree;
     public DesignerSurfaceGeometry SurfaceGeometry() => canvas.SurfaceGeometry();
+
+    public void SetComponentTray(IReadOnlyList<(string Id, string Name, string Type)> items)
+        => canvas.SetComponentTray(items);
 
     /// <summary>There is no child host process in this in-process runtime.</summary>
     public string ChildLog => "(in-process host)";

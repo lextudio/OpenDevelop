@@ -57,6 +57,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		Framework = framework;
 		previewHost = new WinUIXamlHost(framework, file?.FileName?.ToString() ?? "Preview.xaml");
 		previewHost.StateChanged += OnPreviewStateChanged;
+		previewHost.ComponentTrayItemSelected += OnComponentTrayItemSelected;
 		previewHost.ElementPicked += OnElementPickedOnSurface;
 		previewHost.SelectionChanged += OnSelectionChangedOnSurface;
 		previewHost.ElementDragCommitted += OnElementDragCommittedOnSurface;
@@ -486,6 +487,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	void OnPreviewStateChanged(object sender, EventArgs e)
 	{
 		status.Text = previewHost.StatusText;
+		// ApplySnapshot clears the tray from its transport snapshot. Reapply the source-owned
+		// projection after every render so an asynchronous child update cannot erase it.
+		RefreshComponentTray();
 		// A settled render may have moved or resized the selected element; re-apply the
 		// outline and Grid guides from the freshly indexed tree.
 		if (SelectedElementName != null)
@@ -499,6 +503,63 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		{
 			WinUIXamlToolbox.Instance.PopulateFromCatalog(catalog);
 			toolboxPopulated = true;
+		}
+	}
+
+	void RefreshComponentTray()
+	{
+		var tree = previewHost.ElementTree;
+		if (tree == null || editor.Document?.Root == null)
+		{
+			previewHost.SetComponentTray(Array.Empty<(string Id, string Name, string Type)>());
+			return;
+		}
+		var visibleNames = new HashSet<string>(StringComparer.Ordinal);
+		CollectTreeNames(tree, visibleNames);
+		var items = editor.Document.Root.Descendants()
+			.Where(element => IsComponentTrayCandidate(element, visibleNames))
+			.Select(element => (Id: editor.GetElementPath(element), Name: (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective), Type: element.Name.LocalName))
+			.Where(item => !string.IsNullOrEmpty(item.Id))
+			.ToList();
+		previewHost.SetComponentTray(items);
+	}
+
+	static void CollectTreeNames(DesignerElementNode node, ISet<string> names)
+	{
+		if (!string.IsNullOrEmpty(node.Name))
+			names.Add(node.Name);
+		foreach (var child in node.Children)
+			CollectTreeNames(child, names);
+	}
+
+	static bool IsComponentTrayCandidate(XElement element, ISet<string> visibleNames)
+	{
+		var name = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
+		if (string.IsNullOrEmpty(name) || visibleNames.Contains(name) || element.Name.LocalName.Contains('.'))
+			return false;
+		// Named resources/templates are declarations, not live component instances. Showing one
+		// as a tray component would promise editable instance properties that do not exist.
+		return !element.Ancestors().Any(ancestor => ancestor.Name.LocalName is "ResourceDictionary"
+			or "Style" or "ControlTemplate" or "DataTemplate" or "ItemsPanelTemplate"
+			or "VisualState" or "VisualStateGroup" || ancestor.Name.LocalName.EndsWith(".Resources", StringComparison.Ordinal));
+	}
+
+	void OnComponentTrayItemSelected(object sender, string id)
+	{
+		var element = editor.FindElementAtPath(id);
+		if (element == null || syncingSelection)
+			return;
+		syncingSelection = true;
+		try {
+			// A tray item intentionally has no design rectangle. Select its source adapter without
+			// pretending that a visual overlay could represent it.
+			SelectedElementName = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
+			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor);
+			previewHost.ClearSelection();
+			previewHost.ClearGridGuides();
+		}
+		finally {
+			syncingSelection = false;
 		}
 	}
 
@@ -1415,6 +1476,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	{
 		root.PreviewKeyDown -= OnPreviewKeyDown;
 		previewHost.StateChanged -= OnPreviewStateChanged;
+		previewHost.ComponentTrayItemSelected -= OnComponentTrayItemSelected;
 		previewHost.ElementPicked -= OnElementPickedOnSurface;
 		previewHost.ElementPathPicked -= OnElementPathPickedOnSurface;
 		previewHost.ControlDropped -= OnControlDroppedOnSurface;
