@@ -159,6 +159,48 @@ sealed class WinUIXamlDocumentEditor
 		return item;
 	}
 
+	/// <summary>Inserts a copied XAML element as a source edit. The returned element receives a
+	/// fresh document-local name so the caller can select it after the render refresh.</summary>
+	public XElement Paste(string xaml, XElement container)
+	{
+		if (Document?.Root == null)
+			throw new InvalidOperationException("The document has no root to paste into.");
+		if (container == null || container.Document != Document)
+			throw new ArgumentException("A container from this document is required.", nameof(container));
+		var pasted = XElement.Parse(xaml ?? "", LoadOptions.PreserveWhitespace);
+		var typeName = pasted.Name.LocalName;
+		var name = UniqueName(typeName);
+		pasted.Name = Document.Root.GetDefaultNamespace() + typeName;
+		pasted.SetAttributeValue(NameDirective, name);
+
+		BeginChange();
+		container.Add(pasted);
+		CommitChange();
+		return pasted;
+	}
+
+	/// <summary>Wraps a non-root source element in a named container, preserving the original
+	/// sibling position and recording the complete structural change as one undo entry.</summary>
+	public XElement WrapInContainer(XElement element, string containerType)
+	{
+		if (element == null)
+			throw new ArgumentNullException(nameof(element));
+		if (element.Document != Document)
+			throw new ArgumentException("An element from this document is required.", nameof(element));
+		if (element == Document?.Root || element.Parent is not XElement parent)
+			return null;
+		if (string.IsNullOrWhiteSpace(containerType))
+			throw new ArgumentException("A container type is required.", nameof(containerType));
+
+		var wrapper = new XElement(Document.Root.GetDefaultNamespace() + containerType);
+		wrapper.SetAttributeValue(NameDirective, UniqueName(containerType));
+		BeginChange();
+		element.ReplaceWith(wrapper);
+		wrapper.Add(element);
+		CommitChange();
+		return wrapper;
+	}
+
 	/// <summary>
 	/// Gives an inserted control a meaningful default so the design surface shows something
 	/// real instead of an empty shell: Content for button-like controls, Text for

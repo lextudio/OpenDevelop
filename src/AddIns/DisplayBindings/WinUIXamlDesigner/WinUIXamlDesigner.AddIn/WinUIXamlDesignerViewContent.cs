@@ -893,15 +893,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		}
 		try
 		{
-			var ns = editor.Document.Root.Name.Namespace;
-			var pasted = XElement.Parse(clipboardText);
-			var typeName = pasted.Name.LocalName;
-			var name = editor.UniqueName(typeName);
-			pasted.Name = ns + typeName;
-			pasted.SetAttributeValue(WinUIXamlDocumentEditor.NameDirective, name);
-			// Strip x:Name on the pasted copy's direct children only when they carry one -
-			// keep it simple: the copied fragment keeps its subtree as-is.
-			container.Add(pasted);
+			var pasted = editor.Paste(clipboardText, container);
+			var name = (string)pasted.Attribute(WinUIXamlDocumentEditor.NameDirective);
 			ApplyDocumentChange();
 			SelectElement(name);
 			status.Text = "Pasted " + name;
@@ -932,18 +925,13 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	void WrapSelected(string name, string containerType)
 	{
 		var element = editor.FindElement(name);
-		if (element?.Parent is not XContainer parent)
+		if (element == null)
 			return;
-		var ns = editor.Document.Root.Name.Namespace;
-		var wrapper = new XElement(ns + containerType);
-		var wrapperName = editor.UniqueName(containerType);
-		wrapper.SetAttributeValue(WinUIXamlDocumentEditor.NameDirective, wrapperName);
-		// Moving the element out of its parent requires it to be re-added in order.
-		element.Remove();
-		parent.Add(wrapper);
-		wrapper.Add(element);
+		var wrapper = editor.WrapInContainer(element, containerType);
+		if (wrapper == null)
+			return;
 		ApplyDocumentChange();
-		SelectElement(wrapperName);
+		SelectElement((string)wrapper.Attribute(WinUIXamlDocumentEditor.NameDirective));
 	}
 
 	/// <summary>

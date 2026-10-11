@@ -230,6 +230,38 @@ public sealed class WinUIGridTrackEditorTests
 	}
 
 	[Fact]
+	public void Paste_IsSourceOwnedAndUndoable()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"/></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		var pasted = editor.Paste("""<TextBlock Text="Copied"/>""", editor.Document.Root!);
+		Assert.Equal("TextBlock1", (string?)pasted.Attribute(WinUIXamlDocumentEditor.NameDirective));
+		Assert.Contains("Text=\"Copied\"", editor.Text);
+		Assert.True(editor.Undo());
+		Assert.Equal(source, editor.Text);
+		Assert.True(editor.Redo());
+		Assert.Contains("x:Name=\"TextBlock1\"", editor.Text);
+	}
+
+	[Fact]
+	public void WrapInContainer_PreservesSiblingPositionAndUndo()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><TextBlock x:Name="Before"/><Button x:Name="Target"/><TextBlock x:Name="After"/></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		var wrapper = editor.WrapInContainer(editor.FindElement("Target")!, "StackPanel");
+		Assert.Equal("StackPanel1", (string?)wrapper.Attribute(WinUIXamlDocumentEditor.NameDirective));
+		Assert.Equal(new[] { "TextBlock", "StackPanel", "TextBlock" }, editor.Document.Root!.Elements().Select(element => element.Name.LocalName));
+		Assert.Equal("Target", (string?)wrapper.Elements().Single().Attribute(WinUIXamlDocumentEditor.NameDirective));
+		Assert.True(editor.Undo());
+		Assert.Equal(source, editor.Text);
+		Assert.False(editor.WrapInContainer(editor.Document.Root!, "Grid") is not null);
+	}
+
+	[Fact]
 	public void ContextFlyoutDeletion_RemovesItsEmptyPropertyElementInOneUndoEntry()
 	{
 		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"/></Grid>""";
