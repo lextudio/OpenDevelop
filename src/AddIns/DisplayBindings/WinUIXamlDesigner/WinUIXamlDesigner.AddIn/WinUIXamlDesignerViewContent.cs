@@ -487,9 +487,12 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	{
 		status.Text = previewHost.StatusText;
 		// A settled render may have moved or resized the selected element; re-apply the
-		// outline from the freshly indexed tree.
+		// outline and Grid guides from the freshly indexed tree.
 		if (SelectedElementName != null)
+		{
 			previewHost.ShowSelection(SelectedElementName);
+			RefreshGridGuides(SelectedElementName);
+		}
 		// Once the design host is ready it reports the toolbox catalog for the loaded
 		// runtime; the shared Toolbox pad then lists the controls the project can actually use.
 		if (!toolboxPopulated && previewHost.GetToolboxCatalog() is { Count: > 0 } catalog)
