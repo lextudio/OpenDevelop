@@ -2089,6 +2089,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 							Category = "Binding", TypeName = typeof(System.Windows.Data.BindingMode).FullName ?? "",
 							Kind = "Enum", IsEnum = true, EditorKind = "BindingMode",
 							Value = binding.Mode.ToString(), BindingPropertyName = descriptor.Name,
+							ShouldSerialize = false,
 							AllowedValues = Enum.GetNames(typeof(System.Windows.Data.BindingMode)).ToList()
 						});
 					}

@@ -696,6 +696,7 @@ public sealed class WpfSurfaceHostRpcTests
 			StringComparison.Ordinal);
 		var mode = FindByName(edited.Tree!, "bound")!.Properties.Single(property => property.EditorKind == "BindingMode");
 		Assert.Equal("Text", mode.BindingPropertyName);
+		Assert.False(mode.ShouldSerialize);
 		Assert.Contains("TwoWay", mode.AllowedValues);
 		var modeEdited = await client.SetBindingModeAsync(edited.Version, bound.Id, mode.BindingPropertyName, "TwoWay", timeout.Token);
 		Assert.True(modeEdited.Accepted, modeEdited.Error);
