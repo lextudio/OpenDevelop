@@ -98,6 +98,7 @@ public sealed class UnoDesignHostRpcTests
 		Assert.Contains(capabilities.Toolbox, item => item.Name == "Flyout" && item.Category == "Components");
 		Assert.Contains(capabilities.Toolbox, item => item.Name == "CommandBarFlyout" && item.Category == "Components");
 		Assert.Contains(capabilities.Toolbox, item => item.Name == "MenuFlyoutItem" && item.Category == "Components");
+		Assert.Contains(capabilities.Toolbox, item => item.Name == "ToggleMenuFlyoutItem" && item.Category == "Components");
 		Assert.Contains(capabilities.Toolbox, item => item.Name == "MenuFlyoutSubItem" && item.Category == "Components");
 		var xaml = $"""
 		<Button xmlns="{Ns}" xmlns:x="{XNs}" x:Name="Target" Content="Open">

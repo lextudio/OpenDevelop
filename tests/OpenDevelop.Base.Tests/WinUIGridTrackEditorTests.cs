@@ -330,6 +330,24 @@ public sealed class WinUIGridTrackEditorTests
 	}
 
 	[Fact]
+	public void ToggleMenuFlyoutItemInsertion_IsSourceOwnedAndUndoable()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"><Button.ContextFlyout><MenuFlyout x:Name="MenuFlyout1"/></Button.ContextFlyout></Button></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		var item = editor.InsertToggleMenuFlyoutItem(editor.FindElement("MenuFlyout1")!);
+		Assert.Equal("ToggleMenuFlyoutItem1", (string?)item.Attribute(WinUIXamlDocumentEditor.NameDirective));
+		Assert.Equal("Toggle item", (string?)item.Attribute("Text"));
+		Assert.Equal("ToggleMenuFlyoutItem", item.Name.LocalName);
+
+		Assert.True(editor.Undo());
+		Assert.Equal(source, editor.Text);
+		Assert.True(editor.Redo());
+		Assert.Contains("<ToggleMenuFlyoutItem", editor.Text);
+	}
+
+	[Fact]
 	public void MenuFlyoutSubItemInsertion_BuildsNestedSourceOwnedMenuAndUndo()
 	{
 		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"><Button.ContextFlyout><MenuFlyout x:Name="MenuFlyout1"><MenuFlyoutItem Text="First"/></MenuFlyout></Button.ContextFlyout></Button></Grid>""";

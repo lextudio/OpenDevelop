@@ -204,6 +204,23 @@ sealed class WinUIXamlDocumentEditor
 		return item;
 	}
 
+	/// <summary>Adds a named checkable item to a source-owned menu container.</summary>
+	public XElement InsertToggleMenuFlyoutItem(XElement menu)
+	{
+		if (Document?.Root == null)
+			throw new InvalidOperationException("The document has no root to add a ToggleMenuFlyoutItem to.");
+		if (!IsMenuFlyoutContainer(menu))
+			throw new ArgumentException("A source MenuFlyout or MenuFlyoutSubItem is required.", nameof(menu));
+
+		BeginChange();
+		var item = new XElement(Document.Root.GetDefaultNamespace() + "ToggleMenuFlyoutItem");
+		item.SetAttributeValue(NameDirective, UniqueName("ToggleMenuFlyoutItem"));
+		item.SetAttributeValue("Text", "Toggle item");
+		menu.Add(item);
+		CommitChange();
+		return item;
+	}
+
 	/// <summary>Adds a named submenu to a source-owned menu container.</summary>
 	public XElement InsertMenuFlyoutSubItem(XElement menu)
 	{

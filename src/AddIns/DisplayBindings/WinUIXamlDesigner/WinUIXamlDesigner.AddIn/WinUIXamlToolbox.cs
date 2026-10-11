@@ -64,6 +64,7 @@ public sealed class WinUIXamlToolbox
 						|| string.Equals(tool.Name, "Flyout", System.StringComparison.Ordinal)
 						|| string.Equals(tool.Name, "CommandBarFlyout", System.StringComparison.Ordinal)
 						|| string.Equals(tool.Name, "MenuFlyoutItem", System.StringComparison.Ordinal)
+						|| string.Equals(tool.Name, "ToggleMenuFlyoutItem", System.StringComparison.Ordinal)
 						|| string.Equals(tool.Name, "MenuFlyoutSubItem", System.StringComparison.Ordinal))
 						return;
 					// Also carries "ComponentTypeName" (the same format WpfToolbox uses) so

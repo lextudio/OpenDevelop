@@ -428,6 +428,16 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			SelectComponentTrayElement(item);
 			return (string)item.Attribute(WinUIXamlDocumentEditor.NameDirective);
 		}
+		if (string.Equals(controlName, "ToggleMenuFlyoutItem", StringComparison.Ordinal))
+		{
+			var menu = componentTraySelection ? editor.FindElement(SelectedElementName) : container;
+			if (!IsMenuFlyoutContainer(menu))
+				throw new InvalidOperationException("Select a MenuFlyout or MenuFlyoutSubItem in the component tray before adding a ToggleMenuFlyoutItem.");
+			var item = editor.InsertToggleMenuFlyoutItem(menu);
+			ApplyDocumentChange();
+			SelectComponentTrayElement(item);
+			return (string)item.Attribute(WinUIXamlDocumentEditor.NameDirective);
+		}
 		if (string.Equals(controlName, "MenuFlyoutSubItem", StringComparison.Ordinal))
 		{
 			var menu = componentTraySelection ? editor.FindElement(SelectedElementName) : container;

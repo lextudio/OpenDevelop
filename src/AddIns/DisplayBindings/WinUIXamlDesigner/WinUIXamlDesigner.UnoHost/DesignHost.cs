@@ -262,6 +262,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				new() { Name = "Flyout", DisplayName = "Flyout", Category = "Components" },
 				new() { Name = "CommandBarFlyout", DisplayName = "CommandBarFlyout", Category = "Components" },
 				new() { Name = "MenuFlyoutItem", DisplayName = "MenuFlyoutItem", Category = "Components" },
+				new() { Name = "ToggleMenuFlyoutItem", DisplayName = "ToggleMenuFlyoutItem", Category = "Components" },
 				new() { Name = "MenuFlyoutSubItem", DisplayName = "MenuFlyoutSubItem", Category = "Components" }
 			};
 			foreach (var t in typeof(FrameworkElement).Assembly.GetTypes())
