@@ -444,6 +444,10 @@ entirely in the document model.
 Further component-specific creation remains separate work; source-order moves, paste, wrapping
 and Outline re-parenting now commit through the document editor as one undoable change rather than
 being transient preview-only mutations.
+The Outline resolves unnamed runtime nodes through the runtime pick chain and gives source-fallback
+nodes a document-local sibling-index identity. Source-only paths are never passed back as runtime
+geometry paths, so selecting or re-parenting an unnamed source element never needs to author an
+artificial `x:Name` or risk a stale overlay.
 basic visibility, selection, rename, deletion and this first property-owned creation flow need no
 child write capability. Deleting that tray flyout removes its now-empty single-value property
 element in the same undo entry, so deletion restores the exact pre-insertion source shape.

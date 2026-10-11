@@ -137,6 +137,62 @@ public sealed class WinUIGridTrackEditorTests
 	}
 
 	[Fact]
+	public void DocumentLocalPathsAddressUnnamedElementsWithoutAuthoringNames()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><StackPanel><Button/></StackPanel><TextBlock/></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		var button = editor.Document.Root!.Descendants().Single(element => element.Name.LocalName == "Button");
+		var textBlock = editor.Document.Root!.Descendants().Single(element => element.Name.LocalName == "TextBlock");
+		Assert.Equal("0/0", editor.GetElementPath(button));
+		Assert.Equal("1", editor.GetElementPath(textBlock));
+		Assert.Same(button, editor.FindElementAtPath("0/0"));
+		Assert.Same(textBlock, editor.FindElementAtPath("1"));
+		Assert.Null(button.Attribute(WinUIXamlDocumentEditor.NameDirective));
+	}
+
+	[Fact]
+	public void DocumentLocalPathsKeepTheUnnamedRootAndSameTypeDescendantsDistinct()
+	{
+		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><Grid/><Grid/></Grid>""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(source, out var error), error);
+
+		var grids = editor.Document.Root!.DescendantsAndSelf().Where(element => element.Name.LocalName == "Grid").ToArray();
+		Assert.Equal(3, grids.Length);
+		Assert.Equal("", editor.GetElementPath(grids[0]));
+		Assert.Equal("0", editor.GetElementPath(grids[1]));
+		Assert.Equal("1", editor.GetElementPath(grids[2]));
+		Assert.Same(grids[0], editor.FindElementAtPath(""));
+		Assert.Same(grids[1], editor.FindElementAtPath("0"));
+		Assert.Same(grids[2], editor.FindElementAtPath("1"));
+	}
+
+	[Fact]
+	public void RuntimeSourceCandidatesKeepCollapsedElementsButExcludeLoadDisabledAndTemplates()
+	{
+		var document = XDocument.Parse("""<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button Visibility="Collapsed"/><Button/><StackPanel x:Load="False"><Button/></StackPanel><ControlTemplate><Button/></ControlTemplate></StackPanel>""");
+		var buttons = document.Root!.Descendants().Where(element => element.Name.LocalName == "Button").ToArray();
+
+		Assert.True(WinUIXamlDesignerViewContent.IsRuntimeSourceCandidate(buttons[0]));
+		Assert.True(WinUIXamlDesignerViewContent.IsRuntimeSourceCandidate(buttons[1]));
+		Assert.False(WinUIXamlDesignerViewContent.IsRuntimeSourceCandidate(buttons[2]));
+		Assert.False(WinUIXamlDesignerViewContent.IsRuntimeSourceCandidate(buttons[3]));
+	}
+
+	[Fact]
+	public void RuntimeSourceCandidatesExcludeFlyoutOwnedElements()
+	{
+		var document = XDocument.Parse("""<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><Button><Button.Flyout><MenuFlyout><MenuFlyoutItem><Button/></MenuFlyoutItem></MenuFlyout></Button.Flyout></Button><Button/></StackPanel>""");
+		var buttons = document.Root!.Descendants().Where(element => element.Name.LocalName == "Button").ToArray();
+
+		Assert.True(WinUIXamlDesignerViewContent.IsRuntimeSourceCandidate(buttons[0]));
+		Assert.False(WinUIXamlDesignerViewContent.IsRuntimeSourceCandidate(buttons[1]));
+		Assert.True(WinUIXamlDesignerViewContent.IsRuntimeSourceCandidate(buttons[2]));
+	}
+
+	[Fact]
 	public void ContextFlyoutInsertion_IsSourceOwnedAndUndoable()
 	{
 		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"/></Grid>""";

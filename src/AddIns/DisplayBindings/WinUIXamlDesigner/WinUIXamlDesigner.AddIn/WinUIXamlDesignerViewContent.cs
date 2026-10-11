@@ -1182,7 +1182,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	/// <paramref name="path"/>. The name-keyed <see cref="SelectElement(string)"/> is used when the
 	/// element does have one, so named elements keep the outline/multi-select behaviour they
 	/// already had.</summary>
-	void SelectSourceElement(XElement element, string path)
+	void SelectSourceElement(XElement element, string? path)
 	{
 		var name = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
 		if (!string.IsNullOrEmpty(name))
@@ -1197,7 +1197,10 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		componentTraySelection = false;
 			SelectedElementName = null;
 			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor);
-			previewHost.ShowSelectionAtPath(path, element.Name.LocalName);
+			if (string.IsNullOrEmpty(path))
+				previewHost.ClearSelection();
+			else
+				previewHost.ShowSelectionAtPath(path, element.Name.LocalName);
 		}
 		finally {
 			syncingSelection = false;
@@ -1209,11 +1212,39 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	{
 		if (editor.Document?.Root == null || string.IsNullOrEmpty(typeName) || index < 0)
 			return null;
-		var matches = editor.Document.Root.Descendants()
+		var matches = editor.Document.Root.DescendantsAndSelf()
+			.Where(IsRuntimeSourceCandidate)
 			.Where(e => string.Equals(e.Name.LocalName, typeName, StringComparison.Ordinal))
 			.ToList();
 		return index < matches.Count ? matches[index] : null;
 	}
+
+	/// <summary>Matches the source elements represented by the runtime's designable tree. A
+	/// type occurrence index must never count resources, templates, property-element markup or an
+	/// <c>x:Load="False"</c> subtree, or it would map an otherwise valid runtime path to a different
+	/// source object of the same type. Collapsed elements remain in the runtime tree and must stay
+	/// in this count even though the Design Outline hides them.</summary>
+	internal static bool IsRuntimeSourceCandidate(XElement element)
+	{
+		if (element.Name.LocalName.Contains('.', StringComparison.Ordinal))
+			return false;
+		foreach (var current in element.AncestorsAndSelf())
+		{
+			if (IsResourceDefinitionElement(current) || IsVisualStateElement(current) || IsLoadDisabled(current))
+				return false;
+			if (current.Name.LocalName is "Style" or "ControlTemplate" or "DataTemplate" or "ItemsPanelTemplate")
+				return false;
+			// Flyouts are source-owned popup components, not part of the rendered page tree. Their
+			// item elements must not shift the occurrence index of ordinary page controls.
+			if (current.Name.LocalName.Contains("Flyout", StringComparison.Ordinal))
+				return false;
+		}
+		return true;
+	}
+
+	static bool IsLoadDisabled(XElement element)
+		=> string.Equals((string?)element.Attribute(XName.Get("Load", "http://schemas.microsoft.com/winfx/2006/xaml")),
+			"False", StringComparison.OrdinalIgnoreCase);
 
 	void ApplyElementBounds(XElement element, ElementDragInfo info)
 	{		var positionDeltaX = info.EndX - info.StartX;		var positionDeltaY = info.EndY - info.StartY;
@@ -1542,23 +1573,23 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	void OnOutlineSelectionChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
 	{
 		var node = (e.NewValue as TreeViewItem)?.Tag as DesignerElementNode;
-		if (node == null || string.IsNullOrEmpty(node.Name)) {
+		if (node == null) {
 			propertyContainer.SelectedObject = null;
 			SelectedElementName = null;
 			previewHost.ClearSelection();
 			return;
 		}
-		var element = editor.FindElement(node.Name);
+		var element = ResolveOutlineSourceElement(node);
 		if (element == null) {
 			propertyContainer.SelectedObject = null;
 			SelectedElementName = null;
 			previewHost.ClearSelection();
 			return;
 		}
-		SelectedElementName = node.Name;
-		shellSelection.Select(node.Id);
-		propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor);
-		previewHost.ShowSelection(SelectedElementName);
+		var selectionPath = !string.IsNullOrEmpty(node.Path) || string.IsNullOrEmpty(node.Id)
+			? node.Path
+			: null;
+		SelectSourceElement(element, selectionPath);
 	}
 
 	protected override void LoadInternal(OpenedFile file, Stream stream)
@@ -1731,15 +1762,18 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		};
 
 	/// <summary>Projects a source XAML element onto the protocol outline node model. The id is
-	/// the element's x:Name (the selection contract with the surface); unnamed elements are
-	/// not individually selectable, matching the runtime's name-based picking. Resource
+	/// its x:Name when present, otherwise the document-local sibling-index path used by the
+	/// source fallback selection contract. Resource
 	/// definitions are not visual elements and elements the source marks not-visible are not on
 	/// the design surface, so neither is part of the design outline.</summary>
-	static DesignerElementNode XmlOutlineNode(XElement element, string layoutMode = DesignerLayoutMode.Unknown)
+	DesignerElementNode XmlOutlineNode(XElement element, string layoutMode = DesignerLayoutMode.Unknown)
 	{
 		var name = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
 		return new DesignerElementNode {
-			Id = name ?? "",
+			// An unnamed source element cannot use the empty Id: every such node would then be
+			// indistinguishable to the Outline controller. Its document-local sibling-index path is
+			// stable until a source mutation, and maps back without authoring an artificial x:Name.
+			Id = name ?? editor.GetElementPath(element) ?? "",
 			Name = name,
 			Type = element.Name.LocalName,
 			IsDesignable = true,
@@ -1830,11 +1864,12 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		{
 			return;
 		}
-		if (outlineDragItem.Tag is not DesignerElementNode draggedNode || string.IsNullOrEmpty(draggedNode.Name))
+		if (outlineDragItem.Tag is not DesignerElementNode draggedNode)
 			return;
 		outlineDragItem = null;
-		// Drag the source element (the outline's protocol node maps back to it by x:Name).
-		if (editor.FindElement(draggedNode.Name) is { } draggedElement)
+		// The outline can contain unnamed source elements. Resolve the runtime path back to
+		// source instead of manufacturing an x:Name merely to support a structural edit.
+		if (ResolveOutlineSourceElement(draggedNode) is { } draggedElement)
 			DragDrop.DoDragDrop(outline, draggedElement, DragDropEffects.Move);
 	}
 
@@ -1861,10 +1896,36 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		if (e.Data.GetData(typeof(XElement)) is not XElement dragged)
 			return;
 		var targetNode = GetOutlineItemAt(e.GetPosition(outline))?.Tag as DesignerElementNode;
-		if (targetNode == null || string.IsNullOrEmpty(targetNode.Name))
+		if (targetNode == null)
 			return;
-		if (editor.FindElement(targetNode.Name) is { } target)
+		if (ResolveOutlineSourceElement(targetNode) is { } target)
 			MoveElementUnder(dragged, target);
+	}
+
+	/// <summary>Resolves an Outline node to its authoritative source element. Named nodes retain
+	/// their fast direct lookup; unnamed runtime nodes are mapped through the host's pick chain,
+	/// while source-only fallback nodes carry the editor's sibling-index path as their Id.</summary>
+	XElement ResolveOutlineSourceElement(DesignerElementNode node)
+	{
+		if (!string.IsNullOrEmpty(node.Name))
+			return editor.FindElement(node.Name);
+		if (!string.IsNullOrEmpty(node.Path))
+		{
+			var chain = previewHost.GetPickChain(node.Path);
+			foreach (var (type, typeIndex, path) in chain)
+			{
+				// Canvas picks may deliberately promote an unresolved template part to a source
+				// ancestor. An Outline row instead names one exact node: promoting here would make
+				// selection or drag/drop silently act on that parent.
+				if (string.Equals(path, node.Path, StringComparison.Ordinal)
+					&& FindNthSourceElement(type, typeIndex) is { } source)
+					return source;
+			}
+		}
+		// Runtime ids are visual paths. They happen to resemble our XML index paths, but the two
+		// coordinate systems diverge around templates/property elements; only a source fallback
+		// node (which has no runtime Path) is allowed to use its Id as a document path.
+		return string.IsNullOrEmpty(node.Path) ? editor.FindElementAtPath(node.Id) : null;
 	}
 
 	/// <summary>Moves an element under another as a source edit (scriptable outline re-parent).</summary>
