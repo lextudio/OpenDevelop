@@ -954,6 +954,10 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		// Convert the divider position into a size for THIS row/column: its share is the
 		// difference between the new divider and the previous divider.
 		var prev = boundaries[index];
+		var next = boundaries[index + 2];
+		if (next <= prev + 1)
+			return "Grid track is too small to resize";
+		position = Math.Clamp(position, prev + 1, next - 1);
 		var newSize = Math.Max(1, position - prev);
 		var attribute = isRow ? "Height" : "Width";
 		editor.SetAttribute(items[index], attribute, Math.Round(newSize).ToString(CultureInfo.InvariantCulture));
