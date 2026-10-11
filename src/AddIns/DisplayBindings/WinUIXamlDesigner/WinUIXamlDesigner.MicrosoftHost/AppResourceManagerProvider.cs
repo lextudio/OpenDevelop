@@ -32,6 +32,7 @@ namespace ICSharpCode.WinUIXamlDesigner.MicrosoftHost;
 static class AppResourceManagerProvider
 {
     static string? appPriPath;
+    static Microsoft.Windows.ApplicationModel.Resources.ResourceManager? appResourceManager;
 
     /// <summary>True once a handler is attached and the app's .pri was located, meaning the app's
     /// XAML-declared controls are expected to construct normally.</summary>
@@ -41,14 +42,28 @@ static class AppResourceManagerProvider
     /// any Resources access; safe to call with no app directory (then nothing is served).</summary>
     public static void Attach(Application application, string? appBin)
     {
-		if (string.Equals(Environment.GetEnvironmentVariable("OD_DESIGNHOST_NO_APP_PRI"), "1", StringComparison.Ordinal))
-		{
-			Console.Error.WriteLine("design-host: app PRI provider disabled by OD_DESIGNHOST_NO_APP_PRI.");
-			return;
-		}
+        if (string.Equals(Environment.GetEnvironmentVariable("OD_DESIGNHOST_NO_APP_PRI"), "1", StringComparison.Ordinal))
+        {
+            Console.Error.WriteLine("design-host: app PRI provider disabled by OD_DESIGNHOST_NO_APP_PRI.");
+            return;
+        }
         appPriPath = LocateAppPri(appBin);
         if (appPriPath is null)
         {
+            return;
+        }
+        try
+        {
+            // ResourceManagerRequested is raised while WinUI initializes its native resource
+            // provider. Constructing an MRT ResourceManager from inside that callback re-enters
+            // the provider while its initialization lock is held and can deadlock before
+            // OnLaunched. Build it now; the callback below must only hand this instance over.
+            appResourceManager = new Microsoft.Windows.ApplicationModel.Resources.ResourceManager(appPriPath);
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"design-host: could not load {Path.GetFileName(appPriPath)}:"
+                + $" {e.GetBaseException().Message}");
             return;
         }
         application.ResourceManagerRequested += OnResourceManagerRequested;
@@ -57,20 +72,11 @@ static class AppResourceManagerProvider
 
     static void OnResourceManagerRequested(object sender, ResourceManagerRequestedEventArgs args)
     {
-        try
-        {
-            args.CustomResourceManager =
-                new Microsoft.Windows.ApplicationModel.Resources.ResourceManager(appPriPath);
-            Console.Error.WriteLine($"design-host: serving app resources from {Path.GetFileName(appPriPath)}.");
-        }
-        catch (Exception e)
-        {
-            // Leaving CustomResourceManager null makes the framework fall back to its own default,
-            // i.e. the pre-existing behaviour, so a bad .pri costs fidelity and not the render.
-            Serving = false;
-            Console.Error.WriteLine($"design-host: could not serve {Path.GetFileName(appPriPath)}:"
-                + $" {e.GetBaseException().Message}");
-        }
+        // This callback is on the resource provider's initialization path. Do not create or
+        // otherwise initialize MRT objects here (see Attach); merely assign the prepared value.
+        if (appResourceManager is null) return;
+        args.CustomResourceManager = appResourceManager;
+        Console.Error.WriteLine($"design-host: serving app resources from {Path.GetFileName(appPriPath)}.");
     }
 
     /// <summary>

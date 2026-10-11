@@ -48,6 +48,11 @@ namespace ICSharpCode.SharpDevelop.Project
 			return await BuildAsync(project, before, requireRuntimeGraph, report).ConfigureAwait(true);
 		}
 
+		// Keep already-built display-binding add-ins binary-compatible while their callers are
+		// rebuilt. The coordinator deliberately retains its normal current-output policy.
+		public static Task<DesignerBuildResult> EnsureBuiltAsync(IProject project, bool requireRuntimeGraph, Action<string> report, bool allowStaleOutput)
+			=> EnsureBuiltAsync(project, requireRuntimeGraph, report);
+
 		static async Task<DesignerBuildResult> BuildAsync(IProject project, BuildStamp requested, bool requireRuntimeGraph, Action<string> report)
 		{
 			await gate.WaitAsync().ConfigureAwait(true);

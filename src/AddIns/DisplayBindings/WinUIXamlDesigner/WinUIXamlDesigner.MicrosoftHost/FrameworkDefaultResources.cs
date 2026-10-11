@@ -179,6 +179,7 @@ static class FrameworkDefaultResources
 				return null;
 			}
 			xaml = PruneUnresolvableTargetTypes(xaml);
+			xaml = StripAnimatedIconStateMarkup(xaml);
 			xaml = ApplyAccentPalette(xaml);
 			Console.Error.WriteLine($"design-host: built default theme resources from {names.Length} file(s).");
 			return xaml;
@@ -195,6 +196,25 @@ static class FrameworkDefaultResources
 				try { File.Delete(path); } catch { /* best effort */ }
 			}
 		}
+	}
+
+	// AnimatedIcon.State is generated into framework theme templates, but it is an internal
+	// attached property and is not exposed by the reflection metadata provider used by the
+	// unpackaged design host.  It only drives icon animation, so dropping those setters preserves
+	// the static Fluent templates while allowing the resource dictionary to load.
+	static string StripAnimatedIconStateMarkup(string xaml)
+	{
+		var document = XDocument.Parse(xaml, LoadOptions.PreserveWhitespace);
+		var elements = document.Root?.DescendantsAndSelf().ToArray() ?? [];
+		foreach (var setter in elements.Where(element => element.Name.LocalName == "Setter"
+			&& element.Attributes().Any(attribute => attribute.Name.LocalName == "AnimatedIcon.State")).ToArray())
+			setter.Remove();
+		foreach (var propertyElement in elements.Where(element => element.Name.LocalName == "AnimatedIcon.State").ToArray())
+			propertyElement.Remove();
+		foreach (var attribute in elements.SelectMany(element => element.Attributes())
+			.Where(attribute => attribute.Name.LocalName == "AnimatedIcon.State").ToArray())
+			attribute.Remove();
+		return document.ToString(SaveOptions.DisableFormatting);
 	}
 
 	// The same fixed clr-namespace candidate list WinUI's own markup compiler tries, in order, for
