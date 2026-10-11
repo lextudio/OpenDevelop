@@ -1511,6 +1511,52 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Contains("1280", resetStatus);
     }
 
+    /// <summary>A divider drag reaches the view as a canvas-space coordinate, but Grid track
+    /// definitions are local to the nested Grid. Lock that conversion with a Grid deliberately
+    /// offset from the page origin: moving the first boundary to local 150 must author 150,
+    /// regardless of the Grid's actual canvas X.</summary>
+    [Fact]
+    public async Task WinUIDesigner_GridResize_UsesNestedGridLocalCoordinates()
+    {
+        var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
+        try
+        {
+            var offsetGrid = originalXaml.Replace("    <Grid>", "    <Grid>\n" +
+                "        <Grid x:Name=\"OffsetGrid\" Margin=\"20,30,0,0\" Width=\"300\" Height=\"100\">\n" +
+                "            <Grid.ColumnDefinitions>\n" +
+                "                <ColumnDefinition Width=\"100\" />\n" +
+                "                <ColumnDefinition Width=\"200\" />\n" +
+                "            </Grid.ColumnDefinitions>\n" +
+                "        </Grid>");
+            await File.WriteAllTextAsync(_unoPagePath, offsetGrid);
+
+            await OpenUnoDesignerAsync();
+            Assert.True((await _app.InvokeAsync("od.winui-designer.select", "OffsetGrid"))
+                .GetProperty("success").GetBoolean());
+            var view = await _app.InvokeAsync("od.winui-designer.view", "1 0 0");
+            Assert.True(view.GetProperty("success").GetBoolean(), view.ToString());
+            var geometry = await _app.InvokeAsync("od.winui-designer.surface-geometry");
+            var gridX = geometry.GetProperty("element").GetProperty("x").GetDouble()
+                - geometry.GetProperty("frame").GetProperty("x").GetDouble();
+            Assert.True(gridX > 0, "The Grid must be offset in the designer's coordinate space.");
+            // The real guide gesture sends canvas X, not a Grid-local divider offset.
+            var resized = await _app.InvokeAsync("od.winui-designer.grid-resize", "OffsetGrid", "col", 0, gridX + 150);
+            Assert.True(resized.GetProperty("success").GetBoolean(), resized.ToString());
+            Assert.Contains("-> 150", resized.GetProperty("result").GetString());
+
+            await WaitForRenderedAsync();
+            var saved = await _app.InvokeAsync("od.file.save", _unoPagePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var savedXaml = await File.ReadAllTextAsync(_unoPagePath);
+            Assert.Contains("<ColumnDefinition Width=\"150\"", savedXaml);
+            Assert.DoesNotContain("<ColumnDefinition Width=\"170\"", savedXaml);
+        }
+        finally
+        {
+            await File.WriteAllTextAsync(_unoPagePath, originalXaml);
+        }
+    }
+
     /// <summary>Polls od.winui-designer.status until its status text contains the fragment
     /// (a re-render has settled), returning the status text.</summary>
     async Task<string> WaitForStatusContainingAsync(string fragment)
