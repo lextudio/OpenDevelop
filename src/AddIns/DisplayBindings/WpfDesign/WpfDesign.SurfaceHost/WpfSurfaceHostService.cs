@@ -1256,7 +1256,14 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				var state = NewState(baseVersion);
 				if (!pathToItem.TryGetValue(elementId, out var item))
 					return NotFound(state, "Element not found: " + elementId);
-				var property = item.Properties[propertyName];
+				DesignItemProperty? property;
+				try
+				{
+					property = FindFrameworkAttachedProperty(propertyName) is { } attached
+						? item.Properties.GetAttachedProperty(attached)
+						: item.Properties[propertyName];
+				}
+				catch (ArgumentException e) { return NotFound(state, e.Message); }
 				if (property == null)
 					return NotFound(state, "Property not found: " + propertyName);
 				if (!property.IsSet)
@@ -2588,6 +2595,15 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				}
 				result.Add(ToPropertyInfo(property));
 			}
+			// The in-process grid lists the attached layout properties the parent panel defines,
+			// named as XAML spells them so design/set-property and reset-property accept them.
+			foreach (var attached in ParentLayoutAttachedProperties(item.Parent?.Component))
+			{
+				var info = ToPropertyInfo(item.Properties.GetAttachedProperty(attached));
+				info.Name = info.DisplayName = attached.OwnerType.Name + "." + attached.Name;
+				info.Category = "Layout";
+				result.Add(info);
+			}
 			if (TryGetEditableItems(item, out var itemsProperty, out var itemKind) && itemsProperty != null && itemKind != null)
 			{
 				result.RemoveAll(info => info.Name == "Items");
@@ -2602,6 +2618,13 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			}
 			return result;
 		}
+
+		static IEnumerable<DependencyProperty> ParentLayoutAttachedProperties(object? parent) => parent switch {
+			Grid => new[] { Grid.RowProperty, Grid.ColumnProperty, Grid.RowSpanProperty, Grid.ColumnSpanProperty },
+			Canvas => new[] { Canvas.LeftProperty, Canvas.TopProperty, Canvas.RightProperty, Canvas.BottomProperty },
+			DockPanel => new[] { DockPanel.DockProperty },
+			_ => Array.Empty<DependencyProperty>()
+		};
 
 		/// <summary>An editable item kind: the container each item must be, and the property holding
 		/// its text (Content for list items, Header for tab pages).</summary>

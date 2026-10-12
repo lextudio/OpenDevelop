@@ -794,6 +794,55 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
+    public async Task PropertiesPad_EditsAndResetsTheParentGridsAttachedRow()
+    {
+        // The in-process Properties pad lists the parent panel's attached layout properties.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllBytesAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Attached rows">
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                <Button x:Name="cell" Content="Cell" />
+              </Grid>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            JsonElement selected = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                selected = await app.InvokeAsync("od.wpf-designer.select", "cell");
+                return selected.GetProperty("success").GetBoolean()
+                    && selected.GetProperty("propertiesPadSelectedName").GetString() == "cell";
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), selected.ToString());
+
+            var edited = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Grid.Column", "1");
+            Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            Assert.Contains("Grid.Column=\"1\"", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
+
+            var reset = await app.InvokeAsync("od.wpf-designer.properties-pad.reset", "Grid.Column");
+            Assert.True(reset.GetProperty("success").GetBoolean(), reset.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            Assert.DoesNotContain("Grid.Column=", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
+        } finally {
+            await app.InvokeAsync("od.close-all-document-views");
+            await File.WriteAllBytesAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task Toolbar_SnappingControls_DriveTheDragSettingsAndPersist()
     {
         // The in-process WPF designer's zoom bar offered raster placement (with a width) and

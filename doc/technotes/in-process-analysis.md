@@ -707,6 +707,13 @@ or after the control's own last statement when the source had none; clearing rem
 editor to an `ItemsCollection` row and commits through `design/set-items` as one designer undo step;
 `od.forms-designer.properties-pad.edit-items` drives the real row button with the shared script.
 
+**C2 attached layout properties (2026-10-12).** As in the in-process Properties pad, a WPF element
+now shows the attached layout properties its parent panel defines - `Grid.Row/Column/RowSpan/
+ColumnSpan`, `Canvas.Left/Top/Right/Bottom` or `DockPanel.Dock` - in a Layout category, named as
+XAML spells them. They edit and reset through the ordinary `design/set-property` and
+`design/reset-property`, which now both resolve that `Owner.Member` form; the Properties-pad adapter
+already carried dotted names through Xceed's binding-safe row names. No protocol change.
+
 **C2 quick property commands (2026-10-12).** The in-process `QuickOperationMenuExtension` (the
 small per-element menu) offered Horizontal/Vertical Alignment, StackPanel Orientation and DockPanel
 Dock as one-click property edits. These are now WPF context-menu submenus for a single selection,
