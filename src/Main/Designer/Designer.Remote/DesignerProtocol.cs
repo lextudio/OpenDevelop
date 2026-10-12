@@ -20,7 +20,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		// v21 adds WinForms' optional design/set-items for list-control string Items. v20 added
+		// v22 adds DesignerGridTrackInfo.Unit/Value and WPF's optional design/set-grid-track-unit.
+		// v21 added WinForms' optional design/set-items for list-control string Items. v20 added
 		// DesignerPropertyInfo.CollectionItems and WPF's design/set-items. v19 added
 		// design/wrap-elements and design/unwrap-element. v18 added
 		// design/set-z-order. v17 added design/set-binding-converter.
@@ -30,7 +31,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// and design/set-binding-validation-option. A stale pooled child
 		// must fail the handshake rather than reject a newly-visible binding editor after the
 		// Properties pad has already presented it.
-		public const int Version = 21;
+		public const int Version = 22;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -228,6 +229,12 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public double Offset { get; set; }
 		/// <summary>The row's/column's current rendered size (<c>ActualHeight</c>/<c>ActualWidth</c>).</summary>
 		public double Size { get; set; }
+		/// <summary>The authored length's unit - <c>Pixel</c>, <c>Star</c> or <c>Auto</c> - or null
+		/// when the host does not report it (WinUI reads its tracks from source instead).</summary>
+		public string? Unit { get; set; }
+		/// <summary>The authored length's numeric part (1 for <c>Auto</c>); meaningful only with
+		/// <see cref="Unit"/>.</summary>
+		public double Value { get; set; }
 	}
 
 	/// <summary>Response to <c>design/query-grid-guides</c>: a Grid element's current row/column

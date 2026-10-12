@@ -974,6 +974,18 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.wpf-designer.context-menu-point", Description = "Record the context menu as opened at (x, y) relative to the selected element's design bounds, as a right-click there does, for pointer-dependent commands such as Grid Row/Column units")]
+		public static string SetContextMenuPoint(double x, double y)
+		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
+			if (surface.SelectedNode is not { } node)
+				return Failure("Nothing is selected");
+			surface.ContextMenuDesignPoint = new System.Numerics.Vector2((float)(node.X + x), (float)(node.Y + y));
+			return JsonSerializer.Serialize(new { success = true });
+		}
+
 		[DevFlowAction("od.wpf-designer.context-command", Description = "Run a design surface context menu command through the same path as clicking it; fails when the menu does not offer it or it is disabled")]
 		public static string InvokeContextCommand(string command)
 		{

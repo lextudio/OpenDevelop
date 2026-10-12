@@ -102,6 +102,8 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerGridGuides QueryGridGuides(string sessionId, string documentId, long baseVersion, string elementId) => Checked(sessionId, documentId).QueryGridGuides(baseVersion, elementId);
 	[JsonRpcMethod("design/set-grid-track-size")]
 	public DesignerSessionState SetGridTrackSize(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index, double pixels) => Checked(sessionId, documentId).SetGridTrackSize(baseVersion, elementId, isRow, index, pixels);
+	[JsonRpcMethod("design/set-grid-track-unit")]
+	public DesignerSessionState SetGridTrackUnit(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index, string unit) => Checked(sessionId, documentId).SetGridTrackUnit(baseVersion, elementId, isRow, index, unit);
 	[JsonRpcMethod("design/split-grid-track")]
 	public DesignerSessionState SplitGridTrack(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, double position) => Checked(sessionId, documentId).SplitGridTrack(baseVersion, elementId, isRow, position);
 	[JsonRpcMethod("design/delete-elements")]

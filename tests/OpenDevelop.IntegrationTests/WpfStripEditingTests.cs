@@ -246,6 +246,65 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
+    public async Task ContextMenu_GridRowAndColumnUnitsChangeTheTrackUnderThePointer()
+    {
+        // The in-process Grid rail's GridUnitSelector (Fixed/Star/Auto) as context-menu commands for
+        // the selected Grid's row/column under the right-click point.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllBytesAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Grid units">
+              <Grid x:Name="layout">
+                <Grid.RowDefinitions><RowDefinition Height="40" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="100" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <TextBlock x:Name="label" Grid.Row="1" Text="Units" />
+              </Grid>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            Dictionary<string, bool> Commands(JsonElement result)
+                => result.GetProperty("commands").EnumerateArray().ToDictionary(c => c.GetProperty("command").GetString()!, c => c.GetProperty("enabled").GetBoolean());
+
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "layout")).GetProperty("success").GetBoolean());
+            // Inside row 0 (40 px, Fixed) and column 0 (100 px, Fixed): the current unit is disabled.
+            Assert.True((await app.InvokeAsync("od.wpf-designer.context-menu-point", 20, 10)).GetProperty("success").GetBoolean());
+            var commands = Commands(await app.InvokeAsync("od.wpf-designer.context-commands"));
+            Assert.False(commands["grid-row-Pixel"]);
+            Assert.True(commands["grid-row-Star"]);
+            Assert.True(commands["grid-column-Auto"]);
+            var row = await app.InvokeAsync("od.wpf-designer.context-command", "grid-row-Star");
+            Assert.True(row.GetProperty("success").GetBoolean(), row.ToString());
+            var column = await app.InvokeAsync("od.wpf-designer.context-command", "grid-column-Auto");
+            Assert.True(column.GetProperty("success").GetBoolean(), column.ToString());
+
+            var saved = await app.InvokeAsync("od.file.save", xamlPath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var text = await File.ReadAllTextAsync(xamlPath);
+            Assert.Contains("Height=\"40*\"", text, StringComparison.Ordinal);
+            Assert.Contains("Width=\"Auto\"", text, StringComparison.Ordinal);
+
+            // A label is not a Grid: no unit command applies.
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "label")).GetProperty("success").GetBoolean());
+            Assert.False(Commands(await app.InvokeAsync("od.wpf-designer.context-commands"))["grid-row-Auto"]);
+        } finally {
+            await app.InvokeAsync("od.close-all-document-views");
+            await File.WriteAllBytesAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task ContextMenu_AlignOrderAndWrapCommandsEditTheDocument()
     {
         // The in-process designer's ArrangeItems and RightClick context menus: Align needs a

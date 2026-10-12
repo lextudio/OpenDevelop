@@ -466,7 +466,7 @@ Ranked by (a) parity gap closed per line, (b) genuinely missing rather than re-i
 | **2** | **Adorner placement algebra** | `Adorners/{RelativePlacement,AdornerPlacement}.cs`, `AdornerOrder` | The first reusable slice is now landed: `SelectionAdornerPlacementCalculator` maps snapshot rectangles, label placement and enabled resize anchors through `DesignViewport`, and owns the center-third move-zone hit rule. Further overlays should consume this primitive instead of re-implementing scale/origin arithmetic. |
 | **3** | **Snapline concepts on a nearest-match rule** | `SnaplinePlacementBehavior` (concepts only), `RasterPlacementBehavior` | Adds baselines, `RequireOverlap`, `Group`, margin-inflated map, paired guide rendering. Basic sibling edge/centre snapping now calls `SetSnapGuides` through `DesignSurfaceController`; this phase enriches that working baseline rather than adding its first caller. |
 | **4** | **Margin / position handles** | `Controls/{MarginHandle,CanvasPositionHandle}.cs` (UI half) | WPF now publishes structured Grid Margin and Canvas-position insets under v5, and the shared canvas renders draggable L/T/R/B edge readouts with dashed rulers (including zero-distance stubs) that track selection, zoom and pan. Nonzero rulers end in an arrow following their measured direction, including negative overflow; a zero-distance ruler keeps the legacy compact circular stub. These endpoint marks are presentational, leaving the labeled readout as the only drag/click target. The WPF-only commit preserves effective Canvas anchors (including Right/Bottom, margins and overflow) in one native undo group. Clicking a Grid Margin readout toggles that edge between its explicit alignment anchor and Stretch while preserving the rendered bounds. As in the legacy designer, the affordance is intentionally suppressed for non-identity Layout/RenderTransform because visual-edge coordinates cannot safely round-trip to Canvas attached properties. |
-| **5** | **Grid rail + a `split-grid-track` verb** | `Controls/GridAdorner.cs` (rail/splitter half) | **WPF delivered:** explicit measured tracks can be split through an atomic host mutation; Ctrl exposes amber insertion rails, Ctrl-click inserts a row and Ctrl+Shift-click a column. WinUI and Forms still need comparable track metadata/mutations before they can opt in. |
+| **5** | **Grid rail + a `split-grid-track` verb** | `Controls/GridAdorner.cs` (rail/splitter half) | **WPF delivered:** explicit measured tracks can be split through an atomic host mutation; Ctrl exposes amber insertion rails, Ctrl-click inserts a row and Ctrl+Shift-click a column. The rail's `GridUnitSelector` is delivered as Grid Row/Column → Fixed/Star/Auto context-menu commands (v22). WinUI and Forms still need comparable track metadata/mutations before they can opt in. |
 | **6** | **In-place text editor** | `Controls/InPlaceEditor.cs` | **WPF key contract delivered (2026-10-12)**; the font commit remains. Port the Enter/Shift+Enter/Escape contract and the font commit first; rich text (`FormatedTextEditor`, 845 lines of XAML) is a later optional step. `DesignSurface.BeginTextEdit` (`:310`) is plain-text already. |
 | **7** | **`CecilPropertyDescriptor` side-store** | `CecilPropertyDescriptor.cs:88-127` | Property values live in the model, never in the control. Exactly the out-of-process shape; we have no equivalent. |
 | **8** | **Cecil-based / process-isolated toolbox scanning** | `CecilToolboxItemLoader`, `CecilWidgetLibrary`, `IToolboxLoader.LoadItemsIsolated` + ping-and-respawn | Closes a real robustness gap: `TypeDiscoveryService` currently loads and instantiates third-party control assemblies **in the IDE process**. |
@@ -706,6 +706,17 @@ or after the control's own last statement when the source had none; clearing rem
 `ITypeEditor`s are thin shims over one implementation. The Forms Properties-pad proxy attaches the
 editor to an `ItemsCollection` row and commits through `design/set-items` as one designer undo step;
 `od.forms-designer.properties-pad.edit-items` drives the real row button with the shared script.
+
+**C3 Grid track units (2026-10-12).** The in-process Grid rail's `GridUnitSelector` (Fixed/Star/Auto
+for the hovered row or column) is now a pair of WPF context-menu submenus, Grid Row and Grid Column,
+acting on the selected Grid's track under the right-click point. Protocol **v22** adds the authored
+`Unit`/`Value` to `DesignerGridTrackInfo`, so the canvas disables the track's current unit from the
+snapshot alone, and the optional `design/set-grid-track-unit` mutation. The host keeps the numeric
+part as the in-process designer does, but leaving Auto (whose value is a meaningless 1) takes the
+measured size for Fixed and `1*` for Star rather than writing a 1-pixel track. `DesignSurface`
+records the context menu's design point (null when opened from the keyboard);
+`od.wpf-designer.context-menu-point` sets it relative to the selection for tests. WinUI still reads
+its tracks from source and leaves `Unit` null.
 
 **C4 event handler generation (2026-10-12).** Double-clicking a WPF event in the Properties pad now
 matches the in-process designer (`AbstractEventHandlerService`): the XAML attribute is bound through

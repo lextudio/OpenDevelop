@@ -205,7 +205,11 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				("Order/Send Backward", "order-backward"), ("Order/Send to Back", "order-back"),
 				("-", ""),
 				("Wrap/Canvas", "wrap-Canvas"), ("Wrap/Grid", "wrap-Grid"), ("Wrap/Viewbox", "wrap-Viewbox"),
-				("Unwrap", "unwrap")
+				("Unwrap", "unwrap"),
+				("-", ""),
+				// The in-process Grid rail's GridUnitSelector, for the track under the pointer.
+				("Grid Row/Fixed", "grid-row-Pixel"), ("Grid Row/Star", "grid-row-Star"), ("Grid Row/Auto", "grid-row-Auto"),
+				("Grid Column/Fixed", "grid-column-Pixel"), ("Grid Column/Star", "grid-column-Star"), ("Grid Column/Auto", "grid-column-Auto")
 			});
 			ContextCommandCanExecute = command => command switch {
 				_ when command.StartsWith("align-", StringComparison.Ordinal) => controller.SelectedNames.Count >= 2,
@@ -214,6 +218,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				_ when command.StartsWith("wrap-", StringComparison.Ordinal) => controller.SelectedNames.Count > 0 && !controller.SelectedNames.Contains(RootElementId),
 				// Unwrap acts on exactly one element: that single selection must be a non-root Grid/Canvas.
 				"unwrap" => controller.SelectedNames.Count == 1 && NodeById(controller.SelectedNames[0]) is { Type: "Grid" or "Canvas" } node && node.Id != RootElementId,
+				_ when ParseGridUnitCommand(command) is { } unitCommand => GridTrackAtContextPoint(unitCommand.IsRow) is { } track && track.Unit != unitCommand.Unit,
 				_ => controller.SelectedNames.Count > 0
 			};
 			RenameRequested += (_, _) => RequestRename();
@@ -252,6 +257,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 					CommitWrap(command.Command.Substring("wrap-".Length));
 				else if (command.Command == "unwrap")
 					CommitUnwrap();
+				else if (ParseGridUnitCommand(command.Command) is { } unitCommand)
+					CommitGridTrackUnit(unitCommand.IsRow, unitCommand.Unit);
 			};
 			// ThemeRequested carries the chosen theme name; CommitTheme blocks like every mutation.
 			DesignThemeRequested += (_, theme) => CommitTheme(theme);
@@ -686,6 +693,36 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			if (!result.Accepted) { Show(result); return; }
 			Show(result);
 			DocumentChanged?.Invoke(this, result);
+		}
+
+		static (bool IsRow, string Unit)? ParseGridUnitCommand(string command)
+			=> command.StartsWith("grid-row-", StringComparison.Ordinal) ? (true, command.Substring("grid-row-".Length))
+			: command.StartsWith("grid-column-", StringComparison.Ordinal) ? (false, command.Substring("grid-column-".Length))
+			: null;
+
+		/// <summary>The row or column of the single selected Grid that contains the point the context
+		/// menu was opened at, from the snapshot's measured tracks; null if there is none.</summary>
+		(string GridId, int Index, string? Unit)? GridTrackAtContextPoint(bool isRow)
+		{
+			if (ContextMenuDesignPoint is not { } point || controller.SelectedNames.Count != 1
+				|| NodeById(controller.SelectedNames[0]) is not { Type: "Grid", GridTracks: { } tracks } grid)
+				return null;
+			if (point.X < grid.X || point.X >= grid.X + grid.Width || point.Y < grid.Y || point.Y >= grid.Y + grid.Height)
+				return null;
+			var local = isRow ? point.Y - grid.Y : point.X - grid.X;
+			var list = isRow ? tracks.RowTracks : tracks.ColumnTracks;
+			var index = list.FindIndex(track => local >= track.Offset && local < track.Offset + track.Size);
+			return index < 0 ? null : (grid.Id, index, list[index].Unit);
+		}
+
+		void CommitGridTrackUnit(bool isRow, string unit)
+		{
+			if (GridTrackAtContextPoint(isRow) is not { } track || state == null)
+				return;
+			var result = client.SetGridTrackUnitAsync(state.Version, track.GridId, isRow, track.Index, unit).GetAwaiter().GetResult();
+			Show(result);
+			if (result.Accepted)
+				DocumentChanged?.Invoke(this, result);
 		}
 
 		#endregion

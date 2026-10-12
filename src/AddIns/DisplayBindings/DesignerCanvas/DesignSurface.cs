@@ -267,6 +267,17 @@ public class DesignSurface : DesignerCanvas
 		return item;
 	}
 
+	/// <summary>The design point the context menu was opened at, or null when it was opened from
+	/// the keyboard. A backend uses it for commands about what is under the pointer (a Grid track),
+	/// evaluated in <see cref="ContextCommandCanExecute"/> and when the command runs.</summary>
+	public Vector2? ContextMenuDesignPoint { get; set; }
+
+	protected override void OnContextMenuOpening(ContextMenuEventArgs e)
+	{
+		ContextMenuDesignPoint = e.CursorLeft < 0 ? null : ToDesignPoint(Mouse.GetPosition(this));
+		base.OnContextMenuOpening(e);
+	}
+
 	/// <summary>Optional per-command enablement for <see cref="SetContextCommands"/> menus (for
 	/// example "needs two selected elements"). Without it, "paste" is always enabled and every
 	/// other command needs a selection.</summary>

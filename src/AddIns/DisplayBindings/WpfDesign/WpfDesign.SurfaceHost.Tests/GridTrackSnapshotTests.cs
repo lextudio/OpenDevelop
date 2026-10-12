@@ -72,4 +72,38 @@ public sealed class GridTrackSnapshotTests
 		var flushed = await client.FlushAsync(1, timeout.Token);
 		Assert.Contains("Grid.RowSpan=\"3\"", Assert.Single(flushed.Files).Text, StringComparison.Ordinal);
 	}
+
+	[Fact]
+	public async Task ChildHost_SetGridTrackUnitReportsAndChangesTheAuthoredUnit()
+	{
+		const string xaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="root" Width="240" Height="120">
+			  <Grid.RowDefinitions><RowDefinition Height="40"/><RowDefinition Height="2*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+			  <TextBlock x:Name="label" Grid.Row="2" Height="24" Text="Tracks"/>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(WpfSurfaceHostRpcTests.HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var rows = opened.Tree!.GridTracks!.RowTracks;
+		Assert.Equal(new[] { "Pixel", "Star", "Auto" }, rows.Select(row => row.Unit));
+		Assert.Equal(2, rows[1].Value, 3);
+
+		// Fixed -> Star keeps the number; Auto -> Fixed takes the measured size, not Auto's 1.
+		var star = await client.SetGridTrackUnitAsync(1, opened.Tree.Id, isRow: true, index: 0, "Star", timeout.Token);
+		Assert.True(star.Accepted, star.Error);
+		Assert.Equal("Star", star.Tree!.GridTracks!.RowTracks[0].Unit);
+		var pixel = await client.SetGridTrackUnitAsync(1, opened.Tree.Id, isRow: true, index: 2, "Pixel", timeout.Token);
+		Assert.True(pixel.Accepted, pixel.Error);
+		var flushed = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.Contains("Height=\"40*\"", flushed, StringComparison.Ordinal);
+		Assert.Contains("Height=\"24\"", flushed, StringComparison.Ordinal);
+		Assert.DoesNotContain("Auto", flushed, StringComparison.Ordinal);
+
+		// An unchanged unit, an unknown unit and a bad index are rejected without an edit.
+		Assert.False((await client.SetGridTrackUnitAsync(1, opened.Tree.Id, isRow: true, index: 1, "Star", timeout.Token)).Accepted);
+		Assert.False((await client.SetGridTrackUnitAsync(1, opened.Tree.Id, isRow: true, index: 1, "Fixed", timeout.Token)).Accepted);
+		Assert.False((await client.SetGridTrackUnitAsync(1, opened.Tree.Id, isRow: false, index: 0, "Auto", timeout.Token)).Accepted);
+	}
 }

@@ -2141,6 +2141,44 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		/// <summary>Changes one Grid track's unit, as the in-process rail's GridUnitSelector does
+		/// (Fixed/Star/Auto). The numeric part is kept, except that leaving Auto - whose value is
+		/// a meaningless 1 - takes the track's measured size for Pixel and 1 for Star.</summary>
+		[JsonRpcMethod("design/set-grid-track-unit")]
+		public DesignerSessionState SetGridTrackUnit(long baseVersion, string elementId, bool isRow, int index, string unit)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item) || item.Component is not Grid grid)
+					return NotFound(state, "Element is not a Grid: " + elementId);
+				if (!Enum.TryParse<GridUnitType>(unit, ignoreCase: false, out var unitType) || !Enum.IsDefined(unitType))
+					return NotFound(state, "Unknown grid unit: " + unit);
+				var collection = item.Properties[isRow ? "RowDefinitions" : "ColumnDefinitions"];
+				if (index < 0 || index >= collection.CollectionElements.Count)
+					return NotFound(state, "Row/column index out of range: " + index);
+				var definition = collection.CollectionElements[index];
+				var property = definition.Properties[isRow ? RowDefinition.HeightProperty : ColumnDefinition.WidthProperty];
+				var oldLength = property.GetConvertedValueOnInstance<GridLength>();
+				if (oldLength.GridUnitType == unitType)
+					return NotFound(state, "The track already uses " + unit + ".");
+				var actual = isRow ? ((RowDefinition)definition.Component).ActualHeight : ((ColumnDefinition)definition.Component).ActualWidth;
+				var newLength = unitType switch {
+					GridUnitType.Auto => GridLength.Auto,
+					_ when !oldLength.IsAuto => new GridLength(oldLength.Value, unitType),
+					GridUnitType.Pixel => new GridLength(Math.Max(1, Math.Round(actual)), GridUnitType.Pixel),
+					_ => new GridLength(1, GridUnitType.Star)
+				};
+				try
+				{
+					property.SetValue(newLength);
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
 		/// <summary>Splits one measured Grid track at its local pixel <paramref name="position"/>.
 		/// The definition insertion and every affected attached Row/Column/Span update share one
 		/// design-model change group, so a rejected request cannot leave child indices half-shifted.
@@ -3036,10 +3074,10 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			=> new DesignerGridGuides {
 				Accepted = true,
 				RowTracks = grid.RowDefinitions
-					.Select(row => new DesignerGridTrackInfo { Offset = row.Offset, Size = row.ActualHeight })
+					.Select(row => new DesignerGridTrackInfo { Offset = row.Offset, Size = row.ActualHeight, Unit = row.Height.GridUnitType.ToString(), Value = row.Height.Value })
 					.ToList(),
 				ColumnTracks = grid.ColumnDefinitions
-					.Select(column => new DesignerGridTrackInfo { Offset = column.Offset, Size = column.ActualWidth })
+					.Select(column => new DesignerGridTrackInfo { Offset = column.Offset, Size = column.ActualWidth, Unit = column.Width.GridUnitType.ToString(), Value = column.Width.Value })
 					.ToList()
 			};
 
