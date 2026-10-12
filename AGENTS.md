@@ -31,6 +31,17 @@ intended staged paths (however many), commit only those paths, then report the n
 If no relevant test exists or cannot run, record why in the handoff; never waive approval. OpenCode
 commits; never push without the user's explicit request.
 
+Invocation (measured): review with `opencode run --agent reviewer -m opencode-go/deepseek-v4.1-flash
+--variant high --title "<unique title> <tree>" "<context>" </dev/null > out 2>&1` and commit with
+`--agent build` in the same form. `reviewer` (`~/.config/opencode/agents/reviewer.md`) is read-only
+and runs only `git diff --cached`, so put the intent and test evidence in the prompt; the default
+agent is not a reviewer. Always redirect stdin from `/dev/null`: without it `run` can hang after
+`init` with no session created (check `~/.local/share/opencode/log/opencode.log`). A review takes
+roughly 4-7 minutes and a commit about 1-2. `opencode export <id>` must go to a file before JSON
+parsing; piping it can truncate. Give the build agent the exact tree hash, path list and message.
+Chain `git add ... && git diff --cached --stat && git write-tree` before launching a review: the
+IDE can briefly hold `.git/index.lock`, and a failed stage otherwise sends an empty diff to review.
+
 ## DevFlow
 
 DevFlow uses `POST http://localhost:9299/api/v1/invoke/actions/<name>`. Parse JSON and check
