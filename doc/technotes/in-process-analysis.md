@@ -692,6 +692,16 @@ lines mark the positions a raster drag snaps to (this also corrects WinForms, wh
 previously used for snapping but not drawing). `Toolbar_SnappingControls_DriveTheDragSettingsAndPersist`
 covers the defaults, the toolbar-to-controller binding, gridline spacing and persistence.
 
+**C2 inline-editor keys (2026-10-12).** Section 2's `InPlaceEditor` contract is ported to the WPF
+inline editor through `InlineTextEditKeys`: Enter commits, Escape cancels, and Shift+Enter inserts a
+newline when the edited value is a TextBlock's `Text` (elsewhere it commits like Enter), with the
+same key hint as the in-process tooltip. The macOS journey opens the editor with a native
+double-click, holds a native Shift, and saves `Text="Line1&#xA;Line2"`. It first presses the
+toolbar Fit (new `od.designer-canvas.fit`) and requires the target inside the visible viewport,
+because a view restored from an earlier journey on the same file could leave it panned out of view.
+`CtrlPointerGestures` still fails occasionally (about 1 in 8 class runs with DevFlow 0.3.1, down from
+2 in 4) at its deselect step; that residual cause is not yet identified.
+
 **C3 zoom rounding (2026-10-12).** Section 2's `RoundToOneIfClose` is ported as
 `ZoomStepCalculator`: a Ctrl+wheel zoom step within 0.001 of 100% now lands on exactly 1.0, so
 stepping in and back out restores a 1:1 frame instead of `1.0000000000000004`. Its unit tests await

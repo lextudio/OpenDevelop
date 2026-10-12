@@ -5039,6 +5039,15 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.designer-canvas.fit", Description = "Press the active designer's toolbar Fit button, bringing the whole design frame into view")]
+		public static string FitDesignerCanvas()
+		{
+			var canvas = FindDesignerCanvas();
+			if (canvas == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No designer canvas in the active view" });
+			return JsonSerializer.Serialize(new { success = canvas.RequestFit() });
+		}
+
 		[DevFlowAction("od.designer-canvas.snapping", Description = "Set the active designer's toolbar placement controls (Snap to Raster, Raster Width, Snap to Guides) as a user click would; fails if the designer does not offer them")]
 		public static string SetDesignerCanvasSnapping(bool snapToGrid, int rasterWidth, bool snapToGuides)
 		{

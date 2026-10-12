@@ -76,6 +76,9 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			AcceptsReturn = false
 		};
 		bool textEditing;
+		/// <summary>Whether the open edit is multi-line text (a TextBlock's Text), where
+		/// Shift+Enter inserts a newline instead of committing.</summary>
+		bool textEditAcceptsNewlines;
 		Rect textEditRect;
 		string? textEditElementId;
 		string? textEditPropertyName;
@@ -538,6 +541,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				return false;
 			textEditor.SelectAll();
 			textEditor.SelectedText = text;
+			// Leave the caret after the typed text, as typing would; SelectedText keeps the
+			// replacement selected, and a following Shift+Enter would otherwise replace it.
+			textEditor.SelectionLength = 0;
+			textEditor.CaretIndex = textEditor.Text.Length;
 			textEditor.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(textEditor),
 				Environment.TickCount, cancel ? Key.Escape : Key.Enter) { RoutedEvent = Keyboard.KeyDownEvent });
 			return true;
@@ -682,6 +689,9 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			{
 				var currentValue = hitNode.Properties.First(p => p.Name == propertyName).Value;
 				BeginInlineEdit(hitNode.Id, propertyName, new Rect(hitNode.X, hitNode.Y, hitNode.Width, hitNode.Height), currentValue);
+				// The in-process InPlaceEditor offered Shift+Enter line breaks for TextBlock text.
+				textEditAcceptsNewlines = propertyName == "Text" && hitNode.Type == "TextBlock";
+				textEditor.ToolTip = textEditAcceptsNewlines ? InlineTextEditKeys.MultilineToolTip : null;
 			}
 		}
 
@@ -689,6 +699,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// <paramref name="text"/>.</summary>
 		void BeginInlineEdit(string elementId, string propertyName, Rect designRect, string? text)
 		{
+			textEditAcceptsNewlines = false;
+			textEditor.ToolTip = null;
 			textEditIsAnchored = false;
 			textEditNewItemParentId = null;
 			textEditNewItemContainerType = null;
@@ -774,15 +786,23 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 
 		void OnTextEditorKeyDown(object sender, KeyEventArgs e)
 		{
-			if (e.Key == Key.Enter)
+			switch (InlineTextEditKeys.Resolve(e.Key, Keyboard.Modifiers, textEditAcceptsNewlines))
 			{
-				EndInlineEdit(commit: true, reopenIfNewItem: true);
-				e.Handled = true;
-			}
-			else if (e.Key == Key.Escape)
-			{
-				EndInlineEdit(commit: false);
-				e.Handled = true;
+				case InlineTextEditKeyAction.Commit:
+					EndInlineEdit(commit: true, reopenIfNewItem: true);
+					e.Handled = true;
+					break;
+				case InlineTextEditKeyAction.Cancel:
+					EndInlineEdit(commit: false);
+					e.Handled = true;
+					break;
+				case InlineTextEditKeyAction.InsertNewline:
+					var caret = textEditor.SelectionStart;
+					textEditor.SelectedText = "\n";
+					textEditor.SelectionLength = 0;
+					textEditor.CaretIndex = caret + 1;
+					e.Handled = true;
+					break;
 			}
 		}
 
@@ -807,6 +827,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			var newItemContainerType = textEditNewItemContainerType;
 			var refreshContextMenuTray = textEditIsAnchored;
 			textEditing = false;
+			textEditAcceptsNewlines = false;
+			textEditor.ToolTip = null;
 			textEditIsAnchored = false;
 			textEditElementId = null;
 			textEditPropertyName = null;

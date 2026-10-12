@@ -664,6 +664,16 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// draws none.</summary>
 		public virtual double GridCellSize => 0;
 
+		/// <summary>Presses the toolbar's Fit button, as a user would; false when this canvas
+		/// does not offer Fit.</summary>
+		public bool RequestFit()
+		{
+			if (!capabilities.HasFlag(DesignerCanvasCapabilities.Fit))
+				return false;
+			fitButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+			return true;
+		}
+
 		public event EventHandler<bool> SnapToGridRequested;
 		public event EventHandler<bool> SnapToGuidesRequested;
 		public event EventHandler<int> RasterWidthRequested;

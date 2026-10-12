@@ -149,6 +149,103 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
 	}
 
     [Fact]
+    public async Task InlineEditor_ShiftEnterInsertsATextBlockLineBreak()
+    {
+        // Native held keys are implemented for macOS; the Windows strip journeys cover Enter.
+        if (!OperatingSystem.IsMacOS()) return;
+
+        // The in-process WPF InPlaceEditor contract: Enter commits, Shift+Enter inserts a newline
+        // in a TextBlock's text, Escape cancels.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Inline line break">
+              <Canvas><TextBlock x:Name="caption" Canvas.Left="30" Canvas.Top="30" Width="160" Height="60" Text="Line1" /></Canvas>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+
+            // A view restored from an earlier journey on this file can leave the TextBlock panned
+            // outside the visible canvas, where a native double-click lands on nothing. Fit first,
+            // then require the target to be inside the visible viewport.
+            Assert.True((await app.InvokeAsync("od.designer-canvas.fit")).GetProperty("success").GetBoolean());
+            JsonElement bounds = default;
+            JsonElement geometry = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                bounds = await app.InvokeAsync("od.wpf-designer.query-element-screen-bounds", "caption");
+                geometry = await app.InvokeAsync("od.wpf-designer.surface-geometry");
+                if (!bounds.GetProperty("success").GetBoolean() || !geometry.TryGetProperty("viewport", out var viewport) || viewport.ValueKind != JsonValueKind.Object)
+                    return false;
+                var cx = bounds.GetProperty("centerX").GetDouble();
+                var cy = bounds.GetProperty("centerY").GetDouble();
+                var vx = viewport.GetProperty("x").GetDouble();
+                var vy = viewport.GetProperty("y").GetDouble();
+                return cx > vx && cy > vy && cx < vx + viewport.GetProperty("width").GetDouble() && cy < vy + viewport.GetProperty("height").GetDouble();
+            }, TimeSpan.FromSeconds(5)), "The TextBlock is outside the visible canvas: " + bounds + " " + geometry);
+            // A native double-click can be lost while the window is still becoming active, or the
+            // editor can lose focus (which commits and closes it); re-activate and retry, as the
+            // other native pointer journeys do.
+            JsonElement editor = default;
+            var opened = false;
+            for (var attempt = 1; attempt <= 3 && !opened; attempt++) {
+                await app.InvokeAsync("od.activate");
+                Assert.True((await app.ClickPointerAsync(bounds.GetProperty("centerX").GetDouble(), bounds.GetProperty("centerY").GetDouble(), clickCount: 2))
+                    .GetProperty("ok").GetBoolean());
+                opened = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                    editor = await app.InvokeAsync("od.wpf-designer.inline-editor-status");
+                    return editor.GetProperty("editing").GetBoolean() && editor.GetProperty("focused").GetBoolean();
+                }, TimeSpan.FromSeconds(3));
+                if (!opened)
+                    await Task.Delay(600); // keep the next press out of the 500 ms double-click window
+            }
+            Assert.True(opened, editor.ToString());
+            Assert.Equal("Text", editor.GetProperty("propertyName").GetString());
+
+            // Shift+Enter through the editor's real key handler keeps the editor open with a newline.
+            Assert.True((await app.KeyDownAsync("shift")).GetProperty("ok").GetBoolean());
+            JsonElement shiftUp = default;
+            try {
+                Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () =>
+                    (await app.InvokeAsync("od.keyboard.modifiers")).GetProperty("shift").GetBoolean(),
+                    TimeSpan.FromSeconds(2), initialDelayMs: 50, maxDelayMs: 200), "The IDE never observed the held Shift key.");
+                Assert.True((await app.InvokeAsync("od.wpf-designer.inline-editor-input", "Line1", false)).GetProperty("success").GetBoolean());
+            } finally {
+                shiftUp = await app.KeyUpAsync("shift");
+            }
+            // The next Enter must be a plain Enter: wait until the IDE has seen the key-up.
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () =>
+                !(await app.InvokeAsync("od.keyboard.modifiers")).GetProperty("shift").GetBoolean(),
+                TimeSpan.FromSeconds(5), initialDelayMs: 50, maxDelayMs: 250), "The IDE still reports Shift held after its key-up: " + shiftUp);
+            editor = await app.InvokeAsync("od.wpf-designer.inline-editor-status");
+            Assert.True(editor.GetProperty("editing").GetBoolean(), editor.ToString());
+            Assert.Equal("Line1\n", editor.GetProperty("text").GetString());
+
+            // A plain Enter then commits the multi-line text to the TextBlock.
+            Assert.True((await app.InvokeAsync("od.wpf-designer.inline-editor-input", "Line1\nLine2", false)).GetProperty("success").GetBoolean());
+            editor = await app.InvokeAsync("od.wpf-designer.inline-editor-status");
+            Assert.False(editor.GetProperty("editing").GetBoolean(), editor.ToString());
+            var saved = await app.InvokeAsync("od.file.save", xamlPath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            Assert.Contains("Text=\"Line1&#xA;Line2\"", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
+        } finally {
+            await app.InvokeAsync("od.close-active-view");
+            await File.WriteAllTextAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task SnapshotSelection_RemainsResponsiveWhileTheWpfHostRecovers()
     {
         // OpenDevelopAppFixture selects Microsoft WPF on Windows and LibreWPF elsewhere.
