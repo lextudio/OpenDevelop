@@ -51,6 +51,8 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	public DesignerSessionState HitTestPopupAndSelect(string sessionId, string documentId, long baseVersion, string ownerElementId, int x, int y) => GetChecked(sessionId, documentId).HitTestPopupAndSelect(sessionId, documentId, baseVersion, ownerElementId, x, y);
 	[JsonRpcMethod("design/set-property")]
 	public DesignerSessionState SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value) => GetChecked(sessionId, documentId).SetProperty(sessionId, documentId, baseVersion, elementId, propertyName, value);
+	[JsonRpcMethod("design/set-items")]
+	public DesignerSessionState SetItems(string sessionId, string documentId, long baseVersion, string elementId, DesignerCollectionItemEdit[] items) => GetChecked(sessionId, documentId).SetItems(sessionId, documentId, baseVersion, elementId, items);
 	[JsonRpcMethod("design/reset-property")]
 	public DesignerSessionState ResetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName) => GetChecked(sessionId, documentId).ResetProperty(sessionId, documentId, baseVersion, elementId, propertyName);
 	[JsonRpcMethod("design/rename")]

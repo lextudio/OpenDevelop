@@ -251,6 +251,104 @@ sealed class DesignerHostService : IDesignerChildService
 		};
 	}
 
+	/// <summary>True when a ListBox/ComboBox/CheckedListBox's Items are a plain string list the
+	/// collection editor can own: no DataSource, and every item a string.</summary>
+	static bool TryGetEditableItems(IComponent component, out System.Collections.IList? items)
+	{
+		items = component switch {
+			ListBox { DataSource: null } list => list.Items,
+			ComboBox { DataSource: null } combo => combo.Items,
+			_ => null
+		};
+		return items != null && items.Cast<object?>().All(item => item is string);
+	}
+
+	/// <summary>Replaces a list control's string Items with the edited list (each entry names its
+	/// previous index or -1) and rewrites the designer source to one Items.AddRange call.</summary>
+	[JsonRpcMethod("design/set-items")]
+	public DesignerSessionState SetItems(string sessionId, string documentId, long baseVersion, string elementId, DesignerCollectionItemEdit[] items)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
+		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost
+			?? throw new InvalidOperationException("The designer surface is unavailable.");
+		var component = host.Container.Components.Cast<IComponent>()
+			.FirstOrDefault(item => String.Equals(item.Site?.Name, elementId, StringComparison.Ordinal))
+			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
+		if (!TryGetEditableItems(component, out var collection) || collection == null)
+			throw new InvalidOperationException($"{elementId}.Items is not an editable string list.");
+		items ??= Array.Empty<DesignerCollectionItemEdit>();
+		var sources = items.Where(entry => entry.SourceIndex >= 0).Select(entry => entry.SourceIndex).ToList();
+		if (sources.Any(index => index >= collection.Count) || sources.Distinct().Count() != sources.Count)
+			throw new ArgumentException("Invalid item source index.", nameof(items));
+		var texts = items.Select(entry => entry.Text ?? "").ToArray();
+		using (var transaction = host.CreateTransaction($"Edit {elementId}.Items")) {
+			collection.Clear();
+			foreach (var text in texts)
+				collection.Add(text);
+			transaction.Commit();
+		}
+		RewriteItems(elementId, texts);
+		return CurrentState(baseVersion);
+	}
+
+	/// <summary>Replaces every "&lt;id&gt;.Items.Add(...)"/"AddRange(...)" statement in
+	/// InitializeComponent with one AddRange of <paramref name="texts"/> (none when empty), at the
+	/// first replaced statement's position, else after the control's last own statement.</summary>
+	void RewriteItems(string elementId, string[] texts)
+	{
+		if (IsVisualBasic) { RewriteItemsVisualBasic(elementId, texts); return; }
+		var file = CurrentDesignerFile();
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
+			.First(item => item.Identifier.ValueText == "InitializeComponent");
+		var statements = method.Body!.Statements.ToList();
+		bool IsItemsCall(StatementSyntax statement) => statement is ExpressionStatementSyntax {
+			Expression: InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax access } }
+			&& access.Name.Identifier.ValueText is "Add" or "AddRange" && IsTargetCollectionAccess(access.Expression, elementId, "");
+		var insertAt = statements.FindIndex(IsItemsCall);
+		if (insertAt < 0) {
+			// No Items call yet: after the control's own last statement, else at the end.
+			var last = statements.FindLastIndex(statement => statement.DescendantNodes().OfType<MemberAccessExpressionSyntax>()
+				.Any(access => SimpleTargetName(access.Expression) == elementId));
+			insertAt = last >= 0 ? last + 1 : statements.Count;
+		}
+		var kept = statements.Where(statement => !IsItemsCall(statement)).ToList();
+		insertAt -= statements.Take(insertAt).Count(IsItemsCall);
+		if (texts.Length > 0) {
+			var literals = string.Join(", ", texts.Select(text => SerializeValue(text).ToString()));
+			kept.Insert(insertAt, SyntaxFactory.ParseStatement($"this.{elementId}.Items.AddRange(new object[] {{ {literals} }});"));
+		}
+		file.Text = root.ReplaceNode(method, method.WithBody(method.Body.WithStatements(SyntaxFactory.List(kept))))
+			.NormalizeWhitespace().ToFullString();
+	}
+
+	void RewriteItemsVisualBasic(string elementId, string[] texts)
+	{
+		var file = CurrentDesignerFile();
+		var root = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+		var method = root.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>().First(item =>
+			item.BlockStatement is VbSyntax.MethodStatementSyntax ms && ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+			&& ms.Identifier.ValueText == "InitializeComponent");
+		var statements = method.Statements.ToList();
+		bool IsItemsCall(VbSyntax.StatementSyntax statement) => statement is VbSyntax.ExpressionStatementSyntax {
+			Expression: VbSyntax.InvocationExpressionSyntax { Expression: VbSyntax.MemberAccessExpressionSyntax access } }
+			&& access.Name.Identifier.ValueText is "Add" or "AddRange" && IsVbTargetCollectionAccess(access.Expression, elementId, "");
+		var insertAt = statements.FindIndex(IsItemsCall);
+		if (insertAt < 0) {
+			var last = statements.FindLastIndex(statement => statement.DescendantNodes().OfType<VbSyntax.MemberAccessExpressionSyntax>()
+				.Any(access => access.Expression != null && VbSimpleTargetName(access.Expression) == elementId));
+			insertAt = last >= 0 ? last + 1 : statements.Count;
+		}
+		var kept = statements.Where(statement => !IsItemsCall(statement)).ToList();
+		insertAt -= statements.Take(insertAt).Count(IsItemsCall);
+		if (texts.Length > 0) {
+			var literals = string.Join(", ", texts.Select(text => SerializeValueVisualBasic(text).ToString()));
+			kept.Insert(insertAt, Vb.SyntaxFactory.ParseExecutableStatement($"Me.{elementId}.Items.AddRange(New Object() {{{literals}}})"));
+		}
+		file.Text = root.ReplaceNode(method, method.WithStatements(Vb.SyntaxFactory.List(kept)))
+			.NormalizeWhitespace().ToFullString();
+	}
+
 	[JsonRpcMethod("design/set-property")]
 	public DesignerSessionState SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value)
 	{
@@ -2611,6 +2709,15 @@ sealed class DesignerHostService : IDesignerChildService
 			result.Add(info);
 			if (property.PropertyType.IsEnum)
 				result[^1].AllowedValues.AddRange(Enum.GetNames(property.PropertyType));
+			if (property.Name == "Items" && TryGetEditableItems(component, out var editableItems) && editableItems != null) {
+				var texts = editableItems.Cast<string>().ToList();
+				result[^1].Kind = "Collection";
+				result[^1].EditorKind = "ItemsCollection";
+				result[^1].IsReadOnly = true;
+				result[^1].Value = "(" + texts.Count + (texts.Count == 1 ? " item)" : " items)");
+				result[^1].CollectionItems = texts;
+				result[^1].ShouldSerialize = texts.Count > 0;
+			}
 			if (referenceCandidates != null) {
 				result[^1].EditorKind = "ComponentReference";
 				result[^1].AllowedValues.Add("");

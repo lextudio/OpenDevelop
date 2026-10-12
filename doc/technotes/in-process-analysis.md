@@ -692,6 +692,17 @@ lines mark the positions a raster drag snaps to (this also corrects WinForms, wh
 previously used for snapping but not drawing). `Toolbar_SnappingControls_DriveTheDragSettingsAndPersist`
 covers the defaults, the toolbar-to-controller binding, gridline spacing and persistence.
 
+**C2 WinForms string collections, host slice (2026-10-12).** The in-process WinForms designer's most
+used collection editor - a ListBox/ComboBox/CheckedListBox `Items` string list - now has an
+out-of-process host contract under protocol **v21**. The Forms host publishes the same read-only
+`ItemsCollection` row as WPF when the control has no `DataSource` and every item is a string, and
+its optional `design/set-items` replaces the live collection in one designer transaction. Unlike WPF,
+the Forms host patches the designer source rather than re-serializing components, so the mutation
+also rewrites `InitializeComponent`: every `<id>.Items.Add/AddRange` statement is replaced by one
+`Items.AddRange(new object[] { ... })` (`New Object() {...}` in VB) at the first replaced position,
+or after the control's own last statement when the source had none; clearing removes them. The IDE
+dialog for Forms (reusing `CollectionItemsEditModel`) is the next slice.
+
 **C4 event handler generation (2026-10-12).** Double-clicking a WPF event in the Properties pad now
 matches the in-process designer (`AbstractEventHandlerService`): the XAML attribute is bound through
 `design/set-event` if the event is unhandled, then the IDE creates the method in `<file>.xaml.cs`

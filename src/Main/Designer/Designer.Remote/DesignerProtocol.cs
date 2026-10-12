@@ -20,7 +20,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		// v20 adds DesignerPropertyInfo.CollectionItems and WPF's optional design/set-items. v19 added
+		// v21 adds WinForms' optional design/set-items for list-control string Items. v20 added
+		// DesignerPropertyInfo.CollectionItems and WPF's design/set-items. v19 added
 		// design/wrap-elements and design/unwrap-element. v18 added
 		// design/set-z-order. v17 added design/set-binding-converter.
 		// v16 added
@@ -29,7 +30,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// and design/set-binding-validation-option. A stale pooled child
 		// must fail the handshake rather than reject a newly-visible binding editor after the
 		// Properties pad has already presented it.
-		public const int Version = 20;
+		public const int Version = 21;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

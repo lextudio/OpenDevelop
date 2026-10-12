@@ -85,6 +85,111 @@ public sealed class FormsDesignerHostClientTests
 				"../../../../Host.Tests/CustomControl/bin/Debug/net10.0-windows/FormsDesigner.CustomControlFixture.dll"));
 		#endif
 
+	[Fact]
+	public async Task ChildHost_EditsListControlStringItemsAsOneAddRange()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				this.combo = new System.Windows.Forms.ComboBox();
+				        this.combo.Location = new System.Drawing.Point(12, 60);
+				        this.combo.Items.AddRange(new object[] { "One", "Two" });
+				        this.mixed = new System.Windows.Forms.ListBox();
+				        this.mixed.Items.Add(42);
+				        this.empty = new System.Windows.Forms.ListBox();
+				        this.empty.Location = new System.Drawing.Point(12, 120);
+				        this.Controls.Add(this.button1);
+				        this.Controls.Add(this.combo);
+				        this.Controls.Add(this.mixed);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.ComboBox combo;\n    private System.Windows.Forms.ListBox mixed;\n    private System.Windows.Forms.ListBox empty;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo? Items(DesignerSessionState state, string name)
+			=> state.Components.Single(component => component.Name == name).Properties.SingleOrDefault(property => property.EditorKind == "ItemsCollection");
+		var row = Items(opened, "combo")!;
+		Assert.Equal(new[] { "One", "Two" }, row.CollectionItems);
+		Assert.True(row.IsReadOnly);
+		// An item that is not a string keeps the list non-editable.
+		Assert.Null(Items(opened, "mixed"));
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetItemsAsync(1, "mixed", new[] { new DesignerCollectionItemEdit { Text = "X" } }, timeout.Token));
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetItemsAsync(1, "combo", new[] { new DesignerCollectionItemEdit { SourceIndex = 9, Text = "X" } }, timeout.Token));
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetItemsAsync(1, "combo", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "A" }, new DesignerCollectionItemEdit { SourceIndex = 0, Text = "B" } }, timeout.Token));
+
+		// A control with no Items call yet gets its AddRange right after its own last statement.
+		Assert.Empty(Items(opened, "empty")!.CollectionItems);
+		var first = await client.SetItemsAsync(1, "empty", new[] { new DesignerCollectionItemEdit { Text = "Only" } }, timeout.Token);
+		Assert.True(first.Accepted, first.Error);
+		var firstText = DesignerText(await client.FlushAsync(1, timeout.Token));
+		var emptyLocation = firstText.IndexOf("empty.Location", StringComparison.Ordinal);
+		var emptyAddRange = firstText.IndexOf("empty.Items.AddRange(new object[] { \"Only\" });", StringComparison.Ordinal);
+		Assert.True(emptyLocation >= 0 && emptyAddRange > emptyLocation, firstText);
+		Assert.True(emptyAddRange < firstText.IndexOf("Controls.Add(button1)", StringComparison.Ordinal)
+			|| emptyAddRange < firstText.IndexOf("Controls.Add(this.button1)", StringComparison.Ordinal), firstText);
+
+		var edited = await client.SetItemsAsync(1, "combo", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "Two!" },
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "One" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "Say \"hi\"" }
+		}, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		Assert.Equal(new[] { "Two!", "One", "Say \"hi\"" }, Items(edited, "combo")!.CollectionItems);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(text, @"combo\.Items\.(Add|AddRange)\("));
+		Assert.Contains("combo.Items.AddRange(new object[] { \"Two!\", \"One\", \"Say \\\"hi\\\"\" });", text, StringComparison.Ordinal);
+		// The replacement keeps the original AddRange's place: after combo's Location, before the
+		// Controls.Add block, not appended at the end of InitializeComponent.
+		var comboAddRange = text.IndexOf("combo.Items.AddRange", StringComparison.Ordinal);
+		Assert.True(comboAddRange > text.IndexOf("combo.Location", StringComparison.Ordinal), text);
+		Assert.True(comboAddRange < text.IndexOf("mixed = new", StringComparison.Ordinal), text);
+		// The rewritten source loads back to the same list.
+		var reloadSnapshot = Snapshot(2, "button1");
+		reloadSnapshot.Files.Single(item => item.Kind == "Designer").Text = text;
+		var reopened = await client.UpdateAsync(reloadSnapshot, timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error);
+		Assert.Equal(new[] { "Two!", "One", "Say \"hi\"" }, Items(reopened, "combo")!.CollectionItems);
+
+		var cleared = await client.SetItemsAsync(2, "combo", Array.Empty<DesignerCollectionItemEdit>(), timeout.Token);
+		Assert.True(cleared.Accepted, cleared.Error);
+		Assert.DoesNotContain("combo.Items", DesignerText(await client.FlushAsync(2, timeout.Token)), StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task ChildHost_EditsVisualBasicListItemsAsOneAddRange()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = VbSnapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("Me.Controls.Add(Me.button1)", """
+				Me.list = New System.Windows.Forms.ListBox()
+				        Me.list.Items.Add("A")
+				        Me.list.Items.Add("B")
+				        Me.Controls.Add(Me.button1)
+				        Me.Controls.Add(Me.list)
+				""", StringComparison.Ordinal)
+			.Replace("Friend WithEvents button1 As System.Windows.Forms.Button",
+				"Friend WithEvents button1 As System.Windows.Forms.Button\n    Friend WithEvents list As System.Windows.Forms.ListBox", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		Assert.Equal(new[] { "A", "B" }, opened.Components.Single(component => component.Name == "list").Properties
+			.Single(property => property.EditorKind == "ItemsCollection").CollectionItems);
+		var edited = await client.SetItemsAsync(1, "list", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "B" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "C \"q\"" }
+		}, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(text, @"list\.Items\.(Add|AddRange)\("));
+		Assert.Contains("list.Items.AddRange(New Object() {\"B\", \"C \"\"q\"\"\"})", text, StringComparison.Ordinal);
+	}
+
 	/// <summary>
 	/// Regression test: a designer file that references an enum member through its fully-qualified
 	/// static path - "System.Drawing.FontStyle.Bold", the style VS/OpenDevelop's own generator and

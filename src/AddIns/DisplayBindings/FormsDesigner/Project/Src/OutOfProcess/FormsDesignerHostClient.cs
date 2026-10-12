@@ -194,6 +194,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public Task<DesignerSessionState> SetPropertyAsync(long baseVersion, string elementId, string propertyName, string value, CancellationToken cancellationToken)
 			=> TrackMutationAsync(Document.SetPropertyAsync(baseVersion, elementId, propertyName, value, cancellationToken), cancellationToken);
 
+		/// <summary>Replaces a list control's string Items (<c>design/set-items</c>).</summary>
+		public Task<DesignerSessionState> SetItemsAsync(long baseVersion, string elementId, IReadOnlyList<DesignerCollectionItemEdit> items, CancellationToken cancellationToken)
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-items", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, items }, cancellationToken), cancellationToken);
+
 		public Task<DesignerSessionState> ResetPropertyAsync(long baseVersion, string elementId, string propertyName, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/reset-property", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName }, cancellationToken), cancellationToken);
 
