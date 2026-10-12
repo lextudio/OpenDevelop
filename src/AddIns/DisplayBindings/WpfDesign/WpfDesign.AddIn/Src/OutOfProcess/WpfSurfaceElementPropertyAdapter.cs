@@ -24,7 +24,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 	/// this codebase) and the result is handed back through <paramref name="onStateChanged"/> so
 	/// the caller can refresh the surface/tree the same way a mutation RPC always does.
 	/// </summary>
-	public sealed class WpfSurfaceElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost
+	public sealed class WpfSurfaceElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IItemsCollectionEditorHost
 	{
 		readonly WpfSurfaceHostClient client;
 		readonly Func<long> currentBaseVersion;
@@ -116,6 +116,17 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		{
 			var state = client.SetBindingTextOptionAsync(currentBaseVersion(), node.Id, propertyName, optionName, value)
 				.GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
+		/// <summary>Commits an edited plain item list (<c>design/set-items</c>); the property is the
+		/// host-published ItemsCollection row, so only this element's Items can be targeted.</summary>
+		void IItemsCollectionEditorHost.SetItems(string propertyName, System.Collections.Generic.IReadOnlyList<DesignerCollectionItemEdit> items)
+		{
+			if (!node.Properties.Any(property => property.Name == propertyName && property.EditorKind == "ItemsCollection"))
+				throw new InvalidOperationException("Not an editable items collection: " + propertyName);
+			var state = client.SetItemsAsync(currentBaseVersion(), node.Id, items).GetAwaiter().GetResult();
 			EnsureAccepted(state);
 			onStateChanged(state);
 		}
@@ -221,7 +232,7 @@ sealed class WpfSurfaceEventDescriptor : EventDescriptor, IPropertyGridEventType
 	}
 }
 
-sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor
+sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollectionProperty
 	{
 		readonly WpfSurfaceElementPropertyAdapter owner;
 		readonly DesignerPropertyInfo property;
@@ -269,6 +280,9 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor
 			// This is the same PropertyDescriptor pattern used by the GTK designer.
 			if (property.Kind == "Enum" && property.AllowedValues.Count > 0)
 				attributes.Add(new TypeConverterAttribute(typeof(WpfDesignerEnumConverter)));
+			// The row stays read-only to generic editing; the "…" editor commits the whole list.
+			if (property.EditorKind == "ItemsCollection")
+				attributes.Add(new EditorAttribute(typeof(WpfItemsCollectionEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 			return attributes.ToArray();
 		}
 
@@ -279,6 +293,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor
 			=> DesignerPropertySemantics.IsReadOnly(property);
 
 		internal System.Collections.Generic.IReadOnlyList<string> AllowedValues => property.AllowedValues;
+
+		System.Collections.Generic.IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => property.CollectionItems;
 
 		public override Type ComponentType => typeof(WpfSurfaceElementPropertyAdapter);
 		public override string DisplayName => string.IsNullOrEmpty(property.DisplayName) ? property.Name : property.DisplayName;

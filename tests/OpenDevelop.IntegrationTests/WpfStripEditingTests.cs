@@ -346,6 +346,74 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
+    public async Task PropertiesPad_ItemsEditorEditsAListBoxsItems()
+    {
+        // The in-process CollectionEditor role for plain list items: the Items row's "…" button opens
+        // the IDE dialog, and its result is one document edit.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Items editor">
+              <Grid>
+                <ListBox x:Name="list">
+                  <ListBoxItem x:Name="one" Content="One" />
+                  <ListBoxItem Content="Two" />
+                </ListBox>
+              </Grid>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            JsonElement selected = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                selected = await app.InvokeAsync("od.wpf-designer.select", "list");
+                return selected.GetProperty("success").GetBoolean()
+                    && selected.GetProperty("propertiesPadSelectedName").GetString() == "list";
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), selected.ToString());
+
+            // Cancelling the dialog makes no document edit.
+            var cancelled = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-items", "Items", "rename:0:Ignored;cancel");
+            Assert.True(cancelled.GetProperty("success").GetBoolean(), cancelled.ToString());
+            Assert.False(cancelled.GetProperty("committed").GetBoolean(), cancelled.ToString());
+            Assert.False((await app.InvokeAsync("od.wpf-designer.status")).GetProperty("canUndo").GetBoolean());
+            // Moving an item down and back up is not a change, so nothing is committed.
+            var noChange = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-items", "Items", "down:0;up:1");
+            Assert.True(noChange.GetProperty("success").GetBoolean(), noChange.ToString());
+            Assert.False(noChange.GetProperty("committed").GetBoolean(), noChange.ToString());
+            Assert.False((await app.InvokeAsync("od.wpf-designer.status")).GetProperty("canUndo").GetBoolean());
+
+            var edited = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-items", "Items", "down:0;rename:1:One!;add:1:Three");
+            Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+            Assert.Equal(new[] { "One", "Two" }, edited.GetProperty("before").EnumerateArray().Select(item => item.GetString()));
+            Assert.Equal(new[] { "Two", "One!", "Three" }, edited.GetProperty("after").EnumerateArray().Select(item => item.GetString()));
+            var saved = await app.InvokeAsync("od.file.save", xamlPath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var text = await File.ReadAllTextAsync(xamlPath);
+            Assert.True(text.IndexOf("Content=\"Two\"", StringComparison.Ordinal) < text.IndexOf("x:Name=\"one\"", StringComparison.Ordinal), text);
+            Assert.Contains("Content=\"One!\"", text, StringComparison.Ordinal);
+            Assert.True(text.IndexOf("x:Name=\"one\"", StringComparison.Ordinal) < text.IndexOf("Three", StringComparison.Ordinal), text);
+            // One dialog commit is one undo step.
+            var undo = await app.InvokeAsync("od.wpf-designer.undo");
+            Assert.True(undo.GetProperty("success").GetBoolean(), undo.ToString());
+            Assert.False(undo.GetProperty("canUndo").GetBoolean(), undo.ToString());
+        } finally {
+            await app.InvokeAsync("od.close-active-view");
+            await File.WriteAllTextAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task SnapshotSelection_RemainsResponsiveWhileTheWpfHostRecovers()
     {
         // OpenDevelopAppFixture selects Microsoft WPF on Windows and LibreWPF elsewhere.

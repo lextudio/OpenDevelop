@@ -700,7 +700,12 @@ read-only `Items` row (EditorKind `ItemsCollection`, Kind `Collection`) only whe
 `ListViewItem`) holding plain text or nothing; anything else stays non-editable. `design/set-items`
 takes the whole edited list, each entry naming its previous index (or -1 for a new container), so
 moved items keep their `x:Name` and other attributes, omitted items are removed, and the change is
-one undo group. The IDE dialog behind an `ItemsCollection` row is slice 2. Edit Style (the
+one undo group. **Slice 2:** the WPF Properties-pad descriptor attaches an Xceed `ITypeEditor` to an
+`ItemsCollection` row (the WinForms `ResourceImage` pattern): the row shows the item count and a
+"…" button opening an IDE dialog (add, remove, move up/down, rename) over the framework-neutral
+`CollectionItemsEditModel`, which tracks each entry's original index and commits only a changed
+list, as one undoable `design/set-items`. `od.wpf-designer.properties-pad.edit-items` clicks the real
+button and applies an edit script to the same model in place of the modal window. Edit Style (the
 remaining in-process context command) is deferred: it would serialize the child runtime's default
 theme style, which under LibreWPF is not the Microsoft theme the project ships with.
 
