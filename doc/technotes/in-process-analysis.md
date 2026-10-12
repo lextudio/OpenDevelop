@@ -700,8 +700,12 @@ its optional `design/set-items` replaces the live collection in one designer tra
 the Forms host patches the designer source rather than re-serializing components, so the mutation
 also rewrites `InitializeComponent`: every `<id>.Items.Add/AddRange` statement is replaced by one
 `Items.AddRange(new object[] { ... })` (`New Object() {...}` in VB) at the first replaced position,
-or after the control's own last statement when the source had none; clearing removes them. The IDE
-dialog for Forms (reusing `CollectionItemsEditModel`) is the next slice.
+or after the control's own last statement when the source had none; clearing removes them.
+**IDE slice:** the dialog, its edit script and the commit rule moved out of the WPF add-in into
+`Designer.Presentation` (`CollectionItemsEditing`, `IItemsCollectionEditorHost`), so the WPF and Forms
+`ITypeEditor`s are thin shims over one implementation. The Forms Properties-pad proxy attaches the
+editor to an `ItemsCollection` row and commits through `design/set-items` as one designer undo step;
+`od.forms-designer.properties-pad.edit-items` drives the real row button with the shared script.
 
 **C4 event handler generation (2026-10-12).** Double-clicking a WPF event in the Properties pad now
 matches the in-process designer (`AbstractEventHandlerService`): the XAML attribute is bound through

@@ -621,6 +621,26 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.forms-designer.properties-pad.edit-items", Description = "Click a ListBox/ComboBox Items row's real \"…\" button and apply an edit script to the collection dialog's model instead of the modal dialog: ';'-separated add:<afterIndex>:<text>, remove:<i>, up:<i>, down:<i>, rename:<i>:<text>, or 'cancel'")]
+		public static string EditItemsThroughPropertiesPad(string propertyName, string script)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent?.IsRemoteDesignerLoaded != true)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			var grid = PropertyPadGrid;
+			if (grid?.SelectedObject == null)
+				return Failure("Properties pad has no selected WinForms design item");
+			var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(candidate => candidate.PropertyName == propertyName);
+			var button = (item?.Editor as DockPanel)?.Children.OfType<Button>()
+				.FirstOrDefault(candidate => candidate.Name == FormsItemsCollectionEditor.EditButtonName);
+			if (button == null || !button.IsEnabled)
+				return Failure("Properties pad did not render an enabled items editor button: " + propertyName);
+			var result = CollectionItemsEditing.RunScriptedEdit(button, script);
+			return result.Success
+				? JsonSerializer.Serialize(new { success = true, selectedName = viewContent.RemoteDesignerSelectedComponent, before = result.Before, after = result.After, committed = result.Committed })
+				: Failure(result.Error ?? "Items edit failed");
+		}
+
 		[DevFlowAction("od.forms-designer.properties-pad.replace-resource-image", Description = "Replace a supported image resource through the selected real Properties-pad descriptor; this drives the IDE-owned resource transaction, not a child-host write RPC")]
 		public static string ReplaceResourceImageThroughPropertiesPad(string propertyName, string base64ImageBytes)
 		{

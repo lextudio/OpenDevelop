@@ -3867,6 +3867,55 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
+    public async Task WinFormsDesigner_ItemsEditorWritesOneItemsAddRange()
+    {
+        // The in-process WinForms string collection editor: a ComboBox's Items row "…" button edits
+        // the list, and the result lands in Form1.Designer.cs as one Items.AddRange.
+        var formCodePath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.cs");
+        var designerPath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.Designer.cs");
+        // Bytes, not text, so the tracked sample's encoding (BOM) is restored exactly.
+        var originalForm = await File.ReadAllBytesAsync(formCodePath);
+        var originalDesigner = await File.ReadAllBytesAsync(designerPath);
+        try {
+            await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath);
+            await _app.InvokeAsync("od.open-file", formCodePath);
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await _app.InvokeAsync("od.forms-designer.status");
+                return status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000), "The WinForms designer did not load. Status: " + status);
+
+            var added = await _app.InvokeAsync("od.forms-designer.add-control", "Form1", "System.Windows.Forms.ComboBox", "combo1", 30, 30);
+            Assert.True(added.GetProperty("success").GetBoolean(), added.ToString());
+            JsonElement edited = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                await _app.InvokeAsync("od.forms-designer.select", "combo1");
+                edited = await _app.InvokeAsync("od.forms-designer.properties-pad.edit-items", "Items", "add:-1:One;add:0:Two;rename:0:Uno");
+                return edited.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 300), "Editing combo1.Items through the Properties pad failed: " + edited);
+            Assert.Equal("combo1", edited.GetProperty("selectedName").GetString());
+            Assert.True(edited.GetProperty("committed").GetBoolean(), edited.ToString());
+            Assert.Equal(new[] { "Uno", "Two" }, edited.GetProperty("after").EnumerateArray().Select(item => item.GetString()));
+
+            var saved = await _app.InvokeAsync("od.file.save", formCodePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var savedDesigner = await File.ReadAllTextAsync(designerPath);
+            Assert.Contains("combo1.Items.AddRange(new object[] { \"Uno\", \"Two\" });", savedDesigner, StringComparison.Ordinal);
+
+            // One dialog commit is one designer undo step.
+            var undone = await _app.InvokeAsync("od.forms-designer.undo");
+            Assert.True(undone.GetProperty("success").GetBoolean(), undone.ToString());
+            saved = await _app.InvokeAsync("od.file.save", formCodePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            Assert.DoesNotContain("combo1.Items", await File.ReadAllTextAsync(designerPath), StringComparison.Ordinal);
+        } finally {
+            await _app.InvokeAsync("od.close-all-document-views");
+            await File.WriteAllBytesAsync(formCodePath, originalForm);
+            await File.WriteAllBytesAsync(designerPath, originalDesigner);
+        }
+    }
+
+    [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
     public async Task WinFormsDesigner_MultiSelectAlignNudgeUndoRedo_LandAsDesignerEdits()
     {
         // The out-of-process WinForms designer now exposes the same editing surface as the

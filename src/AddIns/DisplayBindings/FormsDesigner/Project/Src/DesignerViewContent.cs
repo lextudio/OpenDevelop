@@ -132,6 +132,15 @@ namespace ICSharpCode.FormsDesigner
 				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
 		}
 
+		/// <summary>Replaces a list control's string Items through the host's design/set-items, as
+		/// one undoable designer edit.</summary>
+		internal void SetRemoteItems(string componentName, IReadOnlyList<DesignerCollectionItemEdit> items)
+		{
+			EnsureRemoteDesignerLoaded();
+			ExecuteRemoteEdit(() => remoteClient.SetItemsAsync(remoteDocumentVersion, componentName, items,
+				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+		}
+
 		internal void ResetRemoteProperty(string componentName, string propertyName)
 		{
 			EnsureRemoteDesignerLoaded();
@@ -1926,7 +1935,7 @@ namespace ICSharpCode.FormsDesigner
 			return component;
 		}
 
-		sealed class RemoteComponentPropertyProxy : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IResourceImageEditorHost
+		sealed class RemoteComponentPropertyProxy : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IResourceImageEditorHost, IItemsCollectionEditorHost
 		{
 			readonly FormsDesignerViewContent owner;
 			string name;
@@ -2023,6 +2032,14 @@ namespace ICSharpCode.FormsDesigner
 				remoteEvent.Handler = handlerName;
 			}
 
+			void IItemsCollectionEditorHost.SetItems(string propertyName, IReadOnlyList<DesignerCollectionItemEdit> items)
+			{
+				if (!remoteProperties.Any(item => String.Equals(item.Name, propertyName, StringComparison.Ordinal)
+					&& String.Equals(item.EditorKind, "ItemsCollection", StringComparison.Ordinal)))
+					throw new InvalidOperationException("This property is not an editable items collection.");
+				owner.SetRemoteItems(name, items);
+			}
+
 			void IResourceImageEditorHost.ReplaceResourceImage(string propertyName, byte[] imageBytes)
 			{
 				var imageProperty = remoteProperties.SingleOrDefault(item => String.Equals(item.Name, propertyName, StringComparison.Ordinal)
@@ -2095,7 +2112,7 @@ namespace ICSharpCode.FormsDesigner
 			}
 		}
 
-		sealed class RemotePropertyDescriptor : PropertyDescriptor, IResourceImageProperty
+		sealed class RemotePropertyDescriptor : PropertyDescriptor, IResourceImageProperty, IItemsCollectionProperty
 		{
 			readonly FormsDesignerViewContent owner;
 			readonly string componentName;
@@ -2123,6 +2140,9 @@ namespace ICSharpCode.FormsDesigner
 					attributes.Add(new TypeConverterAttribute(typeof(RemoteEnumConverter)));
 				if (String.Equals(property.EditorKind, "ResourceImage", StringComparison.Ordinal))
 					attributes.Add(new EditorAttribute(typeof(ResourceImagePropertyEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
+				// Read-only to generic editing; the "…" editor commits the whole list.
+				if (String.Equals(property.EditorKind, "ItemsCollection", StringComparison.Ordinal))
+					attributes.Add(new EditorAttribute(typeof(FormsItemsCollectionEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 				return attributes.ToArray();
 			}
 
@@ -2135,6 +2155,7 @@ namespace ICSharpCode.FormsDesigner
 
 			internal IReadOnlyList<string> AllowedValues => property.AllowedValues;
 			string IResourceImageProperty.EditorKind => property.EditorKind;
+			IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => property.CollectionItems;
 			string IResourceImageProperty.TypeName => property.TypeName;
 			string IResourceImageProperty.ResourceFileName => property.ResourceFileName;
 			string IResourceImageProperty.ResourceKey => property.ResourceKey;

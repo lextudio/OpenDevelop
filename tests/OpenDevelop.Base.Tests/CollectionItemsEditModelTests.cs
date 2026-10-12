@@ -71,3 +71,24 @@ public sealed class CollectionItemsEditModelTests
 		Assert.False(model.IsChanged);
 	}
 }
+
+public sealed class CollectionItemsEditingScriptTests
+{
+	[Fact]
+	public void AScriptAppliesEachStepInOrder()
+	{
+		var model = new CollectionItemsEditModel(new[] { "A", "B" });
+		Assert.True(CollectionItemsEditing.ApplyScript(model, "down:0;rename:1:A!;add:1:C:with:colons"));
+		Assert.Equal(new[] { "B", "A!", "C:with:colons" }, model.Entries.Select(entry => entry.Text));
+	}
+
+	[Fact]
+	public void CancelStopsAndRejectedOrUnknownStepsThrow()
+	{
+		var model = new CollectionItemsEditModel(new[] { "A" });
+		Assert.False(CollectionItemsEditing.ApplyScript(model, "rename:0:X;cancel;rename:0:Y"));
+		Assert.Equal("X", model.Entries[0].Text);
+		Assert.Throws<System.ArgumentException>(() => CollectionItemsEditing.ApplyScript(model, "up:0"));
+		Assert.Throws<System.ArgumentException>(() => CollectionItemsEditing.ApplyScript(model, "shuffle:0"));
+	}
+}

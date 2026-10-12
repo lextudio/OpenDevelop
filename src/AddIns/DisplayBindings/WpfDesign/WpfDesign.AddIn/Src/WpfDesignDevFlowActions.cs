@@ -711,42 +711,10 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				.FirstOrDefault(candidate => candidate.Name == WpfItemsCollectionEditor.EditButtonName);
 			if (button == null || !button.IsEnabled)
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad did not render an enabled items editor button: " + propertyName });
-			string[]? before = null;
-			string[]? after = null;
-			var committed = false;
-			WpfItemsCollectionEditor.TestException = null;
-			WpfItemsCollectionEditor.TestEdit = model => {
-				before = model.Entries.Select(entry => entry.Text).ToArray();
-				foreach (var step in script.Split(';', StringSplitOptions.RemoveEmptyEntries)) {
-					var parts = step.Split(':', 3);
-					var index = parts.Length > 1 && int.TryParse(parts[1], out var parsed) ? parsed : -1;
-					var ok = parts[0] switch {
-						"cancel" => false,
-						"add" => model.Add(parts.Length > 2 ? parts[2] : "", index) >= 0,
-						"remove" => model.Remove(index),
-						"up" => model.MoveUp(index),
-						"down" => model.MoveDown(index),
-						"rename" => model.Rename(index, parts.Length > 2 ? parts[2] : ""),
-						_ => throw new ArgumentException("Unknown items edit step: " + step)
-					};
-					if (!ok && parts[0] == "cancel")
-						return false;
-					if (!ok)
-						throw new ArgumentException("Items edit step was rejected: " + step);
-				}
-				after = model.Entries.Select(entry => entry.Text).ToArray();
-				// The editor commits only an accepted AND changed list; report that decision.
-				committed = model.IsChanged;
-				return true;
-			};
-			try {
-				button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-			} finally {
-				WpfItemsCollectionEditor.TestEdit = null;
-			}
-			if (WpfItemsCollectionEditor.TestException != null)
-				return JsonSerializer.Serialize(new { success = false, error = WpfItemsCollectionEditor.TestException.Message });
-			return JsonSerializer.Serialize(new { success = true, before, after, committed });
+			var result = CollectionItemsEditing.RunScriptedEdit(button, script);
+			return result.Success
+				? JsonSerializer.Serialize(new { success = true, before = result.Before, after = result.After, committed = result.Committed })
+				: JsonSerializer.Serialize(new { success = false, error = result.Error });
 		}
 
 		[DevFlowAction("od.wpf-designer.properties-pad.bind-event", Description = "Double-click a WPF event through the live Properties pad adapter: binds the XAML handler attribute if unhandled, then the IDE creates (or finds) the method in the code-behind and opens it. The isolated host never touches project code")]
