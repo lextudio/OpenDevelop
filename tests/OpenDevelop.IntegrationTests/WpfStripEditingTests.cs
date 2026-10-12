@@ -313,6 +313,32 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             var restored = await File.ReadAllTextAsync(xamlPath);
             Assert.DoesNotContain("<Grid", restored, StringComparison.Ordinal);
             Assert.Contains("x:Name=\"first\"", restored, StringComparison.Ordinal);
+
+            // A single element wrapped in a Viewbox keeps its place in the child order; undo restores
+            // the document exactly and redo re-applies the wrap in the same position.
+            await app.InvokeAsync("od.file.save", xamlPath);
+            var beforeWrap = await File.ReadAllTextAsync(xamlPath);
+            // Wrap the element that comes FIRST, so a container appended at the end would show.
+            var firstName = beforeWrap.IndexOf("x:Name=\"second\"", StringComparison.Ordinal) < beforeWrap.IndexOf("x:Name=\"first\"", StringComparison.Ordinal) ? "second" : "first";
+            var otherName = firstName == "first" ? "second" : "first";
+            bool ViewboxKeepsWrappedPosition(string text)
+                => text.Contains("<Viewbox", StringComparison.Ordinal)
+                    && text.IndexOf("<Viewbox", StringComparison.Ordinal) < text.IndexOf("x:Name=\"" + otherName + "\"", StringComparison.Ordinal);
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", firstName)).GetProperty("success").GetBoolean());
+            var viewbox = await app.InvokeAsync("od.wpf-designer.context-command", "wrap-Viewbox");
+            Assert.True(viewbox.GetProperty("success").GetBoolean(), viewbox.ToString());
+            await app.InvokeAsync("od.file.save", xamlPath);
+            var wrappedText = await File.ReadAllTextAsync(xamlPath);
+            Assert.True(ViewboxKeepsWrappedPosition(wrappedText), wrappedText);
+            var undo = await app.InvokeAsync("od.wpf-designer.undo");
+            Assert.True(undo.GetProperty("success").GetBoolean(), undo.ToString());
+            await app.InvokeAsync("od.file.save", xamlPath);
+            Assert.Equal(beforeWrap, await File.ReadAllTextAsync(xamlPath));
+            var redo = await app.InvokeAsync("od.wpf-designer.redo");
+            Assert.True(redo.GetProperty("success").GetBoolean(), redo.ToString());
+            await app.InvokeAsync("od.file.save", xamlPath);
+            var redoneText = await File.ReadAllTextAsync(xamlPath);
+            Assert.True(ViewboxKeepsWrappedPosition(redoneText), redoneText);
         } finally {
             await app.InvokeAsync("od.close-active-view");
             await File.WriteAllTextAsync(xamlPath, originalXaml);
