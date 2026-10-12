@@ -707,6 +707,25 @@ or after the control's own last statement when the source had none; clearing rem
 editor to an `ItemsCollection` row and commits through `design/set-items` as one designer undo step;
 `od.forms-designer.properties-pad.edit-items` drives the real row button with the shared script.
 
+**C2 brush editor (2026-10-12).** In-process WPF had DDP's BrushEditor (solid/linear/radial with
+stops); the OOP host published any element-syntax brush - every gradient - as a read-only
+`Reference`, so a gradient could be neither edited nor created. The editor is modelled on Visual
+Studio/Blend's: brush-kind tabs (No brush, Solid, Gradient), a gradient slider whose stops are added
+by clicking, moved by dragging and removed by dragging off, linear/radial, reverse and the selected
+stop's offset, one color editor (saturation/value field, hue slider, R/G/B/A, hex, initial/current
+chips) for the solid color or the selected stop, and an advanced section (opacity, start/end or
+center/origin/radii, mapping mode, spread method). **Host slice:** protocol **v23** adds
+`DesignerPropertyInfo.Brush` (`DesignerBrushInfo` with those settings and its stops) and optional
+`design/set-brush`. The host describes a brush only when the editor can round-trip it - a transform
+or non-default color interpolation keeps it a read-only reference - also for an attribute-text,
+unset (its effective value) or `{x:Null}` brush, and writes only non-default settings (a solid as
+attribute text, "No brush" as `{x:Null}`, a gradient as a property element) in one change group.
+**IDE slice:** `BrushEditModel`/`BrushEditing`/`BrushEditorDialog` live in `Designer.Presentation`
+beside the items editor; the WPF row (`WpfBrushEditor`) shows a swatch and a "…" button and commits
+through `IBrushEditorHost`. `od.wpf-designer.properties-pad.edit-brush` drives the real button with
+an edit script. Not yet: the eyedropper, color/brush resources tabs, tile brushes, other color
+spaces, and the on-canvas gradient and brush-transform tools.
+
 **C4 WinForms Toolbox components (2026-10-12).** The WinForms Toolbox catalog lists Timer, ToolTip,
 ImageList, ErrorProvider, BackgroundWorker and the other non-visual components, but the child's
 `design/add-element` resolved only `Control` types, so dropping any of them failed with

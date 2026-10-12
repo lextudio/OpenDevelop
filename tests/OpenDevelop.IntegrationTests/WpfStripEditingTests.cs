@@ -794,6 +794,70 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
+    public async Task PropertiesPad_BrushEditorWritesAGradientAndNoBrush()
+    {
+        // Visual Studio's brush editor: a solid Background becomes a linear gradient, then "No brush"
+        // ({x:Null}); each commit is one undo step.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllBytesAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Brushes">
+              <Grid><Button x:Name="painted" Background="Red" Content="Painted" /></Grid>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            JsonElement selected = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                selected = await app.InvokeAsync("od.wpf-designer.select", "painted");
+                return selected.GetProperty("success").GetBoolean()
+                    && selected.GetProperty("propertiesPadSelectedName").GetString() == "painted";
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), selected.ToString());
+
+            var gradient = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-brush", "Background", "kind:LinearGradient;select:1;color:#FF0000FF");
+            Assert.True(gradient.GetProperty("success").GetBoolean(), gradient.ToString());
+            Assert.True(gradient.GetProperty("committed").GetBoolean(), gradient.ToString());
+            Assert.Equal("Solid", gradient.GetProperty("before").GetProperty("Kind").GetString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var text = await File.ReadAllTextAsync(xamlPath);
+            Assert.Contains("<LinearGradientBrush", text, StringComparison.Ordinal);
+            Assert.Contains("Color=\"#FF0000FF\"", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("Background=\"Red\"", text, StringComparison.Ordinal);
+
+            // The rebuilt row now opens the editor on the gradient; cancel commits nothing.
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "painted")).GetProperty("success").GetBoolean());
+            var cancelled = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-brush", "Background", "reverse;cancel");
+            Assert.True(cancelled.GetProperty("success").GetBoolean(), cancelled.ToString());
+            Assert.False(cancelled.GetProperty("committed").GetBoolean());
+            Assert.Equal("LinearGradient", cancelled.GetProperty("before").GetProperty("Kind").GetString());
+
+            var none = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-brush", "Background", "kind:Null");
+            Assert.True(none.GetProperty("success").GetBoolean(), none.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            Assert.Contains("Background=\"{x:Null}\"", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
+
+            var undo = await app.InvokeAsync("od.wpf-designer.undo");
+            Assert.True(undo.GetProperty("success").GetBoolean(), undo.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            Assert.Equal(text, await File.ReadAllTextAsync(xamlPath));
+        } finally {
+            await app.InvokeAsync("od.close-all-document-views");
+            await File.WriteAllBytesAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task PropertiesPad_EditsAndResetsTheParentGridsAttachedRow()
     {
         // The in-process Properties pad lists the parent panel's attached layout properties.

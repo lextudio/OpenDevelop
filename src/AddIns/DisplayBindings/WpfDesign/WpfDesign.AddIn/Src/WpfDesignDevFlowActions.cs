@@ -717,6 +717,23 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				: JsonSerializer.Serialize(new { success = false, error = result.Error });
 		}
 
+		[DevFlowAction("od.wpf-designer.properties-pad.edit-brush", Description = "Click a Brush row's real \"…\" button and apply an edit script to the brush editor's model instead of the modal dialog: ';'-separated kind:<Null|Solid|LinearGradient|RadialGradient>, color:<color>, add:<offset>, select:<i>, offset:<i>:<offset>, remove:<i>, reverse, opacity:<0-1>, start/end/center/origin/radius:x,y, mapping:<mode>, spread:<method>, or 'cancel'")]
+		public static string EditBrushThroughPropertiesPad(string propertyName, string script)
+		{
+			var grid = PropertyPadGrid;
+			if (grid?.SelectedObject is not WpfSurfaceElementPropertyAdapter)
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
+			var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(candidate => IsPropertyItem(candidate, propertyName));
+			var button = (item?.Editor as DockPanel)?.Children.OfType<Button>()
+				.FirstOrDefault(candidate => candidate.Name == WpfBrushEditor.EditButtonName);
+			if (button == null || !button.IsEnabled)
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad did not render an enabled brush editor button: " + propertyName });
+			var result = BrushEditing.RunScriptedEdit(button, script);
+			return result.Success
+				? JsonSerializer.Serialize(new { success = true, before = result.Before, after = result.After, committed = result.Committed })
+				: JsonSerializer.Serialize(new { success = false, error = result.Error });
+		}
+
 		[DevFlowAction("od.wpf-designer.properties-pad.bind-event", Description = "Double-click a WPF event through the live Properties pad adapter: binds the XAML handler attribute if unhandled, then the IDE creates (or finds) the method in the code-behind and opens it. The isolated host never touches project code")]
 		public static string BindEventThroughPropertiesPad(string eventName)
 		{

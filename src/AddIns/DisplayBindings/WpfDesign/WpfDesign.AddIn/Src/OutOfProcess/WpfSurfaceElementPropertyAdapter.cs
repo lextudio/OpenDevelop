@@ -25,7 +25,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 	/// this codebase) and the result is handed back through <paramref name="onStateChanged"/> so
 	/// the caller can refresh the surface/tree the same way a mutation RPC always does.
 	/// </summary>
-	public sealed class WpfSurfaceElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IItemsCollectionEditorHost
+	public sealed class WpfSurfaceElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IItemsCollectionEditorHost, IBrushEditorHost
 	{
 		readonly WpfSurfaceHostClient client;
 		readonly Func<long> currentBaseVersion;
@@ -134,6 +134,17 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		/// <summary>Commits an edited brush (<c>design/set-brush</c>); only a host-published Brush
+		/// editor row of this element can be targeted.</summary>
+		void IBrushEditorHost.SetBrush(string propertyName, DesignerBrushInfo brush)
+		{
+			if (!node.Properties.Any(property => property.Name == propertyName && property.EditorKind == "Brush"))
+				throw new InvalidOperationException("Not an editable brush: " + propertyName);
+			var state = client.SetBrushAsync(currentBaseVersion(), node.Id, propertyName, brush).GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		internal void SetBindingConverter(string propertyName, string resourceKey)
 		{
 			var state = client.SetBindingConverterAsync(currentBaseVersion(), node.Id, propertyName, resourceKey)
@@ -235,7 +246,7 @@ sealed class WpfSurfaceEventDescriptor : EventDescriptor, IPropertyGridEventType
 	}
 }
 
-sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollectionProperty
+sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollectionProperty, IBrushProperty
 	{
 		readonly WpfSurfaceElementPropertyAdapter owner;
 		readonly DesignerPropertyInfo property;
@@ -286,6 +297,10 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 			// The row stays read-only to generic editing; the "…" editor commits the whole list.
 			if (property.EditorKind == "ItemsCollection")
 				attributes.Add(new EditorAttribute(typeof(WpfItemsCollectionEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
+			// The brush editor replaces Xceed's own: it reaches gradients and "No brush", which a
+			// text or color-only editor cannot express.
+			else if (property.EditorKind == "Brush")
+				attributes.Add(new EditorAttribute(typeof(WpfBrushEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 			return attributes.ToArray();
 		}
 
@@ -298,6 +313,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 		internal System.Collections.Generic.IReadOnlyList<string> AllowedValues => property.AllowedValues;
 
 		System.Collections.Generic.IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => property.CollectionItems;
+
+		DesignerBrushInfo? IBrushProperty.Brush => property.Brush;
 
 		public override Type ComponentType => typeof(WpfSurfaceElementPropertyAdapter);
 		public override string DisplayName => string.IsNullOrEmpty(property.DisplayName) ? property.Name : property.DisplayName;
