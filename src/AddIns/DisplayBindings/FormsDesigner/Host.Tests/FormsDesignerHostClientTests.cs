@@ -909,6 +909,41 @@ public sealed class FormsDesignerHostClientTests
 		Assert.False(client.IsAlive);
 	}
 
+	/// <summary>Toolbox components (Timer, BackgroundWorker...) are not Controls: the drop adds
+	/// them to the tray, creating a container-aware one into <c>components</c>, which is declared
+	/// and initialized first when the form has none. The rewritten source reloads with both.</summary>
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task ChildHost_AddsTrayComponentsFromTheToolbox(bool visualBasic)
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = visualBasic ? VbSnapshot(1, "tray") : Snapshot(1, "tray");
+		Assert.True((await client.OpenAsync(snapshot, timeout.Token)).Accepted);
+
+		await client.AddElementAsync(1, "Form1", new DesignerToolboxItemInfo { TypeName = "System.Windows.Forms.Timer" }, "timer1", 0, 0, cancellationToken: timeout.Token);
+		var added = await client.AddElementAsync(1, "Form1", new DesignerToolboxItemInfo { TypeName = "System.ComponentModel.BackgroundWorker" }, "backgroundWorker1", 0, 0, cancellationToken: timeout.Token);
+
+		Assert.Contains(added.Components, component => component.Name == "timer1" && component.IsTrayComponent);
+		Assert.Contains(added.Components, component => component.Name == "backgroundWorker1" && component.IsTrayComponent);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		// Flush writes the Roslyn style, without the this./Me. prefix.
+		var newKeyword = visualBasic ? "New" : "new";
+		Assert.Contains($"components = {newKeyword} System.ComponentModel.Container()", text, StringComparison.Ordinal);
+		Assert.Contains($"timer1 = {newKeyword} System.Windows.Forms.Timer(components)", text, StringComparison.Ordinal);
+		Assert.Contains($"backgroundWorker1 = {newKeyword} System.ComponentModel.BackgroundWorker()", text, StringComparison.Ordinal);
+		Assert.True(text.IndexOf("components = ", StringComparison.Ordinal) < text.IndexOf("timer1 = ", StringComparison.Ordinal), text);
+		Assert.Contains(visualBasic ? "components As System.ComponentModel.IContainer" : "System.ComponentModel.IContainer components", text, StringComparison.Ordinal);
+
+		snapshot.Version = 2;
+		snapshot.Files.Single(item => item.Kind == "Designer").Text = text;
+		var reloaded = await client.UpdateAsync(snapshot, timeout.Token);
+		Assert.True(reloaded.Accepted);
+		Assert.Contains(reloaded.Components, component => component.Name == "timer1" && component.IsTrayComponent);
+		Assert.Contains(reloaded.Components, component => component.Name == "backgroundWorker1" && component.IsTrayComponent);
+	}
+
 	/// <summary>The project-controls Toolbox category: the IDE finds a project's controls from
 	/// metadata alone (never loading the assembly) and hands the child only the type name, which
 	/// the child resolves against the snapshot's project assembly when the control is dropped.</summary>

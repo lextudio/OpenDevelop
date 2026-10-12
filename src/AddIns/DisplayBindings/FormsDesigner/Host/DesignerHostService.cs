@@ -560,6 +560,16 @@ sealed class DesignerHostService : IDesignerChildService
 			?? throw new InvalidOperationException("The designer surface is unavailable.");
 		if (host.Container.Components[elementId] != null)
 			throw new ArgumentException("A component with that name already exists: " + elementId, nameof(elementId));
+		if (ResolveTrayComponentType(item?.TypeName) is { } componentType) {
+			// A non-visual component (Timer, ToolTip, ImageList...) has no parent or bounds: it
+			// joins the component tray, as the in-process designer's toolbox drop did.
+			using (var transaction = host.CreateTransaction("Add " + elementId)) {
+				host.CreateComponent(componentType, elementId);
+				transaction.Commit();
+			}
+			RewriteAddedComponent(componentType, elementId);
+			return CurrentState(baseVersion);
+		}
 		var parent = host.Container.Components[parentId] as Control
 			?? throw new ArgumentException("Parent control not found: " + parentId, nameof(parentId));
 		var type = ResolveControlType(item?.TypeName);
@@ -1670,6 +1680,78 @@ sealed class DesignerHostService : IDesignerChildService
 		if (type == null || !typeof(Control).IsAssignableFrom(type) || type.IsAbstract)
 			throw new NotSupportedException("Unsupported WinForms control type: " + name);
 		return type;
+	}
+
+	/// <summary>A creatable non-Control component type, or null (the name is then resolved as a
+	/// control, which reports an unsupported type).</summary>
+	Type? ResolveTrayComponentType(string? name)
+	{
+		if (String.IsNullOrEmpty(name))
+			return null;
+		var fullName = name.Contains('.') ? name : "System.Windows.Forms." + name;
+		var type = projectAssembly?.GetType(fullName, false) ?? referencedAssemblies.Select(assembly => assembly.GetType(fullName, false)).FirstOrDefault(candidate => candidate != null)
+			?? typeof(Control).Assembly.GetType(fullName, false) ?? Type.GetType(fullName, false)
+			?? AppDomain.CurrentDomain.GetAssemblies().Select(item => item.GetType(fullName, false)).FirstOrDefault(item => item != null);
+		return type != null && typeof(IComponent).IsAssignableFrom(type) && !typeof(Control).IsAssignableFrom(type)
+			&& !type.IsAbstract && (type.GetConstructor(Type.EmptyTypes) != null || type.GetConstructor(new[] { typeof(IContainer) }) != null)
+			? type : null;
+	}
+
+	/// <summary>Writes a tray component the way the WinForms designer does: a component with an
+	/// <c>(IContainer)</c> constructor is created into <c>components</c>, which is declared and
+	/// initialized first if the form has none yet.</summary>
+	void RewriteAddedComponent(Type type, string elementId)
+	{
+		var usesContainer = type.GetConstructor(new[] { typeof(IContainer) }) != null;
+		var file = CurrentDesignerFile();
+		if (IsVisualBasic) {
+			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+			var vbMethod = vbRoot.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>()
+				.First(item => item.BlockStatement is VbSyntax.MethodStatementSyntax ms
+					&& ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+					&& ms.Identifier.ValueText == "InitializeComponent");
+			var vbClassName = vbMethod.Ancestors().OfType<VbSyntax.ClassBlockSyntax>().First().BlockStatement.Identifier.ValueText;
+			var vbStatements = vbMethod.Statements;
+			var vbInsertAt = 0;
+			if (usesContainer) {
+				var vbInit = vbStatements.OfType<VbSyntax.AssignmentStatementSyntax>().FirstOrDefault(item => NormalizeTarget(item.Left.ToString()) == "components");
+				if (vbInit == null)
+					vbStatements = vbStatements.Insert(0, Vb.SyntaxFactory.ParseExecutableStatement("Me.components = New System.ComponentModel.Container()"));
+				vbInsertAt = vbInit == null ? 1 : vbStatements.IndexOf(vbInit) + 1;
+			}
+			vbStatements = vbStatements.Insert(vbInsertAt, Vb.SyntaxFactory.ParseExecutableStatement(
+				$"Me.{elementId} = New {type.FullName}({(usesContainer ? "Me.components" : "")})"));
+			vbRoot = vbRoot.ReplaceNode(vbMethod, vbMethod.WithStatements(vbStatements));
+			var vbClass = vbRoot.DescendantNodes().OfType<VbSyntax.ClassBlockSyntax>().First(item => item.BlockStatement.Identifier.ValueText == vbClassName);
+			var vbMembers = vbClass.Members;
+			if (usesContainer && !vbMembers.OfType<VbSyntax.FieldDeclarationSyntax>().Any(field => field.Declarators.Any(d => d.Names.Any(n => n.Identifier.ValueText == "components"))))
+				vbMembers = vbMembers.Add(ParseMemberField("Private components As System.ComponentModel.IContainer"));
+			vbRoot = vbRoot.ReplaceNode(vbClass, vbClass.WithMembers(vbMembers.Add(ParseMemberField($"Friend WithEvents {elementId} As {type.FullName}"))));
+			file.Text = vbRoot.NormalizeWhitespace().ToFullString();
+			return;
+		}
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First(item => item.Identifier.ValueText == "InitializeComponent");
+		var className = method.Ancestors().OfType<ClassDeclarationSyntax>().First().Identifier.ValueText;
+		var statements = method.Body!.Statements;
+		var insertAt = 0;
+		if (usesContainer) {
+			var init = statements.OfType<ExpressionStatementSyntax>().FirstOrDefault(item =>
+				item.Expression is AssignmentExpressionSyntax assignment && NormalizeTarget(assignment.Left.ToString()) == "components");
+			if (init == null)
+				statements = statements.Insert(0, SyntaxFactory.ParseStatement("this.components = new System.ComponentModel.Container();\n"));
+			insertAt = init == null ? 1 : statements.IndexOf(init) + 1;
+		}
+		statements = statements.Insert(insertAt, SyntaxFactory.ParseStatement(
+			$"this.{elementId} = new {type.FullName}({(usesContainer ? "this.components" : "")});\n"));
+		root = root.ReplaceNode(method, method.WithBody(method.Body.WithStatements(statements)));
+		var declaration = root.DescendantNodes().OfType<ClassDeclarationSyntax>().First(item => item.Identifier.ValueText == className);
+		var members = declaration.Members;
+		if (usesContainer && !members.OfType<FieldDeclarationSyntax>().Any(field => field.Declaration.Variables.Any(v => v.Identifier.ValueText == "components")))
+			members = members.Add((FieldDeclarationSyntax)SyntaxFactory.ParseMemberDeclaration("private System.ComponentModel.IContainer components = null;\n")!);
+		members = members.Add((FieldDeclarationSyntax)SyntaxFactory.ParseMemberDeclaration($"private {type.FullName} {elementId};\n")!);
+		root = root.ReplaceNode(declaration, declaration.WithMembers(members));
+		file.Text = root.NormalizeWhitespace().ToFullString();
 	}
 
 	void RewriteAddedControl(string parentId, Type type, string elementId, int x, int y, int width, int height)

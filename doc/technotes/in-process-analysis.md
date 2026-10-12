@@ -707,6 +707,17 @@ or after the control's own last statement when the source had none; clearing rem
 editor to an `ItemsCollection` row and commits through `design/set-items` as one designer undo step;
 `od.forms-designer.properties-pad.edit-items` drives the real row button with the shared script.
 
+**C4 WinForms Toolbox components (2026-10-12).** The WinForms Toolbox catalog lists Timer, ToolTip,
+ImageList, ErrorProvider, BackgroundWorker and the other non-visual components, but the child's
+`design/add-element` resolved only `Control` types, so dropping any of them failed with
+"Unsupported WinForms control type". A creatable non-Control `IComponent` now joins the component
+tray as the in-process drop did: it is created in one designer transaction, and the source gains its
+field and creation statement - into `components` when the type has an `(IContainer)` constructor,
+declaring the field and initializing `components` first when the form has none (C# and VB). The
+loader already read such tray components back. Project components (non-Control types in the
+project's own assemblies) can now be added the same way, but `FormsProjectToolbox` still lists only
+controls.
+
 **C5 WinForms project controls in the Toolbox (2026-10-12).** The in-process designer's
 `CustomComponentsSideTab` listed the project's own components; the OOP Toolbox offered only the
 fixed WinForms catalog, although the Forms child could already resolve a project control by name.
@@ -720,8 +731,7 @@ FormsDesigner.Remote so host tests cover it; `FormsProjectToolbox` only builds t
 Discovery is metadata-only: the WPF PE-metadata walker moved to `Designer.Remote` as
 `ToolboxMetadataDiscovery` with a base-type parameter, constructor and `ToolboxItem(false)` flags,
 so the IDE never loads a project assembly. Each item is a `ToolboxItem` carrying only `TypeName`;
-the drop and click paths already used nothing else. Non-control components (the tray) remain out of
-scope because the child's add path accepts only Controls. Items are added when a form is opened; the
+the drop and click paths already used nothing else. Items are added when a form is opened; the
 shared Toolbox has no removal, so a rebuilt assembly contributes only new controls.
 
 **C2 attached layout properties (2026-10-12).** As in the in-process Properties pad, a WPF element

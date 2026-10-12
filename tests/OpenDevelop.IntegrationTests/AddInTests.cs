@@ -3870,6 +3870,44 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
+    public async Task WinFormsDesigner_ToolboxComponentJoinsTheTrayAndUndoes()
+    {
+        // A Toolbox component (Timer) is not a Control: it joins the component tray and is created
+        // into the form's components container, as the in-process designer did.
+        var formCodePath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.cs");
+        var designerPath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.Designer.cs");
+        var originalForm = await File.ReadAllBytesAsync(formCodePath);
+        var originalDesigner = await File.ReadAllBytesAsync(designerPath);
+        try {
+            await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath);
+            await _app.InvokeAsync("od.open-file", formCodePath);
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await _app.InvokeAsync("od.forms-designer.status");
+                return status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000), "The WinForms designer did not load. Status: " + status);
+
+            var added = await _app.InvokeAsync("od.forms-designer.add-control", "Form1", "System.Windows.Forms.Timer", "timer1", 0, 0);
+            Assert.True(added.GetProperty("success").GetBoolean(), added.ToString());
+            var saved = await _app.InvokeAsync("od.file.save", formCodePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var designer = await File.ReadAllTextAsync(designerPath);
+            Assert.Contains("timer1 = new System.Windows.Forms.Timer(components);", designer, StringComparison.Ordinal);
+            Assert.Contains("components = new System.ComponentModel.Container();", designer, StringComparison.Ordinal);
+
+            var undone = await _app.InvokeAsync("od.forms-designer.undo");
+            Assert.True(undone.GetProperty("success").GetBoolean(), undone.ToString());
+            saved = await _app.InvokeAsync("od.file.save", formCodePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            Assert.DoesNotContain("timer1", await File.ReadAllTextAsync(designerPath), StringComparison.Ordinal);
+        } finally {
+            await _app.InvokeAsync("od.close-all-document-views");
+            await File.WriteAllBytesAsync(formCodePath, originalForm);
+            await File.WriteAllBytesAsync(designerPath, originalDesigner);
+        }
+    }
+
+    [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
     public async Task WinFormsDesigner_ItemsEditorWritesOneItemsAddRange()
     {
         // The in-process WinForms string collection editor: a ComboBox's Items row "…" button edits
