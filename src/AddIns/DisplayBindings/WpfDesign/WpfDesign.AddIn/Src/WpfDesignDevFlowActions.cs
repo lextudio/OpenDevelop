@@ -749,7 +749,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			return JsonSerializer.Serialize(new { success = true, before, after, committed });
 		}
 
-		[DevFlowAction("od.wpf-designer.properties-pad.bind-event", Description = "Bind an unhandled WPF XAML event through the live Properties pad adapter; writes only the XAML handler attribute and never generates or executes project code")]
+		[DevFlowAction("od.wpf-designer.properties-pad.bind-event", Description = "Double-click a WPF event through the live Properties pad adapter: binds the XAML handler attribute if unhandled, then the IDE creates (or finds) the method in the code-behind and opens it. The isolated host never touches project code")]
 		public static string BindEventThroughPropertiesPad(string eventName)
 		{
 			var grid = PropertyPadGrid;
@@ -764,8 +764,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 
 			var eventSource = (IPropertyGridEventSource)selectedObject;
 			var before = eventSource.GetEventHandler(eventName);
-			if (string.IsNullOrEmpty(before))
-				((IEventBindingHost)selectedObject).BindEvent(eventName);
+			((IEventBindingHost)selectedObject).BindEvent(eventName);
 			var handler = eventSource.GetEventHandler(eventName);
 
 			return JsonSerializer.Serialize(new {

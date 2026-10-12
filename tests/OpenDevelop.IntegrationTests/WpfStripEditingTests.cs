@@ -471,14 +471,19 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
-    public async Task PropertiesPad_BindEvent_WritesOnlyTheXamlHandlerAttribute()
+    public async Task PropertiesPad_BindEvent_CreatesTheCodeBehindHandler()
     {
-        // The published TargetUpdated event is available through LibreWPF's design model too;
-        // keep this source-only event-binding contract covered on macOS as well as Windows.
+        // The in-process designer's double-click: the XAML attribute is bound and the IDE creates
+        // the method in the code-behind. TargetUpdated (an EventHandler<DataTransferEventArgs>) is
+        // available through LibreWPF's design model, so this is covered on macOS as well.
         var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var codeBehindPath = xamlPath + ".cs";
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
+        // Bytes, not text: a text round trip would drop the sample's UTF-8 byte order mark.
+        var originalCodeBehind = await File.ReadAllBytesAsync(codeBehindPath);
         try {
+            await app.InvokeAsync("od.close-all-document-views");
             await File.WriteAllTextAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -504,13 +509,35 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             await app.InvokeAsync("od.file.save", xamlPath);
             var saved = await File.ReadAllTextAsync(xamlPath);
             Assert.Contains("TargetUpdated=\"owner_TargetUpdated\"", saved, StringComparison.Ordinal);
-            // The designer must not synthesize an implementation in the project's code-behind:
-            // binding an event is deliberately a source attribute operation until a transactional
-            // child-to-host code-edit contract exists.
-            Assert.DoesNotContain("owner_TargetUpdated", await File.ReadAllTextAsync(Path.Combine(sample, "MainWindow.xaml.cs")), StringComparison.Ordinal);
-            await app.InvokeAsync("od.close-active-view");
+            // The code-behind was closed, so the method was written to disk with the event's own
+            // argument type.
+            var codeBehind = await File.ReadAllTextAsync(codeBehindPath);
+            // Rewriting the closed file keeps its UTF-8 byte order mark.
+            Assert.Equal(originalCodeBehind.Take(3), (await File.ReadAllBytesAsync(codeBehindPath)).Take(3));
+            Assert.Contains("private void owner_TargetUpdated(object sender, global::System.Windows.Data.DataTransferEventArgs e)", codeBehind, StringComparison.Ordinal);
+
+            // Double-clicking the bound event again opens the existing handler; nothing is duplicated.
+            // Navigation left the code-behind document active: bring the XAML document back, then its
+            // design view.
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            var design = await app.InvokeAsync("od.wpf-designer.activate-design");
+            Assert.True(design.GetProperty("success").GetBoolean(), design.ToString());
+            JsonElement reselected = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                reselected = await app.InvokeAsync("od.wpf-designer.select", "owner");
+                return reselected.GetProperty("success").GetBoolean()
+                    && reselected.GetProperty("propertiesPadSelectedName").GetString() == "owner";
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), reselected.ToString());
+            var again = await app.InvokeAsync("od.wpf-designer.properties-pad.bind-event", "TargetUpdated");
+            Assert.True(again.GetProperty("success").GetBoolean(), again.ToString());
+            Assert.Equal("owner_TargetUpdated", again.GetProperty("before").GetString());
+            await app.InvokeAsync("od.file.save", codeBehindPath);
+            var afterAgain = await File.ReadAllTextAsync(codeBehindPath);
+            Assert.Equal(afterAgain.IndexOf("owner_TargetUpdated", StringComparison.Ordinal), afterAgain.LastIndexOf("owner_TargetUpdated", StringComparison.Ordinal));
         } finally {
+            await app.InvokeAsync("od.close-all-document-views");
             await File.WriteAllTextAsync(xamlPath, originalXaml);
+            await File.WriteAllBytesAsync(codeBehindPath, originalCodeBehind);
         }
     }
 

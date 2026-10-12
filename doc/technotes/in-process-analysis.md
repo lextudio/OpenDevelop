@@ -692,6 +692,18 @@ lines mark the positions a raster drag snaps to (this also corrects WinForms, wh
 previously used for snapping but not drawing). `Toolbar_SnappingControls_DriveTheDragSettingsAndPersist`
 covers the defaults, the toolbar-to-controller binding, gridline spacing and persistence.
 
+**C4 event handler generation (2026-10-12).** Double-clicking a WPF event in the Properties pad now
+matches the in-process designer (`AbstractEventHandlerService`): the XAML attribute is bound through
+`design/set-event` if the event is unhandled, then the IDE creates the method in `<file>.xaml.cs`
+(the `x:Class` class, else the file's first class) and opens it; a bound event opens its existing
+method, and an existing method is never duplicated. The isolated host still never touches project
+code: generation is IDE-side Roslyn (`WpfCodeBehindHandlers`), formats only the inserted member,
+edits the open editor's buffer when the file is open (its own undo stack) and otherwise rewrites the
+file preserving its UTF-8 BOM. The argument type comes from the host's delegate type
+(`EventHandlerSignature`: `XxxEventHandler` takes `XxxEventArgs`, `EventHandler<T>` takes `T`).
+This supersedes the earlier "attribute only, generation deferred" decision; the XAML edit and the
+code-behind edit stay on separate document undo stacks, as in-process.
+
 **C2 collection editor, slice 1 (2026-10-12).** Section 5 item 11 starts with the narrowest
 useful collection: the plain items of a WPF ListBox, ComboBox or ListView. Protocol **v20** adds
 `DesignerPropertyInfo.CollectionItems` and the optional `design/set-items`. The host publishes a
@@ -705,7 +717,9 @@ one undo group. **Slice 2:** the WPF Properties-pad descriptor attaches an Xceed
 "…" button opening an IDE dialog (add, remove, move up/down, rename) over the framework-neutral
 `CollectionItemsEditModel`, which tracks each entry's original index and commits only a changed
 list, as one undoable `design/set-items`. `od.wpf-designer.properties-pad.edit-items` clicks the real
-button and applies an edit script to the same model in place of the modal window. **Slice 3:** the same row and
+button and applies an edit script to the same model in place of the modal window. The editor reaches its
+host through the row's own `PropertyItem.Instance` rather than a visual-tree walk to the grid, which
+failed when the row was not realized. **Slice 3:** the same row and
 dialog edit a TabControl's page headers: each editable control maps to its item container and text
 property (`Content` for list items, `Header` for `TabItem`), so moving a page keeps its body content
 and only header text changes; a page whose header is an element rather than text keeps the

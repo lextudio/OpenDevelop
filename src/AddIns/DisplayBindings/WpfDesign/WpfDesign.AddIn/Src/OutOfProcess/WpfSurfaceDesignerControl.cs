@@ -460,6 +460,12 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// caller outside this class (<c>WpfDesignDevFlowActions.DropToolboxItem</c>).</summary>
 		internal void NotifyDocumentChanged(DesignerSessionState newState) => DocumentChanged?.Invoke(this, newState);
 
+		/// <summary>Raised after a Properties-pad double-click bound (or found) an event handler; the
+		/// view creates or opens the method in the code-behind.</summary>
+		public event EventHandler<DesignerEventInfo>? EventHandlerBound;
+
+		void OnEventHandlerBound(DesignerEventInfo boundEvent) => EventHandlerBound?.Invoke(this, boundEvent);
+
 		/// <summary>The currently selected element's id (its tree path), or null.</summary>
 		public string? SelectedElementId => controller.SelectedElementName;
 
@@ -1248,13 +1254,13 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// adapter per access, since the node instance changes on every re-render.</summary>
 		public WpfSurfaceElementPropertyAdapter? SelectedPropertyAdapter =>
 			SelectedNode is { } node
-				? new WpfSurfaceElementPropertyAdapter(client, () => state!.Version, node, OnPropertyEdited)
+				? new WpfSurfaceElementPropertyAdapter(client, () => state!.Version, node, OnPropertyEdited, OnEventHandlerBound)
 				: null;
 
 		public object[] SelectedPropertyAdapters => state?.Tree == null ? Array.Empty<object>() : SelectedElementIds
 			.Select(NodeById)
 			.Where(node => node != null)
-			.Select(node => (object)new WpfSurfaceElementPropertyAdapter(client, () => state!.Version, node!, OnPropertyEdited))
+			.Select(node => (object)new WpfSurfaceElementPropertyAdapter(client, () => state!.Version, node!, OnPropertyEdited, OnEventHandlerBound))
 			.ToArray();
 
 		/// <summary>Renders a property edit's result, then raises <see cref="SelectionChanged"/>

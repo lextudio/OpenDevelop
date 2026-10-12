@@ -265,6 +265,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 					surfaceControl.SelectionChanged += OnSelectionChanged;
 					surfaceControl.RenameRequestedByUser += OnRenameRequested;
 					surfaceControl.DocumentChanged += OnDocumentChanged;
+					surfaceControl.EventHandlerBound += OnEventHandlerBound;
 					surfaceControl.UndoRedoRequested += OnUndoRedoRequested;
 					InitPropertyEditor();
 					InitWpfToolbox();
@@ -485,6 +486,18 @@ namespace ICSharpCode.WpfDesign.AddIn
 				LoggingService.Error(exception);
 				MessageService.ShowError(exception.Message);
 			}
+		}
+
+		/// <summary>Creates or opens the code-behind method a double-clicked event names, as the
+		/// in-process designer did. The XAML attribute is already a designer edit; the method is an
+		/// edit of the code-behind document and lands on that document's own undo stack.</summary>
+		void OnEventHandlerBound(object? sender, DesignerEventInfo boundEvent)
+		{
+			var xamlText = SD.FileService.GetOpenFile(PrimaryFile.FileName)?.GetService(typeof(ICSharpCode.SharpDevelop.Editor.ITextEditor)) is ICSharpCode.SharpDevelop.Editor.ITextEditor editor
+				? editor.Document.Text
+				: System.IO.File.Exists(PrimaryFile.FileName) ? System.IO.File.ReadAllText(PrimaryFile.FileName) : null;
+			WpfCodeBehindHandlers.EnsureAndNavigate(PrimaryFile.FileName, xamlText, boundEvent.Handler,
+				ICSharpCode.SharpDevelop.Designer.Presentation.EventHandlerSignature.EventArgsTypeName(boundEvent.HandlerTypeName));
 		}
 
 		/// <summary>Marks the file dirty after any accepted mutation (bounds/add/delete/rename/

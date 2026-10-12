@@ -30,10 +30,12 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		readonly Func<long> currentBaseVersion;
 		readonly DesignerElementNode node;
 		readonly Action<DesignerSessionState> onStateChanged;
+		readonly Action<DesignerEventInfo>? onEventHandlerBound;
 
 		public WpfSurfaceElementPropertyAdapter(WpfSurfaceHostClient client, Func<long> currentBaseVersion,
-			DesignerElementNode node, Action<DesignerSessionState> onStateChanged)
+			DesignerElementNode node, Action<DesignerSessionState> onStateChanged, Action<DesignerEventInfo>? onEventHandlerBound = null)
 		{
+			this.onEventHandlerBound = onEventHandlerBound;
 			this.client = client ?? throw new ArgumentNullException(nameof(client));
 			this.currentBaseVersion = currentBaseVersion ?? throw new ArgumentNullException(nameof(currentBaseVersion));
 			this.node = node ?? throw new ArgumentNullException(nameof(node));
@@ -171,15 +173,15 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			@event.Handler = handlerName ?? "";
 		}
 
-		// Double-click follows the common designer convention by creating the attribute reference.
-		// Method generation is deliberately not attempted here: code-behind edits need their own
-		// transactional source contract rather than a child-host side effect.
+		// Double-click follows the in-process designer: bind the XAML attribute if the event has no
+		// handler yet, then let the view create (or find) the method in the IDE-owned code-behind
+		// and open it. The isolated host only ever writes the attribute; project code is the IDE's.
 		void IEventBindingHost.BindEvent(string eventName)
 		{
-			if (!string.IsNullOrEmpty(((IPropertyGridEventSource)this).GetEventHandler(eventName)))
-				return;
-			((IPropertyGridEventSource)this).SetEventHandler(eventName,
-				(node.Name ?? node.Type) + "_" + eventName);
+			if (string.IsNullOrEmpty(((IPropertyGridEventSource)this).GetEventHandler(eventName)))
+				((IPropertyGridEventSource)this).SetEventHandler(eventName, (node.Name ?? node.Type) + "_" + eventName);
+			if (node.Events.FirstOrDefault(candidate => candidate.Name == eventName) is { Handler.Length: > 0 } bound)
+				onEventHandlerBound?.Invoke(bound);
 		}
 
 		public string GetClassName() => node.Type;

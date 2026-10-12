@@ -47,6 +47,8 @@
     <ProjectReference Include="..\..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" Private="False" />
     <!-- Resolve DevFlow from the published package so this project has no sibling-checkout dependency. -->
     <PackageReference Include="LeXtudio.DevFlow.Agent.Core" />
+    <!-- Generates double-click event handlers in the IDE-owned code-behind (WpfCodeBehindHandlers). -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
   </ItemGroup>
 
   <ItemGroup>
