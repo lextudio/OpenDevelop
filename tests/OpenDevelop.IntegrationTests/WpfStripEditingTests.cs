@@ -246,6 +246,65 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
+    public async Task ContextMenu_AlignAndOrderCommandsEditTheDocument()
+    {
+        // The in-process designer's ArrangeItems and RightClick context menus: Align needs a
+        // multi-selection, Order a single element; both land as source edits.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Context commands">
+              <Canvas>
+                <Button x:Name="first" Canvas.Left="30" Canvas.Top="30" Width="100" Height="40" Content="First" />
+                <Button x:Name="second" Canvas.Left="220" Canvas.Top="90" Width="100" Height="40" Content="Second" />
+              </Canvas>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            Dictionary<string, bool> Commands(JsonElement result)
+                => result.GetProperty("commands").EnumerateArray().ToDictionary(c => c.GetProperty("command").GetString()!, c => c.GetProperty("enabled").GetBoolean());
+
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "second")).GetProperty("success").GetBoolean());
+            var single = Commands(await app.InvokeAsync("od.wpf-designer.context-commands"));
+            Assert.False(single["align-left"]);
+            Assert.True(single["order-back"]);
+            var ordered = await app.InvokeAsync("od.wpf-designer.context-command", "order-back");
+            Assert.True(ordered.GetProperty("success").GetBoolean(), ordered.ToString());
+            // The moved element stays selected under its new path id.
+            status = await app.InvokeAsync("od.wpf-designer.status");
+            Assert.Single(status.GetProperty("selectedIds").EnumerateArray());
+
+            Assert.True((await app.InvokeAsync("od.wpf-designer.multi-select", "first,second")).GetProperty("success").GetBoolean());
+            var multi = Commands(await app.InvokeAsync("od.wpf-designer.context-commands"));
+            Assert.True(multi["align-left"]);
+            Assert.False(multi["order-front"]);
+            var aligned = await app.InvokeAsync("od.wpf-designer.context-command", "align-top");
+            Assert.True(aligned.GetProperty("success").GetBoolean(), aligned.ToString());
+
+            var saved = await app.InvokeAsync("od.file.save", xamlPath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var text = await File.ReadAllTextAsync(xamlPath);
+            Assert.True(text.IndexOf("x:Name=\"second\"", StringComparison.Ordinal) < text.IndexOf("x:Name=\"first\"", StringComparison.Ordinal), text);
+            Assert.DoesNotContain("Canvas.Top=\"90\"", text, StringComparison.Ordinal);
+        } finally {
+            await app.InvokeAsync("od.close-active-view");
+            await File.WriteAllTextAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task SnapshotSelection_RemainsResponsiveWhileTheWpfHostRecovers()
     {
         // OpenDevelopAppFixture selects Microsoft WPF on Windows and LibreWPF elsewhere.

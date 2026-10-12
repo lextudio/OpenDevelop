@@ -194,7 +194,21 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// states. The theme combo is per-project (DesignerSessionState.DesignThemes, see Show).
 			Capabilities = BaseCapabilities;
 			StatusText = string.Format(ResourceService.GetString("WpfDesign.Status.StartingHost"), BackendName);
-			SetContextCommands(new[] { ("Delete", "delete") });
+			// The in-process designer's RightClickContextMenu (z-order) and ArrangeItemsContextMenu
+			// (alignment to the primary selection).
+			SetContextCommands(new[] {
+				("Delete", "delete"),
+				("-", ""),
+				("Align/Left", "align-left"), ("Align/Center", "align-center"), ("Align/Right", "align-right"),
+				("Align/Top", "align-top"), ("Align/Middle", "align-middle"), ("Align/Bottom", "align-bottom"),
+				("Order/Bring to Front", "order-front"), ("Order/Bring Forward", "order-forward"),
+				("Order/Send Backward", "order-backward"), ("Order/Send to Back", "order-back")
+			});
+			ContextCommandCanExecute = command => command switch {
+				_ when command.StartsWith("align-", StringComparison.Ordinal) => controller.SelectedNames.Count >= 2,
+				_ when command.StartsWith("order-", StringComparison.Ordinal) => controller.SelectedNames.Count == 1,
+				_ => controller.SelectedNames.Count > 0
+			};
 			RenameRequested += (_, _) => RequestRename();
 
 			controller.SelectionChanged += (_, _) => OnCanvasSelectionChanged();
@@ -223,6 +237,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			controller.ContextCommandRequested += (_, command) => {
 				if (command.Command == "delete")
 					CommitDelete();
+				else if (command.Command.StartsWith("align-", StringComparison.Ordinal))
+					AlignSelection(command.Command.Substring("align-".Length));
+				else if (command.Command.StartsWith("order-", StringComparison.Ordinal))
+					CommitZOrder(command.Command.Substring("order-".Length));
 			};
 			// ThemeRequested carries the chosen theme name; CommitTheme blocks like every mutation.
 			DesignThemeRequested += (_, theme) => CommitTheme(theme);
@@ -1070,6 +1088,22 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			if (!result.Accepted) { Show(result); return; }
 			contextMenuTrayRootId = null;
 			Show(result);
+			DocumentChanged?.Invoke(this, result);
+		}
+
+		/// <summary>Moves the single selected element to the front/back or one step
+		/// forward/backward among its siblings (<c>design/set-z-order</c>).</summary>
+		void CommitZOrder(string placement)
+		{
+			if (state == null || controller.SelectedNames.Count != 1)
+				return;
+			var result = client.SetZOrderAsync(RequireVersion(), controller.SelectedNames[0], placement).GetAwaiter().GetResult();
+			Show(result);
+			if (!result.Accepted)
+				return;
+			// Ids are tree paths: keep the moved element selected under its new id.
+			if (result.MovedElementId != null)
+				controller.RestoreSelection(new[] { result.MovedElementId });
 			DocumentChanged?.Invoke(this, result);
 		}
 

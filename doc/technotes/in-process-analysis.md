@@ -467,7 +467,7 @@ Ranked by (a) parity gap closed per line, (b) genuinely missing rather than re-i
 | **3** | **Snapline concepts on a nearest-match rule** | `SnaplinePlacementBehavior` (concepts only), `RasterPlacementBehavior` | Adds baselines, `RequireOverlap`, `Group`, margin-inflated map, paired guide rendering. Basic sibling edge/centre snapping now calls `SetSnapGuides` through `DesignSurfaceController`; this phase enriches that working baseline rather than adding its first caller. |
 | **4** | **Margin / position handles** | `Controls/{MarginHandle,CanvasPositionHandle}.cs` (UI half) | WPF now publishes structured Grid Margin and Canvas-position insets under v5, and the shared canvas renders draggable L/T/R/B edge readouts with dashed rulers (including zero-distance stubs) that track selection, zoom and pan. Nonzero rulers end in an arrow following their measured direction, including negative overflow; a zero-distance ruler keeps the legacy compact circular stub. These endpoint marks are presentational, leaving the labeled readout as the only drag/click target. The WPF-only commit preserves effective Canvas anchors (including Right/Bottom, margins and overflow) in one native undo group. Clicking a Grid Margin readout toggles that edge between its explicit alignment anchor and Stretch while preserving the rendered bounds. As in the legacy designer, the affordance is intentionally suppressed for non-identity Layout/RenderTransform because visual-edge coordinates cannot safely round-trip to Canvas attached properties. |
 | **5** | **Grid rail + a `split-grid-track` verb** | `Controls/GridAdorner.cs` (rail/splitter half) | **WPF delivered:** explicit measured tracks can be split through an atomic host mutation; Ctrl exposes amber insertion rails, Ctrl-click inserts a row and Ctrl+Shift-click a column. WinUI and Forms still need comparable track metadata/mutations before they can opt in. |
-| **6** | **In-place text editor** | `Controls/InPlaceEditor.cs` | Port the Enter/Shift+Enter/Escape contract and the font commit first; rich text (`FormatedTextEditor`, 845 lines of XAML) is a later optional step. `DesignSurface.BeginTextEdit` (`:310`) is plain-text already. |
+| **6** | **In-place text editor** | `Controls/InPlaceEditor.cs` | **WPF key contract delivered (2026-10-12)**; the font commit remains. Port the Enter/Shift+Enter/Escape contract and the font commit first; rich text (`FormatedTextEditor`, 845 lines of XAML) is a later optional step. `DesignSurface.BeginTextEdit` (`:310`) is plain-text already. |
 | **7** | **`CecilPropertyDescriptor` side-store** | `CecilPropertyDescriptor.cs:88-127` | Property values live in the model, never in the control. Exactly the out-of-process shape; we have no equivalent. |
 | **8** | **Cecil-based / process-isolated toolbox scanning** | `CecilToolboxItemLoader`, `CecilWidgetLibrary`, `IToolboxLoader.LoadItemsIsolated` + ping-and-respawn | Closes a real robustness gap: `TypeDiscoveryService` currently loads and instantiates third-party control assemblies **in the IDE process**. |
 | **9** | **Session state capture/restore across child restart** | `WidgetEditSession.SaveState`/`RestoreState` | The one idea that maps directly onto `SharedDesignerHostPool`, which currently has recovery without state. |
@@ -475,7 +475,7 @@ Ranked by (a) parity gap closed per line, (b) genuinely missing rather than re-i
 | **11** | **Collection editor + ChooseClass dialog** | `PropertyGrid/Editors/CollectionEditor.*`, `Services/ChooseClass*` | The one place a round-trip is *correct*; also the model for any future dialog RPC. |
 | **12** | **XAML error ranges + line-length-preserving repair** | `XamlExceptionRange`, `KeepSuggestedContentSameLength` | Our WinUI hosts report no load errors at all. Medium effort, real diagnostic value. |
 | **13** | **`FocusNavigator`** | `WpfDesign.Designer/Project/FocusNavigator.cs` | **Delivered:** `DesignerFocusNavigator` uses snapshot pre-order traversal for Tab/Shift+Tab primary selection, skips hidden/non-designable/unselectable nodes, wraps at both ends and tolerates a stale selection or malformed cycle. `DesignSurface` owns the key gesture while the controller retains each backend's keying/selection policy. |
-| **14** | **Context-menu shell** | the 9 `*ContextMenu.xaml` | One boilerplate template; we already have `SetContextCommands` (`:416`) + `DesignerVerbMenuPlanner`. Port content, not the `ExtensionServer` registration. |
+| **14** | **Context-menu shell** | the 9 `*ContextMenu.xaml` | **WPF Align/Order delivered (2026-10-12)**; wrap/unwrap and Edit Style remain. One boilerplate template; we already have `SetContextCommands` (`:416`) + `DesignerVerbMenuPlanner`. Port content, not the `ExtensionServer` registration. |
 | **15** | **Toolbox: two-sided filtering + document customization** | `ToolboxService.FilterPermitted`, `IToolboxCustomizer`, `ToolboxProvider`'s provenance re-categorisation | `Require`/`Prevent`/`Custom` beats `Scope` equality. **Document category priority is now delivered:** `DesignerToolboxScope` applies an owner-scoped category-priority map to the shared pad while retaining registration order inside a category; GTK and MewUI put Containers first for blank-document authoring. Two-sided declarative filtering still needs metadata provenance from both the item and active designer. |
 
 Deliberately excluded from the top 15: `AdornerLayer` itself (rewrite, not port), `EditorManager`'s
@@ -691,6 +691,17 @@ The gridlines overlay now draws at the controller's raster cell rather than a fi
 lines mark the positions a raster drag snaps to (this also corrects WinForms, whose grid size was
 previously used for snapping but not drawing). `Toolbar_SnappingControls_DriveTheDragSettingsAndPersist`
 covers the defaults, the toolbar-to-controller binding, gridline spacing and persistence.
+
+**C4 context menu (2026-10-12).** The WPF design surface's context menu now carries the in-process
+ArrangeItems and RightClick menus: an Align submenu (left/center/right/top/middle/bottom to the
+primary selection, enabled for two or more selected elements, reusing the existing atomic bounds
+batch) and an Order submenu (Bring to Front, Bring Forward, Send Backward, Send to Back, enabled for
+one element). Protocol **v18** adds the optional host-owned `design/set-z-order`, which reorders the
+parent's collection and returns `MovedElementId`, because WPF ids are tree paths and the moved
+element must stay selected under its new id. The shared `SetContextCommands` gained `Group/Item`
+submenus and an optional per-command enablement callback; `od.wpf-designer.context-commands` and
+`od.wpf-designer.context-command` exercise the popup menu semantically. Wrap/unwrap (Canvas, Grid,
+Viewbox) and Edit Style are the remaining in-process context commands.
 
 **C2 Binding converter (2026-10-12).** Protocol **v17** adds WPF's optional
 `design/set-binding-converter`. A Binding's `Converter` row is a drop-down of the string keys of

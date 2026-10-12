@@ -1590,6 +1590,49 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		/// <summary>Changes an element's stacking order among its siblings, as the in-process
+		/// designer's RightClickContextMenu did: "front"/"back" move it to the end/start of the
+		/// parent's collection (drawn last/first), "forward"/"backward" by one. The host owns the
+		/// collection, so the order is not inferred from the snapshot's child list.</summary>
+		[JsonRpcMethod("design/set-z-order")]
+		public DesignerSessionState SetZOrder(long baseVersion, string elementId, string placement)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item))
+					return NotFound(state, "Element not found: " + elementId);
+				var parentProperty = item.ParentProperty;
+				if (parentProperty == null || !parentProperty.IsCollection)
+					return NotFound(state, "Element's parent does not support reordering: " + elementId);
+				var siblings = parentProperty.CollectionElements;
+				var index = siblings.IndexOf(item);
+				var newIndex = placement switch {
+					"front" => siblings.Count - 1,
+					"back" => 0,
+					"forward" => Math.Min(index + 1, siblings.Count - 1),
+					"backward" => Math.Max(index - 1, 0),
+					_ => -1
+				};
+				if (index < 0 || newIndex < 0)
+					return NotFound(state, "Unsupported z-order placement: " + placement);
+				if (newIndex == index)
+					return NotFound(state, placement is "front" or "forward" ? "The element is already in front." : "The element is already at the back.");
+				try
+				{
+					siblings.RemoveAt(index);
+					siblings.Insert(newIndex, item);
+				}
+				catch (Exception e)
+				{
+					return NotFound(state, e.GetBaseException().Message);
+				}
+				RebuildTreeAndRender(state);
+				state.MovedElementId = pathToItem.FirstOrDefault(entry => entry.Value == item).Key;
+				state.Accepted = true;
+				return state;
+			});
+
 		/// <summary>Appends one more item under an existing <see cref="StatusBar"/> or
 		/// <see cref="ToolBar"/> - the "Type Here" insertion-node commit action for those two strip
 		/// types (mirroring WinForms' StatusStrip insertion node), analogous to

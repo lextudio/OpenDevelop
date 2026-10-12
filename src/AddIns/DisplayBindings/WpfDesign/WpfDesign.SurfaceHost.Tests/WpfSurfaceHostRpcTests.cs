@@ -710,6 +710,51 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task ChildHost_ChangesZOrderWithinTheParentCollection()
+	{
+		const string xaml = """
+			<Canvas xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <Button x:Name="a" Content="A" />
+			  <Button x:Name="b" Content="B" />
+			  <Button x:Name="c" Content="C" />
+			</Canvas>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var state = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(state.Accepted, state.Error);
+		async Task<string> Order(DesignerSessionState s)
+		{
+			var text = (await client.FlushAsync(s.Version, timeout.Token)).Files.Single().Text;
+			return string.Concat(new[] { "a", "b", "c" }.OrderBy(name => text.IndexOf("x:Name=\"" + name + "\"", StringComparison.Ordinal)));
+		}
+		async Task<DesignerSessionState> Apply(DesignerSessionState s, string name, string placement)
+		{
+			var result = await client.SetZOrderAsync(s.Version, FindByName(s.Tree!, name)!.Id, placement, timeout.Token);
+			Assert.True(result.Accepted, placement + ": " + result.Error);
+			return result;
+		}
+
+		state = await Apply(state, "a", "front");
+		Assert.Equal("bca", await Order(state));
+		// The moved element's id changed with its position; the response names the new one.
+		Assert.Equal(FindByName(state.Tree!, "a")!.Id, state.MovedElementId);
+		state = await Apply(state, "a", "back");
+		Assert.Equal("abc", await Order(state));
+		state = await Apply(state, "a", "forward");
+		Assert.Equal("bac", await Order(state));
+		state = await Apply(state, "a", "backward");
+		Assert.Equal("abc", await Order(state));
+
+		var alreadyBack = await client.SetZOrderAsync(state.Version, FindByName(state.Tree!, "a")!.Id, "back", timeout.Token);
+		Assert.False(alreadyBack.Accepted);
+		Assert.Contains("already at the back", alreadyBack.Error, StringComparison.Ordinal);
+		var unsupported = await client.SetZOrderAsync(state.Version, FindByName(state.Tree!, "a")!.Id, "sideways", timeout.Token);
+		Assert.False(unsupported.Accepted);
+		Assert.Equal("abc", await Order(state));
+	}
+
+	[Fact]
 	public async Task ChildHost_EditsBindingConverterAsAStaticResourceInScope()
 	{
 		const string xaml = """

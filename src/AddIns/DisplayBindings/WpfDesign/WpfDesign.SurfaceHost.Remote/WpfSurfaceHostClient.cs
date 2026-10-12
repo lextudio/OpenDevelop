@@ -257,6 +257,12 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> AddStripItemAsync(long baseVersion, string parentId, string text, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/add-strip-item", new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, text }, cancellationToken), cancellationToken);
 
+	/// <summary>Moves an element to the front/back or one step forward/backward in its parent's
+	/// collection (<c>design/set-z-order</c>) - the designer context menu's Order commands.</summary>
+	public Task<DesignerSessionState> SetZOrderAsync(long baseVersion, string elementId, string placement, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-z-order",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, placement }, cancellationToken), cancellationToken);
+
 	/// <summary>Moves an element by <paramref name="delta"/> positions among its siblings (e.g. -1 to
 	/// swap with the previous one, +1 with the next) - the tray's reorder-arrow UI's commit action.
 	/// Not part of IDesignHostClient, matching AddMenuItemAsync above.</summary>

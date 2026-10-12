@@ -20,13 +20,14 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		// v17 adds WPF's optional design/set-binding-converter mutation. v16 added
+		// v18 adds WPF's optional design/set-z-order mutation. v17 added design/set-binding-converter.
+		// v16 added
 		// design/set-binding-text-option. v15 added
 		// design/set-binding-delay. v14 added BindingOptionName
 		// and design/set-binding-validation-option. A stale pooled child
 		// must fail the handshake rather than reject a newly-visible binding editor after the
 		// Properties pad has already presented it.
-		public const int Version = 17;
+		public const int Version = 18;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -153,6 +154,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// look the result up by name afterward - not an option here, since a freshly toolbox-
 		/// dropped WPF element deliberately has no <c>x:Name</c> at all).</summary>
 		public string? CreatedElementId { get; set; }
+		/// <summary>The new id of the element a <c>design/set-z-order</c> call just moved, valid only
+		/// on that response. WPF ids are tree paths, so reordering changes the moved element's id
+		/// (and its siblings'); restoring the selection by the old id would select a neighbour.</summary>
+		public string? MovedElementId { get; set; }
 		/// <summary>The element id a <c>design/hit-test-popup</c> call just selected inside its
 		/// popup (see <see cref="Popups"/>), valid only on that RPC's own response - null for
 		/// every other response, and also null when the click did not land on an item. The

@@ -946,6 +946,27 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			return DesignerDevFlowResults.Selection(true, surface.SelectedElementIds);
 		}
 
+		[DevFlowAction("od.wpf-designer.context-commands", Description = "List the design surface context menu's commands (header path, command, enabled) as opening the menu would evaluate them")]
+		public static string GetContextCommands()
+		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
+			if (surface == null)
+				return Failure("WPF designer is not loaded");
+			return JsonSerializer.Serialize(new {
+				success = true,
+				commands = surface.DescribeContextCommands().Select(entry => new { header = entry.Header, command = entry.Command, enabled = entry.Enabled })
+			});
+		}
+
+		[DevFlowAction("od.wpf-designer.context-command", Description = "Run a design surface context menu command through the same path as clicking it; fails when the menu does not offer it or it is disabled")]
+		public static string InvokeContextCommand(string command)
+		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
+			return JsonSerializer.Serialize(new { success = surface.InvokeContextCommand(command), status = surface.StatusText });
+		}
+
 		[DevFlowAction("od.wpf-designer.align", Description = "Align every other selected element's edge/center to the primary selection's - mode: left/center/right/top/middle/bottom")]
 		public static string Align(string mode)
 		{

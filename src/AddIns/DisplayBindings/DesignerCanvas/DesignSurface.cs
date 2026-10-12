@@ -259,7 +259,7 @@ public class DesignSurface : DesignerCanvas
 		return menu;
 	}
 
-	MenuItem AddContextItem(ContextMenu menu, string header, string command)
+	MenuItem AddContextItem(ItemsControl menu, string header, string command)
 	{
 		var item = new MenuItem { Header = header, Tag = command };
 		item.Click += (_, _) => ContextCommandRequested?.Invoke(this, ((string)item.Tag, selectionName));
@@ -267,15 +267,66 @@ public class DesignSurface : DesignerCanvas
 		return item;
 	}
 
+	/// <summary>Optional per-command enablement for <see cref="SetContextCommands"/> menus (for
+	/// example "needs two selected elements"). Without it, "paste" is always enabled and every
+	/// other command needs a selection.</summary>
+	public Func<string, bool>? ContextCommandCanExecute { get; set; }
+
+	bool CanExecuteContextCommand(string command)
+		=> ContextCommandCanExecute?.Invoke(command) ?? (command == "paste" || selectionName != null);
+
+	/// <summary>The current context menu's commands as (header path, command, enabled), evaluated
+	/// exactly as opening the menu would. For tests: a context menu is a popup outside the tree.</summary>
+	public IReadOnlyList<(string Header, string Command, bool Enabled)> DescribeContextCommands()
+	{
+		var result = new List<(string, string, bool)>();
+		void Walk(ItemsControl items, string prefix)
+		{
+			foreach (var entry in items.Items)
+			{
+				if (entry is not MenuItem item)
+					continue;
+				var header = prefix + item.Header;
+				if (item.Tag is string command)
+					result.Add((header, command, CanExecuteContextCommand(command)));
+				else
+					Walk(item, header + "/");
+			}
+		}
+		if (ContextMenu != null)
+			Walk(ContextMenu, "");
+		return result;
+	}
+
+	/// <summary>Runs a context-menu command through the same event a click raises, if the menu
+	/// offers it and it is currently enabled.</summary>
+	public bool InvokeContextCommand(string command)
+	{
+		if (!DescribeContextCommands().Any(entry => entry.Command == command && entry.Enabled))
+			return false;
+		ContextCommandRequested?.Invoke(this, (command, selectionName));
+		return true;
+	}
+
 	/// <summary>Paste never needs a selection; everything else does.</summary>
 	void OnContextMenuOpened(object sender, RoutedEventArgs e)
 	{
-		var menu = (ContextMenu)sender;
-		foreach (var item in menu.Items)
+		void Update(ItemsControl items)
 		{
-			if (item is MenuItem menuItem)
-				menuItem.IsEnabled = (string)menuItem.Tag == "paste" || selectionName != null;
+			foreach (var entry in items.Items)
+			{
+				if (entry is not MenuItem menuItem)
+					continue;
+				if (menuItem.Tag is string command)
+					menuItem.IsEnabled = CanExecuteContextCommand(command);
+				else
+				{
+					Update(menuItem);
+					menuItem.IsEnabled = menuItem.Items.OfType<MenuItem>().Any(child => child.IsEnabled);
+				}
+			}
 		}
+		Update((ContextMenu)sender);
 	}
 
 	/// <summary>
@@ -452,18 +503,31 @@ public class DesignSurface : DesignerCanvas
 	/// <summary>A marquee drag finished: the rectangle it covered, in design units.</summary>
 	public event EventHandler<Rect>? MarqueeSelectionCommitted;
 
-	/// <summary>Replaces the context menu's commands ("-" as the header adds a separator). The
-	/// canvas raises <see cref="ContextCommandRequested"/> with the chosen command; a backend lists
-	/// only what it supports. "paste" is the one command enabled without a selection.</summary>
+	/// <summary>Replaces the context menu's commands ("-" as the header adds a separator, and
+	/// "Group/Item" places an item in a "Group" submenu). The canvas raises
+	/// <see cref="ContextCommandRequested"/> with the chosen command; a backend lists only what it
+	/// supports. Enablement follows <see cref="ContextCommandCanExecute"/>.</summary>
 	public void SetContextCommands(IEnumerable<(string Header, string Command)> commands)
 	{
 		var menu = new ContextMenu();
 		foreach (var (header, command) in commands)
 		{
 			if (header == "-")
+			{
 				menu.Items.Add(new Separator());
-			else
-				AddContextItem(menu, header, command);
+				continue;
+			}
+			ItemsControl parent = menu;
+			var slash = header.IndexOf('/');
+			if (slash > 0)
+			{
+				var group = header.Substring(0, slash);
+				var submenu = menu.Items.OfType<MenuItem>().FirstOrDefault(item => item.Tag == null && Equals(item.Header, group));
+				if (submenu == null)
+					menu.Items.Add(submenu = new MenuItem { Header = group });
+				parent = submenu;
+			}
+			AddContextItem(parent, slash > 0 ? header.Substring(slash + 1) : header, command);
 		}
 		menu.Opened += OnContextMenuOpened;
 		ContextMenu = menu;
