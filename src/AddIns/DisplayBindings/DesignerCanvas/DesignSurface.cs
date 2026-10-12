@@ -1941,7 +1941,7 @@ public class DesignSurface : DesignerCanvas
 		var contentX = baseX + viewport.PanX + designX * viewport.Scale;
 		var contentY = baseY + viewport.PanY + designY * viewport.Scale;
 		// Zooming from Fit continues from the fitted scale, as an absolute zoom.
-		zoomScale = Math.Clamp(viewport.Scale * factor, MinZoom, MaxZoom);
+		zoomScale = ZoomStepCalculator.Step(viewport.Scale, factor, MinZoom, MaxZoom);
 		fitMode = false;
 		var viewport2 = CurrentViewport();
 		var (baseX2, baseY2) = (Math.Max(0, viewport2.OriginX), Math.Max(0, viewport2.OriginY));

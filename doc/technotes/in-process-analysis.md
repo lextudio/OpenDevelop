@@ -692,6 +692,11 @@ lines mark the positions a raster drag snaps to (this also corrects WinForms, wh
 previously used for snapping but not drawing). `Toolbar_SnappingControls_DriveTheDragSettingsAndPersist`
 covers the defaults, the toolbar-to-controller binding, gridline spacing and persistence.
 
+**C3 zoom rounding (2026-10-12).** Section 2's `RoundToOneIfClose` is ported as
+`ZoomStepCalculator`: a Ctrl+wheel zoom step within 0.001 of 100% now lands on exactly 1.0, so
+stepping in and back out restores a 1:1 frame instead of `1.0000000000000004`. Its unit tests await
+`LeXtudio.DevFlow.Agent.Core` 0.3.1 appearing on nuget.org, without which restore fails.
+
 **C3 Fit correction (2026-10-11).** The shared canvas's Fit scaled the frame to the whole scroller
 and then offset it by the 32-unit `CanvasMargin`, so a fitted design overflowed the right and bottom
 edges by that margin and its bottom-right resize handle was clipped. Fit now scales into the extent
