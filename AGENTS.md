@@ -40,9 +40,11 @@ the log is `~/.local/share/opencode/log/opencode.log`). A review takes roughly 4
 commit about 1-2. `opencode export <id>` must go to a file before JSON parsing (piping truncates),
 and only with a non-empty id: a bare `opencode export` waits on an interactive picker forever.
 Give the build agent the exact tree hash, path list and message. Chain `git add ... && git diff
---cached --stat && git write-tree` before launching a review: a stale or IDE-held
-`.git/index.lock` (also under `.git/modules/...` for submodules) otherwise yields an empty review
-target. Review a submodule change with `--dir <submodule>`; the parent diff shows only its pointer.
+--cached --stat && git write-tree` before launching a review: a stale `.git/index.lock` (also
+under `.git/modules/...` for submodules) otherwise yields an empty review target. Integration runs
+used to leave one because the IDE's status overlay ran a locking `git status` on this repo and
+was killed; `GitStatusService` now sets `GIT_OPTIONAL_LOCKS=0`. Remove a lock only after checking
+no git process is running. Review a submodule change with `--dir <submodule>`; the parent diff shows only its pointer.
 
 ## DevFlow
 

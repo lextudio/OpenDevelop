@@ -340,6 +340,10 @@ public static class GitStatusService
             RedirectStandardError = true,
             CreateNoWindow = true,
         };
+        // A status overlay is read-only. Without this, `git status` refreshes the index and takes
+        // .git/index.lock; when it is killed (the timeout below, or the IDE exiting) the lock is
+        // left behind and every later git command in that repository fails.
+        psi.Environment["GIT_OPTIONAL_LOCKS"] = "0";
         foreach (var arg in arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries))
             psi.ArgumentList.Add(arg);
 
