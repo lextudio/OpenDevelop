@@ -909,6 +909,52 @@ public sealed class FormsDesignerHostClientTests
 		Assert.False(client.IsAlive);
 	}
 
+	/// <summary>The project-controls Toolbox category: the IDE finds a project's controls from
+	/// metadata alone (never loading the assembly) and hands the child only the type name, which
+	/// the child resolves against the snapshot's project assembly when the control is dropped.</summary>
+	[Fact]
+	public async Task ChildHost_AddsAProjectControlTheToolboxDiscoveredFromMetadata()
+	{
+		var fixtureAssembly = CustomControlFixtureDll();
+		Assert.True(File.Exists(fixtureAssembly), fixtureAssembly);
+		// The copy-local output directory, as the IDE passes it (it carries System.Windows.Forms).
+		var references = Directory.EnumerateFiles(Path.GetDirectoryName(fixtureAssembly)!, "*.dll").ToArray();
+		var controls = ToolboxMetadataDiscovery.Discover(fixtureAssembly, references,
+			ToolboxMetadataDiscovery.WinFormsControlBase, ToolboxMetadataDiscovery.WinFormsUserControlBase);
+		var panel = Assert.Single(controls, control => control.Name == "GreetingPanel");
+		Assert.True(panel.IsUserControl);
+		Assert.True(panel.HasPublicDefaultConstructor);
+		Assert.False(Assert.Single(controls, control => control.Name == "FancyButton").IsUserControl);
+		Assert.True(Assert.Single(controls, control => control.Name == "HiddenPanel").IsHiddenFromToolbox);
+		Assert.Single(ToolboxMetadataDiscovery.Discover(fixtureAssembly, references, "System.Windows.Forms.Form", "System.Windows.Forms.Form"),
+			control => control.Name == "SettingsForm");
+
+		// What the Toolbox offers: only the project's own droppable controls - not the framework
+		// copy-local assemblies (System.Windows.Forms itself sits in this output directory), not a
+		// [ToolboxItem(false)] type, not a Form - and nothing twice for an unchanged assembly.
+		var finder = new WinFormsProjectControlFinder();
+		var copyLocal = references.Where(path => path != fixtureAssembly).ToArray();
+		Assert.Contains(copyLocal, path => Path.GetFileName(path) == "System.Windows.Forms.dll");
+		var found = finder.FindNew(fixtureAssembly, copyLocal, "");
+		Assert.Equal(new[] { "FancyButton", "GreetingPanel" }, found.Select(item => item.Control.Name).OrderBy(name => name, StringComparer.Ordinal));
+		Assert.All(found, item => Assert.Equal("FormsDesigner.CustomControlFixture", item.Category));
+		Assert.Empty(finder.FindNew(fixtureAssembly, copyLocal, ""));
+		Assert.True(WinFormsProjectControlFinder.IsFrameworkAssembly("/out/LibreWinForms.Platform.dll"));
+		Assert.False(WinFormsProjectControlFinder.IsFrameworkAssembly(fixtureAssembly));
+		Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), assembly => assembly.GetName().Name == "FormsDesigner.CustomControlFixture");
+
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "project");
+		snapshot.ProjectAssemblyPath = fixtureAssembly;
+		Assert.True((await client.OpenAsync(snapshot, timeout.Token)).Accepted);
+
+		var added = await client.AddElementAsync(1, "Form1", new DesignerToolboxItemInfo { TypeName = panel.FullName }, "greetingPanel1", 20, 30, cancellationToken: timeout.Token);
+
+		Assert.Contains(added.Components, component => component.Name == "greetingPanel1" && component.Type == panel.FullName);
+		Assert.Contains("new FormsDesigner.CustomControlFixture.GreetingPanel()", DesignerText(await client.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+	}
+
 	/// <summary>
 	/// Regression test for the real-WinForms-toolbox-icon RPC (design/get-type-icon) that backs
 	/// the smart-tag popup / ToolStrip insert-item dropdown's icon rows. Both backends carry the

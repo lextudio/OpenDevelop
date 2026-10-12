@@ -7,21 +7,31 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
-using ICSharpCode.SharpDevelop.Designer.Remote;
-
-namespace ICSharpCode.WpfDesign.AddIn
+namespace ICSharpCode.SharpDevelop.Designer.Remote
 {
-	/// <summary>Reads candidate WPF controls from PE metadata without loading a project or a
+	/// <summary>Reads candidate toolbox controls from PE metadata without loading a project or a
 	/// third-party assembly into the IDE. The actual type resolution and construction remain in the
-	/// disposable design child, which is the only process allowed to execute project code.</summary>
-	static class WpfToolboxMetadataDiscovery
+	/// disposable design child, which is the only process allowed to execute project code. WPF asks
+	/// for FrameworkElement descendants, WinForms for Control descendants.</summary>
+	public static class ToolboxMetadataDiscovery
 	{
-		internal sealed class ControlInfo
+		public const string WpfControlBase = "System.Windows.FrameworkElement";
+		public const string WpfUserControlBase = "System.Windows.Controls.UserControl";
+		public const string WinFormsControlBase = "System.Windows.Forms.Control";
+		public const string WinFormsUserControlBase = "System.Windows.Forms.UserControl";
+
+		public sealed class ControlInfo
 		{
 			public string Name { get; init; } = "";
 			public string Namespace { get; init; } = "";
 			public string AssemblyName { get; init; } = "";
+			public string FullName => Namespace + "." + Name;
 			public bool IsUserControl { get; init; }
+			/// <summary>Whether the type declares a public parameterless constructor, which a
+			/// designer needs to create it from the toolbox.</summary>
+			public bool HasPublicDefaultConstructor { get; init; }
+			/// <summary>Whether the type opts out with <c>[ToolboxItem(false)]</c>.</summary>
+			public bool IsHiddenFromToolbox { get; init; }
 			public List<DesignerToolboxFilterInfo> Filters { get; init; } = new();
 		}
 
@@ -51,10 +61,12 @@ namespace ICSharpCode.WpfDesign.AddIn
 			}
 		}
 
-		/// <summary>Discovers public, concrete classes whose metadata base chain reaches a WPF
-		/// visual base. <paramref name="referencePaths"/> is used only to follow metadata TypeRefs;
-		/// none of those files is ever loaded into an AssemblyLoadContext.</summary>
-		public static IReadOnlyList<ControlInfo> Discover(string assemblyPath, IEnumerable<string> referencePaths)
+		/// <summary>Discovers public, concrete classes whose metadata base chain reaches
+		/// <paramref name="controlBase"/> (a WPF visual base by default).
+		/// <paramref name="referencePaths"/> is used only to follow metadata TypeRefs; none of those
+		/// files is ever loaded into an AssemblyLoadContext.</summary>
+		public static IReadOnlyList<ControlInfo> Discover(string assemblyPath, IEnumerable<string> referencePaths,
+			string controlBase = WpfControlBase, string userControlBase = WpfUserControlBase)
 		{
 			var pathsByAssemblyName = referencePaths
 				.Where(File.Exists)
@@ -70,7 +82,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 					|| (definition.Attributes & TypeAttributes.SpecialName) != 0
 					|| root.Metadata.GetString(definition.Name).Contains('`'))
 						continue;
-					if (!IsWpfVisualBase(root, definition.BaseType, pathsByAssemblyName, images, new HashSet<string>(StringComparer.Ordinal)))
+					if (!HasBase(root, definition.BaseType, pathsByAssemblyName, images, new HashSet<string>(StringComparer.Ordinal), controlBase))
 						continue;
 					var name = root.Metadata.GetString(definition.Name);
 					var @namespace = root.Metadata.GetString(definition.Namespace);
@@ -80,7 +92,9 @@ namespace ICSharpCode.WpfDesign.AddIn
 						Name = name,
 						Namespace = @namespace,
 						AssemblyName = root.Name,
-						IsUserControl = IsUserControlBase(root, definition.BaseType, pathsByAssemblyName, images, new HashSet<string>(StringComparer.Ordinal)),
+						IsUserControl = HasBase(root, definition.BaseType, pathsByAssemblyName, images, new HashSet<string>(StringComparer.Ordinal), userControlBase),
+						HasPublicDefaultConstructor = HasPublicDefaultConstructor(root.Metadata, definition),
+						IsHiddenFromToolbox = IsHiddenFromToolbox(root.Metadata, definition),
 						Filters = ReadToolboxFilters(root.Metadata, definition)
 					});
 				}
@@ -89,6 +103,53 @@ namespace ICSharpCode.WpfDesign.AddIn
 				foreach (var image in images.Values)
 					image.Dispose();
 			}
+		}
+
+		static bool HasPublicDefaultConstructor(MetadataReader metadata, TypeDefinition definition)
+		{
+			foreach (var handle in definition.GetMethods()) {
+				var method = metadata.GetMethodDefinition(handle);
+				if ((method.Attributes & MethodAttributes.MemberAccessMask) != MethodAttributes.Public
+					|| (method.Attributes & MethodAttributes.Static) != 0
+					|| metadata.GetString(method.Name) != ".ctor")
+					continue;
+				var signature = metadata.GetBlobReader(method.Signature);
+				signature.ReadSignatureHeader();
+				if (signature.ReadCompressedInteger() == 0)
+					return true;
+			}
+			return false;
+		}
+
+		/// <summary><c>[ToolboxItem(false)]</c>: the bool constructor's blob is the prolog 01 00
+		/// followed by one byte, 0 for false.</summary>
+		static bool IsHiddenFromToolbox(MetadataReader metadata, TypeDefinition definition)
+		{
+			foreach (var handle in definition.GetCustomAttributes()) {
+				var attribute = metadata.GetCustomAttribute(handle);
+				if (AttributeTypeName(metadata, attribute.Constructor) != "System.ComponentModel.ToolboxItemAttribute")
+					continue;
+				var bytes = metadata.GetBlobBytes(attribute.Value);
+				if (bytes.Length >= 3 && bytes[0] == 1 && bytes[1] == 0 && IsBoolConstructor(metadata, attribute.Constructor) && bytes[2] == 0)
+					return true;
+			}
+			return false;
+		}
+
+		static bool IsBoolConstructor(MetadataReader metadata, EntityHandle constructor)
+		{
+			BlobHandle signatureHandle;
+			if (constructor.Kind == HandleKind.MethodDefinition)
+				signatureHandle = metadata.GetMethodDefinition((MethodDefinitionHandle)constructor).Signature;
+			else if (constructor.Kind == HandleKind.MemberReference)
+				signatureHandle = metadata.GetMemberReference((MemberReferenceHandle)constructor).Signature;
+			else
+				return false;
+			var signature = metadata.GetBlobReader(signatureHandle);
+			signature.ReadSignatureHeader();
+			return signature.ReadCompressedInteger() == 1
+				&& signature.ReadSignatureTypeCode() == SignatureTypeCode.Void
+				&& signature.ReadSignatureTypeCode() == SignatureTypeCode.Boolean;
 		}
 
 		static List<DesignerToolboxFilterInfo> ReadToolboxFilters(MetadataReader metadata, TypeDefinition definition)
@@ -152,14 +213,6 @@ namespace ICSharpCode.WpfDesign.AddIn
 			images.Add(key, image);
 			return image;
 		}
-
-		static bool IsUserControlBase(AssemblyImage image, EntityHandle type, IReadOnlyDictionary<string, string> paths,
-			Dictionary<string, AssemblyImage> images, HashSet<string> visited)
-			=> HasBase(image, type, paths, images, visited, "System.Windows.Controls.UserControl");
-
-		static bool IsWpfVisualBase(AssemblyImage image, EntityHandle type, IReadOnlyDictionary<string, string> paths,
-			Dictionary<string, AssemblyImage> images, HashSet<string> visited)
-			=> HasBase(image, type, paths, images, visited, "System.Windows.FrameworkElement");
 
 		static bool HasBase(AssemblyImage image, EntityHandle handle, IReadOnlyDictionary<string, string> paths,
 			Dictionary<string, AssemblyImage> images, HashSet<string> visited, string wantedFullName)

@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Windows.Controls;
 
-using ICSharpCode.WpfDesign.AddIn;
 
 using Xunit;
 
@@ -22,7 +21,7 @@ public sealed class WpfToolboxMetadataDiscoveryTests
 		Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), assembly =>
 			string.Equals(assembly.GetName().Name, "CustomControlFixture", StringComparison.Ordinal));
 
-		var controls = WpfToolboxMetadataDiscovery.Discover(fixture, new[] {
+		var controls = ICSharpCode.SharpDevelop.Designer.Remote.ToolboxMetadataDiscovery.Discover(fixture, new[] {
 			fixture,
 			typeof(ContentControl).Assembly.Location,
 			typeof(System.Windows.FrameworkElement).Assembly.Location
@@ -32,6 +31,10 @@ public sealed class WpfToolboxMetadataDiscoveryTests
 		Assert.Equal("CustomControlFixture", badge.Namespace);
 		Assert.Equal("CustomControlFixture", badge.AssemblyName);
 		Assert.False(badge.IsUserControl);
+		Assert.True(badge.HasPublicDefaultConstructor);
+		Assert.False(badge.IsHiddenFromToolbox);
+		Assert.True(Assert.Single(controls, control => control.Name == "HiddenBadge").IsHiddenFromToolbox);
+		Assert.False(Assert.Single(controls, control => control.Name == "ArgumentBadge").HasPublicDefaultConstructor);
 		Assert.Collection(badge.Filters,
 			allow => { Assert.Equal("WpfDesigner", allow.FilterString); Assert.Equal("Allow", allow.FilterType); },
 			prevent => { Assert.Equal("WinFormsDesigner", prevent.FilterString); Assert.Equal("Prevent", prevent.FilterType); },

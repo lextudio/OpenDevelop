@@ -301,7 +301,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 					continue;
 
 				try {
-					var controlTypes = WpfToolboxMetadataDiscovery.Discover(assemblyFileName, references);
+					var controlTypes = ICSharpCode.SharpDevelop.Designer.Remote.ToolboxMetadataDiscovery.Discover(assemblyFileName, references);
 					string categoryName = StringParser.Parse(System.IO.Path.GetFileNameWithoutExtension(assemblyFileName));
 
 					if (controlTypes.Count > 0) {
@@ -318,7 +318,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			}
 		}
 
-		SharedToolboxItem CreateWpfItem(string categoryName, WpfToolboxMetadataDiscovery.ControlInfo componentType)
+		SharedToolboxItem CreateWpfItem(string categoryName, ICSharpCode.SharpDevelop.Designer.Remote.ToolboxMetadataDiscovery.ControlInfo componentType)
 		{
 			var item = BuildToolboxItemInfo(componentType);
 			return new SharedToolboxItem(categoryName, componentType.Name, WpfScope,
@@ -353,7 +353,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			};
 		}
 
-		static ICSharpCode.SharpDevelop.Designer.Remote.DesignerToolboxItemInfo BuildToolboxItemInfo(WpfToolboxMetadataDiscovery.ControlInfo componentType)
+		static ICSharpCode.SharpDevelop.Designer.Remote.DesignerToolboxItemInfo BuildToolboxItemInfo(ICSharpCode.SharpDevelop.Designer.Remote.ToolboxMetadataDiscovery.ControlInfo componentType)
 		{
 			return new ICSharpCode.SharpDevelop.Designer.Remote.DesignerToolboxItemInfo {
 				Name = componentType.Name,

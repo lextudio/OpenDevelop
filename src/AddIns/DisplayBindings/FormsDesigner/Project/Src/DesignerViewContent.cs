@@ -820,6 +820,7 @@ namespace ICSharpCode.FormsDesigner
 			// them - the async continuation below resumes on a thread-pool thread
 			// (ConfigureAwait(false)), so it must not read dispatcher-affine state itself.
 			var snapshot = CreateRemoteSnapshot(++remoteDocumentVersion);
+			FormsProjectToolbox.AddProjectControls(snapshot);
 			_ = LoadRemoteDesignerAsync(myGeneration, currentTexts, snapshot, canvas, oldClient, backend);
 		}
 
