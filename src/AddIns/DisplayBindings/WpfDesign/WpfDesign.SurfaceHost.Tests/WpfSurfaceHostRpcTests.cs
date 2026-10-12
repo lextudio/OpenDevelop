@@ -961,7 +961,8 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.Equal("Enum", row.Kind);
 		Assert.Equal("", row.Value);
 		// Only IValueConverter resources are offered, never the brush.
-		Assert.Equal(new[] { "", "visible", "shown" }, row.AllowedValues);
+		// Name order: the dictionary itself enumerates its keys in hash order.
+		Assert.Equal(new[] { "", "shown", "visible" }, row.AllowedValues);
 		// An inline converter object is not a StaticResource reference: no row, and no overwrite.
 		Assert.DoesNotContain(FindByName(opened.Tree!, "inline")!.Properties, property => property.EditorKind == "BindingConverter");
 		var inline = FindByName(opened.Tree!, "inline")!;

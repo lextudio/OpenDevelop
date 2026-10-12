@@ -22,6 +22,7 @@ public sealed class BrushEditModel
 	public const string SolidKind = "Solid";
 	public const string LinearKind = "LinearGradient";
 	public const string RadialKind = "RadialGradient";
+	public const string ResourceKind = "Resource";
 
 	public sealed class Stop
 	{
@@ -33,10 +34,12 @@ public sealed class BrushEditModel
 	readonly List<Stop> stops = new();
 	Color solidColor;
 
-	public BrushEditModel(DesignerBrushInfo? brush)
+	public BrushEditModel(DesignerBrushInfo? brush, IReadOnlyList<string>? resourceKeys = null)
 	{
 		brush ??= new DesignerBrushInfo { Kind = NullKind };
 		Kind = brush.Kind;
+		ResourceKey = brush.ResourceKey;
+		ResourceKeys = resourceKeys ?? Array.Empty<string>();
 		solidColor = ParseColorOrDefault(brush.Color, Colors.Black);
 		Opacity = brush.Opacity;
 		(StartX, StartY, EndX, EndY) = (brush.StartX, brush.StartY, brush.EndX, brush.EndY);
@@ -49,6 +52,10 @@ public sealed class BrushEditModel
 	}
 
 	public string Kind { get; private set; }
+	/// <summary>The in-scope Brush resources the resources tab offers.</summary>
+	public IReadOnlyList<string> ResourceKeys { get; }
+	/// <summary>For a resource brush, the referenced key.</summary>
+	public string ResourceKey { get; private set; }
 	public bool IsGradient => Kind is LinearKind or RadialKind;
 	public IReadOnlyList<Stop> Stops => stops;
 	public int SelectedStop { get; private set; }
@@ -80,8 +87,10 @@ public sealed class BrushEditModel
 				return;
 			}
 			solidColor = value;
-			if (Kind == NullKind)
+			if (Kind is NullKind or ResourceKind) {
 				Kind = SolidKind;
+				ResourceKey = "";
+			}
 		}
 	}
 
@@ -92,6 +101,8 @@ public sealed class BrushEditModel
 	{
 		if (kind is not (NullKind or SolidKind or LinearKind or RadialKind))
 			throw new ArgumentException("Unknown brush kind: " + kind, nameof(kind));
+		if (Kind == ResourceKind)
+			ResourceKey = "";
 		if (kind == Kind)
 			return;
 		var color = SelectedColor;
@@ -103,6 +114,17 @@ public sealed class BrushEditModel
 		if (kind == SolidKind && IsGradient)
 			solidColor = color;
 		Kind = kind;
+	}
+
+	/// <summary>Makes the brush a <c>{StaticResource key}</c> reference to one of
+	/// <see cref="ResourceKeys"/> (Visual Studio's brush resources tab).</summary>
+	public bool SelectResource(string key)
+	{
+		if (!ResourceKeys.Contains(key))
+			return false;
+		Kind = ResourceKind;
+		ResourceKey = key;
+		return true;
 	}
 
 	/// <summary>Adds a stop at <paramref name="offset"/> with the color the gradient has there, as
@@ -193,6 +215,10 @@ public sealed class BrushEditModel
 		var info = new DesignerBrushInfo { Kind = Kind };
 		if (Kind == NullKind)
 			return info;
+		if (Kind == ResourceKind) {
+			info.ResourceKey = ResourceKey;
+			return info;
+		}
 		info.Opacity = Opacity;
 		if (Kind == SolidKind) {
 			info.Color = FormatColor(solidColor);

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
@@ -17,6 +18,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation;
 public interface IBrushProperty
 {
 	DesignerBrushInfo? Brush { get; }
+	IReadOnlyList<string> BrushResourceKeys { get; }
 }
 
 /// <summary>The Properties pad's selected object, which commits an edited brush.</summary>
@@ -44,6 +46,7 @@ public static class BrushEditing
 	/// <c>offset:&lt;i&gt;:&lt;offset&gt;</c>, <c>remove:&lt;i&gt;</c>, <c>reverse</c>,
 	/// <c>opacity:&lt;0-1&gt;</c>, <c>start:x,y</c>, <c>end:x,y</c>, <c>center:x,y</c>,
 	/// <c>origin:x,y</c>, <c>radius:x,y</c>, <c>mapping:&lt;mode&gt;</c>, <c>spread:&lt;method&gt;</c>,
+	/// <c>resource:&lt;key&gt;</c>,
 	/// or <c>cancel</c>. Returns false for cancel; throws for an unknown or rejected step.
 	/// </summary>
 	public static bool ApplyScript(BrushEditModel model, string script)
@@ -62,6 +65,7 @@ public static class BrushEditing
 				case "cancel":
 					return false;
 				case "kind": model.SetKind(argument); break;
+				case "resource": ok = model.SelectResource(argument); break;
 				case "color":
 					ok = BrushEditModel.TryParseColor(step.Substring("color:".Length), out var color);
 					if (ok) model.SelectedColor = color;
@@ -121,7 +125,7 @@ public static class BrushEditing
 		try {
 			if (instance is not IBrushEditorHost host || descriptor is not IBrushProperty property)
 				throw new InvalidOperationException("The brush editor is not hosted by a designer Properties pad.");
-			var model = new BrushEditModel(property.Brush);
+			var model = new BrushEditModel(property.Brush, property.BrushResourceKeys);
 			var accepted = TestEdit != null
 				? TestEdit(model)
 				: new BrushEditorDialog(model, descriptor.DisplayName) { Owner = owner }.ShowDialog() == true;
@@ -155,6 +159,9 @@ public sealed class BrushEditorDialog : Window
 	readonly ToggleButton noBrushTab = new() { Content = "No brush", Padding = new Thickness(8, 2, 8, 2) };
 	readonly ToggleButton solidTab = new() { Content = "Solid", Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(4, 0, 0, 0) };
 	readonly ToggleButton gradientTab = new() { Content = "Gradient", Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(4, 0, 0, 0) };
+	readonly ToggleButton resourcesTab = new() { Content = "Resources", Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(4, 0, 0, 0) };
+	readonly ListBox resources = new() { Height = 160 };
+	bool showResources;
 	readonly RadioButton linear = new() { Content = "Linear", GroupName = "gradientKind", Margin = new Thickness(0, 0, 8, 0) };
 	readonly RadioButton radial = new() { Content = "Radial", GroupName = "gradientKind", Margin = new Thickness(0, 0, 8, 0) };
 	readonly Border gradientBar = new() { Height = SliderHeight, BorderBrush = Brushes.Gray, BorderThickness = new Thickness(1) };
@@ -193,9 +200,14 @@ public sealed class BrushEditorDialog : Window
 		tabs.Children.Add(noBrushTab);
 		tabs.Children.Add(solidTab);
 		tabs.Children.Add(gradientTab);
-		noBrushTab.Click += (_, _) => Change(() => model.SetKind(BrushEditModel.NullKind));
-		solidTab.Click += (_, _) => Change(() => model.SetKind(BrushEditModel.SolidKind));
-		gradientTab.Click += (_, _) => Change(() => model.SetKind(model.Kind == BrushEditModel.RadialKind ? BrushEditModel.RadialKind : BrushEditModel.LinearKind));
+		tabs.Children.Add(resourcesTab);
+		resourcesTab.Click += (_, _) => { showResources = true; Refresh(); };
+		resources.ItemsSource = model.ResourceKeys;
+		resources.SelectionChanged += (_, _) => { if (!syncing && resources.SelectedItem is string key) Change(() => model.SelectResource(key)); };
+		noBrushTab.Click += (_, _) => { showResources = false; Change(() => model.SetKind(BrushEditModel.NullKind)); };
+		solidTab.Click += (_, _) => { showResources = false; Change(() => model.SetKind(BrushEditModel.SolidKind)); };
+		gradientTab.Click += (_, _) => { showResources = false; Change(() => model.SetKind(model.Kind == BrushEditModel.RadialKind ? BrushEditModel.RadialKind : BrushEditModel.LinearKind)); };
+		showResources = model.Kind == BrushEditModel.ResourceKind;
 
 		gradientPanel = BuildGradientPanel();
 		colorPanel = BuildColorPanel();
@@ -210,6 +222,7 @@ public sealed class BrushEditorDialog : Window
 
 		var root = new StackPanel { Margin = new Thickness(10), Width = 300 };
 		root.Children.Add(tabs);
+		root.Children.Add(resources);
 		root.Children.Add(gradientPanel);
 		root.Children.Add(colorPanel);
 		root.Children.Add(advancedPanel);
@@ -455,11 +468,14 @@ public sealed class BrushEditorDialog : Window
 	{
 		syncing = true;
 		try {
-			noBrushTab.IsChecked = model.Kind == BrushEditModel.NullKind;
-			solidTab.IsChecked = model.Kind == BrushEditModel.SolidKind;
-			gradientTab.IsChecked = model.IsGradient;
-			gradientPanel.Visibility = model.IsGradient ? Visibility.Visible : Visibility.Collapsed;
-			colorPanel.Visibility = model.Kind == BrushEditModel.NullKind ? Visibility.Collapsed : Visibility.Visible;
+			noBrushTab.IsChecked = !showResources && model.Kind == BrushEditModel.NullKind;
+			solidTab.IsChecked = !showResources && model.Kind == BrushEditModel.SolidKind;
+			gradientTab.IsChecked = !showResources && model.IsGradient;
+			resourcesTab.IsChecked = showResources;
+			resources.Visibility = showResources ? Visibility.Visible : Visibility.Collapsed;
+			resources.SelectedItem = model.Kind == BrushEditModel.ResourceKind ? model.ResourceKey : null;
+			gradientPanel.Visibility = !showResources && model.IsGradient ? Visibility.Visible : Visibility.Collapsed;
+			colorPanel.Visibility = showResources || model.Kind is BrushEditModel.NullKind or BrushEditModel.ResourceKind ? Visibility.Collapsed : Visibility.Visible;
 			advancedPanel.Visibility = colorPanel.Visibility;
 			linear.IsChecked = model.Kind == BrushEditModel.LinearKind;
 			radial.IsChecked = model.Kind == BrushEditModel.RadialKind;

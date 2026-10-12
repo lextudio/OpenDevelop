@@ -807,7 +807,10 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     Width="420" Height="220" Title="Brushes">
-              <Grid><Button x:Name="painted" Background="Red" Content="Painted" /></Grid>
+              <Grid>
+                <Grid.Resources><SolidColorBrush x:Key="Accent" Color="Orange" /></Grid.Resources>
+                <Button x:Name="painted" Background="Red" Content="Painted" />
+              </Grid>
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
@@ -851,6 +854,13 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             Assert.True(undo.GetProperty("success").GetBoolean(), undo.ToString());
             Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
             Assert.Equal(text, await File.ReadAllTextAsync(xamlPath));
+
+            // The resources tab references an in-scope Brush resource.
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "painted")).GetProperty("success").GetBoolean());
+            var resource = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-brush", "Background", "resource:Accent");
+            Assert.True(resource.GetProperty("success").GetBoolean(), resource.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            Assert.Contains("Background=\"{StaticResource Accent}\"", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
         } finally {
             await app.InvokeAsync("od.close-all-document-views");
             await File.WriteAllBytesAsync(xamlPath, originalXaml);

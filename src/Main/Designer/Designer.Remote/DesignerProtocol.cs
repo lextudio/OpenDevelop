@@ -20,7 +20,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		// v23 adds DesignerPropertyInfo.Brush and WPF's optional design/set-brush.
+		// v24 adds DesignerBrushInfo's Resource kind/ResourceKey and DesignerPropertyInfo.BrushResourceKeys.
+		// v23 added DesignerPropertyInfo.Brush and WPF's optional design/set-brush.
 		// v22 added DesignerGridTrackInfo.Unit/Value and WPF's optional design/set-grid-track-unit.
 		// v21 added WinForms' optional design/set-items for list-control string Items. v20 added
 		// DesignerPropertyInfo.CollectionItems and WPF's design/set-items. v19 added
@@ -32,7 +33,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// and design/set-binding-validation-option. A stale pooled child
 		// must fail the handshake rather than reject a newly-visible binding editor after the
 		// Properties pad has already presented it.
-		public const int Version = 23;
+		public const int Version = 24;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -588,6 +589,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>For a <c>Brush</c> editor, the current brush when it is one the editor can
 		/// round-trip (solid, or a plain linear/radial gradient); null when the property is unset.</summary>
 		public DesignerBrushInfo? Brush { get; set; }
+		/// <summary>For a <c>Brush</c> editor, the keys of the Brush resources in the element's scope,
+		/// which the editor's resources tab offers as <c>{StaticResource key}</c>.</summary>
+		public List<string> BrushResourceKeys { get; set; } = new List<string>();
 	}
 
 	/// <summary>A brush the Properties-pad brush editor can show and write back without loss
@@ -597,8 +601,11 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	public sealed class DesignerBrushInfo
 	{
 		/// <summary><c>Null</c> (VS's "No brush", <c>{x:Null}</c>), <c>Solid</c>,
-		/// <c>LinearGradient</c> or <c>RadialGradient</c>.</summary>
+		/// <c>LinearGradient</c>, <c>RadialGradient</c>, or <c>Resource</c> (a
+		/// <c>{StaticResource}</c> reference to <see cref="ResourceKey"/>).</summary>
 		public string Kind { get; set; } = "Solid";
+		/// <summary>For a <c>Resource</c> brush, the referenced resource key.</summary>
+		public string ResourceKey { get; set; } = "";
 		/// <summary>A solid brush's color as <c>#AARRGGBB</c>.</summary>
 		public string Color { get; set; } = "";
 		public double Opacity { get; set; } = 1;

@@ -93,4 +93,44 @@ public sealed class BrushEditTests
 		Assert.False((await client.SetBrushAsync(1, opened.Tree.Children[1].Id, "Content", new DesignerBrushInfo { Color = "#FF000000" }, timeout.Token)).Accepted);
 		Assert.Equal(text, Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text);
 	}
+
+	[Fact]
+	public async Task ChildHost_OffersAndWritesInScopeBrushResources()
+	{
+		const string xaml = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="root" Width="240" Height="120">
+			  <StackPanel.Resources>
+			    <LinearGradientBrush x:Key="Fade"><GradientStop Color="White"/></LinearGradientBrush>
+			    <SolidColorBrush x:Key="Accent" Color="Orange"/>
+			    <BooleanToVisibilityConverter x:Key="NotABrush"/>
+			  </StackPanel.Resources>
+			  <Button x:Name="target" Background="Red" Content="Target"/>
+			  <Button x:Name="referenced" Background="{StaticResource Accent}" Content="Referenced"/>
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(WpfSurfaceHostRpcTests.HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Background(DesignerSessionState state, int index)
+			=> Assert.Single(state.Tree!.Children[index].Properties, p => p.Name == "Background");
+
+		// Name order, whatever order the dictionary (a hash table) enumerates its keys in.
+		Assert.Equal(new[] { "Accent", "Fade" }, Background(opened, 0).BrushResourceKeys);
+		Assert.Equal(new[] { "Accent", "Fade" }, Background(opened, 1).BrushResourceKeys);
+		var referenced = Background(opened, 1);
+		Assert.Equal("Brush", referenced.EditorKind);
+		Assert.Equal(("Resource", "Accent"), (referenced.Brush!.Kind, referenced.Brush.ResourceKey));
+
+		var set = await client.SetBrushAsync(1, opened.Tree!.Children[0].Id, "Background", new DesignerBrushInfo { Kind = "Resource", ResourceKey = "Fade" }, timeout.Token);
+		Assert.True(set.Accepted, set.Error);
+		Assert.Equal("Fade", Background(set, 0).Brush!.ResourceKey);
+		var text = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.Contains("x:Name=\"target\" Background=\"{StaticResource Fade}\"", text, StringComparison.Ordinal);
+
+		// A key that is not a Brush resource in scope is rejected without an edit.
+		Assert.False((await client.SetBrushAsync(1, opened.Tree.Children[0].Id, "Background", new DesignerBrushInfo { Kind = "Resource", ResourceKey = "NotABrush" }, timeout.Token)).Accepted);
+		Assert.Equal(text, Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text);
+	}
+
 }

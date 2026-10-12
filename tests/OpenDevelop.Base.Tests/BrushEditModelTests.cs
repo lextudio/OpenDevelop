@@ -90,4 +90,19 @@ public sealed class BrushEditModelTests
 			Assert.Equal(color, BrushEditorDialog.FromHsv(hue, saturation, value, 255));
 		}
 	}
+
+	[Fact]
+	public void ResourcesTabSelectsOnlyOfferedKeysAndAColorLeavesTheResource()
+	{
+		var model = new BrushEditModel(new DesignerBrushInfo { Kind = BrushEditModel.SolidKind, Color = "#FFFF0000" }, new[] { "Accent", "Fade" });
+
+		Assert.False(model.SelectResource("Missing"));
+		Assert.True(BrushEditing.ApplyScript(model, "resource:Fade"));
+
+		Assert.Equal((BrushEditModel.ResourceKind, "Fade"), (model.ToInfo().Kind, model.ToInfo().ResourceKey));
+		Assert.True(model.IsChanged);
+		model.SelectedColor = Colors.Blue;
+		Assert.Equal(BrushEditModel.SolidKind, model.Kind);
+		Assert.Equal("", model.ToInfo().ResourceKey);
+	}
 }

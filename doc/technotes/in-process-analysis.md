@@ -723,8 +723,13 @@ attribute text, "No brush" as `{x:Null}`, a gradient as a property element) in o
 **IDE slice:** `BrushEditModel`/`BrushEditing`/`BrushEditorDialog` live in `Designer.Presentation`
 beside the items editor; the WPF row (`WpfBrushEditor`) shows a swatch and a "…" button and commits
 through `IBrushEditorHost`. `od.wpf-designer.properties-pad.edit-brush` drives the real button with
-an edit script. Not yet: the eyedropper, color/brush resources tabs, tile brushes, other color
-spaces, and the on-canvas gradient and brush-transform tools.
+an edit script. **Resources tab:** protocol **v24** adds a `Resource` brush kind (a
+`{StaticResource key}` reference, which the host now describes instead of leaving a read-only
+reference) and `DesignerPropertyInfo.BrushResourceKeys`, the in-scope Brush resource keys (own,
+ancestors', merged and application dictionaries - the converter-key walk, generalized); the dialog's
+Resources tab lists them and `design/set-brush` accepts only one of them. Not yet: the eyedropper,
+color resources and system resources, tile brushes, other color spaces, and the on-canvas gradient
+and brush-transform tools.
 
 **C4 WinForms Toolbox components (2026-10-12).** The WinForms Toolbox catalog lists Timer, ToolTip,
 ImageList, ErrorProvider, BackgroundWorker and the other non-visual components, but the child's

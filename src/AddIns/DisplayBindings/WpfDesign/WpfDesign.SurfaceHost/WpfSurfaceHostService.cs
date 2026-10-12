@@ -994,14 +994,23 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				catch (ArgumentException e) { return NotFound(state, e.Message); }
 				if (property?.ReturnType == null || !typeof(Brush).IsAssignableFrom(property.ReturnType))
 					return NotFound(state, "Not a Brush property: " + propertyName);
+				// Validate against the dictionaries as they are now, not a previous rebuild's cache.
+				brushKeysByScope.Clear();
+				if (brush.Kind == "Resource" && !BrushResourceKeys(item).Contains(brush.ResourceKey))
+					return NotFound(state, "Not a Brush resource in scope: " + brush.ResourceKey);
 				try
 				{
-					var value = CreateBrush(brush);
+					var value = brush.Kind == "Resource" ? null : CreateBrush(brush);
 					using var changeGroup = item.OpenGroup("Set " + propertyName);
 					if (property.IsSet)
 						property.Reset();
+					if (brush.Kind == "Resource")
+					{
+						property.SetValue(new StaticResourceExtension());
+						property.Value!.Properties["ResourceKey"].SetValue(brush.ResourceKey);
+					}
 					// "No brush" is an explicit {x:Null}, not a reset: it overrides a style's brush.
-					if (value == null)
+					else if (value == null)
 						property.SetValue(item.Services.Component.RegisterComponentForDesigner(new System.Windows.Markup.NullExtension()));
 					else
 						property.SetValue(value);
@@ -1242,9 +1251,40 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			return false;
 		}
 
-		/// <summary>String keys of IValueConverter resources visible to <paramref name="item"/>: its own
-		/// and its ancestors' Resources (merged dictionaries included), then the application's.</summary>
+		/// <summary>String keys of IValueConverter resources visible to <paramref name="item"/>, in name
+		/// order (a ResourceDictionary enumerates its keys in hash order).</summary>
 		static List<string> ConverterResourceKeys(DesignItem item)
+			=> ResourceKeys(item, value => value is System.Windows.Data.IValueConverter).OrderBy(key => key, StringComparer.Ordinal).ToList();
+
+		/// <summary>Brush resource keys per resource scope - the nearest element (inclusive) that has
+		/// Resources of its own, or null for only the application's - for one tree rebuild: elements
+		/// sharing a scope share the walk. <see cref="RebuildTreeAndRender"/> clears it, since an edit
+		/// can change any dictionary.</summary>
+		static readonly Dictionary<object, List<string>> brushKeysByScope = new();
+		static readonly object applicationScope = new();
+
+		/// <summary>String keys of Brush resources visible to <paramref name="item"/>, in name order
+		/// (a ResourceDictionary enumerates its keys in hash order).</summary>
+		static List<string> BrushResourceKeys(DesignItem item)
+		{
+			object scope = applicationScope;
+			for (var current = item; current != null; current = current.Parent)
+			{
+				if ((current.Component as FrameworkElement)?.Resources is { } resources
+					&& (resources.Count > 0 || resources.MergedDictionaries.Count > 0))
+				{
+					scope = current;
+					break;
+				}
+			}
+			if (!brushKeysByScope.TryGetValue(scope, out var keys))
+				brushKeysByScope[scope] = keys = ResourceKeys(item, value => value is Brush).OrderBy(key => key, StringComparer.Ordinal).ToList();
+			return keys;
+		}
+
+		/// <summary>String keys of the resources visible to <paramref name="item"/> whose value matches:
+		/// its own and its ancestors' Resources (merged dictionaries included), then the application's.</summary>
+		static List<string> ResourceKeys(DesignItem item, Func<object?, bool> matches)
 		{
 			var keys = new List<string>();
 			void Collect(ResourceDictionary? dictionary)
@@ -1253,7 +1293,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					return;
 				foreach (var key in dictionary.Keys)
 				{
-					if (key is string name && !keys.Contains(name) && dictionary[key] is System.Windows.Data.IValueConverter)
+					if (key is string name && !keys.Contains(name) && matches(dictionary[key]))
 						keys.Add(name);
 				}
 				foreach (var merged in dictionary.MergedDictionaries)
@@ -2647,6 +2687,10 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				info.Category = "Layout";
 				result.Add(info);
 			}
+			// Every brush editor row, attached ones included, offers the same in-scope Brush resources.
+			List<string>? brushKeys = null;
+			foreach (var info in result.Where(info => info.EditorKind == "Brush"))
+				info.BrushResourceKeys = brushKeys ??= BrushResourceKeys(item);
 			if (TryGetEditableItems(item, out var itemsProperty, out var itemKind) && itemsProperty != null && itemKind != null)
 			{
 				result.RemoveAll(info => info.Name == "Items");
@@ -2812,6 +2856,17 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					}
 					// A brush written as an element (a gradient, or a SolidColorBrush element) has no
 					// lossless text form, but the brush editor can round-trip the plain shapes.
+					if (reference.Component is StaticResourceExtension
+						&& reference.Properties["ResourceKey"].ValueOnInstance is string brushKey
+						&& property.ReturnType != null && typeof(Brush).IsAssignableFrom(property.ReturnType))
+					{
+						info.Kind = "Brush";
+						info.IsReadOnly = true;
+						info.EditorKind = "Brush";
+						info.Brush = new DesignerBrushInfo { Kind = "Resource", ResourceKey = brushKey };
+						info.Value = "{StaticResource " + brushKey + "}";
+						return info;
+					}
 					if (reference.Component is System.Windows.Markup.NullExtension
 						&& property.ReturnType != null && typeof(Brush).IsAssignableFrom(property.ReturnType))
 					{
@@ -3056,6 +3111,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// that element ids are only meaningful within one generation.</summary>
 		void RebuildTreeAndRender(DesignerSessionState state)
 		{
+			brushKeysByScope.Clear();
 			if (current?.RootItem == null)
 				return;
 			pathToItem = new Dictionary<string, DesignItem>(StringComparer.Ordinal);
