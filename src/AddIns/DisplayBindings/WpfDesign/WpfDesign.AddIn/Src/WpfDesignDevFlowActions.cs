@@ -623,6 +623,11 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			return null;
 		}
 
+		// Descriptor names are binding-path-safe; callers address rows by their protocol name.
+		static bool IsPropertyItem(PropertyItem candidate, string propertyName)
+			=> candidate.PropertyName == propertyName
+				|| (candidate.PropertyDescriptor as WpfSurfacePropertyDescriptor)?.ProtocolName == propertyName;
+
 		[DevFlowAction("od.wpf-designer.properties-pad.edit", Description = "Edit a property through the real Xceed Properties pad PropertyItem; does not access the DDP property list directly")]
 		public static string EditPropertyThroughPropertiesPad(string propertyName, string value)
 		{
@@ -636,7 +641,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			// Value exercises the pad's normal binding -> PropertyDescriptor -> designer adapter path;
 			// deliberately do not call WpfSurfaceHostClient.SetPropertyAsync directly here.
 			var item = grid.Properties?.OfType<PropertyItem>()
-				.FirstOrDefault(candidate => candidate.PropertyName == propertyName);
+				.FirstOrDefault(candidate => IsPropertyItem(candidate, propertyName));
 			if (item == null)
 				return JsonSerializer.Serialize(new {
 					success = false,
@@ -729,7 +734,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
 
 			var item = grid.Properties?.OfType<PropertyItem>()
-				.FirstOrDefault(candidate => candidate.PropertyName == propertyName);
+				.FirstOrDefault(candidate => IsPropertyItem(candidate, propertyName));
 			if (item?.PropertyDescriptor == null)
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad property not found: " + propertyName });
 			if (!item.PropertyDescriptor.CanResetValue(selectedObject))

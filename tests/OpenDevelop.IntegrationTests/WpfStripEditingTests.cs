@@ -301,6 +301,61 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
+    public async Task PropertiesPad_BindingDelay_EditsIntegerMilliseconds()
+    {
+        // Binding.Delay is an Int32. The visible pad must expose it as an integer editor so a
+        // fractional value is rejected instead of being silently rounded on its way to the child.
+        // Nested Binding rows have dotted protocol names ("Text.Delay"); this journey also locks
+        // that such a row actually commits through the pad's own value binding.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Binding delay">
+              <Grid><TextBox x:Name="owner" Text="{Binding Path=Title}" /></Grid>
+            </Window>
+            """);
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+
+            JsonElement selected = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                selected = await app.InvokeAsync("od.wpf-designer.select", "owner");
+                return selected.GetProperty("success").GetBoolean()
+                    && selected.GetProperty("propertiesPadSelectedName").GetString() == "owner";
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), selected.ToString());
+
+            var fractional = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.Delay", "12.5");
+            Assert.False(fractional.GetProperty("success").GetBoolean(), fractional.ToString());
+            var edited = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.Delay", "250");
+            Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+            // Sibling nested-Binding rows share the dotted protocol-name shape.
+            var mode = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.Mode", "OneWay");
+            Assert.True(mode.GetProperty("success").GetBoolean(), mode.ToString());
+
+            var savedResult = await app.InvokeAsync("od.file.save", xamlPath);
+            Assert.True(savedResult.GetProperty("success").GetBoolean(), savedResult.ToString());
+            var saved = await File.ReadAllTextAsync(xamlPath);
+            Assert.Contains("Delay=250", saved, StringComparison.Ordinal);
+            Assert.DoesNotContain("12", saved, StringComparison.Ordinal);
+            Assert.Matches(@"\{Binding (Path=)?Title\b", saved);
+            Assert.Contains("Mode=OneWay", saved, StringComparison.Ordinal);
+        } finally {
+            await app.InvokeAsync("od.close-active-view");
+            await File.WriteAllTextAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task MenuItem_DoubleClick_InlineEditsHeader_AndUndoRestoresIt()
     {
         if (!OperatingSystem.IsWindows()) return;

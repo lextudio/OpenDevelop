@@ -212,11 +212,14 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor
 		readonly Type propertyType;
 
 		public WpfSurfacePropertyDescriptor(WpfSurfaceElementPropertyAdapter owner, DesignerPropertyInfo property)
-			: base(property.Name, CreateAttributes(property))
+			: base(ToBindingSafeName(property.Name), CreateAttributes(property))
 		{
 			this.owner = owner;
 			this.property = property;
-			propertyType = property.Kind switch {
+			// Binding.Delay is an integer millisecond contract. Keeping the generic Number mapping
+			// would expose it as a double and silently round a fractional Properties-pad value on
+			// the way to the typed child RPC.
+			propertyType = property.EditorKind == "BindingDelay" ? typeof(int) : property.Kind switch {
 				"Boolean" => typeof(bool),
 				"Number" => typeof(double),
 				"Color" => typeof(Color),
@@ -229,6 +232,14 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor
 				_ => typeof(string)
 			};
 		}
+
+		// Xceed binds each PropertyItem with new Binding(descriptor.Name). A protocol name such as
+		// "Text.Mode" (a nested Binding editor) or "Grid.Row" would then be parsed as a property
+		// path, resolve to nothing, and silently drop every edit. The protocol name stays intact
+		// in ProtocolName for RPCs and lookups.
+		static string ToBindingSafeName(string name) => name.Replace('.', '_');
+
+		internal string ProtocolName => property.Name;
 
 		static Attribute[] CreateAttributes(DesignerPropertyInfo property)
 		{

@@ -570,6 +570,17 @@ validation option resets its nested property instead of serializing a redundant 
 **C2 Binding delay update (2026-10-11).** WPF also exposes `Binding.Delay` as a native numeric
 Properties-pad row. Its versioned, Binding-only mutation rejects negative durations, while zero
 resets the nested design property so the default delay is not redundantly serialized.
+The row is an `Int32` descriptor (integer editor), so a fractional value is rejected rather than
+rounded on the way to the child.
+
+**C2 nested-row correction (2026-10-11).** The first visible-pad journey for these rows found that
+none of them had ever committed: Xceed binds each `PropertyItem` with `new Binding(descriptor.Name)`,
+so a dotted protocol name such as `Text.Mode` was parsed as a property path and the edit was
+silently dropped while the pad reported success. The WPF descriptor now uses a binding-safe name
+(`.` → `_`) and keeps the protocol name for RPCs and DevFlow lookup. The LibreWPF
+`PropertiesPad_BindingDelay_EditsIntegerMilliseconds` journey proves `Text.Delay` and `Text.Mode`
+both reach saved XAML. Any other adapter that hands Xceed a dotted descriptor name has the same
+hazard.
 
 Mutation acceptance is a shell-side invariant, not merely a host detail: GTK/MewUI now make all
 ordinary edit paths return the host's `Accepted` result before dirtying or changing their local
