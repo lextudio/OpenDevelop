@@ -2528,10 +2528,10 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				}
 				result.Add(ToPropertyInfo(property));
 			}
-			if (TryGetEditableItems(item, out var itemsProperty, out _) && itemsProperty != null)
+			if (TryGetEditableItems(item, out var itemsProperty, out var itemKind) && itemsProperty != null && itemKind != null)
 			{
 				result.RemoveAll(info => info.Name == "Items");
-				var texts = itemsProperty.CollectionElements.Select(element => element.Component is ContentControl { Content: string text } ? text : "").ToList();
+				var texts = itemsProperty.CollectionElements.Select(element => element.Properties[itemKind.TextProperty].ValueOnInstance as string ?? "").ToList();
 				result.Add(new DesignerPropertyInfo {
 					Name = "Items", DisplayName = "Items", Category = "Common",
 					TypeName = typeof(ItemCollection).FullName ?? "",
@@ -2543,36 +2543,43 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			return result;
 		}
 
-		/// <summary>The item container type a ListBox/ComboBox/ListView designer edits; other
-		/// ItemsControls (TabControl, TreeView, menus) have different item semantics.</summary>
-		static readonly Dictionary<Type, Type> editableItemContainers = new() {
-			[typeof(ListBox)] = typeof(ListBoxItem),
-			[typeof(ComboBox)] = typeof(ComboBoxItem),
-			[typeof(ListView)] = typeof(ListViewItem)
+		/// <summary>An editable item kind: the container each item must be, and the property holding
+		/// its text (Content for list items, Header for tab pages).</summary>
+		sealed record EditableItemKind(Type ContainerType, string TextProperty);
+
+		/// <summary>The item containers a plain-list editor handles; other ItemsControls (TreeView,
+		/// menus) have nested or command semantics this text list cannot express.</summary>
+		static readonly Dictionary<Type, EditableItemKind> editableItemContainers = new() {
+			[typeof(ListBox)] = new(typeof(ListBoxItem), "Content"),
+			[typeof(ComboBox)] = new(typeof(ComboBoxItem), "Content"),
+			[typeof(ListView)] = new(typeof(ListViewItem), "Content"),
+			[typeof(TabControl)] = new(typeof(TabItem), "Header")
 		};
 
 		/// <summary>True when the element's Items are a plain, editable list: no ItemsSource, and every
-		/// item is the control's own container type holding plain text (or nothing) as Content.</summary>
-		static bool TryGetEditableItems(DesignItem item, out DesignItemProperty? itemsProperty, out Type? containerType)
+		/// item is the control's own container type holding plain text (or nothing) in its text
+		/// property (Content, or a TabItem's Header).</summary>
+		static bool TryGetEditableItems(DesignItem item, out DesignItemProperty? itemsProperty, out EditableItemKind? kind)
 		{
 			itemsProperty = null;
-			containerType = null;
-			if (item.Component is not ItemsControl control || !editableItemContainers.TryGetValue(control.GetType(), out containerType))
+			kind = null;
+			if (item.Component is not ItemsControl control || !editableItemContainers.TryGetValue(control.GetType(), out kind))
 				return false;
 			if (item.Properties["ItemsSource"]?.IsSet == true)
 				return false;
 			var items = item.Properties["Items"];
 			if (items == null || !items.IsCollection)
 				return false;
-			var expected = containerType;
-			if (!items.CollectionElements.All(element => element.Component?.GetType() == expected
-				&& element.Properties["Content"] is var content && (!content.IsSet || content.Value == null && content.ValueOnInstance is string)))
+			var expected = kind;
+			// A tab page's Content is its body and stays untouched; only its Header text is edited.
+			if (!items.CollectionElements.All(element => element.Component?.GetType() == expected.ContainerType
+				&& element.Properties[expected.TextProperty] is var text && (!text.IsSet || text.Value == null && text.ValueOnInstance is string)))
 				return false;
 			itemsProperty = items;
 			return true;
 		}
 
-		/// <summary>Replaces a ListBox/ComboBox/ListView's plain items in one undo group. Each entry
+		/// <summary>Replaces a ListBox/ComboBox/ListView's plain items (or a TabControl's page headers) in one undo group. Each entry
 		/// names the item's previous index (moved items keep their other authored state) or -1 for
 		/// a new container item; items not named are removed.</summary>
 		[JsonRpcMethod("design/set-items")]
@@ -2583,7 +2590,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				var state = NewState(baseVersion);
 				if (!pathToItem.TryGetValue(elementId, out var element))
 					return NotFound(state, "Element not found: " + elementId);
-				if (!TryGetEditableItems(element, out var itemsProperty, out var containerType) || itemsProperty == null || containerType == null)
+				if (!TryGetEditableItems(element, out var itemsProperty, out var kind) || itemsProperty == null || kind == null)
 					return NotFound(state, "The element's Items are not an editable plain list.");
 				items ??= Array.Empty<DesignerCollectionItemEdit>();
 				var existing = itemsProperty.CollectionElements.ToList();
@@ -2599,9 +2606,9 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					{
 						var designItem = entry.SourceIndex >= 0
 							? existing[entry.SourceIndex]
-							: element.Services.Component.RegisterComponentForDesigner(Activator.CreateInstance(containerType)!);
+							: element.Services.Component.RegisterComponentForDesigner(Activator.CreateInstance(kind.ContainerType)!);
 						collection.Add(designItem);
-						var content = designItem.Properties["Content"];
+						var content = designItem.Properties[kind.TextProperty];
 						if (string.IsNullOrEmpty(entry.Text))
 							content.Reset();
 						else if (!Equals(content.ValueOnInstance, entry.Text) || !content.IsSet)

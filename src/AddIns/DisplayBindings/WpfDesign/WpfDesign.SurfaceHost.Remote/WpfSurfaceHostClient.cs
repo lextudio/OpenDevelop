@@ -257,7 +257,7 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> AddStripItemAsync(long baseVersion, string parentId, string text, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/add-strip-item", new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, text }, cancellationToken), cancellationToken);
 
-	/// <summary>Replaces a ListBox/ComboBox/ListView's plain items (<c>design/set-items</c>).</summary>
+	/// <summary>Replaces a ListBox/ComboBox/ListView's plain items or a TabControl's page headers (<c>design/set-items</c>).</summary>
 	public Task<DesignerSessionState> SetItemsAsync(long baseVersion, string elementId, IReadOnlyList<DesignerCollectionItemEdit> items, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-items",
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, items }, cancellationToken), cancellationToken);

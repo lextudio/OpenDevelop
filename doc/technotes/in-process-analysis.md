@@ -705,7 +705,11 @@ one undo group. **Slice 2:** the WPF Properties-pad descriptor attaches an Xceed
 "…" button opening an IDE dialog (add, remove, move up/down, rename) over the framework-neutral
 `CollectionItemsEditModel`, which tracks each entry's original index and commits only a changed
 list, as one undoable `design/set-items`. `od.wpf-designer.properties-pad.edit-items` clicks the real
-button and applies an edit script to the same model in place of the modal window. Edit Style (the
+button and applies an edit script to the same model in place of the modal window. **Slice 3:** the same row and
+dialog edit a TabControl's page headers: each editable control maps to its item container and text
+property (`Content` for list items, `Header` for `TabItem`), so moving a page keeps its body content
+and only header text changes; a page whose header is an element rather than text keeps the
+control non-editable. Edit Style (the
 remaining in-process context command) is deferred: it would serialize the child runtime's default
 theme style, which under LibreWPF is not the Microsoft theme the project ships with.
 

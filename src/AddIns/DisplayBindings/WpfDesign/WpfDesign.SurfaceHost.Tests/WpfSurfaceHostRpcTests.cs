@@ -776,6 +776,45 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task ChildHost_EditsTabControlPageHeadersKeepingTheirBodies()
+	{
+		const string xaml = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="300" Height="300">
+			  <TabControl x:Name="tabs">
+			    <TabItem Header="General"><TextBlock x:Name="generalBody" Text="General body" /></TabItem>
+			    <TabItem Header="Advanced"><TextBlock x:Name="advancedBody" Text="Advanced body" /></TabItem>
+			  </TabControl>
+			  <TabControl x:Name="rich">
+			    <TabItem><TabItem.Header><TextBlock Text="Rich" /></TabItem.Header></TabItem>
+			  </TabControl>
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var state = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(state.Accepted, state.Error);
+		DesignerPropertyInfo? Items(DesignerSessionState s, string name)
+			=> FindByName(s.Tree!, name)!.Properties.SingleOrDefault(property => property.EditorKind == "ItemsCollection");
+		Assert.Equal(new[] { "General", "Advanced" }, Items(state, "tabs")!.CollectionItems);
+		// A header that is an element, not text, is not a plain list.
+		Assert.Null(Items(state, "rich"));
+
+		var edited = await client.SetItemsAsync(1, FindByName(state.Tree!, "tabs")!.Id, new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "Expert" },
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "General" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "New page" }
+		}, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		Assert.Equal(new[] { "Expert", "General", "New page" }, Items(edited, "tabs")!.CollectionItems);
+		var text = (await client.FlushAsync(edited.Version, timeout.Token)).Files.Single().Text;
+		// Each page keeps its body when it moves; only the headers changed.
+		Assert.True(text.IndexOf("Header=\"Expert\"", StringComparison.Ordinal) < text.IndexOf("x:Name=\"advancedBody\"", StringComparison.Ordinal), text);
+		Assert.True(text.IndexOf("x:Name=\"advancedBody\"", StringComparison.Ordinal) < text.IndexOf("Header=\"General\"", StringComparison.Ordinal), text);
+		Assert.True(text.IndexOf("x:Name=\"generalBody\"", StringComparison.Ordinal) < text.IndexOf("Header=\"New page\"", StringComparison.Ordinal), text);
+		Assert.Contains("<TabItem Header=\"New page\" />", text, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public async Task ChildHost_WrapsAndUnwrapsElementsKeepingTheirPlacement()
 	{
 		const string xaml = """
