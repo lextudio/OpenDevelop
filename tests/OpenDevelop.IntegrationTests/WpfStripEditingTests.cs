@@ -431,6 +431,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     Width="420" Height="220" Title="Binding delay">
+              <Window.Resources><BooleanToVisibilityConverter x:Key="visible" /></Window.Resources>
               <Grid><TextBox x:Name="owner" Text="{Binding Path=Title}" /></Grid>
             </Window>
             """);
@@ -460,6 +461,9 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             // markup extension that would make the Binding unparseable on reload.
             var format = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.StringFormat", "{0:N2}");
             Assert.True(format.GetProperty("success").GetBoolean(), format.ToString());
+            // The Converter row offers the in-scope IValueConverter resource keys.
+            var converter = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.Converter", "visible");
+            Assert.True(converter.GetProperty("success").GetBoolean(), converter.ToString());
 
             var savedResult = await app.InvokeAsync("od.file.save", xamlPath);
             Assert.True(savedResult.GetProperty("success").GetBoolean(), savedResult.ToString());
@@ -469,6 +473,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             Assert.Matches(@"\{Binding (Path=)?Title\b", saved);
             Assert.Contains("Mode=OneWay", saved, StringComparison.Ordinal);
             Assert.Contains(@"StringFormat=\{0:N2\}", saved, StringComparison.Ordinal);
+            Assert.Contains("Converter={StaticResource visible}", saved, StringComparison.Ordinal);
         } finally {
             await app.InvokeAsync("od.close-active-view");
             await File.WriteAllTextAsync(xamlPath, originalXaml);

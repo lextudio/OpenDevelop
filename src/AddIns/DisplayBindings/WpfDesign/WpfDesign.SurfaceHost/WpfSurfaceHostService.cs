@@ -1130,6 +1130,76 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				&& (option.Value == null || option.Value.Component is string)
 				&& (option.ValueOnInstance is null or string || option.ValueOnInstance == DependencyProperty.UnsetValue);
 
+		/// <summary>Sets an existing Binding's Converter to <c>{StaticResource key}</c>, where the key
+		/// must name an IValueConverter resource in the element's scope; an empty key resets it.
+		/// A converter authored in another form (an inline object, DynamicResource) is never
+		/// overwritten through this path.</summary>
+		[JsonRpcMethod("design/set-binding-converter")]
+		public DesignerSessionState SetBindingConverter(long baseVersion, string elementId, string propertyName, string resourceKey)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale) return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
+				var property = item.Properties[propertyName];
+				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding)
+					return NotFound(state, "Property is not an editable Binding: " + propertyName);
+				var converter = bindingItem.Properties["Converter"];
+				if (!TryGetStaticResourceConverterKey(converter, out _))
+					return NotFound(state, "Binding Converter is not a StaticResource reference");
+				if (!string.IsNullOrEmpty(resourceKey) && !ConverterResourceKeys(item).Contains(resourceKey))
+					return NotFound(state, "Not an IValueConverter resource in scope: " + resourceKey);
+				try
+				{
+					if (string.IsNullOrEmpty(resourceKey))
+						converter.Reset();
+					else
+					{
+						converter.SetValue(new StaticResourceExtension());
+						converter.Value!.Properties["ResourceKey"].SetValue(resourceKey);
+					}
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state); state.Accepted = true; return state;
+			});
+
+		/// <summary>The current Converter's StaticResource key ("" when unset). False for any other
+		/// authored form, which must stay read-only.</summary>
+		static bool TryGetStaticResourceConverterKey(DesignItemProperty converter, out string key)
+		{
+			key = "";
+			if (!converter.IsSet)
+				return true;
+			if (converter.Value?.Component is StaticResourceExtension && converter.Value.Properties["ResourceKey"].ValueOnInstance is string resourceKey)
+			{
+				key = resourceKey;
+				return true;
+			}
+			return false;
+		}
+
+		/// <summary>String keys of IValueConverter resources visible to <paramref name="item"/>: its own
+		/// and its ancestors' Resources (merged dictionaries included), then the application's.</summary>
+		static List<string> ConverterResourceKeys(DesignItem item)
+		{
+			var keys = new List<string>();
+			void Collect(ResourceDictionary? dictionary)
+			{
+				if (dictionary == null)
+					return;
+				foreach (var key in dictionary.Keys)
+				{
+					if (key is string name && !keys.Contains(name) && dictionary[key] is System.Windows.Data.IValueConverter)
+						keys.Add(name);
+				}
+				foreach (var merged in dictionary.MergedDictionaries)
+					Collect(merged);
+			}
+			for (var current = item; current != null; current = current.Parent)
+				Collect((current.Component as FrameworkElement)?.Resources);
+			Collect(Application.Current?.Resources);
+			return keys;
+		}
+
 		/// <summary>Sets the bounded millisecond debounce delay on an existing Binding. Zero is
 		/// represented as a design-model reset so the default is not redundantly serialized.</summary>
 		[JsonRpcMethod("design/set-binding-delay")]
@@ -2280,6 +2350,21 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 								Kind = "Boolean", EditorKind = "BindingValidationOption",
 								Value = enabled.ToString(CultureInfo.InvariantCulture), BindingPropertyName = descriptor.Name,
 								BindingOptionName = optionName, ShouldSerialize = false
+							});
+						}
+						var converterProperty = reference.Properties["Converter"];
+						if (converterProperty != null && TryGetStaticResourceConverterKey(converterProperty, out var converterKey))
+						{
+							var choices = new List<string> { "" };
+							choices.AddRange(ConverterResourceKeys(item));
+							if (!choices.Contains(converterKey))
+								choices.Add(converterKey);
+							result.Add(new DesignerPropertyInfo {
+								Name = descriptor.Name + ".Converter", DisplayName = descriptor.Name + " Converter",
+								Category = "Binding", TypeName = typeof(string).FullName ?? "",
+								Kind = "Enum", EditorKind = "BindingConverter",
+								Value = converterKey, BindingPropertyName = descriptor.Name,
+								ShouldSerialize = false, AllowedValues = choices
 							});
 						}
 						foreach (var optionName in bindingTextOptionNames)

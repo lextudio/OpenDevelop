@@ -692,6 +692,14 @@ lines mark the positions a raster drag snaps to (this also corrects WinForms, wh
 previously used for snapping but not drawing). `Toolbar_SnappingControls_DriveTheDragSettingsAndPersist`
 covers the defaults, the toolbar-to-controller binding, gridline spacing and persistence.
 
+**C2 Binding converter (2026-10-12).** Protocol **v17** adds WPF's optional
+`design/set-binding-converter`. A Binding's `Converter` row is a drop-down of the string keys of
+IValueConverter resources visible to the element (its own and ancestors' `Resources`, merged
+dictionaries, then the application's), written as `Converter={StaticResource key}`; an empty choice
+resets it. The row exists only while the converter is unset or already a StaticResource reference,
+and the host rejects keys outside that scope, so an inline converter object or another markup form
+is never overwritten.
+
 **C2 inline-editor keys (2026-10-12).** Section 2's `InPlaceEditor` contract is ported to the WPF
 inline editor through `InlineTextEditKeys`: Enter commits, Escape cancels, and Shift+Enter inserts a
 newline when the edited value is a TextBlock's `Text` (elsewhere it commits like Enter), with the

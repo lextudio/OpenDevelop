@@ -20,12 +20,13 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		// v16 adds WPF's optional design/set-binding-text-option mutation. v15 added
+		// v17 adds WPF's optional design/set-binding-converter mutation. v16 added
+		// design/set-binding-text-option. v15 added
 		// design/set-binding-delay. v14 added BindingOptionName
 		// and design/set-binding-validation-option. A stale pooled child
 		// must fail the handshake rather than reject a newly-visible binding editor after the
 		// Properties pad has already presented it.
-		public const int Version = 16;
+		public const int Version = 17;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

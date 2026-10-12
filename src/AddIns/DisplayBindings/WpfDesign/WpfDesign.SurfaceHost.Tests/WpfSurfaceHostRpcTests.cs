@@ -710,6 +710,65 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task ChildHost_EditsBindingConverterAsAStaticResourceInScope()
+	{
+		const string xaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <Grid.Resources>
+			    <BooleanToVisibilityConverter x:Key="visible" />
+			    <BooleanToVisibilityConverter x:Key="shown" />
+			    <SolidColorBrush x:Key="brush" Color="Red" />
+			  </Grid.Resources>
+			  <TextBlock x:Name="bound" Text="{Binding Name}" />
+			  <TextBlock x:Name="inline" Text="Inline">
+			    <TextBlock.Visibility>
+			      <Binding Path="IsOn"><Binding.Converter><BooleanToVisibilityConverter /></Binding.Converter></Binding>
+			    </TextBlock.Visibility>
+			  </TextBlock>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Converter(DesignerSessionState state, string name)
+			=> FindByName(state.Tree!, name)!.Properties.Single(property => property.EditorKind == "BindingConverter");
+		var row = Converter(opened, "bound");
+		Assert.Equal("Enum", row.Kind);
+		Assert.Equal("", row.Value);
+		// Only IValueConverter resources are offered, never the brush.
+		Assert.Equal(new[] { "", "visible", "shown" }, row.AllowedValues);
+		// An inline converter object is not a StaticResource reference: no row, and no overwrite.
+		Assert.DoesNotContain(FindByName(opened.Tree!, "inline")!.Properties, property => property.EditorKind == "BindingConverter");
+		var inline = FindByName(opened.Tree!, "inline")!;
+		var overwrite = await client.SetBindingConverterAsync(1, inline.Id, "Visibility", "visible", timeout.Token);
+		Assert.False(overwrite.Accepted);
+
+		var bound = FindByName(opened.Tree!, "bound")!;
+		var set = await client.SetBindingConverterAsync(1, bound.Id, "Text", "visible", timeout.Token);
+		Assert.True(set.Accepted, set.Error);
+		var text = (await client.FlushAsync(set.Version, timeout.Token)).Files.Single().Text;
+		Assert.Contains("Converter={StaticResource visible}", text, StringComparison.Ordinal);
+		Assert.Contains("<BooleanToVisibilityConverter />", text, StringComparison.Ordinal);
+
+		var reloaded = await client.UpdateAsync(Snapshot(set.Version + 1, text), timeout.Token);
+		Assert.True(reloaded.Accepted, reloaded.Error + "\n" + text);
+		Assert.Equal("visible", Converter(reloaded, "bound").Value);
+
+		var switched = await client.SetBindingConverterAsync(reloaded.Version, FindByName(reloaded.Tree!, "bound")!.Id, "Text", "shown", timeout.Token);
+		Assert.True(switched.Accepted, switched.Error);
+		Assert.Contains("Converter={StaticResource shown}", (await client.FlushAsync(switched.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var outOfScope = await client.SetBindingConverterAsync(switched.Version, FindByName(switched.Tree!, "bound")!.Id, "Text", "brush", timeout.Token);
+		Assert.False(outOfScope.Accepted);
+		Assert.Contains("Not an IValueConverter resource in scope", outOfScope.Error, StringComparison.Ordinal);
+		var cleared = await client.SetBindingConverterAsync(switched.Version, FindByName(switched.Tree!, "bound")!.Id, "Text", "", timeout.Token);
+		Assert.True(cleared.Accepted, cleared.Error);
+		var clearedText = (await client.FlushAsync(cleared.Version, timeout.Token)).Files.Single().Text;
+		Assert.DoesNotContain("Converter=", clearedText.Substring(clearedText.IndexOf("x:Name=\"bound\"", StringComparison.Ordinal)).Split('\n')[0], StringComparison.Ordinal);
+		Assert.Equal("", Converter(cleared, "bound").Value);
+	}
+
+	[Fact]
 	public async Task ChildHost_EditsBindingTextOptionsWithoutOverwritingMarkupValues()
 	{
 		const string xaml = """
