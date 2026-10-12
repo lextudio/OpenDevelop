@@ -722,6 +722,60 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task ChildHost_EditsPlainListItemsAsOneCollection()
+	{
+		const string xaml = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="300" Height="300">
+			  <ListBox x:Name="list">
+			    <ListBoxItem x:Name="one" Content="One" />
+			    <ListBoxItem>Two</ListBoxItem>
+			  </ListBox>
+			  <ListBox x:Name="bound" ItemsSource="{Binding People}" />
+			  <ListBox x:Name="mixed"><Button Content="Not an item container" /></ListBox>
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var state = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(state.Accepted, state.Error);
+		DesignerPropertyInfo? Items(DesignerSessionState s, string name)
+			=> FindByName(s.Tree!, name)!.Properties.SingleOrDefault(property => property.EditorKind == "ItemsCollection");
+		var row = Items(state, "list")!;
+		Assert.Equal(new[] { "One", "Two" }, row.CollectionItems);
+		Assert.True(row.IsReadOnly);
+		Assert.Null(Items(state, "bound"));
+		Assert.Null(Items(state, "mixed"));
+		var boundEdit = await client.SetItemsAsync(1, FindByName(state.Tree!, "bound")!.Id, new[] { new DesignerCollectionItemEdit { Text = "X" } }, timeout.Token);
+		Assert.False(boundEdit.Accepted);
+
+		var list = FindByName(state.Tree!, "list")!.Id;
+		var badIndex = await client.SetItemsAsync(1, list, new[] { new DesignerCollectionItemEdit { SourceIndex = 5, Text = "X" } }, timeout.Token);
+		Assert.False(badIndex.Accepted);
+		var duplicate = await client.SetItemsAsync(1, list, new[] { new DesignerCollectionItemEdit { SourceIndex = 0, Text = "A" }, new DesignerCollectionItemEdit { SourceIndex = 0, Text = "B" } }, timeout.Token);
+		Assert.False(duplicate.Accepted);
+
+		// Reorder, rename, and add in one edit; the moved "one" keeps its x:Name.
+		var edited = await client.SetItemsAsync(1, list, new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "Two!" },
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "One" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "Three" }
+		}, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		Assert.Equal(new[] { "Two!", "One", "Three" }, Items(edited, "list")!.CollectionItems);
+		var text = (await client.FlushAsync(edited.Version, timeout.Token)).Files.Single().Text;
+		Assert.True(text.IndexOf("Two!", StringComparison.Ordinal) < text.IndexOf("x:Name=\"one\"", StringComparison.Ordinal), text);
+		Assert.True(text.IndexOf("x:Name=\"one\"", StringComparison.Ordinal) < text.IndexOf("Three", StringComparison.Ordinal), text);
+		var reloaded = await client.UpdateAsync(Snapshot(edited.Version + 1, text), timeout.Token);
+		Assert.True(reloaded.Accepted, reloaded.Error + "\n" + text);
+		Assert.Equal(new[] { "Two!", "One", "Three" }, Items(reloaded, "list")!.CollectionItems);
+
+		var cleared = await client.SetItemsAsync(reloaded.Version, FindByName(reloaded.Tree!, "list")!.Id, Array.Empty<DesignerCollectionItemEdit>(), timeout.Token);
+		Assert.True(cleared.Accepted, cleared.Error);
+		Assert.Empty(Items(cleared, "list")!.CollectionItems);
+		Assert.DoesNotContain("ListBoxItem", (await client.FlushAsync(cleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public async Task ChildHost_WrapsAndUnwrapsElementsKeepingTheirPlacement()
 	{
 		const string xaml = """

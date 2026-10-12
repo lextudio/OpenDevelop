@@ -692,6 +692,18 @@ lines mark the positions a raster drag snaps to (this also corrects WinForms, wh
 previously used for snapping but not drawing). `Toolbar_SnappingControls_DriveTheDragSettingsAndPersist`
 covers the defaults, the toolbar-to-controller binding, gridline spacing and persistence.
 
+**C2 collection editor, slice 1 (2026-10-12).** Section 5 item 11 starts with the narrowest
+useful collection: the plain items of a WPF ListBox, ComboBox or ListView. Protocol **v20** adds
+`DesignerPropertyInfo.CollectionItems` and the optional `design/set-items`. The host publishes a
+read-only `Items` row (EditorKind `ItemsCollection`, Kind `Collection`) only when there is no
+`ItemsSource` and every item is the control's own container (`ListBoxItem`/`ComboBoxItem`/
+`ListViewItem`) holding plain text or nothing; anything else stays non-editable. `design/set-items`
+takes the whole edited list, each entry naming its previous index (or -1 for a new container), so
+moved items keep their `x:Name` and other attributes, omitted items are removed, and the change is
+one undo group. The IDE dialog behind an `ItemsCollection` row is slice 2. Edit Style (the
+remaining in-process context command) is deferred: it would serialize the child runtime's default
+theme style, which under LibreWPF is not the Microsoft theme the project ships with.
+
 **C4 context menu (2026-10-12).** The WPF design surface's context menu now carries the in-process
 ArrangeItems and RightClick menus: an Align submenu (left/center/right/top/middle/bottom to the
 primary selection, enabled for two or more selected elements, reusing the existing atomic bounds

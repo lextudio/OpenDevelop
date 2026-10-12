@@ -2528,8 +2528,92 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				}
 				result.Add(ToPropertyInfo(property));
 			}
+			if (TryGetEditableItems(item, out var itemsProperty, out _) && itemsProperty != null)
+			{
+				result.RemoveAll(info => info.Name == "Items");
+				var texts = itemsProperty.CollectionElements.Select(element => element.Component is ContentControl { Content: string text } ? text : "").ToList();
+				result.Add(new DesignerPropertyInfo {
+					Name = "Items", DisplayName = "Items", Category = "Common",
+					TypeName = typeof(ItemCollection).FullName ?? "",
+					Kind = "Collection", EditorKind = "ItemsCollection", IsReadOnly = true,
+					Value = "(" + texts.Count + (texts.Count == 1 ? " item)" : " items)"),
+					CollectionItems = texts, ShouldSerialize = texts.Count > 0
+				});
+			}
 			return result;
 		}
+
+		/// <summary>The item container type a ListBox/ComboBox/ListView designer edits; other
+		/// ItemsControls (TabControl, TreeView, menus) have different item semantics.</summary>
+		static readonly Dictionary<Type, Type> editableItemContainers = new() {
+			[typeof(ListBox)] = typeof(ListBoxItem),
+			[typeof(ComboBox)] = typeof(ComboBoxItem),
+			[typeof(ListView)] = typeof(ListViewItem)
+		};
+
+		/// <summary>True when the element's Items are a plain, editable list: no ItemsSource, and every
+		/// item is the control's own container type holding plain text (or nothing) as Content.</summary>
+		static bool TryGetEditableItems(DesignItem item, out DesignItemProperty? itemsProperty, out Type? containerType)
+		{
+			itemsProperty = null;
+			containerType = null;
+			if (item.Component is not ItemsControl control || !editableItemContainers.TryGetValue(control.GetType(), out containerType))
+				return false;
+			if (item.Properties["ItemsSource"]?.IsSet == true)
+				return false;
+			var items = item.Properties["Items"];
+			if (items == null || !items.IsCollection)
+				return false;
+			var expected = containerType;
+			if (!items.CollectionElements.All(element => element.Component?.GetType() == expected
+				&& element.Properties["Content"] is var content && (!content.IsSet || content.Value == null && content.ValueOnInstance is string)))
+				return false;
+			itemsProperty = items;
+			return true;
+		}
+
+		/// <summary>Replaces a ListBox/ComboBox/ListView's plain items in one undo group. Each entry
+		/// names the item's previous index (moved items keep their other authored state) or -1 for
+		/// a new container item; items not named are removed.</summary>
+		[JsonRpcMethod("design/set-items")]
+		public DesignerSessionState SetItems(long baseVersion, string elementId, DesignerCollectionItemEdit[] items)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var element))
+					return NotFound(state, "Element not found: " + elementId);
+				if (!TryGetEditableItems(element, out var itemsProperty, out var containerType) || itemsProperty == null || containerType == null)
+					return NotFound(state, "The element's Items are not an editable plain list.");
+				items ??= Array.Empty<DesignerCollectionItemEdit>();
+				var existing = itemsProperty.CollectionElements.ToList();
+				var sources = items.Where(entry => entry.SourceIndex >= 0).Select(entry => entry.SourceIndex).ToList();
+				if (sources.Any(index => index >= existing.Count) || sources.Distinct().Count() != sources.Count)
+					return NotFound(state, "Invalid item source index.");
+				try
+				{
+					using var changeGroup = element.OpenGroup("Edit Items");
+					var collection = itemsProperty.CollectionElements;
+					collection.Clear();
+					foreach (var entry in items)
+					{
+						var designItem = entry.SourceIndex >= 0
+							? existing[entry.SourceIndex]
+							: element.Services.Component.RegisterComponentForDesigner(Activator.CreateInstance(containerType)!);
+						collection.Add(designItem);
+						var content = designItem.Properties["Content"];
+						if (string.IsNullOrEmpty(entry.Text))
+							content.Reset();
+						else if (!Equals(content.ValueOnInstance, entry.Text) || !content.IsSet)
+							content.SetValue(entry.Text);
+					}
+					changeGroup.Commit();
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
 
 		/// <summary>Publishes WPF's browsable XAML events separately from ordinary properties.
 		/// Handler names are source text, never runtime delegates, so listing them cannot invoke

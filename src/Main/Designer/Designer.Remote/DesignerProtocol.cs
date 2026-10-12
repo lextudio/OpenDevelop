@@ -20,7 +20,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		// v19 adds WPF's optional design/wrap-elements and design/unwrap-element mutations. v18 added
+		// v20 adds DesignerPropertyInfo.CollectionItems and WPF's optional design/set-items. v19 added
+		// design/wrap-elements and design/unwrap-element. v18 added
 		// design/set-z-order. v17 added design/set-binding-converter.
 		// v16 added
 		// design/set-binding-text-option. v15 added
@@ -28,7 +29,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// and design/set-binding-validation-option. A stale pooled child
 		// must fail the handshake rather than reject a newly-visible binding editor after the
 		// Properties pad has already presented it.
-		public const int Version = 19;
+		public const int Version = 20;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -90,6 +91,15 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public double Width { get; set; }
 		public double Height { get; set; }
 		public double Dpi { get; set; } = 1.0;
+	}
+
+	/// <summary>One entry of a whole-collection edit: the item's index in the collection before
+	/// the edit (or -1 for a new item) and its display text afterwards. Existing items keep their
+	/// other authored state (x:Name, attributes) when they move.</summary>
+	public sealed class DesignerCollectionItemEdit
+	{
+		public int SourceIndex { get; set; } = -1;
+		public string Text { get; set; } = "";
 	}
 
 	/// <summary>One target rectangle in an atomic <c>design/set-bounds-batch</c> mutation.
@@ -563,6 +573,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// The first defined value is <c>ResourceImage</c>. Empty means no specialized editor is
 		/// available; clients must keep the normal read-only/value-kind contract.</summary>
 		public string EditorKind { get; set; } = "";
+		/// <summary>For an <c>ItemsCollection</c> editor, the display text of each collection item in
+		/// order. The row itself is read-only; edits go through the backend's collection mutation.</summary>
+		public List<string> CollectionItems { get; set; } = new List<string>();
 	}
 
 	/// <summary>
