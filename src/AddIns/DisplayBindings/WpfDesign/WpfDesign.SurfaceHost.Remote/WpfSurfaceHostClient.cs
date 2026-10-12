@@ -295,6 +295,10 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> SetGridTrackSizeAsync(long baseVersion, string elementId, bool isRow, int index, double pixels, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-grid-track-size", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, index, pixels }, cancellationToken), cancellationToken);
 
+	/// <summary>Replaces a Brush property with a solid, linear-gradient or radial-gradient brush.</summary>
+	public Task<DesignerSessionState> SetBrushAsync(long baseVersion, string elementId, string propertyName, DesignerBrushInfo brush, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-brush", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, brush }, cancellationToken), cancellationToken);
+
 	/// <summary>Changes one Grid row's/column's unit to <c>Pixel</c>, <c>Star</c> or <c>Auto</c>.</summary>
 	public Task<DesignerSessionState> SetGridTrackUnitAsync(long baseVersion, string elementId, bool isRow, int index, string unit, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-grid-track-unit", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, index, unit }, cancellationToken), cancellationToken);

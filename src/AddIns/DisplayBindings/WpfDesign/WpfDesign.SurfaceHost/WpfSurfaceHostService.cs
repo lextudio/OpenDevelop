@@ -973,6 +973,49 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			return field?.GetValue(null) as DependencyProperty;
 		}
 
+		/// <summary>Replaces a Brush-typed property's value with the brush the Properties-pad brush
+		/// editor built (the in-process BrushEditor's solid/linear/radial choices), as one change.
+		/// A solid brush is written as attribute text; a gradient as a property element.</summary>
+		[JsonRpcMethod("design/set-brush")]
+		public DesignerSessionState SetBrush(long baseVersion, string elementId, string propertyName, DesignerBrushInfo brush)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item))
+					return NotFound(state, "Element not found: " + elementId);
+				DesignItemProperty? property;
+				try
+				{
+					property = FindFrameworkAttachedProperty(propertyName) is { } attached
+						? item.Properties.GetAttachedProperty(attached)
+						: item.Properties[propertyName];
+				}
+				catch (ArgumentException e) { return NotFound(state, e.Message); }
+				if (property?.ReturnType == null || !typeof(Brush).IsAssignableFrom(property.ReturnType))
+					return NotFound(state, "Not a Brush property: " + propertyName);
+				try
+				{
+					var value = CreateBrush(brush);
+					using var changeGroup = item.OpenGroup("Set " + propertyName);
+					if (property.IsSet)
+						property.Reset();
+					// "No brush" is an explicit {x:Null}, not a reset: it overrides a style's brush.
+					if (value == null)
+						property.SetValue(item.Services.Component.RegisterComponentForDesigner(new System.Windows.Markup.NullExtension()));
+					else
+						property.SetValue(value);
+					changeGroup.Commit();
+				}
+				catch (Exception e) when (e is ArgumentException or FormatException or NotSupportedException or InvalidOperationException or OverflowException)
+				{
+					return NotFound(state, e.GetBaseException().Message);
+				}
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
 		/// <summary>Edits the path of an existing <see cref="System.Windows.Data.Binding"/> through
 		/// its nested design item. Unlike <see cref="SetProperty"/>, this never hands a markup
 		/// extension string to a string-valued dependency property: doing that serializes the braces
@@ -2767,6 +2810,28 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						info.Value = binding.Path?.Path ?? "";
 						return info;
 					}
+					// A brush written as an element (a gradient, or a SolidColorBrush element) has no
+					// lossless text form, but the brush editor can round-trip the plain shapes.
+					if (reference.Component is System.Windows.Markup.NullExtension
+						&& property.ReturnType != null && typeof(Brush).IsAssignableFrom(property.ReturnType))
+					{
+						info.Kind = "Null";
+						info.IsNull = true;
+						info.IsReadOnly = true;
+						info.EditorKind = "Brush";
+						info.Brush = new DesignerBrushInfo { Kind = "Null" };
+						info.Value = "No brush";
+						return info;
+					}
+					if (reference.Component is Brush elementBrush && DescribeBrush(elementBrush) is { } described)
+					{
+						info.Kind = "Brush";
+						info.IsReadOnly = true;
+						info.EditorKind = "Brush";
+						info.Brush = described;
+						info.Value = BrushDisplayText(described);
+						return info;
+					}
 					info.Kind = "Reference";
 					info.IsReadOnly = true;
 					info.Value = reference.ToString() ?? "";
@@ -2777,6 +2842,8 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					info.IsNull = true;
 					info.Kind = "Null";
+					if (property.ReturnType != null && typeof(Brush).IsAssignableFrom(property.ReturnType) && !property.IsSet)
+						info.EditorKind = "Brush";
 					return info;
 				}
 				// A WPF "object"-typed content property (Content/Header/ToolTip, etc.) holding a
@@ -2822,6 +2889,14 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					// grid render a constrained drop-down without loading the child's CLR type.
 					if (info.IsEnum)
 						info.AllowedValues.AddRange(Enum.GetNames(property.ReturnType));
+					// An unset or attribute-text brush also opens the brush editor, which can turn
+					// it into a gradient.
+					if (info.Kind == "Brush" && value is Brush textBrush && (!property.IsSet || textBrush is SolidColorBrush)
+						&& DescribeBrush(textBrush) is { } described)
+					{
+						info.EditorKind = "Brush";
+						info.Brush = described;
+					}
 				}
 				else
 				{
@@ -2838,6 +2913,105 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				info.IsReadOnly = true;
 			}
 			return info;
+		}
+
+		/// <summary>The brush as the brush editor's lossless shape, or null when it carries anything
+		/// the editor would drop: a transform, a non-default color interpolation, or a frozen/bound
+		/// value the instance cannot describe.</summary>
+		static DesignerBrushInfo? DescribeBrush(Brush brush)
+		{
+			if (brush.Transform != null && !brush.Transform.Value.IsIdentity
+				|| brush.RelativeTransform != null && !brush.RelativeTransform.Value.IsIdentity)
+				return null;
+			switch (brush)
+			{
+				case SolidColorBrush solid:
+					return new DesignerBrushInfo { Kind = "Solid", Color = solid.Color.ToString(CultureInfo.InvariantCulture), Opacity = solid.Opacity };
+				case GradientBrush gradient when gradient.ColorInterpolationMode == ColorInterpolationMode.SRgbLinearInterpolation:
+					var info = new DesignerBrushInfo {
+						Opacity = gradient.Opacity,
+						MappingMode = gradient.MappingMode.ToString(),
+						SpreadMethod = gradient.SpreadMethod.ToString(),
+						Stops = gradient.GradientStops.Select(stop => new DesignerGradientStopInfo {
+							Color = stop.Color.ToString(CultureInfo.InvariantCulture), Offset = stop.Offset
+						}).ToList()
+					};
+					switch (gradient)
+					{
+						case LinearGradientBrush linear:
+							info.Kind = "LinearGradient";
+							(info.StartX, info.StartY, info.EndX, info.EndY) = (linear.StartPoint.X, linear.StartPoint.Y, linear.EndPoint.X, linear.EndPoint.Y);
+							return info;
+						case RadialGradientBrush radial:
+							info.Kind = "RadialGradient";
+							(info.CenterX, info.CenterY, info.OriginX, info.OriginY, info.RadiusX, info.RadiusY)
+								= (radial.Center.X, radial.Center.Y, radial.GradientOrigin.X, radial.GradientOrigin.Y, radial.RadiusX, radial.RadiusY);
+							return info;
+					}
+					return null;
+				default:
+					return null;
+			}
+		}
+
+		static string BrushDisplayText(DesignerBrushInfo brush) => brush.Kind switch {
+			"Solid" => brush.Color,
+			"LinearGradient" => "Linear gradient (" + brush.Stops.Count + " stops)",
+			_ => "Radial gradient (" + brush.Stops.Count + " stops)"
+		};
+
+		/// <summary>Builds the WPF brush a <see cref="DesignerBrushInfo"/> describes (null for "No
+		/// brush"), setting only non-default values so the XAML stays minimal; throws for a malformed
+		/// one (unknown kind/mode, bad color, an offset outside 0-1, a gradient without stops).</summary>
+		static Brush? CreateBrush(DesignerBrushInfo info)
+		{
+			static System.Windows.Media.Color ParseColor(string text) => (System.Windows.Media.Color)ColorConverter.ConvertFromString(text);
+			if (info.Kind == "Null")
+				return null;
+			if (double.IsNaN(info.Opacity) || info.Opacity < 0 || info.Opacity > 1)
+				throw new ArgumentException("Opacity must be between 0 and 1.");
+			Brush brush;
+			if (info.Kind == "Solid")
+				brush = new SolidColorBrush(ParseColor(info.Color));
+			else
+			{
+				if (info.Kind is not ("LinearGradient" or "RadialGradient"))
+					throw new ArgumentException("Unknown brush kind: " + info.Kind);
+				if (info.Stops.Count == 0)
+					throw new ArgumentException("A gradient needs at least one stop.");
+				var mapping = Enum.Parse<BrushMappingMode>(info.MappingMode);
+				var spread = Enum.Parse<GradientSpreadMethod>(info.SpreadMethod);
+				var stops = new GradientStopCollection();
+				foreach (var stop in info.Stops)
+				{
+					if (double.IsNaN(stop.Offset) || stop.Offset < 0 || stop.Offset > 1)
+						throw new ArgumentException("A gradient stop offset must be between 0 and 1.");
+					stops.Add(new GradientStop(ParseColor(stop.Color), stop.Offset));
+				}
+				GradientBrush gradient;
+				if (info.Kind == "LinearGradient")
+				{
+					var linear = new LinearGradientBrush { GradientStops = stops };
+					if (info.StartX != 0 || info.StartY != 0) linear.StartPoint = new Point(info.StartX, info.StartY);
+					if (info.EndX != 1 || info.EndY != 1) linear.EndPoint = new Point(info.EndX, info.EndY);
+					gradient = linear;
+				}
+				else
+				{
+					var radial = new RadialGradientBrush { GradientStops = stops };
+					if (info.CenterX != 0.5 || info.CenterY != 0.5) radial.Center = new Point(info.CenterX, info.CenterY);
+					if (info.OriginX != 0.5 || info.OriginY != 0.5) radial.GradientOrigin = new Point(info.OriginX, info.OriginY);
+					if (info.RadiusX != 0.5) radial.RadiusX = info.RadiusX;
+					if (info.RadiusY != 0.5) radial.RadiusY = info.RadiusY;
+					gradient = radial;
+				}
+				if (mapping != BrushMappingMode.RelativeToBoundingBox) gradient.MappingMode = mapping;
+				if (spread != GradientSpreadMethod.Pad) gradient.SpreadMethod = spread;
+				brush = gradient;
+			}
+			if (info.Opacity != 1)
+				brush.Opacity = info.Opacity;
+			return brush;
 		}
 
 		static bool IsNumericType(Type type) =>

@@ -20,7 +20,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		// v22 adds DesignerGridTrackInfo.Unit/Value and WPF's optional design/set-grid-track-unit.
+		// v23 adds DesignerPropertyInfo.Brush and WPF's optional design/set-brush.
+		// v22 added DesignerGridTrackInfo.Unit/Value and WPF's optional design/set-grid-track-unit.
 		// v21 added WinForms' optional design/set-items for list-control string Items. v20 added
 		// DesignerPropertyInfo.CollectionItems and WPF's design/set-items. v19 added
 		// design/wrap-elements and design/unwrap-element. v18 added
@@ -31,7 +32,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// and design/set-binding-validation-option. A stale pooled child
 		// must fail the handshake rather than reject a newly-visible binding editor after the
 		// Properties pad has already presented it.
-		public const int Version = 22;
+		public const int Version = 23;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -584,6 +585,45 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>For an <c>ItemsCollection</c> editor, the display text of each collection item in
 		/// order. The row itself is read-only; edits go through the backend's collection mutation.</summary>
 		public List<string> CollectionItems { get; set; } = new List<string>();
+		/// <summary>For a <c>Brush</c> editor, the current brush when it is one the editor can
+		/// round-trip (solid, or a plain linear/radial gradient); null when the property is unset.</summary>
+		public DesignerBrushInfo? Brush { get; set; }
+	}
+
+	/// <summary>A brush the Properties-pad brush editor can show and write back without loss
+	/// (<c>design/set-brush</c>) - the settings Visual Studio's brush editor offers short of a
+	/// transform: no brush, a solid color, or a linear/radial gradient with its stops, geometry,
+	/// mapping, spread and opacity. Defaults are WPF's, so a default is never written.</summary>
+	public sealed class DesignerBrushInfo
+	{
+		/// <summary><c>Null</c> (VS's "No brush", <c>{x:Null}</c>), <c>Solid</c>,
+		/// <c>LinearGradient</c> or <c>RadialGradient</c>.</summary>
+		public string Kind { get; set; } = "Solid";
+		/// <summary>A solid brush's color as <c>#AARRGGBB</c>.</summary>
+		public string Color { get; set; } = "";
+		public double Opacity { get; set; } = 1;
+		public double StartX { get; set; }
+		public double StartY { get; set; }
+		public double EndX { get; set; } = 1;
+		public double EndY { get; set; } = 1;
+		public double CenterX { get; set; } = 0.5;
+		public double CenterY { get; set; } = 0.5;
+		public double OriginX { get; set; } = 0.5;
+		public double OriginY { get; set; } = 0.5;
+		public double RadiusX { get; set; } = 0.5;
+		public double RadiusY { get; set; } = 0.5;
+		/// <summary><c>RelativeToBoundingBox</c> or <c>Absolute</c>.</summary>
+		public string MappingMode { get; set; } = "RelativeToBoundingBox";
+		/// <summary><c>Pad</c>, <c>Reflect</c> or <c>Repeat</c>.</summary>
+		public string SpreadMethod { get; set; } = "Pad";
+		public List<DesignerGradientStopInfo> Stops { get; set; } = new List<DesignerGradientStopInfo>();
+	}
+
+	public sealed class DesignerGradientStopInfo
+	{
+		/// <summary><c>#AARRGGBB</c>.</summary>
+		public string Color { get; set; } = "";
+		public double Offset { get; set; }
 	}
 
 	/// <summary>
