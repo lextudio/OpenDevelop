@@ -3373,7 +3373,10 @@ public sealed class AddInTests : IAsyncDisposable
 
             var savedFormCode = await File.ReadAllTextAsync(formCodePath);
             Assert.Contains("System.Windows.Forms.NumericUpDown", savedFormCode, StringComparison.Ordinal);
-            Assert.DoesNotContain("this.", savedFormCode, StringComparison.Ordinal);
+            // The Roslyn generator drops the CodeDOM-style "this." member-access prefix. The form's
+            // own resource keys legitimately keep it ("$this.Icon"), so match only member access.
+            Assert.DoesNotMatch(@"(?<![$\w])this\.", savedFormCode);
+            Assert.Contains("resources.GetObject(\"$this.Icon\")", savedFormCode, StringComparison.Ordinal);
             Assert.Contains("#region Windows Form Designer generated code", savedFormCode, StringComparison.Ordinal);
             Assert.Contains("Required designer variable.", savedFormCode, StringComparison.Ordinal);
 
