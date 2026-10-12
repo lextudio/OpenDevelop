@@ -53,6 +53,18 @@ public sealed class WpfSurfaceHostRpcTests
 		Files = { new DesignerSourceFileSnapshot { FileName = "/project/Page.xaml", Kind = "Source", Text = xaml } }
 	};
 
+	static DesignerElementNode? FindNodeById(DesignerElementNode node, string id)
+	{
+		if (node.Id == id)
+			return node;
+		foreach (var child in node.Children)
+		{
+			if (FindNodeById(child, id) is { } found)
+				return found;
+		}
+		return null;
+	}
+
 	static DesignerElementNode? FindByName(DesignerElementNode node, string name)
 	{
 		if (node.Name == name)
@@ -707,6 +719,80 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.True(reloaded.Accepted, reloaded.Error + "\n" + flushed);
 		foreach (var name in names)
 			Assert.Equal(name == "e" ? "Total: {0}" : "{0:N2}", Format(reloaded, name));
+	}
+
+	[Fact]
+	public async Task ChildHost_WrapsAndUnwrapsElementsKeepingTheirPlacement()
+	{
+		const string xaml = """
+			<Canvas xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="400" Height="200">
+			  <Button x:Name="a" Canvas.Left="40" Canvas.Top="30" Width="80" Height="30" Content="A" />
+			  <Button x:Name="b" Canvas.Left="160" Canvas.Top="90" Width="80" Height="30" Content="B" />
+			  <Button x:Name="c" Canvas.Left="300" Canvas.Top="20" Width="60" Height="30" Content="C" />
+			</Canvas>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var state = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(state.Accepted, state.Error);
+		(double X, double Y) Position(DesignerSessionState s, string name)
+		{
+			var node = FindByName(s.Tree!, name)!;
+			return (node.X, node.Y);
+		}
+		var before = (A: Position(state, "a"), B: Position(state, "b"));
+
+		var wrapped = await client.WrapElementsAsync(state.Version, new[] { FindByName(state.Tree!, "a")!.Id, FindByName(state.Tree!, "b")!.Id }, "Grid", timeout.Token);
+		Assert.True(wrapped.Accepted, wrapped.Error);
+		var grid = FindNodeById(wrapped.Tree!, wrapped.CreatedElementId!)!;
+		Assert.Equal("Grid", grid.Type);
+		Assert.Contains(grid.Children, child => child.Name == "a");
+		Assert.Contains(grid.Children, child => child.Name == "b");
+		// Wrapping keeps both buttons where they were rendered.
+		Assert.Equal(before.A, Position(wrapped, "a"));
+		Assert.Equal(before.B, Position(wrapped, "b"));
+		var wrappedText = (await client.FlushAsync(wrapped.Version, timeout.Token)).Files.Single().Text;
+		Assert.Contains("<Grid", wrappedText, StringComparison.Ordinal);
+
+		var unwrapped = await client.UnwrapElementAsync(wrapped.Version, grid.Id, timeout.Token);
+		Assert.True(unwrapped.Accepted, unwrapped.Error);
+		Assert.DoesNotContain("<Grid", (await client.FlushAsync(unwrapped.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		Assert.Equal(before.A, Position(unwrapped, "a"));
+		Assert.Equal(before.B, Position(unwrapped, "b"));
+
+		var viewbox = await client.WrapElementsAsync(unwrapped.Version, new[] { FindByName(unwrapped.Tree!, "c")!.Id }, "Viewbox", timeout.Token);
+		Assert.True(viewbox.Accepted, viewbox.Error);
+		Assert.Equal("Viewbox", FindNodeById(viewbox.Tree!, viewbox.CreatedElementId!)!.Type);
+		// A single wrapped element keeps its place in the parent's child order: "c" was first.
+		var viewboxText = (await client.FlushAsync(viewbox.Version, timeout.Token)).Files.Single().Text;
+		Assert.True(viewboxText.IndexOf("<Viewbox", StringComparison.Ordinal) < viewboxText.IndexOf("x:Name=\"a\"", StringComparison.Ordinal), viewboxText);
+		Assert.True(viewboxText.IndexOf("x:Name=\"c\"", StringComparison.Ordinal) < viewboxText.IndexOf("x:Name=\"a\"", StringComparison.Ordinal), viewboxText);
+
+		var twoInViewbox = await client.WrapElementsAsync(viewbox.Version, new[] { FindByName(viewbox.Tree!, "a")!.Id, FindByName(viewbox.Tree!, "b")!.Id }, "Viewbox", timeout.Token);
+		Assert.False(twoInViewbox.Accepted);
+		var root = await client.WrapElementsAsync(viewbox.Version, new[] { viewbox.Tree!.Id }, "Grid", timeout.Token);
+		Assert.False(root.Accepted);
+		var unwrapButton = await client.UnwrapElementAsync(viewbox.Version, FindByName(viewbox.Tree!, "a")!.Id, timeout.Token);
+		Assert.False(unwrapButton.Accepted);
+
+		// Inside a Grid parent the children are placed by Margin; unwrapping must add the
+		// container's own offset there too.
+		const string gridXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="400" Height="200">
+			  <Button x:Name="g1" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="50,40,0,0" Width="80" Height="30" Content="1" />
+			  <Button x:Name="g2" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="170,100,0,0" Width="80" Height="30" Content="2" />
+			</Grid>
+			""";
+		var gridState = await client.UpdateAsync(Snapshot(viewbox.Version + 1, gridXaml), timeout.Token);
+		Assert.True(gridState.Accepted, gridState.Error);
+		var gridBefore = (A: Position(gridState, "g1"), B: Position(gridState, "g2"));
+		var inCanvas = await client.WrapElementsAsync(gridState.Version, new[] { FindByName(gridState.Tree!, "g1")!.Id, FindByName(gridState.Tree!, "g2")!.Id }, "Canvas", timeout.Token);
+		Assert.True(inCanvas.Accepted, inCanvas.Error);
+		Assert.Equal(gridBefore.A, Position(inCanvas, "g1"));
+		var outOfCanvas = await client.UnwrapElementAsync(inCanvas.Version, inCanvas.CreatedElementId!, timeout.Token);
+		Assert.True(outOfCanvas.Accepted, outOfCanvas.Error);
+		Assert.Equal(gridBefore.A, Position(outOfCanvas, "g1"));
+		Assert.Equal(gridBefore.B, Position(outOfCanvas, "g2"));
 	}
 
 	[Fact]

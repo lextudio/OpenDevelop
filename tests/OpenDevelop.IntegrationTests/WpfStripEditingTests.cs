@@ -246,7 +246,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
-    public async Task ContextMenu_AlignAndOrderCommandsEditTheDocument()
+    public async Task ContextMenu_AlignOrderAndWrapCommandsEditTheDocument()
     {
         // The in-process designer's ArrangeItems and RightClick context menus: Align needs a
         // multi-selection, Order a single element; both land as source edits.
@@ -298,6 +298,21 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             var text = await File.ReadAllTextAsync(xamlPath);
             Assert.True(text.IndexOf("x:Name=\"second\"", StringComparison.Ordinal) < text.IndexOf("x:Name=\"first\"", StringComparison.Ordinal), text);
             Assert.DoesNotContain("Canvas.Top=\"90\"", text, StringComparison.Ordinal);
+
+            // Wrap the pair in a Grid (the new Grid is selected, so Unwrap applies), then unwrap.
+            Assert.True((await app.InvokeAsync("od.wpf-designer.multi-select", "first,second")).GetProperty("success").GetBoolean());
+            Assert.False(Commands(await app.InvokeAsync("od.wpf-designer.context-commands"))["wrap-Viewbox"]);
+            var wrapped = await app.InvokeAsync("od.wpf-designer.context-command", "wrap-Grid");
+            Assert.True(wrapped.GetProperty("success").GetBoolean(), wrapped.ToString());
+            Assert.True(Commands(await app.InvokeAsync("od.wpf-designer.context-commands"))["unwrap"]);
+            await app.InvokeAsync("od.file.save", xamlPath);
+            Assert.Contains("<Grid", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
+            var unwrapped = await app.InvokeAsync("od.wpf-designer.context-command", "unwrap");
+            Assert.True(unwrapped.GetProperty("success").GetBoolean(), unwrapped.ToString());
+            await app.InvokeAsync("od.file.save", xamlPath);
+            var restored = await File.ReadAllTextAsync(xamlPath);
+            Assert.DoesNotContain("<Grid", restored, StringComparison.Ordinal);
+            Assert.Contains("x:Name=\"first\"", restored, StringComparison.Ordinal);
         } finally {
             await app.InvokeAsync("od.close-active-view");
             await File.WriteAllTextAsync(xamlPath, originalXaml);

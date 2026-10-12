@@ -475,7 +475,7 @@ Ranked by (a) parity gap closed per line, (b) genuinely missing rather than re-i
 | **11** | **Collection editor + ChooseClass dialog** | `PropertyGrid/Editors/CollectionEditor.*`, `Services/ChooseClass*` | The one place a round-trip is *correct*; also the model for any future dialog RPC. |
 | **12** | **XAML error ranges + line-length-preserving repair** | `XamlExceptionRange`, `KeepSuggestedContentSameLength` | Our WinUI hosts report no load errors at all. Medium effort, real diagnostic value. |
 | **13** | **`FocusNavigator`** | `WpfDesign.Designer/Project/FocusNavigator.cs` | **Delivered:** `DesignerFocusNavigator` uses snapshot pre-order traversal for Tab/Shift+Tab primary selection, skips hidden/non-designable/unselectable nodes, wraps at both ends and tolerates a stale selection or malformed cycle. `DesignSurface` owns the key gesture while the controller retains each backend's keying/selection policy. |
-| **14** | **Context-menu shell** | the 9 `*ContextMenu.xaml` | **WPF Align/Order delivered (2026-10-12)**; wrap/unwrap and Edit Style remain. One boilerplate template; we already have `SetContextCommands` (`:416`) + `DesignerVerbMenuPlanner`. Port content, not the `ExtensionServer` registration. |
+| **14** | **Context-menu shell** | the 9 `*ContextMenu.xaml` | **WPF Align/Order/Wrap/Unwrap delivered (2026-10-12)**; Edit Style remains. One boilerplate template; we already have `SetContextCommands` (`:416`) + `DesignerVerbMenuPlanner`. Port content, not the `ExtensionServer` registration. |
 | **15** | **Toolbox: two-sided filtering + document customization** | `ToolboxService.FilterPermitted`, `IToolboxCustomizer`, `ToolboxProvider`'s provenance re-categorisation | `Require`/`Prevent`/`Custom` beats `Scope` equality. **Document category priority is now delivered:** `DesignerToolboxScope` applies an owner-scoped category-priority map to the shared pad while retaining registration order inside a category; GTK and MewUI put Containers first for blank-document authoring. Two-sided declarative filtering still needs metadata provenance from both the item and active designer. |
 
 Deliberately excluded from the top 15: `AdornerLayer` itself (rewrite, not port), `EditorManager`'s
@@ -701,7 +701,20 @@ parent's collection and returns `MovedElementId`, because WPF ids are tree paths
 element must stay selected under its new id. The shared `SetContextCommands` gained `Group/Item`
 submenus and an optional per-command enablement callback; `od.wpf-designer.context-commands` and
 `od.wpf-designer.context-command` exercise the popup menu semantically. Wrap/unwrap (Canvas, Grid,
-Viewbox) and Edit Style are the remaining in-process context commands.
+Viewbox) and Edit Style were then the remaining in-process context commands.
+
+**C4 wrap/unwrap (2026-10-12).** Protocol **v19** adds the optional host mutations
+`design/wrap-elements` (siblings into a new Canvas, Grid or one-child Viewbox, keeping their rendered
+placement; the new container is returned as `CreatedElementId` and selected) and
+`design/unwrap-element` (a Grid or Canvas, keeping its children in place), each one undo group. They
+call DDP's `ModelTools` like the in-process Wrap/Unwrap menus, with two corrections: wrapping uses
+`doInsert: false` and inserts the container itself, because `ModelTools`' final
+`Selection.SetSelectedComponents` raises in-process selection adorners that need a DesignPanel the
+headless host lacks; and `UnwrapItemsFromContainer` measured the container in its own placement
+(always 0,0), so unwrapped children lost the container's offset, also in the in-process designer.
+The WpfDesigner submodule fix measures the container in its parent's placement and adds the offset
+to Grid margins (right/bottom-anchored children keep DDP's existing approximation). Edit Style is
+the remaining in-process context command.
 
 **C2 Binding converter (2026-10-12).** Protocol **v17** adds WPF's optional
 `design/set-binding-converter`. A Binding's `Converter` row is a drop-down of the string keys of

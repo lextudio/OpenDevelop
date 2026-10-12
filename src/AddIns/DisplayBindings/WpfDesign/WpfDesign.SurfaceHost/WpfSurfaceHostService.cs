@@ -1633,6 +1633,100 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		static readonly Dictionary<string, Type> wrapContainerTypes = new(StringComparer.Ordinal) {
+			["Canvas"] = typeof(Canvas), ["Grid"] = typeof(Grid), ["Viewbox"] = typeof(Viewbox)
+		};
+
+		/// <summary>Wraps sibling elements in a new Canvas, Grid or Viewbox, keeping their on-screen
+		/// placement - the in-process designer's Wrap context commands, through the same
+		/// <see cref="ICSharpCode.WpfDesign.Designer.ModelTools.WrapItemsNewContainer"/>. A Viewbox
+		/// takes one child. The new container is returned as <see cref="DesignerSessionState.CreatedElementId"/>.</summary>
+		[JsonRpcMethod("design/wrap-elements")]
+		public DesignerSessionState WrapElements(long baseVersion, string[] elementIds, string containerType)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!wrapContainerTypes.TryGetValue(containerType, out var type))
+					return NotFound(state, "Unsupported wrap container: " + containerType);
+				if (elementIds == null || elementIds.Length == 0)
+					return NotFound(state, "No elements to wrap.");
+				if (type == typeof(Viewbox) && elementIds.Length != 1)
+					return NotFound(state, "A Viewbox wraps exactly one element.");
+				var items = new List<DesignItem>();
+				foreach (var id in elementIds.Distinct())
+				{
+					if (!pathToItem.TryGetValue(id, out var item))
+						return NotFound(state, "Element not found: " + id);
+					if (item.Parent == null)
+						return NotFound(state, "The root element cannot be wrapped.");
+					items.Add(item);
+				}
+				if (items.Any(item => item.Parent != items[0].Parent))
+					return NotFound(state, "Only elements with the same parent can be wrapped together.");
+				DesignItem? container;
+				try
+				{
+					var parent = items[0].Parent!;
+					// The same collection is used to find the first index and to re-insert below.
+					var parentContent = parent.ContentProperty is { IsCollection: true } contentProperty ? contentProperty : null;
+					var firstIndex = parentContent != null && items.All(item => item.ParentProperty == parentContent)
+						? items.Min(item => parentContent.CollectionElements.IndexOf(item)) : -1;
+					using var changeGroup = items[0].OpenGroup("Wrap in " + containerType);
+					// doInsert:false, then insert as ModelTools does but without its final
+					// Selection.SetSelectedComponents: selecting raises the in-process selection
+					// adorners, which need a DesignPanel this headless host does not have.
+					var wrapped = ICSharpCode.WpfDesign.Designer.ModelTools.WrapItemsNewContainer(items, type, doInsert: false);
+					if (wrapped == null)
+						return NotFound(state, "The parent cannot place a new " + containerType + ".");
+					container = wrapped.Item1;
+					var insert = PlacementOperation.TryStartInsertNewComponents(parent, new[] { container }, new[] { wrapped.Item2 }, PlacementType.AddItem);
+					if (insert == null)
+						return NotFound(state, "The parent cannot place a new " + containerType + ".");
+					// A single wrapped element keeps its place in the parent's child order.
+					if (items.Count == 1 && firstIndex >= 0 && parentContent!.CollectionElements.Remove(container))
+						parentContent.CollectionElements.Insert(Math.Min(firstIndex, parentContent.CollectionElements.Count), container);
+					insert.Commit();
+					changeGroup.Commit();
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state);
+				state.CreatedElementId = pathToItem.FirstOrDefault(entry => entry.Value == container).Key;
+				state.Accepted = true;
+				return state;
+			});
+
+		/// <summary>Removes a Grid or Canvas, moving its children into its parent at the same
+		/// on-screen positions - the in-process Unwrap context command, through
+		/// <see cref="ICSharpCode.WpfDesign.Designer.ModelTools.UnwrapItemsFromContainer"/>.</summary>
+		[JsonRpcMethod("design/unwrap-element")]
+		public DesignerSessionState UnwrapElement(long baseVersion, string elementId)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var container))
+					return NotFound(state, "Element not found: " + elementId);
+				if (container.Component is not (Grid or Canvas))
+					return NotFound(state, "Only a Grid or Canvas can be unwrapped.");
+				if (container.Parent?.ContentProperty is not { IsCollection: true })
+					return NotFound(state, "The container's parent cannot hold its children.");
+				try
+				{
+					using var changeGroup = container.OpenGroup("Unwrap");
+					ICSharpCode.WpfDesign.Designer.ModelTools.UnwrapItemsFromContainer(container);
+					// ModelTools returns silently when the container cannot place; disposing the
+					// uncommitted group then rolls back without leaving an empty undo entry.
+					if (container.Parent != null)
+						return NotFound(state, "The container could not be unwrapped.");
+					changeGroup.Commit();
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
 		/// <summary>Appends one more item under an existing <see cref="StatusBar"/> or
 		/// <see cref="ToolBar"/> - the "Type Here" insertion-node commit action for those two strip
 		/// types (mirroring WinForms' StatusStrip insertion node), analogous to

@@ -257,6 +257,16 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> AddStripItemAsync(long baseVersion, string parentId, string text, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/add-strip-item", new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, text }, cancellationToken), cancellationToken);
 
+	/// <summary>Wraps sibling elements in a new Canvas/Grid/Viewbox (<c>design/wrap-elements</c>).</summary>
+	public Task<DesignerSessionState> WrapElementsAsync(long baseVersion, IReadOnlyList<string> elementIds, string containerType, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/wrap-elements",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds, containerType }, cancellationToken), cancellationToken);
+
+	/// <summary>Removes a Grid/Canvas, keeping its children in place (<c>design/unwrap-element</c>).</summary>
+	public Task<DesignerSessionState> UnwrapElementAsync(long baseVersion, string elementId, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/unwrap-element",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken), cancellationToken);
+
 	/// <summary>Moves an element to the front/back or one step forward/backward in its parent's
 	/// collection (<c>design/set-z-order</c>) - the designer context menu's Order commands.</summary>
 	public Task<DesignerSessionState> SetZOrderAsync(long baseVersion, string elementId, string placement, CancellationToken cancellationToken = default)

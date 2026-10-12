@@ -202,11 +202,18 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				("Align/Left", "align-left"), ("Align/Center", "align-center"), ("Align/Right", "align-right"),
 				("Align/Top", "align-top"), ("Align/Middle", "align-middle"), ("Align/Bottom", "align-bottom"),
 				("Order/Bring to Front", "order-front"), ("Order/Bring Forward", "order-forward"),
-				("Order/Send Backward", "order-backward"), ("Order/Send to Back", "order-back")
+				("Order/Send Backward", "order-backward"), ("Order/Send to Back", "order-back"),
+				("-", ""),
+				("Wrap/Canvas", "wrap-Canvas"), ("Wrap/Grid", "wrap-Grid"), ("Wrap/Viewbox", "wrap-Viewbox"),
+				("Unwrap", "unwrap")
 			});
 			ContextCommandCanExecute = command => command switch {
 				_ when command.StartsWith("align-", StringComparison.Ordinal) => controller.SelectedNames.Count >= 2,
 				_ when command.StartsWith("order-", StringComparison.Ordinal) => controller.SelectedNames.Count == 1,
+				"wrap-Viewbox" => controller.SelectedNames.Count == 1 && !controller.SelectedNames.Contains(RootElementId),
+				_ when command.StartsWith("wrap-", StringComparison.Ordinal) => controller.SelectedNames.Count > 0 && !controller.SelectedNames.Contains(RootElementId),
+				// Unwrap acts on exactly one element: that single selection must be a non-root Grid/Canvas.
+				"unwrap" => controller.SelectedNames.Count == 1 && NodeById(controller.SelectedNames[0]) is { Type: "Grid" or "Canvas" } node && node.Id != RootElementId,
 				_ => controller.SelectedNames.Count > 0
 			};
 			RenameRequested += (_, _) => RequestRename();
@@ -241,6 +248,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 					AlignSelection(command.Command.Substring("align-".Length));
 				else if (command.Command.StartsWith("order-", StringComparison.Ordinal))
 					CommitZOrder(command.Command.Substring("order-".Length));
+				else if (command.Command.StartsWith("wrap-", StringComparison.Ordinal))
+					CommitWrap(command.Command.Substring("wrap-".Length));
+				else if (command.Command == "unwrap")
+					CommitUnwrap();
 			};
 			// ThemeRequested carries the chosen theme name; CommitTheme blocks like every mutation.
 			DesignThemeRequested += (_, theme) => CommitTheme(theme);
@@ -1104,6 +1115,35 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// Ids are tree paths: keep the moved element selected under its new id.
 			if (result.MovedElementId != null)
 				controller.RestoreSelection(new[] { result.MovedElementId });
+			DocumentChanged?.Invoke(this, result);
+		}
+
+		/// <summary>Wraps the selected siblings in a new Canvas/Grid/Viewbox and selects it.</summary>
+		void CommitWrap(string containerType)
+		{
+			if (state == null || controller.SelectedNames.Count == 0)
+				return;
+			var result = client.WrapElementsAsync(RequireVersion(), controller.SelectedNames.ToArray(), containerType).GetAwaiter().GetResult();
+			Show(result);
+			if (!result.Accepted)
+				return;
+			if (result.CreatedElementId != null)
+				controller.RestoreSelection(new[] { result.CreatedElementId });
+			DocumentChanged?.Invoke(this, result);
+		}
+
+		/// <summary>Removes the selected Grid/Canvas, keeping its children in place.</summary>
+		void CommitUnwrap()
+		{
+			if (state == null || controller.SelectedNames.Count != 1)
+				return;
+			var result = client.UnwrapElementAsync(RequireVersion(), controller.SelectedNames[0]).GetAwaiter().GetResult();
+			Show(result);
+			if (!result.Accepted)
+				return;
+			// The container is gone and its children's path ids changed; select nothing rather
+			// than a neighbour that now occupies the old path.
+			controller.RestoreSelection(Array.Empty<string>());
 			DocumentChanged?.Invoke(this, result);
 		}
 

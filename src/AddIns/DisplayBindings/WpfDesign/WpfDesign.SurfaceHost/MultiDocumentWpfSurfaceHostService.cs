@@ -72,6 +72,10 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerSessionState SetBindingTextOption(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string optionName, string value) => Checked(sessionId, documentId).SetBindingTextOption(baseVersion, elementId, propertyName, optionName, value);
 	[JsonRpcMethod("design/set-binding-converter")]
 	public DesignerSessionState SetBindingConverter(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string resourceKey) => Checked(sessionId, documentId).SetBindingConverter(baseVersion, elementId, propertyName, resourceKey);
+	[JsonRpcMethod("design/wrap-elements")]
+	public DesignerSessionState WrapElements(string sessionId, string documentId, long baseVersion, string[] elementIds, string containerType) => Checked(sessionId, documentId).WrapElements(baseVersion, elementIds, containerType);
+	[JsonRpcMethod("design/unwrap-element")]
+	public DesignerSessionState UnwrapElement(string sessionId, string documentId, long baseVersion, string elementId) => Checked(sessionId, documentId).UnwrapElement(baseVersion, elementId);
 	[JsonRpcMethod("design/set-z-order")]
 	public DesignerSessionState SetZOrder(string sessionId, string documentId, long baseVersion, string elementId, string placement) => Checked(sessionId, documentId).SetZOrder(baseVersion, elementId, placement);
 	[JsonRpcMethod("design/set-binding-delay")]
