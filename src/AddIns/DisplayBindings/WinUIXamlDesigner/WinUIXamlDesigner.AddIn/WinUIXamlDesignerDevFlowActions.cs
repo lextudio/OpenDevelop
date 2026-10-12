@@ -188,7 +188,8 @@ public static class WinUIXamlDesignerDevFlowActions
 		// Set the PropertyItem the visible grid generated, so this exercises the pad's normal
 		// binding -> PropertyDescriptor -> source-edit path rather than the adapter directly.
 		var item = grid.Properties?.OfType<PropertyItem>()
-			.FirstOrDefault(candidate => candidate.PropertyName == propertyName);
+			.FirstOrDefault(candidate => candidate.PropertyName == propertyName
+				|| candidate.PropertyName == WinUIXamlElementPropertyAdapter.BindingSafeName(propertyName));
 		if (item == null)
 			return JsonSerializer.Serialize(new {
 				success = false,
@@ -232,7 +233,8 @@ public static class WinUIXamlDesignerDevFlowActions
 		if (grid?.SelectedObject is not WinUIXamlElementPropertyAdapter selectedObject)
 			return Failure("Properties pad has no selected WinUI/Uno element");
 		var item = grid.Properties?.OfType<PropertyItem>()
-			.FirstOrDefault(candidate => candidate.PropertyName == propertyName);
+			.FirstOrDefault(candidate => candidate.PropertyName == propertyName
+				|| candidate.PropertyName == WinUIXamlElementPropertyAdapter.BindingSafeName(propertyName));
 		if (item?.PropertyDescriptor == null)
 			return Failure("Properties pad property not found: " + propertyName);
 		if (!item.PropertyDescriptor.CanResetValue(selectedObject))
@@ -259,7 +261,8 @@ public static class WinUIXamlDesignerDevFlowActions
 		if (grid?.SelectedObject is not WinUIXamlElementPropertyAdapter)
 			return Failure("Properties pad has no selected WinUI/Uno element");
 		var item = grid.Properties?.OfType<PropertyItem>()
-			.FirstOrDefault(candidate => candidate.PropertyName == propertyName);
+			.FirstOrDefault(candidate => candidate.PropertyName == propertyName
+				|| candidate.PropertyName == WinUIXamlElementPropertyAdapter.BindingSafeName(propertyName));
 		if (item?.PropertyDescriptor == null)
 			return Failure("Properties pad property not found: " + propertyName);
 		var converter = item.PropertyDescriptor.Converter;

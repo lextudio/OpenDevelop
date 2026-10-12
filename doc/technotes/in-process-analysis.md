@@ -579,8 +579,11 @@ so a dotted protocol name such as `Text.Mode` was parsed as a property path and 
 silently dropped while the pad reported success. The WPF descriptor now uses a binding-safe name
 (`.` → `_`) and keeps the protocol name for RPCs and DevFlow lookup. The LibreWPF
 `PropertiesPad_BindingDelay_EditsIntegerMilliseconds` journey proves `Text.Delay` and `Text.Mode`
-both reach saved XAML. Any other adapter that hands Xceed a dotted descriptor name has the same
-hazard.
+both reach saved XAML. The same hazard existed for authored attached attributes in the WinUI
+(`Grid.Row`) and MewUI (`DockPanel.Dock`) adapters; both now apply the same binding-safe descriptor
+name while keeping the dotted label and source attribute. `WinUIDesigner_PropertiesPadEditsAttachedProperty`
+and `MewUIDesigner_PropertiesPadEditsDottedAttachedAttribute` fail without the change and pass with
+it. WinForms (CLR property names) and GTK (PascalCased GIR names) cannot produce dotted names.
 
 Mutation acceptance is a shell-side invariant, not merely a host detail: GTK/MewUI now make all
 ordinary edit paths return the host's `Accepted` result before dirtying or changing their local

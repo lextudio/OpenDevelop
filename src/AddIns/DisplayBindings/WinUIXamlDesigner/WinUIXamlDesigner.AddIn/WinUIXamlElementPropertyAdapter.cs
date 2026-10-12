@@ -233,6 +233,10 @@ namespace ICSharpCode.WinUIXamlDesigner
 		public object GetEditor(Type editorBaseType) => null;
 		public object GetPropertyOwner(PropertyDescriptor pd) => this;
 
+		/// <summary>Descriptor name for an attribute; the Properties pad's binding-path parser
+		/// would otherwise split a dotted attached-property name.</summary>
+		internal static string BindingSafeName(string localName) => localName.Replace('.', '_');
+
 		sealed class XamlAttributeDescriptor : PropertyDescriptor
 		{
 			readonly XElement element;
@@ -244,7 +248,9 @@ namespace ICSharpCode.WinUIXamlDesigner
 
 			public XamlAttributeDescriptor(XElement element, XName attributeName, string currentValue,
 				Action<XElement, XName, string> setAttribute, IReadOnlyList<string> resourceKeys, bool isNew = false)
-				: base(attributeName.LocalName, null)
+				// Xceed binds each row with new Binding(descriptor.Name); an attached attribute such
+				// as "Grid.Row" would be parsed as a property path and silently drop the edit.
+				: base(BindingSafeName(attributeName.LocalName), null)
 			{
 				this.element = element;
 				this.attributeName = attributeName;
@@ -255,6 +261,7 @@ namespace ICSharpCode.WinUIXamlDesigner
 			}
 
 			public override Type ComponentType => typeof(WinUIXamlElementPropertyAdapter);
+			public override string DisplayName => attributeName.LocalName;
 			public override bool IsReadOnly => false;
 			public override string Category => attributeName.NamespaceName.Length == 0 ? "XAML" : attributeName.NamespaceName;
 

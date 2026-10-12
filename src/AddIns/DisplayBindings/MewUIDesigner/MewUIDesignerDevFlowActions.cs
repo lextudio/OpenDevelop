@@ -49,7 +49,7 @@ public static class MewUIDesignerDevFlowActions
 	{
 		var view = Activate(); var grid = PropertyGrid;
 		if (view == null || grid?.SelectedObject == null) return DesignerDevFlowResults.Failure("MewUI selection is not bound to the Properties pad");
-		var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(property => property.PropertyName == propertyName);
+		var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(property => property.PropertyName == propertyName || property.PropertyName == MewUIPropertyDescriptor.BindingSafeName(propertyName));
 		if (item == null) return JsonSerializer.Serialize(new { success = false, error = "Property not found", propertyNames = grid.Properties?.OfType<PropertyItem>().Select(property => property.PropertyName).ToArray() });
 		item.Value = value;
 		// A descriptor can reject a source mutation. Read through the descriptor again rather

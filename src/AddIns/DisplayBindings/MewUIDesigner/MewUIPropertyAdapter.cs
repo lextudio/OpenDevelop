@@ -112,12 +112,16 @@ sealed class MewUIPropertyDescriptor : PropertyDescriptor
 		};
 	}
 
-	static string DescriptorName(DesignerPropertyInfo info) => info.Name == "$name" ? "Name" : info.Name;
+	static string DisplayLabel(DesignerPropertyInfo info) => info.Name == "$name" ? "Name" : info.Name;
+	// Xceed binds each row with new Binding(descriptor.Name); a dotted attribute such as
+	// "Grid.Row" would be parsed as a property path and silently drop the edit.
+	internal static string DescriptorName(DesignerPropertyInfo info) => BindingSafeName(DisplayLabel(info));
+	internal static string BindingSafeName(string name) => name.Replace('.', '_');
 	static Attribute[] CreateAttributes(DesignerPropertyInfo info)
 	{
 		var attributes = new List<Attribute> {
 			new CategoryAttribute(string.IsNullOrEmpty(info.Category) ? "MewUI" : info.Category),
-			new DisplayNameAttribute(string.IsNullOrEmpty(info.DisplayName) ? DescriptorName(info) : info.DisplayName),
+			new DisplayNameAttribute(string.IsNullOrEmpty(info.DisplayName) ? DisplayLabel(info) : info.DisplayName),
 			new DescriptionAttribute(info.Description ?? ""), new ReadOnlyAttribute(IsProtocolReadOnly(info))
 		};
 		if (info.Kind == "Enum" && info.AllowedValues.Count > 0) attributes.Add(new TypeConverterAttribute(typeof(MewUIEnumConverter)));

@@ -200,6 +200,31 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task MewUIDesigner_PropertiesPadEditsDottedAttachedAttribute()
+	{
+		// The Properties pad binds each row by descriptor name. An authored Owner.Property
+		// attribute must still commit rather than be parsed as a property path and dropped.
+		var source = await File.ReadAllTextAsync(designerPath);
+		var attached = source.Replace("<Label Name=\"statusText\" Text=\"Ready\"/>", "<Label Name=\"statusText\" DockPanel.Dock=\"Top\" Text=\"Ready\"/>", StringComparison.Ordinal);
+		Assert.NotEqual(source, attached);
+		await File.WriteAllTextAsync(designerPath, attached);
+		var openedProject = await app.ReopenSolutionAsync(projectPath);
+		Assert.True(openedProject.GetProperty("success").GetBoolean(), openedProject.ToString());
+		var opened = await app.InvokeAsync("od.open-file", designerPath);
+		Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		await WaitForDesignerAsync();
+
+		var selected = await app.InvokeAsync("od.mewui-designer.select", "statusText");
+		Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+		var edited = await app.InvokeAsync("od.mewui-designer.properties.edit", "DockPanel.Dock", "Bottom");
+		Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+		var saved = await app.InvokeAsync("od.file.save", designerPath);
+		Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+		Assert.Contains("DockPanel.Dock=\"Bottom\"", await File.ReadAllTextAsync(designerPath), StringComparison.Ordinal);
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
 	public async Task MewUIDesigner_RendersRealMewUIControlsWithLayoutBounds()
 	{
 		Assert.SkipUnless(OperatingSystem.IsMacOS() || OperatingSystem.IsWindows(), "The MewUI host only wires up the macOS and Windows render backends so far.");

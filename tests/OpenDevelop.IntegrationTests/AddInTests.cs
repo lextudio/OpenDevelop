@@ -1628,6 +1628,38 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
+    /// <summary>The Properties pad binds each row by descriptor name; an attached attribute such
+    /// as <c>Grid.Row</c> must still commit through that binding rather than being parsed as a
+    /// property path and silently dropped.</summary>
+    [Fact]
+    public async Task WinUIDesigner_PropertiesPadEditsAttachedProperty()
+    {
+        var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
+        try
+        {
+            var attached = originalXaml.Replace("    <Grid>", "    <Grid>\n" +
+                "        <TextBlock x:Name=\"AttachedText\" Grid.Row=\"0\" Text=\"Attached\" />", StringComparison.Ordinal);
+            Assert.NotEqual(originalXaml, attached);
+            await File.WriteAllTextAsync(_unoPagePath, attached);
+
+            await OpenUnoDesignerAsync();
+            Assert.True((await _app.InvokeAsync("od.winui-designer.select", "AttachedText"))
+                .GetProperty("success").GetBoolean());
+            var edited = await WaitForWinUIPropertiesPadEditAsync("Grid.Row", "1", timeoutSeconds: 10);
+            Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+
+            await WaitForRenderedAsync();
+            var saved = await _app.InvokeAsync("od.file.save", _unoPagePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var savedXaml = await File.ReadAllTextAsync(_unoPagePath);
+            Assert.Contains("x:Name=\"AttachedText\" Grid.Row=\"1\"", savedXaml, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await File.WriteAllTextAsync(_unoPagePath, originalXaml);
+        }
+    }
+
     /// <summary>Polls od.winui-designer.status until its status text contains the fragment
     /// (a re-render has settled), returning the status text.</summary>
     async Task<string> WaitForStatusContainingAsync(string fragment)
