@@ -935,7 +935,15 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				var state = NewState(baseVersion);
 				if (!pathToItem.TryGetValue(elementId, out var item))
 					return NotFound(state, "Element not found: " + elementId);
-				var property = item.Properties[propertyName];
+				DesignItemProperty? property;
+				try
+				{
+					// An unknown name throws from the DDP lookup; reject it like any other bad edit.
+					property = FindFrameworkAttachedProperty(propertyName) is { } attached
+						? item.Properties.GetAttachedProperty(attached)
+						: item.Properties[propertyName];
+				}
+				catch (ArgumentException e) { return NotFound(state, e.Message); }
 				if (property == null)
 					return NotFound(state, "Property not found: " + propertyName);
 				try
@@ -950,6 +958,20 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				state.Accepted = true;
 				return state;
 			});
+
+		/// <summary>Resolves an <c>Owner.Member</c> name to a WPF framework attached property
+		/// (<c>DockPanel.Dock</c>, <c>Grid.Row</c>...), so <c>design/set-property</c> can write it the
+		/// way XAML spells it. Only System.Windows.Controls owners are recognised; any other name
+		/// keeps the ordinary property lookup.</summary>
+		static DependencyProperty? FindFrameworkAttachedProperty(string propertyName)
+		{
+			var dot = propertyName.IndexOf('.');
+			if (dot <= 0 || dot != propertyName.LastIndexOf('.') || dot == propertyName.Length - 1)
+				return null;
+			var owner = typeof(FrameworkElement).Assembly.GetType("System.Windows.Controls." + propertyName.Substring(0, dot));
+			var field = owner?.GetField(propertyName.Substring(dot + 1) + "Property", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+			return field?.GetValue(null) as DependencyProperty;
+		}
 
 		/// <summary>Edits the path of an existing <see cref="System.Windows.Data.Binding"/> through
 		/// its nested design item. Unlike <see cref="SetProperty"/>, this never hands a markup

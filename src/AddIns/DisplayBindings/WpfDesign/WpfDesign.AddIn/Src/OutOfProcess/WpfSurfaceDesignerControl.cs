@@ -207,6 +207,15 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				("Wrap/Canvas", "wrap-Canvas"), ("Wrap/Grid", "wrap-Grid"), ("Wrap/Viewbox", "wrap-Viewbox"),
 				("Unwrap", "unwrap"),
 				("-", ""),
+				// The in-process QuickOperationMenu's single-element property shortcuts.
+				("Horizontal Alignment/Left", "set:HorizontalAlignment:Left"), ("Horizontal Alignment/Center", "set:HorizontalAlignment:Center"),
+				("Horizontal Alignment/Right", "set:HorizontalAlignment:Right"), ("Horizontal Alignment/Stretch", "set:HorizontalAlignment:Stretch"),
+				("Vertical Alignment/Top", "set:VerticalAlignment:Top"), ("Vertical Alignment/Center", "set:VerticalAlignment:Center"),
+				("Vertical Alignment/Bottom", "set:VerticalAlignment:Bottom"), ("Vertical Alignment/Stretch", "set:VerticalAlignment:Stretch"),
+				("Orientation/Horizontal", "set:Orientation:Horizontal"), ("Orientation/Vertical", "set:Orientation:Vertical"),
+				("Dock/Left", "set:DockPanel.Dock:Left"), ("Dock/Top", "set:DockPanel.Dock:Top"),
+				("Dock/Right", "set:DockPanel.Dock:Right"), ("Dock/Bottom", "set:DockPanel.Dock:Bottom"),
+				("-", ""),
 				// The in-process Grid rail's GridUnitSelector, for the track under the pointer.
 				("Grid Row/Fixed", "grid-row-Pixel"), ("Grid Row/Star", "grid-row-Star"), ("Grid Row/Auto", "grid-row-Auto"),
 				("Grid Column/Fixed", "grid-column-Pixel"), ("Grid Column/Star", "grid-column-Star"), ("Grid Column/Auto", "grid-column-Auto")
@@ -218,6 +227,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				_ when command.StartsWith("wrap-", StringComparison.Ordinal) => controller.SelectedNames.Count > 0 && !controller.SelectedNames.Contains(RootElementId),
 				// Unwrap acts on exactly one element: that single selection must be a non-root Grid/Canvas.
 				"unwrap" => controller.SelectedNames.Count == 1 && NodeById(controller.SelectedNames[0]) is { Type: "Grid" or "Canvas" } node && node.Id != RootElementId,
+				_ when ParseQuickPropertyCommand(command) is { } quick => CanSetQuickProperty(quick.Property, quick.Value),
 				_ when ParseGridUnitCommand(command) is { } unitCommand => GridTrackAtContextPoint(unitCommand.IsRow) is { } track && track.Unit != unitCommand.Unit,
 				_ => controller.SelectedNames.Count > 0
 			};
@@ -257,6 +267,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 					CommitWrap(command.Command.Substring("wrap-".Length));
 				else if (command.Command == "unwrap")
 					CommitUnwrap();
+				else if (ParseQuickPropertyCommand(command.Command) is { } quick)
+					CommitQuickProperty(quick.Property, quick.Value);
 				else if (ParseGridUnitCommand(command.Command) is { } unitCommand)
 					CommitGridTrackUnit(unitCommand.IsRow, unitCommand.Unit);
 			};
@@ -1159,6 +1171,41 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			if (result.MovedElementId != null)
 				controller.RestoreSelection(new[] { result.MovedElementId });
 			DocumentChanged?.Invoke(this, result);
+		}
+
+		static (string Property, string Value)? ParseQuickPropertyCommand(string command)
+		{
+			if (!command.StartsWith("set:", StringComparison.Ordinal))
+				return null;
+			var separator = command.LastIndexOf(':');
+			return separator <= "set:".Length ? null : (command.Substring(4, separator - 4), command.Substring(separator + 1));
+		}
+
+		/// <summary>A quick property applies to one selected element: Orientation only to a
+		/// StackPanel, DockPanel.Dock only to a DockPanel's child, and the alignments to any non-root
+		/// element. The value the element already has is disabled; Dock's current value is an
+		/// attached property the snapshot does not carry, so every side stays enabled.</summary>
+		bool CanSetQuickProperty(string property, string value)
+		{
+			if (state?.Tree == null || controller.SelectedNames.Count != 1 || NodeById(controller.SelectedNames[0]) is not { } node)
+				return false;
+			if (property == "DockPanel.Dock")
+				return FindParent(state.Tree, node) is { Type: "DockPanel" };
+			if (property == "Orientation" && node.Type != "StackPanel")
+				return false;
+			if (property != "Orientation" && node.Id == RootElementId)
+				return false;
+			return node.Properties.FirstOrDefault(p => p.Name == property) is { IsReadOnly: false } info && info.Value != value;
+		}
+
+		void CommitQuickProperty(string property, string value)
+		{
+			if (state == null || !CanSetQuickProperty(property, value))
+				return;
+			var result = client.SetPropertyAsync(RequireVersion(), controller.SelectedNames[0], property, value).GetAwaiter().GetResult();
+			Show(result);
+			if (result.Accepted)
+				DocumentChanged?.Invoke(this, result);
 		}
 
 		/// <summary>Wraps the selected siblings in a new Canvas/Grid/Viewbox and selects it.</summary>

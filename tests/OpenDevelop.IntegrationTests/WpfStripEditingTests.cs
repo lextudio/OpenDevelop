@@ -246,6 +246,65 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
+    public async Task ContextMenu_QuickPropertiesSetAlignmentOrientationAndDock()
+    {
+        // The in-process QuickOperationMenu: alignment for any element, Orientation for a StackPanel
+        // and Dock for a DockPanel child, each as one property edit.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllBytesAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Quick properties">
+              <DockPanel x:Name="dock">
+                <StackPanel x:Name="stack"><TextBlock Text="Item" /></StackPanel>
+              </DockPanel>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            Dictionary<string, bool> Commands(JsonElement result)
+                => result.GetProperty("commands").EnumerateArray().ToDictionary(c => c.GetProperty("command").GetString()!, c => c.GetProperty("enabled").GetBoolean());
+
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "stack")).GetProperty("success").GetBoolean());
+            var commands = Commands(await app.InvokeAsync("od.wpf-designer.context-commands"));
+            Assert.False(commands["set:Orientation:Vertical"]);
+            Assert.False(commands["set:HorizontalAlignment:Stretch"]);
+            Assert.True(commands["set:DockPanel.Dock:Top"]);
+            foreach (var command in new[] { "set:Orientation:Horizontal", "set:HorizontalAlignment:Left", "set:DockPanel.Dock:Top" }) {
+                var result = await app.InvokeAsync("od.wpf-designer.context-command", command);
+                Assert.True(result.GetProperty("success").GetBoolean(), command + ": " + result);
+            }
+            Assert.False(Commands(await app.InvokeAsync("od.wpf-designer.context-commands"))["set:Orientation:Horizontal"]);
+
+            var saved = await app.InvokeAsync("od.file.save", xamlPath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var text = await File.ReadAllTextAsync(xamlPath);
+            Assert.Contains("Orientation=\"Horizontal\"", text, StringComparison.Ordinal);
+            Assert.Contains("HorizontalAlignment=\"Left\"", text, StringComparison.Ordinal);
+            Assert.Contains("DockPanel.Dock=\"Top\"", text, StringComparison.Ordinal);
+
+            // The DockPanel is not a StackPanel and has no DockPanel parent.
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "dock")).GetProperty("success").GetBoolean());
+            commands = Commands(await app.InvokeAsync("od.wpf-designer.context-commands"));
+            Assert.False(commands["set:Orientation:Horizontal"]);
+            Assert.False(commands["set:DockPanel.Dock:Top"]);
+        } finally {
+            await app.InvokeAsync("od.close-all-document-views");
+            await File.WriteAllBytesAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task ContextMenu_GridRowAndColumnUnitsChangeTheTrackUnderThePointer()
     {
         // The in-process Grid rail's GridUnitSelector (Fixed/Star/Auto) as context-menu commands for

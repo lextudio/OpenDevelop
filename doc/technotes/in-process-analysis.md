@@ -707,6 +707,18 @@ or after the control's own last statement when the source had none; clearing rem
 editor to an `ItemsCollection` row and commits through `design/set-items` as one designer undo step;
 `od.forms-designer.properties-pad.edit-items` drives the real row button with the shared script.
 
+**C2 quick property commands (2026-10-12).** The in-process `QuickOperationMenuExtension` (the
+small per-element menu) offered Horizontal/Vertical Alignment, StackPanel Orientation and DockPanel
+Dock as one-click property edits. These are now WPF context-menu submenus for a single selection,
+built on the existing `design/set-property`: the snapshot's current value is disabled, Orientation
+needs a StackPanel and Dock a DockPanel parent. `design/set-property` now accepts a
+`System.Windows.Controls` attached property by its XAML name (`DockPanel.Dock`), and an unknown
+property name is a rejection rather than an RPC exception. Its "Edit Items" entry is the collection
+editor above; "Edit Rows/Columns" (DDP's `FlatCollectionEditor`) remain covered by the rail's split,
+resize and unit commands. The in-place editor's "font commit" was reviewed and is not a gap: it
+writes back the RichTextBox's own font, which is copied from the TextBlock and never changed by the
+plain-text editor. `ChooseClassServiceBase` has no caller in DDP, so there is nothing to port.
+
 **C3 Grid track units (2026-10-12).** The in-process Grid rail's `GridUnitSelector` (Fixed/Star/Auto
 for the hovered row or column) is now a pair of WPF context-menu submenus, Grid Row and Grid Column,
 acting on the selected Grid's track under the right-click point. Protocol **v22** adds the authored
