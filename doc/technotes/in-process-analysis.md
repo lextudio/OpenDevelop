@@ -573,12 +573,31 @@ resets the nested design property so the default delay is not redundantly serial
 The row is an `Int32` descriptor (integer editor), so a fractional value is rejected rather than
 rounded on the way to the child.
 
+**C2 Binding text options (2026-10-11).** Protocol **v16** adds WPF's optional, whitelisted
+`design/set-binding-text-option` for `StringFormat`, `FallbackValue` and `TargetNullValue`. An empty
+value resets the nested property. A row is offered only while the authored value is unset or plain
+text; a nested markup value such as `FallbackValue={x:Static ...}` stays read-only and the host
+rejects a text overwrite.
+
+Building it exposed pre-existing DDP round-trip corruption, fixed in the WpfDesigner submodule's
+XamlDom. A parsed markup-extension text argument already in `{}` form was escaped a second time; an
+escaped leading brace (`StringFormat=\{0:N2\}`) lost its literal marker and was re-parsed as a nested
+extension; and the printer escaped braces only for string-typed properties. Consequently any rewrite
+of a Binding containing `StringFormat='{}{0:N2}'` (even a Mode edit) saved `\{\}\{\}\{0:N2\}`, which
+WPF reads as the wrong format and which grows on every edit; DDP's own `\{0:N2\}` output failed to
+reload at all; and an object-typed literal such as `TargetNullValue="{0}"` was written as a nested
+extension. Parsed arguments now enter XamlDom through `XamlTextValue.FromAttributeText`, while
+converter output keeps the literal-escaping constructor. Host tests lock five accepted escape forms
+through a Mode rewrite and reload, a positional argument of a custom extension without a default
+constructor, and `TargetNullValue` literals `{}{0}` and `{0}`. The submodule fix is reviewed but not
+yet committed.
+
 **C2 nested-row correction (2026-10-11).** The first visible-pad journey for these rows found that
 none of them had ever committed: Xceed binds each `PropertyItem` with `new Binding(descriptor.Name)`,
 so a dotted protocol name such as `Text.Mode` was parsed as a property path and the edit was
 silently dropped while the pad reported success. The WPF descriptor now uses a binding-safe name
 (`.` → `_`) and keeps the protocol name for RPCs and DevFlow lookup. The LibreWPF
-`PropertiesPad_BindingDelay_EditsIntegerMilliseconds` journey proves `Text.Delay` and `Text.Mode`
+`PropertiesPad_BindingOptions_EditDelayModeAndStringFormat` journey proves `Text.Delay` and `Text.Mode`
 both reach saved XAML. The same hazard existed for authored attached attributes in the WinUI
 (`Grid.Row`) and MewUI (`DockPanel.Dock`) adapters; both now apply the same binding-safe descriptor
 name while keeping the dotted label and source attribute. `WinUIDesigner_PropertiesPadEditsAttachedProperty`

@@ -1092,6 +1092,44 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				RebuildTreeAndRender(state); state.Accepted = true; return state;
 			});
 
+		static readonly string[] bindingTextOptionNames = { "StringFormat", "FallbackValue", "TargetNullValue" };
+		static readonly HashSet<string> bindingTextOptions = new(bindingTextOptionNames, StringComparer.Ordinal);
+
+		/// <summary>Sets a whitelisted text option on an existing Binding. An empty value resets the
+		/// nested property so no redundant empty assignment is serialized; a non-string authored value
+		/// (for example an x:Static FallbackValue) is never overwritten through this text path.</summary>
+		[JsonRpcMethod("design/set-binding-text-option")]
+		public DesignerSessionState SetBindingTextOption(long baseVersion, string elementId, string propertyName, string optionName, string value)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale) return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
+				if (!bindingTextOptions.Contains(optionName)) return NotFound(state, "Unsupported Binding text option: " + optionName);
+				var property = item.Properties[propertyName];
+				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding)
+					return NotFound(state, "Property is not an editable Binding: " + propertyName);
+				var option = bindingItem.Properties[optionName];
+				if (!IsTextBindingOption(option))
+					return NotFound(state, "Binding " + optionName + " is not a text value");
+				try
+				{
+					if (string.IsNullOrEmpty(value))
+						option.Reset();
+					else
+						option.SetValue(value);
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state); state.Accepted = true; return state;
+			});
+
+		// An unset FallbackValue/TargetNullValue reports DependencyProperty.UnsetValue, not null. An
+		// authored text argument parsed from markup arrives wrapped in a string DesignItem, whereas a
+		// nested markup extension (x:Static, StaticResource) has a non-string component.
+		static bool IsTextBindingOption(DesignItemProperty option)
+			=> option != null
+				&& (option.Value == null || option.Value.Component is string)
+				&& (option.ValueOnInstance is null or string || option.ValueOnInstance == DependencyProperty.UnsetValue);
+
 		/// <summary>Sets the bounded millisecond debounce delay on an existing Binding. Zero is
 		/// represented as a design-model reset so the default is not redundantly serialized.</summary>
 		[JsonRpcMethod("design/set-binding-delay")]
@@ -2241,6 +2279,19 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 								Category = "Binding", TypeName = typeof(bool).FullName ?? "",
 								Kind = "Boolean", EditorKind = "BindingValidationOption",
 								Value = enabled.ToString(CultureInfo.InvariantCulture), BindingPropertyName = descriptor.Name,
+								BindingOptionName = optionName, ShouldSerialize = false
+							});
+						}
+						foreach (var optionName in bindingTextOptionNames)
+						{
+							var option = reference.Properties[optionName];
+							if (!IsTextBindingOption(option))
+								continue;
+							result.Add(new DesignerPropertyInfo {
+								Name = descriptor.Name + "." + optionName, DisplayName = descriptor.Name + " " + optionName,
+								Category = "Binding", TypeName = typeof(string).FullName ?? "",
+								Kind = "String", EditorKind = "BindingTextOption",
+								Value = option.ValueOnInstance as string ?? "", BindingPropertyName = descriptor.Name,
 								BindingOptionName = optionName, ShouldSerialize = false
 							});
 						}

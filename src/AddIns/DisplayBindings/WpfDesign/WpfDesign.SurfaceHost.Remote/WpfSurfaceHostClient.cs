@@ -208,6 +208,10 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-validation-option",
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, optionName, enabled }, cancellationToken), cancellationToken);
 
+	public Task<DesignerSessionState> SetBindingTextOptionAsync(long baseVersion, string elementId, string propertyName, string optionName, string value, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-text-option",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, optionName, value }, cancellationToken), cancellationToken);
+
 	public Task<DesignerSessionState> SetBindingDelayAsync(long baseVersion, string elementId, string propertyName, int delay, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-delay",
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, delay }, cancellationToken), cancellationToken);

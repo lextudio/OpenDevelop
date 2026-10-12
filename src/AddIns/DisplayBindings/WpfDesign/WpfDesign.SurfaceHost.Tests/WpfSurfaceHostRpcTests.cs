@@ -673,6 +673,113 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task ChildHost_PreservesEscapedStringFormatAcrossBindingRewrite()
+	{
+		// Every accepted escape for a literal leading brace must parse to the same format string,
+		// and rewriting the Binding (here, a Mode edit) must not corrupt or re-escape it.
+		const string xaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <TextBlock x:Name="a" Text="{Binding Price, StringFormat=\{0:N2\}}" />
+			  <TextBlock x:Name="b" Text="{Binding Price, StringFormat='{}{0:N2}'}" />
+			  <TextBlock x:Name="c" Text="{Binding Price, StringFormat={}{0:N2}}" />
+			  <TextBlock x:Name="d" Text="{Binding Price, StringFormat='\{0:N2\}'}" />
+			  <TextBlock x:Name="e" Text="{Binding Price, StringFormat='Total: {0}'}" />
+			</Grid>
+			""";
+		var names = new[] { "a", "b", "c", "d", "e" };
+		string Format(DesignerSessionState state, string name)
+			=> FindByName(state.Tree!, name)!.Properties.Single(property => property.BindingOptionName == "StringFormat").Value;
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var state = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(state.Accepted, state.Error);
+		foreach (var name in names)
+			Assert.Equal(name == "e" ? "Total: {0}" : "{0:N2}", Format(state, name));
+
+		foreach (var name in names)
+		{
+			state = await client.SetBindingModeAsync(state.Version, FindByName(state.Tree!, name)!.Id, "Text", "OneWay", timeout.Token);
+			Assert.True(state.Accepted, state.Error);
+		}
+		var flushed = (await client.FlushAsync(state.Version, timeout.Token)).Files.Single().Text;
+		Assert.DoesNotContain(@"\{\}", flushed, StringComparison.Ordinal);
+		var reloaded = await client.UpdateAsync(Snapshot(state.Version + 1, flushed), timeout.Token);
+		Assert.True(reloaded.Accepted, reloaded.Error + "\n" + flushed);
+		foreach (var name in names)
+			Assert.Equal(name == "e" ? "Total: {0}" : "{0:N2}", Format(reloaded, name));
+	}
+
+	[Fact]
+	public async Task ChildHost_EditsBindingTextOptionsWithoutOverwritingMarkupValues()
+	{
+		const string xaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+			      xmlns:sys="clr-namespace:System;assembly=mscorlib" Width="240" Height="80">
+			  <TextBlock x:Name="bound" Text="{Binding Price}" />
+			  <TextBlock x:Name="static" Text="{Binding Price, FallbackValue={x:Static sys:String.Empty}}" />
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var bound = FindByName(opened.Tree!, "bound")!;
+		var options = bound.Properties.Where(property => property.EditorKind == "BindingTextOption")
+			.Select(property => property.BindingOptionName).ToArray();
+		Assert.Equal(new[] { "StringFormat", "FallbackValue", "TargetNullValue" }, options);
+		Assert.DoesNotContain(FindByName(opened.Tree!, "static")!.Properties,
+			property => property.EditorKind == "BindingTextOption" && property.BindingOptionName == "FallbackValue");
+
+		var formatted = await client.SetBindingTextOptionAsync(1, bound.Id, "Text", "StringFormat", "{0:N2}", timeout.Token);
+		Assert.True(formatted.Accepted, formatted.Error);
+		var fallback = await client.SetBindingTextOptionAsync(formatted.Version, bound.Id, "Text", "FallbackValue", "N/A", timeout.Token);
+		Assert.True(fallback.Accepted, fallback.Error);
+		var text = (await client.FlushAsync(fallback.Version, timeout.Token)).Files.Single().Text;
+		// Braces inside a markup-extension argument are escaped, not emitted raw.
+		Assert.Contains(@"StringFormat=\{0:N2\}", text, StringComparison.Ordinal);
+		Assert.Contains("FallbackValue=N/A", text, StringComparison.Ordinal);
+		Assert.Equal("{0:N2}", FindByName(fallback.Tree!, "bound")!.Properties
+			.Single(property => property.BindingOptionName == "StringFormat").Value);
+
+		// The flushed markup must reload as the same Binding rather than a parse error.
+		var reopened = await client.UpdateAsync(Snapshot(fallback.Version + 1, text), timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error + "\n" + text);
+		Assert.Equal("{0:N2}", FindByName(reopened.Tree!, "bound")!.Properties
+			.Single(property => property.BindingOptionName == "StringFormat").Value);
+
+		// A literal that itself begins with "{}" is content, not an escape: it must survive a
+		// write, save and reload unchanged.
+		var literalBraces = await client.SetBindingTextOptionAsync(reopened.Version, FindByName(reopened.Tree!, "bound")!.Id, "Text", "TargetNullValue", "{}{0}", timeout.Token);
+		Assert.True(literalBraces.Accepted, literalBraces.Error);
+		var literalText = (await client.FlushAsync(literalBraces.Version, timeout.Token)).Files.Single().Text;
+		reopened = await client.UpdateAsync(Snapshot(literalBraces.Version + 1, literalText), timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error + "\n" + literalText);
+		Assert.Equal("{}{0}", FindByName(reopened.Tree!, "bound")!.Properties
+			.Single(property => property.BindingOptionName == "TargetNullValue").Value);
+		// An object-typed option holding a leading-brace literal must not be re-read as an extension.
+		var objectLiteral = await client.SetBindingTextOptionAsync(reopened.Version, FindByName(reopened.Tree!, "bound")!.Id, "Text", "TargetNullValue", "{0}", timeout.Token);
+		Assert.True(objectLiteral.Accepted, objectLiteral.Error);
+		literalText = (await client.FlushAsync(objectLiteral.Version, timeout.Token)).Files.Single().Text;
+		reopened = await client.UpdateAsync(Snapshot(objectLiteral.Version + 1, literalText), timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error + "\n" + literalText);
+		Assert.Equal("{0}", FindByName(reopened.Tree!, "bound")!.Properties
+			.Single(property => property.BindingOptionName == "TargetNullValue").Value);
+
+		var bound2 = FindByName(reopened.Tree!, "bound")!;
+		var cleared = await client.SetBindingTextOptionAsync(reopened.Version, bound2.Id, "Text", "FallbackValue", "", timeout.Token);
+		Assert.True(cleared.Accepted, cleared.Error);
+		Assert.DoesNotContain("FallbackValue=N/A", (await client.FlushAsync(cleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+
+		var staticItem = FindByName(cleared.Tree!, "static")!;
+		var overwrite = await client.SetBindingTextOptionAsync(cleared.Version, staticItem.Id, "Text", "FallbackValue", "N/A", timeout.Token);
+		Assert.False(overwrite.Accepted);
+		Assert.Contains("x:Static", (await client.FlushAsync(cleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var unsupported = await client.SetBindingTextOptionAsync(cleared.Version, bound2.Id, "Text", "Path", "Other", timeout.Token);
+		Assert.False(unsupported.Accepted);
+		Assert.Contains("Unsupported Binding text option", unsupported.Error, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public async Task ChildHost_UpdatesBindingPathWithoutReplacingBindingObject()
 	{
 		const string xaml = """
@@ -1447,6 +1554,37 @@ public sealed class WpfSurfaceHostRpcTests
 		// The Phase 1 gate this test exists to prove (wpf-designer.md): type resolution for a
 		// project-defined control happens only in the spawned child, never in this test process.
 		AssertFixtureNotLoadedHere();
+	}
+
+	[Fact]
+	public async Task PositionalMarkupExtensionArgument_KeepsEscapedLeadingBraceLiteral()
+	{
+		// EchoExtension has no default constructor, so its argument reaches the converter directly
+		// instead of through a mapped property: the literal-brace escape must still be removed.
+		var fixtureDll = CustomControlFixtureDll();
+		Assert.True(File.Exists(fixtureDll), "CustomControlFixture must be built before this test runs: " + fixtureDll);
+		const string xaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:c="clr-namespace:CustomControlFixture;assembly=CustomControlFixture" Width="400" Height="300">
+			  <StackPanel HorizontalAlignment="Left">
+			    <TextBlock x:Name="reference" HorizontalAlignment="Left" Text="{}{0:N2}"/>
+			    <TextBlock x:Name="leaked" HorizontalAlignment="Left" Text="{}{}{0:N2}"/>
+			    <TextBlock x:Name="unquoted" HorizontalAlignment="Left" Text="{c:Echo \{0:N2\}}"/>
+			    <TextBlock x:Name="quoted" HorizontalAlignment="Left" Text="{c:Echo '{}{0:N2}'}"/>
+			  </StackPanel>
+			</Grid>
+			""";
+		var snapshot = Snapshot(1, xaml);
+		snapshot.ProjectAssemblyPath = fixtureDll;
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		// The node carries the extension, not its evaluated text, so compare measured widths with
+		// a literal "{0:N2}" and with the leaked "{}{0:N2}" form.
+		double Width(string name) => FindByName(opened.Tree!, name)!.Width;
+		Assert.NotEqual(Width("reference"), Width("leaked"));
+		Assert.Equal(Width("reference"), Width("unquoted"));
+		Assert.Equal(Width("reference"), Width("quoted"));
 	}
 
 	[Fact]

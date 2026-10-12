@@ -301,7 +301,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
-    public async Task PropertiesPad_BindingDelay_EditsIntegerMilliseconds()
+    public async Task PropertiesPad_BindingOptions_EditDelayModeAndStringFormat()
     {
         // Binding.Delay is an Int32. The visible pad must expose it as an integer editor so a
         // fractional value is rejected instead of being silently rounded on its way to the child.
@@ -341,6 +341,10 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             // Sibling nested-Binding rows share the dotted protocol-name shape.
             var mode = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.Mode", "OneWay");
             Assert.True(mode.GetProperty("success").GetBoolean(), mode.ToString());
+            // A leading-brace format must be escaped as literal text, not emitted as a nested
+            // markup extension that would make the Binding unparseable on reload.
+            var format = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.StringFormat", "{0:N2}");
+            Assert.True(format.GetProperty("success").GetBoolean(), format.ToString());
 
             var savedResult = await app.InvokeAsync("od.file.save", xamlPath);
             Assert.True(savedResult.GetProperty("success").GetBoolean(), savedResult.ToString());
@@ -349,6 +353,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             Assert.DoesNotContain("12", saved, StringComparison.Ordinal);
             Assert.Matches(@"\{Binding (Path=)?Title\b", saved);
             Assert.Contains("Mode=OneWay", saved, StringComparison.Ordinal);
+            Assert.Contains(@"StringFormat=\{0:N2\}", saved, StringComparison.Ordinal);
         } finally {
             await app.InvokeAsync("od.close-active-view");
             await File.WriteAllTextAsync(xamlPath, originalXaml);

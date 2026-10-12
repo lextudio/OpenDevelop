@@ -112,6 +112,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		internal void SetBindingTextOption(string propertyName, string optionName, string value)
+		{
+			var state = client.SetBindingTextOptionAsync(currentBaseVersion(), node.Id, propertyName, optionName, value)
+				.GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		internal void SetBindingDelay(string propertyName, int delay)
 		{
 			var state = client.SetBindingDelayAsync(currentBaseVersion(), node.Id, propertyName, delay)
@@ -319,6 +327,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor
 				owner.SetBindingNotifyOnValidationError(property.BindingPropertyName, Convert.ToBoolean(value, CultureInfo.InvariantCulture));
 			else if (property.EditorKind == "BindingValidationOption")
 				owner.SetBindingValidationOption(property.BindingPropertyName, property.BindingOptionName, Convert.ToBoolean(value, CultureInfo.InvariantCulture));
+			else if (property.EditorKind == "BindingTextOption")
+				owner.SetBindingTextOption(property.BindingPropertyName, property.BindingOptionName, serialized);
 			else if (property.EditorKind == "BindingDelay")
 				owner.SetBindingDelay(property.BindingPropertyName, Convert.ToInt32(value, CultureInfo.InvariantCulture));
 			else

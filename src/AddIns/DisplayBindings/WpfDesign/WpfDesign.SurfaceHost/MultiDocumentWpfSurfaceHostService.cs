@@ -68,6 +68,8 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerSessionState SetBindingNotifyOnValidationError(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, bool notify) => Checked(sessionId, documentId).SetBindingNotifyOnValidationError(baseVersion, elementId, propertyName, notify);
 	[JsonRpcMethod("design/set-binding-validation-option")]
 	public DesignerSessionState SetBindingValidationOption(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string optionName, bool enabled) => Checked(sessionId, documentId).SetBindingValidationOption(baseVersion, elementId, propertyName, optionName, enabled);
+	[JsonRpcMethod("design/set-binding-text-option")]
+	public DesignerSessionState SetBindingTextOption(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string optionName, string value) => Checked(sessionId, documentId).SetBindingTextOption(baseVersion, elementId, propertyName, optionName, value);
 	[JsonRpcMethod("design/set-binding-delay")]
 	public DesignerSessionState SetBindingDelay(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, int delay) => Checked(sessionId, documentId).SetBindingDelay(baseVersion, elementId, propertyName, delay);
 	[JsonRpcMethod("design/add-element")]
