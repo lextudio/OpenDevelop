@@ -726,7 +726,7 @@ public sealed class WpfSurfaceHostRpcTests
 		var bound = FindByName(opened.Tree!, "bound")!;
 		var options = bound.Properties.Where(property => property.EditorKind == "BindingTextOption")
 			.Select(property => property.BindingOptionName).ToArray();
-		Assert.Equal(new[] { "StringFormat", "FallbackValue", "TargetNullValue" }, options);
+		Assert.Equal(new[] { "StringFormat", "FallbackValue", "TargetNullValue", "ConverterParameter" }, options);
 		Assert.DoesNotContain(FindByName(opened.Tree!, "static")!.Properties,
 			property => property.EditorKind == "BindingTextOption" && property.BindingOptionName == "FallbackValue");
 
@@ -764,6 +764,22 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.True(reopened.Accepted, reopened.Error + "\n" + literalText);
 		Assert.Equal("{0}", FindByName(reopened.Tree!, "bound")!.Properties
 			.Single(property => property.BindingOptionName == "TargetNullValue").Value);
+
+		// Values containing an argument separator, '=' or a quote must stay one argument through
+		// save and reload (a comma format such as {0:#,0} is common).
+		foreach (var (option, value) in new[] {
+			("ConverterParameter", "a,b"), ("ConverterParameter", "it's x=y"), ("StringFormat", "{0:#,0}"),
+			// A quoted value ending in a backslash must not swallow its closing quote.
+			("ConverterParameter", @"a'\"), ("ConverterParameter", @"say ""hi""\"), ("ConverterParameter", @"C:\Folder A\file.txt") })
+		{
+			var edit = await client.SetBindingTextOptionAsync(reopened.Version, FindByName(reopened.Tree!, "bound")!.Id, "Text", option, value, timeout.Token);
+			Assert.True(edit.Accepted, edit.Error);
+			literalText = (await client.FlushAsync(edit.Version, timeout.Token)).Files.Single().Text;
+			reopened = await client.UpdateAsync(Snapshot(edit.Version + 1, literalText), timeout.Token);
+			Assert.True(reopened.Accepted, reopened.Error + "\n" + literalText);
+			var reloaded = FindByName(reopened.Tree!, "bound")!.Properties.SingleOrDefault(property => property.BindingOptionName == option);
+			Assert.True(reloaded?.Value == value, option + " did not round-trip:\n" + literalText);
+		}
 
 		var bound2 = FindByName(reopened.Tree!, "bound")!;
 		var cleared = await client.SetBindingTextOptionAsync(reopened.Version, bound2.Id, "Text", "FallbackValue", "", timeout.Token);

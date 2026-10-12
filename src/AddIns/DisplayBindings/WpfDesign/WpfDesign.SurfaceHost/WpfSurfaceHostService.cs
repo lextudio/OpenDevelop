@@ -1092,7 +1092,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				RebuildTreeAndRender(state); state.Accepted = true; return state;
 			});
 
-		static readonly string[] bindingTextOptionNames = { "StringFormat", "FallbackValue", "TargetNullValue" };
+		static readonly string[] bindingTextOptionNames = { "StringFormat", "FallbackValue", "TargetNullValue", "ConverterParameter" };
 		static readonly HashSet<string> bindingTextOptions = new(bindingTextOptionNames, StringComparer.Ordinal);
 
 		/// <summary>Sets a whitelisted text option on an existing Binding. An empty value resets the

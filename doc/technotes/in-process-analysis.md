@@ -592,6 +592,14 @@ through a Mode rewrite and reload, a positional argument of a custom extension w
 constructor, and `TargetNullValue` literals `{}{0}` and `{0}`. The submodule fix is reviewed but not
 yet committed.
 
+`ConverterParameter` is now a fourth whitelisted text option. Adding it found one more printer
+defect: values were quoted only when they contained a space, so `ConverterParameter=a,b` or the
+common `StringFormat={0:#,0}` was split at the comma and the Binding failed to reload. The printer
+now quotes any value containing a space, comma, `=` or quote, escaping embedded `'`, and the
+tokenizer's quoted branch processes escapes sequentially so a quoted value may end in an escaped
+backslash. The WpfDesigner NUnit project discovers no tests on macOS, so these cases are covered by
+the OpenDevelop host round-trip test.
+
 **C2 nested-row correction (2026-10-11).** The first visible-pad journey for these rows found that
 none of them had ever committed: Xceed binds each `PropertyItem` with `new Binding(descriptor.Name)`,
 so a dotted protocol name such as `Text.Mode` was parsed as a property path and the edit was
