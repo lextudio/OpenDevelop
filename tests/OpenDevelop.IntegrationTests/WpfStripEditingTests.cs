@@ -39,6 +39,24 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
 				return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
 			}, TimeSpan.FromSeconds(90)), status.ToString());
 
+			// The canvas reads Keyboard.Modifiers when the click completes. A native keydown sent
+			// while the window is still becoming active can be missed, turning the Ctrl-click into
+			// a plain click; confirm the IDE sees Ctrl before pressing, and retry the hold if not.
+			async Task HoldCtrlAsync()
+			{
+				JsonElement modifiers = default;
+				for (var attempt = 1; attempt <= 3; attempt++) {
+					Assert.True((await app.KeyDownAsync("ctrl")).GetProperty("ok").GetBoolean());
+					if (await OpenDevelopAppFixture.PollUntilAsync(async () => {
+						modifiers = await app.InvokeAsync("od.keyboard.modifiers");
+						return modifiers.GetProperty("control").GetBoolean();
+					}, TimeSpan.FromSeconds(2), initialDelayMs: 50, maxDelayMs: 200))
+						return;
+					await app.KeyUpAsync("ctrl");
+				}
+				Assert.Fail("The IDE never observed the held Ctrl key: " + modifiers);
+			}
+
 			var initial = await app.InvokeAsync("od.wpf-designer.multi-select", "first,second");
 			var initialIds = initial.GetProperty("selectedIds").EnumerateArray().Select(id => id.GetString()).ToArray();
 			Assert.Equal(2, initialIds.Length);
@@ -47,7 +65,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
 			var secondX = second.GetProperty("centerX").GetDouble();
 			var secondY = second.GetProperty("centerY").GetDouble();
 
-			Assert.True((await app.KeyDownAsync("ctrl")).GetProperty("ok").GetBoolean());
+			await HoldCtrlAsync();
 			Exception? clickFailure = null;
 			try {
 				Assert.True((await app.PressPointerAsync(secondX, secondY, ensureForeground: false)).GetProperty("ok").GetBoolean());
@@ -73,7 +91,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
 			// The surface also recognizes a double-click within 500 ms for inline edit, so make
 			// this an independent Ctrl-click rather than accidentally taking that gesture path.
 			await Task.Delay(550);
-			Assert.True((await app.KeyDownAsync("ctrl")).GetProperty("ok").GetBoolean());
+			await HoldCtrlAsync();
 			Exception? deselectFailure = null;
 			try {
 				Assert.True((await app.PressPointerAsync(secondX, secondY, ensureForeground: false)).GetProperty("ok").GetBoolean());
@@ -101,7 +119,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
 			var firstX = first.GetProperty("centerX").GetDouble();
 			var firstY = first.GetProperty("centerY").GetDouble();
 
-			Assert.True((await app.KeyDownAsync("ctrl")).GetProperty("ok").GetBoolean());
+			await HoldCtrlAsync();
 			Exception? dragFailure = null;
 			try {
 				Assert.True((await app.PressPointerAsync(firstX, firstY, ensureForeground: false)).GetProperty("ok").GetBoolean());

@@ -703,8 +703,15 @@ barely changes), and the MewUI journey asserts that a fitted frame fits the view
 arbitrary minimum scale. `od.designer-canvas.*` now falls back to the only open designer canvas
 when activation has moved to another document (a WPF load can activate App.xaml), and the WPF
 snapping journey closes all document views first so a view left by another journey is not reported.
-`CtrlPointerGestures_DistinguishClickCollapseFromGroupDrag` still fails on macOS, also before these
-changes; its targets may likewise be outside a split pane's visible canvas and need the same check.
+`CtrlPointerGestures_DistinguishClickCollapseFromGroupDrag`'s intermittent macOS failure was not a
+visibility problem (both targets are inside the viewport). DevFlow holds Ctrl and presses the mouse
+in separate CliclickSharp processes, and its mouse events carried no modifier flags, so LibreWPF's
+`Keyboard.Modifiers` lost Ctrl at the mouse-down (observed: `Control` before the press, `None`
+after it) and the canvas, which reads Ctrl at mouse-up, saw a plain click. The fix belongs to
+wpf-labs' cliclick-sharp (mouse events now carry the session's held modifiers); with that build from
+a local DevFlow package the journey passed in every class run. The journey also confirms through
+`od.keyboard.modifiers` that the IDE sees the held key before clicking, so a missed key-down is
+reported as such instead of as a selection mismatch.
 
 **C3 WinUI Canvas insets (2026-10-11).** The Uno host now publishes measured Canvas child edge
 distances as `CanvasPosition`, and the shared L/T/R/B labels are a real source-edit path rather

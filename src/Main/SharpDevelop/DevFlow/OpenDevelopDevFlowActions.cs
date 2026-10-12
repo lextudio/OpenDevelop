@@ -5027,6 +5027,18 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return open.Length == 1 ? open[0] : null;
 		}
 
+		[DevFlowAction("od.keyboard.modifiers", Description = "Report the modifier keys the IDE currently sees (Keyboard.Modifiers), so a test can confirm a held native key reached the app before relying on it")]
+		public static string GetKeyboardModifiers()
+		{
+			var modifiers = System.Windows.Input.Keyboard.Modifiers;
+			return JsonSerializer.Serialize(new {
+				value = modifiers.ToString(),
+				control = modifiers.HasFlag(System.Windows.Input.ModifierKeys.Control),
+				shift = modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift),
+				alt = modifiers.HasFlag(System.Windows.Input.ModifierKeys.Alt)
+			});
+		}
+
 		[DevFlowAction("od.designer-canvas.snapping", Description = "Set the active designer's toolbar placement controls (Snap to Raster, Raster Width, Snap to Guides) as a user click would; fails if the designer does not offer them")]
 		public static string SetDesignerCanvasSnapping(bool snapToGrid, int rasterWidth, bool snapToGuides)
 		{
