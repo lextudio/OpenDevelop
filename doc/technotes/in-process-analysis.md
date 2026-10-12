@@ -710,8 +710,10 @@ editor to an `ItemsCollection` row and commits through `design/set-items` as one
 **C4 WinForms Toolbox components (2026-10-12).** The WinForms Toolbox catalog lists Timer, ToolTip,
 ImageList, ErrorProvider, BackgroundWorker and the other non-visual components, but the child's
 `design/add-element` resolved only `Control` types, so dropping any of them failed with
-"Unsupported WinForms control type". A creatable non-Control `IComponent` now joins the component
-tray as the in-process drop did: it is created in one designer transaction, and the source gains its
+"Unsupported WinForms control type". A creatable non-Control `IComponent` marked
+`[DesignTimeVisible(true)]` - the tray classifier's own rule, which keeps out ToolStripItem,
+ColumnHeader and DataGridViewColumn, components that exist only inside their owner - now joins the
+component tray as the in-process drop did: it is created in one designer transaction, and the source gains its
 field and creation statement - into `components` when the type has an `(IContainer)` constructor,
 declaring the field and initializing `components` first when the form has none (C# and VB). The
 loader already read such tray components back. Project components (non-Control types in the

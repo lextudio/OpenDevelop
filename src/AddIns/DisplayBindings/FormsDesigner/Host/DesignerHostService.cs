@@ -1682,8 +1682,10 @@ sealed class DesignerHostService : IDesignerChildService
 		return type;
 	}
 
-	/// <summary>A creatable non-Control component type, or null (the name is then resolved as a
-	/// control, which reports an unsupported type).</summary>
+	/// <summary>A creatable non-Control component type that belongs in the tray, or null (the name
+	/// is then resolved as a control, which reports an unsupported type). Like
+	/// <see cref="IsTrayComponent"/>, it requires <c>[DesignTimeVisible(true)]</c>: a ToolStripItem,
+	/// ColumnHeader or DataGridViewColumn is a component too, but it only exists inside its owner.</summary>
 	Type? ResolveTrayComponentType(string? name)
 	{
 		if (String.IsNullOrEmpty(name))
@@ -1693,7 +1695,7 @@ sealed class DesignerHostService : IDesignerChildService
 			?? typeof(Control).Assembly.GetType(fullName, false) ?? Type.GetType(fullName, false)
 			?? AppDomain.CurrentDomain.GetAssemblies().Select(item => item.GetType(fullName, false)).FirstOrDefault(item => item != null);
 		return type != null && typeof(IComponent).IsAssignableFrom(type) && !typeof(Control).IsAssignableFrom(type)
-			&& !type.IsAbstract && (type.GetConstructor(Type.EmptyTypes) != null || type.GetConstructor(new[] { typeof(IContainer) }) != null)
+			&& !type.IsAbstract && TypeDescriptor.GetAttributes(type).Contains(DesignTimeVisibleAttribute.Yes) && (type.GetConstructor(Type.EmptyTypes) != null || type.GetConstructor(new[] { typeof(IContainer) }) != null)
 			? type : null;
 	}
 

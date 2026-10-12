@@ -936,6 +936,12 @@ public sealed class FormsDesignerHostClientTests
 		Assert.True(text.IndexOf("components = ", StringComparison.Ordinal) < text.IndexOf("timer1 = ", StringComparison.Ordinal), text);
 		Assert.Contains(visualBasic ? "components As System.ComponentModel.IContainer" : "System.ComponentModel.IContainer components", text, StringComparison.Ordinal);
 
+		// A ToolStripItem is a component but [DesignTimeVisible(false)]: it lives inside its strip,
+		// never in the tray, so the generic add path rejects it and leaves the source alone.
+		await Assert.ThrowsAnyAsync<Exception>(() => client.AddElementAsync(1, "Form1",
+			new DesignerToolboxItemInfo { TypeName = "System.Windows.Forms.ToolStripButton" }, "toolStripButton1", 0, 0, cancellationToken: timeout.Token));
+		Assert.Equal(text, DesignerText(await client.FlushAsync(1, timeout.Token)));
+
 		snapshot.Version = 2;
 		snapshot.Files.Single(item => item.Kind == "Designer").Text = text;
 		var reloaded = await client.UpdateAsync(snapshot, timeout.Token);
