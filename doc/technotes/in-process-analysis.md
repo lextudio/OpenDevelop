@@ -682,6 +682,16 @@ the inverse direction. The shared drag path no longer creates a `Margin` on Canv
 layout containers retain the existing alignment-aware Margin behaviour. The same source edit path
 serves both single-element and same-parent multi-selection drags.
 
+**C3 WPF placement toggles (2026-10-11).** The in-process WPF designer's zoom bar offered raster
+placement with a width and snapline placement (`DesignPanel.UseRasterPlacement`, `RasterWidth`,
+`UseSnaplinePlacement`; defaults off, 5, on). The shared toolbar now has an opt-in `Snapping`
+capability with the same three controls, bound to the canvas controller's existing `SnapToGrid`,
+`GridCellSize` and `SnapToGuides`; WPF opts in and persists them as `WpfDesigner.*` preferences.
+The gridlines overlay now draws at the controller's raster cell rather than a fixed 20 units, so the
+lines mark the positions a raster drag snaps to (this also corrects WinForms, whose grid size was
+previously used for snapping but not drawing). `Toolbar_SnappingControls_DriveTheDragSettingsAndPersist`
+covers the defaults, the toolbar-to-controller binding, gridline spacing and persistence.
+
 **C3 WinUI Canvas insets (2026-10-11).** The Uno host now publishes measured Canvas child edge
 distances as `CanvasPosition`, and the shared L/T/R/B labels are a real source-edit path rather
 than a read-only overlay: a released edge label converts its measured distance into a Canvas move

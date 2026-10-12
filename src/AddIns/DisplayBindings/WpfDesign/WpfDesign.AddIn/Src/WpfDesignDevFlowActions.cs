@@ -146,6 +146,10 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				canUndo = viewContent.CanUndo,
 				canRedo = viewContent.CanRedo,
 				selectedIds = viewContent.SurfaceControl?.SelectedElementIds ?? Array.Empty<string>(),
+				// The controller's actual drag settings, not the toolbar's display state.
+				snapToGrid = viewContent.SurfaceControl?.SnapToGrid ?? false,
+				snapToGuides = viewContent.SurfaceControl?.SnapToGuides ?? false,
+				gridCellSize = viewContent.SurfaceControl?.GridCellSizeForDrag ?? 0,
 				// Whether the opened project embeds any design-time theme
 				// (see WpfSurfaceHostService.ResolveThemes) - the toolbar's theme combo
 				// is only shown when this is true.

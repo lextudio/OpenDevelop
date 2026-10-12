@@ -44,6 +44,9 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		StatusBar = 64,
 		VisualStates = 128,
 		ComponentTray = 256,
+		/// <summary>Raster/snapline placement toggles and raster width. Deliberately not part of
+		/// <see cref="All"/>: a designer opts in only once its drag path honors them.</summary>
+		Snapping = 512,
 		All = Zoom | Fit | Gridlines | Theme | ShowNames | DesignSize | StatusBar | VisualStates | ComponentTray
 	}
 
@@ -55,6 +58,13 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		readonly ToggleButton gridButton;
 		readonly ComboBox themeCombo;
 		readonly ToggleButton namesButton;
+		readonly ToggleButton rasterButton;
+		readonly ToggleButton snaplinesButton;
+		readonly ComboBox rasterWidthCombo;
+		bool syncingRasterWidth;
+		// At most one non-preset width (e.g. a persisted custom value) is shown alongside the presets.
+		int? customRasterWidth;
+		static readonly int[] RasterWidthPresets = { 4, 5, 8, 10, 16, 20 };
 		/// <summary>Holds one combo per VisualStateGroup; collapsed whenever the document declares
 		/// none, which is the overwhelmingly common case.</summary>
 		readonly StackPanel statesPanel = new StackPanel { Orientation = Orientation.Horizontal };
@@ -123,6 +133,15 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			themeCombo.Items.Add("Dark");
 			themeCombo.SelectedIndex = 0;
 			namesButton = CreateIconToggle("Icons.16x16.DisplayName", "Show control names on the selection outline");
+			rasterButton = CreateIconToggle("Icons.16x16.SnapToGrid", "Snap moved elements to the raster");
+			snaplinesButton = CreateIconToggle("Icons.16x16.ToggleGuides", "Snap moved elements to alignment guides");
+			rasterWidthCombo = new ComboBox {
+				Width = 48,
+				Margin = new Thickness(0, 2, 4, 2),
+				ToolTip = "Raster width in design units"
+			};
+			foreach (var width in RasterWidthPresets)
+				rasterWidthCombo.Items.Add(width);
 			backendLabel = new TextBlock {
 				Margin = new Thickness(6, 0, 4, 0),
 				VerticalAlignment = VerticalAlignment.Center,
@@ -135,6 +154,9 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			AutomationProperties.SetName(gridButton, "Gridlines");
 			AutomationProperties.SetName(themeCombo, "Theme");
 			AutomationProperties.SetName(namesButton, "Show Names");
+			AutomationProperties.SetName(rasterButton, "Snap to Raster");
+			AutomationProperties.SetName(snaplinesButton, "Snap to Guides");
+			AutomationProperties.SetName(rasterWidthCombo, "Raster Width");
 			AutomationProperties.SetName(DesignSizeCombo, "Design Size");
 			AutomationProperties.SetName(componentTray, "Component tray");
 			componentTray.Child = componentTrayItems;
@@ -143,6 +165,11 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			toolbar.Children.Add(ZoomCombo);
 			toolbar.Children.Add(fitButton);
 			toolbar.Children.Add(gridButton);
+			// Placement aids sit beside the gridlines toggle, as in the in-process WPF designer's
+			// zoom bar (raster, its width, then snaplines).
+			toolbar.Children.Add(rasterButton);
+			toolbar.Children.Add(rasterWidthCombo);
+			toolbar.Children.Add(snaplinesButton);
 			toolbar.Children.Add(themeCombo);
 			// Next to the theme combo on purpose: both answer "which variant of this design am I
 			// looking at". Starts collapsed - SetVisualStateGroups shows it only when there is
@@ -195,6 +222,14 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			};
 			namesButton.Checked += (_, _) => { UpdateButtonHighlight(namesButton); ShowNamesRequested?.Invoke(this, true); };
 			namesButton.Unchecked += (_, _) => { UpdateButtonHighlight(namesButton); ShowNamesRequested?.Invoke(this, false); };
+			rasterButton.Checked += (_, _) => { UpdateButtonHighlight(rasterButton); SnapToGridRequested?.Invoke(this, true); };
+			rasterButton.Unchecked += (_, _) => { UpdateButtonHighlight(rasterButton); SnapToGridRequested?.Invoke(this, false); };
+			snaplinesButton.Checked += (_, _) => { UpdateButtonHighlight(snaplinesButton); SnapToGuidesRequested?.Invoke(this, true); };
+			snaplinesButton.Unchecked += (_, _) => { UpdateButtonHighlight(snaplinesButton); SnapToGuidesRequested?.Invoke(this, false); };
+			rasterWidthCombo.SelectionChanged += (_, _) => {
+				if (!syncingRasterWidth && rasterWidthCombo.SelectedItem is int width)
+					RasterWidthRequested?.Invoke(this, width);
+			};
 
 			Capabilities = DesignerCanvasCapabilities.All;
 			// Unpressed = names hidden by default (the user found the always-on labels noisy on
@@ -212,6 +247,9 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			gridButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			themeCombo.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			namesButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
+			rasterButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
+			snaplinesButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
+			rasterWidthCombo.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			statusBar.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			componentTray.SetResourceReference(Border.BackgroundProperty, "ToolWindowBackground");
 			componentTray.SetResourceReference(Border.BorderBrushProperty, "ToolWindowBorder");
@@ -387,6 +425,10 @@ namespace ICSharpCode.SharpDevelop.Widgets
 				gridButton.Visibility = value.HasFlag(DesignerCanvasCapabilities.Gridlines) ? Visibility.Visible : Visibility.Collapsed;
 				themeCombo.Visibility = value.HasFlag(DesignerCanvasCapabilities.Theme) ? Visibility.Visible : Visibility.Collapsed;
 				namesButton.Visibility = value.HasFlag(DesignerCanvasCapabilities.ShowNames) ? Visibility.Visible : Visibility.Collapsed;
+				var snapping = value.HasFlag(DesignerCanvasCapabilities.Snapping) ? Visibility.Visible : Visibility.Collapsed;
+				rasterButton.Visibility = snapping;
+				rasterWidthCombo.Visibility = snapping;
+				snaplinesButton.Visibility = snapping;
 				// Never shown on capability alone: the panel also needs the current document to
 				// actually declare a group (see SetVisualStateGroups).
 				statesPanel.Visibility = value.HasFlag(DesignerCanvasCapabilities.VisualStates) && statesPanel.Children.Count > 0
@@ -411,6 +453,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 				if (capabilities.HasFlag(DesignerCanvasCapabilities.Gridlines)) result.Add("Gridlines");
 				if (capabilities.HasFlag(DesignerCanvasCapabilities.Theme)) result.Add("Theme");
 				if (capabilities.HasFlag(DesignerCanvasCapabilities.ShowNames)) result.Add("Show Names");
+				if (capabilities.HasFlag(DesignerCanvasCapabilities.Snapping)) result.Add("Snapping");
 				if (capabilities.HasFlag(DesignerCanvasCapabilities.VisualStates) && statesPanel.Children.Count > 0) result.Add("Visual States");
 				if (capabilities.HasFlag(DesignerCanvasCapabilities.DesignSize)) result.Add("Design Size");
 				return result;
@@ -579,6 +622,52 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		public event EventHandler<string> ThemeRequested;
 		public event EventHandler<bool> ShowNamesRequested;
 
+		/// <summary>Raster placement toggle state; setting it raises <see cref="SnapToGridRequested"/>
+		/// exactly as a click does.</summary>
+		public bool IsSnappingToGrid { get => rasterButton.IsChecked == true; set => rasterButton.IsChecked = value; }
+
+		/// <summary>Snapline placement toggle state; setting it raises <see cref="SnapToGuidesRequested"/>.</summary>
+		public bool IsSnappingToGuides { get => snaplinesButton.IsChecked == true; set => snaplinesButton.IsChecked = value; }
+
+		/// <summary>Selected raster width. Setting it does not raise <see cref="RasterWidthRequested"/>,
+		/// so an owner can restore a preference without echoing it back; a width outside the
+		/// presets replaces any earlier custom entry so the combo shows the effective value without
+		/// accumulating items.</summary>
+		public int RasterWidth
+		{
+			get => rasterWidthCombo.SelectedItem is int width ? width : 0;
+			set {
+				syncingRasterWidth = true;
+				if (customRasterWidth is { } previous && previous != value) {
+					rasterWidthCombo.Items.Remove(previous);
+					customRasterWidth = null;
+				}
+				if (Array.IndexOf(RasterWidthPresets, value) < 0 && value > 0 && customRasterWidth != value) {
+					rasterWidthCombo.Items.Add(value);
+					customRasterWidth = value;
+				}
+				rasterWidthCombo.SelectedItem = value;
+				syncingRasterWidth = false;
+			}
+		}
+
+		/// <summary>Selects a raster width as the user would, raising <see cref="RasterWidthRequested"/>.</summary>
+		public bool SelectRasterWidth(int width)
+		{
+			if (!rasterWidthCombo.Items.Contains(width))
+				return false;
+			rasterWidthCombo.SelectedItem = width;
+			return true;
+		}
+
+		/// <summary>Spacing of the design-space gridlines in design units, or 0 when this canvas
+		/// draws none.</summary>
+		public virtual double GridCellSize => 0;
+
+		public event EventHandler<bool> SnapToGridRequested;
+		public event EventHandler<bool> SnapToGuidesRequested;
+		public event EventHandler<int> RasterWidthRequested;
+
 		/// <summary>Switches the checked-button highlight between the Light and Dark design
 		/// themes. The toolbar background/text follow the IDE theme (DynamicResource), so only
 		/// the checked (active) button state is design-theme-dependent here.</summary>
@@ -586,6 +675,8 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		{
 			UpdateButtonHighlight(gridButton);
 			UpdateButtonHighlight(namesButton);
+			UpdateButtonHighlight(rasterButton);
+			UpdateButtonHighlight(snaplinesButton);
 		}
 
 		static void UpdateButtonHighlight(ToggleButton button) =>

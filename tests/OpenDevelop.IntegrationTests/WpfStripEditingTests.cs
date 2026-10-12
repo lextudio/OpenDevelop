@@ -361,6 +361,65 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
+    public async Task Toolbar_SnappingControls_DriveTheDragSettingsAndPersist()
+    {
+        // The in-process WPF designer's zoom bar offered raster placement (with a width) and
+        // snapline placement, defaulting to raster off, width 5, snaplines on. The out-of-process
+        // toolbar must expose the same controls, and they must change the drag settings the
+        // canvas controller actually uses, keep the visible gridlines on the same raster, and
+        // persist for the next designer.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        async Task<JsonElement> OpenAsync()
+        {
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            return status;
+        }
+        try {
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            var status = await OpenAsync();
+            Assert.False(status.GetProperty("snapToGrid").GetBoolean(), status.ToString());
+            Assert.True(status.GetProperty("snapToGuides").GetBoolean(), status.ToString());
+            Assert.Equal(5, status.GetProperty("gridCellSize").GetDouble());
+            var canvas = await app.InvokeAsync("od.designer-canvas.status");
+            Assert.Contains("Snapping", canvas.GetProperty("toolbarItems").EnumerateArray().Select(item => item.GetString()));
+            Assert.False(canvas.GetProperty("snapToGridChecked").GetBoolean(), canvas.ToString());
+            Assert.True(canvas.GetProperty("snapToGuidesChecked").GetBoolean(), canvas.ToString());
+            Assert.Equal(5, canvas.GetProperty("rasterWidth").GetInt32());
+
+            var snapping = await app.InvokeAsync("od.designer-canvas.snapping", true, 10, false);
+            Assert.True(snapping.GetProperty("success").GetBoolean(), snapping.ToString());
+            status = await app.InvokeAsync("od.wpf-designer.status");
+            Assert.True(status.GetProperty("snapToGrid").GetBoolean(), status.ToString());
+            Assert.False(status.GetProperty("snapToGuides").GetBoolean(), status.ToString());
+            Assert.Equal(10, status.GetProperty("gridCellSize").GetDouble());
+            // The gridlines mark the positions a raster drag snaps to.
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () =>
+                (await app.InvokeAsync("od.designer-canvas.status")).GetProperty("gridlineCellSize").GetDouble() == 10,
+                TimeSpan.FromSeconds(5)));
+
+            // A newly opened designer starts from the persisted choice.
+            await app.InvokeAsync("od.close-active-view");
+            status = await OpenAsync();
+            Assert.True(status.GetProperty("snapToGrid").GetBoolean(), status.ToString());
+            Assert.False(status.GetProperty("snapToGuides").GetBoolean(), status.ToString());
+            Assert.Equal(10, status.GetProperty("gridCellSize").GetDouble());
+            canvas = await app.InvokeAsync("od.designer-canvas.status");
+            Assert.True(canvas.GetProperty("snapToGridChecked").GetBoolean(), canvas.ToString());
+            Assert.Equal(10, canvas.GetProperty("rasterWidth").GetInt32());
+        } finally {
+            // Restore the defaults so later drag journeys are not snapped to a raster.
+            await app.InvokeAsync("od.designer-canvas.snapping", false, 5, true);
+            await app.InvokeAsync("od.close-active-view");
+        }
+    }
+
+    [Fact]
     public async Task MenuItem_DoubleClick_InlineEditsHeader_AndUndoRestoresIt()
     {
         if (!OperatingSystem.IsWindows()) return;

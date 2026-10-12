@@ -69,6 +69,15 @@ public sealed class DesignSurfaceController : IDisposable
 		surface.NudgeRequested += OnSurfaceNudgeRequested;
 		surface.UndoRedoRequested += OnSurfaceUndoRedoRequested;
 		surface.FocusNavigationRequested += OnFocusNavigationRequested;
+		// The toolbar's placement toggles are views of this controller's drag settings; start them
+		// in sync and let a click (or a DevFlow toolbar action) change the setting it shows.
+		surface.IsSnappingToGrid = snapToGrid;
+		surface.IsSnappingToGuides = snapToGuides;
+		surface.RasterWidth = (int)gridCellSize;
+		surface.SetGridCellSize(gridCellSize);
+		surface.SnapToGridRequested += (_, enabled) => snapToGrid = enabled;
+		surface.SnapToGuidesRequested += (_, enabled) => snapToGuides = enabled;
+		surface.RasterWidthRequested += (_, width) => GridCellSize = width;
 	}
 
 	public DesignSurface Surface { get; }
@@ -790,7 +799,10 @@ public sealed class DesignSurfaceController : IDisposable
 	public bool SnapToGrid
 	{
 		get => snapToGrid;
-		set => snapToGrid = value;
+		set {
+			snapToGrid = value;
+			dispatcher.BeginInvoke(() => Surface.IsSnappingToGrid = value);
+		}
 	}
 
 	/// <summary>Whether free-form drags use sibling alignment guides. It remains on by default so
@@ -799,7 +811,10 @@ public sealed class DesignSurfaceController : IDisposable
 	public bool SnapToGuides
 	{
 		get => snapToGuides;
-		set => snapToGuides = value;
+		set {
+			snapToGuides = value;
+			dispatcher.BeginInvoke(() => Surface.IsSnappingToGuides = value);
+		}
 	}
 
 	/// <summary>Raster cell size in design units. Invalid/non-positive values disable raster
@@ -807,7 +822,15 @@ public sealed class DesignSurfaceController : IDisposable
 	public double GridCellSize
 	{
 		get => gridCellSize;
-		set => gridCellSize = value;
+		set {
+			gridCellSize = value;
+			// The visible gridlines must mark the same positions a raster drag snaps to.
+			dispatcher.BeginInvoke(() => {
+				Surface.SetGridCellSize(value);
+				if (value >= 1 && value == Math.Floor(value))
+					Surface.RasterWidth = (int)value;
+			});
+		}
 	}
 
 	/// <summary>Shows the row/column divider guides over a Grid (design rect plus divider offsets).</summary>

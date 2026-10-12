@@ -15,7 +15,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 	/// </summary>
 	public sealed class GridlineOverlay
 	{
-		const double GridCellSize = 20;
+		/// <summary>Cell size in design units. A designer that snaps to a raster sets this to the
+		/// same width, so the lines drawn are the positions a drag actually snaps to.</summary>
+		public double CellSize { get; set; } = 20;
 		static readonly Brush LineBrush = new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80));
 
 		// HorizontalAlignment/VerticalAlignment=Left/Top matter when this sits inside a Grid (the
@@ -38,7 +40,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 			Visual.Children.Clear();
 			if (!show || width <= 0 || height <= 0 || scale <= 0)
 				return;
-			var step = GridCellSize * scale;
+			if (CellSize <= 0)
+				return;
+			var step = CellSize * scale;
 			if (step < 2)
 				return; // guard against an unbounded line count at extreme zoom-out
 			for (var x = 0.0; x <= width; x += step)

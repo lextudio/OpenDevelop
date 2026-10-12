@@ -1272,6 +1272,18 @@ public class DesignSurface : DesignerCanvas
 		gridlineOverlay.Update(viewportCanvas.Width, viewportCanvas.Height, EffectiveScale(), showGridlines);
 	}
 
+	/// <summary>Gridline spacing in design units; kept equal to the controller's raster cell.</summary>
+	public override double GridCellSize => gridlineOverlay.CellSize;
+
+	public void SetGridCellSize(double cellSize)
+	{
+		// A non-positive raster disables snapping, not the gridlines: keep the previous spacing.
+		if (cellSize <= 0)
+			return;
+		gridlineOverlay.CellSize = cellSize;
+		gridlineOverlay.Update(viewportCanvas.Width, viewportCanvas.Height, EffectiveScale(), showGridlines);
+	}
+
 	/// <summary>The resize handle under a design-space point, or null - delegates to the
 	/// shared adorner layer (same tolerance/center-third-is-move logic as before).</summary>
 	string HandleAt(Vector2 designPoint)

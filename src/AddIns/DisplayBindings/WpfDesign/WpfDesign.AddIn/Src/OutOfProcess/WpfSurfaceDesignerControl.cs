@@ -48,7 +48,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		const string RootElementId = "";
 
 		const DesignerCanvasCapabilities BaseCapabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit |
-			DesignerCanvasCapabilities.Gridlines | DesignerCanvasCapabilities.ShowNames | DesignerCanvasCapabilities.StatusBar;
+			DesignerCanvasCapabilities.Gridlines | DesignerCanvasCapabilities.ShowNames | DesignerCanvasCapabilities.StatusBar |
+			DesignerCanvasCapabilities.Snapping;
+
+		// The in-process WPF designer's zoom-bar placement options (DesignPanel.UseRasterPlacement,
+		// UseSnaplinePlacement and RasterWidth), with its defaults: raster off, snaplines on, 5.
+		const string UseRasterPlacementProperty = "WpfDesigner.UseRasterPlacement";
+		const string UseSnaplinePlacementProperty = "WpfDesigner.UseSnaplinePlacement";
+		const string RasterWidthProperty = "WpfDesigner.RasterWidth";
 
 		// The Grid whose divider guides are shown, with its track START offsets as the host
 		// reports them (design/query-grid-guides) - what a divider drag's new size is derived from.
@@ -157,6 +164,12 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				// A plain click that hits nothing clears the selection, as in every WPF designer.
 				ClearsSelectionOnEmptyClick = true
 			};
+			controller.GridCellSize = Math.Max(1, PropertyService.Get(RasterWidthProperty, 5));
+			controller.SnapToGrid = PropertyService.Get(UseRasterPlacementProperty, false);
+			controller.SnapToGuides = PropertyService.Get(UseSnaplinePlacementProperty, true);
+			SnapToGridRequested += (_, enabled) => PropertyService.Set(UseRasterPlacementProperty, enabled);
+			SnapToGuidesRequested += (_, enabled) => PropertyService.Set(UseSnaplinePlacementProperty, enabled);
+			RasterWidthRequested += (_, width) => PropertyService.Set(RasterWidthProperty, width);
 
 			contextMenuTrayRoot.Children.Add(contextMenuTrayItems);
 			contextMenuTrayRoot.Children.Add(contextMenuTrayInsertionLine);
@@ -303,6 +316,9 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		#region Selection
 
 		internal DesignerElementNode? SelectedNode => NodeById(controller.SelectedElementName);
+		internal bool SnapToGrid => controller.SnapToGrid;
+		internal bool SnapToGuides => controller.SnapToGuides;
+		internal double GridCellSizeForDrag => controller.GridCellSize;
 
 		/// <summary>The node with this <see cref="DesignerElementNode.Id"/> (falling back to a tree
 		/// path, which is the same thing for every WPF element but a header group), or null.</summary>

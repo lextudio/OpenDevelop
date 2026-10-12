@@ -3875,6 +3875,17 @@ public sealed class AddInTests : IAsyncDisposable
             }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000);
             Assert.True(loaded, "The WinForms designer did not load. Status: " + status);
 
+            // WinForms snaps moves to its GridSizeWidth raster (default 8); the drawn gridlines
+            // must use that same spacing rather than the shared overlay's former fixed 20. It
+            // keeps its Options-dialog preferences, so it does not opt into the toolbar toggles.
+            JsonElement canvas = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                canvas = await _app.InvokeAsync("od.designer-canvas.status");
+                return canvas.GetProperty("found").GetBoolean() && canvas.GetProperty("gridlineCellSize").GetDouble() > 0;
+            }, TimeSpan.FromSeconds(10)), canvas.ToString());
+            Assert.Equal(8, canvas.GetProperty("gridlineCellSize").GetDouble());
+            Assert.DoesNotContain("Snapping", canvas.GetProperty("toolbarItems").EnumerateArray().Select(item => item.GetString()));
+
             // Two labels side by side (label1 left of label2, both at y=30).
             var add1 = await _app.InvokeAsync("od.forms-designer.add-control", "Form1", "System.Windows.Forms.Label", "label1", 30, 30);
             Assert.True(add1.GetProperty("success").GetBoolean(), add1.ToString());

@@ -5003,7 +5003,35 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				found = canvas != null,
 				unavailable = canvas?.IsUnavailable ?? false,
 				loading = canvas?.IsLoading ?? false,
-				statusText = canvas?.StatusText
+				statusText = canvas?.StatusText,
+				toolbarItems = canvas?.VisibleToolbarItems ?? Array.Empty<string>(),
+				snapToGridChecked = canvas?.IsSnappingToGrid ?? false,
+				snapToGuidesChecked = canvas?.IsSnappingToGuides ?? false,
+				rasterWidth = canvas?.RasterWidth ?? 0,
+				gridlineCellSize = canvas?.GridCellSize ?? 0
+			});
+		}
+
+		[DevFlowAction("od.designer-canvas.snapping", Description = "Set the active designer's toolbar placement controls (Snap to Raster, Raster Width, Snap to Guides) as a user click would; fails if the designer does not offer them")]
+		public static string SetDesignerCanvasSnapping(bool snapToGrid, int rasterWidth, bool snapToGuides)
+		{
+			var control = SD.Workbench.ActiveViewContent?.Control as DependencyObject;
+			var canvas = control as DesignerCanvas
+				?? FindLogicalDescendants<DesignerCanvas>(control).FirstOrDefault()
+				?? FindVisualDescendant<DesignerCanvas>(control);
+			if (canvas == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No designer canvas in the active view" });
+			if (!canvas.Capabilities.HasFlag(DesignerCanvasCapabilities.Snapping))
+				return JsonSerializer.Serialize(new { success = false, error = "This designer does not offer placement snapping" });
+			if (!canvas.SelectRasterWidth(rasterWidth))
+				return JsonSerializer.Serialize(new { success = false, error = "Raster width is not offered: " + rasterWidth });
+			canvas.IsSnappingToGrid = snapToGrid;
+			canvas.IsSnappingToGuides = snapToGuides;
+			return JsonSerializer.Serialize(new {
+				success = true,
+				snapToGridChecked = canvas.IsSnappingToGrid,
+				snapToGuidesChecked = canvas.IsSnappingToGuides,
+				rasterWidth = canvas.RasterWidth
 			});
 		}
 
