@@ -166,6 +166,19 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		};
 	}
 	void FitView() { canvas.FitView(); FitMeasured = canvas.HasRender && canvas.IsFitMode; }
+	/// <summary>Whether the whole rendered frame lies inside the visible canvas - what Fit promises.</summary>
+	public bool FrameFitsViewport
+	{
+		get {
+			canvas.UpdateLayout();
+			var geometry = canvas.SurfaceGeometry();
+			if (geometry.Viewport.IsEmpty)
+				return false;
+			var visible = geometry.Viewport;
+			visible.Inflate(1, 1);
+			return visible.Contains(geometry.Frame);
+		}
+	}
 	static DesignerElementNode? NodeAt(DesignerElementNode root, Point point, DesignerElementNode? except = null) => Flatten(root).Where(n => !ReferenceEquals(n, except) && n.Width > 0 && n.Height > 0 && point.X >= n.X && point.Y >= n.Y && point.X <= n.X + n.Width && point.Y <= n.Y + n.Height).OrderBy(n => n.Width * n.Height).FirstOrDefault();
 	bool ReorderBetween(DesignerElementNode root, DesignerElementNode source, DesignerElementNode target) { var parent = Flatten(root).FirstOrDefault(p => p.Children.Contains(source) && p.Children.Contains(target)); if (parent == null) return false; var delta = parent.Children.IndexOf(target) - parent.Children.IndexOf(source); if (delta == 0) return false; Select(source); return ReorderSelected(delta); }
 	static bool IsContainer(DesignerElementNode n) => n.Type is "StackPanel" or "Grid" or "DockPanel" or "WrapPanel" or "Window" or "Border" or "ScrollViewer" or "GroupBox" or "TabControl" or "TabItem" or "ContentControl";

@@ -76,7 +76,7 @@ public static class MewUIDesignerDevFlowActions
 	[DevFlowAction("od.mewui-designer.zoom", Description = "Set the common designer toolbar zoom")]
 	public static string Zoom(double value) { var v = Activate(); if (v != null) v.Zoom = value; return JsonSerializer.Serialize(new { success = v != null, zoom = v?.Zoom ?? 0 }); }
 	[DevFlowAction("od.mewui-designer.fit", Description = "Fit the MewUI design using the common canvas toolbar behavior")]
-	public static string Fit() { var v = Activate(); v?.FitDesign(); return JsonSerializer.Serialize(new { success = v != null, zoom = v?.Zoom ?? 0, measured = v?.FitMeasured ?? false }); }
+	public static string Fit() { var v = Activate(); v?.FitDesign(); return JsonSerializer.Serialize(new { success = v != null, zoom = v?.Zoom ?? 0, measured = v?.FitMeasured ?? false, frameFitsViewport = v?.FrameFitsViewport ?? false }); }
 	[DevFlowAction("od.mewui-designer.gridlines", Description = "Toggle MewUI design-space gridlines")]
 	public static string Gridlines(bool enabled) { var v = Activate(); v?.ShowGridlines(enabled); return JsonSerializer.Serialize(new { success = v != null, gridlines = v?.Gridlines ?? false }); }
 

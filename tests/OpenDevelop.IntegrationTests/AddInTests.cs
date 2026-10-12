@@ -3762,6 +3762,19 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True((await _app.InvokeAsync("od.forms-designer.view", "0.5")).GetProperty("success").GetBoolean());
             var before = await _app.InvokeAsync("od.forms-designer.surface-geometry");
             Assert.True(before.GetProperty("available").GetBoolean(), before.ToString());
+            // In the split Design/Source layout the design pane can be shorter than the form even
+            // at 50%; the handle is then below the visible canvas and a press lands on the
+            // splitter or source editor instead. Fall back to Fit, which keeps the whole frame in
+            // view, and require the handle to be visible before driving the gesture. Growth is
+            // then judged in design units (designSize): Fit re-scales the resized form to fit, so
+            // its screen size barely changes even though the form really grew.
+            if (!before.GetProperty("handleVisible").GetBoolean()) {
+                Assert.True((await _app.InvokeAsync("od.forms-designer.view", "fit")).GetProperty("success").GetBoolean());
+                Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                    before = await _app.InvokeAsync("od.forms-designer.surface-geometry");
+                    return before.GetProperty("available").GetBoolean() && before.GetProperty("handleVisible").GetBoolean();
+                }, TimeSpan.FromSeconds(5)), "The resize handle is outside the visible canvas even at Fit: " + before);
+            }
 			OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(before, "before");
             var beforeFrame = Bounds(before, "frame");
             var beforeSelection = Bounds(before, "selection");
@@ -3784,6 +3797,7 @@ public sealed class AddInTests : IAsyncDisposable
                 await _app.InvokeAsync("od.activate");
                 effectiveBefore = await _app.InvokeAsync("od.forms-designer.surface-geometry");
                 Assert.True(effectiveBefore.GetProperty("available").GetBoolean(), effectiveBefore.ToString());
+                Assert.True(effectiveBefore.GetProperty("handleVisible").GetBoolean(), "The resize handle is outside the visible canvas: " + effectiveBefore);
                 var hx = effectiveBefore.GetProperty("handle").GetProperty("x").GetDouble();
                 var hy = effectiveBefore.GetProperty("handle").GetProperty("y").GetDouble();
                 // Use the decomposed native gesture here.  The DevFlow one-shot `drag` endpoint
@@ -3800,10 +3814,10 @@ public sealed class AddInTests : IAsyncDisposable
                     after = await _app.InvokeAsync("od.forms-designer.surface-geometry");
                     if (!after.GetProperty("available").GetBoolean())
                         return false;
-                    var fw = after.GetProperty("frame").GetProperty("width").GetDouble();
-                    var fh = after.GetProperty("frame").GetProperty("height").GetDouble();
-                    var bw = effectiveBefore.GetProperty("frame").GetProperty("width").GetDouble();
-                    var bh = effectiveBefore.GetProperty("frame").GetProperty("height").GetDouble();
+                    var fw = after.GetProperty("designSize").GetProperty("width").GetDouble();
+                    var fh = after.GetProperty("designSize").GetProperty("height").GetDouble();
+                    var bw = effectiveBefore.GetProperty("designSize").GetProperty("width").GetDouble();
+                    var bh = effectiveBefore.GetProperty("designSize").GetProperty("height").GetDouble();
                     return fw > bw + 20
                         && fh > bh + 20;
                 }, TimeSpan.FromSeconds(3), initialDelayMs: 100, maxDelayMs: 400);
@@ -3817,10 +3831,13 @@ public sealed class AddInTests : IAsyncDisposable
             // zoomed; therefore its exact design-unit delta is scale-dependent.  `grew` above
             // establishes a material resize. The assertions below ensure the rendered frame,
             // selection and persisted root size all describe that same result.
-            beforeFrame = Bounds(before, "frame");
-            var afterFrame = Bounds(after, "frame");
-            Assert.True(afterFrame.w > beforeFrame.w + 20 && afterFrame.h > beforeFrame.h + 20,
-                $"Form1 should have materially grown, but went from {beforeFrame.w}×{beforeFrame.h} to {afterFrame.w}×{afterFrame.h}.");
+            // Compare design units, not screen pixels: in Fit mode the grown form is re-scaled.
+            static (double w, double h) DesignSize(JsonElement g)
+                => (g.GetProperty("designSize").GetProperty("width").GetDouble(), g.GetProperty("designSize").GetProperty("height").GetDouble());
+            var beforeSize = DesignSize(before);
+            var afterSize = DesignSize(after);
+            Assert.True(afterSize.w > beforeSize.w + 20 && afterSize.h > beforeSize.h + 20,
+                $"Form1 should have materially grown, but went from {beforeSize.w}×{beforeSize.h} to {afterSize.w}×{afterSize.h} design units.");
 
             // Concern 1 - correct element identity: the persisted Form1.Designer.cs must show
             // Form1 ITSELF (this.Size = ...) carrying the new size, not some other control.
@@ -3838,13 +3855,11 @@ public sealed class AddInTests : IAsyncDisposable
             // frame bitmap may include, so this is an identity/gross-mismatch check (catching a
             // resize that landed on the wrong control entirely), not a pixel-exact one - the
             // exact-delta check above already covers the precise rendered-size assertion.
-            // The frame is measured on screen at the zoom set above; the persisted size is in design
-            // units.
-            const double viewZoom = 0.5;
-            Assert.True(Math.Abs(persistedWidth - afterFrame.w / viewZoom) < 40,
-                $"Form1's persisted ClientSize width ({persistedWidth}) should roughly match the rendered post-drag width ({afterFrame.w / viewZoom}).");
-            Assert.True(Math.Abs(persistedHeight - afterFrame.h / viewZoom) < 40,
-                $"Form1's persisted ClientSize height ({persistedHeight}) should roughly match the rendered post-drag height ({afterFrame.h}).");
+            // Both sides are design units, whichever zoom (50% or Fit) the gesture used.
+            Assert.True(Math.Abs(persistedWidth - afterSize.w) < 40,
+                $"Form1's persisted ClientSize width ({persistedWidth}) should roughly match the rendered post-drag width ({afterSize.w}).");
+            Assert.True(Math.Abs(persistedHeight - afterSize.h) < 40,
+                $"Form1's persisted ClientSize height ({persistedHeight}) should roughly match the rendered post-drag height ({afterSize.h}).");
         } finally {
             await File.WriteAllTextAsync(formCodePath, originalForm);
             await File.WriteAllTextAsync(designerPath, originalDesigner);

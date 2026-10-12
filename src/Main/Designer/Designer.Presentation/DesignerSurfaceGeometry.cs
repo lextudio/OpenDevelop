@@ -12,7 +12,22 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 	/// The resize-drag invariant is that selection/handle always hug the rendered element;
 	/// the integration tests assert it before and after every drag.
 	/// </summary>
-	public readonly record struct DesignerSurfaceGeometry(Rect Frame, Rect Selection, Point Handle, Rect Element);
+	public readonly record struct DesignerSurfaceGeometry(Rect Frame, Rect Selection, Point Handle, Rect Element)
+	{
+		/// <summary>The screen rectangle of the canvas area actually visible to the user, or
+		/// <see cref="Rect.Empty"/> when a designer does not report it. A pointer gesture aimed at
+		/// a handle outside it lands on whatever covers that point (a split pane's editor, a
+		/// splitter), not on the design surface.</summary>
+		public Rect Viewport { get; init; } = Rect.Empty;
+
+		/// <summary>The rendered frame's size in design units, or <see cref="Size.Empty"/> when not
+		/// reported. Unlike <see cref="Frame"/> it does not depend on zoom: in Fit mode a resized
+		/// design is re-scaled to fit, so its screen size barely changes while this grows.</summary>
+		public Size DesignSize { get; init; } = Size.Empty;
+
+		/// <summary>True when <see cref="Handle"/> lies inside a reported <see cref="Viewport"/>.</summary>
+		public bool? HandleVisible => Viewport.IsEmpty ? null : Viewport.Contains(Handle);
+	}
 
 	public static class DesignerSurfaceGeometryProbe
 	{
@@ -54,7 +69,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 				frame = new { x = geometry.Frame.X, y = geometry.Frame.Y, width = geometry.Frame.Width, height = geometry.Frame.Height },
 				selection = new { x = geometry.Selection.X, y = geometry.Selection.Y, width = geometry.Selection.Width, height = geometry.Selection.Height },
 				handle = new { x = geometry.Handle.X, y = geometry.Handle.Y },
-				element = new { x = geometry.Element.X, y = geometry.Element.Y, width = geometry.Element.Width, height = geometry.Element.Height }
+				element = new { x = geometry.Element.X, y = geometry.Element.Y, width = geometry.Element.Width, height = geometry.Element.Height },
+				viewport = geometry.Viewport.IsEmpty ? null : new { x = geometry.Viewport.X, y = geometry.Viewport.Y, width = geometry.Viewport.Width, height = geometry.Viewport.Height },
+				handleVisible = geometry.HandleVisible,
+				designSize = geometry.DesignSize.IsEmpty ? null : new { width = geometry.DesignSize.Width, height = geometry.DesignSize.Height }
 			};
 		}
 	}

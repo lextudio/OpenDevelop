@@ -692,6 +692,20 @@ lines mark the positions a raster drag snaps to (this also corrects WinForms, wh
 previously used for snapping but not drawing). `Toolbar_SnappingControls_DriveTheDragSettingsAndPersist`
 covers the defaults, the toolbar-to-controller binding, gridline spacing and persistence.
 
+**C3 Fit correction (2026-10-11).** The shared canvas's Fit scaled the frame to the whole scroller
+and then offset it by the 32-unit `CanvasMargin`, so a fitted design overflowed the right and bottom
+edges by that margin and its bottom-right resize handle was clipped. Fit now scales into the extent
+left after the margin on both sides, so every backend's fitted frame is fully visible. The surface
+geometry probe also reports the visible `viewport`, `handleVisible` and the frame's zoom-independent
+`designSize`; the WinForms resize journey falls back from 50% to Fit when a split Design/Source pane
+hides the handle and judges growth in design units (a fitted form is re-scaled, so its screen size
+barely changes), and the MewUI journey asserts that a fitted frame fits the viewport rather than an
+arbitrary minimum scale. `od.designer-canvas.*` now falls back to the only open designer canvas
+when activation has moved to another document (a WPF load can activate App.xaml), and the WPF
+snapping journey closes all document views first so a view left by another journey is not reported.
+`CtrlPointerGestures_DistinguishClickCollapseFromGroupDrag` still fails on macOS, also before these
+changes; its targets may likewise be outside a split pane's visible canvas and need the same check.
+
 **C3 WinUI Canvas insets (2026-10-11).** The Uno host now publishes measured Canvas child edge
 distances as `CanvasPosition`, and the shared L/T/R/B labels are a real source-edit path rather
 than a read-only overlay: a released edge label converts its measured distance into a Canvas move

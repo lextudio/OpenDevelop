@@ -222,7 +222,14 @@ public class DesignSurface : DesignerCanvas
 				new System.Windows.Vector(scroller.HorizontalOffset, scroller.VerticalOffset));
 		}
 		var handle = new Point(selection.X + selection.Width, selection.Y + selection.Height);
-		return new DesignerSurfaceGeometry(frame, selection, handle, selection);
+		// The scroller's viewport (excluding its scroll bars) is what the user can actually see
+		// and hit; in a split Design/Source layout it can be much smaller than the frame.
+		var viewportTopLeft = scroller.PointToScreen(new Point(0, 0));
+		var viewportBottomRight = scroller.PointToScreen(new Point(scroller.ViewportWidth, scroller.ViewportHeight));
+		return new DesignerSurfaceGeometry(frame, selection, handle, selection) {
+			Viewport = new Rect(viewportTopLeft, viewportBottomRight),
+			DesignSize = new Size(pixelWidth, pixelHeight)
+		};
 	}
 
 	/// <summary>Raised when the user presses Ctrl+Z (undo: true) or Ctrl+Y / Ctrl+Shift+Z (undo: false).</summary>
@@ -1170,8 +1177,13 @@ public class DesignSurface : DesignerCanvas
 	/// </para></summary>
 	DesignViewport CurrentViewport()
 		=> fitMode
-			? DesignViewport.Fit(pixelWidth, pixelHeight, FitBasisWidth, FitBasisHeight, 1.0, panX + CanvasMargin, panY + CanvasMargin)
+			? DesignViewport.Fit(pixelWidth, pixelHeight, FitInnerExtent(FitBasisWidth), FitInnerExtent(FitBasisHeight), 1.0, panX + CanvasMargin, panY + CanvasMargin)
 			: DesignViewport.Zoom(pixelWidth, pixelHeight, FitBasisWidth, FitBasisHeight, zoomScale, panX + CanvasMargin, panY + CanvasMargin);
+
+	// Fit must leave room for the CanvasMargin that the frame is offset by on every side.
+	// Fitting to the whole basis and then adding the margin pushed the frame CanvasMargin past
+	// the right/bottom edges, so "Fit" clipped the bottom-right resize handle out of view.
+	static double FitInnerExtent(double basis) => basis > CanvasMargin * 2 ? basis - CanvasMargin * 2 : basis;
 
 	double FitBasisWidth => scroller.ActualWidth > 0 ? scroller.ActualWidth : scroller.ViewportWidth;
 	double FitBasisHeight => scroller.ActualHeight > 0 ? scroller.ActualHeight : scroller.ViewportHeight;

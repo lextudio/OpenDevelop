@@ -4994,10 +4994,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		public static string GetDesignerCanvasStatus()
 		{
 			var viewContent = SD.Workbench.ActiveViewContent;
-			var control = viewContent?.Control as DependencyObject;
-			var canvas = control as DesignerCanvas
-				?? FindLogicalDescendants<DesignerCanvas>(control).FirstOrDefault()
-				?? FindVisualDescendant<DesignerCanvas>(control);
+			var canvas = FindDesignerCanvas();
 			return JsonSerializer.Serialize(new {
 				view = viewContent?.GetType().FullName,
 				found = canvas != null,
@@ -5012,13 +5009,28 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
+		/// <summary>The active view's designer canvas, or - when activation has moved elsewhere
+		/// (a designer that opens App.xaml while loading re-activates that document) - the only
+		/// designer canvas among the open views. Ambiguity returns null rather than a guess.</summary>
+		static DesignerCanvas FindDesignerCanvas()
+		{
+			static DesignerCanvas InView(IViewContent view)
+			{
+				var control = view?.Control as DependencyObject;
+				return control as DesignerCanvas
+					?? FindLogicalDescendants<DesignerCanvas>(control).FirstOrDefault()
+					?? FindVisualDescendant<DesignerCanvas>(control);
+			}
+			if (InView(SD.Workbench.ActiveViewContent) is { } active)
+				return active;
+			var open = SD.Workbench.ViewContentCollection.Select(InView).Where(canvas => canvas != null).Distinct().ToArray();
+			return open.Length == 1 ? open[0] : null;
+		}
+
 		[DevFlowAction("od.designer-canvas.snapping", Description = "Set the active designer's toolbar placement controls (Snap to Raster, Raster Width, Snap to Guides) as a user click would; fails if the designer does not offer them")]
 		public static string SetDesignerCanvasSnapping(bool snapToGrid, int rasterWidth, bool snapToGuides)
 		{
-			var control = SD.Workbench.ActiveViewContent?.Control as DependencyObject;
-			var canvas = control as DesignerCanvas
-				?? FindLogicalDescendants<DesignerCanvas>(control).FirstOrDefault()
-				?? FindVisualDescendant<DesignerCanvas>(control);
+			var canvas = FindDesignerCanvas();
 			if (canvas == null)
 				return JsonSerializer.Serialize(new { success = false, error = "No designer canvas in the active view" });
 			if (!canvas.Capabilities.HasFlag(DesignerCanvasCapabilities.Snapping))

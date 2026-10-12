@@ -84,7 +84,9 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.Equal(3, status.GetProperty("toolbarItemCount").GetInt32());
 		Assert.Equal(new[] { "Zoom", "Fit", "Gridlines" }, status.GetProperty("toolbarItems").EnumerateArray().Select(x => x.GetString()).ToArray());
 		var zoomed = await app.InvokeAsync("od.mewui-designer.zoom", 1.25); Assert.Equal(1.25, zoomed.GetProperty("zoom").GetDouble());
-		var fitted = await app.InvokeAsync("od.mewui-designer.fit"); Assert.True(fitted.GetProperty("measured").GetBoolean(), fitted.ToString()); Assert.InRange(fitted.GetProperty("zoom").GetDouble(), .25, 2);
+		var fitted = await app.InvokeAsync("od.mewui-designer.fit"); Assert.True(fitted.GetProperty("measured").GetBoolean(), fitted.ToString()); Assert.InRange(fitted.GetProperty("zoom").GetDouble(), .05, 2);
+		// Fit's contract is that the whole frame is visible, margin included - not a particular scale.
+		Assert.True(fitted.GetProperty("frameFitsViewport").GetBoolean(), fitted.ToString());
 		// The shared DesignerCanvas toolbar's Fit action bypasses the Zoom combo - without syncing
 		// it back, the combo kept showing the last manually-picked percentage while the canvas
 		// visibly rendered at Fit scale (observed live: combo stuck on "100%").

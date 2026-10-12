@@ -378,9 +378,16 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
                 status = await app.InvokeAsync("od.wpf-designer.status");
                 return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
             }, TimeSpan.FromSeconds(90)), status.ToString());
+            // The toolbar belongs to the design view; a previous journey can leave the XAML
+            // source view of the same document active, and od.designer-canvas.* reads the active view.
+            var design = await app.InvokeAsync("od.wpf-designer.activate-design");
+            Assert.True(design.GetProperty("success").GetBoolean(), design.ToString());
             return status;
         }
         try {
+            // Start from no open documents: a design view left by another journey would be
+            // reported instead of ours and would keep the settings it was created with.
+            await app.InvokeAsync("od.close-all-document-views");
             Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
             var status = await OpenAsync();
             Assert.False(status.GetProperty("snapToGrid").GetBoolean(), status.ToString());
@@ -404,7 +411,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
                 TimeSpan.FromSeconds(5)));
 
             // A newly opened designer starts from the persisted choice.
-            await app.InvokeAsync("od.close-active-view");
+            await app.InvokeAsync("od.close-all-document-views");
             status = await OpenAsync();
             Assert.True(status.GetProperty("snapToGrid").GetBoolean(), status.ToString());
             Assert.False(status.GetProperty("snapToGuides").GetBoolean(), status.ToString());
