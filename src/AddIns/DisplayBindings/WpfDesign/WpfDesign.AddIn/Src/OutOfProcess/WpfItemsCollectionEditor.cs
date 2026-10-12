@@ -66,7 +66,9 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		static void EditItems(FrameworkElement source, PropertyItem propertyItem)
 		{
 			try {
-				if (FindAncestor<Xceed.Wpf.Toolkit.PropertyGrid.PropertyGrid>(source)?.SelectedObject is not IItemsCollectionEditorHost host
+				// The row's own Instance is the selected object it was generated for: no visual-tree
+				// walk, so the editor also works while its row is not (or no longer) realized.
+				if (propertyItem.Instance is not IItemsCollectionEditorHost host
 					|| propertyItem.PropertyDescriptor is not IItemsCollectionProperty property)
 					throw new InvalidOperationException("The items editor is not hosted by a WPF designer Properties pad.");
 				var model = new CollectionItemsEditModel(property.CollectionItems);
@@ -85,15 +87,6 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			}
 		}
 
-		static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
-		{
-			while (current != null) {
-				if (current is T match)
-					return match;
-				current = current is Visual ? VisualTreeHelper.GetParent(current) ?? LogicalTreeHelper.GetParent(current) : LogicalTreeHelper.GetParent(current);
-			}
-			return null;
-		}
 	}
 
 	/// <summary>A small list editor over <see cref="CollectionItemsEditModel"/>: add, remove,
