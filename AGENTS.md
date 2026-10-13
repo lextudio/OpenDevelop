@@ -23,6 +23,14 @@ message with `opencode export <session-id>`. Only an explicit final `VERDICT: AP
 exported session is approval. Do not start another review while the first is running, and do not infer
 approval from exit status, a partial transcript, or an empty final tool response. Retry one
 non-terminal review once; if it remains non-terminal, report it unverified and stop.
+Capture the session IDs before launch as well: the accepted session must be absent from that snapshot,
+have the exact unique title, the intended directory, reviewer agent and model, and be created after
+launch. A title match alone can select an old approval. The reviewer's mandatory initial evidence is
+`git diff --cached`, and its later context reads are bounded; its prompt must therefore state the
+user-facing intent, staged paths/tree hash, relevant invariants and risks, and concrete test
+command/result (or why no executable test applies), then ask it to inspect the full cached diff and
+surrounding source. Do not treat a short prompt or a diff stat as a meaningful
+review of a change whose correctness depends on context.
 Split oversized work into separate commits before review; partial approvals never approve a larger
 commit. Record the staged-tree hash before review and verify it immediately before commit; a changed
 hash invalidates the approval. The OpenCode commit agent must first verify that exact hash and the
