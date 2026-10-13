@@ -54,6 +54,36 @@ namespace ICSharpCode.FormsDesigner.Services
 			return Encode(updated, encoding, preamble);
 		}
 
+		/// <summary>
+		/// Adds a new supported image entry to an existing .resx document. This deliberately does
+		/// not create files or serialize arbitrary resource values: the caller still owns project
+		/// membership, source binding and the surrounding document transaction.
+		/// </summary>
+		public static byte[] AddImage(byte[] resourceBytes, string resourceKey, string resourceType, byte[] imageBytes)
+		{
+			if (resourceBytes == null)
+				throw new ArgumentNullException(nameof(resourceBytes));
+			if (String.IsNullOrWhiteSpace(resourceKey))
+				throw new ArgumentException("A resource key is required.", nameof(resourceKey));
+			if (String.IsNullOrEmpty(resourceType) || !IsSupportedImageType(resourceType))
+				throw new NotSupportedException("Only Image, Bitmap, or Icon .resx entries can be created.");
+			if (imageBytes == null || imageBytes.Length == 0)
+				throw new ArgumentException("The image is empty.", nameof(imageBytes));
+			if (!HasSupportedImageHeader(resourceType, imageBytes))
+				throw new InvalidDataException("The selected file is not a supported image for the resource type.");
+
+			var (text, encoding, preamble) = Decode(resourceBytes);
+			if (ContainsDataKey(text, resourceKey))
+				throw new InvalidOperationException("The resource key '" + resourceKey + "' already exists.");
+			var rootEnd = FindRootEnd(text);
+			var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+			var entry = "  <data name=\"" + EscapeAttribute(resourceKey) + "\" type=\"" + EscapeAttribute(resourceType)
+				+ "\" mimetype=\"" + ByteArrayMimeType + "\"><value>" + Convert.ToBase64String(imageBytes) + "</value></data>";
+			var prefix = rootEnd > 0 && !Char.IsWhiteSpace(text[rootEnd - 1]) ? newline : "";
+			var updated = text.Insert(rootEnd, prefix + entry + newline);
+			return Encode(updated, encoding, preamble);
+		}
+
 		readonly struct ElementRange
 		{
 			public ElementRange(string attributes, int bodyStart, int endStart)
@@ -104,6 +134,16 @@ namespace ICSharpCode.FormsDesigner.Services
 			return found;
 		}
 
+		static bool ContainsDataKey(string text, string resourceKey)
+		{
+			var offset = 0;
+			while (TryReadTag(text, ref offset, out var tag))
+				if (!tag.IsClosing && String.Equals(tag.Name, "data", StringComparison.Ordinal)
+					&& String.Equals(AttributeValue(tag.Attributes, "name"), resourceKey, StringComparison.Ordinal))
+					return true;
+			return false;
+		}
+
 		static bool TryFindValue(string text, int bodyStart, int dataEnd, out int valueStart, out int valueEnd)
 		{
 			var offset = bodyStart;
@@ -122,6 +162,35 @@ namespace ICSharpCode.FormsDesigner.Services
 			valueStart = valueEnd = 0;
 			return false;
 		}
+
+		static int FindRootEnd(string text)
+		{
+			var offset = 0;
+			var depth = 0;
+			var foundRoot = false;
+			while (TryReadTag(text, ref offset, out var tag)) {
+				if (!foundRoot) {
+					if (tag.IsClosing || tag.IsSelfClosing || !String.Equals(tag.Name, "root", StringComparison.Ordinal))
+						continue;
+					foundRoot = true;
+					depth = 1;
+					continue;
+				}
+				if (tag.IsClosing) {
+					if (--depth == 0) {
+						if (!String.Equals(tag.Name, "root", StringComparison.Ordinal))
+							throw new InvalidDataException("The .resx root element is malformed.");
+						return tag.Start;
+					}
+				} else if (!tag.IsSelfClosing) {
+					depth++;
+				}
+			}
+			throw new InvalidDataException("The .resx document has no complete root element.");
+		}
+
+		static string EscapeAttribute(string value) => value.Replace("&", "&amp;", StringComparison.Ordinal)
+			.Replace("\"", "&quot;", StringComparison.Ordinal).Replace("<", "&lt;", StringComparison.Ordinal);
 
 		readonly struct XmlTag
 		{

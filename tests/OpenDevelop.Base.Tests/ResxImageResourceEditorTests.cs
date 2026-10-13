@@ -45,6 +45,36 @@ public sealed class ResxImageResourceEditorTests
 	}
 
 	[Fact]
+	public void AddImage_AppendsOnlyANewEscapedEntryAndPreservesUtf16Bom()
+	{
+		var source = "<root><data name=\"other\"><value>keep</value></data></root>";
+		var encoding = new UnicodeEncoding(false, true, true);
+		var original = encoding.GetPreamble().Concat(encoding.GetBytes(source)).ToArray();
+
+		var updated = ResxImageResourceEditor.AddImage(original, "button.Image & copy", "System.Drawing.Bitmap, System.Drawing.Common", Png());
+		var text = encoding.GetString(updated, 2, updated.Length - 2);
+
+		Assert.Equal(0xff, updated[0]);
+		Assert.Equal(0xfe, updated[1]);
+		Assert.Contains("<data name=\"other\"><value>keep</value></data>", text, StringComparison.Ordinal);
+		Assert.Contains("name=\"button.Image &amp; copy\"", text, StringComparison.Ordinal);
+		Assert.Contains(Convert.ToBase64String(Png()), text, StringComparison.Ordinal);
+		Assert.True(text.IndexOf("button.Image &amp; copy", StringComparison.Ordinal) < text.IndexOf("</root>", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public void AddImage_RejectsAnExistingOrUnsupportedEntry()
+	{
+		var original = Encoding.UTF8.GetBytes("<root>" + ImageResx("image") + "</root>");
+
+		Assert.Throws<InvalidOperationException>(() => ResxImageResourceEditor.AddImage(original, "image", "System.Drawing.Bitmap, System.Drawing.Common", Png()));
+		Assert.Throws<NotSupportedException>(() => ResxImageResourceEditor.AddImage(original, "other", "System.Drawing.Metafile, System.Drawing.Common", Png()));
+		Assert.Throws<InvalidDataException>(() => ResxImageResourceEditor.AddImage(original, "other", "System.Drawing.Icon, System.Drawing.Common", Png()));
+		var selfClosing = Encoding.UTF8.GetBytes("<root><data name=\"image\" /></root>");
+		Assert.Throws<InvalidOperationException>(() => ResxImageResourceEditor.AddImage(selfClosing, "image", "System.Drawing.Bitmap, System.Drawing.Common", Png()));
+	}
+
+	[Fact]
 	public void ReplaceExistingImage_RejectsDuplicateKeys()
 	{
 		var original = Encoding.UTF8.GetBytes(ImageResx("image") + ImageResx("image"));
