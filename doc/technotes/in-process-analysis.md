@@ -707,6 +707,19 @@ or after the control's own last statement when the source had none; clearing rem
 editor to an `ItemsCollection` row and commits through `design/set-items` as one designer undo step;
 `od.forms-designer.properties-pad.edit-items` drives the real row button with the shared script.
 
+**C4 no lost edits after a save (2026-10-12).** In-process edits were never refused; out of process a
+WPF edit made just after a save or a text edit could be rejected as a stale base version and silently
+dropped. The IDE pushes the new source with `session/update` at a new version, asynchronously, and the
+canvas kept using its last state's version until that reply arrived; the WPF child dispatches requests
+without ordering, so a mutation in that window could not simply be sent at the new version either.
+`WpfSurfaceDesignerControl.RequireVersion` - now the base version of every canvas, context-menu and
+Properties-pad mutation - waits up to 5 s for an in-flight update (its reply completes off the
+dispatcher) and uses the version in that reply when the host accepted it; past the bound the edit goes
+out at the known version and, at worst, is refused visibly as before. The same review found the first
+edit after a load could not be undone: the surface showed (and accepted edits) before the undo
+baseline was flushed, so that baseline is now taken before `Show`. The Outline toggle journey, which
+hit the stale version once, no longer retries.
+
 **C4 Outline drag and drop (2026-10-12).** The in-process WPF Outline moved elements by dragging
 rows (`OutlineNodeBase.Insert`): into the target's content property, after a sibling in a collection
 or as the single content. Protocol **v26** adds WPF's optional `design/move-into(elementIds, target,

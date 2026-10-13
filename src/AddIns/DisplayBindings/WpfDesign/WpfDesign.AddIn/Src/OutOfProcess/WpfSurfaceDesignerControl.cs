@@ -296,7 +296,11 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// see <see cref="Show"/>.</summary>
 		public async Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
 		{
-			var updated = await client.UpdateAsync(snapshot, cancellationToken).ConfigureAwait(false);
+			var request = client.UpdateAsync(snapshot, cancellationToken);
+			pendingUpdate = request;
+			var updated = await request.ConfigureAwait(false);
+			if (updated.Accepted)
+				Interlocked.Exchange(ref lastAcceptedUpdateVersion, updated.Version);
 			// session/update is allowed to be incremental just like design/select.  Do not assign it
 			// to state here: callers deliberately hand the result to Show(), and overwriting state
 			// first loses the last complete tree before Show() has a chance to merge it.  That was
@@ -647,7 +651,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				SetGridGuideOverlay(null, default, Array.Empty<double>(), Array.Empty<double>());
 				return;
 			}
-			var guides = client.QueryGridGuidesAsync(state.Version, node.Id).GetAwaiter().GetResult();
+			var guides = client.QueryGridGuidesAsync(RequireVersion(), node.Id).GetAwaiter().GetResult();
 			if (!guides.Accepted)
 			{
 				SetGridGuideOverlay(null, default, Array.Empty<double>(), Array.Empty<double>());
@@ -688,7 +692,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				return;
 			var trackStart = (isRow ? gridGuideRect.Y : gridGuideRect.X) + offsets[index];
 			var newSize = Math.Max(1, position - trackStart);
-			var result = client.SetGridTrackSizeAsync(state.Version, elementId, isRow, index, newSize).GetAwaiter().GetResult();
+			var result = client.SetGridTrackSizeAsync(RequireVersion(), elementId, isRow, index, newSize).GetAwaiter().GetResult();
 			if (!result.Accepted) { Show(result); return; }
 			Show(result);
 			DocumentChanged?.Invoke(this, result);
@@ -701,7 +705,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		{
 			if (gridGuideElementId is not { } elementId || state == null)
 				return;
-			var result = client.SplitGridTrackAsync(state.Version, elementId, isRow, localPosition).GetAwaiter().GetResult();
+			var result = client.SplitGridTrackAsync(RequireVersion(), elementId, isRow, localPosition).GetAwaiter().GetResult();
 			if (!result.Accepted) { Show(result); return; }
 			Show(result);
 			DocumentChanged?.Invoke(this, result);
@@ -764,7 +768,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		{
 			if (GridTrackAtContextPoint(isRow) is not { } track || state == null)
 				return;
-			var result = client.SetGridTrackUnitAsync(state.Version, track.GridId, isRow, track.Index, unit).GetAwaiter().GetResult();
+			var result = client.SetGridTrackUnitAsync(RequireVersion(), track.GridId, isRow, track.Index, unit).GetAwaiter().GetResult();
 			Show(result);
 			if (result.Accepted)
 				DocumentChanged?.Invoke(this, result);
@@ -1371,13 +1375,13 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// adapter per access, since the node instance changes on every re-render.</summary>
 		public WpfSurfaceElementPropertyAdapter? SelectedPropertyAdapter =>
 			SelectedNode is { } node
-				? new WpfSurfaceElementPropertyAdapter(client, () => state!.Version, node, OnPropertyEdited, OnEventHandlerBound)
+				? new WpfSurfaceElementPropertyAdapter(client, RequireVersion, node, OnPropertyEdited, OnEventHandlerBound)
 				: null;
 
 		public object[] SelectedPropertyAdapters => state?.Tree == null ? Array.Empty<object>() : SelectedElementIds
 			.Select(NodeById)
 			.Where(node => node != null)
-			.Select(node => (object)new WpfSurfaceElementPropertyAdapter(client, () => state!.Version, node!, OnPropertyEdited, OnEventHandlerBound))
+			.Select(node => (object)new WpfSurfaceElementPropertyAdapter(client, RequireVersion, node!, OnPropertyEdited, OnEventHandlerBound))
 			.ToArray();
 
 		/// <summary>Renders a property edit's result, then raises <see cref="SelectionChanged"/>
@@ -1482,8 +1486,37 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			return result;
 		}
 
-		long RequireVersion() => state?.Version
-			?? throw new InvalidOperationException("No document is open - call OpenAsync first.");
+		/// <summary>The base version for the next mutation. A <c>session/update</c> still in flight
+		/// (the IDE pushes the source after a save or a text edit) moves the host to a newer version
+		/// before <see cref="state"/> hears of it, and the host does not order concurrent requests, so
+		/// a mutation sent meanwhile was rejected as stale and the user's edit silently dropped. Wait
+		/// (briefly) for that update - its reply completes off the dispatcher, so blocking here cannot
+		/// deadlock - and use the newest version the host accepted.</summary>
+		long RequireVersion()
+		{
+			if (state == null)
+				throw new InvalidOperationException("No document is open - call OpenAsync first.");
+			var version = Math.Max(state.Version, Interlocked.Read(ref lastAcceptedUpdateVersion));
+			if (pendingUpdate is { } update)
+			{
+				// Bounded: a hung or restarting child must not freeze the UI. Past the bound the
+				// mutation goes out at the known version - at worst it is refused with a visible
+				// error, as before this wait existed.
+				if (!update.IsCompleted)
+				{
+					try { update.Wait(TimeSpan.FromSeconds(5)); }
+					catch (AggregateException) { /* the update's own caller reports its failure */ }
+				}
+				// Read the reply itself: the continuation that records lastAcceptedUpdateVersion
+				// may not have run yet when the request task completes.
+				if (update.IsCompletedSuccessfully && update.Result.Accepted)
+					version = Math.Max(version, update.Result.Version);
+			}
+			return version;
+		}
+
+		Task<DesignerSessionState>? pendingUpdate;
+		long lastAcceptedUpdateVersion;
 
 		/// <summary>Commits one move/resize. Blocking, on the dispatcher thread - see <see cref="Show"/>.</summary>
 		void CommitBounds(string elementId, Rect bounds)

@@ -281,6 +281,16 @@ namespace ICSharpCode.WpfDesign.AddIn
 				if (generation != loadGeneration || IsDisposed)
 					return; // a newer load (or Dispose) superseded this one while in flight
 
+				// Baseline for Undo/Redo: the first mutation's OnDocumentChanged pushes THIS text
+				// (not the not-yet-fetched post-mutation text) onto undoStack. Taken before Show:
+				// the surface is editable as soon as it shows, and an edit made before the baseline
+				// existed was not undoable.
+				if (state.Accepted)
+				{
+					LoggingService.Info("WPF designer: flushing initial document baseline");
+					lastKnownGoodXaml = FlushCurrentXaml();
+				}
+
 				// OpenAsync/UpdateAsync deliberately do not render internally (see
 				// WpfSurfaceDesignerControl.Show's remarks) - resuming here without
 				// ConfigureAwait(false) means this is still the dispatcher thread, so calling
@@ -297,10 +307,6 @@ namespace ICSharpCode.WpfDesign.AddIn
 				// has a valid selected adapter.  Synchronize from the committed surface instead; an
 				// initial load naturally produces an empty container because it has no selection.
 				OnSelectionChanged(surfaceControl, EventArgs.Empty);
-				// Baseline for Undo/Redo: the first mutation's OnDocumentChanged pushes THIS text
-				// (not the not-yet-fetched post-mutation text) onto undoStack.
-				LoggingService.Info("WPF designer: flushing initial document baseline");
-				lastKnownGoodXaml = FlushCurrentXaml();
 				lastLoadedSourceText = sourceText;
 				this.UserContent = surfaceControl;
 				LoggingService.Info("WPF designer: initial document baseline ready");

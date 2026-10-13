@@ -885,25 +885,22 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
                 return locked.GetProperty("success").GetBoolean();
             }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250), locked.ToString());
             Assert.True(locked.GetProperty("locked").GetBoolean(), locked.ToString());
-            // Each edit is followed by the IDE's source update, which can momentarily make the next
-            // mutation's base version stale; a rejected toggle changes nothing, so retry it.
-            async Task<JsonElement> ToggleUntil(string flag, Func<JsonElement, bool> done)
+            // Each toggle follows the IDE's source update of the previous edit; the canvas waits for an
+            // in-flight update before taking its next base version, so no retry is needed here.
+            async Task<JsonElement> Toggle(string flag)
             {
-                JsonElement result = default;
-                Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
-                    result = await app.InvokeAsync("od.wpf-designer.outline-toggle", "flagged", flag);
-                    return result.GetProperty("success").GetBoolean() && done(result);
-                }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250), result.ToString());
+                var result = await app.InvokeAsync("od.wpf-designer.outline-toggle", "flagged", flag);
+                Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
                 return result;
             }
-            var hidden = await ToggleUntil("Hidden", result => result.GetProperty("hidden").GetBoolean());
+            var hidden = await Toggle("Hidden");
             Assert.True(hidden.GetProperty("hidden").GetBoolean(), hidden.ToString());
             Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
             var text = await File.ReadAllTextAsync(xamlPath);
             Assert.Contains("IsLocked=\"True\"", text, StringComparison.Ordinal);
             Assert.Contains("IsHidden=\"True\"", text, StringComparison.Ordinal);
 
-            var unlocked = await ToggleUntil("Locked", result => !result.GetProperty("locked").GetBoolean());
+            var unlocked = await Toggle("Locked");
             Assert.False(unlocked.GetProperty("locked").GetBoolean(), unlocked.ToString());
             Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
             Assert.DoesNotContain("IsLocked", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
@@ -948,8 +945,18 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
                     && selected.GetProperty("propertiesPadSelectedName").GetString() == "painted";
             }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), selected.ToString());
 
-            var gradient = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-brush", "Background", "kind:LinearGradient;select:1;color:#FF0000FF");
-            Assert.True(gradient.GetProperty("success").GetBoolean(), gradient.ToString());
+            // The pad realizes the row's editor shortly after a selection; until then the action
+            // finds no button and changes nothing, so retry until it runs.
+            async Task<JsonElement> EditBrush(string script)
+            {
+                JsonElement result = default;
+                Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                    result = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-brush", "Background", script);
+                    return result.GetProperty("success").GetBoolean();
+                }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250), result.ToString());
+                return result;
+            }
+            var gradient = await EditBrush("kind:LinearGradient;select:1;color:#FF0000FF");
             Assert.True(gradient.GetProperty("committed").GetBoolean(), gradient.ToString());
             Assert.Equal("Solid", gradient.GetProperty("before").GetProperty("Kind").GetString());
             Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
@@ -960,12 +967,12 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
 
             // The rebuilt row now opens the editor on the gradient; cancel commits nothing.
             Assert.True((await app.InvokeAsync("od.wpf-designer.select", "painted")).GetProperty("success").GetBoolean());
-            var cancelled = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-brush", "Background", "reverse;cancel");
+            var cancelled = await EditBrush("reverse;cancel");
             Assert.True(cancelled.GetProperty("success").GetBoolean(), cancelled.ToString());
             Assert.False(cancelled.GetProperty("committed").GetBoolean());
             Assert.Equal("LinearGradient", cancelled.GetProperty("before").GetProperty("Kind").GetString());
 
-            var none = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-brush", "Background", "kind:Null");
+            var none = await EditBrush("kind:Null");
             Assert.True(none.GetProperty("success").GetBoolean(), none.ToString());
             Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
             Assert.Contains("Background=\"{x:Null}\"", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
@@ -977,7 +984,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
 
             // The resources tab references an in-scope Brush resource.
             Assert.True((await app.InvokeAsync("od.wpf-designer.select", "painted")).GetProperty("success").GetBoolean());
-            var resource = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-brush", "Background", "resource:Accent");
+            var resource = await EditBrush("resource:Accent");
             Assert.True(resource.GetProperty("success").GetBoolean(), resource.ToString());
             Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
             Assert.Contains("Background=\"{StaticResource Accent}\"", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
