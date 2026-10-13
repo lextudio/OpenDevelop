@@ -707,6 +707,17 @@ or after the control's own last statement when the source had none; clearing rem
 editor to an `ItemsCollection` row and commits through `design/set-items` as one designer undo step;
 `od.forms-designer.properties-pad.edit-items` drives the real row button with the shared script.
 
+**C4 Outline design-time flags (2026-10-12).** The in-process WPF Outline had an eye and a lock
+toggle per row, writing `d:IsHidden` (DDP hides the element at design time only) and `d:IsLocked`
+(the surface's hit test skips the element and its children). Protocol **v25** adds nullable
+`DesignerElementNode.IsDesignTimeHidden/IsDesignTimeLocked` - null where a backend has no such flag,
+so other designers' outlines are unchanged - and WPF's optional `design/set-design-time-flag`, which
+sets the attribute or resets it on clear. The shared `DocumentOutlineControl` shows the two toggles
+(VS 2026 HideMember and Lock/Unlock glyphs, faint while unset) only for nodes that carry the flags and
+raises `DesignTimeFlagToggled`; `DesignerSnapshotHitTester` skips a locked subtree, so a click falls
+through to what is behind it while the Outline can still select it. `od.wpf-designer.outline-toggle`
+clicks the real row toggle.
+
 **C2 brush editor (2026-10-12).** In-process WPF had DDP's BrushEditor (solid/linear/radial with
 stops); the OOP host published any element-syntax brush - every gradient - as a read-only
 `Reference`, so a gradient could be neither edited nor created. The editor is modelled on Visual

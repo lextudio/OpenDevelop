@@ -20,7 +20,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		// v24 adds DesignerBrushInfo's Resource kind/ResourceKey and DesignerPropertyInfo.BrushResourceKeys.
+		// v25 adds DesignerElementNode.IsDesignTimeHidden/IsDesignTimeLocked and WPF's optional
+		// design/set-design-time-flag. v24 added DesignerBrushInfo's Resource kind/ResourceKey and DesignerPropertyInfo.BrushResourceKeys.
 		// v23 added DesignerPropertyInfo.Brush and WPF's optional design/set-brush.
 		// v22 added DesignerGridTrackInfo.Unit/Value and WPF's optional design/set-grid-track-unit.
 		// v21 added WinForms' optional design/set-items for list-control string Items. v20 added
@@ -33,7 +34,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// and design/set-binding-validation-option. A stale pooled child
 		// must fail the handshake rather than reject a newly-visible binding editor after the
 		// Properties pad has already presented it.
-		public const int Version = 24;
+		public const int Version = 25;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -332,6 +333,14 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// on the tree node so an Outline can describe the object in its structural context; clients
 		/// must not infer tray membership from visibility or zero-sized bounds.</summary>
 		public bool IsTrayComponent { get; set; }
+		/// <summary>The element's design-time-only "hidden" flag (WPF's <c>d:IsHidden</c>, the
+		/// in-process Outline's eye toggle), or null when the backend has no such flag for it. A
+		/// hidden element is not drawn on the surface; the running application is unaffected.</summary>
+		public bool? IsDesignTimeHidden { get; set; }
+		/// <summary>The element's design-time-only "locked" flag (WPF's <c>d:IsLocked</c>, the
+		/// Outline's lock toggle), or null when unsupported. The surface does not pick a locked
+		/// element or its descendants; the Outline still selects them.</summary>
+		public bool? IsDesignTimeLocked { get; set; }
 		public List<DesignerElementNode> Children { get; set; } = new List<DesignerElementNode>();
 		/// <summary>Optional per-node property list for the Properties pad, using the same
 		/// <see cref="DesignerPropertyInfo"/> shape <see cref="DesignerComponentInfo"/> already

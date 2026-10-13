@@ -707,6 +707,17 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			DocumentChanged?.Invoke(this, result);
 		}
 
+		/// <summary>The Outline's eye/lock toggles: sets or clears <c>d:IsHidden</c>/<c>d:IsLocked</c>.</summary>
+		internal void SetDesignTimeFlag(string elementId, string flag, bool value)
+		{
+			if (state == null)
+				return;
+			var result = client.SetDesignTimeFlagAsync(RequireVersion(), elementId, flag, value).GetAwaiter().GetResult();
+			Show(result);
+			if (result.Accepted)
+				DocumentChanged?.Invoke(this, result);
+		}
+
 		static (bool IsRow, string Unit)? ParseGridUnitCommand(string command)
 			=> command.StartsWith("grid-row-", StringComparison.Ordinal) ? (true, command.Substring("grid-row-".Length))
 			: command.StartsWith("grid-column-", StringComparison.Ordinal) ? (false, command.Substring("grid-column-".Length))

@@ -295,6 +295,10 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> SetGridTrackSizeAsync(long baseVersion, string elementId, bool isRow, int index, double pixels, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-grid-track-size", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, index, pixels }, cancellationToken), cancellationToken);
 
+	/// <summary>Sets or clears an element's design-time <c>Hidden</c> or <c>Locked</c> flag.</summary>
+	public Task<DesignerSessionState> SetDesignTimeFlagAsync(long baseVersion, string elementId, string flag, bool value, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-design-time-flag", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, flag, value }, cancellationToken), cancellationToken);
+
 	/// <summary>Replaces a Brush property with a solid, linear-gradient or radial-gradient brush.</summary>
 	public Task<DesignerSessionState> SetBrushAsync(long baseVersion, string elementId, string propertyName, DesignerBrushInfo brush, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-brush", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, brush }, cancellationToken), cancellationToken);

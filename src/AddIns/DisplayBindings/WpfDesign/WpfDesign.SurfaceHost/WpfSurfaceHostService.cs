@@ -973,6 +973,38 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			return field?.GetValue(null) as DependencyProperty;
 		}
 
+		/// <summary>Sets or clears a design-time-only flag - <c>Hidden</c> (<c>d:IsHidden</c>) or
+		/// <c>Locked</c> (<c>d:IsLocked</c>) - as the in-process Outline's eye and lock toggles do.
+		/// Clearing resets the attribute rather than writing False.</summary>
+		[JsonRpcMethod("design/set-design-time-flag")]
+		public DesignerSessionState SetDesignTimeFlag(long baseVersion, string elementId, string flag, bool value)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item) || elementId.Length == 0 || item.View is not UIElement)
+					return NotFound(state, "Not a design-time flaggable element: " + elementId);
+				var dependencyProperty = flag switch {
+					"Hidden" => ICSharpCode.WpfDesign.XamlDom.DesignTimeProperties.IsHiddenProperty,
+					"Locked" => ICSharpCode.WpfDesign.XamlDom.DesignTimeProperties.IsLockedProperty,
+					_ => null
+				};
+				if (dependencyProperty == null)
+					return NotFound(state, "Unknown design-time flag: " + flag);
+				try
+				{
+					var property = item.Properties.GetAttachedProperty(dependencyProperty);
+					if (value)
+						property.SetValue(true);
+					else if (property.IsSet)
+						property.Reset();
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
 		/// <summary>Replaces a Brush-typed property's value with the brush the Properties-pad brush
 		/// editor built (the in-process BrushEditor's solid/linear/radial choices), as one change.
 		/// A solid brush is written as attribute text; a gradient as a property element.</summary>
@@ -3252,6 +3284,12 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				Events = BuildEvents(item),
 				Properties = properties
 			};
+			// The in-process Outline's eye and lock toggles, for every visual element but the root.
+			if (path.Length > 0 && item.View is UIElement)
+			{
+				node.IsDesignTimeHidden = item.Properties.GetAttachedProperty(ICSharpCode.WpfDesign.XamlDom.DesignTimeProperties.IsHiddenProperty).ValueOnInstance is true;
+				node.IsDesignTimeLocked = item.Properties.GetAttachedProperty(ICSharpCode.WpfDesign.XamlDom.DesignTimeProperties.IsLockedProperty).ValueOnInstance is true;
+			}
 			if (item.View is FrameworkElement element && root.View is Visual rootVisual)
 			{
 				node.Width = element.ActualWidth;

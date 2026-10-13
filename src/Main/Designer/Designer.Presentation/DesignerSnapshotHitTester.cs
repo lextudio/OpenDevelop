@@ -11,7 +11,9 @@ public static class DesignerSnapshotHitTester
 	/// Later siblings win because they paint over earlier siblings.</summary>
 	public static DesignerElementNode? FindNodeAt(DesignerElementNode? node, double x, double y)
 	{
-		if (node == null || !node.IsVisible)
+		// A design-time-locked element is skipped with its whole subtree, as the in-process
+		// designer's hit-test filter does, so a click falls through to what is behind or around it.
+		if (node == null || !node.IsVisible || node.IsDesignTimeLocked == true)
 			return null;
 		for (var index = node.Children.Count - 1; index >= 0; index--)
 		{

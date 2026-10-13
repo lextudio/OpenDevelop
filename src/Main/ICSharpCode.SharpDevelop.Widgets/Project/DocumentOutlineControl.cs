@@ -10,7 +10,10 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+
+using ICSharpCode.Core.Presentation;
 
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
@@ -27,6 +30,17 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// <summary>Raised when the user (or a programmatic selection) picks a node;
 		/// <see cref="SelectedNode"/> holds the picked element.</summary>
 		public event EventHandler SelectionCommitted;
+
+		/// <summary>Raised when a row's design-time hidden or locked toggle is clicked, with the flag
+		/// (<see cref="HiddenFlag"/> or <see cref="LockedFlag"/>) and its requested value. The tree
+		/// itself changes only when the backend publishes the next snapshot.</summary>
+		public event EventHandler<(DesignerElementNode Node, string Flag, bool Value)> DesignTimeFlagToggled;
+
+		public const string HiddenFlag = "Hidden";
+		public const string LockedFlag = "Locked";
+		/// <summary>The toggles' names, for automation.</summary>
+		public const string HiddenToggleName = "DesignTimeHiddenToggle";
+		public const string LockedToggleName = "DesignTimeLockedToggle";
 
 		public DesignerElementNode SelectedNode => (SelectedItem as TreeViewItem)?.Tag as DesignerElementNode;
 
@@ -158,6 +172,12 @@ namespace ICSharpCode.SharpDevelop.Widgets
 				});
 			}
 			header.Children.Add(new TextBlock { Text = GetDisplayText(node), VerticalAlignment = VerticalAlignment.Center });
+			// The in-process WPF Outline's eye and lock toggles, offered only where the backend
+			// publishes the flags.
+			if (node.IsDesignTimeHidden is { } hidden)
+				header.Children.Add(CreateFlagToggle(node, HiddenFlag, HiddenToggleName, hidden, "Icons.16x16.HideMember", "Hide at design time"));
+			if (node.IsDesignTimeLocked is { } locked)
+				header.Children.Add(CreateFlagToggle(node, LockedFlag, LockedToggleName, locked, locked ? "Icons.16x16.Lock" : "Icons.16x16.Unlock", "Lock at design time"));
 			if (!string.IsNullOrEmpty(node.Type))
 				header.ToolTip = node.Type;
 			item.Header = header;
@@ -168,6 +188,33 @@ namespace ICSharpCode.SharpDevelop.Widgets
 				item.Items.Add(CreateItem(child));
 			}
 			return item;
+		}
+
+		ToggleButton CreateFlagToggle(DesignerElementNode node, string flag, string name, bool isSet, string iconKey, string toolTip)
+		{
+			var image = new Image { Width = 12, Height = 12 };
+			try {
+				image.Source = PresentationResourceService.GetImageSource(iconKey);
+			} catch {
+				image.Source = null;
+			}
+			var toggle = new ToggleButton {
+				Name = name,
+				Content = image,
+				IsChecked = isSet,
+				ToolTip = toolTip,
+				Focusable = false,
+				Padding = new Thickness(1),
+				Margin = new Thickness(6, 0, 0, 0),
+				// An unset flag stays faint, as in Visual Studio, so the row reads as normal.
+				Opacity = isSet ? 1 : 0.35,
+				VerticalAlignment = VerticalAlignment.Center
+			};
+			toggle.Click += (_, e) => {
+				e.Handled = true;
+				DesignTimeFlagToggled?.Invoke(this, (node, flag, toggle.IsChecked == true));
+			};
+			return toggle;
 		}
 
 		/// <summary>A row's text as Visual Studio shows it: the element's name, or its bare type in

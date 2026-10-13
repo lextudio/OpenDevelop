@@ -794,6 +794,52 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
+    public async Task Outline_HiddenAndLockedTogglesWriteDesignTimeAttributes()
+    {
+        // The in-process Outline's eye and lock toggles: d:IsHidden takes the element off the
+        // surface, d:IsLocked makes the surface skip it; both stay in the Outline.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllBytesAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Outline flags">
+              <Grid><Button x:Name="flagged" Content="Flagged" /></Grid>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+
+            var locked = await app.InvokeAsync("od.wpf-designer.outline-toggle", "flagged", "Locked");
+            Assert.True(locked.GetProperty("success").GetBoolean(), locked.ToString());
+            Assert.True(locked.GetProperty("locked").GetBoolean(), locked.ToString());
+            var hidden = await app.InvokeAsync("od.wpf-designer.outline-toggle", "flagged", "Hidden");
+            Assert.True(hidden.GetProperty("hidden").GetBoolean(), hidden.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var text = await File.ReadAllTextAsync(xamlPath);
+            Assert.Contains("IsLocked=\"True\"", text, StringComparison.Ordinal);
+            Assert.Contains("IsHidden=\"True\"", text, StringComparison.Ordinal);
+
+            var unlocked = await app.InvokeAsync("od.wpf-designer.outline-toggle", "flagged", "Locked");
+            Assert.False(unlocked.GetProperty("locked").GetBoolean(), unlocked.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            Assert.DoesNotContain("IsLocked", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
+        } finally {
+            await app.InvokeAsync("od.close-all-document-views");
+            await File.WriteAllBytesAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task PropertiesPad_BrushEditorWritesAGradientAndNoBrush()
     {
         // Visual Studio's brush editor: a solid Background becomes a linear gradient, then "No brush"

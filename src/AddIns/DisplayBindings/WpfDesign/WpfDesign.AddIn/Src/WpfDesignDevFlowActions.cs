@@ -240,6 +240,48 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.wpf-designer.outline-toggle", Description = "Click a named element's design-time Hidden or Locked toggle in the live Document Outline (flag: Hidden|Locked) and report the element's flags afterwards")]
+		public static string ToggleOutlineFlag(string elementName, string flag)
+		{
+			var viewContent = FindWpfViewContent();
+			var surface = viewContent?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
+			var node = surface.FindNodeByName(elementName);
+			var outline = viewContent!.OutlineContent as ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl;
+			if (node == null || outline == null)
+				return Failure("Designer element or Document Outline not found: " + elementName);
+			var toggleName = flag == ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl.HiddenFlag
+				? ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl.HiddenToggleName
+				: ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl.LockedToggleName;
+			TreeViewItem? Find(ItemsControl items)
+			{
+				foreach (var entry in items.Items) {
+					if (entry is not TreeViewItem item)
+						continue;
+					if ((item.Tag as DesignerElementNode)?.Id == node.Id)
+						return item;
+					if (Find(item) is { } match)
+						return match;
+				}
+				return null;
+			}
+			var toggle = (Find(outline)?.Header as Panel)?.Children.OfType<System.Windows.Controls.Primitives.ToggleButton>()
+				.FirstOrDefault(candidate => candidate.Name == toggleName);
+			if (toggle == null)
+				return Failure("The outline row has no " + flag + " toggle: " + elementName);
+			// The toggle's own click path, as a user click: flip, then raise Click.
+			toggle.IsChecked = toggle.IsChecked != true;
+			toggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+			var after = surface.FindNodeByName(elementName);
+			return JsonSerializer.Serialize(new {
+				success = after != null,
+				hidden = after?.IsDesignTimeHidden,
+				locked = after?.IsDesignTimeLocked,
+				status = surface.StatusText
+			});
+		}
+
 		/// <summary>
 		/// Real screen bounds for a Toolbox row, computed the same way AvalonDock's own
 		/// avd.query.bounds DevFlow action does (plain UIElement.PointToScreen - works reliably
