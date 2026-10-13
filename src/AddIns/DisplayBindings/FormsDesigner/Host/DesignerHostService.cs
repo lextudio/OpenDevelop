@@ -473,6 +473,213 @@ sealed class DesignerHostService : IDesignerChildService
 		return CurrentState(baseVersion);
 	}
 
+	/// <summary>Inserts a row/column before track <paramref name="index"/>, copying that track's
+	/// style, as the in-process TableLayoutPanel designer's Insert did: children at or after the
+	/// track move one cell on, and a child spanning across it grows by one. Besides the track-list
+	/// proof, every child's placement must be provable (see <see cref="ProveTableLayoutChildren"/>),
+	/// so the cell and span literals can be rewritten exactly.</summary>
+	[JsonRpcMethod("design/insert-table-layout-track")]
+	public DesignerSessionState InsertTableLayoutTrack(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index)
+		=> EditTableLayoutTrackAt(sessionId, documentId, baseVersion, elementId, isRow, index, insert: true);
+
+	/// <summary>Removes the empty row/column <paramref name="index"/>: refused while any child's
+	/// cell or span covers it; children after it move one cell back.</summary>
+	[JsonRpcMethod("design/remove-table-layout-track-at")]
+	public DesignerSessionState RemoveTableLayoutTrackAt(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index)
+		=> EditTableLayoutTrackAt(sessionId, documentId, baseVersion, elementId, isRow, index, insert: false);
+
+	DesignerSessionState EditTableLayoutTrackAt(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index, bool insert)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
+		var (host, table) = FindTableLayoutPanel(elementId);
+		var styles = isRow ? (TableLayoutStyleCollection)table.RowStyles : table.ColumnStyles;
+		var count = isRow ? table.RowCount : table.ColumnCount;
+		if (index < 0 || index >= count)
+			throw new ArgumentOutOfRangeException(nameof(index));
+		if (!insert && count < 2)
+			throw new InvalidOperationException($"{elementId} must keep at least one {(isRow ? "row" : "column")}.");
+		var file = CurrentDesignerFile();
+		var proof = ProveTableLayoutTrackSource(file.Text, elementId, isRow, styles.Count, count);
+		var children = ProveTableLayoutChildren(proof.Root, table, elementId);
+		// The new cell and span of each child on this axis; unchanged children are left out.
+		var moves = new List<(TableLayoutChild Child, int Start, int Span)>();
+		foreach (var child in children) {
+			var start = isRow ? child.Row : child.Column;
+			var span = isRow ? child.RowSpan : child.ColumnSpan;
+			if (insert) {
+				if (start >= index)
+					moves.Add((child, start + 1, span));
+				else if (start + span - 1 >= index)
+					moves.Add((child, start, span + 1));
+			} else {
+				if (start <= index && start + span - 1 >= index)
+					throw new InvalidOperationException($"{child.Name} occupies {(isRow ? "row" : "column")} {index} of {elementId}.");
+				if (start > index)
+					moves.Add((child, start - 1, span));
+			}
+		}
+		var copied = styles[index];
+		var (type, value) = (copied.SizeType, (double)StyleLength(copied));
+
+		var tracked = new List<SyntaxNode> { proof.Styles[index], proof.CountLiteral };
+		foreach (var (child, _, _) in moves) {
+			tracked.Add(isRow ? child.RowLiteral : child.ColumnLiteral);
+			if ((isRow ? child.RowSpanLiteral : child.ColumnSpanLiteral) is { } spanLiteral)
+				tracked.Add(spanLiteral);
+		}
+		var root = proof.Root.TrackNodes(tracked);
+		root = root.ReplaceNode(root.GetCurrentNode(proof.CountLiteral)!, CountLiteral(insert ? count + 1 : count - 1).WithTriviaFrom(proof.CountLiteral));
+		foreach (var (child, start, span) in moves) {
+			var startLiteral = isRow ? child.RowLiteral : child.ColumnLiteral;
+			root = root.ReplaceNode(root.GetCurrentNode(startLiteral)!, CountLiteral(start).WithTriviaFrom(startLiteral));
+			if (span != (isRow ? child.RowSpan : child.ColumnSpan)) {
+				// A span can only grow across the insertion, so the child spans two or more
+				// tracks already and its span statement was proven to exist.
+				var spanLiteral = (isRow ? child.RowSpanLiteral : child.ColumnSpanLiteral)!;
+				root = root.ReplaceNode(root.GetCurrentNode(spanLiteral)!, CountLiteral(span).WithTriviaFrom(spanLiteral));
+			}
+		}
+		var styleStatement = root.GetCurrentNode(proof.Styles[index])!;
+		root = insert
+			? root.ReplaceNode(styleStatement, new[] { StyleStatement(elementId, isRow, type, value).WithTriviaFrom(proof.Styles[index]), styleStatement })
+			: root.RemoveNode(styleStatement, SyntaxRemoveOptions.KeepNoTrivia)!;
+
+		using (var transaction = host.CreateTransaction($"{(insert ? "Insert" : "Remove")} {(isRow ? "row" : "column")} {index} of {elementId}")) {
+			if (insert) {
+				if (isRow) {
+					table.RowCount = count + 1;
+					table.RowStyles.Insert(index, new RowStyle(type, (float)value));
+				} else {
+					table.ColumnCount = count + 1;
+					table.ColumnStyles.Insert(index, new ColumnStyle(type, (float)value));
+				}
+			}
+			foreach (var (child, start, span) in moves) {
+				table.SetCellPosition(child.Control, isRow
+					? new TableLayoutPanelCellPosition(child.Column, start)
+					: new TableLayoutPanelCellPosition(start, child.Row));
+				if (isRow)
+					table.SetRowSpan(child.Control, span);
+				else
+					table.SetColumnSpan(child.Control, span);
+			}
+			if (!insert) {
+				styles.RemoveAt(index);
+				if (isRow)
+					table.RowCount = count - 1;
+				else
+					table.ColumnCount = count - 1;
+			}
+			transaction.Commit();
+		}
+		file.Text = root.ToFullString();
+		return CurrentState(baseVersion);
+	}
+
+	sealed record TableLayoutChild(Control Control, string Name, int Column, int Row, int ColumnSpan, int RowSpan,
+		SyntaxNode ColumnLiteral, SyntaxNode RowLiteral, SyntaxNode? ColumnSpanLiteral, SyntaxNode? RowSpanLiteral);
+
+	static readonly HashSet<string> TableLayoutPlacementMembers = new(StringComparer.Ordinal) {
+		"Controls", "SetColumn", "SetRow", "SetCellPosition", "SetColumnSpan", "SetRowSpan"
+	};
+
+	/// <summary>Proves where every child of the table is placed: InitializeComponent places each
+	/// live child with exactly one <c>&lt;id&gt;.Controls.Add(child, column, row)</c> of integer
+	/// literals, optionally sets its span with one <c>SetColumnSpan/SetRowSpan(child, n)</c>
+	/// literal, and contains no other placement statement for the table (SetColumn, SetRow,
+	/// SetCellPosition, AddRange, an unpositioned Add...). The literals must equal the live cell
+	/// positions and spans, so rewriting them moves exactly the control the user sees.</summary>
+	List<TableLayoutChild> ProveTableLayoutChildren(SyntaxNode root, TableLayoutPanel table, string elementId)
+	{
+		var unprovable = new InvalidOperationException($"The placement of {elementId}'s controls cannot be edited safely.");
+		var statements = IsVisualBasic
+			? root.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>().First(item =>
+				item.BlockStatement is VbSyntax.MethodStatementSyntax ms && ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+				&& ms.Identifier.ValueText == "InitializeComponent").Statements.Cast<SyntaxNode>().ToList()
+			: root.DescendantNodes().OfType<MethodDeclarationSyntax>()
+				.First(item => item.Identifier.ValueText == "InitializeComponent" && item.Body != null).Body!.Statements.Cast<SyntaxNode>().ToList();
+		var adds = new Dictionary<string, (SyntaxNode Column, SyntaxNode Row)>(StringComparer.Ordinal);
+		var columnSpans = new Dictionary<string, SyntaxNode>(StringComparer.Ordinal);
+		var rowSpans = new Dictionary<string, SyntaxNode>(StringComparer.Ordinal);
+		foreach (var statement in statements) {
+			if (!MentionsTablePlacement(statement, elementId))
+				continue;
+			if (TableCall(statement, elementId) is not { } call)
+				throw unprovable;
+			if (call is { Collection: "Controls", Method: "Add", Arguments: [var child, var column, var row] }
+				&& NodeTargetName(child) is { } addName && IntLiteral(column) != null && IntLiteral(row) != null
+				&& adds.TryAdd(addName, (column, row)))
+				continue;
+			if (call is { Collection: null, Method: "SetColumnSpan" or "SetRowSpan", Arguments: [var spanned, var span] }
+				&& NodeTargetName(spanned) is { } spanName && IntLiteral(span) is > 0
+				&& (call.Method == "SetColumnSpan" ? columnSpans : rowSpans).TryAdd(spanName, span))
+				continue;
+			throw unprovable;
+		}
+		var result = new List<TableLayoutChild>();
+		foreach (Control control in table.Controls) {
+			var name = control.Site?.Name;
+			if (name == null || !adds.TryGetValue(name, out var cell))
+				throw unprovable;
+			var position = table.GetCellPosition(control);
+			var columnSpan = columnSpans.TryGetValue(name, out var columnSpanLiteral) ? IntLiteral(columnSpanLiteral)!.Value : 1;
+			var rowSpan = rowSpans.TryGetValue(name, out var rowSpanLiteral) ? IntLiteral(rowSpanLiteral)!.Value : 1;
+			if (position.Column != IntLiteral(cell.Column) || position.Row != IntLiteral(cell.Row)
+				|| table.GetColumnSpan(control) != columnSpan || table.GetRowSpan(control) != rowSpan)
+				throw unprovable;
+			result.Add(new TableLayoutChild(control, name, position.Column, position.Row, columnSpan, rowSpan,
+				cell.Column, cell.Row, columnSpanLiteral, rowSpanLiteral));
+		}
+		if (adds.Count != result.Count || columnSpans.Keys.Concat(rowSpans.Keys).Any(name => !adds.ContainsKey(name)))
+			throw unprovable;
+		return result;
+	}
+
+	bool MentionsTablePlacement(SyntaxNode statement, string elementId) => IsVisualBasic
+		? statement.DescendantNodes().OfType<VbSyntax.MemberAccessExpressionSyntax>().Any(access => access.Expression != null
+			&& TableLayoutPlacementMembers.Contains(access.Name.Identifier.ValueText) && VbSimpleTargetName(access.Expression) == elementId)
+		: statement.DescendantNodes().OfType<MemberAccessExpressionSyntax>().Any(access =>
+			TableLayoutPlacementMembers.Contains(access.Name.Identifier.ValueText) && SimpleTargetName(access.Expression) == elementId);
+
+	/// <summary>A statement that is exactly one call on the table: <c>&lt;id&gt;.Method(args)</c>
+	/// (Collection null) or <c>&lt;id&gt;.Controls.Method(args)</c>.</summary>
+	(string Method, string? Collection, IReadOnlyList<SyntaxNode> Arguments)? TableCall(SyntaxNode statement, string elementId)
+	{
+		if (IsVisualBasic) {
+			if (statement is not VbSyntax.ExpressionStatementSyntax { Expression: VbSyntax.InvocationExpressionSyntax { Expression: VbSyntax.MemberAccessExpressionSyntax method } invocation }
+				|| method.Expression == null || invocation.ArgumentList == null
+				|| invocation.ArgumentList.Arguments.Any(argument => argument is not VbSyntax.SimpleArgumentSyntax { IsNamed: false }))
+				return null;
+			var arguments = invocation.ArgumentList.Arguments.Cast<VbSyntax.SimpleArgumentSyntax>().Select(argument => (SyntaxNode)argument.Expression).ToList();
+			if (VbSimpleTargetName(method.Expression) == elementId && method.Expression is not VbSyntax.MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Controls" })
+				return (method.Name.Identifier.ValueText, null, arguments);
+			if (method.Expression is VbSyntax.MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Controls", Expression: { } owner } && VbSimpleTargetName(owner) == elementId)
+				return (method.Name.Identifier.ValueText, "Controls", arguments);
+			return null;
+		}
+		if (statement is not ExpressionStatementSyntax { Expression: InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax access } call }
+			|| call.ArgumentList.Arguments.Any(argument => argument.NameColon != null || !argument.RefKindKeyword.IsKind(SyntaxKind.None)))
+			return null;
+		var values = call.ArgumentList.Arguments.Select(argument => (SyntaxNode)argument.Expression).ToList();
+		if (SimpleTargetName(access.Expression) == elementId && access.Expression is not MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Controls" })
+			return (access.Name.Identifier.ValueText, null, values);
+		if (access.Expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Controls" } controls && SimpleTargetName(controls.Expression) == elementId)
+			return (access.Name.Identifier.ValueText, "Controls", values);
+		return null;
+	}
+
+	static string? NodeTargetName(SyntaxNode node) => node switch {
+		ExpressionSyntax expression => SimpleTargetName(expression),
+		VbSyntax.ExpressionSyntax expression => VbSimpleTargetName(expression),
+		_ => null
+	};
+
+	static int? IntLiteral(SyntaxNode node) => node switch {
+		LiteralExpressionSyntax { Token.Value: int value } => value,
+		VbSyntax.LiteralExpressionSyntax { Token.Value: int value } => value,
+		_ => null
+	};
+
 	SyntaxNode CountLiteral(int value) => IsVisualBasic
 		? Vb.SyntaxFactory.ParseExpression(value.ToString(CultureInfo.InvariantCulture))
 		: SyntaxFactory.ParseExpression(value.ToString(CultureInfo.InvariantCulture));

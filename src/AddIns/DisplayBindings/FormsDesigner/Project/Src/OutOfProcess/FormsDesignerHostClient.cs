@@ -214,6 +214,14 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public Task<DesignerSessionState> RemoveTableLayoutTrackAsync(long baseVersion, string elementId, bool isRow, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/remove-table-layout-track", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow }, cancellationToken), cancellationToken);
 
+		/// <summary>Inserts a TableLayoutPanel row/column before a track (<c>design/insert-table-layout-track</c>).</summary>
+		public Task<DesignerSessionState> InsertTableLayoutTrackAsync(long baseVersion, string elementId, bool isRow, int index, CancellationToken cancellationToken)
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/insert-table-layout-track", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, index }, cancellationToken), cancellationToken);
+
+		/// <summary>Removes an empty TableLayoutPanel row/column (<c>design/remove-table-layout-track-at</c>).</summary>
+		public Task<DesignerSessionState> RemoveTableLayoutTrackAtAsync(long baseVersion, string elementId, bool isRow, int index, CancellationToken cancellationToken)
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/remove-table-layout-track-at", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, index }, cancellationToken), cancellationToken);
+
 		public Task<DesignerSessionState> ResetPropertyAsync(long baseVersion, string elementId, string propertyName, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/reset-property", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName }, cancellationToken), cancellationToken);
 

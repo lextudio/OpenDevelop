@@ -234,6 +234,129 @@ public sealed class FormsDesignerHostClientTests
 	}
 
 	[Fact]
+	public async Task ChildHost_InsertsAndRemovesMiddleTableLayoutTracksMovingChildren()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				this.table = new System.Windows.Forms.TableLayoutPanel();
+				this.left = new System.Windows.Forms.Label();
+				this.right = new System.Windows.Forms.Label();
+				this.wide = new System.Windows.Forms.Label();
+				this.loose = new System.Windows.Forms.TableLayoutPanel();
+				this.floating = new System.Windows.Forms.Label();
+				this.table.ColumnCount = 2;
+				this.table.RowCount = 2;
+				this.table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 40F));
+				this.table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+				this.table.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 30F));
+				this.table.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+				this.table.Controls.Add(this.left, 0, 0);
+				this.table.Controls.Add(this.right, 1, 0);
+				this.table.Controls.Add(this.wide, 0, 1);
+				this.table.SetColumnSpan(this.wide, 2);
+				this.table.Size = new System.Drawing.Size(200, 100);
+				this.loose.ColumnCount = 2;
+				this.loose.RowCount = 1;
+				this.loose.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50F));
+				this.loose.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50F));
+				this.loose.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+				this.loose.Controls.Add(this.floating);
+				this.loose.Size = new System.Drawing.Size(100, 40);
+				this.Controls.Add(this.button1);
+				this.Controls.Add(this.table);
+				this.Controls.Add(this.loose);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;", """
+				private System.Windows.Forms.Button button1;
+				    private System.Windows.Forms.TableLayoutPanel table;
+				    private System.Windows.Forms.Label left;
+				    private System.Windows.Forms.Label right;
+				    private System.Windows.Forms.Label wide;
+				    private System.Windows.Forms.TableLayoutPanel loose;
+				    private System.Windows.Forms.Label floating;
+				""", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var original = DesignerText(await client.FlushAsync(1, timeout.Token));
+
+		// An unpositioned child has no provable cell; occupied tracks are never removed.
+		await Assert.ThrowsAnyAsync<Exception>(() => client.InsertTableLayoutTrackAsync(1, "loose", false, 0, timeout.Token));
+		await Assert.ThrowsAnyAsync<Exception>(() => client.RemoveTableLayoutTrackAtAsync(1, "table", false, 0, timeout.Token));
+		await Assert.ThrowsAnyAsync<Exception>(() => client.InsertTableLayoutTrackAsync(1, "table", false, 2, timeout.Token));
+		Assert.Equal(original, DesignerText(await client.FlushAsync(1, timeout.Token)));
+
+		// Inserting before column 1: "right" moves to column 2, "wide" grows across the new column.
+		var inserted = await client.InsertTableLayoutTrackAsync(1, "table", false, 1, timeout.Token);
+		Assert.True(inserted.Accepted, inserted.Error);
+		Assert.Equal(3, FindTreeNode(inserted.Tree!, "table")!.GridTracks!.ColumnTracks.Count);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("table.ColumnCount = 3;", text);
+		Assert.Contains("table.Controls.Add(left, 0, 0);", text);
+		Assert.Contains("table.Controls.Add(right, 2, 0);", text);
+		Assert.Contains("table.Controls.Add(wide, 0, 1);", text);
+		Assert.Contains("table.SetColumnSpan(wide, 3);", text);
+		// The new column copies column 1's style and sits before it.
+		Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(text, @"table\.ColumnStyles\.Add\(new System\.Windows\.Forms\.ColumnStyle\(System\.Windows\.Forms\.SizeType\.Percent, 100F\)\)").Count);
+		Assert.True(text.IndexOf("SizeType.Absolute, 40F", StringComparison.Ordinal) < text.IndexOf("SizeType.Percent, 100F", StringComparison.Ordinal), text);
+		// The new column is spanned by "wide", so it cannot be removed; inserting a row before row 1
+		// moves "wide" down.
+		await Assert.ThrowsAnyAsync<Exception>(() => client.RemoveTableLayoutTrackAtAsync(1, "table", false, 1, timeout.Token));
+		var row = await client.InsertTableLayoutTrackAsync(1, "table", true, 1, timeout.Token);
+		Assert.True(row.Accepted, row.Error);
+		text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("table.RowCount = 3;", text);
+		Assert.Contains("table.Controls.Add(wide, 0, 2);", text);
+		Assert.Contains("table.Controls.Add(right, 2, 0);", text);
+		// The empty new row 1 can be removed again, and "wide" moves back up.
+		var removed = await client.RemoveTableLayoutTrackAtAsync(1, "table", true, 1, timeout.Token);
+		Assert.True(removed.Accepted, removed.Error);
+		text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("table.RowCount = 2;", text);
+		Assert.Contains("table.Controls.Add(wide, 0, 1);", text);
+		Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(text, @"table\.RowStyles\.Add\(").Count);
+	}
+
+	[Fact]
+	public async Task ChildHost_InsertsVisualBasicTableLayoutRowMovingChildren()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = VbSnapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("Me.Controls.Add(Me.button1)", """
+				Me.table = New System.Windows.Forms.TableLayoutPanel()
+				        Me.top = New System.Windows.Forms.Label()
+				        Me.bottom = New System.Windows.Forms.Label()
+				        Me.table.ColumnCount = 1
+				        Me.table.RowCount = 2
+				        Me.table.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100.0!))
+				        Me.table.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 30.0!))
+				        Me.table.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100.0!))
+				        Me.table.Controls.Add(Me.top, 0, 0)
+				        Me.table.Controls.Add(Me.bottom, 0, 1)
+				        Me.table.Size = New System.Drawing.Size(200, 100)
+				        Me.Controls.Add(Me.button1)
+				        Me.Controls.Add(Me.table)
+				""", StringComparison.Ordinal)
+			.Replace("Friend WithEvents button1 As System.Windows.Forms.Button",
+				"Friend WithEvents button1 As System.Windows.Forms.Button\n    Friend WithEvents table As System.Windows.Forms.TableLayoutPanel\n    Friend WithEvents top As System.Windows.Forms.Label\n    Friend WithEvents bottom As System.Windows.Forms.Label", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var inserted = await client.InsertTableLayoutTrackAsync(1, "table", true, 0, timeout.Token);
+		Assert.True(inserted.Accepted, inserted.Error);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("table.RowCount = 3", text);
+		Assert.Contains("table.Controls.Add(top, 0, 1)", text);
+		Assert.Contains("table.Controls.Add(bottom, 0, 2)", text);
+		Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(text, @"RowStyle\(System\.Windows\.Forms\.SizeType\.Absolute, 30").Count);
+	}
+
+	[Fact]
 	public async Task ChildHost_AddsAndRemovesVisualBasicTableLayoutTracks()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));

@@ -958,6 +958,19 @@ designed TableLayoutPanel could show its controls in the wrong cells and spans. 
 now apply that overload and those calls; `ChildHost_LoadsTableLayoutCellPositionsAndSpans` fails
 without the fix.
 
+**Middle-track insert/remove, host slice (2026-10-13).** Protocol **v36** adds
+`design/insert-table-layout-track(elementId, isRow, index)` and
+`design/remove-table-layout-track-at(elementId, isRow, index)`, for C# and VB. Insert copies track
+`index`'s style before it; children starting at or after it move one cell on, and a child spanning
+across it grows by one, as the in-process designer's Insert did. Remove is refused while any child's
+cell or span covers the track; children after it move one cell back. Besides the track-list proof,
+the host proves every child's placement: each live child has exactly one `Controls.Add(child,
+column, row)` with integer literals, at most one literal `SetColumnSpan`/`SetRowSpan`, the literals
+equal the live cell and span, and no other placement statement (`SetColumn`, `SetRow`,
+`SetCellPosition`, an unpositioned `Add`, `AddRange`) mentions the table. Only those literals, the
+Count literal and one style statement are rewritten, in one designer transaction. Not yet: IDE
+commands for a pointer-chosen track.
+
 **C4 event handler generation (2026-10-12).** Double-clicking a WPF event in the Properties pad now
 matches the in-process designer (`AbstractEventHandlerService`): the XAML attribute is bound through
 `design/set-event` if the event is unhandled, then the IDE creates the method in `<file>.xaml.cs`

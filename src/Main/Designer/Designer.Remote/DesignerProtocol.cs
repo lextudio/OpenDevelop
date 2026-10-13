@@ -50,7 +50,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// remove an unoccupied last track) under the same authored-source proof.
 		// v35 adds WPF's optional design/paste-elements-into-cell: Paste Here into the measured
 		// Grid cell under the pointer.
-		public const int Version = 35;
+		// v36 adds the WinForms host's design/insert-table-layout-track and
+		// design/remove-table-layout-track-at, which also move the table's children.
+		public const int Version = 36;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
