@@ -523,6 +523,16 @@ seam described below.
 | `design/set-bounds` | host → child | move/resize an element |
 | `design/delete-elements` | host → child | remove elements |
 | `design/apply-layout` | host → child | alignment/spacing/format operations |
+| `design/set-bounds-batch` | host → child | move/resize several elements atomically (alignment, group placement) |
+| `design/set-z-order` | host → child | reorder an element among its siblings (front/forward/backward/back); returns `MovedElementId`, since WPF ids are tree paths |
+| `design/wrap-elements` / `design/unwrap-element` | host → child | wrap siblings in a new Canvas/Grid/Viewbox, or unwrap a Grid/Canvas keeping its children |
+| `design/set-items` | host → child | replace a list control's plain items (string `Items`) or a TabControl's page headers |
+| `design/set-brush` | host → child | replace a Brush property with a solid, linear/radial gradient or `{StaticResource}` brush |
+| `design/set-binding-path` / `design/set-binding-delay` / `design/set-binding-text-option` / `design/set-binding-converter` / `design/set-binding-validation-option` / `design/set-binding-notify-on-validation-error` | host → child | edit an existing Binding through its nested design item (path, Delay, StringFormat/FallbackValue/TargetNullValue, Converter resource, validation options) |
+| `design/query-grid-guides` / `design/split-grid-track` / `design/set-grid-track-size` / `design/set-grid-track-unit` | host → child | read a Grid's measured tracks, split a track, set a track's size or its unit (Pixel/Star/Auto) |
+| `design/set-design-time-flag` | host → child | set/clear a design-time-only flag (`d:IsHidden`, `d:IsLocked`) - the Outline's eye/lock toggles |
+| `design/add-menu-item` / `design/add-strip-item` | host → child | append an item under a Menu / StatusBar / ToolBar ("Type Here" insertion node) |
+| `design/hit-test-popup` | host → child | map surface coordinates to an item inside an open popup |
 | `design/rename` | host → child | rename an element (updates source + identity) |
 | `design/theme` | host → child | switch design theme by name (Light/Dark default; WPF uses embedded `themes/*.xaml` names, WinUI the app's ThemeDictionaries keys) and re-render |
 | `design/render` | host → child | produce a frame (on demand) |
@@ -1370,19 +1380,27 @@ Legend: **✓** implemented and exercised · **~** partial (see note) · **✗**
 | `session/flush` → versioned edit set | ✓ | ✓ | ✓ |
 | Envelope (SessionId/DocumentId/Generation/baseVersion) on every mutation | ✓ | ~ (partially — some RPCs omit session/document ids, see Part IV §contract drift) | ✓ |
 | `design/set-property` | ✓ | ✓ | ✓ |
-| `design/reset-property` | ✓ (optional capability) | ✗ | ✗ |
-| `design/set-event` | ✓ (event rows + double-click create handler) | ✗ (throws `NotSupportedException` — child→host callback direction missing) | ✓ (handler-name edits) |
+| `design/reset-property` | ✓ (optional capability) | ✓ (used by the attached-layout rows) | ✗ |
+| `design/set-event` | ✓ (event rows + double-click create handler) | ✓ (event rows; double-click binds `d:`-style attribute then the IDE generates the code-behind method — see Part II) | ✓ (handler-name edits) |
 | `design/hit-test` | ✓ (local hit-test first, RPC fallback) | ✓ (GPU hit-test + VisualTreeHelper fallback) | ✓ |
 | `design/add-element` (toolbox drop) | ✓ | ✓ (`CreatedElementId` for unnamed drops) | ✓ (named-container drops; unnamed/root falls back to full reload) |
 | `design/set-bounds` | ✓ (move + "se" resize, one RPC per gesture) | ✓ (8-handle `PlacementOperation`, one RPC per gesture) | ✓ (8 handles + snap, one RPC per gesture) |
 | `design/delete-elements` | ✓ | ✓ | ✓ |
 | `design/rename` | ✓ (rename UI exists) | ✗ (capability ready, no UI anywhere) | ~ (capability ready, no UI) |
-| `design/apply-layout` (align/spacing/z-order) | ✓ (`IDesignHostLayout`) | ✗ | ✗ |
+| `design/apply-layout` (align/spacing/z-order) | ✓ (`IDesignHostLayout`) | ~ (align via `design/set-bounds-batch`, z-order via `design/set-z-order`; no single verb) | ✗ |
 | `design/theme` (design-theme re-render) | ✗ (combo hidden — no theme concept in WinForms) | ✓ (enumerates embedded `themes/*.xaml`; combo per-project) | ✓ (combo from ThemeDictionaries keys) |
 | `app/resources` (App.xaml/merged dictionaries) | ✗ (not applicable) | ~ (App.xaml merged into root Resources, child-side) | ✓ |
-| Capability negotiation (optional interfaces feature-detected) | ✓ (Reset/DefaultEvent/Layout) | ~ (core only; SetEvent gap should become a capability) | ✓ (Theme/Export/AppResources) |
+| Capability negotiation (optional interfaces feature-detected) | ✓ (Reset/DefaultEvent/Layout) | ~ (optional mutations feature-detected by protocol version) | ✓ (Theme/Export/AppResources) |
 | Crash/restart recovery | ✓ (disconnected overlay + Restart) | ✓ (crash/restart covered by tests) | ✓ (lifecycle probes + status) |
 | Safe mode (project code disabled) | ✓ (protocol-level) | planned (same protocol field) | ✓ (protocol-level) |
+
+**Additions since this matrix (2026-08-18).** The protocol has grown to **v25**; every new method is
+optional and feature-detected by protocol version, so a backend that does not answer the handshake
+for a version keeps working. WPF-first additions: the Binding-editor mutations (v14–v16), Grid track
+read/split/size and unit (v5 baseline, unit in v22), z-order and wrap/unwrap (v18/v19), the
+string-collection editor (v20/v21), the brush editor (v23/v24, with `BrushResourceKeys` for its
+resources tab) and the Outline design-time flags (v25). `in-process-analysis.md` carries the
+per-feature 2026-10 slices; the per-designer docs carry the framework-specific behaviour.
 
 ## Canvas shell & presentation (shared)
 
@@ -1422,14 +1440,14 @@ Undo and Redo belong to document lifecycle or the IDE command system, not the ca
 | Resize handles | ~ **1** ("se" only, Thumb) | ✓ **8** (anchored opposite edge) | ✓ **8** |
 | Root/page resize by handle | ✗ (form is the root) | ✓ (root element selectable + resizable) | ~ (page size via design-size combo only) |
 | Drag threshold | ✗ (none — Thumb semantics) | ✓ (3 px) | ✓ (4 px) |
-| Multi-select | ~ (marquee + Shift/Ctrl) | ✗ | ✓ (group drag + dashed outlines) |
+| Multi-select | ~ (marquee + Shift/Ctrl) | ✓ (Ctrl-click; the Align commands need two or more) | ✓ (group drag + dashed outlines) |
 | Marquee rubber-band | ✓ | ✗ | ✗ |
 | Keyboard nudge | ✓ (step 1, Shift=10) | ✗ | ✓ (step 1, Ctrl=10) |
 | Keyboard: Escape parent / Tab rotation | ✓ | ✗ | ✗ |
-| Double-click default event | ✓ (`ClickCount == 2`) | ✗ | ~ (manual detection, 500 ms/8 px) |
-| Snap guides / alignment | ✗ | ✗ | ✓ (8 design-unit tolerance) |
-| Grid row/column guide drag | ✗ (not applicable — no Grid layout) | ✗ | ✓ |
-| Inline text editing on surface | ✗ | ✗ | ✓ |
+| Double-click default event | ✓ (`ClickCount == 2`) | ✓ (binds `design/set-event`, then the IDE generates the code-behind method and opens it) | ~ (manual detection, 500 ms/8 px) |
+| Snap guides / alignment | ✗ | ✓ (Snap to Raster and Snap to Guides toolbar toggles + the Align context commands) | ✓ (8 design-unit tolerance) |
+| Grid row/column guide drag | ✗ (not applicable — no Grid layout) | ✓ (rails, Ctrl split, track resize and Pixel/Star/Auto unit commands) | ✓ |
+| Inline text editing on surface | ✗ | ✓ (Enter commits, Shift+Enter inserts a newline for TextBlock.Text, Escape cancels) | ✓ |
 | Group drag commit | ✗ | ✗ | ✓ |
 | Selection sync: surface ↔ outline ↔ properties | ✓ | ✓ | ✓ |
 
@@ -1438,7 +1456,7 @@ Undo and Redo belong to document lifecycle or the IDE command system, not the ca
 | Feature | WinForms | WPF | WinUI/Uno |
 |---|---|---|---|
 | Tab-order overlay | ✓ | (–) | (–) |
-| Component lock state | ✓ | (–) | (–) |
+| Component lock state | ✓ | ✓ (design-time `d:IsLocked` via the Outline lock toggle; the surface skips a locked subtree) | (–) |
 | UIA automation peer tree | ✓ | ✗ | ✗ |
 | Add Components dialog / component library | ✓ | ✗ | ✗ |
 | Toolbox: child-side reflection catalog (engine shared via `SharedToolbox`) | ✓ | ~ (child builds DTOs; IDE still feeds project dlls — Phase 4) | ✓ |
@@ -1586,6 +1604,15 @@ scaffolding, and DevFlow plumbing.
   probes now project the same mounted, filtered Outline-pad tree through that API.
 
 ## Open task list (2026-08-18)
+
+> **Status (2026-10-12): needs re-triage.** The 2026-10 designer slices (see
+> [in-process-analysis.md](in-process-analysis.md)) changed several areas below: the shared
+> `DesignerCanvas`/toolbar gained the placement toggles, Grid-track unit commands and the shared
+> gridline overlay (item 6's gridlines half), `DesignViewport` gained the Fit-with-margin correction,
+> and the per-designer work added a large optional-mutation surface (collections, brush, Grid tracks,
+> z-order/wrap, design-time flags, event-handler generation). Re-read each item against the current
+> code before resuming; the P0/P1 items and Part IV's convergence list were written for the August
+> state and have not all been re-checked since.
 
 Everything still open, in dependency order; each item names the files to touch and the
 acceptance check, so the list can be resumed by a fresh session at any point.

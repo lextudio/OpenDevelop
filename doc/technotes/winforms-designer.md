@@ -1882,3 +1882,23 @@ this one, and turns a would-be crash dialog into a diagnosable log line.
 `AbstractFormsDesignerCommand` derives enablement from the menu-command plumbing while executing down
 an entirely different path, so an item can read enabled and still fault. The enabled state proves a
 binding exists, nothing more.
+
+## October 2026: string collections, tray components, project controls
+
+- **String-collection editor.** A ListBox/ComboBox/CheckedListBox `Items` string list becomes a
+  read-only `ItemsCollection` row; editing it commits one `design/set-items`, and the host rewrites
+  `InitializeComponent` so every `<id>.Items.Add/AddRange` becomes one
+  `Items.AddRange(new object[] { ... })` (`New Object() {...}` in VB) at the first replaced position,
+  or after the control's own last statement when the source had none. The IDE dialog is the shared
+  `CollectionItemsEditing` flow (the WPF and Forms `ITypeEditor`s are thin shims over it);
+  `od.forms-designer.properties-pad.edit-items` drives the real row button.
+- **Toolbox components.** Dropping a non-visual component (Timer, ToolTip, ImageList, ErrorProvider,
+  BackgroundWorker, ...) creates it in one designer transaction and joins it to the component tray,
+  writing its field and creation statement (into `components` when the type has an `(IContainer)`
+  constructor, declaring `components` first when the form has none). Only a type marked
+  `[DesignTimeVisible(true)]` qualifies - the tray classifier's own rule - so a `ToolStripItem`,
+  `ColumnHeader` or `DataGridViewColumn` is rejected.
+- **Project controls.** `FormsProjectToolbox` adds the project's own controls to the shared Toolbox,
+  one category per assembly, decided by `WinFormsProjectControlFinder` from PE metadata alone (the IDE
+  never loads the project assembly), skipping framework/runtime copy-local assemblies,
+  `[ToolboxItem(false)]` types and `Form` subclasses.

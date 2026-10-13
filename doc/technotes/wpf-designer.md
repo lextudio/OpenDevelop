@@ -2387,6 +2387,41 @@ render was checked with `od.wpf-designer.export-frame` and a `System.Drawing` pi
 eye alone - "white" in the first screenshots was actually `A=0` transparency, which is what sent the
 early theories in the wrong direction.
 
+## October 2026: out-of-process feature parity
+
+After the cut-over to the out-of-process host (see "Out-of-process / Surface Isolation decision")
+the WPF designer caught up with the in-process `WpfDesign.` designer feature by feature. Every
+addition is an **optional, protocol-versioned mutation**: a stale pooled child fails the handshake
+rather than silently mis-editing. The per-feature analysis is in
+[in-process-analysis.md](in-process-analysis.md); the shared protocol in
+[designer-common.md](designer-common.md). What landed:
+
+- **Canvas and toolbar.** Snap to Raster / Raster Width / Snap to Guides (an opt-in `Snapping`
+  capability; the shared gridline overlay now draws at the raster cell). Fit accounts for the
+  `CanvasMargin`, so a fitted frame no longer clips its bottom-right handle. A zoom step within 0.001
+  of 100% snaps to exactly 1.0 (`ZoomStepCalculator`). `DesignerSurfaceGeometry` also reports the
+  visible `viewport`, `handleVisible` and the zoom-independent `designSize`. The in-place text editor
+  uses the in-process key contract (Enter commits, Shift+Enter inserts a newline for `TextBlock.Text`,
+  Escape cancels).
+- **Context menus** (`DescribeContextCommands`/`InvokeContextCommand` drive the real menu for tests):
+  Align (needs two or more selected), Order (Bring to Front/Forward/Backward/Send to Back, needs one),
+  Wrap/Canvas/Grid/Viewbox and Unwrap, the QuickOperation property shortcuts (Horizontal/Vertical
+  Alignment, StackPanel Orientation, DockPanel Dock) and Grid Row/Column unit submenus acting on the
+  track under the right-click point.
+- **Property editing through the Properties pad.** The parent panel's attached layout properties
+  (`Grid.Row`/`Canvas.Left`/`DockPanel.Dock`, named as XAML spells them) in a Layout category; the
+  string-collection editor (a read-only `Items` row whose "…" opens the IDE dialog, committed as one
+  `design/set-items`); the brush editor (solid, linear/radial gradient or an in-scope
+  `{StaticResource}`, a VS-style dialog with a Resources tab); the `Converter` drop-down; and the
+  Binding text options (`StringFormat`/`FallbackValue`/`TargetNullValue`/`ConverterParameter`).
+- **Outline.** The design-time `d:IsHidden` (eye) and `d:IsLocked` (lock) toggles; the surface's hit
+  test skips a locked subtree while the Outline can still select it.
+- **Code-behind.** Double-clicking an event binds `design/set-event`, then the IDE generates the
+  method in `<file>.xaml.cs` (the `x:Class` class, else the file's first class) and opens it; an
+  existing method is never duplicated. The isolated child never touches project code.
+- **Toolbox.** The PE-metadata walker moved to `Designer.Remote` (`ToolboxMetadataDiscovery`) so the
+  IDE never loads a project assembly.
+
 ## Reference record for the isolation decision
 
 The links below are intentionally annotated and revision-pinned where possible. Public Microsoft
