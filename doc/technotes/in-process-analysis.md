@@ -878,9 +878,20 @@ acting on the selected Grid's track under the right-click point. Protocol **v22*
 snapshot alone, and the optional `design/set-grid-track-unit` mutation. The host keeps the numeric
 part as the in-process designer does, but leaving Auto (whose value is a meaningless 1) takes the
 measured size for Fixed and `1*` for Star rather than writing a 1-pixel track. `DesignSurface`
+
 records the context menu's design point (null when opened from the keyboard);
 `od.wpf-designer.context-menu-point` sets it relative to the selection for tests. WinUI still reads
 its tracks from source and leaves `Unit` null.
+
+**C3 WinForms TableLayout boundary (2026-10-13).** Forms remains deliberately out of the shared
+Grid-guide affordance. `TableLayoutPanel` has neither host-published measured row/column tracks nor
+a Forms client path that carries host-tree `GridTracks` into `CanvasSnapshot`; more importantly, a
+divider is not a control Bounds mutation. A correct follow-up must first publish
+`GetRowHeights`/`GetColumnWidths` plus the corresponding `RowStyle`/`ColumnStyle` units from the
+live child, then add an explicit host-owned track mutation which rewrites the matching designer
+source style collection in one transaction. Do not show draggable rails until both halves exist:
+the current canvas emits a commit on release, and a visual-only rail would falsely imply a saved
+layout edit. This is separate from WinForms' existing pixel-grid/snap preference support.
 
 **C4 event handler generation (2026-10-12).** Double-clicking a WPF event in the Properties pad now
 matches the in-process designer (`AbstractEventHandlerService`): the XAML attribute is bound through
