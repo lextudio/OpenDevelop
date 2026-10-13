@@ -33,6 +33,7 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		tools.SetScopes("mewui");
 		tools.ItemInvoked += (_, item) => Add(item.TypeName);
 		selection = new DesignerSelectionController(node => Adapter(node), nodes => new DesignerMultiPropertyAdapter(nodes.Select(node => (object)Adapter(node))));
+		selection.SelectionChanged += (_, _) => UpdateResizeHandles();
 		commands.RegisterStandard(() => host?.IsAlive == true && state.CanUndo, () => Mutate(() => host!.UndoAsync(state.Version).GetAwaiter().GetResult()),
 			() => host?.IsAlive == true && state.CanRedo, () => Mutate(() => host!.RedoAsync(state.Version).GetAwaiter().GetResult()),
 			() => selection.SelectedIds.Count > 0 && host?.IsAlive == true, DeleteSelectedCore);
@@ -110,6 +111,14 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		if (node == null || parent?.Type != "Canvas" || !double.IsFinite(dx) || !double.IsFinite(dy)) return false;
 		return CommitCanvasDrag(new ElementDragInfo { Name = id, StartX = node.X, StartY = node.Y, StartWidth = node.Width, StartHeight = node.Height, EndX = node.X + dx, EndY = node.Y + dy, EndWidth = node.Width, EndHeight = node.Height });
 	}
+	/// <summary>Exercises a Canvas-child resize without relying on native pointer focus.</summary>
+	public bool ResizeCanvasChild(string id, double width, double height)
+	{
+		var node = state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => n.Id == id);
+		var parent = node == null || state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => n.Children.Contains(node));
+		if (node == null || parent?.Type != "Canvas" || !double.IsFinite(width) || !double.IsFinite(height) || width <= 0 || height <= 0) return false;
+		return CommitCanvasDrag(new ElementDragInfo { Name = id, StartX = node.X, StartY = node.Y, StartWidth = node.Width, StartHeight = node.Height, EndX = node.X, EndY = node.Y, EndWidth = width, EndHeight = height });
+	}
 	bool RenameSelected(string newName) { if (selected == null || host == null || selected.Id == "$window") return false; var oldId = selected.Id; return Mutate(() => host.RenameAsync(state.Version, oldId, newName).GetAwaiter().GetResult()) && SelectByName(newName); }
 	void RequestRename() { if (selected == null || selected.Id == "$window") return; var newName = MessageService.ShowInputBox("Rename", "Enter a new element name:", selected.Name ?? selected.Id)?.Trim(); if (!string.IsNullOrEmpty(newName) && !string.Equals(newName, selected.Id, StringComparison.Ordinal) && !RenameSelected(newName)) MessageService.ShowError(state.Error); }
 	public void RefreshDesign() { if (host == null) return; var text = host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; state = host.UpdateAsync(Snapshot(text, state.Version + 1)).GetAwaiter().GetResult(); loadedMxamlText = text; Rebuild(); }
@@ -148,7 +157,8 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		var source = state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => n.Id == drag.Name);
 		var parent = state.Tree == null || source == null ? null : Flatten(state.Tree).FirstOrDefault(n => n.Children.Contains(source));
 		if (source != null && parent?.Type == "Canvas" && host is IDesignHostBounds bounds) {
-			var changed = Mutate(() => bounds.SetBoundsAsync(state.Version, source.Id, drag.EndX - parent.X, drag.EndY - parent.Y, drag.EndWidth, drag.EndHeight).GetAwaiter().GetResult());
+			var resized = !NearlyEqual(drag.StartWidth, drag.EndWidth) || !NearlyEqual(drag.StartHeight, drag.EndHeight);
+			var changed = Mutate(() => bounds.SetBoundsAsync(state.Version, source.Id, drag.EndX - parent.X, drag.EndY - parent.Y, resized ? drag.EndWidth : -1, resized ? drag.EndHeight : -1).GetAwaiter().GetResult());
 			if (!changed)
 				canvasController.RestoreSelection(selection.SelectedIds);
 			return changed;
@@ -158,6 +168,13 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		if (!reordered)
 			canvasController.RestoreSelection(selection.SelectedIds);
 		return reordered;
+	}
+	static bool NearlyEqual(double left, double right) => Math.Abs(left - right) < .001;
+	void UpdateResizeHandles()
+	{
+		var node = selection.PrimarySelectedNode;
+		var parent = node == null || state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(candidate => candidate.Children.Contains(node));
+		canvas.ResizeHandlesEnabled = parent?.Type == "Canvas";
 	}
 	void Select(DesignerElementNode? n, bool toggle = false) => selection.Select(n == null ? Array.Empty<DesignerElementNode>() : new[] { n }, toggle ? DesignerSelectionOperation.Toggle : DesignerSelectionOperation.Replace);
 	void ConfigureCanvas()

@@ -101,7 +101,7 @@ public static class MewUIControlCatalog
 	/// guessing a literal kind (the M-2 failure mode), keeping generated code compilable while
 	/// surfacing an actionable diagnostic.</summary>
 	public static MxamlPropertyKind KindOf(string type, string property)
-		=> property is "Canvas.Left" or "Canvas.Top"
+		=> property is "Canvas.Left" or "Canvas.Top" or "Width" or "Height"
 			? MxamlPropertyKind.Double
 			: propertiesByType.TryGetValue(type, out var props) && props.TryGetValue(property, out var kind)
 			? kind

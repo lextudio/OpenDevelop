@@ -300,6 +300,25 @@ public sealed class MxamlDocument
 		});
 	}
 
+	/// <summary>Moves a direct Canvas child and, when both dimensions are supplied, gives it an
+	/// explicit size. A negative dimension is the bounds-RPC sentinel for a move-only gesture;
+	/// zero is never authored because it cannot be reached through the resize handles.</summary>
+	public bool SetCanvasBounds(string name, double left, double top, double width, double height)
+	{
+		var moveOnly = width == -1 && height == -1;
+		if (!double.IsFinite(left) || !double.IsFinite(top) || !double.IsFinite(width) || !double.IsFinite(height) || !moveOnly && (width <= 0 || height <= 0)) return false;
+		var parent = FindParent(name);
+		if (parent?.Type != "Canvas") return false;
+		return Commit(() => {
+			var child = parent.Children.FirstOrDefault(c => c.Name == name);
+			if (child == null) return false;
+			SetAttribute(child, "Canvas.Left", Coordinate(left));
+			SetAttribute(child, "Canvas.Top", Coordinate(top));
+			if (!moveOnly) { SetAttribute(child, "Width", Coordinate(width)); SetAttribute(child, "Height", Coordinate(height)); }
+			return true;
+		});
+	}
+
 	/// <summary>Renames an element. Event handler values are user-method references and are
 	/// deliberately NOT rewritten (unlike GTK's value-collision hazard).</summary>
 	public bool Rename(string name, string newName)

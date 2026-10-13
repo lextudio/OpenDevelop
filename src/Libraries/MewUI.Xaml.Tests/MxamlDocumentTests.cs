@@ -67,6 +67,22 @@ public sealed class MxamlDocumentTests
 	}
 
 	[Fact]
+	public void SetCanvasBounds_ResizesImmediateCanvasChild_WithoutChangingMoveOnlyContract()
+	{
+		var doc = MxamlDocument.Parse("""
+			<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow"><Canvas Name="surface"><Button Name="moveMe"/></Canvas></Window>
+			""");
+		Assert.True(doc.SetCanvasBounds("moveMe", 12, 24, 140, 50));
+		var button = doc.Find("moveMe")!;
+		Assert.Equal("140", button.FindAttribute("Width")!.Value);
+		Assert.Equal("50", button.FindAttribute("Height")!.Value);
+		var generated = MewUICSharpGenerator.Generate(doc);
+		Assert.Contains("moveMe.Width = 140.0;", generated);
+		Assert.Contains("moveMe.Height = 50.0;", generated);
+		Assert.False(doc.SetCanvasBounds("moveMe", 1, 2, -1, 20));
+	}
+
+	[Fact]
 	public void Orientation_UsesFiniteCatalogueValues_AndRejectsUnknownTokens()
 	{
 		Assert.Equal(new[] { "Horizontal", "Vertical" }, MewUIControlCatalog.EnumValuesOf("StackPanel", "Orientation"));

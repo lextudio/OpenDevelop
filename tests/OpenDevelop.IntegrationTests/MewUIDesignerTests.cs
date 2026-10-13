@@ -330,7 +330,7 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		await File.WriteAllTextAsync(designerPath, """
 			<?xml version="1.0" encoding="utf-8"?>
 			<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="MewUIFixture.MainWindow" Name="mainWindow" Width="480" Height="240">
-			    <Canvas Name="surface"><Button Name="moveMe" Content="Move" Width="100" Height="40" /></Canvas>
+			    <Canvas Name="surface"><Button Name="moveMe" Content="Move" /></Canvas>
 			</Window>
 			""");
 		var openedProject = await app.ReopenSolutionAsync(projectPath);
@@ -349,6 +349,7 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
 		var movedText = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
 		Assert.Matches("<Button(?=[^>]*Name=\"moveMe\")(?=[^>]*Canvas.Left=\"[1-9][0-9]*(?:\\.[0-9]+)?\")(?=[^>]*Canvas.Top=\"[1-9][0-9]*(?:\\.[0-9]+)?\")", movedText);
+		Assert.DoesNotMatch("<Button(?=[^>]*Name=\"moveMe\")(?=[^>]*(?:Width|Height)=)", movedText);
 
 		var undone = await app.InvokeAsync("od.mewui-designer.undo");
 		Assert.True(undone.GetProperty("canRedo").GetBoolean(), undone.ToString());
@@ -356,6 +357,32 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var undoneText = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
 		Assert.DoesNotContain("Canvas.Left=", undoneText, StringComparison.Ordinal);
 		Assert.DoesNotContain("Canvas.Top=", undoneText, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task MewUIDesigner_ResizeCanvasChild_PersistsDimensionsAndUndoes()
+	{
+		Assert.SkipUnless(OperatingSystem.IsMacOS() || OperatingSystem.IsWindows(), "The MewUI host only wires up the macOS and Windows render backends so far.");
+		await File.WriteAllTextAsync(designerPath, """
+			<?xml version="1.0" encoding="utf-8"?>
+			<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="MewUIFixture.MainWindow" Name="mainWindow" Width="480" Height="240">
+			    <Canvas Name="surface"><Button Name="moveMe" Content="Move" /></Canvas>
+			</Window>
+			""");
+		var openedProject = await app.ReopenSolutionAsync(projectPath);
+		Assert.True(openedProject.GetProperty("success").GetBoolean(), openedProject.ToString());
+		Assert.True((await app.InvokeAsync("od.open-file", designerPath)).GetProperty("opened").GetBoolean());
+		await WaitForDesignerAsync();
+		var resized = await app.InvokeAsync("od.mewui-designer.canvas.resize", "moveMe", 140, 50);
+		Assert.True(resized.GetProperty("success").GetBoolean(), resized.ToString());
+		Assert.True((await app.InvokeAsync("od.file.save", designerPath)).GetProperty("success").GetBoolean());
+		var resizedText = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
+		Assert.Matches("<Button(?=[^>]*Name=\"moveMe\")(?=[^>]*Width=\"140\")(?=[^>]*Height=\"50\")", resizedText);
+		Assert.True((await app.InvokeAsync("od.mewui-designer.undo")).GetProperty("canRedo").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.file.save", designerPath)).GetProperty("success").GetBoolean());
+		var undoneText = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
+		Assert.DoesNotContain("Width=\"140\"", undoneText, StringComparison.Ordinal);
+		Assert.DoesNotContain("Height=\"50\"", undoneText, StringComparison.Ordinal);
 	}
 
 	[Fact]
