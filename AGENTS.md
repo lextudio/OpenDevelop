@@ -39,6 +39,11 @@ agent is not a reviewer. Redirect stdin from `/dev/null` (one `run` hung after `
 the log is `~/.local/share/opencode/log/opencode.log`). A review takes roughly 4-7 minutes and a
 commit about 1-2. `opencode export <id>` must go to a file before JSON parsing (piping truncates),
 and only with a non-empty id: a bare `opencode export` waits on an interactive picker forever.
+Run OpenCode in the foreground of the command runner and retain/poll that runner's process handle
+until exit; never append `&`, use `nohup`, or otherwise daemonize it. In managed command runners,
+the background child can be terminated before OpenCode initializes, leaving no log record and no
+session. A missing newly-created session is a non-terminal review failure, not approval; diagnose
+with a foreground no-tool diagnostic session if necessary, then apply the normal retry rule.
 Give the build agent the exact tree hash, path list and message. Chain `git add ... && git diff
 --cached --stat && git write-tree` before launching a review: a stale `.git/index.lock` (also
 under `.git/modules/...` for submodules) otherwise yields an empty review target. Integration runs
