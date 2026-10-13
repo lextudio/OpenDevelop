@@ -986,7 +986,7 @@ public sealed class FormsDesignerHostClientTests
 		var copyLocal = references.Where(path => path != fixtureAssembly).ToArray();
 		Assert.Contains(copyLocal, path => Path.GetFileName(path) == "System.Windows.Forms.dll");
 		var found = finder.FindNew(fixtureAssembly, copyLocal, "");
-		Assert.Equal(new[] { "DirectProjectComponent", "FancyButton", "GreetingPanel", "ProjectComponent" }, found.Select(item => item.Control.Name).OrderBy(name => name, StringComparer.Ordinal));
+		Assert.Equal(new[] { "DateTimeProjectComponent", "DirectProjectComponent", "FancyButton", "GreetingPanel", "ProjectComponent" }, found.Select(item => item.Control.Name).OrderBy(name => name, StringComparer.Ordinal));
 		Assert.False(Assert.Single(found, item => item.Control.Name == "ProjectComponent").Control.IsUserControl);
 		Assert.All(found, item => Assert.Equal("FormsDesigner.CustomControlFixture", item.Category));
 		Assert.Empty(finder.FindNew(fixtureAssembly, copyLocal, ""));
@@ -1009,6 +1009,34 @@ public sealed class FormsDesignerHostClientTests
 		var trayAdded = await client.AddElementAsync(1, "Form1", new DesignerToolboxItemInfo { TypeName = projectComponent.FullName }, "projectComponent1", 0, 0, cancellationToken: timeout.Token);
 		Assert.Contains(trayAdded.Components, component => component.Name == "projectComponent1" && component.IsTrayComponent);
 		Assert.Contains("new FormsDesigner.CustomControlFixture.ProjectComponent()", DesignerText(await client.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+
+		var datedComponent = Assert.Single(found, item => item.Control.Name == "DateTimeProjectComponent").Control;
+		var datedAdded = await client.AddElementAsync(1, "Form1", new DesignerToolboxItemInfo { TypeName = datedComponent.FullName }, "dateTimeProjectComponent1", 0, 0, cancellationToken: timeout.Token);
+		Assert.Contains(datedAdded.Components, component => component.Name == "dateTimeProjectComponent1" && component.IsTrayComponent);
+		var dated = await client.SetPropertyAsync(1, "dateTimeProjectComponent1", "OccurredAt", "2026-10-13 14:30:00", timeout.Token);
+		Assert.True(dated.Accepted, dated.Error);
+		Assert.Contains("dateTimeProjectComponent1.OccurredAt = new System.DateTime(",
+			DesignerText(await client.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task ChildHost_WritesProjectComponentDateTimePropertyToVisualBasic()
+	{
+		var fixtureAssembly = CustomControlFixtureDll();
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = VbSnapshot(1, "project-date");
+		snapshot.ProjectAssemblyPath = fixtureAssembly;
+		Assert.True((await client.OpenAsync(snapshot, timeout.Token)).Accepted);
+
+		var added = await client.AddElementAsync(1, "Form1", new DesignerToolboxItemInfo {
+			TypeName = "FormsDesigner.CustomControlFixture.DateTimeProjectComponent"
+		}, "dateTimeProjectComponent1", 0, 0, cancellationToken: timeout.Token);
+		Assert.Contains(added.Components, component => component.Name == "dateTimeProjectComponent1" && component.IsTrayComponent);
+		var dated = await client.SetPropertyAsync(1, "dateTimeProjectComponent1", "OccurredAt", "2026-10-13 14:30:00", timeout.Token);
+		Assert.True(dated.Accepted, dated.Error);
+		Assert.Contains("dateTimeProjectComponent1.OccurredAt = New System.DateTime(",
+			DesignerText(await client.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
 	}
 
 	/// <summary>

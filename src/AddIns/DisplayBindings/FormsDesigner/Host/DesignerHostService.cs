@@ -1488,6 +1488,7 @@ sealed class DesignerHostService : IDesignerChildService
 		string text => SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(text)),
 		bool boolean => SyntaxFactory.LiteralExpression(boolean ? SyntaxKind.TrueLiteralExpression : SyntaxKind.FalseLiteralExpression),
 		char character => SyntaxFactory.LiteralExpression(SyntaxKind.CharacterLiteralExpression, SyntaxFactory.Literal(character)),
+		DateTime dateTime => SyntaxFactory.ParseExpression($"new System.DateTime({dateTime.Ticks}L)"),
 		byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal
 			=> SyntaxFactory.ParseExpression(Convert.ToString(value, CultureInfo.InvariantCulture)!),
 		Enum enumeration => SyntaxFactory.ParseExpression($"({enumeration.GetType().FullName ?? enumeration.GetType().Name}){Convert.ToInt64(enumeration, CultureInfo.InvariantCulture)}"),
@@ -1512,6 +1513,7 @@ sealed class DesignerHostService : IDesignerChildService
 			? Vb.SyntaxFactory.TrueLiteralExpression(Vb.SyntaxFactory.Token(Vb.SyntaxKind.TrueKeyword))
 			: Vb.SyntaxFactory.FalseLiteralExpression(Vb.SyntaxFactory.Token(Vb.SyntaxKind.FalseKeyword)),
 		char character => Vb.SyntaxFactory.CharacterLiteralExpression(Vb.SyntaxFactory.Literal(character)),
+		DateTime dateTime => Vb.SyntaxFactory.ParseExpression($"New System.DateTime({dateTime.Ticks}L)"),
 		int integer => Vb.SyntaxFactory.ParseExpression(integer.ToString(CultureInfo.InvariantCulture)),
 		short or ushort or long or ulong or byte or sbyte or uint
 			=> Vb.SyntaxFactory.ParseExpression(Convert.ToString(value, CultureInfo.InvariantCulture)!),

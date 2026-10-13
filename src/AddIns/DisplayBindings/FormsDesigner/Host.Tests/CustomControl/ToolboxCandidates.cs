@@ -39,3 +39,9 @@ public class DirectProjectComponent : IComponent
 
 	public void Dispose() => Disposed?.Invoke(this, EventArgs.Empty);
 }
+
+/// <summary>A project component with a converter-backed structured scalar property.</summary>
+public class DateTimeProjectComponent : Component
+{
+	public DateTime OccurredAt { get; set; }
+}
