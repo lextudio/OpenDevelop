@@ -240,7 +240,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			});
 		}
 
-		[DevFlowAction("od.wpf-designer.outline-move", Description = "Move a named element into a named container through the live Document Outline's drop path, after the named child (empty = first)")]
+		[DevFlowAction("od.wpf-designer.outline-move", Description = "Move one or comma-separated selected named elements into a named container through the live Document Outline's drop path, after the named child (empty = first)")]
 		public static string MoveInOutline(string elementName, string targetName, string afterName)
 		{
 			var viewContent = FindWpfViewContent();
@@ -248,12 +248,13 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			if (surface?.State?.Accepted != true)
 				return Failure("WPF designer is not loaded");
 			var outline = viewContent!.OutlineContent as ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl;
-			var node = surface.FindNodeByName(elementName);
+			var names = elementName.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+			var nodes = names.Select(surface.FindNodeByName).ToArray();
 			var target = surface.FindNodeByName(targetName);
 			var after = string.IsNullOrEmpty(afterName) ? null : surface.FindNodeByName(afterName);
-			if (outline == null || node == null || target == null || !string.IsNullOrEmpty(afterName) && after == null)
+			if (outline == null || nodes.Length == 0 || nodes.Any(node => node == null) || target == null || !string.IsNullOrEmpty(afterName) && after == null)
 				return Failure("Element, target or Document Outline not found");
-			if (!outline.AllowElementMoves || !outline.RequestMove(node.Id, target.Id, after?.Id))
+			if (!outline.AllowElementMoves || !outline.RequestMove(nodes.Select(node => node!.Id), target.Id, after?.Id))
 				return Failure("The Document Outline did not accept the move");
 			// The drop path is synchronous: report what the host decided, not merely that it was asked.
 			var result = surface.LastMoveResult;

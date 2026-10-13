@@ -459,7 +459,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			// outline -> surface path. The outline raises SelectionCommitted for a programmatic
 			// selection too, so an explicit guard is required to preserve secondary selections.
 			syncingOutlineSelection = true;
-			try { outline.SelectNodeById(surfaceControl?.SelectedElementId); }
+			try { outline.SelectNodesById(surfaceControl?.SelectedElementIds ?? Array.Empty<string>()); }
 			finally { syncingOutlineSelection = false; }
 			CommandManager.InvalidateRequerySuggested();
 		}
@@ -693,6 +693,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 				outline.DesignTimeFlagToggled += (_, toggled) => surfaceControl?.SetDesignTimeFlag(toggled.Node.Id, toggled.Flag, toggled.Value);
 				outline.AllowElementMoves = true;
 				outline.MoveRequested += (_, move) => surfaceControl?.MoveInto(move.Node.Id, move.Target.Id, move.After?.Id);
+				outline.MoveManyRequested += (_, move) => surfaceControl?.MoveInto(move.Nodes.Select(node => node.Id).ToArray(), move.Target.Id, move.After?.Id);
 				outline.AllowElementCopies = true;
 				outline.CopyRequested += (_, copy) => surfaceControl?.CopyInto(copy.Node.Id, copy.Target.Id, copy.After?.Id);
 				outlineSubscribed = true;
@@ -708,8 +709,8 @@ namespace ICSharpCode.WpfDesign.AddIn
 				return;
 			// Outline -> design surface: the surface owns selection; route the pick through the
 			// same single-selection path as a surface click.
-			shellSelection.Select(outline.SelectedNode?.Id);
-			surfaceControl?.SelectElementId(shellSelection.PrimarySelectedId);
+			shellSelection.Select(outline.SelectedNodes.Select(node => node.Id));
+			surfaceControl?.SelectElementIds(shellSelection.SelectedIds);
 		}
 
 		/// <summary>The DESIGNER's own element tree, matching what

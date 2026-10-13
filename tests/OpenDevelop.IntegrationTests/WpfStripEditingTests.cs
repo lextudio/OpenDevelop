@@ -1058,6 +1058,68 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
                 Assert.True((await app.InvokeAsync("od.wpf-designer.undo")).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
             Assert.Equal(before, await File.ReadAllTextAsync(xamlPath));
+
+        } finally {
+            await app.InvokeAsync("od.close-all-document-views");
+            await File.WriteAllBytesAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
+    public async Task Outline_MultiRowMoveUsesOneTransaction()
+    {
+        // Ctrl-selected Outline rows use the same atomic host move as a canvas multi-selection:
+        // their order is retained, the source collection is emptied, and one undo restores both.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllBytesAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Outline multi move">
+              <StackPanel>
+                <StackPanel x:Name="source"><Button x:Name="first" Content="First" /><Button x:Name="second" Content="Second" /></StackPanel>
+                <StackPanel x:Name="sink" Height="100"><TextBlock x:Name="anchor" Text="Anchor" /></StackPanel>
+              </StackPanel>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var before = await File.ReadAllTextAsync(xamlPath);
+
+            // Select in the reverse order to prove the drop keeps document/Outline order rather
+            // than the order Ctrl-clicks happened.
+            var selected = await app.InvokeAsync("od.wpf-designer.multi-select", "second,first");
+            Assert.Equal(2, selected.GetProperty("selectedIds").GetArrayLength());
+            var moved = await app.InvokeAsync("od.wpf-designer.outline-move", "second,first", "sink", "anchor");
+            Assert.True(moved.GetProperty("success").GetBoolean(), moved.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var text = await File.ReadAllTextAsync(xamlPath);
+            Assert.Matches("x:Name=\"anchor\"[^<]*/>\\s*<Button x:Name=\"first\"[^<]*/>\\s*<Button x:Name=\"second\"", text);
+
+            Assert.True((await app.InvokeAsync("od.wpf-designer.undo")).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            Assert.Equal(before, await File.ReadAllTextAsync(xamlPath));
+
+            var nested = await app.InvokeAsync("od.wpf-designer.outline-move", "source,first", "sink", "anchor");
+            Assert.True(nested.GetProperty("success").GetBoolean(), nested.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            text = await File.ReadAllTextAsync(xamlPath);
+            Assert.Matches("x:Name=\"anchor\"[^<]*/>\\s*<StackPanel x:Name=\"source\"", text);
+            Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(text, "x:Name=\"first\"").Count);
+            Assert.True((await app.InvokeAsync("od.wpf-designer.undo")).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            Assert.Equal(before, await File.ReadAllTextAsync(xamlPath));
+
         } finally {
             await app.InvokeAsync("od.close-all-document-views");
             await File.WriteAllBytesAsync(xamlPath, originalXaml);

@@ -28,6 +28,8 @@ namespace ICSharpCode.SharpDevelop.Widgets
 	public sealed class DocumentOutlineControl : TreeView
 	{
 		bool rebuilding;
+		bool applyingSelection;
+		readonly List<string> selectedIds = new();
 		/// <summary>Raised when the user (or a programmatic selection) picks a node;
 		/// <see cref="SelectedNode"/> holds the picked element.</summary>
 		public event EventHandler SelectionCommitted;
@@ -76,13 +78,18 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// <c>After</c> (null = first). The tree changes only with the backend's next snapshot.</summary>
 		public event EventHandler<(DesignerElementNode Node, DesignerElementNode Target, DesignerElementNode? After)> MoveRequested;
 
+		/// <summary>Raised when several selected rows are dropped together. The nodes preserve their
+		/// displayed selection order; the backend must make the move one transaction.</summary>
+		public event EventHandler<(IReadOnlyList<DesignerElementNode> Nodes, DesignerElementNode Target, DesignerElementNode? After)> MoveManyRequested;
+
 		/// <summary>Raised when Ctrl-dragging a row drops it: copy <c>Node</c> into <c>Target</c>,
 		/// right after <c>After</c> (null = first). The backend owns cloning and name uniquing.</summary>
 		public event EventHandler<(DesignerElementNode Node, DesignerElementNode Target, DesignerElementNode? After)> CopyRequested;
 
-		const string DragFormat = "OpenDevelop.DesignerOutlineNodeId";
+		const string DragFormat = "OpenDevelop.DesignerOutlineNodeIds";
 		Point dragStart;
 		TreeViewItem? dragSource;
+		IReadOnlyList<string>? dragIds;
 		TreeViewItem? dropHighlight;
 
 		public const string HiddenFlag = "Hidden";
@@ -92,6 +99,12 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		public const string LockedToggleName = "DesignTimeLockedToggle";
 
 		public DesignerElementNode SelectedNode => (SelectedItem as TreeViewItem)?.Tag as DesignerElementNode;
+		/// <summary>All selected displayed nodes, with the TreeView's current row first.</summary>
+		public IReadOnlyList<DesignerElementNode> SelectedNodes => selectedIds
+			.Select(id => FindDisplayed(id)?.Tag as DesignerElementNode)
+			.Where(node => node != null)
+			.Cast<DesignerElementNode>()
+			.ToArray();
 
 		/// <summary>Optional per-node context menu factory (e.g. designer-specific commands).</summary>
 		public Func<DesignerElementNode, ContextMenu> ContextMenuFactory { get; set; }
@@ -124,33 +137,65 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			// SelectNodeById picked it programmatically (IsSelected=true raises the same event) -
 			// otherwise a real click would never reach the consumers (they only subscribe to
 			// SelectionCommitted).
-			SelectedItemChanged += (_, _) => { if (!rebuilding) SelectionCommitted?.Invoke(this, EventArgs.Empty); };
+			SelectedItemChanged += (_, _) => {
+				if (rebuilding || applyingSelection)
+					return;
+				if (SelectedNode is { } selected)
+					SetSelectedIds(new[] { selected.Id }, selectPrimary: false);
+				SelectionCommitted?.Invoke(this, EventArgs.Empty);
+			};
+			PreviewMouseLeftButtonDown += OnPreviewMouseLeftButtonDown;
+		}
+
+		void OnPreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+		{
+			if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == 0
+				|| ItemAt(e.OriginalSource)?.Tag is not DesignerElementNode node)
+				return;
+			var ids = selectedIds.ToList();
+			if (!ids.Remove(node.Id))
+				ids.Add(node.Id);
+			SetSelectedIds(ids, selectPrimary: true);
+			e.Handled = true;
+			if (!rebuilding)
+				SelectionCommitted?.Invoke(this, EventArgs.Empty);
 		}
 
 		void AttachMoveHandlers()
 		{
-			PreviewMouseLeftButtonDown += (_, e) => {
+			// The Ctrl-click multi-selection handler claims the initial down event. Listen even when it
+			// did so that Ctrl-drag remains the existing single-row copy gesture.
+			AddHandler(System.Windows.Input.Mouse.PreviewMouseDownEvent, new System.Windows.Input.MouseButtonEventHandler((_, e) => {
+				if (e.ChangedButton != System.Windows.Input.MouseButton.Left)
+					return;
 				dragStart = e.GetPosition(this);
 				dragSource = AllowElementMoves || AllowElementCopies ? ItemAt(e.OriginalSource) : null;
-			};
+				dragIds = dragSource?.Tag is DesignerElementNode node ? DragNodeIds(node) : null;
+			}), true);
 			PreviewMouseMove += (_, e) => {
 				if (dragSource?.Tag is not DesignerElementNode node || e.LeftButton != System.Windows.Input.MouseButtonState.Pressed)
 					return;
 				var delta = e.GetPosition(this) - dragStart;
 				if (Math.Abs(delta.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance)
 					return;
+				// Copy retains its established one-row meaning even when the row is part of a move
+				// multi-selection; only a plain drag carries all selected outer roots.
+				var ids = IsCopyDrag() ? new[] { node.Id } : dragIds ?? DragNodeIds(node);
 				dragSource = null;
-				DragDrop.DoDragDrop(this, new DataObject(DragFormat, node.Id), AllowElementMoves && AllowElementCopies
+				dragIds = null;
+				DragDrop.DoDragDrop(this, new DataObject(DragFormat, ids.ToArray()), AllowElementMoves && AllowElementCopies
 					? DragDropEffects.Move | DragDropEffects.Copy
 					: AllowElementCopies ? DragDropEffects.Copy : DragDropEffects.Move);
 				SetDropHighlight(null);
 			};
 			// Only this outline's own row drags are claimed; any other drag passes through untouched.
 			DragOver += (_, e) => {
-				if (!(AllowElementMoves || AllowElementCopies) || e.Data.GetData(DragFormat) is not string id)
+				if (!(AllowElementMoves || AllowElementCopies) || e.Data.GetData(DragFormat) is not string[] ids || ids.Length == 0)
 					return;
-				var drop = ResolveDrop(id, e);
+				var drop = ResolveDrop(ids, e);
 				e.Effects = drop != null ? IsCopyDrag(e) ? DragDropEffects.Copy : DragDropEffects.Move : DragDropEffects.None;
+				if (e.Effects == DragDropEffects.Copy && ids.Length != 1)
+					e.Effects = DragDropEffects.None;
 				if (e.Effects == DragDropEffects.Copy && !AllowElementCopies || e.Effects == DragDropEffects.Move && !AllowElementMoves)
 					e.Effects = DragDropEffects.None;
 				SetDropHighlight(drop?.Highlight);
@@ -158,14 +203,14 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			};
 			DragLeave += (_, _) => SetDropHighlight(null);
 			Drop += (_, e) => {
-				if (!(AllowElementMoves || AllowElementCopies) || e.Data.GetData(DragFormat) is not string id)
+				if (!(AllowElementMoves || AllowElementCopies) || e.Data.GetData(DragFormat) is not string[] ids || ids.Length == 0)
 					return;
 				SetDropHighlight(null);
-				if (ResolveDrop(id, e) is { } drop) {
+				if (ResolveDrop(ids, e) is { } drop) {
 					if (IsCopyDrag(e))
-						RequestCopy(id, drop.Target.Id, drop.After?.Id);
+						RequestCopy(ids[0], drop.Target.Id, drop.After?.Id);
 					else
-						RequestMove(id, drop.Target.Id, drop.After?.Id);
+						RequestMove(ids, drop.Target.Id, drop.After?.Id);
 				}
 				e.Handled = true;
 			};
@@ -174,18 +219,64 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		static bool IsCopyDrag(DragEventArgs e)
 			=> (e.KeyStates & DragDropKeyStates.ControlKey) != 0;
 
+		static bool IsCopyDrag()
+			=> (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0;
+
+		IReadOnlyList<string> DragNodeIds(DesignerElementNode dragged)
+			=> selectedIds.Contains(dragged.Id) && selectedIds.Count > 1 ? selectedIds.ToArray() : new[] { dragged.Id };
+
 		/// <summary>Raises <see cref="MoveRequested"/> for the displayed nodes with these ids, as a
 		/// drop does. False when one is not displayed.</summary>
 		public bool RequestMove(string nodeId, string targetId, string? afterId)
+			=> RequestMove(new[] { nodeId }, targetId, afterId);
+
+		/// <summary>Raises the appropriate Outline move event for displayed rows. A move is rejected
+		/// before it reaches a backend unless every source and insertion anchor is still displayed.</summary>
+		public bool RequestMove(IEnumerable<string> nodeIds, string targetId, string? afterId)
 		{
-			var node = FindDisplayed(nodeId);
+			var ids = (nodeIds ?? Array.Empty<string>()).Where(id => !string.IsNullOrEmpty(id)).Distinct(StringComparer.Ordinal).ToArray();
+			var nodes = ids.Select(FindDisplayed).ToArray();
 			var target = FindDisplayed(targetId);
 			var after = afterId == null ? null : FindDisplayed(afterId);
-			if (node?.Tag is not DesignerElementNode moved || target?.Tag is not DesignerElementNode container
+			if (nodes.Length == 0 || nodes.Any(item => item?.Tag is not DesignerElementNode)
+				|| target?.Tag is not DesignerElementNode container
 				|| afterId != null && after?.Tag is not DesignerElementNode)
 				return false;
-			MoveRequested?.Invoke(this, (moved, container, after?.Tag as DesignerElementNode));
+			// A parent and its displayed child can both be Ctrl-selected. The child travels with the
+			// parent, so sending both would make the host remove it twice; reduce to outer roots.
+			var movedItems = nodes.Cast<TreeViewItem>().ToArray();
+			var outerRoots = movedItems.Where(item => !movedItems.Any(other => other != item && IsAncestor(other, item))).ToHashSet();
+			// Selection order is click order; insertion must instead retain document/Outline order.
+			var moved = DisplayedItems().Where(outerRoots.Contains).Select(item => (DesignerElementNode)item.Tag).ToArray();
+			if (moved.Length == 1)
+				MoveRequested?.Invoke(this, (moved[0], container, after?.Tag as DesignerElementNode));
+			else
+				MoveManyRequested?.Invoke(this, (moved, container, after?.Tag as DesignerElementNode));
 			return true;
+		}
+
+		static bool IsAncestor(TreeViewItem ancestor, TreeViewItem item)
+		{
+			for (var current = ItemsControl.ItemsControlFromItemContainer(item) as TreeViewItem; current != null;
+				current = ItemsControl.ItemsControlFromItemContainer(current) as TreeViewItem)
+				if (current == ancestor)
+					return true;
+			return false;
+		}
+
+		IEnumerable<TreeViewItem> DisplayedItems()
+		{
+			foreach (TreeViewItem root in Items)
+				foreach (var item in DisplayedItems(root))
+					yield return item;
+		}
+
+		static IEnumerable<TreeViewItem> DisplayedItems(TreeViewItem item)
+		{
+			yield return item;
+			foreach (TreeViewItem child in item.Items.OfType<TreeViewItem>())
+				foreach (var descendant in DisplayedItems(child))
+					yield return descendant;
 		}
 
 		/// <summary>Raises <see cref="CopyRequested"/> for the displayed nodes with these ids, as a
@@ -206,25 +297,25 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// the top quarter of a row inserts before it, the bottom quarter after it (both into its
 		/// parent), anything else into the row itself after its last child. Never into the dragged
 		/// row or its own subtree.</summary>
-		(DesignerElementNode Target, DesignerElementNode? After, TreeViewItem Highlight)? ResolveDrop(string draggedId, DragEventArgs e)
+		(DesignerElementNode Target, DesignerElementNode? After, TreeViewItem Highlight)? ResolveDrop(IReadOnlyCollection<string> draggedIds, DragEventArgs e)
 		{
 			var over = ItemAt(e.OriginalSource);
 			if (over?.Tag is not DesignerElementNode hovered)
 				return null;
 			for (var item = over; item != null; item = ItemsControl.ItemsControlFromItemContainer(item) as TreeViewItem)
-				if ((item.Tag as DesignerElementNode)?.Id == draggedId)
+				if ((item.Tag as DesignerElementNode) is { } node && draggedIds.Contains(node.Id))
 					return null;
 			var header = (FrameworkElement)over.Header;
 			var y = e.GetPosition(header).Y / Math.Max(1, header.ActualHeight);
 			var parentItem = ItemsControl.ItemsControlFromItemContainer(over) as TreeViewItem;
 			if ((y < 0.25 || y > 0.75) && parentItem?.Tag is DesignerElementNode parent) {
 				var index = parentItem.Items.IndexOf(over) + (y > 0.75 ? 1 : 0);
-				// Siblings shown before the insertion point, other than the dragged row itself.
+				// Siblings shown before the insertion point, other than any dragged row.
 				var previous = parentItem.Items.Cast<TreeViewItem>().Take(index)
-					.Select(item => (DesignerElementNode)item.Tag).LastOrDefault(node => node.Id != draggedId && !IsSynthetic(node));
+					.Select(item => (DesignerElementNode)item.Tag).LastOrDefault(node => !draggedIds.Contains(node.Id) && !IsSynthetic(node));
 				return (parent, previous, parentItem);
 			}
-			var lastChild = over.Items.Cast<TreeViewItem>().Select(item => (DesignerElementNode)item.Tag).LastOrDefault(node => node.Id != draggedId && !IsSynthetic(node));
+			var lastChild = over.Items.Cast<TreeViewItem>().Select(item => (DesignerElementNode)item.Tag).LastOrDefault(node => !draggedIds.Contains(node.Id) && !IsSynthetic(node));
 			return (hovered, lastChild, over);
 		}
 
@@ -275,7 +366,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// <see cref="SetRoot"/>; a NULL/empty sequence just clears the tree.</summary>
 		public void SetRoots(IEnumerable<DesignerElementNode> roots)
 		{
-			var keepId = SelectedNode?.Id;
+			var keepIds = selectedIds.ToArray();
 			rebuilding = true;
 			try {
 				Items.Clear();
@@ -284,8 +375,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 					foreach (var root in roots)
 						Items.Add(CreateItem(root));
 				}
-				if (keepId != null)
-					SelectNodeById(keepId);
+				SetSelectedIds(keepIds, selectPrimary: true);
 			} finally {
 				rebuilding = false;
 			}
@@ -299,26 +389,49 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// WpfSurfaceDesignerControl/WpfSurfaceHostService's own null-vs-empty root fix, since
 		/// this control's own guard never let the id through in the first place.</summary>
 		public void SelectNodeById(string? id)
+			=> SelectNodesById(id == null ? Array.Empty<string>() : new[] { id });
+
+		/// <summary>Selects exactly the displayed ids. The first becomes the ordinary TreeView
+		/// selection; additional rows remain visibly selected for a Ctrl multi-row drag.</summary>
+		public void SelectNodesById(IEnumerable<string> ids)
 		{
-			if (id == null || Items.Count == 0)
-				return;
-			foreach (TreeViewItem rootItem in Items)
-			{
-				var match = FindNode(rootItem, id);
-				if (match != null)
-				{
-					match.IsSelected = true;
-					match.BringIntoView();
-					return;
-				}
-			}
+			SetSelectedIds(ids, selectPrimary: true);
 		}
 
 		/// <summary>Selects nothing.</summary>
 		public void ClearSelection()
 		{
-			if (SelectedItem is TreeViewItem selected)
-				selected.IsSelected = false;
+			SetSelectedIds(Array.Empty<string>(), selectPrimary: false);
+		}
+
+		void SetSelectedIds(IEnumerable<string> ids, bool selectPrimary)
+		{
+			var next = (ids ?? Array.Empty<string>()).Where(id => !string.IsNullOrEmpty(id))
+				.Distinct(StringComparer.Ordinal).Where(id => FindDisplayed(id) != null).ToArray();
+			selectedIds.Clear();
+			selectedIds.AddRange(next);
+			applyingSelection = true;
+			try {
+				foreach (TreeViewItem root in Items)
+					RefreshSelectionVisuals(root);
+				if (selectPrimary && next.FirstOrDefault() is { } primary && FindDisplayed(primary) is { } item) {
+					item.IsSelected = true;
+					item.BringIntoView();
+				} else if (next.Length == 0 && SelectedItem is TreeViewItem selected)
+					selected.IsSelected = false;
+			} finally {
+				applyingSelection = false;
+			}
+		}
+
+		void RefreshSelectionVisuals(TreeViewItem item)
+		{
+			var isSecondary = item.Tag is DesignerElementNode node && selectedIds.Contains(node.Id)
+				&& !StringComparer.Ordinal.Equals(node.Id, SelectedNode?.Id);
+			item.Background = isSecondary ? SystemColors.HighlightBrush : null;
+			item.Foreground = isSecondary ? SystemColors.HighlightTextBrush : null;
+			foreach (TreeViewItem child in item.Items.OfType<TreeViewItem>())
+				RefreshSelectionVisuals(child);
 		}
 
 		/// <summary>Returns the nodes the control is actually displaying, in depth-first order.

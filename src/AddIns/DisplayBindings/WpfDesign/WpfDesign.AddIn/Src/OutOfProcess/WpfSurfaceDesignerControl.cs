@@ -558,6 +558,19 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			UpdateSelectionChrome();
 		}
 
+		/// <summary>Sets the selection by current protocol ids. The Document Outline already owns
+		/// ids (including unnamed elements), so resolving by display name here would lose rows.</summary>
+		internal void SelectElementIds(IEnumerable<string> ids)
+		{
+			controller.RestoreSelection((ids ?? Array.Empty<string>())
+				.Select(NodeById)
+				.Where(node => node != null)
+				.Select(node => node!.Id)
+				.ToArray());
+			NotifySelectionChanged();
+			UpdateSelectionChrome();
+		}
+
 		/// <summary>Finds a node by its <c>x:Name</c> (depth-first), falling back to matching the
 		/// TYPE name of an unnamed element - without it the document root (normally carrying no
 		/// x:Name) is unreachable by name. First match wins; the root is visited first.</summary>
@@ -744,11 +757,16 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// <summary>The Outline's drag and drop: moves an element into a container after one of its
 		/// children (null = first) and keeps it selected under its new path id.</summary>
 		internal void MoveInto(string elementId, string targetId, string? afterId)
+			=> MoveInto(new[] { elementId }, targetId, afterId);
+
+		/// <summary>Moves the selected Outline rows as one host transaction. The child validates the
+		/// complete set before changing the document, so a multi-row drop cannot partially move.</summary>
+		internal void MoveInto(IReadOnlyList<string> elementIds, string targetId, string? afterId)
 		{
 			LastMoveResult = null;
-			if (state == null)
+			if (state == null || elementIds == null || elementIds.Count == 0)
 				return;
-			var result = client.MoveIntoAsync(RequireVersion(), new[] { elementId }, targetId, afterId).GetAwaiter().GetResult();
+			var result = client.MoveIntoAsync(RequireVersion(), elementIds.ToArray(), targetId, afterId).GetAwaiter().GetResult();
 			LastMoveResult = result;
 			Show(result);
 			if (!result.Accepted)

@@ -762,8 +762,11 @@ middle drops into it after its last child, highlighting the target - raising `Mo
 `od.wpf-designer.outline-move` takes the same `RequestMove` path. Protocol **v29** adds atomic
 `design/clone-into(elementId, target, after)` for Ctrl-drag copy: it keeps the source, uniqueifies
 names, honors the exact target and insertion rail, selects the clone, and rejects self/descendant or
-full single-content targets. `od.wpf-designer.outline-copy` takes the same `RequestCopy` path. Not
-yet: multi-row drags. Moving a child now clears authored Grid/Canvas/Dock attached layout properties
+full single-content targets. `od.wpf-designer.outline-copy` takes the same `RequestCopy` path.
+Ctrl-selecting Outline rows keeps the shared canvas selection in sync and a row drag moves the
+selected outer roots through one `design/move-into` transaction; nested selected children travel
+with their parent, while Ctrl-copy remains deliberately single-row. Moving a child now clears
+authored Grid/Canvas/Dock attached layout properties
 that are not meaningful under its new parent, in the same undo group, while preserving the new
 parent's own layout property family.
 
