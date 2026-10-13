@@ -268,6 +268,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			// Ctrl+. are its own (OnKeyDown): the canvas must not consume them first. Right-click
 			// raises ContextMenuRequested, and the host builds that menu from the designer verbs.
 			HandlesUndoRedoKeys = false;
+			// TableLayoutPanel dividers resize through design/set-table-layout-track; there is no
+			// Forms split mutation, so Ctrl-click over a table stays a multi-selection gesture.
+			controller.Surface.GridTrackSplitEnabled = false;
+			controller.GridGuideDragCommitted += (_, drag) => CommitTableLayoutTrackDrag(drag);
 			ContextMenu = null;
 			// A tab header is painted by its TabControl and is not a component: a press on one
 			// switches the page instead of starting a selection or drag.
@@ -527,6 +531,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			SelectedComponentName = names.FirstOrDefault() ?? "";
 			selectedComponent = state?.Components?.FirstOrDefault(item => item.Name == SelectedComponentName);
 			UpdateAdorners();
+			UpdateTableLayoutGuides();
 			Focus();
 			SelectionChanged?.Invoke(this, EventArgs.Empty);
 			if (selectedComponent != null)
@@ -535,7 +540,71 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 
 		/// <summary>Pushes this designer's selection to the canvas outline (primary first) without
 		/// the canvas announcing it back. Tray-only components have no outline.</summary>
-		void UpdateDesignGuides() => controller.RestoreSelection(SelectedComponentNames);
+		void UpdateDesignGuides()
+		{
+			controller.RestoreSelection(SelectedComponentNames);
+			UpdateTableLayoutGuides();
+		}
+
+		/// <summary>Shows the divider guides of a single selected TableLayoutPanel from the host's
+		/// measured tracks (the host tree's GridTracks, placed at the component's surface bounds).
+		/// Anything else - no tracks, a multi-selection, a locked table - hides them.</summary>
+		internal void UpdateTableLayoutGuides()
+		{
+			var component = selectedComponentNames.Count == 1 ? selectedComponent : null;
+			var tracks = component == null || lockedComponentNames.Contains(component.Name) ? null
+				: FindTreeNode(state?.Tree, component.Name)?.GridTracks;
+			if (tracks is not { Accepted: true } || (tracks.RowTracks.Count == 0 && tracks.ColumnTracks.Count == 0)) {
+				controller.ClearGridGuides();
+				return;
+			}
+			controller.SetGridGuides(component.Name, component.SurfaceX, component.SurfaceY, component.Width, component.Height,
+				TrackBoundaries(tracks.RowTracks), TrackBoundaries(tracks.ColumnTracks));
+		}
+
+		/// <summary>The shown TableLayoutPanel guides, as the canvas holds them.</summary>
+		internal (string Name, IReadOnlyList<double> Rows, IReadOnlyList<double> Columns) TableLayoutGuides
+			=> (controller.Surface.GridGuideName, controller.Surface.GridGuideRowOffsets, controller.Surface.GridGuideColumnOffsets);
+
+		/// <summary>Automation seam for a divider release: the divider after track
+		/// <paramref name="index"/> is released where that track would be <paramref name="size"/>
+		/// units long, through the same commit path as a canvas drag.</summary>
+		internal bool ReleaseTableLayoutDivider(bool isRow, int index, double size)
+		{
+			var (name, rows, columns) = TableLayoutGuides;
+			var offsets = isRow ? rows : columns;
+			var component = state?.Components?.FirstOrDefault(item => item.Name == name);
+			if (component == null || index < 0 || index + 2 >= offsets.Count)
+				return false;
+			var origin = isRow ? component.SurfaceY : component.SurfaceX;
+			CommitTableLayoutTrackDrag((name, isRow, index, origin + offsets[index] + size));
+			return true;
+		}
+
+		static double[] TrackBoundaries(IReadOnlyList<DesignerGridTrackInfo> tracks)
+			=> tracks.Count == 0 ? Array.Empty<double>()
+				: tracks.Select(track => track.Offset).Append(tracks[tracks.Count - 1].Offset + tracks[tracks.Count - 1].Size).ToArray();
+
+		/// <summary>A released divider: the track before it becomes an Absolute track of the
+		/// dragged size. The host accepts that only for a provably authored style list; otherwise
+		/// the edit is refused and the guides return to the measured layout.</summary>
+		void CommitTableLayoutTrackDrag((string Name, bool IsRow, int Index, double Position) drag)
+		{
+			var component = state?.Components?.FirstOrDefault(item => item.Name == drag.Name);
+			var tracks = component == null ? null : FindTreeNode(state.Tree, component.Name)?.GridTracks;
+			var list = drag.IsRow ? tracks?.RowTracks : tracks?.ColumnTracks;
+			if (list == null || drag.Index < 0 || drag.Index >= list.Count) {
+				UpdateTableLayoutGuides();
+				return;
+			}
+			var origin = drag.IsRow ? component.SurfaceY : component.SurfaceX;
+			var size = Math.Max(0, (int)Math.Round(drag.Position - origin - list[drag.Index].Offset));
+			if (size == (int)Math.Round(list[drag.Index].Size)) {
+				UpdateTableLayoutGuides();
+				return;
+			}
+			TableLayoutTrackResizeRequested?.Invoke(this, new RemoteTableLayoutTrackEventArgs(drag.Name, drag.IsRow, drag.Index, size));
+		}
 
 		/// <summary>A committed canvas move or resize. A move goes through the designer's own
 		/// selection move (<see cref="SelectionMoveRequested"/>, which also carries its snapping to
@@ -654,6 +723,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public event EventHandler SelectionChanged;
 		public event EventHandler<RemoteToolboxDropEventArgs> ToolboxDrop;
 		public event EventHandler<RemoteBoundsChangedEventArgs> BoundsChanged;
+		/// <summary>A TableLayoutPanel divider was dragged: set that row/column to an Absolute size.</summary>
+		public event EventHandler<RemoteTableLayoutTrackEventArgs> TableLayoutTrackResizeRequested;
 		public event EventHandler<RemoteSelectionMoveEventArgs> SelectionMoveRequested;
 		public event EventHandler<RemoteReorderRequestedEventArgs> ReorderRequested;
 		public event EventHandler<RemoteRenameRequestedEventArgs> RenameRequested;
@@ -1972,6 +2043,21 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public int Y { get; }
 		public int Width { get; }
 		public int Height { get; }
+	}
+
+	sealed class RemoteTableLayoutTrackEventArgs : EventArgs
+	{
+		public RemoteTableLayoutTrackEventArgs(string componentName, bool isRow, int index, int size)
+		{
+			ComponentName = componentName;
+			IsRow = isRow;
+			Index = index;
+			Size = size;
+		}
+		public string ComponentName { get; }
+		public bool IsRow { get; }
+		public int Index { get; }
+		public int Size { get; }
 	}
 
 	sealed class RemoteSelectionMoveEventArgs : EventArgs

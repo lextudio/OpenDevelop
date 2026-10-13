@@ -622,6 +622,27 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.forms-designer.table-layout-guides", Description = "The TableLayoutPanel divider guides the canvas currently shows: name and local row/column boundaries")]
+		public static string TableLayoutGuides()
+		{
+			var control = FindFormsDesignerViewContent()?.RemoteDesignerControl;
+			if (control == null)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			var (name, rows, columns) = control.TableLayoutGuides;
+			return JsonSerializer.Serialize(new { success = true, name, rows, columns });
+		}
+
+		[DevFlowAction("od.forms-designer.table-layout-divider", Description = "Release the shown TableLayoutPanel divider after track <index> ('row'|'col') where that track is <size> units long, through the canvas divider-drag commit path")]
+		public static string ReleaseTableLayoutDivider(string axis, int index, double size)
+		{
+			var control = FindFormsDesignerViewContent()?.RemoteDesignerControl;
+			if (control == null)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			return control.ReleaseTableLayoutDivider(axis == "row", index, size)
+				? JsonSerializer.Serialize(new { success = true })
+				: Failure("No shown TableLayoutPanel divider after " + axis + " " + index);
+		}
+
 		[DevFlowAction("od.forms-designer.properties-pad.edit-items", Description = "Click a ListBox/ComboBox Items row's real \"…\" button and apply an edit script to the collection dialog's model instead of the modal dialog: ';'-separated add:<afterIndex>:<text>, remove:<i>, up:<i>, down:<i>, rename:<i>:<text>, or 'cancel'")]
 		public static string EditItemsThroughPropertiesPad(string propertyName, string script)
 		{

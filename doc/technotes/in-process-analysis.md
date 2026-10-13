@@ -904,8 +904,20 @@ equals the live style count, so the requested index provably names one authored 
 touching source or live state. The proven statement is rewritten in place (`AutoSize` without a
 value; `Absolute`/`Percent` with a finite non-negative float), then the live style changes in one
 designer transaction. VB source is rejected for now. Host tests cover the edit, re-measured tracks,
-flushed source and each rejection. Still missing: the client projection of host `GridTracks` into
-`CanvasSnapshot` and the rail gesture that commits through this mutation.
+flushed source and each rejection.
+
+**Client half (2026-10-13).** Selecting a single, unlocked TableLayoutPanel now shows the shared
+canvas's blue divider guides from the host tree's measured `GridTracks`, placed at the component's
+surface bounds; any other selection clears them. Releasing a divider makes the track before it an
+`Absolute` track of the dragged pixel size through `design/set-table-layout-track`, one designer
+undo step; a refused edit (unprovable style list) shows the host's error and the guides return to
+the measured layout. Forms opts out of the shared Ctrl insertion rails (`GridTrackSplitEnabled`),
+because it has no split mutation and Ctrl-click must stay a multi-selection gesture.
+`od.forms-designer.table-layout-guides` reports the shown guides and
+`od.forms-designer.table-layout-divider` releases a divider through the same commit path; the
+LibreWinForms journey `WinFormsDesigner_TableLayoutDividerWritesTheAuthoredColumnStyle` proves the
+guides, the re-measured divider, the saved `ColumnStyle` and undo. Not yet: preserving a Percent
+track's unit (VS redistributes neighbouring percentages), row/column add and remove, and VB source.
 
 **C4 event handler generation (2026-10-12).** Double-clicking a WPF event in the Properties pad now
 matches the in-process designer (`AbstractEventHandlerService`): the XAML attribute is bound through

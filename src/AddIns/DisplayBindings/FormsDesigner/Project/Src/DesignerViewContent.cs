@@ -103,6 +103,7 @@ namespace ICSharpCode.FormsDesigner
 		internal System.Windows.IInputElement RemoteDesignSurface => remoteControl;
 
 		/// <summary>The currently selected component name on the remote design surface.</summary>
+		internal RemoteFormsDesignerControl RemoteDesignerControl => remoteControl;
 		internal string RemoteDesignerSelectedComponent => remoteControl?.SelectedComponentName ?? "";
 
 		/// <summary>Short backend label for the toolbar ("WinForms" / "LibreWinForms").</summary>
@@ -138,6 +139,15 @@ namespace ICSharpCode.FormsDesigner
 		{
 			EnsureRemoteDesignerLoaded();
 			ExecuteRemoteEdit(() => remoteClient.SetItemsAsync(remoteDocumentVersion, componentName, items,
+				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+		}
+
+		/// <summary>Sets one authored TableLayoutPanel row/column style through the host's
+		/// design/set-table-layout-track, as one undoable designer edit.</summary>
+		internal void SetRemoteTableLayoutTrack(string componentName, bool isRow, int index, string sizeType, double value)
+		{
+			EnsureRemoteDesignerLoaded();
+			ExecuteRemoteEdit(() => remoteClient.SetTableLayoutTrackAsync(remoteDocumentVersion, componentName, isRow, index, sizeType, value,
 				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
 		}
 
@@ -930,6 +940,11 @@ namespace ICSharpCode.FormsDesigner
 				remoteControl = new RemoteFormsDesignerControl(remoteClient, FormsDesignerHostClient.GetBackendName(backend));
 				remoteControl.ToolboxDrop += RemoteToolboxDrop;
 				remoteControl.BoundsChanged += RemoteBoundsChanged;
+				remoteControl.TableLayoutTrackResizeRequested += (sender, e) => {
+					try { SetRemoteTableLayoutTrack(e.ComponentName, e.IsRow, e.Index, "Absolute", e.Size); }
+					catch (Exception exception) { LoggingService.Error(exception); MessageService.ShowError(exception.Message); }
+					finally { remoteControl?.UpdateTableLayoutGuides(); }
+				};
 				remoteControl.SelectionMoveRequested += (sender, e) => {
 					try { MoveRemoteSelection(e.DeltaX, e.DeltaY); }
 					catch (Exception exception) { LoggingService.Error(exception); MessageService.ShowError(exception.Message); }

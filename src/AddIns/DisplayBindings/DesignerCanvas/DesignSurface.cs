@@ -1007,9 +1007,20 @@ public class DesignSurface : DesignerCanvas
 	/// otherwise the click splits a row. Position is local to the Grid.</summary>
 	public event EventHandler<(string Name, bool IsRow, double Position)> GridTrackSplitRequested;
 
+	/// <summary>Whether Ctrl shows the amber insertion rails and Ctrl-click splits a track. A
+	/// backend without a split mutation turns this off so Ctrl-click keeps its ordinary
+	/// multi-selection meaning over a selected grid.</summary>
+	public bool GridTrackSplitEnabled { get; set; } = true;
+
+	/// <summary>The grid whose divider guides are shown (null when hidden) and its row/column
+	/// boundaries, local to that grid. Read-only state for automation and tests.</summary>
+	public string? GridGuideName => gridRowOffsets.Length == 0 && gridColOffsets.Length == 0 ? null : gridGuideName;
+	public IReadOnlyList<double> GridGuideRowOffsets => gridRowOffsets;
+	public IReadOnlyList<double> GridGuideColumnOffsets => gridColOffsets;
+
 	bool TryRequestGridTrackSplit(Vector2 designPoint)
 	{
-		if (gridGuideName == null || (gridRowOffsets.Length == 0 && gridColOffsets.Length == 0))
+		if (!GridTrackSplitEnabled || gridGuideName == null || (gridRowOffsets.Length == 0 && gridColOffsets.Length == 0))
 			return false;
 		var (gx, gy, gw, gh) = gridGuideRect;
 		if (designPoint.X <= gx || designPoint.X >= gx + gw || designPoint.Y <= gy || designPoint.Y >= gy + gh)
@@ -1030,7 +1041,7 @@ public class DesignSurface : DesignerCanvas
 	{
 		var designPoint = ToDesignPoint(surfacePoint);
 		var (gx, gy, gw, gh) = gridGuideRect;
-		SetGridSplitRailsVisible(Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
+		SetGridSplitRailsVisible(GridTrackSplitEnabled && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
 			&& designPoint.X > gx && designPoint.X < gx + gw && designPoint.Y > gy && designPoint.Y < gy + gh);
 	}
 

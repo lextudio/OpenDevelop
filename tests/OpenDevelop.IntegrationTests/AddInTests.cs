@@ -3957,6 +3957,81 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
+    public async Task WinFormsDesigner_TableLayoutDividerWritesTheAuthoredColumnStyle()
+    {
+        // Selecting a TableLayoutPanel shows the host's measured divider guides; releasing a
+        // divider rewrites that authored ColumnStyle in Form1.Designer.cs as one undo step.
+        var formCodePath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.cs");
+        var designerPath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.Designer.cs");
+        var originalForm = await File.ReadAllBytesAsync(formCodePath);
+        var originalDesigner = await File.ReadAllBytesAsync(designerPath);
+        try {
+            var text = await File.ReadAllTextAsync(designerPath);
+            text = text
+                .Replace("            Controls.Add(dropPanel);", """
+                            grid1 = new System.Windows.Forms.TableLayoutPanel();
+                            grid1.ColumnCount = 2;
+                            grid1.RowCount = 1;
+                            grid1.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 40F));
+                            grid1.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+                            grid1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+                            grid1.Location = new System.Drawing.Point(12, 180);
+                            grid1.Name = "grid1";
+                            grid1.Size = new System.Drawing.Size(160, 80);
+                            Controls.Add(dropPanel);
+                            Controls.Add(grid1);
+                """, StringComparison.Ordinal)
+                .Replace("        private System.Windows.Forms.Panel dropPanel;",
+                    "        private System.Windows.Forms.Panel dropPanel;\n        private System.Windows.Forms.TableLayoutPanel grid1;", StringComparison.Ordinal);
+            Assert.Contains("Controls.Add(grid1);", text, StringComparison.Ordinal);
+            await File.WriteAllTextAsync(designerPath, text);
+
+            await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath);
+            await _app.InvokeAsync("od.open-file", formCodePath);
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await _app.InvokeAsync("od.forms-designer.status");
+                return status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000), "The WinForms designer did not load. Status: " + status);
+
+            double[] Columns(JsonElement guides) => guides.GetProperty("columns").EnumerateArray().Select(item => item.GetDouble()).ToArray();
+            JsonElement guides = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                await _app.InvokeAsync("od.forms-designer.select", "grid1");
+                guides = await _app.InvokeAsync("od.forms-designer.table-layout-guides");
+                return guides.GetProperty("success").GetBoolean() && guides.GetProperty("name").GetString() == "grid1";
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 300), "grid1's divider guides were not shown: " + guides);
+            Assert.Equal(new[] { 0d, 40d, 160d }, Columns(guides));
+
+            var released = await _app.InvokeAsync("od.forms-designer.table-layout-divider", "col", 0, 64);
+            Assert.True(released.GetProperty("success").GetBoolean(), released.ToString());
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                guides = await _app.InvokeAsync("od.forms-designer.table-layout-guides");
+                return guides.GetProperty("name").GetString() == "grid1" && Columns(guides).SequenceEqual(new[] { 0d, 64d, 160d });
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 300), "The guides did not follow the re-measured table: " + guides);
+
+            var saved = await _app.InvokeAsync("od.file.save", formCodePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var savedDesigner = await File.ReadAllTextAsync(designerPath);
+            Assert.Contains("grid1.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 64F));", savedDesigner, StringComparison.Ordinal);
+            Assert.Contains("ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F)", savedDesigner, StringComparison.Ordinal);
+            Assert.DoesNotContain("40F", savedDesigner, StringComparison.Ordinal);
+
+            var undone = await _app.InvokeAsync("od.forms-designer.undo");
+            Assert.True(undone.GetProperty("success").GetBoolean(), undone.ToString());
+            saved = await _app.InvokeAsync("od.file.save", formCodePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            savedDesigner = await File.ReadAllTextAsync(designerPath);
+            Assert.Contains("SizeType.Absolute, 40F", savedDesigner, StringComparison.Ordinal);
+            Assert.DoesNotContain("64F", savedDesigner, StringComparison.Ordinal);
+        } finally {
+            await _app.InvokeAsync("od.close-all-document-views");
+            await File.WriteAllBytesAsync(formCodePath, originalForm);
+            await File.WriteAllBytesAsync(designerPath, originalDesigner);
+        }
+    }
+
+    [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
     public async Task WinFormsDesigner_MultiSelectAlignNudgeUndoRedo_LandAsDesignerEdits()
     {
         // The out-of-process WinForms designer now exposes the same editing surface as the
