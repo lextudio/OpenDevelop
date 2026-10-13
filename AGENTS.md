@@ -53,6 +53,9 @@ until exit; never append `&`, use `nohup`, or otherwise daemonize it. In managed
 the background child can be terminated before OpenCode initializes, leaving no log record and no
 session. A missing newly-created session is a non-terminal review failure, not approval; diagnose
 with a foreground no-tool diagnostic session if necessary, then apply the normal retry rule.
+Empty intermediate polls are normal while the reviewer is reading code: wait for the original
+foreground process to exit before looking up its session or deciding that the launch failed. Do not
+start a second review merely because its streamed output is quiet.
 Give the build agent the exact tree hash, path list and message. Chain `git add ... && git diff
 --cached --stat && git write-tree` before launching a review: a stale `.git/index.lock` (also
 under `.git/modules/...` for submodules) otherwise yields an empty review target. Integration runs
