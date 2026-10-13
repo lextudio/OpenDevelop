@@ -244,7 +244,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>The row's/column's current rendered size (<c>ActualHeight</c>/<c>ActualWidth</c>).</summary>
 		public double Size { get; set; }
 		/// <summary>The authored length's unit - <c>Pixel</c>, <c>Star</c> or <c>Auto</c> - or null
-		/// when the host does not report it (WinUI reads its tracks from source instead).</summary>
+		/// when the host does not report it (WinUI and the Forms measured-only TableLayout slice do
+		/// not claim source metadata from a live layout).</summary>
 		public string? Unit { get; set; }
 		/// <summary>The authored length's numeric part (1 for <c>Auto</c>); meaningful only with
 		/// <see cref="Unit"/>.</summary>

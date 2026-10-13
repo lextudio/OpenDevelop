@@ -2629,8 +2629,39 @@ sealed class DesignerHostService : IDesignerChildService
 			Path = path,
 			IsDesignable = true,
 			LayoutMode = layoutMode,
+			GridTracks = BuildTableLayoutTracks(control),
 			Children = children.ToList()
 		};
+	}
+
+	/// <summary>Publishes the live TableLayoutPanel geometry rather than reconstructing it from
+	/// source. Percent and Auto tracks can resolve differently once minimum sizes, spans and the
+	/// actual container bounds participate in layout, so the canvas must start from WinForms'
+	/// measured arrays. WinForms creates default Absolute styles at runtime even when Designer.cs
+	/// authored no style at all, so this measured-only slice deliberately leaves Unit/Value empty;
+	/// a future source mutation must establish authored style syntax independently.</summary>
+	static DesignerGridGuides? BuildTableLayoutTracks(Control control)
+	{
+		if (control is not TableLayoutPanel table)
+			return null;
+		var rows = table.GetRowHeights();
+		var columns = table.GetColumnWidths();
+		var result = new DesignerGridGuides { Accepted = true };
+		var offset = 0d;
+		for (var index = 0; index < rows.Length; index++) {
+			result.RowTracks.Add(new DesignerGridTrackInfo {
+				Offset = offset, Size = rows[index]
+			});
+			offset += rows[index];
+		}
+		offset = 0;
+		for (var index = 0; index < columns.Length; index++) {
+			result.ColumnTracks.Add(new DesignerGridTrackInfo {
+				Offset = offset, Size = columns[index]
+			});
+			offset += columns[index];
+		}
+		return result;
 	}
 
 	static string ChildPath(string path, int index) =>

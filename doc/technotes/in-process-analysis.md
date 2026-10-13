@@ -883,13 +883,15 @@ records the context menu's design point (null when opened from the keyboard);
 `od.wpf-designer.context-menu-point` sets it relative to the selection for tests. WinUI still reads
 its tracks from source and leaves `Unit` null.
 
-**C3 WinForms TableLayout boundary (2026-10-13).** Forms remains deliberately out of the shared
-Grid-guide affordance. `TableLayoutPanel` has neither host-published measured row/column tracks nor
-a Forms client path that carries host-tree `GridTracks` into `CanvasSnapshot`; more importantly, a
-divider is not a control Bounds mutation. A correct follow-up must first publish
-`GetRowHeights`/`GetColumnWidths` plus the corresponding `RowStyle`/`ColumnStyle` units from the
-live child, then add an explicit host-owned track mutation which rewrites the matching designer
-source style collection in one transaction. Do not show draggable rails until both halves exist:
+**C3 WinForms TableLayout boundary (2026-10-13).** The first safe host slice is now landed:
+`TableLayoutPanel` tree nodes publish the live child’s measured `GetRowHeights`/`GetColumnWidths`
+and cumulative offsets. They deliberately leave authored unit/value empty: WinForms creates default
+`Absolute` styles at runtime even where Designer.cs has no style declaration, so live style data is
+not proof of a safe source write. Forms still remains out of the shared Grid-guide affordance because
+its client projection does not yet carry host-tree `GridTracks` into `CanvasSnapshot`; more
+importantly, a divider is not a control Bounds mutation. The next slice must add an explicit
+host-owned track mutation which proves and rewrites the matching designer source style collection in
+one transaction. Do not show draggable rails until both halves exist:
 the current canvas emits a commit on release, and a visual-only rail would falsely imply a saved
 layout edit. This is separate from WinForms' existing pixel-grid/snap preference support.
 

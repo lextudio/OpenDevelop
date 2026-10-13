@@ -9,6 +9,52 @@ namespace ICSharpCode.FormsDesigner.Host.Tests;
 
 public sealed class FormsDesignerHostClientTests
 {
+	[Fact]
+	public async Task ChildHost_PublishesMeasuredTableLayoutTracks()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				this.table = new System.Windows.Forms.TableLayoutPanel();
+				this.table.ColumnCount = 2;
+				this.table.RowCount = 2;
+				this.table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 40F));
+				this.table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+				this.table.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 30F));
+				this.table.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+				this.table.Location = new System.Drawing.Point(12, 60);
+				this.table.Size = new System.Drawing.Size(160, 100);
+				this.implicitTable = new System.Windows.Forms.TableLayoutPanel();
+				this.implicitTable.ColumnCount = 1;
+				this.implicitTable.RowCount = 1;
+				this.implicitTable.Location = new System.Drawing.Point(180, 60);
+				this.implicitTable.Size = new System.Drawing.Size(20, 20);
+				this.Controls.Add(this.button1);
+				this.Controls.Add(this.table);
+				this.Controls.Add(this.implicitTable);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TableLayoutPanel table;\n    private System.Windows.Forms.TableLayoutPanel implicitTable;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var table = FindTreeNode(opened.Tree!, "table")!;
+		var tracks = Assert.IsType<DesignerGridGuides>(table.GridTracks);
+		Assert.True(tracks.Accepted);
+		Assert.Equal(new[] { 30d, 70d }, tracks.RowTracks.Select(track => track.Size));
+		Assert.Equal(new[] { 40d, 120d }, tracks.ColumnTracks.Select(track => track.Size));
+		Assert.Equal(new[] { 0d, 30d }, tracks.RowTracks.Select(track => track.Offset));
+		Assert.Equal(new[] { 0d, 40d }, tracks.ColumnTracks.Select(track => track.Offset));
+		Assert.All(tracks.RowTracks.Concat(tracks.ColumnTracks), track => Assert.Null(track.Unit));
+		Assert.All(tracks.RowTracks.Concat(tracks.ColumnTracks), track => Assert.True(track.Size > 0));
+		var implicitTable = FindTreeNode(opened.Tree!, "implicitTable")!;
+		Assert.All(Assert.IsType<DesignerGridGuides>(implicitTable.GridTracks).RowTracks
+			.Concat(Assert.IsType<DesignerGridGuides>(implicitTable.GridTracks).ColumnTracks), track => Assert.Null(track.Unit));
+		Assert.Null(FindTreeNode(opened.Tree!, "button1")!.GridTracks);
+	}
+
 	[Theory]
 	[InlineData("true", "", FormsDesignerBackend.MicrosoftWinForms)]
 	[InlineData("false", "", FormsDesignerBackend.LibreWinForms)]
@@ -2317,6 +2363,18 @@ public sealed class FormsDesignerHostClientTests
 	}
 
 	static string DesignerText(DesignerEditSet edits) => edits.Files.Single(item => item.Kind == "Designer").Text;
+
+	static DesignerElementNode? FindTreeNode(DesignerElementNode node, string name)
+	{
+		if (String.Equals(node.Name, name, StringComparison.Ordinal))
+			return node;
+		foreach (var child in node.Children) {
+			var match = FindTreeNode(child, name);
+			if (match != null)
+				return match;
+		}
+		return null;
+	}
 
 	static string FramePayload(DesignerRenderFrame frame) => String.IsNullOrEmpty(frame.Data) ? frame.PngBase64 : frame.Data;
 
