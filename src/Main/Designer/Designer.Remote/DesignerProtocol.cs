@@ -42,7 +42,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// Properties pad has already presented it.
 		// v31 adds WPF's optional design/set-binding-source for an existing Binding's
 		// explicitly authored {StaticResource key} Source only. Other Source forms remain read-only.
-		public const int Version = 31;
+		// v32 adds the WinForms host's optional design/set-table-layout-track, which edits one
+		// TableLayoutPanel style only where Designer.cs proves the authored style list.
+		public const int Version = 32;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

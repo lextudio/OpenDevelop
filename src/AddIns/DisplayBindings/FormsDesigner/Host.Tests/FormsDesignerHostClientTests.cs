@@ -53,6 +53,60 @@ public sealed class FormsDesignerHostClientTests
 		Assert.All(Assert.IsType<DesignerGridGuides>(implicitTable.GridTracks).RowTracks
 			.Concat(Assert.IsType<DesignerGridGuides>(implicitTable.GridTracks).ColumnTracks), track => Assert.Null(track.Unit));
 		Assert.Null(FindTreeNode(opened.Tree!, "button1")!.GridTracks);
+
+		// Runtime-created default styles have no source statement, so they are never editable.
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetTableLayoutTrackAsync(1, "implicitTable", false, 0, "Absolute", 10, timeout.Token));
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetTableLayoutTrackAsync(1, "table", false, 2, "Absolute", 10, timeout.Token));
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetTableLayoutTrackAsync(1, "table", false, 0, "Bogus", 10, timeout.Token));
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetTableLayoutTrackAsync(1, "table", false, 0, "Absolute", -1, timeout.Token));
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetTableLayoutTrackAsync(1, "button1", false, 0, "Absolute", 10, timeout.Token));
+		var unchanged = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("ColumnStyle(System.Windows.Forms.SizeType.Absolute, 40F)", unchanged);
+		Assert.DoesNotContain("implicitTable.ColumnStyles", unchanged);
+
+		var edited = await client.SetTableLayoutTrackAsync(1, "table", false, 0, "Absolute", 64, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var editedTracks = FindTreeNode(edited.Tree!, "table")!.GridTracks!;
+		Assert.Equal(new[] { 64d, 96d }, editedTracks.ColumnTracks.Select(track => track.Size));
+		edited = await client.SetTableLayoutTrackAsync(1, "table", true, 1, "AutoSize", 0, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 64F));", text);
+		Assert.Contains("ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F)", text);
+		Assert.Contains("RowStyle(System.Windows.Forms.SizeType.Absolute, 30F)", text);
+		Assert.Contains("table.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.AutoSize));", text);
+		Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(text, @"table\.ColumnStyles\.Add\(").Count);
+		Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(text, @"table\.RowStyles\.Add\(").Count);
+	}
+
+	[Fact]
+	public async Task ChildHost_RejectsTableLayoutTrackWhenSourceStyleListIsNotProvable()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				this.table = new System.Windows.Forms.TableLayoutPanel();
+				this.table.ColumnCount = 2;
+				this.table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 40F));
+				this.table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 50F));
+				this.table.ColumnStyles.RemoveAt(0);
+				this.table.Size = new System.Drawing.Size(160, 100);
+				this.Controls.Add(this.button1);
+				this.Controls.Add(this.table);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TableLayoutPanel table;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		// A RemoveAt makes the source index differ from the live index; the edit must not guess.
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetTableLayoutTrackAsync(1, "table", false, 0, "Absolute", 70, timeout.Token));
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("SizeType.Absolute, 40F", text);
+		Assert.Contains("SizeType.Absolute, 50F", text);
+		Assert.DoesNotContain("70F", text);
 	}
 
 	[Theory]

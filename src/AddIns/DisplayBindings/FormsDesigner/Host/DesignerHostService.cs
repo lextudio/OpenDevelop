@@ -349,6 +349,84 @@ sealed class DesignerHostService : IDesignerChildService
 			.NormalizeWhitespace().ToFullString();
 	}
 
+	/// <summary>Sets one authored TableLayoutPanel row/column style. The mutation is accepted only
+	/// when InitializeComponent proves the style collection: exactly one plain
+	/// <c>&lt;id&gt;.RowStyles/ColumnStyles.Add(new RowStyle/ColumnStyle(...))</c> statement per live
+	/// style. WinForms creates default styles at runtime that have no source, so a live style alone is
+	/// never treated as authored. The source statement is rewritten in place, after which the live
+	/// style is changed in one designer transaction.</summary>
+	[JsonRpcMethod("design/set-table-layout-track")]
+	public DesignerSessionState SetTableLayoutTrack(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index, string sizeType, double value)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
+		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost
+			?? throw new InvalidOperationException("The designer surface is unavailable.");
+		if (host.Container.Components[elementId] is not TableLayoutPanel table)
+			throw new ArgumentException("TableLayoutPanel not found: " + elementId, nameof(elementId));
+		if (!Enum.TryParse<SizeType>(sizeType, ignoreCase: false, out var type) || !Enum.IsDefined(type))
+			throw new ArgumentException("Unknown SizeType: " + sizeType, nameof(sizeType));
+		if (type != SizeType.AutoSize && (!Double.IsFinite(value) || value < 0 || value > Single.MaxValue))
+			throw new ArgumentOutOfRangeException(nameof(value));
+		if (IsVisualBasic)
+			throw new NotSupportedException("TableLayoutPanel style editing is not yet supported for Visual Basic designer source.");
+		var styles = isRow ? (TableLayoutStyleCollection)table.RowStyles : table.ColumnStyles;
+		if (index < 0 || index >= styles.Count)
+			throw new ArgumentOutOfRangeException(nameof(index));
+		var member = isRow ? "RowStyles" : "ColumnStyles";
+		var styleType = isRow ? "RowStyle" : "ColumnStyle";
+
+		var file = CurrentDesignerFile();
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
+			.FirstOrDefault(item => item.Identifier.ValueText == "InitializeComponent" && item.Body != null)
+			?? throw new InvalidOperationException("InitializeComponent was not found.");
+		// Any statement mentioning the collection must be a provable plain Add, otherwise the
+		// source/live index mapping is unknown (Clear, Insert, RemoveAt, indexers, loops...).
+		var mentions = method.Body!.Statements.Where(statement => statement.DescendantNodes().OfType<MemberAccessExpressionSyntax>()
+			.Any(access => access.Name.Identifier.ValueText == member && SimpleTargetName(access.Expression) == elementId)).ToList();
+		if (mentions.Count != styles.Count || !mentions.All(statement => IsPlainStyleAdd(statement, elementId, member, styleType)))
+			throw new InvalidOperationException($"{elementId}.{member} is not an authored style list that can be edited safely.");
+
+		var text = type == SizeType.AutoSize
+			? $"this.{elementId}.{member}.Add(new System.Windows.Forms.{styleType}(System.Windows.Forms.SizeType.AutoSize));"
+			: $"this.{elementId}.{member}.Add(new System.Windows.Forms.{styleType}(System.Windows.Forms.SizeType.{type}, {((float)value).ToString("R", CultureInfo.InvariantCulture)}F));";
+		var target = mentions[index];
+		var replacement = SyntaxFactory.ParseStatement(text).WithTriviaFrom(target);
+		var newText = root.ReplaceNode(target, replacement).ToFullString();
+
+		var style = styles[index];
+		using (var transaction = host.CreateTransaction($"Edit {elementId}.{member}[{index}]")) {
+			style.SizeType = type;
+			if (type != SizeType.AutoSize) {
+				if (style is RowStyle row)
+					row.Height = (float)value;
+				else
+					((ColumnStyle)style).Width = (float)value;
+			}
+			transaction.Commit();
+		}
+		file.Text = newText;
+		return CurrentState(baseVersion);
+	}
+
+	static bool IsPlainStyleAdd(StatementSyntax statement, string elementId, string member, string styleType)
+	{
+		if (statement is not ExpressionStatementSyntax {
+			Expression: InvocationExpressionSyntax {
+				Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Add" } add,
+				ArgumentList.Arguments: [{ Expression: ObjectCreationExpressionSyntax creation }] } }
+			|| add.Expression is not MemberAccessExpressionSyntax collection
+			|| collection.Name.Identifier.ValueText != member || SimpleTargetName(collection.Expression) != elementId
+			|| creation.Initializer != null)
+			return false;
+		var typeName = creation.Type switch {
+			QualifiedNameSyntax qualified => qualified.Right.Identifier.ValueText,
+			IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+			_ => null
+		};
+		return typeName == styleType && (creation.ArgumentList?.Arguments.Count ?? 0) <= 2;
+	}
+
 	[JsonRpcMethod("design/set-property")]
 	public DesignerSessionState SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value)
 	{

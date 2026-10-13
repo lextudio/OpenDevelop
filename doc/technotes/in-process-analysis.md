@@ -895,6 +895,18 @@ one transaction. Do not show draggable rails until both halves exist:
 the current canvas emits a commit on release, and a visual-only rail would falsely imply a saved
 layout edit. This is separate from WinForms' existing pixel-grid/snap preference support.
 
+**C3 WinForms TableLayout style mutation (2026-10-13).** The host half now exists. Protocol **v32**
+adds the Forms host's optional `design/set-table-layout-track(elementId, isRow, index, sizeType,
+value)`. It is accepted only when every C# `InitializeComponent` statement that mentions the
+table's `RowStyles`/`ColumnStyles` is a plain `Add(new RowStyle/ColumnStyle(...))` and their count
+equals the live style count, so the requested index provably names one authored statement; a
+`RemoveAt`/`Clear`/indexer, an initializer, or runtime-only default styles are rejected without
+touching source or live state. The proven statement is rewritten in place (`AutoSize` without a
+value; `Absolute`/`Percent` with a finite non-negative float), then the live style changes in one
+designer transaction. VB source is rejected for now. Host tests cover the edit, re-measured tracks,
+flushed source and each rejection. Still missing: the client projection of host `GridTracks` into
+`CanvasSnapshot` and the rail gesture that commits through this mutation.
+
 **C4 event handler generation (2026-10-12).** Double-clicking a WPF event in the Properties pad now
 matches the in-process designer (`AbstractEventHandlerService`): the XAML attribute is bound through
 `design/set-event` if the event is unhandled, then the IDE creates the method in `<file>.xaml.cs`
