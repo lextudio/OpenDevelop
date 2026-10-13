@@ -9,7 +9,10 @@ namespace ICSharpCode.MewUIDesigner;
 
 public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadErrors, IOutlineContentHost, IToolsHost, IHasPropertyContainer, IUndoHandler, IFilterableToolbox, IToolboxSourceDropHandler
 {
-	public static readonly string[] ToolNames = { "StackPanel", "Grid", "DockPanel", "WrapPanel", "Canvas", "Border", "ScrollViewer", "Label", "Button", "TextBox", "CheckBox", "RadioButton", "Slider", "ProgressBar", "ComboBox", "ListBox", "Image" };
+	// Every non-root control accepted by the MXAML catalog must be reachable from the designer.
+	// Keeping this list complete avoids exposing a container in the document model but leaving it
+	// impossible to author through the Toolbox (as Canvas previously was).
+	public static readonly string[] ToolNames = { "StackPanel", "Grid", "DockPanel", "WrapPanel", "Canvas", "Border", "ScrollViewer", "GroupBox", "TabControl", "TabItem", "ContentControl", "Label", "Button", "TextBox", "CheckBox", "RadioButton", "Slider", "ProgressBar", "ComboBox", "ListBox", "Image", "Separator" };
 	readonly DocumentOutlineControl outline = new() { IconMapper = MewUIControlMapper.Instance }; readonly PropertyContainer properties = new(); readonly TextBlock diagnostic = new() { Foreground = Brushes.OrangeRed, Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap }; readonly OpenedFile mxamlFile;
 	// The shared design canvas (ICSharpCode.DesignerCanvas addin) showing the host's real MewUI
 	// render, keyed by element id (the Name, or a path-based id for an unnamed element). MewUI panels lay children out;

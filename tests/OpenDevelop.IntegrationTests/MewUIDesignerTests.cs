@@ -90,6 +90,33 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task MewUIDesigner_ToolboxCreatesNestedTabContent()
+	{
+		var openedProject = await app.ReopenSolutionAsync(projectPath);
+		Assert.True(openedProject.GetProperty("success").GetBoolean(), openedProject.ToString());
+		var opened = await app.InvokeAsync("od.open-file", designerPath);
+		Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitForDesignerAsync();
+		Assert.True(status.GetProperty("toolboxItemCount").GetInt32() >= 22, status.ToString());
+
+		foreach (var type in new[] { "GroupBox", "TabControl", "TabItem", "ContentControl", "Separator" }) {
+			var filtered = await app.InvokeAsync("od.mewui-designer.toolbox.filter", type);
+			Assert.Equal(1, filtered.GetProperty("itemCount").GetInt32());
+		}
+		await app.InvokeAsync("od.mewui-designer.toolbox.filter", "");
+		Assert.True((await app.InvokeAsync("od.mewui-designer.select", "rootPanel")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.mewui-designer.toolbox.insert", "TabControl")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.mewui-designer.select", "tabControl1")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.mewui-designer.toolbox.insert", "TabItem")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.mewui-designer.select", "tabItem1")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.mewui-designer.toolbox.insert", "Label")).GetProperty("success").GetBoolean());
+
+		Assert.True((await app.InvokeAsync("od.file.save", designerPath)).GetProperty("success").GetBoolean());
+		var mxaml = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
+		Assert.Matches("<TabControl Name=\"tabControl1\">\\s*<TabItem Name=\"tabItem1\">\\s*<Label Name=\"label1\" />\\s*</TabItem>\\s*</TabControl>", mxaml);
+	}
+
+	[Fact]
 	public async Task MewUIDesigner_SourceBackedEditUndoRedoAndSave()
 	{
 		var openedProject = await app.ReopenSolutionAsync(projectPath);
