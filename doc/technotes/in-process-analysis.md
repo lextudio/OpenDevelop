@@ -923,7 +923,18 @@ guides, the re-measured divider, the saved `ColumnStyle` and undo; a host test l
 redistribution and the Absolute fallback. VB designer source is now proven and rewritten the
 same way (`Me.<id>.ColumnStyles.Add(New ColumnStyle(...))`, untouched statements keep their `50.0!`
 literals); `ChildHost_ResizesVisualBasicTableLayoutStylesInPlace` covers the Percent and Absolute
-paths and a `Clear()` rejection. Not yet: row/column add and remove.
+paths and a `Clear()` rejection.
+
+**Track add/remove, host slice (2026-10-13).** Protocol **v34** adds
+`design/add-table-layout-track(elementId, isRow)` and `design/remove-table-layout-track(elementId,
+isRow)`, for C# and VB. Both require the style-list proof plus exactly one integer-literal
+`RowCount`/`ColumnCount` assignment equal to the live count, with one style per track. Add appends a
+track copying the last style's SizeType and length, after the last style statement; remove deletes
+the last track only while two or more exist and no child's cell or span reaches it, so no control is
+moved or deleted. The Microsoft TableLayoutPanelDesigner's own Add/Remove Row/Column verbs change
+only the live table (verb sync rewrites added/removed components, not Count/styles), so the IDE must
+not expose them as source edits. Not yet: the menu entries, insertion before an arbitrary track, and
+removing an occupied track.
 
 **C4 event handler generation (2026-10-12).** Double-clicking a WPF event in the Properties pad now
 matches the in-process designer (`AbstractEventHandlerService`): the XAML attribute is bound through

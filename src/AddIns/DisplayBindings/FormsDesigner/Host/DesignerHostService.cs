@@ -399,6 +399,150 @@ sealed class DesignerHostService : IDesignerChildService
 		return CurrentState(baseVersion);
 	}
 
+	/// <summary>Appends a row/column to a TableLayoutPanel: its Count grows by one and a style
+	/// copying the last track's SizeType and length is added after the last style statement. Like
+	/// the style edits, it requires a provable authored style list plus exactly one
+	/// <c>&lt;id&gt;.RowCount/ColumnCount = &lt;integer literal&gt;</c> assignment matching the live
+	/// count. Appending never moves an existing child's cell.</summary>
+	[JsonRpcMethod("design/add-table-layout-track")]
+	public DesignerSessionState AddTableLayoutTrack(string sessionId, string documentId, long baseVersion, string elementId, bool isRow)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
+		var (host, table) = FindTableLayoutPanel(elementId);
+		var styles = isRow ? (TableLayoutStyleCollection)table.RowStyles : table.ColumnStyles;
+		var count = isRow ? table.RowCount : table.ColumnCount;
+		if (styles.Count == 0)
+			throw new InvalidOperationException($"{elementId} has no authored style to copy for a new track.");
+		var last = styles[styles.Count - 1];
+		var (type, value) = (last.SizeType, (double)StyleLength(last));
+		var file = CurrentDesignerFile();
+		var proof = ProveTableLayoutTrackSource(file.Text, elementId, isRow, styles.Count, count);
+		var root = proof.Root.TrackNodes(proof.Styles[^1], proof.CountLiteral);
+		root = root.ReplaceNode(root.GetCurrentNode(proof.CountLiteral)!, CountLiteral(count + 1).WithTriviaFrom(proof.CountLiteral));
+		var current = root.GetCurrentNode(proof.Styles[^1])!;
+		root = root.ReplaceNode(current, new[] { current, StyleStatement(elementId, isRow, type, value).WithTriviaFrom(proof.Styles[^1]) });
+		using (var transaction = host.CreateTransaction($"Add {(isRow ? "row" : "column")} to {elementId}")) {
+			if (isRow) {
+				table.RowCount = count + 1;
+				table.RowStyles.Add(new RowStyle(type, (float)value));
+			} else {
+				table.ColumnCount = count + 1;
+				table.ColumnStyles.Add(new ColumnStyle(type, (float)value));
+			}
+			transaction.Commit();
+		}
+		file.Text = root.ToFullString();
+		return CurrentState(baseVersion);
+	}
+
+	/// <summary>Removes a TableLayoutPanel's last row/column. Accepted only on the same proof as
+	/// <see cref="AddTableLayoutTrack"/>, while at least two tracks exist and no child control's cell
+	/// (including its span) reaches the removed track, so no control is deleted or moved.</summary>
+	[JsonRpcMethod("design/remove-table-layout-track")]
+	public DesignerSessionState RemoveTableLayoutTrack(string sessionId, string documentId, long baseVersion, string elementId, bool isRow)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
+		var (host, table) = FindTableLayoutPanel(elementId);
+		var styles = isRow ? (TableLayoutStyleCollection)table.RowStyles : table.ColumnStyles;
+		var count = isRow ? table.RowCount : table.ColumnCount;
+		if (count < 2)
+			throw new InvalidOperationException($"{elementId} must keep at least one {(isRow ? "row" : "column")}.");
+		foreach (Control child in table.Controls) {
+			var position = table.GetPositionFromControl(child);
+			var start = isRow ? position.Row : position.Column;
+			var span = isRow ? table.GetRowSpan(child) : table.GetColumnSpan(child);
+			// A child without a resolved cell may flow into the last track, so it is not proof of
+			// a free track.
+			if (start < 0 || start + Math.Max(1, span) - 1 >= count - 1)
+				throw new InvalidOperationException($"{child.Site?.Name ?? child.Name} may occupy the last {(isRow ? "row" : "column")} of {elementId}.");
+		}
+		var file = CurrentDesignerFile();
+		var proof = ProveTableLayoutTrackSource(file.Text, elementId, isRow, styles.Count, count);
+		var root = proof.Root.TrackNodes(proof.Styles[^1], proof.CountLiteral);
+		root = root.ReplaceNode(root.GetCurrentNode(proof.CountLiteral)!, CountLiteral(count - 1).WithTriviaFrom(proof.CountLiteral));
+		root = root.RemoveNode(root.GetCurrentNode(proof.Styles[^1])!, SyntaxRemoveOptions.KeepNoTrivia)!;
+		using (var transaction = host.CreateTransaction($"Remove {(isRow ? "row" : "column")} from {elementId}")) {
+			styles.RemoveAt(styles.Count - 1);
+			if (isRow)
+				table.RowCount = count - 1;
+			else
+				table.ColumnCount = count - 1;
+			transaction.Commit();
+		}
+		file.Text = root.ToFullString();
+		return CurrentState(baseVersion);
+	}
+
+	SyntaxNode CountLiteral(int value) => IsVisualBasic
+		? Vb.SyntaxFactory.ParseExpression(value.ToString(CultureInfo.InvariantCulture))
+		: SyntaxFactory.ParseExpression(value.ToString(CultureInfo.InvariantCulture));
+
+	SyntaxNode StyleStatement(string elementId, bool isRow, SizeType type, double value)
+	{
+		var member = isRow ? "RowStyles" : "ColumnStyles";
+		var styleType = isRow ? "RowStyle" : "ColumnStyle";
+		return IsVisualBasic
+			? Vb.SyntaxFactory.ParseExecutableStatement($"Me.{elementId}.{member}.Add(New System.Windows.Forms.{styleType}({StyleArguments(type, value)}))")
+			: SyntaxFactory.ParseStatement($"this.{elementId}.{member}.Add(new System.Windows.Forms.{styleType}({StyleArguments(type, value)}));");
+	}
+
+	/// <summary>Proves that InitializeComponent authors the whole track definition: one plain style
+	/// Add per live style (at least one) and exactly one integer-literal Count assignment equal to the
+	/// live count, with as many styles as tracks. Returns the parsed root, the style statements in
+	/// order and the Count literal.</summary>
+	(SyntaxNode Root, List<SyntaxNode> Styles, SyntaxNode CountLiteral) ProveTableLayoutTrackSource(string text, string elementId, bool isRow, int liveStyles, int liveCount)
+	{
+		var member = isRow ? "RowStyles" : "ColumnStyles";
+		var styleType = isRow ? "RowStyle" : "ColumnStyle";
+		var countMember = isRow ? "RowCount" : "ColumnCount";
+		var unprovable = new InvalidOperationException($"{elementId}'s {(isRow ? "rows" : "columns")} are not an authored track list that can be edited safely.");
+		if (liveStyles != liveCount || liveStyles == 0)
+			throw unprovable;
+		SyntaxNode root;
+		List<SyntaxNode> styles;
+		SyntaxNode? literal = null;
+		if (IsVisualBasic) {
+			root = Vb.VisualBasicSyntaxTree.ParseText(text).GetRoot();
+			var method = root.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>().FirstOrDefault(item =>
+				item.BlockStatement is VbSyntax.MethodStatementSyntax ms && ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+				&& ms.Identifier.ValueText == "InitializeComponent") ?? throw unprovable;
+			bool Mentions(VbSyntax.StatementSyntax statement, string name) => statement.DescendantNodes().OfType<VbSyntax.MemberAccessExpressionSyntax>()
+				.Any(access => access.Name.Identifier.ValueText == name && access.Expression != null && VbSimpleTargetName(access.Expression) == elementId);
+			var styleStatements = method.Statements.Where(statement => Mentions(statement, member)).ToList();
+			if (!styleStatements.All(statement => IsVbPlainStyleAdd(statement, elementId, member, styleType)))
+				throw unprovable;
+			styles = styleStatements.Cast<SyntaxNode>().ToList();
+			var countStatements = method.Statements.Where(statement => Mentions(statement, countMember)).ToList();
+			if (countStatements is [VbSyntax.AssignmentStatementSyntax {
+				Left: VbSyntax.MemberAccessExpressionSyntax { Expression: not null } left,
+				Right: VbSyntax.LiteralExpressionSyntax { Token.Value: int value } right } assignment]
+				&& assignment.IsKind(Vb.SyntaxKind.SimpleAssignmentStatement)
+				&& left.Name.Identifier.ValueText == countMember && VbSimpleTargetName(left.Expression!) == elementId && value == liveCount)
+				literal = right;
+		} else {
+			root = CSharpSyntaxTree.ParseText(text).GetCompilationUnitRoot();
+			var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
+				.FirstOrDefault(item => item.Identifier.ValueText == "InitializeComponent" && item.Body != null) ?? throw unprovable;
+			bool Mentions(StatementSyntax statement, string name) => statement.DescendantNodes().OfType<MemberAccessExpressionSyntax>()
+				.Any(access => access.Name.Identifier.ValueText == name && SimpleTargetName(access.Expression) == elementId);
+			var styleStatements = method.Body!.Statements.Where(statement => Mentions(statement, member)).ToList();
+			if (!styleStatements.All(statement => IsPlainStyleAdd(statement, elementId, member, styleType)))
+				throw unprovable;
+			styles = styleStatements.Cast<SyntaxNode>().ToList();
+			var countStatements = method.Body.Statements.Where(statement => Mentions(statement, countMember)).ToList();
+			if (countStatements is [ExpressionStatementSyntax {
+				Expression: AssignmentExpressionSyntax {
+					Left: MemberAccessExpressionSyntax left,
+					Right: LiteralExpressionSyntax { Token.Value: int value } right } assignment }]
+				&& assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
+				&& left.Name.Identifier.ValueText == countMember && SimpleTargetName(left.Expression) == elementId && value == liveCount)
+				literal = right;
+		}
+		if (literal == null || styles.Count != liveStyles)
+			throw unprovable;
+		return (root, styles, literal);
+	}
+
 	static float StyleLength(TableLayoutStyle style) => style is RowStyle row ? row.Height : ((ColumnStyle)style).Width;
 
 	(IDesignerHost Host, TableLayoutPanel Table) FindTableLayoutPanel(string elementId)

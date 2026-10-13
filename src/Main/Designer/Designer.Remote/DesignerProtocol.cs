@@ -46,7 +46,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// TableLayoutPanel style only where Designer.cs proves the authored style list.
 		// v33 adds its optional design/resize-table-layout-track, a divider drag that redistributes
 		// two neighbouring Percent tracks or makes the dragged track Absolute.
-		public const int Version = 33;
+		// v34 adds design/add-table-layout-track and design/remove-table-layout-track (append, and
+		// remove an unoccupied last track) under the same authored-source proof.
+		public const int Version = 34;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

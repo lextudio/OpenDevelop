@@ -125,6 +125,94 @@ public sealed class FormsDesignerHostClientTests
 	}
 
 	[Fact]
+	public async Task ChildHost_AddsAndRemovesTableLayoutTracksWithoutMovingChildren()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				this.table = new System.Windows.Forms.TableLayoutPanel();
+				this.inner = new System.Windows.Forms.Label();
+				this.table.ColumnCount = 2;
+				this.table.RowCount = 1;
+				this.table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 40F));
+				this.table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+				this.table.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+				this.table.Controls.Add(this.inner, 0, 0);
+				this.table.Location = new System.Drawing.Point(12, 60);
+				this.table.Size = new System.Drawing.Size(200, 100);
+				this.Controls.Add(this.button1);
+				this.Controls.Add(this.table);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TableLayoutPanel table;\n    private System.Windows.Forms.Label inner;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+
+		// The single row is both the minimum and occupied by the label.
+		await Assert.ThrowsAnyAsync<Exception>(() => client.RemoveTableLayoutTrackAsync(1, "table", true, timeout.Token));
+		var added = await client.AddTableLayoutTrackAsync(1, "table", false, timeout.Token);
+		Assert.True(added.Accepted, added.Error);
+		Assert.Equal(3, FindTreeNode(added.Tree!, "table")!.GridTracks!.ColumnTracks.Count);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("table.ColumnCount = 3;", text);
+		Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(text, @"ColumnStyle\(System\.Windows\.Forms\.SizeType\.Percent, 100F\)").Count);
+		Assert.True(text.IndexOf("SizeType.Percent, 100F));", StringComparison.Ordinal) < text.IndexOf("RowStyles.Add", StringComparison.Ordinal), text);
+
+		var removed = await client.RemoveTableLayoutTrackAsync(1, "table", false, timeout.Token);
+		Assert.True(removed.Accepted, removed.Error);
+		removed = await client.RemoveTableLayoutTrackAsync(1, "table", false, timeout.Token);
+		Assert.True(removed.Accepted, removed.Error);
+		// Column 0 holds the label, and is the last remaining column.
+		await Assert.ThrowsAnyAsync<Exception>(() => client.RemoveTableLayoutTrackAsync(1, "table", false, timeout.Token));
+		text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("table.ColumnCount = 1;", text);
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(text, @"table\.ColumnStyles\.Add\("));
+		Assert.Contains("ColumnStyle(System.Windows.Forms.SizeType.Absolute, 40F)", text);
+		Assert.Contains("table.Controls.Add(inner, 0, 0);", text);
+		Assert.Single(FindTreeNode(removed.Tree!, "table")!.GridTracks!.ColumnTracks);
+	}
+
+	[Fact]
+	public async Task ChildHost_AddsAndRemovesVisualBasicTableLayoutTracks()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = VbSnapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("Me.Controls.Add(Me.button1)", """
+				Me.table = New System.Windows.Forms.TableLayoutPanel()
+				        Me.table.ColumnCount = 1
+				        Me.table.RowCount = 1
+				        Me.table.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100.0!))
+				        Me.table.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 30.0!))
+				        Me.table.Size = New System.Drawing.Size(200, 100)
+				        Me.Controls.Add(Me.button1)
+				        Me.Controls.Add(Me.table)
+				""", StringComparison.Ordinal)
+			.Replace("Friend WithEvents button1 As System.Windows.Forms.Button",
+				"Friend WithEvents button1 As System.Windows.Forms.Button\n    Friend WithEvents table As System.Windows.Forms.TableLayoutPanel", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var added = await client.AddTableLayoutTrackAsync(1, "table", true, timeout.Token);
+		Assert.True(added.Accepted, added.Error);
+		// All-Absolute rows: WinForms stretches the last one to the table's remaining height.
+		Assert.Equal(new[] { 30d, 70d }, FindTreeNode(added.Tree!, "table")!.GridTracks!.RowTracks.Select(track => track.Size));
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("table.RowCount = 2", text);
+		Assert.Contains("table.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 30F))", text);
+		var removed = await client.RemoveTableLayoutTrackAsync(1, "table", true, timeout.Token);
+		Assert.True(removed.Accepted, removed.Error);
+		text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("table.RowCount = 1", text);
+		Assert.DoesNotContain("30F", text);
+		Assert.Contains("RowStyle(System.Windows.Forms.SizeType.Absolute, 30.0!)", text);
+	}
+
+	[Fact]
 	public async Task ChildHost_RejectsTableLayoutTrackWhenSourceStyleListIsNotProvable()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));

@@ -57,6 +57,10 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	public DesignerSessionState SetTableLayoutTrack(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index, string sizeType, double value) => GetChecked(sessionId, documentId).SetTableLayoutTrack(sessionId, documentId, baseVersion, elementId, isRow, index, sizeType, value);
 	[JsonRpcMethod("design/resize-table-layout-track")]
 	public DesignerSessionState ResizeTableLayoutTrack(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index, double size) => GetChecked(sessionId, documentId).ResizeTableLayoutTrack(sessionId, documentId, baseVersion, elementId, isRow, index, size);
+	[JsonRpcMethod("design/add-table-layout-track")]
+	public DesignerSessionState AddTableLayoutTrack(string sessionId, string documentId, long baseVersion, string elementId, bool isRow) => GetChecked(sessionId, documentId).AddTableLayoutTrack(sessionId, documentId, baseVersion, elementId, isRow);
+	[JsonRpcMethod("design/remove-table-layout-track")]
+	public DesignerSessionState RemoveTableLayoutTrack(string sessionId, string documentId, long baseVersion, string elementId, bool isRow) => GetChecked(sessionId, documentId).RemoveTableLayoutTrack(sessionId, documentId, baseVersion, elementId, isRow);
 	[JsonRpcMethod("design/reset-property")]
 	public DesignerSessionState ResetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName) => GetChecked(sessionId, documentId).ResetProperty(sessionId, documentId, baseVersion, elementId, propertyName);
 	[JsonRpcMethod("design/rename")]
