@@ -1183,6 +1183,39 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				RebuildTreeAndRender(state); state.Accepted = true; return state;
 			});
 
+		/// <summary>Sets the source of an existing Binding only when XamlDom still proves that it is
+		/// unset or an authored <c>{StaticResource key}</c>.  Binding.Source is an object slot: the
+		/// runtime Binding can flatten an inline object or <c>x:Static</c> form to an apparent null,
+		/// so those forms must never be guessed or overwritten through a resource picker.</summary>
+		[JsonRpcMethod("design/set-binding-source")]
+		public DesignerSessionState SetBindingSource(long baseVersion, string elementId, string propertyName, string resourceKey)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale) return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
+				var property = item.Properties[propertyName];
+				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding binding
+					|| !CanEditBindingSource(binding) || !TryGetStaticResourceBindingSource(bindingItem.Properties["Source"], out _))
+					return NotFound(state, "Property is not an editable StaticResource Binding Source: " + propertyName);
+				if (!string.IsNullOrEmpty(resourceKey) && !BindingSourceResourceKeys(item).Contains(resourceKey))
+					return NotFound(state, "Not a resource in scope: " + resourceKey);
+				try
+				{
+					var source = bindingItem.Properties["Source"];
+					if (string.IsNullOrEmpty(resourceKey))
+						source.Reset();
+					else
+					{
+						bindingItem.Properties["ElementName"].Reset();
+						bindingItem.Properties["RelativeSource"].Reset();
+						source.SetValue(new StaticResourceExtension());
+						source.Value!.Properties["ResourceKey"].SetValue(resourceKey);
+					}
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state); state.Accepted = true; return state;
+			});
+
 		[JsonRpcMethod("design/set-binding-notify-on-validation-error")]
 		public DesignerSessionState SetBindingNotifyOnValidationError(long baseVersion, string elementId, string propertyName, bool notify)
 			=> dispatcher.Dispatch(() => {
@@ -1313,6 +1346,28 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			}
 			return false;
 		}
+
+		static bool CanEditBindingSource(System.Windows.Data.Binding binding)
+			=> binding.RelativeSource == null
+				|| binding.RelativeSource.Mode is System.Windows.Data.RelativeSourceMode.Self or System.Windows.Data.RelativeSourceMode.TemplatedParent;
+
+		/// <summary>Reads source syntax from the nested XamlDom property, not the runtime Binding.Source.
+		/// The latter cannot distinguish an unset source from several authored object forms.</summary>
+		static bool TryGetStaticResourceBindingSource(DesignItemProperty source, out string key)
+		{
+			key = "";
+			if (!source.IsSet)
+				return true;
+			if (source.Value?.Component is StaticResourceExtension && source.Value.Properties["ResourceKey"].ValueOnInstance is string resourceKey)
+			{
+				key = resourceKey;
+				return true;
+			}
+			return false;
+		}
+
+		static List<string> BindingSourceResourceKeys(DesignItem item)
+			=> ResourceKeys(item, _ => true).OrderBy(key => key, StringComparer.Ordinal).ToList();
 
 		/// <summary>String keys of IValueConverter resources visible to <paramref name="item"/>, in name
 		/// order (a ResourceDictionary enumerates its keys in hash order).</summary>
@@ -3011,6 +3066,22 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 								Value = binding.RelativeSource?.Mode.ToString() ?? "", BindingPropertyName = descriptor.Name,
 								ShouldSerialize = false,
 								AllowedValues = new List<string> { "", "Self", "TemplatedParent" }
+							});
+						}
+						var sourceProperty = reference.Properties["Source"];
+						if (sourceProperty != null && CanEditBindingSource(binding)
+							&& TryGetStaticResourceBindingSource(sourceProperty, out var sourceKey))
+						{
+							var choices = new List<string> { "" };
+							choices.AddRange(BindingSourceResourceKeys(item));
+							if (!choices.Contains(sourceKey))
+								choices.Add(sourceKey);
+							result.Add(new DesignerPropertyInfo {
+								Name = descriptor.Name + ".Source", DisplayName = descriptor.Name + " Source",
+								Category = "Binding", TypeName = typeof(string).FullName ?? "",
+								Kind = "Enum", EditorKind = "BindingSource",
+								Value = sourceKey, BindingPropertyName = descriptor.Name,
+								ShouldSerialize = false, AllowedValues = choices
 							});
 						}
 						result.Add(new DesignerPropertyInfo {

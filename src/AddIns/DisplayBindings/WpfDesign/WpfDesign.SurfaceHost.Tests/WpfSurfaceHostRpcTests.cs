@@ -1219,6 +1219,57 @@ public sealed class WpfSurfaceHostRpcTests
 			StringComparison.Ordinal);
 	}
 
+	[Fact]
+	public async Task ChildHost_OnlyEditsBindingSourceWhenXamlDomProvesStaticResourceSyntax()
+	{
+		const string xaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+			      xmlns:sys="clr-namespace:System;assembly=mscorlib" Width="240" Height="80">
+			  <Grid.Resources>
+			    <sys:String x:Key="first">first value</sys:String>
+			    <sys:String x:Key="second">second value</sys:String>
+			  </Grid.Resources>
+			  <TextBlock x:Name="static" Text="{Binding Path=Length, Source={StaticResource first}}" />
+			  <TextBlock x:Name="element" Text="{Binding Path=Text, ElementName=static}" />
+			  <TextBlock x:Name="inline">
+			    <TextBlock.Text><Binding Path="Length"><Binding.Source><sys:String>inline value</sys:String></Binding.Source></Binding></TextBlock.Text>
+			  </TextBlock>
+			  <TextBlock x:Name="xstatic" Text="{Binding Path=Length, Source={x:Static sys:String.Empty}}" />
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var staticItem = FindByName(opened.Tree!, "static")!;
+		var source = staticItem.Properties.Single(property => property.EditorKind == "BindingSource");
+		Assert.Equal("first", source.Value);
+		Assert.Equal(new[] { "", "first", "second" }, source.AllowedValues);
+		Assert.DoesNotContain(FindByName(opened.Tree!, "inline")!.Properties, property => property.EditorKind == "BindingSource");
+		Assert.DoesNotContain(FindByName(opened.Tree!, "xstatic")!.Properties, property => property.EditorKind == "BindingSource");
+
+		var changed = await client.SetBindingSourceAsync(1, staticItem.Id, "Text", "second", timeout.Token);
+		Assert.True(changed.Accepted, changed.Error);
+		var changedText = (await client.FlushAsync(changed.Version, timeout.Token)).Files.Single().Text;
+		Assert.Contains("Source={StaticResource second}", changedText, StringComparison.Ordinal);
+		var cleared = await client.SetBindingSourceAsync(changed.Version, staticItem.Id, "Text", "", timeout.Token);
+		Assert.True(cleared.Accepted, cleared.Error);
+		Assert.DoesNotContain("Source={StaticResource", (await client.FlushAsync(cleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+
+		var element = FindByName(cleared.Tree!, "element")!;
+		Assert.Contains(element.Properties, property => property.EditorKind == "BindingSource");
+		var elementChanged = await client.SetBindingSourceAsync(cleared.Version, element.Id, "Text", "first", timeout.Token);
+		Assert.True(elementChanged.Accepted, elementChanged.Error);
+		var elementText = (await client.FlushAsync(elementChanged.Version, timeout.Token)).Files.Single().Text;
+		Assert.Contains("Source={StaticResource first}", elementText, StringComparison.Ordinal);
+		Assert.DoesNotContain("ElementName=static", elementText, StringComparison.Ordinal);
+
+		var rejected = await client.SetBindingSourceAsync(elementChanged.Version, FindByName(elementChanged.Tree!, "inline")!.Id, "Text", "first", timeout.Token);
+		Assert.False(rejected.Accepted);
+		Assert.Contains("StaticResource Binding Source", rejected.Error, StringComparison.Ordinal);
+		Assert.Contains("inline value", (await client.FlushAsync(elementChanged.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+	}
+
 	/// <summary>
 	/// Tree_ nodes must report whether they are actually ON SCREEN, because the AddIn draws
 	/// overlays (tab-order badges today) positioned from each node's X/Y. A hidden element still

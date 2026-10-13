@@ -40,7 +40,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// and design/set-binding-validation-option. A stale pooled child
 		// must fail the handshake rather than reject a newly-visible binding editor after the
 		// Properties pad has already presented it.
-		public const int Version = 30;
+		// v31 adds WPF's optional design/set-binding-source for an existing Binding's
+		// explicitly authored {StaticResource key} Source only. Other Source forms remain read-only.
+		public const int Version = 31;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

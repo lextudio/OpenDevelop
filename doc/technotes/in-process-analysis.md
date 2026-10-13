@@ -566,6 +566,15 @@ mutually exclusive `ElementName`. Do not add a generic resource `Binding.Source`
 stronger source-origin contract: the WPF design model can normalize inline and `x:Static` source
 forms to an apparent unset Source, so such a picker could overwrite markup it cannot distinguish.
 
+**C2 Binding Source capability (2026-10-13).** Protocol **v31** now adds that stronger, narrow
+contract: `Binding.Source` is a resource picker only where the nested XamlDom property proves it is
+unset or an authored `{StaticResource key}`. The host reads that syntax rather than inferring from
+the runtime `Binding.Source`; inline object, `x:Static`, dynamic-resource and other forms stay
+absent from the pad and are rejected by `design/set-binding-source`. Changing to a resource clears
+the mutually exclusive `ElementName`/`RelativeSource`; clearing returns to the ordinary DataContext
+source. Focused child-host coverage locks static-resource replace/reset, ElementName replacement,
+and preservation of the rejected inline/`x:Static` markup.
+
 **C2 Binding option update (2026-10-11).** The WPF Properties pad now also exposes the nested
 `Binding.NotifyOnValidationError` boolean. Enabling it writes the real Binding option; disabling it
 resets the nested design property so no explicit false value remains in source. It follows the same
