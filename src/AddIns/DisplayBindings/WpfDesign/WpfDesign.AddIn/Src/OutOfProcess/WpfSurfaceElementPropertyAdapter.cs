@@ -99,6 +99,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		internal void SetBindingRelativeSource(string propertyName, string relativeSource)
+		{
+			var state = client.SetBindingRelativeSourceAsync(currentBaseVersion(), node.Id, propertyName, relativeSource)
+				.GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		internal void SetBindingNotifyOnValidationError(string propertyName, bool notify)
 		{
 			var state = client.SetBindingNotifyOnValidationErrorAsync(currentBaseVersion(), node.Id, propertyName, notify)
@@ -369,6 +377,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 				owner.SetBindingUpdateSourceTrigger(property.BindingPropertyName, serialized);
 			else if (property.EditorKind == "BindingElementName")
 				owner.SetBindingElementName(property.BindingPropertyName, serialized);
+			else if (property.EditorKind == "BindingRelativeSource")
+				owner.SetBindingRelativeSource(property.BindingPropertyName, serialized);
 			else if (property.EditorKind == "BindingNotifyOnValidationError")
 				owner.SetBindingNotifyOnValidationError(property.BindingPropertyName, Convert.ToBoolean(value, CultureInfo.InvariantCulture));
 			else if (property.EditorKind == "BindingValidationOption")

@@ -1098,9 +1098,23 @@ public sealed class WpfSurfaceHostRpcTests
 		var relative = FindByName(opened.Tree!, "relative")!;
 		Assert.DoesNotContain(relative.Properties,
 			property => property.EditorKind == "BindingElementName");
+		var relativeSource = relative.Properties.Single(property => property.EditorKind == "BindingRelativeSource");
+		Assert.Equal("Self", relativeSource.Value);
+		Assert.Equal(new[] { "", "Self", "TemplatedParent" }, relativeSource.AllowedValues);
 		var relativeEdit = await client.SetBindingElementNameAsync(1, relative.Id, "Text", "source", timeout.Token);
 		Assert.False(relativeEdit.Accepted);
 		Assert.Contains("editable ElementName Binding", relativeEdit.Error, StringComparison.Ordinal);
+		var boundRelativeSource = bound.Properties.Single(property => property.EditorKind == "BindingRelativeSource");
+		Assert.Equal("", boundRelativeSource.Value);
+		var relativeSourceEdited = await client.SetBindingRelativeSourceAsync(1, bound.Id, "Text", "Self", timeout.Token);
+		Assert.True(relativeSourceEdited.Accepted, relativeSourceEdited.Error);
+		Assert.Contains("RelativeSource={RelativeSource Self}", (await client.FlushAsync(relativeSourceEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		Assert.DoesNotContain(FindByName(relativeSourceEdited.Tree!, "bound")!.Properties,
+			property => property.EditorKind == "BindingElementName");
+		var relativeSourceCleared = await client.SetBindingRelativeSourceAsync(relativeSourceEdited.Version, bound.Id, "Text", "", timeout.Token);
+		Assert.True(relativeSourceCleared.Accepted, relativeSourceCleared.Error);
+		Assert.Equal("", FindByName(relativeSourceCleared.Tree!, "bound")!.Properties
+			.Single(property => property.EditorKind == "BindingRelativeSource").Value);
 
 		var edited = await client.SetBindingPathAsync(1, bound.Id, "Text", "Customer.Name", timeout.Token);
 		Assert.True(edited.Accepted, edited.Error);

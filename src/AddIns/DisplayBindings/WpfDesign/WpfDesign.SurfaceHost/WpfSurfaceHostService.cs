@@ -1152,6 +1152,37 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				RebuildTreeAndRender(state); state.Accepted = true; return state;
 			});
 
+		[JsonRpcMethod("design/set-binding-relative-source")]
+		public DesignerSessionState SetBindingRelativeSource(long baseVersion, string elementId, string propertyName, string relativeSource)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale) return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
+				var property = item.Properties[propertyName];
+				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding binding
+					|| binding.Source != null || (binding.RelativeSource != null
+						&& binding.RelativeSource.Mode is not (System.Windows.Data.RelativeSourceMode.Self or System.Windows.Data.RelativeSourceMode.TemplatedParent)))
+					return NotFound(state, "Property is not an editable RelativeSource Binding: " + propertyName);
+				try
+				{
+					switch (relativeSource)
+					{
+						case "": bindingItem.Properties["RelativeSource"].Reset(); break;
+						case "Self":
+							bindingItem.Properties["ElementName"].Reset();
+							bindingItem.Properties["RelativeSource"].SetValue(System.Windows.Data.RelativeSource.Self);
+							break;
+						case "TemplatedParent":
+							bindingItem.Properties["ElementName"].Reset();
+							bindingItem.Properties["RelativeSource"].SetValue(System.Windows.Data.RelativeSource.TemplatedParent);
+							break;
+						default: return NotFound(state, "Invalid Binding RelativeSource: " + relativeSource);
+					}
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state); state.Accepted = true; return state;
+			});
+
 		[JsonRpcMethod("design/set-binding-notify-on-validation-error")]
 		public DesignerSessionState SetBindingNotifyOnValidationError(long baseVersion, string elementId, string propertyName, bool notify)
 			=> dispatcher.Dispatch(() => {
@@ -2968,6 +2999,18 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 								Kind = "String", EditorKind = "BindingElementName",
 								Value = binding.ElementName ?? "", BindingPropertyName = descriptor.Name,
 								ShouldSerialize = false
+							});
+						}
+						if (binding.Source == null && (binding.RelativeSource == null
+							|| binding.RelativeSource.Mode is System.Windows.Data.RelativeSourceMode.Self or System.Windows.Data.RelativeSourceMode.TemplatedParent))
+						{
+							result.Add(new DesignerPropertyInfo {
+								Name = descriptor.Name + ".RelativeSource", DisplayName = descriptor.Name + " Relative Source",
+								Category = "Binding", TypeName = typeof(string).FullName ?? "",
+								Kind = "Enum", EditorKind = "BindingRelativeSource",
+								Value = binding.RelativeSource?.Mode.ToString() ?? "", BindingPropertyName = descriptor.Name,
+								ShouldSerialize = false,
+								AllowedValues = new List<string> { "", "Self", "TemplatedParent" }
 							});
 						}
 						result.Add(new DesignerPropertyInfo {

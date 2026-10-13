@@ -200,6 +200,10 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-element-name",
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, elementName }, cancellationToken), cancellationToken);
 
+	public Task<DesignerSessionState> SetBindingRelativeSourceAsync(long baseVersion, string elementId, string propertyName, string relativeSource, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-relative-source",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, relativeSource }, cancellationToken), cancellationToken);
+
 	public Task<DesignerSessionState> SetBindingNotifyOnValidationErrorAsync(long baseVersion, string elementId, string propertyName, bool notify, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-notify-on-validation-error",
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, notify }, cancellationToken), cancellationToken);
