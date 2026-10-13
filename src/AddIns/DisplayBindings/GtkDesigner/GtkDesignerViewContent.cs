@@ -289,7 +289,8 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	{
 		// Only what the GTK designer does: GTK owns layout, so no resize handles, design sizes,
 		// themes or visual states.
-		canvas.Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit | DesignerCanvasCapabilities.Gridlines;
+		canvas.Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit | DesignerCanvasCapabilities.Gridlines
+			| DesignerCanvasCapabilities.ShowNames | DesignerCanvasCapabilities.StatusBar;
 		canvas.ResizeHandlesEnabled = false;
 		canvas.SetContextCommands(new[] { ("Delete", "delete") });
 		canvasController.ClearsSelectionOnEmptyClick = true;

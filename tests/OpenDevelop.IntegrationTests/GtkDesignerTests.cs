@@ -71,8 +71,8 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.True(status.GetProperty("toolboxItemCount").GetInt32() >= 15, status.ToString());
 		var filteredTools = await app.InvokeAsync("od.gtk-designer.toolbox.filter", "switch"); Assert.Equal(1, filteredTools.GetProperty("itemCount").GetInt32());
 		var allTools = await app.InvokeAsync("od.gtk-designer.toolbox.filter", ""); Assert.True(allTools.GetProperty("itemCount").GetInt32() >= 15, allTools.ToString());
-		Assert.Equal(3, status.GetProperty("toolbarItemCount").GetInt32());
-		Assert.Equal(new[] { "Zoom", "Fit", "Gridlines" }, status.GetProperty("toolbarItems").EnumerateArray().Select(x => x.GetString()).ToArray());
+		Assert.Equal(4, status.GetProperty("toolbarItemCount").GetInt32());
+		Assert.Equal(new[] { "Zoom", "Fit", "Gridlines", "Show Names" }, status.GetProperty("toolbarItems").EnumerateArray().Select(x => x.GetString()).ToArray());
 		var zoomed = await app.InvokeAsync("od.gtk-designer.zoom", 1.5); Assert.Equal(1.5, zoomed.GetProperty("zoom").GetDouble());
 		var fitted = await app.InvokeAsync("od.gtk-designer.fit"); Assert.True(fitted.GetProperty("measured").GetBoolean(), fitted.ToString()); // The fit scale is the viewport divided by the frame, so it moves whenever the frame does -
 		// adding the host-composed title bar made it 630 tall instead of 600 and took the scale just
