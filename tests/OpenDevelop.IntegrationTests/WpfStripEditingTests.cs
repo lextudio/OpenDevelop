@@ -1007,6 +1007,64 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
+    public async Task Outline_MoveClearsStaleParentLayoutProperties()
+    {
+        // A row dragged out of Grid/Canvas/DockPanel must not carry source-parent layout metadata
+        // into an unrelated StackPanel; all three clears and the structural move undo together.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllBytesAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Outline layout cleanup">
+              <StackPanel>
+                <Grid x:Name="grid"><Button x:Name="fromGrid" Grid.Row="1" Grid.Column="2" Grid.RowSpan="3" Content="Grid" /></Grid>
+                <Canvas x:Name="canvas"><Button x:Name="fromCanvas" Canvas.Left="30" Canvas.Top="40" Canvas.Right="50" Canvas.Bottom="60" Content="Canvas" /></Canvas>
+                <DockPanel x:Name="dock"><Button x:Name="fromDock" DockPanel.Dock="Right" Content="Dock" /></DockPanel>
+                <StackPanel x:Name="sink" />
+              </StackPanel>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var before = await File.ReadAllTextAsync(xamlPath);
+
+            foreach (var source in new[] { "fromGrid", "fromCanvas", "fromDock" }) {
+                var moved = await app.InvokeAsync("od.wpf-designer.outline-move", source, "sink", "");
+                Assert.True(moved.GetProperty("success").GetBoolean(), source + ": " + moved);
+            }
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var text = await File.ReadAllTextAsync(xamlPath);
+            Assert.DoesNotContain("Grid.Row=", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("Grid.Column=", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("Grid.RowSpan=", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("Canvas.Left=", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("Canvas.Top=", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("Canvas.Right=", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("Canvas.Bottom=", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("DockPanel.Dock=", text, StringComparison.Ordinal);
+
+            for (var index = 0; index < 3; index++)
+                Assert.True((await app.InvokeAsync("od.wpf-designer.undo")).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            Assert.Equal(before, await File.ReadAllTextAsync(xamlPath));
+        } finally {
+            await app.InvokeAsync("od.close-all-document-views");
+            await File.WriteAllBytesAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task Outline_CtrlDropCopiesAnElementIntoAnotherContainer()
     {
         // Ctrl-drag keeps the source, inserts its uniquely-named clone at the exact outline rail,

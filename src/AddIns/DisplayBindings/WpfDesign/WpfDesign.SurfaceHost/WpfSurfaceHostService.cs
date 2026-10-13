@@ -1968,6 +1968,11 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					}
 					else
 						content.SetValue(items[0]);
+					// Grid/Canvas/Dock attached values describe a particular parent. Leaving them on a
+					// moved child makes later moves unexpectedly reuse an old layout position; preserve
+					// only the properties whose owner is the new parent's actual layout contract.
+					foreach (var moved in items)
+						ClearStaleLayoutAttachedProperties(moved, target.Component);
 					changeGroup.Commit();
 				}
 				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
@@ -1976,6 +1981,19 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				state.Accepted = true;
 				return state;
 			});
+
+		static void ClearStaleLayoutAttachedProperties(DesignItem item, object? newParent)
+		{
+			var allowed = new HashSet<DependencyProperty>(ParentLayoutAttachedProperties(newParent));
+			foreach (var property in LayoutAttachedProperties)
+			{
+				if (allowed.Contains(property))
+					continue;
+				var attached = item.Properties.GetAttachedProperty(property);
+				if (attached.IsSet)
+					attached.Reset();
+			}
+		}
 
 		/// <summary>Clones one Outline element into an exact drop target. Unlike clipboard Paste this
 		/// never walks to an ancestor: Ctrl-drag must either land where its insertion rail indicated or
@@ -3038,6 +3056,12 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			}
 			return result;
 		}
+
+		static readonly DependencyProperty[] LayoutAttachedProperties = {
+			Grid.RowProperty, Grid.ColumnProperty, Grid.RowSpanProperty, Grid.ColumnSpanProperty,
+			Canvas.LeftProperty, Canvas.TopProperty, Canvas.RightProperty, Canvas.BottomProperty,
+			DockPanel.DockProperty
+		};
 
 		static IEnumerable<DependencyProperty> ParentLayoutAttachedProperties(object? parent) => parent switch {
 			Grid => new[] { Grid.RowProperty, Grid.ColumnProperty, Grid.RowSpanProperty, Grid.ColumnSpanProperty },

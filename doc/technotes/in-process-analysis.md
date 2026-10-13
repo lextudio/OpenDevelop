@@ -763,8 +763,9 @@ middle drops into it after its last child, highlighting the target - raising `Mo
 `design/clone-into(elementId, target, after)` for Ctrl-drag copy: it keeps the source, uniqueifies
 names, honors the exact target and insertion rail, selects the clone, and rejects self/descendant or
 full single-content targets. `od.wpf-designer.outline-copy` takes the same `RequestCopy` path. Not
-yet: multi-row drags and clearing a moved element's stale attached layout
-properties (in-process left them too).
+yet: multi-row drags. Moving a child now clears authored Grid/Canvas/Dock attached layout properties
+that are not meaningful under its new parent, in the same undo group, while preserving the new
+parent's own layout property family.
 
 **C4 Outline design-time flags (2026-10-12).** The in-process WPF Outline had an eye and a lock
 toggle per row, writing `d:IsHidden` (DDP hides the element at design time only) and `d:IsLocked`
