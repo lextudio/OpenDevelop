@@ -199,6 +199,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	public interface IResourceImageEditorHost
 	{
 		void ReplaceResourceImage(string propertyName, byte[] imageBytes);
+		void CreateResourceImage(string propertyName, byte[] imageBytes);
 	}
 
 	/// <summary>Metadata exposed by a property descriptor that is eligible for the narrowly scoped

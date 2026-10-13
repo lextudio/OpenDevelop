@@ -168,6 +168,14 @@ namespace ICSharpCode.FormsDesigner.Services
 				throw new InvalidOperationException("The resource bytes are unavailable: " + file.FileName);
 			return ResxImageResourceEditor.ReplaceExistingImage(resourceBytes, resourceKey, imageBytes);
 		}
+
+		public byte[] CreateImageEntry(OpenedFile file, string resourceKey, string resourceType, byte[] imageBytes)
+		{
+			if (!resourceByFile.ContainsKey(file) || !String.Equals(Path.GetExtension(file.FileName), ".resx", StringComparison.OrdinalIgnoreCase))
+				throw new InvalidOperationException("The resource file is not an owned .resx document.");
+			if (!TryGetBytes(file, out var resourceBytes)) throw new InvalidOperationException("The resource bytes are unavailable: " + file.FileName);
+			return ResxImageResourceEditor.AddImage(resourceBytes, resourceKey, resourceType, imageBytes);
+		}
 		
 		public void MarkResourceFilesAsDirty()
 		{

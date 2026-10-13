@@ -81,7 +81,10 @@ namespace ICSharpCode.FormsDesigner.Services
 				var file = new FileInfo(fileName);
 				if (file.Length > MaxResourceImageBytes)
 					throw new InvalidOperationException("The replacement image is larger than 20 MiB.");
-				host.ReplaceResourceImage(propertyItem.PropertyDescriptor.Name, File.ReadAllBytes(fileName));
+				if (propertyItem.PropertyDescriptor is IResourceImageProperty { ResourceFileName: { Length: > 0 } })
+					host.ReplaceResourceImage(propertyItem.PropertyDescriptor.Name, File.ReadAllBytes(fileName));
+				else
+					host.CreateResourceImage(propertyItem.PropertyDescriptor.Name, File.ReadAllBytes(fileName));
 			} catch (Exception exception) {
 				if (TestFileNameSelector != null) {
 					TestException = exception;

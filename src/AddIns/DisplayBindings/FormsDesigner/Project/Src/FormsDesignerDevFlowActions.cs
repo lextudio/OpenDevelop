@@ -367,6 +367,7 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 				return Failure("no outline control");
 			viewContent.SelectRemoteComponents(componentName);
 			outline.SelectNodeById(componentName);
+			viewContent.RefreshRemotePropertyPad();
 			return JsonSerializer.Serialize(new {
 				success = true,
 				selectedName = viewContent.RemoteDesignerSelectedComponent
@@ -652,9 +653,9 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 				return Failure("Properties pad has no editable WinForms resource image selection");
 			var item = grid.Properties?.OfType<PropertyItem>()
 				.FirstOrDefault(candidate => candidate.PropertyName == propertyName);
-			if (item?.PropertyDescriptor is not IResourceImageProperty resourceProperty
-				|| !String.Equals(resourceProperty.EditorKind, "ResourceImage", StringComparison.Ordinal))
+			if (item?.PropertyDescriptor is not IResourceImageProperty resourceProperty)
 				return Failure("Properties pad property is not an editable resource image: " + propertyName);
+			var createsResource = String.IsNullOrEmpty(resourceProperty.ResourceFileName);
 			// This is deliberately checked on the live Xceed item rather than inferred from the
 			// protocol flag: a ResourceImage descriptor must render the explicit picker button,
 			// while the opaque [binary] token stays read-only to generic scalar editing.
@@ -676,6 +677,7 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 					propertyName,
 					resourceProperty.ResourceFileName,
 					resourceProperty.ResourceKey,
+					createsResource,
 					fileFilter = ResourceImagePropertyEditor.FileFilterFor(item),
 					hasReplaceButton = true
 				});

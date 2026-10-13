@@ -182,6 +182,37 @@ namespace ICSharpCode.FormsDesigner
 			ApplyRestoredRemoteState(state);
 		}
 
+		internal void CreateRemoteResourceImage(string componentName, DesignerPropertyInfo property, byte[] imageBytes)
+		{
+			EnsureRemoteDesignerLoaded();
+			if (property == null || !String.IsNullOrEmpty(property.ResourceFileName)
+				|| property.TypeName is not ("System.Drawing.Image" or "System.Drawing.Bitmap" or "System.Drawing.Icon"))
+				throw new InvalidOperationException("This property cannot create a resource image.");
+			var resource = Files.FirstOrDefault(file => !sourceCodeStorage.ContainsFile(file)
+				&& String.Equals(Path.GetExtension(file.FileName), ".resx", StringComparison.OrdinalIgnoreCase));
+			if (resource == null) throw new InvalidOperationException("Create a form .resx resource file before assigning a new image.");
+			var type = property.TypeName + ", System.Drawing.Common";
+			var before = CaptureRemoteDocuments();
+			var target = CaptureRemoteDocuments();
+			var sourceName = DesignerCodeFile.FileName.ToString();
+			var rootName = RemoteDesignerState?.Components.FirstOrDefault(component => String.IsNullOrEmpty(component.Parent)
+				&& component.IsControl && !component.IsTrayComponent)?.Name;
+			var targetExpression = componentName == rootName ? "$this" : componentName;
+			var key = targetExpression + "." + property.Name;
+			var bind = sourceName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase)
+				? ResourceImageSourceBinding.TryAddVisualBasicBinding(target.SourceTexts[sourceName], targetExpression, property.Name, property.TypeName, key, out var text, out var error)
+				: ResourceImageSourceBinding.TryAddCSharpBinding(target.SourceTexts[sourceName], targetExpression, property.Name, property.TypeName, key, out text, out error);
+			if (!bind) throw new InvalidOperationException(error);
+			target.SourceTexts[sourceName] = text;
+			target.ResourceBytes[resource.FileName.ToString()] = resourceStore.CreateImageEntry(resource, key, type, imageBytes);
+			var state = RestoreRemoteDocuments(target);
+			remoteUndo.Push(before); remoteRedo.Clear(); ApplyRestoredRemoteState(state);
+		}
+
+		bool CanCreateRemoteResourceImage(DesignerPropertyInfo property) => property != null && String.IsNullOrEmpty(property.ResourceFileName)
+			&& property.TypeName is "System.Drawing.Image" or "System.Drawing.Bitmap" or "System.Drawing.Icon"
+			&& Files.Any(file => !sourceCodeStorage.ContainsFile(file) && String.Equals(Path.GetExtension(file.FileName), ".resx", StringComparison.OrdinalIgnoreCase));
+
 		internal void RenameRemoteComponent(string componentName, string newName)
 		{
 			EnsureRemoteDesignerLoaded();
@@ -374,6 +405,11 @@ namespace ICSharpCode.FormsDesigner
 		{
 			if (IsRemoteDesignerLoaded) remoteControl.SelectComponents(names);
 		}
+
+		/// <summary>Synchronizes the shared Properties pad with the current remote selection.
+		/// DevFlow selection actions need this after outline routing, which can otherwise leave a
+		/// previously restored pad object visible until the next dispatcher turn.</summary>
+		internal void RefreshRemotePropertyPad() => RefreshPropertyPadFromSelection();
 
 		/// <summary>Moves the current multi-selection by (deltaX, deltaY) design units.</summary>
 		internal bool TryNudgeRemoteSelection(int deltaX, int deltaY)
@@ -2050,6 +2086,14 @@ namespace ICSharpCode.FormsDesigner
 				owner.ReplaceRemoteResourceImage(name, imageProperty, imageBytes);
 			}
 
+			void IResourceImageEditorHost.CreateResourceImage(string propertyName, byte[] imageBytes)
+			{
+				var imageProperty = remoteProperties.SingleOrDefault(item => String.Equals(item.Name, propertyName, StringComparison.Ordinal)
+					&& String.IsNullOrEmpty(item.ResourceFileName) && item.TypeName is "System.Drawing.Image" or "System.Drawing.Bitmap" or "System.Drawing.Icon");
+				if (imageProperty == null) throw new InvalidOperationException("This property cannot create a resource image.");
+				owner.CreateRemoteResourceImage(name, imageProperty, imageBytes);
+			}
+
 			PropertyDescriptorCollection GetRemotePropertyDescriptors()
 			{
 				// Text used to be a fixed CLR descriptor like X/Y/Width/Height. Unlike bounds,
@@ -2121,7 +2165,7 @@ namespace ICSharpCode.FormsDesigner
 			readonly Type propertyType;
 
 			public RemotePropertyDescriptor(FormsDesignerViewContent owner, string componentName, DesignerPropertyInfo property)
-				: base(property.Name, CreateAttributes(property))
+				: base(property.Name, CreateAttributes(owner, property))
 			{
 				this.owner = owner;
 				this.componentName = componentName;
@@ -2133,13 +2177,13 @@ namespace ICSharpCode.FormsDesigner
 				};
 			}
 
-			static Attribute[] CreateAttributes(DesignerPropertyInfo property)
+			static Attribute[] CreateAttributes(FormsDesignerViewContent owner, DesignerPropertyInfo property)
 			{
 				var attributes = new List<Attribute> { new CategoryAttribute(property.Category), new DescriptionAttribute(property.Description ?? ""), new ReadOnlyAttribute(IsProtocolReadOnly(property)) };
 				if ((property.Kind == "Enum" || String.Equals(property.EditorKind, "ComponentReference", StringComparison.Ordinal))
 					&& property.AllowedValues.Count > 0)
 					attributes.Add(new TypeConverterAttribute(typeof(RemoteEnumConverter)));
-				if (String.Equals(property.EditorKind, "ResourceImage", StringComparison.Ordinal))
+				if (String.Equals(property.EditorKind, "ResourceImage", StringComparison.Ordinal) || owner.CanCreateRemoteResourceImage(property))
 					attributes.Add(new EditorAttribute(typeof(ResourceImagePropertyEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 				// Read-only to generic editing; the "…" editor commits the whole list.
 				if (String.Equals(property.EditorKind, "ItemsCollection", StringComparison.Ordinal))

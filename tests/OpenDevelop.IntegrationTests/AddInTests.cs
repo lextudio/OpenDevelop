@@ -4221,10 +4221,14 @@ public sealed class AddInTests : IAsyncDisposable
             var resourceDeclaration = "            var resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));\n";
             var imageAssignment = "            dropPanel.BackgroundImage = (System.Drawing.Image)resources.GetObject(\"dropPanel.BackgroundImage\");\n";
             var iconAssignment = "            this.Icon = (System.Drawing.Icon)resources.GetObject(\"$this.Icon\");\n";
+            var buttonDeclaration = "        private System.Windows.Forms.Button button1;\n";
+            var buttonInitialization = "            button1 = new System.Windows.Forms.Button { Name = \"button1\", Text = \"Create image resource\" };\n";
+            var buttonAdd = "            Controls.Add(button1);\n";
             var resourceDesigner = originalDesigner.Replace("\r\n", "\n", StringComparison.Ordinal)
                 .Replace("            dropPanel = new System.Windows.Forms.Panel();\n", "            dropPanel = new System.Windows.Forms.Panel();\n" + resourceDeclaration, StringComparison.Ordinal)
                 .Replace("            dropPanel.Size = new System.Drawing.Size(260, 150);\n", "            dropPanel.Size = new System.Drawing.Size(260, 150);\n" + imageAssignment, StringComparison.Ordinal)
-                .Replace("            ClientSize = new System.Drawing.Size(400, 300);\n", iconAssignment + "            ClientSize = new System.Drawing.Size(400, 300);\n", StringComparison.Ordinal);
+                .Replace("            ClientSize = new System.Drawing.Size(400, 300);\n", buttonInitialization + buttonAdd + iconAssignment + "            ClientSize = new System.Drawing.Size(400, 300);\n", StringComparison.Ordinal)
+                .Replace("    }\n}", buttonDeclaration + "    }\n}", StringComparison.Ordinal);
             Assert.Contains(resourceDeclaration, resourceDesigner, StringComparison.Ordinal);
             Assert.Contains(imageAssignment, resourceDesigner, StringComparison.Ordinal);
             Assert.Contains(iconAssignment, resourceDesigner, StringComparison.Ordinal);
@@ -4293,6 +4297,42 @@ public sealed class AddInTests : IAsyncDisposable
             var resourcesAfterIconRedo = await File.ReadAllTextAsync(resourcePath);
             Assert.Contains(replacementIcon, resourcesAfterIconRedo, StringComparison.Ordinal);
             Assert.Contains(replacementImage, resourcesAfterIconRedo, StringComparison.Ordinal);
+
+            // Creating an image has no child write capability: the parent adds the .resx entry
+            // and conventional source binding as one snapshot, then owns undo/redo for both.
+            Assert.True((await _app.InvokeAsync("od.forms-designer.select", "button1")).GetProperty("success").GetBoolean());
+            JsonElement created = default;
+            var createdOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                created = await _app.InvokeAsync("od.forms-designer.properties-pad.replace-resource-image", "Image", replacementImage);
+                return created.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 300);
+            Assert.True(createdOk, created.ToString());
+            Assert.True(created.GetProperty("createsResource").GetBoolean(), created.ToString());
+            Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
+            Assert.Contains("button1.Image", await File.ReadAllTextAsync(designerPath), StringComparison.Ordinal);
+            Assert.Contains("button1.Image", await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
+            Assert.True((await _app.InvokeAsync("od.forms-designer.undo")).GetProperty("success").GetBoolean());
+            Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
+            Assert.DoesNotContain("button1.Image", await File.ReadAllTextAsync(designerPath), StringComparison.Ordinal);
+            Assert.DoesNotContain("button1.Image", await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
+            Assert.True((await _app.InvokeAsync("od.forms-designer.redo")).GetProperty("success").GetBoolean());
+            Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
+            Assert.Contains("button1.Image", await File.ReadAllTextAsync(designerPath), StringComparison.Ordinal);
+            Assert.Contains("button1.Image", await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
+
+            // The root has no field expression: creation must use the same $this convention as
+            // existing root resources, and must not confuse root-level tray components with it.
+            Assert.True((await _app.InvokeAsync("od.forms-designer.outline-select", "Form1")).GetProperty("success").GetBoolean());
+            JsonElement rootCreated = default;
+            var rootCreatedOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                rootCreated = await _app.InvokeAsync("od.forms-designer.properties-pad.replace-resource-image", "BackgroundImage", replacementImage);
+                return rootCreated.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 300);
+            Assert.True(rootCreatedOk, rootCreated.ToString());
+            Assert.True(rootCreated.GetProperty("createsResource").GetBoolean(), rootCreated.ToString());
+            Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
+            Assert.Contains("$this.BackgroundImage", await File.ReadAllTextAsync(designerPath), StringComparison.Ordinal);
+            Assert.Contains("$this.BackgroundImage", await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
         }
         finally {
             await _app.InvokeAsync("od.close-all-document-views");
