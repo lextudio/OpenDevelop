@@ -757,6 +757,26 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				SelectElementId(result.MovedElementId);
 		}
 
+		/// <summary>The host's answer to the last Outline Ctrl-drag copy, for automation; null before one.</summary>
+		internal DesignerSessionState? LastCopyResult { get; private set; }
+
+		/// <summary>The Outline's Ctrl-drag and drop: atomically clones an element into a container after
+		/// one of its children (null = first), then selects the clone under its new path id.</summary>
+		internal void CopyInto(string elementId, string targetId, string? afterId)
+		{
+			LastCopyResult = null;
+			if (state == null)
+				return;
+			var result = client.CloneIntoAsync(RequireVersion(), elementId, targetId, afterId).GetAwaiter().GetResult();
+			LastCopyResult = result;
+			Show(result);
+			if (!result.Accepted)
+				return;
+			DocumentChanged?.Invoke(this, result);
+			if (result.CreatedElementIds.FirstOrDefault() is { } createdId)
+				SelectElementId(createdId);
+		}
+
 		/// <summary>The Outline's eye/lock toggles: sets or clears <c>d:IsHidden</c>/<c>d:IsLocked</c>.</summary>
 		internal void SetDesignTimeFlag(string elementId, string flag, bool value)
 		{

@@ -693,6 +693,8 @@ namespace ICSharpCode.WpfDesign.AddIn
 				outline.DesignTimeFlagToggled += (_, toggled) => surfaceControl?.SetDesignTimeFlag(toggled.Node.Id, toggled.Flag, toggled.Value);
 				outline.AllowElementMoves = true;
 				outline.MoveRequested += (_, move) => surfaceControl?.MoveInto(move.Node.Id, move.Target.Id, move.After?.Id);
+				outline.AllowElementCopies = true;
+				outline.CopyRequested += (_, copy) => surfaceControl?.CopyInto(copy.Node.Id, copy.Target.Id, copy.After?.Id);
 				outlineSubscribed = true;
 			}
 		}

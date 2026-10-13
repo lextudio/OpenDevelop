@@ -267,6 +267,33 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.wpf-designer.outline-copy", Description = "Copy a named element into a named container through the live Document Outline's Ctrl-drop path, after the named child (empty = first)")]
+		public static string CopyInOutline(string elementName, string targetName, string afterName)
+		{
+			var viewContent = FindWpfViewContent();
+			var surface = viewContent?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
+			var outline = viewContent!.OutlineContent as ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl;
+			var node = surface.FindNodeByName(elementName);
+			var target = surface.FindNodeByName(targetName);
+			var after = string.IsNullOrEmpty(afterName) ? null : surface.FindNodeByName(afterName);
+			if (outline == null || node == null || target == null || !string.IsNullOrEmpty(afterName) && after == null)
+				return Failure("Element, target or Document Outline not found");
+			if (!outline.AllowElementCopies || !outline.RequestCopy(node.Id, target.Id, after?.Id))
+				return Failure("The Document Outline did not accept the copy");
+			// The Ctrl-drop path is synchronous: report the host result, not merely that it was asked.
+			var result = surface.LastCopyResult;
+			return JsonSerializer.Serialize(new {
+				success = result?.Accepted == true,
+				error = result?.Error,
+				status = surface.StatusText,
+				selectedId = surface.SelectedElementId,
+				outlineSelectedId = outline.SelectedNode?.Id,
+				createdIds = result?.CreatedElementIds
+			});
+		}
+
 		[DevFlowAction("od.wpf-designer.outline-toggle", Description = "Click a named element's design-time Hidden or Locked toggle in the live Document Outline (flag: Hidden|Locked) and report the element's flags afterwards")]
 		public static string ToggleOutlineFlag(string elementName, string flag)
 		{

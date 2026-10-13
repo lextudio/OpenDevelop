@@ -756,8 +756,11 @@ are moving the root, into itself or a descendant, a single content of the wrong 
 non-UIElement into a Panel. The shared `DocumentOutlineControl` gains an opt-in `AllowElementMoves`
 with row drag and drop - the top/bottom quarter of a row inserts before/after it in its parent, the
 middle drops into it after its last child, highlighting the target - raising `MoveRequested`;
-`od.wpf-designer.outline-move` takes the same `RequestMove` path. Not yet: Ctrl-drag copy (DDP's clone
-would duplicate `x:Name`), multi-row drags, and clearing a moved element's stale attached layout
+`od.wpf-designer.outline-move` takes the same `RequestMove` path. Protocol **v29** adds atomic
+`design/clone-into(elementId, target, after)` for Ctrl-drag copy: it keeps the source, uniqueifies
+names, honors the exact target and insertion rail, selects the clone, and rejects self/descendant or
+full single-content targets. `od.wpf-designer.outline-copy` takes the same `RequestCopy` path. Not
+yet: multi-row drags and clearing a moved element's stale attached layout
 properties (in-process left them too).
 
 **C4 Outline design-time flags (2026-10-12).** The in-process WPF Outline had an eye and a lock

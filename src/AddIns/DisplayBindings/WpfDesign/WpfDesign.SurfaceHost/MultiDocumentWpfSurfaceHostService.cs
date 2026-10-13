@@ -108,6 +108,8 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerSessionState PasteElements(string sessionId, string documentId, long baseVersion, string targetId, string[] snippets) => Checked(sessionId, documentId).PasteElements(baseVersion, targetId, snippets);
 	[JsonRpcMethod("design/move-into")]
 	public DesignerSessionState MoveInto(string sessionId, string documentId, long baseVersion, string[] elementIds, string targetId, string? afterId) => Checked(sessionId, documentId).MoveInto(baseVersion, elementIds, targetId, afterId);
+	[JsonRpcMethod("design/clone-into")]
+	public DesignerSessionState CloneInto(string sessionId, string documentId, long baseVersion, string elementId, string targetId, string? afterId) => Checked(sessionId, documentId).CloneInto(baseVersion, elementId, targetId, afterId);
 	[JsonRpcMethod("design/set-design-time-flag")]
 	public DesignerSessionState SetDesignTimeFlag(string sessionId, string documentId, long baseVersion, string elementId, string flag, bool value) => Checked(sessionId, documentId).SetDesignTimeFlag(baseVersion, elementId, flag, value);
 	[JsonRpcMethod("design/set-brush")]

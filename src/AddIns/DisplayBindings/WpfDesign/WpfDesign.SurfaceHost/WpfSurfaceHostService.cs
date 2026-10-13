@@ -1917,6 +1917,64 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		/// <summary>Clones one Outline element into an exact drop target. Unlike clipboard Paste this
+		/// never walks to an ancestor: Ctrl-drag must either land where its insertion rail indicated or
+		/// fail. The clone gets unique names, is inserted after <paramref name="afterId"/> (or first),
+		/// and is one native undo group.</summary>
+		[JsonRpcMethod("design/clone-into")]
+		public DesignerSessionState CloneInto(long baseVersion, string elementId, string targetId, string? afterId)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId ?? "", out var source) || source is not XamlDesignItem sourceItem || source.Parent == null)
+					return NotFound(state, "Element not found or not copyable: " + elementId);
+				if (!pathToItem.TryGetValue(targetId ?? "", out var target))
+					return NotFound(state, "Target not found: " + targetId);
+				// Keep the in-process Outline's structural guard: copying a container into itself or a
+				// descendant would recursively expand the document even though it is not a reference cycle.
+				for (var ancestor = target; ancestor != null; ancestor = ancestor.Parent)
+					if (ancestor == source)
+						return NotFound(state, "An element cannot be copied into itself: " + elementId);
+				var content = target.ContentProperty;
+				if (content == null)
+					return NotFound(state, "The target has no content property: " + targetId);
+				DesignItem? after = null;
+				if (afterId != null && (!pathToItem.TryGetValue(afterId, out after) || !content.IsCollection || !content.CollectionElements.Contains(after)))
+					return NotFound(state, "The insertion point is not a child of the target: " + afterId);
+				if (!content.IsCollection && content.IsSet)
+					return NotFound(state, "The target holds a single child and is not empty.");
+
+				DesignItem? clone;
+				try
+				{
+					var usedNames = new HashSet<string>(pathToItem.Values.Select(item => item.Name).Where(name => !string.IsNullOrEmpty(name))!, StringComparer.Ordinal);
+					var snippet = ICSharpCode.WpfDesign.XamlDom.XamlStaticTools.GetXaml(sourceItem.XamlObject);
+					var parsed = current?.RootItem is XamlDesignItem rootItem
+						? ICSharpCode.WpfDesign.XamlDom.XamlParser.ParseSnippet(rootItem.XamlObject, UniqueNames(snippet, usedNames), current.ParserSettings)
+						: null;
+					clone = parsed == null ? null : ((XamlComponentService)target.Services.Component).RegisterXamlComponentRecursive(parsed);
+				}
+				catch (Exception e) { return NotFound(state, "The element could not be cloned: " + e.GetBaseException().Message); }
+				if (clone == null || !CanTake(target, new[] { clone }))
+					return NotFound(state, "The target's content cannot hold that element.");
+				try
+				{
+					using var changeGroup = target.Context.OpenGroup("Copy in outline", new[] { clone });
+					if (content.IsCollection)
+						content.CollectionElements.Insert(after == null ? 0 : content.CollectionElements.IndexOf(after) + 1, clone);
+					else
+						content.SetValue(clone);
+					changeGroup.Commit();
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state);
+				state.CreatedElementIds = pathToItem.FirstOrDefault(entry => entry.Value == clone).Key is { } createdId
+					? new List<string> { createdId } : new List<string>();
+				state.Accepted = state.CreatedElementIds.Count == 1;
+				return state;
+			});
+
 		/// <summary>Changes an element's stacking order among its siblings, as the in-process
 		/// designer's RightClickContextMenu did: "front"/"back" move it to the end/start of the
 		/// parent's collection (drawn last/first), "forward"/"backward" by one. The host owns the

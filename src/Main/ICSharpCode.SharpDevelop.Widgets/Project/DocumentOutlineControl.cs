@@ -44,7 +44,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			get => allowElementMoves;
 			set {
 				allowElementMoves = value;
-				AllowDrop = value;
+				AllowDrop = value || allowElementCopies;
 				// The handlers are attached only for an opted-in outline: a backend with its own
 				// outline drag and drop (WinUI reorders through its own DragOver/Drop) keeps an event
 				// chain exactly as before.
@@ -55,11 +55,30 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			}
 		}
 		bool allowElementMoves;
+
+		/// <summary>Whether holding Ctrl while dragging a row requests a copy instead of a move. Off
+		/// by default: a backend opts in when it handles <see cref="CopyRequested"/>.</summary>
+		public bool AllowElementCopies {
+			get => allowElementCopies;
+			set {
+				allowElementCopies = value;
+				AllowDrop = value || allowElementMoves;
+				if (value && !moveHandlersAttached) {
+					moveHandlersAttached = true;
+					AttachMoveHandlers();
+				}
+			}
+		}
+		bool allowElementCopies;
 		bool moveHandlersAttached;
 
 		/// <summary>Raised when a row is dropped: move <c>Node</c> into <c>Target</c>, right after
 		/// <c>After</c> (null = first). The tree changes only with the backend's next snapshot.</summary>
 		public event EventHandler<(DesignerElementNode Node, DesignerElementNode Target, DesignerElementNode? After)> MoveRequested;
+
+		/// <summary>Raised when Ctrl-dragging a row drops it: copy <c>Node</c> into <c>Target</c>,
+		/// right after <c>After</c> (null = first). The backend owns cloning and name uniquing.</summary>
+		public event EventHandler<(DesignerElementNode Node, DesignerElementNode Target, DesignerElementNode? After)> CopyRequested;
 
 		const string DragFormat = "OpenDevelop.DesignerOutlineNodeId";
 		Point dragStart;
@@ -112,7 +131,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		{
 			PreviewMouseLeftButtonDown += (_, e) => {
 				dragStart = e.GetPosition(this);
-				dragSource = AllowElementMoves ? ItemAt(e.OriginalSource) : null;
+				dragSource = AllowElementMoves || AllowElementCopies ? ItemAt(e.OriginalSource) : null;
 			};
 			PreviewMouseMove += (_, e) => {
 				if (dragSource?.Tag is not DesignerElementNode node || e.LeftButton != System.Windows.Input.MouseButtonState.Pressed)
@@ -121,28 +140,39 @@ namespace ICSharpCode.SharpDevelop.Widgets
 				if (Math.Abs(delta.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance)
 					return;
 				dragSource = null;
-				DragDrop.DoDragDrop(this, new DataObject(DragFormat, node.Id), DragDropEffects.Move);
+				DragDrop.DoDragDrop(this, new DataObject(DragFormat, node.Id), AllowElementMoves && AllowElementCopies
+					? DragDropEffects.Move | DragDropEffects.Copy
+					: AllowElementCopies ? DragDropEffects.Copy : DragDropEffects.Move);
 				SetDropHighlight(null);
 			};
 			// Only this outline's own row drags are claimed; any other drag passes through untouched.
 			DragOver += (_, e) => {
-				if (!AllowElementMoves || e.Data.GetData(DragFormat) is not string id)
+				if (!(AllowElementMoves || AllowElementCopies) || e.Data.GetData(DragFormat) is not string id)
 					return;
 				var drop = ResolveDrop(id, e);
-				e.Effects = drop != null ? DragDropEffects.Move : DragDropEffects.None;
+				e.Effects = drop != null ? IsCopyDrag(e) ? DragDropEffects.Copy : DragDropEffects.Move : DragDropEffects.None;
+				if (e.Effects == DragDropEffects.Copy && !AllowElementCopies || e.Effects == DragDropEffects.Move && !AllowElementMoves)
+					e.Effects = DragDropEffects.None;
 				SetDropHighlight(drop?.Highlight);
 				e.Handled = true;
 			};
 			DragLeave += (_, _) => SetDropHighlight(null);
 			Drop += (_, e) => {
-				if (!AllowElementMoves || e.Data.GetData(DragFormat) is not string id)
+				if (!(AllowElementMoves || AllowElementCopies) || e.Data.GetData(DragFormat) is not string id)
 					return;
 				SetDropHighlight(null);
-				if (ResolveDrop(id, e) is { } drop)
-					RequestMove(id, drop.Target.Id, drop.After?.Id);
+				if (ResolveDrop(id, e) is { } drop) {
+					if (IsCopyDrag(e))
+						RequestCopy(id, drop.Target.Id, drop.After?.Id);
+					else
+						RequestMove(id, drop.Target.Id, drop.After?.Id);
+				}
 				e.Handled = true;
 			};
 		}
+
+		static bool IsCopyDrag(DragEventArgs e)
+			=> (e.KeyStates & DragDropKeyStates.ControlKey) != 0;
 
 		/// <summary>Raises <see cref="MoveRequested"/> for the displayed nodes with these ids, as a
 		/// drop does. False when one is not displayed.</summary>
@@ -155,6 +185,20 @@ namespace ICSharpCode.SharpDevelop.Widgets
 				|| afterId != null && after?.Tag is not DesignerElementNode)
 				return false;
 			MoveRequested?.Invoke(this, (moved, container, after?.Tag as DesignerElementNode));
+			return true;
+		}
+
+		/// <summary>Raises <see cref="CopyRequested"/> for the displayed nodes with these ids, as a
+		/// Ctrl-drop does. False when one is not displayed.</summary>
+		public bool RequestCopy(string nodeId, string targetId, string? afterId)
+		{
+			var node = FindDisplayed(nodeId);
+			var target = FindDisplayed(targetId);
+			var after = afterId == null ? null : FindDisplayed(afterId);
+			if (node?.Tag is not DesignerElementNode copied || target?.Tag is not DesignerElementNode container
+				|| afterId != null && after?.Tag is not DesignerElementNode)
+				return false;
+			CopyRequested?.Invoke(this, (copied, container, after?.Tag as DesignerElementNode));
 			return true;
 		}
 

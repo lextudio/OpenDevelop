@@ -307,6 +307,10 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> MoveIntoAsync(long baseVersion, string[] elementIds, string targetId, string? afterId, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/move-into", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds, targetId, afterId }, cancellationToken), cancellationToken);
 
+	/// <summary>Clones one element into an exact Outline drop target after one of its children.</summary>
+	public Task<DesignerSessionState> CloneIntoAsync(long baseVersion, string elementId, string targetId, string? afterId, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/clone-into", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, targetId, afterId }, cancellationToken), cancellationToken);
+
 	/// <summary>Sets or clears an element's design-time <c>Hidden</c> or <c>Locked</c> flag.</summary>
 	public Task<DesignerSessionState> SetDesignTimeFlagAsync(long baseVersion, string elementId, string flag, bool value, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-design-time-flag", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, flag, value }, cancellationToken), cancellationToken);

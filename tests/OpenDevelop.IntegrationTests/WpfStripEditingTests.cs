@@ -950,6 +950,65 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
+    public async Task Outline_CtrlDropCopiesAnElementIntoAnotherContainer()
+    {
+        // Ctrl-drag keeps the source, inserts its uniquely-named clone at the exact outline rail,
+        // selects that clone, and has one undo step. DevFlow uses the same Outline event route as a
+        // pointer Ctrl-drop after the pointer has resolved its target geometry.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllBytesAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Outline copies">
+              <StackPanel>
+                <Button x:Name="copySource" Content="Copy source" />
+                <StackPanel x:Name="inner"><TextBlock x:Name="label" Text="Label" /></StackPanel>
+              </StackPanel>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var before = await File.ReadAllTextAsync(xamlPath);
+
+            JsonElement copied = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                copied = await app.InvokeAsync("od.wpf-designer.outline-copy", "copySource", "inner", "label");
+                return copied.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250), copied.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var text = await File.ReadAllTextAsync(xamlPath);
+            Assert.Contains("<Button x:Name=\"copySource\" Content=\"Copy source\" />", text);
+            Assert.Matches("x:Name=\"label\"[^<]*/>\\s*<Button x:Name=\"copySource1\"", text);
+            var createdId = copied.GetProperty("createdIds").EnumerateArray().Single().GetString();
+            Assert.Equal(createdId, copied.GetProperty("selectedId").GetString());
+            Assert.Equal(createdId, copied.GetProperty("outlineSelectedId").GetString());
+
+            // Ctrl-drop refuses a non-container destination and does not create a second clone.
+            var refused = await app.InvokeAsync("od.wpf-designer.outline-copy", "label", "copySource", "");
+            Assert.False(refused.GetProperty("success").GetBoolean(), refused.ToString());
+
+            var undo = await app.InvokeAsync("od.wpf-designer.undo");
+            Assert.True(undo.GetProperty("success").GetBoolean(), undo.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            Assert.Equal(before, await File.ReadAllTextAsync(xamlPath));
+        } finally {
+            await app.InvokeAsync("od.close-all-document-views");
+            await File.WriteAllBytesAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task Outline_HiddenAndLockedTogglesWriteDesignTimeAttributes()
     {
         // The in-process Outline's eye and lock toggles: d:IsHidden takes the element off the

@@ -20,7 +20,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		// v28 adds DesignerElementNode.HasContentCollection, so a WPF Duplicate can distinguish a
+		// v29 adds WPF's optional design/clone-into for Outline Ctrl-drag copy. v28 adds
+		// DesignerElementNode.HasContentCollection, so a WPF Duplicate can distinguish a
 		// real collection parent from a full single-content control without guessing from its type.
 		// v27 adds WPF's optional design/copy-elements and design/paste-elements (DesignerCopyResult,
 		// DesignerSessionState.CreatedElementIds). v26 added design/move-into (Outline drag and drop).
@@ -38,7 +39,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// and design/set-binding-validation-option. A stale pooled child
 		// must fail the handshake rather than reject a newly-visible binding editor after the
 		// Properties pad has already presented it.
-		public const int Version = 28;
+		public const int Version = 29;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -178,8 +179,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// on that response. WPF ids are tree paths, so reordering changes the moved element's id
 		/// (and its siblings'); restoring the selection by the old id would select a neighbour.</summary>
 		public string? MovedElementId { get; set; }
-		/// <summary>The ids of the elements a <c>design/paste-elements</c> call just created, in
-		/// paste order; valid only on that response.</summary>
+		/// <summary>The ids of the elements a <c>design/paste-elements</c> or
+		/// <c>design/clone-into</c> call just created, in insertion order; valid only on that response.</summary>
 		public List<string> CreatedElementIds { get; set; } = new List<string>();
 		/// <summary>The element id a <c>design/hit-test-popup</c> call just selected inside its
 		/// popup (see <see cref="Popups"/>), valid only on that RPC's own response - null for
