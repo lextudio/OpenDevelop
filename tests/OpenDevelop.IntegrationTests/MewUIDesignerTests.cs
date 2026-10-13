@@ -62,6 +62,34 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task MewUIDesigner_ToolboxCreatesCanvasAndInsertsIntoIt()
+	{
+		var openedProject = await app.ReopenSolutionAsync(projectPath);
+		Assert.True(openedProject.GetProperty("success").GetBoolean(), openedProject.ToString());
+		var opened = await app.InvokeAsync("od.open-file", designerPath);
+		Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitForDesignerAsync();
+		Assert.True(status.GetProperty("toolboxItemCount").GetInt32() >= 17, status.ToString());
+
+		var filtered = await app.InvokeAsync("od.mewui-designer.toolbox.filter", "canvas");
+		Assert.Equal(1, filtered.GetProperty("itemCount").GetInt32());
+		await app.InvokeAsync("od.mewui-designer.toolbox.filter", "");
+		var selectedRoot = await app.InvokeAsync("od.mewui-designer.select", "rootPanel");
+		Assert.True(selectedRoot.GetProperty("success").GetBoolean(), selectedRoot.ToString());
+		var addedCanvas = await app.InvokeAsync("od.mewui-designer.toolbox.insert", "Canvas");
+		Assert.True(addedCanvas.GetProperty("success").GetBoolean(), addedCanvas.ToString());
+		var selectedCanvas = await app.InvokeAsync("od.mewui-designer.select", "canvas1");
+		Assert.True(selectedCanvas.GetProperty("success").GetBoolean(), selectedCanvas.ToString());
+		var addedButton = await app.InvokeAsync("od.mewui-designer.toolbox.insert", "Button");
+		Assert.True(addedButton.GetProperty("success").GetBoolean(), addedButton.ToString());
+
+		var saved = await app.InvokeAsync("od.file.save", designerPath);
+		Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+		var mxaml = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
+		Assert.Matches("<Canvas Name=\"canvas1\">\\s*<Button Name=\"button1\" />\\s*</Canvas>", mxaml);
+	}
+
+	[Fact]
 	public async Task MewUIDesigner_SourceBackedEditUndoRedoAndSave()
 	{
 		var openedProject = await app.ReopenSolutionAsync(projectPath);

@@ -9,7 +9,7 @@ namespace ICSharpCode.MewUIDesigner;
 
 public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadErrors, IOutlineContentHost, IToolsHost, IHasPropertyContainer, IUndoHandler, IFilterableToolbox, IToolboxSourceDropHandler
 {
-	public static readonly string[] ToolNames = { "StackPanel", "Grid", "DockPanel", "WrapPanel", "Border", "ScrollViewer", "Label", "Button", "TextBox", "CheckBox", "RadioButton", "Slider", "ProgressBar", "ComboBox", "ListBox", "Image" };
+	public static readonly string[] ToolNames = { "StackPanel", "Grid", "DockPanel", "WrapPanel", "Canvas", "Border", "ScrollViewer", "Label", "Button", "TextBox", "CheckBox", "RadioButton", "Slider", "ProgressBar", "ComboBox", "ListBox", "Image" };
 	readonly DocumentOutlineControl outline = new() { IconMapper = MewUIControlMapper.Instance }; readonly PropertyContainer properties = new(); readonly TextBlock diagnostic = new() { Foreground = Brushes.OrangeRed, Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap }; readonly OpenedFile mxamlFile;
 	// The shared design canvas (ICSharpCode.DesignerCanvas addin) showing the host's real MewUI
 	// render, keyed by element id (the Name, or a path-based id for an unnamed element). MewUI panels lay children out;
@@ -197,7 +197,7 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	}
 	static DesignerElementNode? NodeAt(DesignerElementNode root, Point point, DesignerElementNode? except = null) => Flatten(root).Where(n => !ReferenceEquals(n, except) && n.Width > 0 && n.Height > 0 && point.X >= n.X && point.Y >= n.Y && point.X <= n.X + n.Width && point.Y <= n.Y + n.Height).OrderBy(n => n.Width * n.Height).FirstOrDefault();
 	bool ReorderBetween(DesignerElementNode root, DesignerElementNode source, DesignerElementNode target) { var parent = Flatten(root).FirstOrDefault(p => p.Children.Contains(source) && p.Children.Contains(target)); if (parent == null) return false; var delta = parent.Children.IndexOf(target) - parent.Children.IndexOf(source); if (delta == 0) return false; Select(source); return ReorderSelected(delta); }
-	static bool IsContainer(DesignerElementNode n) => n.Type is "StackPanel" or "Grid" or "DockPanel" or "WrapPanel" or "Window" or "Border" or "ScrollViewer" or "GroupBox" or "TabControl" or "TabItem" or "ContentControl";
+	static bool IsContainer(DesignerElementNode n) => n.Type is "StackPanel" or "Grid" or "DockPanel" or "WrapPanel" or "Canvas" or "Window" or "Border" or "ScrollViewer" or "GroupBox" or "TabControl" or "TabItem" or "ContentControl";
 	DesignerElementNode? NearestContainer(DesignerElementNode n) { if (state.Tree == null) return null; for (var current = n; ; ) { if (IsContainer(current)) return current; var parent = Flatten(state.Tree).FirstOrDefault(p => p.Children.Contains(current)); if (parent == null) return null; current = parent; } }
 	static string Value(DesignerElementNode n, string key, string fallback) => n.Properties.FirstOrDefault(p => p.Name == key)?.Value ?? fallback; static IEnumerable<DesignerElementNode> Flatten(DesignerElementNode n) => new[] { n }.Concat(n.Children.SelectMany(Flatten));
 	DesignerDocumentSnapshot Snapshot(string text, long version) => new() { Version = version, PrimaryFileName = PrimaryFile?.FileName.ToString() ?? "", DesignerFileName = mxamlFile.FileName.ToString(), Files = { new DesignerSourceFileSnapshot { FileName = mxamlFile.FileName.ToString(), Kind = "MewUI", Text = text } } };
