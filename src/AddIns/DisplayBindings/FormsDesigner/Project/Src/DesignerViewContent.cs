@@ -1606,10 +1606,15 @@ namespace ICSharpCode.FormsDesigner
 				}
 				if (verbs?.Accepted != true)
 					continue;
-				foreach (var verb in verbs.Items.Where(item => item.Visible))
+				var ownerIsTable = IsTableLayoutPanel(components, owner);
+				// TableLayoutPanelDesigner's own row/column verbs change only the live table:
+				// verb sync writes added/removed components, never Count or the style list.
+				foreach (var verb in verbs.Items.Where(item => item.Visible && !(ownerIsTable && TableLayoutPanelVerbTexts.Contains(item.Text))))
 					gathered.Add((owner, verb));
 			}
 			var entries = new List<VerbMenuEntry>();
+			if (IsTableLayoutPanel(components, componentName))
+				entries.AddRange(TableLayoutTrackMenuEntries(componentName));
 			foreach (var planned in DesignerVerbMenuPlanner.Plan(gathered
 				.Select(entry => new DesignerVerbCandidate(entry.Owner, entry.Verb.Text, entry.Verb.Index)))) {
 				var source = gathered.First(entry => entry.Owner == planned.OwnerName && entry.Verb.Text == planned.Text);
@@ -1625,6 +1630,43 @@ namespace ICSharpCode.FormsDesigner
 				});
 			}
 			return entries;
+		}
+
+		static readonly HashSet<string> TableLayoutPanelVerbTexts = new(StringComparer.OrdinalIgnoreCase) {
+			"Add Column", "Add Row", "Remove Column", "Remove Row", "Edit Rows and Columns..."
+		};
+
+		static bool IsTableLayoutPanel(List<DesignerComponentInfo> components, string name)
+			=> components?.FirstOrDefault(item => item.Name == name)?.Type == "System.Windows.Forms.TableLayoutPanel";
+
+		/// <summary>Row/column commands for a selected TableLayoutPanel that edit the designer source
+		/// through the host; the host refuses an unprovable track list or an occupied last track.</summary>
+		IEnumerable<VerbMenuEntry> TableLayoutTrackMenuEntries(string componentName)
+		{
+			VerbMenuEntry Entry(string text, Func<DesignerSessionState> edit) => new() {
+				Text = text, Enabled = true,
+				Invoke = () => {
+					try { ExecuteRemoteEdit(edit); }
+					catch (Exception exception) { LoggingService.Error(exception); MessageService.ShowError(exception.Message); }
+				}
+			};
+			var none = System.Threading.CancellationToken.None;
+			yield return Entry("Add Column", () => remoteClient.AddTableLayoutTrackAsync(remoteDocumentVersion, componentName, false, none).GetAwaiter().GetResult());
+			yield return Entry("Add Row", () => remoteClient.AddTableLayoutTrackAsync(remoteDocumentVersion, componentName, true, none).GetAwaiter().GetResult());
+			yield return Entry("Remove Last Column", () => remoteClient.RemoveTableLayoutTrackAsync(remoteDocumentVersion, componentName, false, none).GetAwaiter().GetResult());
+			yield return Entry("Remove Last Row", () => remoteClient.RemoveTableLayoutTrackAsync(remoteDocumentVersion, componentName, true, none).GetAwaiter().GetResult());
+		}
+
+		/// <summary>Builds the context menu's verb entries for a component and runs the one with the
+		/// given label, as clicking it would (automation seam).</summary>
+		internal bool InvokeContextMenuEntry(string componentName, string label)
+		{
+			DescribeContextMenu(componentName);
+			var entry = PendingVerbMenuEntries?.FirstOrDefault(item => item.Text == label);
+			if (entry == null || !entry.Enabled)
+				return false;
+			entry.Invoke();
+			return true;
 		}
 
 		async System.Threading.Tasks.Task InvokeVerbAsync(string componentName, DesignerVerbInfo verb)

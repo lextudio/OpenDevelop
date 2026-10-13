@@ -933,8 +933,13 @@ track copying the last style's SizeType and length, after the last style stateme
 the last track only while two or more exist and no child's cell or span reaches it, so no control is
 moved or deleted. The Microsoft TableLayoutPanelDesigner's own Add/Remove Row/Column verbs change
 only the live table (verb sync rewrites added/removed components, not Count/styles), so the IDE must
-not expose them as source edits. Not yet: the menu entries, insertion before an arbitrary track, and
-removing an occupied track.
+not expose them as source edits. **Menu slice:** right-clicking a TableLayoutPanel now offers Add
+Column, Add Row, Remove Last Column and Remove Last Row, each one undoable source edit through those
+RPCs (a refusal shows the host's reason); the designer's same-named live-only verbs, and "Edit Rows
+and Columns...", are dropped for TableLayoutPanel owners. `od.forms-designer.context-menu-entry`
+invokes a built entry by label; the LibreWinForms TableLayout journey adds a row from the menu,
+saves `RowCount = 2` with a second style, and undoes it. Not yet: insertion before an arbitrary
+track, removing an occupied track, and a rows/columns dialog.
 
 **C4 event handler generation (2026-10-12).** Double-clicking a WPF event in the Properties pad now
 matches the in-process designer (`AbstractEventHandlerService`): the XAML attribute is bound through

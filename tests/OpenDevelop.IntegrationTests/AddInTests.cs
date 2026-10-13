@@ -4024,6 +4024,24 @@ public sealed class AddInTests : IAsyncDisposable
             savedDesigner = await File.ReadAllTextAsync(designerPath);
             Assert.Contains("SizeType.Absolute, 40F", savedDesigner, StringComparison.Ordinal);
             Assert.DoesNotContain("64F", savedDesigner, StringComparison.Ordinal);
+
+            // The context menu offers source-backed row/column commands for the table.
+            var menu = await _app.InvokeAsync("od.forms-designer.describe-context-menu", "grid1");
+            var labels = menu.GetProperty("items").EnumerateArray().Select(item => item.GetString()).ToList();
+            Assert.Contains("Add Row", labels);
+            Assert.Contains("Remove Last Column", labels);
+            var addedRow = await _app.InvokeAsync("od.forms-designer.context-menu-entry", "grid1", "Add Row");
+            Assert.True(addedRow.GetProperty("success").GetBoolean(), addedRow.ToString());
+            saved = await _app.InvokeAsync("od.file.save", formCodePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            savedDesigner = await File.ReadAllTextAsync(designerPath);
+            Assert.Contains("grid1.RowCount = 2;", savedDesigner, StringComparison.Ordinal);
+            Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(savedDesigner, @"grid1\.RowStyles\.Add\(").Count);
+            undone = await _app.InvokeAsync("od.forms-designer.undo");
+            Assert.True(undone.GetProperty("success").GetBoolean(), undone.ToString());
+            saved = await _app.InvokeAsync("od.file.save", formCodePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            Assert.Contains("grid1.RowCount = 1;", await File.ReadAllTextAsync(designerPath), StringComparison.Ordinal);
         } finally {
             await _app.InvokeAsync("od.close-all-document-views");
             await File.WriteAllBytesAsync(formCodePath, originalForm);

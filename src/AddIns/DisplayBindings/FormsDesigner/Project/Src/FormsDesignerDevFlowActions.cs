@@ -622,6 +622,17 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.forms-designer.context-menu-entry", Description = "Build the right-click verb entries for a component and invoke the one with the given label, as a menu click would")]
+		public static string InvokeContextMenuEntry(string componentName, string label)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent?.IsRemoteDesignerLoaded != true)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			return viewContent.InvokeContextMenuEntry(componentName, label)
+				? JsonSerializer.Serialize(new { success = true })
+				: Failure("No enabled context-menu entry: " + label);
+		}
+
 		[DevFlowAction("od.forms-designer.table-layout-guides", Description = "The TableLayoutPanel divider guides the canvas currently shows: name and local row/column boundaries")]
 		public static string TableLayoutGuides()
 		{
