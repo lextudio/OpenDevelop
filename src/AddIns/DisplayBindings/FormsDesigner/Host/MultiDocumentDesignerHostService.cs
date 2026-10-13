@@ -55,6 +55,8 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	public DesignerSessionState SetItems(string sessionId, string documentId, long baseVersion, string elementId, DesignerCollectionItemEdit[] items) => GetChecked(sessionId, documentId).SetItems(sessionId, documentId, baseVersion, elementId, items);
 	[JsonRpcMethod("design/set-table-layout-track")]
 	public DesignerSessionState SetTableLayoutTrack(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index, string sizeType, double value) => GetChecked(sessionId, documentId).SetTableLayoutTrack(sessionId, documentId, baseVersion, elementId, isRow, index, sizeType, value);
+	[JsonRpcMethod("design/resize-table-layout-track")]
+	public DesignerSessionState ResizeTableLayoutTrack(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index, double size) => GetChecked(sessionId, documentId).ResizeTableLayoutTrack(sessionId, documentId, baseVersion, elementId, isRow, index, size);
 	[JsonRpcMethod("design/reset-property")]
 	public DesignerSessionState ResetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName) => GetChecked(sessionId, documentId).ResetProperty(sessionId, documentId, baseVersion, elementId, propertyName);
 	[JsonRpcMethod("design/rename")]

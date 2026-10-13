@@ -142,12 +142,12 @@ namespace ICSharpCode.FormsDesigner
 				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
 		}
 
-		/// <summary>Sets one authored TableLayoutPanel row/column style through the host's
-		/// design/set-table-layout-track, as one undoable designer edit.</summary>
-		internal void SetRemoteTableLayoutTrack(string componentName, bool isRow, int index, string sizeType, double value)
+		/// <summary>A divider drag through the host's design/resize-table-layout-track, as one
+		/// undoable designer edit.</summary>
+		internal void ResizeRemoteTableLayoutTrack(string componentName, bool isRow, int index, double size)
 		{
 			EnsureRemoteDesignerLoaded();
-			ExecuteRemoteEdit(() => remoteClient.SetTableLayoutTrackAsync(remoteDocumentVersion, componentName, isRow, index, sizeType, value,
+			ExecuteRemoteEdit(() => remoteClient.ResizeTableLayoutTrackAsync(remoteDocumentVersion, componentName, isRow, index, size,
 				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
 		}
 
@@ -941,7 +941,7 @@ namespace ICSharpCode.FormsDesigner
 				remoteControl.ToolboxDrop += RemoteToolboxDrop;
 				remoteControl.BoundsChanged += RemoteBoundsChanged;
 				remoteControl.TableLayoutTrackResizeRequested += (sender, e) => {
-					try { SetRemoteTableLayoutTrack(e.ComponentName, e.IsRow, e.Index, "Absolute", e.Size); }
+					try { ResizeRemoteTableLayoutTrack(e.ComponentName, e.IsRow, e.Index, e.Size); }
 					catch (Exception exception) { LoggingService.Error(exception); MessageService.ShowError(exception.Message); }
 					finally { remoteControl?.UpdateTableLayoutGuides(); }
 				};

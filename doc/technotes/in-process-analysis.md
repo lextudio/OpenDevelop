@@ -908,16 +908,19 @@ flushed source and each rejection.
 
 **Client half (2026-10-13).** Selecting a single, unlocked TableLayoutPanel now shows the shared
 canvas's blue divider guides from the host tree's measured `GridTracks`, placed at the component's
-surface bounds; any other selection clears them. Releasing a divider makes the track before it an
-`Absolute` track of the dragged pixel size through `design/set-table-layout-track`, one designer
-undo step; a refused edit (unprovable style list) shows the host's error and the guides return to
+surface bounds; any other selection clears them. Releasing a divider sends protocol **v33**'s
+`design/resize-table-layout-track(elementId, isRow, index, size)`, one designer undo step. As in
+the in-process TableLayoutPanel designer, two neighbouring `Percent` tracks keep their summed
+percentage and are redistributed in proportion to the dragged measured sizes (rounded to 0.01);
+otherwise the track before the divider becomes `Absolute` at the dragged size. Both styles share
+one proof, source rewrite and transaction with `design/set-table-layout-track`; a refused edit (unprovable style list) shows the host's error and the guides return to
 the measured layout. Forms opts out of the shared Ctrl insertion rails (`GridTrackSplitEnabled`),
 because it has no split mutation and Ctrl-click must stay a multi-selection gesture.
 `od.forms-designer.table-layout-guides` reports the shown guides and
 `od.forms-designer.table-layout-divider` releases a divider through the same commit path; the
 LibreWinForms journey `WinFormsDesigner_TableLayoutDividerWritesTheAuthoredColumnStyle` proves the
-guides, the re-measured divider, the saved `ColumnStyle` and undo. Not yet: preserving a Percent
-track's unit (VS redistributes neighbouring percentages), row/column add and remove, and VB source.
+guides, the re-measured divider, the saved `ColumnStyle` and undo; a host test locks the Percent
+redistribution and the Absolute fallback. Not yet: row/column add and remove, and VB source.
 
 **C4 event handler generation (2026-10-12).** Double-clicking a WPF event in the Properties pad now
 matches the in-process designer (`AbstractEventHandlerService`): the XAML attribute is bound through

@@ -80,6 +80,51 @@ public sealed class FormsDesignerHostClientTests
 	}
 
 	[Fact]
+	public async Task ChildHost_DividerResizeRedistributesPercentPairsAndOtherwiseWritesAbsolute()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				this.table = new System.Windows.Forms.TableLayoutPanel();
+				this.table.ColumnCount = 2;
+				this.table.RowCount = 2;
+				this.table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50F));
+				this.table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50F));
+				this.table.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 50F));
+				this.table.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
+				this.table.Location = new System.Drawing.Point(12, 60);
+				this.table.Size = new System.Drawing.Size(200, 100);
+				this.Controls.Add(this.button1);
+				this.Controls.Add(this.table);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TableLayoutPanel table;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		Assert.Equal(new[] { 100d, 100d }, FindTreeNode(opened.Tree!, "table")!.GridTracks!.ColumnTracks.Select(track => track.Size));
+
+		// The last track has no divider after it; a negative size is never a valid drag.
+		await Assert.ThrowsAnyAsync<Exception>(() => client.ResizeTableLayoutTrackAsync(1, "table", false, 1, 10, timeout.Token));
+		await Assert.ThrowsAnyAsync<Exception>(() => client.ResizeTableLayoutTrackAsync(1, "table", false, 0, -5, timeout.Token));
+
+		// Two Percent columns keep their 100% total and stay proportional.
+		var resized = await client.ResizeTableLayoutTrackAsync(1, "table", false, 0, 50, timeout.Token);
+		Assert.True(resized.Accepted, resized.Error);
+		Assert.Equal(new[] { 50d, 150d }, FindTreeNode(resized.Tree!, "table")!.GridTracks!.ColumnTracks.Select(track => track.Size));
+		// A Percent row followed by an Absolute row: the dragged row becomes Absolute.
+		resized = await client.ResizeTableLayoutTrackAsync(1, "table", true, 0, 45, timeout.Token);
+		Assert.True(resized.Accepted, resized.Error);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 25F));", text);
+		Assert.Contains("table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 75F));", text);
+		Assert.Contains("table.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 45F));", text);
+		Assert.Contains("table.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));", text);
+	}
+
+	[Fact]
 	public async Task ChildHost_RejectsTableLayoutTrackWhenSourceStyleListIsNotProvable()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));

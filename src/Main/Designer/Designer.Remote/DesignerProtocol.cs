@@ -44,7 +44,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// explicitly authored {StaticResource key} Source only. Other Source forms remain read-only.
 		// v32 adds the WinForms host's optional design/set-table-layout-track, which edits one
 		// TableLayoutPanel style only where Designer.cs proves the authored style list.
-		public const int Version = 32;
+		// v33 adds its optional design/resize-table-layout-track, a divider drag that redistributes
+		// two neighbouring Percent tracks or makes the dragged track Absolute.
+		public const int Version = 33;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

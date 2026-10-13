@@ -359,19 +359,74 @@ sealed class DesignerHostService : IDesignerChildService
 	public DesignerSessionState SetTableLayoutTrack(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index, string sizeType, double value)
 	{
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
+		if (!Enum.TryParse<SizeType>(sizeType, ignoreCase: false, out var type) || !Enum.IsDefined(type))
+			throw new ArgumentException("Unknown SizeType: " + sizeType, nameof(sizeType));
+		var (host, table) = FindTableLayoutPanel(elementId);
+		ApplyTableLayoutStyles(host, table, elementId, isRow, new[] { (index, type, value) });
+		return CurrentState(baseVersion);
+	}
+
+	/// <summary>A divider drag: track <paramref name="index"/> should become
+	/// <paramref name="size"/> pixels. Between two Percent tracks the pair's percentages are
+	/// redistributed in proportion to their measured sizes, keeping their sum (the in-process
+	/// TableLayoutPanel designer's behaviour), so the table stays proportional; otherwise the track
+	/// becomes Absolute. Both styles change in one source rewrite and one transaction.</summary>
+	[JsonRpcMethod("design/resize-table-layout-track")]
+	public DesignerSessionState ResizeTableLayoutTrack(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index, double size)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
+		if (!Double.IsFinite(size) || size < 0)
+			throw new ArgumentOutOfRangeException(nameof(size));
+		var (host, table) = FindTableLayoutPanel(elementId);
+		var styles = isRow ? (TableLayoutStyleCollection)table.RowStyles : table.ColumnStyles;
+		var measured = isRow ? table.GetRowHeights() : table.GetColumnWidths();
+		if (index < 0 || index + 1 >= styles.Count || index + 1 >= measured.Length)
+			throw new ArgumentOutOfRangeException(nameof(index));
+		var first = styles[index];
+		var second = styles[index + 1];
+		if (first.SizeType == SizeType.Percent && second.SizeType == SizeType.Percent) {
+			var pair = (double)measured[index] + measured[index + 1];
+			var total = (double)StyleLength(first) + StyleLength(second);
+			if (pair <= 0 || total <= 0)
+				throw new InvalidOperationException("The Percent tracks have no measurable extent to redistribute.");
+			var percent = Math.Round(total * Math.Min(size, pair) / pair, 2);
+			ApplyTableLayoutStyles(host, table, elementId, isRow, new[] {
+				(index, SizeType.Percent, percent), (index + 1, SizeType.Percent, Math.Round(total - percent, 2))
+			});
+		} else {
+			ApplyTableLayoutStyles(host, table, elementId, isRow, new[] { (index, SizeType.Absolute, Math.Round(size)) });
+		}
+		return CurrentState(baseVersion);
+	}
+
+	static float StyleLength(TableLayoutStyle style) => style is RowStyle row ? row.Height : ((ColumnStyle)style).Width;
+
+	(IDesignerHost Host, TableLayoutPanel Table) FindTableLayoutPanel(string elementId)
+	{
 		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost
 			?? throw new InvalidOperationException("The designer surface is unavailable.");
 		if (host.Container.Components[elementId] is not TableLayoutPanel table)
 			throw new ArgumentException("TableLayoutPanel not found: " + elementId, nameof(elementId));
-		if (!Enum.TryParse<SizeType>(sizeType, ignoreCase: false, out var type) || !Enum.IsDefined(type))
-			throw new ArgumentException("Unknown SizeType: " + sizeType, nameof(sizeType));
-		if (type != SizeType.AutoSize && (!Double.IsFinite(value) || value < 0 || value > Single.MaxValue))
-			throw new ArgumentOutOfRangeException(nameof(value));
+		return (host, table);
+	}
+
+	/// <summary>Sets authored TableLayoutPanel row/column styles. Accepted only when
+	/// InitializeComponent proves the style collection: exactly one plain
+	/// <c>&lt;id&gt;.RowStyles/ColumnStyles.Add(new RowStyle/ColumnStyle(...))</c> statement per live
+	/// style. WinForms creates default styles at runtime that have no source, so a live style alone is
+	/// never treated as authored. Everything is validated and proven before anything changes; the
+	/// source statements are rewritten in place, then the live styles change in one transaction.</summary>
+	void ApplyTableLayoutStyles(IDesignerHost host, TableLayoutPanel table, string elementId, bool isRow, IReadOnlyList<(int Index, SizeType Type, double Value)> edits)
+	{
 		if (IsVisualBasic)
 			throw new NotSupportedException("TableLayoutPanel style editing is not yet supported for Visual Basic designer source.");
 		var styles = isRow ? (TableLayoutStyleCollection)table.RowStyles : table.ColumnStyles;
-		if (index < 0 || index >= styles.Count)
-			throw new ArgumentOutOfRangeException(nameof(index));
+		foreach (var (index, type, value) in edits) {
+			if (index < 0 || index >= styles.Count)
+				throw new ArgumentOutOfRangeException(nameof(index));
+			if (type != SizeType.AutoSize && (!Double.IsFinite(value) || value < 0 || value > Single.MaxValue))
+				throw new ArgumentOutOfRangeException(nameof(value));
+		}
 		var member = isRow ? "RowStyles" : "ColumnStyles";
 		var styleType = isRow ? "RowStyle" : "ColumnStyle";
 
@@ -387,26 +442,26 @@ sealed class DesignerHostService : IDesignerChildService
 		if (mentions.Count != styles.Count || !mentions.All(statement => IsPlainStyleAdd(statement, elementId, member, styleType)))
 			throw new InvalidOperationException($"{elementId}.{member} is not an authored style list that can be edited safely.");
 
-		var text = type == SizeType.AutoSize
+		var replacements = edits.ToDictionary(edit => (SyntaxNode)mentions[edit.Index], edit => (SyntaxNode)SyntaxFactory.ParseStatement(edit.Type == SizeType.AutoSize
 			? $"this.{elementId}.{member}.Add(new System.Windows.Forms.{styleType}(System.Windows.Forms.SizeType.AutoSize));"
-			: $"this.{elementId}.{member}.Add(new System.Windows.Forms.{styleType}(System.Windows.Forms.SizeType.{type}, {((float)value).ToString("R", CultureInfo.InvariantCulture)}F));";
-		var target = mentions[index];
-		var replacement = SyntaxFactory.ParseStatement(text).WithTriviaFrom(target);
-		var newText = root.ReplaceNode(target, replacement).ToFullString();
+			: $"this.{elementId}.{member}.Add(new System.Windows.Forms.{styleType}(System.Windows.Forms.SizeType.{edit.Type}, {((float)edit.Value).ToString("R", CultureInfo.InvariantCulture)}F));")
+			.WithTriviaFrom(mentions[edit.Index]));
+		var newText = root.ReplaceNodes(replacements.Keys, (original, _) => replacements[original]).ToFullString();
 
-		var style = styles[index];
-		using (var transaction = host.CreateTransaction($"Edit {elementId}.{member}[{index}]")) {
-			style.SizeType = type;
-			if (type != SizeType.AutoSize) {
-				if (style is RowStyle row)
-					row.Height = (float)value;
-				else
-					((ColumnStyle)style).Width = (float)value;
+		using (var transaction = host.CreateTransaction($"Edit {elementId}.{member}")) {
+			foreach (var (index, type, value) in edits) {
+				var style = styles[index];
+				style.SizeType = type;
+				if (type != SizeType.AutoSize) {
+					if (style is RowStyle row)
+						row.Height = (float)value;
+					else
+						((ColumnStyle)style).Width = (float)value;
+				}
 			}
 			transaction.Commit();
 		}
 		file.Text = newText;
-		return CurrentState(baseVersion);
 	}
 
 	static bool IsPlainStyleAdd(StatementSyntax statement, string elementId, string member, string styleType)

@@ -585,9 +585,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			=> tracks.Count == 0 ? Array.Empty<double>()
 				: tracks.Select(track => track.Offset).Append(tracks[tracks.Count - 1].Offset + tracks[tracks.Count - 1].Size).ToArray();
 
-		/// <summary>A released divider: the track before it becomes an Absolute track of the
-		/// dragged size. The host accepts that only for a provably authored style list; otherwise
-		/// the edit is refused and the guides return to the measured layout.</summary>
+		/// <summary>A released divider: the track before it should become the dragged size. The
+		/// host redistributes two Percent neighbours or makes the track Absolute, and accepts that
+		/// only for a provably authored style list; otherwise the edit is refused and the guides
+		/// return to the measured layout.</summary>
 		void CommitTableLayoutTrackDrag((string Name, bool IsRow, int Index, double Position) drag)
 		{
 			var component = state?.Components?.FirstOrDefault(item => item.Name == drag.Name);
@@ -723,7 +724,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public event EventHandler SelectionChanged;
 		public event EventHandler<RemoteToolboxDropEventArgs> ToolboxDrop;
 		public event EventHandler<RemoteBoundsChangedEventArgs> BoundsChanged;
-		/// <summary>A TableLayoutPanel divider was dragged: set that row/column to an Absolute size.</summary>
+		/// <summary>A TableLayoutPanel divider was dragged: resize the row/column before it.</summary>
 		public event EventHandler<RemoteTableLayoutTrackEventArgs> TableLayoutTrackResizeRequested;
 		public event EventHandler<RemoteSelectionMoveEventArgs> SelectionMoveRequested;
 		public event EventHandler<RemoteReorderRequestedEventArgs> ReorderRequested;
