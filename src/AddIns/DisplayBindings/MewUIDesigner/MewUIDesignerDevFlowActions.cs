@@ -63,6 +63,8 @@ public static class MewUIDesignerDevFlowActions
 	public static string Delete() { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.DeleteSelected() == true, elementCount = v?.ElementCount ?? 0 }); }
 	[DevFlowAction("od.mewui-designer.reorder", Description = "Move the selected MewUI child within its generated Children relationship")]
 	public static string Reorder(int delta) { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.ReorderSelected(delta) == true, selectedName = v?.SelectedName }); }
+	[DevFlowAction("od.mewui-designer.canvas.move", Description = "Move an immediate MewUI Canvas child by design units through the designer's bounds mutation path")]
+	public static string MoveCanvasChild(string id, double dx, double dy) { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.MoveCanvasChild(id, dx, dy) == true, selectedName = v?.SelectedName }); }
 	[DevFlowAction("od.mewui-designer.undo", Description = "Undo the last MewUI designer source edit")]
 	public static string Undo() { var v = Activate(); v?.Undo(); return Status(); }
 	[DevFlowAction("od.mewui-designer.redo", Description = "Redo the last MewUI designer source edit")]

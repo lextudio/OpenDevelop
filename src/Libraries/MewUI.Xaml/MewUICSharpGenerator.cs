@@ -100,6 +100,12 @@ public static class MewUICSharpGenerator
 			  .Append(" += ").Append(attribute.Value).Append(";\n");
 			return;
 		}
+		if (attribute.Name is "Canvas.Left" or "Canvas.Top") {
+			var setter = attribute.Name["Canvas.".Length..];
+			sb.Append("        Canvas.Set").Append(setter).Append('(').Append(ownerName)
+			  .Append(", ").Append(DoubleLiteral(attribute.Value)).Append(");\n");
+			return;
+		}
 		switch (MewUIControlCatalog.KindOf(ownerType, attribute.Name)) {
 			case MxamlPropertyKind.String:
 				sb.Append("        ").Append(ownerName).Append('.').Append(attribute.Name)

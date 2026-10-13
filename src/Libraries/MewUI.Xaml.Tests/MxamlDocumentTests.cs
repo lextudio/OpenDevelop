@@ -47,6 +47,26 @@ public sealed class MxamlDocumentTests
 	}
 
 	[Fact]
+	public void SetCanvasPosition_OnlyMovesImmediateCanvasChild_AndGeneratesAttachedSetters()
+	{
+		var doc = MxamlDocument.Parse("""
+			<?xml version="1.0" encoding="utf-8"?>
+			<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow">
+			  <Canvas Name="surface"><Button Name="moveMe" Content="Move"/></Canvas>
+			  <StackPanel Name="stack"><Button Name="keepMe" Content="Keep"/></StackPanel>
+			</Window>
+			""");
+		Assert.False(doc.HasErrors, string.Join("\n", doc.Diagnostics));
+		Assert.True(doc.SetCanvasPosition("moveMe", 12.5, 24));
+		Assert.Equal("12.5", doc.Find("moveMe")!.FindAttribute("Canvas.Left")!.Value);
+		Assert.Equal("24", doc.Find("moveMe")!.FindAttribute("Canvas.Top")!.Value);
+		Assert.False(doc.SetCanvasPosition("keepMe", 1, 2));
+		Assert.False(doc.SetProperty("keepMe", "Canvas.Left", "1"));
+		Assert.Contains("Canvas.SetLeft(moveMe, 12.5);", MewUICSharpGenerator.Generate(doc));
+		Assert.Contains("Canvas.SetTop(moveMe, 24.0);", MewUICSharpGenerator.Generate(doc));
+	}
+
+	[Fact]
 	public void Orientation_UsesFiniteCatalogueValues_AndRejectsUnknownTokens()
 	{
 		Assert.Equal(new[] { "Horizontal", "Vertical" }, MewUIControlCatalog.EnumValuesOf("StackPanel", "Orientation"));

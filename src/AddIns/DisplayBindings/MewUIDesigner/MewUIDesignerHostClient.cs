@@ -1,6 +1,6 @@
 using System; using System.Collections.Generic; using System.IO; using System.Linq; using System.Threading; using System.Threading.Tasks; using ICSharpCode.SharpDevelop.Designer.Remote;
 namespace ICSharpCode.MewUIDesigner;
-sealed class MewUIDesignerHostClient : RecoverableDesignerDocumentHostClient, IDesignHostClient, IDesignHostEventBinding
+sealed class MewUIDesignerHostClient : RecoverableDesignerDocumentHostClient, IDesignHostClient, IDesignHostEventBinding, IDesignHostBounds, IDesignHostHitTesting
 {
 	static readonly SharedDesignerHostBroker<Connection> broker = new(c => c.IsAlive, StartConnectionAsync);
 	static readonly object clientsGate = new(); static readonly HashSet<MewUIDesignerHostClient> clients = new();
@@ -19,6 +19,7 @@ sealed class MewUIDesignerHostClient : RecoverableDesignerDocumentHostClient, ID
 	public Task<DesignerSessionState> RenameAsync(long v, string id, string name, CancellationToken t = default) => TrackMutationAsync(Document.RenameAsync(v, id, name, t), t);
 	public Task<DesignerSessionState> UndoAsync(long v) => TrackMutationAsync(connection.UndoAsync(DocumentId, v, default), default); public Task<DesignerSessionState> RedoAsync(long v) => TrackMutationAsync(connection.RedoAsync(DocumentId, v, default), default);
 	public Task<DesignerSessionState> SetEventAsync(long v, string id, string e, string h, CancellationToken t = default) => TrackMutationAsync(Document.SetEventAsync(v, id, e, h, t), t);
+	public Task<DesignerSessionState> SetBoundsAsync(long v, string id, double x, double y, double width, double height, CancellationToken t = default) => TrackMutationAsync(Document.SetBoundsAsync(v, id, x, y, width, height, t), t);
 	public Task<DesignerHitTestResult> HitTestAsync(long v, double x, double y, CancellationToken t = default) => Document.HitTestAsync(v, x, y, t);
 	public Task<DesignerSessionState> ReorderAsync(long v, string id, int delta, CancellationToken t = default) => TrackMutationAsync(connection.ReorderAsync(DocumentId, v, id, delta, t), t);
 	public async Task<DesignerSessionState> RestartPoolAsync(CancellationToken token = default) { await recovery.RecoverAllAsync(connection, true, token).ConfigureAwait(false); return recoveredState ?? throw new IOException("MewUI designer document was not recovered."); }

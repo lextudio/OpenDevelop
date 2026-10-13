@@ -270,6 +270,7 @@ public sealed class MxamlDocument
 	{
 		if (property is "Name") return Rename(name, value);
 		var obj = Find(name); if (obj == null) return false;
+		if (property is "Canvas.Left" or "Canvas.Top" && FindParent(name)?.Type != "Canvas") return false;
 		return Commit(() => {
 			var existing = obj.FindAttribute(property);
 			if (existing != null) {
@@ -279,6 +280,22 @@ public sealed class MxamlDocument
 			else {
 				obj.Attributes.Add(new MxamlAttribute { Name = property, Value = value });
 			}
+			return true;
+		});
+	}
+
+	/// <summary>Sets the coordinates of an immediate Canvas child. Other layouts deliberately
+	/// reject this operation: their arranged bounds are not an editable position contract.</summary>
+	public bool SetCanvasPosition(string name, double left, double top)
+	{
+		if (!double.IsFinite(left) || !double.IsFinite(top)) return false;
+		var parent = FindParent(name);
+		if (parent?.Type != "Canvas") return false;
+		return Commit(() => {
+			var child = parent.Children.FirstOrDefault(c => c.Name == name);
+			if (child == null) return false;
+			SetAttribute(child, "Canvas.Left", Coordinate(left));
+			SetAttribute(child, "Canvas.Top", Coordinate(top));
 			return true;
 		});
 	}
@@ -319,6 +336,15 @@ public sealed class MxamlDocument
 
 	MxamlObject? FindParent(string name)
 		=> Root.DescendantsAndSelf().FirstOrDefault(p => p.Children.Any(c => c.Name == name));
+
+	static void SetAttribute(MxamlObject obj, string name, string value)
+	{
+		var attribute = obj.FindAttribute(name);
+		if (attribute == null) obj.Attributes.Add(new MxamlAttribute { Name = name, Value = value });
+		else attribute.Value = value;
+	}
+
+	static string Coordinate(double value) => value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
 
 	string UniqueName(string type)
 	{

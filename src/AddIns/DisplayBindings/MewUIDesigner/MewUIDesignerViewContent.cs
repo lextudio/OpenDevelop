@@ -12,8 +12,8 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	public static readonly string[] ToolNames = { "StackPanel", "Grid", "DockPanel", "WrapPanel", "Border", "ScrollViewer", "Label", "Button", "TextBox", "CheckBox", "RadioButton", "Slider", "ProgressBar", "ComboBox", "ListBox", "Image" };
 	readonly DocumentOutlineControl outline = new() { IconMapper = MewUIControlMapper.Instance }; readonly PropertyContainer properties = new(); readonly TextBlock diagnostic = new() { Foreground = Brushes.OrangeRed, Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap }; readonly OpenedFile mxamlFile;
 	// The shared design canvas (ICSharpCode.DesignerCanvas addin) showing the host's real MewUI
-	// render, keyed by element id (the Name, or a path-based id for an unnamed element). MewUI panels lay children out, so there are no resize handles
-	// and a drag is a reorder among siblings (see CommitCanvasDrag).
+	// render, keyed by element id (the Name, or a path-based id for an unnamed element). MewUI panels lay children out;
+	// only a direct Canvas child has an editable position. Other drags retain sibling reordering.
 	readonly DesignSurface canvas = new();
 	readonly DesignSurfaceController canvasController;
 	Dictionary<string, string> pathById = new(StringComparer.Ordinal);
@@ -99,6 +99,14 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	public bool DeleteSelected() => commands.Execute("Delete");
 	bool DeleteSelectedCore() { if (selection.SelectedIds.Count == 0 || host == null) return false; var ids = selection.SelectedIds.ToArray(); return Mutate(() => host.DeleteElementsAsync(state.Version, ids).GetAwaiter().GetResult()); }
 	public bool ReorderSelected(int delta) { if (selected == null || host == null) return false; var id = selected.Id; return Mutate(() => host.ReorderAsync(state.Version, id, delta).GetAwaiter().GetResult()) && SelectByName(id); }
+	/// <summary>Exercises the same source mutation as a committed canvas move, in design units.</summary>
+	public bool MoveCanvasChild(string id, double dx, double dy)
+	{
+		var node = state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => n.Id == id);
+		var parent = node == null || state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => n.Children.Contains(node));
+		if (node == null || parent?.Type != "Canvas" || !double.IsFinite(dx) || !double.IsFinite(dy)) return false;
+		return CommitCanvasDrag(new ElementDragInfo { Name = id, StartX = node.X, StartY = node.Y, StartWidth = node.Width, StartHeight = node.Height, EndX = node.X + dx, EndY = node.Y + dy, EndWidth = node.Width, EndHeight = node.Height });
+	}
 	bool RenameSelected(string newName) { if (selected == null || host == null || selected.Id == "$window") return false; var oldId = selected.Id; return Mutate(() => host.RenameAsync(state.Version, oldId, newName).GetAwaiter().GetResult()) && SelectByName(newName); }
 	void RequestRename() { if (selected == null || selected.Id == "$window") return; var newName = MessageService.ShowInputBox("Rename", "Enter a new element name:", selected.Name ?? selected.Id)?.Trim(); if (!string.IsNullOrEmpty(newName) && !string.Equals(newName, selected.Id, StringComparison.Ordinal) && !RenameSelected(newName)) MessageService.ShowError(state.Error); }
 	public void RefreshDesign() { if (host == null) return; var text = host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; state = host.UpdateAsync(Snapshot(text, state.Version + 1)).GetAwaiter().GetResult(); loadedMxamlText = text; Rebuild(); }
@@ -131,14 +139,22 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		return new DesignerSessionState { Accepted = true, Version = state.Version, Render = HasNativeFrame ? state.Render : null, Tree = tree };
 	}
 
-	/// <summary>A committed canvas drag: dropping an element onto a sibling moves it to that
-	/// sibling's place; anything else snaps back.</summary>
-	void CommitCanvasDrag(ElementDragInfo drag)
+	/// <summary>A committed drag positions a direct Canvas child; other layouts use sibling reordering.</summary>
+	bool CommitCanvasDrag(ElementDragInfo drag)
 	{
 		var source = state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => n.Id == drag.Name);
+		var parent = state.Tree == null || source == null ? null : Flatten(state.Tree).FirstOrDefault(n => n.Children.Contains(source));
+		if (source != null && parent?.Type == "Canvas" && host is IDesignHostBounds bounds) {
+			var changed = Mutate(() => bounds.SetBoundsAsync(state.Version, source.Id, drag.EndX - parent.X, drag.EndY - parent.Y, drag.EndWidth, drag.EndHeight).GetAwaiter().GetResult());
+			if (!changed)
+				canvasController.RestoreSelection(selection.SelectedIds);
+			return changed;
+		}
 		var over = state.Tree == null ? null : NodeAt(state.Tree, new Point(drag.EndX + drag.EndWidth / 2, drag.EndY + drag.EndHeight / 2), source);
-		if (state.Tree == null || source == null || over == null || !ReorderBetween(state.Tree, source, over))
+		var reordered = state.Tree != null && source != null && over != null && ReorderBetween(state.Tree, source, over);
+		if (!reordered)
 			canvasController.RestoreSelection(selection.SelectedIds);
+		return reordered;
 	}
 	void Select(DesignerElementNode? n, bool toggle = false) => selection.Select(n == null ? Array.Empty<DesignerElementNode>() : new[] { n }, toggle ? DesignerSelectionOperation.Toggle : DesignerSelectionOperation.Replace);
 	void ConfigureCanvas()

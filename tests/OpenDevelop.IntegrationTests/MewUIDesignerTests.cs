@@ -269,6 +269,41 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task MewUIDesigner_MoveCanvasChild_PersistsRelativeCanvasCoordinatesAndUndoes()
+	{
+		Assert.SkipUnless(OperatingSystem.IsMacOS() || OperatingSystem.IsWindows(), "The MewUI host only wires up the macOS and Windows render backends so far.");
+		await File.WriteAllTextAsync(designerPath, """
+			<?xml version="1.0" encoding="utf-8"?>
+			<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="MewUIFixture.MainWindow" Name="mainWindow" Width="480" Height="240">
+			    <Canvas Name="surface"><Button Name="moveMe" Content="Move" Width="100" Height="40" /></Canvas>
+			</Window>
+			""");
+		var openedProject = await app.ReopenSolutionAsync(projectPath);
+		Assert.True(openedProject.GetProperty("success").GetBoolean(), openedProject.ToString());
+		var opened = await app.InvokeAsync("od.open-file", designerPath);
+		Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		await WaitForDesignerAsync();
+
+		// DevFlow invokes the exact committed-drag mapping with a design-space delta. It avoids
+		// conflating this source mutation test with host-window focus and native injection.
+		var moved = await app.InvokeAsync("od.mewui-designer.canvas.move", "moveMe", 70, 35);
+		Assert.True(moved.GetProperty("success").GetBoolean(), moved.ToString());
+		var status = await WaitForDesignerAsync();
+		Assert.True(status.GetProperty("canUndo").GetBoolean(), status.ToString());
+		var saved = await app.InvokeAsync("od.file.save", designerPath);
+		Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+		var movedText = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
+		Assert.Matches("<Button(?=[^>]*Name=\"moveMe\")(?=[^>]*Canvas.Left=\"[1-9][0-9]*(?:\\.[0-9]+)?\")(?=[^>]*Canvas.Top=\"[1-9][0-9]*(?:\\.[0-9]+)?\")", movedText);
+
+		var undone = await app.InvokeAsync("od.mewui-designer.undo");
+		Assert.True(undone.GetProperty("canRedo").GetBoolean(), undone.ToString());
+		Assert.True((await app.InvokeAsync("od.file.save", designerPath)).GetProperty("success").GetBoolean());
+		var undoneText = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
+		Assert.DoesNotContain("Canvas.Left=", undoneText, StringComparison.Ordinal);
+		Assert.DoesNotContain("Canvas.Top=", undoneText, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public async Task MewUIDesigner_DragToolboxItemOntoPreviewSurface_InsertsAndPersistsControl()
 	{
 		// Companion to WPF's/WinUI's/GTK's DragToolboxItem_On*_InsertsAndPersistsControl tests
