@@ -418,8 +418,6 @@ sealed class DesignerHostService : IDesignerChildService
 	/// source statements are rewritten in place, then the live styles change in one transaction.</summary>
 	void ApplyTableLayoutStyles(IDesignerHost host, TableLayoutPanel table, string elementId, bool isRow, IReadOnlyList<(int Index, SizeType Type, double Value)> edits)
 	{
-		if (IsVisualBasic)
-			throw new NotSupportedException("TableLayoutPanel style editing is not yet supported for Visual Basic designer source.");
 		var styles = isRow ? (TableLayoutStyleCollection)table.RowStyles : table.ColumnStyles;
 		foreach (var (index, type, value) in edits) {
 			if (index < 0 || index >= styles.Count)
@@ -431,22 +429,9 @@ sealed class DesignerHostService : IDesignerChildService
 		var styleType = isRow ? "RowStyle" : "ColumnStyle";
 
 		var file = CurrentDesignerFile();
-		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
-		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
-			.FirstOrDefault(item => item.Identifier.ValueText == "InitializeComponent" && item.Body != null)
-			?? throw new InvalidOperationException("InitializeComponent was not found.");
-		// Any statement mentioning the collection must be a provable plain Add, otherwise the
-		// source/live index mapping is unknown (Clear, Insert, RemoveAt, indexers, loops...).
-		var mentions = method.Body!.Statements.Where(statement => statement.DescendantNodes().OfType<MemberAccessExpressionSyntax>()
-			.Any(access => access.Name.Identifier.ValueText == member && SimpleTargetName(access.Expression) == elementId)).ToList();
-		if (mentions.Count != styles.Count || !mentions.All(statement => IsPlainStyleAdd(statement, elementId, member, styleType)))
-			throw new InvalidOperationException($"{elementId}.{member} is not an authored style list that can be edited safely.");
-
-		var replacements = edits.ToDictionary(edit => (SyntaxNode)mentions[edit.Index], edit => (SyntaxNode)SyntaxFactory.ParseStatement(edit.Type == SizeType.AutoSize
-			? $"this.{elementId}.{member}.Add(new System.Windows.Forms.{styleType}(System.Windows.Forms.SizeType.AutoSize));"
-			: $"this.{elementId}.{member}.Add(new System.Windows.Forms.{styleType}(System.Windows.Forms.SizeType.{edit.Type}, {((float)edit.Value).ToString("R", CultureInfo.InvariantCulture)}F));")
-			.WithTriviaFrom(mentions[edit.Index]));
-		var newText = root.ReplaceNodes(replacements.Keys, (original, _) => replacements[original]).ToFullString();
+		var newText = IsVisualBasic
+			? RewriteTableLayoutStylesVisualBasic(file.Text, elementId, member, styleType, styles.Count, edits)
+			: RewriteTableLayoutStyles(file.Text, elementId, member, styleType, styles.Count, edits);
 
 		using (var transaction = host.CreateTransaction($"Edit {elementId}.{member}")) {
 			foreach (var (index, type, value) in edits) {
@@ -462,6 +447,63 @@ sealed class DesignerHostService : IDesignerChildService
 			transaction.Commit();
 		}
 		file.Text = newText;
+	}
+
+	static string StyleArguments(SizeType type, double value) => type == SizeType.AutoSize
+		? "System.Windows.Forms.SizeType.AutoSize"
+		: $"System.Windows.Forms.SizeType.{type}, {((float)value).ToString("R", CultureInfo.InvariantCulture)}F";
+
+	static string RewriteTableLayoutStyles(string text, string elementId, string member, string styleType, int liveCount, IReadOnlyList<(int Index, SizeType Type, double Value)> edits)
+	{
+		var root = CSharpSyntaxTree.ParseText(text).GetCompilationUnitRoot();
+		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
+			.FirstOrDefault(item => item.Identifier.ValueText == "InitializeComponent" && item.Body != null)
+			?? throw new InvalidOperationException("InitializeComponent was not found.");
+		// Any statement mentioning the collection must be a provable plain Add, otherwise the
+		// source/live index mapping is unknown (Clear, Insert, RemoveAt, indexers, loops...).
+		var mentions = method.Body!.Statements.Where(statement => statement.DescendantNodes().OfType<MemberAccessExpressionSyntax>()
+			.Any(access => access.Name.Identifier.ValueText == member && SimpleTargetName(access.Expression) == elementId)).ToList();
+		if (mentions.Count != liveCount || !mentions.All(statement => IsPlainStyleAdd(statement, elementId, member, styleType)))
+			throw new InvalidOperationException($"{elementId}.{member} is not an authored style list that can be edited safely.");
+		var replacements = edits.ToDictionary(edit => (SyntaxNode)mentions[edit.Index], edit => (SyntaxNode)SyntaxFactory.ParseStatement(
+			$"this.{elementId}.{member}.Add(new System.Windows.Forms.{styleType}({StyleArguments(edit.Type, edit.Value)}));")
+			.WithTriviaFrom(mentions[edit.Index]));
+		return root.ReplaceNodes(replacements.Keys, (original, _) => replacements[original]).ToFullString();
+	}
+
+	static string RewriteTableLayoutStylesVisualBasic(string text, string elementId, string member, string styleType, int liveCount, IReadOnlyList<(int Index, SizeType Type, double Value)> edits)
+	{
+		var root = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(text).GetRoot();
+		var method = root.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>().FirstOrDefault(item =>
+			item.BlockStatement is VbSyntax.MethodStatementSyntax ms && ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+			&& ms.Identifier.ValueText == "InitializeComponent")
+			?? throw new InvalidOperationException("InitializeComponent was not found.");
+		var mentions = method.Statements.Where(statement => statement.DescendantNodes().OfType<VbSyntax.MemberAccessExpressionSyntax>()
+			.Any(access => access.Name.Identifier.ValueText == member && access.Expression != null && VbSimpleTargetName(access.Expression) == elementId)).ToList();
+		if (mentions.Count != liveCount || !mentions.All(statement => IsVbPlainStyleAdd(statement, elementId, member, styleType)))
+			throw new InvalidOperationException($"{elementId}.{member} is not an authored style list that can be edited safely.");
+		var replacements = edits.ToDictionary(edit => (SyntaxNode)mentions[edit.Index], edit => (SyntaxNode)Vb.SyntaxFactory.ParseExecutableStatement(
+			$"Me.{elementId}.{member}.Add(New System.Windows.Forms.{styleType}({StyleArguments(edit.Type, edit.Value)}))")
+			.WithTriviaFrom(mentions[edit.Index]));
+		return root.ReplaceNodes(replacements.Keys, (original, _) => replacements[original]).ToFullString();
+	}
+
+	static bool IsVbPlainStyleAdd(VbSyntax.StatementSyntax statement, string elementId, string member, string styleType)
+	{
+		if (statement is not VbSyntax.ExpressionStatementSyntax {
+			Expression: VbSyntax.InvocationExpressionSyntax {
+				Expression: VbSyntax.MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Add" } add,
+				ArgumentList.Arguments: [VbSyntax.SimpleArgumentSyntax { IsNamed: false, Expression: VbSyntax.ObjectCreationExpressionSyntax creation }] } }
+			|| add.Expression is not VbSyntax.MemberAccessExpressionSyntax collection || collection.Expression == null
+			|| collection.Name.Identifier.ValueText != member || VbSimpleTargetName(collection.Expression) != elementId
+			|| creation.Initializer != null)
+			return false;
+		var typeName = creation.Type switch {
+			VbSyntax.QualifiedNameSyntax qualified => qualified.Right.Identifier.ValueText,
+			VbSyntax.IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+			_ => null
+		};
+		return typeName == styleType && (creation.ArgumentList?.Arguments.Count ?? 0) <= 2;
 	}
 
 	static bool IsPlainStyleAdd(StatementSyntax statement, string elementId, string member, string styleType)

@@ -306,6 +306,55 @@ public sealed class FormsDesignerHostClientTests
 	}
 
 	[Fact]
+	public async Task ChildHost_ResizesVisualBasicTableLayoutStylesInPlace()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = VbSnapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("Me.Controls.Add(Me.button1)", """
+				Me.table = New System.Windows.Forms.TableLayoutPanel()
+				        Me.table.ColumnCount = 2
+				        Me.table.RowCount = 2
+				        Me.table.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50.0!))
+				        Me.table.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50.0!))
+				        Me.table.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 30.0!))
+				        Me.table.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100.0!))
+				        Me.table.Location = New System.Drawing.Point(12, 60)
+				        Me.table.Size = New System.Drawing.Size(200, 100)
+				        Me.untouchable = New System.Windows.Forms.TableLayoutPanel()
+				        Me.untouchable.ColumnCount = 2
+				        Me.untouchable.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 20.0!))
+				        Me.untouchable.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 20.0!))
+				        Me.untouchable.ColumnStyles.Clear()
+				        Me.untouchable.Size = New System.Drawing.Size(40, 40)
+				        Me.Controls.Add(Me.button1)
+				        Me.Controls.Add(Me.table)
+				        Me.Controls.Add(Me.untouchable)
+				""", StringComparison.Ordinal)
+			.Replace("Friend WithEvents button1 As System.Windows.Forms.Button",
+				"Friend WithEvents button1 As System.Windows.Forms.Button\n    Friend WithEvents table As System.Windows.Forms.TableLayoutPanel\n    Friend WithEvents untouchable As System.Windows.Forms.TableLayoutPanel", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+
+		// A Clear() leaves no provable mapping from live index to source statement.
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetTableLayoutTrackAsync(1, "untouchable", false, 0, "Absolute", 10, timeout.Token));
+		var resized = await client.ResizeTableLayoutTrackAsync(1, "table", false, 0, 50, timeout.Token);
+		Assert.True(resized.Accepted, resized.Error);
+		Assert.Equal(new[] { 50d, 150d }, FindTreeNode(resized.Tree!, "table")!.GridTracks!.ColumnTracks.Select(track => track.Size));
+		resized = await client.ResizeTableLayoutTrackAsync(1, "table", true, 0, 45, timeout.Token);
+		Assert.True(resized.Accepted, resized.Error);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("table.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 25F))", text);
+		Assert.Contains("table.ColumnStyles.Add(New System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 75F))", text);
+		Assert.Contains("table.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 45F))", text);
+		Assert.Contains("table.RowStyles.Add(New System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100.0!))", text);
+		Assert.Contains("untouchable.ColumnStyles.Clear()", text);
+		Assert.DoesNotContain("this.", text);
+	}
+
+	[Fact]
 	public async Task ChildHost_EditsVisualBasicListItemsAsOneAddRange()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));

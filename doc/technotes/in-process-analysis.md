@@ -903,7 +903,7 @@ equals the live style count, so the requested index provably names one authored 
 `RemoveAt`/`Clear`/indexer, an initializer, or runtime-only default styles are rejected without
 touching source or live state. The proven statement is rewritten in place (`AutoSize` without a
 value; `Absolute`/`Percent` with a finite non-negative float), then the live style changes in one
-designer transaction. VB source is rejected for now. Host tests cover the edit, re-measured tracks,
+designer transaction. (VB was initially rejected; see the client-half note.) Host tests cover the edit, re-measured tracks,
 flushed source and each rejection.
 
 **Client half (2026-10-13).** Selecting a single, unlocked TableLayoutPanel now shows the shared
@@ -920,7 +920,10 @@ because it has no split mutation and Ctrl-click must stay a multi-selection gest
 `od.forms-designer.table-layout-divider` releases a divider through the same commit path; the
 LibreWinForms journey `WinFormsDesigner_TableLayoutDividerWritesTheAuthoredColumnStyle` proves the
 guides, the re-measured divider, the saved `ColumnStyle` and undo; a host test locks the Percent
-redistribution and the Absolute fallback. Not yet: row/column add and remove, and VB source.
+redistribution and the Absolute fallback. VB designer source is now proven and rewritten the
+same way (`Me.<id>.ColumnStyles.Add(New ColumnStyle(...))`, untouched statements keep their `50.0!`
+literals); `ChildHost_ResizesVisualBasicTableLayoutStylesInPlace` covers the Percent and Absolute
+paths and a `Clear()` rejection. Not yet: row/column add and remove.
 
 **C4 event handler generation (2026-10-12).** Double-clicking a WPF event in the Properties pad now
 matches the in-process designer (`AbstractEventHandlerService`): the XAML attribute is bound through
