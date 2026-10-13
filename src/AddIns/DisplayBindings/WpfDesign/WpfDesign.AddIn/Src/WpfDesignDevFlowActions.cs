@@ -1072,7 +1072,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			return JsonSerializer.Serialize(new { success = true });
 		}
 
-		[DevFlowAction("od.wpf-designer.clipboard", Description = "Run the design surface's Edit command (cut|copy|paste) through its ApplicationCommands binding, as Ctrl+X/C/V with the surface focused does, and report the selection afterwards")]
+		[DevFlowAction("od.wpf-designer.clipboard", Description = "Run the design surface's Edit command (cut|copy|paste) or its designer-local duplicate operation, and report the selection afterwards")]
 		public static string RunClipboardCommand(string command)
 		{
 			var surface = FindWpfViewContent()?.SurfaceControl;
@@ -1084,9 +1084,18 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				"paste" => System.Windows.Input.ApplicationCommands.Paste,
 				_ => null
 			};
-			if (routed == null)
+			if (command != "duplicate" && routed == null)
 				return Failure("Unknown clipboard command: " + command);
 			try {
+				if (command == "duplicate") {
+					var duplicate = surface.DuplicateSelection();
+					return JsonSerializer.Serialize(new {
+						success = duplicate?.Accepted == true,
+						error = duplicate?.Accepted == true ? null : duplicate?.Error ?? "duplicate is not available",
+						status = surface.StatusText,
+						selectedIds = surface.SelectedElementIds
+					});
+				}
 				if (!routed.CanExecute(null, surface))
 					return JsonSerializer.Serialize(new { success = false, error = command + " is not available" });
 				var lastPaste = surface.LastPasteResult;

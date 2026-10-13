@@ -197,7 +197,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// The in-process designer's RightClickContextMenu (z-order) and ArrangeItemsContextMenu
 			// (alignment to the primary selection).
 			SetContextCommands(new[] {
-				("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"),
+				("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Duplicate", "duplicate"),
 				("-", ""),
 				("Delete", "delete"),
 				("-", ""),
@@ -225,6 +225,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			ContextCommandCanExecute = command => command switch {
 				"cut" or "copy" => CanCopySelection,
 				"paste" => CanPaste,
+				"duplicate" => CanDuplicateSelection,
 				_ when command.StartsWith("align-", StringComparison.Ordinal) => controller.SelectedNames.Count >= 2,
 				_ when command.StartsWith("order-", StringComparison.Ordinal) => controller.SelectedNames.Count == 1,
 				"wrap-Viewbox" => controller.SelectedNames.Count == 1 && !controller.SelectedNames.Contains(RootElementId),
@@ -245,6 +246,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			Bind(System.Windows.Input.ApplicationCommands.Cut, CutSelection, () => CanCopySelection);
 			Bind(System.Windows.Input.ApplicationCommands.Copy, () => CopySelection(), () => CanCopySelection);
 			Bind(System.Windows.Input.ApplicationCommands.Paste, () => PasteIntoSelection(), () => CanPaste);
+			Bind(duplicateCommand, () => DuplicateSelection(), () => CanDuplicateSelection);
+			InputBindings.Add(new System.Windows.Input.KeyBinding(duplicateCommand, System.Windows.Input.Key.D, System.Windows.Input.ModifierKeys.Control));
 
 			controller.SelectionChanged += (_, _) => OnCanvasSelectionChanged();
 			controller.ElementPicked += (_, id) => {
@@ -278,6 +281,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 					CutSelection();
 				else if (command.Command == "paste")
 					PasteIntoSelection();
+				else if (command.Command == "duplicate")
+					DuplicateSelection();
 				else if (command.Command.StartsWith("align-", StringComparison.Ordinal))
 					AlignSelection(command.Command.Substring("align-".Length));
 				else if (command.Command.StartsWith("order-", StringComparison.Ordinal))
@@ -1594,6 +1599,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		// round trip; text copied elsewhere pastes as one snippet.
 		static string[] clipboardSnippets = Array.Empty<string>();
 		static string? clipboardText;
+		static readonly System.Windows.Input.RoutedUICommand duplicateCommand = new("Duplicate", "Duplicate", typeof(WpfSurfaceDesignerControl));
 		/// <summary>True when the last copy could not reach the system clipboard: whatever text is
 		/// there is older than the designer's own copy, which then wins.</summary>
 		static bool systemClipboardStale;
@@ -1602,6 +1608,28 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			&& !controller.SelectedNames.Contains(RootElementId);
 
 		internal bool CanPaste => state?.Accepted == true && ClipboardSnippets().Length > 0;
+
+		/// <summary>Duplicate is deliberately a sibling operation: every selection must share one
+		/// collection parent. This prevents duplicating a selected Panel into its own child collection,
+		/// and prevents ordinary paste's ancestor fallback from moving a duplicate out of a full
+		/// single-content container.</summary>
+		internal bool CanDuplicateSelection => TryGetDuplicateTarget(out _);
+
+		bool TryGetDuplicateTarget(out string targetId)
+		{
+			targetId = "";
+			if (textEditing || !CanCopySelection || state?.Tree is not { } tree)
+				return false;
+			var selected = controller.SelectedNames.Select(NodeById).ToArray();
+			if (selected.Any(node => node == null))
+				return false;
+			var parent = FindParent(tree, selected[0]!);
+			if (parent == null || !parent.HasContentCollection
+				|| selected.Any(node => !ReferenceEquals(FindParent(tree, node!), parent)))
+				return false;
+			targetId = parent.Id;
+			return true;
+		}
 
 		static string[] ClipboardSnippets()
 		{
@@ -1663,6 +1691,33 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				return null;
 			var target = controller.SelectedNames.Count > 0 ? controller.SelectedNames[0] : RootElementId;
 			var result = client.PasteElementsAsync(RequireVersion(), target, snippets).GetAwaiter().GetResult();
+			LastPasteResult = result;
+			Show(result);
+			if (!result.Accepted)
+				return result;
+			DocumentChanged?.Invoke(this, result);
+			if (result.CreatedElementIds.Count > 0)
+			{
+				controller.RestoreSelection(result.CreatedElementIds);
+				NotifySelectionChanged();
+				UpdateSelectionChrome();
+			}
+			return result;
+		}
+
+		/// <summary>Duplicates the same-parent selection without touching the system clipboard. Copy
+		/// is read-only and paste is one host undo group, so no intermediate document state exists.</summary>
+		internal DesignerSessionState? DuplicateSelection()
+		{
+			if (!TryGetDuplicateTarget(out var targetId))
+				return null;
+			var copied = client.CopyElementsAsync(RequireVersion(), controller.SelectedNames.ToArray()).GetAwaiter().GetResult();
+			if (!copied.Accepted)
+			{
+				StatusText = copied.Error;
+				return null;
+			}
+			var result = client.PasteElementsAsync(RequireVersion(), targetId, copied.Snippets.ToArray()).GetAwaiter().GetResult();
 			LastPasteResult = result;
 			Show(result);
 			if (!result.Accepted)

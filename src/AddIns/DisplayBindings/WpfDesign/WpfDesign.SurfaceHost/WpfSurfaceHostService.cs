@@ -3459,6 +3459,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				Type = item.ComponentType?.Name ?? "",
 				Path = path,
 				LayoutMode = layoutMode,
+				HasContentCollection = item.ContentProperty?.IsCollection == true,
 				ZIndex = path.Length == 0 ? null : item.View is UIElement visual ? Panel.GetZIndex(visual) : null,
 				BaselineOffset = item.View is TextBlock text ? text.BaselineOffset : null,
 				GridTracks = item.Component is Grid grid ? BuildGridTracks(grid) : null,

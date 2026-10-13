@@ -720,8 +720,19 @@ clipboard as text (so they also paste into a XAML editor) and are kept for a mul
 other XAML text pastes as one snippet. Cut is copy then the existing delete (one undo step). The
 surface binds `ApplicationCommands` Cut/Copy/Paste - focus-routed, as the Forms designer does, so the
 XAML source pane keeps its own text clipboard - and its context menu gains the three items;
-`od.wpf-designer.clipboard` runs the bound commands. Not yet: pasting at the pointer or offsetting
-pasted Canvas children, and Duplicate.
+`od.wpf-designer.clipboard` runs those bound commands. Not yet: pasting at the pointer or offsetting
+pasted Canvas children.
+
+**C4 Duplicate (2026-10-13).** WPF now offers Duplicate in the surface context menu and through
+Ctrl+D. It copies the selected same-parent roots through the existing read-only host serializer and
+pastes them into that collection parent in one host undo group, so it does not touch the system
+clipboard or ever duplicate a container into itself. Protocol **v28** adds the WPF-host-authoritative
+`DesignerElementNode.HasContentCollection` fact: full single-content parents (for example `Window`,
+`Border` and `Viewbox`) are deliberately unavailable rather than inferred from a type-name/layout
+heuristic, because ordinary clipboard Paste may walk upward from them while Duplicate must never
+change the selected roots' parent. Cross-parent and parent/child selections, and Duplicate during
+inline text editing, are disabled; the created copies receive the host's ordinary unique names and
+become the new selection.
 
 **C4 no lost edits after a save (2026-10-12).** In-process edits were never refused; out of process a
 WPF edit made just after a save or a text edit could be rejected as a stale base version and silently

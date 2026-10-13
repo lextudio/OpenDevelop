@@ -20,6 +20,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
+		// v28 adds DesignerElementNode.HasContentCollection, so a WPF Duplicate can distinguish a
+		// real collection parent from a full single-content control without guessing from its type.
 		// v27 adds WPF's optional design/copy-elements and design/paste-elements (DesignerCopyResult,
 		// DesignerSessionState.CreatedElementIds). v26 added design/move-into (Outline drag and drop).
 		// v25 added DesignerElementNode.IsDesignTimeHidden/IsDesignTimeLocked and WPF's optional
@@ -36,7 +38,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// and design/set-binding-validation-option. A stale pooled child
 		// must fail the handshake rather than reject a newly-visible binding editor after the
 		// Properties pad has already presented it.
-		public const int Version = 27;
+		public const int Version = 28;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -313,6 +315,11 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// retain <c>Unknown</c> when a host cannot identify the parent container. Values are from
 		/// <see cref="DesignerLayoutMode"/>.</summary>
 		public string LayoutMode { get; set; } = DesignerLayoutMode.Unknown;
+		/// <summary>True only when the host's design model exposes this node's content as an
+		/// appendable collection. This is deliberately separate from <see cref="LayoutMode"/>:
+		/// a control type may look like a layout container yet have one already-occupied Content
+		/// property, where a sibling operation must never fall back to an ancestor.</summary>
+		public bool HasContentCollection { get; set; }
 		/// <summary>Child-index path from the root (e.g. "0,2,1"), for mapping a pick back to the source.</summary>
 		public string Path { get; set; } = "";
 		/// <summary>False for template parts / non-source nodes.</summary>

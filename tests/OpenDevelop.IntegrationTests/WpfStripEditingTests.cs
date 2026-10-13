@@ -807,9 +807,10 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     Width="420" Height="220" Title="Clipboard">
-              <StackPanel>
+              <StackPanel x:Name="root">
                 <Button x:Name="ok" Content="OK" />
-                <StackPanel x:Name="inner" />
+                <StackPanel x:Name="inner"><TextBlock x:Name="label" Text="Label" /></StackPanel>
+                <Border x:Name="box"><Button x:Name="boxed" Content="Boxed" /></Border>
               </StackPanel>
             </Window>
             """);
@@ -831,7 +832,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             Assert.Single(pasted.GetProperty("selectedIds").EnumerateArray());
             Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
             var text = await File.ReadAllTextAsync(xamlPath);
-            Assert.Matches("<StackPanel x:Name=\"inner\">\\s*<Button x:Name=\"ok1\"", text);
+			Assert.Matches("<StackPanel x:Name=\"inner\">\\s*<TextBlock x:Name=\"label\"[^>]*/>\\s*<Button x:Name=\"ok1\"", text);
 
             // Several elements round-trip through the clipboard as separate snippets.
             Assert.True((await app.InvokeAsync("od.wpf-designer.multi-select", "ok,ok1")).GetProperty("success").GetBoolean());
@@ -852,6 +853,38 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             Assert.True(undo.GetProperty("success").GetBoolean(), undo.ToString());
             Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
             Assert.Equal(text, await File.ReadAllTextAsync(xamlPath));
+
+			// Duplicate is designer-local: it uses the same host copy/paste contract but does not
+			// replace the system clipboard or place a selected container inside itself.
+			Assert.True((await app.InvokeAsync("od.wpf-designer.select", "ok")).GetProperty("success").GetBoolean());
+			var commands = (await app.InvokeAsync("od.wpf-designer.context-commands")).GetProperty("commands");
+			Assert.True(commands.EnumerateArray().Single(command => command.GetProperty("command").GetString() == "duplicate").GetProperty("enabled").GetBoolean());
+			var duplicate = await app.InvokeAsync("od.wpf-designer.clipboard", "duplicate");
+			Assert.True(duplicate.GetProperty("success").GetBoolean(), duplicate.ToString());
+			Assert.Single(duplicate.GetProperty("selectedIds").EnumerateArray());
+			Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+			Assert.Contains("x:Name=\"ok2\"", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
+			var undoDuplicate = await app.InvokeAsync("od.wpf-designer.undo");
+			Assert.True(undoDuplicate.GetProperty("success").GetBoolean(), undoDuplicate.ToString());
+			Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+			Assert.Equal(text, await File.ReadAllTextAsync(xamlPath));
+
+			// Duplicate is not ordinary Paste: it must neither ascend out of a full ContentControl
+			// nor accept a selection which has no one common collection parent.
+			Assert.True((await app.InvokeAsync("od.wpf-designer.select", "root")).GetProperty("success").GetBoolean());
+			commands = (await app.InvokeAsync("od.wpf-designer.context-commands")).GetProperty("commands");
+			Assert.False(commands.EnumerateArray().Single(command => command.GetProperty("command").GetString() == "duplicate").GetProperty("enabled").GetBoolean());
+			Assert.True((await app.InvokeAsync("od.wpf-designer.select", "boxed")).GetProperty("success").GetBoolean());
+			commands = (await app.InvokeAsync("od.wpf-designer.context-commands")).GetProperty("commands");
+			Assert.False(commands.EnumerateArray().Single(command => command.GetProperty("command").GetString() == "duplicate").GetProperty("enabled").GetBoolean());
+			var beforeRefusedDuplicate = await File.ReadAllTextAsync(xamlPath);
+			var refusedDuplicate = await app.InvokeAsync("od.wpf-designer.clipboard", "duplicate");
+			Assert.False(refusedDuplicate.GetProperty("success").GetBoolean(), refusedDuplicate.ToString());
+			Assert.True((await app.InvokeAsync("od.wpf-designer.multi-select", "ok,label")).GetProperty("success").GetBoolean());
+			commands = (await app.InvokeAsync("od.wpf-designer.context-commands")).GetProperty("commands");
+			Assert.False(commands.EnumerateArray().Single(command => command.GetProperty("command").GetString() == "duplicate").GetProperty("enabled").GetBoolean());
+			Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+			Assert.Equal(beforeRefusedDuplicate, await File.ReadAllTextAsync(xamlPath));
         } finally {
             await app.InvokeAsync("od.close-all-document-views");
             await File.WriteAllBytesAsync(xamlPath, originalXaml);

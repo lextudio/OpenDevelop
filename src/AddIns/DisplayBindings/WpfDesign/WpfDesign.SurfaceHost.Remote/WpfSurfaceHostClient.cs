@@ -150,7 +150,7 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	{
 		if (string.IsNullOrEmpty(hostDllPath))
 			throw new ArgumentException("A resolved host DLL path is required.", nameof(hostDllPath));
-		var key = new CompatibilityKey(Path.GetFullPath(hostDllPath), operationTimeout ?? TimeSpan.FromSeconds(30), RuntimeInformation.ProcessArchitecture);
+		var key = new CompatibilityKey(Path.GetFullPath(hostDllPath), operationTimeout ?? TimeSpan.FromSeconds(30), RuntimeInformation.ProcessArchitecture, DesignerProtocol.Version);
 		return new WpfSurfaceHostClient(await sharedPool.AcquireAsync(key, cancellationToken).ConfigureAwait(false), key);
 	}
 
@@ -419,7 +419,9 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		if (poolKey != null) sharedPool.Release(poolKey, connection); else connection.Dispose();
 	}
 
-	sealed record CompatibilityKey(string HostDllPath, TimeSpan OperationTimeout, Architecture Architecture);
+	// The protocol belongs in the pool partition: an already-running v27 child may otherwise be
+	// reused after an IDE update and serialize a tree that lacks a newly required node field.
+	sealed record CompatibilityKey(string HostDllPath, TimeSpan OperationTimeout, Architecture Architecture, int ProtocolVersion);
 	sealed class Connection : DesignerHostProcessClient
 	{
 		readonly string hostDllPath;
