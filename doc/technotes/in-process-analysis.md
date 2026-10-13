@@ -741,8 +741,14 @@ XAML source pane keeps its own text clipboard - and its context menu gains the t
 `od.wpf-designer.clipboard` runs those bound commands. Protocol **v30** adds Canvas-only `Paste Here`:
 the context-menu design point is converted to Canvas-local coordinates, and the host anchors the pasted
 bounds there while preserving multi-item Canvas offsets, uniquifying names and recording one undo group.
-Ordinary Paste retains its target/ancestor fallback semantics. Not yet: a non-Canvas pointer-placement
-contract.
+Ordinary Paste retains its target/ancestor fallback semantics. Protocol **v35** extends Paste Here
+to a Grid through `design/paste-elements-into-cell`: the innermost Canvas or Grid under the context
+point is the target, and over a Grid the host assigns every pasted element the cell whose measured
+row/column contain the Grid-local point (row/column 0 resets the attached property; spans, margins
+and alignment stay as copied; an outside point is refused, never clamped), in one undo group.
+Stack/Dock/Wrap panels still offer only ordinary Paste, because a point does not define their order
+or dock side. Host and IDE tests: `ChildHost_PastesIntoTheMeasuredGridCellUnderThePoint` and
+`Clipboard_PasteHerePlacesIntoTheGridCellUnderTheContextPoint`.
 
 **C4 Duplicate (2026-10-13).** WPF now offers Duplicate in the surface context menu and through
 Ctrl+D. It copies the selected same-parent roots through the existing read-only host serializer and

@@ -48,7 +48,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// two neighbouring Percent tracks or makes the dragged track Absolute.
 		// v34 adds design/add-table-layout-track and design/remove-table-layout-track (append, and
 		// remove an unoccupied last track) under the same authored-source proof.
-		public const int Version = 34;
+		// v35 adds WPF's optional design/paste-elements-into-cell: Paste Here into the measured
+		// Grid cell under the pointer.
+		public const int Version = 35;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

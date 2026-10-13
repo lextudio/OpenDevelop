@@ -1650,9 +1650,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 
 		internal bool CanPaste => state?.Accepted == true && ClipboardSnippets().Length > 0;
 
-		/// <summary>Paste Here is deliberately Canvas-only: the captured context point has a stable
-		/// local coordinate there, whereas a Grid/StackPanel's placement semantics must not be guessed.</summary>
-		internal bool CanPasteHere => CanPaste && CanvasAtContextPoint() != null;
+		/// <summary>Paste Here needs a container whose placement a point actually defines: a Canvas
+		/// (its local coordinate) or a Grid (the measured cell under it). A StackPanel/DockPanel/Wrap
+		/// order or dock side must not be guessed from a point, so those stay on ordinary Paste.</summary>
+		internal bool CanPasteHere => CanPaste && PlacementTargetAtContextPoint() != null;
 
 		/// <summary>Duplicate is deliberately a sibling operation: every selection must share one
 		/// collection parent. This prevents duplicating a selected Panel into its own child collection,
@@ -1755,10 +1756,12 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		internal DesignerSessionState? PasteAtContextPoint()
 		{
 			var snippets = ClipboardSnippets();
-			var canvas = CanvasAtContextPoint();
-			if (state?.Accepted != true || snippets.Length == 0 || canvas == null || ContextMenuDesignPoint is not { } point)
+			var target = PlacementTargetAtContextPoint();
+			if (state?.Accepted != true || snippets.Length == 0 || target == null || ContextMenuDesignPoint is not { } point)
 				return null;
-			var result = client.PasteElementsAtAsync(RequireVersion(), canvas.Id, snippets, point.X - canvas.X, point.Y - canvas.Y).GetAwaiter().GetResult();
+			var result = (target.Type == "Grid"
+				? client.PasteElementsIntoCellAsync(RequireVersion(), target.Id, snippets, point.X - target.X, point.Y - target.Y)
+				: client.PasteElementsAtAsync(RequireVersion(), target.Id, snippets, point.X - target.X, point.Y - target.Y)).GetAwaiter().GetResult();
 			LastPasteResult = result;
 			Show(result);
 			if (!result.Accepted)
@@ -1773,21 +1776,22 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			return result;
 		}
 
-		DesignerElementNode? CanvasAtContextPoint()
+		DesignerElementNode? PlacementTargetAtContextPoint()
 		{
 			if (state?.Tree is not { } tree || ContextMenuDesignPoint is not { } point)
 				return null;
-			return FindCanvasAt(tree, point.X, point.Y);
+			return FindPlacementTargetAt(tree, point.X, point.Y);
 		}
 
-		static DesignerElementNode? FindCanvasAt(DesignerElementNode node, double x, double y)
+		/// <summary>The innermost Canvas or Grid containing the point.</summary>
+		static DesignerElementNode? FindPlacementTargetAt(DesignerElementNode node, double x, double y)
 		{
 			if (node.Width <= 0 || node.Height <= 0 || x < node.X || y < node.Y || x > node.X + node.Width || y > node.Y + node.Height)
 				return null;
 			foreach (var child in node.Children)
-				if (FindCanvasAt(child, x, y) is { } nested)
+				if (FindPlacementTargetAt(child, x, y) is { } nested)
 					return nested;
-			return node.Type == "Canvas" ? node : null;
+			return node.Type is "Canvas" or "Grid" ? node : null;
 		}
 
 		/// <summary>Duplicates the same-parent selection without touching the system clipboard. Copy

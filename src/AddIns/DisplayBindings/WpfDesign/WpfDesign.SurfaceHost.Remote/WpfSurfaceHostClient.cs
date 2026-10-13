@@ -317,6 +317,10 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> PasteElementsAtAsync(long baseVersion, string canvasId, string[] snippets, double x, double y, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/paste-elements-at", new { sessionId = SessionId, documentId = DocumentId, baseVersion, canvasId, snippets, x, y }, cancellationToken), cancellationToken);
 
+	/// <summary>Pastes snippets into one exact Grid, in the measured cell under its local pointer coordinate.</summary>
+	public Task<DesignerSessionState> PasteElementsIntoCellAsync(long baseVersion, string gridId, string[] snippets, double x, double y, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/paste-elements-into-cell", new { sessionId = SessionId, documentId = DocumentId, baseVersion, gridId, snippets, x, y }, cancellationToken), cancellationToken);
+
 	/// <summary>Moves elements into a container after one of its children (null = first).</summary>
 	public Task<DesignerSessionState> MoveIntoAsync(long baseVersion, string[] elementIds, string targetId, string? afterId, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/move-into", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds, targetId, afterId }, cancellationToken), cancellationToken);

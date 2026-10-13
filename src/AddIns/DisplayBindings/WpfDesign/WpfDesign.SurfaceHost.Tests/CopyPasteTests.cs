@@ -54,4 +54,45 @@ public sealed class CopyPasteTests
 		Assert.False((await client.PasteElementsAsync(1, Id(pasted, "inner"), new[] { "not xaml" }, timeout.Token)).Accepted);
 		Assert.Equal(text, Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text);
 	}
+
+	[Fact]
+	public async Task ChildHost_PastesIntoTheMeasuredGridCellUnderThePoint()
+	{
+		const string gridXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="root" Width="200" Height="100">
+			  <Grid.RowDefinitions><RowDefinition Height="40"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+			  <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+			  <Button x:Name="ok" Grid.Row="1" Grid.Column="1" Content="OK"/>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(WpfSurfaceHostRpcTests.HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(1, gridXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var copied = await client.CopyElementsAsync(1, new[] { Id(opened, "ok") }, timeout.Token);
+		Assert.True(copied.Accepted, copied.Error);
+		var gridId = opened.Tree!.Id;
+
+		// Outside the Grid, or a target that is not a Grid, is refused without an edit.
+		Assert.False((await client.PasteElementsIntoCellAsync(1, gridId, copied.Snippets.ToArray(), 250, 20, timeout.Token)).Accepted);
+		Assert.False((await client.PasteElementsIntoCellAsync(1, Id(opened, "ok"), copied.Snippets.ToArray(), 10, 10, timeout.Token)).Accepted);
+		var original = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.DoesNotContain("ok1", original, StringComparison.Ordinal);
+
+		// Row 0, column 1: the copied Grid.Row is reset rather than written as 0.
+		var first = await client.PasteElementsIntoCellAsync(1, gridId, copied.Snippets.ToArray(), 100, 20, timeout.Token);
+		Assert.True(first.Accepted, first.Error);
+		Assert.Single(first.CreatedElementIds);
+		// Row 1, column 0.
+		var second = await client.PasteElementsIntoCellAsync(1, gridId, copied.Snippets.ToArray(), 10, 60, timeout.Token);
+		Assert.True(second.Accepted, second.Error);
+		var text = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		var ok1 = System.Text.RegularExpressions.Regex.Match(text, "<Button[^>]*x:Name=\"ok1\"[^>]*/>").Value;
+		var ok2 = System.Text.RegularExpressions.Regex.Match(text, "<Button[^>]*x:Name=\"ok2\"[^>]*/>").Value;
+		Assert.Contains("Grid.Column=\"1\"", ok1, StringComparison.Ordinal);
+		Assert.DoesNotContain("Grid.Row", ok1, StringComparison.Ordinal);
+		Assert.Contains("Grid.Row=\"1\"", ok2, StringComparison.Ordinal);
+		Assert.DoesNotContain("Grid.Column", ok2, StringComparison.Ordinal);
+		Assert.Matches("<Button(?=[^>]*x:Name=\"ok\")(?=[^>]*Grid.Row=\"1\")(?=[^>]*Grid.Column=\"1\")", text);
+	}
 }

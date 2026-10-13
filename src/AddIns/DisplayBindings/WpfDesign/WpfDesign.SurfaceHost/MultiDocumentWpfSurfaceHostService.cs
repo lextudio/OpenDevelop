@@ -112,6 +112,8 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerSessionState PasteElements(string sessionId, string documentId, long baseVersion, string targetId, string[] snippets) => Checked(sessionId, documentId).PasteElements(baseVersion, targetId, snippets);
 	[JsonRpcMethod("design/paste-elements-at")]
 	public DesignerSessionState PasteElementsAt(string sessionId, string documentId, long baseVersion, string canvasId, string[] snippets, double x, double y) => Checked(sessionId, documentId).PasteElementsAt(baseVersion, canvasId, snippets, x, y);
+	[JsonRpcMethod("design/paste-elements-into-cell")]
+	public DesignerSessionState PasteElementsIntoCell(string sessionId, string documentId, long baseVersion, string gridId, string[] snippets, double x, double y) => Checked(sessionId, documentId).PasteElementsIntoCell(baseVersion, gridId, snippets, x, y);
 	[JsonRpcMethod("design/move-into")]
 	public DesignerSessionState MoveInto(string sessionId, string documentId, long baseVersion, string[] elementIds, string targetId, string? afterId) => Checked(sessionId, documentId).MoveInto(baseVersion, elementIds, targetId, afterId);
 	[JsonRpcMethod("design/clone-into")]

@@ -1923,22 +1923,10 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				var state = NewState(baseVersion);
 				if (!double.IsFinite(x) || !double.IsFinite(y))
 					return NotFound(state, "Paste coordinates must be finite.");
-				if (!pathToItem.TryGetValue(canvasId ?? "", out var canvas) || canvas.Component is not Canvas || canvas.ContentProperty?.IsCollection != true || current?.RootItem is not XamlDesignItem rootItem)
+				if (!pathToItem.TryGetValue(canvasId ?? "", out var canvas) || canvas.Component is not Canvas || canvas.ContentProperty?.IsCollection != true)
 					return NotFound(state, "Paste Here target is not a Canvas: " + canvasId);
-				var usedNames = new HashSet<string>(pathToItem.Values.Select(item => item.Name).Where(name => !string.IsNullOrEmpty(name))!, StringComparer.Ordinal);
-				var pasted = new List<DesignItem>();
-				try
-				{
-					foreach (var snippet in (snippets ?? Array.Empty<string>()).Where(text => !string.IsNullOrWhiteSpace(text)))
-					{
-						var obj = ICSharpCode.WpfDesign.XamlDom.XamlParser.ParseSnippet(rootItem.XamlObject, UniqueNames(snippet, usedNames), current.ParserSettings);
-						if (obj != null && ((XamlComponentService)canvas.Services.Component).RegisterXamlComponentRecursive(obj) is { } registered)
-							pasted.Add(registered);
-					}
-				}
-				catch (Exception e) { return NotFound(state, "The clipboard is not pastable XAML: " + e.GetBaseException().Message); }
-				if (pasted.Count == 0)
-					return NotFound(state, "Nothing to paste.");
+				if (ParsePastedSnippets(canvas, snippets, out var error) is not { } pasted)
+					return NotFound(state, error!);
 				if (!CanTake(canvas, pasted))
 					return NotFound(state, "The Canvas cannot hold the pasted elements.");
 				var sourceLeft = pasted.Min(item => CanvasCoordinate(item, isLeft: true));
@@ -1961,6 +1949,103 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				state.Accepted = state.CreatedElementIds.Count == pasted.Count;
 				return state;
 			});
+
+		/// <summary>Pastes snippets into one exact Grid at the context-menu pointer: every pasted
+		/// element joins the Grid's children and is assigned the cell whose measured row and column
+		/// contain <paramref name="x"/>, <paramref name="y"/> (Grid-local). Row/column 0 resets the
+		/// attached property rather than writing a default; spans, margins and alignment stay as
+		/// copied. A point outside the Grid is rejected, never clamped. One native undo group.</summary>
+		[JsonRpcMethod("design/paste-elements-into-cell")]
+		public DesignerSessionState PasteElementsIntoCell(long baseVersion, string gridId, string[] snippets, double x, double y)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(gridId ?? "", out var gridItem) || gridItem.Component is not Grid grid || gridItem.ContentProperty?.IsCollection != true)
+					return NotFound(state, "Paste Here target is not a Grid: " + gridId);
+				if (!double.IsFinite(x) || !double.IsFinite(y) || x < 0 || y < 0 || x > grid.ActualWidth || y > grid.ActualHeight)
+					return NotFound(state, "The paste point is outside the Grid.");
+				var row = TrackAt(grid.RowDefinitions.Select(definition => definition.ActualHeight).ToList(), y);
+				var column = TrackAt(grid.ColumnDefinitions.Select(definition => definition.ActualWidth).ToList(), x);
+				if (ParsePastedSnippets(gridItem, snippets, out var error) is not { } pasted)
+					return NotFound(state, error!);
+				if (!CanTake(gridItem, pasted))
+					return NotFound(state, "The Grid cannot hold the pasted elements.");
+				try
+				{
+					using var changeGroup = gridItem.Context.OpenGroup("Paste into cell", pasted);
+					foreach (var item in pasted)
+						gridItem.ContentProperty.CollectionElements.Add(item);
+					foreach (var item in pasted)
+					{
+						SetOrReset(item.Properties.GetAttachedProperty(Grid.RowProperty), row);
+						SetOrReset(item.Properties.GetAttachedProperty(Grid.ColumnProperty), column);
+					}
+					changeGroup.Commit();
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state);
+				state.CreatedElementIds = pasted.Select(item => pathToItem.FirstOrDefault(entry => entry.Value == item).Key).Where(id => id != null).ToList();
+				state.Accepted = state.CreatedElementIds.Count == pasted.Count;
+				return state;
+			});
+
+		static void SetOrReset(DesignItemProperty property, int index)
+		{
+			if (index == 0)
+				property.Reset();
+			else
+				property.SetValue(index);
+		}
+
+		/// <summary>The measured track containing a Grid-local offset; a Grid without definitions
+		/// has the single implicit track 0, and the far edge belongs to the last track.</summary>
+		static int TrackAt(IReadOnlyList<double> sizes, double offset)
+		{
+			var start = 0d;
+			for (var index = 0; index < sizes.Count; index++)
+			{
+				start += sizes[index];
+				if (offset < start)
+					return index;
+			}
+			return Math.Max(0, sizes.Count - 1);
+		}
+
+		/// <summary>Parses clipboard snippets into registered design items for
+		/// <paramref name="container"/>, uniquifying every <c>x:Name</c> against the document; null
+		/// with <paramref name="error"/> when nothing pastable was given.</summary>
+		List<DesignItem>? ParsePastedSnippets(DesignItem container, string[]? snippets, out string? error)
+		{
+			error = null;
+			if (current?.RootItem is not XamlDesignItem rootItem)
+			{
+				error = "The document is not loaded.";
+				return null;
+			}
+			var usedNames = new HashSet<string>(pathToItem.Values.Select(item => item.Name).Where(name => !string.IsNullOrEmpty(name))!, StringComparer.Ordinal);
+			var pasted = new List<DesignItem>();
+			try
+			{
+				foreach (var snippet in (snippets ?? Array.Empty<string>()).Where(text => !string.IsNullOrWhiteSpace(text)))
+				{
+					var obj = ICSharpCode.WpfDesign.XamlDom.XamlParser.ParseSnippet(rootItem.XamlObject, UniqueNames(snippet, usedNames), current.ParserSettings);
+					if (obj != null && ((XamlComponentService)container.Services.Component).RegisterXamlComponentRecursive(obj) is { } registered)
+						pasted.Add(registered);
+				}
+			}
+			catch (Exception e)
+			{
+				error = "The clipboard is not pastable XAML: " + e.GetBaseException().Message;
+				return null;
+			}
+			if (pasted.Count == 0)
+			{
+				error = "Nothing to paste.";
+				return null;
+			}
+			return pasted;
+		}
 
 		static double CanvasCoordinate(DesignItem item, bool isLeft)
 		{
