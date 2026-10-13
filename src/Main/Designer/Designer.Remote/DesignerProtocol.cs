@@ -20,7 +20,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		// v25 adds DesignerElementNode.IsDesignTimeHidden/IsDesignTimeLocked and WPF's optional
+		// v26 adds WPF's optional design/move-into (the Outline's drag and drop).
+		// v25 added DesignerElementNode.IsDesignTimeHidden/IsDesignTimeLocked and WPF's optional
 		// design/set-design-time-flag. v24 added DesignerBrushInfo's Resource kind/ResourceKey and DesignerPropertyInfo.BrushResourceKeys.
 		// v23 added DesignerPropertyInfo.Brush and WPF's optional design/set-brush.
 		// v22 added DesignerGridTrackInfo.Unit/Value and WPF's optional design/set-grid-track-unit.
@@ -34,7 +35,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// and design/set-binding-validation-option. A stale pooled child
 		// must fail the handshake rather than reject a newly-visible binding editor after the
 		// Properties pad has already presented it.
-		public const int Version = 25;
+		public const int Version = 26;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

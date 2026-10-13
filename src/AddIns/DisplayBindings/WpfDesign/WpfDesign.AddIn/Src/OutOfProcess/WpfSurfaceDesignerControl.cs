@@ -707,6 +707,28 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			DocumentChanged?.Invoke(this, result);
 		}
 
+		/// <summary>The host's answer to the last Outline move, for automation; null before one.</summary>
+		internal DesignerSessionState? LastMoveResult { get; private set; }
+
+		/// <summary>The Outline's drag and drop: moves an element into a container after one of its
+		/// children (null = first) and keeps it selected under its new path id.</summary>
+		internal void MoveInto(string elementId, string targetId, string? afterId)
+		{
+			LastMoveResult = null;
+			if (state == null)
+				return;
+			var result = client.MoveIntoAsync(RequireVersion(), new[] { elementId }, targetId, afterId).GetAwaiter().GetResult();
+			LastMoveResult = result;
+			Show(result);
+			if (!result.Accepted)
+				return;
+			DocumentChanged?.Invoke(this, result);
+			// After the tree refresh, and notified: the Outline kept the pre-move path id, which now
+			// names another element (or none).
+			if (result.MovedElementId != null)
+				SelectElementId(result.MovedElementId);
+		}
+
 		/// <summary>The Outline's eye/lock toggles: sets or clears <c>d:IsHidden</c>/<c>d:IsLocked</c>.</summary>
 		internal void SetDesignTimeFlag(string elementId, string flag, bool value)
 		{

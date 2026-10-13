@@ -1734,6 +1734,72 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		/// <summary>Moves elements into a container, as dragging them in the in-process Outline did
+		/// (<c>OutlineNodeBase.Insert</c>): into the container's content property - a collection
+		/// right after <paramref name="afterId"/> (or first when it is null), a single content only
+		/// when it is empty, where the in-process designer silently replaced what was there. The
+		/// root, an element moved into itself or its own descendant, a single content whose type
+		/// cannot hold it, or a non-UIElement into a Panel is rejected; the move is one undo group
+		/// and leaves the first moved element in <see cref="DesignerSessionState.MovedElementId"/>.</summary>
+		[JsonRpcMethod("design/move-into")]
+		public DesignerSessionState MoveInto(long baseVersion, string[] elementIds, string targetId, string? afterId)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(targetId, out var target))
+					return NotFound(state, "Target not found: " + targetId);
+				var content = target.ContentProperty;
+				if (content == null)
+					return NotFound(state, "The target has no content property: " + targetId);
+				var items = new List<DesignItem>();
+				foreach (var id in elementIds ?? Array.Empty<string>())
+				{
+					if (id.Length == 0 || !pathToItem.TryGetValue(id, out var moved))
+						return NotFound(state, "Element not found or not movable: " + id);
+					for (var ancestor = target; ancestor != null; ancestor = ancestor.Parent)
+						if (ancestor == moved)
+							return NotFound(state, "An element cannot be moved into itself: " + id);
+					items.Add(moved);
+				}
+				if (items.Count == 0)
+					return NotFound(state, "Nothing to move.");
+				DesignItem? after = null;
+				// The anchor must be in the content collection itself: the Outline also shows a target's
+				// ContextMenu and Header as children, and IndexOf would put the element first.
+				if (afterId != null && (!pathToItem.TryGetValue(afterId, out after) || !content.IsCollection
+					|| !content.CollectionElements.Contains(after) || items.Contains(after)))
+					return NotFound(state, "The insertion point is not a remaining child of the target: " + afterId);
+				// IsSet, not Value: text content (Content="First") has no DesignItem Value but is still
+				// content that a move must not overwrite.
+				if (!content.IsCollection && (items.Count > 1 || content.IsSet && (content.Value == null || !items.Contains(content.Value))))
+					return NotFound(state, "The target holds a single child and is not empty.");
+				if (!content.IsCollection && content.ReturnType != null && !items.All(moved => content.ReturnType.IsInstanceOfType(moved.Component)))
+					return NotFound(state, "The target's content cannot hold that element.");
+				if (content.IsCollection && target.Component is Panel && !items.All(moved => moved.Component is UIElement))
+					return NotFound(state, "A panel holds only UI elements.");
+				try
+				{
+					using var changeGroup = target.Context.OpenGroup("Move in outline", items);
+					foreach (var moved in items)
+						moved.Remove();
+					if (content.IsCollection)
+					{
+						var index = after == null ? 0 : content.CollectionElements.IndexOf(after) + 1;
+						foreach (var moved in items)
+							content.CollectionElements.Insert(index++, moved);
+					}
+					else
+						content.SetValue(items[0]);
+					changeGroup.Commit();
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state);
+				state.MovedElementId = pathToItem.FirstOrDefault(entry => entry.Value == items[0]).Key;
+				state.Accepted = true;
+				return state;
+			});
+
 		/// <summary>Changes an element's stacking order among its siblings, as the in-process
 		/// designer's RightClickContextMenu did: "front"/"back" move it to the end/start of the
 		/// parent's collection (drawn last/first), "forward"/"backward" by one. The host owns the

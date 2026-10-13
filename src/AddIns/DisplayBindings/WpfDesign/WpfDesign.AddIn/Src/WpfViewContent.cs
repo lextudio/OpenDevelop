@@ -685,6 +685,8 @@ namespace ICSharpCode.WpfDesign.AddIn
 			{
 				outline.SelectionCommitted += OnOutlineSelectionCommitted;
 				outline.DesignTimeFlagToggled += (_, toggled) => surfaceControl?.SetDesignTimeFlag(toggled.Node.Id, toggled.Flag, toggled.Value);
+				outline.AllowElementMoves = true;
+				outline.MoveRequested += (_, move) => surfaceControl?.MoveInto(move.Node.Id, move.Target.Id, move.After?.Id);
 				outlineSubscribed = true;
 			}
 		}

@@ -707,6 +707,19 @@ or after the control's own last statement when the source had none; clearing rem
 editor to an `ItemsCollection` row and commits through `design/set-items` as one designer undo step;
 `od.forms-designer.properties-pad.edit-items` drives the real row button with the shared script.
 
+**C4 Outline drag and drop (2026-10-12).** The in-process WPF Outline moved elements by dragging
+rows (`OutlineNodeBase.Insert`): into the target's content property, after a sibling in a collection
+or as the single content. Protocol **v26** adds WPF's optional `design/move-into(elementIds, target,
+after)`, one undo group that reports the moved element's new path. It is deliberately stricter than
+in-process: a full single-content target is refused (in-process silently replaced its content), as
+are moving the root, into itself or a descendant, a single content of the wrong type, and a
+non-UIElement into a Panel. The shared `DocumentOutlineControl` gains an opt-in `AllowElementMoves`
+with row drag and drop - the top/bottom quarter of a row inserts before/after it in its parent, the
+middle drops into it after its last child, highlighting the target - raising `MoveRequested`;
+`od.wpf-designer.outline-move` takes the same `RequestMove` path. Not yet: Ctrl-drag copy (DDP's clone
+would duplicate `x:Name`), multi-row drags, and clearing a moved element's stale attached layout
+properties (in-process left them too).
+
 **C4 Outline design-time flags (2026-10-12).** The in-process WPF Outline had an eye and a lock
 toggle per row, writing `d:IsHidden` (DDP hides the element at design time only) and `d:IsLocked`
 (the surface's hit test skips the element and its children). Protocol **v25** adds nullable

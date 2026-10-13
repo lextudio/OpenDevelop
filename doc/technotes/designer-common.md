@@ -1394,12 +1394,12 @@ Legend: **✓** implemented and exercised · **~** partial (see note) · **✗**
 | Crash/restart recovery | ✓ (disconnected overlay + Restart) | ✓ (crash/restart covered by tests) | ✓ (lifecycle probes + status) |
 | Safe mode (project code disabled) | ✓ (protocol-level) | planned (same protocol field) | ✓ (protocol-level) |
 
-**Additions since this matrix (2026-08-18).** The protocol has grown to **v25**; every new method is
+**Additions since this matrix (2026-08-18).** The protocol has grown to **v26**; every new method is
 optional and feature-detected by protocol version, so a backend that does not answer the handshake
 for a version keeps working. WPF-first additions: the Binding-editor mutations (v14–v16), Grid track
 read/split/size and unit (v5 baseline, unit in v22), z-order and wrap/unwrap (v18/v19), the
 string-collection editor (v20/v21), the brush editor (v23/v24, with `BrushResourceKeys` for its
-resources tab) and the Outline design-time flags (v25). `in-process-analysis.md` carries the
+resources tab), the Outline design-time flags (v25) and Outline drag and drop (`design/move-into`, v26). `in-process-analysis.md` carries the
 per-feature 2026-10 slices; the per-designer docs carry the framework-specific behaviour.
 
 ## Canvas shell & presentation (shared)

@@ -794,6 +794,64 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
+    public async Task Outline_DropMovesAnElementIntoAnotherContainer()
+    {
+        // The in-process Outline's drag and drop: a Button dropped into a nested StackPanel after its
+        // TextBlock moves there in the source, stays selected, and undoes as one step.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllBytesAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Outline moves">
+              <StackPanel>
+                <Button x:Name="mover" Content="Mover" />
+                <StackPanel x:Name="inner"><TextBlock x:Name="label" Text="Label" /></StackPanel>
+              </StackPanel>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var before = await File.ReadAllTextAsync(xamlPath);
+
+            JsonElement moved = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                moved = await app.InvokeAsync("od.wpf-designer.outline-move", "mover", "inner", "label");
+                return moved.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250), moved.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var text = await File.ReadAllTextAsync(xamlPath);
+            Assert.Matches("x:Name=\"label\"[^<]*/>\\s*<Button x:Name=\"mover\"", text);
+            // The moved element stays selected under its new path, on the surface and in the Outline.
+            var movedId = moved.GetProperty("movedId").GetString();
+            Assert.Equal(movedId, moved.GetProperty("selectedId").GetString());
+            Assert.Equal(movedId, moved.GetProperty("outlineSelectedId").GetString());
+
+            // A move the host refuses (into the Button, whose Content is text) is reported as such.
+            var refused = await app.InvokeAsync("od.wpf-designer.outline-move", "label", "mover", "");
+            Assert.False(refused.GetProperty("success").GetBoolean(), refused.ToString());
+
+            var undo = await app.InvokeAsync("od.wpf-designer.undo");
+            Assert.True(undo.GetProperty("success").GetBoolean(), undo.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            Assert.Equal(before, await File.ReadAllTextAsync(xamlPath));
+        } finally {
+            await app.InvokeAsync("od.close-all-document-views");
+            await File.WriteAllBytesAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task Outline_HiddenAndLockedTogglesWriteDesignTimeAttributes()
     {
         // The in-process Outline's eye and lock toggles: d:IsHidden takes the element off the
@@ -819,17 +877,33 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
                 return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
             }, TimeSpan.FromSeconds(90)), status.ToString());
 
-            var locked = await app.InvokeAsync("od.wpf-designer.outline-toggle", "flagged", "Locked");
-            Assert.True(locked.GetProperty("success").GetBoolean(), locked.ToString());
+            // The Outline is refreshed just after the designer reports loaded; a missing row is a
+            // no-op failure, so retry until this document's row is there.
+            JsonElement locked = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                locked = await app.InvokeAsync("od.wpf-designer.outline-toggle", "flagged", "Locked");
+                return locked.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250), locked.ToString());
             Assert.True(locked.GetProperty("locked").GetBoolean(), locked.ToString());
-            var hidden = await app.InvokeAsync("od.wpf-designer.outline-toggle", "flagged", "Hidden");
+            // Each edit is followed by the IDE's source update, which can momentarily make the next
+            // mutation's base version stale; a rejected toggle changes nothing, so retry it.
+            async Task<JsonElement> ToggleUntil(string flag, Func<JsonElement, bool> done)
+            {
+                JsonElement result = default;
+                Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                    result = await app.InvokeAsync("od.wpf-designer.outline-toggle", "flagged", flag);
+                    return result.GetProperty("success").GetBoolean() && done(result);
+                }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250), result.ToString());
+                return result;
+            }
+            var hidden = await ToggleUntil("Hidden", result => result.GetProperty("hidden").GetBoolean());
             Assert.True(hidden.GetProperty("hidden").GetBoolean(), hidden.ToString());
             Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
             var text = await File.ReadAllTextAsync(xamlPath);
             Assert.Contains("IsLocked=\"True\"", text, StringComparison.Ordinal);
             Assert.Contains("IsHidden=\"True\"", text, StringComparison.Ordinal);
 
-            var unlocked = await app.InvokeAsync("od.wpf-designer.outline-toggle", "flagged", "Locked");
+            var unlocked = await ToggleUntil("Locked", result => !result.GetProperty("locked").GetBoolean());
             Assert.False(unlocked.GetProperty("locked").GetBoolean(), unlocked.ToString());
             Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
             Assert.DoesNotContain("IsLocked", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);

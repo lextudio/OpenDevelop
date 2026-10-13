@@ -102,6 +102,8 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerGridGuides QueryGridGuides(string sessionId, string documentId, long baseVersion, string elementId) => Checked(sessionId, documentId).QueryGridGuides(baseVersion, elementId);
 	[JsonRpcMethod("design/set-grid-track-size")]
 	public DesignerSessionState SetGridTrackSize(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index, double pixels) => Checked(sessionId, documentId).SetGridTrackSize(baseVersion, elementId, isRow, index, pixels);
+	[JsonRpcMethod("design/move-into")]
+	public DesignerSessionState MoveInto(string sessionId, string documentId, long baseVersion, string[] elementIds, string targetId, string? afterId) => Checked(sessionId, documentId).MoveInto(baseVersion, elementIds, targetId, afterId);
 	[JsonRpcMethod("design/set-design-time-flag")]
 	public DesignerSessionState SetDesignTimeFlag(string sessionId, string documentId, long baseVersion, string elementId, string flag, bool value) => Checked(sessionId, documentId).SetDesignTimeFlag(baseVersion, elementId, flag, value);
 	[JsonRpcMethod("design/set-brush")]

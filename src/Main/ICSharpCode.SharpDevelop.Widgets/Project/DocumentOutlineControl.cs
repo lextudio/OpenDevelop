@@ -8,6 +8,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -35,6 +36,35 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// (<see cref="HiddenFlag"/> or <see cref="LockedFlag"/>) and its requested value. The tree
 		/// itself changes only when the backend publishes the next snapshot.</summary>
 		public event EventHandler<(DesignerElementNode Node, string Flag, bool Value)> DesignTimeFlagToggled;
+
+		/// <summary>Whether rows can be dragged onto other rows to move elements (the in-process WPF
+		/// Outline's drag and drop). Off by default: a backend opts in when it handles
+		/// <see cref="MoveRequested"/>.</summary>
+		public bool AllowElementMoves {
+			get => allowElementMoves;
+			set {
+				allowElementMoves = value;
+				AllowDrop = value;
+				// The handlers are attached only for an opted-in outline: a backend with its own
+				// outline drag and drop (WinUI reorders through its own DragOver/Drop) keeps an event
+				// chain exactly as before.
+				if (value && !moveHandlersAttached) {
+					moveHandlersAttached = true;
+					AttachMoveHandlers();
+				}
+			}
+		}
+		bool allowElementMoves;
+		bool moveHandlersAttached;
+
+		/// <summary>Raised when a row is dropped: move <c>Node</c> into <c>Target</c>, right after
+		/// <c>After</c> (null = first). The tree changes only with the backend's next snapshot.</summary>
+		public event EventHandler<(DesignerElementNode Node, DesignerElementNode Target, DesignerElementNode? After)> MoveRequested;
+
+		const string DragFormat = "OpenDevelop.DesignerOutlineNodeId";
+		Point dragStart;
+		TreeViewItem? dragSource;
+		TreeViewItem? dropHighlight;
 
 		public const string HiddenFlag = "Hidden";
 		public const string LockedFlag = "Locked";
@@ -76,6 +106,117 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			// otherwise a real click would never reach the consumers (they only subscribe to
 			// SelectionCommitted).
 			SelectedItemChanged += (_, _) => { if (!rebuilding) SelectionCommitted?.Invoke(this, EventArgs.Empty); };
+		}
+
+		void AttachMoveHandlers()
+		{
+			PreviewMouseLeftButtonDown += (_, e) => {
+				dragStart = e.GetPosition(this);
+				dragSource = AllowElementMoves ? ItemAt(e.OriginalSource) : null;
+			};
+			PreviewMouseMove += (_, e) => {
+				if (dragSource?.Tag is not DesignerElementNode node || e.LeftButton != System.Windows.Input.MouseButtonState.Pressed)
+					return;
+				var delta = e.GetPosition(this) - dragStart;
+				if (Math.Abs(delta.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance)
+					return;
+				dragSource = null;
+				DragDrop.DoDragDrop(this, new DataObject(DragFormat, node.Id), DragDropEffects.Move);
+				SetDropHighlight(null);
+			};
+			// Only this outline's own row drags are claimed; any other drag passes through untouched.
+			DragOver += (_, e) => {
+				if (!AllowElementMoves || e.Data.GetData(DragFormat) is not string id)
+					return;
+				var drop = ResolveDrop(id, e);
+				e.Effects = drop != null ? DragDropEffects.Move : DragDropEffects.None;
+				SetDropHighlight(drop?.Highlight);
+				e.Handled = true;
+			};
+			DragLeave += (_, _) => SetDropHighlight(null);
+			Drop += (_, e) => {
+				if (!AllowElementMoves || e.Data.GetData(DragFormat) is not string id)
+					return;
+				SetDropHighlight(null);
+				if (ResolveDrop(id, e) is { } drop)
+					RequestMove(id, drop.Target.Id, drop.After?.Id);
+				e.Handled = true;
+			};
+		}
+
+		/// <summary>Raises <see cref="MoveRequested"/> for the displayed nodes with these ids, as a
+		/// drop does. False when one is not displayed.</summary>
+		public bool RequestMove(string nodeId, string targetId, string? afterId)
+		{
+			var node = FindDisplayed(nodeId);
+			var target = FindDisplayed(targetId);
+			var after = afterId == null ? null : FindDisplayed(afterId);
+			if (node?.Tag is not DesignerElementNode moved || target?.Tag is not DesignerElementNode container
+				|| afterId != null && after?.Tag is not DesignerElementNode)
+				return false;
+			MoveRequested?.Invoke(this, (moved, container, after?.Tag as DesignerElementNode));
+			return true;
+		}
+
+		/// <summary>Where a drop at the pointer goes, as the in-process Outline's drag tree decides:
+		/// the top quarter of a row inserts before it, the bottom quarter after it (both into its
+		/// parent), anything else into the row itself after its last child. Never into the dragged
+		/// row or its own subtree.</summary>
+		(DesignerElementNode Target, DesignerElementNode? After, TreeViewItem Highlight)? ResolveDrop(string draggedId, DragEventArgs e)
+		{
+			var over = ItemAt(e.OriginalSource);
+			if (over?.Tag is not DesignerElementNode hovered)
+				return null;
+			for (var item = over; item != null; item = ItemsControl.ItemsControlFromItemContainer(item) as TreeViewItem)
+				if ((item.Tag as DesignerElementNode)?.Id == draggedId)
+					return null;
+			var header = (FrameworkElement)over.Header;
+			var y = e.GetPosition(header).Y / Math.Max(1, header.ActualHeight);
+			var parentItem = ItemsControl.ItemsControlFromItemContainer(over) as TreeViewItem;
+			if ((y < 0.25 || y > 0.75) && parentItem?.Tag is DesignerElementNode parent) {
+				var index = parentItem.Items.IndexOf(over) + (y > 0.75 ? 1 : 0);
+				// Siblings shown before the insertion point, other than the dragged row itself.
+				var previous = parentItem.Items.Cast<TreeViewItem>().Take(index)
+					.Select(item => (DesignerElementNode)item.Tag).LastOrDefault(node => node.Id != draggedId && !IsSynthetic(node));
+				return (parent, previous, parentItem);
+			}
+			var lastChild = over.Items.Cast<TreeViewItem>().Select(item => (DesignerElementNode)item.Tag).LastOrDefault(node => node.Id != draggedId && !IsSynthetic(node));
+			return (hovered, lastChild, over);
+		}
+
+		/// <summary>A row the backend adds for structure rather than content - a ContextMenu or
+		/// Header group, whose path segment starts with '@' - which is no insertion anchor.</summary>
+		static bool IsSynthetic(DesignerElementNode node)
+		{
+			var segment = node.Id.Substring(node.Id.LastIndexOf(',') + 1);
+			return segment.StartsWith("@", StringComparison.Ordinal);
+		}
+
+		void SetDropHighlight(TreeViewItem? item)
+		{
+			if (dropHighlight == item)
+				return;
+			if (dropHighlight?.Header is Panel previous)
+				previous.Background = null;
+			dropHighlight = item;
+			if (item?.Header is Panel header)
+				header.Background = new SolidColorBrush(SystemColors.HighlightColor) { Opacity = 0.3 };
+		}
+
+		static TreeViewItem? ItemAt(object source)
+		{
+			for (var current = source as DependencyObject; current != null; current = VisualTreeHelper.GetParent(current) ?? LogicalTreeHelper.GetParent(current))
+				if (current is TreeViewItem item)
+					return item;
+			return null;
+		}
+
+		TreeViewItem? FindDisplayed(string id)
+		{
+			foreach (TreeViewItem root in Items)
+				if (FindNode(root, id) is { } match)
+					return match;
+			return null;
 		}
 
 		/// <summary>Shows a new element tree. Collapses nothing and keeps the current
