@@ -19,6 +19,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public const string WpfUserControlBase = "System.Windows.Controls.UserControl";
 		public const string WinFormsControlBase = "System.Windows.Forms.Control";
 		public const string WinFormsUserControlBase = "System.Windows.Forms.UserControl";
+		public const string ComponentBase = "System.ComponentModel.Component";
+		public const string ComponentInterface = "System.ComponentModel.IComponent";
 
 		public sealed class ControlInfo
 		{
@@ -32,6 +34,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			public bool HasPublicDefaultConstructor { get; init; }
 			/// <summary>Whether the type opts out with <c>[ToolboxItem(false)]</c>.</summary>
 			public bool IsHiddenFromToolbox { get; init; }
+			/// <summary>Whether the type remains visible at design time. Components that opt out with
+			/// <c>[DesignTimeVisible(false)]</c> belong inside another component rather than in the tray.</summary>
+			public bool IsDesignTimeVisible { get; init; } = true;
 			public List<DesignerToolboxFilterInfo> Filters { get; init; } = new();
 		}
 
@@ -64,9 +69,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>Discovers public, concrete classes whose metadata base chain reaches
 		/// <paramref name="controlBase"/> (a WPF visual base by default).
 		/// <paramref name="referencePaths"/> is used only to follow metadata TypeRefs; none of those
-		/// files is ever loaded into an AssemblyLoadContext.</summary>
+		/// files is ever loaded into an AssemblyLoadContext. When <paramref name="interfaceName"/> is
+		/// supplied, a candidate may reach either the base class or that interface.</summary>
 		public static IReadOnlyList<ControlInfo> Discover(string assemblyPath, IEnumerable<string> referencePaths,
-			string controlBase = WpfControlBase, string userControlBase = WpfUserControlBase)
+			string controlBase = WpfControlBase, string userControlBase = WpfUserControlBase, string? interfaceName = null)
 		{
 			var pathsByAssemblyName = referencePaths
 				.Where(File.Exists)
@@ -82,7 +88,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 					|| (definition.Attributes & TypeAttributes.SpecialName) != 0
 					|| root.Metadata.GetString(definition.Name).Contains('`'))
 						continue;
-					if (!HasBase(root, definition.BaseType, pathsByAssemblyName, images, new HashSet<string>(StringComparer.Ordinal), controlBase))
+					if (!HasBase(root, definition.BaseType, pathsByAssemblyName, images, new HashSet<string>(StringComparer.Ordinal), controlBase)
+						&& (interfaceName == null || !HasInterface(root, definition, pathsByAssemblyName, images,
+							new HashSet<string>(StringComparer.Ordinal), interfaceName)))
 						continue;
 					var name = root.Metadata.GetString(definition.Name);
 					var @namespace = root.Metadata.GetString(definition.Namespace);
@@ -95,6 +103,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 						IsUserControl = HasBase(root, definition.BaseType, pathsByAssemblyName, images, new HashSet<string>(StringComparer.Ordinal), userControlBase),
 						HasPublicDefaultConstructor = HasPublicDefaultConstructor(root.Metadata, definition),
 						IsHiddenFromToolbox = IsHiddenFromToolbox(root.Metadata, definition),
+						IsDesignTimeVisible = IsDesignTimeVisible(root.Metadata, definition),
 						Filters = ReadToolboxFilters(root.Metadata, definition)
 					});
 				}
@@ -134,6 +143,21 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 					return true;
 			}
 			return false;
+		}
+
+		/// <summary><c>[DesignTimeVisible(false)]</c> makes a component an implementation detail of
+		/// its owner, so it must not be offered as a standalone tray item.</summary>
+		static bool IsDesignTimeVisible(MetadataReader metadata, TypeDefinition definition)
+		{
+			foreach (var handle in definition.GetCustomAttributes()) {
+				var attribute = metadata.GetCustomAttribute(handle);
+				if (AttributeTypeName(metadata, attribute.Constructor) != "System.ComponentModel.DesignTimeVisibleAttribute")
+					continue;
+				var bytes = metadata.GetBlobBytes(attribute.Value);
+				if (bytes.Length >= 3 && bytes[0] == 1 && bytes[1] == 0 && IsBoolConstructor(metadata, attribute.Constructor))
+					return bytes[2] != 0;
+			}
+			return true;
 		}
 
 		static bool IsBoolConstructor(MetadataReader metadata, EntityHandle constructor)
@@ -227,6 +251,23 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				return true;
 			var identity = owner.Path + "|" + fullName;
 			return visited.Add(identity) && HasBase(owner, definition.BaseType, paths, images, visited, wantedFullName);
+		}
+
+		static bool HasInterface(AssemblyImage image, TypeDefinition definition, IReadOnlyDictionary<string, string> paths,
+			Dictionary<string, AssemblyImage> images, HashSet<string> visited, string wantedFullName)
+		{
+			var identity = image.Path + "|" + FullName(image.Metadata, definition.Namespace, definition.Name);
+			if (!visited.Add(identity)) return false;
+			foreach (var implementationHandle in definition.GetInterfaceImplementations()) {
+				var implementation = image.Metadata.GetInterfaceImplementation(implementationHandle);
+				var resolved = Resolve(image, implementation.Interface, paths, images);
+				if (resolved == null) continue;
+				var (owner, interfaceDefinition, fullName) = resolved.Value;
+				if (fullName == wantedFullName || HasInterface(owner, interfaceDefinition, paths, images, visited, wantedFullName))
+					return true;
+			}
+			var baseType = Resolve(image, definition.BaseType, paths, images);
+			return baseType != null && HasInterface(baseType.Value.Owner, baseType.Value.Definition, paths, images, visited, wantedFullName);
 		}
 
 		static (AssemblyImage Owner, TypeDefinition Definition, string FullName)? Resolve(AssemblyImage image, EntityHandle handle,

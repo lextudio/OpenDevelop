@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.ComponentModel.Design;
 
 using ICSharpCode.FormsDesigner.OutOfProcess;
@@ -950,9 +951,10 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains(reloaded.Components, component => component.Name == "backgroundWorker1" && component.IsTrayComponent);
 	}
 
-	/// <summary>The project-controls Toolbox category: the IDE finds a project's controls from
-	/// metadata alone (never loading the assembly) and hands the child only the type name, which
-	/// the child resolves against the snapshot's project assembly when the control is dropped.</summary>
+	/// <summary>The project-components Toolbox category: the IDE finds a project's controls and
+	/// design-time-visible non-visual components from metadata alone (never loading the assembly)
+	/// and hands the child only the type name, which the child resolves against the snapshot's
+	/// project assembly when it is dropped.</summary>
 	[Fact]
 	public async Task ChildHost_AddsAProjectControlTheToolboxDiscoveredFromMetadata()
 	{
@@ -967,6 +969,10 @@ public sealed class FormsDesignerHostClientTests
 		Assert.True(panel.HasPublicDefaultConstructor);
 		Assert.False(Assert.Single(controls, control => control.Name == "FancyButton").IsUserControl);
 		Assert.True(Assert.Single(controls, control => control.Name == "HiddenPanel").IsHiddenFromToolbox);
+		var projectComponents = ToolboxMetadataDiscovery.Discover(fixtureAssembly, references.Append(typeof(Component).Assembly.Location),
+			ToolboxMetadataDiscovery.ComponentBase, ToolboxMetadataDiscovery.WinFormsUserControlBase, ToolboxMetadataDiscovery.ComponentInterface);
+		Assert.False(Assert.Single(projectComponents, control => control.Name == "HiddenProjectComponent").IsDesignTimeVisible);
+		Assert.Contains(projectComponents, component => component.Name == "DirectProjectComponent");
 		Assert.Single(ToolboxMetadataDiscovery.Discover(fixtureAssembly, references, "System.Windows.Forms.Form", "System.Windows.Forms.Form"),
 			control => control.Name == "SettingsForm");
 
@@ -977,7 +983,8 @@ public sealed class FormsDesignerHostClientTests
 		var copyLocal = references.Where(path => path != fixtureAssembly).ToArray();
 		Assert.Contains(copyLocal, path => Path.GetFileName(path) == "System.Windows.Forms.dll");
 		var found = finder.FindNew(fixtureAssembly, copyLocal, "");
-		Assert.Equal(new[] { "FancyButton", "GreetingPanel" }, found.Select(item => item.Control.Name).OrderBy(name => name, StringComparer.Ordinal));
+		Assert.Equal(new[] { "DirectProjectComponent", "FancyButton", "GreetingPanel", "ProjectComponent" }, found.Select(item => item.Control.Name).OrderBy(name => name, StringComparer.Ordinal));
+		Assert.False(Assert.Single(found, item => item.Control.Name == "ProjectComponent").Control.IsUserControl);
 		Assert.All(found, item => Assert.Equal("FormsDesigner.CustomControlFixture", item.Category));
 		Assert.Empty(finder.FindNew(fixtureAssembly, copyLocal, ""));
 		Assert.True(WinFormsProjectControlFinder.IsFrameworkAssembly("/out/LibreWinForms.Platform.dll"));
@@ -994,6 +1001,11 @@ public sealed class FormsDesignerHostClientTests
 
 		Assert.Contains(added.Components, component => component.Name == "greetingPanel1" && component.Type == panel.FullName);
 		Assert.Contains("new FormsDesigner.CustomControlFixture.GreetingPanel()", DesignerText(await client.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+
+		var projectComponent = Assert.Single(found, item => item.Control.Name == "ProjectComponent").Control;
+		var trayAdded = await client.AddElementAsync(1, "Form1", new DesignerToolboxItemInfo { TypeName = projectComponent.FullName }, "projectComponent1", 0, 0, cancellationToken: timeout.Token);
+		Assert.Contains(trayAdded.Components, component => component.Name == "projectComponent1" && component.IsTrayComponent);
+		Assert.Contains("new FormsDesigner.CustomControlFixture.ProjectComponent()", DesignerText(await client.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
 	}
 
 	/// <summary>

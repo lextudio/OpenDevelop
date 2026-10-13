@@ -10,12 +10,14 @@ using ICSharpCode.SharpDevelop.Designer.Remote;
 namespace ICSharpCode.FormsDesigner.OutOfProcess
 {
 	/// <summary>
-	/// Finds the controls a WinForms project contributes to the Toolbox, from PE metadata only: the
-	/// public concrete <c>Control</c> types with a public parameterless constructor in the project
-	/// output and its copy-local references. Like the in-process CustomComponentsSideTab, which
+	/// Finds the controls and non-visual components a WinForms project contributes to the Toolbox,
+	/// from PE metadata only. Candidates are public concrete <c>Control</c> or <c>IComponent</c>
+	/// types with a public parameterless constructor in the project output and its copy-local
+	/// references. Like the in-process CustomComponentsSideTab, which
 	/// skipped GAC assemblies, framework and runtime assemblies are ignored - they would only repeat
-	/// the curated WinForms catalog. <c>[ToolboxItem(false)]</c> types and <c>Form</c> subclasses
-	/// (top-level windows) are skipped. One instance remembers what it returned and each file's
+	/// the curated WinForms catalog. <c>[ToolboxItem(false)]</c>,
+	/// <c>[DesignTimeVisible(false)]</c> types, and <c>Form</c> subclasses (top-level windows) are
+	/// skipped. One instance remembers what it returned and each file's
 	/// timestamp, so reopening a form neither rescans an unchanged assembly nor repeats an item.
 	/// </summary>
 	public sealed class WinFormsProjectControlFinder
@@ -51,7 +53,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			var all = new[] { projectAssemblyPath }.Concat(referencedAssemblyPaths)
 				.Where(path => !String.IsNullOrEmpty(path) && File.Exists(path))
 				.ToList();
-			var references = all.Append(winFormsAssemblyPath).Where(path => !String.IsNullOrEmpty(path)).ToList();
+			// Project output normally copy-locals WinForms but not necessarily the BCL assembly that
+			// owns Component. Both are opened as metadata only, never loaded as project code.
+			var references = all.Append(winFormsAssemblyPath).Append(typeof(System.ComponentModel.Component).Assembly.Location)
+				.Where(path => !String.IsNullOrEmpty(path)).ToList();
 			var result = new List<(string, ToolboxMetadataDiscovery.ControlInfo)>();
 			foreach (var assembly in all.Where(path => !IsFrameworkAssembly(path))) {
 				var stamp = File.GetLastWriteTimeUtc(assembly);
@@ -64,9 +69,15 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 						.Select(control => control.FullName), StringComparer.Ordinal);
 					foreach (var control in ToolboxMetadataDiscovery.Discover(assembly, references,
 						ToolboxMetadataDiscovery.WinFormsControlBase, ToolboxMetadataDiscovery.WinFormsUserControlBase)) {
-						if (control.HasPublicDefaultConstructor && !control.IsHiddenFromToolbox && !forms.Contains(control.FullName)
+						if (control.HasPublicDefaultConstructor && !control.IsHiddenFromToolbox && control.IsDesignTimeVisible && !forms.Contains(control.FullName)
 							&& returned.Add(category + "|" + control.FullName))
 							result.Add((category, control));
+					}
+					foreach (var component in ToolboxMetadataDiscovery.Discover(assembly, references,
+						ToolboxMetadataDiscovery.ComponentBase, ToolboxMetadataDiscovery.WinFormsUserControlBase, ToolboxMetadataDiscovery.ComponentInterface)) {
+						if (component.HasPublicDefaultConstructor && !component.IsHiddenFromToolbox && component.IsDesignTimeVisible && !forms.Contains(component.FullName)
+							&& returned.Add(category + "|" + component.FullName))
+							result.Add((category, component));
 					}
 				} catch (Exception exception) when (exception is IOException or BadImageFormatException or UnauthorizedAccessException) {
 					// A native or locked file in the output directory contributes nothing.
