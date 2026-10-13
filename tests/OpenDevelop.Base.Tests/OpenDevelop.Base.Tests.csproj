@@ -28,6 +28,8 @@
          Forms designer add-in or a design host. -->
     <Compile Include="..\..\src\AddIns\DisplayBindings\FormsDesigner\Project\Src\Services\ResxImageResourceEditor.cs"
              Link="FormsDesigner\ResxImageResourceEditor.cs" />
+    <Compile Include="..\..\src\AddIns\DisplayBindings\FormsDesigner\Project\Src\Services\ResourceImageSourceBinding.cs"
+             Link="FormsDesigner\ResourceImageSourceBinding.cs" />
     <ProjectReference Include="..\..\src\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" />
     <ProjectReference Include="..\..\src\Main\LanguageServices\Roslyn.Host\Roslyn.Host.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\AddIns\Analysis\UnitTesting\UnitTesting.csproj" />
