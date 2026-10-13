@@ -197,7 +197,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// The in-process designer's RightClickContextMenu (z-order) and ArrangeItemsContextMenu
 			// (alignment to the primary selection).
 			SetContextCommands(new[] {
-				("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Duplicate", "duplicate"),
+				("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Paste Here", "paste-here"), ("Duplicate", "duplicate"),
 				("-", ""),
 				("Delete", "delete"),
 				("-", ""),
@@ -225,6 +225,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			ContextCommandCanExecute = command => command switch {
 				"cut" or "copy" => CanCopySelection,
 				"paste" => CanPaste,
+				"paste-here" => CanPasteHere,
 				"duplicate" => CanDuplicateSelection,
 				_ when command.StartsWith("align-", StringComparison.Ordinal) => controller.SelectedNames.Count >= 2,
 				_ when command.StartsWith("order-", StringComparison.Ordinal) => controller.SelectedNames.Count == 1,
@@ -281,6 +282,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 					CutSelection();
 				else if (command.Command == "paste")
 					PasteIntoSelection();
+				else if (command.Command == "paste-here")
+					PasteAtContextPoint();
 				else if (command.Command == "duplicate")
 					DuplicateSelection();
 				else if (command.Command.StartsWith("align-", StringComparison.Ordinal))
@@ -1629,6 +1632,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 
 		internal bool CanPaste => state?.Accepted == true && ClipboardSnippets().Length > 0;
 
+		/// <summary>Paste Here is deliberately Canvas-only: the captured context point has a stable
+		/// local coordinate there, whereas a Grid/StackPanel's placement semantics must not be guessed.</summary>
+		internal bool CanPasteHere => CanPaste && CanvasAtContextPoint() != null;
+
 		/// <summary>Duplicate is deliberately a sibling operation: every selection must share one
 		/// collection parent. This prevents duplicating a selected Panel into its own child collection,
 		/// and prevents ordinary paste's ancestor fallback from moving a duplicate out of a full
@@ -1723,6 +1730,46 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				UpdateSelectionChrome();
 			}
 			return result;
+		}
+
+		/// <summary>Pastes at the context menu's actual design point into its containing Canvas. The
+		/// host receives Canvas-local coordinates and preserves a multi-item clipboard's offsets.</summary>
+		internal DesignerSessionState? PasteAtContextPoint()
+		{
+			var snippets = ClipboardSnippets();
+			var canvas = CanvasAtContextPoint();
+			if (state?.Accepted != true || snippets.Length == 0 || canvas == null || ContextMenuDesignPoint is not { } point)
+				return null;
+			var result = client.PasteElementsAtAsync(RequireVersion(), canvas.Id, snippets, point.X - canvas.X, point.Y - canvas.Y).GetAwaiter().GetResult();
+			LastPasteResult = result;
+			Show(result);
+			if (!result.Accepted)
+				return result;
+			DocumentChanged?.Invoke(this, result);
+			if (result.CreatedElementIds.Count > 0)
+			{
+				controller.RestoreSelection(result.CreatedElementIds);
+				NotifySelectionChanged();
+				UpdateSelectionChrome();
+			}
+			return result;
+		}
+
+		DesignerElementNode? CanvasAtContextPoint()
+		{
+			if (state?.Tree is not { } tree || ContextMenuDesignPoint is not { } point)
+				return null;
+			return FindCanvasAt(tree, point.X, point.Y);
+		}
+
+		static DesignerElementNode? FindCanvasAt(DesignerElementNode node, double x, double y)
+		{
+			if (node.Width <= 0 || node.Height <= 0 || x < node.X || y < node.Y || x > node.X + node.Width || y > node.Y + node.Height)
+				return null;
+			foreach (var child in node.Children)
+				if (FindCanvasAt(child, x, y) is { } nested)
+					return nested;
+			return node.Type == "Canvas" ? node : null;
 		}
 
 		/// <summary>Duplicates the same-parent selection without touching the system clipboard. Copy

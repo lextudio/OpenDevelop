@@ -892,6 +892,63 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
+    public async Task Clipboard_PasteHereAnchorsCanvasItemsAtTheContextPoint()
+    {
+        // Pointer Paste Here uses the real context-menu design coordinate, not the current selected
+        // child: its Canvas-local anchor moves a copied group as one while retaining group offsets.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllBytesAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Paste Here">
+              <Canvas x:Name="canvas">
+                <Button x:Name="first" Canvas.Left="20" Canvas.Top="30" Width="60" Height="30" Content="First" />
+                <Button x:Name="second" Canvas.Left="60" Canvas.Top="50" Width="60" Height="30" Content="Second" />
+              </Canvas>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            Assert.True((await app.InvokeAsync("od.wpf-designer.multi-select", "first,second")).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.wpf-designer.clipboard", "copy")).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "canvas")).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.wpf-designer.context-menu-point", 150, 90)).GetProperty("success").GetBoolean());
+            var commands = (await app.InvokeAsync("od.wpf-designer.context-commands")).GetProperty("commands");
+            Assert.True(commands.EnumerateArray().Single(command => command.GetProperty("command").GetString() == "paste-here").GetProperty("enabled").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var before = await File.ReadAllTextAsync(xamlPath);
+
+            var pasted = await app.InvokeAsync("od.wpf-designer.clipboard", "paste-here");
+            Assert.True(pasted.GetProperty("success").GetBoolean(), pasted.ToString());
+            Assert.Equal(2, pasted.GetProperty("selectedIds").GetArrayLength());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var text = await File.ReadAllTextAsync(xamlPath);
+            // XamlDom is free to reorder attributes, so assert each persisted element's complete
+            // coordinate set rather than serialisation order.
+            Assert.Matches("<Button(?=[^>]*x:Name=\"first1\")(?=[^>]*Canvas.Left=\"150(?:\\.0)?\")(?=[^>]*Canvas.Top=\"90(?:\\.0)?\")", text);
+            Assert.Matches("<Button(?=[^>]*x:Name=\"second1\")(?=[^>]*Canvas.Left=\"190(?:\\.0)?\")(?=[^>]*Canvas.Top=\"110(?:\\.0)?\")", text);
+
+            var undo = await app.InvokeAsync("od.wpf-designer.undo");
+            Assert.True(undo.GetProperty("success").GetBoolean(), undo.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            Assert.Equal(before, await File.ReadAllTextAsync(xamlPath));
+        } finally {
+            await app.InvokeAsync("od.close-all-document-views");
+            await File.WriteAllBytesAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task Outline_DropMovesAnElementIntoAnotherContainer()
     {
         // The in-process Outline's drag and drop: a Button dropped into a nested StackPanel after its

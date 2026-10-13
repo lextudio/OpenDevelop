@@ -720,8 +720,11 @@ clipboard as text (so they also paste into a XAML editor) and are kept for a mul
 other XAML text pastes as one snippet. Cut is copy then the existing delete (one undo step). The
 surface binds `ApplicationCommands` Cut/Copy/Paste - focus-routed, as the Forms designer does, so the
 XAML source pane keeps its own text clipboard - and its context menu gains the three items;
-`od.wpf-designer.clipboard` runs those bound commands. Not yet: pasting at the pointer or offsetting
-pasted Canvas children.
+`od.wpf-designer.clipboard` runs those bound commands. Protocol **v30** adds Canvas-only `Paste Here`:
+the context-menu design point is converted to Canvas-local coordinates, and the host anchors the pasted
+bounds there while preserving multi-item Canvas offsets, uniquifying names and recording one undo group.
+Ordinary Paste retains its target/ancestor fallback semantics. Not yet: a non-Canvas pointer-placement
+contract.
 
 **C4 Duplicate (2026-10-13).** WPF now offers Duplicate in the surface context menu and through
 Ctrl+D. It copies the selected same-parent roots through the existing read-only host serializer and

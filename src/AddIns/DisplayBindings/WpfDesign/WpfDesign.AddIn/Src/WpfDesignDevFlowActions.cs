@@ -1111,7 +1111,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				"paste" => System.Windows.Input.ApplicationCommands.Paste,
 				_ => null
 			};
-			if (command != "duplicate" && routed == null)
+			if (command is not ("duplicate" or "paste-here") && routed == null)
 				return Failure("Unknown clipboard command: " + command);
 			try {
 				if (command == "duplicate") {
@@ -1119,6 +1119,15 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 					return JsonSerializer.Serialize(new {
 						success = duplicate?.Accepted == true,
 						error = duplicate?.Accepted == true ? null : duplicate?.Error ?? "duplicate is not available",
+						status = surface.StatusText,
+						selectedIds = surface.SelectedElementIds
+					});
+				}
+				if (command == "paste-here") {
+					var pasted = surface.PasteAtContextPoint();
+					return JsonSerializer.Serialize(new {
+						success = pasted?.Accepted == true,
+						error = pasted?.Accepted == true ? null : pasted?.Error ?? "Paste Here is not available",
 						status = surface.StatusText,
 						selectedIds = surface.SelectedElementIds
 					});

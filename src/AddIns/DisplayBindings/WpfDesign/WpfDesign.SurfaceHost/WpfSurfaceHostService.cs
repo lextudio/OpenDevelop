@@ -1818,6 +1818,66 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		/// <summary>Pastes snippets into one exact Canvas at the context-menu pointer. Unlike ordinary
+		/// Paste this never walks to an ancestor: the visible Canvas that supplied the coordinate must
+		/// accept every item. A multi-item clipboard keeps its relative Canvas offsets while its
+		/// bounding box's upper-left corner is anchored at <paramref name="x"/>, <paramref name="y"/>.
+		/// The insertion and every attached-position edit form one native undo group.</summary>
+		[JsonRpcMethod("design/paste-elements-at")]
+		public DesignerSessionState PasteElementsAt(long baseVersion, string canvasId, string[] snippets, double x, double y)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!double.IsFinite(x) || !double.IsFinite(y))
+					return NotFound(state, "Paste coordinates must be finite.");
+				if (!pathToItem.TryGetValue(canvasId ?? "", out var canvas) || canvas.Component is not Canvas || canvas.ContentProperty?.IsCollection != true || current?.RootItem is not XamlDesignItem rootItem)
+					return NotFound(state, "Paste Here target is not a Canvas: " + canvasId);
+				var usedNames = new HashSet<string>(pathToItem.Values.Select(item => item.Name).Where(name => !string.IsNullOrEmpty(name))!, StringComparer.Ordinal);
+				var pasted = new List<DesignItem>();
+				try
+				{
+					foreach (var snippet in (snippets ?? Array.Empty<string>()).Where(text => !string.IsNullOrWhiteSpace(text)))
+					{
+						var obj = ICSharpCode.WpfDesign.XamlDom.XamlParser.ParseSnippet(rootItem.XamlObject, UniqueNames(snippet, usedNames), current.ParserSettings);
+						if (obj != null && ((XamlComponentService)canvas.Services.Component).RegisterXamlComponentRecursive(obj) is { } registered)
+							pasted.Add(registered);
+					}
+				}
+				catch (Exception e) { return NotFound(state, "The clipboard is not pastable XAML: " + e.GetBaseException().Message); }
+				if (pasted.Count == 0)
+					return NotFound(state, "Nothing to paste.");
+				if (!CanTake(canvas, pasted))
+					return NotFound(state, "The Canvas cannot hold the pasted elements.");
+				var sourceLeft = pasted.Min(item => CanvasCoordinate(item, isLeft: true));
+				var sourceTop = pasted.Min(item => CanvasCoordinate(item, isLeft: false));
+				try
+				{
+					using var changeGroup = canvas.Context.OpenGroup("Paste at pointer", pasted);
+					foreach (var item in pasted)
+						canvas.ContentProperty.CollectionElements.Add(item);
+					foreach (var item in pasted)
+					{
+						item.Properties.GetAttachedProperty(Canvas.LeftProperty).SetValue(x + CanvasCoordinate(item, isLeft: true) - sourceLeft);
+						item.Properties.GetAttachedProperty(Canvas.TopProperty).SetValue(y + CanvasCoordinate(item, isLeft: false) - sourceTop);
+					}
+					changeGroup.Commit();
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state);
+				state.CreatedElementIds = pasted.Select(item => pathToItem.FirstOrDefault(entry => entry.Value == item).Key).Where(id => id != null).ToList();
+				state.Accepted = state.CreatedElementIds.Count == pasted.Count;
+				return state;
+			});
+
+		static double CanvasCoordinate(DesignItem item, bool isLeft)
+		{
+			var coordinate = item.Component is UIElement element
+				? isLeft ? Canvas.GetLeft(element) : Canvas.GetTop(element)
+				: double.NaN;
+			return double.IsFinite(coordinate) ? coordinate : 0;
+		}
+
 		/// <summary>Whether <paramref name="container"/>'s content can take all <paramref name="items"/>:
 		/// a collection whose element type accepts them (only UI elements into a Panel), or a single
 		/// content that is empty and of a fitting type.</summary>

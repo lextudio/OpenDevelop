@@ -20,7 +20,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		// v29 adds WPF's optional design/clone-into for Outline Ctrl-drag copy. v28 adds
+		// v30 adds WPF's optional design/paste-elements-at for Canvas Paste Here. v29 adds WPF's
+		// optional design/clone-into for Outline Ctrl-drag copy. v28 adds
 		// DesignerElementNode.HasContentCollection, so a WPF Duplicate can distinguish a
 		// real collection parent from a full single-content control without guessing from its type.
 		// v27 adds WPF's optional design/copy-elements and design/paste-elements (DesignerCopyResult,
@@ -39,7 +40,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// and design/set-binding-validation-option. A stale pooled child
 		// must fail the handshake rather than reject a newly-visible binding editor after the
 		// Properties pad has already presented it.
-		public const int Version = 29;
+		public const int Version = 30;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
