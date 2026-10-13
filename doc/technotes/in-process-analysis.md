@@ -707,6 +707,22 @@ or after the control's own last statement when the source had none; clearing rem
 editor to an `ItemsCollection` row and commits through `design/set-items` as one designer undo step;
 `od.forms-designer.properties-pad.edit-items` drives the real row button with the shared script.
 
+**C4 Cut, Copy and Paste (2026-10-13).** The out-of-process WPF surface had no clipboard at all;
+the in-process designer's `XamlEditOperations` copied each selected element as a XAML snippet and
+pasted into the selection or its nearest accepting ancestor. Protocol **v27** adds WPF's optional
+`design/copy-elements` (read-only: one snippet per element, an element whose ancestor is copied
+travels inside it, never the root) and `design/paste-elements` (parse with DDP's `ParseSnippet`, walk
+up from the target to a content collection that accepts every element - UI elements only into a
+Panel - or an empty single content; one undo group; `CreatedElementIds`). Unlike in-process, a pasted
+`x:Name` the document already uses is renamed (`ok` -> `ok1`, `label1` -> `label2`), since a
+duplicate name breaks the document. The IDE owns the clipboard: the snippets go to the system
+clipboard as text (so they also paste into a XAML editor) and are kept for a multi-element round trip;
+other XAML text pastes as one snippet. Cut is copy then the existing delete (one undo step). The
+surface binds `ApplicationCommands` Cut/Copy/Paste - focus-routed, as the Forms designer does, so the
+XAML source pane keeps its own text clipboard - and its context menu gains the three items;
+`od.wpf-designer.clipboard` runs the bound commands. Not yet: pasting at the pointer or offsetting
+pasted Canvas children, and Duplicate.
+
 **C4 no lost edits after a save (2026-10-12).** In-process edits were never refused; out of process a
 WPF edit made just after a save or a text edit could be rejected as a stale base version and silently
 dropped. The IDE pushes the new source with `session/update` at a new version, asynchronously, and the

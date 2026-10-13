@@ -295,6 +295,14 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> SetGridTrackSizeAsync(long baseVersion, string elementId, bool isRow, int index, double pixels, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-grid-track-size", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, index, pixels }, cancellationToken), cancellationToken);
 
+	/// <summary>Serializes elements to XAML snippets for the clipboard (read-only).</summary>
+	public Task<DesignerCopyResult> CopyElementsAsync(long baseVersion, string[] elementIds, CancellationToken cancellationToken = default)
+		=> HostConnection.InvokeAsync<DesignerCopyResult>("design/copy-elements", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds }, cancellationToken);
+
+	/// <summary>Pastes XAML snippets into the target or its nearest accepting ancestor.</summary>
+	public Task<DesignerSessionState> PasteElementsAsync(long baseVersion, string targetId, string[] snippets, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/paste-elements", new { sessionId = SessionId, documentId = DocumentId, baseVersion, targetId, snippets }, cancellationToken), cancellationToken);
+
 	/// <summary>Moves elements into a container after one of its children (null = first).</summary>
 	public Task<DesignerSessionState> MoveIntoAsync(long baseVersion, string[] elementIds, string targetId, string? afterId, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/move-into", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds, targetId, afterId }, cancellationToken), cancellationToken);

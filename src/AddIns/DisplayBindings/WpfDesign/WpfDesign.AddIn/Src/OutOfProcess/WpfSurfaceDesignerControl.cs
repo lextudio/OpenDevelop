@@ -197,6 +197,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// The in-process designer's RightClickContextMenu (z-order) and ArrangeItemsContextMenu
 			// (alignment to the primary selection).
 			SetContextCommands(new[] {
+				("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"),
+				("-", ""),
 				("Delete", "delete"),
 				("-", ""),
 				("Align/Left", "align-left"), ("Align/Center", "align-center"), ("Align/Right", "align-right"),
@@ -221,6 +223,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				("Grid Column/Fixed", "grid-column-Pixel"), ("Grid Column/Star", "grid-column-Star"), ("Grid Column/Auto", "grid-column-Auto")
 			});
 			ContextCommandCanExecute = command => command switch {
+				"cut" or "copy" => CanCopySelection,
+				"paste" => CanPaste,
 				_ when command.StartsWith("align-", StringComparison.Ordinal) => controller.SelectedNames.Count >= 2,
 				_ when command.StartsWith("order-", StringComparison.Ordinal) => controller.SelectedNames.Count == 1,
 				"wrap-Viewbox" => controller.SelectedNames.Count == 1 && !controller.SelectedNames.Contains(RootElementId),
@@ -232,6 +236,15 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				_ => controller.SelectedNames.Count > 0
 			};
 			RenameRequested += (_, _) => RequestRename();
+			// Edit > Cut/Copy/Paste and Ctrl+X/C/V route by focus, so binding them on the surface
+			// (as the Forms designer does) leaves the XAML source pane's own text clipboard alone.
+			void Bind(System.Windows.Input.RoutedUICommand command, Action execute, Func<bool> canExecute)
+				=> CommandBindings.Add(new System.Windows.Input.CommandBinding(command,
+					(_, args) => { execute(); args.Handled = true; },
+					(_, args) => { args.CanExecute = canExecute(); args.Handled = true; }));
+			Bind(System.Windows.Input.ApplicationCommands.Cut, CutSelection, () => CanCopySelection);
+			Bind(System.Windows.Input.ApplicationCommands.Copy, () => CopySelection(), () => CanCopySelection);
+			Bind(System.Windows.Input.ApplicationCommands.Paste, () => PasteIntoSelection(), () => CanPaste);
 
 			controller.SelectionChanged += (_, _) => OnCanvasSelectionChanged();
 			controller.ElementPicked += (_, id) => {
@@ -259,6 +272,12 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			controller.ContextCommandRequested += (_, command) => {
 				if (command.Command == "delete")
 					CommitDelete();
+				else if (command.Command == "copy")
+					CopySelection();
+				else if (command.Command == "cut")
+					CutSelection();
+				else if (command.Command == "paste")
+					PasteIntoSelection();
 				else if (command.Command.StartsWith("align-", StringComparison.Ordinal))
 					AlignSelection(command.Command.Substring("align-".Length));
 				else if (command.Command.StartsWith("order-", StringComparison.Ordinal))
@@ -1566,6 +1585,99 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			DocumentChanged?.Invoke(this, result);
 			return result;
 		}
+
+		#region Clipboard
+
+		// The in-process designer's Cut/Copy/Paste (XamlEditOperations): the host serializes and
+		// parses, the IDE owns the clipboard. The snippets go to the system clipboard as XAML text,
+		// so they also paste into a XAML editor, and are kept here so several elements survive the
+		// round trip; text copied elsewhere pastes as one snippet.
+		static string[] clipboardSnippets = Array.Empty<string>();
+		static string? clipboardText;
+		/// <summary>True when the last copy could not reach the system clipboard: whatever text is
+		/// there is older than the designer's own copy, which then wins.</summary>
+		static bool systemClipboardStale;
+
+		internal bool CanCopySelection => state?.Accepted == true && controller.SelectedNames.Count > 0
+			&& !controller.SelectedNames.Contains(RootElementId);
+
+		internal bool CanPaste => state?.Accepted == true && ClipboardSnippets().Length > 0;
+
+		static string[] ClipboardSnippets()
+		{
+			string? text = null;
+			try { text = System.Windows.Clipboard.ContainsText() ? System.Windows.Clipboard.GetText() : null; }
+			catch (Exception) { /* an unavailable system clipboard leaves the designer's own copy */ }
+			if (systemClipboardStale || text == null || text == clipboardText)
+				return clipboardSnippets;
+			return text.TrimStart().StartsWith("<", StringComparison.Ordinal) ? new[] { text } : Array.Empty<string>();
+		}
+
+		/// <summary>Whether the last copy (or a cut's copy) reached the clipboard, for automation.</summary>
+		internal bool LastCopySucceeded { get; private set; }
+
+		/// <summary>The host's answer to the last paste, for automation.</summary>
+		internal DesignerSessionState? LastPasteResult { get; private set; }
+
+		/// <summary>Copies the selection; false when there is nothing copyable.</summary>
+		internal bool CopySelection()
+		{
+			LastCopySucceeded = false;
+			if (!CanCopySelection)
+				return false;
+			var result = client.CopyElementsAsync(RequireVersion(), controller.SelectedNames.ToArray()).GetAwaiter().GetResult();
+			if (!result.Accepted)
+			{
+				StatusText = result.Error;
+				return false;
+			}
+			clipboardSnippets = result.Snippets.ToArray();
+			var text = string.Join(Environment.NewLine, clipboardSnippets);
+			try {
+				System.Windows.Clipboard.SetText(text);
+				clipboardText = text;
+				systemClipboardStale = false;
+			} catch (Exception) {
+				// The designer's own copy still pastes; the system clipboard's older text must not
+				// replace it.
+				clipboardText = null;
+				systemClipboardStale = true;
+			}
+			LastCopySucceeded = true;
+			return true;
+		}
+
+		/// <summary>Copies, then deletes, the selection (the delete is the one undo step).</summary>
+		internal void CutSelection()
+		{
+			if (CopySelection())
+				CommitDelete();
+		}
+
+		/// <summary>Pastes into the selected element, or the nearest container above it that can
+		/// take the clipboard, and selects what was pasted.</summary>
+		internal DesignerSessionState? PasteIntoSelection()
+		{
+			var snippets = ClipboardSnippets();
+			if (state?.Accepted != true || snippets.Length == 0)
+				return null;
+			var target = controller.SelectedNames.Count > 0 ? controller.SelectedNames[0] : RootElementId;
+			var result = client.PasteElementsAsync(RequireVersion(), target, snippets).GetAwaiter().GetResult();
+			LastPasteResult = result;
+			Show(result);
+			if (!result.Accepted)
+				return result;
+			DocumentChanged?.Invoke(this, result);
+			if (result.CreatedElementIds.Count > 0)
+			{
+				controller.RestoreSelection(result.CreatedElementIds);
+				NotifySelectionChanged();
+				UpdateSelectionChrome();
+			}
+			return result;
+		}
+
+		#endregion
 
 		void CommitDelete()
 		{

@@ -1072,6 +1072,40 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			return JsonSerializer.Serialize(new { success = true });
 		}
 
+		[DevFlowAction("od.wpf-designer.clipboard", Description = "Run the design surface's Edit command (cut|copy|paste) through its ApplicationCommands binding, as Ctrl+X/C/V with the surface focused does, and report the selection afterwards")]
+		public static string RunClipboardCommand(string command)
+		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
+			var routed = command switch {
+				"cut" => System.Windows.Input.ApplicationCommands.Cut,
+				"copy" => System.Windows.Input.ApplicationCommands.Copy,
+				"paste" => System.Windows.Input.ApplicationCommands.Paste,
+				_ => null
+			};
+			if (routed == null)
+				return Failure("Unknown clipboard command: " + command);
+			try {
+				if (!routed.CanExecute(null, surface))
+					return JsonSerializer.Serialize(new { success = false, error = command + " is not available" });
+				var lastPaste = surface.LastPasteResult;
+				routed.Execute(null, surface);
+				// A copy, cut or paste the host refused is a failure, not a silent no-op.
+				var refused = command == "paste"
+					? surface.LastPasteResult == lastPaste || surface.LastPasteResult?.Accepted != true
+					: !surface.LastCopySucceeded;
+				return JsonSerializer.Serialize(new {
+					success = !refused,
+					error = refused ? (command == "paste" ? surface.LastPasteResult?.Error : surface.StatusText) : null,
+					status = surface.StatusText,
+					selectedIds = surface.SelectedElementIds
+				});
+			} catch (Exception exception) {
+				return Failure(command + " failed: " + exception.Message);
+			}
+		}
+
 		[DevFlowAction("od.wpf-designer.context-command", Description = "Run a design surface context menu command through the same path as clicking it; fails when the menu does not offer it or it is disabled")]
 		public static string InvokeContextCommand(string command)
 		{

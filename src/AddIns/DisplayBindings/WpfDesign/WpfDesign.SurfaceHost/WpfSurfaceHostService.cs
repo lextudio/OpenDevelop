@@ -1734,6 +1734,123 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		/// <summary>Serializes elements for the IDE's clipboard, as the in-process designer's Copy
+		/// did (<c>XamlEditOperations.Copy</c>): one snippet per element, skipping an element whose
+		/// ancestor is copied too. Read-only; the root cannot be copied.</summary>
+		[JsonRpcMethod("design/copy-elements")]
+		public DesignerCopyResult CopyElements(long baseVersion, string[] elementIds)
+			=> dispatcher.Dispatch(() => {
+				var result = new DesignerCopyResult();
+				if (current == null || version != baseVersion)
+				{
+					result.Error = $"Stale base version {baseVersion}; the open document is at version {version}.";
+					return result;
+				}
+				var items = new List<DesignItem>();
+				foreach (var id in elementIds ?? Array.Empty<string>())
+				{
+					if (id.Length == 0 || !pathToItem.TryGetValue(id, out var item) || item is not XamlDesignItem)
+					{
+						result.Error = "Element not found or not copyable: " + id;
+						return result;
+					}
+					items.Add(item);
+				}
+				foreach (var item in items)
+				{
+					var ancestorCopied = false;
+					for (var parent = item.Parent; parent != null && !ancestorCopied; parent = parent.Parent)
+						ancestorCopied = items.Contains(parent);
+					if (!ancestorCopied)
+						result.Snippets.Add(ICSharpCode.WpfDesign.XamlDom.XamlStaticTools.GetXaml(((XamlDesignItem)item).XamlObject));
+				}
+				result.Accepted = result.Snippets.Count > 0;
+				return result;
+			});
+
+		/// <summary>Pastes clipboard snippets as the in-process designer's Paste did
+		/// (<c>XamlEditOperations.Paste</c>): into <paramref name="targetId"/> or the nearest
+		/// ancestor whose content collection accepts them, or into an empty single content. A pasted
+		/// name already used in the document is made unique, since a duplicate <c>x:Name</c> would
+		/// break the document. One undo group; the new elements' ids are in CreatedElementIds.</summary>
+		[JsonRpcMethod("design/paste-elements")]
+		public DesignerSessionState PasteElements(long baseVersion, string targetId, string[] snippets)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(targetId ?? "", out var target) || current?.RootItem is not XamlDesignItem rootItem)
+					return NotFound(state, "Paste target not found: " + targetId);
+				var usedNames = new HashSet<string>(pathToItem.Values.Select(item => item.Name).Where(name => !string.IsNullOrEmpty(name))!, StringComparer.Ordinal);
+				var pasted = new List<DesignItem>();
+				try
+				{
+					foreach (var snippet in (snippets ?? Array.Empty<string>()).Where(text => !string.IsNullOrWhiteSpace(text)))
+					{
+						var obj = ICSharpCode.WpfDesign.XamlDom.XamlParser.ParseSnippet(rootItem.XamlObject, UniqueNames(snippet, usedNames), current.ParserSettings);
+						if (obj != null && ((XamlComponentService)target.Services.Component).RegisterXamlComponentRecursive(obj) is { } registered)
+							pasted.Add(registered);
+					}
+				}
+				catch (Exception e) { return NotFound(state, "The clipboard is not pastable XAML: " + e.GetBaseException().Message); }
+				if (pasted.Count == 0)
+					return NotFound(state, "Nothing to paste.");
+				// The nearest container, starting at the target, that can take every pasted element.
+				var container = target;
+				while (container != null && !CanTake(container, pasted))
+					container = container.Parent;
+				if (container == null)
+					return NotFound(state, "No container at or above the selection can hold the pasted elements.");
+				try
+				{
+					using var changeGroup = container.Context.OpenGroup("Paste " + pasted.Count + " elements", pasted);
+					if (container.ContentProperty.IsCollection)
+						foreach (var item in pasted)
+							container.ContentProperty.CollectionElements.Add(item);
+					else
+						container.ContentProperty.SetValue(pasted[0]);
+					changeGroup.Commit();
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state);
+				state.CreatedElementIds = pasted.Select(item => pathToItem.FirstOrDefault(entry => entry.Value == item).Key).Where(id => id != null).ToList();
+				state.Accepted = true;
+				return state;
+			});
+
+		/// <summary>Whether <paramref name="container"/>'s content can take all <paramref name="items"/>:
+		/// a collection whose element type accepts them (only UI elements into a Panel), or a single
+		/// content that is empty and of a fitting type.</summary>
+		static bool CanTake(DesignItem container, IReadOnlyList<DesignItem> items)
+		{
+			var content = container.ContentProperty;
+			if (content == null)
+				return false;
+			if (content.IsCollection)
+				return content.ReturnType != null
+					&& ICSharpCode.WpfDesign.XamlDom.CollectionSupport.CanCollectionAdd(content.ReturnType, items.Select(item => item.Component))
+					&& (container.Component is not Panel || items.All(item => item.Component is UIElement));
+			return items.Count == 1 && !content.IsSet && content.ReturnType != null && content.ReturnType.IsInstanceOfType(items[0].Component);
+		}
+
+		/// <summary>Renames every <c>x:Name</c>/<c>Name</c> in a snippet that the document (or an
+		/// earlier pasted snippet) already uses: <c>button1</c> becomes <c>button2</c>, <c>ok</c>
+		/// becomes <c>ok1</c>.</summary>
+		static string UniqueNames(string snippet, HashSet<string> usedNames)
+			// Only a real x:Name or Name attribute: not preceded by '.', ':' or a name character, so
+			// an attached AutomationProperties.Name or a d:Name keeps its value. Either quote.
+			=> System.Text.RegularExpressions.Regex.Replace(snippet, "(?<![\\w.:])(?<attr>(?:x:)?Name\\s*=\\s*)(?<quote>[\"'])(?<name>[^\"']+)\\k<quote>", match => {
+				var name = match.Groups["name"].Value;
+				if (usedNames.Add(name))
+					return match.Value;
+				var stem = name.TrimEnd('0', '1', '2', '3', '4', '5', '6', '7', '8', '9');
+				var suffix = 1;
+				while (!usedNames.Add(stem + suffix))
+					suffix++;
+				var quote = match.Groups["quote"].Value;
+				return match.Groups["attr"].Value + quote + stem + suffix + quote;
+			});
+
 		/// <summary>Moves elements into a container, as dragging them in the in-process Outline did
 		/// (<c>OutlineNodeBase.Insert</c>): into the container's content property - a collection
 		/// right after <paramref name="afterId"/> (or first when it is null), a single content only

@@ -20,7 +20,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		// v26 adds WPF's optional design/move-into (the Outline's drag and drop).
+		// v27 adds WPF's optional design/copy-elements and design/paste-elements (DesignerCopyResult,
+		// DesignerSessionState.CreatedElementIds). v26 added design/move-into (Outline drag and drop).
 		// v25 added DesignerElementNode.IsDesignTimeHidden/IsDesignTimeLocked and WPF's optional
 		// design/set-design-time-flag. v24 added DesignerBrushInfo's Resource kind/ResourceKey and DesignerPropertyInfo.BrushResourceKeys.
 		// v23 added DesignerPropertyInfo.Brush and WPF's optional design/set-brush.
@@ -35,7 +36,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// and design/set-binding-validation-option. A stale pooled child
 		// must fail the handshake rather than reject a newly-visible binding editor after the
 		// Properties pad has already presented it.
-		public const int Version = 26;
+		public const int Version = 27;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -175,6 +176,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// on that response. WPF ids are tree paths, so reordering changes the moved element's id
 		/// (and its siblings'); restoring the selection by the old id would select a neighbour.</summary>
 		public string? MovedElementId { get; set; }
+		/// <summary>The ids of the elements a <c>design/paste-elements</c> call just created, in
+		/// paste order; valid only on that response.</summary>
+		public List<string> CreatedElementIds { get; set; } = new List<string>();
 		/// <summary>The element id a <c>design/hit-test-popup</c> call just selected inside its
 		/// popup (see <see cref="Popups"/>), valid only on that RPC's own response - null for
 		/// every other response, and also null when the click did not land on an item. The
@@ -666,6 +670,15 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public string DocumentId { get; set; } = "";
 		public long BaseVersion { get; set; }
 		public List<DesignerSourceFileSnapshot> Files { get; set; } = new List<DesignerSourceFileSnapshot>();
+	}
+
+	/// <summary>Response to <c>design/copy-elements</c>: one XAML snippet per copied element (an
+	/// element whose ancestor is also copied travels inside that ancestor's snippet).</summary>
+	public sealed class DesignerCopyResult
+	{
+		public bool Accepted { get; set; }
+		public string Error { get; set; } = "";
+		public List<string> Snippets { get; set; } = new List<string>();
 	}
 
 	/// <summary>Hit-test result. ComponentName/ComponentType (WinForms) or Chain/PickPath
