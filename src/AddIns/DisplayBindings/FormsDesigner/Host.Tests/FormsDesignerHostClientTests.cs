@@ -687,6 +687,9 @@ public sealed class FormsDesignerHostClientTests
 				&& property.Value.Contains("1", StringComparison.Ordinal));
 		Assert.Contains("button1.Padding = new System.Windows.Forms.Padding(1, 2, 3, 4);",
 			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
+		await client.SetPropertyAsync(7, "button1", "Bounds", "40, 50, 120, 35", timeout.Token);
+		Assert.Contains("button1.Bounds = new System.Drawing.Rectangle(40, 50, 120, 35);",
+			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 		var resetEnabled = await client.ResetPropertyAsync(7, "button1", "Enabled", timeout.Token);
 		Assert.Contains(resetEnabled.Components.Single(component => component.Name == "button1").Properties,
 			property => property.Name == "Enabled"
@@ -2357,6 +2360,9 @@ public sealed class FormsDesignerHostClientTests
 			property => property.Name == "Enabled" && property.Value.Equals("False", StringComparison.OrdinalIgnoreCase));
 		Assert.Contains("button1.Enabled = False", DesignerText(await client.FlushAsync(7, timeout.Token)),
 			StringComparison.Ordinal);
+		await client.SetPropertyAsync(7, "button1", "Bounds", "40, 50, 120, 35", timeout.Token);
+		Assert.Contains("button1.Bounds = New System.Drawing.Rectangle(40, 50, 120, 35)",
+			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 
 		var moved = await client.SetBoundsAsync(7, "button1", 40, 50, 120, 35, timeout.Token);
 		Assert.Contains(moved.Components, component => component.Name == "button1"
