@@ -175,6 +175,64 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Single(FindTreeNode(removed.Tree!, "table")!.GridTracks!.ColumnTracks);
 	}
 
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task ChildHost_LoadsTableLayoutCellPositionsAndSpans(bool visualBasic)
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = visualBasic ? VbSnapshot(1, "button1") : Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		var (me, end, table) = visualBasic ? ("Me", "", "System.Windows.Forms.TableLayoutPanel") : ("this", ";", "System.Windows.Forms.TableLayoutPanel");
+		var newKeyword = visualBasic ? "New" : "new";
+		var statements = string.Join("\n        ", new[] {
+			$"{me}.table = {newKeyword} {table}(){end}",
+			$"{me}.corner = {newKeyword} System.Windows.Forms.Label(){end}",
+			$"{me}.wide = {newKeyword} System.Windows.Forms.Label(){end}",
+			$"{me}.moved = {newKeyword} System.Windows.Forms.Label(){end}",
+			$"{me}.table.ColumnCount = 2{end}",
+			$"{me}.table.RowCount = 3{end}",
+			$"{me}.table.ColumnStyles.Add({newKeyword} System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 40F)){end}",
+			$"{me}.table.ColumnStyles.Add({newKeyword} System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F)){end}",
+			$"{me}.table.RowStyles.Add({newKeyword} System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 30F)){end}",
+			$"{me}.table.RowStyles.Add({newKeyword} System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 30F)){end}",
+			$"{me}.table.RowStyles.Add({newKeyword} System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F)){end}",
+			$"{me}.wide.Dock = System.Windows.Forms.DockStyle.Fill{end}",
+			$"{me}.table.Controls.Add({me}.corner, 1, 1){end}",
+			$"{me}.table.Controls.Add({me}.wide, 0, 0){end}",
+			$"{me}.table.SetColumnSpan({me}.wide, 2){end}",
+			$"{me}.table.Controls.Add({me}.moved){end}",
+			$"{me}.table.SetCellPosition({me}.moved, {newKeyword} System.Windows.Forms.TableLayoutPanelCellPosition(0, 2)){end}",
+			$"{me}.table.Size = {newKeyword} System.Drawing.Size(200, 120){end}",
+			$"{me}.Controls.Add({me}.button1){end}",
+			$"{me}.Controls.Add({me}.table){end}",
+		});
+		designer.Text = designer.Text.Replace($"{me}.Controls.Add({me}.button1){end}", statements, StringComparison.Ordinal);
+		designer.Text = visualBasic
+			? designer.Text.Replace("Friend WithEvents button1 As System.Windows.Forms.Button",
+				"Friend WithEvents button1 As System.Windows.Forms.Button\n    Friend WithEvents table As System.Windows.Forms.TableLayoutPanel\n    Friend WithEvents corner As System.Windows.Forms.Label\n    Friend WithEvents wide As System.Windows.Forms.Label\n    Friend WithEvents moved As System.Windows.Forms.Label", StringComparison.Ordinal)
+			: designer.Text.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TableLayoutPanel table;\n    private System.Windows.Forms.Label corner;\n    private System.Windows.Forms.Label wide;\n    private System.Windows.Forms.Label moved;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerComponentInfo Component(string name) => opened.Components.Single(component => component.Name == name);
+		var origin = Component("table");
+		// Cell (1, 1) starts after the 40px column and the 30px row (plus at most the Label's
+		// margin); auto-flow would have put it in the first free cell instead.
+		void InCell(string name, int left, int top)
+		{
+			var component = Component(name);
+			Assert.InRange(component.SurfaceX - origin.SurfaceX, left, left + 6);
+			Assert.InRange(component.SurfaceY - origin.SurfaceY, top, top + 6);
+		}
+		InCell("corner", 40, 30);
+		InCell("moved", 0, 60);
+		InCell("wide", 0, 0);
+		// A two-column span fills the table's width.
+		Assert.True(Component("wide").Width > 150, Component("wide").Width.ToString(System.Globalization.CultureInfo.InvariantCulture));
+	}
+
 	[Fact]
 	public async Task ChildHost_AddsAndRemovesVisualBasicTableLayoutTracks()
 	{

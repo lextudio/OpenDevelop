@@ -951,6 +951,13 @@ invokes a built entry by label; the LibreWinForms TableLayout journey adds a row
 saves `RowCount = 2` with a second style, and undoes it. Not yet: insertion before an arbitrary
 track, removing an occupied track, and a rows/columns dialog.
 
+**TableLayout loader fix (2026-10-13).** The snapshot loader called only one-argument `Add`, so a
+child authored as `table.Controls.Add(child, column, row)` auto-flowed into the next free cell at
+design time, and `SetColumn/SetRow/SetCellPosition/SetColumnSpan/SetRowSpan` were ignored: a
+designed TableLayoutPanel could show its controls in the wrong cells and spans. The C# and VB loaders
+now apply that overload and those calls; `ChildHost_LoadsTableLayoutCellPositionsAndSpans` fails
+without the fix.
+
 **C4 event handler generation (2026-10-12).** Double-clicking a WPF event in the Properties pad now
 matches the in-process designer (`AbstractEventHandlerService`): the XAML attribute is bound through
 `design/set-event` if the event is unhandled, then the IDE creates the method in `<file>.xaml.cs`

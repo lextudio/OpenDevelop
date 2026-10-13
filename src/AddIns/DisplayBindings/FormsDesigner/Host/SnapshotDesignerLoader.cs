@@ -112,9 +112,20 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 			if (target != null && key != null) ApplyResources(target, key);
 			return;
 		}
+		if (expression.Expression is InvocationExpressionSyntax placement
+			&& placement.Expression is MemberAccessExpressionSyntax placementMember
+			&& TableLayoutPlacementMethods.Contains(placementMember.Name.Identifier.ValueText)) {
+			ApplyTableLayoutPlacement(Evaluate(placementMember.Expression), placementMember.Name.Identifier.ValueText,
+				placement.ArgumentList.Arguments.Select(argument => Evaluate(argument.Expression)).ToArray());
+			return;
+		}
 		if (expression.Expression is InvocationExpressionSyntax invocationAdd
 			&& invocationAdd.Expression is MemberAccessExpressionSyntax memberAdd
 			&& (memberAdd.Name.Identifier.ValueText == "Add" || memberAdd.Name.Identifier.ValueText == "AddRange")) {
+			if (memberAdd.Name.Identifier.ValueText == "Add" && invocationAdd.ArgumentList.Arguments.Count == 3
+				&& AddToTableLayout(ResolveCollection(memberAdd.Expression),
+					invocationAdd.ArgumentList.Arguments.Select(argument => Evaluate(argument.Expression)).ToArray()))
+				return;
 			AddToCollection(ResolveCollection(memberAdd.Expression),
 				memberAdd.Name.Identifier.ValueText == "AddRange", invocationAdd.ArgumentList.Arguments[0].Expression, Evaluate);
 		}
@@ -156,10 +167,50 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 				if (target != null && key != null) ApplyResources(target, key);
 				return;
 			}
+			if (TableLayoutPlacementMethods.Contains(member.Name.Identifier.ValueText) && member.Expression != null) {
+				ApplyTableLayoutPlacement(EvaluateVisualBasic(member.Expression), member.Name.Identifier.ValueText,
+					Enumerable.Range(0, invocation.ArgumentList?.Arguments.Count ?? 0).Select(index => EvaluateVisualBasic(VbArgument(invocation, index))).ToArray());
+				return;
+			}
+			if (member.Name.Identifier.ValueText == "Add" && invocation.ArgumentList?.Arguments.Count == 3
+				&& AddToTableLayout(ResolveCollectionVisualBasic(member.Expression),
+					Enumerable.Range(0, 3).Select(index => EvaluateVisualBasic(VbArgument(invocation, index))).ToArray()))
+				return;
 			if (member.Name.Identifier.ValueText == "Add" || member.Name.Identifier.ValueText == "AddRange") {
 				AddToCollectionVisualBasic(ResolveCollectionVisualBasic(member.Expression),
 					member.Name.Identifier.ValueText == "AddRange", VbArgument(invocation, 0));
 			}
+		}
+	}
+
+	static readonly HashSet<string> TableLayoutPlacementMethods = new(StringComparer.Ordinal) {
+		"SetColumn", "SetRow", "SetCellPosition", "SetColumnSpan", "SetRowSpan"
+	};
+
+	/// <summary><c>table.Controls.Add(control, column, row)</c>: the TableLayoutPanel overload the
+	/// WinForms code generator writes for a placed child. Adding through the single-argument Add
+	/// would let the control auto-flow into the next free cell instead of its authored one.</summary>
+	static bool AddToTableLayout(object? collection, object?[] arguments)
+	{
+		if (collection is not TableLayoutControlCollection controls || arguments is not [Control control, int column, int row])
+			return false;
+		controls.Add(control, column, row);
+		return true;
+	}
+
+	/// <summary>The table's own placement calls (<c>SetColumn/SetRow/SetCellPosition/
+	/// SetColumnSpan/SetRowSpan(control, value)</c>). Anything else is left to the generic path,
+	/// which ignores it, as before.</summary>
+	static void ApplyTableLayoutPlacement(object? owner, string method, object?[] arguments)
+	{
+		if (owner is not TableLayoutPanel table)
+			return;
+		switch (method, arguments) {
+			case ("SetColumn", [Control control, int column]): table.SetColumn(control, column); break;
+			case ("SetRow", [Control control, int row]): table.SetRow(control, row); break;
+			case ("SetCellPosition", [Control control, TableLayoutPanelCellPosition position]): table.SetCellPosition(control, position); break;
+			case ("SetColumnSpan", [Control control, int span]): table.SetColumnSpan(control, span); break;
+			case ("SetRowSpan", [Control control, int span]): table.SetRowSpan(control, span); break;
 		}
 	}
 
