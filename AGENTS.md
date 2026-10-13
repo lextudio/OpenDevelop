@@ -42,8 +42,9 @@ commits; never push without the user's explicit request.
 Invocation (measured): review with `opencode run --agent reviewer -m opencode-go/deepseek-v4.1-flash
 --variant high --title "<unique title> <tree>" "<context>" </dev/null > out 2>&1` and commit with
 `--agent build` in the same form. `reviewer` (`~/.config/opencode/agents/reviewer.md`) is read-only
-and runs only `git diff --cached`, so put the intent and test evidence in the prompt; the default
-agent is not a reviewer. Redirect stdin from `/dev/null` (one `run` hung after `init` without it;
+and begins with the full `git diff --cached` before its bounded context reads, so put the intent and
+test evidence in the prompt; the default agent is not a reviewer. Redirect stdin from `/dev/null`
+(one `run` hung after `init` without it;
 the log is `~/.local/share/opencode/log/opencode.log`). A review takes roughly 4-7 minutes and a
 commit about 1-2. `opencode export <id>` must go to a file before JSON parsing (piping truncates),
 and only with a non-empty id: a bare `opencode export` waits on an interactive picker forever.
