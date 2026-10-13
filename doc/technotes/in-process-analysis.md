@@ -559,12 +559,12 @@ enough to verify in the affected host tests plus one focused integration journey
 | **R1 — complete** | **Inventory the pre-port WinForms designer and shared designer library** (section 9.1) | The focused historical inventory identifies `af32ec7e^` as the pre-removal source and re-ranks Forms work toward capability-gated complex/resource editors; it does not block C1/C2. |
 
 **C2 Binding source-form update (2026-10-13).** The WPF Properties pad now also exposes a
-bounded `Binding.RelativeSource` choice: empty, `Self` and `TemplatedParent`. It is not offered
-for an explicit `Source`, `FindAncestor`, `PreviousData` or another non-losslessly-representable
-form, and the host rejects such direct RPC calls. Choosing `Self` or `TemplatedParent` clears the
-mutually exclusive `ElementName`. Do not add a generic resource `Binding.Source` picker without a
-stronger source-origin contract: the WPF design model can normalize inline and `x:Static` source
-forms to an apparent unset Source, so such a picker could overwrite markup it cannot distinguish.
+bounded `Binding.RelativeSource` choice: empty, `Self` and `TemplatedParent`. It and `ElementName`
+are offered only where XamlDom proves `Binding.Source` genuinely unset; runtime `Binding.Source`
+can normalize inline and `x:Static` source forms to an apparent null, so neither editor may infer
+that the source is absent. Explicit Source, `FindAncestor`, `PreviousData` and every other
+non-losslessly-representable form stay absent and direct RPC calls are rejected. Choosing `Self` or
+`TemplatedParent` clears the mutually exclusive `ElementName`.
 
 **C2 Binding Source capability (2026-10-13).** Protocol **v31** now adds that stronger, narrow
 contract: `Binding.Source` is a resource picker only where the nested XamlDom property proves it is
@@ -573,7 +573,7 @@ the runtime `Binding.Source`; inline object, `x:Static`, dynamic-resource and ot
 absent from the pad and are rejected by `design/set-binding-source`. Changing to a resource clears
 the mutually exclusive `ElementName`/`RelativeSource`; clearing returns to the ordinary DataContext
 source. Focused child-host coverage locks static-resource replace/reset, ElementName replacement,
-and preservation of the rejected inline/`x:Static` markup.
+and preservation of rejected inline/`x:Static` markup from every source-choice editor.
 
 **C2 Binding option update (2026-10-11).** The WPF Properties pad now also exposes the nested
 `Binding.NotifyOnValidationError` boolean. Enabling it writes the real Binding option; disabling it

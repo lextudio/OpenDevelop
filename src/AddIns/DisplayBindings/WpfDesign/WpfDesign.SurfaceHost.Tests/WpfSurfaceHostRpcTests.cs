@@ -1247,6 +1247,15 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.Equal(new[] { "", "first", "second" }, source.AllowedValues);
 		Assert.DoesNotContain(FindByName(opened.Tree!, "inline")!.Properties, property => property.EditorKind == "BindingSource");
 		Assert.DoesNotContain(FindByName(opened.Tree!, "xstatic")!.Properties, property => property.EditorKind == "BindingSource");
+		foreach (var protectedName in new[] { "inline", "xstatic" })
+		{
+			var protectedItem = FindByName(opened.Tree!, protectedName)!;
+			Assert.DoesNotContain(protectedItem.Properties, property => property.EditorKind is "BindingElementName" or "BindingRelativeSource");
+			var elementNameRejected = await client.SetBindingElementNameAsync(1, protectedItem.Id, "Text", "static", timeout.Token);
+			Assert.False(elementNameRejected.Accepted);
+			var relativeSourceRejected = await client.SetBindingRelativeSourceAsync(1, protectedItem.Id, "Text", "Self", timeout.Token);
+			Assert.False(relativeSourceRejected.Accepted);
+		}
 
 		var changed = await client.SetBindingSourceAsync(1, staticItem.Id, "Text", "second", timeout.Token);
 		Assert.True(changed.Accepted, changed.Error);
@@ -1268,6 +1277,8 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.False(rejected.Accepted);
 		Assert.Contains("StaticResource Binding Source", rejected.Error, StringComparison.Ordinal);
 		Assert.Contains("inline value", (await client.FlushAsync(elementChanged.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var protectedText = (await client.FlushAsync(elementChanged.Version, timeout.Token)).Files.Single().Text;
+		Assert.Contains("Source={x:Static sys:String.Empty}", protectedText, StringComparison.Ordinal);
 	}
 
 	/// <summary>

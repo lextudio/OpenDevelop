@@ -1133,7 +1133,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
 				var property = item.Properties[propertyName];
 				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding binding
-					|| binding.Source != null || binding.RelativeSource != null)
+					|| !HasUnsetBindingSource(bindingItem) || binding.RelativeSource != null)
 					return NotFound(state, "Property is not an editable ElementName Binding: " + propertyName);
 				if (!string.IsNullOrWhiteSpace(elementName))
 				{
@@ -1160,7 +1160,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
 				var property = item.Properties[propertyName];
 				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding binding
-					|| binding.Source != null || (binding.RelativeSource != null
+					|| !HasUnsetBindingSource(bindingItem) || (binding.RelativeSource != null
 						&& binding.RelativeSource.Mode is not (System.Windows.Data.RelativeSourceMode.Self or System.Windows.Data.RelativeSourceMode.TemplatedParent)))
 					return NotFound(state, "Property is not an editable RelativeSource Binding: " + propertyName);
 				try
@@ -1350,6 +1350,12 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		static bool CanEditBindingSource(System.Windows.Data.Binding binding)
 			=> binding.RelativeSource == null
 				|| binding.RelativeSource.Mode is System.Windows.Data.RelativeSourceMode.Self or System.Windows.Data.RelativeSourceMode.TemplatedParent;
+
+		/// <summary>Unlike the runtime Binding.Source value, XamlDom's set bit preserves whether an
+		/// authored source exists at all. ElementName and RelativeSource must not overwrite an inline,
+		/// x:Static, DynamicResource, or StaticResource source that happens to look null at runtime.</summary>
+		static bool HasUnsetBindingSource(DesignItem bindingItem)
+			=> bindingItem.Properties["Source"] is { IsSet: false };
 
 		/// <summary>Reads source syntax from the nested XamlDom property, not the runtime Binding.Source.
 		/// The latter cannot distinguish an unset source from several authored object forms.</summary>
@@ -3046,7 +3052,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 							ShouldSerialize = false,
 							AllowedValues = Enum.GetNames(typeof(System.Windows.Data.UpdateSourceTrigger)).ToList()
 						});
-						if (binding.Source == null && binding.RelativeSource == null)
+						if (HasUnsetBindingSource(reference) && binding.RelativeSource == null)
 						{
 							result.Add(new DesignerPropertyInfo {
 								Name = descriptor.Name + ".ElementName", DisplayName = descriptor.Name + " Element Name",
@@ -3056,7 +3062,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 								ShouldSerialize = false
 							});
 						}
-						if (binding.Source == null && (binding.RelativeSource == null
+						if (HasUnsetBindingSource(reference) && (binding.RelativeSource == null
 							|| binding.RelativeSource.Mode is System.Windows.Data.RelativeSourceMode.Self or System.Windows.Data.RelativeSourceMode.TemplatedParent))
 						{
 							result.Add(new DesignerPropertyInfo {
