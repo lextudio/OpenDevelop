@@ -45,3 +45,19 @@ public class DateTimeProjectComponent : Component
 {
 	public DateTime OccurredAt { get; set; }
 }
+
+/// <summary>[ToolboxItem(false)] is inherited: a subclass of a hidden control stays hidden.</summary>
+public class InheritedHiddenPanel : HiddenPanel
+{
+}
+
+/// <summary>[DesignTimeVisible(false)] is inherited: a subclass is not a standalone tray item either.</summary>
+public class InheritedHiddenComponent : HiddenProjectComponent
+{
+}
+
+/// <summary>Re-declaring the attribute on the subclass wins over its base.</summary>
+[DesignTimeVisible(true)]
+public class RevealedComponent : HiddenProjectComponent
+{
+}

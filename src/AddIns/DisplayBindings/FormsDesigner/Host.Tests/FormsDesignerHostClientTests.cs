@@ -1268,7 +1268,10 @@ public sealed class FormsDesignerHostClientTests
 		var copyLocal = references.Where(path => path != fixtureAssembly).ToArray();
 		Assert.Contains(copyLocal, path => Path.GetFileName(path) == "System.Windows.Forms.dll");
 		var found = finder.FindNew(fixtureAssembly, copyLocal, "");
-		Assert.Equal(new[] { "DateTimeProjectComponent", "DirectProjectComponent", "FancyButton", "GreetingPanel", "ProjectComponent" }, found.Select(item => item.Control.Name).OrderBy(name => name, StringComparer.Ordinal));
+		Assert.True(Assert.Single(controls, control => control.Name == "InheritedHiddenPanel").IsHiddenFromToolbox);
+		Assert.False(Assert.Single(projectComponents, control => control.Name == "InheritedHiddenComponent").IsDesignTimeVisible);
+		Assert.True(Assert.Single(projectComponents, control => control.Name == "RevealedComponent").IsDesignTimeVisible);
+		Assert.Equal(new[] { "DateTimeProjectComponent", "DirectProjectComponent", "FancyButton", "GreetingPanel", "ProjectComponent", "RevealedComponent" }, found.Select(item => item.Control.Name).OrderBy(name => name, StringComparer.Ordinal));
 		Assert.False(Assert.Single(found, item => item.Control.Name == "ProjectComponent").Control.IsUserControl);
 		Assert.All(found, item => Assert.Equal("FormsDesigner.CustomControlFixture", item.Category));
 		Assert.Empty(finder.FindNew(fixtureAssembly, copyLocal, ""));

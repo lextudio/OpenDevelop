@@ -833,8 +833,12 @@ component tray as the in-process drop did: it is created in one designer transac
 field and creation statement - into `components` when the type has an `(IContainer)` constructor,
 declaring the field and initializing `components` first when the form has none (C# and VB). The
 loader already read such tray components back. Project components (non-Control types in the
-project's own assemblies) can now be added the same way, but `FormsProjectToolbox` still lists only
-controls.
+project's own assemblies) can now be added the same way, and `FormsProjectToolbox` lists them
+(public concrete `Component`/`IComponent` types with a default constructor). The metadata walk reads
+`[ToolboxItem]` and `[DesignTimeVisible]` as inherited attributes, nearest declaration first, as
+TypeDescriptor does: a project subclass of a `[DesignTimeVisible(false)]` component (or of
+`ToolStripItem`) or of a `[ToolboxItem(false)]` control stays out of the Toolbox unless it
+re-declares the attribute.
 
 **C5 WinForms project controls in the Toolbox (2026-10-12).** The in-process designer's
 `CustomComponentsSideTab` listed the project's own components; the OOP Toolbox offered only the

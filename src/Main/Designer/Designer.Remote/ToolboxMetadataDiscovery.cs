@@ -102,8 +102,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 						AssemblyName = root.Name,
 						IsUserControl = HasBase(root, definition.BaseType, pathsByAssemblyName, images, new HashSet<string>(StringComparer.Ordinal), userControlBase),
 						HasPublicDefaultConstructor = HasPublicDefaultConstructor(root.Metadata, definition),
-						IsHiddenFromToolbox = IsHiddenFromToolbox(root.Metadata, definition),
-						IsDesignTimeVisible = IsDesignTimeVisible(root.Metadata, definition),
+						IsHiddenFromToolbox = !InheritedBool(root, definition, pathsByAssemblyName, images, ToolboxItemAttribute, defaultValue: true),
+						IsDesignTimeVisible = InheritedBool(root, definition, pathsByAssemblyName, images, DesignTimeVisibleAttribute, defaultValue: true),
 						Filters = ReadToolboxFilters(root.Metadata, definition)
 					});
 				}
@@ -130,34 +130,45 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			return false;
 		}
 
-		/// <summary><c>[ToolboxItem(false)]</c>: the bool constructor's blob is the prolog 01 00
-		/// followed by one byte, 0 for false.</summary>
-		static bool IsHiddenFromToolbox(MetadataReader metadata, TypeDefinition definition)
+		const string ToolboxItemAttribute = "System.ComponentModel.ToolboxItemAttribute";
+		const string DesignTimeVisibleAttribute = "System.ComponentModel.DesignTimeVisibleAttribute";
+
+		/// <summary><c>[ToolboxItem]</c> and <c>[DesignTimeVisible]</c> are inherited attributes:
+		/// as with TypeDescriptor, the nearest declaration in the base chain wins, so a project
+		/// subclass of a <c>[DesignTimeVisible(false)]</c> or <c>[ToolboxItem(false)]</c> type stays
+		/// hidden unless it re-declares the attribute. An unresolvable base ends the walk with the
+		/// default.</summary>
+		static bool InheritedBool(AssemblyImage image, TypeDefinition definition, IReadOnlyDictionary<string, string> paths,
+			Dictionary<string, AssemblyImage> images, string attributeName, bool defaultValue)
 		{
-			foreach (var handle in definition.GetCustomAttributes()) {
-				var attribute = metadata.GetCustomAttribute(handle);
-				if (AttributeTypeName(metadata, attribute.Constructor) != "System.ComponentModel.ToolboxItemAttribute")
-					continue;
-				var bytes = metadata.GetBlobBytes(attribute.Value);
-				if (bytes.Length >= 3 && bytes[0] == 1 && bytes[1] == 0 && IsBoolConstructor(metadata, attribute.Constructor) && bytes[2] == 0)
-					return true;
+			var visited = new HashSet<string>(StringComparer.Ordinal);
+			while (visited.Add(image.Path + "|" + FullName(image.Metadata, definition.Namespace, definition.Name))) {
+				if (DeclaredBool(image.Metadata, definition, attributeName) is { } declared)
+					return declared;
+				var baseType = Resolve(image, definition.BaseType, paths, images);
+				if (baseType == null)
+					break;
+				(image, definition) = (baseType.Value.Owner, baseType.Value.Definition);
 			}
-			return false;
+			return defaultValue;
 		}
 
-		/// <summary><c>[DesignTimeVisible(false)]</c> makes a component an implementation detail of
-		/// its owner, so it must not be offered as a standalone tray item.</summary>
-		static bool IsDesignTimeVisible(MetadataReader metadata, TypeDefinition definition)
+		/// <summary>The value a type itself declares for a bool-valued attribute: the bool
+		/// constructor's blob is the prolog 01 00 followed by one byte, 0 for false. Any other
+		/// constructor (<c>ToolboxItem(Type)</c>/<c>(string)</c> names an item) counts as true.</summary>
+		static bool? DeclaredBool(MetadataReader metadata, TypeDefinition definition, string attributeName)
 		{
 			foreach (var handle in definition.GetCustomAttributes()) {
 				var attribute = metadata.GetCustomAttribute(handle);
-				if (AttributeTypeName(metadata, attribute.Constructor) != "System.ComponentModel.DesignTimeVisibleAttribute")
+				if (AttributeTypeName(metadata, attribute.Constructor) != attributeName)
 					continue;
+				if (!IsBoolConstructor(metadata, attribute.Constructor))
+					return true;
 				var bytes = metadata.GetBlobBytes(attribute.Value);
-				if (bytes.Length >= 3 && bytes[0] == 1 && bytes[1] == 0 && IsBoolConstructor(metadata, attribute.Constructor))
+				if (bytes.Length >= 3 && bytes[0] == 1 && bytes[1] == 0)
 					return bytes[2] != 0;
 			}
-			return true;
+			return null;
 		}
 
 		static bool IsBoolConstructor(MetadataReader metadata, EntityHandle constructor)
