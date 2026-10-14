@@ -158,4 +158,29 @@ public sealed class MxamlItemsTests
 		foreach (var bad in new[] { "<Image Name=\"bad\" Margin=\"1,2,3\"/>", "<Label Name=\"bad\" Foreground=\"#12345\"/>", "<Label Name=\"bad\" Foreground=\"Chartreusey\"/>" })
 			Assert.True(MxamlDocument.Parse(source.Replace("<Image Name=\"logo\" Margin=\"2\"/>", bad)).HasErrors, bad);
 	}
+
+	[Fact]
+	public void ContentControlsTakeOneChildOrACaption()
+	{
+		const string source = """
+<?xml version="1.0" encoding="utf-8"?>
+<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow">
+  <StackPanel Name="rootPanel">
+    <Button Name="iconButton"><Label Name="glyph" Text="+"/></Button>
+    <GroupBox Name="group"><Label Name="inside" Text="a"/></GroupBox>
+  </StackPanel>
+</Window>
+""";
+		var doc = new MxamlDocument();
+		Assert.True(doc.Reset(source), doc.Error);
+		var csharp = MewUICSharpGenerator.Generate(doc);
+		Assert.Contains("iconButton.Content = glyph;", csharp);
+
+		// A second child, or a caption plus a child, has no source form: refused, document unchanged.
+		Assert.False(doc.Add("group", "Label"));
+		Assert.False(doc.SetProperty("iconButton", "Content", "Add"));
+		Assert.Single(doc.Find("group")!.Children);
+		Assert.True(MxamlDocument.Parse(source.Replace("<Label Name=\"inside\" Text=\"a\"/>", "<Label Name=\"one\"/><Label Name=\"two\"/>")).HasErrors);
+		Assert.True(MxamlDocument.Parse(source.Replace("<Button Name=\"iconButton\">", "<Button Name=\"iconButton\" Content=\"Add\">")).HasErrors);
+	}
 }

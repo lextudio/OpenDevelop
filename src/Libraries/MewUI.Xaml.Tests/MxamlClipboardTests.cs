@@ -121,7 +121,7 @@ public sealed class MxamlWrapTests
 		Assert.False(doc.Wrap(new[] { "mainWindow" }, "StackPanel", out _));
 		Assert.False(doc.Wrap(new[] { "heading", "pin" }, "StackPanel", out _));
 		Assert.False(doc.Wrap(new[] { "okButton", "cancelButton" }, "Border", out _));
-		Assert.False(doc.Wrap(new[] { "okButton" }, "Button", out _));
+		Assert.False(doc.Wrap(new[] { "okButton" }, "Label", out _));
 		Assert.Equal(before, doc.ToXaml());
 		Assert.False(doc.Undo());
 	}

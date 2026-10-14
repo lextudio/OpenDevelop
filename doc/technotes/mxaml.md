@@ -89,6 +89,12 @@ by reflection):
   Window previously generated code that did not compile): they generate one
   `WindowSize = WindowSize.Resizable(width: …, height: …, minWidth: …)` with named arguments for the
   attributes present; Width and Height are both required, otherwise a comment is generated.
+- **Content children.** Button, CheckBox and RadioButton are content hosts too: one child element is
+  generated as `iconButton.Content = glyph;` (an icon, a rich caption). A caption attribute and a child
+  together are an Error (both set Content). Every single-child host (Content or Child: Window,
+  GroupBox, TabControl, TabItem, ContentControl, ScrollViewer, Border and these three) now rejects a
+  second child as an Error at parse and on any mutation, which rolls back; before, the generator
+  silently emitted nothing for a host with several children.
 - **Thickness and Color kinds.** `Margin` (every FrameworkElement), `Padding` (all but Image and
   Separator), and on controls other than panels/Image/Separator `Background`/`Foreground`/`BorderBrush`
   (Color) and `CornerRadius`/`BorderThickness` (Double); Window takes the same visuals and `Padding`.

@@ -52,8 +52,10 @@ public sealed class MxamlDocumentTests
 		var doc = MxamlDocument.Parse("""
 			<?xml version="1.0" encoding="utf-8"?>
 			<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow">
-			  <Canvas Name="surface"><Button Name="moveMe" Content="Move"/></Canvas>
-			  <StackPanel Name="stack"><Button Name="keepMe" Content="Keep"/></StackPanel>
+			  <StackPanel Name="rootPanel">
+			    <Canvas Name="surface"><Button Name="moveMe" Content="Move"/></Canvas>
+			    <StackPanel Name="stack"><Button Name="keepMe" Content="Keep"/></StackPanel>
+			  </StackPanel>
 			</Window>
 			""");
 		Assert.False(doc.HasErrors, string.Join("\n", doc.Diagnostics));
@@ -136,7 +138,7 @@ public sealed class MxamlDocumentTests
 	{
 		var bad = Source.Replace(
 			"<Button Name=\"newButton\" Content=\"New\" Click=\"NewButton_Click\"/>",
-			"<Button Name=\"newButton\" Content=\"New\"><Label Name=\"oops\"/></Button>");
+			"<Button Name=\"newButton\" Content=\"New\" Click=\"NewButton_Click\"/><Label Name=\"host\"><Label Name=\"oops\"/></Label>");
 		var doc = MxamlDocument.Parse(bad);
 		Assert.Contains(doc.Diagnostics, d => d.Severity == MxamlDiagnosticSeverity.Error && d.Message.Contains("not a container"));
 	}

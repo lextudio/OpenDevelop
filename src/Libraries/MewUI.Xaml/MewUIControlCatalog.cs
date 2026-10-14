@@ -112,6 +112,8 @@ public static class MewUIControlCatalog
 	static readonly HashSet<string> contentTypes = new(StringComparer.Ordinal)
 	{
 		"Window", "GroupBox", "TabControl", "TabItem", "ContentControl", "ScrollViewer",
+		// 0.22: content controls whose Content is an Element (a caption attribute sets it too).
+		"Button", "CheckBox", "RadioButton",
 	};
 	static readonly HashSet<string> borderTypes = new(StringComparer.Ordinal) { "Border" };
 	static readonly HashSet<string> containerTypes =
@@ -120,7 +122,7 @@ public static class MewUIControlCatalog
 	static readonly HashSet<string> types = new(StringComparer.Ordinal)
 	{
 		// containers (below) plus leaf controls
-		"Button", "Label", "TextBox", "CheckBox", "RadioButton", "Slider", "ProgressBar",
+		"Label", "TextBox", "Slider", "ProgressBar",
 		"Image", "ComboBox", "ListBox", "Separator",
 	};
 	static HashSet<string> allTypes => new(types.Concat(containerTypes), StringComparer.Ordinal);
@@ -139,6 +141,8 @@ public static class MewUIControlCatalog
 	public static bool IsPanel(string type) => panelTypes.Contains(type);
 	/// <summary>Single-child Content assignment (ContentControl family).</summary>
 	public static bool IsContentHost(string type) => contentTypes.Contains(type) || type == "Border";
+	/// <summary>A single-child host (Content or Child): a second child would have no source form.</summary>
+	public static bool IsSingleChildHost(string type) => IsContainer(type) && !IsPanel(type);
 	/// <summary>How a parent accepts children: Children / Content / Child.</summary>
 	public static string ContainmentMode(string parentType)
 	{
