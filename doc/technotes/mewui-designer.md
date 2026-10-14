@@ -285,9 +285,20 @@ feature-detect these optional capabilities until MewUI has authoritative design-
 Current deliberate gaps: the preview is a safe WPF semantic projection rather than MewUI-native
 pixels. Fit is measured from the realized viewport and projected content. Child reorder is a
 Roslyn transformation of the canonical `Children(...)` relationship and is integration-covered;
-free-form pointer positioning is not yet implemented. Code-behind method-body creation remains a
-Roslyn-side follow-up; event attribute creation and binding are implemented. These must not be
-described as covered by the passing integration test.
+free-form pointer positioning is not yet implemented outside a Canvas. These must not be described
+as covered by the passing integration test.
+
+**Event handler creation (2026-10-14).** Double-clicking an event in the Properties pad binds the
+attribute (as before) and then creates or opens the handler in the user's `<file>.mxaml.cs`, in the
+class the root `Class` names (else the file's first class), as the WPF designer does. The IDE does
+this with Roslyn (`MewUICodeBehindHandlers`); the host never touches project code. An open editor's
+buffer is edited (its own undo stack), otherwise the file is rewritten keeping its BOM, and only the
+inserted method is formatted. MewUI events are `Action`/`Action<T>` delegates, so the parameter list
+comes from a table measured against Aprillz.MewUI: `Click` and Window `Loaded`/`Closed`/`Activated`/
+`Deactivated` take none, `CheckBox.CheckedChanged` takes `bool?`, `RadioButton.CheckedChanged` `bool`,
+and `ComboBox`/`ListBox`/`TabControl.SelectionChanged` `object?`. Any other pair (a Label's
+`Loaded`, which MewUI does not declare, or `ItemActivated`) binds the attribute but creates no
+method, rather than a signature that would not compile.
 
 ## Clipboard and Duplicate (2026-10-14)
 

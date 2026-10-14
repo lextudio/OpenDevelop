@@ -43,7 +43,7 @@ public static class MewUIDesignerDevFlowActions
 	[DevFlowAction("od.mewui-designer.set-property", Description = "Set a source-backed property on the selected MewUI element")]
 	public static string SetProperty(string name, string value) { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.SetSelectedProperty(name, value) == true }); }
 	[DevFlowAction("od.mewui-designer.properties.event.bind", Description = "Bind a MewUI event through the selected Properties-pad adapter")]
-	public static string BindEvent(string eventName) { var view = Activate(); var selected = PropertyGrid?.SelectedObject; var exists = selected != null && TypeDescriptor.GetEvents(selected).Find(eventName, false) != null; if (exists && selected is IEventBindingHost host) host.BindEvent(eventName); return JsonSerializer.Serialize(new { success = exists && selected is IEventBindingHost, eventName, selectedName = view?.SelectedName }); }
+	public static string BindEvent(string eventName) { var view = Activate(); var selected = PropertyGrid?.SelectedObject; var exists = selected != null && TypeDescriptor.GetEvents(selected).Find(eventName, false) != null; if (exists && selected is IEventBindingHost host) host.BindEvent(eventName); return JsonSerializer.Serialize(new { success = exists && selected is IEventBindingHost, eventName, selectedName = view?.SelectedName, handlerNavigated = view?.LastHandlerNavigated == true }); }
 	[DevFlowAction("od.mewui-designer.properties.edit", Description = "Edit a common property through the real shared Properties pad")]
 	public static string EditProperty(string propertyName, string value)
 	{

@@ -244,6 +244,20 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var reopenedStatus = await WaitForDesignerAsync(); Assert.Equal(13, reopenedStatus.GetProperty("elementCount").GetInt32());
 		var reselectedAfterOpen = await app.InvokeAsync("od.mewui-designer.select", "textBox1"); Assert.True(reselectedAfterOpen.GetProperty("success").GetBoolean(), reselectedAfterOpen.ToString());
 
+		// Double-click binding creates the handler in the user's code-behind with the MewUI delegate's
+		// parameters (CheckBox.CheckedChanged is Action<bool?>), and an existing handler is only opened.
+		Assert.True((await app.InvokeAsync("od.mewui-designer.select", "notificationsCheck")).GetProperty("success").GetBoolean());
+		var checkedBound = await app.InvokeAsync("od.mewui-designer.properties.event.bind", "CheckedChanged");
+		Assert.True(checkedBound.GetProperty("success").GetBoolean() && checkedBound.GetProperty("handlerNavigated").GetBoolean(), checkedBound.ToString());
+		await app.InvokeAsync("od.open-file", designerPath); await WaitForDesignerAsync();
+		Assert.True((await app.InvokeAsync("od.mewui-designer.select", "newButton")).GetProperty("success").GetBoolean());
+		var clickBound = await app.InvokeAsync("od.mewui-designer.properties.event.bind", "Click");
+		Assert.True(clickBound.GetProperty("handlerNavigated").GetBoolean(), clickBound.ToString());
+		var behaviorWithHandler = await File.ReadAllTextAsync(sourcePath, TestContext.Current.CancellationToken);
+		Assert.Contains("private void notificationsCheck_CheckedChanged(bool? isChecked)", behaviorWithHandler);
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(behaviorWithHandler, "void NewButton_Click\\("));
+		await app.InvokeAsync("od.open-file", designerPath); await WaitForDesignerAsync();
+
 		var mainHostProcessId = status.GetProperty("hostProcessId").GetInt32();
 		var openedSettings = await app.InvokeAsync("od.open-file", settingsSourcePath);
 		Assert.True(openedSettings.GetProperty("opened").GetBoolean(), openedSettings.ToString());

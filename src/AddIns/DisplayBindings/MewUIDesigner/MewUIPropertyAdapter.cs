@@ -19,6 +19,10 @@ public sealed class MewUIPropertyAdapter : ICustomTypeDescriptor, IPropertyGridE
 	readonly Func<string, string, bool> setEvent;
 	PropertyDescriptorCollection? properties;
 
+	/// <summary>Raised after a double-click binding (event name, handler) so the IDE can create or
+	/// open the code-behind method.</summary>
+	public Action<string, string>? EventHandlerBound { get; init; }
+
 	public MewUIPropertyAdapter(DesignerElementNode node, Func<string, string, bool> set, Func<string, string, bool>? setEvent = null)
 	{
 		this.node = node;
@@ -70,6 +74,9 @@ public sealed class MewUIPropertyAdapter : ICustomTypeDescriptor, IPropertyGridE
 	{
 		if (string.IsNullOrEmpty(((IPropertyGridEventSource)this).GetEventHandler(eventName)))
 			((IPropertyGridEventSource)this).SetEventHandler(eventName, (node.Name ?? node.Id) + "_" + eventName);
+		// A bound event (new or existing) opens its method, creating it when missing.
+		if (((IPropertyGridEventSource)this).GetEventHandler(eventName) is { Length: > 0 } handler)
+			EventHandlerBound?.Invoke(eventName, handler);
 	}
 	public EventDescriptorCollection GetEvents() => new(node.Events.Select(e => (EventDescriptor)new RemoteEventDescriptor(e)).ToArray(), true);
 	public EventDescriptorCollection GetEvents(Attribute[]? attributes) => GetEvents();

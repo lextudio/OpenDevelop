@@ -6,6 +6,8 @@
   <ItemGroup>
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
     <Compile Include="..\MewUIDesigner\MewUIDocumentEditor.cs" Link="MewUIDocumentEditor.cs" />
+    <Compile Include="..\MewUIDesigner\MewUICodeBehindHandlers.cs" Link="MewUICodeBehindHandlers.cs" />
   </ItemGroup>
 </Project>

@@ -95,7 +95,12 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	public bool SetSelectedProperty(string name, string value) => selected != null && SetProperty(selected.Id, name, value);
 	bool SetProperty(string id, string name, string value) { if (host == null || !Mutate(() => host.SetPropertyAsync(state.Version, id, name, value).GetAwaiter().GetResult())) return false; return name == "$name" ? SelectByName(value) : selection.Find(id) != null; }
 	public bool SetSelectedEvent(string name, string handler) => selected != null && SetEvent(selected.Id, name, handler);
-	MewUIPropertyAdapter Adapter(DesignerElementNode node) => new(node, (name, value) => SetProperty(node.Id, name, value), (name, value) => SetEvent(node.Id, name, value));
+	MewUIPropertyAdapter Adapter(DesignerElementNode node) => new(node, (name, value) => SetProperty(node.Id, name, value), (name, value) => SetEvent(node.Id, name, value)) {
+		EventHandlerBound = (eventName, handler) => LastHandlerNavigated = MewUICodeBehindHandlers.EnsureAndNavigate(mxamlFile.FileName.ToString(), loadedMxamlText, node.Type, eventName, handler)
+	};
+
+	/// <summary>Whether the last double-click binding created or opened its code-behind method.</summary>
+	public bool LastHandlerNavigated { get; private set; }
 	bool SetEvent(string id, string name, string handler) { if (host == null || !Mutate(() => host.SetEventAsync(state.Version, id, name, handler).GetAwaiter().GetResult())) return false; return selection.Find(id) != null; }
 	public bool SelectByName(string name) { var node = selection.Flatten().FirstOrDefault(n => n.Name == name || n.Id == name); return node != null && selection.Select(node); }
 	public IReadOnlyList<string> SelectedIds => selection.SelectedIds;
