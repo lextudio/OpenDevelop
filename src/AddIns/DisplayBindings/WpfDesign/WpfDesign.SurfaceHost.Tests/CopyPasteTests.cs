@@ -127,4 +127,29 @@ public sealed class CopyPasteTests
 		Assert.True(second.Accepted, second.Error);
 		Assert.Contains("x:Key=\"ButtonStyle2\"", Assert.Single((await client.FlushAsync(2, timeout.Token)).Files).Text, StringComparison.Ordinal);
 	}
+
+	[Fact]
+	public async Task ChildHost_CreatesAnEmptyControlTemplateInTheRootResources()
+	{
+		const string templateXaml = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="root" Width="200" Height="100">
+			  <Button x:Name="plain" Content="Plain"/>
+			  <Border x:Name="border" Width="10" Height="10"/>
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(WpfSurfaceHostRpcTests.HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(1, templateXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+
+		// A Border is not a Control, so it has no Template to point at a resource.
+		Assert.False((await client.CreateEmptyTemplateAsync(1, Id(opened, "border"), timeout.Token)).Accepted);
+
+		var created = await client.CreateEmptyTemplateAsync(1, Id(opened, "plain"), timeout.Token);
+		Assert.True(created.Accepted, created.Error);
+		var text = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.True(System.Text.RegularExpressions.Regex.IsMatch(text, "<ControlTemplate(?=[^>]*x:Key=\"ButtonTemplate1\")(?=[^>]*TargetType=\"Button\")"), text);
+		Assert.Matches("<Button(?=[^>]*x:Name=\"plain\")(?=[^>]*Template=\"\\{StaticResource ButtonTemplate1\\}\")", text);
+		Assert.True((await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(2, text), timeout.Token)).Accepted, text);
+	}
 }

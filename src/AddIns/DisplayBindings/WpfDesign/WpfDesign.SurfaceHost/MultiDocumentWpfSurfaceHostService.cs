@@ -116,6 +116,8 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerSessionState PasteElementsIntoCell(string sessionId, string documentId, long baseVersion, string gridId, string[] snippets, double x, double y) => Checked(sessionId, documentId).PasteElementsIntoCell(baseVersion, gridId, snippets, x, y);
 	[JsonRpcMethod("design/create-empty-style")]
 	public DesignerSessionState CreateEmptyStyle(string sessionId, string documentId, long baseVersion, string elementId) => Checked(sessionId, documentId).CreateEmptyStyle(baseVersion, elementId);
+	[JsonRpcMethod("design/create-empty-template")]
+	public DesignerSessionState CreateEmptyTemplate(string sessionId, string documentId, long baseVersion, string elementId) => Checked(sessionId, documentId).CreateEmptyTemplate(baseVersion, elementId);
 	[JsonRpcMethod("design/move-into")]
 	public DesignerSessionState MoveInto(string sessionId, string documentId, long baseVersion, string[] elementIds, string targetId, string? afterId) => Checked(sessionId, documentId).MoveInto(baseVersion, elementIds, targetId, afterId);
 	[JsonRpcMethod("design/clone-into")]

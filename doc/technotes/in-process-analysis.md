@@ -476,7 +476,7 @@ Ranked by (a) parity gap closed per line, (b) genuinely missing rather than re-i
 | **11** | **Collection editor + ChooseClass dialog** | `PropertyGrid/Editors/CollectionEditor.*`, `Services/ChooseClass*` | **Collection editor delivered** for WPF ListBox/ComboBox/ListView items and TabControl headers and WinForms string `Items` (`CollectionItemsEditing`). ChooseClass has no caller in DDP, so there is nothing to port. |
 | **12** | **XAML error ranges + line-length-preserving repair** | `XamlExceptionRange`, `KeepSuggestedContentSameLength` | **Error ranges delivered (C5):** WinUI and WPF diagnostics carry file, line, column and end column to the Error List and goto-error. Line-length-preserving repair is not ported. |
 | **13** | **`FocusNavigator`** | `WpfDesign.Designer/Project/FocusNavigator.cs` | **Delivered:** `DesignerFocusNavigator` uses snapshot pre-order traversal for Tab/Shift+Tab primary selection, skips hidden/non-designable/unselectable nodes, wraps at both ends and tolerates a stale selection or malformed cycle. `DesignSurface` owns the key gesture while the controller retains each backend's keying/selection policy. |
-| **14** | **Context-menu shell** | the 9 `*ContextMenu.xaml` | **WPF Align/Order/Wrap/Unwrap delivered (2026-10-12)**; Edit Style → Create Empty delivered (2026-10-14), Edit a Copy deferred. One boilerplate template; we already have `SetContextCommands` (`:416`) + `DesignerVerbMenuPlanner`. Port content, not the `ExtensionServer` registration. |
+| **14** | **Context-menu shell** | the 9 `*ContextMenu.xaml` | **WPF Align/Order/Wrap/Unwrap delivered (2026-10-12)**; Edit Style / Edit Template → Create Empty delivered (2026-10-14), Edit a Copy deferred. One boilerplate template; we already have `SetContextCommands` (`:416`) + `DesignerVerbMenuPlanner`. Port content, not the `ExtensionServer` registration. |
 | **15** | **Toolbox: two-sided filtering + document customization** | `ToolboxService.FilterPermitted`, `IToolboxCustomizer`, `ToolboxProvider`'s provenance re-categorisation | `Require`/`Prevent`/`Custom` beats `Scope` equality. **Document category priority is now delivered:** `DesignerToolboxScope` applies an owner-scoped category-priority map to the shared pad while retaining registration order inside a category; GTK and MewUI put Containers first for blank-document authoring. Two-sided declarative filtering still needs metadata provenance from both the item and active designer. |
 
 Deliberately excluded from the top 15: `AdornerLayer` itself (rewrite, not port), `EditorManager`'s
@@ -1110,6 +1110,9 @@ single non-root element with no `Style` set, it adds `<Style x:Key="{Type}StyleN
 to the root's `Resources` and sets `Style="{StaticResource …}"` in one undo group. The key is set after
 the Style is inserted so the `x:` prefix resolves, and `TargetType` is written as the element's tag text
 (a `Type` value serializes as `<RuntimeType/>`). Edit a Copy stays deferred for the theme reason above.
+Protocol **v42** adds `design/create-empty-template`, the same operation for a `Control`'s `Template`
+(`<ControlTemplate x:Key="ButtonTemplate1" TargetType="Button"/>`, refused for non-Controls); both share
+one host helper and the menu offers Edit Style/Create Empty and Edit Template/Create Empty.
 
 **C2 Binding converter (2026-10-12).** Protocol **v17** adds WPF's optional
 `design/set-binding-converter`. A Binding's `Converter` row is a drop-down of the string keys of

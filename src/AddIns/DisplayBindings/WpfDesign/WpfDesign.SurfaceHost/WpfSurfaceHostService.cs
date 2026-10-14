@@ -1019,38 +1019,52 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// StaticResource) and for an element that already sets a Style.</summary>
 		[JsonRpcMethod("design/create-empty-style")]
 		public DesignerSessionState CreateEmptyStyle(long baseVersion, string elementId)
+			=> CreateEmptyResource(baseVersion, elementId, "Style", "Style", () => new Style(),
+				item => item.Component is FrameworkElement);
+
+		/// <summary>Visual Studio's Edit Template → Create Empty: the same shape as
+		/// <see cref="CreateEmptyStyle"/> for a Control's Template, so the control renders nothing until
+		/// the user fills <c>&lt;ControlTemplate x:Key="ButtonTemplate1" TargetType="Button"/&gt;</c>.</summary>
+		[JsonRpcMethod("design/create-empty-template")]
+		public DesignerSessionState CreateEmptyTemplate(long baseVersion, string elementId)
+			=> CreateEmptyResource(baseVersion, elementId, "Template", "Template", () => new ControlTemplate(),
+				item => item.Component is Control);
+
+		DesignerSessionState CreateEmptyResource(long baseVersion, string elementId, string propertyName, string keySuffix,
+			Func<object> create, Func<DesignItem, bool> accepts)
 			=> dispatcher.Dispatch(() => {
 				if (RejectIfStale(baseVersion) is { } stale)
 					return stale;
 				var state = NewState(baseVersion);
+				var title = "Create Empty " + propertyName;
 				if (!pathToItem.TryGetValue(elementId ?? "", out var item) || current?.RootItem is not { } root || item == root
-					|| item.Component is not FrameworkElement)
-					return NotFound(state, "Create Empty Style needs a non-root element: " + elementId);
-				var styleProperty = item.Properties["Style"];
-				if (styleProperty.IsSet)
-					return NotFound(state, "The element already sets a Style.");
+					|| !accepts(item))
+					return NotFound(state, title + " is not available for: " + elementId);
+				var targetProperty = item.Properties[propertyName];
+				if (targetProperty.IsSet)
+					return NotFound(state, "The element already sets a " + propertyName + ".");
 				var type = item.Component.GetType();
 				var taken = new HashSet<string>(ResourceKeys(item, _ => true), StringComparer.Ordinal);
 				var index = 1;
-				while (taken.Contains(type.Name + "Style" + index))
+				while (taken.Contains(type.Name + keySuffix + index))
 					index++;
-				var key = type.Name + "Style" + index;
+				var key = type.Name + keySuffix + index;
 				try
 				{
-					using var changeGroup = item.OpenGroup("Create Empty Style");
-					var style = item.Services.Component.RegisterComponentForDesigner(new Style());
-					root.Properties["Resources"].CollectionElements.Add(style);
-					// Only once the Style is in the document can DDP resolve the x: prefix for its key
+					using var changeGroup = item.OpenGroup(title);
+					var resource = item.Services.Component.RegisterComponentForDesigner(create());
+					root.Properties["Resources"].CollectionElements.Add(resource);
+					// Only once the resource is in the document can DDP resolve the x: prefix for its key
 					// (set earlier it is written as a plain, invalid Key attribute); TargetType is a
 					// property, not a constructor argument DDP would serialize.
-					style.Key = key;
+					resource.Key = key;
 					// As text, spelled like the element's own tag ("Button", "local:MyButton"), which
 					// the document already proves resolves; a Type value would serialize as an
 					// invalid <RuntimeType/> element.
 					var tag = ((XamlDesignItem)item).XamlObject.XmlElement;
-					style.Properties["TargetType"].SetValue(string.IsNullOrEmpty(tag.Prefix) ? tag.LocalName : tag.Prefix + ":" + tag.LocalName);
-					styleProperty.SetValue(new StaticResourceExtension());
-					styleProperty.Value!.Properties["ResourceKey"].SetValue(key);
+					resource.Properties["TargetType"].SetValue(string.IsNullOrEmpty(tag.Prefix) ? tag.LocalName : tag.Prefix + ":" + tag.LocalName);
+					targetProperty.SetValue(new StaticResourceExtension());
+					targetProperty.Value!.Properties["ResourceKey"].SetValue(key);
 					changeGroup.Commit();
 				}
 				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }

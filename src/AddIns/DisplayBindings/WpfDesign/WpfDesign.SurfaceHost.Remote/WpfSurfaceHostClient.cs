@@ -325,6 +325,9 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> CreateEmptyStyleAsync(long baseVersion, string elementId, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/create-empty-style", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken), cancellationToken);
 
+	public Task<DesignerSessionState> CreateEmptyTemplateAsync(long baseVersion, string elementId, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/create-empty-template", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken), cancellationToken);
+
 	/// <summary>Moves elements into a container after one of its children (null = first).</summary>
 	public Task<DesignerSessionState> MoveIntoAsync(long baseVersion, string[] elementIds, string targetId, string? afterId, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/move-into", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds, targetId, afterId }, cancellationToken), cancellationToken);

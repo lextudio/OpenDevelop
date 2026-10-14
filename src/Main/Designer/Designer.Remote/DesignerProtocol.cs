@@ -59,7 +59,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v39 adds DesignerBrushInfo's "Image" kind with ImageSource and Stretch (an ImageBrush).
 		// v40 adds the "ColorResource" brush kind and DesignerPropertyInfo.ColorResourceKeys.
 		// v41 adds WPF's optional design/create-empty-style (Edit Style → Create Empty).
-		public const int Version = 41;
+		// v42 adds WPF's optional design/create-empty-template (Edit Template → Create Empty).
+		public const int Version = 42;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
