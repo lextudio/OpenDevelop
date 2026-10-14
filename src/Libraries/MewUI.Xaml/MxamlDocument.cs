@@ -153,9 +153,9 @@ public sealed class MxamlDocument
 		var hasItems = MewUIControlCatalog.HasStringItems(type);
 		var objectChildren = element.Elements().Count(e => !(hasItems && e.Name.LocalName == "Item"));
 		if (MewUIControlCatalog.IsSingleChildHost(type) && objectChildren > 1)
-			AddDiagnostic(element, MxamlDiagnosticSeverity.Error, $"'{type}' holds one child; {objectChildren} were given.");
+			AddDiagnostic(element, MxamlDiagnosticSeverity.Error, $"'{type}' {result.Name} holds one child; {objectChildren} were given.");
 		if (objectChildren > 0 && result.Attributes.Any(a => MewUIControlCatalog.KindOf(type, a.Name) == MxamlPropertyKind.ContentText))
-			AddDiagnostic(element, MxamlDiagnosticSeverity.Error, $"'{type}' has both a caption attribute and child content; both set Content.");
+			AddDiagnostic(element, MxamlDiagnosticSeverity.Error, $"'{type}' {result.Name} has both a caption attribute and child content; both set Content.");
 		foreach (var childElement in element.Elements()) {
 			if (hasItems && childElement.Name.LocalName == "Item") {
 				if (childElement.HasElements || childElement.HasAttributes)
@@ -210,11 +210,11 @@ public sealed class MxamlDocument
 		var seen = new HashSet<string>(StringComparer.Ordinal);
 		foreach (var o in Root.DescendantsAndSelf()) {
 			if (!IsIdentifier(o.Name)) diagnostics.Add(new(MxamlDiagnosticSeverity.Error, $"Name '{o.Name}' is not a valid C# identifier."));
+			else if (!seen.Add(o.Name)) diagnostics.Add(new(MxamlDiagnosticSeverity.Error, $"Duplicate Name '{o.Name}'."));
 			if (MewUIControlCatalog.IsSingleChildHost(o.Type) && o.Children.Count > 1)
 				diagnostics.Add(new(MxamlDiagnosticSeverity.Error, $"'{o.Type}' {o.Name} holds one child; {o.Children.Count} were given."));
 			if (o.Children.Count > 0 && o.Attributes.Any(a => !a.IsEvent && MewUIControlCatalog.KindOf(o.Type, a.Name) == MxamlPropertyKind.ContentText))
 				diagnostics.Add(new(MxamlDiagnosticSeverity.Error, $"'{o.Type}' {o.Name} has both a caption attribute and child content; both set Content."));
-			else if (!seen.Add(o.Name)) diagnostics.Add(new(MxamlDiagnosticSeverity.Error, $"Duplicate Name '{o.Name}'."));
 			foreach (var a in o.Attributes) {
 				if (a.IsEvent) {
 					if (!IsIdentifier(a.Value)) diagnostics.Add(new(MxamlDiagnosticSeverity.Error, $"Event handler '{a.Value}' is not a valid identifier."));
