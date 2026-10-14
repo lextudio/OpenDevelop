@@ -127,6 +127,14 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var pasted = await app.InvokeAsync("od.gtk-designer.clipboard", "paste"); Assert.True(pasted.GetProperty("success").GetBoolean(), pasted.ToString());
 		Assert.Equal(6, pasted.GetProperty("elementCount").GetInt32()); Assert.Equal(new[] { "runButton1" }, pasted.GetProperty("selectedIds").EnumerateArray().Select(item => item.GetString()).ToArray());
 		var undoPaste = await app.InvokeAsync("od.gtk-designer.undo"); Assert.Equal(5, undoPaste.GetProperty("elementCount").GetInt32());
+		// Move First/Last keep the element selected; the first child cannot move earlier.
+		await app.InvokeAsync("od.gtk-designer.select", "heading");
+		var movedFirst = await app.InvokeAsync("od.gtk-designer.clipboard", "move-first"); Assert.True(movedFirst.GetProperty("success").GetBoolean(), movedFirst.ToString());
+		Assert.Equal(new[] { "heading" }, movedFirst.GetProperty("selectedIds").EnumerateArray().Select(item => item.GetString()).ToArray());
+		Assert.False((await app.InvokeAsync("od.gtk-designer.clipboard", "move-earlier")).GetProperty("success").GetBoolean());
+		var movedLast = await app.InvokeAsync("od.gtk-designer.clipboard", "move-last"); Assert.True(movedLast.GetProperty("success").GetBoolean(), movedLast.ToString());
+		Assert.False((await app.InvokeAsync("od.gtk-designer.clipboard", "move-later")).GetProperty("success").GetBoolean());
+		await app.InvokeAsync("od.gtk-designer.undo"); await app.InvokeAsync("od.gtk-designer.undo");
 		var saved = await app.InvokeAsync("od.file.save", uiPath); Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
 		var xml = await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken);
 		Assert.Contains(">Execute</property>", xml); Assert.Contains(">Shared heading</property>", xml); Assert.Contains("<signal name=\"clicked\" handler=\"runButton_clicked\"", xml); Assert.Contains("class=\"GtkEntry\"", xml); Assert.Contains("id=\"entry1\"", xml);

@@ -305,6 +305,12 @@ undo step. Duplicate leaves the clipboard alone and refuses a selection spanning
 `MxamlClipboardTests` covers the model; the main MewUI journey duplicates, copies and pastes, and
 undoes each.
 
+The menu also has Order → Move First / Move Earlier / Move Later / Move Last for a single selected
+child, through the existing `design/reorder`. Child order is layout order in these containers (a
+box or stack), so these are moves, not z-order "Bring to Front". A move that cannot happen (Move
+Earlier on the first child) is disabled and sends nothing; a host refusal shows its reason instead of
+escaping.
+
 ## Future runtime fidelity
 
 Preview frames today come from `MewUIDesigner.Host/MewUIRenderer.cs`, which builds the real MewUI

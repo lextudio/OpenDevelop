@@ -151,6 +151,32 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		return Paste(parent.Id, copied.Snippets.ToArray(), last);
 	}
 
+	/// <summary>The single selected element's position among its parent's children, or null.</summary>
+	(int Index, int Count)? SiblingPosition()
+	{
+		if (selection.SelectedIds.Count != 1 || state.Tree == null) return null;
+		var id = selection.SelectedIds[0];
+		var parent = Flatten(state.Tree).FirstOrDefault(node => node.Children.Any(child => child.Id == id));
+		return parent == null ? null : (parent.Children.FindIndex(child => child.Id == id), parent.Children.Count);
+	}
+
+	/// <summary>Moves the selected child within its container: child order is layout order here
+	/// (a box or stack), so these are "move", not z-order "bring to front".</summary>
+	public bool MoveSelected(string command)
+	{
+		if (SiblingPosition() is not { } position) return false;
+		var delta = command switch {
+			"move-first" => -position.Index,
+			"move-earlier" => position.Index > 0 ? -1 : 0,
+			"move-later" => position.Index < position.Count - 1 ? 1 : 0,
+			"move-last" => position.Count - 1 - position.Index,
+			_ => 0
+		};
+		if (delta == 0) return false;
+		try { return ReorderSelected(delta); }
+		catch (Exception ex) { diagnostic.Text = ex.GetBaseException().Message; return false; }
+	}
+
 	bool Paste(string targetId, string[] snippets, string? afterId)
 	{
 		if (host == null || snippets.Length == 0) return false;
@@ -240,9 +266,12 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	{
 		canvas.Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit | DesignerCanvasCapabilities.Gridlines;
 		canvas.ResizeHandlesEnabled = false;
-		canvas.SetContextCommands(new[] { ("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete") });
+		canvas.SetContextCommands(new[] { ("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete"),
+			("-", ""), ("Order/Move First", "move-first"), ("Order/Move Earlier", "move-earlier"), ("Order/Move Later", "move-later"), ("Order/Move Last", "move-last") });
 		canvas.ContextCommandCanExecute = command => command switch {
 			"paste" => host?.IsAlive == true && ClipboardSnippets().Length > 0,
+			"move-first" or "move-earlier" => host?.IsAlive == true && SiblingPosition() is { Index: > 0 },
+			"move-later" or "move-last" => host?.IsAlive == true && SiblingPosition() is { } position && position.Index < position.Count - 1,
 			_ => selection.SelectedIds.Count > 0 && host?.IsAlive == true
 		};
 		canvasController.ClearsSelectionOnEmptyClick = true;
@@ -257,6 +286,7 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 				case "cut": if (CopySelection()) DeleteSelected(); break;
 				case "paste": PasteIntoSelection(); break;
 				case "duplicate": DuplicateSelection(); break;
+				case "move-first" or "move-earlier" or "move-later" or "move-last": MoveSelected(command.Command); break;
 			}
 		};
 		canvas.RenameRequested += (_, _) => RequestRename();

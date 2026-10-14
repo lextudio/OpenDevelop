@@ -212,6 +212,14 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var pasted = await app.InvokeAsync("od.mewui-designer.clipboard", "paste"); Assert.True(pasted.GetProperty("success").GetBoolean(), pasted.ToString());
 		Assert.Equal(14, pasted.GetProperty("elementCount").GetInt32()); Assert.Equal(new[] { "heading1" }, pasted.GetProperty("selectedIds").EnumerateArray().Select(item => item.GetString()).ToArray());
 		var undoPaste = await app.InvokeAsync("od.mewui-designer.undo"); Assert.Equal(13, undoPaste.GetProperty("elementCount").GetInt32());
+		// Move First/Last keep the element selected; the first child cannot move earlier.
+		await app.InvokeAsync("od.mewui-designer.select", "toolRow");
+		var movedFirst = await app.InvokeAsync("od.mewui-designer.clipboard", "move-first"); Assert.True(movedFirst.GetProperty("success").GetBoolean(), movedFirst.ToString());
+		Assert.Equal(new[] { "toolRow" }, movedFirst.GetProperty("selectedIds").EnumerateArray().Select(item => item.GetString()).ToArray());
+		Assert.False((await app.InvokeAsync("od.mewui-designer.clipboard", "move-earlier")).GetProperty("success").GetBoolean());
+		var movedLast = await app.InvokeAsync("od.mewui-designer.clipboard", "move-last"); Assert.True(movedLast.GetProperty("success").GetBoolean(), movedLast.ToString());
+		Assert.False((await app.InvokeAsync("od.mewui-designer.clipboard", "move-later")).GetProperty("success").GetBoolean());
+		await app.InvokeAsync("od.mewui-designer.undo"); await app.InvokeAsync("od.mewui-designer.undo");
 
 		var saved = await app.InvokeAsync("od.file.save", designerPath);
 		Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());

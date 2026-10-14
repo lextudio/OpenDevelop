@@ -589,6 +589,12 @@ label that referenced a different one. Rename now rewrites only references to th
 `GtkUiDocumentEditorClipboardTests` covers both; the main GTK journey duplicates, copies and pastes,
 and undoes each.
 
+The menu also has Order → Move First / Move Earlier / Move Later / Move Last for a single selected
+child, through the existing `design/reorder`. Child order is layout order in these containers (a
+box or stack), so these are moves, not z-order "Bring to Front". A move that cannot happen (Move
+Earlier on the first child) is disabled and sends nothing; a host refusal shows its reason instead of
+escaping.
+
 ### Drag/drop
 ### Drag/drop
 
