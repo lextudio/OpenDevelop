@@ -80,3 +80,49 @@ public sealed class GtkUiDocumentEditorClipboardTests
 		Assert.False(editor.CanUndo);
 	}
 }
+
+public sealed class GtkUiDocumentEditorWrapTests
+{
+	const string Source = """
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0" />
+  <object class="GtkApplicationWindow" id="mainWindow">
+    <child><object class="GtkGrid" id="grid">
+      <child><object class="GtkLabel" id="caption"><layout><property name="column">0</property><property name="row">1</property></layout></object></child>
+      <child><object class="GtkButton" id="ok"><layout><property name="column">1</property><property name="row">1</property></layout></object></child>
+      <child><object class="GtkButton" id="cancel"><layout><property name="column">2</property><property name="row">1</property></layout></object></child>
+    </object></child>
+  </object>
+</interface>
+""";
+
+	[Fact] public void WrapsSiblingsInABoxThatTakesTheFirstCellInOneUndoStep()
+	{
+		var editor = new GtkUiDocumentEditor(); Assert.True(editor.Reset(Source), editor.Error);
+		var before = editor.Text;
+		Assert.True(editor.Wrap(new[] { "cancel", "ok" }, "GtkBox", out var created), editor.Error);
+		Assert.Equal("box1", created);
+		var grid = editor.Roots[0].Children[0];
+		Assert.Equal(new[] { "caption", "box1" }, grid.Children.Select(c => c.Id));
+		var box = grid.Children[1];
+		Assert.Equal(new[] { "ok", "cancel" }, box.Children.Select(c => c.Id));
+		Assert.Equal("1", box.Layout!["column"]);
+		Assert.Equal("1", box.Layout!["row"]);
+		Assert.True(box.Children.All(c => c.Layout == null || c.Layout.Count == 0));
+		Assert.Equal("vertical", box.Properties["orientation"]);
+		Assert.True(editor.Undo());
+		Assert.Equal(before, editor.Text);
+	}
+
+	[Fact] public void RefusesTheRootMixedParentsAndSeveralIntoAFrame()
+	{
+		var editor = new GtkUiDocumentEditor(); Assert.True(editor.Reset(Source), editor.Error);
+		Assert.False(editor.Wrap(new[] { "mainWindow" }, "GtkBox", out _));
+		Assert.False(editor.Wrap(new[] { "ok", "grid" }, "GtkBox", out _));
+		Assert.False(editor.Wrap(new[] { "ok", "cancel" }, "GtkFrame", out _));
+		Assert.False(editor.Wrap(new[] { "ok" }, "GtkButton", out _));
+		Assert.True(editor.Wrap(new[] { "ok" }, "GtkFrame", out var frame));
+		Assert.Equal("frame1", frame);
+	}
+}

@@ -264,6 +264,44 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
+	/// <summary>Wraps sibling objects in a new <paramref name="className"/> placed where the first
+	/// of them (in document order) was, keeping their order - the WPF/WinUI designers' Wrap. All ids
+	/// must be direct &lt;child&gt; objects of one parent; a single-child container (GtkFrame) takes
+	/// exactly one. A child's &lt;layout&gt; is read by the OLD parent's layout manager (a GtkGrid
+	/// cell, a GtkFixed position), so the wrapper takes over the first child's and the wrapped
+	/// children drop theirs. One undo step; <paramref name="created"/> is the wrapper's id.</summary>
+	public bool Wrap(IReadOnlyCollection<string> ids, string className, out string created)
+	{
+		created = "";
+		if (ids.Count == 0 || className is not ("GtkBox" or "GtkFrame") || className == "GtkFrame" && ids.Count != 1)
+			return false;
+		var wrappers = new List<XElement>();
+		foreach (var id in ids) {
+			if (Find(id) is not { Parent: { Name.LocalName: "child" } child } || child.Elements().Count(IsObject) != 1)
+				return false;
+			wrappers.Add(child);
+		}
+		var parent = wrappers[0].Parent;
+		if (parent == null || wrappers.Any(w => w.Parent != parent) || wrappers.Distinct().Count() != wrappers.Count)
+			return false;
+		var ordered = parent.Elements().Where(wrappers.Contains).ToList();
+		var name = UniqueId(className[3..].ToLowerInvariant());
+		var container = new XElement("object", new XAttribute("class", className), new XAttribute("id", name));
+		if (className == "GtkBox")
+			container.Add(new XElement("property", new XAttribute("name", "orientation"), "vertical"));
+		if (ordered[0].Elements().First(IsObject).Elements().FirstOrDefault(e => e.Name.LocalName == "layout") is { } layout)
+			container.Add(new XElement(layout));
+		var replacement = new XElement("child", container);
+		ordered[0].AddBeforeSelf(replacement);
+		foreach (var child in ordered) {
+			child.Remove();
+			child.Elements().First(IsObject).Elements().Where(e => e.Name.LocalName == "layout").Remove();
+			container.Add(child);
+		}
+		created = name;
+		return Commit();
+	}
+
 	public bool SetSignal(string id, string signalName, string handlerName)
 	{
 		var element = Find(id);

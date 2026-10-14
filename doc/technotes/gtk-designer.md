@@ -595,7 +595,16 @@ box or stack), so these are moves, not z-order "Bring to Front". A move that can
 Earlier on the first child) is disabled and sends nothing; a host refusal shows its reason instead of
 escaping.
 
-### Drag/drop
+### Wrap (2026-10-14)
+
+Wrap → GtkBox / GtkFrame (the WPF and WinUI designers' Wrap) puts the selected sibling objects into a
+new container at the first one's position, keeping their order, through `design/wrap-elements` (the
+WPF host's contract; the wrapper is `CreatedElementId` and becomes the selection). A new GtkBox is
+vertical. A child's `<layout>` belongs to the old parent's layout manager (a GtkGrid cell, a GtkFixed
+position), so the wrapper takes over the first child's and the wrapped children drop theirs; a
+GtkFrame takes exactly one child. One undo step. `GtkUiDocumentEditorWrapTests` covers it; there is
+no integration journey for it.
+
 ### Drag/drop
 
 GTK 4 has no generic container mutation API. Every drop is resolved through `childPolicy`:
