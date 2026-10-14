@@ -832,7 +832,12 @@ validates the member by reflection and writes `{DynamicResource {x:Static System
 follows theme changes, and describes such markup back as `System` rather than a read-only
 reference. The dialog swatch shows the IDE's own system color (a clone: SystemColors brushes are
 frozen). This needed the WpfDesigner XamlDom printer to write `DynamicResource`'s key and
-`x:Static`'s member positionally, as `StaticResource` already was. Not yet: the eyedropper, color
+`x:Static`'s member positionally, as `StaticResource` already was. **Eyedropper (2026-10-14):** the
+dialog's "Pick from design" toggle shows the designer's last rendered frame (`DesignSurface.CurrentFrame`,
+handed over through the optional `IDesignFrameSource` the WPF Properties-pad adapter implements) and a
+click sets the selected color from that pixel (`BrushEyedropper.Sample`, unpremultiplying Pbgra32). It
+samples the design rather than the screen, so it needs no screen-capture permission and picks exactly
+what is being designed; it is hidden when there is no frame or no color to edit. Not yet: color
 resources, tile brushes, other color spaces, and the on-canvas gradient and brush-transform tools.
 
 **C4 WinForms Toolbox components (2026-10-12).** The WinForms Toolbox catalog lists Timer, ToolTip,

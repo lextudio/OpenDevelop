@@ -25,7 +25,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 	/// this codebase) and the result is handed back through <paramref name="onStateChanged"/> so
 	/// the caller can refresh the surface/tree the same way a mutation RPC always does.
 	/// </summary>
-	public sealed class WpfSurfaceElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IItemsCollectionEditorHost, IBrushEditorHost
+	public sealed class WpfSurfaceElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IItemsCollectionEditorHost, IBrushEditorHost, IDesignFrameSource
 	{
 		readonly WpfSurfaceHostClient client;
 		readonly Func<long> currentBaseVersion;
@@ -46,6 +46,11 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// <summary>The project images an <c>ImageSource</c> row offers, relative to the designed
 		/// file (see <see cref="WpfImageSourceEditor"/>); null when the document has no project.</summary>
 		public Func<System.Collections.Generic.IReadOnlyList<string>>? ImageSourceCandidates { get; init; }
+
+		/// <summary>The designer's last rendered frame, for the brush editor's eyedropper.</summary>
+		public Func<System.Windows.Media.Imaging.BitmapSource?>? DesignFrameProvider { get; init; }
+
+		System.Windows.Media.Imaging.BitmapSource? IDesignFrameSource.DesignFrame => DesignFrameProvider?.Invoke();
 
 		internal void SetProperty(string propertyName, string value)
 		{

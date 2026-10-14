@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 
 using ICSharpCode.SharpDevelop.Designer.Remote;
@@ -25,6 +26,37 @@ public interface IBrushProperty
 public interface IBrushEditorHost
 {
 	void SetBrush(string propertyName, DesignerBrushInfo brush);
+}
+
+/// <summary>Optionally implemented by a brush editor host: the designer's last rendered frame,
+/// which the brush editor's eyedropper samples (the design, not the screen, so it needs no OS
+/// screen-capture permission and picks exactly what the user is designing).</summary>
+public interface IDesignFrameSource
+{
+	BitmapSource? DesignFrame { get; }
+}
+
+/// <summary>Reads one pixel of a design frame as an unpremultiplied color.</summary>
+public static class BrushEyedropper
+{
+	/// <summary>The color at fractional position (<paramref name="u"/>, <paramref name="v"/>) in
+	/// 0-1 of <paramref name="frame"/>, or null for an unsupported pixel format or a point outside.</summary>
+	public static Color? Sample(BitmapSource frame, double u, double v)
+	{
+		if (frame == null || !(u >= 0 && u <= 1 && v >= 0 && v <= 1)
+			|| frame.Format != PixelFormats.Pbgra32 && frame.Format != PixelFormats.Bgra32)
+			return null;
+		var x = Math.Min(frame.PixelWidth - 1, (int)(u * frame.PixelWidth));
+		var y = Math.Min(frame.PixelHeight - 1, (int)(v * frame.PixelHeight));
+		var pixel = new byte[4];
+		frame.CopyPixels(new Int32Rect(x, y, 1, 1), pixel, 4, 0);
+		byte b = pixel[0], g = pixel[1], r = pixel[2], a = pixel[3];
+		if (frame.Format == PixelFormats.Pbgra32 && a is > 0 and < 255) {
+			byte Unpremultiply(byte c) => (byte)Math.Min(255, (int)Math.Round(c * 255.0 / a));
+			(r, g, b) = (Unpremultiply(r), Unpremultiply(g), Unpremultiply(b));
+		}
+		return Color.FromArgb(a, r, g, b);
+	}
 }
 
 /// <summary>
@@ -129,7 +161,7 @@ public static class BrushEditing
 			var model = new BrushEditModel(property.Brush, property.BrushResourceKeys);
 			var accepted = TestEdit != null
 				? TestEdit(model)
-				: new BrushEditorDialog(model, descriptor.DisplayName) { Owner = owner }.ShowDialog() == true;
+				: new BrushEditorDialog(model, descriptor.DisplayName) { Owner = owner, DesignFrame = (instance as IDesignFrameSource)?.DesignFrame }.ShowDialog() == true;
 			if (accepted && model.IsChanged)
 				host.SetBrush(descriptor.Name, model.ToInfo());
 		} catch (Exception exception) {
@@ -186,6 +218,24 @@ public sealed class BrushEditorDialog : Window
 	bool syncing;
 	int draggedStop = -1;
 
+	readonly ToggleButton eyedropperToggle = new() { Content = "Pick from design", Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(8, 2, 8, 2) };
+	readonly Image eyedropperFrame = new() { Stretch = Stretch.Fill, Cursor = Cursors.Cross, Margin = new Thickness(0, 4, 0, 0) };
+	BitmapSource? designFrame;
+
+	/// <summary>The design frame the eyedropper samples; without one there is no eyedropper.</summary>
+	public BitmapSource? DesignFrame
+	{
+		get => designFrame;
+		set {
+			designFrame = value;
+			eyedropperFrame.Source = value;
+			// Keep the frame's aspect ratio at the dialog's width, so a click maps linearly to a pixel.
+			eyedropperFrame.Width = 300;
+			eyedropperFrame.Height = value == null || value.PixelWidth == 0 ? 0 : 300.0 * value.PixelHeight / value.PixelWidth;
+			Refresh();
+		}
+	}
+
 	public BrushEditorDialog(BrushEditModel model, string propertyName)
 	{
 		this.model = model;
@@ -226,6 +276,17 @@ public sealed class BrushEditorDialog : Window
 		root.Children.Add(resources);
 		root.Children.Add(gradientPanel);
 		root.Children.Add(colorPanel);
+		root.Children.Add(eyedropperToggle);
+		root.Children.Add(eyedropperFrame);
+		eyedropperToggle.Click += (_, _) => Refresh();
+		eyedropperFrame.MouseLeftButtonDown += (_, e) => {
+			if (DesignFrame == null || eyedropperFrame.ActualWidth <= 0 || eyedropperFrame.ActualHeight <= 0)
+				return;
+			var point = e.GetPosition(eyedropperFrame);
+			if (BrushEyedropper.Sample(DesignFrame, point.X / eyedropperFrame.ActualWidth, point.Y / eyedropperFrame.ActualHeight) is { } picked)
+				Change(() => model.SelectedColor = picked);
+			e.Handled = true;
+		};
 		root.Children.Add(advancedPanel);
 		root.Children.Add(preview);
 		root.Children.Add(footer);
@@ -477,6 +538,9 @@ public sealed class BrushEditorDialog : Window
 			resources.SelectedItem = model.SelectedResourceEntry;
 			gradientPanel.Visibility = !showResources && model.IsGradient ? Visibility.Visible : Visibility.Collapsed;
 			colorPanel.Visibility = showResources || model.Kind is BrushEditModel.NullKind or BrushEditModel.ResourceKind or BrushEditModel.SystemKind ? Visibility.Collapsed : Visibility.Visible;
+			// The eyedropper sets the color the color editor shows, so it lives and hides with it.
+			eyedropperToggle.Visibility = designFrame != null && colorPanel.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
+			eyedropperFrame.Visibility = eyedropperToggle.Visibility == Visibility.Visible && eyedropperToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
 			advancedPanel.Visibility = colorPanel.Visibility;
 			linear.IsChecked = model.Kind == BrushEditModel.LinearKind;
 			radial.IsChecked = model.Kind == BrushEditModel.RadialKind;

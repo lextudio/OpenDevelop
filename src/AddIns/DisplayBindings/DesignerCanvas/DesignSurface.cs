@@ -583,6 +583,9 @@ public class DesignSurface : DesignerCanvas
 		return scroller.PointToScreen(surfacePoint);
 	}
 
+	/// <summary>The last rendered design frame, for tools that sample it (the brush eyedropper).</summary>
+	public BitmapSource? CurrentFrame { get; private set; }
+
 	public void SetRender(RenderResult render)
 	{
 		if (render == null)
@@ -602,6 +605,7 @@ public class DesignSurface : DesignerCanvas
 				png.EndInit();
 			}
 			png.Freeze();
+			CurrentFrame = png;
 			framePresenter.SetSource(png);
 			pixelWidth = (int)Math.Round(render.Width / dpi);
 			pixelHeight = (int)Math.Round(render.Height / dpi);
@@ -615,7 +619,10 @@ public class DesignSurface : DesignerCanvas
 		// LibreWPF on macOS, so present the pixels with the pure-managed BitmapSource.Create path.
 		// The bitmap DPI carries the render scale so the Image keeps the logical design size
 		// while showing dpi-scaled pixels.
-		framePresenter.SetSource(BitmapSource.Create(render.Width, render.Height, 96 * dpi, 96 * dpi, PixelFormats.Pbgra32, null, bytes, render.Width * 4));
+		var frame = BitmapSource.Create(render.Width, render.Height, 96 * dpi, 96 * dpi, PixelFormats.Pbgra32, null, bytes, render.Width * 4);
+		frame.Freeze();
+		CurrentFrame = frame;
+		framePresenter.SetSource(frame);
 		pixelWidth = (int)Math.Round(render.Width / dpi);
 		pixelHeight = (int)Math.Round(render.Height / dpi);
 		HasRender = true;
