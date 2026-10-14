@@ -54,11 +54,12 @@ public static class MewUICSharpGenerator
 
 		foreach (var c in controls) {
 			sb.Append('\n');
-			foreach (var a in c.Attributes)
-				EmitAttribute(sb, c.Type, c.Name, a);
+			// Items first: a SelectedIndex set before the list exists would be out of range.
 			if (c.Items.Count > 0)
 				sb.Append("        ").Append(c.Name).Append(".Items(")
 				  .Append(string.Join(", ", c.Items.Select(item => "\"" + Escape(item) + "\""))).Append(");\n");
+			foreach (var a in c.Attributes)
+				EmitAttribute(sb, c.Type, c.Name, a);
 		}
 
 		sb.Append('\n');

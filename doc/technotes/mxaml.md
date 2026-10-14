@@ -83,7 +83,8 @@ no other child element is allowed):
 </ComboBox>
 ```
 
-The generator emits the runtime's `params string[]` extension, `themeCombo.Items("Light", "Dark");`, and
+The generator emits the runtime's `params string[]` extension, `themeCombo.Items("Light", "Dark");`, before the
+control's other properties (so an authored `SelectedIndex` is in range), and
 the designer's preview sets the same strings as `ItemsSource = ItemsView.Create(...)`. An `<Item>` with
 attributes or child elements is an error. Fixed alongside: Window-level properties were emitted once per
 root attribute, and a Double one used the wrong attribute's value (`Width` took `Title`'s text).

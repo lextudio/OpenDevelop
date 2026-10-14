@@ -56,6 +56,8 @@ public sealed class MxamlItemsTests
 		var csharp = MewUICSharpGenerator.Generate(NewDoc());
 		Assert.Contains("themeCombo.Items(\"Light\", \"Dark & \\\"Dim\\\"\");", csharp);
 		Assert.DoesNotContain("recent.Items(", csharp);
+		// The list exists before SelectedIndex selects into it.
+		Assert.True(csharp.IndexOf("themeCombo.Items(", StringComparison.Ordinal) < csharp.IndexOf("themeCombo.SelectedIndex", StringComparison.Ordinal));
 	}
 
 	/// <summary>Regression: Window-level properties were emitted once per root attribute, and a
