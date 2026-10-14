@@ -1030,9 +1030,11 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				brushKeysByScope.Clear();
 				if (brush.Kind == "Resource" && !BrushResourceKeys(item).Contains(brush.ResourceKey))
 					return NotFound(state, "Not a Brush resource in scope: " + brush.ResourceKey);
+				if (brush.Kind == "System" && !IsSystemBrushKey(brush.ResourceKey))
+					return NotFound(state, "Not a SystemColors brush key: " + brush.ResourceKey);
 				try
 				{
-					var value = brush.Kind == "Resource" ? null : CreateBrush(brush);
+					var value = brush.Kind is "Resource" or "System" ? null : CreateBrush(brush);
 					using var changeGroup = item.OpenGroup("Set " + propertyName);
 					if (property.IsSet)
 						property.Reset();
@@ -1040,6 +1042,15 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					{
 						property.SetValue(new StaticResourceExtension());
 						property.Value!.Properties["ResourceKey"].SetValue(brush.ResourceKey);
+					}
+					// A system brush follows theme changes, so it is a DynamicResource of the
+					// SystemColors key, as Visual Studio writes it.
+					else if (brush.Kind == "System")
+					{
+						property.SetValue(new DynamicResourceExtension());
+						var key = item.Services.Component.RegisterComponentForDesigner(new System.Windows.Markup.StaticExtension());
+						key.Properties["Member"].SetValue("SystemColors." + brush.ResourceKey);
+						property.Value!.Properties["ResourceKey"].SetValue(key);
 					}
 					// "No brush" is an explicit {x:Null}, not a reset: it overrides a style's brush.
 					else if (value == null)
@@ -3429,6 +3440,18 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						info.Value = "{StaticResource " + brushKey + "}";
 						return info;
 					}
+					if (reference.Component is DynamicResourceExtension
+						&& reference.Properties["ResourceKey"].Value?.Component is System.Windows.Markup.StaticExtension { Member: { } member }
+						&& SystemBrushMember(member) is { } systemKey
+						&& property.ReturnType != null && typeof(Brush).IsAssignableFrom(property.ReturnType))
+					{
+						info.Kind = "Brush";
+						info.IsReadOnly = true;
+						info.EditorKind = "Brush";
+						info.Brush = new DesignerBrushInfo { Kind = "System", ResourceKey = systemKey };
+						info.Value = "{DynamicResource {x:Static SystemColors." + systemKey + "}}";
+						return info;
+					}
 					if (reference.Component is System.Windows.Markup.NullExtension
 						&& property.ReturnType != null && typeof(Brush).IsAssignableFrom(property.ReturnType))
 					{
@@ -3569,6 +3592,24 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				default:
 					return null;
 			}
+		}
+
+		/// <summary>Whether <paramref name="name"/> is a public static <c>SystemColors.*BrushKey</c>.</summary>
+		static bool IsSystemBrushKey(string? name)
+			=> !string.IsNullOrEmpty(name) && name.EndsWith("BrushKey", StringComparison.Ordinal)
+				&& typeof(SystemColors).GetProperty(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)?.PropertyType == typeof(ResourceKey);
+
+		/// <summary>The SystemColors brush key an <c>x:Static</c> member names (<c>SystemColors.X</c>,
+		/// optionally with an XML prefix), or null for anything else.</summary>
+		static string? SystemBrushMember(string member)
+		{
+			var colon = member.IndexOf(':');
+			var name = colon >= 0 ? member.Substring(colon + 1) : member;
+			const string owner = "SystemColors.";
+			if (!name.StartsWith(owner, StringComparison.Ordinal))
+				return null;
+			name = name.Substring(owner.Length);
+			return IsSystemBrushKey(name) ? name : null;
 		}
 
 		static string BrushDisplayText(DesignerBrushInfo brush) => brush.Kind switch {

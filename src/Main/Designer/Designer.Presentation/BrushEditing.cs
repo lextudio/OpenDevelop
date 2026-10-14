@@ -66,6 +66,7 @@ public static class BrushEditing
 					return false;
 				case "kind": model.SetKind(argument); break;
 				case "resource": ok = model.SelectResource(argument); break;
+				case "system": ok = model.SelectSystemResource(argument); break;
 				case "color":
 					ok = BrushEditModel.TryParseColor(step.Substring("color:".Length), out var color);
 					if (ok) model.SelectedColor = color;
@@ -202,12 +203,12 @@ public sealed class BrushEditorDialog : Window
 		tabs.Children.Add(gradientTab);
 		tabs.Children.Add(resourcesTab);
 		resourcesTab.Click += (_, _) => { showResources = true; Refresh(); };
-		resources.ItemsSource = model.ResourceKeys;
-		resources.SelectionChanged += (_, _) => { if (!syncing && resources.SelectedItem is string key) Change(() => model.SelectResource(key)); };
+		resources.ItemsSource = model.ResourceEntries;
+		resources.SelectionChanged += (_, _) => { if (!syncing && resources.SelectedItem is string entry) Change(() => model.SelectResourceEntry(entry)); };
 		noBrushTab.Click += (_, _) => { showResources = false; Change(() => model.SetKind(BrushEditModel.NullKind)); };
 		solidTab.Click += (_, _) => { showResources = false; Change(() => model.SetKind(BrushEditModel.SolidKind)); };
 		gradientTab.Click += (_, _) => { showResources = false; Change(() => model.SetKind(model.Kind == BrushEditModel.RadialKind ? BrushEditModel.RadialKind : BrushEditModel.LinearKind)); };
-		showResources = model.Kind == BrushEditModel.ResourceKind;
+		showResources = model.Kind is BrushEditModel.ResourceKind or BrushEditModel.SystemKind;
 
 		gradientPanel = BuildGradientPanel();
 		colorPanel = BuildColorPanel();
@@ -473,9 +474,9 @@ public sealed class BrushEditorDialog : Window
 			gradientTab.IsChecked = !showResources && model.IsGradient;
 			resourcesTab.IsChecked = showResources;
 			resources.Visibility = showResources ? Visibility.Visible : Visibility.Collapsed;
-			resources.SelectedItem = model.Kind == BrushEditModel.ResourceKind ? model.ResourceKey : null;
+			resources.SelectedItem = model.SelectedResourceEntry;
 			gradientPanel.Visibility = !showResources && model.IsGradient ? Visibility.Visible : Visibility.Collapsed;
-			colorPanel.Visibility = showResources || model.Kind is BrushEditModel.NullKind or BrushEditModel.ResourceKind ? Visibility.Collapsed : Visibility.Visible;
+			colorPanel.Visibility = showResources || model.Kind is BrushEditModel.NullKind or BrushEditModel.ResourceKind or BrushEditModel.SystemKind ? Visibility.Collapsed : Visibility.Visible;
 			advancedPanel.Visibility = colorPanel.Visibility;
 			linear.IsChecked = model.Kind == BrushEditModel.LinearKind;
 			radial.IsChecked = model.Kind == BrushEditModel.RadialKind;

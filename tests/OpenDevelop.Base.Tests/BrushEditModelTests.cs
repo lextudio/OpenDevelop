@@ -105,4 +105,28 @@ public sealed class BrushEditModelTests
 		Assert.Equal(BrushEditModel.SolidKind, model.Kind);
 		Assert.Equal("", model.ToInfo().ResourceKey);
 	}
+
+	[Fact]
+	public void ResourcesTabOffersSystemBrushesAfterTheDocumentKeys()
+	{
+		var model = new BrushEditModel(new DesignerBrushInfo { Kind = BrushEditModel.SystemKind, ResourceKey = "ControlBrushKey" }, new[] { "Accent" });
+
+		Assert.Equal("SystemColors.ControlBrushKey", model.SelectedResourceEntry);
+		Assert.Equal("Accent", model.ResourceEntries[0]);
+		Assert.Contains("SystemColors.HighlightBrushKey", model.ResourceEntries);
+		Assert.DoesNotContain(model.ResourceEntries, entry => entry.EndsWith("ColorKey", StringComparison.Ordinal));
+		Assert.False(model.IsChanged);
+
+		Assert.False(model.SelectSystemResource("ControlColorKey"));
+		Assert.True(model.SelectResourceEntry("SystemColors.HighlightBrushKey"));
+		Assert.Equal((BrushEditModel.SystemKind, "HighlightBrushKey"), (model.ToInfo().Kind, model.ToInfo().ResourceKey));
+		Assert.True(model.SelectResourceEntry("Accent"));
+		Assert.Equal((BrushEditModel.ResourceKind, "Accent"), (model.ToInfo().Kind, model.ToInfo().ResourceKey));
+		Assert.True(BrushEditing.ApplyScript(model, "system:WindowBrushKey"));
+		// SystemColors brushes are frozen; the preview must not try to change one.
+		_ = model.ToPreviewBrush();
+		Assert.Equal("SystemColors.WindowBrushKey", model.SelectedResourceEntry);
+		model.SelectedColor = Colors.Blue;
+		Assert.Equal((BrushEditModel.SolidKind, ""), (model.Kind, model.ToInfo().ResourceKey));
+	}
 }

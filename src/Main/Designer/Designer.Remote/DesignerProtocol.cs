@@ -54,7 +54,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// design/remove-table-layout-track-at, which also move the table's children.
 		// v37 adds the WinForms host's design/set-table-layout-track-unit (SizeType change with a
 		// host-chosen length).
-		public const int Version = 37;
+		// v38 adds WPF's "System" brush kind for design/set-brush and Brush descriptions: a
+		// {DynamicResource {x:Static SystemColors.XBrushKey}} reference.
+		public const int Version = 38;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -639,10 +641,12 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	public sealed class DesignerBrushInfo
 	{
 		/// <summary><c>Null</c> (VS's "No brush", <c>{x:Null}</c>), <c>Solid</c>,
-		/// <c>LinearGradient</c>, <c>RadialGradient</c>, or <c>Resource</c> (a
-		/// <c>{StaticResource}</c> reference to <see cref="ResourceKey"/>).</summary>
+		/// <c>LinearGradient</c>, <c>RadialGradient</c>, <c>Resource</c> (a
+		/// <c>{StaticResource}</c> reference to <see cref="ResourceKey"/>), or <c>System</c> (a
+		/// <c>{DynamicResource {x:Static SystemColors.ResourceKey}}</c> reference).</summary>
 		public string Kind { get; set; } = "Solid";
-		/// <summary>For a <c>Resource</c> brush, the referenced resource key.</summary>
+		/// <summary>For a <c>Resource</c> brush, the referenced resource key; for a <c>System</c>
+		/// brush, the SystemColors member (<c>ControlBrushKey</c>).</summary>
 		public string ResourceKey { get; set; } = "";
 		/// <summary>A solid brush's color as <c>#AARRGGBB</c>.</summary>
 		public string Color { get; set; } = "";

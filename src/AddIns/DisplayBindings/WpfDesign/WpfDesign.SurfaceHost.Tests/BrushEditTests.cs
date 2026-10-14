@@ -133,4 +133,41 @@ public sealed class BrushEditTests
 		Assert.Equal(text, Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text);
 	}
 
+	[Fact]
+	public async Task ChildHost_DescribesAndWritesSystemColorsBrushes()
+	{
+		const string xaml = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="root" Width="240" Height="120">
+			  <Button x:Name="target" Background="Red" Content="Target"/>
+			  <Button x:Name="themed" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Content="Themed"/>
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(WpfSurfaceHostRpcTests.HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Background(DesignerSessionState state, int index)
+			=> Assert.Single(state.Tree!.Children[index].Properties, p => p.Name == "Background");
+
+		var themed = Background(opened, 1);
+		Assert.Equal("Brush", themed.EditorKind);
+		Assert.Equal(("System", "ControlBrushKey"), (themed.Brush!.Kind, themed.Brush.ResourceKey));
+
+		// A member that is not a SystemColors brush key is refused without an edit.
+		var before = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.False((await client.SetBrushAsync(1, opened.Tree!.Children[0].Id, "Background", new DesignerBrushInfo { Kind = "System", ResourceKey = "ControlColorKey" }, timeout.Token)).Accepted);
+		Assert.False((await client.SetBrushAsync(1, opened.Tree.Children[0].Id, "Background", new DesignerBrushInfo { Kind = "System", ResourceKey = "Nope" }, timeout.Token)).Accepted);
+		Assert.Equal(before, Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text);
+
+		var set = await client.SetBrushAsync(1, opened.Tree.Children[0].Id, "Background", new DesignerBrushInfo { Kind = "System", ResourceKey = "HighlightBrushKey" }, timeout.Token);
+		Assert.True(set.Accepted, set.Error);
+		Assert.Equal(("System", "HighlightBrushKey"), (Background(set, 0).Brush!.Kind, Background(set, 0).Brush!.ResourceKey));
+		var text = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.Contains("x:Name=\"target\" Background=\"{DynamicResource {x:Static SystemColors.HighlightBrushKey}}\"", text, StringComparison.Ordinal);
+
+		// The written markup reloads and is described the same way.
+		var reopened = await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(2, text), timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error);
+		Assert.Equal(("System", "HighlightBrushKey"), (Background(reopened, 0).Brush!.Kind, Background(reopened, 0).Brush!.ResourceKey));
+	}
 }

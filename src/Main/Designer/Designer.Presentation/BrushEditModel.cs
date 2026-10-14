@@ -23,6 +23,17 @@ public sealed class BrushEditModel
 	public const string LinearKind = "LinearGradient";
 	public const string RadialKind = "RadialGradient";
 	public const string ResourceKind = "Resource";
+	/// <summary>A <c>{DynamicResource {x:Static SystemColors.XBrushKey}}</c> reference; its
+	/// <see cref="ResourceKey"/> is the SystemColors member name.</summary>
+	public const string SystemKind = "System";
+	/// <summary>How the resources tab lists a system brush, beside the document's own keys.</summary>
+	public const string SystemEntryPrefix = "SystemColors.";
+
+	/// <summary>The SystemColors brush keys (<c>ControlBrushKey</c>, ...), in name order.</summary>
+	public static IReadOnlyList<string> SystemResourceKeys { get; } = typeof(System.Windows.SystemColors)
+		.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+		.Where(property => property.PropertyType == typeof(System.Windows.ResourceKey) && property.Name.EndsWith("BrushKey", StringComparison.Ordinal))
+		.Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray();
 
 	public sealed class Stop
 	{
@@ -56,6 +67,10 @@ public sealed class BrushEditModel
 	public IReadOnlyList<string> ResourceKeys { get; }
 	/// <summary>For a resource brush, the referenced key.</summary>
 	public string ResourceKey { get; private set; }
+	/// <summary>The resources tab's entries: the document's Brush resources, then the system brushes.</summary>
+	public IReadOnlyList<string> ResourceEntries => ResourceKeys.Concat(SystemResourceKeys.Select(key => SystemEntryPrefix + key)).ToArray();
+	/// <summary>The resources tab entry for the current brush, or null when it is not a resource.</summary>
+	public string? SelectedResourceEntry => Kind == ResourceKind ? ResourceKey : Kind == SystemKind ? SystemEntryPrefix + ResourceKey : null;
 	public bool IsGradient => Kind is LinearKind or RadialKind;
 	public IReadOnlyList<Stop> Stops => stops;
 	public int SelectedStop { get; private set; }
@@ -87,7 +102,7 @@ public sealed class BrushEditModel
 				return;
 			}
 			solidColor = value;
-			if (Kind is NullKind or ResourceKind) {
+			if (Kind is NullKind or ResourceKind or SystemKind) {
 				Kind = SolidKind;
 				ResourceKey = "";
 			}
@@ -101,7 +116,7 @@ public sealed class BrushEditModel
 	{
 		if (kind is not (NullKind or SolidKind or LinearKind or RadialKind))
 			throw new ArgumentException("Unknown brush kind: " + kind, nameof(kind));
-		if (Kind == ResourceKind)
+		if (Kind is ResourceKind or SystemKind)
 			ResourceKey = "";
 		if (kind == Kind)
 			return;
@@ -126,6 +141,22 @@ public sealed class BrushEditModel
 		ResourceKey = key;
 		return true;
 	}
+
+	/// <summary>Makes the brush a system brush (<c>{DynamicResource {x:Static SystemColors.key}}</c>).</summary>
+	public bool SelectSystemResource(string key)
+	{
+		if (!SystemResourceKeys.Contains(key))
+			return false;
+		Kind = SystemKind;
+		ResourceKey = key;
+		return true;
+	}
+
+	/// <summary>Selects one of <see cref="ResourceEntries"/>: a document key wins over the system
+	/// form, so a resource literally keyed "SystemColors.X" still selects that resource.</summary>
+	public bool SelectResourceEntry(string entry)
+		=> SelectResource(entry)
+			|| entry.StartsWith(SystemEntryPrefix, StringComparison.Ordinal) && SelectSystemResource(entry.Substring(SystemEntryPrefix.Length));
 
 	/// <summary>Adds a stop at <paramref name="offset"/> with the color the gradient has there, as
 	/// clicking the gradient slider does, and selects it. Returns its index.</summary>
@@ -215,7 +246,7 @@ public sealed class BrushEditModel
 		var info = new DesignerBrushInfo { Kind = Kind };
 		if (Kind == NullKind)
 			return info;
-		if (Kind == ResourceKind) {
+		if (Kind is ResourceKind or SystemKind) {
 			info.ResourceKey = ResourceKey;
 			return info;
 		}
@@ -242,6 +273,9 @@ public sealed class BrushEditModel
 				Center = new System.Windows.Point(CenterX, CenterY), GradientOrigin = new System.Windows.Point(OriginX, OriginY),
 				RadiusX = RadiusX, RadiusY = RadiusY
 			},
+			// A swatch only: the IDE's own system colors, standing in for the designed app's.
+			SystemKind when ResourceKey.EndsWith("Key", StringComparison.Ordinal) => typeof(System.Windows.SystemColors)
+				.GetProperty(ResourceKey.Substring(0, ResourceKey.Length - "Key".Length), System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)?.GetValue(null) is Brush system ? system.Clone() : null,
 			_ => null
 		};
 		if (brush is GradientBrush gradient) {

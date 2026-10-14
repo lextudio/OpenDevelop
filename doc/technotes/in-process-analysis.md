@@ -825,9 +825,15 @@ an edit script. **Resources tab:** protocol **v24** adds a `Resource` brush kind
 `{StaticResource key}` reference, which the host now describes instead of leaving a read-only
 reference) and `DesignerPropertyInfo.BrushResourceKeys`, the in-scope Brush resource keys (own,
 ancestors', merged and application dictionaries - the converter-key walk, generalized); the dialog's
-Resources tab lists them and `design/set-brush` accepts only one of them. Not yet: the eyedropper,
-color resources and system resources, tile brushes, other color spaces, and the on-canvas gradient
-and brush-transform tools.
+Resources tab lists them and `design/set-brush` accepts only one of them. **System brushes
+(2026-10-13):** protocol **v38** adds the `System` brush kind, whose key is a `SystemColors.*BrushKey`
+member. The Resources tab lists those after the document's keys (as `SystemColors.X`); the host
+validates the member by reflection and writes `{DynamicResource {x:Static SystemColors.X}}`, which
+follows theme changes, and describes such markup back as `System` rather than a read-only
+reference. The dialog swatch shows the IDE's own system color (a clone: SystemColors brushes are
+frozen). This needed the WpfDesigner XamlDom printer to write `DynamicResource`'s key and
+`x:Static`'s member positionally, as `StaticResource` already was. Not yet: the eyedropper, color
+resources, tile brushes, other color spaces, and the on-canvas gradient and brush-transform tools.
 
 **C4 WinForms Toolbox components (2026-10-12).** The WinForms Toolbox catalog lists Timer, ToolTip,
 ImageList, ErrorProvider, BackgroundWorker and the other non-visual components, but the child's

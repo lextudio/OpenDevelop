@@ -1377,6 +1377,18 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             Assert.True(resource.GetProperty("success").GetBoolean(), resource.ToString());
             Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
             Assert.Contains("Background=\"{StaticResource Accent}\"", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
+
+            // ... and a system brush, as a DynamicResource that follows the theme.
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "painted")).GetProperty("success").GetBoolean());
+            var system = await EditBrush("system:HighlightBrushKey");
+            Assert.True(system.GetProperty("committed").GetBoolean(), system.ToString());
+            Assert.Equal("Resource", system.GetProperty("before").GetProperty("Kind").GetString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            Assert.Contains("Background=\"{DynamicResource {x:Static SystemColors.HighlightBrushKey}}\"", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
+            // The rebuilt row describes it back as a system brush.
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "painted")).GetProperty("success").GetBoolean());
+            var reopened = await EditBrush("cancel");
+            Assert.Equal("System", reopened.GetProperty("before").GetProperty("Kind").GetString());
         } finally {
             await app.InvokeAsync("od.close-all-document-views");
             await File.WriteAllBytesAsync(xamlPath, originalXaml);
