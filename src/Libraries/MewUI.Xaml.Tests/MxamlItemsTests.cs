@@ -69,7 +69,7 @@ public sealed class MxamlItemsTests
 		var csharp = MewUICSharpGenerator.Generate(NewDoc());
 		Assert.Single(System.Text.RegularExpressions.Regex.Matches(csharp, @"^\s*Title = ""Prefs"";", System.Text.RegularExpressions.RegexOptions.Multiline));
 		Assert.Contains("WindowSize = WindowSize.Resizable(width: 320.0, height: 200.0);", csharp);
-		Assert.DoesNotMatch(@"^\s*Width = ", csharp);
+		Assert.DoesNotMatch(new System.Text.RegularExpressions.Regex(@"^\s*Width = ", System.Text.RegularExpressions.RegexOptions.Multiline), csharp);
 		var widthOnly = MewUICSharpGenerator.Generate(MxamlDocument.Parse(Source.Replace(" Height=\"200\"", "")));
 		Assert.Contains("// unsupported: a Window size needs both Width and Height", widthOnly);
 		Assert.DoesNotContain("WindowSize =", widthOnly);
@@ -124,6 +124,9 @@ public sealed class MxamlItemsTests
 		// TabItem is not a FrameworkElement: only its own IsEnabled/HeaderText, none of the inherited set.
 		Assert.True(MewUIControlCatalog.IsSupported("TabItem", "IsEnabled"));
 		Assert.False(MewUIControlCatalog.IsSupported("TabItem", "Opacity"));
+		// Width/Height are FrameworkElement members: not on TabItem (no Width), and not on unknown types.
+		Assert.False(MewUIControlCatalog.IsSupported("TabItem", "Width"));
+		Assert.True(MewUIControlCatalog.IsSupported("Button", "Width"));
 		Assert.True(MewUIControlCatalog.IsSupported("TabControl", "Opacity"));
 	}
 }
