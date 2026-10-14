@@ -954,7 +954,13 @@ sealed class DesignerHostService : IDesignerChildService
 		if (property.IsReadOnly || IsResourceImageProperty(property.PropertyType))
 			throw new InvalidOperationException($"Property {elementId}.{propertyName} is read-only.");
 		var referenceCandidates = ComponentReferenceCandidates(host, component, property);
-		var converted = referenceCandidates == null ? ConvertPropertyValue(property, value)
+		// A System.Type is typed as its full name and resolved like the designer source's own type
+		// references (framework, then the project assembly); empty clears it.
+		var converted = property.PropertyType == typeof(Type)
+			? String.IsNullOrWhiteSpace(value) ? null
+				: snapshotLoader?.ResolveType(value.Trim()) is { IsGenericType: false } resolvedType ? resolvedType
+				: throw new ArgumentException($"Unknown type: {value}", nameof(value))
+			: referenceCandidates == null ? ConvertPropertyValue(property, value)
 			: String.IsNullOrEmpty(value) ? null
 			: referenceCandidates.FirstOrDefault(candidate => String.Equals(candidate.Site?.Name, value, StringComparison.Ordinal))
 				?? throw new ArgumentException($"Unknown component reference: {value}", nameof(value));
@@ -2069,10 +2075,17 @@ sealed class DesignerHostService : IDesignerChildService
 	static string PropertyTarget(string elementId, string propertyName, bool isRootComponent)
 		=> isRootComponent ? propertyName : elementId + "." + propertyName;
 
+	/// <summary>A type's fully qualified source spelling (nested types use '.', not '+'). Generic
+	/// types are not offered by the type editor, so they need no source form here.</summary>
+	static string TypeSourceName(Type type)
+		=> type.IsGenericType ? throw new NotSupportedException("Generic types are not supported: " + type.FullName)
+		: (type.FullName ?? type.Name).Replace('+', '.');
+
 	static ExpressionSyntax SerializeValue(object? value) => value switch {
 		null => SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression),
 		IComponent component when component.Site?.Name is { Length: > 0 } name => SyntaxFactory.ParseExpression("this." + name),
 		string text => SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(text)),
+		Type type => SyntaxFactory.ParseExpression("typeof(" + TypeSourceName(type) + ")"),
 		string[] texts => SyntaxFactory.ParseExpression("new string[] { " + string.Join(", ", texts.Select(text => SerializeValue(text).ToString())) + " }"),
 		bool boolean => SyntaxFactory.LiteralExpression(boolean ? SyntaxKind.TrueLiteralExpression : SyntaxKind.FalseLiteralExpression),
 		char character => SyntaxFactory.LiteralExpression(SyntaxKind.CharacterLiteralExpression, SyntaxFactory.Literal(character)),
@@ -2097,6 +2110,7 @@ sealed class DesignerHostService : IDesignerChildService
 		null => Vb.SyntaxFactory.NothingLiteralExpression(Vb.SyntaxFactory.Token(Vb.SyntaxKind.NothingKeyword)),
 		IComponent component when component.Site?.Name is { Length: > 0 } name => Vb.SyntaxFactory.ParseExpression("Me." + name),
 		string text => Vb.SyntaxFactory.StringLiteralExpression(Vb.SyntaxFactory.Literal(text)),
+		Type type => Vb.SyntaxFactory.ParseExpression("GetType(" + TypeSourceName(type) + ")"),
 		string[] texts => Vb.SyntaxFactory.ParseExpression("New String() {" + string.Join(", ", texts.Select(text => SerializeValueVisualBasic(text).ToString())) + "}"),
 		bool boolean => boolean
 			? Vb.SyntaxFactory.TrueLiteralExpression(Vb.SyntaxFactory.Token(Vb.SyntaxKind.TrueKeyword))
@@ -3385,6 +3399,7 @@ sealed class DesignerHostService : IDesignerChildService
 				// still Image, so expose it as an opaque binary DDP value instead of leaking an
 				// implementation-specific converter string to the Properties pad.
 				else if (value is Image || isImageProperty) serialized = "[binary]";
+				else if (value is Type typeValue) serialized = typeValue.FullName ?? typeValue.Name;
 				else if (value is Padding padding) serialized = $"{padding.Left}, {padding.Top}, {padding.Right}, {padding.Bottom}";
 				else if (value is Font font) serialized = $"{font.Name}, {font.Size.ToString(CultureInfo.InvariantCulture)}, {font.Style}";
 				else if (value is SizeF size) serialized = $"{size.Width.ToString(CultureInfo.InvariantCulture)}, {size.Height.ToString(CultureInfo.InvariantCulture)}";
@@ -3401,7 +3416,7 @@ sealed class DesignerHostService : IDesignerChildService
 				IsNull = value == null && !(isImageProperty && assignedInSource),
 				IsReadOnly = property.IsReadOnly || (referenceCandidates == null && !property.Converter.CanConvertFrom(typeof(string))
 					&& property.PropertyType != typeof(Padding) && property.PropertyType != typeof(Font)
-					&& property.PropertyType != typeof(SizeF)),
+					&& property.PropertyType != typeof(SizeF) && property.PropertyType != typeof(Type)),
 				// The source assignment is authoritative. Some LibreWinForms
 				// descriptors keep returning true after ResetValue.
 				ShouldSerialize = assignedInSource,

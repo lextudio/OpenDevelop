@@ -546,6 +546,41 @@ public sealed class FormsDesignerHostClientTests
 		#endif
 
 	[Fact]
+	public async Task ChildHost_EditsATypeValuedPropertyAsTypeof()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "custom");
+		snapshot.ProjectAssemblyPath = CustomControlFixtureDll();
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text.Replace("System.Windows.Forms.Button", "FormsDesigner.CustomControlFixture.FancyButton", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo ItemType(DesignerSessionState state)
+			=> state.Components.Single(component => component.Name == "button1").Properties.Single(property => property.Name == "ItemType");
+		Assert.False(ItemType(opened).IsReadOnly);
+		Assert.Equal("", ItemType(opened).Value);
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetPropertyAsync(1, "button1", "ItemType", "No.Such.Type", timeout.Token));
+
+		// A framework type, then a type from the project assembly.
+		var framework = await client.SetPropertyAsync(1, "button1", "ItemType", "System.String", timeout.Token);
+		Assert.True(framework.Accepted, framework.Error);
+		Assert.Equal("System.String", ItemType(framework).Value);
+		var project = await client.SetPropertyAsync(1, "button1", "ItemType", "FormsDesigner.CustomControlFixture.FancyButton", timeout.Token);
+		Assert.True(project.Accepted, project.Error);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("ItemType = typeof(FormsDesigner.CustomControlFixture.FancyButton);", text, StringComparison.Ordinal);
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(text, @"ItemType\s*="));
+
+		// The typeof assignment loads back.
+		designer.Text = text;
+		snapshot.Version = 2;
+		var reopened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error);
+		Assert.Equal("FormsDesigner.CustomControlFixture.FancyButton", ItemType(reopened).Value);
+	}
+
+	[Fact]
 	public async Task ChildHost_AssignsTextBoxLinesAsOneStringArray()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));

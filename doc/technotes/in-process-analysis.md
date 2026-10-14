@@ -733,6 +733,13 @@ optional `design/set-string-array`: the IDE proxy routes an `Items` row to `desi
 other list row to this RPC, which assigns the array in one designer transaction and rewrites one
 `<id>.Lines = new string[] { ... }` (`New String() {...}` in VB) assignment. The snapshot loader now
 evaluates string array creations in both languages, so the written source reloads.
+**Type-valued properties (2026-10-14).** The legacy ChooseClass gap, narrowed to what a Forms
+component actually exposes: a writable `System.Type` property is now an editable text row showing the
+type's full name. `design/set-property` resolves the typed name exactly as the snapshot loader resolves
+designer-source type references (framework aliases, the project assembly through its isolated load
+context, then loaded assemblies); an unknown or generic type is refused and empty clears it. The source
+is `typeof(Full.Name)` (`GetType(Full.Name)` in VB), and the loader now evaluates C# `typeof` (VB
+`GetType` was already supported). No wire change. A browsable type-list dialog is not offered.
 
 **C4 Cut, Copy and Paste (2026-10-13).** The out-of-process WPF surface had no clipboard at all;
 the in-process designer's `XamlEditOperations` copied each selected element as a XAML snippet and

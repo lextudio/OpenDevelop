@@ -326,6 +326,7 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		MemberAccessExpressionSyntax access => EvaluateMember(access),
 		ObjectCreationExpressionSyntax creation => CreateValue(creation),
 		CastExpressionSyntax cast => Evaluate(cast.Expression),
+		TypeOfExpressionSyntax typeOf => ResolveType(typeOf.Type.ToString()),
 		// "new string[] { ... }" (TextBox.Lines); other element types are not designer values here.
 		ArrayCreationExpressionSyntax { Type.ElementType: PredefinedTypeSyntax { Keyword.ValueText: "string" } or IdentifierNameSyntax { Identifier.ValueText: "String" } or QualifiedNameSyntax { Right.Identifier.ValueText: "String" } } array
 			=> array.Initializer?.Expressions.Select(item => Evaluate(item) as string ?? "").ToArray() ?? Array.Empty<string>(),
@@ -550,7 +551,7 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 
 	object? ResolveObject(string name) => components.TryGetValue(StripMe(name), out var component) ? component : ResolveType(name);
 
-	Type? ResolveType(string name)
+	internal Type? ResolveType(string name)
 	{
 		name = name.Replace("global::", "", StringComparison.Ordinal);
 		var aliases = new Dictionary<string, Type>(StringComparer.Ordinal) {
