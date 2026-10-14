@@ -78,6 +78,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete"), ("-", ""),
 			("Bring to Front", "bring-to-front"), ("Bring Forward", "bring-forward"), ("Send Backward", "send-backward"), ("Send to Back", "send-to-back"), ("-", ""),
 			("Wrap in Grid", "wrap-grid"), ("Wrap in StackPanel", "wrap-stackpanel"), ("Unwrap", "unwrap"), ("-", ""),
+			("Edit Style/Create Empty", "create-empty-style"), ("-", ""),
 			("Grid Row/Fixed", "grid-row-Pixel"), ("Grid Row/Star", "grid-row-Star"), ("Grid Row/Auto", "grid-row-Auto"),
 			("Grid Column/Fixed", "grid-column-Pixel"), ("Grid Column/Star", "grid-column-Star"), ("Grid Column/Auto", "grid-column-Auto")
 		}, command => ParseGridUnitCommand(command) is { } unit
@@ -980,6 +981,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			case "unwrap":
 				UnwrapElement(editor.FindElement(args.Name));
 				break;
+			case "create-empty-style":
+				CreateEmptyStyle(editor.FindElement(args.Name));
+				break;
 			default:
 				if (ParseGridUnitCommand(args.Command) is { } unit)
 					status.Text = SetGridTrackUnit(unit.IsRow, unit.Unit);
@@ -1149,6 +1153,19 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			return;
 		ApplyDocumentChange();
 		SelectElement((string)wrapper.Attribute(WinUIXamlDocumentEditor.NameDirective));
+	}
+
+	void CreateEmptyStyle(XElement element)
+	{
+		var key = element == null ? null : editor.CreateEmptyStyle(element);
+		if (key == null)
+		{
+			status.Text = "Create Empty Style needs a non-root element without a Style";
+			return;
+		}
+		ApplyDocumentChange();
+		SelectSourceElement(element, path: null);
+		status.Text = "Created Style " + key;
 	}
 
 	/// <summary>Replaces a container with its children; the selection clears because the
@@ -2089,6 +2106,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		Add("Wrap in Grid", "wrap-grid");
 		Add("Wrap in StackPanel", "wrap-stackpanel");
 		Add("Unwrap", "unwrap");
+		Add("Create Empty Style", "create-empty-style");
 		return menu;
 	}
 
@@ -2172,6 +2190,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			case "unwrap":
 				UnwrapElement(element);
 				break;
+			case "create-empty-style":
+				CreateEmptyStyle(element);
+				break;
 		}
 	}
 
@@ -2198,6 +2219,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		Add("Wrap in Grid", "wrap-grid");
 		Add("Wrap in StackPanel", "wrap-stackpanel");
 		Add("Unwrap", "unwrap");
+		Add("Create Empty Style", "create-empty-style");
 		return menu;
 	}
 

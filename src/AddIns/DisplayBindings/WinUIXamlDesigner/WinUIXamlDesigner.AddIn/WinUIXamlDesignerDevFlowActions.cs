@@ -763,7 +763,7 @@ public static class WinUIXamlDesignerDevFlowActions
 	}
 
 	[DevFlowAction("od.winui-designer.context",
-		Description = "Invoke a design-surface context command as a source edit: cut/copy/paste/duplicate/delete/bring-to-front/bring-forward/send-backward/send-to-back/wrap-grid/wrap-stackpanel/unwrap")]
+		Description = "Invoke a design-surface context command as a source edit: cut/copy/paste/duplicate/delete/bring-to-front/bring-forward/send-backward/send-to-back/wrap-grid/wrap-stackpanel/unwrap/create-empty-style")]
 	public static string Context(string command, string name = "")
 	{
 		var view = ActivateDesigner();

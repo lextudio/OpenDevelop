@@ -76,4 +76,37 @@ public sealed class WinUIXamlArrangeTests
 		editor.Undo();
 		Assert.Equal(new[] { "Grid.RowDefinitions", "B", "A", "C" }, Names(editor.FindElement("G")!));
 	}
+
+	[Fact]
+	public void CreateEmptyStyleAddsAKeyedStyleToTheRootResourcesInOneUndoStep()
+	{
+		const string page = """
+			<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:App">
+			  <StackPanel x:Name="Panel">
+			    <Button x:Name="A"/><Button x:Name="B"/><Button x:Name="Styled" Style="{StaticResource X}"/><local:Card x:Name="Card"/>
+			  </StackPanel>
+			</Page>
+			""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(page, out var error), error);
+		Assert.Null(editor.CreateEmptyStyle(editor.Document!.Root!));
+		Assert.Null(editor.CreateEmptyStyle(editor.FindElement("Styled")!));
+		Assert.False(editor.CanUndo);
+
+		Assert.Equal("ButtonStyle1", editor.CreateEmptyStyle(editor.FindElement("A")!));
+		Assert.Equal("ButtonStyle2", editor.CreateEmptyStyle(editor.FindElement("B")!));
+		Assert.Equal("CardStyle1", editor.CreateEmptyStyle(editor.FindElement("Card")!));
+		var root = editor.Document!.Root!;
+		var resources = Assert.Single(root.Elements(), e => e.Name.LocalName == "Page.Resources");
+		Assert.Same(resources, root.Elements().First());
+		XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+		Assert.Equal(new[] { "ButtonStyle1:Button", "ButtonStyle2:Button", "CardStyle1:local:Card" },
+			resources.Elements().Select(e => (string?)e.Attribute(x + "Key") + ":" + (string?)e.Attribute("TargetType")));
+		Assert.Equal("{StaticResource ButtonStyle1}", (string?)editor.FindElement("A")!.Attribute("Style"));
+		Assert.True(new WinUIXamlDocumentEditor().Reset(editor.Document.ToString(), out error), error);
+
+		editor.Undo();
+		Assert.Null(editor.FindElement("Card")!.Attribute("Style"));
+		Assert.Equal(2, editor.Document!.Root!.Elements().First().Elements().Count());
+	}
 }

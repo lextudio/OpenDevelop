@@ -450,6 +450,50 @@ sealed class WinUIXamlDocumentEditor
 		CommitChange();
 	}
 
+	/// <summary>Visual Studio's Edit Style → Create Empty: adds
+	/// <c>&lt;Style x:Key="ButtonStyle1" TargetType="Button"/&gt;</c> to the root's Resources (creating
+	/// the <c>&lt;Page.Resources&gt;</c> property element when absent) and sets
+	/// <c>Style="{StaticResource ButtonStyle1}"</c> on the element, in one undo step. TargetType is
+	/// spelled like the element's own tag, which the document already resolves. Refused for the root
+	/// and for an element that already sets a Style. Returns the new key, or null.</summary>
+	public string CreateEmptyStyle(XElement element)
+	{
+		if (element == null)
+			throw new ArgumentNullException(nameof(element));
+		if (element.Document != Document)
+			throw new ArgumentException("An element from this document is required.", nameof(element));
+		var root = Document.Root;
+		if (element == root || element.Parent == null || element.Name.LocalName.Contains('.')
+			|| element.Attribute("Style") != null
+			|| element.Elements().Any(e => e.Name.LocalName.EndsWith(".Style", StringComparison.Ordinal)))
+			return null;
+		var xaml = NameDirective.Namespace;
+		var keyName = xaml + "Key";
+		var taken = new HashSet<string>(Document.Descendants().Select(e => (string)e.Attribute(keyName)).Where(k => k != null), StringComparer.Ordinal);
+		var index = 1;
+		while (taken.Contains(element.Name.LocalName + "Style" + index))
+			index++;
+		var key = element.Name.LocalName + "Style" + index;
+		var prefix = element.GetPrefixOfNamespace(element.Name.Namespace);
+		var targetType = string.IsNullOrEmpty(prefix) || element.Name.Namespace == root.GetDefaultNamespace()
+			? element.Name.LocalName : prefix + ":" + element.Name.LocalName;
+
+		BeginChange();
+		var resourcesName = root.Name.Namespace + (root.Name.LocalName + ".Resources");
+		var resources = root.Element(resourcesName);
+		if (resources == null)
+		{
+			resources = new XElement(resourcesName);
+			root.AddFirst(resources);
+		}
+		// A ResourceDictionary child holds the entries when present (merged dictionaries).
+		var container = resources.Elements().FirstOrDefault(e => e.Name.LocalName == "ResourceDictionary") ?? resources;
+		container.Add(new XElement(root.GetDefaultNamespace() + "Style", new XAttribute(keyName, key), new XAttribute("TargetType", targetType)));
+		element.SetAttributeValue("Style", "{StaticResource " + key + "}");
+		CommitChange();
+		return key;
+	}
+
 	/// <summary>Bring Forward / Send Backward: swaps the element with its next (or previous) sibling
 	/// element, skipping property elements such as <c>Grid.RowDefinitions</c>, in one undo step.
 	/// The root and an element already at that end are left unchanged.</summary>

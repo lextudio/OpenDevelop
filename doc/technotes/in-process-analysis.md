@@ -974,7 +974,13 @@ a non-panel parent's single content slot. Unlike WPF's unwrap it keeps no measur
 host mutation; the edit is source-only, like Wrap). The same menus add **Bring Forward** and **Send
 Backward** beside Bring to Front/Send to Back: `MoveOneStep` swaps the element with its neighbouring
 child element (property elements such as `Grid.RowDefinitions` are skipped), one undo step, inert at
-either end and for the root. Covered by `WinUIXamlArrangeTests`.
+either end and for the root. **Edit Style → Create Empty** (canvas submenu; "Create Empty Style" in the
+Outline menus) is the source-only counterpart of WPF's v41 command: `CreateEmptyStyle` adds
+`<Style x:Key="ButtonStyle1" TargetType="Button"/>` to the root's `<Page.Resources>` (created first
+when absent, or into its `ResourceDictionary`), spells TargetType like the element's tag (`local:Card`)
+and sets `Style="{StaticResource …}"`, in one undo step; refused for the root and an element that
+already sets a Style. Covered by `WinUIXamlArrangeTests`. Edit Template is not offered: a source-only
+editor cannot tell a Control from a Panel without the runtime type.
 
 **C3 WinForms TableLayout boundary (2026-10-13).** The first safe host slice is now landed:
 `TableLayoutPanel` tree nodes publish the live child’s measured `GetRowHeights`/`GetColumnWidths`
