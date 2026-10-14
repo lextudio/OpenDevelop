@@ -258,6 +258,7 @@ sealed class DesignerHostService : IDesignerChildService
 		items = component switch {
 			ListBox { DataSource: null } list => list.Items,
 			ComboBox { DataSource: null } combo => combo.Items,
+			DomainUpDown upDown => upDown.Items,
 			_ => null
 		};
 		return items != null && items.Cast<object?>().All(item => item is string);
@@ -287,16 +288,18 @@ sealed class DesignerHostService : IDesignerChildService
 				collection.Add(text);
 			transaction.Commit();
 		}
-		RewriteItems(elementId, texts);
+		// DomainUpDownItemCollection has no AddRange; the designer writes one Add per item.
+		RewriteItems(elementId, texts, addEach: component is DomainUpDown);
 		return CurrentState(baseVersion);
 	}
 
 	/// <summary>Replaces every "&lt;id&gt;.Items.Add(...)"/"AddRange(...)" statement in
 	/// InitializeComponent with one AddRange of <paramref name="texts"/> (none when empty), at the
-	/// first replaced statement's position, else after the control's last own statement.</summary>
-	void RewriteItems(string elementId, string[] texts)
+	/// first replaced statement's position, else after the control's last own statement. With
+	/// <paramref name="addEach"/> it writes one Add per item instead (a collection without AddRange).</summary>
+	void RewriteItems(string elementId, string[] texts, bool addEach)
 	{
-		if (IsVisualBasic) { RewriteItemsVisualBasic(elementId, texts); return; }
+		if (IsVisualBasic) { RewriteItemsVisualBasic(elementId, texts, addEach); return; }
 		var file = CurrentDesignerFile();
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
 		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
@@ -314,7 +317,9 @@ sealed class DesignerHostService : IDesignerChildService
 		}
 		var kept = statements.Where(statement => !IsItemsCall(statement)).ToList();
 		insertAt -= statements.Take(insertAt).Count(IsItemsCall);
-		if (texts.Length > 0) {
+		if (addEach)
+			kept.InsertRange(insertAt, texts.Select(text => SyntaxFactory.ParseStatement($"this.{elementId}.Items.Add({SerializeValue(text)});")));
+		else if (texts.Length > 0) {
 			var literals = string.Join(", ", texts.Select(text => SerializeValue(text).ToString()));
 			kept.Insert(insertAt, SyntaxFactory.ParseStatement($"this.{elementId}.Items.AddRange(new object[] {{ {literals} }});"));
 		}
@@ -322,7 +327,7 @@ sealed class DesignerHostService : IDesignerChildService
 			.NormalizeWhitespace().ToFullString();
 	}
 
-	void RewriteItemsVisualBasic(string elementId, string[] texts)
+	void RewriteItemsVisualBasic(string elementId, string[] texts, bool addEach)
 	{
 		var file = CurrentDesignerFile();
 		var root = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
@@ -341,7 +346,9 @@ sealed class DesignerHostService : IDesignerChildService
 		}
 		var kept = statements.Where(statement => !IsItemsCall(statement)).ToList();
 		insertAt -= statements.Take(insertAt).Count(IsItemsCall);
-		if (texts.Length > 0) {
+		if (addEach)
+			kept.InsertRange(insertAt, texts.Select(text => Vb.SyntaxFactory.ParseExecutableStatement($"Me.{elementId}.Items.Add({SerializeValueVisualBasic(text)})")));
+		else if (texts.Length > 0) {
 			var literals = string.Join(", ", texts.Select(text => SerializeValueVisualBasic(text).ToString()));
 			kept.Insert(insertAt, Vb.SyntaxFactory.ParseExecutableStatement($"Me.{elementId}.Items.AddRange(New Object() {{{literals}}})"));
 		}

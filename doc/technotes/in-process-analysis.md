@@ -724,6 +724,9 @@ or after the control's own last statement when the source had none; clearing rem
 `ITypeEditor`s are thin shims over one implementation. The Forms Properties-pad proxy attaches the
 editor to an `ItemsCollection` row and commits through `design/set-items` as one designer undo step;
 `od.forms-designer.properties-pad.edit-items` drives the real row button with the shared script.
+**DomainUpDown (2026-10-14).** `DomainUpDown.Items` joins the same contract (no wire change: it is
+already an `ItemsCollection` row). Its collection has no `AddRange`, so the rewrite writes one
+`<id>.Items.Add("...")` per item, in order, as the Visual Studio serializer does.
 
 **C4 Cut, Copy and Paste (2026-10-13).** The out-of-process WPF surface had no clipboard at all;
 the in-process designer's `XamlEditOperations` copied each selected element as a XAML snippet and

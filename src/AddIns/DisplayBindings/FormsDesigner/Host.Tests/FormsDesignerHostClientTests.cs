@@ -546,6 +546,44 @@ public sealed class FormsDesignerHostClientTests
 		#endif
 
 	[Fact]
+	public async Task ChildHost_EditsDomainUpDownItemsAsOneAddPerItem()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				this.upDown = new System.Windows.Forms.DomainUpDown();
+				        this.upDown.Items.Add("Low");
+				        this.upDown.Items.Add("High");
+				        this.upDown.Location = new System.Drawing.Point(12, 60);
+				        this.Controls.Add(this.button1);
+				        this.Controls.Add(this.upDown);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.DomainUpDown upDown;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var row = opened.Components.Single(component => component.Name == "upDown").Properties.Single(property => property.EditorKind == "ItemsCollection");
+		Assert.Equal(new[] { "Low", "High" }, row.CollectionItems);
+
+		var edited = await client.SetItemsAsync(1, "upDown", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "High" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "Mid" },
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Low" }
+		}, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.DoesNotContain("upDown.Items.AddRange", text, StringComparison.Ordinal);
+		var high = text.IndexOf("upDown.Items.Add(\"High\");", StringComparison.Ordinal);
+		var mid = text.IndexOf("upDown.Items.Add(\"Mid\");", StringComparison.Ordinal);
+		var low = text.IndexOf("upDown.Items.Add(\"Low\");", StringComparison.Ordinal);
+		Assert.True(high >= 0 && high < mid && mid < low, text);
+		Assert.Equal(3, System.Text.RegularExpressions.Regex.Matches(text, @"upDown\.Items\.Add\(").Count);
+	}
+
+	[Fact]
 	public async Task ChildHost_EditsListControlStringItemsAsOneAddRange()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
