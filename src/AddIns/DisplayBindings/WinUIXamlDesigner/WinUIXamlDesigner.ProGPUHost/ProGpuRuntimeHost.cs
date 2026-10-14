@@ -51,8 +51,22 @@ public static class ProGpuRuntimeHostBootstrap
 sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay,
 	IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlLifecycleProbe,
 	IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlMultiSelection, IWinUIXamlContextCommands,
-	IWinUIXamlGridGuides, IWinUIXamlNudge, IWinUIXamlComponentTray
+	IWinUIXamlContextMenu, IWinUIXamlGridGuides, IWinUIXamlNudge, IWinUIXamlComponentTray
 {
+    public void SetContextCommands(IReadOnlyList<(string Header, string Command)> commands, Func<string, bool?> canExecute)
+    {
+        surface.SetContextCommands(commands);
+        surface.ContextCommandCanExecute = command => canExecute(command) ?? surface.DefaultContextCommandCanExecute(command);
+    }
+
+    public System.Numerics.Vector2? ContextMenuDesignPoint
+    {
+        get => surface.ContextMenuDesignPoint;
+        set => surface.ContextMenuDesignPoint = value;
+    }
+
+    public IReadOnlyList<(string Header, string Command, bool Enabled)> DescribeContextCommands() => surface.DescribeContextCommands();
+
     readonly DesignSurface surface = new();
     readonly DesignSurfaceController canvas;
     readonly ProGpuOffscreenRenderer renderer = new();

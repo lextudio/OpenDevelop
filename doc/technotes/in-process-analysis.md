@@ -929,7 +929,11 @@ Duplicate pastes a copy right after the original without touching the clipboard.
 paste defect: `WinUIXamlDocumentEditor.Paste` renamed only the pasted root, so copying a panel with
 named children produced duplicate `x:Name`s and the page failed to load. Every named descendant
 that collides is now renamed (`CardTitle` -> `CardTitle1`). `WinUIXamlPasteTests` and
-`WinUIDesigner_DuplicateAndCutKeepNamesUnique` cover it.
+`WinUIDesigner_DuplicateAndCutKeepNamesUnique` cover it. ProGPU now implements `IWinUIXamlContextMenu` too, so its menu gains
+the same Cut/Duplicate (and Copy/Paste/Delete/z-order/wrap) list; the Grid unit commands require
+`HasMeasuredGridTracks` (a runtime with measured tracks, i.e. Uno) and stay disabled on ProGPU,
+whose source-only approximation is not evidence for a unit edit. ProGPU's integration journeys skip
+on macOS, so its menu is verified by build only there; run `ProGpuWinUIDesignerTests` where they run.
 
 **C3 WinForms TableLayout boundary (2026-10-13).** The first safe host slice is now landed:
 `TableLayoutPanel` tree nodes publish the live child’s measured `GetRowHeights`/`GetColumnWidths`

@@ -195,6 +195,10 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		set { if (runtime is IWinUIXamlContextMenu menu) menu.ContextMenuDesignPoint = value; }
 	}
 
+	/// <summary>Whether the runtime publishes measured Grid tracks (Uno); ProGPU only approximates
+	/// them from source, which is not enough evidence for a unit or structural track edit.</summary>
+	public bool HasMeasuredGridTracks => runtime is IWinUIXamlGridTrackSplit;
+
 	/// <summary>The surface's context commands with their current enablement, for tests.</summary>
 	public IReadOnlyList<(string Header, string Command, bool Enabled)> DescribeContextCommands()
 		=> (runtime as IWinUIXamlContextMenu)?.DescribeContextCommands() ?? Array.Empty<(string, string, bool)>();

@@ -70,9 +70,10 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		previewHost.ElementPathPicked += OnElementPathPickedOnSurface;
 		previewHost.ControlDropped += OnControlDroppedOnSurface;
 		previewHost.ContextCommandRequested += OnContextCommandOnSurface;
-		// The surface's default commands, plus the WPF designer's Grid unit commands (Fixed/Star/
-		// Auto) for the track under the pointer. Only a runtime with the context-menu capability
-		// (Uno) shows them; others keep the default menu.
+		// The surface's default commands plus Cut/Duplicate and the WPF designer's Grid unit commands
+		// (Fixed/Star/Auto) for the track under the pointer. Runtimes with the context-menu capability
+		// (Uno, ProGPU) show this list; the unit commands need measured tracks, so they stay disabled
+		// on ProGPU (see HasMeasuredGridTracks).
 		previewHost.SetContextCommands(new[] {
 			("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete"), ("-", ""),
 			("Bring to Front", "bring-to-front"), ("Send to Back", "send-to-back"), ("-", ""),
@@ -1002,7 +1003,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	(string Grid, XElement Definition, string Unit, double Size)? GridTrackAtContextPoint(bool isRow)
 	{
 		var name = SelectedElementName;
-		if (string.IsNullOrEmpty(name) || previewHost.ContextMenuDesignPoint is not { } point
+		if (!previewHost.HasMeasuredGridTracks || string.IsNullOrEmpty(name) || previewHost.ContextMenuDesignPoint is not { } point
 			|| editor.FindElement(name) is not { Name.LocalName: "Grid" } grid
 			|| previewHost.QueryElementBounds(name) is not { } bounds)
 			return null;
