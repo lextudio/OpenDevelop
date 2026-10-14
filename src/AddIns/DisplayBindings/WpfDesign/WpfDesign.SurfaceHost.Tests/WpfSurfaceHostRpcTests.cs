@@ -2388,6 +2388,28 @@ public sealed class WpfSurfaceHostRpcTests
 	static string WpfThemeFixtureDll() => typeof(FixtureMarker).Assembly.Location;
 
 	[Fact]
+	public async Task EditACopy_CopiesTheProjectThemesImplicitStyle()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, ThemedXaml, WpfThemeFixtureDll()), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		static string? Find(DesignerElementNode node) => node.Name == "greeting" ? node.Id : node.Children.Select(Find).FirstOrDefault(id => id != null);
+		var greeting = Find(opened.Tree!)!;
+
+		// Without a selected project theme there is nothing to copy (never the runtime's theme).
+		Assert.False((await client.CopyThemeStyleAsync(1, greeting, timeout.Token)).Accepted);
+		Assert.True((await client.SetThemeAsync(1, "Midnight", timeout.Token)).Accepted);
+		var copied = await client.CopyThemeStyleAsync(1, greeting, timeout.Token);
+		Assert.True(copied.Accepted, copied.Error);
+		var text = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.True(System.Text.RegularExpressions.Regex.IsMatch(text, "<Style(?=[^>]*x:Key=\"TextBlockStyle1\")(?=[^>]*TargetType=\"TextBlock\")"), text);
+		Assert.Contains("<Setter Property=\"FontSize\" Value=\"13\"", text, StringComparison.Ordinal);
+		Assert.Contains("Style=\"{StaticResource TextBlockStyle1}\"", text, StringComparison.Ordinal);
+		Assert.True((await client.OpenAsync(Snapshot(2, text), timeout.Token)).Accepted, text);
+	}
+
+	[Fact]
 	public async Task DesignTheme_NoThemeInfo_ReportsNoThemes()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));

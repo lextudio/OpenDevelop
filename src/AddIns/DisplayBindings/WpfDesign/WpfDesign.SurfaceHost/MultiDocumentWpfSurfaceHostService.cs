@@ -118,6 +118,8 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerSessionState CreateEmptyStyle(string sessionId, string documentId, long baseVersion, string elementId) => Checked(sessionId, documentId).CreateEmptyStyle(baseVersion, elementId);
 	[JsonRpcMethod("design/create-based-on-style")]
 	public DesignerSessionState CreateBasedOnStyle(string sessionId, string documentId, long baseVersion, string elementId) => Checked(sessionId, documentId).CreateBasedOnStyle(baseVersion, elementId);
+	[JsonRpcMethod("design/copy-theme-style")]
+	public DesignerSessionState CopyThemeStyle(string sessionId, string documentId, long baseVersion, string elementId) => Checked(sessionId, documentId).CopyThemeStyle(baseVersion, elementId);
 	[JsonRpcMethod("design/create-empty-template")]
 	public DesignerSessionState CreateEmptyTemplate(string sessionId, string documentId, long baseVersion, string elementId) => Checked(sessionId, documentId).CreateEmptyTemplate(baseVersion, elementId);
 	[JsonRpcMethod("design/move-into")]

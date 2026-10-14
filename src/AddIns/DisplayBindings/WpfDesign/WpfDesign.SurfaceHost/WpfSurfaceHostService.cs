@@ -1040,6 +1040,73 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			=> CreateEmptyResource(baseVersion, elementId, "Style", "Style", () => new Style(),
 				item => item.Component is FrameworkElement, basedOnCurrent: true);
 
+		/// <summary>Edit Style → Edit a Copy, from the <b>project's</b> selected design theme (never the
+		/// child runtime's built-in theme, which under LibreWPF is not the Microsoft one the project
+		/// ships with): copies the theme's implicit Style for the element's type
+		/// (<c>TargetType="Button"</c> / <c>{x:Type Button}</c>, no x:Key) into the root's Resources
+		/// as <c>ButtonStyle1</c> and points the element at it, in one undo group. Refused when no
+		/// project theme is selected, the theme has no implicit style for the type, or the element
+		/// already sets a Style.</summary>
+		[JsonRpcMethod("design/copy-theme-style")]
+		public DesignerSessionState CopyThemeStyle(long baseVersion, string elementId)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId ?? "", out var item) || current?.RootItem is not XamlDesignItem root || item == root
+					|| item.Component is not FrameworkElement)
+					return NotFound(state, "Edit a Copy needs a non-root element: " + elementId);
+				var styleProperty = item.Properties["Style"];
+				if (styleProperty.IsSet)
+					return NotFound(state, "The element already sets a Style.");
+				if (appliedThemeName == null || themeSources == null || !themeSources.TryGetValue(appliedThemeName, out var resourceName))
+					return NotFound(state, "Select a project design theme first; Edit a Copy does not copy the designer's built-in theme.");
+				var type = item.Component.GetType();
+				System.Xml.Linq.XElement? source;
+				try
+				{
+					using var stream = projectAssembly!.GetManifestResourceStream(resourceName);
+					if (stream == null)
+						return NotFound(state, "Embedded theme resource not found: " + resourceName);
+					var theme = System.Xml.Linq.XDocument.Load(stream);
+					System.Xml.Linq.XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+					bool Names(string? text) => text != null && (text == type.Name || text.EndsWith(":" + type.Name, StringComparison.Ordinal)
+						|| System.Text.RegularExpressions.Regex.IsMatch(text, @"^\{x:Type\s+(\w+:)?" + type.Name + @"\s*\}$"));
+					source = theme.Root?.Elements().FirstOrDefault(e => e.Name.LocalName == "Style"
+						&& (e.Attribute(xaml + "Key") is not { } k ? Names((string?)e.Attribute("TargetType")) : Names(k.Value)));
+					if (source == null)
+						return NotFound(state, "The '" + appliedThemeName + "' theme has no implicit Style for " + type.Name + ".");
+					source = new System.Xml.Linq.XElement(source);
+					// Keep every namespace the theme root declares so prefixes in the copy resolve.
+					foreach (var declaration in theme.Root!.Attributes().Where(a => a.IsNamespaceDeclaration))
+						if (source.Attribute(declaration.Name) == null)
+							source.Add(new System.Xml.Linq.XAttribute(declaration));
+					source.SetAttributeValue(xaml + "Key", null);
+				}
+				catch (Exception e) { return NotFound(state, "Failed to read the theme: " + e.GetBaseException().Message); }
+				var taken = new HashSet<string>(ResourceKeys(item, _ => true), StringComparer.Ordinal);
+				var index = 1;
+				while (taken.Contains(type.Name + "Style" + index))
+					index++;
+				var key = type.Name + "Style" + index;
+				try
+				{
+					using var changeGroup = item.OpenGroup("Edit a Copy of " + type.Name + " Style");
+					var parsed = ICSharpCode.WpfDesign.XamlDom.XamlParser.ParseSnippet(root.XamlObject, source.ToString(System.Xml.Linq.SaveOptions.DisableFormatting), current.ParserSettings);
+					if (parsed == null || ((XamlComponentService)item.Services.Component).RegisterXamlComponentRecursive(parsed) is not { } style)
+						return NotFound(state, "The theme's Style could not be parsed.");
+					root.Properties["Resources"].CollectionElements.Add(style);
+					style.Key = key;
+					styleProperty.SetValue(new StaticResourceExtension());
+					styleProperty.Value!.Properties["ResourceKey"].SetValue(key);
+					changeGroup.Commit();
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
 		DesignerSessionState CreateEmptyResource(long baseVersion, string elementId, string propertyName, string keySuffix,
 			Func<object> create, Func<DesignItem, bool> accepts, bool basedOnCurrent = false)
 			=> dispatcher.Dispatch(() => {

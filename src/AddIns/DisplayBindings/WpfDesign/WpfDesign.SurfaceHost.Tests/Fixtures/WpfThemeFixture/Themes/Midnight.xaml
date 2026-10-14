@@ -1,4 +1,8 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 	<SolidColorBrush x:Key="FixtureThemeBackground" Color="#FF1E1E1E" />
+	<!-- The implicit style "Edit a Copy" copies into a document. -->
+	<Style TargetType="TextBlock">
+		<Setter Property="FontSize" Value="13" />
+	</Style>
 </ResourceDictionary>

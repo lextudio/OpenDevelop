@@ -476,7 +476,7 @@ Ranked by (a) parity gap closed per line, (b) genuinely missing rather than re-i
 | **11** | **Collection editor + ChooseClass dialog** | `PropertyGrid/Editors/CollectionEditor.*`, `Services/ChooseClass*` | **Collection editor delivered** for WPF ListBox/ComboBox/ListView items and TabControl headers and WinForms string `Items` (`CollectionItemsEditing`). ChooseClass has no caller in DDP, so there is nothing to port. |
 | **12** | **XAML error ranges + line-length-preserving repair** | `XamlExceptionRange`, `KeepSuggestedContentSameLength` | **Error ranges delivered (C5):** WinUI and WPF diagnostics carry file, line, column and end column to the Error List and goto-error. Line-length-preserving repair is not ported. |
 | **13** | **`FocusNavigator`** | `WpfDesign.Designer/Project/FocusNavigator.cs` | **Delivered:** `DesignerFocusNavigator` uses snapshot pre-order traversal for Tab/Shift+Tab primary selection, skips hidden/non-designable/unselectable nodes, wraps at both ends and tolerates a stale selection or malformed cycle. `DesignSurface` owns the key gesture while the controller retains each backend's keying/selection policy. |
-| **14** | **Context-menu shell** | the 9 `*ContextMenu.xaml` | **WPF Align/Order/Wrap/Unwrap delivered (2026-10-12)**; Edit Style / Edit Template → Create Empty and Edit Style → Create Based On Current delivered (2026-10-14), Edit a Copy of a theme default deferred. One boilerplate template; we already have `SetContextCommands` (`:416`) + `DesignerVerbMenuPlanner`. Port content, not the `ExtensionServer` registration. |
+| **14** | **Context-menu shell** | the 9 `*ContextMenu.xaml` | **WPF Align/Order/Wrap/Unwrap delivered (2026-10-12)**; Edit Style / Edit Template → Create Empty and Edit Style → Create Based On Current and Edit a Copy (from the project's design theme) delivered (2026-10-14); copying the runtime's built-in theme is deliberately not offered. One boilerplate template; we already have `SetContextCommands` (`:416`) + `DesignerVerbMenuPlanner`. Port content, not the `ExtensionServer` registration. |
 | **15** | **Toolbox: two-sided filtering + document customization** | `ToolboxService.FilterPermitted`, `IToolboxCustomizer`, `ToolboxProvider`'s provenance re-categorisation | `Require`/`Prevent`/`Custom` beats `Scope` equality. **Document category priority is now delivered:** `DesignerToolboxScope` applies an owner-scoped category-priority map to the shared pad while retaining registration order inside a category; GTK and MewUI put Containers first for blank-document authoring. Two-sided declarative filtering still needs metadata provenance from both the item and active designer. |
 
 Deliberately excluded from the top 15: `AdornerLayer` itself (rewrite, not port), `EditorManager`'s
@@ -1144,7 +1144,12 @@ Protocol **v44** adds `design/create-based-on-style` (**Edit Style → Create Ba
 element whose Style is `{StaticResource K}`, it adds `<Style x:Key="ButtonStyle1" TargetType="Button"
 BasedOn="{StaticResource K}"/>` and repoints the element, one undo group. This is the safe part of Edit
 a Copy: the project-authored style is inherited rather than copied, so nothing comes from the child
-runtime's theme. Edit a Copy of a *theme* default stays deferred.
+runtime's theme. Protocol **v45** adds `design/copy-theme-style` (**Edit Style → Edit a Copy (Project
+Theme)**): with a project design theme selected (`design/theme`, embedded `themes/<name>.xaml`), it
+copies that theme's implicit Style for the element's type (no x:Key; `TargetType="T"` or `{x:Type T}`)
+into the root's Resources as `TStyle1`, keeping the theme root's namespace declarations, and points the
+element at it in one undo group. Without a selected project theme it is refused: the child runtime's
+built-in theme (LibreWPF's, not the Microsoft one the project ships with) is still never copied.
 
 **C2 Binding converter (2026-10-12).** Protocol **v17** adds WPF's optional
 `design/set-binding-converter`. A Binding's `Converter` row is a drop-down of the string keys of

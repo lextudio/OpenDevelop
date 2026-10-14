@@ -62,7 +62,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v42 adds WPF's optional design/create-empty-template (Edit Template → Create Empty).
 		// v43 adds the WinForms host's optional design/set-string-array (TextBox.Lines list editor).
 		// v44 adds WPF's optional design/create-based-on-style (Edit Style → Create Based On Current).
-		public const int Version = 44;
+		// v45 adds WPF's optional design/copy-theme-style (Edit a Copy from the project's design theme).
+		public const int Version = 45;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
