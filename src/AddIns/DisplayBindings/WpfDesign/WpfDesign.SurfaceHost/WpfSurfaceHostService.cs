@@ -1070,10 +1070,14 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						return NotFound(state, "Embedded theme resource not found: " + resourceName);
 					var theme = System.Xml.Linq.XDocument.Load(stream);
 					System.Xml.Linq.XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+					bool IsTypeExtension(string? text) => text != null
+						&& System.Text.RegularExpressions.Regex.IsMatch(text, @"^\{x:Type\s+(\w+:)?" + type.Name + @"\s*\}$");
 					bool Names(string? text) => text != null && (text == type.Name || text.EndsWith(":" + type.Name, StringComparison.Ordinal)
-						|| System.Text.RegularExpressions.Regex.IsMatch(text, @"^\{x:Type\s+(\w+:)?" + type.Name + @"\s*\}$"));
+						|| IsTypeExtension(text));
+					// Implicit: no x:Key and a matching TargetType, or keyed by {x:Type T} (what an
+					// implicit style's key is); a style keyed by a plain name is an explicit style.
 					source = theme.Root?.Elements().FirstOrDefault(e => e.Name.LocalName == "Style"
-						&& (e.Attribute(xaml + "Key") is not { } k ? Names((string?)e.Attribute("TargetType")) : Names(k.Value)));
+						&& (e.Attribute(xaml + "Key") is not { } k ? Names((string?)e.Attribute("TargetType")) : IsTypeExtension(k.Value)));
 					if (source == null)
 						return NotFound(state, "The '" + appliedThemeName + "' theme has no implicit Style for " + type.Name + ".");
 					source = new System.Xml.Linq.XElement(source);
