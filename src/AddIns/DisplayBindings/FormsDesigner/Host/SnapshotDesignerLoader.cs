@@ -348,7 +348,7 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		VbSyntax.ObjectCreationExpressionSyntax creation => CreateValueVisualBasic(creation),
 		VbSyntax.CTypeExpressionSyntax cast => EvaluateVisualBasic(cast.Expression),
 		VbSyntax.ArrayCreationExpressionSyntax array when array.Type.ToString() is "String" or "System.String"
-			=> array.Initializer.Initializers.Select(item => EvaluateVisualBasic(item) as string ?? "").ToArray(),
+			=> array.Initializer?.Initializers.Select(item => EvaluateVisualBasic(item) as string ?? "").ToArray() ?? Array.Empty<string>(),
 		VbSyntax.GetTypeExpressionSyntax getType => ResolveType(getType.Type.ToString()),
 		VbSyntax.InvocationExpressionSyntax invocation when invocation.Expression is VbSyntax.MemberAccessExpressionSyntax member
 			&& member.Name.Identifier.ValueText == "GetObject" && invocation.ArgumentList.Arguments.Count == 1
