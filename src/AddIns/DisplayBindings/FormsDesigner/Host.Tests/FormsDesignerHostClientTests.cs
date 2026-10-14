@@ -559,6 +559,10 @@ public sealed class FormsDesignerHostClientTests
 		DesignerPropertyInfo ItemType(DesignerSessionState state)
 			=> state.Components.Single(component => component.Name == "button1").Properties.Single(property => property.Name == "ItemType");
 		Assert.False(ItemType(opened).IsReadOnly);
+		// Suggestions: the project's own types first, then common framework types; free text stays allowed.
+		Assert.Contains("FormsDesigner.CustomControlFixture.FancyButton", ItemType(opened).SuggestedValues);
+		Assert.Contains("System.String", ItemType(opened).SuggestedValues);
+		Assert.Empty(ItemType(opened).AllowedValues);
 		Assert.Equal("", ItemType(opened).Value);
 		await Assert.ThrowsAnyAsync<Exception>(() => client.SetPropertyAsync(1, "button1", "ItemType", "No.Such.Type", timeout.Token));
 

@@ -2274,6 +2274,8 @@ namespace ICSharpCode.FormsDesigner
 				if ((property.Kind == "Enum" || String.Equals(property.EditorKind, "ComponentReference", StringComparison.Ordinal))
 					&& property.AllowedValues.Count > 0)
 					attributes.Add(new TypeConverterAttribute(typeof(RemoteEnumConverter)));
+				else if (property.SuggestedValues.Count > 0)
+					attributes.Add(new TypeConverterAttribute(typeof(RemoteSuggestionConverter)));
 				if (String.Equals(property.EditorKind, "ResourceImage", StringComparison.Ordinal) || owner.CanCreateRemoteResourceImage(property))
 					attributes.Add(new EditorAttribute(typeof(ResourceImagePropertyEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 				// Read-only to generic editing; the "…" editor commits the whole list.
@@ -2290,6 +2292,7 @@ namespace ICSharpCode.FormsDesigner
 				=> DesignerPropertySemantics.IsReadOnly(property);
 
 			internal IReadOnlyList<string> AllowedValues => property.AllowedValues;
+			internal IReadOnlyList<string> SuggestedValues => property.SuggestedValues;
 			string IResourceImageProperty.EditorKind => property.EditorKind;
 			IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => property.CollectionItems;
 			string IResourceImageProperty.TypeName => property.TypeName;
@@ -2324,6 +2327,17 @@ namespace ICSharpCode.FormsDesigner
 				OnValueChanged(component, EventArgs.Empty);
 			}
 			public override bool ShouldSerializeValue(object component) => property.ShouldSerialize;
+		}
+
+		/// <summary>Offers the host's suggestions (System.Type names) in the grid's drop-down while
+		/// still accepting any typed value: not exclusive, unlike <see cref="RemoteEnumConverter"/>.</summary>
+		sealed class RemoteSuggestionConverter : StringConverter
+		{
+			public override bool GetStandardValuesSupported(ITypeDescriptorContext context)
+				=> context?.PropertyDescriptor is RemotePropertyDescriptor;
+			public override bool GetStandardValuesExclusive(ITypeDescriptorContext context) => false;
+			public override StandardValuesCollection GetStandardValues(ITypeDescriptorContext context)
+				=> new((context?.PropertyDescriptor as RemotePropertyDescriptor)?.SuggestedValues.ToArray() ?? Array.Empty<string>());
 		}
 
 		sealed class RemoteEnumConverter : StringConverter

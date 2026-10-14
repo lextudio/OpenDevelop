@@ -63,7 +63,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v43 adds the WinForms host's optional design/set-string-array (TextBox.Lines list editor).
 		// v44 adds WPF's optional design/create-based-on-style (Edit Style → Create Based On Current).
 		// v45 adds WPF's optional design/copy-theme-style (Edit a Copy from the project's design theme).
-		public const int Version = 45;
+		// v46 adds DesignerPropertyInfo.SuggestedValues (WinForms type-name suggestions).
+		public const int Version = 46;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -608,6 +609,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>Finite choices for a scalar property, currently used by the workflow
 		/// designer for enum-backed custom Activity properties.</summary>
 		public List<string> AllowedValues { get; set; } = new();
+		/// <summary>Non-exclusive suggestions for a free-text property (v46: WinForms System.Type
+		/// properties list project and common framework type names). Unlike
+		/// <see cref="AllowedValues"/>, any other value may still be typed.</summary>
+		public List<string> SuggestedValues { get; set; } = new();
 		public bool IsNull { get; set; }
 		public bool IsReadOnly { get; set; }
 		public bool ShouldSerialize { get; set; }

@@ -386,6 +386,32 @@ sealed class DesignerHostService : IDesignerChildService
 		return CurrentState(baseVersion);
 	}
 
+	static readonly string[] CommonTypeSuggestions = [
+		"System.Boolean", "System.Byte", "System.Char", "System.DateTime", "System.Decimal", "System.Double",
+		"System.Guid", "System.Int16", "System.Int32", "System.Int64", "System.Object", "System.Single",
+		"System.String", "System.TimeSpan", "System.Uri"];
+
+	List<string>? typeSuggestions;
+
+	/// <summary>Type names for a System.Type property's drop-down: the project assembly's public,
+	/// non-generic, top-level types (what the type editor accepts) first, then common framework
+	/// types. Cached per design surface; capped so a large project stays responsive.</summary>
+	List<string> TypeSuggestions()
+	{
+		if (typeSuggestions != null)
+			return typeSuggestions;
+		var project = new List<string>();
+		if (projectAssembly != null) {
+			Type?[] exported;
+			try { exported = projectAssembly.GetExportedTypes(); }
+			catch (System.Reflection.ReflectionTypeLoadException e) { exported = e.Types; }
+			catch { exported = []; }
+			project.AddRange(exported.Where(type => type is { IsGenericType: false, IsNested: false, FullName: not null })
+				.Select(type => type!.FullName!).OrderBy(name => name, StringComparer.Ordinal).Take(500));
+		}
+		return typeSuggestions = project.Concat(CommonTypeSuggestions.Where(name => !project.Contains(name))).ToList();
+	}
+
 	/// <summary>A ListView's columns, when every one is a designer component (a named field in
 	/// the source, as Visual Studio writes them) - the shape whose add/remove/reorder this editor can
 	/// express as component and statement edits.</summary>
@@ -2898,6 +2924,7 @@ sealed class DesignerHostService : IDesignerChildService
 	void CreateDesignSurface(DesignerDocumentSnapshot snapshot)
 	{
 		Trace("CreateDesignSurface disposing previous surface");
+		typeSuggestions = null;
 		DisposeDesignSurface();
 		projectLoadContext?.Unload();
 		projectLoadContext = null;
@@ -3684,6 +3711,8 @@ sealed class DesignerHostService : IDesignerChildService
 				result[^1].CollectionItems = texts;
 				result[^1].ShouldSerialize = texts.Count > 0;
 			}
+			if (property.PropertyType == typeof(Type) && !property.IsReadOnly)
+				result[^1].SuggestedValues = TypeSuggestions();
 			if (property.Name == "Columns" && component is ListView columnOwner && TryGetSitedColumns(columnOwner, out var columns)) {
 				// Each entry is a ColumnHeader component's Text; Width and the rest stay editable on
 				// the column component itself.
