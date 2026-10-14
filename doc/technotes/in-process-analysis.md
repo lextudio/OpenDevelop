@@ -893,6 +893,18 @@ records the context menu's design point (null when opened from the keyboard);
 `od.wpf-designer.context-menu-point` sets it relative to the selection for tests. WinUI still reads
 its tracks from source and leaves `Unit` null.
 
+**WinUI Grid track units (2026-10-13).** The Uno surface now offers the same Grid Row/Column →
+Fixed/Star/Auto context commands. A new optional runtime capability, `IWinUIXamlContextMenu`, lets the
+shell replace the shared surface's commands and enablement (null keeps the surface default) and read
+its context-menu design point; the Uno host implements it, while ProGPU keeps the default menu. The
+track under the point is found with the same boundaries the visible dividers use (measured
+`GridTracks` when published), and its unit is read from the authored definition, so the current
+unit is disabled. The edit is a WinUI source edit: Star writes `*`, Auto `Auto`, and Fixed the
+track's current visible size, so switching to Fixed never jumps the layout (unlike WPF's host,
+which keeps the numeric part as the in-process designer did). An implicit single track (no
+definition element) offers nothing. `WinUIDesigner_GridUnitCommandsEditTheTrackUnderThePointer`
+covers enablement and both edits on macOS/Uno.
+
 **C3 WinForms TableLayout boundary (2026-10-13).** The first safe host slice is now landed:
 `TableLayoutPanel` tree nodes publish the live child’s measured `GetRowHeights`/`GetColumnWidths`
 and cumulative offsets. They deliberately leave authored unit/value empty: WinForms creates default

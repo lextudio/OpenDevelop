@@ -284,7 +284,11 @@ public class DesignSurface : DesignerCanvas
 	public Func<string, bool>? ContextCommandCanExecute { get; set; }
 
 	bool CanExecuteContextCommand(string command)
-		=> ContextCommandCanExecute?.Invoke(command) ?? (command == "paste" || selectionName != null);
+		=> ContextCommandCanExecute?.Invoke(command) ?? DefaultContextCommandCanExecute(command);
+
+	/// <summary>The enablement used without <see cref="ContextCommandCanExecute"/>, for a backend
+	/// that only overrides some of its commands.</summary>
+	public bool DefaultContextCommandCanExecute(string command) => command == "paste" || selectionName != null;
 
 	/// <summary>The current context menu's commands as (header path, command, enabled), evaluated
 	/// exactly as opening the menu would. For tests: a context menu is a popup outside the tree.</summary>

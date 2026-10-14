@@ -773,6 +773,31 @@ public static class WinUIXamlDesignerDevFlowActions
 		return JsonSerializer.Serialize(new { success = true, command, name });
 	}
 
+	[DevFlowAction("od.winui-designer.context-menu-point",
+		Description = "Record the context menu as opened at (x, y) relative to the selected element's design bounds, as a right-click there does, for pointer-dependent commands such as Grid Row/Column units")]
+	public static string ContextMenuPoint(double x, double y)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		return view.SetContextMenuPointRelativeToSelection(x, y)
+			? JsonSerializer.Serialize(new { success = true })
+			: Failure("Nothing selected, or the runtime has no context-menu capability");
+	}
+
+	[DevFlowAction("od.winui-designer.context-commands",
+		Description = "The design surface's context commands with their current enablement, evaluated as opening the menu would")]
+	public static string ContextCommands()
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		return JsonSerializer.Serialize(new {
+			success = true,
+			commands = view.DescribeContextCommands().Select(item => new { header = item.Header, command = item.Command, enabled = item.Enabled })
+		});
+	}
+
 	[DevFlowAction("od.winui-designer.nudge",
 		Description = "Nudge the selected design elements by dx,dy design units as a source edit")]
 	public static string Nudge(double dx, double dy)

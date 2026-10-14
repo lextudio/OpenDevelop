@@ -37,7 +37,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 /// XamlReader, lays it out and renders it to a PNG that is displayed here. All state
 /// crossings are JSON over loopback TCP - no WinUI type ever enters this process.
 /// </summary>
-sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay, IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlToolboxCatalog, IWinUIXamlLifecycleProbe, IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlVisualStates, IWinUIXamlMultiSelection, IWinUIXamlContextCommands, IWinUIXamlGridGuides, IWinUIXamlGridTrackSplit, IWinUIXamlDiagnostics, IWinUIXamlIncrementalRender, IWinUIXamlComponentTray
+sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay, IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlToolboxCatalog, IWinUIXamlLifecycleProbe, IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlVisualStates, IWinUIXamlMultiSelection, IWinUIXamlContextCommands, IWinUIXamlContextMenu, IWinUIXamlGridGuides, IWinUIXamlGridTrackSplit, IWinUIXamlDiagnostics, IWinUIXamlIncrementalRender, IWinUIXamlComponentTray
 {
 	// The shared design canvas (ICSharpCode.DesignerCanvas addin): the surface, and the controller
 	// that owns selection, drags and picking over it. This class is only the Uno/WinUI backend:
@@ -187,6 +187,20 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	/// plus divider offsets); empty offsets hide them.</summary>
 	public void SetGridGuides(string name, double x, double y, double width, double height, double[] rowOffsets, double[] colOffsets)
 		=> canvas.SetGridGuides(name, x, y, width, height, rowOffsets, colOffsets);
+
+	public void SetContextCommands(IReadOnlyList<(string Header, string Command)> commands, Func<string, bool?> canExecute)
+	{
+		surface.SetContextCommands(commands);
+		surface.ContextCommandCanExecute = command => canExecute(command) ?? surface.DefaultContextCommandCanExecute(command);
+	}
+
+	public System.Numerics.Vector2? ContextMenuDesignPoint
+	{
+		get => surface.ContextMenuDesignPoint;
+		set => surface.ContextMenuDesignPoint = value;
+	}
+
+	public IReadOnlyList<(string Header, string Command, bool Enabled)> DescribeContextCommands() => surface.DescribeContextCommands();
 
 	/// <summary>Hides the Grid divider guides.</summary>
 	public void ClearGridGuides() => canvas.ClearGridGuides();

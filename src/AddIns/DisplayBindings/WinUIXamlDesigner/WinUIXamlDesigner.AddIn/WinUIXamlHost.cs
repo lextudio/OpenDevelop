@@ -54,6 +54,8 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 				multi.SelectionChanged += OnRuntimeSelectionChanged;
 			if (runtime is IWinUIXamlContextCommands context)
 				context.ContextCommandRequested += OnRuntimeContextCommandRequested;
+			if (runtime is IWinUIXamlContextMenu menu && contextCommands != null)
+				menu.SetContextCommands(contextCommands, contextCommandCanExecute);
 			if (runtime is IWinUIXamlDirectManipulation manipulation) {
 				manipulation.ElementDragCommitted += OnRuntimeElementDragCommitted;
 				manipulation.ElementGroupDragCommitted += OnRuntimeElementGroupDragCommitted;
@@ -171,6 +173,31 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 
 	void OnRuntimeGridTrackSplitRequested(object sender, (string Name, bool IsRow, double Position) args)
 		=> GridTrackSplitRequested?.Invoke(this, args);
+
+	IReadOnlyList<(string Header, string Command)> contextCommands;
+	Func<string, bool?> contextCommandCanExecute;
+
+	/// <summary>Replaces the surface's context-menu commands when the runtime supports it (see
+	/// <see cref="IWinUIXamlContextMenu"/>); otherwise the surface keeps its default menu.</summary>
+	public void SetContextCommands(IReadOnlyList<(string Header, string Command)> commands, Func<string, bool?> canExecute)
+	{
+		contextCommands = commands;
+		contextCommandCanExecute = canExecute;
+		if (runtime is IWinUIXamlContextMenu menu)
+			menu.SetContextCommands(commands, canExecute);
+	}
+
+	/// <summary>The design point the surface's context menu was opened at (null from the keyboard
+	/// or without the capability).</summary>
+	public System.Numerics.Vector2? ContextMenuDesignPoint
+	{
+		get => (runtime as IWinUIXamlContextMenu)?.ContextMenuDesignPoint;
+		set { if (runtime is IWinUIXamlContextMenu menu) menu.ContextMenuDesignPoint = value; }
+	}
+
+	/// <summary>The surface's context commands with their current enablement, for tests.</summary>
+	public IReadOnlyList<(string Header, string Command, bool Enabled)> DescribeContextCommands()
+		=> (runtime as IWinUIXamlContextMenu)?.DescribeContextCommands() ?? Array.Empty<(string, string, bool)>();
 
 	/// <summary>Shows the Grid row/column divider guides (design rect + offsets).</summary>
 	public void SetGridGuides(string name, double x, double y, double width, double height, double[] rowOffsets, double[] colOffsets)
@@ -722,6 +749,18 @@ public interface IWinUIXamlNudge
 public interface IWinUIXamlContextCommands
 {
 	event EventHandler<(string Command, string Name)> ContextCommandRequested;
+}
+
+/// <summary>
+/// Optional capability: the shell replaces the surface's context-menu commands and enablement
+/// (null = the surface's default rule) and reads the design point the menu was opened at, for
+/// commands about what is under the pointer (a Grid track).
+/// </summary>
+public interface IWinUIXamlContextMenu
+{
+	void SetContextCommands(IReadOnlyList<(string Header, string Command)> commands, Func<string, bool?> canExecute);
+	System.Numerics.Vector2? ContextMenuDesignPoint { get; set; }
+	IReadOnlyList<(string Header, string Command, bool Enabled)> DescribeContextCommands();
 }
 
 /// <summary>

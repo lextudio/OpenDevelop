@@ -70,6 +70,18 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		previewHost.ElementPathPicked += OnElementPathPickedOnSurface;
 		previewHost.ControlDropped += OnControlDroppedOnSurface;
 		previewHost.ContextCommandRequested += OnContextCommandOnSurface;
+		// The surface's default commands, plus the WPF designer's Grid unit commands (Fixed/Star/
+		// Auto) for the track under the pointer. Only a runtime with the context-menu capability
+		// (Uno) shows them; others keep the default menu.
+		previewHost.SetContextCommands(new[] {
+			("Copy", "copy"), ("Paste", "paste"), ("-", ""), ("Delete", "delete"), ("-", ""),
+			("Bring to Front", "bring-to-front"), ("Send to Back", "send-to-back"), ("-", ""),
+			("Wrap in Grid", "wrap-grid"), ("Wrap in StackPanel", "wrap-stackpanel"), ("-", ""),
+			("Grid Row/Fixed", "grid-row-Pixel"), ("Grid Row/Star", "grid-row-Star"), ("Grid Row/Auto", "grid-row-Auto"),
+			("Grid Column/Fixed", "grid-column-Pixel"), ("Grid Column/Star", "grid-column-Star"), ("Grid Column/Auto", "grid-column-Auto")
+		}, command => ParseGridUnitCommand(command) is { } unit
+			? GridTrackAtContextPoint(unit.IsRow) is { } track && track.Unit != unit.Unit
+			: null);
 		previewHost.NudgeRequested += OnNudgeRequestedOnSurface;
 		previewHost.UndoRedoRequested += OnUndoRedoRequestedOnSurface;
 		commands.RegisterStandard(() => editor.CanUndo, () => ReplayHistory(editor.Undo()),
@@ -950,7 +962,82 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			case "wrap-stackpanel":
 				WrapSelected(args.Name, args.Command == "wrap-grid" ? "Grid" : "StackPanel");
 				break;
+			default:
+				if (ParseGridUnitCommand(args.Command) is { } unit)
+					status.Text = SetGridTrackUnit(unit.IsRow, unit.Unit);
+				break;
 		}
+	}
+
+	/// <summary>Automation: records the context-menu point relative to the selection's bounds.</summary>
+	public bool SetContextMenuPointRelativeToSelection(double x, double y)
+	{
+		if (string.IsNullOrEmpty(SelectedElementName) || previewHost.QueryElementBounds(SelectedElementName) is not { } bounds)
+			return false;
+		previewHost.ContextMenuDesignPoint = new System.Numerics.Vector2((float)(bounds.X + x), (float)(bounds.Y + y));
+		return previewHost.ContextMenuDesignPoint != null;
+	}
+
+	public IReadOnlyList<(string Header, string Command, bool Enabled)> DescribeContextCommands() => previewHost.DescribeContextCommands();
+
+	static (bool IsRow, string Unit)? ParseGridUnitCommand(string command)
+		=> command.StartsWith("grid-row-", StringComparison.Ordinal) ? (true, command.Substring("grid-row-".Length))
+		: command.StartsWith("grid-column-", StringComparison.Ordinal) ? (false, command.Substring("grid-column-".Length))
+		: null;
+
+	/// <summary>The selected Grid's authored row/column definition under the context-menu point,
+	/// located with the same boundaries the visible dividers use (measured tracks when the runtime
+	/// publishes them). Null when the point is outside the Grid or the track has no definition
+	/// element to edit (an implicit single track).</summary>
+	(string Grid, XElement Definition, string Unit, double Size)? GridTrackAtContextPoint(bool isRow)
+	{
+		var name = SelectedElementName;
+		if (string.IsNullOrEmpty(name) || previewHost.ContextMenuDesignPoint is not { } point
+			|| editor.FindElement(name) is not { Name.LocalName: "Grid" } grid
+			|| previewHost.QueryElementBounds(name) is not { } bounds)
+			return null;
+		var items = grid.Elements().FirstOrDefault(e => IsNamedElement(e, isRow ? "RowDefinitions" : "ColumnDefinitions"))?
+			.Elements().Where(e => IsNamedElement(e, isRow ? "RowDefinition" : "ColumnDefinition")).ToList();
+		var guides = GridGuides(name);
+		var boundaries = isRow ? guides.RowOffsets : guides.ColOffsets;
+		if (items == null || items.Count == 0 || boundaries.Length != items.Count + 1)
+			return null;
+		var local = isRow ? point.Y - bounds.Y : point.X - bounds.X;
+		if (point.X < bounds.X || point.X >= bounds.X + bounds.Width || point.Y < bounds.Y || point.Y >= bounds.Y + bounds.Height)
+			return null;
+		for (var index = 0; index < items.Count; index++)
+		{
+			if (local >= boundaries[index] && local < boundaries[index + 1])
+			{
+				var text = ((string)items[index].Attribute(isRow ? "Height" : "Width"))?.Trim();
+				var unit = string.IsNullOrEmpty(text) || text.EndsWith("*", StringComparison.Ordinal) ? "Star"
+					: string.Equals(text, "Auto", StringComparison.OrdinalIgnoreCase) ? "Auto" : "Pixel";
+				return (name, items[index], unit, boundaries[index + 1] - boundaries[index]);
+			}
+		}
+		return null;
+	}
+
+	/// <summary>Changes the unit of the Grid track under the context-menu point as a source edit.
+	/// Fixed keeps the track's current size (the measured one when the runtime publishes tracks),
+	/// so switching never jumps the layout to a guessed length; Star becomes <c>*</c> and Auto
+	/// <c>Auto</c>.</summary>
+	public string SetGridTrackUnit(bool isRow, string unit)
+	{
+		if (GridTrackAtContextPoint(isRow) is not { } track)
+			return "No Grid " + (isRow ? "row" : "column") + " under the pointer";
+		var value = unit switch {
+			"Pixel" => Math.Max(1, Math.Round(track.Size)).ToString(CultureInfo.InvariantCulture),
+			"Star" => "*",
+			"Auto" => "Auto",
+			_ => null
+		};
+		if (value == null)
+			return "Unknown Grid unit: " + unit;
+		editor.SetAttribute(track.Definition, isRow ? "Height" : "Width", value);
+		ApplyDocumentChange();
+		RefreshGridGuides(track.Grid);
+		return $"{track.Grid} {(isRow ? "row" : "column")} -> {value}";
 	}
 
 	/// <summary>Inserts the clipboard element into the selected container (or the root).</summary>

@@ -1628,6 +1628,63 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
+    /// <summary>The WPF designer's Grid Row/Column unit commands on the Uno surface: the track
+    /// under the context-menu point is found from the visible divider boundaries, its current unit
+    /// is disabled, and Fixed keeps the track's current size as an authored pixel length.</summary>
+    [Fact]
+    public async Task WinUIDesigner_GridUnitCommandsEditTheTrackUnderThePointer()
+    {
+        var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
+        try
+        {
+            var unitGrid = originalXaml.Replace("    <Grid>", "    <Grid>\n" +
+                "        <Grid x:Name=\"UnitGrid\" Margin=\"20,30,0,0\" Width=\"300\" Height=\"100\" HorizontalAlignment=\"Left\" VerticalAlignment=\"Top\">\n" +
+                "            <Grid.RowDefinitions>\n" +
+                "                <RowDefinition Height=\"40\" />\n" +
+                "                <RowDefinition Height=\"*\" />\n" +
+                "            </Grid.RowDefinitions>\n" +
+                "            <Grid.ColumnDefinitions>\n" +
+                "                <ColumnDefinition Width=\"100\" />\n" +
+                "                <ColumnDefinition Width=\"*\" />\n" +
+                "            </Grid.ColumnDefinitions>\n" +
+                "        </Grid>");
+            Assert.NotEqual(originalXaml, unitGrid);
+            await File.WriteAllTextAsync(_unoPagePath, unitGrid);
+
+            await OpenUnoDesignerAsync();
+            Assert.True((await _app.InvokeAsync("od.winui-designer.select", "UnitGrid")).GetProperty("success").GetBoolean());
+            var point = await _app.InvokeAsync("od.winui-designer.context-menu-point", 150, 20);
+            Assert.True(point.GetProperty("success").GetBoolean(), point.ToString());
+            var commands = (await _app.InvokeAsync("od.winui-designer.context-commands")).GetProperty("commands").EnumerateArray()
+                .ToDictionary(item => item.GetProperty("command").GetString()!, item => item.GetProperty("enabled").GetBoolean());
+            // Column 1 is Star and row 0 is Fixed: their current units are disabled.
+            Assert.False(commands["grid-column-Star"]);
+            Assert.True(commands["grid-column-Pixel"]);
+            Assert.False(commands["grid-row-Pixel"]);
+            Assert.True(commands["grid-row-Auto"]);
+
+            var fixedColumn = await _app.InvokeAsync("od.winui-designer.context", "grid-column-Pixel");
+            Assert.True(fixedColumn.GetProperty("success").GetBoolean(), fixedColumn.ToString());
+            await WaitForRenderedAsync();
+            Assert.True((await _app.InvokeAsync("od.winui-designer.select", "UnitGrid")).GetProperty("success").GetBoolean());
+            Assert.True((await _app.InvokeAsync("od.winui-designer.context-menu-point", 150, 20)).GetProperty("success").GetBoolean());
+            var autoRow = await _app.InvokeAsync("od.winui-designer.context", "grid-row-Auto");
+            Assert.True(autoRow.GetProperty("success").GetBoolean(), autoRow.ToString());
+            await WaitForRenderedAsync();
+            var saved = await _app.InvokeAsync("od.file.save", _unoPagePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var savedXaml = await File.ReadAllTextAsync(_unoPagePath);
+            Assert.Contains("<ColumnDefinition Width=\"200\"", savedXaml);
+            Assert.Contains("<RowDefinition Height=\"Auto\"", savedXaml);
+            Assert.Contains("<ColumnDefinition Width=\"100\"", savedXaml);
+            Assert.Contains("<RowDefinition Height=\"*\"", savedXaml);
+        }
+        finally
+        {
+            await File.WriteAllTextAsync(_unoPagePath, originalXaml);
+        }
+    }
+
     /// <summary>The Properties pad binds each row by descriptor name; an attached attribute such
     /// as <c>Grid.Row</c> must still commit through that binding rather than being parsed as a
     /// property path and silently dropped.</summary>
