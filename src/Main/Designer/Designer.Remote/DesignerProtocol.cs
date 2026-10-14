@@ -56,7 +56,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// host-chosen length).
 		// v38 adds WPF's "System" brush kind for design/set-brush and Brush descriptions: a
 		// {DynamicResource {x:Static SystemColors.XBrushKey}} reference.
-		public const int Version = 38;
+		// v39 adds DesignerBrushInfo's "Image" kind with ImageSource and Stretch (an ImageBrush).
+		public const int Version = 39;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -643,11 +644,16 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary><c>Null</c> (VS's "No brush", <c>{x:Null}</c>), <c>Solid</c>,
 		/// <c>LinearGradient</c>, <c>RadialGradient</c>, <c>Resource</c> (a
 		/// <c>{StaticResource}</c> reference to <see cref="ResourceKey"/>), or <c>System</c> (a
-		/// <c>{DynamicResource {x:Static SystemColors.ResourceKey}}</c> reference).</summary>
+		/// <c>{DynamicResource {x:Static SystemColors.ResourceKey}}</c> reference), or <c>Image</c>
+		/// (an <c>ImageBrush</c> of <see cref="ImageSource"/>).</summary>
 		public string Kind { get; set; } = "Solid";
 		/// <summary>For a <c>Resource</c> brush, the referenced resource key; for a <c>System</c>
 		/// brush, the SystemColors member (<c>ControlBrushKey</c>).</summary>
 		public string ResourceKey { get; set; } = "";
+		/// <summary>For an <c>Image</c> brush, the authored image URI (relative to the document).</summary>
+		public string ImageSource { get; set; } = "";
+		/// <summary>For an <c>Image</c> brush, its Stretch, or empty for the default (Fill).</summary>
+		public string Stretch { get; set; } = "";
 		/// <summary>A solid brush's color as <c>#AARRGGBB</c>.</summary>
 		public string Color { get; set; } = "";
 		public double Opacity { get; set; } = 1;

@@ -196,4 +196,40 @@ public sealed class BrushEditTests
 		Assert.True(set.Accepted, set.Error);
 		Assert.Contains("Source=\"Images/dot.png\"", Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text, StringComparison.Ordinal);
 	}
+
+	[Fact]
+	public async Task ChildHost_DescribesAndWritesImageBrushes()
+	{
+		const string xaml = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="root" Width="240" Height="120">
+			  <Button x:Name="target" Background="Red" Content="Target"/>
+			  <Button x:Name="tiled" Content="Tiled"><Button.Background><ImageBrush ImageSource="images/a.png" Stretch="Uniform"/></Button.Background></Button>
+			  <Button x:Name="transformed" Content="T"><Button.Background><ImageBrush ImageSource="images/a.png" TileMode="Tile"/></Button.Background></Button>
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(WpfSurfaceHostRpcTests.HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Background(DesignerSessionState state, int index)
+			=> Assert.Single(state.Tree!.Children[index].Properties, p => p.Name == "Background");
+
+		var tiled = Background(opened, 1).Brush!;
+		Assert.Equal(("Image", "images/a.png", "Uniform"), (tiled.Kind, tiled.ImageSource, tiled.Stretch));
+		// A setting the editor cannot show (TileMode) keeps the brush a read-only reference.
+		Assert.Null(Background(opened, 2).Brush);
+
+		var before = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.False((await client.SetBrushAsync(1, opened.Tree!.Children[0].Id, "Background", new DesignerBrushInfo { Kind = "Image", ImageSource = "" }, timeout.Token)).Accepted);
+		Assert.False((await client.SetBrushAsync(1, opened.Tree.Children[0].Id, "Background", new DesignerBrushInfo { Kind = "Image", ImageSource = "b.png", Stretch = "Sideways" }, timeout.Token)).Accepted);
+		Assert.Equal(before, Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text);
+
+		var set = await client.SetBrushAsync(1, opened.Tree.Children[0].Id, "Background", new DesignerBrushInfo { Kind = "Image", ImageSource = "images/b.png", Stretch = "UniformToFill", Opacity = 0.5 }, timeout.Token);
+		Assert.True(set.Accepted, set.Error);
+		var text = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.Matches("<ImageBrush(?=[^>]*ImageSource=\"images/b.png\")(?=[^>]*Stretch=\"UniformToFill\")(?=[^>]*Opacity=\"0.5\")", text);
+		Assert.DoesNotContain("Background=\"Red\"", text, StringComparison.Ordinal);
+		var written = Background(set, 0).Brush!;
+		Assert.Equal(("Image", "images/b.png", "UniformToFill", 0.5), (written.Kind, written.ImageSource, written.Stretch, written.Opacity));
+	}
 }

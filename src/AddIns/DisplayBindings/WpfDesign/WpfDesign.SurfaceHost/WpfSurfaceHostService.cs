@@ -1039,9 +1039,13 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					return NotFound(state, "Not a Brush resource in scope: " + brush.ResourceKey);
 				if (brush.Kind == "System" && !IsSystemBrushKey(brush.ResourceKey))
 					return NotFound(state, "Not a SystemColors brush key: " + brush.ResourceKey);
+				if (brush.Kind == "Image" && (string.IsNullOrWhiteSpace(brush.ImageSource)
+					|| !string.IsNullOrEmpty(brush.Stretch) && !Enum.IsDefined(typeof(Stretch), brush.Stretch)
+					|| !(brush.Opacity >= 0 && brush.Opacity <= 1)))
+					return NotFound(state, "An image brush needs an image source, a Stretch value and an opacity from 0 to 1.");
 				try
 				{
-					var value = brush.Kind is "Resource" or "System" ? null : CreateBrush(brush);
+					var value = brush.Kind is "Resource" or "System" or "Image" ? null : CreateBrush(brush);
 					using var changeGroup = item.OpenGroup("Set " + propertyName);
 					if (property.IsSet)
 						property.Reset();
@@ -1052,6 +1056,19 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					}
 					// A system brush follows theme changes, so it is a DynamicResource of the
 					// SystemColors key, as Visual Studio writes it.
+					// An image brush keeps its ImageSource as the authored URI text (resolved by the
+					// parser against the document, as an Image.Source is), and writes only
+					// non-default settings.
+					else if (brush.Kind == "Image")
+					{
+						var image = item.Services.Component.RegisterComponentForDesigner(new ImageBrush());
+						image.Properties["ImageSource"].SetValue(brush.ImageSource.Trim());
+						if (!string.IsNullOrEmpty(brush.Stretch) && brush.Stretch != nameof(Stretch.Fill))
+							image.Properties["Stretch"].SetValue(Enum.Parse<Stretch>(brush.Stretch));
+						if (brush.Opacity != 1)
+							image.Properties["Opacity"].SetValue(brush.Opacity);
+						property.SetValue(image);
+					}
 					else if (brush.Kind == "System")
 					{
 						property.SetValue(new DynamicResourceExtension());
@@ -3481,6 +3498,16 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						info.Value = "No brush";
 						return info;
 					}
+					if (reference.Component is ImageBrush && DescribeImageBrush(reference) is { } image
+						&& property.ReturnType != null && typeof(Brush).IsAssignableFrom(property.ReturnType))
+					{
+						info.Kind = "Brush";
+						info.IsReadOnly = true;
+						info.EditorKind = "Brush";
+						info.Brush = image;
+						info.Value = BrushDisplayText(image);
+						return info;
+					}
 					if (reference.Component is Brush elementBrush && DescribeBrush(elementBrush) is { } described)
 					{
 						info.Kind = "Brush";
@@ -3630,7 +3657,32 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			return IsSystemBrushKey(name) ? name : null;
 		}
 
+		/// <summary>An <see cref="ImageBrush"/> the editor can round-trip: its ImageSource is authored
+		/// attribute text (not a binding or resource), and nothing but Stretch and Opacity is set
+		/// besides; anything else stays a read-only reference.</summary>
+		static DesignerBrushInfo? DescribeImageBrush(DesignItem brush)
+		{
+			if (brush.Properties["ImageSource"] is not { IsSet: true, TextValue: { Length: > 0 } source })
+				return null;
+			// DDP's property collection only enumerates properties already accessed, so name every
+			// other ImageBrush/TileBrush/Brush setting explicitly.
+			foreach (var other in new[] { "TileMode", "Viewport", "ViewportUnits", "Viewbox", "ViewboxUnits", "AlignmentX", "AlignmentY", "Transform", "RelativeTransform" })
+				if (brush.Properties[other].IsSet)
+					return null;
+			var stretch = brush.Properties["Stretch"];
+			var opacity = brush.Properties["Opacity"];
+			if (stretch.IsSet && stretch.TextValue == null || opacity.IsSet && opacity.TextValue == null)
+				return null;
+			return new DesignerBrushInfo {
+				Kind = "Image",
+				ImageSource = source,
+				Stretch = stretch.IsSet ? stretch.TextValue! : "",
+				Opacity = opacity.IsSet && double.TryParse(opacity.TextValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var o) ? o : 1
+			};
+		}
+
 		static string BrushDisplayText(DesignerBrushInfo brush) => brush.Kind switch {
+			"Image" => "Image (" + brush.ImageSource + ")",
 			"Solid" => brush.Color,
 			"LinearGradient" => "Linear gradient (" + brush.Stops.Count + " stops)",
 			_ => "Radial gradient (" + brush.Stops.Count + " stops)"

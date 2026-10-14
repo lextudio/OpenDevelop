@@ -837,8 +837,15 @@ dialog's "Pick from design" toggle shows the designer's last rendered frame (`De
 handed over through the optional `IDesignFrameSource` the WPF Properties-pad adapter implements) and a
 click sets the selected color from that pixel (`BrushEyedropper.Sample`, unpremultiplying Pbgra32). It
 samples the design rather than the screen, so it needs no screen-capture permission and picks exactly
-what is being designed; it is hidden when there is no frame or no color to edit. Not yet: color
-resources, tile brushes, other color spaces, and the on-canvas gradient and brush-transform tools.
+what is being designed; it is hidden when there is no frame or no color to edit. **Image brushes
+(2026-10-14):** protocol **v39** adds the `Image` brush kind (`DesignerBrushInfo.ImageSource` and
+`Stretch`). The host describes an `ImageBrush` whose ImageSource is authored attribute text and which
+sets nothing beyond Stretch and Opacity (TileMode, Viewport/Viewbox, alignment or a transform keep it
+a read-only reference), and writes one with the URI as authored text (as Image.Source is), only
+non-default Stretch and Opacity. The dialog's Image tab offers the project's images through the same
+`IImageSourceCandidates` the Image.Source picker uses, or any typed URI, plus Stretch. Not yet: other
+tile brushes (Visual/Drawing), color resources, other color spaces, and the on-canvas gradient and
+brush-transform tools.
 
 **C4 WinForms Toolbox components (2026-10-12).** The WinForms Toolbox catalog lists Timer, ToolTip,
 ImageList, ErrorProvider, BackgroundWorker and the other non-visual components, but the child's

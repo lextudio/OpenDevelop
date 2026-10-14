@@ -36,6 +36,13 @@ public interface IDesignFrameSource
 	BitmapSource? DesignFrame { get; }
 }
 
+/// <summary>Optionally implemented by a brush editor host: the project images, relative to the
+/// designed document, that the brush editor's image tab offers.</summary>
+public interface IImageSourceCandidates
+{
+	IReadOnlyList<string> ImageSourceCandidates { get; }
+}
+
 /// <summary>Reads one pixel of a design frame as an unpremultiplied color.</summary>
 public static class BrushEyedropper
 {
@@ -99,6 +106,8 @@ public static class BrushEditing
 				case "kind": model.SetKind(argument); break;
 				case "resource": ok = model.SelectResource(argument); break;
 				case "system": ok = model.SelectSystemResource(argument); break;
+				case "image": ok = model.SetImage(step.Substring("image:".Length)); break;
+				case "stretch": ok = model.SetStretch(argument); break;
 				case "color":
 					ok = BrushEditModel.TryParseColor(step.Substring("color:".Length), out var color);
 					if (ok) model.SelectedColor = color;
@@ -158,7 +167,7 @@ public static class BrushEditing
 		try {
 			if (instance is not IBrushEditorHost host || descriptor is not IBrushProperty property)
 				throw new InvalidOperationException("The brush editor is not hosted by a designer Properties pad.");
-			var model = new BrushEditModel(property.Brush, property.BrushResourceKeys);
+			var model = new BrushEditModel(property.Brush, property.BrushResourceKeys, (instance as IImageSourceCandidates)?.ImageSourceCandidates);
 			var accepted = TestEdit != null
 				? TestEdit(model)
 				: new BrushEditorDialog(model, descriptor.DisplayName) { Owner = owner, DesignFrame = (instance as IDesignFrameSource)?.DesignFrame }.ShowDialog() == true;
@@ -194,6 +203,11 @@ public sealed class BrushEditorDialog : Window
 	readonly ToggleButton gradientTab = new() { Content = "Gradient", Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(4, 0, 0, 0) };
 	readonly ToggleButton resourcesTab = new() { Content = "Resources", Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(4, 0, 0, 0) };
 	readonly ListBox resources = new() { Height = 160 };
+	readonly ToggleButton imageTab = new() { Content = "Image", Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(4, 0, 0, 0) };
+	readonly ComboBox imageSource = new() { IsEditable = true, Margin = new Thickness(0, 0, 0, 4) };
+	readonly ComboBox imageStretch = new();
+	readonly StackPanel imagePanel = new();
+	bool showImage;
 	bool showResources;
 	readonly RadioButton linear = new() { Content = "Linear", GroupName = "gradientKind", Margin = new Thickness(0, 0, 8, 0) };
 	readonly RadioButton radial = new() { Content = "Radial", GroupName = "gradientKind", Margin = new Thickness(0, 0, 8, 0) };
@@ -252,12 +266,24 @@ public sealed class BrushEditorDialog : Window
 		tabs.Children.Add(solidTab);
 		tabs.Children.Add(gradientTab);
 		tabs.Children.Add(resourcesTab);
-		resourcesTab.Click += (_, _) => { showResources = true; Refresh(); };
+		tabs.Children.Add(imageTab);
+		imagePanel.Children.Add(new TextBlock { Text = "Image source", Margin = new Thickness(0, 0, 0, 2) });
+		imagePanel.Children.Add(imageSource);
+		imagePanel.Children.Add(new TextBlock { Text = "Stretch", Margin = new Thickness(0, 0, 0, 2) });
+		imagePanel.Children.Add(imageStretch);
+		imageSource.ItemsSource = model.ImageSources;
+		imageStretch.ItemsSource = BrushEditModel.StretchValues;
+		imageTab.Click += (_, _) => { showImage = true; showResources = false; Refresh(); };
+		imageSource.SelectionChanged += (_, _) => { if (!syncing && imageSource.SelectedItem is string picked) Change(() => model.SetImage(picked)); };
+		imageSource.LostKeyboardFocus += (_, _) => { if (!syncing && !string.IsNullOrWhiteSpace(imageSource.Text) && imageSource.Text != model.ImageSource) Change(() => model.SetImage(imageSource.Text)); };
+		imageStretch.SelectionChanged += (_, _) => { if (!syncing && imageStretch.SelectedItem is string stretch) Change(() => model.SetStretch(stretch)); };
+		showImage = model.Kind == BrushEditModel.ImageKind;
+		resourcesTab.Click += (_, _) => { showResources = true; showImage = false; Refresh(); };
 		resources.ItemsSource = model.ResourceEntries;
 		resources.SelectionChanged += (_, _) => { if (!syncing && resources.SelectedItem is string entry) Change(() => model.SelectResourceEntry(entry)); };
-		noBrushTab.Click += (_, _) => { showResources = false; Change(() => model.SetKind(BrushEditModel.NullKind)); };
-		solidTab.Click += (_, _) => { showResources = false; Change(() => model.SetKind(BrushEditModel.SolidKind)); };
-		gradientTab.Click += (_, _) => { showResources = false; Change(() => model.SetKind(model.Kind == BrushEditModel.RadialKind ? BrushEditModel.RadialKind : BrushEditModel.LinearKind)); };
+		noBrushTab.Click += (_, _) => { showResources = false; showImage = false; Change(() => model.SetKind(BrushEditModel.NullKind)); };
+		solidTab.Click += (_, _) => { showResources = false; showImage = false; Change(() => model.SetKind(BrushEditModel.SolidKind)); };
+		gradientTab.Click += (_, _) => { showResources = false; showImage = false; Change(() => model.SetKind(model.Kind == BrushEditModel.RadialKind ? BrushEditModel.RadialKind : BrushEditModel.LinearKind)); };
 		showResources = model.Kind is BrushEditModel.ResourceKind or BrushEditModel.SystemKind;
 
 		gradientPanel = BuildGradientPanel();
@@ -274,6 +300,7 @@ public sealed class BrushEditorDialog : Window
 		var root = new StackPanel { Margin = new Thickness(10), Width = 300 };
 		root.Children.Add(tabs);
 		root.Children.Add(resources);
+		root.Children.Add(imagePanel);
 		root.Children.Add(gradientPanel);
 		root.Children.Add(colorPanel);
 		root.Children.Add(eyedropperToggle);
@@ -530,14 +557,18 @@ public sealed class BrushEditorDialog : Window
 	{
 		syncing = true;
 		try {
-			noBrushTab.IsChecked = !showResources && model.Kind == BrushEditModel.NullKind;
-			solidTab.IsChecked = !showResources && model.Kind == BrushEditModel.SolidKind;
-			gradientTab.IsChecked = !showResources && model.IsGradient;
+			noBrushTab.IsChecked = !showResources && !showImage && model.Kind == BrushEditModel.NullKind;
+			solidTab.IsChecked = !showResources && !showImage && model.Kind == BrushEditModel.SolidKind;
+			gradientTab.IsChecked = !showResources && !showImage && model.IsGradient;
 			resourcesTab.IsChecked = showResources;
+			imageTab.IsChecked = showImage;
+			imagePanel.Visibility = showImage ? Visibility.Visible : Visibility.Collapsed;
+			imageSource.Text = model.Kind == BrushEditModel.ImageKind ? model.ImageSource : "";
+			imageStretch.SelectedItem = model.Kind == BrushEditModel.ImageKind ? (model.Stretch.Length == 0 ? "Fill" : model.Stretch) : null;
 			resources.Visibility = showResources ? Visibility.Visible : Visibility.Collapsed;
 			resources.SelectedItem = model.SelectedResourceEntry;
-			gradientPanel.Visibility = !showResources && model.IsGradient ? Visibility.Visible : Visibility.Collapsed;
-			colorPanel.Visibility = showResources || model.Kind is BrushEditModel.NullKind or BrushEditModel.ResourceKind or BrushEditModel.SystemKind ? Visibility.Collapsed : Visibility.Visible;
+			gradientPanel.Visibility = !showResources && !showImage && model.IsGradient ? Visibility.Visible : Visibility.Collapsed;
+			colorPanel.Visibility = showResources || showImage || model.Kind is BrushEditModel.NullKind or BrushEditModel.ResourceKind or BrushEditModel.SystemKind or BrushEditModel.ImageKind ? Visibility.Collapsed : Visibility.Visible;
 			// The eyedropper sets the color the color editor shows, so it lives and hides with it.
 			eyedropperToggle.Visibility = designFrame != null && colorPanel.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
 			eyedropperFrame.Visibility = eyedropperToggle.Visibility == Visibility.Visible && eyedropperToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;

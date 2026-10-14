@@ -25,7 +25,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 	/// this codebase) and the result is handed back through <paramref name="onStateChanged"/> so
 	/// the caller can refresh the surface/tree the same way a mutation RPC always does.
 	/// </summary>
-	public sealed class WpfSurfaceElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IItemsCollectionEditorHost, IBrushEditorHost, IDesignFrameSource
+	public sealed class WpfSurfaceElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IItemsCollectionEditorHost, IBrushEditorHost, IDesignFrameSource, IImageSourceCandidates
 	{
 		readonly WpfSurfaceHostClient client;
 		readonly Func<long> currentBaseVersion;
@@ -51,6 +51,9 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		public Func<System.Windows.Media.Imaging.BitmapSource?>? DesignFrameProvider { get; init; }
 
 		System.Windows.Media.Imaging.BitmapSource? IDesignFrameSource.DesignFrame => DesignFrameProvider?.Invoke();
+
+		System.Collections.Generic.IReadOnlyList<string> IImageSourceCandidates.ImageSourceCandidates
+			=> ImageSourceCandidates?.Invoke() ?? Array.Empty<string>();
 
 		internal void SetProperty(string propertyName, string value)
 		{

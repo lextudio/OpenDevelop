@@ -26,6 +26,10 @@ public sealed class BrushEditModel
 	/// <summary>A <c>{DynamicResource {x:Static SystemColors.XBrushKey}}</c> reference; its
 	/// <see cref="ResourceKey"/> is the SystemColors member name.</summary>
 	public const string SystemKind = "System";
+	/// <summary>An <c>ImageBrush</c> of <see cref="ImageSource"/>.</summary>
+	public const string ImageKind = "Image";
+	/// <summary>The Stretch values an image brush offers ("Fill" is the default and is not written).</summary>
+	public static IReadOnlyList<string> StretchValues { get; } = new[] { "Fill", "Uniform", "UniformToFill", "None" };
 	/// <summary>How the resources tab lists a system brush, beside the document's own keys.</summary>
 	public const string SystemEntryPrefix = "SystemColors.";
 
@@ -45,11 +49,14 @@ public sealed class BrushEditModel
 	readonly List<Stop> stops = new();
 	Color solidColor;
 
-	public BrushEditModel(DesignerBrushInfo? brush, IReadOnlyList<string>? resourceKeys = null)
+	public BrushEditModel(DesignerBrushInfo? brush, IReadOnlyList<string>? resourceKeys = null, IReadOnlyList<string>? imageSources = null)
 	{
 		brush ??= new DesignerBrushInfo { Kind = NullKind };
 		Kind = brush.Kind;
 		ResourceKey = brush.ResourceKey;
+		ImageSource = brush.ImageSource;
+		Stretch = brush.Stretch;
+		ImageSources = imageSources ?? Array.Empty<string>();
 		ResourceKeys = resourceKeys ?? Array.Empty<string>();
 		solidColor = ParseColorOrDefault(brush.Color, Colors.Black);
 		Opacity = brush.Opacity;
@@ -67,6 +74,32 @@ public sealed class BrushEditModel
 	public IReadOnlyList<string> ResourceKeys { get; }
 	/// <summary>For a resource brush, the referenced key.</summary>
 	public string ResourceKey { get; private set; }
+	/// <summary>For an image brush, the image URI relative to the document.</summary>
+	public string ImageSource { get; private set; }
+	/// <summary>For an image brush, its Stretch, or empty for the default (Fill).</summary>
+	public string Stretch { get; private set; }
+	/// <summary>The project images the image tab offers (any other URI can still be typed).</summary>
+	public IReadOnlyList<string> ImageSources { get; }
+
+	/// <summary>Makes the brush an image brush of <paramref name="source"/>.</summary>
+	public bool SetImage(string source)
+	{
+		if (string.IsNullOrWhiteSpace(source))
+			return false;
+		Kind = ImageKind;
+		ResourceKey = "";
+		ImageSource = source.Trim();
+		return true;
+	}
+
+	/// <summary>Sets an image brush's Stretch; "Fill" (the default) is stored as empty.</summary>
+	public bool SetStretch(string stretch)
+	{
+		if (!StretchValues.Contains(stretch ?? ""))
+			return false;
+		Stretch = stretch == "Fill" ? "" : stretch!;
+		return true;
+	}
 	/// <summary>The resources tab's entries: the document's Brush resources, then the system brushes.</summary>
 	public IReadOnlyList<string> ResourceEntries => ResourceKeys.Concat(SystemResourceKeys.Select(key => SystemEntryPrefix + key)).ToArray();
 	/// <summary>The resources tab entry for the current brush, or null when it is not a resource.</summary>
@@ -102,7 +135,7 @@ public sealed class BrushEditModel
 				return;
 			}
 			solidColor = value;
-			if (Kind is NullKind or ResourceKind or SystemKind) {
+			if (Kind is NullKind or ResourceKind or SystemKind or ImageKind) {
 				Kind = SolidKind;
 				ResourceKey = "";
 			}
@@ -251,6 +284,11 @@ public sealed class BrushEditModel
 			return info;
 		}
 		info.Opacity = Opacity;
+		if (Kind == ImageKind) {
+			info.ImageSource = ImageSource;
+			info.Stretch = Stretch;
+			return info;
+		}
 		if (Kind == SolidKind) {
 			info.Color = FormatColor(solidColor);
 			return info;

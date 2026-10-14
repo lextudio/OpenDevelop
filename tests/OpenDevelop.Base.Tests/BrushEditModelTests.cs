@@ -129,4 +129,25 @@ public sealed class BrushEditModelTests
 		model.SelectedColor = Colors.Blue;
 		Assert.Equal((BrushEditModel.SolidKind, ""), (model.Kind, model.ToInfo().ResourceKey));
 	}
+
+	[Fact]
+	public void ImageTabWritesAnImageBrushAndAColorLeavesIt()
+	{
+		var model = new BrushEditModel(new DesignerBrushInfo { Kind = BrushEditModel.ImageKind, ImageSource = "images/a.png", Stretch = "Uniform" },
+			null, new[] { "images/a.png", "images/b.png" });
+		Assert.Equal(new[] { "images/a.png", "images/b.png" }, model.ImageSources);
+		Assert.False(model.IsChanged);
+
+		Assert.False(model.SetImage("  "));
+		Assert.False(model.SetStretch("Sideways"));
+		Assert.True(BrushEditing.ApplyScript(model, "image:images/b.png;stretch:Fill"));
+		var info = model.ToInfo();
+		// Fill is the default and is not written.
+		Assert.Equal((BrushEditModel.ImageKind, "images/b.png", ""), (info.Kind, info.ImageSource, info.Stretch));
+		Assert.True(model.IsChanged);
+
+		model.SelectedColor = Colors.Blue;
+		Assert.Equal(BrushEditModel.SolidKind, model.Kind);
+		Assert.Equal("", model.ToInfo().ImageSource);
+	}
 }
