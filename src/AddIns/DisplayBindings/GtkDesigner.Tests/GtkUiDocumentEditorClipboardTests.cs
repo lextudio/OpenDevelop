@@ -176,3 +176,60 @@ public sealed class GtkUiDocumentEditorUnwrapTests
 		Assert.False(editor.CanUndo);
 	}
 }
+
+public sealed class GtkUiDocumentEditorItemsTests
+{
+	const string Source = """
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0" />
+  <object class="GtkApplicationWindow" id="mainWindow">
+    <child><object class="GtkBox" id="box">
+      <child><object class="GtkDropDown" id="size"><items><item translatable="yes" context="size">Small</item><item>Large</item></items></object></child>
+      <child><object class="GtkDropDown" id="empty"/></child>
+      <child><object class="GtkDropDown" id="modelled"><property name="model"><object class="GtkStringList" id="list"/></property></object></child>
+      <child><object class="GtkButton" id="ok"/></child>
+    </object></child>
+  </object>
+</interface>
+""";
+
+	[Fact] public void ReadsADropDownsOwnItemsOnly()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset(Source), editor.Error);
+		Assert.Equal(new[] { "Small", "Large" }, editor.GetItems("size"));
+		Assert.Empty(editor.GetItems("empty")!);
+		Assert.Null(editor.GetItems("modelled"));
+		Assert.Null(editor.GetItems("ok"));
+	}
+
+	[Fact] public void EditsItemsKeepingAttributesInOneUndoStep()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset(Source), editor.Error);
+		Assert.True(editor.SetItems("size", new[] { (1, "Large"), (0, "Tiny"), (-1, "Huge") }), editor.Error);
+		Assert.Equal(new[] { "Large", "Tiny", "Huge" }, editor.GetItems("size"));
+		Assert.Contains("<item translatable=\"yes\" context=\"size\">Tiny</item>", editor.Text);
+		Assert.Contains("<item translatable=\"yes\">Huge</item>", editor.Text);
+		Assert.True(editor.Undo());
+		Assert.Equal(new[] { "Small", "Large" }, editor.GetItems("size"));
+
+		// First items on an empty drop-down; clearing removes <items>.
+		Assert.True(editor.SetItems("empty", new[] { (-1, "One") }));
+		Assert.Equal(new[] { "One" }, editor.GetItems("empty"));
+		Assert.True(editor.SetItems("empty", Array.Empty<(int, string)>()));
+		Assert.DoesNotContain("<object class=\"GtkDropDown\" id=\"empty\"><items", editor.Text);
+	}
+
+	[Fact] public void RefusesModelledDropDownsAndBadSourceIndexes()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset(Source), editor.Error);
+		Assert.False(editor.SetItems("modelled", new[] { (-1, "x") }));
+		Assert.False(editor.SetItems("ok", new[] { (-1, "x") }));
+		Assert.False(editor.SetItems("size", new[] { (5, "x") }));
+		Assert.False(editor.SetItems("size", new[] { (0, "a"), (0, "b") }));
+		Assert.False(editor.CanUndo);
+	}
+}

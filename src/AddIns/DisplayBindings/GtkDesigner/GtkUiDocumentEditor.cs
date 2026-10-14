@@ -309,6 +309,47 @@ public sealed class GtkUiDocumentEditor
 	/// &lt;child&gt; ones (a property-held child has no &lt;child&gt; slot to move), an empty one, or
 	/// several children into a single-child parent. A lone child inherits the container's
 	/// &lt;layout&gt;; children drop the layout that addressed the removed container. One undo step.</summary>
+	/// <summary>A GtkDropDown's strings, held in its own <c>&lt;items&gt;&lt;item&gt;</c> list (the
+	/// GtkBuilder shorthand that creates its GtkStringList model), or null when the object is not a
+	/// GtkDropDown or takes its strings from an explicit <c>model</c> property instead.</summary>
+	public IReadOnlyList<string>? GetItems(string id)
+	{
+		var element = Find(id);
+		if (element == null || (string?)element.Attribute("class") != "GtkDropDown"
+			|| element.Elements().Any(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "model")))
+			return null;
+		return element.Elements().Where(e => e.Name.LocalName == "items").SelectMany(i => i.Elements())
+			.Where(e => e.Name.LocalName == "item").Select(e => e.Value).ToList();
+	}
+
+	/// <summary>Replaces a GtkDropDown's <c>&lt;items&gt;</c> with <paramref name="items"/>, in order,
+	/// as one undo step. An entry with a SourceIndex keeps that item element's attributes
+	/// (translatable, context, comments) with the new text; a new entry is <c>translatable="yes"</c>
+	/// like other user-visible strings; an empty list removes <c>&lt;items&gt;</c>.</summary>
+	public bool SetItems(string id, IReadOnlyList<(int SourceIndex, string Text)> items)
+	{
+		if (GetItems(id) is not { } current) return false;
+		var element = Find(id)!;
+		var sources = items.Where(item => item.SourceIndex >= 0).Select(item => item.SourceIndex).ToList();
+		if (sources.Any(index => index >= current.Count) || sources.Distinct().Count() != sources.Count) return false;
+		var oldItems = element.Elements().Where(e => e.Name.LocalName == "items").SelectMany(i => i.Elements())
+			.Where(e => e.Name.LocalName == "item").ToList();
+		var rebuilt = items.Select(item => {
+			var copy = item.SourceIndex >= 0 ? new XElement(oldItems[item.SourceIndex]) : new XElement("item", new XAttribute("translatable", "yes"));
+			copy.Value = item.Text ?? "";
+			return copy;
+		}).ToList();
+		if (rebuilt.Select(e => e.ToString()).SequenceEqual(oldItems.Select(e => e.ToString()))) return true;
+		var lists = element.Elements().Where(e => e.Name.LocalName == "items").ToList();
+		if (rebuilt.Count == 0) lists.ForEach(list => list.Remove());
+		else if (lists.Count == 0) element.Add(new XElement("items", rebuilt));
+		else {
+			lists.Skip(1).ToList().ForEach(list => list.Remove());
+			lists[0].ReplaceNodes(rebuilt);
+		}
+		return Commit();
+	}
+
 	public bool Unwrap(string id)
 	{
 		if (Find(id) is not { Parent: { Name.LocalName: "child", Parent: { } parent } wrapper } container)

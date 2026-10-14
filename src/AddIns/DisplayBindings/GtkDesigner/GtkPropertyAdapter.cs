@@ -1,4 +1,5 @@
 using System;
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
@@ -17,14 +18,25 @@ namespace ICSharpCode.GtkDesigner;
 /// Stetic's property editor table (PropertyEditorCell: bool, int ranges, float ranges, enum vs
 /// flags) is the model; its GTK 2 widgets are not.
 /// </summary>
-public sealed class GtkPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost
+public sealed class GtkPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IItemsCollectionEditorHost
 {
 	readonly DesignerElementNode node; readonly Func<string, string, bool> set; readonly Func<string, string, bool> setEvent; readonly Func<string, bool>? reset;
+	readonly Func<IReadOnlyList<DesignerCollectionItemEdit>, bool>? setItems;
 	PropertyDescriptorCollection? properties;
 
-	public GtkPropertyAdapter(DesignerElementNode node, Func<string, string, bool> set, Func<string, string, bool>? setEvent = null, Func<string, bool>? reset = null)
+	public GtkPropertyAdapter(DesignerElementNode node, Func<string, string, bool> set, Func<string, string, bool>? setEvent = null, Func<string, bool>? reset = null,
+		Func<IReadOnlyList<DesignerCollectionItemEdit>, bool>? setItems = null)
 	{
-		this.node = node; this.set = set; this.setEvent = setEvent ?? set; this.reset = reset;
+		this.node = node; this.set = set; this.setEvent = setEvent ?? set; this.reset = reset; this.setItems = setItems;
+	}
+
+	/// <summary>The shared list editor's commit for a GtkDropDown's Items row (design/set-items).</summary>
+	void IItemsCollectionEditorHost.SetItems(string propertyName, IReadOnlyList<DesignerCollectionItemEdit> items)
+	{
+		if (setItems == null || !node.Properties.Any(p => p.EditorKind == "ItemsCollection"))
+			throw new InvalidOperationException("This element has no editable items.");
+		if (!setItems(items))
+			throw new InvalidOperationException("The GTK designer rejected the items edit.");
 	}
 
 	[Category("Identity")] public string Id { get => node.Id; set => Set("$id", value); }
@@ -82,7 +94,7 @@ public sealed class GtkPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEve
 
 /// <summary>One GIR-described GTK property. The value travels as GtkBuilder text; the host has
 /// already type-checked and canonicalised it, and re-checks every edit before it is written.</summary>
-sealed class GtkPropertyDescriptor : PropertyDescriptor
+sealed class GtkPropertyDescriptor : PropertyDescriptor, IItemsCollectionProperty
 {
 	readonly GtkPropertyAdapter owner;
 	readonly DesignerPropertyInfo info;
@@ -113,6 +125,9 @@ sealed class GtkPropertyDescriptor : PropertyDescriptor
 		};
 		if (info.Kind == "Enum" && info.AllowedValues.Count > 0)
 			attributes.Add(new TypeConverterAttribute(typeof(GtkEnumConverter)));
+		// Read-only to generic editing; the "…" editor commits the whole list.
+		if (info.EditorKind == "ItemsCollection")
+			attributes.Add(new EditorAttribute(typeof(GtkItemsCollectionEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 		return attributes.ToArray();
 	}
 
@@ -122,6 +137,7 @@ sealed class GtkPropertyDescriptor : PropertyDescriptor
 		=> DesignerPropertySemantics.IsReadOnly(info);
 
 	internal IReadOnlyList<string> AllowedValues => info.AllowedValues;
+	IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => info.CollectionItems;
 	/// <summary>Flags combine with '|', so their text is free; a plain enum is one of its nicks.</summary>
 	internal bool IsExclusiveChoice => info.IsEnum && info.AllowedValues.Count > 0;
 

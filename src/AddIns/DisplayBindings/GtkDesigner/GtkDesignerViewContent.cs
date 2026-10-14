@@ -301,7 +301,8 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	}
 	bool DeleteSelectedCore() { if (selection.SelectedIds.Count == 0 || host == null) return false; var ids = selection.SelectedIds.ToArray(); return Mutate(() => host.DeleteElementsAsync(state.Version, ids).GetAwaiter().GetResult()); }
 	public bool SetSelectedSignal(string signal, string handler) { if (selected == null || host == null) return false; var id = selected.Id; return Mutate(() => host.SetEventAsync(state.Version, id, signal, handler).GetAwaiter().GetResult()) && SelectById(id); }
-	GtkPropertyAdapter Adapter(DesignerElementNode node) => new(node, (name, value) => SetProperty(node.Id, name, value), (name, value) => SetEvent(node.Id, name, value), name => ResetProperty(node.Id, name));
+	GtkPropertyAdapter Adapter(DesignerElementNode node) => new(node, (name, value) => SetProperty(node.Id, name, value), (name, value) => SetEvent(node.Id, name, value), name => ResetProperty(node.Id, name),
+		items => host != null && Mutate(() => host.SetItemsAsync(state.Version, node.Id, items).GetAwaiter().GetResult()) && selection.Find(node.Id) != null);
 	/// <summary>Removes a property so GTK's default applies (design/reset-property).</summary>
 	bool ResetProperty(string id, string name) { if (host == null || !Mutate(() => host.ResetPropertyAsync(state.Version, id, name).GetAwaiter().GetResult())) return false; return selection.Find(id) != null; }
 	bool SetEvent(string id, string signal, string handler)

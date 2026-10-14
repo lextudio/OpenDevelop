@@ -183,6 +183,17 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		return State(session, false);
 	}
 
+	/// <summary>Replaces a GtkDropDown's strings (its <c>&lt;items&gt;</c>) from the shared list editor.</summary>
+	[JsonRpcMethod("design/set-items")]
+	public DesignerSessionState SetItems(string sessionId, string documentId, long baseVersion, string elementId, DesignerCollectionItemEdit[] items)
+	{
+		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
+		if (!session.Editor.SetItems(elementId, (items ?? Array.Empty<DesignerCollectionItemEdit>()).Select(item => (item.SourceIndex, item.Text ?? "")).ToList()))
+			throw new InvalidOperationException("GTK items edit was rejected: a GtkDropDown without a model property, and valid source indexes, are required.");
+		session.Version++;
+		return State(session, false);
+	}
+
 	[JsonRpcMethod("design/hit-test")]
 	public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, double x, double y) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); y -= WindowTitleBarOffset(session); var hit = session.NativeBounds.Where(p => x >= p.Value.X && y >= p.Value.Y && x <= p.Value.X + p.Value.Width && y <= p.Value.Y + p.Value.Height).OrderBy(p => p.Value.Width * p.Value.Height).FirstOrDefault(); return string.IsNullOrEmpty(hit.Key) ? new DesignerHitTestResult() : new DesignerHitTestResult { Hit = true, ComponentName = hit.Key, Chain = { hit.Key } }; }
 	[JsonRpcMethod("design/undo")]
@@ -458,9 +469,22 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		}
 	}
 	DesignerElementNode Node(DocumentSession session, GtkUiNode node, string? parentClass = null) { session.NativeBounds.TryGetValue(node.Id, out var bounds); return new() { Id = node.Id, Name = node.Id, Type = node.ClassName, X = bounds.X, Y = bounds.Y + WindowTitleBarOffset(session), Width = bounds.Width, Height = bounds.Height,
-		Properties = GtkPropertyMetadata.PropertiesFor(node, parentClass).Prepend(new DesignerPropertyInfo { Name = "$id", DisplayName = "ID", Value = node.Id, Category = "Identity" }).ToList(),
+		Properties = GtkPropertyMetadata.PropertiesFor(node, parentClass).Prepend(new DesignerPropertyInfo { Name = "$id", DisplayName = "ID", Value = node.Id, Category = "Identity" })
+			.Concat(ItemsRow(session, node)).ToList(),
 		Events = GtkPropertyMetadata.SignalsFor(node.ClassName, SignalsFor).Select(name => new DesignerEventInfo { Name = name, Category = "GTK Signals", Handler = session.Editor.GetSignals(node.Id).GetValueOrDefault(name) ?? "" }).ToList(),
 		Children = node.Children.Select(n => Node(session, n, node.ClassName)).ToList() }; }
+	/// <summary>A GtkDropDown's strings as the shared <c>ItemsCollection</c> row (read-only to generic
+	/// editing; the list editor commits through design/set-items).</summary>
+	static IEnumerable<DesignerPropertyInfo> ItemsRow(DocumentSession session, GtkUiNode node)
+	{
+		if (session.Editor.GetItems(node.Id) is not { } items) yield break;
+		yield return new DesignerPropertyInfo {
+			Name = "$items", DisplayName = "Items", Category = "GtkDropDown", Kind = "Collection", EditorKind = "ItemsCollection",
+			IsReadOnly = true, Value = "(" + items.Count + (items.Count == 1 ? " item)" : " items)"),
+			CollectionItems = items.ToList(), ShouldSerialize = items.Count > 0
+		};
+	}
+
 	/// <summary>The drop planner's view of a node: measured bounds, orientation and grid cell.</summary>
 	static GtkDropNode DropNode(DocumentSession session, GtkUiNode node)
 	{

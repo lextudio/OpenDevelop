@@ -626,6 +626,17 @@ GTK 4 has no generic container mutation API. Every drop is resolved through `chi
 This adapter layer is the most important new GTK 4-specific code and should have table-driven
 tests independent of the native preview host.
 
+### Drop-down items (2026-10-14)
+
+A `GtkDropDown` that holds its strings in its own `<items><item>…</item></items>` (the GtkBuilder
+shorthand that creates its `GtkStringList` model) shows an **Items** row in the Properties pad. Its "…"
+button opens the same shared list dialog as WPF's and WinForms' Items rows (`CollectionItemsEditing`),
+and the host commits the result through `design/set-items` in one undo step
+(`GtkUiDocumentEditor.SetItems`). A kept item keeps its `translatable`/`context`/`comments` attributes
+with the new text; a new item is written `translatable="yes"` like other user-visible strings; clearing
+the list removes `<items>`. A drop-down whose strings come from an explicit `model` property shows no
+Items row, since that model is a separate object.
+
 ## Migration from Stetic and GTK 3 UI
 
 Migration is an explicit tool, not an implicit designer load path:
