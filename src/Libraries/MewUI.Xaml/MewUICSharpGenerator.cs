@@ -102,6 +102,11 @@ public static class MewUICSharpGenerator
 	{
 		// The root Window's own members take no owner prefix.
 		var target = ownerName.Length == 0 ? attribute.Name : ownerName + "." + attribute.Name;
+		// Attached placement on the root Window (no parent layout) has no source form.
+		if (ownerName.Length == 0 && MewUIControlCatalog.AttachedOwner(attribute.Name) != null) {
+			sb.Append("        // unsupported: ").Append(attribute.Name).Append(" = \"").Append(Escape(attribute.Value)).Append("\"\n");
+			return;
+		}
 		if (attribute.IsEvent) {
 			sb.Append("        ").Append(target)
 			  .Append(" += ").Append(attribute.Value).Append(";\n");

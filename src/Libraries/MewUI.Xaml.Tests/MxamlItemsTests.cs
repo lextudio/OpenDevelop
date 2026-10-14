@@ -293,5 +293,9 @@ public sealed class MxamlItemsTests
 		Assert.DoesNotContain("// unsupported", csharp);
 		Assert.True(MxamlDocument.Parse(source.Replace("DockPanel.Dock=\"Top\"", "DockPanel.Dock=\"Middle\"")).HasErrors);
 		Assert.False(doc.SetProperty("corner", "DockPanel.Dock", "Left"));
+		// The root has no parent layout: attached values there are comments, never "Grid.SetRow(, 1);".
+		var rooted = MewUICSharpGenerator.Generate(MxamlDocument.Parse(source.Replace("Name=\"mainWindow\">", "Name=\"mainWindow\" Grid.Row=\"1\" Canvas.Left=\"3\" DockPanel.Dock=\"Top\">")));
+		Assert.DoesNotContain("(, ", rooted);
+		Assert.Contains("// unsupported: Grid.Row", rooted);
 	}
 }

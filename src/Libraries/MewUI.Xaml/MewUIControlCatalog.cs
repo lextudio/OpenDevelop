@@ -178,7 +178,10 @@ public static class MewUIControlCatalog
 	/// guessing a literal kind (the M-2 failure mode), keeping generated code compilable while
 	/// surfacing an actionable diagnostic.</summary>
 	public static MxamlPropertyKind KindOf(string type, string property)
-		=> property is "Grid.Row" or "Grid.Column" or "Grid.RowSpan" or "Grid.ColumnSpan"
+		// Attached placement belongs to a parent's layout; the root Window has no parent.
+		=> type == "Window" && AttachedOwner(property) != null
+			? MxamlPropertyKind.Unsupported
+			: property is "Grid.Row" or "Grid.Column" or "Grid.RowSpan" or "Grid.ColumnSpan"
 			? MxamlPropertyKind.Int32
 			: property is "DockPanel.Dock"
 			? MxamlPropertyKind.Enum
