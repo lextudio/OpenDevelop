@@ -265,7 +265,8 @@ sealed class DesignerHostService : IDesignerChildService
 	}
 
 	/// <summary>Replaces a list control's string Items with the edited list (each entry names its
-	/// previous index or -1) and rewrites the designer source to one Items.AddRange call.</summary>
+	/// previous index or -1) and rewrites the designer source to one Items.AddRange call (one
+	/// Items.Add per item for a DomainUpDown, whose collection has no AddRange).</summary>
 	[JsonRpcMethod("design/set-items")]
 	public DesignerSessionState SetItems(string sessionId, string documentId, long baseVersion, string elementId, DesignerCollectionItemEdit[] items)
 	{
