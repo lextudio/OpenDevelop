@@ -968,8 +968,13 @@ the host proves every child's placement: each live child has exactly one `Contro
 column, row)` with integer literals, at most one literal `SetColumnSpan`/`SetRowSpan`, the literals
 equal the live cell and span, and no other placement statement (`SetColumn`, `SetRow`,
 `SetCellPosition`, an unpositioned `Add`, `AddRange`) mentions the table. Only those literals, the
-Count literal and one style statement are rewritten, in one designer transaction. Not yet: IDE
-commands for a pointer-chosen track.
+Count literal and one style statement are rewritten, in one designer transaction. **IDE slice:**
+the Forms surface now records the right-click design point (`ContextMenuDesignPoint`), and a
+TableLayoutPanel's menu adds Insert Column Before / Remove This Column and Insert Row Before /
+Remove This Row for the measured track under it (absent when the menu was not opened over the
+table); a refusal shows the host's reason. `od.forms-designer.context-menu-point` sets the point
+relative to a component for automation, and the LibreWinForms TableLayout journey inserts and then
+removes a column at a pointer-chosen position.
 
 **C4 event handler generation (2026-10-12).** Double-clicking a WPF event in the Properties pad now
 matches the in-process designer (`AbstractEventHandlerService`): the XAML attribute is bound through

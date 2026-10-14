@@ -622,6 +622,17 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.forms-designer.context-menu-point", Description = "Record the context menu as opened at (x, y) relative to a component's surface bounds, as a right-click there does, for pointer-dependent commands such as a TableLayoutPanel's row/column")]
+		public static string SetContextMenuPoint(string componentName, double x, double y)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			var component = viewContent?.RemoteDesignerState?.Components?.FirstOrDefault(item => item.Name == componentName);
+			if (viewContent?.RemoteDesignerControl == null || component == null)
+				return Failure("No such component in the loaded WinForms designer: " + componentName);
+			viewContent.RemoteDesignerControl.ContextMenuDesignPoint = new System.Numerics.Vector2((float)(component.SurfaceX + x), (float)(component.SurfaceY + y));
+			return JsonSerializer.Serialize(new { success = true });
+		}
+
 		[DevFlowAction("od.forms-designer.context-menu-entry", Description = "Build the right-click verb entries for a component and invoke the one with the given label, as a menu click would")]
 		public static string InvokeContextMenuEntry(string componentName, string label)
 		{

@@ -1655,6 +1655,15 @@ namespace ICSharpCode.FormsDesigner
 			yield return Entry("Add Row", () => remoteClient.AddTableLayoutTrackAsync(remoteDocumentVersion, componentName, true, none).GetAwaiter().GetResult());
 			yield return Entry("Remove Last Column", () => remoteClient.RemoveTableLayoutTrackAsync(remoteDocumentVersion, componentName, false, none).GetAwaiter().GetResult());
 			yield return Entry("Remove Last Row", () => remoteClient.RemoveTableLayoutTrackAsync(remoteDocumentVersion, componentName, true, none).GetAwaiter().GetResult());
+			// The row/column under the right-click point; the host moves the children or refuses.
+			if (remoteControl?.TableLayoutTrackAtContextPoint(componentName, false) is { } column) {
+				yield return Entry("Insert Column Before", () => remoteClient.InsertTableLayoutTrackAsync(remoteDocumentVersion, componentName, false, column, none).GetAwaiter().GetResult());
+				yield return Entry("Remove This Column", () => remoteClient.RemoveTableLayoutTrackAtAsync(remoteDocumentVersion, componentName, false, column, none).GetAwaiter().GetResult());
+			}
+			if (remoteControl?.TableLayoutTrackAtContextPoint(componentName, true) is { } row) {
+				yield return Entry("Insert Row Before", () => remoteClient.InsertTableLayoutTrackAsync(remoteDocumentVersion, componentName, true, row, none).GetAwaiter().GetResult());
+				yield return Entry("Remove This Row", () => remoteClient.RemoveTableLayoutTrackAtAsync(remoteDocumentVersion, componentName, true, row, none).GetAwaiter().GetResult());
+			}
 		}
 
 		/// <summary>Builds the context menu's verb entries for a component and runs the one with the

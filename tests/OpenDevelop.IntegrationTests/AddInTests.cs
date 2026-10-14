@@ -4042,6 +4042,31 @@ public sealed class AddInTests : IAsyncDisposable
             saved = await _app.InvokeAsync("od.file.save", formCodePath);
             Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
             Assert.Contains("grid1.RowCount = 1;", await File.ReadAllTextAsync(designerPath), StringComparison.Ordinal);
+
+            // Insert and remove at the column under the right-click point (column 1 at x = 100).
+            var point = await _app.InvokeAsync("od.forms-designer.context-menu-point", "grid1", 100, 10);
+            Assert.True(point.GetProperty("success").GetBoolean(), point.ToString());
+            labels = (await _app.InvokeAsync("od.forms-designer.describe-context-menu", "grid1")).GetProperty("items")
+                .EnumerateArray().Select(item => item.GetString()).ToList();
+            Assert.Contains("Insert Column Before", labels);
+            Assert.Contains("Remove This Row", labels);
+            var insertedColumn = await _app.InvokeAsync("od.forms-designer.context-menu-entry", "grid1", "Insert Column Before");
+            Assert.True(insertedColumn.GetProperty("success").GetBoolean(), insertedColumn.ToString());
+            saved = await _app.InvokeAsync("od.file.save", formCodePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            savedDesigner = await File.ReadAllTextAsync(designerPath);
+            Assert.Contains("grid1.ColumnCount = 3;", savedDesigner, StringComparison.Ordinal);
+            Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(savedDesigner, @"ColumnStyle\(System\.Windows\.Forms\.SizeType\.Percent, 100F\)").Count);
+            // Column 1 is now the new, empty column under the same point.
+            point = await _app.InvokeAsync("od.forms-designer.context-menu-point", "grid1", 45, 10);
+            Assert.True(point.GetProperty("success").GetBoolean(), point.ToString());
+            var removedColumn = await _app.InvokeAsync("od.forms-designer.context-menu-entry", "grid1", "Remove This Column");
+            Assert.True(removedColumn.GetProperty("success").GetBoolean(), removedColumn.ToString());
+            saved = await _app.InvokeAsync("od.file.save", formCodePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            savedDesigner = await File.ReadAllTextAsync(designerPath);
+            Assert.Contains("grid1.ColumnCount = 2;", savedDesigner, StringComparison.Ordinal);
+            Assert.Single(System.Text.RegularExpressions.Regex.Matches(savedDesigner, @"ColumnStyle\(System\.Windows\.Forms\.SizeType\.Percent, 100F\)"));
         } finally {
             await _app.InvokeAsync("od.close-all-document-views");
             await File.WriteAllBytesAsync(formCodePath, originalForm);

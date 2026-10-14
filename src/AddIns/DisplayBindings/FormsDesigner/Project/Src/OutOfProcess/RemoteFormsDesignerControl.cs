@@ -581,6 +581,24 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			return true;
 		}
 
+		/// <summary>The measured row/column of <paramref name="tableName"/> under the context-menu
+		/// point, or null when the menu was not opened over that table.</summary>
+		internal int? TableLayoutTrackAtContextPoint(string tableName, bool isRow)
+		{
+			var component = state?.Components?.FirstOrDefault(item => item.Name == tableName);
+			var tracks = component == null ? null : FindTreeNode(state.Tree, tableName)?.GridTracks;
+			if (tracks is not { Accepted: true } || ContextMenuDesignPoint is not { } point)
+				return null;
+			var local = isRow ? point.Y - component.SurfaceY : point.X - component.SurfaceX;
+			var list = isRow ? tracks.RowTracks : tracks.ColumnTracks;
+			if (local < 0 || list.Count == 0 || local > list[list.Count - 1].Offset + list[list.Count - 1].Size)
+				return null;
+			for (var index = 0; index < list.Count; index++)
+				if (local < list[index].Offset + list[index].Size)
+					return index;
+			return list.Count - 1;
+		}
+
 		static double[] TrackBoundaries(IReadOnlyList<DesignerGridTrackInfo> tracks)
 			=> tracks.Count == 0 ? Array.Empty<double>()
 				: tracks.Select(track => track.Offset).Append(tracks[tracks.Count - 1].Offset + tracks[tracks.Count - 1].Size).ToArray();
@@ -1477,6 +1495,9 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				return;
 			try {
 				var designPoint = ToDesignPoint(e.GetPosition(this));
+				// Pointer-dependent commands (a TableLayoutPanel's row/column) read it while the
+				// menu is built and when an entry runs.
+				ContextMenuDesignPoint = designPoint;
 				var name = controller.FindNodeAtDesignPoint(designPoint.X, designPoint.Y)?.Name ?? "";
 				if (!String.IsNullOrEmpty(name) && name != SelectedComponentName)
 					SelectSingleComponent(name, takeFocus: false);
