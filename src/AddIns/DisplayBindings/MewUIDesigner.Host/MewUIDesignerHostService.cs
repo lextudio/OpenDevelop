@@ -62,6 +62,8 @@ sealed class MewUIDesignerHostService : IDesignerChildService
 		Mutated(session);
 		return State(session);
 	}
+	/// <summary>Replaces a ComboBox/ListBox's &lt;Item&gt; strings from the shared list editor.</summary>
+	[JsonRpcMethod("design/set-items")] public DesignerSessionState SetItems(string sessionId, string documentId, long baseVersion, string elementId, DesignerCollectionItemEdit[] items) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Document.SetItems(elementId, (items ?? Array.Empty<DesignerCollectionItemEdit>()).Select(item => item.Text ?? "").ToList())) throw new InvalidOperationException("MewUI items edit was rejected: a ComboBox or ListBox is required."); Mutated(session); return State(session); }
 	[JsonRpcMethod("design/rename")] public DesignerSessionState Rename(string sessionId, string documentId, long baseVersion, string elementId, string newName) => SetProperty(sessionId, documentId, baseVersion, elementId, "$name", newName);
 	[JsonRpcMethod("design/reorder")] public DesignerSessionState Reorder(string sessionId, string documentId, long baseVersion, string elementId, int delta) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Document.Reorder(elementId, delta)) throw new InvalidOperationException("MewUI reorder was rejected."); Mutated(session); return State(session); }
 	[JsonRpcMethod("design/set-bounds")] public DesignerSessionState SetBounds(string sessionId, string documentId, long baseVersion, string elementId, double x, double y, double width, double height) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Document.SetCanvasBounds(elementId, x, y, width, height)) throw new InvalidOperationException("MewUI bounds mutation was rejected: only direct Canvas children can be positioned or resized."); Mutated(session); return State(session); }
@@ -94,7 +96,7 @@ sealed class MewUIDesignerHostService : IDesignerChildService
 	static void Mutated(DocumentSession session) { session.UndoDepth++; session.RedoDepth = 0; session.Version++; }
 	// An unnamed element gets a synthetic, path-based id ("#0,2,1") so siblings stay distinct on the
 	// canvas; Name stays empty, and mutations addressed to such an id are rejected by the document.
-	static DesignerElementNode Node(MxamlObject n, string path) => new() { Id = string.IsNullOrEmpty(n.Name) ? "#" + path : n.Name, Name = n.Name, Type = n.Type, Properties = n.Attributes.Where(a => !a.IsEvent).Select(a => Property(n.Type, a)).Prepend(new DesignerPropertyInfo { Name = "$name", DisplayName = "Name", Value = n.Name, Category = "Identity", ShouldSerialize = true }).ToList(), Events = MewUIControlCatalog.Events.Select(name => new DesignerEventInfo { Name = name, Category = "MewUI Events", Handler = n.Attributes.FirstOrDefault(a => a.IsEvent && string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase))?.Value ?? "" }).ToList(), Children = n.Children.Select((c, i) => Node(c, path + "," + i)).ToList() };
+	static DesignerElementNode Node(MxamlObject n, string path) => new() { Id = string.IsNullOrEmpty(n.Name) ? "#" + path : n.Name, Name = n.Name, Type = n.Type, Properties = n.Attributes.Where(a => !a.IsEvent).Select(a => Property(n.Type, a)).Prepend(new DesignerPropertyInfo { Name = "$name", DisplayName = "Name", Value = n.Name, Category = "Identity", ShouldSerialize = true }).Concat(ItemsRow(n)).ToList(), Events = MewUIControlCatalog.Events.Select(name => new DesignerEventInfo { Name = name, Category = "MewUI Events", Handler = n.Attributes.FirstOrDefault(a => a.IsEvent && string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase))?.Value ?? "" }).ToList(), Children = n.Children.Select((c, i) => Node(c, path + "," + i)).ToList() };
 	static DesignerPropertyInfo Property(string type, MxamlAttribute attribute)
 	{
 		var kind = MewUIControlCatalog.KindOf(type, attribute.Name);
@@ -107,6 +109,13 @@ sealed class MewUIDesignerHostService : IDesignerChildService
 	DocumentSession GetOrCreate(string documentId) => documents.GetOrAdd(sessionId, documentId, () => new DocumentSession(documentId));
 	DocumentSession Get(string documentId) => documents.Get(sessionId, documentId);
 	static void EnsureVersion(DocumentSession session, long candidate) { if (candidate != session.Version) throw new InvalidOperationException($"Stale version {candidate}; current is {session.Version}."); }
+	/// <summary>A ComboBox/ListBox's items as the shared ItemsCollection row (committed by design/set-items).</summary>
+	static IEnumerable<DesignerPropertyInfo> ItemsRow(MxamlObject n)
+	{
+		if (!MewUIControlCatalog.HasStringItems(n.Type)) yield break;
+		yield return new DesignerPropertyInfo { Name = "$items", DisplayName = "Items", Category = "Common", Kind = "Collection", EditorKind = "ItemsCollection",
+			IsReadOnly = true, Value = "(" + n.Items.Count + (n.Items.Count == 1 ? " item)" : " items)"), CollectionItems = n.Items.ToList(), ShouldSerialize = n.Items.Count > 0 };
+	}
 	[JsonRpcMethod("ping")] public object Ping() => new(); [JsonRpcMethod("shutdown")] public object Shutdown() { documents.CloseAll(_ => { }); shutdown.Set(); return new(); } public void WaitForShutdown() => shutdown.Wait(); public void OnParentDisconnected() => shutdown.Set();
 	sealed class DocumentSession { public DocumentSession(string documentId) => DocumentId = documentId; public string DocumentId { get; } public MxamlDocument Document { get; } = new(); public string FileName = ""; public long Version; public int UndoDepth; public int RedoDepth; public readonly Dictionary<string, (double X, double Y, double Width, double Height)> Bounds = new(); }
 }

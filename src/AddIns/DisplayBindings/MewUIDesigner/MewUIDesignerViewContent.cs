@@ -96,7 +96,8 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	bool SetProperty(string id, string name, string value) { if (host == null || !Mutate(() => host.SetPropertyAsync(state.Version, id, name, value).GetAwaiter().GetResult())) return false; return name == "$name" ? SelectByName(value) : selection.Find(id) != null; }
 	public bool SetSelectedEvent(string name, string handler) => selected != null && SetEvent(selected.Id, name, handler);
 	MewUIPropertyAdapter Adapter(DesignerElementNode node) => new(node, (name, value) => SetProperty(node.Id, name, value), (name, value) => SetEvent(node.Id, name, value)) {
-		EventHandlerBound = (eventName, handler) => LastHandlerNavigated = MewUICodeBehindHandlers.EnsureAndNavigate(mxamlFile.FileName.ToString(), loadedMxamlText, node.Type, eventName, handler)
+		EventHandlerBound = (eventName, handler) => LastHandlerNavigated = MewUICodeBehindHandlers.EnsureAndNavigate(mxamlFile.FileName.ToString(), loadedMxamlText, node.Type, eventName, handler),
+		SetItemsHandler = items => host != null && Mutate(() => host.SetItemsAsync(state.Version, node.Id, items).GetAwaiter().GetResult()) && selection.Find(node.Id) != null
 	};
 
 	/// <summary>Whether the last double-click binding created or opened its code-behind method.</summary>

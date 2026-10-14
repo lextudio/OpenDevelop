@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using Xceed.Wpf.Toolkit.PropertyGrid;
 
@@ -12,7 +13,7 @@ namespace ICSharpCode.MewUIDesigner;
 /// <summary>Snapshot-driven Properties-pad adapter for MewUI. The host owns the supported
 /// attribute set and type kind; this side only turns that contract into native property-grid
 /// descriptors, so newly published MewUI attributes do not require another hand-written pad row.</summary>
-public sealed class MewUIPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost
+public sealed class MewUIPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IItemsCollectionEditorHost
 {
 	readonly DesignerElementNode node;
 	readonly Func<string, string, bool> set;
@@ -28,6 +29,17 @@ public sealed class MewUIPropertyAdapter : ICustomTypeDescriptor, IPropertyGridE
 		this.node = node;
 		this.set = set;
 		this.setEvent = setEvent ?? set;
+	}
+
+	/// <summary>The shared list editor's commit for a ComboBox/ListBox Items row (design/set-items).</summary>
+	public Func<IReadOnlyList<DesignerCollectionItemEdit>, bool>? SetItemsHandler { get; init; }
+
+	void IItemsCollectionEditorHost.SetItems(string propertyName, IReadOnlyList<DesignerCollectionItemEdit> items)
+	{
+		if (SetItemsHandler == null || !node.Properties.Any(p => p.EditorKind == "ItemsCollection"))
+			throw new InvalidOperationException("This element has no editable items.");
+		if (!SetItemsHandler(items))
+			throw new InvalidOperationException("The MewUI designer rejected the items edit.");
 	}
 
 	internal bool Set(string name, string value) => set(name, value);
@@ -102,7 +114,7 @@ public sealed class MewUIPropertyAdapter : ICustomTypeDescriptor, IPropertyGridE
 	}
 }
 
-sealed class MewUIPropertyDescriptor : PropertyDescriptor
+sealed class MewUIPropertyDescriptor : PropertyDescriptor, IItemsCollectionProperty
 {
 	readonly MewUIPropertyAdapter owner;
 	readonly DesignerPropertyInfo info;
@@ -132,10 +144,14 @@ sealed class MewUIPropertyDescriptor : PropertyDescriptor
 			new DescriptionAttribute(info.Description ?? ""), new ReadOnlyAttribute(IsProtocolReadOnly(info))
 		};
 		if (info.Kind == "Enum" && info.AllowedValues.Count > 0) attributes.Add(new TypeConverterAttribute(typeof(MewUIEnumConverter)));
+		// Read-only to generic editing; the "…" editor commits the whole list.
+		if (info.EditorKind == "ItemsCollection")
+			attributes.Add(new EditorAttribute(typeof(MewUIItemsCollectionEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 		return attributes.ToArray();
 	}
 	static bool IsProtocolReadOnly(DesignerPropertyInfo info) => DesignerPropertySemantics.IsReadOnly(info);
 	internal IReadOnlyList<string> AllowedValues => info.AllowedValues;
+	IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => info.CollectionItems;
 	public override Type ComponentType => typeof(MewUIPropertyAdapter);
 	public override Type PropertyType => type;
 	public override bool IsReadOnly => IsProtocolReadOnly(info);

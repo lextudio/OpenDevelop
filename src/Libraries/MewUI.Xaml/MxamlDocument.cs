@@ -146,7 +146,14 @@ public sealed class MxamlDocument
 			AddDiagnostic(element, MxamlDiagnosticSeverity.Error, $"Name '{result.Name}' is not a valid C# identifier.");
 
 		var isContainer = MewUIControlCatalog.IsContainer(type);
+		var hasItems = MewUIControlCatalog.HasStringItems(type);
 		foreach (var childElement in element.Elements()) {
+			if (hasItems && childElement.Name.LocalName == "Item") {
+				if (childElement.HasElements || childElement.HasAttributes)
+					AddDiagnostic(childElement, MxamlDiagnosticSeverity.Error, $"'{type}' items are plain text: <Item>text</Item>.");
+				result.Items.Add(childElement.Value);
+				continue;
+			}
 			if (!isContainer)
 				AddDiagnostic(childElement, MxamlDiagnosticSeverity.Error, $"'{type}' is not a container and cannot take children.");
 			result.Children.Add(BuildObject(childElement));
@@ -405,6 +412,21 @@ public sealed class MxamlDocument
 			else {
 				obj.Attributes.Add(new MxamlAttribute { Name = property, Value = value });
 			}
+			return true;
+		});
+	}
+
+	/// <summary>Replaces a ComboBox/ListBox's string items (its <c>&lt;Item&gt;</c> children) in one
+	/// undo step; an empty list removes them.</summary>
+	public bool SetItems(string name, IReadOnlyList<string> items)
+	{
+		var obj = Find(name);
+		if (obj == null || !MewUIControlCatalog.HasStringItems(obj.Type)) return false;
+		if (obj.Items.SequenceEqual(items ?? Array.Empty<string>())) return true;
+		return Commit(() => {
+			obj.Items.Clear();
+			foreach (var item in items ?? Array.Empty<string>())
+				obj.Items.Add(item ?? "");
 			return true;
 		});
 	}

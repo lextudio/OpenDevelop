@@ -71,6 +71,23 @@ Rules:
 
 Unknown properties on known types default to Unsupported (generator emits a comment).
 
+### Items (2026-10-14)
+
+`ComboBox` and `ListBox` take a plain string list as `<Item>` children (they are not containers, so
+no other child element is allowed):
+
+```xml
+<ComboBox Name="themeCombo" SelectedIndex="0">
+    <Item>Light</Item>
+    <Item>Dark</Item>
+</ComboBox>
+```
+
+The generator emits the runtime's `params string[]` extension, `themeCombo.Items("Light", "Dark");`, and
+the designer's preview sets the same strings as `ItemsSource = ItemsView.Create(...)`. An `<Item>` with
+attributes or child elements is an error. Fixed alongside: Window-level properties were emitted once per
+root attribute, and a Double one used the wrong attribute's value (`Width` took `Title`'s text).
+
 ## Rollout
 
 | Phase | Scope |

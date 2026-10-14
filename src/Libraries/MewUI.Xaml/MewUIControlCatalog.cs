@@ -95,6 +95,10 @@ public static class MewUIControlCatalog
 		return "";
 	}
 	public static bool IsKnownEvent(string eventName) => events.Contains(eventName);
+	static readonly HashSet<string> stringItemTypes = new(StringComparer.Ordinal) { "ComboBox", "ListBox" };
+	/// <summary>Types that take a plain string list as <c>&lt;Item&gt;</c> children, generated as the
+	/// runtime's <c>.Items(params string[])</c> extension.</summary>
+	public static bool HasStringItems(string type) => stringItemTypes.Contains(type);
 
 	/// <summary>Registry kind for a property on a type. Unlisted combinations return
 	/// <see cref="MxamlPropertyKind.Unsupported"/>: the generator emits a comment instead of

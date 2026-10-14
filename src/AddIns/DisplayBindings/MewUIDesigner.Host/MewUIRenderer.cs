@@ -100,6 +100,12 @@ static class MewUIRenderer
 		}
 		map[element] = path;
 		foreach (var a in node.Attributes.Where(a => !a.IsEvent)) Apply(element, a.Name, a.Value, diagnostics);
+		// <Item> children of a ComboBox/ListBox: the same strings the generator passes to .Items(...).
+		if (node.Items.Count > 0) {
+			if (type.GetProperty("ItemsSource") is { CanWrite: true } itemsSource && itemsSource.PropertyType.IsAssignableFrom(typeof(ItemsView<string>)))
+				itemsSource.SetValue(element, ItemsView.Create(node.Items.ToList()));
+			else diagnostics.Add(node.Type + " cannot show items");
+		}
 		var children = node.Children.Select((c, i) => Build(c, path + "," + i, map, diagnostics)).OfType<Element>().ToArray();
 		if (children.Length > 0) {
 			if (element is Panel panel) panel.Children(children);

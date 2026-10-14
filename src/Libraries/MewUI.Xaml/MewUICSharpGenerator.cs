@@ -36,7 +36,6 @@ public static class MewUICSharpGenerator
 		sb.Append('\n');
 
 		// Window-level properties first (Title/Width/...), then each control's block.
-		foreach (var a in root.Attributes)
 		// Root Window-level props: instance members, NO owner prefix.
 		foreach (var attr in root.Attributes) {
 			var kind = MewUIControlCatalog.KindOf("Window", attr.Name);
@@ -45,7 +44,7 @@ public static class MewUICSharpGenerator
 					sb.Append("        ").Append(attr.Name).Append(" = \"").Append(Escape(attr.Value)).Append("\";\n");
 					break;
 				case MxamlPropertyKind.Double:
-					sb.Append("        ").Append(attr.Name).Append(" = ").Append(DoubleLiteral(a.Value)).Append(";\n");
+					sb.Append("        ").Append(attr.Name).Append(" = ").Append(DoubleLiteral(attr.Value)).Append(";\n");
 					break;
 				default:
 					sb.Append("        // unsupported: ").Append(attr.Name).Append("\n");
@@ -57,6 +56,9 @@ public static class MewUICSharpGenerator
 			sb.Append('\n');
 			foreach (var a in c.Attributes)
 				EmitAttribute(sb, c.Type, c.Name, a);
+			if (c.Items.Count > 0)
+				sb.Append("        ").Append(c.Name).Append(".Items(")
+				  .Append(string.Join(", ", c.Items.Select(item => "\"" + Escape(item) + "\""))).Append(");\n");
 		}
 
 		sb.Append('\n');

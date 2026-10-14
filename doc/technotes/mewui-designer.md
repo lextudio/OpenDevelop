@@ -343,6 +343,10 @@ container's attached placement; with several, they drop placement that addressed
 container. It refuses the root, a leaf, an empty container, and several children into a single-child
 host (the Window holds one). `MxamlUnwrapTests` covers it.
 
+**Items (2026-10-14).** A selected `ComboBox` or `ListBox` shows an **Items** row; its "…" button opens
+the shared list dialog (WPF's, WinForms' and GTK's) and commits through `design/set-items`
+(`MxamlDocument.SetItems`, one undo step), writing `<Item>` children (see mxaml.md "Items").
+
 ## Future runtime fidelity
 
 Preview frames today come from `MewUIDesigner.Host/MewUIRenderer.cs`, which builds the real MewUI

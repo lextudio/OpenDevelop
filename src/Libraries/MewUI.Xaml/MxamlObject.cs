@@ -43,9 +43,13 @@ public sealed class MxamlObject
 
 	List<MxamlAttribute> attributes = new();
 	List<MxamlObject> children = new();
+	List<string> items = new();
 
 	public IList<MxamlAttribute> Attributes => attributes;
 	public IList<MxamlObject> Children => children;
+	/// <summary>A ComboBox/ListBox's plain string items, written as <c>&lt;Item&gt;text&lt;/Item&gt;</c>
+	/// children (see <see cref="MewUIControlCatalog.HasStringItems"/>).</summary>
+	public IList<string> Items => items;
 
 	public MxamlAttribute? FindAttribute(string name) => attributes.FirstOrDefault(a => a.Name == name);
 	public MxamlObject? FindChild(string name) => children.FirstOrDefault(c => c.Name == name);
@@ -64,6 +68,13 @@ public sealed class MxamlObject
 			sb.Append(" Name=\"").Append(Escape(Name)).Append('"');
 		foreach (var a in attributes) {
 			sb.Append(' ').Append(a.Name).Append("=\"").Append(Escape(a.Value)).Append('"');
+		}
+		if (items.Count > 0) {
+			sb.Append(">\n");
+			foreach (var item in items)
+				sb.Append(indent).Append("    <Item>").Append(Escape(item)).Append("</Item>\n");
+			sb.Append(indent).Append("</").Append(Type).Append(">\n");
+			return;
 		}
 		if (children.Count == 0) {
 			// Every element ends its own line. Without the newline a leaf ran into the next sibling's
