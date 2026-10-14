@@ -58,7 +58,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// {DynamicResource {x:Static SystemColors.XBrushKey}} reference.
 		// v39 adds DesignerBrushInfo's "Image" kind with ImageSource and Stretch (an ImageBrush).
 		// v40 adds the "ColorResource" brush kind and DesignerPropertyInfo.ColorResourceKeys.
-		public const int Version = 40;
+		// v41 adds WPF's optional design/create-empty-style (Edit Style → Create Empty).
+		public const int Version = 41;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

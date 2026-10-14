@@ -1012,6 +1012,53 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		/// <summary>Visual Studio's Edit Style → Create Empty: adds <c>&lt;Style x:Key="ButtonStyle1"
+		/// TargetType="Button"/&gt;</c> to the document root's Resources and points the element's Style
+		/// at it, in one undo group. Nothing is copied from the design host's own theme (the reason
+		/// "Edit a Copy" stays deferred). Refused for the root (its resources cannot style itself with a
+		/// StaticResource) and for an element that already sets a Style.</summary>
+		[JsonRpcMethod("design/create-empty-style")]
+		public DesignerSessionState CreateEmptyStyle(long baseVersion, string elementId)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId ?? "", out var item) || current?.RootItem is not { } root || item == root
+					|| item.Component is not FrameworkElement)
+					return NotFound(state, "Create Empty Style needs a non-root element: " + elementId);
+				var styleProperty = item.Properties["Style"];
+				if (styleProperty.IsSet)
+					return NotFound(state, "The element already sets a Style.");
+				var type = item.Component.GetType();
+				var taken = new HashSet<string>(ResourceKeys(item, _ => true), StringComparer.Ordinal);
+				var index = 1;
+				while (taken.Contains(type.Name + "Style" + index))
+					index++;
+				var key = type.Name + "Style" + index;
+				try
+				{
+					using var changeGroup = item.OpenGroup("Create Empty Style");
+					var style = item.Services.Component.RegisterComponentForDesigner(new Style());
+					root.Properties["Resources"].CollectionElements.Add(style);
+					// Only once the Style is in the document can DDP resolve the x: prefix for its key
+					// (set earlier it is written as a plain, invalid Key attribute); TargetType is a
+					// property, not a constructor argument DDP would serialize.
+					style.Key = key;
+					// As text, spelled like the element's own tag ("Button", "local:MyButton"), which
+					// the document already proves resolves; a Type value would serialize as an
+					// invalid <RuntimeType/> element.
+					var tag = ((XamlDesignItem)item).XamlObject.XmlElement;
+					style.Properties["TargetType"].SetValue(string.IsNullOrEmpty(tag.Prefix) ? tag.LocalName : tag.Prefix + ":" + tag.LocalName);
+					styleProperty.SetValue(new StaticResourceExtension());
+					styleProperty.Value!.Properties["ResourceKey"].SetValue(key);
+					changeGroup.Commit();
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
 		/// <summary>Replaces a Brush-typed property's value with the brush the Properties-pad brush
 		/// editor built (the in-process BrushEditor's solid/linear/radial choices), as one change.
 		/// A solid brush is written as attribute text; a gradient as a property element.</summary>

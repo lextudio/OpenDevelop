@@ -95,4 +95,36 @@ public sealed class CopyPasteTests
 		Assert.DoesNotContain("Grid.Column", ok2, StringComparison.Ordinal);
 		Assert.Matches("<Button(?=[^>]*x:Name=\"ok\")(?=[^>]*Grid.Row=\"1\")(?=[^>]*Grid.Column=\"1\")", text);
 	}
+
+	[Fact]
+	public async Task ChildHost_CreatesAnEmptyStyleInTheRootResources()
+	{
+		const string styleXaml = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="root" Width="200" Height="100">
+			  <Button x:Name="plain" Content="Plain"/>
+			  <Button x:Name="styled" Content="Styled" Style="{x:Null}"/>
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(WpfSurfaceHostRpcTests.HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(1, styleXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+
+		// The root cannot style itself from its own resources; an existing Style is not replaced.
+		Assert.False((await client.CreateEmptyStyleAsync(1, opened.Tree!.Id, timeout.Token)).Accepted);
+		Assert.False((await client.CreateEmptyStyleAsync(1, Id(opened, "styled"), timeout.Token)).Accepted);
+
+		var created = await client.CreateEmptyStyleAsync(1, Id(opened, "plain"), timeout.Token);
+		Assert.True(created.Accepted, created.Error);
+		var text = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.True(System.Text.RegularExpressions.Regex.IsMatch(text, "<Style(?=[^>]*x:Key=\"ButtonStyle1\")(?=[^>]*TargetType=\"Button\")"), text);
+		Assert.Matches("<Button(?=[^>]*x:Name=\"plain\")(?=[^>]*Style=\"\\{StaticResource ButtonStyle1\\}\")", text);
+
+		// A second empty style gets the next free key, and the document still loads.
+		var reopened = await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(2, text.Replace("Style=\"{x:Null}\"", "")), timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error);
+		var second = await client.CreateEmptyStyleAsync(2, Id(reopened, "styled"), timeout.Token);
+		Assert.True(second.Accepted, second.Error);
+		Assert.Contains("x:Key=\"ButtonStyle2\"", Assert.Single((await client.FlushAsync(2, timeout.Token)).Files).Text, StringComparison.Ordinal);
+	}
 }

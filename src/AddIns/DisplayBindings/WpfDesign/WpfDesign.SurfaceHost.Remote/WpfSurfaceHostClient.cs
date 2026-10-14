@@ -321,6 +321,10 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> PasteElementsIntoCellAsync(long baseVersion, string gridId, string[] snippets, double x, double y, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/paste-elements-into-cell", new { sessionId = SessionId, documentId = DocumentId, baseVersion, gridId, snippets, x, y }, cancellationToken), cancellationToken);
 
+	/// <summary>Edit Style → Create Empty: a new keyed Style in the root's Resources, applied to the element.</summary>
+	public Task<DesignerSessionState> CreateEmptyStyleAsync(long baseVersion, string elementId, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/create-empty-style", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken), cancellationToken);
+
 	/// <summary>Moves elements into a container after one of its children (null = first).</summary>
 	public Task<DesignerSessionState> MoveIntoAsync(long baseVersion, string[] elementIds, string targetId, string? afterId, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/move-into", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds, targetId, afterId }, cancellationToken), cancellationToken);
