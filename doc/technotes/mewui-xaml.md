@@ -110,6 +110,8 @@ diagnostics carry line/column from `IXmlLineInfo`.
 | Boolean | `CheckBox.IsChecked`, `DockPanel.LastChildFill` | `.IsChecked = true;` |
 | Int32 | `ComboBox.SelectedIndex` | `.SelectedIndex = 2;` |
 | Enum | `StackPanel.Orientation` | `.Orientation = Orientation.Horizontal;` |
+| Thickness | `Margin="4,8"`, `Padding` | `.Margin = new Thickness(4.0, 8.0);` |
+| Color | `Background="#336699"`, `Foreground="White"` | `.Background = Color.FromArgb(0xFF336699u);` / `Color.White` |
 
 Unknown properties on known controls default to String (permissive, Info-level diagnostic).
 Unknown control types are retained in the tree (round-trip safe) with a Warning diagnostic.

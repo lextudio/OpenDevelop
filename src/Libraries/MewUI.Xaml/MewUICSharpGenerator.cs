@@ -51,20 +51,8 @@ public static class MewUICSharpGenerator
 				sb.Append("        // unsupported: a Window size needs both Width and Height\n");
 		}
 		// Root Window-level props: instance members, NO owner prefix.
-		foreach (var attr in root.Attributes.Where(a => !sizeNames.Contains(a.Name))) {
-			var kind = MewUIControlCatalog.KindOf("Window", attr.Name);
-			switch (kind) {
-				case MxamlPropertyKind.String:
-					sb.Append("        ").Append(attr.Name).Append(" = \"").Append(Escape(attr.Value)).Append("\";\n");
-					break;
-				case MxamlPropertyKind.Double:
-					sb.Append("        ").Append(attr.Name).Append(" = ").Append(DoubleLiteral(attr.Value)).Append(";\n");
-					break;
-				default:
-					sb.Append("        // unsupported: ").Append(attr.Name).Append("\n");
-					break;
-			}
-		}
+		foreach (var attr in root.Attributes.Where(a => !sizeNames.Contains(a.Name) && !a.IsEvent))
+			EmitAttribute(sb, "Window", "", attr);
 
 		foreach (var c in controls) {
 			sb.Append('\n');
@@ -112,8 +100,10 @@ public static class MewUICSharpGenerator
 
 	static void EmitAttribute(StringBuilder sb, string ownerType, string ownerName, MxamlAttribute attribute)
 	{
+		// The root Window's own members take no owner prefix.
+		var target = ownerName.Length == 0 ? attribute.Name : ownerName + "." + attribute.Name;
 		if (attribute.IsEvent) {
-			sb.Append("        ").Append(ownerName).Append('.').Append(attribute.Name)
+			sb.Append("        ").Append(target)
 			  .Append(" += ").Append(attribute.Value).Append(";\n");
 			return;
 		}
@@ -125,24 +115,34 @@ public static class MewUICSharpGenerator
 		}
 		switch (MewUIControlCatalog.KindOf(ownerType, attribute.Name)) {
 			case MxamlPropertyKind.String:
-				sb.Append("        ").Append(ownerName).Append('.').Append(attribute.Name)
+				sb.Append("        ").Append(target)
 				  .Append(" = \"").Append(Escape(attribute.Value)).Append("\";\n");
 				break;
 			case MxamlPropertyKind.Double:
-				sb.Append("        ").Append(ownerName).Append('.').Append(attribute.Name)
+				sb.Append("        ").Append(target)
 				  .Append(" = ").Append(DoubleLiteral(attribute.Value)).Append(";\n");
 				break;
 			case MxamlPropertyKind.Int32:
-				sb.Append("        ").Append(ownerName).Append('.').Append(attribute.Name)
+				sb.Append("        ").Append(target)
 				  .Append(" = ").Append(int.Parse(attribute.Value, System.Globalization.CultureInfo.InvariantCulture)).Append(";\n");
 				break;
 			case MxamlPropertyKind.Boolean:
-				sb.Append("        ").Append(ownerName).Append('.').Append(attribute.Name)
+				sb.Append("        ").Append(target)
 				  .Append(" = ").Append(attribute.Value.ToLowerInvariant()).Append(";\n");
 				break;
 			case MxamlPropertyKind.Enum:
-				sb.Append("        ").Append(ownerName).Append('.').Append(attribute.Name)
+				sb.Append("        ").Append(target)
 				  .Append(" = ").Append(attribute.Name).Append('.').Append(attribute.Value).Append(";\n");
+				break;
+			case MxamlPropertyKind.Thickness:
+				sb.Append("        ").Append(target).Append(" = new Thickness(")
+				  .Append(string.Join(", ", MewUIControlCatalog.ParseThickness(attribute.Value)!.Select(n => DoubleLiteral(n.ToString("R", System.Globalization.CultureInfo.InvariantCulture)))))
+				  .Append(");\n");
+				break;
+			case MxamlPropertyKind.Color:
+				sb.Append("        ").Append(target).Append(" = ")
+				  .Append(MewUIControlCatalog.ParseHexColor(attribute.Value) is { } argb ? "Color.FromArgb(0x" + argb.ToString("X8", System.Globalization.CultureInfo.InvariantCulture) + "u)" : "Color." + attribute.Value)
+				  .Append(";\n");
 				break;
 			case MxamlPropertyKind.ContentText:
 				sb.Append("        ").Append(ownerName).Append(".Content(\"").Append(Escape(attribute.Value)).Append("\");\n");
@@ -150,8 +150,7 @@ public static class MewUICSharpGenerator
 			default:
 				// Unregistered property: emit a comment instead of possibly-wrong code so the
 				// generated file keeps compiling while surfacing the gap (M-2 lesson).
-				sb.Append("        // unsupported: ").Append(ownerName).Append('.')
-				  .Append(attribute.Name).Append(" = \"").Append(Escape(attribute.Value)).Append("\"\n");
+				sb.Append("        // unsupported: ").Append(target).Append(" = \"").Append(Escape(attribute.Value)).Append("\"\n");
 				break;
 		}
 	}

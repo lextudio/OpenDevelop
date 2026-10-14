@@ -138,6 +138,10 @@ public sealed class MxamlDocument
 			else if (!isEvent && MewUIControlCatalog.KindOf(type, name) == MxamlPropertyKind.Enum
 				&& !MewUIControlCatalog.EnumValuesOf(type, name).Contains(attribute.Value, StringComparer.Ordinal))
 				AddDiagnostic(attribute, MxamlDiagnosticSeverity.Error, $"{type}.{name}: '{attribute.Value}' is not a supported value.");
+			else if (!isEvent && MewUIControlCatalog.KindOf(type, name) == MxamlPropertyKind.Thickness && MewUIControlCatalog.ParseThickness(attribute.Value) == null)
+				AddDiagnostic(attribute, MxamlDiagnosticSeverity.Error, $"{type}.{name}: '{attribute.Value}' is not a thickness (one, two or four numbers).");
+			else if (!isEvent && MewUIControlCatalog.KindOf(type, name) == MxamlPropertyKind.Color && !MewUIControlCatalog.IsValidColor(attribute.Value))
+				AddDiagnostic(attribute, MxamlDiagnosticSeverity.Error, $"{type}.{name}: '{attribute.Value}' is not a colour (#RRGGBB, #AARRGGBB or a MewUI colour name).");
 		}
 
 		if (string.IsNullOrEmpty(result.Name))
@@ -219,6 +223,12 @@ public sealed class MxamlDocument
 						break;
 					case MxamlPropertyKind.Enum when !MewUIControlCatalog.EnumValuesOf(o.Type, a.Name).Contains(a.Value, StringComparer.Ordinal):
 						diagnostics.Add(new(MxamlDiagnosticSeverity.Error, $"{o.Type}.{a.Name}: '{a.Value}' is not a supported value."));
+						break;
+					case MxamlPropertyKind.Thickness when MewUIControlCatalog.ParseThickness(a.Value) == null:
+						diagnostics.Add(new(MxamlDiagnosticSeverity.Error, $"{o.Type}.{a.Name}: '{a.Value}' is not a thickness (one, two or four numbers)."));
+						break;
+					case MxamlPropertyKind.Color when !MewUIControlCatalog.IsValidColor(a.Value):
+						diagnostics.Add(new(MxamlDiagnosticSeverity.Error, $"{o.Type}.{a.Name}: '{a.Value}' is not a colour (#RRGGBB, #AARRGGBB or a MewUI colour name)."));
 						break;
 				}
 			}

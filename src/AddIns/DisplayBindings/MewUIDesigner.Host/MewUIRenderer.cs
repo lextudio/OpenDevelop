@@ -156,6 +156,12 @@ static class MewUIRenderer
 			var p = value.Split(',', ' ', StringSplitOptions.RemoveEmptyEntries).Select(s => double.Parse(s, CultureInfo.InvariantCulture)).ToArray();
 			return p.Length switch { 1 => new Thickness(p[0]), 2 => new Thickness(p[0], p[1], p[0], p[1]), 4 => new Thickness(p[0], p[1], p[2], p[3]), _ => throw new FormatException("Thickness") };
 		}
+		// The same colour forms the generator writes: #RRGGBB/#AARRGGBB or a Color.Name.
+		if (t == typeof(Color)) {
+			if (MewUIControlCatalog.ParseHexColor(value) is { } argb) return Color.FromArgb(argb);
+			if (MewUIControlCatalog.ColorNames.Contains(value) && typeof(Color).GetProperty(value, BindingFlags.Public | BindingFlags.Static) is { } named) return named.GetValue(null);
+			throw new FormatException("Colour");
+		}
 		var parse = t.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static, new[] { typeof(string) });
 		if (parse != null) return parse.Invoke(null, new object[] { value });
 		throw new NotSupportedException("No conversion to " + t.Name);

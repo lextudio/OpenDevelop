@@ -15,6 +15,12 @@ public enum MxamlPropertyKind
 	Boolean,
 	/// <summary>Emitted as EnumType.Value (enum type == property name).</summary>
 	Enum,
+	/// <summary>"4", "4,8" or "1,2,3,4" (comma or space separated): emitted as
+	/// <c>new Thickness(...)</c> with one, two (horizontal, vertical) or four values.</summary>
+	Thickness,
+	/// <summary>"#RRGGBB"/"#AARRGGBB" as <c>Color.FromArgb(0xAARRGGBB)</c>, or a runtime colour name as
+	/// <c>Color.Name</c>.</summary>
+	Color,
 	/// <summary>Caption text of a 0.22 content control (Button, CheckBox, RadioButton), whose
 	/// Content is an Element: emitted as the runtime's <c>.Content("text")</c> extension.</summary>
 	ContentText,

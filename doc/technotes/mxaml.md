@@ -89,10 +89,17 @@ by reflection):
   Window previously generated code that did not compile): they generate one
   `WindowSize = WindowSize.Resizable(width: …, height: …, minWidth: …)` with named arguments for the
   attributes present; Width and Height are both required, otherwise a comment is generated.
-- Margin/Padding (Thickness) and colours still generate comments: they need their own value kinds.
+- **Thickness and Color kinds.** `Margin` (every FrameworkElement), `Padding` (all but Image and
+  Separator), and on controls other than panels/Image/Separator `Background`/`Foreground`/`BorderBrush`
+  (Color) and `CornerRadius`/`BorderThickness` (Double); Window takes the same visuals and `Padding`.
+  A thickness is one, two (horizontal, vertical) or four numbers, comma or space separated, generated as
+  `new Thickness(...)`; a colour is `#RRGGBB`/`#AARRGGBB`, generated as `Color.FromArgb(0xAARRGGBBu)`, or
+  one of the runtime's 145 colour names (`Color.CornflowerBlue`). Anything else is an Error diagnostic,
+  and the preview parses the same forms.
 
 Verified by building the fixture against 0.22.0 and by compiling a probe document that uses every new
-kind (window size, captions, items, range and common properties) against 0.22.0.
+kind (window size, captions, items, range and common properties, thickness and colour values) against
+0.22.0.
 
 ### Items (2026-10-14)
 

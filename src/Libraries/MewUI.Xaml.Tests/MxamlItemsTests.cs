@@ -129,4 +129,33 @@ public sealed class MxamlItemsTests
 		Assert.True(MewUIControlCatalog.IsSupported("Button", "Width"));
 		Assert.True(MewUIControlCatalog.IsSupported("TabControl", "Opacity"));
 	}
+
+	[Fact]
+	public void GeneratesThicknessAndColourValues()
+	{
+		const string source = """
+<?xml version="1.0" encoding="utf-8"?>
+<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow" Background="White" Padding="12">
+  <StackPanel Name="rootPanel" Margin="4,8" Padding="1 2 3 4">
+    <Button Name="ok" Content="OK" Background="#336699" Foreground="#80FFFFFF" BorderBrush="CornflowerBlue" CornerRadius="4"/>
+    <Image Name="logo" Margin="2"/>
+  </StackPanel>
+</Window>
+""";
+		var doc = MxamlDocument.Parse(source);
+		Assert.False(doc.HasErrors, string.Join("\n", doc.Diagnostics));
+		var csharp = MewUICSharpGenerator.Generate(doc);
+		foreach (var line in new[] {
+			"Background = Color.White;", "Padding = new Thickness(12.0);",
+			"rootPanel.Margin = new Thickness(4.0, 8.0);", "rootPanel.Padding = new Thickness(1.0, 2.0, 3.0, 4.0);",
+			"ok.Background = Color.FromArgb(0xFF336699u);", "ok.Foreground = Color.FromArgb(0x80FFFFFFu);",
+			"ok.BorderBrush = Color.CornflowerBlue;", "ok.CornerRadius = 4.0;", "logo.Margin = new Thickness(2.0);" })
+			Assert.Contains(line, csharp);
+		Assert.DoesNotContain("// unsupported", csharp);
+		// Panels and Image have no Control-level visuals; bad values are errors.
+		Assert.False(MewUIControlCatalog.IsSupported("StackPanel", "Background"));
+		Assert.False(MewUIControlCatalog.IsSupported("Image", "Padding"));
+		foreach (var bad in new[] { "<Image Name=\"bad\" Margin=\"1,2,3\"/>", "<Label Name=\"bad\" Foreground=\"#12345\"/>", "<Label Name=\"bad\" Foreground=\"Chartreusey\"/>" })
+			Assert.True(MxamlDocument.Parse(source.Replace("<Image Name=\"logo\" Margin=\"2\"/>", bad)).HasErrors, bad);
+	}
 }
