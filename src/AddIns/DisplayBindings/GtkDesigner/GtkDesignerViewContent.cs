@@ -180,6 +180,67 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	bool AddTo(string parentId, string type, double x, double y) { if (host == null || state.Tree == null) return false; var before = Flatten(state.Tree).Select(n => n.Id).ToHashSet(StringComparer.Ordinal); if (!Mutate(() => host.AddElementAsync(state.Version, parentId, new DesignerToolboxItemInfo { Name = type, TypeName = type }, "", x, y,
 			ToDropTarget(GtkDropPlanner.Plan(ToDropNode(state.Tree), x, y))).GetAwaiter().GetResult())) return false; var added = state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => !before.Contains(n.Id)); if (added != null) Select(added); return added != null; }
 	public bool DeleteSelected() => commands.Execute("Delete");
+
+	// The designer's own copy, kept beside the system clipboard so a multi-object copy round-trips
+	// as separate snippets; any other text on the clipboard pastes as one snippet.
+	static string[] clipboardSnippets = Array.Empty<string>();
+	static string? clipboardText;
+
+	/// <summary>Copies the selected objects as GtkBuilder &lt;child&gt; snippets to the clipboard.</summary>
+	public bool CopySelection()
+	{
+		if (host == null || selection.SelectedIds.Count == 0) return false;
+		var copied = host.CopyElementsAsync(state.Version, selection.SelectedIds.ToArray()).GetAwaiter().GetResult();
+		if (!copied.Accepted) { diagnostic.Text = copied.Error; return false; }
+		clipboardSnippets = copied.Snippets.ToArray();
+		clipboardText = string.Join(Environment.NewLine, clipboardSnippets);
+		try { Clipboard.SetText(clipboardText); } catch (Exception) { /* the designer's own copy still pastes */ }
+		return true;
+	}
+
+	static string[] ClipboardSnippets()
+	{
+		string? text = null;
+		try { text = Clipboard.ContainsText() ? Clipboard.GetText() : null; } catch (Exception) { }
+		if (text == null || text == clipboardText) return clipboardSnippets;
+		return text.TrimStart().StartsWith("<child", StringComparison.Ordinal) ? new[] { text } : Array.Empty<string>();
+	}
+
+	/// <summary>Pastes into the selected object (or its nearest container; the document root
+	/// without a selection) and selects what was pasted.</summary>
+	public bool PasteIntoSelection()
+	{
+		var target = selection.SelectedIds.FirstOrDefault()
+			?? (state.Tree?.Id == "$interface" ? state.Tree.Children.FirstOrDefault()?.Id : state.Tree?.Id);
+		return target != null && Paste(target, ClipboardSnippets(), null);
+	}
+
+	/// <summary>Copies the selection and pastes it right after itself in the same container,
+	/// without touching the clipboard.</summary>
+	public bool DuplicateSelection()
+	{
+		if (host == null || selection.SelectedIds.Count == 0 || state.Tree == null) return false;
+		var copied = host.CopyElementsAsync(state.Version, selection.SelectedIds.ToArray()).GetAwaiter().GetResult();
+		var last = selection.SelectedIds[^1];
+		DesignerElementNode? ParentOf(string id) => Flatten(state.Tree).FirstOrDefault(node => node.Children.Any(child => child.Id == id));
+		var parent = ParentOf(last);
+		// A duplicate is a sibling: a selection spanning containers has no single place to go.
+		if (!copied.Accepted || parent == null || selection.SelectedIds.Any(id => ParentOf(id) != parent)) {
+			diagnostic.Text = copied.Accepted ? "Duplicate needs objects that share one container." : copied.Error;
+			return false;
+		}
+		return Paste(parent.Id, copied.Snippets.ToArray(), last);
+	}
+
+	bool Paste(string targetId, string[] snippets, string? afterId)
+	{
+		if (host == null || snippets.Length == 0) return false;
+		try {
+			if (!Mutate(() => host.PasteElementsAsync(state.Version, targetId, snippets, afterId).GetAwaiter().GetResult())) return false;
+		} catch (Exception ex) { diagnostic.Text = ex.GetBaseException().Message; return false; }
+		if (state.CreatedElementIds.Count > 0) SelectByIds(state.CreatedElementIds);
+		return true;
+	}
 	bool DeleteSelectedCore() { if (selection.SelectedIds.Count == 0 || host == null) return false; var ids = selection.SelectedIds.ToArray(); return Mutate(() => host.DeleteElementsAsync(state.Version, ids).GetAwaiter().GetResult()); }
 	public bool SetSelectedSignal(string signal, string handler) { if (selected == null || host == null) return false; var id = selected.Id; return Mutate(() => host.SetEventAsync(state.Version, id, signal, handler).GetAwaiter().GetResult()) && SelectById(id); }
 	GtkPropertyAdapter Adapter(DesignerElementNode node) => new(node, (name, value) => SetProperty(node.Id, name, value), (name, value) => SetEvent(node.Id, name, value), name => ResetProperty(node.Id, name));
@@ -292,13 +353,25 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		canvas.Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit | DesignerCanvasCapabilities.Gridlines
 			| DesignerCanvasCapabilities.ShowNames | DesignerCanvasCapabilities.StatusBar;
 		canvas.ResizeHandlesEnabled = false;
-		canvas.SetContextCommands(new[] { ("Delete", "delete") });
+		canvas.SetContextCommands(new[] { ("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete") });
+		canvas.ContextCommandCanExecute = command => command switch {
+			"paste" => host?.IsAlive == true && ClipboardSnippets().Length > 0,
+			_ => selection.SelectedIds.Count > 0 && host?.IsAlive == true
+		};
 		canvasController.ClearsSelectionOnEmptyClick = true;
 		canvasController.SelectionChanged += (_, ids) => { if (!ids.SequenceEqual(selection.SelectedIds)) pads.CommitSelection(ids); };
 		canvasController.ElementPicked += (_, id) => { if (!selection.SelectedIds.Contains(id)) SelectById(id); };
 		canvasController.ElementDragCommitted += (_, drag) => CommitCanvasDrag(drag);
 		canvasController.ElementGroupDragCommitted += (_, _) => canvasController.RestoreSelection(selection.SelectedIds);
-		canvasController.ContextCommandRequested += (_, command) => { if (command.Command == "delete") DeleteSelected(); };
+		canvasController.ContextCommandRequested += (_, command) => {
+			switch (command.Command) {
+				case "delete": DeleteSelected(); break;
+				case "copy": CopySelection(); break;
+				case "cut": if (CopySelection()) DeleteSelected(); break;
+				case "paste": PasteIntoSelection(); break;
+				case "duplicate": DuplicateSelection(); break;
+			}
+		};
 		canvas.RenameRequested += (_, _) => RequestRename();
 		canvasController.UndoRedoRequested += (_, undo) => { if (undo) Undo(); else Redo(); };
 		canvas.AllowDrop = true;

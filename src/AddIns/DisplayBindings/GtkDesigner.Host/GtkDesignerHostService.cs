@@ -133,6 +133,32 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	public DesignerSessionState SetEvent(string sessionId, string documentId, long baseVersion, string elementId, string eventName, string handlerName) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.SetSignal(elementId, eventName, handlerName)) throw new InvalidOperationException("GTK signal mutation was rejected."); session.Version++; return State(session, false); }
 	[JsonRpcMethod("design/reorder")]
 	public DesignerSessionState Reorder(string sessionId, string documentId, long baseVersion, string elementId, int delta) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Reorder(elementId, delta)) throw new InvalidOperationException("GTK reorder was rejected."); session.Version++; return State(session, false); }
+	/// <summary>The selected objects as GtkBuilder &lt;child&gt; snippets (read-only; the same
+	/// contract as the WPF host's copy).</summary>
+	[JsonRpcMethod("design/copy-elements")]
+	public DesignerCopyResult CopyElements(string sessionId, string documentId, long baseVersion, string[] elementIds)
+	{
+		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
+		var snippets = session.Editor.CopySnippets(elementIds ?? Array.Empty<string>());
+		return snippets == null || snippets.Count == 0
+			? new DesignerCopyResult { Error = "Only placed (non-root) GTK objects can be copied." }
+			: new DesignerCopyResult { Accepted = true, Snippets = snippets.ToList() };
+	}
+
+	/// <summary>Pastes &lt;child&gt; snippets into the target or its nearest container, after
+	/// <paramref name="afterId"/> when given; ids are made unique; one undo step.</summary>
+	[JsonRpcMethod("design/paste-elements")]
+	public DesignerSessionState PasteElements(string sessionId, string documentId, long baseVersion, string targetId, string[] snippets, string? afterId = null)
+	{
+		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
+		if (!session.Editor.Paste(targetId, snippets ?? Array.Empty<string>(), out var created, afterId))
+			throw new InvalidOperationException("The clipboard is not pastable GTK markup for this target.");
+		session.Version++;
+		var state = State(session, false);
+		state.CreatedElementIds = created;
+		return state;
+	}
+
 	[JsonRpcMethod("design/hit-test")]
 	public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, double x, double y) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); y -= WindowTitleBarOffset(session); var hit = session.NativeBounds.Where(p => x >= p.Value.X && y >= p.Value.Y && x <= p.Value.X + p.Value.Width && y <= p.Value.Y + p.Value.Height).OrderBy(p => p.Value.Width * p.Value.Height).FirstOrDefault(); return string.IsNullOrEmpty(hit.Key) ? new DesignerHitTestResult() : new DesignerHitTestResult { Hit = true, ComponentName = hit.Key, Chain = { hit.Key } }; }
 	[JsonRpcMethod("design/undo")]

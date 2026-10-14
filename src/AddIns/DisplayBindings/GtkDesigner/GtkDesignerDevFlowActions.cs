@@ -159,6 +159,19 @@ public static class GtkDesignerDevFlowActions
 	}
 	[DevFlowAction("od.gtk-designer.delete", Description = "Delete the selected GTK object")]
 	public static string Delete() { var view = Activate(); return JsonSerializer.Serialize(new { success = view?.DeleteSelected() == true, elementCount = view?.ElementCount ?? 0 }); }
+	[DevFlowAction("od.gtk-designer.clipboard", Description = "Run the design surface's cut|copy|paste|duplicate command on the selection, as its context menu does")]
+	public static string Clipboard(string command)
+	{
+		var view = Activate();
+		var ok = view != null && command switch {
+			"copy" => view.CopySelection(),
+			"cut" => view.CopySelection() && view.DeleteSelected(),
+			"paste" => view.PasteIntoSelection(),
+			"duplicate" => view.DuplicateSelection(),
+			_ => false
+		};
+		return JsonSerializer.Serialize(new { success = ok, selectedIds = view?.SelectedIds ?? Array.Empty<string>(), elementCount = view?.ElementCount ?? 0 });
+	}
 	[DevFlowAction("od.gtk-designer.signal.set", Description = "Set a GtkBuilder signal handler on the selected object")]
 	public static string SetSignal(string signalName, string handlerName) { var view = Activate(); return JsonSerializer.Serialize(new { success = view?.SetSelectedSignal(signalName, handlerName) == true, selectedId = view?.SelectedId }); }
 	[DevFlowAction("od.gtk-designer.properties.event.bind", Description = "Bind a GTK signal through the selected Properties-pad adapter")]

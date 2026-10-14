@@ -569,6 +569,27 @@ Signals get a dedicated category. Creating a handler is a Roslyn workspace opera
 class. The `.ui` signal entry is committed only if the handler edit succeeds. BuilderScope/binding
 support varies, so signal hookup must have a Gir.Core fixture proving the exact supported pattern.
 
+### Clipboard and Duplicate (2026-10-14)
+
+The surface's context menu now offers Cut, Copy, Paste and Duplicate beside Delete, as the WPF,
+WinForms and WinUI designers do. The host implements the same `design/copy-elements` and
+`design/paste-elements` contracts as WPF over GtkBuilder markup: a copy is each selected object's
+`<child>` element (with its `<layout>`, signals and descendants; an object inside another selected
+object travels with it; a top-level object or template is not copyable), and a paste goes into the
+target or its nearest container, after a given sibling for Duplicate and otherwise at the end. Every
+pasted object id the document already uses is made unique (`runButton` -> `runButton1`), id-reference
+properties inside the paste follow the rename, references to objects outside it keep their target,
+and the paste is one undo step whose top-level ids become the selection. Duplicate copies and pastes
+without touching the clipboard and refuses a selection spanning containers. Copy also puts the
+snippets on the system clipboard as text.
+
+`mnemonic-widget` is now an id-reference property. Adding it exposed an older Rename defect: Rename
+rewrote every id-reference property in the document to the new id, so renaming one widget repointed a
+label that referenced a different one. Rename now rewrites only references to the renamed object.
+`GtkUiDocumentEditorClipboardTests` covers both; the main GTK journey duplicates, copies and pastes,
+and undoes each.
+
+### Drag/drop
 ### Drag/drop
 
 GTK 4 has no generic container mutation API. Every drop is resolved through `childPolicy`:

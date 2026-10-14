@@ -94,6 +94,8 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 	public Task<DesignerSessionState> RedoAsync(long v, CancellationToken token = default) => TrackMutationAsync(connection.RedoAsync(DocumentId, v, token), token);
 	public Task<DesignerSessionState> SetEventAsync(long v, string id, string e, string h, CancellationToken t = default) => TrackMutationAsync(Document.SetEventAsync(v, id, e, h, t), t);
 	public Task<DesignerSessionState> ReorderAsync(long v, string id, int delta, CancellationToken t = default) => TrackMutationAsync(connection.ReorderAsync(DocumentId, v, id, delta, t), t);
+	public Task<DesignerCopyResult> CopyElementsAsync(long v, string[] ids, CancellationToken t = default) => connection.CopyElementsAsync(DocumentId, v, ids, t);
+	public Task<DesignerSessionState> PasteElementsAsync(long v, string targetId, string[] snippets, string? afterId = null, CancellationToken t = default) => TrackMutationAsync(connection.PasteElementsAsync(DocumentId, v, targetId, snippets, afterId, t), t);
 	public Task<DesignerHitTestResult> HitTestAsync(long v, double x, double y, CancellationToken t = default) => Document.HitTestAsync(v, x, y, t);
 	public Task<DesignerSessionState> RenderAsync(long version, CancellationToken token = default) => connection.RenderAsync(DocumentId, version, token);
 
@@ -194,5 +196,7 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 		public Task<DesignerSessionState> ReorderAsync(string documentId, long v, string id, int delta, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/reorder", new { sessionId = SessionId, documentId, baseVersion = v, elementId = id, delta }, t);
 		public Task<DesignerSessionState> ResetPropertyAsync(string documentId, long v, string id, string name, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/reset-property", new { sessionId = SessionId, documentId, baseVersion = v, elementId = id, propertyName = name }, t);
 		public Task<DesignerSessionState> RenderAsync(string documentId, long version, CancellationToken token) => InvokeAsync<DesignerSessionState>("design/render", new { sessionId = SessionId, documentId, baseVersion = version }, token);
+		public Task<DesignerCopyResult> CopyElementsAsync(string documentId, long v, string[] ids, CancellationToken t) => InvokeAsync<DesignerCopyResult>("design/copy-elements", new { sessionId = SessionId, documentId, baseVersion = v, elementIds = ids }, t);
+		public Task<DesignerSessionState> PasteElementsAsync(string documentId, long v, string targetId, string[] snippets, string? afterId, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/paste-elements", new { sessionId = SessionId, documentId, baseVersion = v, targetId, snippets, afterId }, t);
 	}
 }

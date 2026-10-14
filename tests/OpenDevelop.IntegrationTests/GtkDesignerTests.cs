@@ -116,6 +116,17 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var undoDelete = await app.InvokeAsync("od.gtk-designer.undo"); Assert.Equal(5, undoDelete.GetProperty("elementCount").GetInt32());
 		var redoDelete = await app.InvokeAsync("od.gtk-designer.redo"); Assert.Equal(4, redoDelete.GetProperty("elementCount").GetInt32());
 		var restoreDeleted = await app.InvokeAsync("od.gtk-designer.undo"); Assert.Equal(5, restoreDeleted.GetProperty("elementCount").GetInt32());
+		// Duplicate and copy/paste: the copy gets a unique id, becomes the selection, and undoes as one step.
+		await app.InvokeAsync("od.gtk-designer.select", "runButton");
+		var duplicated = await app.InvokeAsync("od.gtk-designer.clipboard", "duplicate"); Assert.True(duplicated.GetProperty("success").GetBoolean(), duplicated.ToString());
+		Assert.Equal(6, duplicated.GetProperty("elementCount").GetInt32()); Assert.Equal(new[] { "runButton1" }, duplicated.GetProperty("selectedIds").EnumerateArray().Select(item => item.GetString()).ToArray());
+		var undoDuplicate = await app.InvokeAsync("od.gtk-designer.undo"); Assert.Equal(5, undoDuplicate.GetProperty("elementCount").GetInt32());
+		await app.InvokeAsync("od.gtk-designer.select", "runButton");
+		var copied = await app.InvokeAsync("od.gtk-designer.clipboard", "copy"); Assert.True(copied.GetProperty("success").GetBoolean(), copied.ToString());
+		await app.InvokeAsync("od.gtk-designer.select", "contentBox");
+		var pasted = await app.InvokeAsync("od.gtk-designer.clipboard", "paste"); Assert.True(pasted.GetProperty("success").GetBoolean(), pasted.ToString());
+		Assert.Equal(6, pasted.GetProperty("elementCount").GetInt32()); Assert.Equal(new[] { "runButton1" }, pasted.GetProperty("selectedIds").EnumerateArray().Select(item => item.GetString()).ToArray());
+		var undoPaste = await app.InvokeAsync("od.gtk-designer.undo"); Assert.Equal(5, undoPaste.GetProperty("elementCount").GetInt32());
 		var saved = await app.InvokeAsync("od.file.save", uiPath); Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
 		var xml = await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken);
 		Assert.Contains(">Execute</property>", xml); Assert.Contains(">Shared heading</property>", xml); Assert.Contains("<signal name=\"clicked\" handler=\"runButton_clicked\"", xml); Assert.Contains("class=\"GtkEntry\"", xml); Assert.Contains("id=\"entry1\"", xml);

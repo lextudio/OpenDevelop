@@ -123,7 +123,8 @@ public sealed class GtkUiDocumentEditor
 		// Rewrite only properties that REFERENCE an object id. Rewriting every property whose
 		// value happened to equal the old id collaterally edited display text (measured: a label
 		// reading "runButton" got renamed along with the button).
-		foreach (var property in document.Descendants().Where(IsIdReference))
+		// ... and only those that reference THIS object: other references keep their target.
+		foreach (var property in document.Descendants().Where(e => IsIdReference(e) && e.Value.Trim() == id))
 			property.Value = newId;
 		return Commit();
 	}
@@ -198,6 +199,71 @@ public sealed class GtkUiDocumentEditor
 		child.Remove(); return Commit();
 	}
 
+	/// <summary>The selected objects as GtkBuilder <c>&lt;child&gt;</c> snippets (the object with its
+	/// packing/layout), for the clipboard. An object whose ancestor is also selected travels inside
+	/// it; a top-level object has no &lt;child&gt; wrapper and is not copyable.</summary>
+	public IReadOnlyList<string>? CopySnippets(IReadOnlyCollection<string> ids)
+	{
+		var wrappers = new List<XElement>();
+		foreach (var id in ids) {
+			var element = Find(id);
+			if (element?.Parent is not { Name.LocalName: "child" } wrapper || element.Name.LocalName == "template") return null;
+			wrappers.Add(wrapper);
+		}
+		return wrappers.Where(w => !wrappers.Any(other => other != w && w.Ancestors().Contains(other)))
+			.Select(w => w.ToString(SaveOptions.DisableFormatting)).ToArray();
+	}
+
+	/// <summary>Pastes <c>&lt;child&gt;</c> snippets into <paramref name="targetId"/>, or its nearest
+	/// container ancestor when the target is a leaf, after <paramref name="afterId"/>'s child when
+	/// given (Duplicate) and otherwise at the end. Every pasted object id that the document already
+	/// uses is made unique (<c>button1</c> becomes <c>button2</c>), and id-reference properties
+	/// inside the paste follow the rename. All snippets are one undo step; <paramref name="created"/>
+	/// lists the pasted top-level object ids.</summary>
+	public bool Paste(string targetId, IReadOnlyList<string> snippets, out List<string> created, string? afterId = null)
+	{
+		created = new List<string>();
+		var target = Find(targetId);
+		while (target != null && !((string?)target.Attribute("class") is { } cls && ContainerClasses.Contains(cls)))
+			target = target.Ancestors().FirstOrDefault(IsObject);
+		if (target == null || snippets.Count == 0) return false;
+		var parsed = new List<XElement>();
+		try {
+			foreach (var snippet in snippets) {
+				var child = XElement.Parse(snippet, LoadOptions.PreserveWhitespace);
+				if (child.Name.LocalName != "child" || child.Elements().Count(IsObject) != 1 || child.Descendants().Any(e => e.Name.LocalName == "template")) return false;
+				parsed.Add(child);
+			}
+		} catch (XmlException) { return false; }
+		var used = new HashSet<string>(document.Descendants().Where(e => e.Name.LocalName == "object").Select(e => (string?)e.Attribute("id")).OfType<string>(), StringComparer.Ordinal);
+		// One map for the whole paste: a reference from one pasted snippet to an object in another
+		// (a label and its mnemonic widget copied together) follows that object's rename too.
+		var renames = new Dictionary<string, string>(StringComparer.Ordinal);
+		foreach (var child in parsed) {
+			foreach (var obj in child.Descendants().Where(e => e.Name.LocalName == "object")) {
+				if ((string?)obj.Attribute("id") is not { } id) continue;
+				var unique = id;
+				if (!used.Add(id)) {
+					var stem = id.TrimEnd('0', '1', '2', '3', '4', '5', '6', '7', '8', '9');
+					var n = 1; while (!used.Add(stem + n)) n++;
+					unique = stem + n;
+				}
+				renames[id] = unique;
+				obj.SetAttributeValue("id", unique);
+			}
+		}
+		foreach (var child in parsed) {
+			foreach (var property in child.Descendants().Where(IsIdReference))
+				if (renames.TryGetValue(property.Value.Trim(), out var renamed)) property.Value = renamed;
+			// An id-less object is pasted but has no identity to select.
+			if ((string?)child.Elements().First(IsObject).Attribute("id") is { } createdId) created.Add(createdId);
+		}
+		var anchor = afterId == null ? null : Find(afterId)?.Parent;
+		if (anchor?.Name.LocalName == "child" && anchor.Parent == target) anchor.AddAfterSelf(parsed);
+		else target.Add(parsed);
+		return Commit();
+	}
+
 	public bool SetSignal(string id, string signalName, string handlerName)
 	{
 		var element = Find(id);
@@ -242,7 +308,7 @@ public sealed class GtkUiDocumentEditor
 	// display text that may coincidentally equal one). Extend as new referencing properties are
 	// supported by the designer.
 	static readonly HashSet<string> IdReferenceProperties = new(StringComparer.Ordinal)
-		{ "member-name", "target", "menu-model", "widget", "popover", "action-widget" };
+		{ "member-name", "target", "menu-model", "widget", "popover", "action-widget", "mnemonic-widget" };
 	static bool IsIdReference(XElement e)
 		=> e.Name.LocalName == "property"
 		   && IdReferenceProperties.Contains((string?)e.Attribute("name") ?? "");
