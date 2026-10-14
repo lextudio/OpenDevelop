@@ -621,12 +621,18 @@ sealed class DesignerHostService : IDesignerChildService
 					&& owner.Expression != null && VbSimpleTargetName(owner.Expression) == treeId)
 				.Cast<SyntaxNode>();
 			vbNames = ReachableLocals(vbRoots, vbNames, vbInitializers);
-			if (vbNames.Count == 0) return true;
 			var vbOther = vbMethod.Statements.OfType<VbSyntax.AssignmentStatementSyntax>()
 				.Select(st => st.Left as VbSyntax.MemberAccessExpressionSyntax)
 				.FirstOrDefault(left => left is { Expression: VbSyntax.IdentifierNameSyntax owner } && vbNames.Contains(owner.Identifier.ValueText)
 					&& !CarriedTreeNodeSettings.Contains(left.Name.Identifier.ValueText));
 			if (vbOther != null) { unsupported = vbOther.Name.Identifier.ValueText; return false; }
+			var vbInitialized = vbRoots.Concat(vbInitializers.Where(pair => vbNames.Contains(pair.Key)).Select(pair => pair.Value!).Where(node => node != null))
+				.SelectMany(node => node.DescendantNodesAndSelf().OfType<VbSyntax.ObjectCreationExpressionSyntax>())
+				.Where(creation => creation.Type.ToString().EndsWith("TreeNode", StringComparison.Ordinal))
+				.SelectMany(creation => (creation.Initializer as VbSyntax.ObjectMemberInitializerSyntax)?.Initializers ?? default)
+				.Select(field => (field as VbSyntax.NamedFieldInitializerSyntax)?.Name.Identifier.ValueText ?? field.ToString())
+				.FirstOrDefault(name => !CarriedTreeNodeSettings.Contains(name));
+			if (vbInitialized != null) { unsupported = vbInitialized; return false; }
 			var vbKept = vbMethod.Statements.Where(st => !(st is VbSyntax.LocalDeclarationStatementSyntax l
 					&& l.Declarators.All(d => d.Names.All(n => vbNames.Contains(n.Identifier.ValueText))))
 				&& !(st is VbSyntax.AssignmentStatementSyntax a && a.Left is VbSyntax.MemberAccessExpressionSyntax { Expression: VbSyntax.IdentifierNameSyntax owner }
@@ -650,12 +656,18 @@ sealed class DesignerHostService : IDesignerChildService
 				&& SimpleTargetName(owner.Expression) == treeId)
 			.Cast<SyntaxNode>();
 		names = ReachableLocals(roots, names, initializers);
-		if (names.Count == 0) return true;
 		var other = method.Body.Statements.OfType<ExpressionStatementSyntax>()
 			.Select(st => (st.Expression as AssignmentExpressionSyntax)?.Left as MemberAccessExpressionSyntax)
 			.FirstOrDefault(left => left is { Expression: IdentifierNameSyntax owner } && names.Contains(owner.Identifier.ValueText)
 				&& !CarriedTreeNodeSettings.Contains(left.Name.Identifier.ValueText));
 		if (other != null) { unsupported = other.Name.Identifier.ValueText; return false; }
+		var initialized = roots.Concat(initializers.Where(pair => names.Contains(pair.Key)).Select(pair => pair.Value!).Where(node => node != null))
+			.SelectMany(node => node.DescendantNodesAndSelf().OfType<ObjectCreationExpressionSyntax>())
+			.Where(creation => creation.Type.ToString().EndsWith("TreeNode", StringComparison.Ordinal) && creation.Initializer != null)
+			.SelectMany(creation => creation.Initializer!.Expressions.OfType<AssignmentExpressionSyntax>())
+			.Select(assignment => (assignment.Left as IdentifierNameSyntax)?.Identifier.ValueText ?? assignment.Left.ToString())
+			.FirstOrDefault(name => !CarriedTreeNodeSettings.Contains(name));
+		if (initialized != null) { unsupported = initialized; return false; }
 		var keptStatements = method.Body.Statements.Where(st => !(st is LocalDeclarationStatementSyntax l
 				&& l.Declaration.Variables.All(v => names.Contains(v.Identifier.ValueText)))
 			&& !(st is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax { Left: MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax owner } } }

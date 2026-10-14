@@ -685,6 +685,31 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("StateImageIndex = 1", after, StringComparison.Ordinal);
 	}
 
+	/// <summary>The same guarantee for a setting written in an inline node's initializer.</summary>
+	[Fact]
+	public async Task ChildHost_RefusesATreeEditThatWouldDropAnInitializerSetting()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				this.tree = new System.Windows.Forms.TreeView();
+				        this.tree.Nodes.AddRange(new System.Windows.Forms.TreeNode[] { new System.Windows.Forms.TreeNode("Leaf") { StateImageIndex = 1 } });
+				        this.Controls.Add(this.button1);
+				        this.Controls.Add(this.tree);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TreeView tree;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var before = DesignerText(await client.FlushAsync(1, timeout.Token));
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetItemsAsync(1, "tree", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Renamed" } }, timeout.Token));
+		Assert.Equal(before, DesignerText(await client.FlushAsync(1, timeout.Token)));
+	}
+
 	/// <summary>Visual Studio's own TreeView form: each node a local with Name/Text assignments.</summary>
 	[Theory]
 	[InlineData(false)]

@@ -763,7 +763,9 @@ ForeColor, BackColor, NodeFont and a string Tag are copied to the rebuilt node a
 initializer, so such trees are editable instead of read-only (only a non-string Tag keeps one
 read-only). The loader now evaluates `Color.FromArgb(...)` (C#/VB), which it previously skipped. If the
 edited tree's node locals assign anything else (e.g. `StateImageIndex`), the edit is refused with the
-source unchanged rather than dropping that value. New nodes get
+source unchanged rather than dropping that value; the same holds for such a setting in a node's own
+initializer (`new TreeNode("x") { StateImageIndex = 1 }`, VB `With {...}`), whether the node is a local or
+inline in the AddRange. New nodes get
 no Name.
 **ListView columns (2026-10-14).** `ListView.Columns` is an `ItemsCollection` row of column texts
 when every column is a designer `ColumnHeader` component (Visual Studio's form: a field, a creation

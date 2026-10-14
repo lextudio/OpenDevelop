@@ -356,7 +356,7 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 			=> Evaluate(invocation.ArgumentList.Arguments[0].Expression) is string key && resources.TryGetValue(key, out var resource) ? resource.Value : null,
 		// Color.FromArgb(a, r, g, b) / (r, g, b) - how the designer writes a non-named colour.
 		InvocationExpressionSyntax invocation when invocation.Expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "FromArgb" } fromArgb
-			&& fromArgb.Expression.ToString().EndsWith("Color", StringComparison.Ordinal)
+			&& IsColorType(fromArgb.Expression.ToString())
 			=> FromArgb(invocation.ArgumentList.Arguments.Select(argument => Evaluate(argument.Expression)).ToArray()),
 		InvocationExpressionSyntax invocation when invocation.Expression is IdentifierNameSyntax identifier
 			&& identifier.Identifier.ValueText == "nameof" && invocation.ArgumentList.Arguments.Count == 1
@@ -382,7 +382,8 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 			&& member.Name.Identifier.ValueText == "GetObject" && invocation.ArgumentList.Arguments.Count == 1
 			=> EvaluateVisualBasic(VbArgument(invocation, 0)) is string key && resources.TryGetValue(key, out var resource) ? resource.Value : null,
 		VbSyntax.InvocationExpressionSyntax invocation when invocation.Expression is VbSyntax.MemberAccessExpressionSyntax { Name.Identifier.ValueText: "FromArgb" } fromArgb
-			&& fromArgb.Expression != null && fromArgb.Expression.ToString().EndsWith("Color", StringComparison.Ordinal) && invocation.ArgumentList != null
+			&& fromArgb.Expression != null && IsColorType(fromArgb.Expression.ToString()) && invocation.ArgumentList != null
+			&& invocation.ArgumentList.Arguments.All(argument => argument is VbSyntax.SimpleArgumentSyntax { NameColonEquals: null })
 			=> FromArgb(invocation.ArgumentList.Arguments.Select(argument => EvaluateVisualBasic(((VbSyntax.SimpleArgumentSyntax)argument).Expression)).ToArray()),
 		VbSyntax.InvocationExpressionSyntax invocation when invocation.Expression is VbSyntax.IdentifierNameSyntax identifier
 			&& identifier.Identifier.ValueText.Equals("NameOf", StringComparison.OrdinalIgnoreCase) && invocation.ArgumentList.Arguments.Count == 1
@@ -517,6 +518,10 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 			array.SetValue(kept[i], i);
 		return array;
 	}
+
+	static bool IsColorType(string name) => StripGlobal(name) is "Color" or "System.Drawing.Color";
+
+	static string StripGlobal(string name) => name.Replace("global::", "", StringComparison.Ordinal).Replace("Global.", "", StringComparison.Ordinal);
 
 	static object? FromArgb(object?[] values)
 	{
