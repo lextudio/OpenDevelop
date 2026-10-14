@@ -20,6 +20,8 @@ public interface IBrushProperty
 {
 	DesignerBrushInfo? Brush { get; }
 	IReadOnlyList<string> BrushResourceKeys { get; }
+	/// <summary>The in-scope Color resources a solid brush may reference (empty when unsupported).</summary>
+	IReadOnlyList<string> ColorResourceKeys => Array.Empty<string>();
 }
 
 /// <summary>The Properties pad's selected object, which commits an edited brush.</summary>
@@ -106,6 +108,7 @@ public static class BrushEditing
 				case "kind": model.SetKind(argument); break;
 				case "resource": ok = model.SelectResource(argument); break;
 				case "system": ok = model.SelectSystemResource(argument); break;
+				case "color-resource": ok = model.SelectColorResource(argument); break;
 				case "image": ok = model.SetImage(step.Substring("image:".Length)); break;
 				case "stretch": ok = model.SetStretch(argument); break;
 				case "color":
@@ -167,7 +170,8 @@ public static class BrushEditing
 		try {
 			if (instance is not IBrushEditorHost host || descriptor is not IBrushProperty property)
 				throw new InvalidOperationException("The brush editor is not hosted by a designer Properties pad.");
-			var model = new BrushEditModel(property.Brush, property.BrushResourceKeys, (instance as IImageSourceCandidates)?.ImageSourceCandidates);
+			var model = new BrushEditModel(property.Brush, property.BrushResourceKeys, (instance as IImageSourceCandidates)?.ImageSourceCandidates,
+				property.ColorResourceKeys);
 			var accepted = TestEdit != null
 				? TestEdit(model)
 				: new BrushEditorDialog(model, descriptor.DisplayName) { Owner = owner, DesignFrame = (instance as IDesignFrameSource)?.DesignFrame }.ShowDialog() == true;
@@ -286,7 +290,7 @@ public sealed class BrushEditorDialog : Window
 		noBrushTab.Click += (_, _) => { showResources = false; showImage = false; Change(() => model.SetKind(BrushEditModel.NullKind)); };
 		solidTab.Click += (_, _) => { showResources = false; showImage = false; Change(() => model.SetKind(BrushEditModel.SolidKind)); };
 		gradientTab.Click += (_, _) => { showResources = false; showImage = false; Change(() => model.SetKind(model.Kind == BrushEditModel.RadialKind ? BrushEditModel.RadialKind : BrushEditModel.LinearKind)); };
-		showResources = model.Kind is BrushEditModel.ResourceKind or BrushEditModel.SystemKind;
+		showResources = model.Kind is BrushEditModel.ResourceKind or BrushEditModel.SystemKind or BrushEditModel.ColorResourceKind;
 
 		gradientPanel = BuildGradientPanel();
 		colorPanel = BuildColorPanel();
@@ -611,7 +615,7 @@ public sealed class BrushEditorDialog : Window
 			resources.Visibility = showResources ? Visibility.Visible : Visibility.Collapsed;
 			resources.SelectedItem = model.SelectedResourceEntry;
 			gradientPanel.Visibility = !showResources && !showImage && model.IsGradient ? Visibility.Visible : Visibility.Collapsed;
-			colorPanel.Visibility = showResources || showImage || model.Kind is BrushEditModel.NullKind or BrushEditModel.ResourceKind or BrushEditModel.SystemKind or BrushEditModel.ImageKind ? Visibility.Collapsed : Visibility.Visible;
+			colorPanel.Visibility = showResources || showImage || model.Kind is BrushEditModel.NullKind or BrushEditModel.ResourceKind or BrushEditModel.SystemKind or BrushEditModel.ImageKind or BrushEditModel.ColorResourceKind ? Visibility.Collapsed : Visibility.Visible;
 			// The eyedropper sets the color the color editor shows, so it lives and hides with it.
 			eyedropperToggle.Visibility = designFrame != null && colorPanel.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
 			eyedropperFrame.Visibility = eyedropperToggle.Visibility == Visibility.Visible && eyedropperToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;

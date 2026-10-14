@@ -150,4 +150,21 @@ public sealed class BrushEditModelTests
 		Assert.Equal(BrushEditModel.SolidKind, model.Kind);
 		Assert.Equal("", model.ToInfo().ImageSource);
 	}
+
+	[Fact]
+	public void ResourcesTabOffersColorResourcesAsSolidBrushes()
+	{
+		var model = new BrushEditModel(new DesignerBrushInfo { Kind = BrushEditModel.ColorResourceKind, ResourceKey = "Base" },
+			new[] { "Fade" }, null, new[] { "Accent", "Base" });
+		Assert.Equal("Color/Base", model.SelectedResourceEntry);
+		Assert.Equal(new[] { "Fade", "Color/Accent", "Color/Base" }, model.ResourceEntries.Take(3));
+		Assert.False(model.IsChanged);
+		Assert.False(model.SelectColorResource("Fade"));
+		Assert.True(model.SelectResourceEntry("Color/Accent"));
+		Assert.Equal((BrushEditModel.ColorResourceKind, "Accent"), (model.ToInfo().Kind, model.ToInfo().ResourceKey));
+		Assert.True(BrushEditing.ApplyScript(model, "resource:Fade"));
+		Assert.Equal((BrushEditModel.ResourceKind, "Fade"), (model.ToInfo().Kind, model.ToInfo().ResourceKey));
+		model.SelectedColor = Colors.Blue;
+		Assert.Equal(BrushEditModel.SolidKind, model.Kind);
+	}
 }

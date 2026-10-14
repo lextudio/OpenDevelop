@@ -845,8 +845,13 @@ a read-only reference), and writes one with the URI as authored text (as Image.S
 non-default Stretch and Opacity. The dialog's Image tab offers the project's images through the same
 `IImageSourceCandidates` the Image.Source picker uses, or any typed URI, plus Stretch. The color
 editor also shows the color as HSB (hue 0-360, saturation and brightness 0-100%) beside R/G/B/A, and
-accepts typed HSB values (`TryParseHsb`). Not yet: other tile brushes (Visual/Drawing), color
-resources, and the on-canvas gradient and brush-transform tools.
+accepts typed HSB values (`TryParseHsb`). **Color resources (2026-10-14):** protocol **v40** adds
+`DesignerPropertyInfo.ColorResourceKeys` (the in-scope `Color` resources, from the same scope walk as
+the Brush keys, cached separately) and the `ColorResource` brush kind: a
+`<SolidColorBrush Color="{StaticResource key}"/>` element, described back (with optional attribute-text
+Opacity; a transform keeps it a reference) and written by the host only for a key in scope. The
+Resources tab lists them as `Color/<key>` between the brush and system entries. Not yet: other tile
+brushes (Visual/Drawing) and the on-canvas gradient and brush-transform tools.
 
 **C4 WinForms Toolbox components (2026-10-12).** The WinForms Toolbox catalog lists Timer, ToolTip,
 ImageList, ErrorProvider, BackgroundWorker and the other non-visual components, but the child's

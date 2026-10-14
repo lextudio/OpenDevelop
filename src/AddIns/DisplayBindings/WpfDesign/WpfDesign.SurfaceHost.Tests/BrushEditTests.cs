@@ -232,4 +232,39 @@ public sealed class BrushEditTests
 		var written = Background(set, 0).Brush!;
 		Assert.Equal(("Image", "images/b.png", "UniformToFill", 0.5), (written.Kind, written.ImageSource, written.Stretch, written.Opacity));
 	}
+
+	[Fact]
+	public async Task ChildHost_OffersDescribesAndWritesColorResourceBrushes()
+	{
+		const string xaml = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="root" Width="240" Height="120">
+			  <StackPanel.Resources>
+			    <Color x:Key="Accent">Orange</Color>
+			    <Color x:Key="Base">#FF202020</Color>
+			    <SolidColorBrush x:Key="NotAColor" Color="Red"/>
+			  </StackPanel.Resources>
+			  <Button x:Name="target" Background="Red" Content="Target"/>
+			  <Button x:Name="themed" Content="Themed"><Button.Background><SolidColorBrush Color="{StaticResource Base}"/></Button.Background></Button>
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(WpfSurfaceHostRpcTests.HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Background(DesignerSessionState state, int index)
+			=> Assert.Single(state.Tree!.Children[index].Properties, p => p.Name == "Background");
+
+		Assert.Equal(new[] { "Accent", "Base" }, Background(opened, 0).ColorResourceKeys);
+		Assert.Equal(("ColorResource", "Base"), (Background(opened, 1).Brush!.Kind, Background(opened, 1).Brush!.ResourceKey));
+
+		var before = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.False((await client.SetBrushAsync(1, opened.Tree!.Children[0].Id, "Background", new DesignerBrushInfo { Kind = "ColorResource", ResourceKey = "NotAColor" }, timeout.Token)).Accepted);
+		Assert.Equal(before, Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text);
+
+		var set = await client.SetBrushAsync(1, opened.Tree.Children[0].Id, "Background", new DesignerBrushInfo { Kind = "ColorResource", ResourceKey = "Accent" }, timeout.Token);
+		Assert.True(set.Accepted, set.Error);
+		var text = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.Contains("<SolidColorBrush Color=\"{StaticResource Accent}\"", text, StringComparison.Ordinal);
+		Assert.Equal(("ColorResource", "Accent"), (Background(set, 0).Brush!.Kind, Background(set, 0).Brush!.ResourceKey));
+	}
 }

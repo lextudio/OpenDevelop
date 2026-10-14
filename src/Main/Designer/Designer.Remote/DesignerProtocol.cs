@@ -57,7 +57,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v38 adds WPF's "System" brush kind for design/set-brush and Brush descriptions: a
 		// {DynamicResource {x:Static SystemColors.XBrushKey}} reference.
 		// v39 adds DesignerBrushInfo's "Image" kind with ImageSource and Stretch (an ImageBrush).
-		public const int Version = 39;
+		// v40 adds the "ColorResource" brush kind and DesignerPropertyInfo.ColorResourceKeys.
+		public const int Version = 40;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -633,6 +634,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>For a <c>Brush</c> editor, the keys of the Brush resources in the element's scope,
 		/// which the editor's resources tab offers as <c>{StaticResource key}</c>.</summary>
 		public List<string> BrushResourceKeys { get; set; } = new List<string>();
+		/// <summary>For a brush row, the string keys of the Color resources in scope, which a
+		/// <c>ColorResource</c> brush may reference.</summary>
+		public List<string> ColorResourceKeys { get; set; } = new List<string>();
 	}
 
 	/// <summary>A brush the Properties-pad brush editor can show and write back without loss
@@ -645,7 +649,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <c>LinearGradient</c>, <c>RadialGradient</c>, <c>Resource</c> (a
 		/// <c>{StaticResource}</c> reference to <see cref="ResourceKey"/>), or <c>System</c> (a
 		/// <c>{DynamicResource {x:Static SystemColors.ResourceKey}}</c> reference), or <c>Image</c>
-		/// (an <c>ImageBrush</c> of <see cref="ImageSource"/>).</summary>
+		/// (an <c>ImageBrush</c> of <see cref="ImageSource"/>), or <c>ColorResource</c> (a
+		/// SolidColorBrush whose Color is <c>{StaticResource ResourceKey}</c>).</summary>
 		public string Kind { get; set; } = "Solid";
 		/// <summary>For a <c>Resource</c> brush, the referenced resource key; for a <c>System</c>
 		/// brush, the SystemColors member (<c>ControlBrushKey</c>).</summary>

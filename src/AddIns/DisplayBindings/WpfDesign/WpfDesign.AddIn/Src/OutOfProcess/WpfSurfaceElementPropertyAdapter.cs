@@ -348,6 +348,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 
 		System.Collections.Generic.IReadOnlyList<string> IBrushProperty.BrushResourceKeys => property.BrushResourceKeys;
 
+		System.Collections.Generic.IReadOnlyList<string> IBrushProperty.ColorResourceKeys => property.ColorResourceKeys;
+
 		public override Type ComponentType => typeof(WpfSurfaceElementPropertyAdapter);
 		public override string DisplayName => string.IsNullOrEmpty(property.DisplayName) ? property.Name : property.DisplayName;
 		public override bool IsReadOnly => IsProtocolReadOnly(property);

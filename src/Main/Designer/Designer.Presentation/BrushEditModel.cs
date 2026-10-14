@@ -28,6 +28,11 @@ public sealed class BrushEditModel
 	public const string SystemKind = "System";
 	/// <summary>An <c>ImageBrush</c> of <see cref="ImageSource"/>.</summary>
 	public const string ImageKind = "Image";
+	/// <summary>A SolidColorBrush whose Color is <c>{StaticResource ResourceKey}</c>, one of
+	/// <see cref="ColorResourceKeys"/>.</summary>
+	public const string ColorResourceKind = "ColorResource";
+	/// <summary>How the resources tab lists a color resource, beside the brush resources.</summary>
+	public const string ColorEntryPrefix = "Color/";
 	/// <summary>The Stretch values an image brush offers ("Fill" is the default and is not written).</summary>
 	public static IReadOnlyList<string> StretchValues { get; } = new[] { "Fill", "Uniform", "UniformToFill", "None" };
 	/// <summary>How the resources tab lists a system brush, beside the document's own keys.</summary>
@@ -49,8 +54,10 @@ public sealed class BrushEditModel
 	readonly List<Stop> stops = new();
 	Color solidColor;
 
-	public BrushEditModel(DesignerBrushInfo? brush, IReadOnlyList<string>? resourceKeys = null, IReadOnlyList<string>? imageSources = null)
+	public BrushEditModel(DesignerBrushInfo? brush, IReadOnlyList<string>? resourceKeys = null, IReadOnlyList<string>? imageSources = null,
+		IReadOnlyList<string>? colorResourceKeys = null)
 	{
+		ColorResourceKeys = colorResourceKeys ?? Array.Empty<string>();
 		brush ??= new DesignerBrushInfo { Kind = NullKind };
 		Kind = brush.Kind;
 		ResourceKey = brush.ResourceKey;
@@ -74,6 +81,19 @@ public sealed class BrushEditModel
 	public IReadOnlyList<string> ResourceKeys { get; }
 	/// <summary>For a resource brush, the referenced key.</summary>
 	public string ResourceKey { get; private set; }
+	/// <summary>The in-scope Color resources the resources tab offers as solid brushes.</summary>
+	public IReadOnlyList<string> ColorResourceKeys { get; }
+
+	/// <summary>Makes the brush a SolidColorBrush of the Color resource <paramref name="key"/>.</summary>
+	public bool SelectColorResource(string key)
+	{
+		if (!ColorResourceKeys.Contains(key))
+			return false;
+		Kind = ColorResourceKind;
+		ResourceKey = key;
+		return true;
+	}
+
 	/// <summary>For an image brush, the image URI relative to the document.</summary>
 	public string ImageSource { get; private set; }
 	/// <summary>For an image brush, its Stretch, or empty for the default (Fill).</summary>
@@ -101,9 +121,13 @@ public sealed class BrushEditModel
 		return true;
 	}
 	/// <summary>The resources tab's entries: the document's Brush resources, then the system brushes.</summary>
-	public IReadOnlyList<string> ResourceEntries => ResourceKeys.Concat(SystemResourceKeys.Select(key => SystemEntryPrefix + key)).ToArray();
+	public IReadOnlyList<string> ResourceEntries => ResourceKeys
+		.Concat(ColorResourceKeys.Select(key => ColorEntryPrefix + key))
+		.Concat(SystemResourceKeys.Select(key => SystemEntryPrefix + key)).ToArray();
 	/// <summary>The resources tab entry for the current brush, or null when it is not a resource.</summary>
-	public string? SelectedResourceEntry => Kind == ResourceKind ? ResourceKey : Kind == SystemKind ? SystemEntryPrefix + ResourceKey : null;
+	public string? SelectedResourceEntry => Kind == ResourceKind ? ResourceKey
+		: Kind == ColorResourceKind ? ColorEntryPrefix + ResourceKey
+		: Kind == SystemKind ? SystemEntryPrefix + ResourceKey : null;
 	public bool IsGradient => Kind is LinearKind or RadialKind;
 	public IReadOnlyList<Stop> Stops => stops;
 	public int SelectedStop { get; private set; }
@@ -135,7 +159,7 @@ public sealed class BrushEditModel
 				return;
 			}
 			solidColor = value;
-			if (Kind is NullKind or ResourceKind or SystemKind or ImageKind) {
+			if (Kind is NullKind or ResourceKind or SystemKind or ImageKind or ColorResourceKind) {
 				Kind = SolidKind;
 				ResourceKey = "";
 			}
@@ -149,7 +173,7 @@ public sealed class BrushEditModel
 	{
 		if (kind is not (NullKind or SolidKind or LinearKind or RadialKind))
 			throw new ArgumentException("Unknown brush kind: " + kind, nameof(kind));
-		if (Kind is ResourceKind or SystemKind)
+		if (Kind is ResourceKind or SystemKind or ColorResourceKind)
 			ResourceKey = "";
 		if (kind == Kind)
 			return;
@@ -189,6 +213,7 @@ public sealed class BrushEditModel
 	/// form, so a resource literally keyed "SystemColors.X" still selects that resource.</summary>
 	public bool SelectResourceEntry(string entry)
 		=> SelectResource(entry)
+			|| entry.StartsWith(ColorEntryPrefix, StringComparison.Ordinal) && SelectColorResource(entry.Substring(ColorEntryPrefix.Length))
 			|| entry.StartsWith(SystemEntryPrefix, StringComparison.Ordinal) && SelectSystemResource(entry.Substring(SystemEntryPrefix.Length));
 
 	/// <summary>Adds a stop at <paramref name="offset"/> with the color the gradient has there, as
@@ -284,6 +309,10 @@ public sealed class BrushEditModel
 			return info;
 		}
 		info.Opacity = Opacity;
+		if (Kind == ColorResourceKind) {
+			info.ResourceKey = ResourceKey;
+			return info;
+		}
 		if (Kind == ImageKind) {
 			info.ImageSource = ImageSource;
 			info.Stretch = Stretch;

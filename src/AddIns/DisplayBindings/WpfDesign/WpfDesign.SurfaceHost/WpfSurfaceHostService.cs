@@ -1035,8 +1035,11 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					return NotFound(state, "Not a Brush property: " + propertyName);
 				// Validate against the dictionaries as they are now, not a previous rebuild's cache.
 				brushKeysByScope.Clear();
+				colorKeysByScope.Clear();
 				if (brush.Kind == "Resource" && !BrushResourceKeys(item).Contains(brush.ResourceKey))
 					return NotFound(state, "Not a Brush resource in scope: " + brush.ResourceKey);
+				if (brush.Kind == "ColorResource" && !ColorResourceKeys(item).Contains(brush.ResourceKey))
+					return NotFound(state, "Not a Color resource in scope: " + brush.ResourceKey);
 				if (brush.Kind == "System" && !IsSystemBrushKey(brush.ResourceKey))
 					return NotFound(state, "Not a SystemColors brush key: " + brush.ResourceKey);
 				if (brush.Kind == "Image" && (string.IsNullOrWhiteSpace(brush.ImageSource)
@@ -1045,7 +1048,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					return NotFound(state, "An image brush needs an image source, a Stretch value and an opacity from 0 to 1.");
 				try
 				{
-					var value = brush.Kind is "Resource" or "System" or "Image" ? null : CreateBrush(brush);
+					var value = brush.Kind is "Resource" or "System" or "Image" or "ColorResource" ? null : CreateBrush(brush);
 					using var changeGroup = item.OpenGroup("Set " + propertyName);
 					if (property.IsSet)
 						property.Reset();
@@ -1059,6 +1062,17 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					// An image brush keeps its ImageSource as the authored URI text (resolved by the
 					// parser against the document, as an Image.Source is), and writes only
 					// non-default settings.
+					// A color resource is a SolidColorBrush element whose Color references the key.
+					else if (brush.Kind == "ColorResource")
+					{
+						var solid = item.Services.Component.RegisterComponentForDesigner(new SolidColorBrush());
+						var reference = item.Services.Component.RegisterComponentForDesigner(new StaticResourceExtension());
+						reference.Properties["ResourceKey"].SetValue(brush.ResourceKey);
+						solid.Properties["Color"].SetValue(reference);
+						if (brush.Opacity != 1)
+							solid.Properties["Opacity"].SetValue(brush.Opacity);
+						property.SetValue(solid);
+					}
 					else if (brush.Kind == "Image")
 					{
 						var image = item.Services.Component.RegisterComponentForDesigner(new ImageBrush());
@@ -1420,11 +1434,18 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// sharing a scope share the walk. <see cref="RebuildTreeAndRender"/> clears it, since an edit
 		/// can change any dictionary.</summary>
 		static readonly Dictionary<object, List<string>> brushKeysByScope = new();
+		static readonly Dictionary<object, List<string>> colorKeysByScope = new();
 		static readonly object applicationScope = new();
 
 		/// <summary>String keys of Brush resources visible to <paramref name="item"/>, in name order
 		/// (a ResourceDictionary enumerates its keys in hash order).</summary>
-		static List<string> BrushResourceKeys(DesignItem item)
+		static List<string> BrushResourceKeys(DesignItem item) => ScopedResourceKeys(item, brushKeysByScope, value => value is Brush);
+
+		/// <summary>String keys of Color resources visible to <paramref name="item"/>, in name order:
+		/// the brush editor's color resources (a SolidColorBrush whose Color is one of them).</summary>
+		static List<string> ColorResourceKeys(DesignItem item) => ScopedResourceKeys(item, colorKeysByScope, value => value is System.Windows.Media.Color);
+
+		static List<string> ScopedResourceKeys(DesignItem item, Dictionary<object, List<string>> cache, Func<object?, bool> matches)
 		{
 			object scope = applicationScope;
 			for (var current = item; current != null; current = current.Parent)
@@ -1436,8 +1457,8 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					break;
 				}
 			}
-			if (!brushKeysByScope.TryGetValue(scope, out var keys))
-				brushKeysByScope[scope] = keys = ResourceKeys(item, value => value is Brush).OrderBy(key => key, StringComparer.Ordinal).ToList();
+			if (!cache.TryGetValue(scope, out var keys))
+				cache[scope] = keys = ResourceKeys(item, matches).OrderBy(key => key, StringComparer.Ordinal).ToList();
 			return keys;
 		}
 
@@ -3279,9 +3300,12 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				result.Add(info);
 			}
 			// Every brush editor row, attached ones included, offers the same in-scope Brush resources.
-			List<string>? brushKeys = null;
+			List<string>? brushKeys = null, colorKeys = null;
 			foreach (var info in result.Where(info => info.EditorKind == "Brush"))
+			{
 				info.BrushResourceKeys = brushKeys ??= BrushResourceKeys(item);
+				info.ColorResourceKeys = colorKeys ??= ColorResourceKeys(item);
+			}
 			if (TryGetEditableItems(item, out var itemsProperty, out var itemKind) && itemsProperty != null && itemKind != null)
 			{
 				result.RemoveAll(info => info.Name == "Items");
@@ -3498,6 +3522,16 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						info.Value = "No brush";
 						return info;
 					}
+					if (reference.Component is SolidColorBrush && DescribeColorResourceBrush(reference) is { } colorResource
+						&& property.ReturnType != null && typeof(Brush).IsAssignableFrom(property.ReturnType))
+					{
+						info.Kind = "Brush";
+						info.IsReadOnly = true;
+						info.EditorKind = "Brush";
+						info.Brush = colorResource;
+						info.Value = BrushDisplayText(colorResource);
+						return info;
+					}
 					if (reference.Component is ImageBrush && DescribeImageBrush(reference) is { } image
 						&& property.ReturnType != null && typeof(Brush).IsAssignableFrom(property.ReturnType))
 					{
@@ -3681,7 +3715,26 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			};
 		}
 
+		/// <summary>A SolidColorBrush element whose Color is an authored <c>{StaticResource key}</c> and
+		/// which sets nothing else but Opacity (as attribute text).</summary>
+		static DesignerBrushInfo? DescribeColorResourceBrush(DesignItem brush)
+		{
+			if (brush.Properties["Color"].Value is not { Component: StaticResourceExtension } reference
+				|| reference.Properties["ResourceKey"].ValueOnInstance is not string key
+				|| brush.Properties["Transform"].IsSet || brush.Properties["RelativeTransform"].IsSet)
+				return null;
+			var opacity = brush.Properties["Opacity"];
+			if (opacity.IsSet && opacity.TextValue == null)
+				return null;
+			return new DesignerBrushInfo {
+				Kind = "ColorResource",
+				ResourceKey = key,
+				Opacity = opacity.IsSet && double.TryParse(opacity.TextValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var o) ? o : 1
+			};
+		}
+
 		static string BrushDisplayText(DesignerBrushInfo brush) => brush.Kind switch {
+			"ColorResource" => "Color {StaticResource " + brush.ResourceKey + "}",
 			"Image" => "Image (" + brush.ImageSource + ")",
 			"Solid" => brush.Color,
 			"LinearGradient" => "Linear gradient (" + brush.Stops.Count + " stops)",
@@ -3785,6 +3838,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		void RebuildTreeAndRender(DesignerSessionState state)
 		{
 			brushKeysByScope.Clear();
+			colorKeysByScope.Clear();
 			if (current?.RootItem == null)
 				return;
 			pathToItem = new Dictionary<string, DesignItem>(StringComparer.Ordinal);
