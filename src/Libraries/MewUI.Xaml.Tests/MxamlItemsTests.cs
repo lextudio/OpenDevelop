@@ -5,7 +5,7 @@ public sealed class MxamlItemsTests
 {
 	const string Source = """
 <?xml version="1.0" encoding="utf-8"?>
-<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow" Title="Prefs" Width="320">
+<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow" Title="Prefs" Width="320" Height="200">
   <StackPanel Name="rootPanel">
     <ComboBox Name="themeCombo" SelectedIndex="0">
       <Item>Light</Item>
@@ -61,12 +61,69 @@ public sealed class MxamlItemsTests
 	}
 
 	/// <summary>Regression: Window-level properties were emitted once per root attribute, and a
-	/// Double one took the OUTER loop's value (Width = the Title text).</summary>
+	/// Double one took the OUTER loop's value. Window size is read-only (0.12 and 0.22), so it is one
+	/// WindowSize.Resizable call with named arguments; Width without Height has no source form.</summary>
 	[Fact]
-	public void GeneratesEachWindowPropertyOnceWithItsOwnValue()
+	public void GeneratesEachWindowPropertyOnceAndSizeThroughWindowSize()
 	{
 		var csharp = MewUICSharpGenerator.Generate(NewDoc());
 		Assert.Single(System.Text.RegularExpressions.Regex.Matches(csharp, @"^\s*Title = ""Prefs"";", System.Text.RegularExpressions.RegexOptions.Multiline));
-		Assert.Single(System.Text.RegularExpressions.Regex.Matches(csharp, @"^\s*Width = 320\.0;", System.Text.RegularExpressions.RegexOptions.Multiline));
+		Assert.Contains("WindowSize = WindowSize.Resizable(width: 320.0, height: 200.0);", csharp);
+		Assert.DoesNotMatch(@"^\s*Width = ", csharp);
+		var widthOnly = MewUICSharpGenerator.Generate(MxamlDocument.Parse(Source.Replace(" Height=\"200\"", "")));
+		Assert.Contains("// unsupported: a Window size needs both Width and Height", widthOnly);
+		Assert.DoesNotContain("WindowSize =", widthOnly);
+	}
+
+	/// <summary>0.22 content controls take their caption through the .Content("text") extension.</summary>
+	[Fact]
+	public void GeneratesCaptionsThroughContentExtension()
+	{
+		const string source = """
+<?xml version="1.0" encoding="utf-8"?>
+<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow">
+  <StackPanel Name="rootPanel">
+    <Button Name="ok" Content="Say &quot;OK&quot;"/>
+    <CheckBox Name="check" Text="Remember"/>
+    <RadioButton Name="radio" Content="One"/>
+  </StackPanel>
+</Window>
+""";
+		var csharp = MewUICSharpGenerator.Generate(MxamlDocument.Parse(source));
+		Assert.Contains("ok.Content(\"Say \\\"OK\\\"\");", csharp);
+		Assert.Contains("check.Content(\"Remember\");", csharp);
+		Assert.Contains("radio.Content(\"One\");", csharp);
+		Assert.DoesNotContain(".Text =", csharp);
+	}
+
+	[Fact]
+	public void GeneratesCommonAndRangeProperties()
+	{
+		const string source = """
+<?xml version="1.0" encoding="utf-8"?>
+<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow">
+  <StackPanel Name="rootPanel" HorizontalAlignment="Center">
+    <Slider Name="volume" Minimum="0" Maximum="10" Value="3" IsEnabled="False"/>
+    <ProgressBar Name="busy" IsIndeterminate="True" Opacity="0.5"/>
+    <Label Name="caption" VerticalAlignment="Diagonal"/>
+  </StackPanel>
+</Window>
+""";
+		var doc = MxamlDocument.Parse(source);
+		// An enum value outside the runtime's members is an error, not silently generated.
+		Assert.Contains(doc.Diagnostics, d => d.Severity == MxamlDiagnosticSeverity.Error && d.Message.Contains("VerticalAlignment"));
+		doc = MxamlDocument.Parse(source.Replace(" VerticalAlignment=\"Diagonal\"", ""));
+		Assert.False(doc.HasErrors, string.Join("\n", doc.Diagnostics));
+		var csharp = MewUICSharpGenerator.Generate(doc);
+		foreach (var line in new[] { "rootPanel.HorizontalAlignment = HorizontalAlignment.Center;", "volume.Minimum = 0.0;", "volume.Maximum = 10.0;",
+			"volume.Value = 3.0;", "volume.IsEnabled = false;", "busy.IsIndeterminate = true;", "busy.Opacity = 0.5;" })
+			Assert.Contains(line, csharp);
+		Assert.DoesNotContain("// unsupported", csharp);
+		Assert.Equal(new[] { "Left", "Center", "Right", "Stretch" }, MewUIControlCatalog.EnumValuesOf("Button", "HorizontalAlignment"));
+		Assert.Empty(MewUIControlCatalog.EnumValuesOf("Window", "HorizontalAlignment"));
+		// TabItem is not a FrameworkElement: only its own IsEnabled/HeaderText, none of the inherited set.
+		Assert.True(MewUIControlCatalog.IsSupported("TabItem", "IsEnabled"));
+		Assert.False(MewUIControlCatalog.IsSupported("TabItem", "Opacity"));
+		Assert.True(MewUIControlCatalog.IsSupported("TabControl", "Opacity"));
 	}
 }

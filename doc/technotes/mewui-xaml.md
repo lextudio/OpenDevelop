@@ -98,12 +98,15 @@ diagnostics carry line/column from `IXmlLineInfo`.
 
 ## Property registry
 
-`MewUIControlCatalog` mirrors the verified Aprillz.MewUI 0.12 API surface:
+`MewUIControlCatalog` mirrors the verified Aprillz.MewUI API surface (0.12 originally; 0.22.0 since
+2026-10-14, see mxaml.md):
 
 | Kind | Example | Generated form |
 |---|---|---|
-| String | `Label.Text`, `Button.Content` | `.Text = "v";` |
-| Double | `StackPanel.Spacing`, `Window.Width` | `.Spacing = 8;` |
+| String | `Label.Text`, `TextBox.Text` | `.Text = "v";` |
+| ContentText | `Button.Content`, `CheckBox.Text` | `.Content("v");` |
+| Double | `StackPanel.Spacing`, `Slider.Value` | `.Spacing = 8;` |
+| (Window size) | `Window.Width`/`Height`/`Min*`/`Max*` | `WindowSize = WindowSize.Resizable(width: 320.0, height: 240.0);` |
 | Boolean | `CheckBox.IsChecked`, `DockPanel.LastChildFill` | `.IsChecked = true;` |
 | Int32 | `ComboBox.SelectedIndex` | `.SelectedIndex = 2;` |
 | Enum | `StackPanel.Orientation` | `.Orientation = Orientation.Horizontal;` |

@@ -1,7 +1,7 @@
 namespace LeXtudio.MewUI.Xaml;
 
 /// <summary>
-/// The verified Aprillz.MewUI 0.12 control surface, mirrored as the MXAML property registry.
+/// The verified Aprillz.MewUI 0.22.0 control surface, mirrored as the MXAML property registry.
 /// Values here decide how the C# generator emits each attribute (see MxamlPropertyKind) and
 /// whether an element accepts children. Properties not listed for a known type round-trip but
 /// generate a comment instead of code (compile-safe); unknown TYPES are retained with a
@@ -33,23 +33,76 @@ public static class MewUIControlCatalog
 			["Spacing"] = MxamlPropertyKind.Double,
 		},
 		["Label"] = new(StringComparer.Ordinal) { ["Text"] = MxamlPropertyKind.String },
-		["Button"] = new(StringComparer.Ordinal) { ["Content"] = MxamlPropertyKind.String },
+		["Button"] = new(StringComparer.Ordinal) { ["Content"] = MxamlPropertyKind.ContentText },
 		["TextBox"] = new(StringComparer.Ordinal) { ["Text"] = MxamlPropertyKind.String },
+		// 0.22: CheckBox/RadioButton are content controls; "Text" (the attribute existing documents
+		// use) and "Content" both mean the caption.
 		["CheckBox"] = new(StringComparer.Ordinal)
 		{
-			["Text"] = MxamlPropertyKind.String,
+			["Text"] = MxamlPropertyKind.ContentText,
+			["Content"] = MxamlPropertyKind.ContentText,
 			["IsChecked"] = MxamlPropertyKind.Boolean,
 		},
 		["RadioButton"] = new(StringComparer.Ordinal)
 		{
-			["Text"] = MxamlPropertyKind.String,
+			["Text"] = MxamlPropertyKind.ContentText,
+			["Content"] = MxamlPropertyKind.ContentText,
 			["IsChecked"] = MxamlPropertyKind.Boolean,
 		},
 		["ComboBox"] = new(StringComparer.Ordinal)
 		{
 			["SelectedIndex"] = MxamlPropertyKind.Int32,
 			["Placeholder"] = MxamlPropertyKind.String,
+			["ZebraStriping"] = MxamlPropertyKind.Boolean,
+			["ChangeOnWheel"] = MxamlPropertyKind.Boolean,
+			["ItemHeight"] = MxamlPropertyKind.Double,
 		},
+		// Writable public properties of Aprillz.MewUI 0.22.0 (the version the designer host and the
+		// fixture use), checked by reflection.
+		["ListBox"] = new(StringComparer.Ordinal)
+		{
+			["SelectedIndex"] = MxamlPropertyKind.Int32,
+			["ZebraStriping"] = MxamlPropertyKind.Boolean,
+			["ItemHeight"] = MxamlPropertyKind.Double,
+		},
+		// Not a FrameworkElement (a plain MewObject): its own properties only.
+		["TabItem"] = new(StringComparer.Ordinal) { ["IsEnabled"] = MxamlPropertyKind.Boolean, ["HeaderText"] = MxamlPropertyKind.String },
+		["Slider"] = new(StringComparer.Ordinal)
+		{
+			["Minimum"] = MxamlPropertyKind.Double,
+			["Maximum"] = MxamlPropertyKind.Double,
+			["Value"] = MxamlPropertyKind.Double,
+			["SmallChange"] = MxamlPropertyKind.Double,
+			["LargeChange"] = MxamlPropertyKind.Double,
+			["ChangeOnWheel"] = MxamlPropertyKind.Boolean,
+		},
+		["ProgressBar"] = new(StringComparer.Ordinal)
+		{
+			["Minimum"] = MxamlPropertyKind.Double,
+			["Maximum"] = MxamlPropertyKind.Double,
+			["Value"] = MxamlPropertyKind.Double,
+			["IsIndeterminate"] = MxamlPropertyKind.Boolean,
+		},
+	};
+
+	/// <summary>Catalogued types that take none of <see cref="commonProperties"/>: Window keeps its own
+	/// list (it IS a FrameworkElement, but sizes through WindowSize); TabItem is a plain MewObject.</summary>
+	static readonly HashSet<string> excludedFromCommon = new(StringComparer.Ordinal) { "Window", "TabItem" };
+
+	/// <summary>FrameworkElement/UIElement properties every catalogued control inherits in 0.22.0.
+	/// Margin/Padding (Thickness) and colours are not scalar kinds yet.</summary>
+	static readonly Dictionary<string, MxamlPropertyKind> commonProperties = new(StringComparer.Ordinal)
+	{
+		["MinWidth"] = MxamlPropertyKind.Double,
+		["MinHeight"] = MxamlPropertyKind.Double,
+		["MaxWidth"] = MxamlPropertyKind.Double,
+		["MaxHeight"] = MxamlPropertyKind.Double,
+		["Opacity"] = MxamlPropertyKind.Double,
+		["IsEnabled"] = MxamlPropertyKind.Boolean,
+		["IsVisible"] = MxamlPropertyKind.Boolean,
+		["IsHitTestVisible"] = MxamlPropertyKind.Boolean,
+		["HorizontalAlignment"] = MxamlPropertyKind.Enum,
+		["VerticalAlignment"] = MxamlPropertyKind.Enum,
 	};
 
 	static readonly HashSet<string> panelTypes = new(StringComparer.Ordinal)
@@ -109,6 +162,8 @@ public static class MewUIControlCatalog
 			? MxamlPropertyKind.Double
 			: propertiesByType.TryGetValue(type, out var props) && props.TryGetValue(property, out var kind)
 			? kind
+			: !excludedFromCommon.Contains(type) && IsKnownType(type) && commonProperties.TryGetValue(property, out var common)
+			? common
 			: MxamlPropertyKind.Unsupported;
 
 	public static bool IsSupported(string type, string property)
@@ -118,7 +173,11 @@ public static class MewUIControlCatalog
 	/// MXAML emits <c>Property.Value</c>, so the designer must not expose CLR display names or
 	/// fabricate a value it cannot round-trip.</summary>
 	public static IReadOnlyList<string> EnumValuesOf(string type, string property)
-		=> type == "StackPanel" && property == "Orientation"
-			? new[] { "Horizontal", "Vertical" }
-			: Array.Empty<string>();
+		=> KindOf(type, property) != MxamlPropertyKind.Enum ? Array.Empty<string>()
+			: property switch {
+				"Orientation" => new[] { "Horizontal", "Vertical" },
+				"HorizontalAlignment" => new[] { "Left", "Center", "Right", "Stretch" },
+				"VerticalAlignment" => new[] { "Top", "Center", "Bottom", "Stretch" },
+				_ => Array.Empty<string>()
+			};
 }

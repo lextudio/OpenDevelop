@@ -71,6 +71,29 @@ Rules:
 
 Unknown properties on known types default to Unsupported (generator emits a comment).
 
+**MewUI 0.22.0 (2026-10-14).** The fixture (`tests/fixtures/MewUIFixture`) now pins Aprillz.MewUI.Core
+0.22.0, the designer host's version, and the registry targets it (writable public properties, checked
+by reflection):
+
+- Every FrameworkElement control (not Window, nor TabItem, a plain MewObject with its own
+  IsEnabled/HeaderText) accepts MinWidth/MinHeight/MaxWidth/MaxHeight, Opacity, IsEnabled, IsVisible,
+  IsHitTestVisible and HorizontalAlignment/VerticalAlignment (Left|Center|Right|Stretch,
+  Top|Center|Bottom|Stretch). Slider and ProgressBar get Minimum/Maximum/Value (Slider also
+  SmallChange/LargeChange/ChangeOnWheel, ProgressBar IsIndeterminate); ComboBox
+  ZebraStriping/ChangeOnWheel/ItemHeight; ListBox SelectedIndex/ZebraStriping/ItemHeight.
+- Button, CheckBox and RadioButton are content controls in 0.22 (their `Content` is an Element; CheckBox
+  and RadioButton lost `Text`). Their caption - `Content` on all three, and the `Text` attribute existing
+  documents use on CheckBox/RadioButton - is the `ContentText` kind, generated as the runtime's
+  `.Content("text")` extension (`accessKey` defaults to true). The preview already renders it as a label.
+- Window's Width/Height/MinWidth/MinHeight/MaxWidth/MaxHeight are read-only (in 0.12 too, so any sized
+  Window previously generated code that did not compile): they generate one
+  `WindowSize = WindowSize.Resizable(width: …, height: …, minWidth: …)` with named arguments for the
+  attributes present; Width and Height are both required, otherwise a comment is generated.
+- Margin/Padding (Thickness) and colours still generate comments: they need their own value kinds.
+
+Verified by building the fixture against 0.22.0 and by compiling a probe document that uses every new
+kind (window size, captions, items, range and common properties) against 0.22.0.
+
 ### Items (2026-10-14)
 
 `ComboBox` and `ListBox` take a plain string list as `<Item>` children (they are not containers, so

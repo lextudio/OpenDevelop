@@ -36,8 +36,22 @@ public static class MewUICSharpGenerator
 		sb.Append('\n');
 
 		// Window-level properties first (Title/Width/...), then each control's block.
+		// Window size: Width/Height/Min*/Max* are read-only on Window (0.12 and 0.22 alike); the
+		// window is sized through one WindowSize.Resizable(width, height, minWidth = 0, minHeight = 0,
+		// maxWidth = inf, maxHeight = inf), with named arguments for whatever the document sets.
+		var sizeNames = new[] { "Width", "Height", "MinWidth", "MinHeight", "MaxWidth", "MaxHeight" };
+		var size = root.Attributes.Where(a => sizeNames.Contains(a.Name)).ToList();
+		if (size.Count > 0) {
+			if (size.Any(a => a.Name == "Width") && size.Any(a => a.Name == "Height"))
+				sb.Append("        WindowSize = WindowSize.Resizable(")
+				  .Append(string.Join(", ", sizeNames.Select(n => size.FirstOrDefault(a => a.Name == n)).Where(a => a != null)
+					.Select(a => char.ToLowerInvariant(a!.Name[0]) + a.Name[1..] + ": " + DoubleLiteral(a.Value))))
+				  .Append(");\n");
+			else
+				sb.Append("        // unsupported: a Window size needs both Width and Height\n");
+		}
 		// Root Window-level props: instance members, NO owner prefix.
-		foreach (var attr in root.Attributes) {
+		foreach (var attr in root.Attributes.Where(a => !sizeNames.Contains(a.Name))) {
 			var kind = MewUIControlCatalog.KindOf("Window", attr.Name);
 			switch (kind) {
 				case MxamlPropertyKind.String:
@@ -129,6 +143,9 @@ public static class MewUICSharpGenerator
 			case MxamlPropertyKind.Enum:
 				sb.Append("        ").Append(ownerName).Append('.').Append(attribute.Name)
 				  .Append(" = ").Append(attribute.Name).Append('.').Append(attribute.Value).Append(";\n");
+				break;
+			case MxamlPropertyKind.ContentText:
+				sb.Append("        ").Append(ownerName).Append(".Content(\"").Append(Escape(attribute.Value)).Append("\");\n");
 				break;
 			default:
 				// Unregistered property: emit a comment instead of possibly-wrong code so the

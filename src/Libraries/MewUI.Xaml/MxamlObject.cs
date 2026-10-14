@@ -15,6 +15,9 @@ public enum MxamlPropertyKind
 	Boolean,
 	/// <summary>Emitted as EnumType.Value (enum type == property name).</summary>
 	Enum,
+	/// <summary>Caption text of a 0.22 content control (Button, CheckBox, RadioButton), whose
+	/// Content is an Element: emitted as the runtime's <c>.Content("text")</c> extension.</summary>
+	ContentText,
 	/// <summary>Not emitted; any assignment surfaces a diagnostic instead.</summary>
 	Unsupported,
 }

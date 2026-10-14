@@ -10,7 +10,7 @@
     <MewUIGeneratedDir>$(IntermediateOutputPath)mewuigen\</MewUIGeneratedDir>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Aprillz.MewUI.Core" Version="0.12.0" />
+    <PackageReference Include="Aprillz.MewUI.Core" Version="0.22.0" />
   </ItemGroup>
   <ItemGroup>
     <MewUIPage Include="Windows\*.mxaml" />
