@@ -326,6 +326,9 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		MemberAccessExpressionSyntax access => EvaluateMember(access),
 		ObjectCreationExpressionSyntax creation => CreateValue(creation),
 		CastExpressionSyntax cast => Evaluate(cast.Expression),
+		// "new string[] { ... }" (TextBox.Lines); other element types are not designer values here.
+		ArrayCreationExpressionSyntax { Type.ElementType: PredefinedTypeSyntax { Keyword.ValueText: "string" } or IdentifierNameSyntax { Identifier.ValueText: "String" } or QualifiedNameSyntax { Right.Identifier.ValueText: "String" } } array
+			=> array.Initializer?.Expressions.Select(item => Evaluate(item) as string ?? "").ToArray() ?? Array.Empty<string>(),
 		InvocationExpressionSyntax invocation when invocation.Expression is MemberAccessExpressionSyntax member
 			&& member.Name.Identifier.ValueText == "GetObject" && invocation.ArgumentList.Arguments.Count == 1
 			=> Evaluate(invocation.ArgumentList.Arguments[0].Expression) is string key && resources.TryGetValue(key, out var resource) ? resource.Value : null,
@@ -344,6 +347,8 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		VbSyntax.MemberAccessExpressionSyntax access => EvaluateMemberVisualBasic(access),
 		VbSyntax.ObjectCreationExpressionSyntax creation => CreateValueVisualBasic(creation),
 		VbSyntax.CTypeExpressionSyntax cast => EvaluateVisualBasic(cast.Expression),
+		VbSyntax.ArrayCreationExpressionSyntax array when array.Type.ToString() is "String" or "System.String"
+			=> array.Initializer.Initializers.Select(item => EvaluateVisualBasic(item) as string ?? "").ToArray(),
 		VbSyntax.GetTypeExpressionSyntax getType => ResolveType(getType.Type.ToString()),
 		VbSyntax.InvocationExpressionSyntax invocation when invocation.Expression is VbSyntax.MemberAccessExpressionSyntax member
 			&& member.Name.Identifier.ValueText == "GetObject" && invocation.ArgumentList.Arguments.Count == 1

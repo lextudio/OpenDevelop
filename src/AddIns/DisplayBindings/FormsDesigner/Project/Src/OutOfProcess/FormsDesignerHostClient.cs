@@ -198,6 +198,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public Task<DesignerSessionState> SetItemsAsync(long baseVersion, string elementId, IReadOnlyList<DesignerCollectionItemEdit> items, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-items", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, items }, cancellationToken), cancellationToken);
 
+		/// <summary>Assigns a writable string[] property such as TextBox.Lines (<c>design/set-string-array</c>).</summary>
+		public Task<DesignerSessionState> SetStringArrayAsync(long baseVersion, string elementId, string propertyName, IReadOnlyList<string> values, CancellationToken cancellationToken)
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-string-array", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, values }, cancellationToken), cancellationToken);
+
 		/// <summary>Sets one authored TableLayoutPanel row/column style (<c>design/set-table-layout-track</c>).</summary>
 		public Task<DesignerSessionState> SetTableLayoutTrackAsync(long baseVersion, string elementId, bool isRow, int index, string sizeType, double value, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-table-layout-track", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, index, sizeType, value }, cancellationToken), cancellationToken);

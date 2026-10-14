@@ -142,6 +142,15 @@ namespace ICSharpCode.FormsDesigner
 				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
 		}
 
+		/// <summary>Assigns a string[] property (TextBox.Lines) through the host's
+		/// design/set-string-array, as one undoable designer edit.</summary>
+		internal void SetRemoteStringArray(string componentName, string propertyName, IReadOnlyList<string> values)
+		{
+			EnsureRemoteDesignerLoaded();
+			ExecuteRemoteEdit(() => remoteClient.SetStringArrayAsync(remoteDocumentVersion, componentName, propertyName, values,
+				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+		}
+
 		/// <summary>A divider drag through the host's design/resize-table-layout-track, as one
 		/// undoable designer edit.</summary>
 		internal void ResizeRemoteTableLayoutTrack(string componentName, bool isRow, int index, double size)
@@ -2151,7 +2160,12 @@ namespace ICSharpCode.FormsDesigner
 				if (!remoteProperties.Any(item => String.Equals(item.Name, propertyName, StringComparison.Ordinal)
 					&& String.Equals(item.EditorKind, "ItemsCollection", StringComparison.Ordinal)))
 					throw new InvalidOperationException("This property is not an editable items collection.");
-				owner.SetRemoteItems(name, items);
+				// Items is a live collection rewritten as Add/AddRange; any other list row is a
+				// string[] property assigned as a whole.
+				if (String.Equals(propertyName, "Items", StringComparison.Ordinal))
+					owner.SetRemoteItems(name, items);
+				else
+					owner.SetRemoteStringArray(name, propertyName, items.Select(item => item.Text ?? "").ToList());
 			}
 
 			void IResourceImageEditorHost.ReplaceResourceImage(string propertyName, byte[] imageBytes)

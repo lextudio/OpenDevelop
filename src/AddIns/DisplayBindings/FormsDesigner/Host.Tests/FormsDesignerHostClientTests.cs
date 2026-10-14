@@ -546,6 +546,82 @@ public sealed class FormsDesignerHostClientTests
 		#endif
 
 	[Fact]
+	public async Task ChildHost_AssignsTextBoxLinesAsOneStringArray()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				this.notes = new System.Windows.Forms.TextBox();
+				        this.notes.Multiline = true;
+				        this.notes.Lines = new string[] { "first", "second" };
+				        this.notes.Location = new System.Drawing.Point(12, 60);
+				        this.Controls.Add(this.button1);
+				        this.Controls.Add(this.notes);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TextBox notes;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Lines(DesignerSessionState state)
+			=> state.Components.Single(component => component.Name == "notes").Properties.Single(property => property.Name == "Lines");
+		var row = Lines(opened);
+		Assert.Equal("ItemsCollection", row.EditorKind);
+		Assert.Equal(new[] { "first", "second" }, row.CollectionItems);
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetStringArrayAsync(1, "notes", "Text", new[] { "x" }, timeout.Token));
+
+		var edited = await client.SetStringArrayAsync(1, "notes", "Lines", new[] { "Say \"hi\"", "", "end" }, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		Assert.Equal(new[] { "Say \"hi\"", "", "end" }, Lines(edited).CollectionItems);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(text, @"notes\.Lines\s*="));
+		Assert.Contains("notes.Lines = new string[] { \"Say \\\"hi\\\"\", \"\", \"end\" };", text, StringComparison.Ordinal);
+
+		// The written assignment loads back.
+		designer.Text = text;
+		snapshot.Version = 2;
+		var reopened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error);
+		Assert.Equal(new[] { "Say \"hi\"", "", "end" }, Lines(reopened).CollectionItems);
+	}
+
+	[Fact]
+	public async Task ChildHost_AssignsVisualBasicTextBoxLinesAsOneStringArray()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = VbSnapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("Me.Controls.Add(Me.button1)", """
+				Me.notes = New System.Windows.Forms.TextBox()
+				        Me.notes.Multiline = True
+				        Me.notes.Lines = New String() {"first", "second"}
+				        Me.Controls.Add(Me.button1)
+				        Me.Controls.Add(Me.notes)
+				""", StringComparison.Ordinal)
+			.Replace("Friend WithEvents button1 As System.Windows.Forms.Button",
+				"Friend WithEvents button1 As System.Windows.Forms.Button\n    Friend WithEvents notes As System.Windows.Forms.TextBox", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Lines(DesignerSessionState state)
+			=> state.Components.Single(component => component.Name == "notes").Properties.Single(property => property.Name == "Lines");
+		Assert.Equal(new[] { "first", "second" }, Lines(opened).CollectionItems);
+
+		var edited = await client.SetStringArrayAsync(1, "notes", "Lines", new[] { "one", "two", "three" }, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("notes.Lines = New String() {\"one\", \"two\", \"three\"}", text, StringComparison.Ordinal);
+		designer.Text = text;
+		snapshot.Version = 2;
+		var reopened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error);
+		Assert.Equal(new[] { "one", "two", "three" }, Lines(reopened).CollectionItems);
+	}
+
+	[Fact]
 	public async Task ChildHost_EditsDomainUpDownItemsAsOneAddPerItem()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));

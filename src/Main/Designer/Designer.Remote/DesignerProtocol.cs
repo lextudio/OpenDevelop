@@ -60,7 +60,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v40 adds the "ColorResource" brush kind and DesignerPropertyInfo.ColorResourceKeys.
 		// v41 adds WPF's optional design/create-empty-style (Edit Style → Create Empty).
 		// v42 adds WPF's optional design/create-empty-template (Edit Template → Create Empty).
-		public const int Version = 42;
+		// v43 adds the WinForms host's optional design/set-string-array (TextBox.Lines list editor).
+		public const int Version = 43;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

@@ -727,6 +727,12 @@ editor to an `ItemsCollection` row and commits through `design/set-items` as one
 **DomainUpDown (2026-10-14).** `DomainUpDown.Items` joins the same contract (no wire change: it is
 already an `ItemsCollection` row). Its collection has no `AddRange`, so the rewrite writes one
 `<id>.Items.Add("...")` per item, in order, as the Visual Studio serializer does.
+**String arrays (2026-10-14).** A writable `string[]` property (`TextBox.Lines`) is published as the
+same read-only `ItemsCollection` row, so the shared list dialog opens on it. Protocol **v43** adds the
+optional `design/set-string-array`: the IDE proxy routes an `Items` row to `design/set-items` and any
+other list row to this RPC, which assigns the array in one designer transaction and rewrites one
+`<id>.Lines = new string[] { ... }` (`New String() {...}` in VB) assignment. The snapshot loader now
+evaluates string array creations in both languages, so the written source reloads.
 
 **C4 Cut, Copy and Paste (2026-10-13).** The out-of-process WPF surface had no clipboard at all;
 the in-process designer's `XamlEditOperations` copied each selected element as a XAML snippet and

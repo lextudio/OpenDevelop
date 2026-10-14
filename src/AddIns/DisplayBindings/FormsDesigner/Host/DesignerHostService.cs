@@ -294,6 +294,30 @@ sealed class DesignerHostService : IDesignerChildService
 		return CurrentState(baseVersion);
 	}
 
+	/// <summary>Assigns a writable <c>string[]</c> property (TextBox.Lines) from the list editor, as one designer transaction and one
+	/// <c>new string[] { ... }</c> assignment in InitializeComponent. An empty list is an empty
+	/// array, which is what the WinForms editor writes.</summary>
+	[JsonRpcMethod("design/set-string-array")]
+	public DesignerSessionState SetStringArray(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string[] values)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
+		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost
+			?? throw new InvalidOperationException("The designer surface is unavailable.");
+		var component = host.Container.Components.Cast<IComponent>()
+			.FirstOrDefault(item => String.Equals(item.Site?.Name, elementId, StringComparison.Ordinal))
+			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
+		var property = TypeDescriptor.GetProperties(component)[propertyName ?? ""];
+		if (property == null || property.PropertyType != typeof(string[]) || property.IsReadOnly)
+			throw new InvalidOperationException($"{elementId}.{propertyName} is not a writable string array.");
+		var array = (values ?? Array.Empty<string>()).Select(value => value ?? "").ToArray();
+		using (var transaction = host.CreateTransaction($"Set {elementId}.{propertyName}")) {
+			property.SetValue(component, array);
+			transaction.Commit();
+		}
+		RewriteProperty(elementId, propertyName!, array, component == host.RootComponent);
+		return CurrentState(baseVersion);
+	}
+
 	/// <summary>Replaces every "&lt;id&gt;.Items.Add(...)"/"AddRange(...)" statement in
 	/// InitializeComponent with one AddRange of <paramref name="texts"/> (none when empty), at the
 	/// first replaced statement's position, else after the control's last own statement. With
@@ -2049,6 +2073,7 @@ sealed class DesignerHostService : IDesignerChildService
 		null => SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression),
 		IComponent component when component.Site?.Name is { Length: > 0 } name => SyntaxFactory.ParseExpression("this." + name),
 		string text => SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(text)),
+		string[] texts => SyntaxFactory.ParseExpression("new string[] { " + string.Join(", ", texts.Select(text => SerializeValue(text).ToString())) + " }"),
 		bool boolean => SyntaxFactory.LiteralExpression(boolean ? SyntaxKind.TrueLiteralExpression : SyntaxKind.FalseLiteralExpression),
 		char character => SyntaxFactory.LiteralExpression(SyntaxKind.CharacterLiteralExpression, SyntaxFactory.Literal(character)),
 		DateTime dateTime => SyntaxFactory.ParseExpression($"new System.DateTime({dateTime.Ticks}L)"),
@@ -2072,6 +2097,7 @@ sealed class DesignerHostService : IDesignerChildService
 		null => Vb.SyntaxFactory.NothingLiteralExpression(Vb.SyntaxFactory.Token(Vb.SyntaxKind.NothingKeyword)),
 		IComponent component when component.Site?.Name is { Length: > 0 } name => Vb.SyntaxFactory.ParseExpression("Me." + name),
 		string text => Vb.SyntaxFactory.StringLiteralExpression(Vb.SyntaxFactory.Literal(text)),
+		string[] texts => Vb.SyntaxFactory.ParseExpression("New String() {" + string.Join(", ", texts.Select(text => SerializeValueVisualBasic(text).ToString())) + "}"),
 		bool boolean => boolean
 			? Vb.SyntaxFactory.TrueLiteralExpression(Vb.SyntaxFactory.Token(Vb.SyntaxKind.TrueKeyword))
 			: Vb.SyntaxFactory.FalseLiteralExpression(Vb.SyntaxFactory.Token(Vb.SyntaxKind.FalseKeyword)),
@@ -3401,6 +3427,18 @@ sealed class DesignerHostService : IDesignerChildService
 				result[^1].Value = "(" + texts.Count + (texts.Count == 1 ? " item)" : " items)");
 				result[^1].CollectionItems = texts;
 				result[^1].ShouldSerialize = texts.Count > 0;
+			}
+			if (property.PropertyType == typeof(string[]) && !property.IsReadOnly) {
+				// TextBox.Lines and the like: the same list editor as Items, committed through
+				// design/set-string-array as a "new string[] { ... }" assignment.
+				string[] lines;
+				try { lines = property.GetValue(component) as string[] ?? Array.Empty<string>(); }
+				catch { lines = Array.Empty<string>(); }
+				result[^1].Kind = "Collection";
+				result[^1].EditorKind = "ItemsCollection";
+				result[^1].IsReadOnly = true;
+				result[^1].Value = "(" + lines.Length + (lines.Length == 1 ? " line)" : " lines)");
+				result[^1].CollectionItems = lines.ToList();
 			}
 			if (referenceCandidates != null) {
 				result[^1].EditorKind = "ComponentReference";
