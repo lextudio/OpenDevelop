@@ -325,7 +325,7 @@ sealed class DesignerHostService : IDesignerChildService
 	const string TreeIndent = "  ";
 
 	/// <summary>A TreeView's nodes as indented lines (two spaces per level), when every node is a
-	/// plain, non-blank text node (no Name, Tag, images, checked state or colours; a blank line is
+	/// plain, non-blank text node (a Name is kept; no Tag, images, checked state or colours; a blank line is
 	/// dropped on edit, so a blank node would be lost) - the only shape the list
 	/// editor and the <c>new TreeNode("text", children)</c> source form can round-trip.</summary>
 	static bool TryGetPlainTreeLines(TreeNodeCollection nodes, out List<string> lines)
@@ -334,7 +334,7 @@ sealed class DesignerHostService : IDesignerChildService
 		bool Walk(TreeNodeCollection level, int depth)
 		{
 			foreach (TreeNode node in level) {
-				if (!String.IsNullOrEmpty(node.Name) || node.Tag != null || node.Checked || node.ImageIndex >= 0 || node.SelectedImageIndex >= 0
+				if (node.Tag != null || node.Checked || node.ImageIndex >= 0 || node.SelectedImageIndex >= 0
 					|| !String.IsNullOrEmpty(node.ImageKey) || !String.IsNullOrEmpty(node.SelectedImageKey) || !String.IsNullOrEmpty(node.ToolTipText)
 					|| !node.ForeColor.IsEmpty || !node.BackColor.IsEmpty || node.NodeFont != null
 					|| node.Text.Trim().Length == 0 || node.Text.StartsWith(" ", StringComparison.Ordinal))
@@ -374,7 +374,23 @@ sealed class DesignerHostService : IDesignerChildService
 	{
 		if (!TryGetPlainTreeLines(treeView.Nodes, out _))
 			throw new InvalidOperationException($"{elementId}.Nodes has nodes the list editor cannot represent.");
-		var roots = BuildTreeNodes(items.Select(entry => entry.Text ?? "").Where(text => text.Trim().Length > 0));
+		// Kept entries keep their node's Name (Visual Studio names every node "NodeN"); the
+		// SourceIndex is the node's position in the flattened, depth-first list.
+		var flattened = new List<TreeNode>();
+		void Flatten(TreeNodeCollection level) { foreach (TreeNode node in level) { flattened.Add(node); Flatten(node.Nodes); } }
+		Flatten(treeView.Nodes);
+		var sources = items.Where(entry => entry.SourceIndex >= 0).Select(entry => entry.SourceIndex).ToList();
+		if (sources.Any(index => index >= flattened.Count) || sources.Distinct().Count() != sources.Count)
+			throw new ArgumentException("Invalid node source index.", nameof(items));
+		var kept = items.Where(entry => (entry.Text ?? "").Trim().Length > 0).ToList();
+		var roots = BuildTreeNodes(kept.Select(entry => entry.Text ?? ""));
+		var built = new List<TreeNode>();
+		void FlattenBuilt(IEnumerable<TreeNode> level) { foreach (var node in level) { built.Add(node); FlattenBuilt(node.Nodes.Cast<TreeNode>()); } }
+		FlattenBuilt(roots);
+		for (var i = 0; i < built.Count; i++)
+			if (kept[i].SourceIndex >= 0)
+				built[i].Name = flattened[kept[i].SourceIndex].Name;
+		RemoveTreeNodeLocals(elementId);
 		using (var transaction = host.CreateTransaction($"Edit {elementId}.Nodes")) {
 			treeView.Nodes.Clear();
 			treeView.Nodes.AddRange(roots.ToArray());
@@ -523,13 +539,93 @@ sealed class DesignerHostService : IDesignerChildService
 		file.Text = root.ReplaceNode(method, method.WithBody(method.Body.WithStatements(SyntaxFactory.List(statements)))).NormalizeWhitespace().ToFullString();
 	}
 
-	static string TreeNodeSource(TreeNode node) => node.Nodes.Count == 0
+	static string TreeNodeSource(TreeNode node) => (node.Nodes.Count == 0
 		? $"new System.Windows.Forms.TreeNode({SerializeValue(node.Text)})"
-		: $"new System.Windows.Forms.TreeNode({SerializeValue(node.Text)}, new System.Windows.Forms.TreeNode[] {{ {string.Join(", ", node.Nodes.Cast<TreeNode>().Select(TreeNodeSource))} }})";
+		: $"new System.Windows.Forms.TreeNode({SerializeValue(node.Text)}, new System.Windows.Forms.TreeNode[] {{ {string.Join(", ", node.Nodes.Cast<TreeNode>().Select(TreeNodeSource))} }})")
+		+ (String.IsNullOrEmpty(node.Name) ? "" : $" {{ Name = {SerializeValue(node.Name)} }}");
 
-	static string TreeNodeSourceVisualBasic(TreeNode node) => node.Nodes.Count == 0
+	static string TreeNodeSourceVisualBasic(TreeNode node) => (node.Nodes.Count == 0
 		? $"New System.Windows.Forms.TreeNode({SerializeValueVisualBasic(node.Text)})"
-		: $"New System.Windows.Forms.TreeNode({SerializeValueVisualBasic(node.Text)}, New System.Windows.Forms.TreeNode() {{{string.Join(", ", node.Nodes.Cast<TreeNode>().Select(TreeNodeSourceVisualBasic))}}})";
+		: $"New System.Windows.Forms.TreeNode({SerializeValueVisualBasic(node.Text)}, New System.Windows.Forms.TreeNode() {{{string.Join(", ", node.Nodes.Cast<TreeNode>().Select(TreeNodeSourceVisualBasic))}}})")
+		+ (String.IsNullOrEmpty(node.Name) ? "" : $" With {{.Name = {SerializeValueVisualBasic(node.Name)}}}");
+
+	/// <summary>Removes Visual Studio's TreeNode locals from InitializeComponent - each
+	/// <c>TreeNode treeNodeN = new TreeNode(...)</c> declaration and every statement on it
+	/// (<c>treeNodeN.Name = ...</c>) - before the tree is rewritten as one nested AddRange, so no
+	/// dead node code is left behind. Only locals reachable from <paramref name="treeId"/>'s own
+	/// <c>Nodes.Add/AddRange</c> (directly, or nested in another reachable node's initializer) are
+	/// removed: another TreeView's nodes in the same InitializeComponent are left untouched.</summary>
+	void RemoveTreeNodeLocals(string treeId)
+	{
+		var file = CurrentDesignerFile();
+		if (IsVisualBasic) {
+			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+			var vbMethod = vbRoot.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>().First(item =>
+				item.BlockStatement is VbSyntax.MethodStatementSyntax ms && ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+				&& ms.Identifier.ValueText == "InitializeComponent");
+			var vbNames = vbMethod.Statements.OfType<VbSyntax.LocalDeclarationStatementSyntax>()
+				.SelectMany(local => local.Declarators)
+				.Where(d => d.Names.Count == 1 && ((d.AsClause as VbSyntax.SimpleAsClauseSyntax)?.Type.ToString()
+					?? (d.AsClause as VbSyntax.AsNewClauseSyntax)?.NewExpression.ToString() ?? "").Contains("TreeNode", StringComparison.Ordinal))
+				.Select(d => d.Names[0].Identifier.ValueText).ToHashSet(StringComparer.Ordinal);
+			var vbInitializers = vbMethod.Statements.OfType<VbSyntax.LocalDeclarationStatementSyntax>().SelectMany(local => local.Declarators)
+				.Where(d => d.Names.Count == 1 && vbNames.Contains(d.Names[0].Identifier.ValueText))
+				.ToDictionary(d => d.Names[0].Identifier.ValueText, d => (SyntaxNode?)d.Initializer?.Value ?? (d.AsClause as VbSyntax.AsNewClauseSyntax)?.NewExpression, StringComparer.Ordinal);
+			var vbRoots = vbMethod.Statements.OfType<VbSyntax.ExpressionStatementSyntax>()
+				.Where(st => st.Expression is VbSyntax.InvocationExpressionSyntax { Expression: VbSyntax.MemberAccessExpressionSyntax access }
+					&& access.Name.Identifier.ValueText is "Add" or "AddRange"
+					&& access.Expression is VbSyntax.MemberAccessExpressionSyntax owner && owner.Name.Identifier.ValueText == "Nodes"
+					&& owner.Expression != null && VbSimpleTargetName(owner.Expression) == treeId)
+				.Cast<SyntaxNode>();
+			vbNames = ReachableLocals(vbRoots, vbNames, vbInitializers);
+			if (vbNames.Count == 0) return;
+			var vbKept = vbMethod.Statements.Where(st => !(st is VbSyntax.LocalDeclarationStatementSyntax l
+					&& l.Declarators.All(d => d.Names.All(n => vbNames.Contains(n.Identifier.ValueText))))
+				&& !(st is VbSyntax.AssignmentStatementSyntax a && a.Left is VbSyntax.MemberAccessExpressionSyntax { Expression: VbSyntax.IdentifierNameSyntax owner }
+					&& vbNames.Contains(owner.Identifier.ValueText))).ToList();
+			file.Text = vbRoot.ReplaceNode(vbMethod, vbMethod.WithStatements(Vb.SyntaxFactory.List(vbKept))).NormalizeWhitespace().ToFullString();
+			return;
+		}
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First(item => item.Identifier.ValueText == "InitializeComponent");
+		var names = method.Body!.Statements.OfType<LocalDeclarationStatementSyntax>()
+			.Where(local => local.Declaration.Type.ToString().EndsWith("TreeNode", StringComparison.Ordinal)
+				|| local.Declaration.Variables.All(v => v.Initializer?.Value is ObjectCreationExpressionSyntax c && c.Type.ToString().EndsWith("TreeNode", StringComparison.Ordinal)))
+			.SelectMany(local => local.Declaration.Variables).Select(v => v.Identifier.ValueText).ToHashSet(StringComparer.Ordinal);
+		var initializers = method.Body.Statements.OfType<LocalDeclarationStatementSyntax>().SelectMany(local => local.Declaration.Variables)
+			.Where(v => names.Contains(v.Identifier.ValueText))
+			.ToDictionary(v => v.Identifier.ValueText, v => (SyntaxNode?)v.Initializer?.Value, StringComparer.Ordinal);
+		var roots = method.Body.Statements.OfType<ExpressionStatementSyntax>()
+			.Where(st => st.Expression is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax access }
+				&& access.Name.Identifier.ValueText is "Add" or "AddRange"
+				&& access.Expression is MemberAccessExpressionSyntax owner && owner.Name.Identifier.ValueText == "Nodes"
+				&& SimpleTargetName(owner.Expression) == treeId)
+			.Cast<SyntaxNode>();
+		names = ReachableLocals(roots, names, initializers);
+		if (names.Count == 0) return;
+		var keptStatements = method.Body.Statements.Where(st => !(st is LocalDeclarationStatementSyntax l
+				&& l.Declaration.Variables.All(v => names.Contains(v.Identifier.ValueText)))
+			&& !(st is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax { Left: MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax owner } } }
+				&& names.Contains(owner.Identifier.ValueText))).ToList();
+		file.Text = root.ReplaceNode(method, method.WithBody(method.Body.WithStatements(SyntaxFactory.List(keptStatements)))).NormalizeWhitespace().ToFullString();
+	}
+
+	/// <summary>The TreeNode locals named in <paramref name="roots"/>, plus those nested in a
+	/// reachable local's own initializer (a parent node's <c>new TreeNode("x", new[] { child })</c>).</summary>
+	static HashSet<string> ReachableLocals(IEnumerable<SyntaxNode> roots, HashSet<string> candidates, Dictionary<string, SyntaxNode?> initializers)
+	{
+		var reachable = new HashSet<string>(StringComparer.Ordinal);
+		var pending = new Stack<SyntaxNode>(roots);
+		while (pending.Count > 0) {
+			var node = pending.Pop();
+			foreach (var token in node.DescendantTokens()) {
+				var name = token.ValueText;
+				if (candidates.Contains(name) && reachable.Add(name) && initializers.TryGetValue(name, out var initializer) && initializer != null)
+					pending.Push(initializer);
+			}
+		}
+		return reachable;
+	}
 
 	/// <summary>Replaces every "&lt;id&gt;.&lt;member&gt;.Add/AddRange(...)" statement in
 	/// InitializeComponent with <paramref name="statement"/> (none when null), at the first replaced

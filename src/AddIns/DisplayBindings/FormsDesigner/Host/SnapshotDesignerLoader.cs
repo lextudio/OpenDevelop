@@ -21,6 +21,9 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 	readonly DesignerDocumentSnapshot snapshot;
 	readonly Func<string, Type?> projectTypeResolver;
 	readonly Dictionary<string, IComponent> components = new(StringComparer.Ordinal);
+	/// <summary>InitializeComponent's local variables (Visual Studio declares each TreeNode as one,
+	/// e.g. <c>TreeNode treeNode1 = new TreeNode("Leaf");</c>), resolved like fields.</summary>
+	readonly Dictionary<string, object> locals = new(StringComparer.Ordinal);
 	readonly Dictionary<string, ResourceValue> resources = new(StringComparer.Ordinal);
 	readonly Dictionary<IComponent, Dictionary<string, ResourceOrigin>> resourceOrigins = new();
 
@@ -78,6 +81,12 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 
 	void Execute(StatementSyntax statement)
 	{
+		if (statement is LocalDeclarationStatementSyntax local) {
+			foreach (var variable in local.Declaration.Variables)
+				if (variable.Initializer != null && Evaluate(variable.Initializer.Value) is { } value)
+					locals[variable.Identifier.ValueText] = value;
+			return;
+		}
 		if (statement is not ExpressionStatementSyntax expression) return;
 		if (expression.Expression is AssignmentExpressionSyntax assignment) {
 			var target = StripThis(assignment.Left.ToString());
@@ -133,6 +142,15 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 
 	void ExecuteVisualBasic(VbSyntax.StatementSyntax statement)
 	{
+		if (statement is VbSyntax.LocalDeclarationStatementSyntax vbLocal) {
+			foreach (var declarator in vbLocal.Declarators) {
+				VbSyntax.ExpressionSyntax? initial = declarator.Initializer?.Value
+					?? (declarator.AsClause as VbSyntax.AsNewClauseSyntax)?.NewExpression;
+				if (initial != null && declarator.Names.Count == 1 && EvaluateVisualBasic(initial) is { } value)
+					locals[declarator.Names[0].Identifier.ValueText] = value;
+			}
+			return;
+		}
 		if (statement is VbSyntax.AssignmentStatementSyntax assignment) {
 			var target = StripMe(assignment.Left.ToString());
 			if (!target.Contains('.') && assignment.Right is VbSyntax.ObjectCreationExpressionSyntax creation) {
@@ -498,7 +516,20 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		var type = ResolveType(creation.Type.ToString());
 		if (type == null) return null;
 		var args = creation.ArgumentList?.Arguments.Select(a => Evaluate(a.Expression)).ToArray() ?? [];
-		return CreateInstance(type, args);
+		var instance = CreateInstance(type, args);
+		// Object initializer ("new TreeNode("Leaf") { Name = "Node1" }"): simple property assignments.
+		if (instance != null && creation.Initializer is { } initializer)
+			foreach (var assignment in initializer.Expressions.OfType<AssignmentExpressionSyntax>())
+				if (assignment.Left is IdentifierNameSyntax member)
+					SetInitializedProperty(instance, member.Identifier.ValueText, Evaluate(assignment.Right));
+		return instance;
+	}
+
+	static void SetInitializedProperty(object instance, string name, object? value)
+	{
+		var property = TypeDescriptor.GetProperties(instance)[name];
+		if (property != null && !property.IsReadOnly && value != null)
+			try { property.SetValue(instance, ConvertValue(value, property.PropertyType)); } catch { }
 	}
 
 	object? CreateValueVisualBasic(VbSyntax.ObjectCreationExpressionSyntax creation)
@@ -506,7 +537,12 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		var type = ResolveType(creation.Type.ToString());
 		if (type == null) return null;
 		var args = creation.ArgumentList?.Arguments.Select(a => EvaluateVisualBasic(((VbSyntax.SimpleArgumentSyntax)a).Expression)).ToArray() ?? [];
-		return CreateInstance(type, args);
+		var instance = CreateInstance(type, args);
+		// "New TreeNode("Leaf") With {.Name = "Node1"}".
+		if (instance != null && creation.Initializer is VbSyntax.ObjectMemberInitializerSyntax initializer)
+			foreach (var field in initializer.Initializers.OfType<VbSyntax.NamedFieldInitializerSyntax>())
+				SetInitializedProperty(instance, field.Name.Identifier.ValueText, EvaluateVisualBasic(field.Expression));
+		return instance;
 	}
 
 	/// <summary>
@@ -565,7 +601,8 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		return ctor.Invoke(converted);
 	}
 
-	object? ResolveObject(string name) => components.TryGetValue(StripMe(name), out var component) ? component : ResolveType(name);
+	object? ResolveObject(string name) => components.TryGetValue(StripMe(name), out var component) ? component
+		: locals.TryGetValue(name, out var local) ? local : ResolveType(name);
 
 	internal Type? ResolveType(string name)
 	{

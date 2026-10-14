@@ -653,6 +653,100 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Equal(new[] { "Bytes", "Modified" }, Columns(reopened).CollectionItems);
 	}
 
+	/// <summary>Visual Studio's own TreeView form: each node a local with Name/Text assignments.</summary>
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task ChildHost_EditsVisualStudioTreeViewNodesKeepingNames(bool visualBasic)
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = visualBasic ? VbSnapshot(1, "button1") : Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = visualBasic
+			? designer.Text
+				.Replace("Me.button1 = New System.Windows.Forms.Button()", """
+					Dim treeNode1 As System.Windows.Forms.TreeNode = New System.Windows.Forms.TreeNode("Leaf")
+					        Dim treeNode2 As System.Windows.Forms.TreeNode = New System.Windows.Forms.TreeNode("Root", New System.Windows.Forms.TreeNode() {treeNode1})
+					        Dim treeNode3 As System.Windows.Forms.TreeNode = New System.Windows.Forms.TreeNode("Other")
+					        Me.button1 = New System.Windows.Forms.Button()
+					""", StringComparison.Ordinal)
+				.Replace("Me.Controls.Add(Me.button1)", """
+					Me.tree = New System.Windows.Forms.TreeView()
+					        treeNode1.Name = "Node1"
+					        treeNode1.Text = "Leaf"
+					        treeNode2.Name = "Node0"
+					        treeNode2.Text = "Root"
+					        Me.tree.Nodes.AddRange(New System.Windows.Forms.TreeNode() {treeNode2})
+					        Me.other = New System.Windows.Forms.TreeView()
+					        treeNode3.Name = "Node9"
+					        Me.other.Nodes.AddRange(New System.Windows.Forms.TreeNode() {treeNode3})
+					        Me.Controls.Add(Me.button1)
+					        Me.Controls.Add(Me.tree)
+					        Me.Controls.Add(Me.other)
+					""", StringComparison.Ordinal)
+				.Replace("Friend WithEvents button1 As System.Windows.Forms.Button",
+					"Friend WithEvents button1 As System.Windows.Forms.Button\n    Friend WithEvents tree As System.Windows.Forms.TreeView\n    Friend WithEvents other As System.Windows.Forms.TreeView", StringComparison.Ordinal)
+			: designer.Text
+				.Replace("this.button1 = new System.Windows.Forms.Button();", """
+					System.Windows.Forms.TreeNode treeNode1 = new System.Windows.Forms.TreeNode("Leaf");
+					        System.Windows.Forms.TreeNode treeNode2 = new System.Windows.Forms.TreeNode("Root", new System.Windows.Forms.TreeNode[] { treeNode1 });
+					        System.Windows.Forms.TreeNode treeNode3 = new System.Windows.Forms.TreeNode("Other");
+					        this.button1 = new System.Windows.Forms.Button();
+					""", StringComparison.Ordinal)
+				.Replace("this.Controls.Add(this.button1);", """
+					this.tree = new System.Windows.Forms.TreeView();
+					        treeNode1.Name = "Node1";
+					        treeNode1.Text = "Leaf";
+					        treeNode2.Name = "Node0";
+					        treeNode2.Text = "Root";
+					        this.tree.Nodes.AddRange(new System.Windows.Forms.TreeNode[] { treeNode2 });
+					        this.other = new System.Windows.Forms.TreeView();
+					        treeNode3.Name = "Node9";
+					        this.other.Nodes.AddRange(new System.Windows.Forms.TreeNode[] { treeNode3 });
+					        this.Controls.Add(this.button1);
+					        this.Controls.Add(this.tree);
+					        this.Controls.Add(this.other);
+					""", StringComparison.Ordinal)
+				.Replace("private System.Windows.Forms.Button button1;",
+					"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TreeView tree;\n    private System.Windows.Forms.TreeView other;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Nodes(DesignerSessionState state, string name = "tree")
+			=> state.Components.Single(component => component.Name == name).Properties.Single(property => property.Name == "Nodes");
+		Assert.Equal(new[] { "Root", "  Leaf" }, Nodes(opened).CollectionItems);
+		Assert.Equal(new[] { "Other" }, Nodes(opened, "other").CollectionItems);
+
+		var edited = await client.SetItemsAsync(1, "tree", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Top" },
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "  Leaf" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "  New" }
+		}, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.DoesNotContain("treeNode1", text, StringComparison.Ordinal);
+		Assert.DoesNotContain("treeNode2", text, StringComparison.Ordinal);
+		// Another TreeView's node locals are not this edit's to remove.
+		Assert.Contains("treeNode3", text, StringComparison.Ordinal);
+		Assert.Contains("Node9", text, StringComparison.Ordinal);
+		Assert.Contains(visualBasic ? "With {.Name = \"Node0\"}" : "{ Name = \"Node0\" }", text, StringComparison.Ordinal);
+		Assert.Contains(visualBasic ? "With {.Name = \"Node1\"}" : "{ Name = \"Node1\" }", text, StringComparison.Ordinal);
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(text, @"tree\.Nodes\.(Add|AddRange)\("));
+
+		designer.Text = text;
+		snapshot.Version = 2;
+		var reopened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error);
+		Assert.Equal(new[] { "Top", "  Leaf", "  New" }, Nodes(reopened).CollectionItems);
+		Assert.Equal(new[] { "Other" }, Nodes(reopened, "other").CollectionItems);
+		// Names survived the round trip: a second edit keeps them again.
+		var again = await client.SetItemsAsync(2, "tree", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Top" },
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "  Leaf" } }, timeout.Token);
+		Assert.True(again.Accepted, again.Error);
+		Assert.Contains("Node1", DesignerText(await client.FlushAsync(2, timeout.Token)), StringComparison.Ordinal);
+	}
+
 	[Theory]
 	[InlineData(false)]
 	[InlineData(true)]

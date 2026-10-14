@@ -751,8 +751,14 @@ offered (no Name, Tag, images, checked state, colours, font or tooltip, and no b
 starting with a space, since blank lines are dropped on edit), the shape that round-trips through the single
 `<id>.Nodes.AddRange(new TreeNode[] { new TreeNode("Root", new TreeNode[] { ... }) })` statement written
 in C# and VB. The snapshot loader now evaluates typed array creations of any resolvable element type,
-which is what reads the nested constructors back. Visual Studio's own form (locals plus Name/Text
-assignments) is not recognised, so such a tree stays read-only.
+which is what reads the nested constructors back. Visual Studio's own form is now recognised too: the
+snapshot loader reads InitializeComponent locals (`TreeNode treeNode1 = new TreeNode(...)`, VB `Dim`) and
+C# object initializers / VB `With {...}`, so `treeNode1.Name = "Node1"` applies to the node. A node's
+Name no longer makes the tree read-only: an edit keeps each kept node's Name (by its flattened
+depth-first SourceIndex), writes it as `new TreeNode("text") { Name = "Node1" }` (`With {.Name = ...}`),
+and removes the edited tree's `treeNodeN` locals (those reachable from its own `Nodes.AddRange`, including
+nested ones) and their assignments so no dead node code remains; another TreeView's locals are untouched. New nodes get
+no Name.
 **ListView columns (2026-10-14).** `ListView.Columns` is an `ItemsCollection` row of column texts
 when every column is a designer `ColumnHeader` component (Visual Studio's form: a field, a creation
 statement, `Columns.AddRange(new ColumnHeader[] { this.a, ... })`, `this.a.Text = ...`). Through
