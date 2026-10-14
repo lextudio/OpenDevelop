@@ -27,6 +27,13 @@ public static class MewUIControlCatalog
 			["Orientation"] = MxamlPropertyKind.Enum,
 			["Spacing"] = MxamlPropertyKind.Double,
 		},
+		["WrapPanel"] = new(StringComparer.Ordinal)
+		{
+			["Orientation"] = MxamlPropertyKind.Enum,
+			["Spacing"] = MxamlPropertyKind.Double,
+			["ItemWidth"] = MxamlPropertyKind.Double,
+			["ItemHeight"] = MxamlPropertyKind.Double,
+		},
 		["Grid"] = new(StringComparer.Ordinal)
 		{
 			["Rows"] = MxamlPropertyKind.GridLengths,
@@ -173,7 +180,9 @@ public static class MewUIControlCatalog
 	public static MxamlPropertyKind KindOf(string type, string property)
 		=> property is "Grid.Row" or "Grid.Column" or "Grid.RowSpan" or "Grid.ColumnSpan"
 			? MxamlPropertyKind.Int32
-			: property is "Canvas.Left" or "Canvas.Top"
+			: property is "DockPanel.Dock"
+			? MxamlPropertyKind.Enum
+			: property is "Canvas.Left" or "Canvas.Top" or "Canvas.Right" or "Canvas.Bottom"
 			|| property is "Width" or "Height" && (type == "Window" || IsKnownType(type) && !excludedFromCommon.Contains(type))
 			? MxamlPropertyKind.Double
 			: propertiesByType.TryGetValue(type, out var props) && props.TryGetValue(property, out var kind)
@@ -263,6 +272,7 @@ public static class MewUIControlCatalog
 		=> KindOf(type, property) != MxamlPropertyKind.Enum ? Array.Empty<string>()
 			: property switch {
 				"Orientation" => new[] { "Horizontal", "Vertical" },
+				"DockPanel.Dock" => new[] { "Left", "Top", "Right", "Bottom" },
 				"HorizontalAlignment" => new[] { "Left", "Center", "Right", "Stretch" },
 				"VerticalAlignment" => new[] { "Top", "Center", "Bottom", "Stretch" },
 				_ => Array.Empty<string>()

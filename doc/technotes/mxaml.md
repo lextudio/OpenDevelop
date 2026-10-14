@@ -101,6 +101,10 @@ by reflection):
   validated when a document is parsed, with the attribute's line, as the structured kinds already were;
   before, only a designer edit checked them, so a hand-written `Value="abc"` crashed MewUIGen during the
   build instead of reporting an error.
+- **Dock, Canvas edges, WrapPanel.** A DockPanel child's `DockPanel.Dock` (Left|Top|Right|Bottom) generates
+  `DockPanel.SetDock(x, Dock.Top);`; a Canvas child also takes `Canvas.Right`/`Canvas.Bottom`
+  (`Canvas.SetRight(x, 4.0);`); WrapPanel takes `Orientation`, `Spacing`, `ItemWidth`, `ItemHeight`. Like the
+  other attached values they can be set only under their owner type.
 - **Content children.** Button, CheckBox and RadioButton are content hosts too: one child element is
   generated as `iconButton.Content = glyph;` (an icon, a rich caption). A caption attribute and a child
   together are an Error (both set Content). Every single-child host (Content or Child: Window,

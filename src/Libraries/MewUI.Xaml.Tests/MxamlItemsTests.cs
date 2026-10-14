@@ -269,4 +269,29 @@ public sealed class MxamlItemsTests
 """);
 		Assert.Equal(2, doc.Diagnostics.Count(d => d.Severity == MxamlDiagnosticSeverity.Error && d.Message.Contains("out of range")));
 	}
+
+	[Fact]
+	public void GeneratesDockCanvasEdgesAndWrapPanel()
+	{
+		const string source = """
+<?xml version="1.0" encoding="utf-8"?>
+<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow">
+  <DockPanel Name="dock" LastChildFill="True">
+    <Label Name="top" Text="Top" DockPanel.Dock="Top"/>
+    <Canvas Name="surface" DockPanel.Dock="Left"><Label Name="corner" Canvas.Right="4" Canvas.Bottom="8"/></Canvas>
+    <WrapPanel Name="tiles" Orientation="Vertical" Spacing="2" ItemWidth="64" ItemHeight="32"/>
+  </DockPanel>
+</Window>
+""";
+		var doc = new MxamlDocument();
+		Assert.True(doc.Reset(source), doc.Error);
+		var csharp = MewUICSharpGenerator.Generate(doc);
+		foreach (var line in new[] { "DockPanel.SetDock(top, Dock.Top);", "DockPanel.SetDock(surface, Dock.Left);",
+			"Canvas.SetRight(corner, 4.0);", "Canvas.SetBottom(corner, 8.0);",
+			"tiles.Orientation = Orientation.Vertical;", "tiles.ItemWidth = 64.0;", "tiles.ItemHeight = 32.0;" })
+			Assert.Contains(line, csharp);
+		Assert.DoesNotContain("// unsupported", csharp);
+		Assert.True(MxamlDocument.Parse(source.Replace("DockPanel.Dock=\"Top\"", "DockPanel.Dock=\"Middle\"")).HasErrors);
+		Assert.False(doc.SetProperty("corner", "DockPanel.Dock", "Left"));
+	}
 }

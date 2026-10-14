@@ -113,7 +113,11 @@ public static class MewUICSharpGenerator
 			  .Append(", ").Append(cell.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(");\n");
 			return;
 		}
-		if (attribute.Name is "Canvas.Left" or "Canvas.Top") {
+		if (attribute.Name == "DockPanel.Dock" && MewUIControlCatalog.EnumValuesOf(ownerType, attribute.Name).Contains(attribute.Value)) {
+			sb.Append("        DockPanel.SetDock(").Append(ownerName).Append(", Dock.").Append(attribute.Value).Append(");\n");
+			return;
+		}
+		if (attribute.Name is "Canvas.Left" or "Canvas.Top" or "Canvas.Right" or "Canvas.Bottom") {
 			var setter = attribute.Name["Canvas.".Length..];
 			sb.Append("        Canvas.Set").Append(setter).Append('(').Append(ownerName)
 			  .Append(", ").Append(DoubleLiteral(attribute.Value)).Append(");\n");
