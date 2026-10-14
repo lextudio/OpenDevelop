@@ -11,7 +11,8 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 {
 	/// <summary>
 	/// Child-side type finder (Phase 1 slice, see wpf-designer.md's Phase 1 progress notes).
-	/// Modeled on the live in-process WpfDesign.AddIn/Src/MyTypeFinder.cs, but driven purely by
+	/// Modeled on the former in-process WpfDesign.AddIn MyTypeFinder (removed: the IDE must not
+	/// load project assemblies), but driven purely by
 	/// snapshot-carried paths - no OpenedFile/SD.ProjectService/IDE project-system dependency,
 	/// since none of that exists in this child. Loading target assemblies here (not in
 	/// OpenDevelop) is the whole point of this slice.
@@ -43,7 +44,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				}
 				catch (Exception)
 				{
-					// Best-effort preload, same as MyTypeFinder.Create: a bad reference here
+					// Best-effort preload, as the in-process type finder did: a bad reference here
 					// just means that reference's types won't resolve, not a fatal load error.
 				}
 			}
