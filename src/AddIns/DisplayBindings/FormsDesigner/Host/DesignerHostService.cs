@@ -276,6 +276,8 @@ sealed class DesignerHostService : IDesignerChildService
 		var component = host.Container.Components.Cast<IComponent>()
 			.FirstOrDefault(item => String.Equals(item.Site?.Name, elementId, StringComparison.Ordinal))
 			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
+		if (component is TreeView treeView)
+			return SetTreeNodes(host, treeView, elementId, baseVersion, items ?? Array.Empty<DesignerCollectionItemEdit>());
 		if (!TryGetEditableItems(component, out var collection) || collection == null)
 			throw new InvalidOperationException($"{elementId}.Items is not an editable string list.");
 		items ??= Array.Empty<DesignerCollectionItemEdit>();
@@ -316,6 +318,127 @@ sealed class DesignerHostService : IDesignerChildService
 		}
 		RewriteProperty(elementId, propertyName!, array, component == host.RootComponent);
 		return CurrentState(baseVersion);
+	}
+
+	const string TreeIndent = "  ";
+
+	/// <summary>A TreeView's nodes as indented lines (two spaces per level), when every node is a
+	/// plain text node (no Name, Tag, images, checked state or colours) - the only shape the list
+	/// editor and the <c>new TreeNode("text", children)</c> source form can round-trip.</summary>
+	static bool TryGetPlainTreeLines(TreeNodeCollection nodes, out List<string> lines)
+	{
+		var result = new List<string>();
+		bool Walk(TreeNodeCollection level, int depth)
+		{
+			foreach (TreeNode node in level) {
+				if (!String.IsNullOrEmpty(node.Name) || node.Tag != null || node.Checked || node.ImageIndex >= 0 || node.SelectedImageIndex >= 0
+					|| !String.IsNullOrEmpty(node.ImageKey) || !String.IsNullOrEmpty(node.SelectedImageKey) || !String.IsNullOrEmpty(node.ToolTipText)
+					|| !node.ForeColor.IsEmpty || !node.BackColor.IsEmpty || node.NodeFont != null || node.Text.StartsWith(" ", StringComparison.Ordinal))
+					return false;
+				result.Add(String.Concat(Enumerable.Repeat(TreeIndent, depth)) + node.Text);
+				if (!Walk(node.Nodes, depth + 1))
+					return false;
+			}
+			return true;
+		}
+		var plain = Walk(nodes, 0);
+		lines = result;
+		return plain;
+	}
+
+	/// <summary>Builds nodes from indented lines: a line's depth is its leading two-space count,
+	/// clamped to one deeper than the previous line so a stray indent cannot skip a level.</summary>
+	static List<TreeNode> BuildTreeNodes(IEnumerable<string> lines)
+	{
+		var roots = new List<TreeNode>();
+		var path = new List<TreeNode>();
+		foreach (var line in lines) {
+			var depth = 0;
+			while (line.Length >= (depth + 1) * TreeIndent.Length && line.AsSpan(depth * TreeIndent.Length, TreeIndent.Length).SequenceEqual(TreeIndent))
+				depth++;
+			depth = Math.Min(depth, path.Count);
+			var node = new TreeNode(line.Substring(depth * TreeIndent.Length).TrimStart());
+			if (depth == 0) roots.Add(node);
+			else path[depth - 1].Nodes.Add(node);
+			path.RemoveRange(depth, path.Count - depth);
+			path.Add(node);
+		}
+		return roots;
+	}
+
+	DesignerSessionState SetTreeNodes(IDesignerHost host, TreeView treeView, string elementId, long baseVersion, DesignerCollectionItemEdit[] items)
+	{
+		if (!TryGetPlainTreeLines(treeView.Nodes, out _))
+			throw new InvalidOperationException($"{elementId}.Nodes has nodes the list editor cannot represent.");
+		var roots = BuildTreeNodes(items.Select(entry => entry.Text ?? "").Where(text => text.Trim().Length > 0));
+		using (var transaction = host.CreateTransaction($"Edit {elementId}.Nodes")) {
+			treeView.Nodes.Clear();
+			treeView.Nodes.AddRange(roots.ToArray());
+			transaction.Commit();
+		}
+		RewriteCollectionStatements(elementId, "Nodes", roots.Count == 0 ? null
+			: IsVisualBasic ? $"Me.{elementId}.Nodes.AddRange(New System.Windows.Forms.TreeNode() {{{string.Join(", ", roots.Select(TreeNodeSourceVisualBasic))}}})"
+			: $"this.{elementId}.Nodes.AddRange(new System.Windows.Forms.TreeNode[] {{ {string.Join(", ", roots.Select(TreeNodeSource))} }});");
+		return CurrentState(baseVersion);
+	}
+
+	static string TreeNodeSource(TreeNode node) => node.Nodes.Count == 0
+		? $"new System.Windows.Forms.TreeNode({SerializeValue(node.Text)})"
+		: $"new System.Windows.Forms.TreeNode({SerializeValue(node.Text)}, new System.Windows.Forms.TreeNode[] {{ {string.Join(", ", node.Nodes.Cast<TreeNode>().Select(TreeNodeSource))} }})";
+
+	static string TreeNodeSourceVisualBasic(TreeNode node) => node.Nodes.Count == 0
+		? $"New System.Windows.Forms.TreeNode({SerializeValueVisualBasic(node.Text)})"
+		: $"New System.Windows.Forms.TreeNode({SerializeValueVisualBasic(node.Text)}, New System.Windows.Forms.TreeNode() {{{string.Join(", ", node.Nodes.Cast<TreeNode>().Select(TreeNodeSourceVisualBasic))}}})";
+
+	/// <summary>Replaces every "&lt;id&gt;.&lt;member&gt;.Add/AddRange(...)" statement in
+	/// InitializeComponent with <paramref name="statement"/> (none when null), at the first replaced
+	/// statement's position, else after the control's own last statement.</summary>
+	void RewriteCollectionStatements(string elementId, string member, string? statement)
+	{
+		var file = CurrentDesignerFile();
+		if (IsVisualBasic) {
+			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+			var vbMethod = vbRoot.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>().First(item =>
+				item.BlockStatement is VbSyntax.MethodStatementSyntax ms && ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+				&& ms.Identifier.ValueText == "InitializeComponent");
+			var vbStatements = vbMethod.Statements.ToList();
+			bool IsVbCall(VbSyntax.StatementSyntax s) => s is VbSyntax.ExpressionStatementSyntax {
+				Expression: VbSyntax.InvocationExpressionSyntax { Expression: VbSyntax.MemberAccessExpressionSyntax access } }
+				&& access.Name.Identifier.ValueText is "Add" or "AddRange"
+				&& access.Expression is VbSyntax.MemberAccessExpressionSyntax owner && owner.Name.Identifier.ValueText == member
+				&& owner.Expression != null && VbSimpleTargetName(owner.Expression) == elementId;
+			var vbAt = vbStatements.FindIndex(IsVbCall);
+			if (vbAt < 0) {
+				var last = vbStatements.FindLastIndex(s => s.DescendantNodes().OfType<VbSyntax.MemberAccessExpressionSyntax>()
+					.Any(access => access.Expression != null && VbSimpleTargetName(access.Expression) == elementId));
+				vbAt = last >= 0 ? last + 1 : vbStatements.Count;
+			}
+			var vbKept = vbStatements.Where(s => !IsVbCall(s)).ToList();
+			vbAt -= vbStatements.Take(vbAt).Count(IsVbCall);
+			if (statement != null)
+				vbKept.Insert(vbAt, Vb.SyntaxFactory.ParseExecutableStatement(statement));
+			file.Text = vbRoot.ReplaceNode(vbMethod, vbMethod.WithStatements(Vb.SyntaxFactory.List(vbKept))).NormalizeWhitespace().ToFullString();
+			return;
+		}
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First(item => item.Identifier.ValueText == "InitializeComponent");
+		var statements = method.Body!.Statements.ToList();
+		bool IsCall(StatementSyntax s) => s is ExpressionStatementSyntax {
+			Expression: InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax access } }
+			&& access.Name.Identifier.ValueText is "Add" or "AddRange"
+			&& access.Expression is MemberAccessExpressionSyntax owner && owner.Name.Identifier.ValueText == member
+			&& SimpleTargetName(owner.Expression) == elementId;
+		var at = statements.FindIndex(IsCall);
+		if (at < 0) {
+			var last = statements.FindLastIndex(s => s.DescendantNodes().OfType<MemberAccessExpressionSyntax>()
+				.Any(access => SimpleTargetName(access.Expression) == elementId));
+			at = last >= 0 ? last + 1 : statements.Count;
+		}
+		var kept = statements.Where(s => !IsCall(s)).ToList();
+		at -= statements.Take(at).Count(IsCall);
+		if (statement != null)
+			kept.Insert(at, SyntaxFactory.ParseStatement(statement));
+		file.Text = root.ReplaceNode(method, method.WithBody(method.Body.WithStatements(SyntaxFactory.List(kept)))).NormalizeWhitespace().ToFullString();
 	}
 
 	/// <summary>Replaces every "&lt;id&gt;.Items.Add(...)"/"AddRange(...)" statement in
@@ -3443,6 +3566,16 @@ sealed class DesignerHostService : IDesignerChildService
 				result[^1].Value = "(" + texts.Count + (texts.Count == 1 ? " item)" : " items)");
 				result[^1].CollectionItems = texts;
 				result[^1].ShouldSerialize = texts.Count > 0;
+			}
+			if (property.Name == "Nodes" && component is TreeView treeView && TryGetPlainTreeLines(treeView.Nodes, out var treeLines)) {
+				// The same list editor as Items: a node's depth is its leading two-space indent.
+				result[^1].Kind = "Collection";
+				result[^1].EditorKind = "ItemsCollection";
+				result[^1].IsReadOnly = true;
+				var count = treeLines.Count;
+				result[^1].Value = "(" + count + (count == 1 ? " node)" : " nodes)");
+				result[^1].CollectionItems = treeLines;
+				result[^1].ShouldSerialize = count > 0;
 			}
 			if (property.PropertyType == typeof(string[]) && !property.IsReadOnly) {
 				// TextBox.Lines and the like: the same list editor as Items, committed through

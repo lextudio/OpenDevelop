@@ -330,6 +330,9 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		// "new string[] { ... }" (TextBox.Lines); other element types are not designer values here.
 		ArrayCreationExpressionSyntax { Type.ElementType: PredefinedTypeSyntax { Keyword.ValueText: "string" } or IdentifierNameSyntax { Identifier.ValueText: "String" } or QualifiedNameSyntax { Right.Identifier.ValueText: "String" } } array
 			=> array.Initializer?.Expressions.Select(item => Evaluate(item) as string ?? "").ToArray() ?? Array.Empty<string>(),
+		// Any other element type that resolves (new TreeNode[] { ... } nested in a TreeNode constructor).
+		ArrayCreationExpressionSyntax { Initializer: { } initializer } array when ResolveType(array.Type.ElementType.ToString()) is { } elementType
+			=> TypedArray(elementType, initializer.Expressions.Select(Evaluate).ToList()),
 		InvocationExpressionSyntax invocation when invocation.Expression is MemberAccessExpressionSyntax member
 			&& member.Name.Identifier.ValueText == "GetObject" && invocation.ArgumentList.Arguments.Count == 1
 			=> Evaluate(invocation.ArgumentList.Arguments[0].Expression) is string key && resources.TryGetValue(key, out var resource) ? resource.Value : null,
@@ -350,6 +353,8 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		VbSyntax.CTypeExpressionSyntax cast => EvaluateVisualBasic(cast.Expression),
 		VbSyntax.ArrayCreationExpressionSyntax array when array.Type.ToString() is "String" or "System.String"
 			=> array.Initializer?.Initializers.Select(item => EvaluateVisualBasic(item) as string ?? "").ToArray() ?? Array.Empty<string>(),
+		VbSyntax.ArrayCreationExpressionSyntax { Initializer: { } vbInitializer } vbArray when ResolveType(vbArray.Type.ToString()) is { } vbElementType
+			=> TypedArray(vbElementType, vbInitializer.Initializers.Select(EvaluateVisualBasic).ToList()),
 		VbSyntax.GetTypeExpressionSyntax getType => ResolveType(getType.Type.ToString()),
 		VbSyntax.InvocationExpressionSyntax invocation when invocation.Expression is VbSyntax.MemberAccessExpressionSyntax member
 			&& member.Name.Identifier.ValueText == "GetObject" && invocation.ArgumentList.Arguments.Count == 1
@@ -475,6 +480,17 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 			var method = addMethods.FirstOrDefault(m => m.GetParameters()[0].ParameterType.IsInstanceOfType(value)) ?? addMethods[0];
 			try { method.Invoke(collection, [value]); } catch { }
 		}
+	}
+
+	/// <summary>An array of <paramref name="elementType"/>; values that are not instances of it
+	/// (unresolved expressions) are skipped rather than failing the whole load.</summary>
+	static Array TypedArray(Type elementType, List<object?> values)
+	{
+		var kept = values.Where(elementType.IsInstanceOfType).ToList();
+		var array = Array.CreateInstance(elementType, kept.Count);
+		for (var i = 0; i < kept.Count; i++)
+			array.SetValue(kept[i], i);
+		return array;
 	}
 
 	object? CreateValue(ObjectCreationExpressionSyntax creation)

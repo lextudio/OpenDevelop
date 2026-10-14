@@ -580,6 +580,63 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Equal("FormsDesigner.CustomControlFixture.FancyButton", ItemType(reopened).Value);
 	}
 
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task ChildHost_EditsTreeViewNodesAsIndentedLines(bool visualBasic)
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = visualBasic ? VbSnapshot(1, "button1") : Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = visualBasic
+			? designer.Text
+				.Replace("Me.Controls.Add(Me.button1)", """
+					Me.tree = New System.Windows.Forms.TreeView()
+					        Me.tree.Nodes.AddRange(New System.Windows.Forms.TreeNode() {New System.Windows.Forms.TreeNode("Root", New System.Windows.Forms.TreeNode() {New System.Windows.Forms.TreeNode("Leaf")})})
+					        Me.Controls.Add(Me.button1)
+					        Me.Controls.Add(Me.tree)
+					""", StringComparison.Ordinal)
+				.Replace("Friend WithEvents button1 As System.Windows.Forms.Button",
+					"Friend WithEvents button1 As System.Windows.Forms.Button\n    Friend WithEvents tree As System.Windows.Forms.TreeView", StringComparison.Ordinal)
+			: designer.Text
+				.Replace("this.Controls.Add(this.button1);", """
+					this.tree = new System.Windows.Forms.TreeView();
+					        this.tree.Nodes.AddRange(new System.Windows.Forms.TreeNode[] { new System.Windows.Forms.TreeNode("Root", new System.Windows.Forms.TreeNode[] { new System.Windows.Forms.TreeNode("Leaf") }) });
+					        this.Controls.Add(this.button1);
+					        this.Controls.Add(this.tree);
+					""", StringComparison.Ordinal)
+				.Replace("private System.Windows.Forms.Button button1;",
+					"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TreeView tree;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Nodes(DesignerSessionState state)
+			=> state.Components.Single(component => component.Name == "tree").Properties.Single(property => property.Name == "Nodes");
+		Assert.Equal("ItemsCollection", Nodes(opened).EditorKind);
+		Assert.Equal(new[] { "Root", "  Leaf" }, Nodes(opened).CollectionItems);
+
+		// A stray deep indent is clamped to one level below the previous line.
+		var edited = await client.SetItemsAsync(1, "tree", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Root" },
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "  Leaf" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "      Deep" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "Second" }
+		}, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		Assert.Equal(new[] { "Root", "  Leaf", "    Deep", "Second" }, Nodes(edited).CollectionItems);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(text, @"tree\.Nodes\.(Add|AddRange)\("));
+		Assert.Contains(visualBasic
+			? "New System.Windows.Forms.TreeNode(\"Leaf\", New System.Windows.Forms.TreeNode() {New System.Windows.Forms.TreeNode(\"Deep\")})"
+			: "new System.Windows.Forms.TreeNode(\"Leaf\", new System.Windows.Forms.TreeNode[] { new System.Windows.Forms.TreeNode(\"Deep\") })", text, StringComparison.Ordinal);
+
+		designer.Text = text;
+		snapshot.Version = 2;
+		var reopened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error);
+		Assert.Equal(new[] { "Root", "  Leaf", "    Deep", "Second" }, Nodes(reopened).CollectionItems);
+	}
+
 	[Fact]
 	public async Task ChildHost_AssignsTextBoxLinesAsOneStringArray()
 	{
