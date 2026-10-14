@@ -109,8 +109,33 @@ public sealed class MxamlDocument
 		foreach (var o in doc.Root.DescendantsAndSelf()) {
 			if (!seenNames.Add(o.Name))
 				doc.diagnostics.Add(new(MxamlDiagnosticSeverity.Error, $"Duplicate Name '{o.Name}'.", o.Line, o.Column));
+			// Scalar values are checked here too, not only on a designer edit: the generator parses
+			// them, so a hand-written Width="abc" would otherwise crash MewUIGen instead of reporting.
+			foreach (var a in o.Attributes.Where(a => !a.IsEvent))
+				if (ScalarValueError(o.Type, a.Name, a.Value) is { } error)
+					doc.diagnostics.Add(new(MxamlDiagnosticSeverity.Error, error, a.Line, a.Column));
 		}
 		return doc;
+	}
+
+	/// <summary>Why a Double/Int32/Boolean value (or a Grid cell index/span) has no source form, or null.</summary>
+	static string? ScalarValueError(string type, string name, string value)
+	{
+		var invariant = System.Globalization.CultureInfo.InvariantCulture;
+		switch (MewUIControlCatalog.KindOf(type, name)) {
+			// The same number styles as Revalidate and the generator's DoubleLiteral (Float | AllowThousands).
+			case MxamlPropertyKind.Double when !double.TryParse(value, invariant, out _):
+				return $"{type}.{name}: '{value}' is not a number.";
+			case MxamlPropertyKind.Int32 when !int.TryParse(value, System.Globalization.NumberStyles.Integer, invariant, out var number):
+				return $"{type}.{name}: '{value}' is not an integer.";
+			case MxamlPropertyKind.Int32 when name.StartsWith("Grid.", StringComparison.Ordinal)
+				&& int.Parse(value, invariant) is var cell && (cell < 0 || name.EndsWith("Span", StringComparison.Ordinal) && cell < 1):
+				return $"{type}.{name}: '{value}' is out of range.";
+			case MxamlPropertyKind.Boolean when value is not ("true" or "false" or "True" or "False"):
+				return $"{type}.{name}: '{value}' is not a boolean.";
+			default:
+				return null;
+		}
 	}
 
 	MxamlObject BuildObject(XElement element)
@@ -131,7 +156,9 @@ public sealed class MxamlDocument
 			if (attribute.IsNamespaceDeclaration || attribute.Name.LocalName is "Name" or "Class") continue;
 			var name = attribute.Name.LocalName;
 			var isEvent = MewUIControlCatalog.IsKnownEvent(name);
-			result.Attributes.Add(new MxamlAttribute { Name = name, Value = attribute.Value, IsEvent = isEvent, Line = ((IXmlLineInfo)attribute).HasLineInfo() ? ((IXmlLineInfo)attribute).LineNumber : 0 });
+			var attributeInfo = (IXmlLineInfo)attribute;
+			result.Attributes.Add(new MxamlAttribute { Name = name, Value = attribute.Value, IsEvent = isEvent,
+				Line = attributeInfo.HasLineInfo() ? attributeInfo.LineNumber : 0, Column = attributeInfo.HasLineInfo() ? attributeInfo.LinePosition : 0 });
 
 			if (!isEvent && !MewUIControlCatalog.IsSupported(type, name))
 				AddDiagnostic(attribute, MxamlDiagnosticSeverity.Warning, $"'{type}.{name}' has no registered kind - generated as a comment.");

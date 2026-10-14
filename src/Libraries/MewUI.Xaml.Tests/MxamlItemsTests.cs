@@ -223,4 +223,50 @@ public sealed class MxamlItemsTests
 		Assert.True(nested.Paste("form", snippets, out var intoGrid));
 		Assert.Contains(nested.Find(intoGrid.Single())!.Attributes, a => a.Name == "Grid.ColumnSpan");
 	}
+
+	/// <summary>Hand-written bad scalars are positioned errors at parse, not a generator crash.</summary>
+	[Theory]
+	[InlineData("<Slider Name=\"bad\" Value=\"abc\"/>", "not a number")]
+	[InlineData("<CheckBox Name=\"bad\" IsChecked=\"yes\"/>", "not a boolean")]
+	[InlineData("<ComboBox Name=\"bad\" SelectedIndex=\"one\"/>", "not an integer")]
+	public void ParseReportsBadScalarValues(string element, string message)
+	{
+		var doc = MxamlDocument.Parse($"""
+<?xml version="1.0" encoding="utf-8"?>
+<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow">
+  <StackPanel Name="rootPanel">
+    {element}
+  </StackPanel>
+</Window>
+""");
+		var error = Assert.Single(doc.Diagnostics, d => d.Severity == MxamlDiagnosticSeverity.Error);
+		Assert.Contains(message, error.Message);
+		Assert.True(error.Line > 0);
+		Assert.True(error.Column > 0);
+	}
+
+	[Fact]
+	public void ParseAcceptsNumbersTheGeneratorAccepts()
+	{
+		var doc = MxamlDocument.Parse("""
+<?xml version="1.0" encoding="utf-8"?>
+<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow">
+  <StackPanel Name="rootPanel"><Slider Name="big" Maximum="1,000" Value="2.5e2"/></StackPanel>
+</Window>
+""");
+		Assert.False(doc.HasErrors, string.Join("\n", doc.Diagnostics));
+		Assert.Contains("big.Maximum = 1000.0;", MewUICSharpGenerator.Generate(doc));
+	}
+
+	[Fact]
+	public void ParseReportsGridCellRanges()
+	{
+		var doc = MxamlDocument.Parse("""
+<?xml version="1.0" encoding="utf-8"?>
+<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow">
+  <Grid Name="form" Rows="*"><Label Name="a" Grid.Row="-1" Grid.RowSpan="0"/></Grid>
+</Window>
+""");
+		Assert.Equal(2, doc.Diagnostics.Count(d => d.Severity == MxamlDiagnosticSeverity.Error && d.Message.Contains("out of range")));
+	}
 }

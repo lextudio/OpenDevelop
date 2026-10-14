@@ -97,6 +97,10 @@ by reflection):
   (Int32; negative, or a span below 1, is an Error) generate `Grid.SetRow(x, n);`; like `Canvas.*` they can
   be set only on a Grid's child, and pasting into another parent type drops attached values of any owner
   that is not the new parent. The preview applies the same tracks.
+- **Parse-time scalar checks.** Double, Int32 and Boolean values (and Grid cell indexes/spans) are now
+  validated when a document is parsed, with the attribute's line, as the structured kinds already were;
+  before, only a designer edit checked them, so a hand-written `Value="abc"` crashed MewUIGen during the
+  build instead of reporting an error.
 - **Content children.** Button, CheckBox and RadioButton are content hosts too: one child element is
   generated as `iconButton.Content = glyph;` (an icon, a rich caption). A caption attribute and a child
   together are an Error (both set Content). Every single-child host (Content or Child: Window,
