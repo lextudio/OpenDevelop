@@ -653,6 +653,38 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Equal(new[] { "Bytes", "Modified" }, Columns(reopened).CollectionItems);
 	}
 
+	[Fact]
+	public async Task ChildHost_RefusesATreeEditThatWouldDropANodeSetting()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.button1 = new System.Windows.Forms.Button();", """
+				System.Windows.Forms.TreeNode treeNode1 = new System.Windows.Forms.TreeNode("Leaf");
+				        this.button1 = new System.Windows.Forms.Button();
+				""", StringComparison.Ordinal)
+			.Replace("this.Controls.Add(this.button1);", """
+				this.tree = new System.Windows.Forms.TreeView();
+				        treeNode1.Name = "Node1";
+				        treeNode1.StateImageIndex = 1;
+				        this.tree.Nodes.AddRange(new System.Windows.Forms.TreeNode[] { treeNode1 });
+				        this.Controls.Add(this.button1);
+				        this.Controls.Add(this.tree);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TreeView tree;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var before = DesignerText(await client.FlushAsync(1, timeout.Token));
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetItemsAsync(1, "tree", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Renamed" } }, timeout.Token));
+		var after = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Equal(before, after);
+		Assert.Contains("StateImageIndex = 1", after, StringComparison.Ordinal);
+	}
+
 	/// <summary>Visual Studio's own TreeView form: each node a local with Name/Text assignments.</summary>
 	[Theory]
 	[InlineData(false)]
@@ -675,6 +707,10 @@ public sealed class FormsDesignerHostClientTests
 					Me.tree = New System.Windows.Forms.TreeView()
 					        treeNode1.Name = "Node1"
 					        treeNode1.Text = "Leaf"
+					        treeNode1.Checked = True
+					        treeNode1.ImageIndex = 2
+					        treeNode1.ToolTipText = "tip"
+					        treeNode1.ForeColor = System.Drawing.Color.FromArgb(255, 200, 0, 0)
 					        treeNode2.Name = "Node0"
 					        treeNode2.Text = "Root"
 					        Me.tree.Nodes.AddRange(New System.Windows.Forms.TreeNode() {treeNode2})
@@ -698,6 +734,10 @@ public sealed class FormsDesignerHostClientTests
 					this.tree = new System.Windows.Forms.TreeView();
 					        treeNode1.Name = "Node1";
 					        treeNode1.Text = "Leaf";
+					        treeNode1.Checked = true;
+					        treeNode1.ImageIndex = 2;
+					        treeNode1.ToolTipText = "tip";
+					        treeNode1.ForeColor = System.Drawing.Color.FromArgb(255, 200, 0, 0);
 					        treeNode2.Name = "Node0";
 					        treeNode2.Text = "Root";
 					        this.tree.Nodes.AddRange(new System.Windows.Forms.TreeNode[] { treeNode2 });
@@ -730,7 +770,7 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("treeNode3", text, StringComparison.Ordinal);
 		Assert.Contains("Node9", text, StringComparison.Ordinal);
 		Assert.Contains(visualBasic ? "With {.Name = \"Node0\"}" : "{ Name = \"Node0\" }", text, StringComparison.Ordinal);
-		Assert.Contains(visualBasic ? "With {.Name = \"Node1\"}" : "{ Name = \"Node1\" }", text, StringComparison.Ordinal);
+		Assert.Contains(visualBasic ? "With {.Name = \"Node1\", .Checked = True" : "{ Name = \"Node1\", Checked = true", text, StringComparison.Ordinal);
 		Assert.Single(System.Text.RegularExpressions.Regex.Matches(text, @"tree\.Nodes\.(Add|AddRange)\("));
 
 		designer.Text = text;
@@ -744,7 +784,13 @@ public sealed class FormsDesignerHostClientTests
 			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Top" },
 			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "  Leaf" } }, timeout.Token);
 		Assert.True(again.Accepted, again.Error);
-		Assert.Contains("Node1", DesignerText(await client.FlushAsync(2, timeout.Token)), StringComparison.Ordinal);
+		var againText = DesignerText(await client.FlushAsync(2, timeout.Token));
+		Assert.Contains("Node1", againText, StringComparison.Ordinal);
+		// The leaf's other settings were carried through both edits and a reload.
+		foreach (var setting in visualBasic
+			? new[] { ".Checked = True", ".ImageIndex = 2", ".ToolTipText = \"tip\"", ".ForeColor = System.Drawing.Color.FromArgb(255, 200, 0, 0)" }
+			: new[] { "Checked = true", "ImageIndex = 2", "ToolTipText = \"tip\"", "ForeColor = System.Drawing.Color.FromArgb(255, 200, 0, 0)" })
+			Assert.Contains(setting, againText, StringComparison.Ordinal);
 	}
 
 	[Theory]

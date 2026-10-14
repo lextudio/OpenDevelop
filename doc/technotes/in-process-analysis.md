@@ -757,7 +757,13 @@ C# object initializers / VB `With {...}`, so `treeNode1.Name = "Node1"` applies 
 Name no longer makes the tree read-only: an edit keeps each kept node's Name (by its flattened
 depth-first SourceIndex), writes it as `new TreeNode("text") { Name = "Node1" }` (`With {.Name = ...}`),
 and removes the edited tree's `treeNodeN` locals (those reachable from its own `Nodes.AddRange`, including
-nested ones) and their assignments so no dead node code remains; another TreeView's locals are untouched. New nodes get
+nested ones) and their assignments so no dead node code remains; another TreeView's locals are untouched. A kept node now carries all its settings through an
+edit, not just Name: Checked, ImageIndex/ImageKey, SelectedImageIndex/SelectedImageKey, ToolTipText,
+ForeColor, BackColor, NodeFont and a string Tag are copied to the rebuilt node and written in its
+initializer, so such trees are editable instead of read-only (only a non-string Tag keeps one
+read-only). The loader now evaluates `Color.FromArgb(...)` (C#/VB), which it previously skipped. If the
+edited tree's node locals assign anything else (e.g. `StateImageIndex`), the edit is refused with the
+source unchanged rather than dropping that value. New nodes get
 no Name.
 **ListView columns (2026-10-14).** `ListView.Columns` is an `ItemsCollection` row of column texts
 when every column is a designer `ColumnHeader` component (Visual Studio's form: a field, a creation

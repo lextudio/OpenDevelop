@@ -354,6 +354,10 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		InvocationExpressionSyntax invocation when invocation.Expression is MemberAccessExpressionSyntax member
 			&& member.Name.Identifier.ValueText == "GetObject" && invocation.ArgumentList.Arguments.Count == 1
 			=> Evaluate(invocation.ArgumentList.Arguments[0].Expression) is string key && resources.TryGetValue(key, out var resource) ? resource.Value : null,
+		// Color.FromArgb(a, r, g, b) / (r, g, b) - how the designer writes a non-named colour.
+		InvocationExpressionSyntax invocation when invocation.Expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "FromArgb" } fromArgb
+			&& fromArgb.Expression.ToString().EndsWith("Color", StringComparison.Ordinal)
+			=> FromArgb(invocation.ArgumentList.Arguments.Select(argument => Evaluate(argument.Expression)).ToArray()),
 		InvocationExpressionSyntax invocation when invocation.Expression is IdentifierNameSyntax identifier
 			&& identifier.Identifier.ValueText == "nameof" && invocation.ArgumentList.Arguments.Count == 1
 			=> NameOf(invocation.ArgumentList.Arguments[0].Expression),
@@ -377,6 +381,9 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		VbSyntax.InvocationExpressionSyntax invocation when invocation.Expression is VbSyntax.MemberAccessExpressionSyntax member
 			&& member.Name.Identifier.ValueText == "GetObject" && invocation.ArgumentList.Arguments.Count == 1
 			=> EvaluateVisualBasic(VbArgument(invocation, 0)) is string key && resources.TryGetValue(key, out var resource) ? resource.Value : null,
+		VbSyntax.InvocationExpressionSyntax invocation when invocation.Expression is VbSyntax.MemberAccessExpressionSyntax { Name.Identifier.ValueText: "FromArgb" } fromArgb
+			&& fromArgb.Expression != null && fromArgb.Expression.ToString().EndsWith("Color", StringComparison.Ordinal) && invocation.ArgumentList != null
+			=> FromArgb(invocation.ArgumentList.Arguments.Select(argument => EvaluateVisualBasic(((VbSyntax.SimpleArgumentSyntax)argument).Expression)).ToArray()),
 		VbSyntax.InvocationExpressionSyntax invocation when invocation.Expression is VbSyntax.IdentifierNameSyntax identifier
 			&& identifier.Identifier.ValueText.Equals("NameOf", StringComparison.OrdinalIgnoreCase) && invocation.ArgumentList.Arguments.Count == 1
 			=> NameOfVisualBasic(VbArgument(invocation, 0)),
@@ -509,6 +516,18 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		for (var i = 0; i < kept.Count; i++)
 			array.SetValue(kept[i], i);
 		return array;
+	}
+
+	static object? FromArgb(object?[] values)
+	{
+		if (values.Any(value => value is not int)) return null;
+		var ints = values.Cast<int>().ToArray();
+		return ints.Length switch {
+			4 => System.Drawing.Color.FromArgb(ints[0], ints[1], ints[2], ints[3]),
+			3 => System.Drawing.Color.FromArgb(ints[0], ints[1], ints[2]),
+			1 => System.Drawing.Color.FromArgb(ints[0]),
+			_ => null
+		};
 	}
 
 	object? CreateValue(ObjectCreationExpressionSyntax creation)

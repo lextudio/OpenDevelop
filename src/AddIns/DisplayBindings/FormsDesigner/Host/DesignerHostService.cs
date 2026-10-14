@@ -325,7 +325,7 @@ sealed class DesignerHostService : IDesignerChildService
 	const string TreeIndent = "  ";
 
 	/// <summary>A TreeView's nodes as indented lines (two spaces per level), when every node is a
-	/// plain, non-blank text node (a Name is kept; no Tag, images, checked state or colours; a blank line is
+	/// non-blank text node whose settings can be carried through an edit (see TreeNodeSettings; a blank line is
 	/// dropped on edit, so a blank node would be lost) - the only shape the list
 	/// editor and the <c>new TreeNode("text", children)</c> source form can round-trip.</summary>
 	static bool TryGetPlainTreeLines(TreeNodeCollection nodes, out List<string> lines)
@@ -334,9 +334,9 @@ sealed class DesignerHostService : IDesignerChildService
 		bool Walk(TreeNodeCollection level, int depth)
 		{
 			foreach (TreeNode node in level) {
-				if (node.Tag != null || node.Checked || node.ImageIndex >= 0 || node.SelectedImageIndex >= 0
-					|| !String.IsNullOrEmpty(node.ImageKey) || !String.IsNullOrEmpty(node.SelectedImageKey) || !String.IsNullOrEmpty(node.ToolTipText)
-					|| !node.ForeColor.IsEmpty || !node.BackColor.IsEmpty || node.NodeFont != null
+				// Name, images, checked state, colours, font, tooltip and a string Tag are carried
+				// through an edit (TreeNodeSettings); only a non-string Tag has no source form here.
+				if (node.Tag is not (null or string)
 					|| node.Text.Trim().Length == 0 || node.Text.StartsWith(" ", StringComparison.Ordinal))
 					return false;
 				result.Add(String.Concat(Enumerable.Repeat(TreeIndent, depth)) + node.Text);
@@ -389,8 +389,9 @@ sealed class DesignerHostService : IDesignerChildService
 		FlattenBuilt(roots);
 		for (var i = 0; i < built.Count; i++)
 			if (kept[i].SourceIndex >= 0)
-				built[i].Name = flattened[kept[i].SourceIndex].Name;
-		RemoveTreeNodeLocals(elementId);
+				CopyTreeNodeSettings(flattened[kept[i].SourceIndex], built[i]);
+		if (!RemoveTreeNodeLocals(elementId, out var unsupported))
+			throw new InvalidOperationException($"{elementId}.Nodes sets {unsupported} on a node, which the list editor cannot carry through; edit it in the source.");
 		using (var transaction = host.CreateTransaction($"Edit {elementId}.Nodes")) {
 			treeView.Nodes.Clear();
 			treeView.Nodes.AddRange(roots.ToArray());
@@ -539,15 +540,50 @@ sealed class DesignerHostService : IDesignerChildService
 		file.Text = root.ReplaceNode(method, method.WithBody(method.Body.WithStatements(SyntaxFactory.List(statements)))).NormalizeWhitespace().ToFullString();
 	}
 
+	/// <summary>The settings a kept node carries through a list edit, in source order, with
+	/// their non-default values (the list itself edits only text, nesting and order).</summary>
+	static IEnumerable<(string Name, object Value)> TreeNodeSettings(TreeNode node)
+	{
+		if (!String.IsNullOrEmpty(node.Name)) yield return ("Name", node.Name);
+		if (node.Checked) yield return ("Checked", true);
+		if (!String.IsNullOrEmpty(node.ImageKey)) yield return ("ImageKey", node.ImageKey);
+		else if (node.ImageIndex >= 0) yield return ("ImageIndex", node.ImageIndex);
+		if (!String.IsNullOrEmpty(node.SelectedImageKey)) yield return ("SelectedImageKey", node.SelectedImageKey);
+		else if (node.SelectedImageIndex >= 0) yield return ("SelectedImageIndex", node.SelectedImageIndex);
+		if (!String.IsNullOrEmpty(node.ToolTipText)) yield return ("ToolTipText", node.ToolTipText);
+		if (!node.ForeColor.IsEmpty) yield return ("ForeColor", node.ForeColor);
+		if (!node.BackColor.IsEmpty) yield return ("BackColor", node.BackColor);
+		if (node.NodeFont != null) yield return ("NodeFont", node.NodeFont);
+		if (node.Tag is string tag) yield return ("Tag", tag);
+	}
+
+	static void CopyTreeNodeSettings(TreeNode source, TreeNode target)
+	{
+		foreach (var (name, value) in TreeNodeSettings(source))
+			TypeDescriptor.GetProperties(target)[name]?.SetValue(target, value);
+	}
+
+	static string TreeNodeInitializer(TreeNode node)
+	{
+		var settings = TreeNodeSettings(node).Select(setting => $"{setting.Name} = {SerializeValue(setting.Value)}").ToList();
+		return settings.Count == 0 ? "" : " { " + string.Join(", ", settings) + " }";
+	}
+
+	static string TreeNodeInitializerVisualBasic(TreeNode node)
+	{
+		var settings = TreeNodeSettings(node).Select(setting => $".{setting.Name} = {SerializeValueVisualBasic(setting.Value)}").ToList();
+		return settings.Count == 0 ? "" : " With {" + string.Join(", ", settings) + "}";
+	}
+
 	static string TreeNodeSource(TreeNode node) => (node.Nodes.Count == 0
 		? $"new System.Windows.Forms.TreeNode({SerializeValue(node.Text)})"
 		: $"new System.Windows.Forms.TreeNode({SerializeValue(node.Text)}, new System.Windows.Forms.TreeNode[] {{ {string.Join(", ", node.Nodes.Cast<TreeNode>().Select(TreeNodeSource))} }})")
-		+ (String.IsNullOrEmpty(node.Name) ? "" : $" {{ Name = {SerializeValue(node.Name)} }}");
+		+ TreeNodeInitializer(node);
 
 	static string TreeNodeSourceVisualBasic(TreeNode node) => (node.Nodes.Count == 0
 		? $"New System.Windows.Forms.TreeNode({SerializeValueVisualBasic(node.Text)})"
 		: $"New System.Windows.Forms.TreeNode({SerializeValueVisualBasic(node.Text)}, New System.Windows.Forms.TreeNode() {{{string.Join(", ", node.Nodes.Cast<TreeNode>().Select(TreeNodeSourceVisualBasic))}}})")
-		+ (String.IsNullOrEmpty(node.Name) ? "" : $" With {{.Name = {SerializeValueVisualBasic(node.Name)}}}");
+		+ TreeNodeInitializerVisualBasic(node);
 
 	/// <summary>Removes Visual Studio's TreeNode locals from InitializeComponent - each
 	/// <c>TreeNode treeNodeN = new TreeNode(...)</c> declaration and every statement on it
@@ -555,8 +591,15 @@ sealed class DesignerHostService : IDesignerChildService
 	/// dead node code is left behind. Only locals reachable from <paramref name="treeId"/>'s own
 	/// <c>Nodes.Add/AddRange</c> (directly, or nested in another reachable node's initializer) are
 	/// removed: another TreeView's nodes in the same InitializeComponent are left untouched.</summary>
-	void RemoveTreeNodeLocals(string treeId)
+	static readonly HashSet<string> CarriedTreeNodeSettings = new(StringComparer.Ordinal) {
+		"Name", "Text", "Checked", "ImageIndex", "SelectedImageIndex", "ImageKey", "SelectedImageKey",
+		"ToolTipText", "ForeColor", "BackColor", "NodeFont", "Tag" };
+
+	/// <returns>False, changing nothing, when a reachable local has an assignment the edit cannot
+	/// carry through (<paramref name="unsupported"/> names it): removing it would lose the value.</returns>
+	bool RemoveTreeNodeLocals(string treeId, out string unsupported)
 	{
+		unsupported = "";
 		var file = CurrentDesignerFile();
 		if (IsVisualBasic) {
 			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
@@ -578,13 +621,18 @@ sealed class DesignerHostService : IDesignerChildService
 					&& owner.Expression != null && VbSimpleTargetName(owner.Expression) == treeId)
 				.Cast<SyntaxNode>();
 			vbNames = ReachableLocals(vbRoots, vbNames, vbInitializers);
-			if (vbNames.Count == 0) return;
+			if (vbNames.Count == 0) return true;
+			var vbOther = vbMethod.Statements.OfType<VbSyntax.AssignmentStatementSyntax>()
+				.Select(st => st.Left as VbSyntax.MemberAccessExpressionSyntax)
+				.FirstOrDefault(left => left is { Expression: VbSyntax.IdentifierNameSyntax owner } && vbNames.Contains(owner.Identifier.ValueText)
+					&& !CarriedTreeNodeSettings.Contains(left.Name.Identifier.ValueText));
+			if (vbOther != null) { unsupported = vbOther.Name.Identifier.ValueText; return false; }
 			var vbKept = vbMethod.Statements.Where(st => !(st is VbSyntax.LocalDeclarationStatementSyntax l
 					&& l.Declarators.All(d => d.Names.All(n => vbNames.Contains(n.Identifier.ValueText))))
 				&& !(st is VbSyntax.AssignmentStatementSyntax a && a.Left is VbSyntax.MemberAccessExpressionSyntax { Expression: VbSyntax.IdentifierNameSyntax owner }
 					&& vbNames.Contains(owner.Identifier.ValueText))).ToList();
 			file.Text = vbRoot.ReplaceNode(vbMethod, vbMethod.WithStatements(Vb.SyntaxFactory.List(vbKept))).NormalizeWhitespace().ToFullString();
-			return;
+			return true;
 		}
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
 		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First(item => item.Identifier.ValueText == "InitializeComponent");
@@ -602,12 +650,18 @@ sealed class DesignerHostService : IDesignerChildService
 				&& SimpleTargetName(owner.Expression) == treeId)
 			.Cast<SyntaxNode>();
 		names = ReachableLocals(roots, names, initializers);
-		if (names.Count == 0) return;
+		if (names.Count == 0) return true;
+		var other = method.Body.Statements.OfType<ExpressionStatementSyntax>()
+			.Select(st => (st.Expression as AssignmentExpressionSyntax)?.Left as MemberAccessExpressionSyntax)
+			.FirstOrDefault(left => left is { Expression: IdentifierNameSyntax owner } && names.Contains(owner.Identifier.ValueText)
+				&& !CarriedTreeNodeSettings.Contains(left.Name.Identifier.ValueText));
+		if (other != null) { unsupported = other.Name.Identifier.ValueText; return false; }
 		var keptStatements = method.Body.Statements.Where(st => !(st is LocalDeclarationStatementSyntax l
 				&& l.Declaration.Variables.All(v => names.Contains(v.Identifier.ValueText)))
 			&& !(st is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax { Left: MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax owner } } }
 				&& names.Contains(owner.Identifier.ValueText))).ToList();
 		file.Text = root.ReplaceNode(method, method.WithBody(method.Body.WithStatements(SyntaxFactory.List(keptStatements)))).NormalizeWhitespace().ToFullString();
+		return true;
 	}
 
 	/// <summary>The TreeNode locals named in <paramref name="roots"/>, plus those nested in a
