@@ -156,6 +156,26 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		return Paste(parent.Id, copied.Snippets.ToArray(), last);
 	}
 
+	/// <summary>Whether every selected element has the same (non-null) parent.</summary>
+	bool SharesOneParent()
+	{
+		if (state.Tree == null || selection.SelectedIds.Count == 0) return false;
+		DesignerElementNode? ParentOf(string id) => Flatten(state.Tree).FirstOrDefault(node => node.Children.Any(child => child.Id == id));
+		var parent = ParentOf(selection.SelectedIds[0]);
+		return parent != null && selection.SelectedIds.All(id => ParentOf(id) == parent);
+	}
+
+	/// <summary>Wraps the selected siblings in a new container and selects it.</summary>
+	public bool WrapSelected(string containerType)
+	{
+		if (host == null || selection.SelectedIds.Count == 0) return false;
+		var ids = selection.SelectedIds.ToArray();
+		try {
+			if (!Mutate(() => host.WrapElementsAsync(state.Version, ids, containerType).GetAwaiter().GetResult())) return false;
+		} catch (Exception ex) { diagnostic.Text = ex.GetBaseException().Message; return false; }
+		return state.CreatedElementId is { } created && SelectByName(created);
+	}
+
 	/// <summary>The single selected element's position among its parent's children, or null.</summary>
 	(int Index, int Count)? SiblingPosition()
 	{
@@ -272,11 +292,14 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		canvas.Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit | DesignerCanvasCapabilities.Gridlines;
 		canvas.ResizeHandlesEnabled = false;
 		canvas.SetContextCommands(new[] { ("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete"),
-			("-", ""), ("Order/Move First", "move-first"), ("Order/Move Earlier", "move-earlier"), ("Order/Move Later", "move-later"), ("Order/Move Last", "move-last") });
+			("-", ""), ("Order/Move First", "move-first"), ("Order/Move Earlier", "move-earlier"), ("Order/Move Later", "move-later"), ("Order/Move Last", "move-last"),
+			("-", ""), ("Wrap/StackPanel", "wrap-StackPanel"), ("Wrap/Grid", "wrap-Grid"), ("Wrap/Border", "wrap-Border") });
 		canvas.ContextCommandCanExecute = command => command switch {
 			"paste" => host?.IsAlive == true && ClipboardSnippets().Length > 0,
 			"move-first" or "move-earlier" => host?.IsAlive == true && SiblingPosition() is { Index: > 0 },
 			"move-later" or "move-last" => host?.IsAlive == true && SiblingPosition() is { } position && position.Index < position.Count - 1,
+			"wrap-Border" => host?.IsAlive == true && selection.SelectedIds.Count == 1 && SharesOneParent(),
+			"wrap-StackPanel" or "wrap-Grid" => host?.IsAlive == true && selection.SelectedIds.Count > 0 && SharesOneParent(),
 			_ => selection.SelectedIds.Count > 0 && host?.IsAlive == true
 		};
 		canvasController.ClearsSelectionOnEmptyClick = true;
@@ -292,6 +315,7 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 				case "paste": PasteIntoSelection(); break;
 				case "duplicate": DuplicateSelection(); break;
 				case "move-first" or "move-earlier" or "move-later" or "move-last": MoveSelected(command.Command); break;
+				case var wrap when wrap.StartsWith("wrap-", StringComparison.Ordinal): WrapSelected(wrap.Substring("wrap-".Length)); break;
 			}
 		};
 		canvas.RenameRequested += (_, _) => RequestRename();

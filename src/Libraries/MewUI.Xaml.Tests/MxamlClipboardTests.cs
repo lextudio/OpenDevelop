@@ -70,3 +70,59 @@ public sealed class MxamlClipboardTests
 		Assert.False(doc.Undo());
 	}
 }
+
+public sealed class MxamlWrapTests
+{
+	const string Source = """
+<?xml version="1.0" encoding="utf-8"?>
+<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow">
+  <StackPanel Name="rootPanel">
+    <Label Name="heading" Text="Notes"/>
+    <Button Name="okButton" Content="OK"/>
+    <Button Name="cancelButton" Content="Cancel"/>
+    <Canvas Name="board">
+      <Button Name="pin" Canvas.Left="10" Canvas.Top="20" Content="Pin"/>
+    </Canvas>
+  </StackPanel>
+</Window>
+""";
+
+	static MxamlDocument NewDoc() { var d = MxamlDocument.Parse(Source); Assert.False(d.HasErrors, string.Join("\n", d.Diagnostics)); return d; }
+
+	[Fact]
+	public void WrapsSiblingsInPlaceKeepingOrderInOneUndoStep()
+	{
+		var doc = NewDoc();
+		var before = doc.ToXaml();
+		Assert.True(doc.Wrap(new[] { "cancelButton", "okButton" }, "StackPanel", out var created));
+		Assert.Equal("stackPanel1", created);
+		Assert.Equal(new[] { "heading", "stackPanel1", "board" }, doc.Find("rootPanel")!.Children.Select(c => c.Name));
+		Assert.Equal(new[] { "okButton", "cancelButton" }, doc.Find("stackPanel1")!.Children.Select(c => c.Name));
+		Assert.True(doc.Undo());
+		Assert.Equal(before, doc.ToXaml());
+	}
+
+	[Fact]
+	public void TheWrapperTakesOverAttachedPlacement()
+	{
+		var doc = NewDoc();
+		Assert.True(doc.Wrap(new[] { "pin" }, "Border", out var created));
+		var border = doc.Find(created)!;
+		Assert.Equal("10", border.FindAttribute("Canvas.Left")!.Value);
+		Assert.Equal("20", border.FindAttribute("Canvas.Top")!.Value);
+		Assert.Null(doc.Find("pin")!.FindAttribute("Canvas.Left"));
+	}
+
+	[Fact]
+	public void RefusesTheRootMixedParentsAndSeveralIntoASingleChildHost()
+	{
+		var doc = NewDoc();
+		var before = doc.ToXaml();
+		Assert.False(doc.Wrap(new[] { "mainWindow" }, "StackPanel", out _));
+		Assert.False(doc.Wrap(new[] { "heading", "pin" }, "StackPanel", out _));
+		Assert.False(doc.Wrap(new[] { "okButton", "cancelButton" }, "Border", out _));
+		Assert.False(doc.Wrap(new[] { "okButton" }, "Button", out _));
+		Assert.Equal(before, doc.ToXaml());
+		Assert.False(doc.Undo());
+	}
+}

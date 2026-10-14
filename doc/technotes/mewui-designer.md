@@ -325,6 +325,18 @@ box or stack), so these are moves, not z-order "Bring to Front". A move that can
 Earlier on the first child) is disabled and sends nothing; a host refusal shows its reason instead of
 escaping.
 
+## Wrap (2026-10-14)
+
+The surface menu's Wrap → StackPanel / Grid / Border (the WPF and WinUI designers' Wrap) puts the
+selected siblings into a new container at the first one's position, keeping their order, through
+`design/wrap-elements` (the WPF host's contract; the wrapper is `CreatedElementId` and becomes the
+selection). `MxamlDocument.Wrap` refuses the root, a selection spanning parents, and more than one
+element into a single-child host such as Border. Attached placement (dotted attributes such as
+`Canvas.Left` or `DockPanel.Dock`) describes the old parent, so the wrapper takes over the first
+element's and the wrapped elements drop theirs. It is one transactional commit. `MxamlWrapTests`
+covers it; there is no integration journey for it (the IDE wiring is the same pattern as the
+clipboard commands).
+
 ## Future runtime fidelity
 
 Preview frames today come from `MewUIDesigner.Host/MewUIRenderer.cs`, which builds the real MewUI

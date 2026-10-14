@@ -291,6 +291,44 @@ public sealed class MxamlDocument
 		return true;
 	}
 
+	/// <summary>Wraps sibling elements in a new <paramref name="containerType"/> placed where the
+	/// first of them (in document order) was, keeping their relative order, as the WPF and WinUI
+	/// designers' Wrap does. All names must share one parent and none may be the root; a single-child
+	/// host (Border) takes exactly one. Attached layout values (dotted attributes such as
+	/// <c>Canvas.Left</c> or <c>DockPanel.Dock</c>) describe placement in the OLD parent, so the
+	/// wrapper takes over the first element's and the wrapped elements drop theirs. One
+	/// transactional, undoable change; <paramref name="created"/> is the wrapper's name.</summary>
+	public bool Wrap(IReadOnlyCollection<string> names, string containerType, out string created)
+	{
+		created = "";
+		if (names.Count == 0 || !MewUIControlCatalog.IsContainer(containerType) || !MewUIControlCatalog.IsKnownType(containerType)
+			|| containerType == "Window" || !MewUIControlCatalog.IsPanel(containerType) && names.Count != 1)
+			return false;
+		var parent = FindParent(names.First());
+		if (parent == null || names.Any(name => FindParent(name) != parent))
+			return false;
+		var wrapped = parent.Children.Where(child => names.Contains(child.Name)).ToList();
+		if (wrapped.Count != names.Count)
+			return false;
+		var name = UniqueName(containerType);
+		var wrapper = new MxamlObject { Type = containerType, Name = name };
+		foreach (var attached in wrapped[0].Attributes.Where(a => a.Name.Contains('.')).ToList())
+			wrapper.Attributes.Add(new MxamlAttribute { Name = attached.Name, Value = attached.Value });
+		if (!Commit(() => {
+			var index = parent.Children.IndexOf(wrapped[0]);
+			foreach (var child in wrapped) {
+				parent.Children.Remove(child);
+				foreach (var attached in child.Attributes.Where(a => a.Name.Contains('.')).ToList())
+					child.Attributes.Remove(attached);
+				wrapper.Children.Add(child);
+			}
+			parent.Children.Insert(index, wrapper);
+			return true;
+		})) return false;
+		created = name;
+		return true;
+	}
+
 	/// <summary>Moves a child within its parent by <paramref name="delta"/> positions.</summary>
 	public bool Reorder(string name, int delta)
 	{
