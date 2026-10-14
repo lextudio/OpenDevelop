@@ -170,4 +170,30 @@ public sealed class BrushEditTests
 		Assert.True(reopened.Accepted, reopened.Error);
 		Assert.Equal(("System", "HighlightBrushKey"), (Background(reopened, 0).Brush!.Kind, Background(reopened, 0).Brush!.ResourceKey));
 	}
+
+	[Fact]
+	public async Task ChildHost_MarksImageSourcesForTheProjectImagePicker()
+	{
+		const string xaml = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="root" Width="240" Height="120">
+			  <Image x:Name="empty"/>
+			  <Image x:Name="bound" Source="{Binding Picture}"/>
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(WpfSurfaceHostRpcTests.HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Source(DesignerSessionState state, int index)
+			=> Assert.Single(state.Tree!.Children[index].Properties, p => p.Name == "Source");
+
+		Assert.Equal("ImageSource", Source(opened, 0).EditorKind);
+		// A binding keeps its own editor; the picker would overwrite it with text.
+		Assert.NotEqual("ImageSource", Source(opened, 1).EditorKind);
+
+		// The picker writes a relative URI through the ordinary text path.
+		var set = await client.SetPropertyAsync(1, opened.Tree!.Children[0].Id, "Source", "Images/dot.png", timeout.Token);
+		Assert.True(set.Accepted, set.Error);
+		Assert.Contains("Source=\"Images/dot.png\"", Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text, StringComparison.Ordinal);
+	}
 }

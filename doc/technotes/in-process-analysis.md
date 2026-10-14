@@ -868,6 +868,18 @@ so the IDE never loads a project assembly. Each item is a `ToolboxItem` carrying
 the drop and click paths already used nothing else. Items are added when a form is opened; the
 shared Toolbox has no removal, so a rebuilt assembly contributes only new controls.
 
+**C2 image-source picker (2026-10-14).** As Visual Studio's Image.Source drop-down, an unset or
+attribute-text WPF `ImageSource` row (Image.Source, Window.Icon...) gets EditorKind `ImageSource`, and
+the IDE renders an editable drop-down of the project's image files (any build action, including
+SDK globs) as URIs relative to the designed XAML's folder (`ProjectImagePaths`), read when the row is
+shown. A binding or other markup keeps its own editor. Writing exposed a host defect: `set-property`
+converted the text with `ImageSourceConverter` without the document's base URI, so a relative image
+could not be decoded and the edit was refused (and a converted image would have serialized as an
+absolute URI). The host now hands DDP the authored text for an `ImageSource`, which writes it
+verbatim and parses the live value with the document context. `od.wpf-designer.properties-pad.pick-image`
+drives the real row; `PropertiesPad_ImageSourcePickerOffersProjectImages` saves
+`Source="OdPickerImages/dot.png"`. No protocol change: EditorKind is an open string.
+
 **C2 attached layout properties (2026-10-12).** As in the in-process Properties pad, a WPF element
 now shows the attached layout properties its parent panel defines - `Grid.Row/Column/RowSpan/
 ColumnSpan`, `Canvas.Left/Top/Right/Bottom` or `DockPanel.Dock` - in a Layout category, named as

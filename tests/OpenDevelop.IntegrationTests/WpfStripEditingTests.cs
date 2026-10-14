@@ -1396,6 +1396,57 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
+    public async Task PropertiesPad_ImageSourcePickerOffersProjectImages()
+    {
+        // Visual Studio's Image.Source drop-down: the project's images, relative to the XAML file.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var imageFolder = Path.Combine(sample, "OdPickerImages");
+        var originalXaml = await File.ReadAllBytesAsync(xamlPath);
+        try {
+            Directory.CreateDirectory(imageFolder);
+            // A 1x1 PNG.
+            await File.WriteAllBytesAsync(Path.Combine(imageFolder, "dot.png"), Convert.FromBase64String(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="));
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Images">
+              <Grid>
+                <Image x:Name="picture" Width="32" Height="32" />
+              </Grid>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            JsonElement picked = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                await app.InvokeAsync("od.wpf-designer.select", "picture");
+                picked = await app.InvokeAsync("od.wpf-designer.properties-pad.pick-image", "Source", "");
+                return picked.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), picked.ToString());
+            Assert.Contains("OdPickerImages/dot.png", picked.GetProperty("items").EnumerateArray().Select(item => item.GetString()));
+
+            picked = await app.InvokeAsync("od.wpf-designer.properties-pad.pick-image", "Source", "OdPickerImages/dot.png");
+            Assert.True(picked.GetProperty("success").GetBoolean(), picked.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            Assert.True(System.Text.RegularExpressions.Regex.IsMatch(await File.ReadAllTextAsync(xamlPath), "<Image(?=[^>]*x:Name=\"picture\")(?=[^>]*Source=\"OdPickerImages/dot.png\")"), picked.ToString());
+        } finally {
+            await app.InvokeAsync("od.close-all-document-views");
+            await File.WriteAllBytesAsync(xamlPath, originalXaml);
+            if (Directory.Exists(imageFolder))
+                Directory.Delete(imageFolder, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task PropertiesPad_EditsAndResetsTheParentGridsAttachedRow()
     {
         // The in-process Properties pad lists the parent panel's attached layout properties.

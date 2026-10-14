@@ -1440,13 +1440,16 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// adapter per access, since the node instance changes on every re-render.</summary>
 		public WpfSurfaceElementPropertyAdapter? SelectedPropertyAdapter =>
 			SelectedNode is { } node
-				? new WpfSurfaceElementPropertyAdapter(client, RequireVersion, node, OnPropertyEdited, OnEventHandlerBound)
+				? new WpfSurfaceElementPropertyAdapter(client, RequireVersion, node, OnPropertyEdited, OnEventHandlerBound) { ImageSourceCandidates = ImageSourceCandidates }
 				: null;
+
+		/// <summary>The project images, relative to the designed file, for ImageSource rows.</summary>
+		public Func<IReadOnlyList<string>>? ImageSourceCandidates { get; set; }
 
 		public object[] SelectedPropertyAdapters => state?.Tree == null ? Array.Empty<object>() : SelectedElementIds
 			.Select(NodeById)
 			.Where(node => node != null)
-			.Select(node => (object)new WpfSurfaceElementPropertyAdapter(client, RequireVersion, node!, OnPropertyEdited, OnEventHandlerBound))
+			.Select(node => (object)new WpfSurfaceElementPropertyAdapter(client, RequireVersion, node!, OnPropertyEdited, OnEventHandlerBound) { ImageSourceCandidates = ImageSourceCandidates })
 			.ToArray();
 
 		/// <summary>Renders a property edit's result, then raises <see cref="SelectionChanged"/>

@@ -831,6 +831,24 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				: JsonSerializer.Serialize(new { success = false, error = result.Error });
 		}
 
+		[DevFlowAction("od.wpf-designer.properties-pad.pick-image", Description = "List an ImageSource row's real project-image drop-down, and when <path> is given select that item as a user pick does")]
+		public static string PickImageThroughPropertiesPad(string propertyName, string path = "")
+		{
+			var grid = PropertyPadGrid;
+			if (grid?.SelectedObject is not WpfSurfaceElementPropertyAdapter)
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
+			var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(candidate => IsPropertyItem(candidate, propertyName));
+			if (item?.Editor is not ComboBox { Name: WpfImageSourceEditor.ComboName } combo)
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad did not render an image-source picker: " + propertyName });
+			var items = combo.Items.OfType<string>().ToArray();
+			if (!string.IsNullOrEmpty(path)) {
+				if (!items.Contains(path))
+					return JsonSerializer.Serialize(new { success = false, error = "Not offered: " + path, items });
+				combo.SelectedItem = path;
+			}
+			return JsonSerializer.Serialize(new { success = true, items, value = item.Value?.ToString() });
+		}
+
 		[DevFlowAction("od.wpf-designer.properties-pad.bind-event", Description = "Double-click a WPF event through the live Properties pad adapter: binds the XAML handler attribute if unhandled, then the IDE creates (or finds) the method in the code-behind and opens it. The isolated host never touches project code")]
 		public static string BindEventThroughPropertiesPad(string eventName)
 		{

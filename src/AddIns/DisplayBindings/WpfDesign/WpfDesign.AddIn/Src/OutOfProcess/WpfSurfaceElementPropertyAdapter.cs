@@ -43,6 +43,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			this.onStateChanged = onStateChanged ?? throw new ArgumentNullException(nameof(onStateChanged));
 		}
 
+		/// <summary>The project images an <c>ImageSource</c> row offers, relative to the designed
+		/// file (see <see cref="WpfImageSourceEditor"/>); null when the document has no project.</summary>
+		public Func<System.Collections.Generic.IReadOnlyList<string>>? ImageSourceCandidates { get; init; }
+
 		internal void SetProperty(string propertyName, string value)
 		{
 			var state = client.SetPropertyAsync(currentBaseVersion(), node.Id, propertyName, value)
@@ -317,6 +321,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 			// text or color-only editor cannot express.
 			else if (property.EditorKind == "Brush")
 				attributes.Add(new EditorAttribute(typeof(WpfBrushEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
+			else if (property.EditorKind == "ImageSource")
+				attributes.Add(new EditorAttribute(typeof(WpfImageSourceEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 			return attributes.ToArray();
 		}
 

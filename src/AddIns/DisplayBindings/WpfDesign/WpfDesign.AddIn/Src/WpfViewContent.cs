@@ -267,6 +267,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 					surfaceControl.DocumentChanged += OnDocumentChanged;
 					surfaceControl.EventHandlerBound += OnEventHandlerBound;
 					surfaceControl.UndoRedoRequested += OnUndoRedoRequested;
+					surfaceControl.ImageSourceCandidates = ProjectImageSources;
 					InitPropertyEditor();
 					InitWpfToolbox();
 				}
@@ -316,6 +317,17 @@ namespace ICSharpCode.WpfDesign.AddIn
 				if (generation == loadGeneration && !IsDisposed)
 					ShowDesignerError(e);
 			}
+		}
+
+		/// <summary>The project's image files (any build action), relative to this XAML file, for
+		/// the Properties pad's image-source picker; read when a row is shown, so a newly added
+		/// image appears without reopening the document.</summary>
+		IReadOnlyList<string> ProjectImageSources()
+		{
+			var project = SD.ProjectService.FindProjectContainingFile(PrimaryFile.FileName);
+			return project == null ? Array.Empty<string>()
+				: ProjectImagePaths.RelativeTo(PrimaryFile.FileName.ToString(),
+					project.Items.OfType<FileProjectItem>().Select(item => item.FileName.ToString()));
 		}
 
 		DesignerDocumentSnapshot CreateSnapshot(long version)

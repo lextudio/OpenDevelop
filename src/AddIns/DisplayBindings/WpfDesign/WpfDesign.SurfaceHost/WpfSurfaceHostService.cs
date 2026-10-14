@@ -948,7 +948,14 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					return NotFound(state, "Property not found: " + propertyName);
 				try
 				{
-					property.SetValue(ConvertValue(property.ReturnType, value));
+					// An image URI is written as the authored text: converting it here, without the
+					// document's base URI, cannot resolve a relative path, and the converter's own
+					// text for a loaded image would be an absolute one. DDP parses the attribute
+					// text into the live value with the document's context.
+					if (property.ReturnType != null && typeof(ImageSource).IsAssignableFrom(property.ReturnType) && !string.IsNullOrWhiteSpace(value))
+						property.SetValue(value.Trim());
+					else
+						property.SetValue(ConvertValue(property.ReturnType, value));
 				}
 				catch (Exception e)
 				{
@@ -3243,7 +3250,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						});
 					}
 				}
-				result.Add(ToPropertyInfo(property));
+				result.Add(MarkImageSource(ToPropertyInfo(property), property));
 			}
 			// The in-process grid lists the attached layout properties the parent panel defines,
 			// named as XAML spells them so design/set-property and reset-property accept them.
@@ -3389,6 +3396,17 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				catch { /* one lazy event must not prevent the rest of the snapshot */ }
 			}
 			return result;
+		}
+
+		/// <summary>An unset or attribute-text <see cref="ImageSource"/> (Image.Source, Window.Icon...)
+		/// gets the IDE's project-image picker. The picker only offers candidates; the write is the
+		/// usual design/set-property, which keeps an image URI as its authored text.</summary>
+		static DesignerPropertyInfo MarkImageSource(DesignerPropertyInfo info, DesignItemProperty property)
+		{
+			if (string.IsNullOrEmpty(info.EditorKind) && !info.IsReadOnly && info.Kind is "String" or "Null"
+				&& property.ReturnType != null && typeof(ImageSource).IsAssignableFrom(property.ReturnType))
+				info.EditorKind = "ImageSource";
+			return info;
 		}
 
 		/// <summary>Converts one <see cref="DesignItemProperty"/> to the wire shape the
