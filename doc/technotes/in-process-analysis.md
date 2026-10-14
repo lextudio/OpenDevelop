@@ -843,9 +843,10 @@ what is being designed; it is hidden when there is no frame or no color to edit.
 sets nothing beyond Stretch and Opacity (TileMode, Viewport/Viewbox, alignment or a transform keep it
 a read-only reference), and writes one with the URI as authored text (as Image.Source is), only
 non-default Stretch and Opacity. The dialog's Image tab offers the project's images through the same
-`IImageSourceCandidates` the Image.Source picker uses, or any typed URI, plus Stretch. Not yet: other
-tile brushes (Visual/Drawing), color resources, other color spaces, and the on-canvas gradient and
-brush-transform tools.
+`IImageSourceCandidates` the Image.Source picker uses, or any typed URI, plus Stretch. The color
+editor also shows the color as HSB (hue 0-360, saturation and brightness 0-100%) beside R/G/B/A, and
+accepts typed HSB values (`TryParseHsb`). Not yet: other tile brushes (Visual/Drawing), color
+resources, and the on-canvas gradient and brush-transform tools.
 
 **C4 WinForms Toolbox components (2026-10-12).** The WinForms Toolbox catalog lists Timer, ToolTip,
 ImageList, ErrorProvider, BackgroundWorker and the other non-visual components, but the child's

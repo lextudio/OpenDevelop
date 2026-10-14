@@ -218,6 +218,8 @@ public sealed class BrushEditorDialog : Window
 	readonly Ellipse svMarker = new() { Width = 10, Height = 10, Stroke = Brushes.White, StrokeThickness = 2, IsHitTestVisible = false };
 	readonly Slider hue = new() { Orientation = Orientation.Vertical, Minimum = 0, Maximum = 360, Height = SvSize, IsDirectionReversed = true, Margin = new Thickness(6, 0, 0, 0) };
 	readonly TextBox red = new() { Width = 44 }, green = new() { Width = 44 }, blue = new() { Width = 44 }, alpha = new() { Width = 44 };
+	readonly TextBox hueBox = new() { Width = 44 }, saturationBox = new() { Width = 44 }, brightnessBox = new() { Width = 44 };
+	(string, string, string) displayedHsb;
 	readonly TextBox hex = new() { Width = 90 };
 	readonly Border initialChip = new() { Width = 30, Height = 20, BorderBrush = Brushes.Gray, BorderThickness = new Thickness(1) };
 	readonly Border currentChip = new() { Width = 30, Height = 20, BorderBrush = Brushes.Gray, BorderThickness = new Thickness(1) };
@@ -417,6 +419,17 @@ public sealed class BrushEditorDialog : Window
 			channels.Children.Add(box);
 			box.Margin = new Thickness(0, 0, 8, 0);
 		}
+		// Hue in degrees, saturation and brightness in percent - the HSB view of the same color.
+		foreach (var box in new[] { hueBox, saturationBox, brightnessBox }) {
+			box.LostFocus += (_, _) => CommitHsbText();
+			box.KeyDown += (_, e) => { if (e.Key == Key.Enter) CommitHsbText(); };
+		}
+		var hsb = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
+		foreach (var (label, box) in new[] { ("H", hueBox), ("S", saturationBox), ("B", brightnessBox) }) {
+			hsb.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 3, 0) });
+			hsb.Children.Add(box);
+			box.Margin = new Thickness(0, 0, 8, 0);
+		}
 		var chips = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
 		chips.Children.Add(hex);
 		chips.Children.Add(new TextBlock { Text = "Initial", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 4, 0) });
@@ -430,6 +443,7 @@ public sealed class BrushEditorDialog : Window
 		var panel = new StackPanel();
 		panel.Children.Add(top);
 		panel.Children.Add(channels);
+		panel.Children.Add(hsb);
 		panel.Children.Add(chips);
 		return panel;
 	}
@@ -547,6 +561,35 @@ public sealed class BrushEditorDialog : Window
 		Change(() => model.SelectedColor = color);
 	}
 
+	void CommitHsbText()
+	{
+		// HSB text is rounded for display, so re-applying unedited text would move the color (a
+		// near-black red rounds to black): only a real edit commits.
+		if (syncing || !IsHsbEdit((hueBox.Text, saturationBox.Text, brightnessBox.Text), displayedHsb)
+			|| !TryParseHsb(hueBox.Text, saturationBox.Text, brightnessBox.Text, out var h, out var s, out var b))
+			return;
+		currentHue = h;
+		Change(() => model.SelectedColor = FromHsv(h, s, b, model.SelectedColor.A));
+	}
+
+	/// <summary>Whether the HSB boxes differ from what the dialog last displayed.</summary>
+	public static bool IsHsbEdit((string Hue, string Saturation, string Brightness) current, (string, string, string) displayed)
+		=> current != displayed;
+
+	/// <summary>Parses HSB text: hue in degrees (0-360), saturation and brightness in percent
+	/// (0-100), returned as 0-1 fractions. False for anything out of range or not a number.</summary>
+	public static bool TryParseHsb(string hue, string saturation, string brightness, out double h, out double s, out double b)
+	{
+		h = s = b = 0;
+		if (!double.TryParse(hue, NumberStyles.Float, CultureInfo.InvariantCulture, out h) || !(h >= 0 && h <= 360)
+			|| !double.TryParse(saturation, NumberStyles.Float, CultureInfo.InvariantCulture, out var sp) || !(sp >= 0 && sp <= 100)
+			|| !double.TryParse(brightness, NumberStyles.Float, CultureInfo.InvariantCulture, out var bp) || !(bp >= 0 && bp <= 100))
+			return false;
+		h %= 360;
+		(s, b) = (sp / 100, bp / 100);
+		return true;
+	}
+
 	void Change(Action action)
 	{
 		action();
@@ -592,6 +635,10 @@ public sealed class BrushEditorDialog : Window
 			blue.Text = color.B.ToString(CultureInfo.InvariantCulture);
 			alpha.Text = color.A.ToString(CultureInfo.InvariantCulture);
 			hex.Text = BrushEditModel.FormatColor(color);
+			hueBox.Text = Math.Round(currentHue).ToString(CultureInfo.InvariantCulture);
+			saturationBox.Text = Math.Round(s * 100).ToString(CultureInfo.InvariantCulture);
+			brightnessBox.Text = Math.Round(v * 100).ToString(CultureInfo.InvariantCulture);
+			displayedHsb = (hueBox.Text, saturationBox.Text, brightnessBox.Text);
 			currentChip.Background = new SolidColorBrush(color);
 
 			gradientBar.Background = new LinearGradientBrush(new GradientStopCollection(
