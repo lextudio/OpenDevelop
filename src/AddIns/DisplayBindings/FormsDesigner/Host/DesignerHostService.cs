@@ -955,10 +955,11 @@ sealed class DesignerHostService : IDesignerChildService
 			throw new InvalidOperationException($"Property {elementId}.{propertyName} is read-only.");
 		var referenceCandidates = ComponentReferenceCandidates(host, component, property);
 		// A System.Type is typed as its full name and resolved like the designer source's own type
-		// references (framework, then the project assembly); empty clears it.
+		// references (framework, then the project assembly); empty clears it. Generic and nested
+		// types are refused: their source spelling would not resolve back when the file reloads.
 		var converted = property.PropertyType == typeof(Type)
 			? String.IsNullOrWhiteSpace(value) ? null
-				: snapshotLoader?.ResolveType(value.Trim()) is { IsGenericType: false } resolvedType ? resolvedType
+				: snapshotLoader?.ResolveType(value.Trim()) is { IsGenericType: false, IsNested: false } resolvedType ? resolvedType
 				: throw new ArgumentException($"Unknown type: {value}", nameof(value))
 			: referenceCandidates == null ? ConvertPropertyValue(property, value)
 			: String.IsNullOrEmpty(value) ? null
@@ -2075,8 +2076,8 @@ sealed class DesignerHostService : IDesignerChildService
 	static string PropertyTarget(string elementId, string propertyName, bool isRootComponent)
 		=> isRootComponent ? propertyName : elementId + "." + propertyName;
 
-	/// <summary>A type's fully qualified source spelling (nested types use '.', not '+'). Generic
-	/// types are not offered by the type editor, so they need no source form here.</summary>
+	/// <summary>A type's fully qualified source spelling. Generic and nested types are refused by
+	/// the type editor, so they need no source form here.</summary>
 	static string TypeSourceName(Type type)
 		=> type.IsGenericType ? throw new NotSupportedException("Generic types are not supported: " + type.FullName)
 		: (type.FullName ?? type.Name).Replace('+', '.');

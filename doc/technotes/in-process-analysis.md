@@ -737,7 +737,8 @@ evaluates string array creations in both languages, so the written source reload
 component actually exposes: a writable `System.Type` property is now an editable text row showing the
 type's full name. `design/set-property` resolves the typed name exactly as the snapshot loader resolves
 designer-source type references (framework aliases, the project assembly through its isolated load
-context, then loaded assemblies); an unknown or generic type is refused and empty clears it. The source
+context, then loaded assemblies); an unknown, generic or nested type is refused (its source spelling would not resolve on reload) and
+empty clears it. The source
 is `typeof(Full.Name)` (`GetType(Full.Name)` in VB), and the loader now evaluates C# `typeof` (VB
 `GetType` was already supported). No wire change. A browsable type-list dialog is not offered.
 
