@@ -1628,6 +1628,45 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
+    /// <summary>Duplicate and Cut on the Uno surface: a duplicated panel lands after the original
+    /// and its named children get unique x:Names, so the page still loads.</summary>
+    [Fact]
+    public async Task WinUIDesigner_DuplicateAndCutKeepNamesUnique()
+    {
+        var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
+        try
+        {
+            var page = originalXaml.Replace("    <Grid>", "    <Grid>\n" +
+                "        <StackPanel x:Name=\"OuterPanel\">\n" +
+                "            <StackPanel x:Name=\"Card\"><TextBlock x:Name=\"CardTitle\" Text=\"Card\" /></StackPanel>\n" +
+                "            <Button x:Name=\"Trailing\" Content=\"Trailing\" />\n" +
+                "        </StackPanel>");
+            Assert.NotEqual(originalXaml, page);
+            await File.WriteAllTextAsync(_unoPagePath, page);
+
+            await OpenUnoDesignerAsync();
+            Assert.True((await _app.InvokeAsync("od.winui-designer.select", "Card")).GetProperty("success").GetBoolean());
+            var duplicated = await _app.InvokeAsync("od.winui-designer.context", "duplicate", "Card");
+            Assert.True(duplicated.GetProperty("success").GetBoolean(), duplicated.ToString());
+            await WaitForRenderedAsync();
+            Assert.True((await _app.InvokeAsync("od.winui-designer.select", "Trailing")).GetProperty("success").GetBoolean());
+            var cut = await _app.InvokeAsync("od.winui-designer.context", "cut", "Trailing");
+            Assert.True(cut.GetProperty("success").GetBoolean(), cut.ToString());
+            await WaitForRenderedAsync();
+            var saved = await _app.InvokeAsync("od.file.save", _unoPagePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var xaml = await File.ReadAllTextAsync(_unoPagePath);
+            Assert.Contains("x:Name=\"CardTitle1\"", xaml);
+            Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(xaml, "x:Name=\"CardTitle\"").Count);
+            Assert.True(xaml.IndexOf("x:Name=\"Card\"", StringComparison.Ordinal) < xaml.IndexOf("x:Name=\"CardTitle1\"", StringComparison.Ordinal));
+            Assert.DoesNotContain("x:Name=\"Trailing\"", xaml);
+        }
+        finally
+        {
+            await File.WriteAllTextAsync(_unoPagePath, originalXaml);
+        }
+    }
+
     /// <summary>The WPF designer's Grid Row/Column unit commands on the Uno surface: the track
     /// under the context-menu point is found from the visible divider boundaries, its current unit
     /// is disabled, and Fixed keeps the track's current size as an authored pixel length.</summary>

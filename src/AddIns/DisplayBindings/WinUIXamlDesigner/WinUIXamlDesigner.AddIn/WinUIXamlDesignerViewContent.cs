@@ -74,7 +74,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		// Auto) for the track under the pointer. Only a runtime with the context-menu capability
 		// (Uno) shows them; others keep the default menu.
 		previewHost.SetContextCommands(new[] {
-			("Copy", "copy"), ("Paste", "paste"), ("-", ""), ("Delete", "delete"), ("-", ""),
+			("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete"), ("-", ""),
 			("Bring to Front", "bring-to-front"), ("Send to Back", "send-to-back"), ("-", ""),
 			("Wrap in Grid", "wrap-grid"), ("Wrap in StackPanel", "wrap-stackpanel"), ("-", ""),
 			("Grid Row/Fixed", "grid-row-Pixel"), ("Grid Row/Star", "grid-row-Star"), ("Grid Row/Auto", "grid-row-Auto"),
@@ -951,6 +951,16 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			case "paste":
 				PasteElement(args.Name);
 				break;
+			case "cut":
+				if (editor.FindElement(args.Name) is { } cut && cut.Parent != null)
+				{
+					SetClipboardText(cut.ToString(SaveOptions.DisableFormatting));
+					DeleteElement(args.Name);
+				}
+				break;
+			case "duplicate":
+				DuplicateElement(args.Name);
+				break;
 			case "delete":
 				DeleteElement(args.Name);
 				break;
@@ -1068,6 +1078,29 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		catch (Exception e)
 		{
 			status.Text = "Paste failed: " + e.GetBaseException().Message;
+		}
+	}
+
+	/// <summary>Pastes a copy of the element right after it in the same parent, without touching
+	/// the clipboard; the copy is selected.</summary>
+	void DuplicateElement(string name)
+	{
+		if (editor.FindElement(name) is not { Parent: { } parent } element)
+		{
+			status.Text = "The root cannot be duplicated";
+			return;
+		}
+		try
+		{
+			var pasted = editor.Paste(element.ToString(SaveOptions.DisableFormatting), parent, element);
+			var pastedName = (string)pasted.Attribute(WinUIXamlDocumentEditor.NameDirective);
+			ApplyDocumentChange();
+			SelectElement(pastedName);
+			status.Text = "Duplicated " + name + " as " + pastedName;
+		}
+		catch (Exception e)
+		{
+			status.Text = "Duplicate failed: " + e.GetBaseException().Message;
 		}
 	}
 

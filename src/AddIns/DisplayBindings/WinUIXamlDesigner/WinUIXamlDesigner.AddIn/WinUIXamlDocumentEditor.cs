@@ -245,9 +245,12 @@ sealed class WinUIXamlDocumentEditor
 				|| string.Equals(element.Name.LocalName, "MenuFlyoutSubItem", StringComparison.Ordinal));
 	}
 
-	/// <summary>Inserts a copied XAML element as a source edit. The returned element receives a
-	/// fresh document-local name so the caller can select it after the render refresh.</summary>
-	public XElement Paste(string xaml, XElement container)
+	/// <summary>Inserts a copied XAML element as a source edit, after <paramref name="after"/> when
+	/// it is a child of <paramref name="container"/> (Duplicate) and otherwise at the end. The returned
+	/// element receives a fresh document-local name so the caller can select it after the render
+	/// refresh, and every named descendant whose x:Name the document already uses is renamed too: a
+	/// duplicate x:Name makes the whole page fail to load.</summary>
+	public XElement Paste(string xaml, XElement container, XElement? after = null)
 	{
 		if (Document?.Root == null)
 			throw new InvalidOperationException("The document has no root to paste into.");
@@ -258,9 +261,22 @@ sealed class WinUIXamlDocumentEditor
 		var name = UniqueName(typeName);
 		pasted.Name = Document.Root.GetDefaultNamespace() + typeName;
 		pasted.SetAttributeValue(NameDirective, name);
+		var taken = new HashSet<string>(ElementNames(), StringComparer.Ordinal) { name };
+		foreach (var descendant in pasted.Descendants()) {
+			if ((string)descendant.Attribute(NameDirective) is not { Length: > 0 } inner || taken.Add(inner))
+				continue;
+			var stem = inner.TrimEnd('0', '1', '2', '3', '4', '5', '6', '7', '8', '9');
+			var index = 1;
+			while (!taken.Add(stem + index))
+				index++;
+			descendant.SetAttributeValue(NameDirective, stem + index);
+		}
 
 		BeginChange();
-		container.Add(pasted);
+		if (after != null && after.Parent == container)
+			after.AddAfterSelf(pasted);
+		else
+			container.Add(pasted);
 		CommitChange();
 		return pasted;
 	}

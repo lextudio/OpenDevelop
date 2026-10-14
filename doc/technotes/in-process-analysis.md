@@ -923,6 +923,14 @@ which keeps the numeric part as the in-process designer did). An implicit single
 definition element) offers nothing. `WinUIDesigner_GridUnitCommandsEditTheTrackUnderThePointer`
 covers enablement and both edits on macOS/Uno.
 
+**WinUI Cut and Duplicate (2026-10-14).** The Uno surface menu now has Cut and Duplicate beside
+Copy/Paste, as the WPF, WinForms, GTK and MewUI designers do; both are WinUI source edits.
+Duplicate pastes a copy right after the original without touching the clipboard. This exposed a
+paste defect: `WinUIXamlDocumentEditor.Paste` renamed only the pasted root, so copying a panel with
+named children produced duplicate `x:Name`s and the page failed to load. Every named descendant
+that collides is now renamed (`CardTitle` -> `CardTitle1`). `WinUIXamlPasteTests` and
+`WinUIDesigner_DuplicateAndCutKeepNamesUnique` cover it.
+
 **C3 WinForms TableLayout boundary (2026-10-13).** The first safe host slice is now landed:
 `TableLayoutPanel` tree nodes publish the live child’s measured `GetRowHeights`/`GetColumnWidths`
 and cumulative offsets. They deliberately leave authored unit/value empty: WinForms creates default
