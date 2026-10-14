@@ -4,7 +4,7 @@ using Xunit;
 
 namespace OpenDevelop.Base.Tests;
 
-public sealed class WinUIXamlUnwrapTests
+public sealed class WinUIXamlArrangeTests
 {
 	const string Page = """
 		<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
@@ -51,5 +51,29 @@ public sealed class WinUIXamlUnwrapTests
 		Assert.False(editor.Unwrap(editor.FindElement("Empty")!));
 		Assert.False(editor.Unwrap(editor.FindElement("Pair")!));
 		Assert.False(editor.CanUndo);
+	}
+
+	[Fact]
+	public void MoveOneStepSwapsWithTheNeighbouringChildAndSkipsPropertyElements()
+	{
+		const string grid = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="G">
+			  <Grid.RowDefinitions><RowDefinition/></Grid.RowDefinitions>
+			  <Button x:Name="A"/><Button x:Name="B"/><Button x:Name="C"/>
+			</Grid>
+			""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(grid, out var error), error);
+		Assert.False(editor.MoveOneStep(editor.FindElement("A")!, forward: false));
+		Assert.False(editor.MoveOneStep(editor.FindElement("C")!, forward: true));
+		Assert.False(editor.MoveOneStep(editor.FindElement("G")!, forward: true));
+		Assert.False(editor.CanUndo);
+
+		Assert.True(editor.MoveOneStep(editor.FindElement("A")!, forward: true));
+		Assert.Equal(new[] { "Grid.RowDefinitions", "B", "A", "C" }, Names(editor.FindElement("G")!));
+		Assert.True(editor.MoveOneStep(editor.FindElement("C")!, forward: false));
+		Assert.Equal(new[] { "Grid.RowDefinitions", "B", "C", "A" }, Names(editor.FindElement("G")!));
+		editor.Undo();
+		Assert.Equal(new[] { "Grid.RowDefinitions", "B", "A", "C" }, Names(editor.FindElement("G")!));
 	}
 }

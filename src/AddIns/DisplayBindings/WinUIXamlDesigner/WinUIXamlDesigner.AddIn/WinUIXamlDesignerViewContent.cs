@@ -76,7 +76,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		// on ProGPU (see HasMeasuredGridTracks).
 		previewHost.SetContextCommands(new[] {
 			("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete"), ("-", ""),
-			("Bring to Front", "bring-to-front"), ("Send to Back", "send-to-back"), ("-", ""),
+			("Bring to Front", "bring-to-front"), ("Bring Forward", "bring-forward"), ("Send Backward", "send-backward"), ("Send to Back", "send-to-back"), ("-", ""),
 			("Wrap in Grid", "wrap-grid"), ("Wrap in StackPanel", "wrap-stackpanel"), ("Unwrap", "unwrap"), ("-", ""),
 			("Grid Row/Fixed", "grid-row-Pixel"), ("Grid Row/Star", "grid-row-Star"), ("Grid Row/Auto", "grid-row-Auto"),
 			("Grid Column/Fixed", "grid-column-Pixel"), ("Grid Column/Star", "grid-column-Star"), ("Grid Column/Auto", "grid-column-Auto")
@@ -969,6 +969,10 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			case "send-to-back":
 				MoveSelectedToEdge(args.Name, args.Command == "bring-to-front");
 				break;
+			case "bring-forward":
+			case "send-backward":
+				MoveSelected(args.Name, e => editor.MoveOneStep(e, args.Command == "bring-forward"));
+				break;
 			case "wrap-grid":
 			case "wrap-stackpanel":
 				WrapSelected(args.Name, args.Command == "wrap-grid" ? "Grid" : "StackPanel");
@@ -1109,13 +1113,15 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	}
 
 	/// <summary>Moves the element to the first or last position of its parent (z-order).</summary>
-	void MoveSelectedToEdge(string name, bool front)
+	void MoveSelectedToEdge(string name, bool front) => MoveSelected(name, element => editor.MoveToEdge(element, front));
+
+	void MoveSelected(string name, Func<XElement, bool> move)
 	{
 		var element = editor.FindElement(name);
 		if (element == null)
 			return;
 		var sourceOnly = componentTraySelection && string.Equals(SelectedElementName, name, StringComparison.Ordinal);
-		if (!editor.MoveToEdge(element, front))
+		if (!move(element))
 			return;
 		ApplyDocumentChange();
 		if (sourceOnly)
@@ -2076,6 +2082,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		menu.Items.Add(new Separator());
 		Add("Delete", "delete");
 		Add("Bring to Front", "bring-to-front");
+		Add("Bring Forward", "bring-forward");
+		Add("Send Backward", "send-backward");
 		Add("Send to Back", "send-to-back");
 		menu.Items.Add(new Separator());
 		Add("Wrap in Grid", "wrap-grid");
@@ -2147,6 +2155,14 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			case "send-to-back":
 				MoveToEdge(element, front: false);
 				break;
+			case "bring-forward":
+			case "send-backward":
+				if (editor.MoveOneStep(element, command == "bring-forward"))
+				{
+					ApplyDocumentChange();
+					SelectSourceElement(element, path: null);
+				}
+				break;
 			case "wrap-grid":
 				WrapElement(element, "Grid");
 				break;
@@ -2175,6 +2191,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		menu.Items.Add(new Separator());
 		Add("Delete", "delete");
 		Add("Bring to Front", "bring-to-front");
+		Add("Bring Forward", "bring-forward");
+		Add("Send Backward", "send-backward");
 		Add("Send to Back", "send-to-back");
 		menu.Items.Add(new Separator());
 		Add("Wrap in Grid", "wrap-grid");

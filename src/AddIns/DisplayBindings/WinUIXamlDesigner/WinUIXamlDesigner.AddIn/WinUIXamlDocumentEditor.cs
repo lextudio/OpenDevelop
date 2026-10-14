@@ -450,6 +450,32 @@ sealed class WinUIXamlDocumentEditor
 		CommitChange();
 	}
 
+	/// <summary>Bring Forward / Send Backward: swaps the element with its next (or previous) sibling
+	/// element, skipping property elements such as <c>Grid.RowDefinitions</c>, in one undo step.
+	/// The root and an element already at that end are left unchanged.</summary>
+	public bool MoveOneStep(XElement element, bool forward)
+	{
+		if (element == null)
+			throw new ArgumentNullException(nameof(element));
+		if (element.Document != Document)
+			throw new ArgumentException("An element from this document is required.", nameof(element));
+		if (element == Document?.Root || element.Parent == null)
+			return false;
+		static bool IsChild(XElement e) => !e.Name.LocalName.Contains('.');
+		var neighbour = forward ? element.ElementsAfterSelf().FirstOrDefault(IsChild) : element.ElementsBeforeSelf().LastOrDefault(IsChild);
+		if (neighbour == null)
+			return false;
+
+		BeginChange();
+		element.Remove();
+		if (forward)
+			neighbour.AddAfterSelf(element);
+		else
+			neighbour.AddBeforeSelf(element);
+		CommitChange();
+		return true;
+	}
+
 	/// <summary>Moves a source element to either edge of its direct source sibling collection.
 	/// The structural mutation and its serialization are one document-history entry.</summary>
 	public bool MoveToEdge(XElement element, bool front)

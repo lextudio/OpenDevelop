@@ -962,7 +962,10 @@ placement (`Grid.Row`, `Canvas.Left`, ...) moves to each child that does not set
 placement inside the removed container (`Grid.*` for a Grid) and its property elements (row/column
 definitions) are dropped. It is refused for an empty container, or when several children would land in
 a non-panel parent's single content slot. Unlike WPF's unwrap it keeps no measured offset (there is no
-host mutation; the edit is source-only, like Wrap). Covered by `WinUIXamlUnwrapTests`.
+host mutation; the edit is source-only, like Wrap). The same menus add **Bring Forward** and **Send
+Backward** beside Bring to Front/Send to Back: `MoveOneStep` swaps the element with its neighbouring
+child element (property elements such as `Grid.RowDefinitions` are skipped), one undo step, inert at
+either end and for the root. Covered by `WinUIXamlArrangeTests`.
 
 **C3 WinForms TableLayout boundary (2026-10-13).** The first safe host slice is now landed:
 `TableLayoutPanel` tree nodes publish the live child’s measured `GetRowHeights`/`GetColumnWidths`
