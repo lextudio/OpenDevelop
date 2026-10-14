@@ -955,6 +955,15 @@ on macOS, so its menu is verified by build only there; run `ProGpuWinUIDesignerT
 Outline pad's context menus (named and unnamed rows) offer the same Cut and Duplicate; an unnamed
 duplicate receives a generated x:Name so it can be selected.
 
+**WinUI Unwrap (2026-10-14).** The WinUI canvas and both Outline menus add **Unwrap** beside Wrap in
+Grid/StackPanel. `WinUIXamlDocumentEditor.Unwrap` replaces a non-root Grid, StackPanel, Canvas,
+RelativePanel or Border with its child elements in one undo step: the container's own attached
+placement (`Grid.Row`, `Canvas.Left`, ...) moves to each child that does not set it, the children's
+placement inside the removed container (`Grid.*` for a Grid) and its property elements (row/column
+definitions) are dropped. It is refused for an empty container, or when several children would land in
+a non-panel parent's single content slot. Unlike WPF's unwrap it keeps no measured offset (there is no
+host mutation; the edit is source-only, like Wrap). Covered by `WinUIXamlUnwrapTests`.
+
 **C3 WinForms TableLayout boundary (2026-10-13).** The first safe host slice is now landed:
 `TableLayoutPanel` tree nodes publish the live child’s measured `GetRowHeights`/`GetColumnWidths`
 and cumulative offsets. They deliberately leave authored unit/value empty: WinForms creates default

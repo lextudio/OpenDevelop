@@ -318,6 +318,50 @@ sealed class WinUIXamlDocumentEditor
 		return wrapper;
 	}
 
+	static readonly HashSet<string> UnwrappablePanels = new(StringComparer.Ordinal) { "Grid", "StackPanel", "Canvas", "RelativePanel" };
+
+	/// <summary>The inverse of <see cref="WrapInContainer"/>: replaces a non-root Grid, StackPanel,
+	/// Canvas, RelativePanel or Border with its child elements, in one undo step. Layout attached to
+	/// the removed container (its own <c>Grid.Row</c>, <c>Canvas.Left</c> etc.) moves to each child
+	/// that does not set it, and the children's attached placement inside the removed container
+	/// (<c>Grid.*</c>, <c>Canvas.*</c>, <c>RelativePanel.*</c>) is dropped. Refused when the
+	/// container is empty, or when several children would land in a parent that is not a panel
+	/// (a content property holds only one element).</summary>
+	public bool Unwrap(XElement element)
+	{
+		if (element == null)
+			throw new ArgumentNullException(nameof(element));
+		if (element.Document != Document)
+			throw new ArgumentException("An element from this document is required.", nameof(element));
+		var kind = element.Name.LocalName;
+		if (element == Document?.Root || element.Parent is not XElement parent
+			|| !(UnwrappablePanels.Contains(kind) || kind == "Border"))
+			return false;
+		var children = element.Elements().Where(e => !e.Name.LocalName.Contains('.')).ToList();
+		if (children.Count == 0)
+			return false;
+		var parentIsPanel = UnwrappablePanels.Contains(parent.Name.LocalName)
+			|| parent.Name.LocalName.EndsWith(".Children", StringComparison.Ordinal);
+		if (children.Count > 1 && !parentIsPanel)
+			return false;
+
+		var inherited = element.Attributes().Where(a => !a.IsNamespaceDeclaration && a.Name.Namespace == XNamespace.None
+			&& a.Name.LocalName.Contains('.')).ToList();
+		BeginChange();
+		foreach (var child in children)
+		{
+			child.Remove();
+			child.Attributes().Where(a => a.Name.Namespace == XNamespace.None
+				&& a.Name.LocalName.StartsWith(kind + ".", StringComparison.Ordinal)).Remove();
+			foreach (var attribute in inherited)
+				if (child.Attribute(attribute.Name) == null)
+					child.SetAttributeValue(attribute.Name, attribute.Value);
+		}
+		element.ReplaceWith(children);
+		CommitChange();
+		return true;
+	}
+
 	/// <summary>Moves an existing source element under a different source parent. Cycles, self
 	/// moves and root moves are rejected without changing the document or its history.</summary>
 	public bool Reparent(XElement element, XElement target)

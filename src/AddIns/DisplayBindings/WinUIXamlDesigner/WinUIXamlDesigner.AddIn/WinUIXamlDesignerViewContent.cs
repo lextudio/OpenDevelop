@@ -77,7 +77,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		previewHost.SetContextCommands(new[] {
 			("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete"), ("-", ""),
 			("Bring to Front", "bring-to-front"), ("Send to Back", "send-to-back"), ("-", ""),
-			("Wrap in Grid", "wrap-grid"), ("Wrap in StackPanel", "wrap-stackpanel"), ("-", ""),
+			("Wrap in Grid", "wrap-grid"), ("Wrap in StackPanel", "wrap-stackpanel"), ("Unwrap", "unwrap"), ("-", ""),
 			("Grid Row/Fixed", "grid-row-Pixel"), ("Grid Row/Star", "grid-row-Star"), ("Grid Row/Auto", "grid-row-Auto"),
 			("Grid Column/Fixed", "grid-column-Pixel"), ("Grid Column/Star", "grid-column-Star"), ("Grid Column/Auto", "grid-column-Auto")
 		}, command => ParseGridUnitCommand(command) is { } unit
@@ -973,6 +973,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			case "wrap-stackpanel":
 				WrapSelected(args.Name, args.Command == "wrap-grid" ? "Grid" : "StackPanel");
 				break;
+			case "unwrap":
+				UnwrapElement(editor.FindElement(args.Name));
+				break;
 			default:
 				if (ParseGridUnitCommand(args.Command) is { } unit)
 					status.Text = SetGridTrackUnit(unit.IsRow, unit.Unit);
@@ -1140,6 +1143,21 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			return;
 		ApplyDocumentChange();
 		SelectElement((string)wrapper.Attribute(WinUIXamlDocumentEditor.NameDirective));
+	}
+
+	/// <summary>Replaces a container with its children; the selection clears because the
+	/// container's name is gone and the children keep their own.</summary>
+	void UnwrapElement(XElement element)
+	{
+		if (element == null || !editor.Unwrap(element))
+		{
+			status.Text = "Only a non-empty Grid, StackPanel, Canvas, RelativePanel or Border can be unwrapped here";
+			return;
+		}
+		SelectedElementName = null;
+		propertyContainer.SelectedObject = null;
+		previewHost.ClearSelection();
+		ApplyDocumentChange();
 	}
 
 	void WrapElement(XElement element, string containerType)
@@ -2062,6 +2080,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		menu.Items.Add(new Separator());
 		Add("Wrap in Grid", "wrap-grid");
 		Add("Wrap in StackPanel", "wrap-stackpanel");
+		Add("Unwrap", "unwrap");
 		return menu;
 	}
 
@@ -2134,6 +2153,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			case "wrap-stackpanel":
 				WrapElement(element, "StackPanel");
 				break;
+			case "unwrap":
+				UnwrapElement(element);
+				break;
 		}
 	}
 
@@ -2157,6 +2179,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		menu.Items.Add(new Separator());
 		Add("Wrap in Grid", "wrap-grid");
 		Add("Wrap in StackPanel", "wrap-stackpanel");
+		Add("Unwrap", "unwrap");
 		return menu;
 	}
 
