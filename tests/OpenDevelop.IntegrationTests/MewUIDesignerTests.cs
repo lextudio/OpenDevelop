@@ -201,6 +201,17 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var undoDelete = await app.InvokeAsync("od.mewui-designer.undo"); Assert.Equal(13, undoDelete.GetProperty("elementCount").GetInt32());
 		var redoDelete = await app.InvokeAsync("od.mewui-designer.redo"); Assert.Equal(12, redoDelete.GetProperty("elementCount").GetInt32());
 		var restoreDeleted = await app.InvokeAsync("od.mewui-designer.undo"); Assert.Equal(13, restoreDeleted.GetProperty("elementCount").GetInt32());
+		// Duplicate and copy/paste: the copy gets a unique Name, becomes the selection, and undoes as one step.
+		await app.InvokeAsync("od.mewui-designer.select", "heading");
+		var duplicated = await app.InvokeAsync("od.mewui-designer.clipboard", "duplicate"); Assert.True(duplicated.GetProperty("success").GetBoolean(), duplicated.ToString());
+		Assert.Equal(14, duplicated.GetProperty("elementCount").GetInt32()); Assert.Equal(new[] { "heading1" }, duplicated.GetProperty("selectedIds").EnumerateArray().Select(item => item.GetString()).ToArray());
+		var undoDuplicate = await app.InvokeAsync("od.mewui-designer.undo"); Assert.Equal(13, undoDuplicate.GetProperty("elementCount").GetInt32());
+		await app.InvokeAsync("od.mewui-designer.select", "heading");
+		var copied = await app.InvokeAsync("od.mewui-designer.clipboard", "copy"); Assert.True(copied.GetProperty("success").GetBoolean(), copied.ToString());
+		await app.InvokeAsync("od.mewui-designer.select", "toolRow");
+		var pasted = await app.InvokeAsync("od.mewui-designer.clipboard", "paste"); Assert.True(pasted.GetProperty("success").GetBoolean(), pasted.ToString());
+		Assert.Equal(14, pasted.GetProperty("elementCount").GetInt32()); Assert.Equal(new[] { "heading1" }, pasted.GetProperty("selectedIds").EnumerateArray().Select(item => item.GetString()).ToArray());
+		var undoPaste = await app.InvokeAsync("od.mewui-designer.undo"); Assert.Equal(13, undoPaste.GetProperty("elementCount").GetInt32());
 
 		var saved = await app.InvokeAsync("od.file.save", designerPath);
 		Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());

@@ -59,6 +59,19 @@ public static class MewUIDesignerDevFlowActions
 		var accepted = string.Equals(after, value, StringComparison.Ordinal);
 		return JsonSerializer.Serialize(new { success = accepted, selectedIds = view.SelectedIds, propertyName, after, error = accepted ? null : "The designer rejected the property value." });
 	}
+	[DevFlowAction("od.mewui-designer.clipboard", Description = "Run the design surface's cut|copy|paste|duplicate command on the selection, as its context menu does")]
+	public static string Clipboard(string command)
+	{
+		var view = Activate();
+		var ok = view != null && command switch {
+			"copy" => view.CopySelection(),
+			"cut" => view.CopySelection() && view.DeleteSelected(),
+			"paste" => view.PasteIntoSelection(),
+			"duplicate" => view.DuplicateSelection(),
+			_ => false
+		};
+		return JsonSerializer.Serialize(new { success = ok, selectedIds = view?.SelectedIds ?? Array.Empty<string>(), elementCount = view?.ElementCount ?? 0 });
+	}
 	[DevFlowAction("od.mewui-designer.delete", Description = "Delete the selected MewUI element")]
 	public static string Delete() { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.DeleteSelected() == true, elementCount = v?.ElementCount ?? 0 }); }
 	[DevFlowAction("od.mewui-designer.reorder", Description = "Move the selected MewUI child within its generated Children relationship")]

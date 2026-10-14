@@ -22,6 +22,8 @@ sealed class MewUIDesignerHostClient : RecoverableDesignerDocumentHostClient, ID
 	public Task<DesignerSessionState> SetBoundsAsync(long v, string id, double x, double y, double width, double height, CancellationToken t = default) => TrackMutationAsync(Document.SetBoundsAsync(v, id, x, y, width, height, t), t);
 	public Task<DesignerHitTestResult> HitTestAsync(long v, double x, double y, CancellationToken t = default) => Document.HitTestAsync(v, x, y, t);
 	public Task<DesignerSessionState> ReorderAsync(long v, string id, int delta, CancellationToken t = default) => TrackMutationAsync(connection.ReorderAsync(DocumentId, v, id, delta, t), t);
+	public Task<DesignerCopyResult> CopyElementsAsync(long v, string[] ids, CancellationToken t = default) => connection.CopyElementsAsync(DocumentId, v, ids, t);
+	public Task<DesignerSessionState> PasteElementsAsync(long v, string targetId, string[] snippets, string? afterId = null, CancellationToken t = default) => TrackMutationAsync(connection.PasteElementsAsync(DocumentId, v, targetId, snippets, afterId, t), t);
 	public async Task<DesignerSessionState> RestartPoolAsync(CancellationToken token = default) { await recovery.RecoverAllAsync(connection, true, token).ConfigureAwait(false); return recoveredState ?? throw new IOException("MewUI designer document was not recovered."); }
 	public async Task<DesignerSessionState> TerminateAndRecoverAsync(CancellationToken token = default)
 	{
@@ -43,5 +45,7 @@ sealed class MewUIDesignerHostClient : RecoverableDesignerDocumentHostClient, ID
 		readonly string hostDll; public Connection(string path) => hostDll = path; public Task StartConnectionAsync(CancellationToken token) => StartAsync(token); protected override string GetChildDllPath() => hostDll;
 		public Task<DesignerSessionState> UndoAsync(string documentId, long v, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/undo", new { sessionId = SessionId, documentId, baseVersion = v }, t); public Task<DesignerSessionState> RedoAsync(string documentId, long v, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/redo", new { sessionId = SessionId, documentId, baseVersion = v }, t);
 		public Task<DesignerSessionState> ReorderAsync(string documentId, long v, string id, int delta, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/reorder", new { sessionId = SessionId, documentId, baseVersion = v, elementId = id, delta }, t);
+		public Task<DesignerCopyResult> CopyElementsAsync(string documentId, long v, string[] ids, CancellationToken t) => InvokeAsync<DesignerCopyResult>("design/copy-elements", new { sessionId = SessionId, documentId, baseVersion = v, elementIds = ids }, t);
+		public Task<DesignerSessionState> PasteElementsAsync(string documentId, long v, string targetId, string[] snippets, string? afterId, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/paste-elements", new { sessionId = SessionId, documentId, baseVersion = v, targetId, snippets, afterId }, t);
 	}
 }

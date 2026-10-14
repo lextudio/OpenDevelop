@@ -18,6 +18,28 @@ sealed class MewUIDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("design/set-event")] public DesignerSessionState SetEvent(string sessionId, string documentId, long baseVersion, string elementId, string eventName, string handlerName) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Document.SetEvent(elementId, eventName, string.IsNullOrWhiteSpace(handlerName) ? null : handlerName)) throw new InvalidOperationException("MewUI event mutation was rejected."); Mutated(session); return State(session); }
 	[JsonRpcMethod("design/add-element")] public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Document.Add(parentId, string.IsNullOrEmpty(item.TypeName) ? item.Name : item.TypeName)) throw new InvalidOperationException("MewUI element insertion was rejected."); Mutated(session); return State(session); }
 	[JsonRpcMethod("design/delete-elements")] public DesignerSessionState DeleteElements(string sessionId, string documentId, long baseVersion, string[] elementIds) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); foreach (var id in elementIds) if (!session.Document.Remove(id)) throw new InvalidOperationException("MewUI element deletion was rejected: " + id); Mutated(session); return State(session); }
+	/// <summary>The named elements as MXAML snippets (read-only; the same contract as the WPF and GTK hosts' copy).</summary>
+	[JsonRpcMethod("design/copy-elements")]
+	public DesignerCopyResult CopyElements(string sessionId, string documentId, long baseVersion, string[] elementIds)
+	{
+		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
+		var snippets = session.Document.CopySnippets(elementIds ?? Array.Empty<string>());
+		return snippets == null || snippets.Count == 0
+			? new DesignerCopyResult { Error = "Only named, non-root MewUI elements can be copied." }
+			: new DesignerCopyResult { Accepted = true, Snippets = snippets.ToList() };
+	}
+	/// <summary>Pastes MXAML snippets into the target or its nearest container, after <paramref name="afterId"/> when given; names are made unique; one undo step.</summary>
+	[JsonRpcMethod("design/paste-elements")]
+	public DesignerSessionState PasteElements(string sessionId, string documentId, long baseVersion, string targetId, string[] snippets, string? afterId = null)
+	{
+		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
+		if (!session.Document.Paste(targetId, snippets ?? Array.Empty<string>(), out var created, afterId))
+			throw new InvalidOperationException("The clipboard is not pastable MewUI markup for this target.");
+		Mutated(session);
+		var state = State(session);
+		state.CreatedElementIds = created;
+		return state;
+	}
 	[JsonRpcMethod("design/rename")] public DesignerSessionState Rename(string sessionId, string documentId, long baseVersion, string elementId, string newName) => SetProperty(sessionId, documentId, baseVersion, elementId, "$name", newName);
 	[JsonRpcMethod("design/reorder")] public DesignerSessionState Reorder(string sessionId, string documentId, long baseVersion, string elementId, int delta) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Document.Reorder(elementId, delta)) throw new InvalidOperationException("MewUI reorder was rejected."); Mutated(session); return State(session); }
 	[JsonRpcMethod("design/set-bounds")] public DesignerSessionState SetBounds(string sessionId, string documentId, long baseVersion, string elementId, double x, double y, double width, double height) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Document.SetCanvasBounds(elementId, x, y, width, height)) throw new InvalidOperationException("MewUI bounds mutation was rejected: only direct Canvas children can be positioned or resized."); Mutated(session); return State(session); }

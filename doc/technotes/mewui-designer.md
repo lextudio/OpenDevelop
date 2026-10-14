@@ -289,6 +289,22 @@ free-form pointer positioning is not yet implemented. Code-behind method-body cr
 Roslyn-side follow-up; event attribute creation and binding are implemented. These must not be
 described as covered by the passing integration test.
 
+## Clipboard and Duplicate (2026-10-14)
+
+The surface's context menu now offers Cut, Copy, Paste and Duplicate beside Delete, matching the
+WPF, WinForms, WinUI and GTK designers. The host implements the shared `design/copy-elements` and
+`design/paste-elements` contracts over the MXAML model (`MxamlDocument.CopySnippets`/`Paste`): a copy
+is each named element's MXAML with its subtree (an element inside another copied one travels with
+it; the root is not copyable). A paste parses the snippets with the same MXAML parser inside a
+synthetic Window, so markup that is not valid MXAML is refused, then inserts them into the target or
+its nearest container, after a given sibling for Duplicate and otherwise at the end. Every Name the
+document or an earlier pasted element uses is made unique (`heading` -> `heading1`), event handler
+names are kept, and `Canvas.Left/Top` survive only when the target is a Canvas (the document refuses
+them elsewhere). It is one transactional commit: an error rolls the document back and records no
+undo step. Duplicate leaves the clipboard alone and refuses a selection spanning containers.
+`MxamlClipboardTests` covers the model; the main MewUI journey duplicates, copies and pastes, and
+undoes each.
+
 ## Future runtime fidelity
 
 Preview frames today come from `MewUIDesigner.Host/MewUIRenderer.cs`, which builds the real MewUI

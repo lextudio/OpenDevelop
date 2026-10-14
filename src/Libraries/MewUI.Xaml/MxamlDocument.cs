@@ -232,6 +232,65 @@ public sealed class MxamlDocument
 		});
 	}
 
+	/// <summary>The named elements as MXAML snippets (each with its subtree), for the clipboard. An
+	/// element inside another named element travels with it; the root is not copyable. Null when
+	/// any name is unknown or is the root.</summary>
+	public IReadOnlyList<string>? CopySnippets(IReadOnlyCollection<string> names)
+	{
+		var objects = new List<MxamlObject>();
+		foreach (var name in names) {
+			var obj = Find(name);
+			if (obj == null || obj == Root) return null;
+			objects.Add(obj);
+		}
+		return objects.Where(o => !objects.Any(other => other != o && other.DescendantsAndSelf().Skip(1).Contains(o)))
+			.Select(o => { var sb = new StringBuilder(); o.WriteTo(sb, ""); return sb.ToString().TrimEnd('\n'); })
+			.ToArray();
+	}
+
+	/// <summary>Pastes MXAML snippets into <paramref name="targetName"/> or its nearest container
+	/// ancestor, after <paramref name="afterName"/> when it is a child there (Duplicate) and
+	/// otherwise at the end. Every pasted Name the document (or an earlier pasted element) already
+	/// uses is made unique (<c>button1</c> becomes <c>button2</c>); a Canvas position is dropped
+	/// unless the target is a Canvas. One transactional, undoable change: snippets that are not
+	/// MXAML, or a paste that would introduce errors, change nothing. <paramref name="created"/>
+	/// lists the pasted top-level names.</summary>
+	public bool Paste(string targetName, IReadOnlyList<string> snippets, out List<string> created, string? afterName = null)
+	{
+		created = new List<string>();
+		var target = Find(targetName);
+		while (target != null && !MewUIControlCatalog.IsContainer(target.Type))
+			target = FindParent(target.Name);
+		if (target == null || snippets.Count == 0) return false;
+		MxamlDocument parsed;
+		try {
+			parsed = Parse($"<Window xmlns=\"{NamespaceUri}\" Name=\"paste\" Class=\"Paste\">{string.Concat(snippets)}</Window>");
+		} catch (MxamlException) { return false; }
+		if (parsed.HasErrors || parsed.Root.Children.Count == 0) return false;
+		var pasted = parsed.Root.Children.ToList();
+		var taken = Root.DescendantsAndSelf().Select(o => o.Name).ToHashSet(StringComparer.Ordinal);
+		foreach (var obj in pasted.SelectMany(o => o.DescendantsAndSelf())) {
+			if (taken.Add(obj.Name)) continue;
+			var stem = obj.Name.TrimEnd('0', '1', '2', '3', '4', '5', '6', '7', '8', '9');
+			var n = 1; while (!taken.Add(stem + n)) n++;
+			obj.Name = stem + n;
+		}
+		if (target.Type != "Canvas")
+			foreach (var obj in pasted)
+				foreach (var position in obj.Attributes.Where(a => a.Name is "Canvas.Left" or "Canvas.Top").ToList())
+					obj.Attributes.Remove(position);
+		var names = pasted.Select(o => o.Name).ToList();
+		if (!Commit(() => {
+			var after = afterName == null ? null : target.Children.FirstOrDefault(c => c.Name == afterName);
+			var index = after == null ? target.Children.Count : target.Children.IndexOf(after) + 1;
+			foreach (var obj in pasted)
+				target.Children.Insert(index++, obj);
+			return true;
+		})) return false;
+		created = names;
+		return true;
+	}
+
 	/// <summary>Moves a child within its parent by <paramref name="delta"/> positions.</summary>
 	public bool Reorder(string name, int delta)
 	{
