@@ -2051,8 +2051,10 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			entry.Click += (_, _) => ExecuteSourceOutlineCommand(element, command);
 			menu.Items.Add(entry);
 		}
+		Add("Cut", "cut");
 		Add("Copy", "copy");
 		Add("Paste Into", "paste");
+		Add("Duplicate", "duplicate");
 		menu.Items.Add(new Separator());
 		Add("Delete", "delete");
 		Add("Bring to Front", "bring-to-front");
@@ -2078,6 +2080,32 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			case "copy":
 				SetClipboardText(element.ToString(SaveOptions.DisableFormatting));
 				status.Text = "Copied " + element.Name.LocalName;
+				break;
+			case "cut":
+				if (element == editor.Document?.Root)
+				{
+					status.Text = "The document root cannot be cut";
+					return;
+				}
+				SetClipboardText(element.ToString(SaveOptions.DisableFormatting));
+				ExecuteSourceOutlineCommand(element, "delete");
+				break;
+			case "duplicate":
+				if (element.Parent is not { } parent)
+				{
+					status.Text = "The root cannot be duplicated";
+					return;
+				}
+				try
+				{
+					var pasted = editor.Paste(element.ToString(SaveOptions.DisableFormatting), parent, element);
+					ApplyDocumentChange();
+					SelectElement((string)pasted.Attribute(WinUIXamlDocumentEditor.NameDirective));
+				}
+				catch (Exception e)
+				{
+					status.Text = "Duplicate failed: " + e.GetBaseException().Message;
+				}
 				break;
 			case "paste":
 				PasteElement(element);
@@ -2118,8 +2146,10 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			entry.Click += (_, _) => OnContextCommandOnSurface(this, (command, name));
 			menu.Items.Add(entry);
 		}
+		Add("Cut", "cut");
 		Add("Copy", "copy");
 		Add("Paste Into", "paste");
+		Add("Duplicate", "duplicate");
 		menu.Items.Add(new Separator());
 		Add("Delete", "delete");
 		Add("Bring to Front", "bring-to-front");

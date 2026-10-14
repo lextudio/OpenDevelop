@@ -933,7 +933,9 @@ that collides is now renamed (`CardTitle` -> `CardTitle1`). `WinUIXamlPasteTests
 the same Cut/Duplicate (and Copy/Paste/Delete/z-order/wrap) list; the Grid unit commands require
 `HasMeasuredGridTracks` (a runtime with measured tracks, i.e. Uno) and stay disabled on ProGPU,
 whose source-only approximation is not evidence for a unit edit. ProGPU's integration journeys skip
-on macOS, so its menu is verified by build only there; run `ProGpuWinUIDesignerTests` where they run.
+on macOS, so its menu is verified by build only there; run `ProGpuWinUIDesignerTests` where they run. The
+Outline pad's context menus (named and unnamed rows) offer the same Cut and Duplicate; an unnamed
+duplicate receives a generated x:Name so it can be selected.
 
 **C3 WinForms TableLayout boundary (2026-10-13).** The first safe host slice is now landed:
 `TableLayoutPanel` tree nodes publish the live child’s measured `GetRowHeights`/`GetColumnWidths`
