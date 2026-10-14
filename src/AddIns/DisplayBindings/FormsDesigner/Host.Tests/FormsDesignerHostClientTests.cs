@@ -394,6 +394,51 @@ public sealed class FormsDesignerHostClientTests
 	}
 
 	[Fact]
+	public async Task ChildHost_ChangesTableLayoutTrackSizeTypeWithAChosenLength()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				this.table = new System.Windows.Forms.TableLayoutPanel();
+				this.table.ColumnCount = 2;
+				this.table.RowCount = 2;
+				this.table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 40F));
+				this.table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+				this.table.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 30F));
+				this.table.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+				this.table.Size = new System.Drawing.Size(200, 100);
+				this.Controls.Add(this.button1);
+				this.Controls.Add(this.table);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TableLayoutPanel table;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+
+		// The current SizeType and an unknown one are refused.
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetTableLayoutTrackUnitAsync(1, "table", false, 1, "Percent", timeout.Token));
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetTableLayoutTrackUnitAsync(1, "table", false, 0, "Bogus", timeout.Token));
+		// Percent joins the other Percent column as an equal share.
+		var percent = await client.SetTableLayoutTrackUnitAsync(1, "table", false, 0, "Percent", timeout.Token);
+		Assert.True(percent.Accepted, percent.Error);
+		Assert.Equal(new[] { 100d, 100d }, FindTreeNode(percent.Tree!, "table")!.GridTracks!.ColumnTracks.Select(track => track.Size));
+		// Absolute keeps the measured size, so the layout does not move.
+		var absolute = await client.SetTableLayoutTrackUnitAsync(1, "table", false, 0, "Absolute", timeout.Token);
+		Assert.True(absolute.Accepted, absolute.Error);
+		Assert.Equal(new[] { 100d, 100d }, FindTreeNode(absolute.Tree!, "table")!.GridTracks!.ColumnTracks.Select(track => track.Size));
+		var auto = await client.SetTableLayoutTrackUnitAsync(1, "table", true, 1, "AutoSize", timeout.Token);
+		Assert.True(auto.Accepted, auto.Error);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 100F));", text);
+		Assert.Contains("table.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.AutoSize));", text);
+		Assert.Contains("ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F)", text);
+		Assert.Contains("RowStyle(System.Windows.Forms.SizeType.Absolute, 30F)", text);
+	}
+
+	[Fact]
 	public async Task ChildHost_RejectsTableLayoutTrackWhenSourceStyleListIsNotProvable()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));

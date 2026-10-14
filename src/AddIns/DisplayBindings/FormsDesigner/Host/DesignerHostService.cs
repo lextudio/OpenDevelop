@@ -750,6 +750,35 @@ sealed class DesignerHostService : IDesignerChildService
 		return (root, styles, literal);
 	}
 
+	/// <summary>Changes one row/column's SizeType, choosing its length as the TableLayoutPanel
+	/// "Edit Rows and Columns" user would: Absolute takes the track's current measured size, so
+	/// the layout does not jump; Percent takes the average of the other Percent tracks (100 when
+	/// there are none), so it joins them as an equal share; AutoSize has no length. Choosing the
+	/// SizeType it already has is refused rather than recorded as an empty edit.</summary>
+	[JsonRpcMethod("design/set-table-layout-track-unit")]
+	public DesignerSessionState SetTableLayoutTrackUnit(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index, string sizeType)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
+		if (!Enum.TryParse<SizeType>(sizeType, ignoreCase: false, out var type) || !Enum.IsDefined(type))
+			throw new ArgumentException("Unknown SizeType: " + sizeType, nameof(sizeType));
+		var (host, table) = FindTableLayoutPanel(elementId);
+		var styles = isRow ? (TableLayoutStyleCollection)table.RowStyles : table.ColumnStyles;
+		var measured = isRow ? table.GetRowHeights() : table.GetColumnWidths();
+		if (index < 0 || index >= styles.Count || index >= measured.Length)
+			throw new ArgumentOutOfRangeException(nameof(index));
+		if (styles[index].SizeType == type)
+			throw new InvalidOperationException($"{(isRow ? "Row" : "Column")} {index} of {elementId} is already {type}.");
+		var others = styles.Cast<TableLayoutStyle>().Where((style, position) => position != index && style.SizeType == SizeType.Percent)
+			.Select(style => (double)StyleLength(style)).ToList();
+		var value = type switch {
+			SizeType.Absolute => (double)measured[index],
+			SizeType.Percent => others.Count == 0 ? 100 : Math.Round(others.Average(), 2),
+			_ => 0
+		};
+		ApplyTableLayoutStyles(host, table, elementId, isRow, new[] { (index, type, value) });
+		return CurrentState(baseVersion);
+	}
+
 	static float StyleLength(TableLayoutStyle style) => style is RowStyle row ? row.Height : ((ColumnStyle)style).Width;
 
 	(IDesignerHost Host, TableLayoutPanel Table) FindTableLayoutPanel(string elementId)

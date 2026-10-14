@@ -222,6 +222,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public Task<DesignerSessionState> RemoveTableLayoutTrackAtAsync(long baseVersion, string elementId, bool isRow, int index, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/remove-table-layout-track-at", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, index }, cancellationToken), cancellationToken);
 
+		/// <summary>Changes a TableLayoutPanel row/column's SizeType (<c>design/set-table-layout-track-unit</c>).</summary>
+		public Task<DesignerSessionState> SetTableLayoutTrackUnitAsync(long baseVersion, string elementId, bool isRow, int index, string sizeType, CancellationToken cancellationToken)
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-table-layout-track-unit", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, index, sizeType }, cancellationToken), cancellationToken);
+
 		public Task<DesignerSessionState> ResetPropertyAsync(long baseVersion, string elementId, string propertyName, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/reset-property", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName }, cancellationToken), cancellationToken);
 

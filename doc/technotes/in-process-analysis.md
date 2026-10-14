@@ -988,6 +988,14 @@ table); a refusal shows the host's reason. `od.forms-designer.context-menu-point
 relative to a component for automation, and the LibreWinForms TableLayout journey inserts and then
 removes a column at a pointer-chosen position.
 
+**TableLayout SizeType (2026-10-13).** Protocol **v37** adds
+`design/set-table-layout-track-unit(elementId, isRow, index, sizeType)`, the "Edit Rows and Columns"
+dialog's Size Type for one track, on the same authored-style proof. The host chooses the length:
+Absolute takes the measured size (no layout jump), Percent the average of the other Percent tracks
+(100 when none) so it joins them as an equal share, AutoSize none; the current SizeType is refused
+rather than recorded as an empty edit. The pointer menu adds Column Size / Row Size → Absolute,
+Percent, AutoSize; the journey turns a 120px Percent column into `Absolute, 120F`.
+
 **C4 event handler generation (2026-10-12).** Double-clicking a WPF event in the Properties pad now
 matches the in-process designer (`AbstractEventHandlerService`): the XAML attribute is bound through
 `design/set-event` if the event is unhandled, then the IDE creates the method in `<file>.xaml.cs`

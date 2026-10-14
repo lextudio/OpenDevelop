@@ -52,7 +52,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// Grid cell under the pointer.
 		// v36 adds the WinForms host's design/insert-table-layout-track and
 		// design/remove-table-layout-track-at, which also move the table's children.
-		public const int Version = 36;
+		// v37 adds the WinForms host's design/set-table-layout-track-unit (SizeType change with a
+		// host-chosen length).
+		public const int Version = 37;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

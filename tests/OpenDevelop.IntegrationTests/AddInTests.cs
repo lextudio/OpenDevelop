@@ -4124,6 +4124,18 @@ public sealed class AddInTests : IAsyncDisposable
             savedDesigner = await File.ReadAllTextAsync(designerPath);
             Assert.Contains("grid1.ColumnCount = 2;", savedDesigner, StringComparison.Ordinal);
             Assert.Single(System.Text.RegularExpressions.Regex.Matches(savedDesigner, @"ColumnStyle\(System\.Windows\.Forms\.SizeType\.Percent, 100F\)"));
+
+            // Column 1 (Percent, measured 120px) becomes Absolute at its current size.
+            point = await _app.InvokeAsync("od.forms-designer.context-menu-point", "grid1", 100, 10);
+            Assert.True(point.GetProperty("success").GetBoolean(), point.ToString());
+            var sized = await _app.InvokeAsync("od.forms-designer.context-menu-entry", "grid1", "Column Size: Absolute");
+            Assert.True(sized.GetProperty("success").GetBoolean(), sized.ToString());
+            saved = await _app.InvokeAsync("od.file.save", formCodePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            savedDesigner = await File.ReadAllTextAsync(designerPath);
+            Assert.Contains("grid1.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 120F));", savedDesigner, StringComparison.Ordinal);
+            Assert.DoesNotContain("SizeType.Percent, 100F", savedDesigner.Substring(savedDesigner.IndexOf("grid1.ColumnStyles", StringComparison.Ordinal),
+                savedDesigner.IndexOf("grid1.RowStyles", StringComparison.Ordinal) - savedDesigner.IndexOf("grid1.ColumnStyles", StringComparison.Ordinal)), StringComparison.Ordinal);
         } finally {
             await _app.InvokeAsync("od.close-all-document-views");
             await File.WriteAllBytesAsync(formCodePath, originalForm);

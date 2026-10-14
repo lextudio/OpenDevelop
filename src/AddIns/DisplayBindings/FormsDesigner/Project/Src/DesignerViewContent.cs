@@ -1664,6 +1664,17 @@ namespace ICSharpCode.FormsDesigner
 				yield return Entry("Insert Row Before", () => remoteClient.InsertTableLayoutTrackAsync(remoteDocumentVersion, componentName, true, row, none).GetAwaiter().GetResult());
 				yield return Entry("Remove This Row", () => remoteClient.RemoveTableLayoutTrackAtAsync(remoteDocumentVersion, componentName, true, row, none).GetAwaiter().GetResult());
 			}
+			// The "Edit Rows and Columns" dialog's Size Type, for the track under the pointer.
+			foreach (var sizeType in new[] { "Absolute", "Percent", "AutoSize" }) {
+				var captured = sizeType;
+				if (remoteControl?.TableLayoutTrackAtContextPoint(componentName, false) is { } sizedColumn)
+					yield return Entry("Column Size: " + captured, () => remoteClient.SetTableLayoutTrackUnitAsync(remoteDocumentVersion, componentName, false, sizedColumn, captured, none).GetAwaiter().GetResult());
+			}
+			foreach (var sizeType in new[] { "Absolute", "Percent", "AutoSize" }) {
+				var captured = sizeType;
+				if (remoteControl?.TableLayoutTrackAtContextPoint(componentName, true) is { } sizedRow)
+					yield return Entry("Row Size: " + captured, () => remoteClient.SetTableLayoutTrackUnitAsync(remoteDocumentVersion, componentName, true, sizedRow, captured, none).GetAwaiter().GetResult());
+			}
 		}
 
 		/// <summary>Builds the context menu's verb entries for a component and runs the one with the
