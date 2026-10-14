@@ -107,6 +107,12 @@ public static class MewUICSharpGenerator
 			  .Append(" += ").Append(attribute.Value).Append(";\n");
 			return;
 		}
+		if (attribute.Name is "Grid.Row" or "Grid.Column" or "Grid.RowSpan" or "Grid.ColumnSpan"
+			&& int.TryParse(attribute.Value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var cell)) {
+			sb.Append("        Grid.Set").Append(attribute.Name["Grid.".Length..]).Append('(').Append(ownerName)
+			  .Append(", ").Append(cell.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(");\n");
+			return;
+		}
 		if (attribute.Name is "Canvas.Left" or "Canvas.Top") {
 			var setter = attribute.Name["Canvas.".Length..];
 			sb.Append("        Canvas.Set").Append(setter).Append('(').Append(ownerName)
@@ -143,6 +149,15 @@ public static class MewUICSharpGenerator
 				sb.Append("        ").Append(target).Append(" = ")
 				  .Append(MewUIControlCatalog.ParseHexColor(attribute.Value) is { } argb ? "Color.FromArgb(0x" + argb.ToString("X8", System.Globalization.CultureInfo.InvariantCulture) + "u)" : "Color." + attribute.Value)
 				  .Append(";\n");
+				break;
+			case MxamlPropertyKind.GridLengths:
+				sb.Append("        ").Append(ownerName).Append('.').Append(attribute.Name).Append('(')
+				  .Append(string.Join(", ", MewUIControlCatalog.ParseGridLengths(attribute.Value)!.Select(track => track.Kind switch {
+					"Auto" => "GridLength.Auto",
+					"Star" when track.Value == 1 => "GridLength.Star",
+					"Star" => "GridLength.Stars(" + DoubleLiteral(track.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)) + ")",
+					_ => "GridLength.Pixels(" + DoubleLiteral(track.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)) + ")"
+				  }))).Append(");\n");
 				break;
 			case MxamlPropertyKind.ContentText:
 				sb.Append("        ").Append(ownerName).Append(".Content(\"").Append(Escape(attribute.Value)).Append("\");\n");

@@ -89,6 +89,14 @@ by reflection):
   Window previously generated code that did not compile): they generate one
   `WindowSize = WindowSize.Resizable(width: …, height: …, minWidth: …)` with named arguments for the
   attributes present; Width and Height are both required, otherwise a comment is generated.
+- **Grid.** `Rows`/`Columns` take a track list - `Auto`, `*`, `n*` or pixel numbers, comma or space
+  separated - generated as the runtime's typed overload (`form.Rows(GridLength.Auto, GridLength.Stars(2.0),
+  GridLength.Pixels(100.0))`): GridLength has no public parser, so MXAML parses the list itself rather
+  than relying on the undocumented string overload. `Spacing`, `ShowGridLine`, `AutoIndexing` and
+  `ShareStarSize` are plain properties. A child's `Grid.Row`/`Grid.Column`/`Grid.RowSpan`/`Grid.ColumnSpan`
+  (Int32; negative, or a span below 1, is an Error) generate `Grid.SetRow(x, n);`; like `Canvas.*` they can
+  be set only on a Grid's child, and pasting into another parent type drops attached values of any owner
+  that is not the new parent. The preview applies the same tracks.
 - **Content children.** Button, CheckBox and RadioButton are content hosts too: one child element is
   generated as `iconButton.Content = glyph;` (an icon, a rich caption). A caption attribute and a child
   together are an Error (both set Content). Every single-child host (Content or Child: Window,

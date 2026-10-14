@@ -21,6 +21,9 @@ public enum MxamlPropertyKind
 	/// <summary>"#RRGGBB"/"#AARRGGBB" as <c>Color.FromArgb(0xAARRGGBB)</c>, or a runtime colour name as
 	/// <c>Color.Name</c>.</summary>
 	Color,
+	/// <summary>Grid Rows/Columns: comma- or space-separated "Auto", "*", "2*" or pixel numbers,
+	/// emitted as the runtime's <c>.Rows(params GridLength[])</c> / <c>.Columns(...)</c>.</summary>
+	GridLengths,
 	/// <summary>Caption text of a 0.22 content control (Button, CheckBox, RadioButton), whose
 	/// Content is an Element: emitted as the runtime's <c>.Content("text")</c> extension.</summary>
 	ContentText,

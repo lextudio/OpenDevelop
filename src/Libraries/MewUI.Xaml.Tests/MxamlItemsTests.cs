@@ -183,4 +183,44 @@ public sealed class MxamlItemsTests
 		Assert.True(MxamlDocument.Parse(source.Replace("<Label Name=\"inside\" Text=\"a\"/>", "<Label Name=\"one\"/><Label Name=\"two\"/>")).HasErrors);
 		Assert.True(MxamlDocument.Parse(source.Replace("<Button Name=\"iconButton\">", "<Button Name=\"iconButton\" Content=\"Add\">")).HasErrors);
 	}
+
+	[Fact]
+	public void GeneratesGridTracksAndCellPlacement()
+	{
+		const string source = """
+<?xml version="1.0" encoding="utf-8"?>
+<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow">
+  <Grid Name="form" Rows="Auto,*" Columns="100 2* *" Spacing="4" ShowGridLine="True">
+    <Label Name="caption" Text="Name" Grid.Row="0" Grid.Column="0"/>
+    <TextBox Name="input" Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2"/>
+  </Grid>
+</Window>
+""";
+		var doc = new MxamlDocument();
+		Assert.True(doc.Reset(source), doc.Error);
+		var csharp = MewUICSharpGenerator.Generate(doc);
+		foreach (var line in new[] {
+			"form.Rows(GridLength.Auto, GridLength.Star);",
+			"form.Columns(GridLength.Pixels(100.0), GridLength.Stars(2.0), GridLength.Star);",
+			"form.Spacing = 4.0;", "form.ShowGridLine = true;",
+			"Grid.SetRow(caption, 0);", "Grid.SetColumn(input, 1);", "Grid.SetColumnSpan(input, 2);" })
+			Assert.Contains(line, csharp);
+		Assert.DoesNotContain("// unsupported", csharp);
+
+		// Cell placement only under a Grid; bad tracks and spans are errors (and roll back an edit).
+		Assert.True(doc.SetProperty("input", "Grid.Row", "1"));
+		Assert.False(doc.SetProperty("input", "Grid.RowSpan", "0"));
+		Assert.False(doc.SetProperty("form", "Rows", "Auto,banana"));
+		Assert.False(doc.SetProperty("form", "Grid.Row", "1"));
+		Assert.True(MxamlDocument.Parse(source.Replace("Rows=\"Auto,*\"", "Rows=\"-5\"")).HasErrors);
+
+		// Pasting into a StackPanel drops the Grid placement; pasting into a Grid keeps it.
+		var nested = new MxamlDocument();
+		Assert.True(nested.Reset(source.Replace("<Grid Name=\"form\"", "<StackPanel Name=\"page\">\n<StackPanel Name=\"other\"/>\n<Grid Name=\"form\"").Replace("</Grid>", "</Grid>\n</StackPanel>")), nested.Error);
+		var snippets = nested.CopySnippets(new[] { "input" })!;
+		Assert.True(nested.Paste("other", snippets, out var intoStack));
+		Assert.DoesNotContain(nested.Find(intoStack.Single())!.Attributes, a => a.Name.StartsWith("Grid.", StringComparison.Ordinal));
+		Assert.True(nested.Paste("form", snippets, out var intoGrid));
+		Assert.Contains(nested.Find(intoGrid.Single())!.Attributes, a => a.Name == "Grid.ColumnSpan");
+	}
 }

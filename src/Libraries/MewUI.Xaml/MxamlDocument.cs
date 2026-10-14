@@ -138,6 +138,8 @@ public sealed class MxamlDocument
 			else if (!isEvent && MewUIControlCatalog.KindOf(type, name) == MxamlPropertyKind.Enum
 				&& !MewUIControlCatalog.EnumValuesOf(type, name).Contains(attribute.Value, StringComparer.Ordinal))
 				AddDiagnostic(attribute, MxamlDiagnosticSeverity.Error, $"{type}.{name}: '{attribute.Value}' is not a supported value.");
+			else if (!isEvent && MewUIControlCatalog.KindOf(type, name) == MxamlPropertyKind.GridLengths && MewUIControlCatalog.ParseGridLengths(attribute.Value) == null)
+				AddDiagnostic(attribute, MxamlDiagnosticSeverity.Error, $"{type}.{name}: '{attribute.Value}' is not a track list (Auto, *, n* or pixels).");
 			else if (!isEvent && MewUIControlCatalog.KindOf(type, name) == MxamlPropertyKind.Thickness && MewUIControlCatalog.ParseThickness(attribute.Value) == null)
 				AddDiagnostic(attribute, MxamlDiagnosticSeverity.Error, $"{type}.{name}: '{attribute.Value}' is not a thickness (one, two or four numbers).");
 			else if (!isEvent && MewUIControlCatalog.KindOf(type, name) == MxamlPropertyKind.Color && !MewUIControlCatalog.IsValidColor(attribute.Value))
@@ -233,6 +235,13 @@ public sealed class MxamlDocument
 					case MxamlPropertyKind.Enum when !MewUIControlCatalog.EnumValuesOf(o.Type, a.Name).Contains(a.Value, StringComparer.Ordinal):
 						diagnostics.Add(new(MxamlDiagnosticSeverity.Error, $"{o.Type}.{a.Name}: '{a.Value}' is not a supported value."));
 						break;
+					case MxamlPropertyKind.GridLengths when MewUIControlCatalog.ParseGridLengths(a.Value) == null:
+						diagnostics.Add(new(MxamlDiagnosticSeverity.Error, $"{o.Type}.{a.Name}: '{a.Value}' is not a track list (Auto, *, n* or pixels)."));
+						break;
+					case MxamlPropertyKind.Int32 when a.Name.StartsWith("Grid.", StringComparison.Ordinal) && int.TryParse(a.Value, System.Globalization.CultureInfo.InvariantCulture, out var cell)
+						&& (cell < 0 || a.Name.EndsWith("Span", StringComparison.Ordinal) && cell < 1):
+						diagnostics.Add(new(MxamlDiagnosticSeverity.Error, $"{o.Type}.{a.Name}: '{a.Value}' is out of range."));
+						break;
 					case MxamlPropertyKind.Thickness when MewUIControlCatalog.ParseThickness(a.Value) == null:
 						diagnostics.Add(new(MxamlDiagnosticSeverity.Error, $"{o.Type}.{a.Name}: '{a.Value}' is not a thickness (one, two or four numbers)."));
 						break;
@@ -301,10 +310,10 @@ public sealed class MxamlDocument
 			var n = 1; while (!taken.Add(stem + n)) n++;
 			obj.Name = stem + n;
 		}
-		if (target.Type != "Canvas")
-			foreach (var obj in pasted)
-				foreach (var position in obj.Attributes.Where(a => a.Name is "Canvas.Left" or "Canvas.Top").ToList())
-					obj.Attributes.Remove(position);
+		// Attached placement (Canvas.Left, Grid.Row...) only means something under its own owner type.
+		foreach (var obj in pasted)
+			foreach (var attached in obj.Attributes.Where(a => MewUIControlCatalog.AttachedOwner(a.Name) is { } owner && owner != target.Type).ToList())
+				obj.Attributes.Remove(attached);
 		var names = pasted.Select(o => o.Name).ToList();
 		if (!Commit(() => {
 			var after = afterName == null ? null : target.Children.FirstOrDefault(c => c.Name == afterName);
@@ -421,7 +430,7 @@ public sealed class MxamlDocument
 	{
 		if (property is "Name") return Rename(name, value);
 		var obj = Find(name); if (obj == null) return false;
-		if (property is "Canvas.Left" or "Canvas.Top" && FindParent(name)?.Type != "Canvas") return false;
+		if (MewUIControlCatalog.AttachedOwner(property) is { } owner && FindParent(name)?.Type != owner) return false;
 		return Commit(() => {
 			var existing = obj.FindAttribute(property);
 			if (existing != null) {

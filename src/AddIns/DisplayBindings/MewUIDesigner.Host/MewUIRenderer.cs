@@ -106,7 +106,16 @@ static class MewUIRenderer
 				itemsSource.SetValue(element, ItemsView.Create(node.Items.ToList()));
 			else diagnostics.Add(node.Type + " cannot show items");
 		}
-		foreach (var a in node.Attributes.Where(a => !a.IsEvent)) Apply(element, a.Name, a.Value, diagnostics);
+		foreach (var a in node.Attributes.Where(a => !a.IsEvent)) {
+			// Rows/Columns: the same GridLength tracks the generator passes to .Rows(...)/.Columns(...).
+			if (element is Grid grid && a.Name is "Rows" or "Columns") {
+				if (MewUIControlCatalog.ParseGridLengths(a.Value) is not { } tracks) { diagnostics.Add($"Grid.{a.Name}=\"{a.Value}\" is not a track list"); continue; }
+				var lengths = tracks.Select(t => t.Kind switch { "Auto" => GridLength.Auto, "Star" => GridLength.Stars(t.Value), _ => GridLength.Pixels(t.Value) }).ToArray();
+				if (a.Name == "Rows") grid.Rows(lengths); else grid.Columns(lengths);
+				continue;
+			}
+			Apply(element, a.Name, a.Value, diagnostics);
+		}
 		var children = node.Children.Select((c, i) => Build(c, path + "," + i, map, diagnostics)).OfType<Element>().ToArray();
 		if (children.Length > 0) {
 			if (element is Panel panel) panel.Children(children);

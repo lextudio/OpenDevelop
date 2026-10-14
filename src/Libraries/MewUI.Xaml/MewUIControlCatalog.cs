@@ -27,6 +27,15 @@ public static class MewUIControlCatalog
 			["Orientation"] = MxamlPropertyKind.Enum,
 			["Spacing"] = MxamlPropertyKind.Double,
 		},
+		["Grid"] = new(StringComparer.Ordinal)
+		{
+			["Rows"] = MxamlPropertyKind.GridLengths,
+			["Columns"] = MxamlPropertyKind.GridLengths,
+			["Spacing"] = MxamlPropertyKind.Double,
+			["ShowGridLine"] = MxamlPropertyKind.Boolean,
+			["AutoIndexing"] = MxamlPropertyKind.Boolean,
+			["ShareStarSize"] = MxamlPropertyKind.Boolean,
+		},
 		["DockPanel"] = new(StringComparer.Ordinal)
 		{
 			["LastChildFill"] = MxamlPropertyKind.Boolean,
@@ -162,7 +171,9 @@ public static class MewUIControlCatalog
 	/// guessing a literal kind (the M-2 failure mode), keeping generated code compilable while
 	/// surfacing an actionable diagnostic.</summary>
 	public static MxamlPropertyKind KindOf(string type, string property)
-		=> property is "Canvas.Left" or "Canvas.Top"
+		=> property is "Grid.Row" or "Grid.Column" or "Grid.RowSpan" or "Grid.ColumnSpan"
+			? MxamlPropertyKind.Int32
+			: property is "Canvas.Left" or "Canvas.Top"
 			|| property is "Width" or "Height" && (type == "Window" || IsKnownType(type) && !excludedFromCommon.Contains(type))
 			? MxamlPropertyKind.Double
 			: propertiesByType.TryGetValue(type, out var props) && props.TryGetValue(property, out var kind)
@@ -214,6 +225,31 @@ public static class MewUIControlCatalog
 			return null;
 		return value.Length == 7 ? 0xFF000000u | argb : argb;
 	}
+
+	/// <summary>One parsed Grid track: "Auto", "*" or "n*" (stars), or pixels.</summary>
+	public readonly record struct GridTrack(string Kind, double Value);
+
+	/// <summary>"Auto,*,2*,100" (comma or space separated) as tracks, or null when any token is not
+	/// Auto, *, a positive n* or a non-negative pixel number.</summary>
+	public static IReadOnlyList<GridTrack>? ParseGridLengths(string value)
+	{
+		var tokens = (value ?? "").Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+		if (tokens.Length == 0) return null;
+		var tracks = new List<GridTrack>();
+		foreach (var token in tokens) {
+			if (string.Equals(token, "Auto", StringComparison.OrdinalIgnoreCase)) tracks.Add(new("Auto", 0));
+			else if (token == "*") tracks.Add(new("Star", 1));
+			else if (token.EndsWith('*') && double.TryParse(token[..^1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var stars) && stars > 0)
+				tracks.Add(new("Star", stars));
+			else if (double.TryParse(token, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var pixels) && pixels >= 0)
+				tracks.Add(new("Pixel", pixels));
+			else return null;
+		}
+		return tracks;
+	}
+
+	/// <summary>The owner of an attached property ("Grid" for "Grid.Row"), or null.</summary>
+	public static string? AttachedOwner(string property) => property.IndexOf('.') is > 0 and var dot ? property[..dot] : null;
 
 	public static bool IsValidColor(string value) => ParseHexColor(value) != null || ColorNames.Contains(value ?? "");
 
