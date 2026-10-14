@@ -278,6 +278,8 @@ sealed class DesignerHostService : IDesignerChildService
 			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
 		if (component is TreeView treeView)
 			return SetTreeNodes(host, treeView, elementId, baseVersion, items ?? Array.Empty<DesignerCollectionItemEdit>());
+		if (component is ListView listView)
+			return SetListViewColumns(host, listView, elementId, baseVersion, items ?? Array.Empty<DesignerCollectionItemEdit>());
 		if (!TryGetEditableItems(component, out var collection) || collection == null)
 			throw new InvalidOperationException($"{elementId}.Items is not an editable string list.");
 		items ??= Array.Empty<DesignerCollectionItemEdit>();
@@ -382,6 +384,117 @@ sealed class DesignerHostService : IDesignerChildService
 			: IsVisualBasic ? $"Me.{elementId}.Nodes.AddRange(New System.Windows.Forms.TreeNode() {{{string.Join(", ", roots.Select(TreeNodeSourceVisualBasic))}}})"
 			: $"this.{elementId}.Nodes.AddRange(new System.Windows.Forms.TreeNode[] {{ {string.Join(", ", roots.Select(TreeNodeSource))} }});");
 		return CurrentState(baseVersion);
+	}
+
+	/// <summary>A ListView's columns, when every one is a designer component (a named field in
+	/// the source, as Visual Studio writes them) - the shape whose add/remove/reorder this editor can
+	/// express as component and statement edits.</summary>
+	static bool TryGetSitedColumns(ListView listView, out List<ColumnHeader> columns)
+	{
+		columns = listView.Columns.Cast<ColumnHeader>().ToList();
+		return columns.All(column => column.Site?.Name is { Length: > 0 });
+	}
+
+	/// <summary>Applies the list editor to ListView.Columns: kept entries (SourceIndex) keep their
+	/// ColumnHeader component and get its Text updated; new entries add a "columnHeaderN" component
+	/// with its field; dropped columns lose their field and statements; the order is one
+	/// <c>Columns.AddRange</c>. Source-first: the designer source is rewritten and the surface
+	/// rebuilt from it, because changing a live, handle-backed ListView's columns calls native
+	/// list-view messages that LibreWinForms does not provide on macOS (and a rebuild is the same
+	/// authority the delete path recovers from). A failure restores the original source.</summary>
+	DesignerSessionState SetListViewColumns(IDesignerHost host, ListView listView, string elementId, long baseVersion, DesignerCollectionItemEdit[] items)
+	{
+		if (!TryGetSitedColumns(listView, out var existing))
+			throw new InvalidOperationException($"{elementId}.Columns has columns that are not designer components.");
+		var sources = items.Where(entry => entry.SourceIndex >= 0).Select(entry => entry.SourceIndex).ToList();
+		if (sources.Any(index => index >= existing.Count) || sources.Distinct().Count() != sources.Count)
+			throw new ArgumentException("Invalid column source index.", nameof(items));
+		var existingNames = existing.Select(column => column.Site!.Name!).ToList();
+		var removedNames = existingNames.Where((_, index) => !sources.Contains(index)).ToList();
+		var taken = new HashSet<string>(host.Container.Components.Cast<IComponent>().Select(component => component.Site?.Name ?? ""), StringComparer.Ordinal);
+		var ordered = new List<string>();
+		var added = new List<string>();
+		var texts = new List<(string Name, string Text)>();
+		foreach (var entry in items) {
+			var text = entry.Text ?? "";
+			if (entry.SourceIndex >= 0) {
+				var name = existingNames[entry.SourceIndex];
+				if (!String.Equals(existing[entry.SourceIndex].Text, text, StringComparison.Ordinal))
+					texts.Add((name, text));
+				ordered.Add(name);
+			} else {
+				var index = 1;
+				while (taken.Contains("columnHeader" + index))
+					index++;
+				var name = "columnHeader" + index;
+				taken.Add(name);
+				added.Add(name);
+				texts.Add((name, text));
+				ordered.Add(name);
+			}
+		}
+		var designerFile = CurrentDesignerFile();
+		var originalSource = designerFile.Text;
+		try {
+			foreach (var name in removedNames)
+				RewriteDeletedComponent(name);
+			foreach (var name in added) {
+				RewriteAddedComponent(typeof(ColumnHeader), name);
+				MoveCreationAfterOwner(name, elementId);
+			}
+			foreach (var (name, text) in texts)
+				RewriteProperty(name, "Text", text);
+			RewriteCollectionStatements(elementId, "Columns", ordered.Count == 0 ? null
+				: IsVisualBasic ? $"Me.{elementId}.Columns.AddRange(New System.Windows.Forms.ColumnHeader() {{{string.Join(", ", ordered.Select(name => "Me." + name))}}})"
+				: $"this.{elementId}.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {{ {string.Join(", ", ordered.Select(name => "this." + name))} }});");
+			CreateDesignSurface(current!);
+		} catch (Exception exception) {
+			designerFile.Text = originalSource;
+			try {
+				CreateDesignSurface(current!);
+			} catch (Exception recoveryException) {
+				return Rejected(baseVersion, "Editing the columns failed and the design surface could not be restored: " + recoveryException.Message);
+			}
+			return Rejected(baseVersion, "Editing the columns failed: " + exception.Message);
+		}
+		return CurrentState(baseVersion);
+	}
+
+	/// <summary>Moves "<paramref name="name"/> = new ..." to just after the owner's own creation
+	/// statement (RewriteAddedComponent puts it first). A ColumnHeader created before its ListView
+	/// leaves LibreWinForms unable to dispose the surface later ("The container cannot be disposed
+	/// at design time"); Visual Studio writes columns after the ListView as well.</summary>
+	void MoveCreationAfterOwner(string name, string ownerId)
+	{
+		var file = CurrentDesignerFile();
+		if (IsVisualBasic) {
+			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+			var vbMethod = vbRoot.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>().First(item =>
+				item.BlockStatement is VbSyntax.MethodStatementSyntax ms && ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+				&& ms.Identifier.ValueText == "InitializeComponent");
+			var vbStatements = vbMethod.Statements.ToList();
+			int VbCreation(string target) => vbStatements.FindIndex(st => st is VbSyntax.AssignmentStatementSyntax assignment
+				&& NormalizeTarget(assignment.Left.ToString()) == target && assignment.Right is VbSyntax.ObjectCreationExpressionSyntax);
+			var vbOwn = VbCreation(name);
+			if (vbOwn < 0 || VbCreation(ownerId) < 0) return;
+			var vbMoved = vbStatements[vbOwn];
+			vbStatements.RemoveAt(vbOwn);
+			vbStatements.Insert(VbCreation(ownerId) + 1, vbMoved);
+			file.Text = vbRoot.ReplaceNode(vbMethod, vbMethod.WithStatements(Vb.SyntaxFactory.List(vbStatements))).NormalizeWhitespace().ToFullString();
+			return;
+		}
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First(item => item.Identifier.ValueText == "InitializeComponent");
+		var statements = method.Body!.Statements.ToList();
+		int Creation(string target) => statements.FindIndex(st => st is ExpressionStatementSyntax {
+			Expression: AssignmentExpressionSyntax { Right: ObjectCreationExpressionSyntax } assignment }
+			&& NormalizeTarget(assignment.Left.ToString()) == target);
+		var own = Creation(name);
+		if (own < 0 || Creation(ownerId) < 0) return;
+		var moved = statements[own];
+		statements.RemoveAt(own);
+		statements.Insert(Creation(ownerId) + 1, moved);
+		file.Text = root.ReplaceNode(method, method.WithBody(method.Body.WithStatements(SyntaxFactory.List(statements)))).NormalizeWhitespace().ToFullString();
 	}
 
 	static string TreeNodeSource(TreeNode node) => node.Nodes.Count == 0
@@ -2643,9 +2756,11 @@ sealed class DesignerHostService : IDesignerChildService
 				vbRoot = vbRoot.ReplaceNode(initializer, shrunk);
 			}
 			// MethodBlockSyntax (InitializeComponent's own included) IS a StatementSyntax in VB's
-			// model too - see the C# branch's own comment on why that must be excluded here.
+			// model too - see the C# branch's own comment on why that must be excluded here. So are
+			// the enclosing Class/Module and Namespace blocks: the class mentions the component in
+			// its own field, so without excluding them the whole class was removed.
 			var vbStatements = vbRoot.DescendantNodes().OfType<VbSyntax.StatementSyntax>()
-				.Where(statement => statement is not VbSyntax.MethodBlockSyntax
+				.Where(statement => statement is not (VbSyntax.MethodBlockBaseSyntax or VbSyntax.TypeBlockSyntax or VbSyntax.NamespaceBlockSyntax)
 					&& statement.DescendantNodesAndSelf().OfType<VbSyntax.IdentifierNameSyntax>()
 						.Any(identifier => identifier.Identifier.ValueText == elementId)).ToArray();
 			vbRoot = vbRoot.RemoveNodes(vbStatements, SyntaxRemoveOptions.KeepNoTrivia)!;
@@ -3568,6 +3683,16 @@ sealed class DesignerHostService : IDesignerChildService
 				result[^1].Value = "(" + texts.Count + (texts.Count == 1 ? " item)" : " items)");
 				result[^1].CollectionItems = texts;
 				result[^1].ShouldSerialize = texts.Count > 0;
+			}
+			if (property.Name == "Columns" && component is ListView columnOwner && TryGetSitedColumns(columnOwner, out var columns)) {
+				// Each entry is a ColumnHeader component's Text; Width and the rest stay editable on
+				// the column component itself.
+				result[^1].Kind = "Collection";
+				result[^1].EditorKind = "ItemsCollection";
+				result[^1].IsReadOnly = true;
+				result[^1].Value = "(" + columns.Count + (columns.Count == 1 ? " column)" : " columns)");
+				result[^1].CollectionItems = columns.Select(column => column.Text ?? "").ToList();
+				result[^1].ShouldSerialize = columns.Count > 0;
 			}
 			if (property.Name == "Nodes" && component is TreeView treeView && TryGetPlainTreeLines(treeView.Nodes, out var treeLines)) {
 				// The same list editor as Items: a node's depth is its leading two-space indent.

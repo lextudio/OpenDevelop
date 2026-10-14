@@ -2160,9 +2160,9 @@ namespace ICSharpCode.FormsDesigner
 				if (!remoteProperties.Any(item => String.Equals(item.Name, propertyName, StringComparison.Ordinal)
 					&& String.Equals(item.EditorKind, "ItemsCollection", StringComparison.Ordinal)))
 					throw new InvalidOperationException("This property is not an editable items collection.");
-				// Items and TreeView.Nodes are live collections rewritten as Add/AddRange (design/set-items);
+				// Items, TreeView.Nodes and ListView.Columns are live collections rewritten as Add/AddRange (design/set-items);
 				// any other list row is a string[] property assigned as a whole.
-				if (propertyName is "Items" or "Nodes")
+				if (propertyName is "Items" or "Nodes" or "Columns")
 					owner.SetRemoteItems(name, items);
 				else
 					owner.SetRemoteStringArray(name, propertyName, items.Select(item => item.Text ?? "").ToList());

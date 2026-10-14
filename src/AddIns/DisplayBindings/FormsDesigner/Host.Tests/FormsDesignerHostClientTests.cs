@@ -583,6 +583,75 @@ public sealed class FormsDesignerHostClientTests
 	[Theory]
 	[InlineData(false)]
 	[InlineData(true)]
+	public async Task ChildHost_EditsListViewColumnsAsColumnHeaderComponents(bool visualBasic)
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = visualBasic ? VbSnapshot(1, "button1") : Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = visualBasic
+			? designer.Text
+				.Replace("Me.Controls.Add(Me.button1)", """
+					Me.list = New System.Windows.Forms.ListView()
+					        Me.colName = New System.Windows.Forms.ColumnHeader()
+					        Me.colSize = New System.Windows.Forms.ColumnHeader()
+					        Me.list.Columns.AddRange(New System.Windows.Forms.ColumnHeader() {Me.colName, Me.colSize})
+					        Me.list.View = System.Windows.Forms.View.Details
+					        Me.colName.Text = "Name"
+					        Me.colSize.Text = "Size"
+					        Me.colSize.Width = 80
+					        Me.Controls.Add(Me.button1)
+					        Me.Controls.Add(Me.list)
+					""", StringComparison.Ordinal)
+				.Replace("Friend WithEvents button1 As System.Windows.Forms.Button",
+					"Friend WithEvents button1 As System.Windows.Forms.Button\n    Friend WithEvents list As System.Windows.Forms.ListView\n    Friend WithEvents colName As System.Windows.Forms.ColumnHeader\n    Friend WithEvents colSize As System.Windows.Forms.ColumnHeader", StringComparison.Ordinal)
+			: designer.Text
+				.Replace("this.Controls.Add(this.button1);", """
+					this.list = new System.Windows.Forms.ListView();
+					        this.colName = new System.Windows.Forms.ColumnHeader();
+					        this.colSize = new System.Windows.Forms.ColumnHeader();
+					        this.list.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] { this.colName, this.colSize });
+					        this.list.View = System.Windows.Forms.View.Details;
+					        this.colName.Text = "Name";
+					        this.colSize.Text = "Size";
+					        this.colSize.Width = 80;
+					        this.Controls.Add(this.button1);
+					        this.Controls.Add(this.list);
+					""", StringComparison.Ordinal)
+				.Replace("private System.Windows.Forms.Button button1;",
+					"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.ListView list;\n    private System.Windows.Forms.ColumnHeader colName;\n    private System.Windows.Forms.ColumnHeader colSize;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Columns(DesignerSessionState state)
+			=> state.Components.Single(component => component.Name == "list").Properties.Single(property => property.Name == "Columns");
+		Assert.Equal("ItemsCollection", Columns(opened).EditorKind);
+		Assert.Equal(new[] { "Name", "Size" }, Columns(opened).CollectionItems);
+
+		// Drop Name, keep Size (renamed) first, add a new column.
+		var edited = await client.SetItemsAsync(1, "list", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "Bytes" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "Modified" }
+		}, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		Assert.Equal(new[] { "Bytes", "Modified" }, Columns(edited).CollectionItems);
+		Assert.DoesNotContain(edited.Components, component => component.Name == "colName");
+		Assert.Contains(edited.Components, component => component.Name == "columnHeader1");
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.DoesNotContain("colName", text, StringComparison.Ordinal);
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(text, @"list\.Columns\.(Add|AddRange)\("));
+		Assert.Matches(@"\{\s*((this|Me)\.)?colSize,\s*((this|Me)\.)?columnHeader1\s*\}", text);
+		Assert.Contains(visualBasic ? "colSize.Width = 80" : "colSize.Width = 80;", text, StringComparison.Ordinal);
+
+		designer.Text = text;
+		snapshot.Version = 2;
+		var reopened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error);
+		Assert.Equal(new[] { "Bytes", "Modified" }, Columns(reopened).CollectionItems);
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
 	public async Task ChildHost_EditsTreeViewNodesAsIndentedLines(bool visualBasic)
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
