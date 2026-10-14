@@ -159,7 +159,7 @@ public static class GtkDesignerDevFlowActions
 	}
 	[DevFlowAction("od.gtk-designer.delete", Description = "Delete the selected GTK object")]
 	public static string Delete() { var view = Activate(); return JsonSerializer.Serialize(new { success = view?.DeleteSelected() == true, elementCount = view?.ElementCount ?? 0 }); }
-	[DevFlowAction("od.gtk-designer.clipboard", Description = "Run the design surface's cut|copy|paste|duplicate|move-first|move-earlier|move-later|move-last|wrap-<GtkClass> command on the selection, as its context menu does")]
+	[DevFlowAction("od.gtk-designer.clipboard", Description = "Run the design surface's cut|copy|paste|duplicate|move-first|move-earlier|move-later|move-last|unwrap|wrap-<GtkClass> command on the selection, as its context menu does")]
 	public static string Clipboard(string command)
 	{
 		var view = Activate();
@@ -169,6 +169,7 @@ public static class GtkDesignerDevFlowActions
 			"paste" => view.PasteIntoSelection(),
 			"duplicate" => view.DuplicateSelection(),
 			"move-first" or "move-earlier" or "move-later" or "move-last" => view.MoveSelected(command),
+			"unwrap" => view.UnwrapSelected(),
 			_ when command.StartsWith("wrap-", StringComparison.Ordinal) => view.WrapSelected(command.Substring("wrap-".Length)),
 			_ => false
 		};

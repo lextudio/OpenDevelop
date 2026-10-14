@@ -126,3 +126,53 @@ public sealed class GtkUiDocumentEditorWrapTests
 		Assert.Equal("frame1", frame);
 	}
 }
+
+public sealed class GtkUiDocumentEditorUnwrapTests
+{
+	const string Source = """
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0" />
+  <object class="GtkApplicationWindow" id="mainWindow">
+    <child><object class="GtkGrid" id="grid">
+      <child><object class="GtkLabel" id="caption"><layout><property name="column">0</property></layout></object></child>
+      <child><object class="GtkBox" id="row"><layout><property name="column">1</property><property name="row">2</property></layout>
+        <child><object class="GtkButton" id="ok"/></child>
+        <child><object class="GtkButton" id="cancel"/></child>
+      </object></child>
+      <child><object class="GtkFrame" id="frame"><layout><property name="column">3</property></layout>
+        <child><object class="GtkLabel" id="framed"/></child>
+      </object></child>
+    </object></child>
+  </object>
+</interface>
+""";
+
+	[Fact] public void UnwrapPutsChildrenInPlaceInOneUndoStep()
+	{
+		var editor = new GtkUiDocumentEditor(); Assert.True(editor.Reset(Source), editor.Error);
+		var before = editor.Text;
+		Assert.True(editor.Unwrap("row"), editor.Error);
+		Assert.Equal(new[] { "caption", "ok", "cancel", "frame" }, editor.Roots[0].Children[0].Children.Select(c => c.Id));
+		Assert.True(editor.Undo());
+		Assert.Equal(before, editor.Text);
+	}
+
+	[Fact] public void ALoneChildInheritsTheContainersLayout()
+	{
+		var editor = new GtkUiDocumentEditor(); Assert.True(editor.Reset(Source), editor.Error);
+		Assert.True(editor.Unwrap("frame"));
+		var framed = editor.Roots[0].Children[0].Children.Single(c => c.Id == "framed");
+		Assert.Equal("3", framed.Layout!["column"]);
+	}
+
+	[Fact] public void RefusesRootLeavesAndSeveralChildrenIntoAWindow()
+	{
+		var editor = new GtkUiDocumentEditor(); Assert.True(editor.Reset(Source), editor.Error);
+		Assert.False(editor.Unwrap("mainWindow"));
+		Assert.False(editor.Unwrap("ok"));
+		// The window holds one child; the grid's three children would not fit.
+		Assert.False(editor.Unwrap("grid"));
+		Assert.False(editor.CanUndo);
+	}
+}

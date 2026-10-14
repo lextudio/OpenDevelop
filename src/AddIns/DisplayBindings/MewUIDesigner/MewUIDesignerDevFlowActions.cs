@@ -59,7 +59,7 @@ public static class MewUIDesignerDevFlowActions
 		var accepted = string.Equals(after, value, StringComparison.Ordinal);
 		return JsonSerializer.Serialize(new { success = accepted, selectedIds = view.SelectedIds, propertyName, after, error = accepted ? null : "The designer rejected the property value." });
 	}
-	[DevFlowAction("od.mewui-designer.clipboard", Description = "Run the design surface's cut|copy|paste|duplicate|move-first|move-earlier|move-later|move-last|wrap-<Container> command on the selection, as its context menu does")]
+	[DevFlowAction("od.mewui-designer.clipboard", Description = "Run the design surface's cut|copy|paste|duplicate|move-first|move-earlier|move-later|move-last|unwrap|wrap-<Container> command on the selection, as its context menu does")]
 	public static string Clipboard(string command)
 	{
 		var view = Activate();
@@ -69,6 +69,7 @@ public static class MewUIDesignerDevFlowActions
 			"paste" => view.PasteIntoSelection(),
 			"duplicate" => view.DuplicateSelection(),
 			"move-first" or "move-earlier" or "move-later" or "move-last" => view.MoveSelected(command),
+			"unwrap" => view.UnwrapSelected(),
 			_ when command.StartsWith("wrap-", StringComparison.Ordinal) => view.WrapSelected(command.Substring("wrap-".Length)),
 			_ => false
 		};

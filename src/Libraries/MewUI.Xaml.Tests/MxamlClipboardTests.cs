@@ -126,3 +126,51 @@ public sealed class MxamlWrapTests
 		Assert.False(doc.Undo());
 	}
 }
+
+public sealed class MxamlUnwrapTests
+{
+	const string Source = """
+<?xml version="1.0" encoding="utf-8"?>
+<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow">
+  <StackPanel Name="rootPanel">
+    <Label Name="heading" Text="Notes"/>
+    <StackPanel Name="row"><Button Name="ok" Content="OK"/><Button Name="cancel" Content="Cancel"/></StackPanel>
+    <Canvas Name="board"><Border Name="frame" Canvas.Left="10" Canvas.Top="20"><Button Name="pin" Content="Pin"/></Border></Canvas>
+  </StackPanel>
+</Window>
+""";
+
+	static MxamlDocument NewDoc() { var d = MxamlDocument.Parse(Source); Assert.False(d.HasErrors, string.Join("\n", d.Diagnostics)); return d; }
+
+	[Fact]
+	public void UnwrapPutsChildrenInPlaceInOneUndoStep()
+	{
+		var doc = NewDoc();
+		var before = doc.ToXaml();
+		Assert.True(doc.Unwrap("row"));
+		Assert.Equal(new[] { "heading", "ok", "cancel", "board" }, doc.Find("rootPanel")!.Children.Select(c => c.Name));
+		Assert.Null(doc.Find("row"));
+		Assert.True(doc.Undo());
+		Assert.Equal(before, doc.ToXaml());
+	}
+
+	[Fact]
+	public void ALoneChildInheritsTheContainersPlacement()
+	{
+		var doc = NewDoc();
+		Assert.True(doc.Unwrap("frame"));
+		Assert.Equal("10", doc.Find("pin")!.FindAttribute("Canvas.Left")!.Value);
+		Assert.Equal("20", doc.Find("pin")!.FindAttribute("Canvas.Top")!.Value);
+	}
+
+	[Fact]
+	public void RefusesRootLeavesAndSeveralChildrenIntoASingleChildHost()
+	{
+		var doc = NewDoc();
+		Assert.False(doc.Unwrap("mainWindow"));
+		Assert.False(doc.Unwrap("ok"));
+		// The window holds one child; unwrapping rootPanel's four children into it is refused.
+		Assert.False(doc.Unwrap("rootPanel"));
+		Assert.False(doc.Undo());
+	}
+}

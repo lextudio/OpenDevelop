@@ -172,6 +172,17 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		return state;
 	}
 
+	/// <summary>Replaces a placed container with its children in place (the WPF host's unwrap contract).</summary>
+	[JsonRpcMethod("design/unwrap-element")]
+	public DesignerSessionState UnwrapElement(string sessionId, string documentId, long baseVersion, string elementId)
+	{
+		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
+		if (!session.Editor.Unwrap(elementId))
+			throw new InvalidOperationException("GTK unwrap was rejected: a placed container whose children are all <child> objects is required, and a single-child parent takes one.");
+		session.Version++;
+		return State(session, false);
+	}
+
 	[JsonRpcMethod("design/hit-test")]
 	public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, double x, double y) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); y -= WindowTitleBarOffset(session); var hit = session.NativeBounds.Where(p => x >= p.Value.X && y >= p.Value.Y && x <= p.Value.X + p.Value.Width && y <= p.Value.Y + p.Value.Height).OrderBy(p => p.Value.Width * p.Value.Height).FirstOrDefault(); return string.IsNullOrEmpty(hit.Key) ? new DesignerHitTestResult() : new DesignerHitTestResult { Hit = true, ComponentName = hit.Key, Chain = { hit.Key } }; }
 	[JsonRpcMethod("design/undo")]

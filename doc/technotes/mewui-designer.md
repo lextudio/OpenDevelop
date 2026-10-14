@@ -337,6 +337,12 @@ element's and the wrapped elements drop theirs. It is one transactional commit. 
 covers it; there is no integration journey for it (the IDE wiring is the same pattern as the
 clipboard commands).
 
+Unwrap (`design/unwrap-element`, `MxamlDocument.Unwrap`) is the inverse: the selected container is
+replaced by its children at its position, which become the selection. A lone child inherits the
+container's attached placement; with several, they drop placement that addressed the removed
+container. It refuses the root, a leaf, an empty container, and several children into a single-child
+host (the Window holds one). `MxamlUnwrapTests` covers it.
+
 ## Future runtime fidelity
 
 Preview frames today come from `MewUIDesigner.Host/MewUIRenderer.cs`, which builds the real MewUI

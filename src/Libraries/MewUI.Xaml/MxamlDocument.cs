@@ -329,6 +329,34 @@ public sealed class MxamlDocument
 		return true;
 	}
 
+	/// <summary>Replaces a container with its children at its position (the WPF/WinUI designers'
+	/// Unwrap). The root cannot be unwrapped, nor an empty container, nor several children into a
+	/// single-child host. A lone child inherits the container's attached placement (dotted
+	/// attributes); with several, the children only drop placement that addressed the removed
+	/// container. One transactional, undoable change.</summary>
+	public bool Unwrap(string name)
+	{
+		var container = Find(name);
+		var parent = FindParent(name);
+		if (container == null || parent == null || !MewUIControlCatalog.IsContainer(container.Type) || container.Children.Count == 0
+			|| !MewUIControlCatalog.IsPanel(parent.Type) && container.Children.Count != 1)
+			return false;
+		return Commit(() => {
+			var index = parent.Children.IndexOf(container);
+			parent.Children.RemoveAt(index);
+			var children = container.Children.ToList();
+			foreach (var child in children) {
+				foreach (var attached in child.Attributes.Where(a => a.Name.Contains('.')).ToList())
+					child.Attributes.Remove(attached);
+				if (children.Count == 1)
+					foreach (var attached in container.Attributes.Where(a => a.Name.Contains('.')))
+						child.Attributes.Add(new MxamlAttribute { Name = attached.Name, Value = attached.Value });
+				parent.Children.Insert(index++, child);
+			}
+			return true;
+		});
+	}
+
 	/// <summary>Moves a child within its parent by <paramref name="delta"/> positions.</summary>
 	public bool Reorder(string name, int delta)
 	{

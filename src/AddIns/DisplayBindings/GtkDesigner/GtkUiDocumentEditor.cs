@@ -302,6 +302,35 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
+	static readonly HashSet<string> SingleChildClasses = new(StringComparer.Ordinal) { "GtkFrame", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow", "AdwClamp" };
+
+	/// <summary>Replaces a placed container with its &lt;child&gt; objects at its position (the
+	/// WPF/WinUI designers' Unwrap). Refused for a root, a container holding objects other than
+	/// &lt;child&gt; ones (a property-held child has no &lt;child&gt; slot to move), an empty one, or
+	/// several children into a single-child parent. A lone child inherits the container's
+	/// &lt;layout&gt;; children drop the layout that addressed the removed container. One undo step.</summary>
+	public bool Unwrap(string id)
+	{
+		if (Find(id) is not { Parent: { Name.LocalName: "child", Parent: { } parent } wrapper } container)
+			return false;
+		var children = container.Elements().Where(e => e.Name.LocalName == "child" && e.Elements().Any(IsObject)).ToList();
+		var heldObjects = container.Elements().Where(e => e.Name.LocalName == "property").SelectMany(p => p.Elements()).Any(IsObject);
+		if (children.Count == 0 || heldObjects || children.Any(c => c.Elements().Count(IsObject) != 1)
+			|| (string?)parent.Attribute("class") is { } parentClass && SingleChildClasses.Contains(parentClass) && children.Count != 1)
+			return false;
+		var layout = container.Elements().FirstOrDefault(e => e.Name.LocalName == "layout");
+		foreach (var child in children) {
+			child.Remove();
+			var obj = child.Elements().First(IsObject);
+			obj.Elements().Where(e => e.Name.LocalName == "layout").Remove();
+			if (children.Count == 1 && layout != null)
+				obj.Add(new XElement(layout));
+			wrapper.AddBeforeSelf(child);
+		}
+		wrapper.Remove();
+		return Commit();
+	}
+
 	public bool SetSignal(string id, string signalName, string handlerName)
 	{
 		var element = Find(id);

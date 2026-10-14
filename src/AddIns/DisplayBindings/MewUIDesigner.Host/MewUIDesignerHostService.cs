@@ -52,6 +52,16 @@ sealed class MewUIDesignerHostService : IDesignerChildService
 		state.CreatedElementId = created;
 		return state;
 	}
+	/// <summary>Replaces a container with its children in place (the WPF host's unwrap contract).</summary>
+	[JsonRpcMethod("design/unwrap-element")]
+	public DesignerSessionState UnwrapElement(string sessionId, string documentId, long baseVersion, string elementId)
+	{
+		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
+		if (!session.Document.Unwrap(elementId))
+			throw new InvalidOperationException("MewUI unwrap was rejected: a non-root container with children is required, and a single-child host takes one.");
+		Mutated(session);
+		return State(session);
+	}
 	[JsonRpcMethod("design/rename")] public DesignerSessionState Rename(string sessionId, string documentId, long baseVersion, string elementId, string newName) => SetProperty(sessionId, documentId, baseVersion, elementId, "$name", newName);
 	[JsonRpcMethod("design/reorder")] public DesignerSessionState Reorder(string sessionId, string documentId, long baseVersion, string elementId, int delta) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Document.Reorder(elementId, delta)) throw new InvalidOperationException("MewUI reorder was rejected."); Mutated(session); return State(session); }
 	[JsonRpcMethod("design/set-bounds")] public DesignerSessionState SetBounds(string sessionId, string documentId, long baseVersion, string elementId, double x, double y, double width, double height) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Document.SetCanvasBounds(elementId, x, y, width, height)) throw new InvalidOperationException("MewUI bounds mutation was rejected: only direct Canvas children can be positioned or resized."); Mutated(session); return State(session); }

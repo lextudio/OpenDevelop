@@ -605,6 +605,13 @@ position), so the wrapper takes over the first child's and the wrapped children 
 GtkFrame takes exactly one child. One undo step. `GtkUiDocumentEditorWrapTests` covers it; there is
 no integration journey for it.
 
+Unwrap (`design/unwrap-element`, `GtkUiDocumentEditor.Unwrap`) is the inverse: a placed container is
+replaced by its `<child>` objects, which become the selection. A lone child inherits the container's
+`<layout>`; with several, they drop the layout that addressed the removed container (in a GtkGrid
+they then share the default cell until placed). It refuses the root, a leaf, a container with a
+property-held child (no `<child>` slot to move), and several children into a single-child parent
+(GtkFrame, GtkScrolledWindow, a window, AdwClamp). `GtkUiDocumentEditorUnwrapTests` covers it.
+
 ### Drag/drop
 
 GTK 4 has no generic container mutation API. Every drop is resolved through `childPolicy`:
