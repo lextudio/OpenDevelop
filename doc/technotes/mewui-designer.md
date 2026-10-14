@@ -277,16 +277,19 @@ attribute to canonical MXAML. `MewUIPropertyAdapter` supplies `IPropertyGridEven
 `IEventBindingHost`; integration binds `Loaded` through the real Properties-pad selected object and
 asserts the saved `Loaded="heading_Loaded"` source.
 
-MewUI intentionally implements neither `IDesignHostBounds` nor `IDesignHostHitTesting` today.
-Its host owns a canonical source model, not framework-native arranged geometry; advertising either
-operation would turn a missing layout contract into a runtime exception. The shell must
-feature-detect these optional capabilities until MewUI has authoritative design-space bounds.
+*(Updated 2026-10-14; this paragraph previously described an earlier state.)* The preview is real
+MewUI: `MewUIRenderer` instantiates the built-in controls and renders them offscreen through the
+window's own frame path, and publishes their arranged bounds. The client therefore implements
+`IDesignHostHitTesting` (`design/hit-test` against those bounds) and `IDesignHostBounds`
+(`design/set-bounds`), the latter accepted only for direct Canvas children, whose Left/Top/Width/
+Height are an editable position contract.
 
-Current deliberate gaps: the preview is a safe WPF semantic projection rather than MewUI-native
-pixels. Fit is measured from the realized viewport and projected content. Child reorder is a
-Roslyn transformation of the canonical `Children(...)` relationship and is integration-covered;
-free-form pointer positioning is not yet implemented outside a Canvas. These must not be described
-as covered by the passing integration test.
+Current deliberate gaps: free-form pointer positioning outside a Canvas is not implemented, because
+in a Stack/Dock/Wrap/Grid panel the arranged position is the layout's output, not an authored
+value; such a drag reorders siblings instead. Child reorder is integration-covered. Pointer-gesture
+journeys (toolbox drag onto the preview) need the OS pointer injection to reach the app; when it
+delivers no events (as on 2026-10-14, when a display-less session also made GTK's Silk.NET monitor
+inventory empty) they fail independently of the designer.
 
 **Event handler creation (2026-10-14).** Double-clicking an event in the Properties pad binds the
 attribute (as before) and then creates or opens the handler in the user's `<file>.mxaml.cs`, in the
