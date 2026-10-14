@@ -325,6 +325,9 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> CreateEmptyStyleAsync(long baseVersion, string elementId, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/create-empty-style", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken), cancellationToken);
 
+	public Task<DesignerSessionState> CreateBasedOnStyleAsync(long baseVersion, string elementId, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/create-based-on-style", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken), cancellationToken);
+
 	public Task<DesignerSessionState> CreateEmptyTemplateAsync(long baseVersion, string elementId, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/create-empty-template", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken), cancellationToken);
 

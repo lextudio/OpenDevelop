@@ -209,6 +209,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				("Wrap/Canvas", "wrap-Canvas"), ("Wrap/Grid", "wrap-Grid"), ("Wrap/Viewbox", "wrap-Viewbox"),
 				("Unwrap", "unwrap"),
 				("Edit Style/Create Empty", "create-empty-style"),
+				("Edit Style/Create Based On Current", "create-based-on-style"),
 				("Edit Template/Create Empty", "create-empty-template"),
 				("-", ""),
 				// The in-process QuickOperationMenu's single-element property shortcuts.
@@ -234,7 +235,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				"wrap-Viewbox" => controller.SelectedNames.Count == 1 && !controller.SelectedNames.Contains(RootElementId),
 				_ when command.StartsWith("wrap-", StringComparison.Ordinal) => controller.SelectedNames.Count > 0 && !controller.SelectedNames.Contains(RootElementId),
 				// Unwrap acts on exactly one element: that single selection must be a non-root Grid/Canvas.
-				"create-empty-style" or "create-empty-template" => controller.SelectedNames.Count == 1 && controller.SelectedNames[0] != RootElementId,
+				"create-empty-style" or "create-based-on-style" or "create-empty-template" => controller.SelectedNames.Count == 1 && controller.SelectedNames[0] != RootElementId,
 				"unwrap" => controller.SelectedNames.Count == 1 && NodeById(controller.SelectedNames[0]) is { Type: "Grid" or "Canvas" } node && node.Id != RootElementId,
 				_ when ParseQuickPropertyCommand(command) is { } quick => CanSetQuickProperty(quick.Property, quick.Value),
 				_ when ParseGridUnitCommand(command) is { } unitCommand => GridTrackAtContextPoint(unitCommand.IsRow) is { } track && track.Unit != unitCommand.Unit,
@@ -299,6 +300,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 					CommitUnwrap();
 				else if (command.Command == "create-empty-style")
 					CommitCreateEmpty(client.CreateEmptyStyleAsync);
+				else if (command.Command == "create-based-on-style")
+					CommitCreateEmpty(client.CreateBasedOnStyleAsync);
 				else if (command.Command == "create-empty-template")
 					CommitCreateEmpty(client.CreateEmptyTemplateAsync);
 				else if (ParseQuickPropertyCommand(command.Command) is { } quick)

@@ -152,4 +152,32 @@ public sealed class CopyPasteTests
 		Assert.Matches("<Button(?=[^>]*x:Name=\"plain\")(?=[^>]*Template=\"\\{StaticResource ButtonTemplate1\\}\")", text);
 		Assert.True((await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(2, text), timeout.Token)).Accepted, text);
 	}
+
+	[Fact]
+	public async Task ChildHost_CreatesAStyleBasedOnTheCurrentStaticResourceStyle()
+	{
+		const string xaml = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="root" Width="200" Height="100">
+			  <StackPanel.Resources><Style x:Key="Primary" TargetType="Button"><Setter Property="Width" Value="80"/></Style></StackPanel.Resources>
+			  <Button x:Name="plain" Content="Plain"/>
+			  <Button x:Name="styled" Content="Styled" Style="{StaticResource Primary}"/>
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(WpfSurfaceHostRpcTests.HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+
+		// No Style reference to derive from.
+		Assert.False((await client.CreateBasedOnStyleAsync(1, Id(opened, "plain"), timeout.Token)).Accepted);
+
+		var created = await client.CreateBasedOnStyleAsync(1, Id(opened, "styled"), timeout.Token);
+		Assert.True(created.Accepted, created.Error);
+		var text = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.True(System.Text.RegularExpressions.Regex.IsMatch(text,
+			"<Style(?=[^>]*x:Key=\"ButtonStyle1\")(?=[^>]*TargetType=\"Button\")(?=[^>]*BasedOn=\"\\{StaticResource Primary\\}\")"), text);
+		Assert.Matches("<Button(?=[^>]*x:Name=\"styled\")(?=[^>]*Style=\"\\{StaticResource ButtonStyle1\\}\")", text);
+		Assert.Contains("x:Key=\"Primary\"", text, StringComparison.Ordinal);
+		Assert.True((await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(2, text), timeout.Token)).Accepted, text);
+	}
 }

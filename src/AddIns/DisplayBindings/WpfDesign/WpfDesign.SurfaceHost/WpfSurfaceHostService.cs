@@ -1030,18 +1030,36 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			=> CreateEmptyResource(baseVersion, elementId, "Template", "Template", () => new ControlTemplate(),
 				item => item.Component is Control);
 
+		/// <summary>Edit Style → Create Based On Current: for an element whose Style is
+		/// <c>{StaticResource K}</c>, adds <c>&lt;Style x:Key="ButtonStyle1" TargetType="Button"
+		/// BasedOn="{StaticResource K}"/&gt;</c> to the root's Resources and points the element at it.
+		/// The project-authored style is inherited, not copied, so nothing comes from the design
+		/// host's theme (the reason "Edit a Copy" stays deferred).</summary>
+		[JsonRpcMethod("design/create-based-on-style")]
+		public DesignerSessionState CreateBasedOnStyle(long baseVersion, string elementId)
+			=> CreateEmptyResource(baseVersion, elementId, "Style", "Style", () => new Style(),
+				item => item.Component is FrameworkElement, basedOnCurrent: true);
+
 		DesignerSessionState CreateEmptyResource(long baseVersion, string elementId, string propertyName, string keySuffix,
-			Func<object> create, Func<DesignItem, bool> accepts)
+			Func<object> create, Func<DesignItem, bool> accepts, bool basedOnCurrent = false)
 			=> dispatcher.Dispatch(() => {
 				if (RejectIfStale(baseVersion) is { } stale)
 					return stale;
 				var state = NewState(baseVersion);
-				var title = "Create Empty " + propertyName;
+				var title = basedOnCurrent ? "Create " + propertyName + " Based On Current" : "Create Empty " + propertyName;
 				if (!pathToItem.TryGetValue(elementId ?? "", out var item) || current?.RootItem is not { } root || item == root
 					|| !accepts(item))
 					return NotFound(state, title + " is not available for: " + elementId);
 				var targetProperty = item.Properties[propertyName];
-				if (targetProperty.IsSet)
+				string? baseKey = null;
+				if (basedOnCurrent)
+				{
+					baseKey = targetProperty.IsSet && targetProperty.Value?.Component is StaticResourceExtension
+						? targetProperty.Value.Properties["ResourceKey"].ValueOnInstance as string : null;
+					if (string.IsNullOrEmpty(baseKey))
+						return NotFound(state, "The element's " + propertyName + " is not a {StaticResource key} reference.");
+				}
+				else if (targetProperty.IsSet)
 					return NotFound(state, "The element already sets a " + propertyName + ".");
 				var type = item.Component.GetType();
 				var taken = new HashSet<string>(ResourceKeys(item, _ => true), StringComparer.Ordinal);
@@ -1063,6 +1081,12 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					// invalid <RuntimeType/> element.
 					var tag = ((XamlDesignItem)item).XamlObject.XmlElement;
 					resource.Properties["TargetType"].SetValue(string.IsNullOrEmpty(tag.Prefix) ? tag.LocalName : tag.Prefix + ":" + tag.LocalName);
+					if (baseKey != null)
+					{
+						resource.Properties["BasedOn"].SetValue(new StaticResourceExtension());
+						resource.Properties["BasedOn"].Value!.Properties["ResourceKey"].SetValue(baseKey);
+						targetProperty.Reset();
+					}
 					targetProperty.SetValue(new StaticResourceExtension());
 					targetProperty.Value!.Properties["ResourceKey"].SetValue(key);
 					changeGroup.Commit();
