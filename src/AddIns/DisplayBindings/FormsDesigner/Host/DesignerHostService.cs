@@ -323,7 +323,8 @@ sealed class DesignerHostService : IDesignerChildService
 	const string TreeIndent = "  ";
 
 	/// <summary>A TreeView's nodes as indented lines (two spaces per level), when every node is a
-	/// plain text node (no Name, Tag, images, checked state or colours) - the only shape the list
+	/// plain, non-blank text node (no Name, Tag, images, checked state or colours; a blank line is
+	/// dropped on edit, so a blank node would be lost) - the only shape the list
 	/// editor and the <c>new TreeNode("text", children)</c> source form can round-trip.</summary>
 	static bool TryGetPlainTreeLines(TreeNodeCollection nodes, out List<string> lines)
 	{
@@ -333,7 +334,8 @@ sealed class DesignerHostService : IDesignerChildService
 			foreach (TreeNode node in level) {
 				if (!String.IsNullOrEmpty(node.Name) || node.Tag != null || node.Checked || node.ImageIndex >= 0 || node.SelectedImageIndex >= 0
 					|| !String.IsNullOrEmpty(node.ImageKey) || !String.IsNullOrEmpty(node.SelectedImageKey) || !String.IsNullOrEmpty(node.ToolTipText)
-					|| !node.ForeColor.IsEmpty || !node.BackColor.IsEmpty || node.NodeFont != null || node.Text.StartsWith(" ", StringComparison.Ordinal))
+					|| !node.ForeColor.IsEmpty || !node.BackColor.IsEmpty || node.NodeFont != null
+					|| node.Text.Trim().Length == 0 || node.Text.StartsWith(" ", StringComparison.Ordinal))
 					return false;
 				result.Add(String.Concat(Enumerable.Repeat(TreeIndent, depth)) + node.Text);
 				if (!Walk(node.Nodes, depth + 1))

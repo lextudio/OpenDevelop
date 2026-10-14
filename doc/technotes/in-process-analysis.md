@@ -744,8 +744,8 @@ is `typeof(Full.Name)` (`GetType(Full.Name)` in VB), and the loader now evaluate
 **TreeView nodes (2026-10-14).** `TreeView.Nodes` joins the `ItemsCollection` row and `design/set-items`
 (no wire change): a node's depth is its leading two-space indent in the shared list dialog, and a
 stray deeper indent is clamped to one level below the previous line. Only plain text nodes are
-offered (no Name, Tag, images, checked state, colours, font or tooltip, and no text starting with a
-space), the shape that round-trips through the single
+offered (no Name, Tag, images, checked state, colours, font or tooltip, and no blank text or text
+starting with a space, since blank lines are dropped on edit), the shape that round-trips through the single
 `<id>.Nodes.AddRange(new TreeNode[] { new TreeNode("Root", new TreeNode[] { ... }) })` statement written
 in C# and VB. The snapshot loader now evaluates typed array creations of any resolvable element type,
 which is what reads the nested constructors back. Visual Studio's own form (locals plus Name/Text
