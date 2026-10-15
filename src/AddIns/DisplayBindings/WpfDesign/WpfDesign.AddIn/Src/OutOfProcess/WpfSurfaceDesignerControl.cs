@@ -364,6 +364,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// SynchronizationContext capture at all (doc/technotes/wpf-designer.md).</summary>
 		internal void Show(DesignerSessionState newState)
 		{
+			// Every host rejection or load failure also goes to the Output pad (the status line shows only the
+			// latest and is replaced by the next render), so a failed open or edit can be diagnosed afterwards.
+			if (!newState.Accepted && !string.IsNullOrEmpty(newState.Error))
+				ICSharpCode.SharpDevelop.Workbench.OutputChannel.Write("WPF Designer", BackendName + " design host rejected the document: " + newState.Error);
 			// A rejected mutation deliberately has no Render payload: the child did not change its
 			// document. Keep the last accepted frame and surface the rejection as status instead.
 			if (!newState.Accepted && state?.Render is { Data.Length: > 0 })

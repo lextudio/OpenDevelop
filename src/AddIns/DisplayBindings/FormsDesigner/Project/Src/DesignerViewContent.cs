@@ -921,6 +921,9 @@ namespace ICSharpCode.FormsDesigner
 				SD.MainThread.InvokeAsyncAndForget(() => {
 					if (generation != loadGeneration || disposing) return;
 					LoggingService.Error(exception);
+					// The canvas shows only the first line; the Output pad keeps the full exception (type, message
+					// and stack) so a failed load can be diagnosed without the log file.
+					OutputChannel.Write("WinForms", "Design host failed to start for " + PrimaryFile.FileName + ": " + exception);
 					loadingCanvas.SetLoading(false);
 					loadingCanvas.ShowStatusBar = true;
 					loadingCanvas.StatusText = string.Format(ResourceService.GetString("FormsDesigner.DesignerStartupFailed"), exception.Message);
@@ -935,14 +938,16 @@ namespace ICSharpCode.FormsDesigner
 					client.Dispose();
 					return;
 				}
-				OutputChannel.Write("WinForms", "Design host opened for " + PrimaryFile.FileName);
 				if (!state.Accepted) {
+					// Not "opened": the host answered but rejected the document, and says why.
+					OutputChannel.Write("WinForms", "Design host rejected " + PrimaryFile.FileName + ": " + state.Error);
 					client.Dispose();
 					loadingCanvas.SetLoading(false);
 					loadingCanvas.ShowStatusBar = true;
 					loadingCanvas.StatusText = string.Format(ResourceService.GetString("FormsDesigner.LoadDesignerFailed"), state.Error);
 					return;
 				}
+				OutputChannel.Write("WinForms", "Design host opened for " + PrimaryFile.FileName);
 				remoteClient = client;
 				remoteClient.HostExited += RemoteHostExited;
 				remoteClient.Recovered += RemoteHostRecovered;
