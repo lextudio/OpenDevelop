@@ -1300,6 +1300,82 @@ public sealed class FormsDesignerHostClientTests
 		Assert.NotEqual("ItemsCollection", opened.Components.Single(component => component.Name == "grid").Properties.Single(property => property.Name == "Columns").EditorKind);
 	}
 
+	const string RedPixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+	[Theory]
+	[InlineData(false, false)]
+	[InlineData(false, true)]
+	[InlineData(true, true)]
+	public async Task ChildHost_BuildsAnImageListResourceTheDesignerReadsBack(bool visualBasic, bool byteOrderMark)
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = visualBasic ? VbSnapshot(1, "button1") : Snapshot(1, "button1");
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var png = Convert.FromBase64String(RedPixelPng);
+
+		var built = await client.BuildImageListResourceAsync(new[] {
+			new DesignerImageListEntry { Key = "a.png", Png = png }, new DesignerImageListEntry { Key = "b.png", Png = png } }, 16, 16, "Depth32Bit", timeout.Token);
+		Assert.True(built.Accepted, built.Error);
+		Assert.Equal(2, built.Count);
+		Assert.Contains("binary.base64", built.MimeType, StringComparison.Ordinal);
+		Assert.NotEmpty(built.Value);
+
+		// A form whose resx holds that entry loads back as an editable list of the same two images.
+		var withList = visualBasic ? VbSnapshot(2, "button1") : Snapshot(2, "button1");
+		var designer = withList.Files.Single(item => item.Kind == "Designer");
+		if (visualBasic) {
+			designer.Text = designer.Text
+				.Replace("Me.Controls.Add(Me.button1)", """
+					Me.imageList1 = New System.Windows.Forms.ImageList()
+					        Me.imageList1.ImageStream = CType((resources.GetObject("imageList1.ImageStream")), System.Windows.Forms.ImageListStreamer)
+					        Me.imageList1.Images.SetKeyName(0, "a.png")
+					        Me.imageList1.Images.SetKeyName(1, "b.png")
+					        Me.Controls.Add(Me.button1)
+					""", StringComparison.Ordinal)
+				.Replace("Friend WithEvents button1 As System.Windows.Forms.Button",
+					"Friend WithEvents button1 As System.Windows.Forms.Button\n    Friend WithEvents imageList1 As System.Windows.Forms.ImageList", StringComparison.Ordinal);
+			if (!designer.Text.Contains("ComponentResourceManager", StringComparison.Ordinal))
+				designer.Text = designer.Text.Replace("Me.button1 = New System.Windows.Forms.Button()",
+					"Dim resources As System.ComponentModel.ComponentResourceManager = New System.ComponentModel.ComponentResourceManager(GetType(Form1))\n        Me.button1 = New System.Windows.Forms.Button()", StringComparison.Ordinal);
+		} else {
+			designer.Text = designer.Text
+				.Replace("this.Controls.Add(this.button1);", """
+					this.imageList1 = new System.Windows.Forms.ImageList();
+					        this.imageList1.ImageStream = ((System.Windows.Forms.ImageListStreamer)(resources.GetObject("imageList1.ImageStream")));
+					        this.imageList1.Images.SetKeyName(0, "a.png");
+					        this.imageList1.Images.SetKeyName(1, "b.png");
+					        this.Controls.Add(this.button1);
+					""", StringComparison.Ordinal)
+				.Replace("private System.Windows.Forms.Button button1;",
+					"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.ImageList imageList1;", StringComparison.Ordinal);
+			if (!designer.Text.Contains("ComponentResourceManager", StringComparison.Ordinal))
+				designer.Text = designer.Text.Replace("this.button1 = new System.Windows.Forms.Button();",
+					"System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));\n        this.button1 = new System.Windows.Forms.Button();", StringComparison.Ordinal);
+		}
+		withList.Files.Add(new DesignerSourceFileSnapshot {
+			FileName = "/project/Form1.resx", Kind = "Resource",
+			// Visual Studio writes its .resx with a UTF-8 byte-order mark; the loader must cope with both.
+			Base64 = Convert.ToBase64String((byteOrderMark ? System.Text.Encoding.UTF8.GetPreamble() : Array.Empty<byte>()).Concat(System.Text.Encoding.UTF8.GetBytes(
+				$"<root><data name=\"imageList1.ImageStream\" mimetype=\"{built.MimeType}\"><value>{built.Value}</value></data></root>")).ToArray())
+		});
+		var loaded = await client.OpenAsync(withList, timeout.Token);
+		Assert.True(loaded.Accepted, loaded.Error);
+		var images = loaded.Components.Single(component => component.Name == "imageList1").Properties.Single(property => property.Name == "Images");
+		Assert.Equal("ImageListImages", images.EditorKind);
+		Assert.Equal(new[] { "a.png", "b.png" }, images.ImageListImages.Select(entry => entry.Key));
+		Assert.All(images.ImageListImages, entry => Assert.True(entry.Png.Length > 8 && entry.Png[1] == (byte)'P'));
+		Assert.Equal(("16,16", "Depth32Bit", "/project/Form1.resx", "imageList1.ImageStream"),
+			(images.ImageListSize, images.ImageListColorDepth, images.ResourceFileName, images.ResourceKey));
+
+		// An empty list, an unreadable image and a bad size are refused with a reason, not a crash.
+		Assert.False((await client.BuildImageListResourceAsync(Array.Empty<DesignerImageListEntry>(), 16, 16, "Depth32Bit", timeout.Token)).Accepted);
+		Assert.False((await client.BuildImageListResourceAsync(new[] { new DesignerImageListEntry { Png = new byte[] { 1, 2, 3 } } }, 16, 16, "Depth32Bit", timeout.Token)).Accepted);
+		Assert.False((await client.BuildImageListResourceAsync(new[] { new DesignerImageListEntry { Png = png } }, 0, 16, "Depth32Bit", timeout.Token)).Accepted);
+		Assert.False((await client.BuildImageListResourceAsync(new[] { new DesignerImageListEntry { Png = png } }, 16, 16, "Bogus", timeout.Token)).Accepted);
+	}
+
 	[Fact]
 	public async Task ChildHost_RefusesAListViewItemEditThatWouldDropAnItemSetting()
 	{

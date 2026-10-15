@@ -199,6 +199,11 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public Task<DesignerSessionState> SetItemsAsync(long baseVersion, string elementId, IReadOnlyList<DesignerCollectionItemEdit> items, CancellationToken cancellationToken, string? propertyName = null)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-items", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, items, propertyName }, cancellationToken), cancellationToken);
 
+		/// <summary>Builds the resx data entry for an ImageList holding <paramref name="images"/> (<c>design/build-image-list-resource</c>). The
+		/// child only returns the entry; the IDE writes it into the .resx as part of its own source/resource transaction.</summary>
+		public Task<DesignerImageListResource> BuildImageListResourceAsync(IReadOnlyList<DesignerImageListEntry> images, int width, int height, string colorDepth, CancellationToken cancellationToken)
+			=> connection.InvokeAsync<DesignerImageListResource>("design/build-image-list-resource", new { sessionId = SessionId, documentId = DocumentId, images, width, height, colorDepth }, cancellationToken);
+
 		/// <summary>Assigns a writable string[] property such as TextBox.Lines (<c>design/set-string-array</c>).</summary>
 		public Task<DesignerSessionState> SetStringArrayAsync(long baseVersion, string elementId, string propertyName, IReadOnlyList<string> values, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-string-array", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, values }, cancellationToken), cancellationToken);

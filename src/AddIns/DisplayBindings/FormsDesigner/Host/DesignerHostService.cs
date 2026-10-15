@@ -307,6 +307,60 @@ sealed class DesignerHostService : IDesignerChildService
 		return CurrentState(baseVersion);
 	}
 
+	/// <summary>Builds the .resx data entry (mimetype and value text) an ImageList holding the given images would store under its
+	/// <c>ImageStream</c> key: a real ImageList is filled (each image scaled to the size, as WinForms does) and serialized with
+	/// the same <c>ResXResourceWriter</c> the designer uses, so the entry is exactly what WinForms reads back. Nothing is written
+	/// to disk: the IDE owns the file and applies the entry in its own document transaction.</summary>
+	[JsonRpcMethod("design/build-image-list-resource")]
+	public DesignerImageListResource BuildImageListResource(string sessionId, string documentId, DesignerImageListEntry[] images, int width, int height, string colorDepth)
+	{
+		try {
+			images ??= [];
+			if (images.Length == 0)
+				return new DesignerImageListResource { Accepted = false, Error = "An image list stream needs at least one image." };
+			if (width < 1 || width > 256 || height < 1 || height > 256)
+				return new DesignerImageListResource { Accepted = false, Error = "An image list's image size must be between 1 and 256." };
+			if (!Enum.TryParse<ColorDepth>(colorDepth, out var depth) || !Enum.IsDefined(depth))
+				return new DesignerImageListResource { Accepted = false, Error = "Unknown color depth: " + colorDepth };
+			using var imageList = new ImageList { ImageSize = new Size(width, height), ColorDepth = depth };
+			// The sources must outlive the serialization: the portable ImageList draws from them lazily
+			// (real WinForms copies on Add), so they are disposed after the entry is built, not per image.
+			var sources = new List<(MemoryStream Stream, Bitmap Bitmap)>();
+			try {
+				foreach (var entry in images) {
+					var stream = new MemoryStream(entry.Png ?? []);
+					Bitmap bitmap;
+					try { bitmap = new Bitmap(stream); } catch { stream.Dispose(); throw; }
+					sources.Add((stream, bitmap));
+					imageList.Images.Add(bitmap);
+				}
+				return SerializeImageList(imageList);
+			} finally {
+				foreach (var (stream, bitmap) in sources) { bitmap.Dispose(); stream.Dispose(); }
+			}
+		} catch (Exception exception) {
+			return new DesignerImageListResource { Accepted = false, Error = exception.GetBaseException().Message };
+		}
+	}
+
+	static DesignerImageListResource SerializeImageList(ImageList imageList)
+	{
+		var streamer = imageList.ImageStream ?? throw new InvalidOperationException("The image list produced no stream.");
+		using var buffer = new MemoryStream();
+		using (var writer = new System.Resources.ResXResourceWriter(buffer)) {
+			writer.AddResource("imageList.ImageStream", streamer);
+			writer.Generate();
+		}
+		// The writer closes its stream; ToArray still works on a closed MemoryStream.
+		using var written = new MemoryStream(buffer.ToArray());
+		var data = System.Xml.Linq.XDocument.Load(written).Root!.Elements("data")
+			.First(element => (string?)element.Attribute("name") == "imageList.ImageStream");
+		return new DesignerImageListResource {
+			Accepted = true, Count = imageList.Images.Count,
+			MimeType = (string?)data.Attribute("mimetype") ?? "", Value = data.Element("value")?.Value ?? ""
+		};
+	}
+
 	/// <summary>Assigns a writable <c>string[]</c> property (TextBox.Lines) from the list editor, as one designer transaction and one
 	/// <c>new string[] { ... }</c> assignment in InitializeComponent. An empty list is an empty
 	/// array, which is what the WinForms editor writes.</summary>
@@ -473,6 +527,24 @@ sealed class DesignerHostService : IDesignerChildService
 			existing.Select(page => page.Text ?? "").ToList(),
 			existing.Select(page => page.Controls.Count > 0 ? $"{page.Site!.Name} still holds controls; move or delete them before removing the page." : null).ToList(),
 			typeof(TabPage), "tabPage", "Text", "Controls", "System.Windows.Forms.Control", "pages");
+	}
+
+	/// <summary>An ImageList's images with their keys and PNG bytes, for the IDE's image-list editor; false when an image cannot be read.</summary>
+	static bool TryDescribeImageList(ImageList imageList, out List<DesignerImageListEntry> entries)
+	{
+		entries = [];
+		try {
+			var keys = imageList.Images.Keys.Cast<string>().ToList();
+			for (var index = 0; index < imageList.Images.Count; index++) {
+				using var stream = new MemoryStream();
+				imageList.Images[index].Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+				entries.Add(new DesignerImageListEntry { Key = index < keys.Count ? keys[index] ?? "" : "", Png = stream.ToArray() });
+			}
+			return true;
+		} catch (Exception) {
+			entries = [];
+			return false;
+		}
 	}
 
 	/// <summary>A DataGridView's columns, when every one is a designer component, the grid is not data
@@ -4287,6 +4359,21 @@ sealed class DesignerHostService : IDesignerChildService
 				result[^1].Value = "(" + columns.Count + (columns.Count == 1 ? " column)" : " columns)");
 				result[^1].CollectionItems = columns.Select(column => column.Text ?? "").ToList();
 				result[^1].ShouldSerialize = columns.Count > 0;
+			}
+			if (property.Name == "Images" && component is ImageList imageListOwner && TryDescribeImageList(imageListOwner, out var imageEntries)) {
+				result[^1].Kind = "Collection";
+				result[^1].EditorKind = "ImageListImages";
+				result[^1].IsReadOnly = true;
+				result[^1].Value = "(" + imageEntries.Count + (imageEntries.Count == 1 ? " image)" : " images)");
+				result[^1].ImageListImages = imageEntries;
+				result[^1].ImageListSize = imageListOwner.ImageSize.Width + "," + imageListOwner.ImageSize.Height;
+				result[^1].ImageListColorDepth = imageListOwner.ColorDepth.ToString();
+				result[^1].ShouldSerialize = imageEntries.Count > 0;
+				// The stream's origin in the form's .resx, when the source proves one; the IDE owns any rewrite of it.
+				if (snapshotLoader?.TryGetResourceOrigin(imageListOwner, "ImageStream", out var streamFile, out var streamKey) == true) {
+					result[^1].ResourceFileName = streamFile;
+					result[^1].ResourceKey = streamKey;
+				}
 			}
 			if (property.Name == "Columns" && component is DataGridView gridOwner && TryGetSitedGridColumns(gridOwner, out var gridColumns)
 				&& !SourceMentionsMember(gridOwner.Site?.Name ?? "", "Rows")) {

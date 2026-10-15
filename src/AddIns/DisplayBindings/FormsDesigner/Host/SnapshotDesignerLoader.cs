@@ -124,6 +124,13 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 			if (target != null && key != null) ApplyResources(target, key);
 			return;
 		}
+		// imageList1.Images.SetKeyName(0, "a.png"): the key of an image in the stream loaded through ImageStream.
+		if (expression.Expression is InvocationExpressionSyntax keyName
+			&& keyName.Expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "SetKeyName" } keyNameMember
+			&& keyName.ArgumentList.Arguments.Count == 2) {
+			SetImageKeyName(Evaluate(keyNameMember.Expression), Evaluate(keyName.ArgumentList.Arguments[0].Expression), Evaluate(keyName.ArgumentList.Arguments[1].Expression));
+			return;
+		}
 		if (expression.Expression is InvocationExpressionSyntax placement
 			&& placement.Expression is MemberAccessExpressionSyntax placementMember
 			&& TableLayoutPlacementMethods.Contains(placementMember.Name.Identifier.ValueText)) {
@@ -186,6 +193,10 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 				var target = EvaluateVisualBasic(VbArgument(invocation, 0)) as IComponent;
 				var key = EvaluateVisualBasic(VbArgument(invocation, 1)) as string;
 				if (target != null && key != null) ApplyResources(target, key);
+				return;
+			}
+			if (member.Name.Identifier.ValueText == "SetKeyName" && member.Expression != null && invocation.ArgumentList?.Arguments.Count == 2) {
+				SetImageKeyName(EvaluateVisualBasic(member.Expression), EvaluateVisualBasic(VbArgument(invocation, 0)), EvaluateVisualBasic(VbArgument(invocation, 1)));
 				return;
 			}
 			if (TableLayoutPlacementMethods.Contains(member.Name.Identifier.ValueText) && member.Expression != null) {
@@ -263,7 +274,67 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 						// Invalid/unsupported individual resource: retain all independently valid entries.
 					}
 				}
+				LoadBinaryObjects(file.FileName, Convert.FromBase64String(file.Base64));
 			} catch { }
+		}
+	}
+
+	/// <summary>Applies <c>Images.SetKeyName(index, key)</c>. Under the designer the <c>Images</c> property the source names is the
+	/// ImageListDesigner's shadow collection (a non-public type that forwards to the real list), so the call goes through reflection.</summary>
+	static void SetImageKeyName(object? images, object? index, object? key)
+	{
+		if (images == null || index is not int position || key is not string name || position < 0)
+			return;
+		// A backend whose image collection has no SetKeyName cannot name images at all: say so in the host log
+		// rather than drop every key silently (and without failing the whole load over it).
+		var method = images.GetType().GetMethod("SetKeyName", [typeof(int), typeof(string)]);
+		if (method == null) {
+			Console.Error.WriteLine("design-host: the image collection " + images.GetType().FullName + " has no SetKeyName(int, string); image keys are not loaded.");
+			return;
+		}
+		try {
+			method.Invoke(images, [position, name]);
+		} catch (System.Reflection.TargetInvocationException) {
+			// An index past the loaded images: the designer ignores such a name, as does WinForms at run time.
+		}
+	}
+
+	const string BinaryObjectMimeType = "application/x-microsoft.net.object.binary.base64";
+
+	/// <summary>Reads the .resx entries stored as binary-formatted objects (an ImageList's <c>ImageStream</c>) through the same
+	/// <c>ResXResourceReader</c> WinForms uses, one entry at a time so an unsupported one cannot hide the rest.</summary>
+	void LoadBinaryObjects(string fileName, byte[] resxBytes)
+	{
+		// Parsed from the bytes: a Visual Studio .resx starts with a UTF-8 byte-order mark, which XDocument.Load(stream)
+		// consumes but XDocument.Parse(string) rejects.
+		XDocument document;
+		using (var stream = new MemoryStream(resxBytes))
+			document = XDocument.Load(stream);
+		if (!document.Root?.Elements("data").Any(data => (string?)data.Attribute("mimetype") == BinaryObjectMimeType) ?? true)
+			return;
+		var binaryNames = document.Root?.Elements("data")
+			.Where(data => (string?)data.Attribute("mimetype") == BinaryObjectMimeType)
+			.Select(data => (string?)data.Attribute("name")).Where(name => name != null).ToHashSet(StringComparer.Ordinal) ?? [];
+		// ResXResourceReader insists on the standard resheaders; a hand-made .resx may omit them, so supply them.
+		if (document.Root != null && !document.Root.Elements("resheader").Any()) {
+			const string assembly = "System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089";
+			document.Root.AddFirst(
+				new XElement("resheader", new XAttribute("name", "resmimetype"), new XElement("value", "text/microsoft-resx")),
+				new XElement("resheader", new XAttribute("name", "version"), new XElement("value", "2.0")),
+				new XElement("resheader", new XAttribute("name", "reader"), new XElement("value", "System.Resources.ResXResourceReader, " + assembly)),
+				new XElement("resheader", new XAttribute("name", "writer"), new XElement("value", "System.Resources.ResXResourceWriter, " + assembly)));
+		}
+		using var reader = System.Resources.ResXResourceReader.FromFileContents(document.ToString());
+		reader.UseResXDataNodes = true;
+		foreach (System.Collections.DictionaryEntry entry in reader) {
+			try {
+				if (entry.Key is not string name || !binaryNames.Contains(name) || entry.Value is not System.Resources.ResXDataNode node)
+					continue;
+				if (node.GetValue((System.ComponentModel.Design.ITypeResolutionService?)null) is { } value)
+					resources[name] = new ResourceValue(value, fileName);
+			} catch {
+				// An unsupported or malformed binary entry: the entries beside it still load.
+			}
 		}
 	}
 
@@ -309,6 +380,9 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 	{
 		if (expression is CastExpressionSyntax cast)
 			return TryGetResourceOrigin(cast.Expression, out origin);
+		// Visual Studio writes ((Type)(resources.GetObject("key"))).
+		if (expression is ParenthesizedExpressionSyntax parenthesized)
+			return TryGetResourceOrigin(parenthesized.Expression, out origin);
 		if (expression is InvocationExpressionSyntax invocation
 			&& invocation.Expression is MemberAccessExpressionSyntax member
 			&& member.Name.Identifier.ValueText == "GetObject"
@@ -326,6 +400,8 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 	{
 		if (expression is VbSyntax.CTypeExpressionSyntax cast)
 			return TryGetResourceOrigin(cast.Expression, out origin);
+		if (expression is VbSyntax.ParenthesizedExpressionSyntax parenthesized)
+			return TryGetResourceOrigin(parenthesized.Expression, out origin);
 		if (expression is VbSyntax.InvocationExpressionSyntax invocation
 			&& invocation.Expression is VbSyntax.MemberAccessExpressionSyntax member
 			&& member.Name.Identifier.ValueText == "GetObject"
@@ -347,6 +423,7 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		MemberAccessExpressionSyntax access => EvaluateMember(access),
 		ObjectCreationExpressionSyntax creation => CreateValue(creation),
 		CastExpressionSyntax cast => Evaluate(cast.Expression),
+		ParenthesizedExpressionSyntax parenthesized => Evaluate(parenthesized.Expression),
 		TypeOfExpressionSyntax typeOf => ResolveType(typeOf.Type.ToString()),
 		// "new string[] { ... }" (TextBox.Lines); other element types are not designer values here.
 		ArrayCreationExpressionSyntax { Type.ElementType: PredefinedTypeSyntax { Keyword.ValueText: "string" } or IdentifierNameSyntax { Identifier.ValueText: "String" } or QualifiedNameSyntax { Right.Identifier.ValueText: "String" } } array
@@ -376,6 +453,7 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		VbSyntax.MemberAccessExpressionSyntax access => EvaluateMemberVisualBasic(access),
 		VbSyntax.ObjectCreationExpressionSyntax creation => CreateValueVisualBasic(creation),
 		VbSyntax.CTypeExpressionSyntax cast => EvaluateVisualBasic(cast.Expression),
+		VbSyntax.ParenthesizedExpressionSyntax parenthesized => EvaluateVisualBasic(parenthesized.Expression),
 		VbSyntax.ArrayCreationExpressionSyntax array when array.Type.ToString() is "String" or "System.String"
 			=> array.Initializer?.Initializers.Select(item => EvaluateVisualBasic(item) as string ?? "").ToArray() ?? Array.Empty<string>(),
 		VbSyntax.ArrayCreationExpressionSyntax { Initializer: { } vbInitializer } vbArray when ResolveType(vbArray.Type.ToString()) is { } vbElementType

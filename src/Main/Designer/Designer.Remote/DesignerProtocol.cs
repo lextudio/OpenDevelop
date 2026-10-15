@@ -67,8 +67,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v47 adds the optional propertyName to the WinForms host's design/set-items (ListView.Items).
 		// v48 adds the Image brush's tile settings (DesignerBrushInfo.TileMode/Alignment/Viewport/Viewbox).
 		// v49 adds DesignerPropertyInfo.Transform (the "Transform" editor kind) and WPF's optional design/set-transform.
+		// v51 adds the WinForms "ImageListImages" editor kind (DesignerPropertyInfo.ImageListImages/Size/ColorDepth) and the Forms host's optional design/build-image-list-resource.
 		// v50 adds the "ResourceReference" editor kind (DesignerPropertyInfo.ResourceReferenceKind/Keys) and WPF's optional design/set-resource-reference.
-		public const int Version = 50;
+		public const int Version = 51;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -658,9 +659,33 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>For a <c>ResourceReference</c> editor, whether the value is a <c>Static</c> or <c>Dynamic</c> resource reference
 		/// (empty when the property is unset). v50.</summary>
 		public string ResourceReferenceKind { get; set; } = "";
+		/// <summary>For an <c>ImageListImages</c> editor (WinForms ImageList.Images), the list's images in order with their
+		/// keys and PNG bytes, which the IDE's image-list editor shows and re-submits. v51.</summary>
+		public List<DesignerImageListEntry> ImageListImages { get; set; } = new List<DesignerImageListEntry>();
+		/// <summary>For an <c>ImageListImages</c> editor, the list's ImageSize as <c>width,height</c> and its ColorDepth name. v51.</summary>
+		public string ImageListSize { get; set; } = "";
+		public string ImageListColorDepth { get; set; } = "";
 		/// <summary>For a <c>ResourceReference</c> editor, the string keys of the resources in the element's scope whose value fits
 		/// the property's type, in name order. v50.</summary>
 		public List<string> ResourceReferenceKeys { get; set; } = new List<string>();
+	}
+
+	/// <summary>One image of a WinForms ImageList: its key (empty when unnamed) and its pixels as PNG. v51.</summary>
+	public sealed class DesignerImageListEntry
+	{
+		public string Key { get; set; } = "";
+		public byte[] Png { get; set; } = System.Array.Empty<byte>();
+	}
+
+	/// <summary>The resx data entry of a built ImageList stream: its <c>mimetype</c> attribute and <c>&lt;value&gt;</c> text, which the IDE
+	/// stores under the list's <c>ImageStream</c> key. The child only builds it; the IDE owns the file write. v51.</summary>
+	public sealed class DesignerImageListResource
+	{
+		public bool Accepted { get; set; }
+		public string Error { get; set; } = "";
+		public string MimeType { get; set; } = "";
+		public string Value { get; set; } = "";
+		public int Count { get; set; }
 	}
 
 	/// <summary>One simple transform: <c>Rotate</c> (Angle, CenterX, CenterY), <c>Scale</c> (ScaleX, ScaleY, CenterX,
