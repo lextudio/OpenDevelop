@@ -64,7 +64,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v44 adds WPF's optional design/create-based-on-style (Edit Style → Create Based On Current).
 		// v45 adds WPF's optional design/copy-theme-style (Edit a Copy from the project's design theme).
 		// v46 adds DesignerPropertyInfo.SuggestedValues (WinForms type-name suggestions).
-		public const int Version = 46;
+		// v47 adds the optional propertyName to the WinForms host's design/set-items (ListView.Items).
+		public const int Version = 47;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

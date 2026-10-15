@@ -194,9 +194,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public Task<DesignerSessionState> SetPropertyAsync(long baseVersion, string elementId, string propertyName, string value, CancellationToken cancellationToken)
 			=> TrackMutationAsync(Document.SetPropertyAsync(baseVersion, elementId, propertyName, value, cancellationToken), cancellationToken);
 
-		/// <summary>Replaces a list control's string Items (<c>design/set-items</c>).</summary>
-		public Task<DesignerSessionState> SetItemsAsync(long baseVersion, string elementId, IReadOnlyList<DesignerCollectionItemEdit> items, CancellationToken cancellationToken)
-			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-items", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, items }, cancellationToken), cancellationToken);
+		/// <summary>Replaces a list control's string Items (<c>design/set-items</c>). A ListView has two
+		/// editable collections, so <paramref name="propertyName"/> ("Items" or "Columns") says which.</summary>
+		public Task<DesignerSessionState> SetItemsAsync(long baseVersion, string elementId, IReadOnlyList<DesignerCollectionItemEdit> items, CancellationToken cancellationToken, string? propertyName = null)
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-items", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, items, propertyName }, cancellationToken), cancellationToken);
 
 		/// <summary>Assigns a writable string[] property such as TextBox.Lines (<c>design/set-string-array</c>).</summary>
 		public Task<DesignerSessionState> SetStringArrayAsync(long baseVersion, string elementId, string propertyName, IReadOnlyList<string> values, CancellationToken cancellationToken)

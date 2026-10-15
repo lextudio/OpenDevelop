@@ -910,6 +910,141 @@ public sealed class FormsDesignerHostClientTests
 	[Theory]
 	[InlineData(false)]
 	[InlineData(true)]
+	public async Task ChildHost_EditsListViewItemsAndRemovesVisualStudioItemLocals(bool visualBasic)
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = visualBasic ? VbSnapshot(1, "button1") : Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = visualBasic
+			? designer.Text
+				.Replace("Me.Controls.Add(Me.button1)", """
+					Dim listViewItem1 As System.Windows.Forms.ListViewItem = New System.Windows.Forms.ListViewItem("Alpha")
+					        Dim listViewItem2 As System.Windows.Forms.ListViewItem = New System.Windows.Forms.ListViewItem("Beta")
+					        Me.list = New System.Windows.Forms.ListView()
+					        Me.list.Items.AddRange(New System.Windows.Forms.ListViewItem() {listViewItem1, listViewItem2})
+					        Me.Controls.Add(Me.button1)
+					        Me.Controls.Add(Me.list)
+					""", StringComparison.Ordinal)
+				.Replace("Friend WithEvents button1 As System.Windows.Forms.Button",
+					"Friend WithEvents button1 As System.Windows.Forms.Button\n    Friend WithEvents list As System.Windows.Forms.ListView", StringComparison.Ordinal)
+			: designer.Text
+				.Replace("this.Controls.Add(this.button1);", """
+					System.Windows.Forms.ListViewItem listViewItem1 = new System.Windows.Forms.ListViewItem("Alpha");
+					        System.Windows.Forms.ListViewItem listViewItem2 = new System.Windows.Forms.ListViewItem("Beta");
+					        this.list = new System.Windows.Forms.ListView();
+					        this.list.Items.AddRange(new System.Windows.Forms.ListViewItem[] { listViewItem1, listViewItem2 });
+					        this.Controls.Add(this.button1);
+					        this.Controls.Add(this.list);
+					""", StringComparison.Ordinal)
+				.Replace("private System.Windows.Forms.Button button1;",
+					"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.ListView list;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Items(DesignerSessionState state)
+			=> state.Components.Single(component => component.Name == "list").Properties.Single(property => property.Name == "Items");
+		Assert.Equal("ItemsCollection", Items(opened).EditorKind);
+		Assert.Equal(new[] { "Alpha", "Beta" }, Items(opened).CollectionItems);
+
+		var edited = await client.SetItemsAsync(1, "list", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Alpha2" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "Gamma" }
+		}, timeout.Token, "Items");
+		Assert.True(edited.Accepted, edited.Error);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.DoesNotContain("listViewItem1", text, StringComparison.Ordinal);
+		Assert.DoesNotContain("listViewItem2", text, StringComparison.Ordinal);
+		Assert.Contains(visualBasic ? "New System.Windows.Forms.ListViewItem(\"Alpha2\")" : "new System.Windows.Forms.ListViewItem(\"Alpha2\")", text, StringComparison.Ordinal);
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(text, @"list\.Items\.(Add|AddRange)\("));
+		Assert.Equal(new[] { "Alpha2", "Gamma" }, Items(edited).CollectionItems);
+
+		designer.Text = text;
+		snapshot.Version = 2;
+		var reopened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error);
+		Assert.Equal(new[] { "Alpha2", "Gamma" }, Items(reopened).CollectionItems);
+
+		var cleared = await client.SetItemsAsync(2, "list", Array.Empty<DesignerCollectionItemEdit>(), timeout.Token, "Items");
+		Assert.True(cleared.Accepted, cleared.Error);
+		Assert.DoesNotMatch(@"list\.Items\.(Add|AddRange)\(", DesignerText(await client.FlushAsync(2, timeout.Token)));
+	}
+
+	[Fact]
+	public async Task ChildHost_EditsInlineListViewItemsButNotItemsWithSubItemCalls()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				this.inline = new System.Windows.Forms.ListView();
+				        this.inline.Items.Add(new System.Windows.Forms.ListViewItem("One"));
+				        this.inline.Items.Add(new System.Windows.Forms.ListViewItem("Two"));
+				        System.Windows.Forms.ListViewItem withSub = new System.Windows.Forms.ListViewItem("Row");
+				        withSub.SubItems.Add("extra");
+				        this.detailed = new System.Windows.Forms.ListView();
+				        this.detailed.Items.AddRange(new System.Windows.Forms.ListViewItem[] { withSub });
+				        this.Controls.Add(this.button1);
+				        this.Controls.Add(this.inline);
+				        this.Controls.Add(this.detailed);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.ListView inline;\n    private System.Windows.Forms.ListView detailed;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Items(DesignerSessionState state, string name)
+			=> state.Components.Single(component => component.Name == name).Properties.Single(property => property.Name == "Items");
+		Assert.Equal(new[] { "One", "Two" }, Items(opened, "inline").CollectionItems);
+		// A sub-item call on the local is a setting the list editor cannot carry through.
+		Assert.NotEqual("ItemsCollection", Items(opened, "detailed").EditorKind);
+		var before = DesignerText(await client.FlushAsync(1, timeout.Token));
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetItemsAsync(1, "detailed", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Renamed" } }, timeout.Token, "Items"));
+		Assert.Equal(before, DesignerText(await client.FlushAsync(1, timeout.Token)));
+
+		var edited = await client.SetItemsAsync(1, "inline", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "Two" },
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "One!" } }, timeout.Token, "Items");
+		Assert.True(edited.Accepted, edited.Error);
+		Assert.Equal(new[] { "Two", "One!" }, Items(edited, "inline").CollectionItems);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(text, @"inline\.Items\.(Add|AddRange)\("));
+		// The other ListView's local and its sub-item call are untouched.
+		Assert.Contains("withSub.SubItems.Add", text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task ChildHost_RefusesAListViewItemEditThatWouldDropAnItemSetting()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				System.Windows.Forms.ListViewItem listViewItem1 = new System.Windows.Forms.ListViewItem("Alpha");
+				        listViewItem1.ForeColor = System.Drawing.Color.Red;
+				        this.list = new System.Windows.Forms.ListView();
+				        this.list.Items.AddRange(new System.Windows.Forms.ListViewItem[] { listViewItem1 });
+				        this.Controls.Add(this.button1);
+				        this.Controls.Add(this.list);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.ListView list;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var before = DesignerText(await client.FlushAsync(1, timeout.Token));
+
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetItemsAsync(1, "list", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Renamed" } }, timeout.Token, "Items"));
+
+		Assert.Equal(before, DesignerText(await client.FlushAsync(1, timeout.Token)));
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
 	public async Task ChildHost_EditsTreeViewNodesAsIndentedLines(bool visualBasic)
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));

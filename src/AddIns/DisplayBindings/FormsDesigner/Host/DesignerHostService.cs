@@ -268,7 +268,7 @@ sealed class DesignerHostService : IDesignerChildService
 	/// previous index or -1) and rewrites the designer source to one Items.AddRange call (one
 	/// Items.Add per item for a DomainUpDown, whose collection has no AddRange).</summary>
 	[JsonRpcMethod("design/set-items")]
-	public DesignerSessionState SetItems(string sessionId, string documentId, long baseVersion, string elementId, DesignerCollectionItemEdit[] items)
+	public DesignerSessionState SetItems(string sessionId, string documentId, long baseVersion, string elementId, DesignerCollectionItemEdit[] items, string? propertyName = null)
 	{
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
 		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost
@@ -278,8 +278,13 @@ sealed class DesignerHostService : IDesignerChildService
 			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
 		if (component is TreeView treeView)
 			return SetTreeNodes(host, treeView, elementId, baseVersion, items ?? Array.Empty<DesignerCollectionItemEdit>());
-		if (component is ListView listView)
-			return SetListViewColumns(host, listView, elementId, baseVersion, items ?? Array.Empty<DesignerCollectionItemEdit>());
+		if (component is ListView listView) {
+			// Columns and Items are both list-editor rows of a ListView; a caller that names no
+			// property (an older client) means Columns, the only one it could edit.
+			return String.Equals(propertyName, "Items", StringComparison.Ordinal)
+				? SetListViewItems(elementId, baseVersion, items ?? Array.Empty<DesignerCollectionItemEdit>())
+				: SetListViewColumns(host, listView, elementId, baseVersion, items ?? Array.Empty<DesignerCollectionItemEdit>());
+		}
 		if (!TryGetEditableItems(component, out var collection) || collection == null)
 			throw new InvalidOperationException($"{elementId}.Items is not an editable string list.");
 		items ??= Array.Empty<DesignerCollectionItemEdit>();
@@ -427,6 +432,174 @@ sealed class DesignerHostService : IDesignerChildService
 				.Select(type => type!.FullName!).OrderBy(name => name, StringComparer.Ordinal).Take(500));
 		}
 		return typeSuggestions = project.Concat(CommonTypeSuggestions.Where(name => !project.Contains(name))).ToList();
+	}
+
+	/// <summary>The texts of a ListView's items as the designer SOURCE declares them, when every
+	/// item is a plain text item: <c>new ListViewItem("text")</c>, inline or through one of Visual
+	/// Studio's locals, added only by <c>Items.Add/AddRange</c> and never touched otherwise (no
+	/// sub-items, image, check mark, group, tag or other assignment). Read from source rather than
+	/// from the live ListView because the portable LibreWinForms ListView needs native list-view
+	/// calls (USER32) just to enumerate its items, so only the source is the same authority on
+	/// every backend; it is also what the edit rewrites.</summary>
+	bool TryReadListViewItems(string ownerId, out List<string> texts)
+	{
+		texts = [];
+		try {
+			var file = CurrentDesignerFile();
+			return IsVisualBasic ? TryReadListViewItemsVisualBasic(file.Text, ownerId, texts)
+				: TryReadListViewItemsCSharp(file.Text, ownerId, texts);
+		} catch (Exception) {
+			texts.Clear();
+			return false;
+		}
+	}
+
+	static bool TryReadListViewItemsCSharp(string source, string ownerId, List<string> texts)
+	{
+		var method = CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot().DescendantNodes().OfType<MethodDeclarationSyntax>()
+			.FirstOrDefault(item => item.Identifier.ValueText == "InitializeComponent");
+		if (method?.Body == null) return false;
+		var locals = method.Body.Statements.OfType<LocalDeclarationStatementSyntax>().SelectMany(local => local.Declaration.Variables)
+			.ToDictionary(variable => variable.Identifier.ValueText, variable => variable.Initializer?.Value as ObjectCreationExpressionSyntax, StringComparer.Ordinal);
+		bool IsOwnerItems(ExpressionSyntax expression) => expression is MemberAccessExpressionSyntax access
+			&& access.Name.Identifier.ValueText == "Items" && SimpleTargetName(access.Expression) == ownerId;
+		bool Plain(ObjectCreationExpressionSyntax? creation, out string text)
+		{
+			text = "";
+			if (creation == null || !creation.Type.ToString().EndsWith("ListViewItem", StringComparison.Ordinal)
+				|| creation.Initializer != null || creation.ArgumentList?.Arguments.Count != 1
+				|| creation.ArgumentList.Arguments[0].Expression is not LiteralExpressionSyntax literal
+				|| !literal.IsKind(SyntaxKind.StringLiteralExpression))
+				return false;
+			text = literal.Token.ValueText;
+			return true;
+		}
+		foreach (var statement in method.Body.Statements) {
+			if (!statement.DescendantNodesAndSelf().OfType<MemberAccessExpressionSyntax>().Any(IsOwnerItems))
+				continue;
+			if (statement is not ExpressionStatementSyntax { Expression: InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax call } invocation }
+				|| !IsOwnerItems(call.Expression) || invocation.ArgumentList.Arguments.Count != 1)
+				return false;
+			var argument = invocation.ArgumentList.Arguments[0].Expression;
+			IEnumerable<ExpressionSyntax>? elements = call.Name.Identifier.ValueText switch {
+				"Add" => [argument],
+				"AddRange" => argument switch {
+					ArrayCreationExpressionSyntax { Initializer: { } initializer } => initializer.Expressions,
+					ImplicitArrayCreationExpressionSyntax { Initializer: { } initializer } => initializer.Expressions,
+					_ => null
+				},
+				_ => null
+			};
+			if (elements == null) return false;
+			foreach (var element in elements) {
+				var creation = element as ObjectCreationExpressionSyntax;
+				if (element is IdentifierNameSyntax name) {
+					if (!locals.TryGetValue(name.Identifier.ValueText, out creation)) return false;
+					// A local may appear only in its declaration and in this owner's Add/AddRange: any other
+					// statement (an assignment, SubItems.Add, another list) carries a setting that is not
+					// representable here and would be left dangling when the local is removed.
+					if (method.Body.Statements.Any(st => st is not LocalDeclarationStatementSyntax
+							&& !st.DescendantNodesAndSelf().OfType<MemberAccessExpressionSyntax>().Any(IsOwnerItems)
+							&& st.DescendantNodes().OfType<IdentifierNameSyntax>().Any(id => id.Identifier.ValueText == name.Identifier.ValueText)))
+						return false;
+				}
+				if (!Plain(creation, out var text)) return false;
+				texts.Add(text);
+			}
+		}
+		return true;
+	}
+
+	static bool TryReadListViewItemsVisualBasic(string source, string ownerId, List<string> texts)
+	{
+		var method = ((VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(source).GetRoot()).DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>()
+			.FirstOrDefault(item => item.BlockStatement is VbSyntax.MethodStatementSyntax ms && ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+				&& ms.Identifier.ValueText == "InitializeComponent");
+		if (method == null) return false;
+		var locals = new Dictionary<string, VbSyntax.ObjectCreationExpressionSyntax?>(StringComparer.Ordinal);
+		foreach (var declarator in method.Statements.OfType<VbSyntax.LocalDeclarationStatementSyntax>().SelectMany(local => local.Declarators)) {
+			var creation = (declarator.Initializer?.Value ?? (declarator.AsClause as VbSyntax.AsNewClauseSyntax)?.NewExpression) as VbSyntax.ObjectCreationExpressionSyntax;
+			foreach (var name in declarator.Names)
+				locals[name.Identifier.ValueText] = creation;
+		}
+		bool IsOwnerItems(VbSyntax.ExpressionSyntax? expression) => expression is VbSyntax.MemberAccessExpressionSyntax access
+			&& access.Name.Identifier.ValueText == "Items" && access.Expression != null && VbSimpleTargetName(access.Expression) == ownerId;
+		bool Plain(VbSyntax.ObjectCreationExpressionSyntax? creation, out string text)
+		{
+			text = "";
+			if (creation == null || !creation.Type.ToString().EndsWith("ListViewItem", StringComparison.Ordinal)
+				|| creation.Initializer != null || creation.ArgumentList?.Arguments.Count != 1
+				|| creation.ArgumentList.Arguments[0] is not VbSyntax.SimpleArgumentSyntax { Expression: VbSyntax.LiteralExpressionSyntax literal }
+				|| !literal.IsKind(Vb.SyntaxKind.StringLiteralExpression))
+				return false;
+			text = literal.Token.ValueText;
+			return true;
+		}
+		foreach (var statement in method.Statements) {
+			if (!statement.DescendantNodesAndSelf().OfType<VbSyntax.MemberAccessExpressionSyntax>().Any(IsOwnerItems))
+				continue;
+			if (statement is not VbSyntax.ExpressionStatementSyntax { Expression: VbSyntax.InvocationExpressionSyntax { Expression: VbSyntax.MemberAccessExpressionSyntax call } invocation }
+				|| !IsOwnerItems(call.Expression) || invocation.ArgumentList?.Arguments.Count != 1
+				|| invocation.ArgumentList.Arguments[0] is not VbSyntax.SimpleArgumentSyntax { Expression: var argument })
+				return false;
+			IEnumerable<VbSyntax.ExpressionSyntax>? elements = call.Name.Identifier.ValueText switch {
+				"Add" => [argument],
+				"AddRange" => argument is VbSyntax.ArrayCreationExpressionSyntax { Initializer: { } initializer } ? initializer.Initializers : null,
+				_ => null
+			};
+			if (elements == null) return false;
+			foreach (var element in elements) {
+				var creation = element as VbSyntax.ObjectCreationExpressionSyntax;
+				if (element is VbSyntax.IdentifierNameSyntax name) {
+					if (!locals.TryGetValue(name.Identifier.ValueText, out creation)) return false;
+					if (method.Statements.Any(st => st is not VbSyntax.LocalDeclarationStatementSyntax
+							&& !st.DescendantNodesAndSelf().OfType<VbSyntax.MemberAccessExpressionSyntax>().Any(IsOwnerItems)
+							&& st.DescendantNodes().OfType<VbSyntax.IdentifierNameSyntax>().Any(id => id.Identifier.ValueText == name.Identifier.ValueText)))
+						return false;
+				}
+				if (!Plain(creation, out var text)) return false;
+				texts.Add(text);
+			}
+		}
+		return true;
+	}
+
+	static readonly HashSet<string> CarriedListViewItemSettings = new(StringComparer.Ordinal);
+
+	/// <summary>Applies the list editor to ListView.Items: the items become one
+	/// <c>Items.AddRange(new ListViewItem[] { new ListViewItem("text"), ... })</c>, and Visual
+	/// Studio's <c>ListViewItem listViewItemN</c> locals and their statements are removed. Refused,
+	/// source untouched, when a local sets anything but Text (that value would be lost).
+	/// Source-first like <see cref="SetListViewColumns"/>: a live, handle-backed ListView's items
+	/// go through native list-view messages LibreWinForms lacks on macOS, so the surface is
+	/// rebuilt from the rewritten source and a failure restores the original.</summary>
+	DesignerSessionState SetListViewItems(string elementId, long baseVersion, DesignerCollectionItemEdit[] items)
+	{
+		if (!TryReadListViewItems(elementId, out var existing))
+			throw new InvalidOperationException($"{elementId}.Items has items the list editor cannot represent.");
+		var sources = items.Where(entry => entry.SourceIndex >= 0).Select(entry => entry.SourceIndex).ToList();
+		if (sources.Any(index => index >= existing.Count) || sources.Distinct().Count() != sources.Count)
+			throw new ArgumentException("Invalid item source index.", nameof(items));
+		var texts = items.Select(entry => entry.Text ?? "").ToList();
+		var designerFile = CurrentDesignerFile();
+		var originalSource = designerFile.Text;
+		if (!RemoveItemLocals(elementId, "Items", "ListViewItem", CarriedListViewItemSettings, out var unsupported))
+			throw new InvalidOperationException($"{elementId}.Items sets {unsupported} on an item, which the list editor cannot carry through; edit it in the source.");
+		try {
+			RewriteCollectionStatements(elementId, "Items", texts.Count == 0 ? null
+				: IsVisualBasic ? $"Me.{elementId}.Items.AddRange(New System.Windows.Forms.ListViewItem() {{{string.Join(", ", texts.Select(text => $"New System.Windows.Forms.ListViewItem({SerializeValueVisualBasic(text)})"))}}})"
+				: $"this.{elementId}.Items.AddRange(new System.Windows.Forms.ListViewItem[] {{ {string.Join(", ", texts.Select(text => $"new System.Windows.Forms.ListViewItem({SerializeValue(text)})"))} }});");
+			CreateDesignSurface(current!);
+		} catch (Exception exception) {
+			designerFile.Text = originalSource;
+			try {
+				CreateDesignSurface(current!);
+			} catch (Exception recoveryException) {
+				return Rejected(baseVersion, "Editing the items failed and the design surface could not be restored: " + recoveryException.Message);
+			}
+			return Rejected(baseVersion, "Editing the items failed: " + exception.Message);
+		}
+		return CurrentState(baseVersion);
 	}
 
 	/// <summary>A ListView's columns, when every one is a designer component (a named field in
@@ -598,6 +771,12 @@ sealed class DesignerHostService : IDesignerChildService
 	/// <returns>False, changing nothing, when a reachable local has an assignment the edit cannot
 	/// carry through (<paramref name="unsupported"/> names it): removing it would lose the value.</returns>
 	bool RemoveTreeNodeLocals(string treeId, out string unsupported)
+		=> RemoveItemLocals(treeId, "Nodes", "TreeNode", CarriedTreeNodeSettings, out unsupported);
+
+	/// <summary>Generalised <see cref="RemoveTreeNodeLocals"/>: the <paramref name="typeName"/> locals
+	/// reachable from <paramref name="ownerId"/>'s own <paramref name="member"/>.Add/AddRange, refusing
+	/// when one carries a setting outside <paramref name="carried"/>.</summary>
+	bool RemoveItemLocals(string treeId, string member, string typeName, HashSet<string> carried, out string unsupported)
 	{
 		unsupported = "";
 		var file = CurrentDesignerFile();
@@ -609,7 +788,7 @@ sealed class DesignerHostService : IDesignerChildService
 			var vbNames = vbMethod.Statements.OfType<VbSyntax.LocalDeclarationStatementSyntax>()
 				.SelectMany(local => local.Declarators)
 				.Where(d => d.Names.Count == 1 && ((d.AsClause as VbSyntax.SimpleAsClauseSyntax)?.Type.ToString()
-					?? (d.AsClause as VbSyntax.AsNewClauseSyntax)?.NewExpression.ToString() ?? "").Contains("TreeNode", StringComparison.Ordinal))
+					?? (d.AsClause as VbSyntax.AsNewClauseSyntax)?.NewExpression.ToString() ?? "").Contains(typeName, StringComparison.Ordinal))
 				.Select(d => d.Names[0].Identifier.ValueText).ToHashSet(StringComparer.Ordinal);
 			var vbInitializers = vbMethod.Statements.OfType<VbSyntax.LocalDeclarationStatementSyntax>().SelectMany(local => local.Declarators)
 				.Where(d => d.Names.Count == 1 && vbNames.Contains(d.Names[0].Identifier.ValueText))
@@ -617,21 +796,21 @@ sealed class DesignerHostService : IDesignerChildService
 			var vbRoots = vbMethod.Statements.OfType<VbSyntax.ExpressionStatementSyntax>()
 				.Where(st => st.Expression is VbSyntax.InvocationExpressionSyntax { Expression: VbSyntax.MemberAccessExpressionSyntax access }
 					&& access.Name.Identifier.ValueText is "Add" or "AddRange"
-					&& access.Expression is VbSyntax.MemberAccessExpressionSyntax owner && owner.Name.Identifier.ValueText == "Nodes"
+					&& access.Expression is VbSyntax.MemberAccessExpressionSyntax owner && owner.Name.Identifier.ValueText == member
 					&& owner.Expression != null && VbSimpleTargetName(owner.Expression) == treeId)
 				.Cast<SyntaxNode>();
 			vbNames = ReachableLocals(vbRoots, vbNames, vbInitializers);
 			var vbOther = vbMethod.Statements.OfType<VbSyntax.AssignmentStatementSyntax>()
 				.Select(st => st.Left as VbSyntax.MemberAccessExpressionSyntax)
 				.FirstOrDefault(left => left is { Expression: VbSyntax.IdentifierNameSyntax owner } && vbNames.Contains(owner.Identifier.ValueText)
-					&& !CarriedTreeNodeSettings.Contains(left.Name.Identifier.ValueText));
+					&& !carried.Contains(left.Name.Identifier.ValueText));
 			if (vbOther != null) { unsupported = vbOther.Name.Identifier.ValueText; return false; }
 			var vbInitialized = vbRoots.Concat(vbInitializers.Where(pair => vbNames.Contains(pair.Key)).Select(pair => pair.Value!).Where(node => node != null))
 				.SelectMany(node => node.DescendantNodesAndSelf().OfType<VbSyntax.ObjectCreationExpressionSyntax>())
-				.Where(creation => creation.Type.ToString().EndsWith("TreeNode", StringComparison.Ordinal))
+				.Where(creation => creation.Type.ToString().EndsWith(typeName, StringComparison.Ordinal))
 				.SelectMany(creation => (creation.Initializer as VbSyntax.ObjectMemberInitializerSyntax)?.Initializers ?? default)
 				.Select(field => (field as VbSyntax.NamedFieldInitializerSyntax)?.Name.Identifier.ValueText ?? field.ToString())
-				.FirstOrDefault(name => !CarriedTreeNodeSettings.Contains(name));
+				.FirstOrDefault(name => !carried.Contains(name));
 			if (vbInitialized != null) { unsupported = vbInitialized; return false; }
 			var vbKept = vbMethod.Statements.Where(st => !(st is VbSyntax.LocalDeclarationStatementSyntax l
 					&& l.Declarators.All(d => d.Names.All(n => vbNames.Contains(n.Identifier.ValueText))))
@@ -643,8 +822,8 @@ sealed class DesignerHostService : IDesignerChildService
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
 		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>().First(item => item.Identifier.ValueText == "InitializeComponent");
 		var names = method.Body!.Statements.OfType<LocalDeclarationStatementSyntax>()
-			.Where(local => local.Declaration.Type.ToString().EndsWith("TreeNode", StringComparison.Ordinal)
-				|| local.Declaration.Variables.All(v => v.Initializer?.Value is ObjectCreationExpressionSyntax c && c.Type.ToString().EndsWith("TreeNode", StringComparison.Ordinal)))
+			.Where(local => local.Declaration.Type.ToString().EndsWith(typeName, StringComparison.Ordinal)
+				|| local.Declaration.Variables.All(v => v.Initializer?.Value is ObjectCreationExpressionSyntax c && c.Type.ToString().EndsWith(typeName, StringComparison.Ordinal)))
 			.SelectMany(local => local.Declaration.Variables).Select(v => v.Identifier.ValueText).ToHashSet(StringComparer.Ordinal);
 		var initializers = method.Body.Statements.OfType<LocalDeclarationStatementSyntax>().SelectMany(local => local.Declaration.Variables)
 			.Where(v => names.Contains(v.Identifier.ValueText))
@@ -652,21 +831,21 @@ sealed class DesignerHostService : IDesignerChildService
 		var roots = method.Body.Statements.OfType<ExpressionStatementSyntax>()
 			.Where(st => st.Expression is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax access }
 				&& access.Name.Identifier.ValueText is "Add" or "AddRange"
-				&& access.Expression is MemberAccessExpressionSyntax owner && owner.Name.Identifier.ValueText == "Nodes"
+				&& access.Expression is MemberAccessExpressionSyntax owner && owner.Name.Identifier.ValueText == member
 				&& SimpleTargetName(owner.Expression) == treeId)
 			.Cast<SyntaxNode>();
 		names = ReachableLocals(roots, names, initializers);
 		var other = method.Body.Statements.OfType<ExpressionStatementSyntax>()
 			.Select(st => (st.Expression as AssignmentExpressionSyntax)?.Left as MemberAccessExpressionSyntax)
 			.FirstOrDefault(left => left is { Expression: IdentifierNameSyntax owner } && names.Contains(owner.Identifier.ValueText)
-				&& !CarriedTreeNodeSettings.Contains(left.Name.Identifier.ValueText));
+				&& !carried.Contains(left.Name.Identifier.ValueText));
 		if (other != null) { unsupported = other.Name.Identifier.ValueText; return false; }
 		var initialized = roots.Concat(initializers.Where(pair => names.Contains(pair.Key)).Select(pair => pair.Value!).Where(node => node != null))
 			.SelectMany(node => node.DescendantNodesAndSelf().OfType<ObjectCreationExpressionSyntax>())
-			.Where(creation => creation.Type.ToString().EndsWith("TreeNode", StringComparison.Ordinal) && creation.Initializer != null)
+			.Where(creation => creation.Type.ToString().EndsWith(typeName, StringComparison.Ordinal) && creation.Initializer != null)
 			.SelectMany(creation => creation.Initializer!.Expressions.OfType<AssignmentExpressionSyntax>())
 			.Select(assignment => (assignment.Left as IdentifierNameSyntax)?.Identifier.ValueText ?? assignment.Left.ToString())
-			.FirstOrDefault(name => !CarriedTreeNodeSettings.Contains(name));
+			.FirstOrDefault(name => !carried.Contains(name));
 		if (initialized != null) { unsupported = initialized; return false; }
 		var keptStatements = method.Body.Statements.Where(st => !(st is LocalDeclarationStatementSyntax l
 				&& l.Declaration.Variables.All(v => names.Contains(v.Identifier.ValueText)))
@@ -3913,6 +4092,14 @@ sealed class DesignerHostService : IDesignerChildService
 				result[^1].Value = "(" + columns.Count + (columns.Count == 1 ? " column)" : " columns)");
 				result[^1].CollectionItems = columns.Select(column => column.Text ?? "").ToList();
 				result[^1].ShouldSerialize = columns.Count > 0;
+			}
+			if (property.Name == "Items" && component is ListView itemsOwner && TryReadListViewItems(itemsOwner.Site?.Name ?? "", out var listViewTexts)) {
+				result[^1].Kind = "Collection";
+				result[^1].EditorKind = "ItemsCollection";
+				result[^1].IsReadOnly = true;
+				result[^1].Value = "(" + listViewTexts.Count + (listViewTexts.Count == 1 ? " item)" : " items)");
+				result[^1].CollectionItems = listViewTexts;
+				result[^1].ShouldSerialize = listViewTexts.Count > 0;
 			}
 			if (property.Name == "Nodes" && component is TreeView treeView && TryGetPlainTreeLines(treeView.Nodes, out var treeLines)) {
 				// The same list editor as Items: a node's depth is its leading two-space indent.

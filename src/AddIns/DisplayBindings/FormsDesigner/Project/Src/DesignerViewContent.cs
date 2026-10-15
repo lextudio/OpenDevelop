@@ -135,11 +135,11 @@ namespace ICSharpCode.FormsDesigner
 
 		/// <summary>Replaces a list control's string Items through the host's design/set-items, as
 		/// one undoable designer edit.</summary>
-		internal void SetRemoteItems(string componentName, IReadOnlyList<DesignerCollectionItemEdit> items)
+		internal void SetRemoteItems(string componentName, IReadOnlyList<DesignerCollectionItemEdit> items, string? propertyName = null)
 		{
 			EnsureRemoteDesignerLoaded();
 			ExecuteRemoteEdit(() => remoteClient.SetItemsAsync(remoteDocumentVersion, componentName, items,
-				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+				System.Threading.CancellationToken.None, propertyName).GetAwaiter().GetResult());
 		}
 
 		/// <summary>Assigns a string[] property (TextBox.Lines) through the host's
@@ -2168,7 +2168,7 @@ namespace ICSharpCode.FormsDesigner
 				// Items, TreeView.Nodes and ListView.Columns are live collections rewritten as Add/AddRange (design/set-items);
 				// any other list row is a string[] property assigned as a whole.
 				if (propertyName is "Items" or "Nodes" or "Columns")
-					owner.SetRemoteItems(name, items);
+					owner.SetRemoteItems(name, items, propertyName);
 				else
 					owner.SetRemoteStringArray(name, propertyName, items.Select(item => item.Text ?? "").ToList());
 			}
