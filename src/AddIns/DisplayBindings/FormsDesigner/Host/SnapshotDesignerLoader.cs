@@ -82,8 +82,11 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 	void Execute(StatementSyntax statement)
 	{
 		if (statement is LocalDeclarationStatementSyntax local) {
+			// Only values the loader can build are kept (TreeNodes and the like). A local it cannot - the
+			// ComponentResourceManager every resource-using form declares, built from typeof(Form1) -
+			// must never abort the load: resources are handled separately through ApplyResources.
 			foreach (var variable in local.Declaration.Variables)
-				if (variable.Initializer != null && Evaluate(variable.Initializer.Value) is { } value)
+				if (variable.Initializer != null && TryEvaluateLocal(() => Evaluate(variable.Initializer.Value)) is { } value)
 					locals[variable.Identifier.ValueText] = value;
 			return;
 		}
@@ -146,7 +149,7 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 			foreach (var declarator in vbLocal.Declarators) {
 				VbSyntax.ExpressionSyntax? initial = declarator.Initializer?.Value
 					?? (declarator.AsClause as VbSyntax.AsNewClauseSyntax)?.NewExpression;
-				if (initial != null && declarator.Names.Count == 1 && EvaluateVisualBasic(initial) is { } value)
+				if (initial != null && declarator.Names.Count == 1 && TryEvaluateLocal(() => EvaluateVisualBasic(initial)) is { } value)
 					locals[declarator.Names[0].Identifier.ValueText] = value;
 			}
 			return;
@@ -533,6 +536,14 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 			1 => System.Drawing.Color.FromArgb(ints[0]),
 			_ => null
 		};
+	}
+
+	/// <summary>A local's initializer value, or null when it cannot be built (the exception is
+	/// swallowed on purpose: an unevaluable local is skipped, not a load failure).</summary>
+	static object? TryEvaluateLocal(Func<object?> evaluate)
+	{
+		try { return evaluate(); }
+		catch (Exception) { return null; }
 	}
 
 	object? CreateValue(ObjectCreationExpressionSyntax creation)

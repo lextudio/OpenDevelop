@@ -710,6 +710,33 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Equal(before, DesignerText(await client.FlushAsync(1, timeout.Token)));
 	}
 
+	/// <summary>Regression: the loader evaluates InitializeComponent locals (for TreeNodes), and the
+	/// ComponentResourceManager every form with resources declares threw on its null typeof(Form1),
+	/// failing the whole designer load with "Value cannot be null (resourceSource)".</summary>
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task ChildHost_LoadsAFormThatDeclaresAResourceManagerLocal(bool visualBasic)
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = visualBasic ? VbSnapshot(1, "button1") : Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = visualBasic
+			? designer.Text.Replace("Me.button1 = New System.Windows.Forms.Button()", """
+				Dim resources As System.ComponentModel.ComponentResourceManager = New System.ComponentModel.ComponentResourceManager(GetType(Form1))
+				        Me.button1 = New System.Windows.Forms.Button()
+				""", StringComparison.Ordinal)
+			: designer.Text.Replace("this.button1 = new System.Windows.Forms.Button();", """
+				System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
+				        this.button1 = new System.Windows.Forms.Button();
+				""", StringComparison.Ordinal);
+		Assert.Contains("ComponentResourceManager", designer.Text, StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		Assert.Contains(opened.Components, component => component.Name == "button1");
+	}
+
 	/// <summary>Visual Studio's own TreeView form: each node a local with Name/Text assignments.</summary>
 	[Theory]
 	[InlineData(false)]
