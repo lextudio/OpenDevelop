@@ -19,6 +19,38 @@ public sealed class DesignerSnapshotHitTesterTests
 	}
 
 	[Fact]
+	public void AHigherZIndexWinsOverALaterSiblingAndEqualValuesKeepTreeOrder()
+	{
+		var root = Node("root", 0, 0, 100, 100);
+		var raised = Node("raised", 10, 10, 60, 60);
+		raised.ZIndex = 5;
+		root.Children.Add(raised);
+		root.Children.Add(Node("later", 20, 20, 60, 60));
+		Assert.Equal("raised", DesignerSnapshotHitTester.FindNodeAt(root, 30, 30)!.Name);
+
+		// Every sibling at the same z-index: the later one is in front, as before.
+		root.Children[0].ZIndex = 0;
+		root.Children[1].ZIndex = 0;
+		Assert.Equal("later", DesignerSnapshotHitTester.FindNodeAt(root, 30, 30)!.Name);
+	}
+
+	[Fact]
+	public void AWinFormsStyleFrontFirstOrderIsHonouredThroughZIndex()
+	{
+		// WinForms lists the front control first; the host publishes (count - 1 - index).
+		var root = Node("root", 0, 0, 100, 100);
+		var front = Node("front", 10, 10, 60, 60);
+		front.ZIndex = 1;
+		var back = Node("back", 20, 20, 60, 60);
+		back.ZIndex = 0;
+		root.Children.Add(front);
+		root.Children.Add(back);
+
+		Assert.Equal("front", DesignerSnapshotHitTester.FindNodeAt(root, 30, 30)!.Name);
+		Assert.Equal("back", DesignerSnapshotHitTester.FindNodeAt(root, 75, 75)!.Name);
+	}
+
+	[Fact]
 	public void SkipsHiddenAndNonDesignableNodesButCanReachTheirSourceChild()
 	{
 		var root = Node("root", 0, 0, 100, 100);

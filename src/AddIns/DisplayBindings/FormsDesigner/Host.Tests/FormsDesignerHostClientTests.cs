@@ -10,6 +10,32 @@ namespace ICSharpCode.FormsDesigner.Host.Tests;
 public sealed class FormsDesignerHostClientTests
 {
 	[Fact]
+	public async Task ChildHost_PublishesFrontToBackOrderAsZIndex()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				this.second = new System.Windows.Forms.Button();
+				this.second.Location = new System.Drawing.Point(12, 60);
+				this.Controls.Add(this.button1);
+				this.Controls.Add(this.second);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.Button second;", StringComparison.Ordinal);
+
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+
+		Assert.True(opened.Accepted, opened.Error);
+		// WinForms paints the first control in Controls on top, so it gets the highest z-index.
+		Assert.Null(opened.Tree!.ZIndex);
+		Assert.Equal(1, FindTreeNode(opened.Tree!, "button1")!.ZIndex);
+		Assert.Equal(0, FindTreeNode(opened.Tree!, "second")!.ZIndex);
+	}
+
+	[Fact]
 	public async Task ChildHost_PublishesMeasuredTableLayoutTracks()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));

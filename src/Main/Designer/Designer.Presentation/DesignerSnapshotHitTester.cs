@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 
 namespace ICSharpCode.SharpDevelop.Designer.Presentation;
@@ -8,14 +10,34 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation;
 public static class DesignerSnapshotHitTester
 {
 	/// <summary>Returns the innermost source-backed visible node containing the design point.
-	/// Later siblings win because they paint over earlier siblings.</summary>
+	/// Among siblings the topmost wins: a higher <see cref="DesignerElementNode.ZIndex"/> paints over
+	/// a lower one (a missing value counts as 0) and, at equal z-index, a later sibling paints over
+	/// an earlier one. A host whose paint order is not its child order (WinForms puts the front
+	/// control first) states it through ZIndex.</summary>
+	static IEnumerable<int> TopmostFirst(IReadOnlyList<DesignerElementNode> children)
+	{
+		var plain = true;
+		for (var index = 1; index < children.Count && plain; index++)
+			plain = (children[index].ZIndex ?? 0) == (children[0].ZIndex ?? 0);
+		if (plain)
+		{
+			for (var index = children.Count - 1; index >= 0; index--)
+				yield return index;
+			yield break;
+		}
+		// Stable: ties keep the later sibling in front.
+		foreach (var index in Enumerable.Range(0, children.Count)
+			.OrderByDescending(i => children[i].ZIndex ?? 0).ThenByDescending(i => i))
+			yield return index;
+	}
+
 	public static DesignerElementNode? FindNodeAt(DesignerElementNode? node, double x, double y)
 	{
 		// A design-time-locked element is skipped with its whole subtree, as the in-process
 		// designer's hit-test filter does, so a click falls through to what is behind or around it.
 		if (node == null || !node.IsVisible || node.IsDesignTimeLocked == true)
 			return null;
-		for (var index = node.Children.Count - 1; index >= 0; index--)
+		foreach (var index in TopmostFirst(node.Children))
 		{
 			if (FindNodeAt(node.Children[index], x, y) is { } child)
 				return child;

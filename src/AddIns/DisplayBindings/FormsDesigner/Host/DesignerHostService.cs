@@ -3638,10 +3638,18 @@ sealed class DesignerHostService : IDesignerChildService
 	static DesignerElementNode BuildElementTree(Control control, string path, IContainer? container,
 		string layoutMode = DesignerLayoutMode.Unknown)
 	{
-		var children = control.Controls.Cast<Control>()
+		var controls = control.Controls.Cast<Control>()
 			.Where(child => container == null || container.Components.Cast<IComponent>().Contains(child))
-			.Select((child, index) => BuildElementTree(child, ChildPath(path, index), container,
-				DesignerLayoutMode.InferFromContainerType(control.GetType().Name)));
+			.ToList();
+		var children = controls.Select((child, index) => {
+			var node = BuildElementTree(child, ChildPath(path, index), container,
+				DesignerLayoutMode.InferFromContainerType(control.GetType().Name));
+			// WinForms paints the FIRST control in Controls on top (BringToFront moves it to index
+			// 0), the opposite of the tree-order convention the shared hit test assumes, so state the
+			// measured front-to-back order as a z-index: the first control gets the highest value.
+			node.ZIndex = controls.Count - 1 - index;
+			return node;
+		});
 		// The portable LibreWinForms ToolStripItem does not expose Bounds/Owner/OwnerItem or
 		// ToolStripDropDownItem at all, so this walk only exists for the real Microsoft backend.
 		if (control is ToolStrip toolStrip) {
