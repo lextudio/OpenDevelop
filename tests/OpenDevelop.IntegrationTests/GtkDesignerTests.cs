@@ -55,6 +55,8 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.True(status.GetProperty("hostProcessId").GetInt32() > 0, "GTK designer did not start its isolated host: " + status);
 		Assert.True(status.GetProperty("nativeFrame").GetBoolean(), "GTK host did not return a native GTK frame: " + status);
 		Assert.Equal("in-process GSK/Cairo", status.GetProperty("nativeRenderer").GetString());
+		status = await WaitForCanvasFrameAsync(status);
+		Assert.True(status.GetProperty("canvasFrameShown").GetBoolean(), "The design canvas is not displaying the GTK frame: " + status.GetProperty("canvasDisplay").GetString());
 		Assert.DoesNotContain("GtkRenderHelper", status.GetProperty("hostLog").GetString() ?? "", StringComparison.Ordinal);
 		Assert.DoesNotContain("gtk4-builder-tool", status.GetProperty("hostLog").GetString() ?? "", StringComparison.Ordinal);
 		await AssertNoRenderChildrenAsync(status.GetProperty("hostProcessId").GetInt32());
@@ -712,6 +714,15 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	{
 		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20); JsonElement last = default;
 		while (DateTime.UtcNow < deadline) { last = await app.InvokeAsync("od.gtk-designer.status"); if (last.TryGetProperty("active", out var active) && active.GetBoolean() && last.GetProperty("toolboxHosted").GetBoolean() && last.GetProperty("outlineHosted").GetBoolean() && last.GetProperty("nativeFrame").GetBoolean() && (rootId == null || last.TryGetProperty("rootId", out var actualRoot) && actualRoot.GetString() == rootId)) return last; await Task.Delay(100, TestContext.Current.CancellationToken); }
+		return last;
+	}
+	/// <summary>The host's frame arriving is not the canvas showing it: a frame can sit in the surface while its
+	/// tab is still hidden. Waits (bounded) for the canvas itself to display it, so a design that never becomes
+	/// visible fails with the canvas's own state instead of passing on backend data alone.</summary>
+	async Task<JsonElement> WaitForCanvasFrameAsync(JsonElement last)
+	{
+		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+		while (!(last.TryGetProperty("canvasFrameShown", out var shown) && shown.GetBoolean()) && DateTime.UtcNow < deadline) { await Task.Delay(100, TestContext.Current.CancellationToken); last = await app.InvokeAsync("od.gtk-designer.status"); }
 		return last;
 	}
 	async Task<JsonElement> WaitForFrameChangeAsync(string? previous)

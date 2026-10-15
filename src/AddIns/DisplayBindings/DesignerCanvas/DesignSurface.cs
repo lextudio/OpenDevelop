@@ -555,6 +555,19 @@ public class DesignSurface : DesignerCanvas
 		return new Point(sx - scroller.HorizontalOffset, sy - scroller.VerticalOffset);
 	}
 
+	/// <summary>What the canvas is actually showing, as opposed to what its backend sent: a frame can
+	/// be in <see cref="HasRender"/> yet never reach the screen when the surface is hidden or has no
+	/// viewport (a tab that was not selected when the frame arrived). Tests assert on
+	/// <see cref="FrameShown"/> so an invisible design fails instead of passing on backend data alone.</summary>
+	public bool FrameShown => HasRender && IsVisible && scroller.ViewportWidth > 0 && scroller.ViewportHeight > 0
+		&& framePresenter.Visual is FrameworkElement { ActualWidth: > 0, ActualHeight: > 0 };
+
+	public string DisplayDiagnostic()
+	{
+		var frame = framePresenter.Visual as FrameworkElement;
+		return $"hasRender={HasRender} visible={IsVisible} loaded={IsLoaded} viewport=({scroller.ViewportWidth},{scroller.ViewportHeight}) frame=({frame?.ActualWidth},{frame?.ActualHeight}) pixels=({pixelWidth},{pixelHeight}) fit={fitMode} scale={CurrentViewport().Scale}";
+	}
+
 	/// <summary>Diagnostic-only: reports the screen origin of every candidate anchor for
 	/// element-to-screen-point translation, to measure which one actually lines up with
 	/// <see cref="SurfaceGeometry"/>'s own (verified-correct) frame origin.</summary>

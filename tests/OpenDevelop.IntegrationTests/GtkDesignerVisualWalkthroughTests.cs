@@ -108,6 +108,7 @@ public sealed class GtkDesignerVisualWalkthroughTests : IAsyncLifetime, IAsyncDi
 		log.AppendLine("HOSTLOG: " + initial.GetProperty("hostLog").GetString());
 		await File.WriteAllTextAsync(Path.Combine(OutputDirectory, "walkthrough.log"), log.ToString(), TestContext.Current.CancellationToken);
 
+		Assert.True(initial.GetProperty("canvasFrameShown").GetBoolean(), "The design canvas is not displaying the GTK frame: " + initial.GetProperty("canvasDisplay").GetString());
 		await ShootAsync("opened-fit");
 
 		// Zoom is where a mis-scaled frame would first show: the bitmap is stretched by the canvas, not
