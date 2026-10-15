@@ -53,6 +53,7 @@
     <!-- Markup-level repairs, shared for the same reason DesignHost is: they correct what the XAML
          rules require but a runtime parser does not do, which is identical on both runtimes. -->
     <Compile Include="..\WinUIXamlDesigner.UnoHost\XamlDocumentRepair.cs" Link="XamlDocumentRepair.cs" />
+    <Compile Include="..\WinUIXamlDesigner.UnoHost\XamlPositionMapper.cs" Link="XamlPositionMapper.cs" />
     <Compile Include="..\WinUIXamlDesigner.UnoHost\XamlPrefixNormalizer.cs" Link="XamlPrefixNormalizer.cs" />
     <Compile Include="..\WinUIXamlDesigner.UnoHost\AttachedPropertyQualifier.cs" Link="AttachedPropertyQualifier.cs" />
     <Compile Include="..\WinUIXamlDesigner.UnoHost\CompiledXamlControlSubstituter.cs" Link="CompiledXamlControlSubstituter.cs" />

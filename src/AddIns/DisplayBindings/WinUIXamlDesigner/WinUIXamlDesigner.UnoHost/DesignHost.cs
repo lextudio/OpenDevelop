@@ -491,6 +491,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		async Task<DesignerSessionState> LoadDesignAsync(LoadDesignRequest request)
 		{
 			var snapshot = new DesignerSessionState { Accepted = true };
+			// The text the parser last saw: a reported position indexes into it, not into the user's source.
+			string? parsedXaml = null;
 			try
 			{
 				lastXaml = request.Xaml;
@@ -510,6 +512,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				// which is exactly the element being replaced.
 				object loaded = null;
 				Exception firstFailure = null;
+				string firstFailureText = null;
 				try
 				{
 					loaded = Microsoft.UI.Xaml.Markup.XamlReader.Load(Prepare(source));
@@ -517,6 +520,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				catch (Exception e)
 				{
 					firstFailure = e;
+					// Its position indexes into this text, not into the unwrapped retry's.
+					firstFailureText = parsedXaml;
 				}
 				if (loaded is not FrameworkElement
 					&& UnrenderableRootUnwrapper.TryUnwrapContentRoot(source, out var contentSource))
@@ -541,6 +546,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				}
 				if (firstFailure != null)
 				{
+					parsedXaml = firstFailureText;
 					throw firstFailure;
 				}
 				if (loaded is not FrameworkElement)
@@ -580,7 +586,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				// exist once markup from several sources shares one namespace scope. See
 				// XamlDocumentRepair.
 				string Prepare(string markup)
-					=> XamlDocumentRepair.Apply(TransformXamlBeforeLoad?.Invoke(markup) ?? markup);
+					=> parsedXaml = XamlDocumentRepair.Apply(TransformXamlBeforeLoad?.Invoke(markup) ?? markup);
 			}
 			catch (Exception e)
 			{
@@ -594,6 +600,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				// a component PRI lookup, or a control-template resource failure.
 				LogXamlLoadException(e);
 				var diagnostic = ToDiagnostic(e.GetBaseException(), request.FileName);
+				MapDiagnosticToSource(diagnostic, request.Xaml, parsedXaml);
 				// A page whose root element is its own abstract base class fails with WinRT's bare
 				// "No matching constructor found on type 'X'", which reads like a XAML authoring
 				// mistake. Name the real, unfixable-in-XAML reason instead.
@@ -795,6 +802,21 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				}
 			}
 			return diagnostic;
+		}
+
+		/// <summary>Moves a diagnostic's position from the text the parser saw (merged theme resources,
+		/// reserialized, design data injected) onto the user's own document; see
+		/// <see cref="XamlPositionMapper"/>. A position that cannot be mapped is left as reported.</summary>
+		static void MapDiagnosticToSource(DesignerDiagnostic diagnostic, string sourceXaml, string? parsedXaml)
+		{
+			// Column 0 means the parser gave only a line: there is no point to translate.
+			if (parsedXaml == null || diagnostic.Line < 1 || diagnostic.Column < 1 || string.Equals(parsedXaml, sourceXaml, StringComparison.Ordinal))
+				return;
+			if (XamlPositionMapper.MapToSource(sourceXaml, parsedXaml, diagnostic.Line, diagnostic.Column) is not { } mapped)
+				return;
+			diagnostic.Line = mapped.Line;
+			diagnostic.Column = mapped.Column;
+			diagnostic.EndColumn = mapped.EndColumn;
 		}
 
 		static void LogXamlLoadException(Exception exception)
