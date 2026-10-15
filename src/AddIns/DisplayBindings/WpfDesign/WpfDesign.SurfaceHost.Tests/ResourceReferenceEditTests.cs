@@ -92,4 +92,35 @@ public sealed class ResourceReferenceEditTests
 		Assert.False((await client.SetResourceReferenceAsync(1, children[1].Id, "Background", "Static", "Accent", timeout.Token)).Accepted);
 		Assert.Equal(before, Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text);
 	}
+
+	[Fact]
+	public async Task ChildHost_OffersAndWritesXamlLanguagePrimitiveResources()
+	{
+		// <x:Double> and the other XAML language primitives are real resources, not x: directives to skip.
+		const string primitives = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="root" Width="240" Height="160">
+			  <StackPanel.Resources>
+			    <x:Double x:Key="Big">24</x:Double>
+			    <x:Double x:Key="Small">10</x:Double>
+			    <x:String x:Key="Caption">Hello</x:String>
+			  </StackPanel.Resources>
+			  <Button x:Name="sized" Content="R" FontSize="{StaticResource Small}"/>
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(System.TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(WpfSurfaceHostRpcTests.HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(1, primitives), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var fontSize = Assert.Single(opened.Tree!.Children[0].Properties, property => property.Name == "FontSize");
+		Assert.Equal(("ResourceReference", "{StaticResource Small}"), (fontSize.EditorKind, fontSize.Value));
+		// Only the doubles fit FontSize, not the string.
+		Assert.Equal(new[] { "Big", "Small" }, fontSize.ResourceReferenceKeys);
+
+		var switched = await client.SetResourceReferenceAsync(1, opened.Tree.Children[0].Id, "FontSize", "Static", "Big", timeout.Token);
+		Assert.True(switched.Accepted, switched.Error);
+		var text = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.Contains("FontSize=\"{StaticResource Big}\"", text, System.StringComparison.Ordinal);
+		Assert.Contains("<x:Double x:Key=\"Small\">10</x:Double>", text, System.StringComparison.Ordinal);
+		Assert.Contains("<x:String x:Key=\"Caption\">Hello</x:String>", text, System.StringComparison.Ordinal);
+	}
 }
