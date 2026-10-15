@@ -685,6 +685,26 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 				: Failure(result.Error ?? "Items edit failed");
 		}
 
+		[DevFlowAction("od.forms-designer.properties-pad.edit-image-list", Description = "Click an ImageList Images row's real \"…\" button and apply an edit script to the image list dialog's model instead of the modal dialog: ';'-separated add:<image file path>, remove:<i>, up:<i>, down:<i>, rename:<i>:<key>, or 'cancel'. A committed edit is the IDE-owned source-and-resource transaction, not a child-host write RPC")]
+		public static string EditImageListThroughPropertiesPad(string propertyName, string script)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent?.IsRemoteDesignerLoaded != true)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			var grid = PropertyPadGrid;
+			if (grid?.SelectedObject == null)
+				return Failure("Properties pad has no selected WinForms design item");
+			var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(candidate => candidate.PropertyName == propertyName);
+			var button = (item?.Editor as DockPanel)?.Children.OfType<Button>()
+				.FirstOrDefault(candidate => candidate.Name == FormsImageListEditor.EditButtonName);
+			if (button == null || !button.IsEnabled)
+				return Failure("Properties pad did not render an enabled image list editor button: " + propertyName);
+			var result = ImageListEditing.RunScriptedEdit(button, script);
+			return result.Success
+				? JsonSerializer.Serialize(new { success = true, selectedName = viewContent.RemoteDesignerSelectedComponent, before = result.Before, after = result.After, committed = result.Committed })
+				: Failure(result.Error ?? "Image list edit failed");
+		}
+
 		[DevFlowAction("od.forms-designer.properties-pad.replace-resource-image", Description = "Replace a supported image resource through the selected real Properties-pad descriptor; this drives the IDE-owned resource transaction, not a child-host write RPC")]
 		public static string ReplaceResourceImageThroughPropertiesPad(string propertyName, string base64ImageBytes)
 		{

@@ -169,6 +169,25 @@ namespace ICSharpCode.FormsDesigner.Services
 			return ResxImageResourceEditor.ReplaceExistingImage(resourceBytes, resourceKey, imageBytes);
 		}
 
+		/// <summary>Builds, but does not apply, a .resx with the binary-formatted object <paramref name="value"/> (an ImageList's
+		/// <c>ImageStream</c>, as the designer host serialized it) stored under <paramref name="resourceKey"/>.</summary>
+		public byte[] CreateBinaryObjectEntry(OpenedFile file, string resourceKey, string value)
+		{
+			if (!resourceByFile.ContainsKey(file) || !String.Equals(Path.GetExtension(file.FileName), ".resx", StringComparison.OrdinalIgnoreCase))
+				throw new InvalidOperationException("The resource file is not an owned .resx document.");
+			if (!TryGetBytes(file, out var resourceBytes)) throw new InvalidOperationException("The resource bytes are unavailable: " + file.FileName);
+			return ResxImageResourceEditor.SetBinaryObject(resourceBytes, resourceKey, value);
+		}
+
+		/// <summary>Builds, but does not apply, a .resx without the binary-formatted object entry <paramref name="resourceKey"/>.</summary>
+		public byte[] RemoveBinaryObjectEntry(OpenedFile file, string resourceKey)
+		{
+			if (!resourceByFile.ContainsKey(file) || !String.Equals(Path.GetExtension(file.FileName), ".resx", StringComparison.OrdinalIgnoreCase))
+				throw new InvalidOperationException("The resource file is not an owned .resx document.");
+			if (!TryGetBytes(file, out var resourceBytes)) throw new InvalidOperationException("The resource bytes are unavailable: " + file.FileName);
+			return ResxImageResourceEditor.RemoveBinaryObject(resourceBytes, resourceKey);
+		}
+
 		public byte[] CreateImageEntry(OpenedFile file, string resourceKey, string resourceType, byte[] imageBytes)
 		{
 			if (!resourceByFile.ContainsKey(file) || !String.Equals(Path.GetExtension(file.FileName), ".resx", StringComparison.OrdinalIgnoreCase))

@@ -228,6 +228,58 @@ namespace ICSharpCode.FormsDesigner
 			remoteUndo.Push(before); remoteRedo.Clear(); ApplyRestoredRemoteState(state);
 		}
 
+		/// <summary>Replaces an ImageList's images as one IDE-owned document transaction: the host builds the <c>ImageStream</c> resx entry (it only
+		/// returns it), and the IDE writes that entry into the form's .resx and rewrites the stream binding and <c>SetKeyName</c> keys in the designer
+		/// source, then hands the child the completed snapshot. An empty list removes the binding and the entry.</summary>
+		internal void SetRemoteImageList(string componentName, DesignerPropertyInfo property, IReadOnlyList<DesignerImageListEntry> images)
+		{
+			EnsureRemoteDesignerLoaded();
+			if (property == null || !String.Equals(property.EditorKind, "ImageListImages", StringComparison.Ordinal))
+				throw new InvalidOperationException("This property is not an editable image list.");
+			var streamKey = componentName + ".ImageStream";
+			if (!String.IsNullOrEmpty(property.ResourceKey) && !String.Equals(property.ResourceKey, streamKey, StringComparison.Ordinal))
+				throw new InvalidOperationException("The image list's stream resource does not belong to this component.");
+			var resources = Files.Where(file => !sourceCodeStorage.ContainsFile(file)
+				&& String.Equals(Path.GetExtension(file.FileName), ".resx", StringComparison.OrdinalIgnoreCase)).ToList();
+			var resource = String.IsNullOrEmpty(property.ResourceFileName)
+				? resources.FirstOrDefault()
+				: resources.FirstOrDefault(file => String.Equals(file.FileName.ToString(), property.ResourceFileName, StringComparison.OrdinalIgnoreCase));
+			if (resource == null && images.Count > 0)
+				throw new InvalidOperationException("Create a form .resx resource file before adding images to an image list.");
+
+			DesignerImageListResource built = null;
+			if (images.Count > 0) {
+				var size = (property.ImageListSize ?? "").Split(',');
+				if (size.Length != 2 || !Int32.TryParse(size[0], out var width) || !Int32.TryParse(size[1], out var height))
+					throw new InvalidOperationException("The image list's size is unknown.");
+				built = remoteClient.BuildImageListResourceAsync(images, width, height, property.ImageListColorDepth,
+					System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+				if (!built.Accepted)
+					throw new InvalidOperationException(built.Error);
+				if (!String.Equals(built.MimeType, ResxImageResourceEditor.BinaryObjectMimeType, StringComparison.OrdinalIgnoreCase))
+					throw new InvalidOperationException("The designer host returned an unexpected resource type: " + built.MimeType);
+			}
+
+			var before = CaptureRemoteDocuments();
+			var target = CaptureRemoteDocuments();
+			var sourceName = DesignerCodeFile.FileName.ToString();
+			var keys = images.Select(image => image.Key ?? "").ToList();
+			var rewritten = sourceName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase)
+				? ImageListSourceEditing.TryRewriteVisualBasic(target.SourceTexts[sourceName], componentName, streamKey, keys, out var text, out var error)
+				: ImageListSourceEditing.TryRewriteCSharp(target.SourceTexts[sourceName], componentName, streamKey, keys, out text, out error);
+			if (!rewritten)
+				throw new InvalidOperationException(error);
+			target.SourceTexts[sourceName] = text;
+			if (resource != null)
+				target.ResourceBytes[resource.FileName.ToString()] = built != null
+					? resourceStore.CreateBinaryObjectEntry(resource, streamKey, built.Value)
+					: resourceStore.RemoveBinaryObjectEntry(resource, streamKey);
+			var state = RestoreRemoteDocuments(target);
+			remoteUndo.Push(before);
+			remoteRedo.Clear();
+			ApplyRestoredRemoteState(state);
+		}
+
 		bool CanCreateRemoteResourceImage(DesignerPropertyInfo property) => property != null && String.IsNullOrEmpty(property.ResourceFileName)
 			&& property.TypeName is "System.Drawing.Image" or "System.Drawing.Bitmap" or "System.Drawing.Icon"
 			&& Files.Any(file => !sourceCodeStorage.ContainsFile(file) && String.Equals(Path.GetExtension(file.FileName), ".resx", StringComparison.OrdinalIgnoreCase));
@@ -2063,7 +2115,7 @@ namespace ICSharpCode.FormsDesigner
 			return component;
 		}
 
-		sealed class RemoteComponentPropertyProxy : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IResourceImageEditorHost, IItemsCollectionEditorHost
+		sealed class RemoteComponentPropertyProxy : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IResourceImageEditorHost, IItemsCollectionEditorHost, IImageListEditorHost
 		{
 			readonly FormsDesignerViewContent owner;
 			string name;
@@ -2173,6 +2225,15 @@ namespace ICSharpCode.FormsDesigner
 					owner.SetRemoteStringArray(name, propertyName, items.Select(item => item.Text ?? "").ToList());
 			}
 
+			void IImageListEditorHost.SetImageList(string propertyName, IReadOnlyList<DesignerImageListEntry> images)
+			{
+				var imageListProperty = remoteProperties.SingleOrDefault(item => String.Equals(item.Name, propertyName, StringComparison.Ordinal)
+					&& String.Equals(item.EditorKind, "ImageListImages", StringComparison.Ordinal));
+				if (imageListProperty == null)
+					throw new InvalidOperationException("This property is not an editable image list.");
+				owner.SetRemoteImageList(name, imageListProperty, images);
+			}
+
 			void IResourceImageEditorHost.ReplaceResourceImage(string propertyName, byte[] imageBytes)
 			{
 				var imageProperty = remoteProperties.SingleOrDefault(item => String.Equals(item.Name, propertyName, StringComparison.Ordinal)
@@ -2253,7 +2314,7 @@ namespace ICSharpCode.FormsDesigner
 			}
 		}
 
-		sealed class RemotePropertyDescriptor : PropertyDescriptor, IResourceImageProperty, IItemsCollectionProperty
+		sealed class RemotePropertyDescriptor : PropertyDescriptor, IResourceImageProperty, IItemsCollectionProperty, IImageListProperty
 		{
 			readonly FormsDesignerViewContent owner;
 			readonly string componentName;
@@ -2286,6 +2347,8 @@ namespace ICSharpCode.FormsDesigner
 				// Read-only to generic editing; the "…" editor commits the whole list.
 				if (String.Equals(property.EditorKind, "ItemsCollection", StringComparison.Ordinal))
 					attributes.Add(new EditorAttribute(typeof(FormsItemsCollectionEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
+				else if (String.Equals(property.EditorKind, "ImageListImages", StringComparison.Ordinal))
+					attributes.Add(new EditorAttribute(typeof(FormsImageListEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 				return attributes.ToArray();
 			}
 
@@ -2300,6 +2363,9 @@ namespace ICSharpCode.FormsDesigner
 			internal IReadOnlyList<string> SuggestedValues => property.SuggestedValues;
 			string IResourceImageProperty.EditorKind => property.EditorKind;
 			IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => property.CollectionItems;
+			IReadOnlyList<DesignerImageListEntry> IImageListProperty.Images => property.ImageListImages;
+			string IImageListProperty.ImageSize => property.ImageListSize;
+			string IImageListProperty.ColorDepth => property.ImageListColorDepth;
 			string IResourceImageProperty.TypeName => property.TypeName;
 			string IResourceImageProperty.ResourceFileName => property.ResourceFileName;
 			string IResourceImageProperty.ResourceKey => property.ResourceKey;
