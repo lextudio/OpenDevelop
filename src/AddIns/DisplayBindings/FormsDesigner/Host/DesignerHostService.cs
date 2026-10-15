@@ -278,6 +278,10 @@ sealed class DesignerHostService : IDesignerChildService
 			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
 		if (component is TreeView treeView)
 			return SetTreeNodes(host, treeView, elementId, baseVersion, items ?? Array.Empty<DesignerCollectionItemEdit>());
+		if (component is DataGridView gridView)
+			return SetDataGridViewColumns(gridView, elementId, baseVersion, items ?? Array.Empty<DesignerCollectionItemEdit>());
+		if (component is TabControl tabControl)
+			return SetTabPages(tabControl, elementId, baseVersion, items ?? Array.Empty<DesignerCollectionItemEdit>());
 		if (component is ListView listView) {
 			// Columns and Items are both list-editor rows of a ListView; a caller that names no
 			// property (an older client) means Columns, the only one it could edit.
@@ -432,6 +436,136 @@ sealed class DesignerHostService : IDesignerChildService
 				.Select(type => type!.FullName!).OrderBy(name => name, StringComparer.Ordinal).Take(500));
 		}
 		return typeSuggestions = project.Concat(CommonTypeSuggestions.Where(name => !project.Contains(name))).ToList();
+	}
+
+	/// <summary>A TabControl's pages, when every one is a designer component (a named field in the
+	/// source, as Visual Studio writes them) and the source adds them through
+	/// <c>Controls.Add</c> - the shape whose add/remove/reorder this editor can express as component
+	/// and statement edits. A <c>TabPages.Add</c> in the source is another spelling it would not
+	/// replace, so it is left to the source.</summary>
+	bool TryGetSitedPages(TabControl tabControl, out List<TabPage> pages)
+	{
+		pages = tabControl.TabPages.Cast<TabPage>().ToList();
+		return pages.All(page => page.Site?.Name is { Length: > 0 })
+			&& !SourceMentionsMember(tabControl.Site?.Name ?? "", "TabPages");
+	}
+
+	/// <summary>Whether InitializeComponent mentions <c>&lt;ownerId&gt;.&lt;member&gt;</c> anywhere.</summary>
+	bool SourceMentionsMember(string ownerId, string member)
+	{
+		var file = CurrentDesignerFile();
+		if (IsVisualBasic) {
+			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+			return vbRoot.DescendantNodes().OfType<VbSyntax.MemberAccessExpressionSyntax>().Any(access =>
+				access.Name.Identifier.ValueText == member && access.Expression != null && VbSimpleTargetName(access.Expression) == ownerId);
+		}
+		return CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot().DescendantNodes().OfType<MemberAccessExpressionSyntax>().Any(access =>
+			access.Name.Identifier.ValueText == member && SimpleTargetName(access.Expression) == ownerId);
+	}
+
+	/// <summary>Applies the list editor to TabControl.TabPages (see <see cref="SetSitedComponentList"/>);
+	/// a page that still holds controls cannot be dropped, its children would be left without a parent.</summary>
+	DesignerSessionState SetTabPages(TabControl tabControl, string elementId, long baseVersion, DesignerCollectionItemEdit[] items)
+	{
+		if (!TryGetSitedPages(tabControl, out var existing))
+			throw new InvalidOperationException($"{elementId}.TabPages has pages that are not designer components.");
+		return SetSitedComponentList(elementId, baseVersion, items, existing.Select(page => page.Site!.Name!).ToList(),
+			existing.Select(page => page.Text ?? "").ToList(),
+			existing.Select(page => page.Controls.Count > 0 ? $"{page.Site!.Name} still holds controls; move or delete them before removing the page." : null).ToList(),
+			typeof(TabPage), "tabPage", "Text", "Controls", "System.Windows.Forms.Control", "pages");
+	}
+
+	/// <summary>A DataGridView's columns, when every one is a designer component, the grid is not data
+	/// bound, and the source adds them through its own <c>Columns</c> collection.</summary>
+	static bool TryGetSitedGridColumns(DataGridView grid, out List<DataGridViewColumn> columns)
+	{
+		columns = grid.Columns.Cast<DataGridViewColumn>().ToList();
+		return grid.DataSource == null && columns.All(column => column.Site?.Name is { Length: > 0 });
+	}
+
+	/// <summary>Applies the list editor to DataGridView.Columns: each entry's text is the column's
+	/// HeaderText (see <see cref="SetSitedComponentList"/>); a new column is a
+	/// <c>DataGridViewTextBoxColumn</c> with its Name set to its field.</summary>
+	DesignerSessionState SetDataGridViewColumns(DataGridView grid, string elementId, long baseVersion, DesignerCollectionItemEdit[] items)
+	{
+		if (!TryGetSitedGridColumns(grid, out var existing))
+			throw new InvalidOperationException($"{elementId}.Columns has columns that are not designer components.");
+		return SetSitedComponentList(elementId, baseVersion, items, existing.Select(column => column.Site!.Name!).ToList(),
+			existing.Select(column => column.HeaderText ?? "").ToList(), existing.Select(_ => (string?)null).ToList(),
+			typeof(DataGridViewTextBoxColumn), "dataGridViewTextBoxColumn", "HeaderText", "Columns", "System.Windows.Forms.DataGridViewColumn", "columns",
+			nameProperty: "Name");
+	}
+
+	/// <summary>Applies a list editor to a collection of named designer components: kept entries
+	/// (SourceIndex) keep their component and get its <paramref name="textProperty"/> updated; new
+	/// entries add a <paramref name="namePrefix"/>N component of <paramref name="addedType"/> with its
+	/// field; dropped ones lose their field and statements (unless <paramref name="removalRefusals"/>
+	/// names a reason, which refuses the edit); the order is one <c>AddRange</c> on
+	/// <paramref name="collectionMember"/>. Source-first like <see cref="SetListViewColumns"/>: the
+	/// source is rewritten and the surface rebuilt from it, and a failure restores the original.</summary>
+	DesignerSessionState SetSitedComponentList(string elementId, long baseVersion, DesignerCollectionItemEdit[] items,
+		IReadOnlyList<string> existingNames, IReadOnlyList<string> existingTexts, IReadOnlyList<string?> removalRefusals,
+		Type addedType, string namePrefix, string textProperty, string collectionMember, string collectionElementType, string noun,
+		string? nameProperty = null)
+	{
+		var sources = items.Where(entry => entry.SourceIndex >= 0).Select(entry => entry.SourceIndex).ToList();
+		if (items.Any(entry => entry.SourceIndex < -1) || sources.Any(index => index >= existingNames.Count) || sources.Distinct().Count() != sources.Count)
+			throw new ArgumentException($"Invalid {noun} source index.", nameof(items));
+		var removedNames = existingNames.Where((_, index) => !sources.Contains(index)).ToList();
+		for (var index = 0; index < existingNames.Count; index++)
+			if (!sources.Contains(index) && removalRefusals[index] is { } refusal)
+				throw new InvalidOperationException(refusal);
+		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost
+			?? throw new InvalidOperationException("The designer surface is unavailable.");
+		var taken = new HashSet<string>(host.Container.Components.Cast<IComponent>().Select(component => component.Site?.Name ?? ""), StringComparer.Ordinal);
+		var ordered = new List<string>();
+		var added = new List<string>();
+		var texts = new List<(string Name, string Text)>();
+		foreach (var entry in items) {
+			var text = entry.Text ?? "";
+			if (entry.SourceIndex >= 0) {
+				var name = existingNames[entry.SourceIndex];
+				if (!String.Equals(existingTexts[entry.SourceIndex], text, StringComparison.Ordinal))
+					texts.Add((name, text));
+				ordered.Add(name);
+			} else {
+				var index = 1;
+				while (taken.Contains(namePrefix + index))
+					index++;
+				var name = namePrefix + index;
+				taken.Add(name);
+				added.Add(name);
+				texts.Add((name, text));
+				ordered.Add(name);
+			}
+		}
+		var designerFile = CurrentDesignerFile();
+		var originalSource = designerFile.Text;
+		try {
+			foreach (var name in removedNames)
+				RewriteDeletedComponent(name);
+			foreach (var name in added) {
+				RewriteAddedComponent(addedType, name);
+				MoveCreationAfterOwner(name, elementId);
+				if (nameProperty != null)
+					RewriteProperty(name, nameProperty, name);
+			}
+			foreach (var (name, text) in texts)
+				RewriteProperty(name, textProperty, text);
+			RewriteCollectionStatements(elementId, collectionMember, ordered.Count == 0 ? null
+				: IsVisualBasic ? $"Me.{elementId}.{collectionMember}.AddRange(New {collectionElementType}() {{{string.Join(", ", ordered.Select(name => "Me." + name))}}})"
+				: $"this.{elementId}.{collectionMember}.AddRange(new {collectionElementType}[] {{ {string.Join(", ", ordered.Select(name => "this." + name))} }});");
+			CreateDesignSurface(current!);
+		} catch (Exception exception) {
+			designerFile.Text = originalSource;
+			try {
+				CreateDesignSurface(current!);
+			} catch (Exception recoveryException) {
+				return Rejected(baseVersion, $"Editing the {noun} failed and the design surface could not be restored: " + recoveryException.Message);
+			}
+			return Rejected(baseVersion, $"Editing the {noun} failed: " + exception.Message);
+		}
+		return CurrentState(baseVersion);
 	}
 
 	/// <summary>The texts of a ListView's items as the designer SOURCE declares them, when every
@@ -4153,6 +4287,23 @@ sealed class DesignerHostService : IDesignerChildService
 				result[^1].Value = "(" + columns.Count + (columns.Count == 1 ? " column)" : " columns)");
 				result[^1].CollectionItems = columns.Select(column => column.Text ?? "").ToList();
 				result[^1].ShouldSerialize = columns.Count > 0;
+			}
+			if (property.Name == "Columns" && component is DataGridView gridOwner && TryGetSitedGridColumns(gridOwner, out var gridColumns)
+				&& !SourceMentionsMember(gridOwner.Site?.Name ?? "", "Rows")) {
+				result[^1].Kind = "Collection";
+				result[^1].EditorKind = "ItemsCollection";
+				result[^1].IsReadOnly = true;
+				result[^1].Value = "(" + gridColumns.Count + (gridColumns.Count == 1 ? " column)" : " columns)");
+				result[^1].CollectionItems = gridColumns.Select(column => column.HeaderText ?? "").ToList();
+				result[^1].ShouldSerialize = gridColumns.Count > 0;
+			}
+			if (property.Name == "TabPages" && component is TabControl pagesOwner && TryGetSitedPages(pagesOwner, out var sitedPages)) {
+				result[^1].Kind = "Collection";
+				result[^1].EditorKind = "ItemsCollection";
+				result[^1].IsReadOnly = true;
+				result[^1].Value = "(" + sitedPages.Count + (sitedPages.Count == 1 ? " page)" : " pages)");
+				result[^1].CollectionItems = sitedPages.Select(page => page.Text ?? "").ToList();
+				result[^1].ShouldSerialize = sitedPages.Count > 0;
 			}
 			if (property.Name == "Items" && component is ListView itemsOwner && TryReadListViewItems(itemsOwner.Site?.Name ?? "", out var listViewTexts)) {
 				result[^1].Kind = "Collection";

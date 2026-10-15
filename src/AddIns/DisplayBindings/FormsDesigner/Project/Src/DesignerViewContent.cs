@@ -2167,7 +2167,7 @@ namespace ICSharpCode.FormsDesigner
 					throw new InvalidOperationException("This property is not an editable items collection.");
 				// Items, TreeView.Nodes and ListView.Columns are live collections rewritten as Add/AddRange (design/set-items);
 				// any other list row is a string[] property assigned as a whole.
-				if (propertyName is "Items" or "Nodes" or "Columns")
+				if (propertyName is "Items" or "Nodes" or "Columns" or "TabPages")
 					owner.SetRemoteItems(name, items, propertyName);
 				else
 					owner.SetRemoteStringArray(name, propertyName, items.Select(item => item.Text ?? "").ToList());

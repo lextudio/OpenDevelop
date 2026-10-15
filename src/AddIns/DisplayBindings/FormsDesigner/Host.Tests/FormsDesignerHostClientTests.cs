@@ -1101,6 +1101,205 @@ public sealed class FormsDesignerHostClientTests
 		Assert.NotEqual("ItemsCollection", Items("aliased").EditorKind);
 	}
 
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task ChildHost_EditsTabControlPagesAsTabPageComponents(bool visualBasic)
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = visualBasic ? VbSnapshot(1, "button1") : Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = visualBasic
+			? designer.Text
+				.Replace("Me.Controls.Add(Me.button1)", """
+					Me.tabs = New System.Windows.Forms.TabControl()
+					        Me.pageOne = New System.Windows.Forms.TabPage()
+					        Me.pageTwo = New System.Windows.Forms.TabPage()
+					        Me.tabs.Controls.Add(Me.pageOne)
+					        Me.tabs.Controls.Add(Me.pageTwo)
+					        Me.pageOne.Text = "One"
+					        Me.pageTwo.Text = "Two"
+					        Me.Controls.Add(Me.button1)
+					        Me.Controls.Add(Me.tabs)
+					""", StringComparison.Ordinal)
+				.Replace("Friend WithEvents button1 As System.Windows.Forms.Button",
+					"Friend WithEvents button1 As System.Windows.Forms.Button\n    Friend WithEvents tabs As System.Windows.Forms.TabControl\n    Friend WithEvents pageOne As System.Windows.Forms.TabPage\n    Friend WithEvents pageTwo As System.Windows.Forms.TabPage", StringComparison.Ordinal)
+			: designer.Text
+				.Replace("this.Controls.Add(this.button1);", """
+					this.tabs = new System.Windows.Forms.TabControl();
+					        this.pageOne = new System.Windows.Forms.TabPage();
+					        this.pageTwo = new System.Windows.Forms.TabPage();
+					        this.tabs.Controls.Add(this.pageOne);
+					        this.tabs.Controls.Add(this.pageTwo);
+					        this.pageOne.Text = "One";
+					        this.pageTwo.Text = "Two";
+					        this.Controls.Add(this.button1);
+					        this.Controls.Add(this.tabs);
+					""", StringComparison.Ordinal)
+				.Replace("private System.Windows.Forms.Button button1;",
+					"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TabControl tabs;\n    private System.Windows.Forms.TabPage pageOne;\n    private System.Windows.Forms.TabPage pageTwo;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Pages(DesignerSessionState state)
+			=> state.Components.Single(component => component.Name == "tabs").Properties.Single(property => property.Name == "TabPages");
+		Assert.Equal("ItemsCollection", Pages(opened).EditorKind);
+		Assert.Equal(new[] { "One", "Two" }, Pages(opened).CollectionItems);
+
+		var edited = await client.SetItemsAsync(1, "tabs", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "Two" },
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Uno" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "Three" } }, timeout.Token, "TabPages");
+		Assert.True(edited.Accepted, edited.Error);
+		Assert.Equal(new[] { "Two", "Uno", "Three" }, Pages(edited).CollectionItems);
+		Assert.Contains(edited.Components, component => component.Name == "tabPage1");
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Matches(@"\{\s*((this|Me)\.)?pageTwo,\s*((this|Me)\.)?pageOne,\s*((this|Me)\.)?tabPage1\s*\}", text);
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(text, @"tabs\.Controls\.(Add|AddRange)\("));
+
+		designer.Text = text;
+		snapshot.Version = 2;
+		var reopened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error);
+		Assert.Equal(new[] { "Two", "Uno", "Three" }, Pages(reopened).CollectionItems);
+
+		// Dropping a page removes its field and statements.
+		var dropped = await client.SetItemsAsync(2, "tabs", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Two" },
+			new DesignerCollectionItemEdit { SourceIndex = 2, Text = "Three" } }, timeout.Token, "TabPages");
+		Assert.True(dropped.Accepted, dropped.Error);
+		var droppedText = DesignerText(await client.FlushAsync(2, timeout.Token));
+		Assert.DoesNotContain("pageOne", droppedText, StringComparison.Ordinal);
+		Assert.Equal(new[] { "Two", "Three" }, Pages(dropped).CollectionItems);
+	}
+
+	[Fact]
+	public async Task ChildHost_RefusesToDropATabPageThatHoldsControls()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				this.tabs = new System.Windows.Forms.TabControl();
+				        this.pageOne = new System.Windows.Forms.TabPage();
+				        this.inner = new System.Windows.Forms.Label();
+				        this.pageOne.Controls.Add(this.inner);
+				        this.tabs.Controls.Add(this.pageOne);
+				        this.pageOne.Text = "One";
+				        this.Controls.Add(this.button1);
+				        this.Controls.Add(this.tabs);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TabControl tabs;\n    private System.Windows.Forms.TabPage pageOne;\n    private System.Windows.Forms.Label inner;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var before = DesignerText(await client.FlushAsync(1, timeout.Token));
+
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetItemsAsync(1, "tabs", Array.Empty<DesignerCollectionItemEdit>(), timeout.Token, "TabPages"));
+
+		Assert.Equal(before, DesignerText(await client.FlushAsync(1, timeout.Token)));
+		// Renaming it is fine.
+		var renamed = await client.SetItemsAsync(1, "tabs", new[] { new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Uno" } }, timeout.Token, "TabPages");
+		Assert.True(renamed.Accepted, renamed.Error);
+		Assert.Contains("\"Uno\"", DesignerText(await client.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task ChildHost_EditsDataGridViewColumnsAsColumnComponents(bool visualBasic)
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = visualBasic ? VbSnapshot(1, "button1") : Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = visualBasic
+			? designer.Text
+				.Replace("Me.Controls.Add(Me.button1)", """
+					Me.grid = New System.Windows.Forms.DataGridView()
+					        Me.colName = New System.Windows.Forms.DataGridViewTextBoxColumn()
+					        Me.colDone = New System.Windows.Forms.DataGridViewCheckBoxColumn()
+					        Me.colName.HeaderText = "Name"
+					        Me.colName.Name = "colName"
+					        Me.colDone.HeaderText = "Done"
+					        Me.colDone.Name = "colDone"
+					        Me.grid.Columns.AddRange(New System.Windows.Forms.DataGridViewColumn() {Me.colName, Me.colDone})
+					        Me.Controls.Add(Me.button1)
+					        Me.Controls.Add(Me.grid)
+					""", StringComparison.Ordinal)
+				.Replace("Friend WithEvents button1 As System.Windows.Forms.Button",
+					"Friend WithEvents button1 As System.Windows.Forms.Button\n    Friend WithEvents grid As System.Windows.Forms.DataGridView\n    Friend WithEvents colName As System.Windows.Forms.DataGridViewTextBoxColumn\n    Friend WithEvents colDone As System.Windows.Forms.DataGridViewCheckBoxColumn", StringComparison.Ordinal)
+			: designer.Text
+				.Replace("this.Controls.Add(this.button1);", """
+					this.grid = new System.Windows.Forms.DataGridView();
+					        this.colName = new System.Windows.Forms.DataGridViewTextBoxColumn();
+					        this.colDone = new System.Windows.Forms.DataGridViewCheckBoxColumn();
+					        this.colName.HeaderText = "Name";
+					        this.colName.Name = "colName";
+					        this.colDone.HeaderText = "Done";
+					        this.colDone.Name = "colDone";
+					        this.grid.Columns.AddRange(new System.Windows.Forms.DataGridViewColumn[] { this.colName, this.colDone });
+					        this.Controls.Add(this.button1);
+					        this.Controls.Add(this.grid);
+					""", StringComparison.Ordinal)
+				.Replace("private System.Windows.Forms.Button button1;",
+					"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.DataGridView grid;\n    private System.Windows.Forms.DataGridViewTextBoxColumn colName;\n    private System.Windows.Forms.DataGridViewCheckBoxColumn colDone;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Columns(DesignerSessionState state)
+			=> state.Components.Single(component => component.Name == "grid").Properties.Single(property => property.Name == "Columns");
+		Assert.Equal("ItemsCollection", Columns(opened).EditorKind);
+		Assert.Equal(new[] { "Name", "Done" }, Columns(opened).CollectionItems);
+
+		var edited = await client.SetItemsAsync(1, "grid", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "Finished" },
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Name" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "Notes" } }, timeout.Token, "Columns");
+		Assert.True(edited.Accepted, edited.Error);
+		Assert.Equal(new[] { "Finished", "Name", "Notes" }, Columns(edited).CollectionItems);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Matches(@"\{\s*((this|Me)\.)?colDone,\s*((this|Me)\.)?colName,\s*((this|Me)\.)?dataGridViewTextBoxColumn1\s*\}", text);
+		Assert.Contains("\"Notes\"", text, StringComparison.Ordinal);
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(text, @"grid\.Columns\.(Add|AddRange)\("));
+
+		designer.Text = text;
+		snapshot.Version = 2;
+		var reopened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error);
+		Assert.Equal(new[] { "Finished", "Name", "Notes" }, Columns(reopened).CollectionItems);
+		var dropped = await client.SetItemsAsync(2, "grid", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "Name" } }, timeout.Token, "Columns");
+		Assert.True(dropped.Accepted, dropped.Error);
+		var droppedText = DesignerText(await client.FlushAsync(2, timeout.Token));
+		Assert.DoesNotContain("colDone", droppedText, StringComparison.Ordinal);
+		Assert.DoesNotContain("dataGridViewTextBoxColumn1", droppedText, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task ChildHost_KeepsDataGridViewColumnsReadOnlyWhenRowsAreAuthored()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				this.grid = new System.Windows.Forms.DataGridView();
+				        this.colName = new System.Windows.Forms.DataGridViewTextBoxColumn();
+				        this.grid.Columns.AddRange(new System.Windows.Forms.DataGridViewColumn[] { this.colName });
+				        this.grid.Rows.Add("x");
+				        this.Controls.Add(this.button1);
+				        this.Controls.Add(this.grid);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.DataGridView grid;\n    private System.Windows.Forms.DataGridViewTextBoxColumn colName;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		Assert.NotEqual("ItemsCollection", opened.Components.Single(component => component.Name == "grid").Properties.Single(property => property.Name == "Columns").EditorKind);
+	}
+
 	[Fact]
 	public async Task ChildHost_RefusesAListViewItemEditThatWouldDropAnItemSetting()
 	{
