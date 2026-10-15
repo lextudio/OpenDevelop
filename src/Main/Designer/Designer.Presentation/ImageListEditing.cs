@@ -141,6 +141,11 @@ public static class ImageListEditing
 	public static byte[]? ReadAsPng(string path)
 	{
 		try {
+			// A PNG is used as is: lossless, and the only path that works where WPF has no native encoder
+			// (LibreWPF on macOS throws from PngBitmapEncoder).
+			var bytes = File.ReadAllBytes(Path.GetFullPath(path));
+			if (IsPng(bytes))
+				return bytes;
 			var decoder = BitmapDecoder.Create(new Uri(Path.GetFullPath(path)), BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
 			var encoder = new PngBitmapEncoder();
 			encoder.Frames.Add(BitmapFrame.Create(decoder.Frames[0]));
@@ -151,6 +156,10 @@ public static class ImageListEditing
 			return null;
 		}
 	}
+
+	static bool IsPng(byte[] bytes)
+		=> bytes.Length > 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47
+			&& bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A;
 
 	/// <summary>
 	/// Applies an edit script to a model, as a user would in the dialog: ';'-separated <c>add:&lt;path&gt;</c> (an image file; its file

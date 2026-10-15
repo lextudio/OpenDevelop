@@ -12,6 +12,19 @@ public sealed class ImageListEditModelTests
 	static DesignerImageListEntry Image(string key, params byte[] png) => new() { Key = key, Png = png.Length == 0 ? RedPixel : png };
 
 	[Fact]
+	public void ReadAsPngPassesAPngFileThroughUnchanged()
+	{
+		var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "od-readaspng-" + System.Guid.NewGuid().ToString("N") + ".png");
+		System.IO.File.WriteAllBytes(path, RedPixel);
+		try {
+			Assert.Equal(RedPixel, ImageListEditing.ReadAsPng(path));
+		} finally {
+			System.IO.File.Delete(path);
+		}
+		Assert.Null(ImageListEditing.ReadAsPng(path));
+	}
+
+	[Fact]
 	public void StartsFromTheHostsImagesAndReadsTheSize()
 	{
 		var model = new ImageListEditModel(new[] { Image("a.png"), Image("") }, "24,32", "Depth8Bit");
