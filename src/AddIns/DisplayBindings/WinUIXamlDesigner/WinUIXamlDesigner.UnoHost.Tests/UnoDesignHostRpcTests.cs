@@ -250,6 +250,10 @@ public sealed class UnoDesignHostRpcTests
 	[InlineData(0, 0, 1280, 2.0, true)]
 	public async Task ChildHost_GeometryMatchesRasterPixels(int translateX, int translateY, int designWidth, double dpi, bool settingsCard = false, string? galleryTarget = null)
 	{
+		// SettingsCard comes from the CommunityToolkit settings controls, which only an app output
+		// directory supplies (--appbin); without one the type cannot resolve and the load is rejected.
+		if (settingsCard && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OD_GEOMETRY_APP_BIN")))
+			Assert.Skip("Set OD_GEOMETRY_APP_BIN to an app output directory containing CommunityToolkit.WinUI.Controls.SettingsControls.");
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
 		using var client = await StartAsync(timeout.Token);
 		var xaml = $"""

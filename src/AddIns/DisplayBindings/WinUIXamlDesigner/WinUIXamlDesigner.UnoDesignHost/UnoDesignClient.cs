@@ -205,7 +205,11 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	public async Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, DesignerViewport viewport, CancellationToken cancellationToken = default)
 	{
 		var state = await Document.UpdateAsync(snapshot, viewport, cancellationToken).ConfigureAwait(false);
-		SetRecoverySnapshot(snapshot, viewport);
+		// A rejected update (stale version, or markup the child could not load) must not replace
+		// the last accepted source as the crash-recovery authority; OpenAsync is the only place a
+		// rejected document becomes one, because a first load has nothing earlier to fall back to.
+		if (state.Accepted)
+			SetRecoverySnapshot(snapshot, viewport);
 		return state;
 	}
 

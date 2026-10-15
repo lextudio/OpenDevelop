@@ -1984,6 +1984,21 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			// so use it only for that transient zero-sized reporting case.
 			var width = element.ActualWidth > 0 ? element.ActualWidth : element.DesiredSize.Width;
 			var height = element.ActualHeight > 0 ? element.ActualHeight : element.DesiredSize.Height;
+			// The offset walk above knows only layout positions. When the element or an ancestor is
+			// moved by a RenderTransform the rendered pixels are elsewhere. (TransformToVisual is no
+			// help here: on an unparented headless tree it reports only the transform, losing the
+			// layout offsets, so the two are composed by hand.)
+			if (HasRenderTransform(element, root))
+			{
+				try
+				{
+					return TransformedBoundsInRoot(element, root, width, height);
+				}
+				catch (Exception e)
+				{
+					BoundsLog("  render transform bounds failed, using the layout offsets: " + e.Message);
+				}
+			}
 			if (trace is not null)
 			{
 				BoundsLog($"  bounds {element.GetType().Name}{(string.IsNullOrEmpty(element.Name) ? "" : ":" + element.Name)}"
@@ -1991,6 +2006,55 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 					+ $" desired={element.DesiredSize.Width}x{element.DesiredSize.Height} |{trace}");
 			}
 			return new Rect(x, y, width, height);
+		}
+
+		/// <summary>Bounds of <paramref name="element"/> in <paramref name="root"/>'s space: its local
+		/// rectangle is carried up the ancestor chain, applying each element's RenderTransform about
+		/// its RenderTransformOrigin and then its layout position in its parent.</summary>
+		static Rect TransformedBoundsInRoot(FrameworkElement element, UIElement root, double width, double height)
+		{
+			var left = 0.0; var top = 0.0; var right = width; var bottom = height;
+			for (FrameworkElement? current = element; current is not null && !ReferenceEquals(current, root);
+				current = VisualTreeHelper.GetParent(current) as FrameworkElement)
+			{
+				if (current.RenderTransform is { } transform
+					&& transform is not Microsoft.UI.Xaml.Media.TranslateTransform { X: 0, Y: 0 })
+				{
+					var currentWidth = current.ActualWidth > 0 ? current.ActualWidth : current.DesiredSize.Width;
+					var currentHeight = current.ActualHeight > 0 ? current.ActualHeight : current.DesiredSize.Height;
+					var originX = current.RenderTransformOrigin.X * currentWidth;
+					var originY = current.RenderTransformOrigin.Y * currentHeight;
+					double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
+					foreach (var (cx, cy) in new[] { (left, top), (right, top), (left, bottom), (right, bottom) })
+					{
+						var point = transform.TransformPoint(new Windows.Foundation.Point(cx - originX, cy - originY));
+						minX = Math.Min(minX, point.X + originX); maxX = Math.Max(maxX, point.X + originX);
+						minY = Math.Min(minY, point.Y + originY); maxY = Math.Max(maxY, point.Y + originY);
+					}
+					left = minX; top = minY; right = maxX; bottom = maxY;
+				}
+				var offset = current.ActualOffset;
+				var slot = Microsoft.UI.Xaml.Controls.Primitives.LayoutInformation.GetLayoutSlot(current);
+				var dx = offset.X != 0f || offset.Y != 0f ? offset.X : slot.X + current.Margin.Left;
+				var dy = offset.X != 0f || offset.Y != 0f ? offset.Y : slot.Y + current.Margin.Top;
+				left += dx; right += dx; top += dy; bottom += dy;
+			}
+			return new Rect(left, top, right - left, bottom - top);
+		}
+
+		static bool HasRenderTransform(FrameworkElement element, UIElement root)
+		{
+			for (FrameworkElement? current = element; current is not null && !ReferenceEquals(current, root);
+				current = VisualTreeHelper.GetParent(current) as FrameworkElement)
+			{
+				var transform = current.RenderTransform;
+				if (transform is null)
+					continue;
+				if (transform is Microsoft.UI.Xaml.Media.TranslateTransform { X: 0, Y: 0 })
+					continue;
+				return true;
+			}
+			return false;
 		}
 
 		/// <summary>Temporary positioning diagnostics: set OD_DESIGNHOST_BOUNDS_LOG=1 to append the
