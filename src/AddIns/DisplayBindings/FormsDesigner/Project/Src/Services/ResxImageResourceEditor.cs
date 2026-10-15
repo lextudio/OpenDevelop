@@ -84,18 +84,90 @@ namespace ICSharpCode.FormsDesigner.Services
 			return Encode(updated, encoding, preamble);
 		}
 
+		/// <summary>The mime type of a binary-formatted object entry, such as an ImageList's <c>ImageStream</c>.</summary>
+		public const string BinaryObjectMimeType = "application/x-microsoft.net.object.binary.base64";
+
+		/// <summary>
+		/// Stores an already serialized binary-formatted object (an ImageList's <c>ImageStream</c>, as built by the designer host) under
+		/// <paramref name="resourceKey"/>: an existing entry of that key and mime type gets its value replaced, anything else under
+		/// that key is refused (it would be overwritten), and a missing key adds a new entry. Nothing else in the document is touched.
+		/// </summary>
+		public static byte[] SetBinaryObject(byte[] resourceBytes, string resourceKey, string value)
+		{
+			if (resourceBytes == null)
+				throw new ArgumentNullException(nameof(resourceBytes));
+			if (String.IsNullOrWhiteSpace(resourceKey))
+				throw new ArgumentException("A resource key is required.", nameof(resourceKey));
+			if (String.IsNullOrWhiteSpace(value))
+				throw new ArgumentException("The serialized value is empty.", nameof(value));
+
+			var (text, encoding, preamble) = Decode(resourceBytes);
+			var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+			var wrapped = Wrap(value, newline);
+			if (TryFindDataElement(text, resourceKey, out var data)) {
+				if (!String.Equals(AttributeValue(data.Attributes, "mimetype"), BinaryObjectMimeType, StringComparison.OrdinalIgnoreCase))
+					throw new NotSupportedException("The resource '" + resourceKey + "' is not a binary-formatted object, so it will not be replaced.");
+				if (!TryFindValue(text, data.BodyStart, data.EndStart, out var valueStart, out var valueEnd))
+					throw new InvalidDataException("The resource key '" + resourceKey + "' has no value.");
+				return Encode(text.Substring(0, valueStart) + wrapped + text.Substring(valueEnd), encoding, preamble);
+			}
+			var rootEnd = FindRootEnd(text);
+			var entry = "  <data name=\"" + EscapeAttribute(resourceKey) + "\" mimetype=\"" + BinaryObjectMimeType + "\">" + newline
+				+ "    <value>" + wrapped + "</value>" + newline + "  </data>";
+			var prefix = rootEnd > 0 && !Char.IsWhiteSpace(text[rootEnd - 1]) ? newline : "";
+			return Encode(text.Insert(rootEnd, prefix + entry + newline), encoding, preamble);
+		}
+
+		/// <summary>Removes the binary-formatted object entry <paramref name="resourceKey"/>, whole, when it exists; any other entry under
+		/// that key is refused. Returns the document unchanged when the key is absent.</summary>
+		public static byte[] RemoveBinaryObject(byte[] resourceBytes, string resourceKey)
+		{
+			if (resourceBytes == null)
+				throw new ArgumentNullException(nameof(resourceBytes));
+			var (text, encoding, preamble) = Decode(resourceBytes);
+			if (!TryFindDataElement(text, resourceKey, out var data))
+				return resourceBytes;
+			if (!String.Equals(AttributeValue(data.Attributes, "mimetype"), BinaryObjectMimeType, StringComparison.OrdinalIgnoreCase))
+				throw new NotSupportedException("The resource '" + resourceKey + "' is not a binary-formatted object, so it will not be removed.");
+			// Take the line the element started on with it, so no blank line is left behind.
+			var start = data.Start;
+			while (start > 0 && (text[start - 1] == ' ' || text[start - 1] == '\t')) start--;
+			var end = data.End;
+			if (end < text.Length && text[end] == '\r') end++;
+			if (end < text.Length && text[end] == '\n') end++;
+			if (start > 0 && text[start - 1] != '\n' && text[start - 1] != '\r') { start = data.Start; end = data.End; }
+			return Encode(text.Remove(start, end - start), encoding, preamble);
+		}
+
+		/// <summary>Wraps a base64 value into 80-column lines the way Visual Studio does (indented, between line breaks).</summary>
+		static string Wrap(string value, string newline)
+		{
+			value = value.Trim();
+			if (value.Length <= 80)
+				return value;
+			var builder = new StringBuilder(newline);
+			for (var index = 0; index < value.Length; index += 80)
+				builder.Append("        ").Append(value, index, Math.Min(80, value.Length - index)).Append(newline);
+			return builder.Append("    ").ToString();
+		}
+
 		readonly struct ElementRange
 		{
-			public ElementRange(string attributes, int bodyStart, int endStart)
+			public ElementRange(string attributes, int bodyStart, int endStart, int start = 0, int end = 0)
 			{
 				Attributes = attributes;
 				BodyStart = bodyStart;
 				EndStart = endStart;
+				Start = start;
+				End = end;
 			}
 
 			public string Attributes { get; }
 			public int BodyStart { get; }
 			public int EndStart { get; }
+			/// <summary>The offset of the opening tag and the offset just past the closing tag.</summary>
+			public int Start { get; }
+			public int End { get; }
 		}
 
 		static bool TryFindDataElement(string text, string resourceKey, out ElementRange result)
@@ -126,7 +198,7 @@ namespace ICSharpCode.FormsDesigner.Services
 				}
 				if (found)
 					throw new InvalidDataException("The resource key '" + resourceKey + "' is defined more than once.");
-				match = new ElementRange(tag.Attributes, tag.End, child.Start);
+				match = new ElementRange(tag.Attributes, tag.End, child.Start, tag.Start, child.End);
 				found = true;
 				offset = endOffset;
 			}

@@ -138,4 +138,50 @@ public sealed class ResxImageResourceEditorTests
 		"<data name=\"" + key + "\" type=\"" + type + "\" mimetype=\"" + MimeType + "\"><value>AQID</value></data>";
 
 	static byte[] Png() => new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a };
+
+	const string BinaryMime = "application/x-microsoft.net.object.binary.base64";
+
+	[Fact]
+	public void SetBinaryObject_AddsAWrappedEntryAndLeavesTheRestAlone()
+	{
+		var original = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes("<root>\n  <data name=\"other\"><value>keep</value></data>\n</root>")).ToArray();
+		var value = new string('A', 200);
+
+		var updated = ResxImageResourceEditor.SetBinaryObject(original, "imageList1.ImageStream", value);
+		var text = Encoding.UTF8.GetString(updated, 3, updated.Length - 3).Replace("\r", "");
+
+		Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, updated.Take(3).ToArray());
+		Assert.Contains("<data name=\"other\"><value>keep</value></data>", text, StringComparison.Ordinal);
+		Assert.Contains("<data name=\"imageList1.ImageStream\" mimetype=\"" + BinaryMime + "\">", text, StringComparison.Ordinal);
+		// The value is wrapped at 80 columns between line breaks, as Visual Studio writes it, and still reads back whole.
+		Assert.All(text.Split('\n').Where(line => line.Trim().StartsWith("AAAA", StringComparison.Ordinal)), line => Assert.True(line.Trim().Length <= 80));
+		Assert.Equal(value, System.Xml.Linq.XDocument.Parse(text).Root!.Elements("data").Single(data => (string?)data.Attribute("name") == "imageList1.ImageStream").Element("value")!.Value.Trim().Replace("\n", "").Replace(" ", ""));
+	}
+
+	[Fact]
+	public void SetBinaryObject_ReplacesAnExistingStreamInPlaceAndRefusesAnotherKindOfEntry()
+	{
+		var original = Encoding.UTF8.GetBytes("<root><data name=\"a.ImageStream\" mimetype=\"" + BinaryMime + "\"><value>OLD</value></data><data name=\"x\"><value>keep</value></data></root>");
+
+		var updated = Encoding.UTF8.GetString(ResxImageResourceEditor.SetBinaryObject(original, "a.ImageStream", "NEW"));
+		Assert.Contains("<value>NEW</value>", updated, StringComparison.Ordinal);
+		Assert.DoesNotContain("OLD", updated, StringComparison.Ordinal);
+		Assert.Contains("<data name=\"x\"><value>keep</value></data>", updated, StringComparison.Ordinal);
+
+		var other = Encoding.UTF8.GetBytes("<root><data name=\"a.ImageStream\"><value>text</value></data></root>");
+		Assert.Throws<NotSupportedException>(() => ResxImageResourceEditor.SetBinaryObject(other, "a.ImageStream", "NEW"));
+		Assert.Throws<ArgumentException>(() => ResxImageResourceEditor.SetBinaryObject(original, "a.ImageStream", " "));
+	}
+
+	[Fact]
+	public void RemoveBinaryObject_TakesTheWholeEntryAndItsLineAndIsANoOpWhenAbsent()
+	{
+		var original = Encoding.UTF8.GetBytes("<root>\n  <data name=\"a\"><value>1</value></data>\n  <data name=\"b.ImageStream\" mimetype=\"" + BinaryMime + "\">\n    <value>X</value>\n  </data>\n  <data name=\"c\"><value>3</value></data>\n</root>");
+
+		var removed = Encoding.UTF8.GetString(ResxImageResourceEditor.RemoveBinaryObject(original, "b.ImageStream"));
+		Assert.Equal("<root>\n  <data name=\"a\"><value>1</value></data>\n  <data name=\"c\"><value>3</value></data>\n</root>", removed);
+		Assert.Same(original, ResxImageResourceEditor.RemoveBinaryObject(original, "missing"));
+		var plain = Encoding.UTF8.GetBytes("<root><data name=\"a.ImageStream\"><value>text</value></data></root>");
+		Assert.Throws<NotSupportedException>(() => ResxImageResourceEditor.RemoveBinaryObject(plain, "a.ImageStream"));
+	}
 }
