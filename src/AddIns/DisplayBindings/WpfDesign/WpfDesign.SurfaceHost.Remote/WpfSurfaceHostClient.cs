@@ -350,6 +350,11 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> SetBrushAsync(long baseVersion, string elementId, string propertyName, DesignerBrushInfo brush, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-brush", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, brush }, cancellationToken), cancellationToken);
 
+	/// <summary>Replaces a Transform property (RenderTransform, LayoutTransform) with the given simple transforms: none clears
+	/// it, one is written as that transform, several as a TransformGroup (<c>design/set-transform</c>).</summary>
+	public Task<DesignerSessionState> SetTransformAsync(long baseVersion, string elementId, string propertyName, IReadOnlyList<DesignerTransformOp> ops, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-transform", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, ops }, cancellationToken), cancellationToken);
+
 	/// <summary>Changes one Grid row's/column's unit to <c>Pixel</c>, <c>Star</c> or <c>Auto</c>.</summary>
 	public Task<DesignerSessionState> SetGridTrackUnitAsync(long baseVersion, string elementId, bool isRow, int index, string unit, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-grid-track-unit", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, index, unit }, cancellationToken), cancellationToken);

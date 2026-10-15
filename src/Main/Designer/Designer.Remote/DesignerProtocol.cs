@@ -66,7 +66,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v46 adds DesignerPropertyInfo.SuggestedValues (WinForms type-name suggestions).
 		// v47 adds the optional propertyName to the WinForms host's design/set-items (ListView.Items).
 		// v48 adds the Image brush's tile settings (DesignerBrushInfo.TileMode/Alignment/Viewport/Viewbox).
-		public const int Version = 48;
+		// v49 adds DesignerPropertyInfo.Transform (the "Transform" editor kind) and WPF's optional design/set-transform.
+		public const int Version = 49;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -649,6 +650,27 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>For a brush row, the string keys of the Color resources in scope, which a
 		/// <c>ColorResource</c> brush may reference.</summary>
 		public List<string> ColorResourceKeys { get; set; } = new List<string>();
+		/// <summary>For a <c>Transform</c> editor (RenderTransform, LayoutTransform), the transform as an ordered list of
+		/// simple operations - one for a single transform, several for a TransformGroup, none when unset. Null when the
+		/// value is one the editor cannot round-trip. v49.</summary>
+		public List<DesignerTransformOp>? Transform { get; set; }
+	}
+
+	/// <summary>One simple transform: <c>Rotate</c> (Angle, CenterX, CenterY), <c>Scale</c> (ScaleX, ScaleY, CenterX,
+	/// CenterY), <c>Skew</c> (AngleX, AngleY, CenterX, CenterY) or <c>Translate</c> (X, Y). Unused fields keep their
+	/// defaults (0, scales 1). v49.</summary>
+	public sealed class DesignerTransformOp
+	{
+		public string Type { get; set; } = "Rotate";
+		public double Angle { get; set; }
+		public double AngleX { get; set; }
+		public double AngleY { get; set; }
+		public double ScaleX { get; set; } = 1;
+		public double ScaleY { get; set; } = 1;
+		public double X { get; set; }
+		public double Y { get; set; }
+		public double CenterX { get; set; }
+		public double CenterY { get; set; }
 	}
 
 	/// <summary>A brush the Properties-pad brush editor can show and write back without loss

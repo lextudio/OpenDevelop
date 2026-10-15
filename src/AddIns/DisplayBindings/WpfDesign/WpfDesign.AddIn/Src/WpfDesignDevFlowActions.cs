@@ -841,6 +841,23 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				: JsonSerializer.Serialize(new { success = false, error = result.Error });
 		}
 
+		[DevFlowAction("od.wpf-designer.properties-pad.edit-transform", Description = "Click a Transform row's real \"…\" button (RenderTransform, LayoutTransform) and apply an edit script to the transform editor's model instead of the modal dialog: ';'-separated add:<Rotate|Scale|Skew|Translate>, remove:<i>, up:<i>, down:<i>, select:<i>, set:<i>:<Field>:<value>, or 'cancel'")]
+		public static string EditTransformThroughPropertiesPad(string propertyName, string script)
+		{
+			var grid = PropertyPadGrid;
+			if (grid?.SelectedObject is not WpfSurfaceElementPropertyAdapter)
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
+			var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(candidate => IsPropertyItem(candidate, propertyName));
+			var button = (item?.Editor as DockPanel)?.Children.OfType<Button>()
+				.FirstOrDefault(candidate => candidate.Name == WpfTransformEditor.EditButtonName);
+			if (button == null || !button.IsEnabled)
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad did not render an enabled transform editor button: " + propertyName });
+			var result = TransformEditing.RunScriptedEdit(button, script);
+			return result.Success
+				? JsonSerializer.Serialize(new { success = true, before = result.Before, after = result.After, committed = result.Committed })
+				: JsonSerializer.Serialize(new { success = false, error = result.Error });
+		}
+
 		[DevFlowAction("od.wpf-designer.properties-pad.pick-image", Description = "List an ImageSource row's real project-image drop-down, and when <path> is given select that item as a user pick does")]
 		public static string PickImageThroughPropertiesPad(string propertyName, string path = "")
 		{

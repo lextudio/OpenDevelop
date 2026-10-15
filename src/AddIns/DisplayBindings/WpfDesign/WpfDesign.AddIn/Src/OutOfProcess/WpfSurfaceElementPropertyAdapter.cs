@@ -25,7 +25,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 	/// this codebase) and the result is handed back through <paramref name="onStateChanged"/> so
 	/// the caller can refresh the surface/tree the same way a mutation RPC always does.
 	/// </summary>
-	public sealed class WpfSurfaceElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IItemsCollectionEditorHost, IBrushEditorHost, IDesignFrameSource, IImageSourceCandidates
+	public sealed class WpfSurfaceElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IItemsCollectionEditorHost, IBrushEditorHost, ITransformEditorHost, IDesignFrameSource, IImageSourceCandidates
 	{
 		readonly WpfSurfaceHostClient client;
 		readonly Func<long> currentBaseVersion;
@@ -173,6 +173,17 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		/// <summary>Commits an edited transform (<c>design/set-transform</c>); only a host-published Transform
+		/// editor row of this element can be targeted.</summary>
+		void ITransformEditorHost.SetTransform(string propertyName, System.Collections.Generic.IReadOnlyList<DesignerTransformOp> ops)
+		{
+			if (!node.Properties.Any(property => property.Name == propertyName && property.EditorKind == "Transform"))
+				throw new InvalidOperationException("Not an editable transform: " + propertyName);
+			var state = client.SetTransformAsync(currentBaseVersion(), node.Id, propertyName, ops).GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		internal void SetBindingConverter(string propertyName, string resourceKey)
 		{
 			var state = client.SetBindingConverterAsync(currentBaseVersion(), node.Id, propertyName, resourceKey)
@@ -274,7 +285,7 @@ sealed class WpfSurfaceEventDescriptor : EventDescriptor, IPropertyGridEventType
 	}
 }
 
-sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollectionProperty, IBrushProperty
+sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollectionProperty, IBrushProperty, ITransformProperty
 	{
 		readonly WpfSurfaceElementPropertyAdapter owner;
 		readonly DesignerPropertyInfo property;
@@ -329,6 +340,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 			// text or color-only editor cannot express.
 			else if (property.EditorKind == "Brush")
 				attributes.Add(new EditorAttribute(typeof(WpfBrushEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
+			else if (property.EditorKind == "Transform")
+				attributes.Add(new EditorAttribute(typeof(WpfTransformEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 			else if (property.EditorKind == "ImageSource")
 				attributes.Add(new EditorAttribute(typeof(WpfImageSourceEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 			return attributes.ToArray();
@@ -343,6 +356,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 		internal System.Collections.Generic.IReadOnlyList<string> AllowedValues => property.AllowedValues;
 
 		System.Collections.Generic.IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => property.CollectionItems;
+
+		System.Collections.Generic.IReadOnlyList<DesignerTransformOp> ITransformProperty.Transform => property.Transform ?? new System.Collections.Generic.List<DesignerTransformOp>();
 
 		DesignerBrushInfo? IBrushProperty.Brush => property.Brush;
 

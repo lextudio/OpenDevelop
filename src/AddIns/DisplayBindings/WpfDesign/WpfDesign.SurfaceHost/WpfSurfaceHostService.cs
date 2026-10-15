@@ -3749,9 +3749,29 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						info.Value = BrushDisplayText(described);
 						return info;
 					}
+					if (reference.Component is Transform && property.ReturnType != null && typeof(Transform).IsAssignableFrom(property.ReturnType)
+						&& DescribeTransform(reference) is { } transformOps)
+					{
+						info.Kind = "Transform";
+						info.IsReadOnly = true;
+						info.EditorKind = "Transform";
+						info.Transform = transformOps;
+						info.Value = TransformDisplayText(transformOps);
+						return info;
+					}
 					info.Kind = "Reference";
 					info.IsReadOnly = true;
 					info.Value = reference.ToString() ?? "";
+					return info;
+				}
+				// An unset (identity) RenderTransform/LayoutTransform opens the transform editor, which can create one.
+				if (!property.IsSet && property.ReturnType == typeof(Transform))
+				{
+					info.Kind = "Transform";
+					info.IsReadOnly = true;
+					info.EditorKind = "Transform";
+					info.Transform = new List<DesignerTransformOp>();
+					info.Value = TransformDisplayText(info.Transform);
 					return info;
 				}
 				var value = property.ValueOnInstance;
@@ -4018,6 +4038,165 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			}
 			return null;
 		}
+
+		static readonly string[] TransformOpTypes = { "Rotate", "Scale", "Skew", "Translate" };
+
+		/// <summary>The properties of each simple transform the editor writes, with their defaults.</summary>
+		static (string Name, double Default)[] TransformFields(string type) => type switch {
+			"Rotate" => new[] { ("Angle", 0d), ("CenterX", 0d), ("CenterY", 0d) },
+			"Scale" => new[] { ("ScaleX", 1d), ("ScaleY", 1d), ("CenterX", 0d), ("CenterY", 0d) },
+			"Skew" => new[] { ("AngleX", 0d), ("AngleY", 0d), ("CenterX", 0d), ("CenterY", 0d) },
+			"Translate" => new[] { ("X", 0d), ("Y", 0d) },
+			_ => Array.Empty<(string, double)>()
+		};
+
+		static double OpValue(DesignerTransformOp op, string name) => name switch {
+			"Angle" => op.Angle, "AngleX" => op.AngleX, "AngleY" => op.AngleY, "ScaleX" => op.ScaleX, "ScaleY" => op.ScaleY,
+			"X" => op.X, "Y" => op.Y, "CenterX" => op.CenterX, _ => op.CenterY
+		};
+
+		static void SetOpValue(DesignerTransformOp op, string name, double value)
+		{
+			switch (name)
+			{
+				case "Angle": op.Angle = value; break; case "AngleX": op.AngleX = value; break; case "AngleY": op.AngleY = value; break;
+				case "ScaleX": op.ScaleX = value; break; case "ScaleY": op.ScaleY = value; break;
+				case "X": op.X = value; break; case "Y": op.Y = value; break;
+				case "CenterX": op.CenterX = value; break; default: op.CenterY = value; break;
+			}
+		}
+
+		/// <summary>The transform as the editor's list of simple operations, or null when it holds anything the editor would
+		/// lose: a transform it does not know (Matrix, nested groups), a value that is not plain attribute text (a
+		/// binding), or a property it does not manage.</summary>
+		static List<DesignerTransformOp>? DescribeTransform(DesignItem transform)
+		{
+			// The write builds fresh transform elements, so a named one (x:Name, referenced from code or bindings) would lose its name.
+			if (!string.IsNullOrEmpty(transform.Name))
+				return null;
+			if (transform.Component is TransformGroup)
+			{
+				if (transform.Properties["Children"].CollectionElements is not { } children)
+					return null;
+				var ops = new List<DesignerTransformOp>();
+				foreach (var child in children)
+				{
+					if (child.Component is TransformGroup || DescribeSimpleTransform(child) is not { } op)
+						return null;
+					ops.Add(op);
+				}
+				return ops;
+			}
+			return DescribeSimpleTransform(transform) is { } single ? new List<DesignerTransformOp> { single } : null;
+		}
+
+		static DesignerTransformOp? DescribeSimpleTransform(DesignItem item)
+		{
+			var type = item.Component switch {
+				RotateTransform => "Rotate", ScaleTransform => "Scale", SkewTransform => "Skew", TranslateTransform => "Translate", _ => null
+			};
+			if (type == null || !string.IsNullOrEmpty(item.Name))
+				return null;
+			var op = new DesignerTransformOp { Type = type };
+			foreach (var (name, _) in TransformFields(type))
+			{
+				var property = item.Properties[name];
+				if (!property.IsSet)
+					continue;
+				// A non-finite value (NaN, or text that overflows to Infinity) could never be written back, so keep it a reference.
+				if (property.TextValue == null || !double.TryParse(property.TextValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
+					|| !double.IsFinite(number))
+					return null;
+				SetOpValue(op, name, number);
+			}
+			return op;
+		}
+
+		static string TransformDisplayText(IReadOnlyList<DesignerTransformOp> ops)
+			=> ops.Count == 0 ? "(none)" : string.Join(", ", ops.Select(op => op.Type switch {
+				"Rotate" => "Rotate(" + op.Angle.ToString(CultureInfo.InvariantCulture) + ")",
+				"Scale" => "Scale(" + op.ScaleX.ToString(CultureInfo.InvariantCulture) + ", " + op.ScaleY.ToString(CultureInfo.InvariantCulture) + ")",
+				"Skew" => "Skew(" + op.AngleX.ToString(CultureInfo.InvariantCulture) + ", " + op.AngleY.ToString(CultureInfo.InvariantCulture) + ")",
+				_ => "Translate(" + op.X.ToString(CultureInfo.InvariantCulture) + ", " + op.Y.ToString(CultureInfo.InvariantCulture) + ")"
+			}));
+
+		/// <summary>Why the operations are not writable, or null: every type is Rotate/Scale/Skew/Translate and every number is finite.</summary>
+		static string? TransformOpsError(IReadOnlyList<DesignerTransformOp>? ops)
+		{
+			if (ops == null)
+				return "A transform edit needs its operation list.";
+			foreach (var op in ops)
+			{
+				if (op == null || !TransformOpTypes.Contains(op.Type))
+					return "A transform is Rotate, Scale, Skew or Translate.";
+				foreach (var (name, _) in TransformFields(op.Type))
+					if (!double.IsFinite(OpValue(op, name)))
+						return name + " must be a finite number.";
+			}
+			return null;
+		}
+
+		/// <summary>Builds the design item for the operations: one is that transform, several a TransformGroup. Only values that differ
+		/// from the default are set, so the written XAML stays minimal. Built through the design model (not a CLR object whose
+		/// properties were assigned) so every value is serialized.</summary>
+		static DesignItem CreateTransformItem(DesignItem owner, IReadOnlyList<DesignerTransformOp> ops)
+		{
+			DesignItem One(DesignerTransformOp op)
+			{
+				Transform transform = op.Type switch {
+					"Rotate" => new RotateTransform(), "Scale" => new ScaleTransform(), "Skew" => new SkewTransform(), _ => new TranslateTransform()
+				};
+				var item = owner.Services.Component.RegisterComponentForDesigner(transform);
+				foreach (var (name, defaultValue) in TransformFields(op.Type))
+					if (OpValue(op, name) != defaultValue)
+						item.Properties[name].SetValue(OpValue(op, name));
+				return item;
+			}
+			if (ops.Count == 1)
+				return One(ops[0]);
+			var group = owner.Services.Component.RegisterComponentForDesigner(new TransformGroup());
+			foreach (var op in ops)
+				group.Properties["Children"].CollectionElements.Add(One(op));
+			return group;
+		}
+
+		/// <summary>Replaces a Transform property (RenderTransform, LayoutTransform) with the given simple transforms as one change:
+		/// none clears it, one is written as that transform element, several as a TransformGroup. Refuses a property that is
+		/// not a Transform, or one that currently holds something the editor cannot describe (so nothing is lost).</summary>
+		[JsonRpcMethod("design/set-transform")]
+		public DesignerSessionState SetTransform(long baseVersion, string elementId, string propertyName, DesignerTransformOp[] ops)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item))
+					return NotFound(state, "Element not found: " + elementId);
+				DesignItemProperty? property;
+				try { property = item.Properties[propertyName]; }
+				catch (ArgumentException e) { return NotFound(state, e.Message); }
+				if (property?.ReturnType != typeof(Transform))
+					return NotFound(state, "Not a Transform property: " + propertyName);
+				if (property.IsSet && !(property.Value is { } current && DescribeTransform(current) != null))
+					return NotFound(state, propertyName + " holds a value the transform editor cannot represent.");
+				if (TransformOpsError(ops) is { } error)
+					return NotFound(state, error);
+				try
+				{
+					using var changeGroup = item.OpenGroup("Set " + propertyName);
+					if (property.IsSet)
+						property.Reset();
+					if (ops.Length > 0)
+						property.SetValue(CreateTransformItem(item, ops));
+					changeGroup.Commit();
+				}
+				catch (Exception e) when (e is ArgumentException or FormatException or NotSupportedException or InvalidOperationException or OverflowException)
+				{
+					return NotFound(state, e.GetBaseException().Message);
+				}
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
 
 		static string BrushDisplayText(DesignerBrushInfo brush) => brush.Kind switch {
 			"ColorResource" => "Color {StaticResource " + brush.ResourceKey + "}",
