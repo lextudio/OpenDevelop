@@ -1,0 +1,71 @@
+using System.IO;
+using System.Windows.Markup;
+using ICSharpCode.WpfDesign.XamlDom;
+using Xunit;
+
+namespace OpenDevelop.XamlDom.Tests;
+
+public sealed class XamlLoaderComparisonTests
+{
+	/// <summary>Loads on its own thread with a deadline, so a loader that hangs on one input is reported
+	/// as a difference instead of stalling the whole run.</summary>
+	static string Load(string xaml, bool designer)
+	{
+		string? result = null;
+		var thread = new Thread(() => result = LoadCore(xaml, designer)) { IsBackground = true };
+		thread.Start();
+		return thread.Join(TimeSpan.FromSeconds(20)) ? result! : "HANG (no result within 20s)";
+	}
+
+	static string LoadCore(string xaml, bool designer)
+	{
+		try {
+			object? root = designer
+				? XamlParser.Parse(new StringReader(xaml)).RootInstance
+				: XamlReader.Parse(xaml);
+			return XamlGraphDump.Dump(root);
+		} catch (Exception e) {
+			return "EXCEPTION " + e.GetType().Name + ": " + e.GetBaseException().Message;
+		}
+	}
+
+	static string Diff(string expected, string actual)
+	{
+		var e = expected.Split('\n');
+		var a = actual.Split('\n');
+		var missing = e.Except(a).Take(6).Select(l => "    - " + l.TrimEnd());
+		var extra = a.Except(e).Take(6).Select(l => "    + " + l.TrimEnd());
+		return string.Join("\n", missing.Concat(extra));
+	}
+
+	/// <summary>Cases where XamlDom still builds a different graph than Microsoft's loader, with why. A case
+	/// that starts to match must be removed from here, so the list only ever shrinks.</summary>
+	static readonly Dictionary<string, string> KnownDifferences = new() {
+		["ControlTemplate and DataTemplate"] = "a DataTemplate with only DataType gets no implicit DataTemplateKey",
+		["Content property and text"] = "inline text between Run/Italic elements is trimmed (whitespace-only Runs are dropped, 'Hello ' becomes 'Hello')",
+		["x:Name x:Uid x:Key forms"] = "x:Uid is not applied to the instance",
+		["Uri and Key as attribute order"] = "x:Uid is not applied to the instance (Image.Source local value also differs)",
+		["Non-string keys"] = "an {x:Static ...} key is kept as its markup text instead of being evaluated",
+		["Merged dictionaries"] = "a ResourceDictionary with MergedDictionaries and its own entries throws ArgumentException",
+		["Designer attributes"] = "mc:AlternateContent is not supported",
+	};
+
+	public static IEnumerable<TheoryDataRow<string>> CaseNames() => XamlCorpus.Cases.Select(c => new TheoryDataRow<string>(c.Name));
+
+	[Theory]
+	[MemberData(nameof(CaseNames))]
+	public void LoadsTheSameAsMicrosoftsXamlReader(string name)
+	{
+		var body = XamlCorpus.Cases.Single(c => c.Name == name).Body;
+		var xaml = XamlCorpus.Prefix + "\n" + body + "\n</StackPanel>";
+		var microsoft = Load(xaml, designer: false);
+		var designer = Load(xaml, designer: true);
+		// The reference load must succeed, or "both loaders fail alike" would count as a match.
+		Assert.False(microsoft.StartsWith("EXCEPTION") || microsoft.StartsWith("HANG"), "Microsoft's XamlReader did not load the case: " + microsoft);
+		if (KnownDifferences.TryGetValue(name, out var reason)) {
+			Assert.True(microsoft != designer, "This case now matches; remove it from KnownDifferences (was: " + reason + ")");
+			return;
+		}
+		Assert.True(microsoft == designer, "XamlDom differs from XamlReader (- Microsoft, + XamlDom):\n" + Diff(microsoft, designer));
+	}
+}

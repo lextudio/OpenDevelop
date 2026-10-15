@@ -1,0 +1,21 @@
+<Project Sdk="LibreWPF.Sdk">
+
+  <!-- Compares what the designer's XamlDom builds from a XAML text with what Microsoft's
+       System.Xaml (XamlReader) builds from the same text. Run with the dotnet test command on this project (Microsoft.Testing.Platform). -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <IsPackable>false</IsPackable>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <ProjectReference Include="..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.XamlDom\Project\WpfDesign.XamlDom.csproj" />
+  </ItemGroup>
+</Project>
