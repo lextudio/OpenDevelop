@@ -1200,10 +1200,13 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						return NotFound(state, "A tile brush needs a Stretch value and an opacity from 0 to 1.");
 					if (TileSettingsError(brush) is { } contentTileError)
 						return NotFound(state, contentTileError);
+					if (BrushTransformsError(brush) is { } contentTransformError)
+						return NotFound(state, contentTransformError);
 					try
 					{
 						using var contentGroup = item.OpenGroup("Set " + propertyName);
 						ApplyTileSettings(existing, brush);
+						ApplyBrushTransforms(item, existing, brush);
 						contentGroup.Commit();
 					}
 					catch (Exception e) when (e is ArgumentException or FormatException or NotSupportedException or InvalidOperationException or OverflowException)
@@ -1229,6 +1232,8 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					return NotFound(state, "An image brush needs an image source, a Stretch value and an opacity from 0 to 1.");
 				if (brush.Kind == "Image" && TileSettingsError(brush) is { } tileError)
 					return NotFound(state, tileError);
+				if (BrushTransformsError(brush) is { } transformError)
+					return NotFound(state, transformError);
 				try
 				{
 					var value = brush.Kind is "Resource" or "System" or "Image" or "ColorResource" ? null : CreateBrush(brush);
@@ -1278,11 +1283,23 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						key.Properties["Member"].SetValue("SystemColors." + brush.ResourceKey);
 						property.Value!.Properties["ResourceKey"].SetValue(key);
 					}
+					// A solid brush with a transform has to be an element (an attribute cannot hold a transform).
+					else if (brush.Kind == "Solid" && (brush.Transform?.Count > 0 || brush.RelativeTransform?.Count > 0))
+					{
+						var solidItem = item.Services.Component.RegisterComponentForDesigner(new SolidColorBrush());
+						solidItem.Properties["Color"].SetValue((System.Windows.Media.Color)ColorConverter.ConvertFromString(brush.Color));
+						if (brush.Opacity != 1)
+							solidItem.Properties["Opacity"].SetValue(brush.Opacity);
+						property.SetValue(solidItem);
+					}
 					// "No brush" is an explicit {x:Null}, not a reset: it overrides a style's brush.
 					else if (value == null)
 						property.SetValue(item.Services.Component.RegisterComponentForDesigner(new System.Windows.Markup.NullExtension()));
 					else
 						property.SetValue(value);
+					// A brush with pixels of its own carries its transforms; they are set on the item the property now holds.
+					if (brush.Kind is not ("Null" or "Resource" or "System") && property.Value is { } writtenBrush)
+						ApplyBrushTransforms(item, writtenBrush, brush);
 					changeGroup.Commit();
 				}
 				catch (Exception e) when (e is ArgumentException or FormatException or NotSupportedException or InvalidOperationException or OverflowException)
@@ -3764,8 +3781,11 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						info.Value = BrushDisplayText(contentBrush);
 						return info;
 					}
-					if (reference.Component is Brush elementBrush && DescribeBrush(elementBrush) is { } described)
+					if (reference.Component is Brush elementBrush && TryDescribeBrushTransforms(reference, out var elementTransform, out var elementRelative)
+						&& DescribeBrush(elementBrush, ignoreTransforms: true) is { } described)
 					{
+						described.Transform = elementTransform;
+						described.RelativeTransform = elementRelative;
 						info.Kind = "Brush";
 						info.IsReadOnly = true;
 						info.EditorKind = "Brush";
@@ -3891,10 +3911,12 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// <summary>The brush as the brush editor's lossless shape, or null when it carries anything
 		/// the editor would drop: a transform, a non-default color interpolation, or a frozen/bound
 		/// value the instance cannot describe.</summary>
-		static DesignerBrushInfo? DescribeBrush(Brush brush)
+		static DesignerBrushInfo? DescribeBrush(Brush brush, bool ignoreTransforms = false)
 		{
-			if (brush.Transform != null && !brush.Transform.Value.IsIdentity
-				|| brush.RelativeTransform != null && !brush.RelativeTransform.Value.IsIdentity)
+			// The caller that has the design item describes the transforms itself (TryDescribeBrushTransforms); one that only has
+			// the live brush cannot tell a plain transform from a bound one, so it keeps a transformed brush a reference.
+			if (!ignoreTransforms && (brush.Transform != null && !brush.Transform.Value.IsIdentity
+				|| brush.RelativeTransform != null && !brush.RelativeTransform.Value.IsIdentity))
 				return null;
 			switch (brush)
 			{
@@ -3974,9 +3996,8 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		{
 			// DDP's property collection only enumerates properties already accessed, so name every
 			// other TileBrush/Brush setting explicitly.
-			foreach (var other in new[] { "Transform", "RelativeTransform" })
-				if (brush.Properties[other].IsSet)
-					return null;
+			if (!TryDescribeBrushTransforms(brush, out var transform, out var relativeTransform))
+				return null;
 			var stretch = brush.Properties["Stretch"];
 			var opacity = brush.Properties["Opacity"];
 			if (stretch.IsSet && stretch.TextValue == null || opacity.IsSet && opacity.TextValue == null)
@@ -4000,6 +4021,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return null;
 			return new DesignerBrushInfo {
 				Kind = kind,
+				Transform = transform, RelativeTransform = relativeTransform,
 				Stretch = stretch.IsSet ? stretch.TextValue! : "",
 				TileMode = tileMode, AlignmentX = alignmentX, AlignmentY = alignmentY,
 				Viewport = viewport, ViewportUnits = viewportUnits, Viewbox = viewbox, ViewboxUnits = viewboxUnits,
@@ -4035,7 +4057,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		{
 			if (brush.Properties["Color"].Value is not { Component: StaticResourceExtension } reference
 				|| reference.Properties["ResourceKey"].ValueOnInstance is not string key
-				|| brush.Properties["Transform"].IsSet || brush.Properties["RelativeTransform"].IsSet)
+				|| !TryDescribeBrushTransforms(brush, out var transform, out var relativeTransform))
 				return null;
 			var opacity = brush.Properties["Opacity"];
 			if (opacity.IsSet && opacity.TextValue == null)
@@ -4043,8 +4065,54 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			return new DesignerBrushInfo {
 				Kind = "ColorResource",
 				ResourceKey = key,
+				Transform = transform, RelativeTransform = relativeTransform,
 				Opacity = opacity.IsSet && double.TryParse(opacity.TextValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var o) ? o : 1
 			};
+		}
+
+		/// <summary>The brush item's <c>Transform</c> and <c>RelativeTransform</c> as simple operations (empty when unset); false when either holds
+		/// something the transform editor cannot round-trip (a Matrix, a bound or named transform), which keeps the brush a read-only reference.</summary>
+		static bool TryDescribeBrushTransforms(DesignItem brush, out List<DesignerTransformOp> transform, out List<DesignerTransformOp> relativeTransform)
+		{
+			transform = new List<DesignerTransformOp>();
+			relativeTransform = new List<DesignerTransformOp>();
+			foreach (var (name, target) in new[] { ("Transform", transform), ("RelativeTransform", relativeTransform) })
+			{
+				var property = brush.Properties[name];
+				if (!property.IsSet)
+					continue;
+				if (property.Value is not { } value || DescribeTransform(value) is not { } ops)
+					return false;
+				target.AddRange(ops);
+			}
+			return true;
+		}
+
+		/// <summary>Writes the brush's transforms onto an existing brush item: a list replaces the property (reset first), an empty one clears it.</summary>
+		static void ApplyBrushTransforms(DesignItem owner, DesignItem brushItem, DesignerBrushInfo info)
+		{
+			foreach (var (name, ops) in new[] { ("Transform", info.Transform), ("RelativeTransform", info.RelativeTransform) })
+			{
+				var property = brushItem.Properties[name];
+				if (property.IsSet)
+					property.Reset();
+				if (ops != null && ops.Count > 0)
+					property.SetValue(CreateTransformItem(owner, ops));
+			}
+		}
+
+		/// <summary>Why the brush's transforms are not writable, or null.</summary>
+		static string? BrushTransformsError(DesignerBrushInfo brush)
+		{
+			var transform = brush.Transform ?? new List<DesignerTransformOp>();
+			var relative = brush.RelativeTransform ?? new List<DesignerTransformOp>();
+			if (TransformOpsError(transform) is { } error)
+				return error;
+			if (TransformOpsError(relative) is { } relativeError)
+				return relativeError;
+			if ((transform.Count > 0 || relative.Count > 0) && brush.Kind is "Null" or "Resource" or "System")
+				return "A brush that is a reference or no brush has no transform of its own.";
+			return null;
 		}
 
 		/// <summary>Why an image brush's tile settings are not writable, or null: every enum must be a

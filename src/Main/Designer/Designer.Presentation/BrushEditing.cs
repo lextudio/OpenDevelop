@@ -113,6 +113,13 @@ public static class BrushEditing
 				case "stretch": ok = model.SetStretch(argument); break;
 				// tile:<Setting>:<value>, e.g. tile:TileMode:Tile or tile:Viewport:0,0,0.5,0.5
 				case "tile": ok = parts.Length > 2 && model.SetTileSetting(argument, parts[2]); break;
+				// transform:<Transform|RelativeTransform>:<transform edit steps separated by '|'>, e.g.
+				// transform:RelativeTransform:add:Rotate|set:0:Angle:45 (the steps of TransformEditing.ApplyScript)
+				case "transform": {
+					var transformModel = new TransformEditModel(argument == "RelativeTransform" ? model.RelativeTransform : model.Transform);
+					ok = parts.Length > 2 && TransformEditing.ApplyScript(transformModel, parts[2].Replace('|', ';')) && model.SetTransform(argument, transformModel.ToOps());
+					break;
+				}
 				case "color":
 					ok = BrushEditModel.TryParseColor(step.Substring("color:".Length), out var color);
 					if (ok) model.SelectedColor = color;
@@ -214,6 +221,9 @@ public sealed class BrushEditorDialog : Window
 	readonly ComboBox imageStretch = new();
 	readonly StackPanel imagePanel = new();
 	readonly StackPanel imageSourceRow = new();
+	readonly StackPanel transformPanel = new() { Margin = new Thickness(0, 8, 0, 0) };
+	readonly StackPanel transformButtons = new() { Orientation = Orientation.Horizontal };
+	readonly TextBlock transformSummary = new() { Margin = new Thickness(0, 4, 0, 0), Opacity = 0.7, TextTrimming = TextTrimming.CharacterEllipsis };
 	readonly ComboBox tileMode = new() { ItemsSource = BrushEditModel.TileModeValues };
 	readonly ComboBox alignmentX = new() { ItemsSource = BrushEditModel.AlignmentXValues };
 	readonly ComboBox alignmentY = new() { ItemsSource = BrushEditModel.AlignmentYValues };
@@ -341,7 +351,16 @@ public sealed class BrushEditorDialog : Window
 				Change(() => model.SelectedColor = picked);
 			e.Handled = true;
 		};
+		foreach (var (label, which) in new[] { ("Transform...", "Transform"), ("Relative transform...", "RelativeTransform") }) {
+			var open = new Button { Content = label, Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(8, 2, 8, 2), ToolTip = which == "Transform"
+				? "Transform the brush in the element's own coordinates" : "Transform the brush relative to the element's bounds" };
+			open.Click += (_, _) => EditTransform(which);
+			transformButtons.Children.Add(open);
+		}
+		transformPanel.Children.Add(transformButtons);
+		transformPanel.Children.Add(transformSummary);
 		root.Children.Add(advancedPanel);
+		root.Children.Add(transformPanel);
 		root.Children.Add(preview);
 		root.Children.Add(footer);
 		Content = root;
@@ -621,6 +640,17 @@ public sealed class BrushEditorDialog : Window
 		Refresh();
 	}
 
+	/// <summary>Opens the transform editor over the brush's <c>Transform</c> or <c>RelativeTransform</c> and keeps an accepted, changed list.</summary>
+	void EditTransform(string which)
+	{
+		var transformModel = new TransformEditModel(which == "Transform" ? model.Transform : model.RelativeTransform);
+		if (new TransformEditorDialog(transformModel, which) { Owner = this }.ShowDialog() == true && transformModel.IsChanged)
+			Change(() => model.SetTransform(which, transformModel.ToOps()));
+	}
+
+	static string DescribeTransforms(IReadOnlyList<DesignerTransformOp> ops)
+		=> ops.Count == 0 ? "none" : string.Join(", ", ops.Select(TransformEditModel.Describe));
+
 	void Refresh()
 	{
 		syncing = true;
@@ -651,6 +681,9 @@ public sealed class BrushEditorDialog : Window
 			eyedropperToggle.Visibility = designFrame != null && colorPanel.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
 			eyedropperFrame.Visibility = eyedropperToggle.Visibility == Visibility.Visible && eyedropperToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
 			advancedPanel.Visibility = colorPanel.Visibility;
+			// Any brush with pixels of its own can carry transforms, wherever its other settings are shown.
+			transformPanel.Visibility = !showResources && model.CanTransform ? Visibility.Visible : Visibility.Collapsed;
+			transformSummary.Text = "Transform: " + DescribeTransforms(model.Transform) + "   Relative: " + DescribeTransforms(model.RelativeTransform);
 			linear.IsChecked = model.Kind == BrushEditModel.LinearKind;
 			radial.IsChecked = model.Kind == BrushEditModel.RadialKind;
 			linearRows.Visibility = model.Kind == BrushEditModel.LinearKind ? Visibility.Visible : Visibility.Collapsed;

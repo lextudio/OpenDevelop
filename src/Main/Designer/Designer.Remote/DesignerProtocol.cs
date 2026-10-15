@@ -67,9 +67,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v47 adds the optional propertyName to the WinForms host's design/set-items (ListView.Items).
 		// v48 adds the Image brush's tile settings (DesignerBrushInfo.TileMode/Alignment/Viewport/Viewbox).
 		// v49 adds DesignerPropertyInfo.Transform (the "Transform" editor kind) and WPF's optional design/set-transform.
+		// v52 adds DesignerBrushInfo.Transform/RelativeTransform (brush transforms in the brush editor).
 		// v51 adds the WinForms "ImageListImages" editor kind (DesignerPropertyInfo.ImageListImages/Size/ColorDepth) and the Forms host's optional design/build-image-list-resource.
 		// v50 adds the "ResourceReference" editor kind (DesignerPropertyInfo.ResourceReferenceKind/Keys) and WPF's optional design/set-resource-reference.
-		public const int Version = 51;
+		public const int Version = 52;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -742,6 +743,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public string Viewbox { get; set; } = "";
 		/// <summary>An <c>Image</c> brush's ViewboxUnits (<c>Absolute</c>), or empty for RelativeToBoundingBox. v48.</summary>
 		public string ViewboxUnits { get; set; } = "";
+		/// <summary>The brush's own <c>Transform</c> and <c>RelativeTransform</c> as simple operations (none = unset), for every brush
+		/// kind that has pixels of its own (not <c>Null</c>, <c>Resource</c> or <c>System</c>). v52.</summary>
+		public List<DesignerTransformOp> Transform { get; set; } = new List<DesignerTransformOp>();
+		public List<DesignerTransformOp> RelativeTransform { get; set; } = new List<DesignerTransformOp>();
 		/// <summary>A solid brush's color as <c>#AARRGGBB</c>.</summary>
 		public string Color { get; set; } = "";
 		public double Opacity { get; set; } = 1;

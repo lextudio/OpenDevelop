@@ -22,7 +22,7 @@ public sealed class BrushEditTests
 		  </Button>
 		  <Button x:Name="plain" Content="Plain"/>
 		  <Button x:Name="rotated" Content="Rotated">
-		    <Button.Background><LinearGradientBrush><LinearGradientBrush.RelativeTransform><RotateTransform Angle="45"/></LinearGradientBrush.RelativeTransform><GradientStop Color="Red"/></LinearGradientBrush></Button.Background>
+		    <Button.Background><LinearGradientBrush><LinearGradientBrush.RelativeTransform><MatrixTransform Matrix="1,0,0,1,4,4"/></LinearGradientBrush.RelativeTransform><GradientStop Color="Red"/></LinearGradientBrush></Button.Background>
 		  </Button>
 		</StackPanel>
 		""";
@@ -204,7 +204,7 @@ public sealed class BrushEditTests
 			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="root" Width="240" Height="120">
 			  <Button x:Name="target" Background="Red" Content="Target"/>
 			  <Button x:Name="tiled" Content="Tiled"><Button.Background><ImageBrush ImageSource="images/a.png" Stretch="Uniform"/></Button.Background></Button>
-			  <Button x:Name="transformed" Content="T"><Button.Background><ImageBrush ImageSource="images/a.png"><ImageBrush.RelativeTransform><RotateTransform Angle="10"/></ImageBrush.RelativeTransform></ImageBrush></Button.Background></Button>
+			  <Button x:Name="transformed" Content="T"><Button.Background><ImageBrush ImageSource="images/a.png"><ImageBrush.RelativeTransform><MatrixTransform Matrix="1,0,0,1,4,4"/></ImageBrush.RelativeTransform></ImageBrush></Button.Background></Button>
 			  <Button x:Name="tiledSettings" Content="S"><Button.Background><ImageBrush ImageSource="images/a.png" TileMode="Tile" AlignmentX="Left" AlignmentY="Bottom" Viewport="0,0,0.5,0.5" ViewportUnits="RelativeToBoundingBox" Viewbox="0,0,10,10" ViewboxUnits="Absolute"/></Button.Background></Button>
 			</StackPanel>
 			""";
@@ -262,7 +262,7 @@ public sealed class BrushEditTests
 			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="root" Width="240" Height="120">
 			  <Button x:Name="drawn" Content="D"><Button.Background><DrawingBrush TileMode="Tile" Viewport="0,0,10,10" ViewportUnits="Absolute"><DrawingBrush.Drawing><GeometryDrawing Brush="Red"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,5,5"/></GeometryDrawing.Geometry></GeometryDrawing></DrawingBrush.Drawing></DrawingBrush></Button.Background></Button>
 			  <Button x:Name="visual" Content="V"><Button.Background><VisualBrush Stretch="Uniform"><VisualBrush.Visual><Border Background="Blue" Width="4" Height="4"/></VisualBrush.Visual></VisualBrush></Button.Background></Button>
-			  <Button x:Name="moved" Content="M"><Button.Background><DrawingBrush><DrawingBrush.Transform><RotateTransform Angle="5"/></DrawingBrush.Transform></DrawingBrush></Button.Background></Button>
+			  <Button x:Name="moved" Content="M"><Button.Background><DrawingBrush><DrawingBrush.Transform><MatrixTransform Matrix="1,0,0,1,4,4"/></DrawingBrush.Transform></DrawingBrush></Button.Background></Button>
 			</StackPanel>
 			""";
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
@@ -276,7 +276,7 @@ public sealed class BrushEditTests
 		Assert.Equal(("Drawing", "Tile", "0,0,10,10", "Absolute"), (drawn.Kind, drawn.TileMode, drawn.Viewport, drawn.ViewportUnits));
 		var visual = Background(opened, 1).Brush!;
 		Assert.Equal(("Visual", "Uniform"), (visual.Kind, visual.Stretch));
-		// A transform keeps the brush a read-only reference.
+		// A transform the editor cannot round-trip (a Matrix) keeps the brush a read-only reference.
 		Assert.Null(Background(opened, 2).Brush);
 
 		// The wrong kind for the property's brush is refused, source untouched.
@@ -302,6 +302,66 @@ public sealed class BrushEditTests
 		Assert.DoesNotContain("TileMode=", clearedText, StringComparison.Ordinal);
 		Assert.DoesNotContain("Viewport=", clearedText, StringComparison.Ordinal);
 		Assert.Contains("<GeometryDrawing", clearedText, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task ChildHost_DescribesAndWritesBrushTransforms()
+	{
+		const string xaml = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="root" Width="240" Height="160">
+			  <Button x:Name="plain" Content="P" Background="Red"/>
+			  <Button x:Name="gradient" Content="G"><Button.Background><LinearGradientBrush><LinearGradientBrush.RelativeTransform><RotateTransform Angle="45" CenterX="0.5" CenterY="0.5"/></LinearGradientBrush.RelativeTransform><GradientStop Color="Red" Offset="0"/><GradientStop Color="Blue" Offset="1"/></LinearGradientBrush></Button.Background></Button>
+			  <Button x:Name="image" Content="I"><Button.Background><ImageBrush ImageSource="a.png"><ImageBrush.Transform><TransformGroup><ScaleTransform ScaleX="2"/><TranslateTransform X="3"/></TransformGroup></ImageBrush.Transform></ImageBrush></Button.Background></Button>
+			  <Button x:Name="matrix" Content="M"><Button.Background><LinearGradientBrush><LinearGradientBrush.RelativeTransform><MatrixTransform Matrix="1,0,0,1,4,4"/></LinearGradientBrush.RelativeTransform><GradientStop Color="Red" Offset="0"/><GradientStop Color="Blue" Offset="1"/></LinearGradientBrush></Button.Background></Button>
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(WpfSurfaceHostRpcTests.HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Background(DesignerSessionState state, int index)
+			=> Assert.Single(state.Tree!.Children[index].Properties, p => p.Name == "Background");
+		string Text() => Assert.Single(client.FlushAsync(1, timeout.Token).GetAwaiter().GetResult().Files).Text;
+
+		// A gradient with a simple RelativeTransform, and an image brush with a Transform group, are editable now.
+		var gradient = Background(opened, 1).Brush!;
+		var rotate = Assert.Single(gradient.RelativeTransform);
+		Assert.Equal(("LinearGradient", "Rotate", 45d, 0.5d), (gradient.Kind, rotate.Type, rotate.Angle, rotate.CenterX));
+		Assert.Empty(gradient.Transform);
+		var image = Background(opened, 2).Brush!;
+		Assert.Equal("Image", image.Kind);
+		Assert.Equal(new[] { "Scale", "Translate" }, image.Transform.Select(op => op.Type).ToArray());
+		// A Matrix keeps the brush a read-only reference.
+		Assert.Null(Background(opened, 3).Brush);
+
+		// Edit the gradient's transform and add a Transform: both land in the brush element.
+		gradient.RelativeTransform = new List<DesignerTransformOp> { new() { Type = "Rotate", Angle = 90, CenterX = 0.5, CenterY = 0.5 } };
+		gradient.Transform = new List<DesignerTransformOp> { new() { Type = "Translate", X = 7 } };
+		var edited = await client.SetBrushAsync(1, opened.Tree!.Children[1].Id, "Background", gradient, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var text = Text();
+		Assert.Matches("<LinearGradientBrush\\.RelativeTransform>\\s*<RotateTransform[^>]*Angle=\"90\"", text);
+		Assert.Matches("<LinearGradientBrush\\.Transform>\\s*<TranslateTransform[^>]*X=\"7\"", text);
+		var back = Background(edited, 1).Brush!;
+		Assert.Equal((90d, 7d), (back.RelativeTransform[0].Angle, back.Transform[0].X));
+
+		// A new solid brush can carry a transform, and an empty list clears one.
+		var solid = await client.SetBrushAsync(1, opened.Tree.Children[0].Id, "Background", new DesignerBrushInfo {
+			Kind = "Solid", Color = "#FF0000FF", RelativeTransform = new List<DesignerTransformOp> { new() { Type = "Skew", AngleX = 10 } } }, timeout.Token);
+		Assert.True(solid.Accepted, solid.Error);
+		Assert.Equal("Skew", Assert.Single(Background(solid, 0).Brush!.RelativeTransform).Type);
+		image.Transform = new List<DesignerTransformOp>();
+		var cleared = await client.SetBrushAsync(1, opened.Tree.Children[2].Id, "Background", image, timeout.Token);
+		Assert.True(cleared.Accepted, cleared.Error);
+		Assert.Empty(Background(cleared, 2).Brush!.Transform);
+
+		// Refusals leave the source alone: a bad op, and a transform on a brush that is only a reference.
+		var before = Text();
+		Assert.False((await client.SetBrushAsync(1, opened.Tree.Children[0].Id, "Background", new DesignerBrushInfo {
+			Kind = "Solid", Color = "#FF0000FF", Transform = new List<DesignerTransformOp> { new() { Type = "Matrix" } } }, timeout.Token)).Accepted);
+		Assert.False((await client.SetBrushAsync(1, opened.Tree.Children[0].Id, "Background", new DesignerBrushInfo {
+			Kind = "Null", Transform = new List<DesignerTransformOp> { new() { Type = "Rotate" } } }, timeout.Token)).Accepted);
+		Assert.Equal(before, Text());
 	}
 
 	[Fact]

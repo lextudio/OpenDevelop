@@ -55,6 +55,8 @@ public sealed class BrushEditModel
 	}
 
 	readonly string initial;
+	readonly List<DesignerTransformOp> transform;
+	readonly List<DesignerTransformOp> relativeTransform;
 	readonly List<Stop> stops = new();
 	Color solidColor;
 
@@ -67,6 +69,8 @@ public sealed class BrushEditModel
 		ResourceKey = brush.ResourceKey;
 		ImageSource = brush.ImageSource;
 		Stretch = brush.Stretch;
+		transform = (brush.Transform ?? new List<DesignerTransformOp>()).Select(CopyOp).ToList();
+		relativeTransform = (brush.RelativeTransform ?? new List<DesignerTransformOp>()).Select(CopyOp).ToList();
 		(TileMode, AlignmentX, AlignmentY) = (brush.TileMode, brush.AlignmentX, brush.AlignmentY);
 		(Viewport, ViewportUnits, Viewbox, ViewboxUnits) = (brush.Viewport, brush.ViewportUnits, brush.Viewbox, brush.ViewboxUnits);
 		ImageSources = imageSources ?? Array.Empty<string>();
@@ -104,6 +108,32 @@ public sealed class BrushEditModel
 	public string ImageSource { get; private set; }
 	/// <summary>For an image brush, its Stretch, or empty for the default (Fill).</summary>
 	public string Stretch { get; private set; }
+	/// <summary>The brush's own <c>Transform</c> and <c>RelativeTransform</c> as simple operations (none = unset).</summary>
+	public IReadOnlyList<DesignerTransformOp> Transform => transform;
+	public IReadOnlyList<DesignerTransformOp> RelativeTransform => relativeTransform;
+	/// <summary>Whether the brush has pixels of its own and so can carry transforms (not no brush, a resource or a system brush).</summary>
+	public bool CanTransform => Kind is not (NullKind or ResourceKind or SystemKind);
+
+	/// <summary>Replaces <c>Transform</c> or <c>RelativeTransform</c>; false (nothing changed) for another name, a brush that cannot carry one, or an
+	/// operation the host would refuse.</summary>
+	public bool SetTransform(string which, IEnumerable<DesignerTransformOp> ops)
+	{
+		var copy = (ops ?? Array.Empty<DesignerTransformOp>()).Select(CopyOp).ToList();
+		if (!CanTransform || copy.Any(op => !TransformEditModel.Types.Contains(op.Type)))
+			return false;
+		var target = which switch { "Transform" => transform, "RelativeTransform" => relativeTransform, _ => null };
+		if (target == null)
+			return false;
+		target.Clear();
+		target.AddRange(copy);
+		return true;
+	}
+
+	static DesignerTransformOp CopyOp(DesignerTransformOp op) => new() {
+		Type = op.Type, Angle = op.Angle, AngleX = op.AngleX, AngleY = op.AngleY, ScaleX = op.ScaleX, ScaleY = op.ScaleY,
+		X = op.X, Y = op.Y, CenterX = op.CenterX, CenterY = op.CenterY
+	};
+
 	/// <summary>The image brush's tile settings, each empty for its default.</summary>
 	public string TileMode { get; private set; }
 	public string AlignmentX { get; private set; }
@@ -357,6 +387,8 @@ public sealed class BrushEditModel
 			return info;
 		}
 		info.Opacity = Opacity;
+		info.Transform = transform.Select(CopyOp).ToList();
+		info.RelativeTransform = relativeTransform.Select(CopyOp).ToList();
 		if (Kind == ColorResourceKind) {
 			info.ResourceKey = ResourceKey;
 			return info;

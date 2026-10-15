@@ -210,4 +210,43 @@ public sealed class BrushEditModelTests
 		model.SelectedColor = System.Windows.Media.Colors.Red;
 		Assert.Equal(BrushEditModel.SolidKind, model.Kind);
 	}
+
+	[Fact]
+	public void BrushTransformsRoundTripAreCopiedAndOnlyApplyToBrushesWithPixels()
+	{
+		var source = new[] { new DesignerTransformOp { Type = "Rotate", Angle = 30 } };
+		var model = new BrushEditModel(new DesignerBrushInfo { Kind = BrushEditModel.SolidKind, Color = "#FFFF0000", RelativeTransform = source.ToList() });
+		Assert.Equal(30d, Assert.Single(model.RelativeTransform).Angle);
+		Assert.False(model.IsChanged);
+		Assert.True(model.CanTransform);
+
+		Assert.True(model.SetTransform("Transform", new[] { new DesignerTransformOp { Type = "Translate", X = 5 } }));
+		Assert.True(model.IsChanged);
+		var info = model.ToInfo();
+		Assert.Equal(5d, Assert.Single(info.Transform).X);
+		Assert.Equal(30d, Assert.Single(info.RelativeTransform).Angle);
+		// The model and the caller's list never share operations.
+		source[0].Angle = 99;
+		Assert.Equal(30d, model.RelativeTransform[0].Angle);
+
+		Assert.False(model.SetTransform("Bogus", System.Array.Empty<DesignerTransformOp>()));
+		Assert.False(model.SetTransform("Transform", new[] { new DesignerTransformOp { Type = "Matrix" } }));
+		// No brush, and references, have no transform of their own and drop them from the written info.
+		model.SetKind(BrushEditModel.NullKind);
+		Assert.False(model.CanTransform);
+		Assert.False(model.SetTransform("Transform", System.Array.Empty<DesignerTransformOp>()));
+		Assert.Empty(model.ToInfo().Transform);
+	}
+
+	[Fact]
+	public void TransformScriptStepEditsAThroughTheTransformEditorSteps()
+	{
+		var model = new BrushEditModel(new DesignerBrushInfo { Kind = BrushEditModel.LinearKind, Stops = { new DesignerGradientStopInfo { Color = "#FFFF0000" }, new DesignerGradientStopInfo { Color = "#FF0000FF", Offset = 1 } } });
+		Assert.True(BrushEditing.ApplyScript(model, "transform:RelativeTransform:add:Rotate|set:0:Angle:45|add:Scale|set:1:ScaleX:2"));
+		Assert.Equal(new[] { "Rotate", "Scale" }, model.RelativeTransform.Select(op => op.Type));
+		Assert.Equal((45d, 2d), (model.RelativeTransform[0].Angle, model.RelativeTransform[1].ScaleX));
+		Assert.Empty(model.Transform);
+		Assert.Throws<System.ArgumentException>(() => BrushEditing.ApplyScript(model, "transform:Transform:add:Matrix"));
+		Assert.Throws<System.ArgumentException>(() => BrushEditing.ApplyScript(model, "transform:Bogus:add:Rotate"));
+	}
 }
