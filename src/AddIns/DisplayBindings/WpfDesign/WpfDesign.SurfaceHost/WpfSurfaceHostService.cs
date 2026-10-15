@@ -3476,7 +3476,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						});
 					}
 				}
-				result.Add(MarkImageSource(ToPropertyInfo(property), property));
+				result.Add(MarkResourceReference(MarkImageSource(ToPropertyInfo(property), property), property));
 			}
 			// The in-process grid lists the attached layout properties the parent panel defines,
 			// named as XAML spells them so design/set-property and reset-property accept them.
@@ -3486,6 +3486,12 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				info.Name = info.DisplayName = attached.OwnerType.Name + "." + attached.Name;
 				info.Category = "Layout";
 				result.Add(info);
+			}
+			foreach (var info in result.Where(info => info.EditorKind == "ResourceReference"))
+			{
+				var type = item.Properties[info.Name]?.ReturnType;
+				if (type != null)
+					info.ResourceReferenceKeys = ResourceKeys(item, value => value != null && type.IsInstanceOfType(value)).OrderBy(key => key, StringComparer.Ordinal).ToList();
 			}
 			// Every brush editor row, attached ones included, offers the same in-scope Brush resources.
 			List<string>? brushKeys = null, colorKeys = null;
@@ -3627,6 +3633,24 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			return result;
 		}
 
+		/// <summary>The property types an UNSET property is offered the resource picker for: references to a shared Style, template or
+		/// context menu are what a resource is normally for. (A property that already holds a reference gets it whatever its type.)</summary>
+		static bool IsResourceReferenceType(Type? type)
+			=> type != null && (type == typeof(Style) || typeof(FrameworkTemplate).IsAssignableFrom(type) || type == typeof(ContextMenu));
+
+		static DesignerPropertyInfo MarkResourceReference(DesignerPropertyInfo info, DesignItemProperty property)
+		{
+			if (string.IsNullOrEmpty(info.EditorKind) && !property.IsSet && IsResourceReferenceType(property.ReturnType))
+			{
+				info.Kind = "Reference";
+				info.IsReadOnly = true;
+				info.IsNull = false;
+				info.EditorKind = "ResourceReference";
+				info.Value = "";
+			}
+			return info;
+		}
+
 		/// <summary>An unset or attribute-text <see cref="ImageSource"/> (Image.Source, Window.Icon...)
 		/// gets the IDE's project-image picker. The picker only offers candidates; the write is the
 		/// usual design/set-property, which keeps an image URI as its authored text.</summary>
@@ -3747,6 +3771,18 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						info.EditorKind = "Brush";
 						info.Brush = described;
 						info.Value = BrushDisplayText(described);
+						return info;
+					}
+					// A {StaticResource key}/{DynamicResource key} on any other property gets the resource picker.
+					if (property.ReturnType != null && !typeof(Brush).IsAssignableFrom(property.ReturnType)
+						&& reference.Component is StaticResourceExtension or DynamicResourceExtension
+						&& reference.Properties["ResourceKey"].ValueOnInstance is string referencedKey)
+					{
+						info.Kind = "Reference";
+						info.IsReadOnly = true;
+						info.EditorKind = "ResourceReference";
+						info.ResourceReferenceKind = reference.Component is StaticResourceExtension ? "Static" : "Dynamic";
+						info.Value = "{" + info.ResourceReferenceKind + "Resource " + referencedKey + "}";
 						return info;
 					}
 					if (reference.Component is Transform && property.ReturnType != null && typeof(Transform).IsAssignableFrom(property.ReturnType)
@@ -4038,6 +4074,54 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			}
 			return null;
 		}
+
+		/// <summary>Points a property at a resource in scope - <c>{StaticResource key}</c> or <c>{DynamicResource key}</c>, the key
+		/// one of the property's <see cref="DesignerPropertyInfo.ResourceReferenceKeys"/> - or clears the reference (empty kind).
+		/// Only a property that is unset or already holds such a reference is rewritten, so an inline value is never lost, and
+		/// a Brush property (its own editor) is refused.</summary>
+		[JsonRpcMethod("design/set-resource-reference")]
+		public DesignerSessionState SetResourceReference(long baseVersion, string elementId, string propertyName, string kind, string key)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item))
+					return NotFound(state, "Element not found: " + elementId);
+				DesignItemProperty? property;
+				try { property = item.Properties[propertyName]; }
+				catch (ArgumentException e) { return NotFound(state, e.Message); }
+				if (property?.ReturnType == null || typeof(Brush).IsAssignableFrom(property.ReturnType))
+					return NotFound(state, "Not a resource-reference property: " + propertyName);
+				var isReference = property.Value is { } current
+					&& current.Component is StaticResourceExtension or DynamicResourceExtension
+					&& current.Properties["ResourceKey"].ValueOnInstance is string;
+				if (property.IsSet && !isReference)
+					return NotFound(state, propertyName + " holds a value that is not a resource reference.");
+				if (kind is not ("" or "Static" or "Dynamic"))
+					return NotFound(state, "Resource reference kind must be Static, Dynamic or empty.");
+				var type = property.ReturnType;
+				if (kind != "" && !ResourceKeys(item, value => value != null && type.IsInstanceOfType(value)).Contains(key ?? ""))
+					return NotFound(state, "Not a resource of a matching type in scope: " + key);
+				try
+				{
+					using var changeGroup = item.OpenGroup("Set " + propertyName);
+					if (property.IsSet)
+						property.Reset();
+					if (kind != "")
+					{
+						property.SetValue(kind == "Static" ? new StaticResourceExtension() : (object)new DynamicResourceExtension());
+						property.Value!.Properties["ResourceKey"].SetValue(key);
+					}
+					changeGroup.Commit();
+				}
+				catch (Exception e) when (e is ArgumentException or FormatException or NotSupportedException or InvalidOperationException)
+				{
+					return NotFound(state, e.GetBaseException().Message);
+				}
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
 
 		static readonly string[] TransformOpTypes = { "Rotate", "Scale", "Skew", "Translate" };
 

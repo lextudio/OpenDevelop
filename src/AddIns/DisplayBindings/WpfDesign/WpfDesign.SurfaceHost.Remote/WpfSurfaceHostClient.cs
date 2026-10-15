@@ -355,6 +355,11 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> SetTransformAsync(long baseVersion, string elementId, string propertyName, IReadOnlyList<DesignerTransformOp> ops, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-transform", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, ops }, cancellationToken), cancellationToken);
 
+	/// <summary>Points a property at a resource (<c>kind</c> "Static" or "Dynamic" with a key from the property's
+	/// <see cref="DesignerPropertyInfo.ResourceReferenceKeys"/>), or clears the reference (empty kind) (<c>design/set-resource-reference</c>).</summary>
+	public Task<DesignerSessionState> SetResourceReferenceAsync(long baseVersion, string elementId, string propertyName, string kind, string key, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-resource-reference", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, kind, key }, cancellationToken), cancellationToken);
+
 	/// <summary>Changes one Grid row's/column's unit to <c>Pixel</c>, <c>Star</c> or <c>Auto</c>.</summary>
 	public Task<DesignerSessionState> SetGridTrackUnitAsync(long baseVersion, string elementId, bool isRow, int index, string unit, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-grid-track-unit", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, index, unit }, cancellationToken), cancellationToken);

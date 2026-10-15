@@ -858,6 +858,24 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				: JsonSerializer.Serialize(new { success = false, error = result.Error });
 		}
 
+		[DevFlowAction("od.wpf-designer.properties-pad.pick-resource", Description = "List a resource-reference row's real drop-down ('(none)', then each in-scope resource as {StaticResource key} and {DynamicResource key}), and when <entry> is given select it as a user pick does")]
+		public static string PickResourceThroughPropertiesPad(string propertyName, string entry = "")
+		{
+			var grid = PropertyPadGrid;
+			if (grid?.SelectedObject is not WpfSurfaceElementPropertyAdapter)
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
+			var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(candidate => IsPropertyItem(candidate, propertyName));
+			if (item?.Editor is not ComboBox { Name: WpfResourceReferenceEditor.ComboName } combo)
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad did not render a resource-reference picker: " + propertyName });
+			var items = combo.Items.OfType<string>().ToArray();
+			if (!string.IsNullOrEmpty(entry)) {
+				if (!items.Contains(entry))
+					return JsonSerializer.Serialize(new { success = false, error = "Not offered: " + entry, items });
+				combo.SelectedItem = entry;
+			}
+			return JsonSerializer.Serialize(new { success = true, items, selected = combo.SelectedItem as string });
+		}
+
 		[DevFlowAction("od.wpf-designer.properties-pad.pick-image", Description = "List an ImageSource row's real project-image drop-down, and when <path> is given select that item as a user pick does")]
 		public static string PickImageThroughPropertiesPad(string propertyName, string path = "")
 		{

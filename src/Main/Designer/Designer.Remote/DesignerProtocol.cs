@@ -67,7 +67,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v47 adds the optional propertyName to the WinForms host's design/set-items (ListView.Items).
 		// v48 adds the Image brush's tile settings (DesignerBrushInfo.TileMode/Alignment/Viewport/Viewbox).
 		// v49 adds DesignerPropertyInfo.Transform (the "Transform" editor kind) and WPF's optional design/set-transform.
-		public const int Version = 49;
+		// v50 adds the "ResourceReference" editor kind (DesignerPropertyInfo.ResourceReferenceKind/Keys) and WPF's optional design/set-resource-reference.
+		public const int Version = 50;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -654,6 +655,12 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// simple operations - one for a single transform, several for a TransformGroup, none when unset. Null when the
 		/// value is one the editor cannot round-trip. v49.</summary>
 		public List<DesignerTransformOp>? Transform { get; set; }
+		/// <summary>For a <c>ResourceReference</c> editor, whether the value is a <c>Static</c> or <c>Dynamic</c> resource reference
+		/// (empty when the property is unset). v50.</summary>
+		public string ResourceReferenceKind { get; set; } = "";
+		/// <summary>For a <c>ResourceReference</c> editor, the string keys of the resources in the element's scope whose value fits
+		/// the property's type, in name order. v50.</summary>
+		public List<string> ResourceReferenceKeys { get; set; } = new List<string>();
 	}
 
 	/// <summary>One simple transform: <c>Rotate</c> (Angle, CenterX, CenterY), <c>Scale</c> (ScaleX, ScaleY, CenterX,

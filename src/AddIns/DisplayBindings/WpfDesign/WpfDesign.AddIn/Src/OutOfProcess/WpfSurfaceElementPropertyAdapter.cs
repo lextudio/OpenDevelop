@@ -173,6 +173,17 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		/// <summary>Points a property at a resource, or clears the reference (<c>design/set-resource-reference</c>); only a
+		/// host-published ResourceReference row of this element can be targeted.</summary>
+		internal void SetResourceReference(string propertyName, string kind, string key)
+		{
+			if (!node.Properties.Any(property => property.Name == propertyName && property.EditorKind == "ResourceReference"))
+				throw new InvalidOperationException("Not an editable resource reference: " + propertyName);
+			var state = client.SetResourceReferenceAsync(currentBaseVersion(), node.Id, propertyName, kind, key).GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		/// <summary>Commits an edited transform (<c>design/set-transform</c>); only a host-published Transform
 		/// editor row of this element can be targeted.</summary>
 		void ITransformEditorHost.SetTransform(string propertyName, System.Collections.Generic.IReadOnlyList<DesignerTransformOp> ops)
@@ -340,6 +351,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 			// text or color-only editor cannot express.
 			else if (property.EditorKind == "Brush")
 				attributes.Add(new EditorAttribute(typeof(WpfBrushEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
+			else if (property.EditorKind == "ResourceReference")
+				attributes.Add(new EditorAttribute(typeof(WpfResourceReferenceEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 			else if (property.EditorKind == "Transform")
 				attributes.Add(new EditorAttribute(typeof(WpfTransformEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 			else if (property.EditorKind == "ImageSource")
@@ -356,6 +369,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 		internal System.Collections.Generic.IReadOnlyList<string> AllowedValues => property.AllowedValues;
 
 		System.Collections.Generic.IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => property.CollectionItems;
+
+		internal System.Collections.Generic.List<string> ResourceReferenceKeys => property.ResourceReferenceKeys;
 
 		System.Collections.Generic.IReadOnlyList<DesignerTransformOp> ITransformProperty.Transform => property.Transform ?? new System.Collections.Generic.List<DesignerTransformOp>();
 
