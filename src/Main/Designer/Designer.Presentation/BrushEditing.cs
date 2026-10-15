@@ -111,6 +111,8 @@ public static class BrushEditing
 				case "color-resource": ok = model.SelectColorResource(argument); break;
 				case "image": ok = model.SetImage(step.Substring("image:".Length)); break;
 				case "stretch": ok = model.SetStretch(argument); break;
+				// tile:<Setting>:<value>, e.g. tile:TileMode:Tile or tile:Viewport:0,0,0.5,0.5
+				case "tile": ok = parts.Length > 2 && model.SetTileSetting(argument, parts[2]); break;
 				case "color":
 					ok = BrushEditModel.TryParseColor(step.Substring("color:".Length), out var color);
 					if (ok) model.SelectedColor = color;
@@ -211,6 +213,14 @@ public sealed class BrushEditorDialog : Window
 	readonly ComboBox imageSource = new() { IsEditable = true, Margin = new Thickness(0, 0, 0, 4) };
 	readonly ComboBox imageStretch = new();
 	readonly StackPanel imagePanel = new();
+	readonly StackPanel imageSourceRow = new();
+	readonly ComboBox tileMode = new() { ItemsSource = BrushEditModel.TileModeValues };
+	readonly ComboBox alignmentX = new() { ItemsSource = BrushEditModel.AlignmentXValues };
+	readonly ComboBox alignmentY = new() { ItemsSource = BrushEditModel.AlignmentYValues };
+	readonly TextBox viewport = new() { ToolTip = "x,y,width,height (blank = whole brush)" };
+	readonly ComboBox viewportUnits = new() { ItemsSource = BrushEditModel.MappingModeValues };
+	readonly TextBox viewbox = new() { ToolTip = "x,y,width,height (blank = whole image)" };
+	readonly ComboBox viewboxUnits = new() { ItemsSource = BrushEditModel.MappingModeValues };
 	bool showImage;
 	bool showResources;
 	readonly RadioButton linear = new() { Content = "Linear", GroupName = "gradientKind", Margin = new Thickness(0, 0, 8, 0) };
@@ -273,17 +283,28 @@ public sealed class BrushEditorDialog : Window
 		tabs.Children.Add(gradientTab);
 		tabs.Children.Add(resourcesTab);
 		tabs.Children.Add(imageTab);
-		imagePanel.Children.Add(new TextBlock { Text = "Image source", Margin = new Thickness(0, 0, 0, 2) });
-		imagePanel.Children.Add(imageSource);
+		imageSourceRow.Children.Add(new TextBlock { Text = "Image source", Margin = new Thickness(0, 0, 0, 2) });
+		imageSourceRow.Children.Add(imageSource);
+		imagePanel.Children.Add(imageSourceRow);
 		imagePanel.Children.Add(new TextBlock { Text = "Stretch", Margin = new Thickness(0, 0, 0, 2) });
 		imagePanel.Children.Add(imageStretch);
+		foreach (var (label, control) in new (string, FrameworkElement)[] { ("Tile mode", tileMode), ("Horizontal alignment", alignmentX), ("Vertical alignment", alignmentY),
+			("Viewport (tile size)", viewport), ("Viewport units", viewportUnits), ("Viewbox (image region)", viewbox), ("Viewbox units", viewboxUnits) }) {
+			imagePanel.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 6, 0, 2) });
+			imagePanel.Children.Add(control);
+		}
+		void TileCombo(ComboBox box, string name) => box.SelectionChanged += (_, _) => { if (!syncing && box.SelectedItem is string chosen) Change(() => model.SetTileSetting(name, chosen)); };
+		void TileText(TextBox box, string name) => box.LostKeyboardFocus += (_, _) => { if (!syncing) Change(() => model.SetTileSetting(name, box.Text)); };
+		TileCombo(tileMode, "TileMode"); TileCombo(alignmentX, "AlignmentX"); TileCombo(alignmentY, "AlignmentY");
+		TileCombo(viewportUnits, "ViewportUnits"); TileCombo(viewboxUnits, "ViewboxUnits");
+		TileText(viewport, "Viewport"); TileText(viewbox, "Viewbox");
 		imageSource.ItemsSource = model.ImageSources;
 		imageStretch.ItemsSource = BrushEditModel.StretchValues;
 		imageTab.Click += (_, _) => { showImage = true; showResources = false; Refresh(); };
 		imageSource.SelectionChanged += (_, _) => { if (!syncing && imageSource.SelectedItem is string picked) Change(() => model.SetImage(picked)); };
 		imageSource.LostKeyboardFocus += (_, _) => { if (!syncing && !string.IsNullOrWhiteSpace(imageSource.Text) && imageSource.Text != model.ImageSource) Change(() => model.SetImage(imageSource.Text)); };
 		imageStretch.SelectionChanged += (_, _) => { if (!syncing && imageStretch.SelectedItem is string stretch) Change(() => model.SetStretch(stretch)); };
-		showImage = model.Kind == BrushEditModel.ImageKind;
+		showImage = model.Kind == BrushEditModel.ImageKind || model.IsContentTileBrush;
 		resourcesTab.Click += (_, _) => { showResources = true; showImage = false; Refresh(); };
 		resources.ItemsSource = model.ResourceEntries;
 		resources.SelectionChanged += (_, _) => { if (!syncing && resources.SelectedItem is string entry) Change(() => model.SelectResourceEntry(entry)); };
@@ -611,11 +632,21 @@ public sealed class BrushEditorDialog : Window
 			imageTab.IsChecked = showImage;
 			imagePanel.Visibility = showImage ? Visibility.Visible : Visibility.Collapsed;
 			imageSource.Text = model.Kind == BrushEditModel.ImageKind ? model.ImageSource : "";
-			imageStretch.SelectedItem = model.Kind == BrushEditModel.ImageKind ? (model.Stretch.Length == 0 ? "Fill" : model.Stretch) : null;
+			imageStretch.SelectedItem = model.Kind == BrushEditModel.ImageKind || model.IsContentTileBrush ? (model.Stretch.Length == 0 ? "Fill" : model.Stretch) : null;
+			var isImage = model.Kind == BrushEditModel.ImageKind || model.IsContentTileBrush;
+			imageSourceRow.Visibility = model.IsContentTileBrush ? Visibility.Collapsed : Visibility.Visible;
+			imageTab.Content = model.Kind switch { BrushEditModel.DrawingKind => "Drawing", BrushEditModel.VisualKind => "Visual", _ => "Image" };
+			tileMode.SelectedItem = isImage ? (model.TileMode.Length == 0 ? "None" : model.TileMode) : null;
+			alignmentX.SelectedItem = isImage ? (model.AlignmentX.Length == 0 ? "Center" : model.AlignmentX) : null;
+			alignmentY.SelectedItem = isImage ? (model.AlignmentY.Length == 0 ? "Center" : model.AlignmentY) : null;
+			viewportUnits.SelectedItem = isImage ? (model.ViewportUnits.Length == 0 ? "RelativeToBoundingBox" : model.ViewportUnits) : null;
+			viewboxUnits.SelectedItem = isImage ? (model.ViewboxUnits.Length == 0 ? "RelativeToBoundingBox" : model.ViewboxUnits) : null;
+			viewport.Text = isImage ? model.Viewport : "";
+			viewbox.Text = isImage ? model.Viewbox : "";
 			resources.Visibility = showResources ? Visibility.Visible : Visibility.Collapsed;
 			resources.SelectedItem = model.SelectedResourceEntry;
 			gradientPanel.Visibility = !showResources && !showImage && model.IsGradient ? Visibility.Visible : Visibility.Collapsed;
-			colorPanel.Visibility = showResources || showImage || model.Kind is BrushEditModel.NullKind or BrushEditModel.ResourceKind or BrushEditModel.SystemKind or BrushEditModel.ImageKind or BrushEditModel.ColorResourceKind ? Visibility.Collapsed : Visibility.Visible;
+			colorPanel.Visibility = showResources || showImage || model.Kind is BrushEditModel.NullKind or BrushEditModel.ResourceKind or BrushEditModel.SystemKind or BrushEditModel.ImageKind or BrushEditModel.ColorResourceKind or BrushEditModel.DrawingKind or BrushEditModel.VisualKind ? Visibility.Collapsed : Visibility.Visible;
 			// The eyedropper sets the color the color editor shows, so it lives and hides with it.
 			eyedropperToggle.Visibility = designFrame != null && colorPanel.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
 			eyedropperFrame.Visibility = eyedropperToggle.Visibility == Visibility.Visible && eyedropperToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;

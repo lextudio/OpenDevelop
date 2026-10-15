@@ -204,7 +204,8 @@ public sealed class BrushEditTests
 			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="root" Width="240" Height="120">
 			  <Button x:Name="target" Background="Red" Content="Target"/>
 			  <Button x:Name="tiled" Content="Tiled"><Button.Background><ImageBrush ImageSource="images/a.png" Stretch="Uniform"/></Button.Background></Button>
-			  <Button x:Name="transformed" Content="T"><Button.Background><ImageBrush ImageSource="images/a.png" TileMode="Tile"/></Button.Background></Button>
+			  <Button x:Name="transformed" Content="T"><Button.Background><ImageBrush ImageSource="images/a.png"><ImageBrush.RelativeTransform><RotateTransform Angle="10"/></ImageBrush.RelativeTransform></ImageBrush></Button.Background></Button>
+			  <Button x:Name="tiledSettings" Content="S"><Button.Background><ImageBrush ImageSource="images/a.png" TileMode="Tile" AlignmentX="Left" AlignmentY="Bottom" Viewport="0,0,0.5,0.5" ViewportUnits="RelativeToBoundingBox" Viewbox="0,0,10,10" ViewboxUnits="Absolute"/></Button.Background></Button>
 			</StackPanel>
 			""";
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
@@ -216,8 +217,29 @@ public sealed class BrushEditTests
 
 		var tiled = Background(opened, 1).Brush!;
 		Assert.Equal(("Image", "images/a.png", "Uniform"), (tiled.Kind, tiled.ImageSource, tiled.Stretch));
-		// A setting the editor cannot show (TileMode) keeps the brush a read-only reference.
+		// A setting the editor cannot show (a transform) keeps the brush a read-only reference.
 		Assert.Null(Background(opened, 2).Brush);
+		var tileSettings = Background(opened, 3).Brush!;
+		Assert.Equal(("Tile", "Left", "Bottom", "0,0,0.5,0.5", "RelativeToBoundingBox", "0,0,10,10", "Absolute"),
+			(tileSettings.TileMode, tileSettings.AlignmentX, tileSettings.AlignmentY, tileSettings.Viewport, tileSettings.ViewportUnits, tileSettings.Viewbox, tileSettings.ViewboxUnits));
+		// Each invalid tile setting is refused with the source untouched.
+		var beforeTile = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		foreach (var bad in new[] {
+			new DesignerBrushInfo { Kind = "Image", ImageSource = "b.png", TileMode = "Bogus" },
+			new DesignerBrushInfo { Kind = "Image", ImageSource = "b.png", AlignmentX = "Top" },
+			new DesignerBrushInfo { Kind = "Image", ImageSource = "b.png", Viewport = "1,2,3" },
+			new DesignerBrushInfo { Kind = "Image", ImageSource = "b.png", Viewbox = "0,0,-1,1" },
+			new DesignerBrushInfo { Kind = "Image", ImageSource = "b.png", ViewportUnits = "Sideways" } })
+			Assert.False((await client.SetBrushAsync(1, opened.Tree!.Children[0].Id, "Background", bad, timeout.Token)).Accepted);
+		Assert.Equal(beforeTile, Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text);
+		var tileSet = await client.SetBrushAsync(1, opened.Tree!.Children[0].Id, "Background", new DesignerBrushInfo {
+			Kind = "Image", ImageSource = "images/c.png", TileMode = "FlipXY", AlignmentX = "Right", Viewport = "0,0,20,20", ViewportUnits = "Absolute" }, timeout.Token);
+		Assert.True(tileSet.Accepted, tileSet.Error);
+		var tileText = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.Matches("<ImageBrush(?=[^>]*TileMode=\"FlipXY\")(?=[^>]*AlignmentX=\"Right\")(?=[^>]*Viewport=\"0,0,20,20\")(?=[^>]*ViewportUnits=\"Absolute\")", tileText);
+		Assert.DoesNotContain("AlignmentY=\"Center\"", tileText, StringComparison.Ordinal);
+		var tileBack = Background(tileSet, 0).Brush!;
+		Assert.Equal(("FlipXY", "Right", "", "0,0,20,20", "Absolute"), (tileBack.TileMode, tileBack.AlignmentX, tileBack.AlignmentY, tileBack.Viewport, tileBack.ViewportUnits));
 
 		var before = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
 		Assert.False((await client.SetBrushAsync(1, opened.Tree!.Children[0].Id, "Background", new DesignerBrushInfo { Kind = "Image", ImageSource = "" }, timeout.Token)).Accepted);
@@ -231,6 +253,55 @@ public sealed class BrushEditTests
 		Assert.DoesNotContain("Background=\"Red\"", text, StringComparison.Ordinal);
 		var written = Background(set, 0).Brush!;
 		Assert.Equal(("Image", "images/b.png", "UniformToFill", 0.5), (written.Kind, written.ImageSource, written.Stretch, written.Opacity));
+	}
+
+	[Fact]
+	public async Task ChildHost_EditsDrawingAndVisualBrushTileSettingsInPlace()
+	{
+		const string xaml = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="root" Width="240" Height="120">
+			  <Button x:Name="drawn" Content="D"><Button.Background><DrawingBrush TileMode="Tile" Viewport="0,0,10,10" ViewportUnits="Absolute"><DrawingBrush.Drawing><GeometryDrawing Brush="Red"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,5,5"/></GeometryDrawing.Geometry></GeometryDrawing></DrawingBrush.Drawing></DrawingBrush></Button.Background></Button>
+			  <Button x:Name="visual" Content="V"><Button.Background><VisualBrush Stretch="Uniform"><VisualBrush.Visual><Border Background="Blue" Width="4" Height="4"/></VisualBrush.Visual></VisualBrush></Button.Background></Button>
+			  <Button x:Name="moved" Content="M"><Button.Background><DrawingBrush><DrawingBrush.Transform><RotateTransform Angle="5"/></DrawingBrush.Transform></DrawingBrush></Button.Background></Button>
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(WpfSurfaceHostRpcTests.HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(WpfSurfaceHostRpcTests.Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Background(DesignerSessionState state, int index)
+			=> Assert.Single(state.Tree!.Children[index].Properties, p => p.Name == "Background");
+
+		var drawn = Background(opened, 0).Brush!;
+		Assert.Equal(("Drawing", "Tile", "0,0,10,10", "Absolute"), (drawn.Kind, drawn.TileMode, drawn.Viewport, drawn.ViewportUnits));
+		var visual = Background(opened, 1).Brush!;
+		Assert.Equal(("Visual", "Uniform"), (visual.Kind, visual.Stretch));
+		// A transform keeps the brush a read-only reference.
+		Assert.Null(Background(opened, 2).Brush);
+
+		// The wrong kind for the property's brush is refused, source untouched.
+		var before = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.False((await client.SetBrushAsync(1, opened.Tree!.Children[0].Id, "Background", new DesignerBrushInfo { Kind = "Visual" }, timeout.Token)).Accepted);
+		Assert.False((await client.SetBrushAsync(1, opened.Tree.Children[0].Id, "Background", new DesignerBrushInfo { Kind = "Drawing", TileMode = "Bogus" }, timeout.Token)).Accepted);
+		Assert.Equal(before, Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text);
+
+		var edited = await client.SetBrushAsync(1, opened.Tree.Children[0].Id, "Background",
+			new DesignerBrushInfo { Kind = "Drawing", TileMode = "FlipX", Viewport = "0,0,20,20", ViewportUnits = "Absolute", AlignmentX = "Left", Opacity = 0.5 }, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var text = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.Matches("<DrawingBrush(?=[^>]*TileMode=\"FlipX\")(?=[^>]*Viewport=\"0,0,20,20\")(?=[^>]*AlignmentX=\"Left\")(?=[^>]*Opacity=\"0.5\")", text);
+		// The drawing itself survived, and a setting reset to its default is no longer written.
+		Assert.Contains("<GeometryDrawing", text, StringComparison.Ordinal);
+		Assert.Contains("RectangleGeometry", text, StringComparison.Ordinal);
+		var back = Background(edited, 0).Brush!;
+		Assert.Equal(("Drawing", "FlipX", "Left", 0.5), (back.Kind, back.TileMode, back.AlignmentX, back.Opacity));
+
+		var cleared = await client.SetBrushAsync(1, opened.Tree.Children[0].Id, "Background", new DesignerBrushInfo { Kind = "Drawing" }, timeout.Token);
+		Assert.True(cleared.Accepted, cleared.Error);
+		var clearedText = Assert.Single((await client.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.DoesNotContain("TileMode=", clearedText, StringComparison.Ordinal);
+		Assert.DoesNotContain("Viewport=", clearedText, StringComparison.Ordinal);
+		Assert.Contains("<GeometryDrawing", clearedText, StringComparison.Ordinal);
 	}
 
 	[Fact]

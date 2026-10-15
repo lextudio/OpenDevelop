@@ -167,4 +167,47 @@ public sealed class BrushEditModelTests
 		model.SelectedColor = Colors.Blue;
 		Assert.Equal(BrushEditModel.SolidKind, model.Kind);
 	}
+
+	[Fact]
+	public void ImageTileSettingsRoundTripAndRejectInvalidValues()
+	{
+		var model = new BrushEditModel(new DesignerBrushInfo { Kind = BrushEditModel.ImageKind, ImageSource = "a.png", TileMode = "Tile", Viewport = "0,0,0.5,0.5" });
+		Assert.Equal(("Tile", "0,0,0.5,0.5"), (model.TileMode, model.Viewport));
+		Assert.False(model.IsChanged);
+
+		Assert.True(model.SetTileSetting("AlignmentX", "Left"));
+		Assert.True(model.SetTileSetting("ViewboxUnits", "Absolute"));
+		Assert.True(model.SetTileSetting("Viewbox", " 0,0,10,10 "));
+		// The defaults are stored as empty so they are never written.
+		Assert.True(model.SetTileSetting("TileMode", "None"));
+		Assert.True(model.SetTileSetting("AlignmentY", "Center"));
+		var info = model.ToInfo();
+		Assert.Equal(("", "Left", "", "0,0,0.5,0.5", "", "0,0,10,10", "Absolute"),
+			(info.TileMode, info.AlignmentX, info.AlignmentY, info.Viewport, info.ViewportUnits, info.Viewbox, info.ViewboxUnits));
+		Assert.True(model.IsChanged);
+
+		Assert.False(model.SetTileSetting("TileMode", "Bogus"));
+		Assert.False(model.SetTileSetting("Viewport", "1,2,3"));
+		Assert.False(model.SetTileSetting("Viewport", "0,0,-1,1"));
+		Assert.False(model.SetTileSetting("Nonsense", "x"));
+		Assert.Equal("0,0,0.5,0.5", model.Viewport);
+		// A color leaves the image brush, and an edit script reaches the same setters.
+		Assert.True(BrushEditing.ApplyScript(model, "tile:TileMode:FlipX;tile:Viewport:0,0,2,2"));
+		Assert.Equal(("FlipX", "0,0,2,2"), (model.TileMode, model.Viewport));
+	}
+
+	[Fact]
+	public void ContentTileBrushesKeepTheirKindAndOnlyEditTileSettings()
+	{
+		var model = new BrushEditModel(new DesignerBrushInfo { Kind = BrushEditModel.DrawingKind, TileMode = "Tile", Stretch = "Uniform", Opacity = 0.5 });
+		Assert.True(model.IsContentTileBrush);
+		Assert.True(model.SetTileSetting("Viewport", "0,0,4,4"));
+		Assert.True(model.SetStretch("None"));
+		var info = model.ToInfo();
+		Assert.Equal((BrushEditModel.DrawingKind, "Tile", "0,0,4,4", "None", 0.5, ""), (info.Kind, info.TileMode, info.Viewport, info.Stretch, info.Opacity, info.ImageSource));
+		Assert.True(model.IsChanged);
+		// Picking a color replaces the drawing with a solid brush, as any non-solid kind does.
+		model.SelectedColor = System.Windows.Media.Colors.Red;
+		Assert.Equal(BrushEditModel.SolidKind, model.Kind);
+	}
 }

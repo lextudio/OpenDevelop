@@ -1189,6 +1189,31 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				catch (ArgumentException e) { return NotFound(state, e.Message); }
 				if (property?.ReturnType == null || !typeof(Brush).IsAssignableFrom(property.ReturnType))
 					return NotFound(state, "Not a Brush property: " + propertyName);
+				// A drawing or visual brush keeps its content: only its tile settings are rewritten, in place.
+				if (brush.Kind is "Drawing" or "Visual")
+				{
+					if (property.Value is not { } existing
+						|| !(brush.Kind == "Drawing" ? existing.Component is DrawingBrush : existing.Component is VisualBrush))
+						return NotFound(state, "The property does not hold a " + brush.Kind.ToLowerInvariant() + " brush.");
+					if (!string.IsNullOrEmpty(brush.Stretch) && !Enum.IsDefined(typeof(Stretch), brush.Stretch)
+						|| !(brush.Opacity >= 0 && brush.Opacity <= 1))
+						return NotFound(state, "A tile brush needs a Stretch value and an opacity from 0 to 1.");
+					if (TileSettingsError(brush) is { } contentTileError)
+						return NotFound(state, contentTileError);
+					try
+					{
+						using var contentGroup = item.OpenGroup("Set " + propertyName);
+						ApplyTileSettings(existing, brush);
+						contentGroup.Commit();
+					}
+					catch (Exception e) when (e is ArgumentException or FormatException or NotSupportedException or InvalidOperationException or OverflowException)
+					{
+						return NotFound(state, e.GetBaseException().Message);
+					}
+					RebuildTreeAndRender(state);
+					state.Accepted = true;
+					return state;
+				}
 				// Validate against the dictionaries as they are now, not a previous rebuild's cache.
 				brushKeysByScope.Clear();
 				colorKeysByScope.Clear();
@@ -1202,6 +1227,8 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					|| !string.IsNullOrEmpty(brush.Stretch) && !Enum.IsDefined(typeof(Stretch), brush.Stretch)
 					|| !(brush.Opacity >= 0 && brush.Opacity <= 1)))
 					return NotFound(state, "An image brush needs an image source, a Stretch value and an opacity from 0 to 1.");
+				if (brush.Kind == "Image" && TileSettingsError(brush) is { } tileError)
+					return NotFound(state, tileError);
 				try
 				{
 					var value = brush.Kind is "Resource" or "System" or "Image" or "ColorResource" ? null : CreateBrush(brush);
@@ -1237,6 +1264,11 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 							image.Properties["Stretch"].SetValue(Enum.Parse<Stretch>(brush.Stretch));
 						if (brush.Opacity != 1)
 							image.Properties["Opacity"].SetValue(brush.Opacity);
+						// Tile settings are written as the authored text, only when set.
+						foreach (var (name, text) in new[] { ("TileMode", brush.TileMode), ("AlignmentX", brush.AlignmentX), ("AlignmentY", brush.AlignmentY),
+							("Viewport", brush.Viewport), ("ViewportUnits", brush.ViewportUnits), ("Viewbox", brush.Viewbox), ("ViewboxUnits", brush.ViewboxUnits) })
+							if (!string.IsNullOrWhiteSpace(text))
+								image.Properties[name].SetValue(text.Trim());
 						property.SetValue(image);
 					}
 					else if (brush.Kind == "System")
@@ -3698,6 +3730,16 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						info.Value = BrushDisplayText(image);
 						return info;
 					}
+					if (reference.Component is DrawingBrush or VisualBrush && DescribeContentTileBrush(reference) is { } contentBrush
+						&& property.ReturnType != null && typeof(Brush).IsAssignableFrom(property.ReturnType))
+					{
+						info.Kind = "Brush";
+						info.IsReadOnly = true;
+						info.EditorKind = "Brush";
+						info.Brush = contentBrush;
+						info.Value = BrushDisplayText(contentBrush);
+						return info;
+					}
 					if (reference.Component is Brush elementBrush && DescribeBrush(elementBrush) is { } described)
 					{
 						info.Kind = "Brush";
@@ -3848,27 +3890,87 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		}
 
 		/// <summary>An <see cref="ImageBrush"/> the editor can round-trip: its ImageSource is authored
-		/// attribute text (not a binding or resource), and nothing but Stretch and Opacity is set
-		/// besides; anything else stays a read-only reference.</summary>
+		/// attribute text (not a binding or resource), and nothing but Stretch, Opacity and the tile
+		/// settings is set besides; anything else stays a read-only reference.</summary>
 		static DesignerBrushInfo? DescribeImageBrush(DesignItem brush)
 		{
 			if (brush.Properties["ImageSource"] is not { IsSet: true, TextValue: { Length: > 0 } source })
 				return null;
+			var info = DescribeTileBrush(brush, "Image");
+			if (info != null)
+				info.ImageSource = source;
+			return info;
+		}
+
+		/// <summary>A <see cref="DrawingBrush"/> or <see cref="VisualBrush"/>: its content (a Drawing
+		/// or Visual) is not edited here, only its Stretch, Opacity and tile settings, which
+		/// <c>design/set-brush</c> changes in place without touching the content.</summary>
+		static DesignerBrushInfo? DescribeContentTileBrush(DesignItem brush)
+			=> brush.Component switch {
+				DrawingBrush => DescribeTileBrush(brush, "Drawing"),
+				VisualBrush => DescribeTileBrush(brush, "Visual"),
+				_ => null
+			};
+
+		/// <summary>The Stretch/Opacity/tile settings of a TileBrush item as authored attribute text, or
+		/// null when a transform, or any setting that is not attribute text, would be lost.</summary>
+		static DesignerBrushInfo? DescribeTileBrush(DesignItem brush, string kind)
+		{
 			// DDP's property collection only enumerates properties already accessed, so name every
-			// other ImageBrush/TileBrush/Brush setting explicitly.
-			foreach (var other in new[] { "TileMode", "Viewport", "ViewportUnits", "Viewbox", "ViewboxUnits", "AlignmentX", "AlignmentY", "Transform", "RelativeTransform" })
+			// other TileBrush/Brush setting explicitly.
+			foreach (var other in new[] { "Transform", "RelativeTransform" })
 				if (brush.Properties[other].IsSet)
 					return null;
 			var stretch = brush.Properties["Stretch"];
 			var opacity = brush.Properties["Opacity"];
 			if (stretch.IsSet && stretch.TextValue == null || opacity.IsSet && opacity.TextValue == null)
 				return null;
+			// The tile settings are authored attribute text; a property element or markup extension
+			// for one keeps the brush a read-only reference.
+			string Tile(string name, out bool ok)
+			{
+				var property = brush.Properties[name];
+				ok = !property.IsSet || property.TextValue != null;
+				return property.IsSet ? property.TextValue ?? "" : "";
+			}
+			var tileMode = Tile("TileMode", out var okTileMode);
+			var alignmentX = Tile("AlignmentX", out var okAlignmentX);
+			var alignmentY = Tile("AlignmentY", out var okAlignmentY);
+			var viewport = Tile("Viewport", out var okViewport);
+			var viewportUnits = Tile("ViewportUnits", out var okViewportUnits);
+			var viewbox = Tile("Viewbox", out var okViewbox);
+			var viewboxUnits = Tile("ViewboxUnits", out var okViewboxUnits);
+			if (!(okTileMode && okAlignmentX && okAlignmentY && okViewport && okViewportUnits && okViewbox && okViewboxUnits))
+				return null;
 			return new DesignerBrushInfo {
-				Kind = "Image",
-				ImageSource = source,
+				Kind = kind,
 				Stretch = stretch.IsSet ? stretch.TextValue! : "",
+				TileMode = tileMode, AlignmentX = alignmentX, AlignmentY = alignmentY,
+				Viewport = viewport, ViewportUnits = viewportUnits, Viewbox = viewbox, ViewboxUnits = viewboxUnits,
 				Opacity = opacity.IsSet && double.TryParse(opacity.TextValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var o) ? o : 1
 			};
+		}
+
+		/// <summary>Writes a tile brush item's Stretch, Opacity and tile settings in place: a default or
+		/// blank value resets the property, anything else sets the authored text.</summary>
+		static void ApplyTileSettings(DesignItem brush, DesignerBrushInfo info)
+		{
+			void Apply(string name, string text, string defaultText = "")
+			{
+				var property = brush.Properties[name];
+				if (string.IsNullOrWhiteSpace(text) || text.Trim() == defaultText) { if (property.IsSet) property.Reset(); }
+				else property.SetValue(text.Trim());
+			}
+			Apply("Stretch", info.Stretch, nameof(Stretch.Fill));
+			if (info.Opacity != 1) brush.Properties["Opacity"].SetValue(info.Opacity);
+			else if (brush.Properties["Opacity"].IsSet) brush.Properties["Opacity"].Reset();
+			Apply("TileMode", info.TileMode, "None");
+			Apply("AlignmentX", info.AlignmentX, "Center");
+			Apply("AlignmentY", info.AlignmentY, "Center");
+			Apply("Viewport", info.Viewport);
+			Apply("ViewportUnits", info.ViewportUnits, "RelativeToBoundingBox");
+			Apply("Viewbox", info.Viewbox);
+			Apply("ViewboxUnits", info.ViewboxUnits, "RelativeToBoundingBox");
 		}
 
 		/// <summary>A SolidColorBrush element whose Color is an authored <c>{StaticResource key}</c> and
@@ -3889,9 +3991,39 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			};
 		}
 
+		/// <summary>Why an image brush's tile settings are not writable, or null: every enum must be a
+		/// defined member and a Viewport/Viewbox must parse as <c>x,y,width,height</c> with a
+		/// non-negative size.</summary>
+		static string? TileSettingsError(DesignerBrushInfo brush)
+		{
+			static bool Defined<T>(string text) where T : struct, Enum => string.IsNullOrEmpty(text) || Enum.TryParse<T>(text, out _) && Enum.IsDefined(typeof(T), text);
+			if (!Defined<TileMode>(brush.TileMode)) return "TileMode must be None, Tile, FlipX, FlipY or FlipXY.";
+			if (!Defined<AlignmentX>(brush.AlignmentX)) return "AlignmentX must be Left, Center or Right.";
+			if (!Defined<AlignmentY>(brush.AlignmentY)) return "AlignmentY must be Top, Center or Bottom.";
+			if (!Defined<BrushMappingMode>(brush.ViewportUnits) || !Defined<BrushMappingMode>(brush.ViewboxUnits))
+				return "Viewport and Viewbox units must be Absolute or RelativeToBoundingBox.";
+			foreach (var (name, text) in new[] { ("Viewport", brush.Viewport), ("Viewbox", brush.Viewbox) })
+			{
+				if (string.IsNullOrWhiteSpace(text)) continue;
+				try
+				{
+					var rect = System.Windows.Rect.Parse(text);
+					if (rect.IsEmpty || rect.Width < 0 || rect.Height < 0 || double.IsNaN(rect.X + rect.Y + rect.Width + rect.Height))
+						return name + " needs a non-negative width and height.";
+				}
+				catch (Exception e) when (e is FormatException or InvalidOperationException or ArgumentException)
+				{
+					return name + " must be x,y,width,height with a non-negative size.";
+				}
+			}
+			return null;
+		}
+
 		static string BrushDisplayText(DesignerBrushInfo brush) => brush.Kind switch {
 			"ColorResource" => "Color {StaticResource " + brush.ResourceKey + "}",
 			"Image" => "Image (" + brush.ImageSource + ")",
+			"Drawing" => "Drawing brush",
+			"Visual" => "Visual brush",
 			"Solid" => brush.Color,
 			"LinearGradient" => "Linear gradient (" + brush.Stops.Count + " stops)",
 			_ => "Radial gradient (" + brush.Stops.Count + " stops)"

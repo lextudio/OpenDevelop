@@ -28,6 +28,10 @@ public sealed class BrushEditModel
 	public const string SystemKind = "System";
 	/// <summary>An <c>ImageBrush</c> of <see cref="ImageSource"/>.</summary>
 	public const string ImageKind = "Image";
+	/// <summary>A <c>DrawingBrush</c> or <c>VisualBrush</c>: its content is edited in XAML, only its Stretch,
+	/// Opacity and tile settings here.</summary>
+	public const string DrawingKind = "Drawing";
+	public const string VisualKind = "Visual";
 	/// <summary>A SolidColorBrush whose Color is <c>{StaticResource ResourceKey}</c>, one of
 	/// <see cref="ColorResourceKeys"/>.</summary>
 	public const string ColorResourceKind = "ColorResource";
@@ -63,6 +67,8 @@ public sealed class BrushEditModel
 		ResourceKey = brush.ResourceKey;
 		ImageSource = brush.ImageSource;
 		Stretch = brush.Stretch;
+		(TileMode, AlignmentX, AlignmentY) = (brush.TileMode, brush.AlignmentX, brush.AlignmentY);
+		(Viewport, ViewportUnits, Viewbox, ViewboxUnits) = (brush.Viewport, brush.ViewportUnits, brush.Viewbox, brush.ViewboxUnits);
 		ImageSources = imageSources ?? Array.Empty<string>();
 		ResourceKeys = resourceKeys ?? Array.Empty<string>();
 		solidColor = ParseColorOrDefault(brush.Color, Colors.Black);
@@ -98,6 +104,46 @@ public sealed class BrushEditModel
 	public string ImageSource { get; private set; }
 	/// <summary>For an image brush, its Stretch, or empty for the default (Fill).</summary>
 	public string Stretch { get; private set; }
+	/// <summary>The image brush's tile settings, each empty for its default.</summary>
+	public string TileMode { get; private set; }
+	public string AlignmentX { get; private set; }
+	public string AlignmentY { get; private set; }
+	public string Viewport { get; private set; }
+	public string ViewportUnits { get; private set; }
+	public string Viewbox { get; private set; }
+	public string ViewboxUnits { get; private set; }
+	public static IReadOnlyList<string> TileModeValues { get; } = new[] { "None", "Tile", "FlipX", "FlipY", "FlipXY" };
+	public static IReadOnlyList<string> AlignmentXValues { get; } = new[] { "Left", "Center", "Right" };
+	public static IReadOnlyList<string> AlignmentYValues { get; } = new[] { "Top", "Center", "Bottom" };
+	public static IReadOnlyList<string> MappingModeValues { get; } = new[] { "RelativeToBoundingBox", "Absolute" };
+
+	/// <summary>Sets one tile setting by name (TileMode, AlignmentX, AlignmentY, Viewport, ViewportUnits,
+	/// Viewbox, ViewboxUnits). A default value (None, Center, RelativeToBoundingBox) or blank is stored
+	/// as empty so it is never written; a rectangle must parse as <c>x,y,width,height</c> with a
+	/// non-negative size. Returns false, changing nothing, for an unknown name or value.</summary>
+	public bool SetTileSetting(string name, string? value)
+	{
+		value = (value ?? "").Trim();
+		static string Default(string v, string defaultValue) => v == defaultValue ? "" : v;
+		static bool Rect(string v)
+		{
+			if (v.Length == 0) return true;
+			var parts = v.Split(',');
+			return parts.Length == 4 && parts.All(part => double.TryParse(part, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+				&& double.Parse(parts[2], CultureInfo.InvariantCulture) >= 0 && double.Parse(parts[3], CultureInfo.InvariantCulture) >= 0;
+		}
+		switch (name) {
+			case nameof(TileMode) when value.Length == 0 || TileModeValues.Contains(value): TileMode = Default(value, "None"); return true;
+			case nameof(AlignmentX) when value.Length == 0 || AlignmentXValues.Contains(value): AlignmentX = Default(value, "Center"); return true;
+			case nameof(AlignmentY) when value.Length == 0 || AlignmentYValues.Contains(value): AlignmentY = Default(value, "Center"); return true;
+			case nameof(ViewportUnits) when value.Length == 0 || MappingModeValues.Contains(value): ViewportUnits = Default(value, "RelativeToBoundingBox"); return true;
+			case nameof(ViewboxUnits) when value.Length == 0 || MappingModeValues.Contains(value): ViewboxUnits = Default(value, "RelativeToBoundingBox"); return true;
+			case nameof(Viewport) when Rect(value): Viewport = value; return true;
+			case nameof(Viewbox) when Rect(value): Viewbox = value; return true;
+			default: return false;
+		}
+	}
+
 	/// <summary>The project images the image tab offers (any other URI can still be typed).</summary>
 	public IReadOnlyList<string> ImageSources { get; }
 
@@ -129,6 +175,8 @@ public sealed class BrushEditModel
 		: Kind == ColorResourceKind ? ColorEntryPrefix + ResourceKey
 		: Kind == SystemKind ? SystemEntryPrefix + ResourceKey : null;
 	public bool IsGradient => Kind is LinearKind or RadialKind;
+	/// <summary>Whether this is a drawing or visual brush, whose content the editor leaves alone.</summary>
+	public bool IsContentTileBrush => Kind is DrawingKind or VisualKind;
 	public IReadOnlyList<Stop> Stops => stops;
 	public int SelectedStop { get; private set; }
 	public double Opacity { get; set; }
@@ -159,7 +207,7 @@ public sealed class BrushEditModel
 				return;
 			}
 			solidColor = value;
-			if (Kind is NullKind or ResourceKind or SystemKind or ImageKind or ColorResourceKind) {
+			if (Kind is NullKind or ResourceKind or SystemKind or ImageKind or ColorResourceKind or DrawingKind or VisualKind) {
 				Kind = SolidKind;
 				ResourceKey = "";
 			}
@@ -313,9 +361,11 @@ public sealed class BrushEditModel
 			info.ResourceKey = ResourceKey;
 			return info;
 		}
-		if (Kind == ImageKind) {
-			info.ImageSource = ImageSource;
+		if (Kind is ImageKind or DrawingKind or VisualKind) {
+			info.ImageSource = Kind == ImageKind ? ImageSource : "";
 			info.Stretch = Stretch;
+			(info.TileMode, info.AlignmentX, info.AlignmentY) = (TileMode, AlignmentX, AlignmentY);
+			(info.Viewport, info.ViewportUnits, info.Viewbox, info.ViewboxUnits) = (Viewport, ViewportUnits, Viewbox, ViewboxUnits);
 			return info;
 		}
 		if (Kind == SolidKind) {

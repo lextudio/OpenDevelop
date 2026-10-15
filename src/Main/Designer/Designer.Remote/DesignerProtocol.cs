@@ -65,7 +65,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v45 adds WPF's optional design/copy-theme-style (Edit a Copy from the project's design theme).
 		// v46 adds DesignerPropertyInfo.SuggestedValues (WinForms type-name suggestions).
 		// v47 adds the optional propertyName to the WinForms host's design/set-items (ListView.Items).
-		public const int Version = 47;
+		// v48 adds the Image brush's tile settings (DesignerBrushInfo.TileMode/Alignment/Viewport/Viewbox).
+		public const int Version = 48;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -661,7 +662,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <c>{StaticResource}</c> reference to <see cref="ResourceKey"/>), or <c>System</c> (a
 		/// <c>{DynamicResource {x:Static SystemColors.ResourceKey}}</c> reference), or <c>Image</c>
 		/// (an <c>ImageBrush</c> of <see cref="ImageSource"/>), or <c>ColorResource</c> (a
-		/// SolidColorBrush whose Color is <c>{StaticResource ResourceKey}</c>).</summary>
+		/// SolidColorBrush whose Color is <c>{StaticResource ResourceKey}</c>), or <c>Drawing</c> / <c>Visual</c>
+		/// (a DrawingBrush / VisualBrush whose content is left untouched: <c>design/set-brush</c> then rewrites only
+		/// Stretch, Opacity and the tile settings in place; v48).</summary>
 		public string Kind { get; set; } = "Solid";
 		/// <summary>For a <c>Resource</c> brush, the referenced resource key; for a <c>System</c>
 		/// brush, the SystemColors member (<c>ControlBrushKey</c>).</summary>
@@ -670,6 +673,21 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public string ImageSource { get; set; } = "";
 		/// <summary>For an <c>Image</c> brush, its Stretch, or empty for the default (Fill).</summary>
 		public string Stretch { get; set; } = "";
+		/// <summary>An <c>Image</c> brush's TileMode (<c>Tile</c>, <c>FlipX</c>, <c>FlipY</c>, <c>FlipXY</c>), or empty
+		/// for the default (None). v48.</summary>
+		public string TileMode { get; set; } = "";
+		/// <summary>An <c>Image</c> brush's AlignmentX (<c>Left</c>, <c>Right</c>), or empty for Center. v48.</summary>
+		public string AlignmentX { get; set; } = "";
+		/// <summary>An <c>Image</c> brush's AlignmentY (<c>Top</c>, <c>Bottom</c>), or empty for Center. v48.</summary>
+		public string AlignmentY { get; set; } = "";
+		/// <summary>An <c>Image</c> brush's Viewport as authored <c>x,y,width,height</c>, or empty when unset. v48.</summary>
+		public string Viewport { get; set; } = "";
+		/// <summary>An <c>Image</c> brush's ViewportUnits (<c>Absolute</c>), or empty for RelativeToBoundingBox. v48.</summary>
+		public string ViewportUnits { get; set; } = "";
+		/// <summary>An <c>Image</c> brush's Viewbox as authored <c>x,y,width,height</c>, or empty when unset. v48.</summary>
+		public string Viewbox { get; set; } = "";
+		/// <summary>An <c>Image</c> brush's ViewboxUnits (<c>Absolute</c>), or empty for RelativeToBoundingBox. v48.</summary>
+		public string ViewboxUnits { get; set; } = "";
 		/// <summary>A solid brush's color as <c>#AARRGGBB</c>.</summary>
 		public string Color { get; set; } = "";
 		public double Opacity { get; set; } = 1;
