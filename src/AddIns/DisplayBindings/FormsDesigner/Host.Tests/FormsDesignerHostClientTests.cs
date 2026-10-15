@@ -1014,6 +1014,93 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("withSub.SubItems.Add", text, StringComparison.Ordinal);
 	}
 
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task ChildHost_EditsListViewItemsWithSubItemsAsPipeSeparatedCells(bool visualBasic)
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = visualBasic ? VbSnapshot(1, "button1") : Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = visualBasic
+			? designer.Text
+				.Replace("Me.Controls.Add(Me.button1)", """
+					Dim listViewItem1 As System.Windows.Forms.ListViewItem = New System.Windows.Forms.ListViewItem(New String() {"Alpha", "1"}, -1)
+					        Dim listViewItem2 As System.Windows.Forms.ListViewItem = New System.Windows.Forms.ListViewItem("Solo")
+					        Me.list = New System.Windows.Forms.ListView()
+					        Me.list.Items.AddRange(New System.Windows.Forms.ListViewItem() {listViewItem1, listViewItem2})
+					        Me.Controls.Add(Me.button1)
+					        Me.Controls.Add(Me.list)
+					""", StringComparison.Ordinal)
+				.Replace("Friend WithEvents button1 As System.Windows.Forms.Button",
+					"Friend WithEvents button1 As System.Windows.Forms.Button\n    Friend WithEvents list As System.Windows.Forms.ListView", StringComparison.Ordinal)
+			: designer.Text
+				.Replace("this.Controls.Add(this.button1);", """
+					System.Windows.Forms.ListViewItem listViewItem1 = new System.Windows.Forms.ListViewItem(new string[] { "Alpha", "1" }, -1);
+					        System.Windows.Forms.ListViewItem listViewItem2 = new System.Windows.Forms.ListViewItem("Solo");
+					        this.list = new System.Windows.Forms.ListView();
+					        this.list.Items.AddRange(new System.Windows.Forms.ListViewItem[] { listViewItem1, listViewItem2 });
+					        this.Controls.Add(this.button1);
+					        this.Controls.Add(this.list);
+					""", StringComparison.Ordinal)
+				.Replace("private System.Windows.Forms.Button button1;",
+					"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.ListView list;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Items(DesignerSessionState state)
+			=> state.Components.Single(component => component.Name == "list").Properties.Single(property => property.Name == "Items");
+		Assert.Equal(new[] { "Alpha | 1", "Solo" }, Items(opened).CollectionItems);
+
+		var edited = await client.SetItemsAsync(1, "list", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Alpha | 2 | extra" },
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "Solo" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "New | x" } }, timeout.Token, "Items");
+		Assert.True(edited.Accepted, edited.Error);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.DoesNotContain("listViewItem1", text, StringComparison.Ordinal);
+		Assert.Contains(visualBasic ? "New String() {\"Alpha\", \"2\", \"extra\"}, -1)" : "new string[] { \"Alpha\", \"2\", \"extra\" }, -1)", text, StringComparison.Ordinal);
+		Assert.Contains(visualBasic ? "ListViewItem(\"Solo\")" : "ListViewItem(\"Solo\")", text, StringComparison.Ordinal);
+
+		designer.Text = text;
+		snapshot.Version = 2;
+		var reopened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error);
+		Assert.Equal(new[] { "Alpha | 2 | extra", "Solo", "New | x" }, Items(reopened).CollectionItems);
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetItemsAsync(2, "list", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = -2, Text = "Bad" } }, timeout.Token, "Items"));
+	}
+
+	[Fact]
+	public async Task ChildHost_KeepsListViewItemsReadOnlyWhenACellHasAPipeOrTheLocalIsAliased()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				this.piped = new System.Windows.Forms.ListView();
+				        this.piped.Items.Add(new System.Windows.Forms.ListViewItem("a|b"));
+				        System.Windows.Forms.ListViewItem original = new System.Windows.Forms.ListViewItem("Row");
+				        System.Windows.Forms.ListViewItem alias = original;
+				        alias.SubItems.Add("extra");
+				        this.aliased = new System.Windows.Forms.ListView();
+				        this.aliased.Items.AddRange(new System.Windows.Forms.ListViewItem[] { original });
+				        this.Controls.Add(this.button1);
+				        this.Controls.Add(this.piped);
+				        this.Controls.Add(this.aliased);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.ListView piped;\n    private System.Windows.Forms.ListView aliased;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		DesignerPropertyInfo Items(string name)
+			=> opened.Components.Single(component => component.Name == name).Properties.Single(property => property.Name == "Items");
+		Assert.NotEqual("ItemsCollection", Items("piped").EditorKind);
+		Assert.NotEqual("ItemsCollection", Items("aliased").EditorKind);
+	}
+
 	[Fact]
 	public async Task ChildHost_RefusesAListViewItemEditThatWouldDropAnItemSetting()
 	{

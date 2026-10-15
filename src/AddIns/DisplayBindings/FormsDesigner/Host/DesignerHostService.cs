@@ -467,12 +467,29 @@ sealed class DesignerHostService : IDesignerChildService
 		{
 			text = "";
 			if (creation == null || !creation.Type.ToString().EndsWith("ListViewItem", StringComparison.Ordinal)
-				|| creation.Initializer != null || creation.ArgumentList?.Arguments.Count != 1
-				|| creation.ArgumentList.Arguments[0].Expression is not LiteralExpressionSyntax literal
-				|| !literal.IsKind(SyntaxKind.StringLiteralExpression))
+				|| creation.Initializer != null || creation.ArgumentList == null)
 				return false;
-			text = literal.Token.ValueText;
-			return true;
+			var arguments = creation.ArgumentList.Arguments;
+			// new ListViewItem("a"), new ListViewItem(new string[] { "a", "b" }) and Visual Studio's
+			// new ListViewItem(new string[] { "a", "b" }, -1) (no image).
+			if (arguments.Count is < 1 or > 2 || (arguments.Count == 2 && arguments[1].Expression.ToString().Trim() != "-1"))
+				return false;
+			var cells = new List<string>();
+			if (arguments[0].Expression is LiteralExpressionSyntax literal && literal.IsKind(SyntaxKind.StringLiteralExpression) && arguments.Count == 1)
+				cells.Add(literal.Token.ValueText);
+			else {
+				var elements = arguments[0].Expression switch {
+					ArrayCreationExpressionSyntax { Initializer: { } initializer } => initializer.Expressions,
+					ImplicitArrayCreationExpressionSyntax { Initializer: { } initializer } => initializer.Expressions,
+					_ => default(SeparatedSyntaxList<ExpressionSyntax>?)
+				};
+				if (elements is not { Count: > 0 }) return false;
+				foreach (var cell in elements.Value) {
+					if (cell is not LiteralExpressionSyntax cellLiteral || !cellLiteral.IsKind(SyntaxKind.StringLiteralExpression)) return false;
+					cells.Add(cellLiteral.Token.ValueText);
+				}
+			}
+			return TryJoinListViewCells(cells, out text);
 		}
 		foreach (var statement in method.Body.Statements) {
 			if (!statement.DescendantNodesAndSelf().OfType<MemberAccessExpressionSyntax>().Any(IsOwnerItems))
@@ -498,7 +515,8 @@ sealed class DesignerHostService : IDesignerChildService
 					// A local may appear only in its declaration and in this owner's Add/AddRange: any other
 					// statement (an assignment, SubItems.Add, another list) carries a setting that is not
 					// representable here and would be left dangling when the local is removed.
-					if (method.Body.Statements.Any(st => st is not LocalDeclarationStatementSyntax
+					if (method.Body.Statements.Any(st => !(st is LocalDeclarationStatementSyntax declaration
+								&& declaration.Declaration.Variables.Any(variable => variable.Identifier.ValueText == name.Identifier.ValueText))
 							&& !st.DescendantNodesAndSelf().OfType<MemberAccessExpressionSyntax>().Any(IsOwnerItems)
 							&& st.DescendantNodes().OfType<IdentifierNameSyntax>().Any(id => id.Identifier.ValueText == name.Identifier.ValueText)))
 						return false;
@@ -528,12 +546,24 @@ sealed class DesignerHostService : IDesignerChildService
 		{
 			text = "";
 			if (creation == null || !creation.Type.ToString().EndsWith("ListViewItem", StringComparison.Ordinal)
-				|| creation.Initializer != null || creation.ArgumentList?.Arguments.Count != 1
-				|| creation.ArgumentList.Arguments[0] is not VbSyntax.SimpleArgumentSyntax { Expression: VbSyntax.LiteralExpressionSyntax literal }
-				|| !literal.IsKind(Vb.SyntaxKind.StringLiteralExpression))
+				|| creation.Initializer != null || creation.ArgumentList == null)
 				return false;
-			text = literal.Token.ValueText;
-			return true;
+			var arguments = creation.ArgumentList.Arguments;
+			if (arguments.Count is < 1 or > 2 || arguments.Any(argument => argument is not VbSyntax.SimpleArgumentSyntax)
+				|| (arguments.Count == 2 && ((VbSyntax.SimpleArgumentSyntax)arguments[1]).Expression.ToString().Trim() != "-1"))
+				return false;
+			var first = ((VbSyntax.SimpleArgumentSyntax)arguments[0]).Expression;
+			var cells = new List<string>();
+			if (first is VbSyntax.LiteralExpressionSyntax literal && literal.IsKind(Vb.SyntaxKind.StringLiteralExpression) && arguments.Count == 1)
+				cells.Add(literal.Token.ValueText);
+			else {
+				if (first is not VbSyntax.ArrayCreationExpressionSyntax { Initializer: { Initializers.Count: > 0 } initializer }) return false;
+				foreach (var cell in initializer.Initializers) {
+					if (cell is not VbSyntax.LiteralExpressionSyntax cellLiteral || !cellLiteral.IsKind(Vb.SyntaxKind.StringLiteralExpression)) return false;
+					cells.Add(cellLiteral.Token.ValueText);
+				}
+			}
+			return TryJoinListViewCells(cells, out text);
 		}
 		foreach (var statement in method.Statements) {
 			if (!statement.DescendantNodesAndSelf().OfType<VbSyntax.MemberAccessExpressionSyntax>().Any(IsOwnerItems))
@@ -552,7 +582,8 @@ sealed class DesignerHostService : IDesignerChildService
 				var creation = element as VbSyntax.ObjectCreationExpressionSyntax;
 				if (element is VbSyntax.IdentifierNameSyntax name) {
 					if (!locals.TryGetValue(name.Identifier.ValueText, out creation)) return false;
-					if (method.Statements.Any(st => st is not VbSyntax.LocalDeclarationStatementSyntax
+					if (method.Statements.Any(st => !(st is VbSyntax.LocalDeclarationStatementSyntax declaration
+								&& declaration.Declarators.Any(declarator => declarator.Names.Any(declared => declared.Identifier.ValueText == name.Identifier.ValueText)))
 							&& !st.DescendantNodesAndSelf().OfType<VbSyntax.MemberAccessExpressionSyntax>().Any(IsOwnerItems)
 							&& st.DescendantNodes().OfType<VbSyntax.IdentifierNameSyntax>().Any(id => id.Identifier.ValueText == name.Identifier.ValueText)))
 						return false;
@@ -562,6 +593,36 @@ sealed class DesignerHostService : IDesignerChildService
 			}
 		}
 		return true;
+	}
+
+	const string ListViewCellSeparator = " | ";
+
+	/// <summary>One list-editor line for an item's cell texts: "a | b". A '|' inside a cell, or
+	/// padding around one of several cells, would not survive being typed back, so such an item is
+	/// not plain (it stays read-only, as every non-plain item does).</summary>
+	static bool TryJoinListViewCells(List<string> cells, out string line)
+	{
+		line = "";
+		if (cells.Any(cell => cell.Contains('|', StringComparison.Ordinal) || cell.Contains('\n', StringComparison.Ordinal)
+				|| cell.Contains('\r', StringComparison.Ordinal) || (cells.Count > 1 && cell != cell.Trim())))
+			return false;
+		line = string.Join(ListViewCellSeparator, cells);
+		return true;
+	}
+
+	/// <summary>The cell texts of an edited line (the inverse of <see cref="TryJoinListViewCells"/>): a line
+	/// without '|' is one untouched cell, otherwise each cell is trimmed.</summary>
+	static string[] SplitListViewCells(string line)
+		=> line.Contains('|', StringComparison.Ordinal) ? line.Split('|').Select(cell => cell.Trim()).ToArray() : [line];
+
+	static string ListViewItemSource(string line, bool visualBasic)
+	{
+		var cells = SplitListViewCells(line);
+		return visualBasic
+			? cells.Length == 1 ? $"New System.Windows.Forms.ListViewItem({SerializeValueVisualBasic(cells[0])})"
+				: $"New System.Windows.Forms.ListViewItem(New String() {{{string.Join(", ", cells.Select(SerializeValueVisualBasic))}}}, -1)"
+			: cells.Length == 1 ? $"new System.Windows.Forms.ListViewItem({SerializeValue(cells[0])})"
+				: $"new System.Windows.Forms.ListViewItem(new string[] {{ {string.Join(", ", cells.Select(SerializeValue))} }}, -1)";
 	}
 
 	static readonly HashSet<string> CarriedListViewItemSettings = new(StringComparer.Ordinal);
@@ -578,7 +639,7 @@ sealed class DesignerHostService : IDesignerChildService
 		if (!TryReadListViewItems(elementId, out var existing))
 			throw new InvalidOperationException($"{elementId}.Items has items the list editor cannot represent.");
 		var sources = items.Where(entry => entry.SourceIndex >= 0).Select(entry => entry.SourceIndex).ToList();
-		if (sources.Any(index => index >= existing.Count) || sources.Distinct().Count() != sources.Count)
+		if (items.Any(entry => entry.SourceIndex < -1) || sources.Any(index => index >= existing.Count) || sources.Distinct().Count() != sources.Count)
 			throw new ArgumentException("Invalid item source index.", nameof(items));
 		var texts = items.Select(entry => entry.Text ?? "").ToList();
 		var designerFile = CurrentDesignerFile();
@@ -587,8 +648,8 @@ sealed class DesignerHostService : IDesignerChildService
 			throw new InvalidOperationException($"{elementId}.Items sets {unsupported} on an item, which the list editor cannot carry through; edit it in the source.");
 		try {
 			RewriteCollectionStatements(elementId, "Items", texts.Count == 0 ? null
-				: IsVisualBasic ? $"Me.{elementId}.Items.AddRange(New System.Windows.Forms.ListViewItem() {{{string.Join(", ", texts.Select(text => $"New System.Windows.Forms.ListViewItem({SerializeValueVisualBasic(text)})"))}}})"
-				: $"this.{elementId}.Items.AddRange(new System.Windows.Forms.ListViewItem[] {{ {string.Join(", ", texts.Select(text => $"new System.Windows.Forms.ListViewItem({SerializeValue(text)})"))} }});");
+				: IsVisualBasic ? $"Me.{elementId}.Items.AddRange(New System.Windows.Forms.ListViewItem() {{{string.Join(", ", texts.Select(text => ListViewItemSource(text, true)))}}})"
+				: $"this.{elementId}.Items.AddRange(new System.Windows.Forms.ListViewItem[] {{ {string.Join(", ", texts.Select(text => ListViewItemSource(text, false)))} }});");
 			CreateDesignSurface(current!);
 		} catch (Exception exception) {
 			designerFile.Text = originalSource;
