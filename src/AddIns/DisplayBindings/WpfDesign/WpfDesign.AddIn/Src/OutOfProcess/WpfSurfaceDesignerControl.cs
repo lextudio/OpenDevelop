@@ -268,6 +268,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			controller.ElementDragCommitted += (_, drag) =>
 				CommitBounds(drag.Name, new Rect(drag.EndX, drag.EndY, drag.EndWidth, drag.EndHeight));
 			controller.LayoutInsetEditCommitted += (_, edit) => CommitLayoutInset(edit);
+			controller.BrushHandleEditCommitted += (_, edit) => CommitBrushHandle(edit);
 			controller.LayoutInsetAnchorToggleRequested += (_, toggle) => CommitLayoutInsetAnchorToggle(toggle);
 			controller.ElementGroupDragCommitted += (_, moves) => CommitBoundsForEach(moves
 				.Select(move => (Node: NodeById(move.Name), move.DX, move.DY))
@@ -1633,6 +1634,20 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			if (!result.Accepted) { Show(result); return; }
 			Show(result);
 			DocumentChanged?.Invoke(this, result);
+		}
+
+		/// <summary>Writes a gradient whose handle the user dragged on the canvas back through the same
+		/// <c>design/set-brush</c> the Properties-pad brush editor uses (one undoable change).</summary>
+		void CommitBrushHandle(BrushHandleEditInfo edit)
+		{
+			if (state == null)
+				return;
+			var result = client.SetBrushAsync(RequireVersion(), edit.Name, edit.PropertyName, edit.Brush).GetAwaiter().GetResult();
+			if (result.Accepted)
+				state = result;
+			Show(result);
+			if (result.Accepted)
+				DocumentChanged?.Invoke(this, result);
 		}
 
 		void CommitLayoutInsetAnchorToggle(LayoutInsetAnchorToggleInfo toggle)

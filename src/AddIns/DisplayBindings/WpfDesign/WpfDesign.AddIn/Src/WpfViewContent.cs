@@ -132,6 +132,10 @@ namespace ICSharpCode.WpfDesign.AddIn
 		public DesignerSurfaceGeometry SurfaceGeometry()
 			=> surfaceControl?.SurfaceGeometry() ?? default;
 
+		/// <summary>The screen centers of the gradient handles the canvas shows over the selection.</summary>
+		public System.Collections.Generic.IReadOnlyList<(string Name, System.Windows.Point Screen)> BrushHandleScreenPoints()
+			=> surfaceControl?.BrushHandleScreenPoints() ?? System.Array.Empty<(string, System.Windows.Point)>();
+
 		protected override void LoadInternal(OpenedFile file, Stream stream)
 		{
 			Debug.Assert(file == this.PrimaryFile);

@@ -60,6 +60,7 @@ public sealed class DesignSurfaceController : IDisposable
 		surface.SurfaceElementDragDelta += OnSurfaceElementDragDelta;
 		surface.SurfaceElementDragCommitted += OnSurfaceElementDragCommitted;
 		surface.SurfaceLayoutInsetDragCommitted += OnSurfaceLayoutInsetDragCommitted;
+		surface.SurfaceBrushHandleDragCommitted += OnSurfaceBrushHandleDragCommitted;
 		surface.SurfaceLayoutInsetAnchorToggleRequested += OnSurfaceLayoutInsetAnchorToggleRequested;
 		surface.SurfaceElementDoubleClicked += OnSurfaceElementDoubleClicked;
 		surface.TextEditCommitted += OnSurfaceTextEditCommitted;
@@ -108,6 +109,9 @@ public sealed class DesignSurfaceController : IDisposable
 	public event EventHandler<ElementDragInfo>? ElementDragCommitted;
 	/// <summary>A primary-selection Margin/Canvas inset drag ready for a backend-specific mutation.</summary>
 	public event EventHandler<LayoutInsetEditInfo>? LayoutInsetEditCommitted;
+	/// <summary>Raised when the user drags a gradient handle the surface shows over the selected element
+	/// (see <see cref="DesignSurface.SetBrushHandles"/>).</summary>
+	public event EventHandler<BrushHandleEditInfo>? BrushHandleEditCommitted;
 	/// <summary>A requested switch between a Grid edge anchor and Stretch.</summary>
 	public event EventHandler<LayoutInsetAnchorToggleInfo>? LayoutInsetAnchorToggleRequested;
 	/// <summary>A multi-selection group move committed, with each element's delta.</summary>
@@ -410,10 +414,37 @@ public sealed class DesignSurfaceController : IDisposable
 		if (!HasKey(name) || !nodesByName.TryGetValue(name, out var node))
 		{
 			Surface.ClearSelection();
+			Surface.SetBrushHandles(null, Rect.Empty);
 			return;
 		}
 		Surface.ShowSelection(node.X, node.Y, node.Width, node.Height, name, LabelOf(name));
 		Surface.SetLayoutInsets(node.LayoutInsets, new Rect(node.X, node.Y, node.Width, node.Height), node.Bindings);
+		var gradient = PickGradientBrush(node);
+		brushHandleProperty = gradient?.Name ?? "";
+		Surface.SetBrushHandles(gradient?.Brush, new Rect(node.X, node.Y, node.Width, node.Height));
+	}
+
+	string brushHandleProperty = "";
+
+	static readonly string[] BrushPropertyPriority = { "Fill", "Background", "Foreground", "Stroke", "BorderBrush" };
+
+	/// <summary>The node's gradient brush property the on-canvas handles edit: the first of the usual
+	/// fill-like properties holding an editable linear or radial gradient, else any other.</summary>
+	static DesignerPropertyInfo? PickGradientBrush(DesignerElementNode node)
+	{
+		var candidates = node.Properties.Where(property => property.EditorKind == "Brush" && BrushHandleLayout.HasHandles(property.Brush)).ToList();
+		return BrushPropertyPriority.Select(name => candidates.FirstOrDefault(property => property.Name == name)).FirstOrDefault(property => property != null)
+			?? candidates.FirstOrDefault();
+	}
+
+	void OnSurfaceBrushHandleDragCommitted(object? sender, (string Handle, double X, double Y) drop)
+	{
+		if (SelectedElementName is not { } name || !nodesByName.TryGetValue(name, out var node)
+			|| PickGradientBrush(node) is not { Brush: { } brush } property)
+			return;
+		var moved = BrushHandleLayout.Move(brush, drop.Handle, drop.X, drop.Y, node.X, node.Y, node.Width, node.Height);
+		if (moved != null)
+			BrushHandleEditCommitted?.Invoke(this, new BrushHandleEditInfo { Name = name, PropertyName = property.Name, Brush = moved });
 	}
 
 	/// <summary>
@@ -911,6 +942,7 @@ public sealed class DesignSurfaceController : IDisposable
 		Surface.SurfaceElementDragDelta -= OnSurfaceElementDragDelta;
 		Surface.SurfaceElementDragCommitted -= OnSurfaceElementDragCommitted;
 		Surface.SurfaceLayoutInsetDragCommitted -= OnSurfaceLayoutInsetDragCommitted;
+		Surface.SurfaceBrushHandleDragCommitted -= OnSurfaceBrushHandleDragCommitted;
 		Surface.SurfaceLayoutInsetAnchorToggleRequested -= OnSurfaceLayoutInsetAnchorToggleRequested;
 		Surface.SurfaceElementDoubleClicked -= OnSurfaceElementDoubleClicked;
 		Surface.TextEditCommitted -= OnSurfaceTextEditCommitted;

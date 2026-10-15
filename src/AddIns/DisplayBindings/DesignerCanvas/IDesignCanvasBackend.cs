@@ -29,6 +29,15 @@ public sealed class LayoutInsetEditInfo
 	public double Value { get; set; }
 }
 
+/// <summary>A committed drag of one gradient handle: <see cref="Brush"/> is the whole brush as it would be
+/// after the drag, for the backend to write back through its brush mutation.</summary>
+public sealed class BrushHandleEditInfo
+{
+	public string Name { get; set; } = "";
+	public string PropertyName { get; set; } = "";
+	public Remote.DesignerBrushInfo Brush { get; set; } = new();
+}
+
 /// <summary>A click (rather than drag) on a Grid Margin inset label. The WPF backend switches
 /// the requested edge between an explicit alignment anchor and Stretch while preserving bounds.</summary>
 public sealed class LayoutInsetAnchorToggleInfo

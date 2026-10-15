@@ -174,6 +174,7 @@ public class DesignSurface : DesignerCanvas
 		PreviewMouseLeftButtonDown += OnMouseLeftButtonDown;
 		LostMouseCapture += (_, _) => {
 			CancelLayoutInsetDrag();
+			CancelBrushHandleDrag();
 			CancelPageResize();
 		};
 		scroller.ScrollChanged += OnScrollChanged;
@@ -366,6 +367,9 @@ public class DesignSurface : DesignerCanvas
 	/// <summary>Raised when an L/T/R/B layout-inset label is dragged. The edge and value are in
 	/// design coordinates; the controller supplies the selected element and inset kind.</summary>
 	public event EventHandler<(string Edge, double Value)> SurfaceLayoutInsetDragCommitted;
+	/// <summary>Raised when a gradient handle (see <see cref="SetBrushHandles"/>) is released after a drag, with the
+	/// handle's name and the design-space point it was dropped on.</summary>
+	public event EventHandler<(string Handle, double X, double Y)> SurfaceBrushHandleDragCommitted;
 	/// <summary>Raised for a click on a layout-inset label without a drag.</summary>
 	public event EventHandler<string> SurfaceLayoutInsetAnchorToggleRequested;
 	/// <summary>Raised after a frame-edge drag requests a preview-only design size.</summary>
@@ -743,6 +747,115 @@ public class DesignSurface : DesignerCanvas
 		}
 	}
 
+	/// <summary>Shows a gradient brush's draggable points (a linear gradient's Start and End with its stop markers, a
+	/// radial one's Center, Origin and radii) over the element at <paramref name="bounds"/> (design coordinates);
+	/// null or a non-gradient clears them. A drag raises <see cref="SurfaceBrushHandleDragCommitted"/> on release and
+	/// previews the moved gradient meanwhile; the backend owns the source edit.</summary>
+	public void SetBrushHandles(DesignerBrushInfo? brush, Rect bounds)
+	{
+		brushHandleBrush = BrushHandleLayout.HasHandles(brush) ? brush : null;
+		brushHandleBounds = bounds;
+		CancelBrushHandleDrag();
+		LayoutBrushHandles();
+	}
+
+	void LayoutBrushHandles()
+	{
+		foreach (var visual in brushHandleVisuals)
+			overlay.Children.Remove(visual);
+		brushHandleVisuals.Clear();
+		var brush = brushHandleDragPreview ?? brushHandleBrush;
+		if (brush == null || brushHandleBounds.IsEmpty || pixelWidth == 0 || pixelHeight == 0)
+			return;
+		var bounds = brushHandleBounds;
+		var handles = BrushHandleLayout.Handles(brush, bounds.X, bounds.Y, bounds.Width, bounds.Height);
+		if (handles.Count == 0)
+			return;
+		var scale = EffectiveScale();
+		var accent = new SolidColorBrush(SelectionColor);
+		void Add(FrameworkElement element, double x, double y)
+		{
+			brushHandleVisuals.Add(element);
+			overlay.Children.Add(element);
+			Canvas.SetLeft(element, x);
+			Canvas.SetTop(element, y);
+		}
+		if (brush.Kind == BrushEditModel.LinearKind)
+		{
+			var line = new Line {
+				X1 = handles[0].X * scale, Y1 = handles[0].Y * scale, X2 = handles[1].X * scale, Y2 = handles[1].Y * scale,
+				Stroke = accent, StrokeThickness = 1.5, StrokeDashArray = new DoubleCollection { 3, 2 }, IsHitTestVisible = false
+			};
+			brushHandleVisuals.Add(line);
+			overlay.Children.Add(line);
+			foreach (var marker in BrushHandleLayout.StopMarkers(brush, bounds.X, bounds.Y, bounds.Width, bounds.Height))
+			{
+				var fill = BrushEditModel.TryParseColor(marker.Color, out var color) ? new SolidColorBrush(color) : Brushes.Gray;
+				Add(new Rectangle { Width = 7, Height = 7, Fill = fill, Stroke = Brushes.White, StrokeThickness = 1, IsHitTestVisible = false },
+					marker.X * scale - 3.5, marker.Y * scale - 3.5);
+			}
+		}
+		else
+		{
+			var center = handles[0];
+			var radiusX = Math.Abs(handles[2].X - center.X) * scale;
+			var radiusY = Math.Abs(handles[3].Y - center.Y) * scale;
+			Add(new Ellipse { Width = radiusX * 2, Height = radiusY * 2, Stroke = accent, StrokeThickness = 1.5, StrokeDashArray = new DoubleCollection { 3, 2 }, IsHitTestVisible = false },
+				center.X * scale - radiusX, center.Y * scale - radiusY);
+		}
+		foreach (var handle in handles)
+		{
+			var dot = new Ellipse {
+				Width = 11, Height = 11, Fill = Brushes.White, Stroke = accent, StrokeThickness = 2,
+				Tag = new BrushHandleTag(handle.Name), Cursor = Cursors.Cross, ToolTip = "Drag to move the gradient's " + handle.Name
+			};
+			Add(dot, handle.X * scale - 5.5, handle.Y * scale - 5.5);
+		}
+	}
+
+	/// <summary>The screen-space center of each gradient handle currently shown, for pointer-driven tests
+	/// (an empty list when no gradient is selected or the handles are scrolled out of view).</summary>
+	public IReadOnlyList<(string Name, Point Screen)> BrushHandleScreenPoints()
+		=> brushHandleVisuals.Where(visual => visual.Tag is BrushHandleTag && visual.IsVisible)
+			.Select(visual => (((BrushHandleTag)visual.Tag).Name, visual.PointToScreen(new Point(visual.Width / 2, visual.Height / 2))))
+			.ToList();
+
+	void UpdateBrushHandleDrag(Point surfacePoint)
+	{
+		if (brushHandleDrag == null || brushHandleBrush == null)
+			return;
+		var design = ToDesignPoint(surfacePoint);
+		var b = brushHandleBounds;
+		brushHandleDragPreview = BrushHandleLayout.Move(brushHandleBrush, brushHandleDrag, design.X, design.Y, b.X, b.Y, b.Width, b.Height);
+		LayoutBrushHandles();
+	}
+
+	void CancelBrushHandleDrag()
+	{
+		if (brushHandleDrag == null && brushHandleDragPreview == null)
+			return;
+		brushHandleDrag = null;
+		brushHandleDragPreview = null;
+		if (IsMouseCaptured)
+			ReleaseMouseCapture();
+		Cursor = Cursors.Arrow;
+		LayoutBrushHandles();
+	}
+
+	static bool TryGetBrushHandle(object source, out string name)
+	{
+		for (var element = source as DependencyObject; element != null; element = VisualTreeHelper.GetParent(element))
+		{
+			if (element is FrameworkElement { Tag: BrushHandleTag tag })
+			{
+				name = tag.Name;
+				return true;
+			}
+		}
+		name = "";
+		return false;
+	}
+
 	void AddLayoutInsetStub(double selectionEdge, double containerEdge, double crossAxis, bool horizontal, int outward)
 	{
 		// When the measured distance is exactly zero the endpoints coincide. Keep a small
@@ -914,6 +1027,12 @@ public class DesignSurface : DesignerCanvas
 	bool gridGuidesHitTest;
 	string? layoutInsetDragEdge;
 	double layoutInsetDragValue;
+	readonly List<FrameworkElement> brushHandleVisuals = new();
+	DesignerBrushInfo? brushHandleBrush;
+	DesignerBrushInfo? brushHandleDragPreview;
+	Rect brushHandleBounds;
+	string? brushHandleDrag;
+	sealed record BrushHandleTag(string Name);
 	int gridGuideIndex = -1;
 	bool gridGuideIsRow;
 	string gridGuideName;
@@ -1219,6 +1338,7 @@ public class DesignSurface : DesignerCanvas
 		selectionLabel = null;
 		adornerLayer.ClearSelection();
 		SetLayoutInsets(null, Rect.Empty);
+		SetBrushHandles(null, Rect.Empty);
 	}
 
 	/// <summary>The selected element's key, or null when nothing is selected.</summary>
@@ -1375,6 +1495,7 @@ public class DesignSurface : DesignerCanvas
 			LayoutTabOrderBadge(name);
 		LayoutGridGuides();
 		LayoutLayoutInsets();
+		LayoutBrushHandles();
 		foreach (var guide in snapGuides)
 			LayoutSnapGuideFromStored(guide);
 		LayoutTextEditor();
@@ -1538,6 +1659,12 @@ public class DesignSurface : DesignerCanvas
 			e.Handled = true;
 			return;
 		}
+		if (e.Key == Key.Escape && brushHandleDrag != null)
+		{
+			CancelBrushHandleDrag();
+			e.Handled = true;
+			return;
+		}
 		if (e.Key == Key.Space)
 		{
 			spacePanning = true;
@@ -1622,7 +1749,7 @@ public class DesignSurface : DesignerCanvas
 		// A layout-inset drag stores its starting surface point and converts the completed
 		// delta at the current scale. Letting scroll/zoom change the viewport in between would
 		// turn an otherwise motionless pointer into a source edit, so the drag owns the wheel.
-		if (layoutInsetDragEdge != null)
+		if (layoutInsetDragEdge != null || brushHandleDrag != null)
 		{
 			e.Handled = true;
 			return;
@@ -1642,7 +1769,7 @@ public class DesignSurface : DesignerCanvas
 			return;
 		// An inset edit owns the mouse until its left-button completion/cancellation. Starting a
 		// second gesture here would make the middle-button release bypass the normal pan cleanup.
-		if (layoutInsetDragEdge != null)
+		if (layoutInsetDragEdge != null || brushHandleDrag != null)
 		{
 			e.Handled = true;
 			return;
@@ -1674,6 +1801,16 @@ public class DesignSurface : DesignerCanvas
 			middlePanning = true;
 			CaptureMouse();
 			Cursor = Cursors.SizeAll;
+			e.Handled = true;
+			return;
+		}
+		if (TryGetBrushHandle(e.OriginalSource, out var brushHandleName))
+		{
+			brushHandleDrag = brushHandleName;
+			dragStartSurface = position;
+			dragPossible = false;
+			CaptureMouse();
+			Cursor = Cursors.Cross;
 			e.Handled = true;
 			return;
 		}
@@ -1777,6 +1914,12 @@ public class DesignSurface : DesignerCanvas
 			e.Handled = true;
 			return;
 		}
+		if (brushHandleDrag != null)
+		{
+			UpdateBrushHandleDrag(position);
+			e.Handled = true;
+			return;
+		}
 		if (middlePanning)
 		{
 			panX += position.X - lastPanPoint.X;
@@ -1846,6 +1989,26 @@ public class DesignSurface : DesignerCanvas
 				SurfacePointerPressed?.Invoke(this, (new Vector2((float)dragStartSurface.X, (float)dragStartSurface.Y), ctrl));
 			}
 			Cursor = Cursors.Arrow;
+			e.Handled = true;
+			return;
+		}
+		if (brushHandleDrag != null)
+		{
+			if (e.ChangedButton != MouseButton.Left)
+				return;
+			var handle = brushHandleDrag;
+			var releasePoint = e.GetPosition(this);
+			var dropped = ToDesignPoint(releasePoint);
+			var travelled = (releasePoint - dragStartSurface).Length;
+			brushHandleDrag = null;
+			brushHandleDragPreview = null;
+			if (IsMouseCaptured)
+				ReleaseMouseCapture();
+			Cursor = Cursors.Arrow;
+			LayoutBrushHandles();
+			// A press that never left its dot is a click, not an edit.
+			if (travelled >= DragThreshold)
+				SurfaceBrushHandleDragCommitted?.Invoke(this, (handle, dropped.X, dropped.Y));
 			e.Handled = true;
 			return;
 		}

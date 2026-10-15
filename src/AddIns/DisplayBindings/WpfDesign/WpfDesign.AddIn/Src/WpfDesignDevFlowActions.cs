@@ -43,6 +43,16 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			return JsonSerializer.Serialize(DesignerSurfaceGeometryProbe.ToJson(viewContent.SurfaceGeometry()));
 		}
 
+		[DevFlowAction("od.wpf-designer.brush-handles", Description = "Report the gradient handles (Start/End, or Center/Origin/RadiusX/RadiusY) the WPF canvas shows over the selected element, with their screen-space centers, for driving a real pointer drag of one")]
+		public static string GetBrushHandles()
+		{
+			var viewContent = FindWpfViewContent();
+			if (viewContent == null)
+				return JsonSerializer.Serialize(new { available = false });
+			var handles = viewContent.BrushHandleScreenPoints().Select(handle => new { name = handle.Name, x = handle.Screen.X, y = handle.Screen.Y }).ToArray();
+			return JsonSerializer.Serialize(new { available = true, handles });
+		}
+
 		[DevFlowAction("od.wpf-designer.scroll-status", Description = "Report the WPF design canvas ScrollViewer extent, viewport and offsets without inspecting its theme-specific visual template")]
 		public static string GetScrollStatus()
 		{
