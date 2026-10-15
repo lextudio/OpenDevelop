@@ -78,4 +78,23 @@ public sealed class SharedToolboxTests
 		// Custom needs a designer evaluator, so it must not hide a row on its own.
 		Assert.Equal(new[] { "Needs form", "Custom" }, VisibleNames(toolbox, scope, Rule("designer.form", "Require")));
 	}
+
+	[Fact]
+	public void DesignerVocabulary_WpfOnlyControlIsOfferedToWpfAndHiddenFromWinForms()
+	{
+		var toolbox = SharedToolbox.Instance;
+		const string scope = "base-test-filter-vocabulary";
+		// The attributes of the WPF toolbox discovery fixture (GreetingBadge).
+		toolbox.AddItems(new[] {
+			new SharedToolboxItem("Controls", "Plain", scope),
+			new SharedToolboxItem("Controls", "WpfOnly", scope, filters: new[] {
+				Rule(DesignerToolboxFilters.WpfDesigner, "Allow"),
+				Rule(DesignerToolboxFilters.WinFormsDesigner, "Prevent"),
+				Rule(DesignerToolboxFilters.WpfSurface, "Require")
+			})
+		});
+
+		Assert.Equal(new[] { "Plain", "WpfOnly" }, VisibleNames(toolbox, scope, DesignerToolboxFilters.Wpf.ToArray()));
+		Assert.Equal(new[] { "Plain" }, VisibleNames(toolbox, scope, DesignerToolboxFilters.WinForms.ToArray()));
+	}
 }

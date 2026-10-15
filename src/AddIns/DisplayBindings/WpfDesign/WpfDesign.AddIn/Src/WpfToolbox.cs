@@ -377,18 +377,19 @@ namespace ICSharpCode.WpfDesign.AddIn
 				toolService.CurrentTool = tool ?? toolService.PointerTool;
 		}
 
-		public object ToolboxControl {
-			get {
-				// AddWinFormsControls() no-ops if IToolboxService isn't registered in SD.Services
-				// yet - construction order between WpfToolbox and FormsDesigner's static ctor
-				// (which registers it) isn't guaranteed, since both are lazily-constructed
-				// singletons touched on first use. Retry here (idempotent) so the Windows Forms
-				// category still shows up if a .xaml file (which constructs WpfToolbox) happened
-				// to be opened before the first WinForms designer file in this session.
-				AddWinFormsControls();
-				SharedToolbox.Instance.SetActiveScopes(WpfScope, WinFormsScope);
-				return SharedToolbox.Instance.ToolboxControl;
-			}
+		public object ToolboxControl => GetToolboxControl(ICSharpCode.SharpDevelop.Designer.Remote.DesignerToolboxFilters.Wpf);
+
+		public object GetToolboxControl(System.Collections.Generic.IReadOnlyList<ICSharpCode.SharpDevelop.Designer.Remote.DesignerToolboxFilterInfo> consumerFilters)
+		{
+			// AddWinFormsControls() no-ops if IToolboxService isn't registered in SD.Services
+			// yet - construction order between WpfToolbox and FormsDesigner's static ctor
+			// (which registers it) isn't guaranteed, since both are lazily-constructed
+			// singletons touched on first use. Retry here (idempotent) so the Windows Forms
+			// category still shows up if a .xaml file (which constructs WpfToolbox) happened
+			// to be opened before the first WinForms designer file in this session.
+			AddWinFormsControls();
+			SharedToolbox.Instance.SetActiveScopes(null, true, null, consumerFilters, WpfScope, WinFormsScope);
+			return SharedToolbox.Instance.ToolboxControl;
 		}
 
 		public IToolService ToolService {

@@ -849,6 +849,25 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public string FilterType { get; set; } = "Require";
 	}
 
+	/// <summary>The filter strings the OpenDevelop designers declare as a toolbox consumer, matched
+	/// against <c>ToolboxItemFilterAttribute</c> rules on third-party controls. A control opts in or
+	/// out of a designer with e.g. <c>[ToolboxItemFilter("WinFormsDesigner", ToolboxItemFilterType.Prevent)]</c>.</summary>
+	public static class DesignerToolboxFilters
+	{
+		public const string WpfDesigner = "WpfDesigner";
+		public const string WpfSurface = "WpfSurface";
+		public const string WinFormsDesigner = "WinFormsDesigner";
+
+		public static readonly IReadOnlyList<DesignerToolboxFilterInfo> Wpf = new[] {
+			new DesignerToolboxFilterInfo { FilterString = WpfDesigner },
+			new DesignerToolboxFilterInfo { FilterString = WpfSurface }
+		};
+
+		public static readonly IReadOnlyList<DesignerToolboxFilterInfo> WinForms = new[] {
+			new DesignerToolboxFilterInfo { FilterString = WinFormsDesigner }
+		};
+	}
+
 	/// <summary>Workflow-level argument projection. It deliberately carries no CoreWF runtime
 	/// object so an out-of-process workflow host can expose its ActivityBuilder metadata safely.</summary>
 	public sealed class WorkflowArgumentInfo

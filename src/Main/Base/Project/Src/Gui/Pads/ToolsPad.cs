@@ -68,5 +68,9 @@ namespace ICSharpCode.SharpDevelop.Gui
 	{
 		/// <summary>Gets the shared toolbox's WPF control (a ListBox), the same object every caller gets back.</summary>
 		object ToolboxControl { get; }
+
+		/// <summary>Like <see cref="ToolboxControl"/>, but shows the rows for the calling designer: third-party
+		/// controls carrying <c>ToolboxItemFilterAttribute</c> rules are matched against its filters.</summary>
+		object GetToolboxControl(System.Collections.Generic.IReadOnlyList<ICSharpCode.SharpDevelop.Designer.Remote.DesignerToolboxFilterInfo> consumerFilters);
 	}
 }

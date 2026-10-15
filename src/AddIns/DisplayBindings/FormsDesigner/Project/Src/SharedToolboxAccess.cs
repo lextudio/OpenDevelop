@@ -55,6 +55,6 @@ namespace ICSharpCode.FormsDesigner
 
 		/// <summary>Seeds the shared toolbox (constructing the facade if needed) and returns its
 		/// control - the same object the Tools pad mounts.</summary>
-		public static object ToolboxControl => Host?.ToolboxControl;
+		public static object ToolboxControl => Host?.GetToolboxControl(ICSharpCode.SharpDevelop.Designer.Remote.DesignerToolboxFilters.WinForms);
 	}
 }
