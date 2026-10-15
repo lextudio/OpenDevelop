@@ -83,8 +83,12 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		
 		void codeEditor_Document_UndoStack_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
 		{
-			if (!isLoading)
-				PrimaryFile.IsDirty = !codeEditor.Document.UndoStack.IsOriginalFile;
+			// PrimaryFile is null once the view content was disposed (base.Dispose clears Files);
+			// late edits (e.g. IME text) can still raise this event.
+			var file = PrimaryFile;
+			var document = codeEditor.Document;
+			if (!isLoading && file != null && document != null)
+				file.IsDirty = !document.UndoStack.IsOriginalFile;
 		}
 		
 		void PrimaryFile_IsDirtyChanged(object sender, EventArgs e)
@@ -270,6 +274,9 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				trackedFeature.EndTracking();
 			if (PrimaryFile != null)
 				this.PrimaryFile.IsDirtyChanged -= PrimaryFile_IsDirtyChanged;
+			var document = codeEditor.Document;
+			if (document != null)
+				document.UndoStack.PropertyChanged -= codeEditor_Document_UndoStack_PropertyChanged;
 			base.Dispose();
 			BookmarksDetach();
 			codeEditor.Dispose();
