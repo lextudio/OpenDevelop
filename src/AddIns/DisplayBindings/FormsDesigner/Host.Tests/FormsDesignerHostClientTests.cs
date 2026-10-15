@@ -10,6 +10,42 @@ namespace ICSharpCode.FormsDesigner.Host.Tests;
 public sealed class FormsDesignerHostClientTests
 {
 	[Fact]
+	public async Task ChildHost_PublishesTheControlDesignersTextBaseline()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				this.caption = new System.Windows.Forms.Label();
+				this.caption.Text = "Name";
+				this.caption.Location = new System.Drawing.Point(12, 60);
+				this.panel = new System.Windows.Forms.Panel();
+				this.panel.Location = new System.Drawing.Point(12, 100);
+				this.Controls.Add(this.button1);
+				this.Controls.Add(this.caption);
+				this.Controls.Add(this.panel);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.Label caption;\n    private System.Windows.Forms.Panel panel;", StringComparison.Ordinal);
+
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+
+		Assert.True(opened.Accepted, opened.Error);
+		// The control's own designer supplies the baseline. The Microsoft backend answers for a Label
+		// or Button; the portable LibreWinForms drawing context has no native HDC, so its
+		// designers throw and the host must report no baseline rather than fail the whole snapshot.
+		var captionBaseline = FindTreeNode(opened.Tree!, "caption")!.BaselineOffset;
+		var buttonBaseline = FindTreeNode(opened.Tree!, "button1")!.BaselineOffset;
+		Assert.True(captionBaseline is null or > 0, $"label baseline {captionBaseline}");
+		Assert.True(buttonBaseline is null or > 0, $"button baseline {buttonBaseline}");
+		// A Panel has no text, so no designer offers it a baseline.
+		Assert.Null(FindTreeNode(opened.Tree!, "panel")!.BaselineOffset);
+		Assert.Null(opened.Tree!.BaselineOffset);
+	}
+
+	[Fact]
 	public async Task ChildHost_PublishesFrontToBackOrderAsZIndex()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));

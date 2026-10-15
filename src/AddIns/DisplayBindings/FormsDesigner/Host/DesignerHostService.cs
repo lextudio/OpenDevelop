@@ -3362,7 +3362,7 @@ sealed class DesignerHostService : IDesignerChildService
 		Trace("CurrentState rendering frame");
 		var render = Render(rootControl, rootDesignSize);
 		Trace("CurrentState building element tree");
-		var tree = rootControl == null ? null : BuildElementTree(rootControl, "", host?.Container);
+		var tree = rootControl == null ? null : BuildElementTree(rootControl, "", host?.Container, host: host);
 		Trace("CurrentState describing components");
 		// Parse the designer file and index every "target.Property" assignment ONCE per
 		// CurrentState call, not once per component/property. DescribeProperties used to
@@ -3636,14 +3636,14 @@ sealed class DesignerHostService : IDesignerChildService
 	/// it was never sited through it), a naive Controls/Items walk cannot tell them apart from
 	/// genuine children by type or position - only container membership distinguishes them.</summary>
 	static DesignerElementNode BuildElementTree(Control control, string path, IContainer? container,
-		string layoutMode = DesignerLayoutMode.Unknown)
+		string layoutMode = DesignerLayoutMode.Unknown, IDesignerHost? host = null)
 	{
 		var controls = control.Controls.Cast<Control>()
 			.Where(child => container == null || container.Components.Cast<IComponent>().Contains(child))
 			.ToList();
 		var children = controls.Select((child, index) => {
 			var node = BuildElementTree(child, ChildPath(path, index), container,
-				DesignerLayoutMode.InferFromContainerType(control.GetType().Name));
+				DesignerLayoutMode.InferFromContainerType(control.GetType().Name), host);
 			// WinForms paints the FIRST control in Controls on top (BringToFront moves it to index
 			// 0), the opposite of the tree-order convention the shared hit test assumes, so state the
 			// measured front-to-back order as a z-index: the first control gets the highest value.
@@ -3671,8 +3671,29 @@ sealed class DesignerHostService : IDesignerChildService
 			IsDesignable = true,
 			LayoutMode = layoutMode,
 			GridTracks = BuildTableLayoutTracks(control),
+			BaselineOffset = MeasureBaseline(control, host),
 			Children = children.ToList()
 		};
+	}
+
+	/// <summary>The text baseline the control's own designer offers as a snap line, local to the
+	/// control's top edge; null when its designer states none. Asking the designer rather than
+	/// computing from font metrics keeps this identical to the guides Visual Studio's designer
+	/// draws, including per-control rules (a Label's text origin, a TextBox's border). A designer
+	/// that cannot answer yet - its control not created - leaves the node without one.</summary>
+	static double? MeasureBaseline(Control control, IDesignerHost? host)
+	{
+		if (host?.GetDesigner(control) is not System.Windows.Forms.Design.ControlDesigner designer)
+			return null;
+		try {
+			foreach (System.Windows.Forms.Design.Behavior.SnapLine line in designer.SnapLines) {
+				if (line.SnapLineType == System.Windows.Forms.Design.Behavior.SnapLineType.Baseline)
+					return line.Offset;
+			}
+		} catch (Exception) {
+			// A third-party designer's SnapLines may throw; a missing baseline is the safe answer.
+		}
+		return null;
 	}
 
 	/// <summary>Publishes the live TableLayoutPanel geometry rather than reconstructing it from
