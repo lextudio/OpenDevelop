@@ -123,6 +123,12 @@ For UI layout, wait for repeated equal bounds samples; identify controls through
 and distinguish tab/header/content/pane bounds. Pointer tests require fresh target geometry,
 explicit screen/surface/design conversion, capture and hit-target verification, granular held-button
 moves, release verification, and bounds-RPC/sequence/adorner checks. Use `ResizeDebugLog`.
+After resetting `od.pointer-events`, a zero main-window mouse-down count is a pointer-delivery
+failure, not a flaky designer drag and not evidence that a canvas operation was exercised. Stop and
+diagnose foreground/native-input delivery before changing designer coordinates or claiming a passed
+canvas journey. On macOS, a helper moving the cursor to the requested point does not prove its
+mouse-down was authorized or delivered; require the recorded down event before treating Cliclick
+coordinates or foreground activation as verified.
 
 `/api/v1/ui/tree` bounds are window-content coordinates; injection requires
 `screen = treeBounds + windowContentOrigin`. Reset `od.pointer-events` before injection to separate
