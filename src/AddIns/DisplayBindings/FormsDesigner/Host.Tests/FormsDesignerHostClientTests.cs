@@ -809,33 +809,56 @@ public sealed class FormsDesignerHostClientTests
 
 	/// <summary>A TreeNode may refer to a component in the form container. A text/nesting edit must
 	/// keep that named reference; an unsited ContextMenuStrip is deliberately not representable.</summary>
-	[Fact]
-	public async Task ChildHost_EditsATreeNodeKeepingItsNamedContextMenuStrip()
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task ChildHost_EditsATreeNodeKeepingItsNamedContextMenuStrip(bool visualBasic)
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
-		var snapshot = Snapshot(1, "button1");
+		var snapshot = visualBasic ? VbSnapshot(1, "button1") : Snapshot(1, "button1");
 		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
-		designer.Text = designer.Text
-			.Replace("this.button1 = new System.Windows.Forms.Button();", """
-				this.components = new System.ComponentModel.Container();
-				        this.contextMenuStrip1 = new System.Windows.Forms.ContextMenuStrip(this.components);
-				        System.Windows.Forms.TreeNode treeNode1 = new System.Windows.Forms.TreeNode("Leaf");
-				        this.button1 = new System.Windows.Forms.Button();
-				""", StringComparison.Ordinal)
-			.Replace("this.Controls.Add(this.button1);", """
-				this.tree = new System.Windows.Forms.TreeView();
-				        treeNode1.ContextMenuStrip = this.contextMenuStrip1;
-				        this.tree.Nodes.AddRange(new System.Windows.Forms.TreeNode[] { treeNode1 });
-				        this.Controls.Add(this.button1);
-				        this.Controls.Add(this.tree);
-				""", StringComparison.Ordinal)
-			.Replace("private System.Windows.Forms.Button button1;", """
-				private System.Windows.Forms.Button button1;
-				    private System.ComponentModel.IContainer components;
-				    private System.Windows.Forms.ContextMenuStrip contextMenuStrip1;
-				    private System.Windows.Forms.TreeView tree;
-				""", StringComparison.Ordinal);
+		designer.Text = visualBasic
+			? designer.Text
+				.Replace("Me.button1 = New System.Windows.Forms.Button()", """
+					Me.components = New System.ComponentModel.Container()
+					        Me.contextMenuStrip1 = New System.Windows.Forms.ContextMenuStrip(Me.components)
+					        Dim treeNode1 As System.Windows.Forms.TreeNode = New System.Windows.Forms.TreeNode("Leaf")
+					        Me.button1 = New System.Windows.Forms.Button()
+					""", StringComparison.Ordinal)
+				.Replace("Me.Controls.Add(Me.button1)", """
+					Me.tree = New System.Windows.Forms.TreeView()
+					        treeNode1.ContextMenuStrip = Me.contextMenuStrip1
+					        Me.tree.Nodes.AddRange(New System.Windows.Forms.TreeNode() {treeNode1})
+					        Me.Controls.Add(Me.button1)
+					        Me.Controls.Add(Me.tree)
+					""", StringComparison.Ordinal)
+				.Replace("Friend WithEvents button1 As System.Windows.Forms.Button", """
+					Friend WithEvents button1 As System.Windows.Forms.Button
+					    Private components As System.ComponentModel.IContainer
+					    Private contextMenuStrip1 As System.Windows.Forms.ContextMenuStrip
+					    Friend WithEvents tree As System.Windows.Forms.TreeView
+					""", StringComparison.Ordinal)
+			: designer.Text
+				.Replace("this.button1 = new System.Windows.Forms.Button();", """
+					this.components = new System.ComponentModel.Container();
+					        this.contextMenuStrip1 = new System.Windows.Forms.ContextMenuStrip(this.components);
+					        System.Windows.Forms.TreeNode treeNode1 = new System.Windows.Forms.TreeNode("Leaf");
+					        this.button1 = new System.Windows.Forms.Button();
+					""", StringComparison.Ordinal)
+				.Replace("this.Controls.Add(this.button1);", """
+					this.tree = new System.Windows.Forms.TreeView();
+					        treeNode1.ContextMenuStrip = this.contextMenuStrip1;
+					        this.tree.Nodes.AddRange(new System.Windows.Forms.TreeNode[] { treeNode1 });
+					        this.Controls.Add(this.button1);
+					        this.Controls.Add(this.tree);
+					""", StringComparison.Ordinal)
+				.Replace("private System.Windows.Forms.Button button1;", """
+					private System.Windows.Forms.Button button1;
+					    private System.ComponentModel.IContainer components;
+					    private System.Windows.Forms.ContextMenuStrip contextMenuStrip1;
+					    private System.Windows.Forms.TreeView tree;
+					""", StringComparison.Ordinal);
 		var opened = await client.OpenAsync(snapshot, timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
 		var edited = await client.SetItemsAsync(1, "tree", new[] {
@@ -843,7 +866,7 @@ public sealed class FormsDesignerHostClientTests
 		Assert.True(edited.Accepted, edited.Error);
 		var after = DesignerText(await client.FlushAsync(1, timeout.Token));
 		Assert.Contains("Renamed", after, StringComparison.Ordinal);
-		Assert.Matches(@"ContextMenuStrip\s*=\s*(this\.)?contextMenuStrip1", after);
+		Assert.Matches(@"ContextMenuStrip\s*=\s*((this|Me)\.)?contextMenuStrip1", after);
 
 		designer.Text = after;
 		snapshot.Version = 2;
@@ -853,7 +876,7 @@ public sealed class FormsDesignerHostClientTests
 			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Again" } }, timeout.Token);
 		Assert.True(again.Accepted, again.Error);
 		var afterAgain = DesignerText(await client.FlushAsync(2, timeout.Token));
-		Assert.Matches(@"ContextMenuStrip\s*=\s*(this\.)?contextMenuStrip1", afterAgain);
+		Assert.Matches(@"ContextMenuStrip\s*=\s*((this|Me)\.)?contextMenuStrip1", afterAgain);
 	}
 
 	/// <summary>An inline ContextMenuStrip has no component name that source can reference. Keep
