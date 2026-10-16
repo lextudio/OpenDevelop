@@ -37,6 +37,7 @@ namespace OpenDevelop.IntegrationTests;
 /// </summary>
 [Collection("30 Add-ins and specialized fixtures")]
 [Trait("DesignerBackend", "Microsoft")]
+[Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinUI)]
 public sealed class WinUIGalleryDesignerTests
 {
     const string SolutionFileName = "WinUIGallery.slnx";
@@ -137,7 +138,7 @@ public sealed class WinUIGalleryDesignerTests
         var status = await OpenDesignerAsync(relativePage, signature, DesignerExpectation.Rendered);
 
         Assert.Equal("WinUI", status.GetProperty("framework").GetString());
-        Assert.Equal("WinUI", status.GetProperty("backend").GetString());
+        RuntimeCell.AssertWinUIBackend(status, RuntimeCell.MicrosoftWinUI);
         Assert.True(
             status.TryGetProperty("rendered", out var rendered) && rendered.GetBoolean(),
             relativePage + ": not rendered. status=" + status);
@@ -189,7 +190,7 @@ public sealed class WinUIGalleryDesignerTests
         // The same page the corpus theories start from, so a routing regression surfaces once here.
         var status = await OpenDesignerAsync("WinUIGallery/Samples/Button/ButtonPage.xaml", "Button1", DesignerExpectation.Rendered);
         Assert.Equal("WinUI", status.GetProperty("framework").GetString());
-        Assert.Equal("WinUI", status.GetProperty("backend").GetString());
+        RuntimeCell.AssertWinUIBackend(status, RuntimeCell.MicrosoftWinUI);
 
         // The owning project must be the Gallery app itself - the host's project-dependency context
         // (and therefore the app's compiled resources) is derived from it.

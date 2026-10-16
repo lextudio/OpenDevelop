@@ -173,10 +173,20 @@ via the same traits.
   `Runtime=MicrosoftWinForms` and keep skipping on LibreWinForms (a product limitation, not a platform one), and its fixture
   asserts the backend after the designer loads. The first `AddInTests` test that used `AssertDesignerBackend` asserts the
   fixture's cell instead.
-- **Still open for WinForms:** `ComponentTray_ContainsStripLevelObjects_NotToolStripItems` and the 21 `AddInTests` uses of
-  `FormsDesignSolutionPath` (one in `DesignerEditorJourneyTests`) run on whichever cell the OS picks and are untagged, for
-  the same reason as the WPF six; the VB WinForms sample (`VbWinFormsSampleSolutionPath`) has not been classified.
-  The WinUI, Uno and ProGPU tests are not tagged yet.
+- **Still open for WinForms:** `ComponentTray_ContainsStripLevelObjects_NotToolStripItems` and the 11 `AddInTests` tests that
+  use `FormsDesignSolutionPath` (plus one in `DesignerEditorJourneyTests`) run on whichever cell the OS picks and are
+  untagged, for the same reason as the WPF six; the VB WinForms sample (`VbWinFormsSampleSolutionPath`) has not been
+  classified.
+- **Step 1, WinUI family (started; compiled, not run):** `RuntimeCell.AssertWinUIBackend` checks the `backend` that
+  `od.winui-designer.status` reports (`WinUI`, `Uno`, `ProGPU`). Tagged: the 21 `AddInTests` methods that open the Uno
+  sample (`OpenUnoXamlFile_...` and every `WinUIDesigner_*`, through `OpenUnoDesignerAsync`) as `Runtime=Uno`; the eight
+  `WinUIOnly_*` methods and `WinUIGalleryDesignerTests` as `Runtime=MicrosoftWinUI`; `ProGpuWinUIDesigner_UsesTheSharedDesignCanvas`
+  and `ProGpuWinUIDesignerTests` as `Runtime=ProGpuWinUI`. The two `Assert...RenderedBySelectedBackend` helpers were replaced
+  by the cell assertion. `WinUIXamlDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement`, which picks Uno or Microsoft
+  WinUI from `OD_WINUI_RUNTIME`, asserted backend `"WinUI"` even for the Uno document it opens by default (it could only fail
+  there); it now asserts the cell its own switch selects, and stays untagged because one method serves two cells.
+- **Still open for the WinUI family:** the dual-cell resize test above; `OD_WINUI_RUNTIME` still selects the cell for a whole
+  process (`microsoft`, `progpu`), which the runner entry point (plan step 4) has to set per cell.
 
 ## Test stability rules
 

@@ -133,26 +133,6 @@ public sealed class AddInTests : IAsyncDisposable
     /// </summary>
     public static bool MicrosoftDesignerBackendsAvailable => OperatingSystem.IsWindows();
 
-    /// <summary>
-    /// Asserts the document was rendered by the MICROSOFT WinUI child host. Only valid for a
-    /// WinUI-framework document (OpenWinUIDesignerAsync); an Uno document is served by the Uno
-    /// child and reports backend "Uno", so use AssertUnoRenderedBySelectedBackend for those.
-    /// Four WinUIDesigner_*/OpenUnoXamlFile_* tests used to call this on an Uno document and could
-    /// only ever fail with Expected "WinUI" / Actual "Uno" - contradicting the very helper
-    /// (OpenUnoDesignerAsync) that had just asserted framework == "Uno" for the same document.
-    /// </summary>
-    static void AssertWinUIRenderedBySelectedBackend(JsonElement status)
-    {
-        var backend = status.TryGetProperty("backend", out var be) ? be.GetString() : "";
-        Assert.Equal("WinUI", backend, StringComparer.OrdinalIgnoreCase);
-    }
-
-    static void AssertUnoRenderedBySelectedBackend(JsonElement status)
-    {
-        var backend = status.TryGetProperty("backend", out var be) ? be.GetString() : "";
-        Assert.Equal("Uno", backend, StringComparer.OrdinalIgnoreCase);
-    }
-
     [Fact]
     public async Task FSharpAddIn_IsLoaded()
     {
@@ -1345,6 +1325,7 @@ public sealed class AddInTests : IAsyncDisposable
 	}
 
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task OpenUnoXamlFile_UsesWinUIXamlDesignerInsteadOfWpfDesigner()
     {
         var openedSolution = await _app.ReopenSolutionAsync(_app.UnoXamlSampleSolutionPath);
@@ -1372,7 +1353,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal(status.GetProperty("toolboxItemCount").GetInt32(), restoredTools.GetProperty("itemCount").GetInt32());
         // The preview must come from ProGPU's compiled WinUI pipeline. A WPF XamlReader renderer
         // impersonating a WinUI designer is explicitly not an acceptable pass.
-        AssertUnoRenderedBySelectedBackend(status);
+        RuntimeCell.AssertWinUIBackend(status, RuntimeCell.Uno);
     }
 
     /// <summary>
@@ -1384,6 +1365,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// zoom and Fit, the default page colour, and a theme switch that re-renders.
     /// </summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.ProGpuWinUI)]
     public async Task ProGpuWinUIDesigner_UsesTheSharedDesignCanvas()
     {
         var pagePath = Path.Combine(Path.GetDirectoryName(_app.ProGpuWinUISampleSolutionPath)!, "MainPage.xaml");
@@ -1398,7 +1380,7 @@ public sealed class AddInTests : IAsyncDisposable
             return status.TryGetProperty("rendered", out var r) && r.GetBoolean();
         }, TimeSpan.FromSeconds(60));
         Assert.True(rendered, status.ToString());
-        Assert.Equal("ProGPU", status.GetProperty("backend").GetString());
+        RuntimeCell.AssertWinUIBackend(status, RuntimeCell.ProGpuWinUI);
         Assert.StartsWith("Rendered by ProGPU WinUI", status.GetProperty("status").GetString());
 
         // Selection: the canvas outlines the element's own bounds from ProGPU's design tree.
@@ -1440,6 +1422,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// and #222222 (Dark), so the sampled bitmap center must flip between the two.
     /// </summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_ThemeSwitch_ChangesRenderedBackgroundPixels()
     {
         await OpenUnoDesignerAsync();
@@ -1485,6 +1468,7 @@ public sealed class AddInTests : IAsyncDisposable
 
     /// <summary>The phone/tablet/desktop canvas presets must resize the rendered design.</summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_DesignSizePresets_ResizeCanvas()
     {
         await OpenUnoDesignerAsync();
@@ -1509,6 +1493,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// the rendered visual tree. It must therefore appear in the shared component tray rather
     /// than being silently lost just because it has no design-surface bounds.</summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_ComponentTray_ProjectsNamedNonVisualSourceObjects()
     {
         var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
@@ -1581,6 +1566,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// offset from the page origin: moving the first boundary to local 150 must author 150,
     /// regardless of the Grid's actual canvas X.</summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_GridResize_UsesNestedGridLocalCoordinates()
     {
         var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
@@ -1625,6 +1611,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// <summary>Duplicate and Cut on the Uno surface: a duplicated panel lands after the original
     /// and its named children get unique x:Names, so the page still loads.</summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_DuplicateAndCutKeepNamesUnique()
     {
         var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
@@ -1665,6 +1652,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// under the context-menu point is found from the visible divider boundaries, its current unit
     /// is disabled, and Fixed keeps the track's current size as an authored pixel length.</summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_GridUnitCommandsEditTheTrackUnderThePointer()
     {
         var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
@@ -1722,6 +1710,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// as <c>Grid.Row</c> must still commit through that binding rather than being parsed as a
     /// property path and silently dropped.</summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_PropertiesPadEditsAttachedProperty()
     {
         var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
@@ -1770,6 +1759,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// element's right edge (measured through the rendered surface's screen bounds).
     /// </summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_MultiSelectAlign_MovesElementToMatchPrimary()
     {
         await OpenUnoDesignerAsync();
@@ -1803,6 +1793,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// child leaves the wrapper in place.
     /// </summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_ContextCommands_CopyPasteWrapDeleteLandAsSourceEdits()
     {
         await OpenUnoDesignerAsync();
@@ -1839,6 +1830,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// the designer quietly grew its own private chrome.
     /// </summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_ToolboxInsertSelectEditDeleteUndoRedo_AllLandAsSourceEdits()
     {
         var status = await OpenUnoDesignerAsync();
@@ -1916,7 +1908,7 @@ public sealed class AddInTests : IAsyncDisposable
 
         // The preview must still be alive after all of that, not stuck on a stale/blank frame.
         status = await WaitForRenderedAsync();
-        AssertUnoRenderedBySelectedBackend(status);
+        RuntimeCell.AssertWinUIBackend(status, RuntimeCell.Uno);
     }
 
     /// <summary>
@@ -1924,6 +1916,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// re-render - the design surface is a view over the document, not an independent copy.
     /// </summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_SourceEditOutsideDesigner_RefreshesDesignSurface()
     {
         await OpenUnoDesignerAsync();
@@ -1941,7 +1934,7 @@ public sealed class AddInTests : IAsyncDisposable
         // must re-parse and re-render from it without needing a pane switch.
         var status = await WaitForRenderedAsync();
         Assert.Null(status.GetProperty("documentError").GetString());
-        AssertUnoRenderedBySelectedBackend(status);
+        RuntimeCell.AssertWinUIBackend(status, RuntimeCell.Uno);
 
         await _app.InvokeAsync("od.file.save-all");
         var onDisk = await File.ReadAllTextAsync(_unoPagePath);
@@ -1956,6 +1949,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// properties-pad coverage.
     /// </summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_PropertiesPadEdit_UpdatesSourceAndRender()
     {
         await OpenUnoDesignerAsync();
@@ -2015,6 +2009,7 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_PropertiesPadReset_RemovesTheAuthoredXamlValue()
     {
         var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
@@ -2097,6 +2092,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// down, and going back to valid XAML must recover the preview.
     /// </summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_InvalidXamlReportsDiagnosticThenRecovers()
     {
         await OpenUnoDesignerAsync();
@@ -2123,7 +2119,7 @@ public sealed class AddInTests : IAsyncDisposable
 
         var recovered = await WaitForRenderedAsync();
         Assert.Null(recovered.GetProperty("documentError").GetString());
-        AssertUnoRenderedBySelectedBackend(recovered);
+        RuntimeCell.AssertWinUIBackend(recovered, RuntimeCell.Uno);
     }
 
     /// <summary>
@@ -2137,6 +2133,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// WPF canvas. Asserts the rendered button now uses dark-on-light colors, i.e. actually visible.
     /// </summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_RendersButtonWithVisibleLightThemeColors()
     {
         await OpenUnoDesignerAsync();
@@ -2162,6 +2159,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// it exercises ProGPU hit testing and the visual-to-source name mapping, not a shortcut API.
     /// </summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_ClickOnDesignSurface_SelectsSourceElementInPropertiesPad()
     {
         await OpenUnoDesignerAsync();
@@ -2224,6 +2222,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// handling, and resolving the drop point to the container the user aimed at.
     /// </summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_DragToolboxItemOntoDesignSurface_InsertsIntoDroppedContainer()
     {
         var status = await OpenUnoDesignerAsync();
@@ -2313,6 +2312,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// editor silently did nothing.
     /// </summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_DragToolboxItemOntoXamlSourceEditor_InsertsMarkupAtDropPoint()
     {
         var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
@@ -2477,6 +2477,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// outlives its document would leak an entire ALC per open - invisible to every other test.
     /// </summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_ClosingDocument_ReleasesRuntimeHostAndPreviewAssembly()
     {
         await OpenUnoDesignerAsync();
@@ -2515,6 +2516,7 @@ public sealed class AddInTests : IAsyncDisposable
 
     [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinUI)]
     public async Task WinUIOnly_DesignerOpensWinUIProject()
     {
         var status = await OpenWinUIDesignerAsync();
@@ -2523,6 +2525,7 @@ public sealed class AddInTests : IAsyncDisposable
 
     [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinUI)]
     public async Task WinUIOnly_ThemeSwitch_ChangesRenderedBackgroundPixels()
     {
         await OpenWinUIDesignerAsync();
@@ -2551,6 +2554,7 @@ public sealed class AddInTests : IAsyncDisposable
 
     [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinUI)]
     public async Task WinUIOnly_DesignSizePresets_ResizeCanvas()
     {
         await OpenWinUIDesignerAsync();
@@ -2571,6 +2575,7 @@ public sealed class AddInTests : IAsyncDisposable
 
     [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinUI)]
     public async Task WinUIOnly_SourceEditOutsideDesigner_RefreshesDesignSurface()
     {
         await OpenWinUIDesignerAsync();
@@ -2592,6 +2597,7 @@ public sealed class AddInTests : IAsyncDisposable
 
     [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinUI)]
     public async Task WinUIOnly_PropertiesPadEdit_UpdatesSourceAndRender()
     {
         await OpenWinUIDesignerAsync();
@@ -2628,6 +2634,7 @@ public sealed class AddInTests : IAsyncDisposable
 
     [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinUI)]
     public async Task WinUIOnly_InvalidXamlReportsDiagnosticThenRecovers()
     {
         await OpenWinUIDesignerAsync();
@@ -2656,6 +2663,7 @@ public sealed class AddInTests : IAsyncDisposable
 
     [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinUI)]
     public async Task WinUIOnly_ContextCommands_CopyPasteWrapDeleteLandAsSourceEdits()
     {
         await OpenWinUIDesignerAsync();
@@ -2686,6 +2694,7 @@ public sealed class AddInTests : IAsyncDisposable
 
     [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinUI)]
     public async Task WinUIOnly_ClosingDocument_ReleasesRuntimeHostAndPreviewAssembly()
     {
         await OpenWinUIDesignerAsync();
@@ -2721,7 +2730,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
         var status = await WaitForRenderedAsync();
         Assert.Equal("Uno", status.GetProperty("framework").GetString());
-        AssertUnoRenderedBySelectedBackend(status);
+        RuntimeCell.AssertWinUIBackend(status, RuntimeCell.Uno);
         return status;
     }
 
@@ -2733,7 +2742,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
         var status = await WaitForRenderedAsync();
         Assert.Equal("WinUI", status.GetProperty("framework").GetString());
-		AssertWinUIRenderedBySelectedBackend(status);
+		RuntimeCell.AssertWinUIBackend(status, RuntimeCell.MicrosoftWinUI);
         return status;
     }
 
@@ -2759,6 +2768,7 @@ public sealed class AddInTests : IAsyncDisposable
     /// edit, and changing it must be visible after the normal re-render/save pipeline.
     /// </summary>
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
     public async Task WinUIDesigner_PropertiesPad_OffersLocalResourceReferences()
     {
         var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
@@ -4794,7 +4804,7 @@ public sealed class AddInTests : IAsyncDisposable
         }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
 		Assert.True(rendered, "The selected WinUI runtime host did not render. Status: " + status);
 		Assert.Equal(microsoftWinUi ? "WinUI" : "Uno", status.GetProperty("framework").GetString());
-		AssertWinUIRenderedBySelectedBackend(status);
+		RuntimeCell.AssertWinUIBackend(status, microsoftWinUi ? RuntimeCell.MicrosoftWinUI : RuntimeCell.Uno);
 
         await _app.InvokeAsync("od.winui-designer.activate-design");
         await _app.InvokeAsync("od.winui-designer.select", "PrimaryButton");

@@ -47,6 +47,23 @@ public static class RuntimeCell
             $"Expected the {cell} backend ('{WinFormsBackendName(cell)}') but the designer reported '{backend.GetString()}'. Status: {status}");
     }
 
+    /// <summary>The <c>backend</c> field <c>od.winui-designer.status</c> reports for a WinUI-family cell.</summary>
+    public static string WinUIBackendName(string cell) => cell switch {
+        MicrosoftWinUI => "WinUI",
+        Uno => "Uno",
+        ProGpuWinUI => "ProGPU",
+        _ => throw new ArgumentException("Not a WinUI-family cell: " + cell, nameof(cell)),
+    };
+
+    /// <summary>Fails when the WinUI designer is served by a different backend than the test's cell.</summary>
+    public static void AssertWinUIBackend(JsonElement status, string cell)
+    {
+        Assert.True(status.TryGetProperty("backend", out var backend),
+            "The WinUI designer status did not report a backend: " + status);
+        Assert.True(string.Equals(WinUIBackendName(cell), backend.GetString(), StringComparison.OrdinalIgnoreCase),
+            $"Expected the {cell} backend ('{WinUIBackendName(cell)}') but the designer reported '{backend.GetString()}'. Status: {status}");
+    }
+
     /// <summary>Fails when the WPF designer is served by a different backend than the test's cell.</summary>
     public static void AssertWpfBackend(JsonElement status, string cell)
     {

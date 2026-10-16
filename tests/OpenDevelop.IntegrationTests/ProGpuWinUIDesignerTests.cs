@@ -23,6 +23,7 @@ namespace OpenDevelop.IntegrationTests;
 ///   OD_WINUI_RUNTIME=progpu dotnet test tests/OpenDevelop.IntegrationTests --filter-query "/*/*/ProGpuWinUIDesignerTests/*"
 /// </summary>
 [Collection("30 Add-ins and specialized fixtures")]
+[Trait(RuntimeCell.TraitName, RuntimeCell.ProGpuWinUI)]
 public sealed class ProGpuWinUIDesignerTests : IDisposable
 {
     readonly OpenDevelopAppFixture _app;
