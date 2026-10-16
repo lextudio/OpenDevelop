@@ -1373,7 +1373,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				}
 				else
 					bindingItem = item.Properties[propertyName]?.Value as DesignItem;
-				if (bindingItem?.Component is not System.Windows.Data.Binding)
+				if (bindingItem == null || !IsBindingModeTarget(bindingItem.Component))
 					return NotFound(state, "Property is not an editable Binding: " + propertyName);
 				try { bindingItem.Properties["Mode"].SetValue(parsed); }
 				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
@@ -1399,12 +1399,19 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				}
 				else
 					bindingItem = item.Properties[propertyName]?.Value as DesignItem;
-				if (bindingItem?.Component is not System.Windows.Data.Binding)
+				if (bindingItem == null || !IsBindingModeTarget(bindingItem.Component))
 					return NotFound(state, "Property is not an editable Binding: " + propertyName);
 				try { bindingItem.Properties["UpdateSourceTrigger"].SetValue(parsed); }
 				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
 				RebuildTreeAndRender(state); state.Accepted = true; return state;
 			});
+
+		/// <summary>Mode and UpdateSourceTrigger belong to a plain Binding and MultiBinding. Children
+		/// remain plain Bindings; callers select them through <c>childIndex</c>, while the MultiBinding
+		/// itself is the direct property value. PriorityBinding has no corresponding container options.</summary>
+		static bool IsBindingModeTarget(object component)
+			=> component is System.Windows.Data.Binding
+				or System.Windows.Data.MultiBinding;
 
 		[JsonRpcMethod("design/set-binding-element-name")]
 		public DesignerSessionState SetBindingElementName(long baseVersion, string elementId, string propertyName, string elementName, int childIndex = -1)
@@ -3569,6 +3576,27 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					}
 					else if (reference.Component is System.Windows.Data.MultiBinding or System.Windows.Data.PriorityBinding)
 					{
+						if (reference.Component is System.Windows.Data.MultiBinding multiBinding)
+						{
+							// MultiBinding owns these two options. Reuse the same editor kinds and direct
+							// (childIndex == -1) RPC route as a normal Binding; children below retain indexed routes.
+							result.Add(new DesignerPropertyInfo {
+								Name = descriptor.Name + ".Mode", DisplayName = descriptor.Name + " Mode",
+								Category = "Binding", TypeName = typeof(System.Windows.Data.BindingMode).FullName ?? "",
+								Kind = "Enum", IsEnum = true, EditorKind = "BindingMode",
+								Value = multiBinding.Mode.ToString(), BindingPropertyName = descriptor.Name,
+								ShouldSerialize = false,
+								AllowedValues = Enum.GetNames(typeof(System.Windows.Data.BindingMode)).ToList()
+							});
+							result.Add(new DesignerPropertyInfo {
+								Name = descriptor.Name + ".UpdateSourceTrigger", DisplayName = descriptor.Name + " Update Source Trigger",
+								Category = "Binding", TypeName = typeof(System.Windows.Data.UpdateSourceTrigger).FullName ?? "",
+								Kind = "Enum", IsEnum = true, EditorKind = "BindingUpdateSourceTrigger",
+								Value = multiBinding.UpdateSourceTrigger.ToString(), BindingPropertyName = descriptor.Name,
+								ShouldSerialize = false,
+								AllowedValues = Enum.GetNames(typeof(System.Windows.Data.UpdateSourceTrigger)).ToList()
+							});
+						}
 						var children = reference.Properties["Bindings"]?.CollectionElements;
 						if (children != null && children.All(child => child.Component is System.Windows.Data.Binding))
 						{

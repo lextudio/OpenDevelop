@@ -1103,6 +1103,21 @@ public sealed class WpfSurfaceHostRpcTests
 		var collection = multi.Properties.Single(property => property.EditorKind == "BindingCollection");
 		Assert.Equal("Text", collection.BindingPropertyName);
 		Assert.Equal(new[] { "First", "Last" }, collection.CollectionItems);
+		var compositeMode = multi.Properties.Single(property => property.EditorKind == "BindingMode");
+		Assert.Equal("Text", compositeMode.BindingPropertyName);
+		var compositeModeEdited = await client.SetBindingModeAsync(opened.Version, multi.Id, "Text", "OneWay", timeout.Token);
+		Assert.True(compositeModeEdited.Accepted, compositeModeEdited.Error);
+		var compositeModeText = (await client.FlushAsync(compositeModeEdited.Version, timeout.Token)).Files.Single().Text;
+		Assert.Matches("<MultiBinding(?=[^>]*Mode=\"OneWay\")", compositeModeText);
+		var compositeTrigger = FindByName(compositeModeEdited.Tree!, "multi")!.Properties
+			.Single(property => property.EditorKind == "BindingUpdateSourceTrigger");
+		Assert.Equal("Text", compositeTrigger.BindingPropertyName);
+		var compositeTriggerEdited = await client.SetBindingUpdateSourceTriggerAsync(compositeModeEdited.Version, multi.Id, "Text", "PropertyChanged", timeout.Token);
+		Assert.True(compositeTriggerEdited.Accepted, compositeTriggerEdited.Error);
+		var compositeTriggerText = (await client.FlushAsync(compositeTriggerEdited.Version, timeout.Token)).Files.Single().Text;
+		Assert.Matches("<MultiBinding(?=[^>]*Mode=\"OneWay\")(?=[^>]*UpdateSourceTrigger=\"PropertyChanged\")", compositeTriggerText);
+		opened = compositeTriggerEdited;
+		multi = FindByName(opened.Tree!, "multi")!;
 		var childMode = multi.Properties.Single(property => property.EditorKind == "BindingChildMode" && property.BindingChildIndex == 0);
 		Assert.Equal("Text", childMode.BindingPropertyName);
 		Assert.Contains("OneWay", childMode.AllowedValues);
@@ -1177,6 +1192,7 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.DoesNotContain("FullName", text, StringComparison.Ordinal);
 		Assert.Single(FindByName(removed.Tree!, "multi")!.Properties.Single(property => property.EditorKind == "BindingCollection").CollectionItems);
 		var priority = FindByName(removed.Tree!, "priority")!;
+		Assert.DoesNotContain(priority.Properties, property => property.EditorKind is "BindingMode" or "BindingUpdateSourceTrigger");
 		var priorityPaths = priority.Properties.Where(property => property.EditorKind == "BindingChildPath").OrderBy(property => property.BindingChildIndex).ToArray();
 		Assert.Equal(new[] { "Preferred", "Fallback" }, priorityPaths.Select(property => property.Value));
 		var rejected = await client.SetBindingChildPathAsync(removed.Version, multi.Id, "Text", 1, "Nope", timeout.Token);

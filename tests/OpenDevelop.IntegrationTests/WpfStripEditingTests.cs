@@ -802,10 +802,11 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
-    public async Task PropertiesPad_CompositeBindingChildModeEditsTheSelectedChild()
+    public async Task PropertiesPad_CompositeBindingOptionsAndChildModeEditThroughTheSelectedRows()
     {
         // This must use the visible PropertyItem, not the child RPC: its protocol name is dotted
-        // and indexed while Xceed receives the binding-safe descriptor name.
+        // and indexed while Xceed receives the binding-safe descriptor name. The composite
+        // itself uses the ordinary dotted row name and must not be confused with child zero.
         var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
@@ -838,6 +839,14 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             // keeps this a visible PropertyItem journey rather than a direct child-RPC test.
             JsonElement edited = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                edited = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.Mode", "OneWay");
+                return edited.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), edited.ToString());
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                edited = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.UpdateSourceTrigger", "PropertyChanged");
+                return edited.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), edited.ToString());
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 edited = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.Bindings[0].Mode", "OneWay");
                 return edited.GetProperty("success").GetBoolean();
             }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), edited.ToString());
@@ -851,6 +860,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), edited.ToString());
             Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
             var saved = await File.ReadAllTextAsync(xamlPath);
+            Assert.Matches("<MultiBinding(?=[^>]*Mode=\"OneWay\")(?=[^>]*UpdateSourceTrigger=\"PropertyChanged\")", saved);
             Assert.Matches("<Binding(?=[^>]*Path=\"First\")(?=[^>]*Mode=\"OneWay\")(?=[^>]*UpdateSourceTrigger=\"PropertyChanged\")(?=[^>]*ElementName=\"source\")", saved);
             Assert.Contains("Path=\"Last\"", saved, StringComparison.Ordinal);
         } finally {
