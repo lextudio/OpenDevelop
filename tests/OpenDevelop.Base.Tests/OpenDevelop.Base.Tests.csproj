@@ -37,6 +37,9 @@
     <ProjectReference Include="..\..\src\AddIns\Analysis\UnitTesting\UnitTesting.csproj" />
     <!-- The Hot Reload adapters live in their framework addins; the end-to-end tests drive them. -->
     <ProjectReference Include="..\..\src\AddIns\DisplayBindings\WpfDesign\WpfDesign.AddIn\WpfDesign.AddIn.csproj" />
+    <!-- Exercise the public DesignerToolboxScope boundary, rather than only its SharedToolbox
+         implementation detail. -->
+    <ProjectReference Include="..\..\src\AddIns\DisplayBindings\DesignerCanvas\ICSharpCode.DesignerCanvas.csproj" />
     <ProjectReference Include="..\..\src\AddIns\DisplayBindings\WinUIXamlDesigner\WinUIXamlDesigner.AddIn\ICSharpCode.WinUIXamlDesigner.csproj" />
     <!-- Pure designer presentation logic (DesignerVerbMenuPlanner, ...), testable without booting
          any design surface. -->

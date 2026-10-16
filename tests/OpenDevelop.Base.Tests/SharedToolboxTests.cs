@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using ICSharpCode.SharpDevelop.Designer.Surface;
 using ICSharpCode.SharpDevelop.Gui;
 using Xunit;
 
@@ -77,6 +78,78 @@ public sealed class SharedToolboxTests
 		Assert.Equal(new[] { "Needs form", "Custom" }, VisibleNames(toolbox, scope));
 		// Custom needs a designer evaluator, so it must not hide a row on its own.
 		Assert.Equal(new[] { "Needs form", "Custom" }, VisibleNames(toolbox, scope, Rule("designer.form", "Require")));
+	}
+
+	[Fact]
+	public void ConsumerFilters_CustomRule_UsesTheActiveDesignersEvaluatorWithoutLoadingThePayload()
+	{
+		var toolbox = SharedToolbox.Instance;
+		const string scope = "base-test-filter-custom-evaluator";
+		var permittedPayload = new object();
+		var rejectedPayload = new object();
+		toolbox.AddItems(new[] {
+			new SharedToolboxItem("Controls", "Existing require", scope,
+				filters: new[] { Rule("designer.form", "Require") }),
+			new SharedToolboxItem("Controls", "Permitted custom", scope, payload: permittedPayload,
+				filters: new[] { Rule("designer.document", "Custom") }),
+			new SharedToolboxItem("Controls", "Rejected custom", scope, payload: rejectedPayload,
+				filters: new[] { Rule("designer.document", "Custom") })
+		});
+
+		object? seenPayload = null;
+		toolbox.SetActiveScopes(owner: new object(), selectFirst: false, categoryPriorities: null,
+			consumerFilters: Array.Empty<DesignerToolboxFilterInfo>(),
+			customFilterEvaluator: (item, rule) => {
+				Assert.Equal("designer.document", rule.FilterString);
+				seenPayload = item.Payload;
+				return ReferenceEquals(item.Payload, permittedPayload);
+			}, scopes: new[] { scope });
+
+		Assert.Equal(new[] { "Existing require", "Permitted custom" }, toolbox.VisibleItems.Where(item => item.Scope == scope).Select(item => item.DisplayName));
+		Assert.Same(rejectedPayload, seenPayload);
+	}
+
+	[Fact]
+	public void ConsumerFilters_CustomEvaluatorFailure_PreservesTheExistingVisibleRow()
+	{
+		var toolbox = SharedToolbox.Instance;
+		const string scope = "base-test-filter-custom-evaluator-failure";
+		toolbox.AddItems(new[] {
+			new SharedToolboxItem("Controls", "Custom", scope, filters: new[] { Rule("designer.document", "Custom") })
+		});
+
+		toolbox.SetActiveScopes(owner: new object(), selectFirst: false, categoryPriorities: null,
+			consumerFilters: Array.Empty<DesignerToolboxFilterInfo>(),
+			customFilterEvaluator: (_, _) => throw new InvalidOperationException("test evaluator failure"), scopes: new[] { scope });
+
+		Assert.Equal(new[] { "Custom" }, toolbox.VisibleItems.Where(item => item.Scope == scope).Select(item => item.DisplayName));
+	}
+
+	[Fact]
+	public void DesignerToolboxScope_CustomEvaluatorFiltersItsMetadataAndReactivationKeepsTheSameCallback()
+	{
+		const string scopeName = "base-test-designer-toolbox-custom-evaluator";
+		var scope = new DesignerToolboxScope(new object(), mapper: null);
+		scope.Register(scopeName, new[] {
+			new DesignerToolboxItemInfo { Name = "Allowed", DisplayName = "Allowed", TypeName = "test.Allowed", Filters = { Rule("designer.document", "Custom") } },
+			new DesignerToolboxItemInfo { Name = "Rejected", DisplayName = "Rejected", TypeName = "test.Rejected", Filters = { Rule("designer.document", "Custom") } }
+		});
+		scope.SetScopes(scopeName);
+		var evaluations = 0;
+		scope.SetCustomFilterEvaluator((item, filter) => {
+			evaluations++;
+			Assert.Equal("designer.document", filter.FilterString);
+			return item.Name == "Allowed";
+		});
+
+		scope.Activate();
+		Assert.Equal(1, scope.VisibleItemCount);
+		Assert.True(scope.Select("test.Allowed"));
+		evaluations = 0;
+		scope.Activate();
+
+		Assert.Equal(0, evaluations);
+		Assert.Equal("Allowed", scope.SelectedItem!.Name);
 	}
 
 	[Fact]

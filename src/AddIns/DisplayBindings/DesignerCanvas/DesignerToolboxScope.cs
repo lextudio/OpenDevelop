@@ -26,6 +26,8 @@ public sealed class DesignerToolboxScope
 	readonly HashSet<string> registeredScopes = new(StringComparer.Ordinal);
 	readonly Dictionary<string, int> categoryPriorities = new(StringComparer.Ordinal);
 	readonly List<DesignerToolboxFilterInfo> consumerFilters = new();
+	Func<DesignerToolboxItemInfo, DesignerToolboxFilterInfo, bool>? customFilterEvaluator;
+	Func<SharedToolboxItem, DesignerToolboxFilterInfo, bool>? sharedCustomFilterEvaluator;
 	string[] activeScopes = Array.Empty<string>();
 
 	/// <param name="owner">The designer this toolbox belongs to.</param>
@@ -87,10 +89,23 @@ public sealed class DesignerToolboxScope
 		if (IsActive) Activate();
 	}
 
+	/// <summary>Lets this designer decide whether a project toolbox row carrying a Custom filter
+	/// applies to its current document. The callback receives metadata discovered without loading
+	/// the project's assembly; a null callback preserves the historical permissive behaviour.</summary>
+	public void SetCustomFilterEvaluator(Func<DesignerToolboxItemInfo, DesignerToolboxFilterInfo, bool>? evaluator)
+	{
+		if (ReferenceEquals(customFilterEvaluator, evaluator)) return;
+		customFilterEvaluator = evaluator;
+		sharedCustomFilterEvaluator = evaluator == null ? null : (item, filter) =>
+			item.Payload is not DesignerToolboxItemInfo info || evaluator(info, filter);
+		if (IsActive) Activate();
+	}
+
 	/// <summary>Shows this designer's scopes and returns the control for <see cref="IToolsHost.ToolsContent"/>.</summary>
 	public object Activate()
 	{
-		Toolbox.SetActiveScopes(owner, false, categoryPriorities, consumerFilters, activeScopes);
+		Toolbox.SetActiveScopes(owner, false, categoryPriorities, consumerFilters,
+			sharedCustomFilterEvaluator, activeScopes);
 		return Toolbox.ToolboxControl;
 	}
 

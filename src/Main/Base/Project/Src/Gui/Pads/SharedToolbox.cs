@@ -103,6 +103,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 		HashSet<string> activeScopes;
 		IReadOnlyDictionary<string, int>? activeCategoryPriorities;
 		IReadOnlyList<DesignerToolboxFilterInfo> activeConsumerFilters = Array.Empty<DesignerToolboxFilterInfo>();
+		Func<SharedToolboxItem, DesignerToolboxFilterInfo, bool>? activeCustomFilterEvaluator;
 		bool resetSelectsFirst = true;
 		string filterText = "";
 
@@ -283,6 +284,16 @@ namespace ICSharpCode.SharpDevelop.Gui
 
 		public void SetActiveScopes(object owner, bool selectFirst, IReadOnlyDictionary<string, int>? categoryPriorities,
 			IReadOnlyList<DesignerToolboxFilterInfo>? consumerFilters, params string[] scopes)
+			=> SetActiveScopes(owner, selectFirst, categoryPriorities, consumerFilters, customFilterEvaluator: null, scopes);
+
+		/// <summary>Like the filter-aware overload, with an optional decision supplied by the active
+		/// designer for an item's <c>ToolboxItemFilterType.Custom</c> rules. The shared pad never
+		/// loads a project assembly to make that decision: the evaluator receives only the already
+		/// discovered row and its transport-safe filter metadata. Without one, Custom remains
+		/// permissive for backward compatibility.</summary>
+		public void SetActiveScopes(object owner, bool selectFirst, IReadOnlyDictionary<string, int>? categoryPriorities,
+			IReadOnlyList<DesignerToolboxFilterInfo>? consumerFilters,
+			Func<SharedToolboxItem, DesignerToolboxFilterInfo, bool>? customFilterEvaluator, params string[] scopes)
 		{
 			var nextScopes = new HashSet<string>(scopes, StringComparer.Ordinal);
 			var nextPriorities = categoryPriorities == null || categoryPriorities.Count == 0
@@ -294,12 +305,14 @@ namespace ICSharpCode.SharpDevelop.Gui
 			// drag destination/filter and follows the normal reset path.
 			if (ReferenceEquals(ActiveOwner, owner) && activeScopes != null && activeScopes.SetEquals(nextScopes)
 				&& SamePriorities(activeCategoryPriorities, nextPriorities)
-				&& SameFilters(activeConsumerFilters, consumerFilters))
+				&& SameFilters(activeConsumerFilters, consumerFilters)
+				&& ReferenceEquals(activeCustomFilterEvaluator, customFilterEvaluator))
 				return;
 			ActiveOwner = owner;
 			activeScopes = nextScopes;
 			activeCategoryPriorities = nextPriorities;
 			activeConsumerFilters = consumerFilters ?? Array.Empty<DesignerToolboxFilterInfo>();
+			activeCustomFilterEvaluator = customFilterEvaluator;
 			itemsView.View.Refresh();
 			resetSelectsFirst = selectFirst;
 			if (selectFirst)
@@ -310,18 +323,33 @@ namespace ICSharpCode.SharpDevelop.Gui
 
 		bool IsPermitted(SharedToolboxItem item)
 		{
-			if (activeConsumerFilters.Count == 0)
+			if (activeConsumerFilters.Count == 0 && activeCustomFilterEvaluator == null)
 				return true;
 			foreach (var rule in item.Filters) {
 				if (string.IsNullOrWhiteSpace(rule.FilterString)) continue;
 				var hasConsumerRule = activeConsumerFilters.Any(candidate =>
 					string.Equals(candidate.FilterString, rule.FilterString, StringComparison.OrdinalIgnoreCase));
-				if (string.Equals(rule.FilterType, "Require", StringComparison.OrdinalIgnoreCase) && !hasConsumerRule)
+				// Registering a Custom evaluator must not change the established Require/Prevent
+				// contract for a designer that declares no ordinary consumer filters.
+				if (activeConsumerFilters.Count > 0 && string.Equals(rule.FilterType, "Require", StringComparison.OrdinalIgnoreCase) && !hasConsumerRule)
 					return false;
-				if (string.Equals(rule.FilterType, "Prevent", StringComparison.OrdinalIgnoreCase) && hasConsumerRule)
+				if (activeConsumerFilters.Count > 0 && string.Equals(rule.FilterType, "Prevent", StringComparison.OrdinalIgnoreCase) && hasConsumerRule)
 					return false;
-				// Custom needs an explicit designer evaluator. Until one exists it must not hide
-				// a previously visible toolbox item.
+				if (string.Equals(rule.FilterType, "Custom", StringComparison.OrdinalIgnoreCase)
+					&& activeCustomFilterEvaluator != null)
+				{
+					// Custom is deliberately evaluated only by the active designer. Metadata discovery
+					// stays process-isolated, and a Custom rule cannot make us reflectively load its
+					// project control in the workbench process.
+					try {
+						if (!activeCustomFilterEvaluator(item, rule))
+							return false;
+					}
+					catch (Exception) {
+						// Keep the prior fail-open behaviour if a designer's optional evaluator fails;
+						// one bad rule must not make the whole Toolbox disappear.
+					}
+				}
 			}
 			return true;
 		}
