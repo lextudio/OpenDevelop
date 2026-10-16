@@ -14,7 +14,9 @@ public sealed class XamlRoundTripTests
 {
 	public static IEnumerable<TheoryDataRow<string>> CaseNames() => XamlCorpus.Cases.Select(c => new TheoryDataRow<string>(c.Name));
 
-	static string SaveWithXamlDom(string xaml)
+	static string SaveWithXamlDom(string xaml) => StaRunner.Run(() => SaveWithXamlDomCore(xaml));
+
+	static string SaveWithXamlDomCore(string xaml)
 	{
 		var document = XamlParser.Parse(new StringReader(xaml));
 		var builder = new StringBuilder();
@@ -36,7 +38,8 @@ public sealed class XamlRoundTripTests
 	{
 		if (XamlCorpus.NotLoadableByXamlDom.ContainsKey(name))
 			return;
-		var xaml = XamlCorpus.Prefix + "\n" + XamlCorpus.Cases.Single(c => c.Name == name).Body + "\n</StackPanel>";
+		// The corpus is C# source, so its line endings follow the checkout (CRLF on Windows); XamlDom saves LF.
+		var xaml = (XamlCorpus.Prefix + "\n" + XamlCorpus.Cases.Single(c => c.Name == name).Body + "\n</StackPanel>").Replace("\r\n", "\n");
 		var saved = Normalize(SaveWithXamlDom(xaml));
 		if (KnownRoundTripDifferences.TryGetValue(name, out var reason)) {
 			Assert.True(saved != Normalize(xaml), "This case now round-trips; remove it from KnownRoundTripDifferences (was: " + reason + ")");
@@ -49,7 +52,9 @@ public sealed class XamlRoundTripTests
 	/// source's formatting, comments, and anything the object model does not keep. This documents that a
 	/// designer cannot be built on it for editing.</summary>
 	[Fact]
-	public void XamlWriterSerializesEveryCaseButPreservesNone()
+	public void XamlWriterSerializesEveryCaseButPreservesNone() => StaRunner.Run(() => { XamlWriterSerializesEveryCaseButPreservesNoneCore(); return 0; });
+
+	static void XamlWriterSerializesEveryCaseButPreservesNoneCore()
 	{
 		var preserved = 0;
 		var total = 0;

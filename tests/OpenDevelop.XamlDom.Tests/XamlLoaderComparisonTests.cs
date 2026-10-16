@@ -12,7 +12,12 @@ public sealed class XamlLoaderComparisonTests
 	static string Load(string xaml, bool designer)
 	{
 		string? result = null;
-		var thread = new Thread(() => result = LoadCore(xaml, designer)) { IsBackground = true };
+		var thread = new Thread(() => {
+			try { result = LoadCore(xaml, designer); }
+			finally { System.Windows.Threading.Dispatcher.CurrentDispatcher.InvokeShutdown(); }
+		}) { IsBackground = true };
+		if (OperatingSystem.IsWindows())
+			thread.SetApartmentState(ApartmentState.STA); // real WPF refuses to build UI objects off an STA thread
 		thread.Start();
 		return thread.Join(TimeSpan.FromSeconds(20)) ? result! : "HANG (no result within 20s)";
 	}
@@ -49,18 +54,6 @@ public sealed class XamlLoaderComparisonTests
 		["ToolTip, ContextMenu and Menu"] = "MenuItem.Role differs: items are attached to their parent after the subtree is built, so Role is computed against the wrong parent",
 	};
 
-	/// <summary>
-	/// Cases where the reference loader is believed wrong, not XamlDom. Off Windows "Microsoft's XamlReader" is
-	/// LibreWPF's reimplementation, so its answer is only a reference where it agrees with real WPF. These cases
-	/// must still differ there; on Windows, where the reference is real WPF, they are compared like any other case,
-	/// so running the suite on Windows confirms or refutes each entry. Remove an entry once that has been checked.
-	/// </summary>
-	static readonly Dictionary<string, string> ReferenceQuirksOffWindows = new() {
-		["Lookup by system key"] = "LibreWPF resolves {StaticResource {x:Static SystemColors.ControlBrushKey}} to the system brush although the "
-			+ "same SystemResourceKey is defined in the element's own Resources (its indexer finds it); real WPF looks in the element "
-			+ "tree first, which is how local system-colour overrides work, and XamlDom finds the local brush. Unverified on Windows.",
-	};
-
 	public static IEnumerable<TheoryDataRow<string>> CaseNames() => XamlCorpus.Cases.Select(c => new TheoryDataRow<string>(c.Name));
 
 	[Theory]
@@ -80,10 +73,6 @@ public sealed class XamlLoaderComparisonTests
 			return;
 		}
 		Assert.False(designerFailed, "XamlDom failed to load a case that is not listed as not loadable: " + designer);
-		if (!OperatingSystem.IsWindows() && ReferenceQuirksOffWindows.TryGetValue(name, out var quirk)) {
-			Assert.True(microsoft != designer, "The reference loader now agrees with XamlDom; remove this case from ReferenceQuirksOffWindows (was: " + quirk + ")");
-			return;
-		}
 		if (KnownDifferences.TryGetValue(name, out var reason)) {
 			Assert.True(microsoft != designer, "This case now matches; remove it from KnownDifferences (was: " + reason + ")");
 			return;

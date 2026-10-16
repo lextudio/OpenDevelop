@@ -27,7 +27,7 @@ What the dump leaves out: each loader's own bookkeeping attached properties (bas
 scopes, `mc:Ignorable`, `d:` values, the text editor's internal state), layout, and anything that is not a local
 value, a resource, a logical child or one of the items above. Two loaders can still differ there unnoticed.
 
-The expected differences live in four lists, each with the reason, and each enforced in both directions: a case
+The expected differences live in three lists, each with the reason, and each enforced in both directions: a case
 that starts matching (or loading) fails its test until it is removed, so the lists only shrink.
 
 | List | Where | Meaning |
@@ -35,13 +35,12 @@ that starts matching (or loading) fails its test until it is removed, so the lis
 | `NotLoadableByXamlDom` | `XamlCorpus` | XamlDom cannot load the case at all |
 | `KnownDifferences` | `XamlLoaderComparisonTests` | XamlDom loads it but builds a different graph |
 | `KnownRoundTripDifferences` | `XamlRoundTripTests` | XamlDom does not save the source back unchanged |
-| `ReferenceQuirksOffWindows` | `XamlLoaderComparisonTests` | the reference loader is believed wrong, off Windows only |
 
 ## Results
 
 | | cases | match | differ | XamlDom cannot load |
 |---|---|---|---|---|
-| Load fidelity | 47 | 39 | 6 (+1 reference quirk) | 1 |
+| Load fidelity | 47 | 40 | 6 | 1 |
 | Write-back, XamlDom | 46 (the other one does not load) | 45 | 1 | - |
 | Write-back, `XamlWriter` | 47 | **0** | 47 | - |
 
@@ -52,7 +51,8 @@ list against what XamlDom really does, and the round-trip test skips exactly tho
 attribute order, implicit content and default-valued properties are all rewritten. It cannot be used to save
 an edited document.
 
-Remaining load differences, the 6 that load plus the 1 that does not (XamlDom is wrong, Microsoft's loader is the reference):
+Remaining load differences, the 6 that load plus the 1 that does not (XamlDom is wrong, Microsoft's loader is the reference).
+All results were confirmed on Windows against real WPF (net10.0-windows, arm64); the same 96 tests pass there:
 
 | Difference | Effect |
 |---|---|
@@ -69,15 +69,9 @@ investigated.
 
 Not XamlDom's fault:
 
-- A **reference quirk** (`Lookup by system key`, `ReferenceQuirksOffWindows` in `XamlLoaderComparisonTests`). Off Windows the
-  "Microsoft" loader is LibreWPF's reimplementation. With `<SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"/>`
-  in the element's own `Resources`, LibreWPF resolves `{StaticResource {x:Static SystemColors.ControlBrushKey}}` to the system
-  brush even though its own dictionary holds the key (the indexer finds it). Real WPF searches the element tree before system
-  resources, which is how local system-colour overrides work, and XamlDom finds the local brush. This is a judgement, not a
-  measurement: **to verify, run `OpenDevelop.XamlDom.Tests` on Windows**. There the case is compared like any other, so it
-  passes if real WPF agrees with XamlDom (then delete the entry), and fails if not (then XamlDom has a lookup difference).
-  The same run is the way to find out whether any *other* result here rests on a LibreWPF quirk: every case is compared
-  against LibreWPF off Windows, so a difference listed above that disappears on Windows was the reference's, not XamlDom's.
+- The suspected LibreWPF quirk for `Lookup by system key` was **refuted** on Windows: real WPF also resolves to the system
+  brush, so `ReferenceQuirksOffWindows` was removed and XamlDom was fixed (see below). No other result differed between
+  LibreWPF and real WPF.
 - `ComboBox` cannot be constructed under LibreWPF (both loaders hang), and `x:Shared` is
 rejected by Microsoft's loader outside compiled dictionaries.
 
@@ -100,7 +94,6 @@ Open items, each with the test that tracks it (the case name in `XamlCorpus`):
 | `x:Uid` not applied | `x:Name x:Uid x:Key forms`, `Uri and Key as attribute order` | `KnownDifferences` |
 | `mc:AlternateContent` | `Designer attributes` | `NotLoadableByXamlDom` |
 | `BeginStoryboard` content written back as a property element | `Animations and storyboards` | `KnownRoundTripDifferences` |
-| Is the system-key lookup quirk LibreWPF's? Verify on Windows | `Lookup by system key` | `ReferenceQuirksOffWindows` |
 
 Fixed during this comparison:
 
@@ -116,6 +109,10 @@ The fixes are commits in the nested `WpfDesigner` repository (`externals/vscode-
   collection-typed element as the collection instance of its parent's property, so the nested dictionary's
   children were added to the parent's `MergedDictionaries`; it now does so only when the element's type fits
   that property. The same change keeps the original stack of load errors (`ReportException` used `throw x;`).
+- `{StaticResource}` with a `SystemResourceKey` (e.g. `{x:Static SystemColors.ControlBrushKey}`) searched the element tree and
+  found a local brush defined under that key. WPF's `StaticResourceExtension.ProvideValue` returns the system resource for
+  such keys without any lookup, so local overrides only affect `{DynamicResource}`; `StaticResourceWrapper` now does the same
+  (not yet committed in WpfDesigner).
 - `<x:Double>`, `<x:String>` and the other XAML language primitives were dropped by XamlDom entirely (commit
   `7760bcc` in WpfDesigner), which made the resource picker offer nothing for `FontSize="{StaticResource Small}"`.
 

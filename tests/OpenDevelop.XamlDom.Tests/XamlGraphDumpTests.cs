@@ -10,7 +10,7 @@ public sealed class XamlGraphDumpTests
 	[Fact]
 	public void DumpIncludesStyleSetterTriggerAndBindingContent()
 	{
-		var dump = XamlGraphDump.Dump(XamlReader.Parse(XamlCorpus.Prefix + """
+		var dump = StaRunner.Run(() => XamlGraphDump.Dump(XamlReader.Parse(XamlCorpus.Prefix + """
 			<StackPanel.Resources>
 			  <Style x:Key="S" TargetType="Button">
 			    <Setter Property="Width" Value="80"/>
@@ -22,7 +22,7 @@ public sealed class XamlGraphDumpTests
 			</StackPanel.Resources>
 			<TextBox Text="{Binding Path=Name, ConverterParameter=p, ElementName=other, Mode=TwoWay}"/>
 			</StackPanel>
-			"""));
+			""")));
 		foreach (var expected in new[] {
 			"Style Button", "Setter FrameworkElement.Width = Double:80", "Trigger IsMouseOver = Boolean:True",
 			"Setter FrameworkElement.Height = Double:9", "DataTrigger Binding(Path=Ok, Mode=OneWay", "Parameter=\"p\", ElementName=other" })
