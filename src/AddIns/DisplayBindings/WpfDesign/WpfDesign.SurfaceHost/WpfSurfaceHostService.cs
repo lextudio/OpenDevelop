@@ -1513,13 +1513,18 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// runtime Binding can flatten an inline object or <c>x:Static</c> form to an apparent null,
 		/// so those forms must never be guessed or overwritten through a resource picker.</summary>
 		[JsonRpcMethod("design/set-binding-source")]
-		public DesignerSessionState SetBindingSource(long baseVersion, string elementId, string propertyName, string resourceKey)
+		public DesignerSessionState SetBindingSource(long baseVersion, string elementId, string propertyName, string resourceKey, int childIndex = -1)
 			=> dispatcher.Dispatch(() => {
 				if (RejectIfStale(baseVersion) is { } stale) return stale;
 				var state = NewState(baseVersion);
 				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
-				var property = item.Properties[propertyName];
-				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding binding
+				DesignItem? bindingItem;
+				if (childIndex >= 0) {
+					if (!TryGetEditableBindingItems(item, propertyName, out var bindingsProperty) || bindingsProperty == null || childIndex >= bindingsProperty.CollectionElements.Count)
+						return NotFound(state, "Binding child is not editable: " + propertyName);
+					bindingItem = bindingsProperty.CollectionElements[childIndex];
+				} else bindingItem = item.Properties[propertyName]?.Value as DesignItem;
+				if (bindingItem?.Component is not System.Windows.Data.Binding binding
 					|| !CanEditBindingSource(binding) || !TryGetStaticResourceBindingSource(bindingItem.Properties["Source"], out _))
 					return NotFound(state, "Property is not an editable StaticResource Binding Source: " + propertyName);
 				if (!string.IsNullOrEmpty(resourceKey) && !BindingSourceResourceKeys(item).Contains(resourceKey))
@@ -3681,6 +3686,22 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						Value = child.RelativeSource?.Mode.ToString() ?? "", BindingPropertyName = descriptor.Name,
 						BindingChildIndex = index, ShouldSerialize = false,
 						AllowedValues = new List<string> { "", "Self", "TemplatedParent" }
+					});
+				}
+				var childSource = children[index].Properties["Source"];
+				if (childSource != null && CanEditBindingSource(child)
+					&& TryGetStaticResourceBindingSource(childSource, out var childSourceKey))
+				{
+					var choices = new List<string> { "" };
+					choices.AddRange(BindingSourceResourceKeys(item));
+					if (!choices.Contains(childSourceKey)) choices.Add(childSourceKey);
+					result.Add(new DesignerPropertyInfo {
+						Name = descriptor.Name + ".Bindings[" + index.ToString(CultureInfo.InvariantCulture) + "].Source",
+						DisplayName = descriptor.Name + " Binding " + (index + 1).ToString(CultureInfo.InvariantCulture) + " Source",
+						Category = "Binding", TypeName = typeof(string).FullName ?? "",
+						Kind = "Enum", EditorKind = "BindingChildSource", Value = childSourceKey,
+						BindingPropertyName = descriptor.Name, BindingChildIndex = index, ShouldSerialize = false,
+						AllowedValues = choices
 					});
 				}
 				var childConverter = children[index].Properties["Converter"];

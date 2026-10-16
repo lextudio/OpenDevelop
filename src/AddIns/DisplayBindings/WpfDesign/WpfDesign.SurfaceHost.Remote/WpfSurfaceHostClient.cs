@@ -241,8 +241,11 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	/// <summary>Sets an existing Binding's Source to a resource key that the child proved is an
 	/// authored <c>{StaticResource}</c> reference. This cannot carry arbitrary source markup.</summary>
 	public Task<DesignerSessionState> SetBindingSourceAsync(long baseVersion, string elementId, string propertyName, string resourceKey, CancellationToken cancellationToken = default)
+		=> SetBindingSourceAsync(baseVersion, elementId, propertyName, resourceKey, -1, cancellationToken);
+
+	public Task<DesignerSessionState> SetBindingSourceAsync(long baseVersion, string elementId, string propertyName, string resourceKey, int childIndex, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-source",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, resourceKey }, cancellationToken), cancellationToken);
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, resourceKey, childIndex }, cancellationToken), cancellationToken);
 
 	public Task<DesignerSessionState> SetBindingNotifyOnValidationErrorAsync(long baseVersion, string elementId, string propertyName, bool notify, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-notify-on-validation-error",

@@ -71,7 +71,7 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	[JsonRpcMethod("design/set-binding-ancestor-level")]
 	public DesignerSessionState SetBindingAncestorLevel(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, int level) => Checked(sessionId, documentId).SetBindingAncestorLevel(baseVersion, elementId, propertyName, level);
 	[JsonRpcMethod("design/set-binding-source")]
-	public DesignerSessionState SetBindingSource(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string resourceKey) => Checked(sessionId, documentId).SetBindingSource(baseVersion, elementId, propertyName, resourceKey);
+	public DesignerSessionState SetBindingSource(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string resourceKey, int childIndex = -1) => Checked(sessionId, documentId).SetBindingSource(baseVersion, elementId, propertyName, resourceKey, childIndex);
 	[JsonRpcMethod("design/set-binding-notify-on-validation-error")]
 	public DesignerSessionState SetBindingNotifyOnValidationError(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, bool notify) => Checked(sessionId, documentId).SetBindingNotifyOnValidationError(baseVersion, elementId, propertyName, notify);
 	[JsonRpcMethod("design/set-binding-validation-option")]

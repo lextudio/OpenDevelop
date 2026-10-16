@@ -1148,6 +1148,16 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.True(relativeSourceCleared.Accepted, relativeSourceCleared.Error);
 		Assert.DoesNotContain("RelativeSource", (await client.FlushAsync(relativeSourceCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
 		triggerEdited = relativeSourceCleared;
+		var childSource = FindByName(triggerEdited.Tree!, "multi")!.Properties.Single(property => property.EditorKind == "BindingChildSource" && property.BindingChildIndex == 0);
+		Assert.Equal("Text", childSource.BindingPropertyName);
+		Assert.Contains("visible", childSource.AllowedValues);
+		var sourceEdited = await client.SetBindingSourceAsync(triggerEdited.Version, multi.Id, "Text", "visible", 0, timeout.Token);
+		Assert.True(sourceEdited.Accepted, sourceEdited.Error);
+		Assert.Matches("<Binding(?=[^>]*Path=\"First\")(?=[^>]*Source=\"{StaticResource visible}\")", (await client.FlushAsync(sourceEdited.Version, timeout.Token)).Files.Single().Text);
+		var sourceCleared = await client.SetBindingSourceAsync(sourceEdited.Version, multi.Id, "Text", "", 0, timeout.Token);
+		Assert.True(sourceCleared.Accepted, sourceCleared.Error);
+		Assert.DoesNotContain("Source=\"{StaticResource visible}\"", (await client.FlushAsync(sourceCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		triggerEdited = sourceCleared;
 		var elementNameEdited = await client.SetBindingElementNameAsync(triggerEdited.Version, multi.Id, "Text", "source", 0, timeout.Token);
 		Assert.True(elementNameEdited.Accepted, elementNameEdited.Error);
 		var elementNameText = (await client.FlushAsync(elementNameEdited.Version, timeout.Token)).Files.Single().Text;
