@@ -59,4 +59,16 @@ public sealed class WpfCodeBehindHandlersTests
 		Assert.Null(WpfCodeBehindHandlers.AddHandler("namespace empty { }", "MainWindow", "h", "global::System.EventArgs", out var none));
 		Assert.Equal(0, none);
 	}
+
+	[Fact]
+	public void AddsAndFindsAVisualBasicHandler()
+	{
+		const string source = "Namespace sample\n    Public Partial Class MainWindow\n    End Class\nEnd Namespace\n";
+		var updated = WpfCodeBehindHandlers.AddVisualBasicHandler(source, "MainWindow", "owner_Click", "global::System.EventArgs", out var line);
+		Assert.NotNull(updated);
+		Assert.Contains("Private Sub owner_Click(sender As Object, e As Global.System.EventArgs)", updated, StringComparison.Ordinal);
+		Assert.Contains("owner_Click", updated!.Replace("\r\n", "\n").Split('\n')[line - 1], StringComparison.Ordinal);
+		Assert.Null(WpfCodeBehindHandlers.AddVisualBasicHandler(updated, "MainWindow", "owner_Click", "global::System.EventArgs", out var existingLine));
+		Assert.True(existingLine > 0);
+	}
 }

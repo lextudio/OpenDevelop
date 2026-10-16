@@ -12,6 +12,8 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Formatting;
+using VisualBasicSyntaxTree = Microsoft.CodeAnalysis.VisualBasic.VisualBasicSyntaxTree;
+using VBSyntax = Microsoft.CodeAnalysis.VisualBasic.Syntax;
 
 namespace ICSharpCode.WpfDesign.AddIn
 {
@@ -68,6 +70,32 @@ namespace ICSharpCode.WpfDesign.AddIn
 			return formatted.ToFullString();
 		}
 
+		/// <summary>VB counterpart of <see cref="AddHandler"/>. The IDE owns this source edit just
+		/// as it owns the C# edit; the isolated designer still only supplies the XAML attribute.</summary>
+		public static string? AddVisualBasicHandler(string source, string? className, string handlerName, string argsType, out int line)
+		{
+			line = 0;
+			var root = (VBSyntax.CompilationUnitSyntax)VisualBasicSyntaxTree.ParseText(source).GetRoot();
+			var classes = root.DescendantNodes().OfType<VBSyntax.ClassBlockSyntax>().ToList();
+			var target = classes.FirstOrDefault(c => c.ClassStatement.Identifier.ValueText == className) ?? classes.FirstOrDefault();
+			if (target == null)
+				return null;
+			var existing = target.Members.OfType<VBSyntax.MethodBlockSyntax>().FirstOrDefault(m => m.SubOrFunctionStatement.Identifier.ValueText == handlerName);
+			if (existing != null) {
+				line = existing.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+				return null;
+			}
+			var typeName = argsType.Replace("global::", "Global.", StringComparison.Ordinal);
+			var member = VisualBasicSyntaxTree.ParseText("Class Placeholder\n    Private Sub " + handlerName + "(sender As Object, e As " + typeName + ")\n    End Sub\nEnd Class")
+				.GetRoot().DescendantNodes().OfType<VBSyntax.ClassBlockSyntax>().Single().Members.Single()
+				.WithAdditionalAnnotations(Formatter.Annotation);
+			var updated = root.ReplaceNode(target, target.WithMembers(target.Members.Add(member)));
+			var formatted = Formatter.Format(updated, Formatter.Annotation, new AdhocWorkspace());
+			var inserted = formatted.DescendantNodes().OfType<VBSyntax.MethodBlockSyntax>().FirstOrDefault(m => m.SubOrFunctionStatement.Identifier.ValueText == handlerName);
+			line = inserted != null ? inserted.GetLocation().GetLineSpan().StartLinePosition.Line + 1 : 0;
+			return formatted.ToFullString();
+		}
+
 		/// <summary>
 		/// Ensures the handler exists in <c>xamlPath + ".cs"</c> and opens it at the method. The open
 		/// editor's buffer is authoritative when the file is already open (the edit lands on its undo
@@ -75,8 +103,9 @@ namespace ICSharpCode.WpfDesign.AddIn
 		/// </summary>
 		public static bool EnsureAndNavigate(string xamlPath, string? xamlText, string handlerName, string argsType)
 		{
-			var codePath = xamlPath + ".cs";
-			if (!File.Exists(codePath))
+			var codePath = File.Exists(xamlPath + ".cs") ? xamlPath + ".cs"
+				: File.Exists(xamlPath + ".vb") ? xamlPath + ".vb" : null;
+			if (codePath == null)
 				return false;
 			try {
 				var fileName = FileName.Create(codePath);
@@ -87,7 +116,9 @@ namespace ICSharpCode.WpfDesign.AddIn
 				var bytes = openEditor == null ? File.ReadAllBytes(codePath) : Array.Empty<byte>();
 				var hasBom = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
 				var source = openEditor?.Document.Text ?? new System.Text.UTF8Encoding(false).GetString(bytes, hasBom ? 3 : 0, bytes.Length - (hasBom ? 3 : 0));
-				var updated = AddHandler(source, ClassNameOf(xamlText), handlerName, argsType, out var line);
+				var updated = codePath.EndsWith(".vb", StringComparison.OrdinalIgnoreCase)
+					? AddVisualBasicHandler(source, ClassNameOf(xamlText), handlerName, argsType, out var line)
+					: AddHandler(source, ClassNameOf(xamlText), handlerName, argsType, out line);
 				if (line == 0)
 					return false;
 				if (updated != null) {
