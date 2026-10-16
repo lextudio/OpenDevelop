@@ -76,7 +76,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v55 adds indexed design/set-binding-mode support for a direct child of that collection.
 		// v56 adds indexed design/set-binding-update-source-trigger support for a direct child of
 		// that collection.
-	public const int Version = 56;
+		// v57 adds indexed design/set-binding-element-name support for a direct child of that collection.
+	public const int Version = 57;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

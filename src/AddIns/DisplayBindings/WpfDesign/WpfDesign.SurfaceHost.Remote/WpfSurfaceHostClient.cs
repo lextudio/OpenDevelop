@@ -218,8 +218,11 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, trigger, childIndex }, cancellationToken), cancellationToken);
 
 	public Task<DesignerSessionState> SetBindingElementNameAsync(long baseVersion, string elementId, string propertyName, string elementName, CancellationToken cancellationToken = default)
+		=> SetBindingElementNameAsync(baseVersion, elementId, propertyName, elementName, -1, cancellationToken);
+
+	public Task<DesignerSessionState> SetBindingElementNameAsync(long baseVersion, string elementId, string propertyName, string elementName, int childIndex, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-element-name",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, elementName }, cancellationToken), cancellationToken);
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, elementName, childIndex }, cancellationToken), cancellationToken);
 
 	public Task<DesignerSessionState> SetBindingRelativeSourceAsync(long baseVersion, string elementId, string propertyName, string relativeSource, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-relative-source",

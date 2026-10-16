@@ -1090,7 +1090,8 @@ public sealed class WpfSurfaceHostRpcTests
 	{
 		const string xaml = """
 			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-			  <TextBlock x:Name="multi"><TextBlock.Text><MultiBinding StringFormat="{}{0} {1}"><Binding Path="First"/><Binding Path="Last" Mode="OneWay"/></MultiBinding></TextBlock.Text></TextBlock>
+			<TextBlock x:Name="source" Text="source"/>
+			<TextBlock x:Name="multi"><TextBlock.Text><MultiBinding StringFormat="{}{0} {1}"><Binding Path="First"/><Binding Path="Last" Mode="OneWay"/></MultiBinding></TextBlock.Text></TextBlock>
 			  <TextBlock x:Name="priority"><TextBlock.Text><PriorityBinding><Binding Path="Preferred"/><Binding Path="Fallback"/></PriorityBinding></TextBlock.Text></TextBlock>
 			</Grid>
 			""";
@@ -1116,11 +1117,17 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.True(triggerEdited.Accepted, triggerEdited.Error);
 		var triggerText = (await client.FlushAsync(triggerEdited.Version, timeout.Token)).Files.Single().Text;
 		Assert.Matches("<Binding(?=[^>]*Path=\"First\")(?=[^>]*UpdateSourceTrigger=\"PropertyChanged\")", triggerText);
-		var invalidChild = await client.SetBindingModeAsync(triggerEdited.Version, multi.Id, "Text", "TwoWay", 9, timeout.Token);
+		var childElementName = FindByName(triggerEdited.Tree!, "multi")!.Properties.Single(property => property.EditorKind == "BindingChildElementName" && property.BindingChildIndex == 0);
+		Assert.Equal("Text", childElementName.BindingPropertyName);
+		var elementNameEdited = await client.SetBindingElementNameAsync(triggerEdited.Version, multi.Id, "Text", "source", 0, timeout.Token);
+		Assert.True(elementNameEdited.Accepted, elementNameEdited.Error);
+		var elementNameText = (await client.FlushAsync(elementNameEdited.Version, timeout.Token)).Files.Single().Text;
+		Assert.Matches("<Binding(?=[^>]*Path=\"First\")(?=[^>]*ElementName=\"source\")", elementNameText);
+		var invalidChild = await client.SetBindingModeAsync(elementNameEdited.Version, multi.Id, "Text", "TwoWay", 9, timeout.Token);
 		Assert.False(invalidChild.Accepted);
 		Assert.Contains("Binding child", invalidChild.Error, StringComparison.Ordinal);
 		Assert.DoesNotContain("Mode=\"TwoWay\"", (await client.FlushAsync(modeEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		opened = triggerEdited;
+		opened = elementNameEdited;
 		multi = FindByName(opened.Tree!, "multi")!;
 		var multiPaths = multi.Properties.Where(property => property.EditorKind == "BindingChildPath").OrderBy(property => property.BindingChildIndex).ToArray();
 		Assert.Equal(new[] { "First", "Last" }, multiPaths.Select(property => property.Value));

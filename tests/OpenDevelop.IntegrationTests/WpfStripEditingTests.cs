@@ -815,7 +815,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     Width="420" Height="220" Title="Composite binding mode">
-              <Grid><TextBlock x:Name="owner"><TextBlock.Text><MultiBinding><Binding Path="First" /><Binding Path="Last" /></MultiBinding></TextBlock.Text></TextBlock></Grid>
+              <Grid><TextBlock x:Name="source" Text="source" /><TextBlock x:Name="owner"><TextBlock.Text><MultiBinding><Binding Path="First" /><Binding Path="Last" /></MultiBinding></TextBlock.Text></TextBlock></Grid>
             </Window>
             """);
             Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
@@ -845,9 +845,13 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
                 edited = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.Bindings[0].UpdateSourceTrigger", "PropertyChanged");
                 return edited.GetProperty("success").GetBoolean();
             }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), edited.ToString());
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                edited = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.Bindings[0].ElementName", "source");
+                return edited.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), edited.ToString());
             Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
             var saved = await File.ReadAllTextAsync(xamlPath);
-            Assert.Matches("<Binding(?=[^>]*Path=\"First\")(?=[^>]*Mode=\"OneWay\")(?=[^>]*UpdateSourceTrigger=\"PropertyChanged\")", saved);
+            Assert.Matches("<Binding(?=[^>]*Path=\"First\")(?=[^>]*Mode=\"OneWay\")(?=[^>]*UpdateSourceTrigger=\"PropertyChanged\")(?=[^>]*ElementName=\"source\")", saved);
             Assert.Contains("Path=\"Last\"", saved, StringComparison.Ordinal);
         } finally {
             await app.InvokeAsync("od.close-active-view");

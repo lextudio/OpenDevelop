@@ -1407,13 +1407,22 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			});
 
 		[JsonRpcMethod("design/set-binding-element-name")]
-		public DesignerSessionState SetBindingElementName(long baseVersion, string elementId, string propertyName, string elementName)
+		public DesignerSessionState SetBindingElementName(long baseVersion, string elementId, string propertyName, string elementName, int childIndex = -1)
 			=> dispatcher.Dispatch(() => {
 				if (RejectIfStale(baseVersion) is { } stale) return stale;
 				var state = NewState(baseVersion);
 				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
-				var property = item.Properties[propertyName];
-				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding binding
+				DesignItem? bindingItem;
+				if (childIndex >= 0)
+				{
+					if (!TryGetEditableBindingItems(item, propertyName, out var bindingsProperty) || bindingsProperty == null
+						|| childIndex >= bindingsProperty.CollectionElements.Count)
+						return NotFound(state, "Binding child is not editable: " + propertyName);
+					bindingItem = bindingsProperty.CollectionElements[childIndex];
+				}
+				else
+					bindingItem = item.Properties[propertyName]?.Value as DesignItem;
+				if (bindingItem is null || bindingItem.Component is not System.Windows.Data.Binding binding
 					|| !HasUnsetBindingSource(bindingItem) || binding.RelativeSource != null)
 					return NotFound(state, "Property is not an editable ElementName Binding: " + propertyName);
 				if (!string.IsNullOrWhiteSpace(elementName))
@@ -3596,6 +3605,16 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					BindingPropertyName = descriptor.Name, BindingChildIndex = index, ShouldSerialize = false,
 					AllowedValues = Enum.GetNames(typeof(System.Windows.Data.UpdateSourceTrigger)).ToList()
 				});
+				if (HasUnsetBindingSource(children[index]) && child.RelativeSource == null)
+				{
+					result.Add(new DesignerPropertyInfo {
+						Name = descriptor.Name + ".Bindings[" + index.ToString(CultureInfo.InvariantCulture) + "].ElementName",
+						DisplayName = descriptor.Name + " Binding " + (index + 1).ToString(CultureInfo.InvariantCulture) + " Element Name",
+						Category = "Binding", TypeName = typeof(string).FullName ?? "",
+						Kind = "String", EditorKind = "BindingChildElementName", Value = child.ElementName ?? "",
+						BindingPropertyName = descriptor.Name, BindingChildIndex = index, ShouldSerialize = false
+					});
+				}
 							}
 						}
 					}
