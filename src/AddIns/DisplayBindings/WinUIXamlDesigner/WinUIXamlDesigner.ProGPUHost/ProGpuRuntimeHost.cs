@@ -7,6 +7,7 @@ using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Surface;
 using ICSharpCode.SharpDevelop.Widgets;
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using XamlStudio.Toolkit.Models;
 using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 using XamlStudio.Toolkit.Services;
 
@@ -88,6 +89,8 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverl
     double? configuredDesignWidth;
     double? configuredDesignHeight;
     string theme = "Light";
+    IReadOnlyDictionary<string, IReadOnlyList<DesignerBindingInfo>> bindingTelemetryByElement
+        = new Dictionary<string, IReadOnlyList<DesignerBindingInfo>>(StringComparer.Ordinal);
     bool disposed;
 
     static int liveHostCount;
@@ -198,7 +201,12 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverl
     async Task RenderAsync(string text, int requested)
     {
         try {
-            var result = await renderService.RenderAsync(text).ConfigureAwait(true);
+            // ProGPU is the one WinUI backend whose renderer can observe the binding shim's
+            // conversion callbacks. Keep that evidence in the snapshot instead of reducing it
+            // to WPF's conservative "Declared" hint.
+            var result = await renderService.RenderAsync(text, new XamlRenderSettings {
+                IsBindingDebuggingEnabled = true
+            }).ConfigureAwait(true);
             if (disposed || Volatile.Read(ref version) != requested)
                 return;
             if (result.Element is Microsoft.UI.Xaml.FrameworkElement element) {
@@ -206,6 +214,7 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverl
                 root = element;
                 lastPreviewRoot = new WeakReference(element);
                 ResolveNameScope();
+                bindingTelemetryByElement = ProjectBindingTelemetry(result.Bindings);
                 Present();
             } else {
                 // Keep the last good frame and tree, and report why.
@@ -230,7 +239,7 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverl
         FillPageBackground(pixels, theme == "Dark");
         lastRenderMs = milliseconds;
         lastRenderDpi = dpi;
-        designTree = ProGpuDesignTree.Build(root, namesByElement);
+        designTree = ProGpuDesignTree.Build(root, namesByElement, bindingTelemetryByElement);
         var frame = new DesignerRenderFrame {
             Sequence = ++frameSequence,
             Width = pixelWidth,
@@ -245,6 +254,29 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverl
         StatusText = dpi > 1.01
             ? $"Rendered by ProGPU WinUI ({width:0}×{height:0} @ {dpi:0.##}x)."
             : $"Rendered by ProGPU WinUI ({width:0}×{height:0}).";
+    }
+
+    /// <summary>Projects XAML Studio's runtime binding observations onto source-named elements.
+    /// Bindings on an unnamed element deliberately stay out of the snapshot: guessing a visual
+    /// path would make the telemetry unstable when a control template changes.</summary>
+    static IReadOnlyDictionary<string, IReadOnlyList<DesignerBindingInfo>> ProjectBindingTelemetry(IEnumerable<XamlBindingInfo> bindings)
+    {
+        var result = new Dictionary<string, List<DesignerBindingInfo>>(StringComparer.Ordinal);
+        foreach (var binding in bindings)
+        {
+            if (string.IsNullOrWhiteSpace(binding.ElementName) || string.IsNullOrWhiteSpace(binding.PropertyName))
+                continue;
+            if (!result.TryGetValue(binding.ElementName, out var elementBindings))
+                result.Add(binding.ElementName, elementBindings = new List<DesignerBindingInfo>());
+            elementBindings.Add(new DesignerBindingInfo {
+                Property = binding.PropertyName,
+                Status = binding.LastKnownBindingState.ToString()
+            });
+        }
+        var projected = new Dictionary<string, IReadOnlyList<DesignerBindingInfo>>(StringComparer.Ordinal);
+        foreach (var pair in result)
+            projected.Add(pair.Key, pair.Value);
+        return projected;
     }
 
     /// <summary>

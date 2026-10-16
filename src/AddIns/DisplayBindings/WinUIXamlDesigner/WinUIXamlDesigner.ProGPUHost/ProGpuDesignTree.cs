@@ -32,11 +32,12 @@ sealed class ProGpuDesignTree
 
 	/// <param name="names">Rendered elements to their x:Name (the generated program publishes names
 	/// through the WinUI namescope; the emitter never assigns FrameworkElement.Name).</param>
-	public static ProGpuDesignTree Build(FrameworkElement root, IReadOnlyDictionary<FrameworkElement, string> names)
+	public static ProGpuDesignTree Build(FrameworkElement root, IReadOnlyDictionary<FrameworkElement, string> names,
+		IReadOnlyDictionary<string, IReadOnlyList<DesignerBindingInfo>>? bindingsByElement = null)
 	{
 		var tree = new ProGpuDesignTree(root);
 		tree.CollectSourceBacked(root, 0);
-		tree.Tree = tree.BuildNode(root, "", 0, names, DesignerLayoutMode.Unknown);
+		tree.Tree = tree.BuildNode(root, "", 0, names, bindingsByElement, DesignerLayoutMode.Unknown);
 		return tree;
 	}
 
@@ -63,7 +64,8 @@ sealed class ProGpuDesignTree
 		return (pickPath != null, pickPath, chain);
 	}
 
-	DesignerElementNode BuildNode(Visual node, string path, int depth, IReadOnlyDictionary<FrameworkElement, string> names, string layoutMode)
+	DesignerElementNode BuildNode(Visual node, string path, int depth, IReadOnlyDictionary<FrameworkElement, string> names,
+		IReadOnlyDictionary<string, IReadOnlyList<DesignerBindingInfo>>? bindingsByElement, string layoutMode)
 	{
 		pathOf[node] = path;
 		var info = new DesignerElementNode {
@@ -80,6 +82,9 @@ sealed class ProGpuDesignTree
 		if (node is FrameworkElement element)
 		{
 			info.Name = names.TryGetValue(element, out var name) ? name : string.IsNullOrEmpty(element.Name) ? null : element.Name;
+			if (info.IsDesignable && info.Name != null && bindingsByElement != null
+				&& bindingsByElement.TryGetValue(info.Name, out var bindings))
+				info.Bindings.AddRange(bindings);
 			var origin = element.TransformToVisual(root).TransformPoint(Vector2.Zero);
 			info.X = origin.X;
 			info.Y = origin.Y;
@@ -95,7 +100,7 @@ sealed class ProGpuDesignTree
 		foreach (var child in container.Children)
 		{
 			if (child is UIElement)
-				info.Children.Add(BuildNode(child, path.Length == 0 ? index.ToString(CultureInfo.InvariantCulture) : path + "," + index, depth + 1, names,
+				info.Children.Add(BuildNode(child, path.Length == 0 ? index.ToString(CultureInfo.InvariantCulture) : path + "," + index, depth + 1, names, bindingsByElement,
 					DesignerLayoutMode.InferFromContainerType(info.Type)));
 			index++;
 		}

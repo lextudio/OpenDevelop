@@ -44,11 +44,30 @@ public partial class XamlRenderService
 
         GetBindings(result, settings.IsBindingDebuggingEnabled);
 
-        if (className != null && result.Document?.Root != null)
+        if (result.Document?.Root != null)
         {
-            result.Document.Root.SetAttributeValue(classDirective, className);
+            if (className != null)
+                result.Document.Root.SetAttributeValue(classDirective, className);
+
+            // The upstream runtime resolves a user converter only after XamlReader has
+            // materialised the resource dictionary. ProGPU's compiled path invokes the shim
+            // during materialisation, before that resolution is possible. Do not replace such
+            // a binding: preserving its original expression is preferable to silently bypassing
+            // its converter. It is also excluded from telemetry below because it was not observed
+            // by the shim.
+            if (settings.IsBindingDebuggingEnabled)
+            {
+                foreach (var binding in XamlBindingWrapperManager.Instance.GetBindings(Id)
+                             .Where(binding => !string.IsNullOrWhiteSpace(binding.ConverterKey)))
+                    binding.PropertyAttribute.Value = binding.OriginalBindingString;
+            }
             result.RenderedContent = Serialize(result.Document);
         }
+        // GetBindings serializes the changed Binding attributes, while InterceptBindings adds the
+        // companion converter resource to RenderedContent. The compiled ProGPU pipeline needs
+        // both transforms in that order; serializing after interception would drop the resource.
+        if (settings.IsBindingDebuggingEnabled)
+            InterceptBindings(ref result);
 
         try
         {
@@ -62,7 +81,8 @@ public partial class XamlRenderService
                 exception.GetBaseException().Message, exception, 1, 1, string.Empty));
         }
 
-        result.Bindings = XamlBindingWrapperManager.Instance.GetBindings(Id);
+        result.Bindings = XamlBindingWrapperManager.Instance.GetBindings(Id)
+            .Where(binding => string.IsNullOrWhiteSpace(binding.ConverterKey));
         return result;
     }
 

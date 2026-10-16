@@ -107,6 +107,38 @@ public sealed class ProGpuWinUIDesignerTests : IDisposable
     }
 
     [Fact]
+    public async Task NamedBinding_ReportsTheRuntimeObservationOnItsSourceElement()
+    {
+        if (_skip) {
+            Assert.Skip("Set OD_WINUI_RUNTIME=progpu to run the ProGPU WinUI designer suite.");
+            return;
+        }
+
+        // ProGPU evaluates an unqualified binding against its null DataContext and calls the
+        // shim with that value, so this is a real Successful observation (not a fabricated
+        // declaration). The x:Name is intentional: unnamed source elements have no stable
+        // runtime-tree identity across template/materialisation changes.
+        var xaml = File.ReadAllText(_pagePath).Replace(
+            "Text=\"ProGPU compatibility preview\"",
+            "Text=\"{Binding}\"",
+            StringComparison.Ordinal);
+        File.WriteAllText(_pagePath, xaml);
+
+        await OpenDesignerAsync();
+        System.Text.Json.JsonElement status = default;
+        var observed = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            status = await _app.InvokeAsync("od.winui-designer.status");
+            return status.GetProperty("bindingTelemetry").EnumerateArray().Any(binding =>
+                binding.GetProperty("elementName").GetString() == "TitleText"
+                && binding.GetProperty("property").GetString() == "Text"
+                && binding.GetProperty("status").GetString() == "Successful");
+        }, TimeSpan.FromSeconds(30));
+
+        Assert.True(observed, status.ToString());
+    }
+
+    [Fact]
     public async Task CloseDocument_ReleasesThePreviewAssembly()
     {
         if (_skip) {

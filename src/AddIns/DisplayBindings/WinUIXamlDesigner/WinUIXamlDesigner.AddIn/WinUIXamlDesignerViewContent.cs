@@ -143,6 +143,22 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	void IUndoHandler.Redo() => Redo();
 	public string DocumentError => documentError;
 	public IReadOnlyList<string> ElementNames() => editor.ElementNames();
+	/// <summary>Binding observations published by the active runtime tree, flattened for the
+	/// diagnostic/status surfaces. Empty is deliberately distinct from a success claim.</summary>
+	public IReadOnlyList<(string ElementName, string Property, string Status)> BindingTelemetry()
+	{
+		var result = new List<(string ElementName, string Property, string Status)>();
+		void Collect(DesignerElementNode? node)
+		{
+			if (node == null) return;
+			if (!string.IsNullOrEmpty(node.Name))
+				result.AddRange(node.Bindings.Select(binding => (node.Name, binding.Property, binding.Status)));
+			foreach (var child in node.Children)
+				Collect(child);
+		}
+		Collect(previewHost.ElementTree);
+		return result;
+	}
 	public IReadOnlyList<(string Id, string Name, string Type)> ComponentTrayItems => previewHost.ComponentTrayItems;
 	public bool SelectComponentTrayItem(string id) => previewHost.SelectComponentTrayItem(id);
 

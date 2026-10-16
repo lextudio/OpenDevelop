@@ -26,6 +26,7 @@
     <Compile Include="..\..\..\..\..\externals\xamlstudio\XamlStudio.Toolkit\Services\XamlRenderService\XamlRenderService.Properties.cs" Link="Upstream\Services\XamlRenderService\XamlRenderService.Properties.cs" />
     <Compile Include="Port\AppAssemblyInfo.cs" />
     <Compile Include="Port\XamlBindingInfo.cs" />
+	<Compile Include="Port\XamlBindingWrapperConverter.cs" />
     <Compile Include="Port\XamlRenderSettings.cs" />
     <Compile Include="Port\ProGpuXamlRenderService.cs" />
   </ItemGroup>
