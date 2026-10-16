@@ -153,13 +153,6 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal("Uno", backend, StringComparer.OrdinalIgnoreCase);
     }
 
-    static void AssertDesignerBackend(JsonElement status, string environmentVariable, string microsoft, string defaultBackend)
-    {
-        var expected = string.Equals(Environment.GetEnvironmentVariable(environmentVariable), "microsoft", StringComparison.OrdinalIgnoreCase)
-            ? microsoft : defaultBackend;
-        Assert.Equal(expected, status.GetProperty("backend").GetString());
-    }
-
     [Fact]
     public async Task FSharpAddIn_IsLoaded()
     {
@@ -3389,7 +3382,7 @@ public sealed class AddInTests : IAsyncDisposable
             }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000);
             Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
             Assert.False(status.GetProperty("usesCodeDomLoader").GetBoolean(), status.ToString());
-            AssertDesignerBackend(status, "OD_FORMS_RUNTIME", "WinForms", "LibreWinForms");
+            RuntimeCell.AssertWinFormsBackend(status, _app.FormsDesignCell);
             Assert.Contains("RoslynDesignerLoader", status.GetProperty("loaderType").GetString(), StringComparison.Ordinal);
             Assert.True(status.GetProperty("toolboxSearchHosted").GetBoolean(), status.ToString());
             var filteredTools = await _app.InvokeAsync("od.forms-designer.toolbox.filter", "button");

@@ -31,6 +31,22 @@ public static class RuntimeCell
         _ => throw new ArgumentException("Not a WPF cell: " + cell, nameof(cell)),
     };
 
+    /// <summary>The <c>backend</c> field <c>od.forms-designer.status</c> reports for a WinForms cell.</summary>
+    public static string WinFormsBackendName(string cell) => cell switch {
+        LibreWinForms => "LibreWinForms",
+        MicrosoftWinForms => "WinForms",
+        _ => throw new ArgumentException("Not a WinForms cell: " + cell, nameof(cell)),
+    };
+
+    /// <summary>Fails when the WinForms designer is served by a different backend than the test's cell.</summary>
+    public static void AssertWinFormsBackend(JsonElement status, string cell)
+    {
+        Assert.True(status.TryGetProperty("backend", out var backend),
+            "The WinForms designer status did not report a backend: " + status);
+        Assert.True(WinFormsBackendName(cell) == backend.GetString(),
+            $"Expected the {cell} backend ('{WinFormsBackendName(cell)}') but the designer reported '{backend.GetString()}'. Status: {status}");
+    }
+
     /// <summary>Fails when the WPF designer is served by a different backend than the test's cell.</summary>
     public static void AssertWpfBackend(JsonElement status, string cell)
     {

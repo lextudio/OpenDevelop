@@ -84,6 +84,8 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     // Windows, elsewhere its LibreWinForms counterpart, which links the same Form1 sources (so every
     // Form1.cs/Form1.Designer.cs path stays under WinFormsSampleSolutionPath's directory).
     public string FormsDesignSolutionPath => OperatingSystem.IsWindows() ? WinFormsSampleSolutionPath : LibreWinFormsSampleSolutionPath;
+    /// <summary>The runtime cell <see cref="FormsDesignSolutionPath"/> belongs to; assert this cell, never a hard-coded one.</summary>
+    public string FormsDesignCell => OperatingSystem.IsWindows() ? RuntimeCell.MicrosoftWinForms : RuntimeCell.LibreWinForms;
     public string UnoXamlSampleSolutionPath => LocateUnoXamlSampleSolution();
     public string ProGpuWinUISampleSolutionPath => LocateProGpuWinUISampleSolution();
     public string WinUISampleSolutionPath => LocateWinUISampleSolution();

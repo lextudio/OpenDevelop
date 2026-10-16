@@ -105,7 +105,9 @@ This is what exists, so the plan below is a delta and not a rewrite:
   work below, `WaitForWpfDesignerStatusAsync` also defaulted its expected backend from `OperatingSystem.IsWindows()`; it
   now defaults to `OpenDevelopAppFixture.WpfSampleCell`, which encodes the same rule in one place). So an unfiltered Windows run exercises Microsoft WPF, an unfiltered macOS run exercises LibreWPF,
   and **LibreWPF and LibreWinForms on Windows are covered only where a test names the Libre fixture explicitly**.
-  `FormsMenuEditingTests` likewise uses `OperatingSystem.IsWindows()` as a stand-in for "Microsoft WinForms".
+  `FormsMenuEditingTests` used `OperatingSystem.IsWindows()` as a stand-in for "Microsoft WinForms" (now `MicrosoftCell`, see
+  Progress), and `FormsDesignSolutionPath` is the same OS-dependent split for WinForms (`WinFormsSample` on Windows,
+  `LibreWinFormsSample` elsewhere; its cell is `OpenDevelopAppFixture.FormsDesignCell`).
 - **ProGPU.WinUI:** `ProGpuWinUIDesignerTests` skip unless the whole process runs with `OD_WINUI_RUNTIME=progpu`. They have no OS
   gate, so this suite does not confirm the macOS column for this cell; it is the target, not a measured fact.
 - **Uno:** the default WinUI order prefers the Uno child, so Uno is covered implicitly by the WinUI tests of
@@ -117,9 +119,9 @@ This is what exists, so the plan below is a delta and not a rewrite:
    `MicrosoftWpf`, `LibreWinForms`, `MicrosoftWinForms`, `MicrosoftWinUI`, `Uno`, `ProGpuWinUI`) next to the existing
    `DesignerBackend` one (keep `DesignerBackend=Microsoft` working until the runner scripts move). After the designer
    opens, assert the backend the app reports (`od.wpf-designer.status` `backend`, the Forms/WinUI equivalents)
-   equals the declared cell. `AddInTests.AssertDesignerBackend` already does this for WinForms, but it takes the
-   expectation from an environment variable (`OD_FORMS_RUNTIME`), which no longer selects the backend; it should take the
-   declared cell instead. A test that silently ran on another
+   equals the declared cell (`RuntimeCell.AssertWpfBackend`/`AssertWinFormsBackend`; the old
+   `AddInTests.AssertDesignerBackend` took its expectation from `OD_FORMS_RUNTIME`, which no longer selects the backend, and
+   was removed). A test that silently ran on another
    backend then fails loudly, which is the integration-level version of `TestHostIdentityTests`.
 2. **Stop inferring the backend from the OS.** Replace `OperatingSystem.IsWindows()`-as-backend checks (the
    `expectedBackend ??=` default, `FormsMenuEditingTests`, the `WpfSampleSolutionPath` split, and the six
@@ -164,7 +166,17 @@ via the same traits.
   - `WpfHotReloadJourneyTests` asserts `framework == "WPF"` on the hot-reload session and, with
     `WpfDesignerAssemblyLockTests`, uses `WpfHotReloadFixturePath` with no `Runtime` trait; decide whether `framework` is a
     design-host backend (then it belongs to this matrix) or a hot-reload adapter name (then document it as such).
-  The WinForms, WinUI, Uno and ProGPU tests are not tagged yet.
+- **Step 1, WinForms cells (started; compiled, not run):** `RuntimeCell.AssertWinFormsBackend` and
+  `OpenDevelopAppFixture.FormsDesignCell` mirror the WPF ones. `FormsMenuEditingTests` now asks the cell instead of the OS
+  (`MicrosoftCell`): its three Microsoft-only tests (`PopupItem_Click_Edit_Cancel_Commit_Undo`,
+  `PopupTypeHere_Click_CreateItem_AndUndoRemovesIt`, `StatusStrip_InsertionNode_Click_AddsItem_AndUndoRemovesIt`) carry
+  `Runtime=MicrosoftWinForms` and keep skipping on LibreWinForms (a product limitation, not a platform one), and its fixture
+  asserts the backend after the designer loads. The first `AddInTests` test that used `AssertDesignerBackend` asserts the
+  fixture's cell instead.
+- **Still open for WinForms:** `ComponentTray_ContainsStripLevelObjects_NotToolStripItems` and the 21 `AddInTests` uses of
+  `FormsDesignSolutionPath` (one in `DesignerEditorJourneyTests`) run on whichever cell the OS picks and are untagged, for
+  the same reason as the WPF six; the VB WinForms sample (`VbWinFormsSampleSolutionPath`) has not been classified.
+  The WinUI, Uno and ProGPU tests are not tagged yet.
 
 ## Test stability rules
 
