@@ -13,13 +13,13 @@ public sealed class DesignerEditorJourneyTests(OpenDevelopAppFixture app)
         <Window x:Class="sample.MainWindow"
                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                Width="420" Height="260" Title="Editors">
+                Width="300" Height="140" Title="Editors">
           <Grid>
             <Grid.Resources>
-              <Style x:Key="Big" TargetType="Button"><Setter Property="Style" Value="24" /></Style>
-              <Style x:Key="Small" TargetType="Button"><Setter Property="Style" Value="10" /></Style>
+              <Style x:Key="Big" TargetType="Button"><Setter Property="FontSize" Value="24" /></Style>
+              <Style x:Key="Small" TargetType="Button"><Setter Property="FontSize" Value="10" /></Style>
             </Grid.Resources>
-            <Button x:Name="target" Width="200" Height="100" Style="{StaticResource Small}" Content="Target">
+            <Button x:Name="target" Width="120" Height="60" Style="{StaticResource Small}" Content="Target">
               <Button.Background>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                   <GradientStop Color="Red" Offset="0" />
@@ -70,7 +70,8 @@ public sealed class DesignerEditorJourneyTests(OpenDevelopAppFixture app)
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 status = await app.InvokeAsync("od.wpf-designer.status");
-                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean()
+                    && status.GetProperty("diagnostics").GetArrayLength() == 0;
             }, TimeSpan.FromSeconds(90)), status.ToString());
             await Select("target");
 
@@ -97,24 +98,37 @@ public sealed class DesignerEditorJourneyTests(OpenDevelopAppFixture app)
             text = await SaveAndRead(xamlPath);
             Assert.Contains("RelativeTransform", text, StringComparison.Ordinal);
 
-            // On-canvas gradient handle: real pointer drag of the End handle.
+            // On-canvas gradient handle: real pointer drag of the Start handle.
             await Select("target");
             JsonElement handles = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 handles = await app.InvokeAsync("od.wpf-designer.brush-handles");
                 return handles.TryGetProperty("handles", out var h) && h.GetArrayLength() >= 2;
             }, TimeSpan.FromSeconds(15)), handles.ToString());
+            var surfaceGeometry = await app.InvokeAsync("od.wpf-designer.surface-geometry");
             var end = handles.GetProperty("handles").EnumerateArray().First(h => h.GetProperty("name").GetString() == "Start");
             double x = end.GetProperty("x").GetDouble(), y = end.GetProperty("y").GetDouble();
+            var viewport = surfaceGeometry.GetProperty("viewport");
+            Assert.InRange(x, viewport.GetProperty("x").GetDouble() + 6, viewport.GetProperty("x").GetDouble() + viewport.GetProperty("width").GetDouble() - 6);
+            Assert.InRange(y, viewport.GetProperty("y").GetDouble() + 6, viewport.GetProperty("y").GetDouble() + viewport.GetProperty("height").GetDouble() - 6);
             var before = text;
             var changed = false;
             var events = "";
             for (var attempt = 1; attempt <= 3 && !changed; attempt++) {
                 await app.InvokeAsync("od.activate");
                 await app.InvokeAsync("od.pointer-events", true);
+                // macOS reliably delivers the press, moves and release to one native window when
+                // they are emitted as one Cliclick drag transaction. The decomposed endpoints
+                // can move the cursor yet lose their mouse-down between windows.
                 var dragged = await app.DragPointerAsync(x, y, x + 30, y + 15, steps: 8);
                 Assert.True(dragged.GetProperty("ok").GetBoolean(), dragged.ToString());
-                events = (await app.InvokeAsync("od.pointer-events", false)).ToString();
+                JsonElement observedPress = default;
+                Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                    observedPress = await app.InvokeAsync("od.pointer-events", false);
+                    return observedPress.GetProperty("count").GetInt32() > 0;
+                }, TimeSpan.FromSeconds(3), initialDelayMs: 50, maxDelayMs: 150),
+                    "The native drag did not deliver a mouse-down to the main window: " + observedPress);
+                events = observedPress.ToString();
                 changed = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                     text = await SaveAndRead(xamlPath);
                     return text != before;
@@ -132,9 +146,12 @@ public sealed class DesignerEditorJourneyTests(OpenDevelopAppFixture app)
                 }
                 Walk(await app.GetUITreeAsync(), 0);
             }
-            Assert.True(changed, string.Join(" | ", tree) + " gradient handle drag did not change the XAML; handles=" + handles + " events=" + events);
+            Assert.True(changed, string.Join(" | ", tree) + " gradient handle drag did not change the XAML; handles=" + handles + " geometry=" + surfaceGeometry + " events=" + events);
             Assert.Contains("StartPoint", text, StringComparison.Ordinal);
             Assert.DoesNotContain("StartPoint=\"0,0\"", text, StringComparison.Ordinal);
+            status = await app.InvokeAsync("od.wpf-designer.status");
+            Assert.True(status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean()
+                && status.GetProperty("diagnostics").GetArrayLength() == 0, status.ToString());
         } finally {
             await app.InvokeAsync("od.close-all-document-views");
             await File.WriteAllBytesAsync(xamlPath, originalXaml);
