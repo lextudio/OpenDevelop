@@ -154,6 +154,7 @@ public sealed class DesignerEditorJourneyTests(OpenDevelopAppFixture app)
         await File.WriteAllBytesAsync(imagePath, Convert.FromBase64String(
             "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGUlEQVR4nGP4z8DwnxLMMGrAqAGjBgwXAwAwxP4QHCfkAAAAAABJRU5ErkJggg=="));
         try {
+			if (File.Exists(resourcePath)) File.Delete(resourcePath);
             var designer = Encoding.UTF8.GetString(originalDesigner).Replace("\r\n", "\n", StringComparison.Ordinal);
             var created = designer
                 .Replace("            dropPanel = new System.Windows.Forms.Panel();\n",
@@ -184,6 +185,7 @@ public sealed class DesignerEditorJourneyTests(OpenDevelopAppFixture app)
             Assert.True(edit.GetProperty("committed").GetBoolean(), edit.ToString());
 
             Assert.True((await app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
+			Assert.True(File.Exists(resourcePath));
             Assert.Contains("imageList1.ImageStream", await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
             var source = await File.ReadAllTextAsync(designerPath);
             Assert.Contains("imageList1.ImageStream", source, StringComparison.Ordinal);

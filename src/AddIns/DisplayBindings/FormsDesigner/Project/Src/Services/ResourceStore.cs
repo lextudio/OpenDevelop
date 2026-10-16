@@ -70,6 +70,18 @@ namespace ICSharpCode.FormsDesigner.Services
 			return this.GetResourceStorage(info).GetWriter();
 		}
 
+		/// <summary>Creates the neutral form resource in the designer's in-memory document set,
+		/// if it is not already present. The file is deliberately not written or added to the
+		/// project here: the owning designer save performs both operations after its source and
+		/// resource snapshots have been accepted together by the remote host.</summary>
+		public OpenedFile GetOrCreateNeutralResource()
+		{
+			var storage = GetResourceStorage(CultureInfo.InvariantCulture);
+			if (storage.IsNewFile)
+				storage.InitializeEmptyResx();
+			return storage.OpenedFile;
+		}
+
 		/// <summary>Registers the form's existing neutral resource file for snapshotting. The
 		/// out-of-process child can only read resources that the IDE deliberately includes; unlike
 		/// <see cref="GetResourceStorage"/>, this never creates a new resource file.</summary>
@@ -272,6 +284,18 @@ namespace ICSharpCode.FormsDesigner.Services
 				WriteResourcesToBuffer();
 				buffer = (byte[])bytes.Clone();
 				hasLocalChanges = true;
+			}
+
+			public void InitializeEmptyResx()
+			{
+				if (!IsNewFile || buffer != null)
+					return;
+				// ResxImageResourceEditor works structurally, so a new file must start with a
+				// real ResX document rather than the empty OpenedFile placeholder used while
+				// legacy designer code is still deciding whether it needs resources.
+				GetWriter().Generate();
+				WriteResourcesToBuffer();
+				OpenedFile.SetData((byte[])buffer.Clone());
 			}
 
 			public bool HasPendingChanges {

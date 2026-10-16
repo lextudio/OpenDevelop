@@ -207,21 +207,22 @@ namespace ICSharpCode.FormsDesigner
 			if (property == null || !String.IsNullOrEmpty(property.ResourceFileName)
 				|| property.TypeName is not ("System.Drawing.Image" or "System.Drawing.Bitmap" or "System.Drawing.Icon"))
 				throw new InvalidOperationException("This property cannot create a resource image.");
-			var resource = Files.FirstOrDefault(file => !sourceCodeStorage.ContainsFile(file)
-				&& String.Equals(Path.GetExtension(file.FileName), ".resx", StringComparison.OrdinalIgnoreCase));
-			if (resource == null) throw new InvalidOperationException("Create a form .resx resource file before assigning a new image.");
 			var type = property.TypeName + ", System.Drawing.Common";
-			var before = CaptureRemoteDocuments();
-			var target = CaptureRemoteDocuments();
 			var sourceName = DesignerCodeFile.FileName.ToString();
 			var rootName = RemoteDesignerState?.Components.FirstOrDefault(component => String.IsNullOrEmpty(component.Parent)
 				&& component.IsControl && !component.IsTrayComponent)?.Name;
 			var targetExpression = componentName == rootName ? "$this" : componentName;
 			var key = targetExpression + "." + property.Name;
+			var sourceDocuments = CaptureRemoteDocuments();
 			var bind = sourceName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase)
-				? ResourceImageSourceBinding.TryAddVisualBasicBinding(target.SourceTexts[sourceName], targetExpression, property.Name, property.TypeName, key, out var text, out var error)
-				: ResourceImageSourceBinding.TryAddCSharpBinding(target.SourceTexts[sourceName], targetExpression, property.Name, property.TypeName, key, out text, out error);
+				? ResourceImageSourceBinding.TryAddVisualBasicBinding(sourceDocuments.SourceTexts[sourceName], targetExpression, property.Name, property.TypeName, key, out var text, out var error)
+				: ResourceImageSourceBinding.TryAddCSharpBinding(sourceDocuments.SourceTexts[sourceName], targetExpression, property.Name, property.TypeName, key, out text, out error);
 			if (!bind) throw new InvalidOperationException(error);
+			var resource = Files.FirstOrDefault(file => !sourceCodeStorage.ContainsFile(file)
+				&& String.Equals(Path.GetExtension(file.FileName), ".resx", StringComparison.OrdinalIgnoreCase))
+				?? resourceStore.GetOrCreateNeutralResource();
+			var before = CaptureRemoteDocuments();
+			var target = CaptureRemoteDocuments();
 			target.SourceTexts[sourceName] = text;
 			target.ResourceBytes[resource.FileName.ToString()] = resourceStore.CreateImageEntry(resource, key, type, imageBytes);
 			var state = RestoreRemoteDocuments(target);
@@ -244,9 +245,6 @@ namespace ICSharpCode.FormsDesigner
 			var resource = String.IsNullOrEmpty(property.ResourceFileName)
 				? resources.FirstOrDefault()
 				: resources.FirstOrDefault(file => String.Equals(file.FileName.ToString(), property.ResourceFileName, StringComparison.OrdinalIgnoreCase));
-			if (resource == null && images.Count > 0)
-				throw new InvalidOperationException("Create a form .resx resource file before adding images to an image list.");
-
 			var size = (imageSize ?? "").Split(',');
 			if (size.Length != 2 || !Int32.TryParse(size[0], out var width) || !Int32.TryParse(size[1], out var height)
 				|| width is < 1 or > 256 || height is < 1 or > 256)
@@ -265,14 +263,13 @@ namespace ICSharpCode.FormsDesigner
 					throw new InvalidOperationException("The designer host returned an unexpected resource type: " + built.MimeType);
 			}
 
-			var before = CaptureRemoteDocuments();
-			var target = CaptureRemoteDocuments();
+			var sourceDocuments = CaptureRemoteDocuments();
 			var sourceName = DesignerCodeFile.FileName.ToString();
 			var keys = images.Select(image => image.Key ?? "").ToList();
 			var visualBasic = sourceName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase);
 			var rewritten = visualBasic
-				? ImageListSourceEditing.TryRewriteVisualBasic(target.SourceTexts[sourceName], componentName, streamKey, keys, out var text, out var error)
-				: ImageListSourceEditing.TryRewriteCSharp(target.SourceTexts[sourceName], componentName, streamKey, keys, out text, out error);
+				? ImageListSourceEditing.TryRewriteVisualBasic(sourceDocuments.SourceTexts[sourceName], componentName, streamKey, keys, out var text, out var error)
+				: ImageListSourceEditing.TryRewriteCSharp(sourceDocuments.SourceTexts[sourceName], componentName, streamKey, keys, out text, out error);
 			if (rewritten && (sizeChanged || colorDepthChanged))
 				rewritten = visualBasic
 					? ImageListSourceEditing.TryRewriteVisualBasicSettings(text, componentName, sizeChanged ? width : null, sizeChanged ? height : null,
@@ -281,6 +278,10 @@ namespace ICSharpCode.FormsDesigner
 						colorDepthChanged ? colorDepth : null, out text, out error);
 			if (!rewritten)
 				throw new InvalidOperationException(error);
+			if (resource == null && images.Count > 0)
+				resource = resourceStore.GetOrCreateNeutralResource();
+			var before = CaptureRemoteDocuments();
+			var target = CaptureRemoteDocuments();
 			target.SourceTexts[sourceName] = text;
 			if (resource != null)
 				target.ResourceBytes[resource.FileName.ToString()] = built != null
@@ -293,8 +294,7 @@ namespace ICSharpCode.FormsDesigner
 		}
 
 		bool CanCreateRemoteResourceImage(DesignerPropertyInfo property) => property != null && String.IsNullOrEmpty(property.ResourceFileName)
-			&& property.TypeName is "System.Drawing.Image" or "System.Drawing.Bitmap" or "System.Drawing.Icon"
-			&& Files.Any(file => !sourceCodeStorage.ContainsFile(file) && String.Equals(Path.GetExtension(file.FileName), ".resx", StringComparison.OrdinalIgnoreCase));
+			&& property.TypeName is "System.Drawing.Image" or "System.Drawing.Bitmap" or "System.Drawing.Icon";
 
 		internal void RenameRemoteComponent(string componentName, string newName)
 		{
