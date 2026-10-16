@@ -716,7 +716,7 @@ public sealed class FormsDesignerHostClientTests
 	}
 
 	[Fact]
-	public async Task ChildHost_RefusesATreeEditThatWouldDropANodeSetting()
+	public async Task ChildHost_EditsATreeNodeKeepingItsStateImage()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
@@ -739,17 +739,17 @@ public sealed class FormsDesignerHostClientTests
 				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TreeView tree;", StringComparison.Ordinal);
 		var opened = await client.OpenAsync(snapshot, timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
-		var before = DesignerText(await client.FlushAsync(1, timeout.Token));
-		await Assert.ThrowsAnyAsync<Exception>(() => client.SetItemsAsync(1, "tree", new[] {
-			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Renamed" } }, timeout.Token));
+		var edited = await client.SetItemsAsync(1, "tree", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Renamed" } }, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
 		var after = DesignerText(await client.FlushAsync(1, timeout.Token));
-		Assert.Equal(before, after);
+		Assert.Contains("Renamed", after, StringComparison.Ordinal);
 		Assert.Contains("StateImageIndex = 1", after, StringComparison.Ordinal);
 	}
 
 	/// <summary>The same guarantee for a setting written in an inline node's initializer.</summary>
 	[Fact]
-	public async Task ChildHost_RefusesATreeEditThatWouldDropAnInitializerSetting()
+	public async Task ChildHost_EditsATreeNodeKeepingItsInitializerStateImage()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
@@ -759,6 +759,39 @@ public sealed class FormsDesignerHostClientTests
 			.Replace("this.Controls.Add(this.button1);", """
 				this.tree = new System.Windows.Forms.TreeView();
 				        this.tree.Nodes.AddRange(new System.Windows.Forms.TreeNode[] { new System.Windows.Forms.TreeNode("Leaf") { StateImageIndex = 1 } });
+				        this.Controls.Add(this.button1);
+				        this.Controls.Add(this.tree);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TreeView tree;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var edited = await client.SetItemsAsync(1, "tree", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Renamed" } }, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var after = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("Renamed", after, StringComparison.Ordinal);
+		Assert.Contains("StateImageIndex = 1", after, StringComparison.Ordinal);
+	}
+
+	/// <summary>StateImageKey still has no lossless source representation in the list editor;
+	/// accepting it merely because StateImageIndex is now carried would drop author intent.</summary>
+	[Fact]
+	public async Task ChildHost_RefusesATreeEditThatWouldDropAStateImageKey()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.button1 = new System.Windows.Forms.Button();", """
+				System.Windows.Forms.TreeNode treeNode1 = new System.Windows.Forms.TreeNode("Leaf");
+				        this.button1 = new System.Windows.Forms.Button();
+				""", StringComparison.Ordinal)
+			.Replace("this.Controls.Add(this.button1);", """
+				this.tree = new System.Windows.Forms.TreeView();
+				        treeNode1.StateImageKey = "state";
+				        this.tree.Nodes.AddRange(new System.Windows.Forms.TreeNode[] { treeNode1 });
 				        this.Controls.Add(this.button1);
 				        this.Controls.Add(this.tree);
 				""", StringComparison.Ordinal)
@@ -823,6 +856,7 @@ public sealed class FormsDesignerHostClientTests
 					        treeNode1.Text = "Leaf"
 					        treeNode1.Checked = True
 					        treeNode1.ImageIndex = 2
+					        treeNode1.StateImageIndex = 3
 					        treeNode1.ToolTipText = "tip"
 					        treeNode1.ForeColor = System.Drawing.Color.FromArgb(255, 200, 0, 0)
 					        treeNode2.Name = "Node0"
@@ -850,6 +884,7 @@ public sealed class FormsDesignerHostClientTests
 					        treeNode1.Text = "Leaf";
 					        treeNode1.Checked = true;
 					        treeNode1.ImageIndex = 2;
+					        treeNode1.StateImageIndex = 3;
 					        treeNode1.ToolTipText = "tip";
 					        treeNode1.ForeColor = System.Drawing.Color.FromArgb(255, 200, 0, 0);
 					        treeNode2.Name = "Node0";
@@ -902,9 +937,12 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("Node1", againText, StringComparison.Ordinal);
 		// The leaf's other settings were carried through both edits and a reload.
 		foreach (var setting in visualBasic
-			? new[] { ".Checked = True", ".ImageIndex = 2", ".ToolTipText = \"tip\"", ".ForeColor = System.Drawing.Color.FromArgb(255, 200, 0, 0)" }
-			: new[] { "Checked = true", "ImageIndex = 2", "ToolTipText = \"tip\"", "ForeColor = System.Drawing.Color.FromArgb(255, 200, 0, 0)" })
+			? new[] { ".Checked = True", ".ImageIndex = 2", ".StateImageIndex = 3", ".ToolTipText = \"tip\"", ".ForeColor = System.Drawing.Color.FromArgb(255, 200, 0, 0)" }
+			: new[] { "Checked = true", "ImageIndex = 2", "StateImageIndex = 3", "ToolTipText = \"tip\"", "ForeColor = System.Drawing.Color.FromArgb(255, 200, 0, 0)" })
 			Assert.Contains(setting, againText, StringComparison.Ordinal);
+		// Only an authored non-default state-image index belongs in rewritten source; otherwise
+		// a text-only node edit would add a noisy, semantically redundant assignment.
+		Assert.DoesNotContain("StateImageIndex = -1", againText, StringComparison.Ordinal);
 	}
 
 	[Theory]

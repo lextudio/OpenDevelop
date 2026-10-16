@@ -397,7 +397,7 @@ sealed class DesignerHostService : IDesignerChildService
 		bool Walk(TreeNodeCollection level, int depth)
 		{
 			foreach (TreeNode node in level) {
-				// Name, images, checked state, colours, font, tooltip and a string Tag are carried
+				// Name, images (including the state image), checked state, colours, font, tooltip and a string Tag are carried
 				// through an edit (TreeNodeSettings); only a non-string Tag has no source form here.
 				if (node.Tag is not (null or string)
 					|| node.Text.Trim().Length == 0 || node.Text.StartsWith(" ", StringComparison.Ordinal))
@@ -990,6 +990,7 @@ sealed class DesignerHostService : IDesignerChildService
 		else if (node.ImageIndex >= 0) yield return ("ImageIndex", node.ImageIndex);
 		if (!String.IsNullOrEmpty(node.SelectedImageKey)) yield return ("SelectedImageKey", node.SelectedImageKey);
 		else if (node.SelectedImageIndex >= 0) yield return ("SelectedImageIndex", node.SelectedImageIndex);
+		if (node.StateImageIndex >= 0) yield return ("StateImageIndex", node.StateImageIndex);
 		if (!String.IsNullOrEmpty(node.ToolTipText)) yield return ("ToolTipText", node.ToolTipText);
 		if (!node.ForeColor.IsEmpty) yield return ("ForeColor", node.ForeColor);
 		if (!node.BackColor.IsEmpty) yield return ("BackColor", node.BackColor);
@@ -1032,7 +1033,7 @@ sealed class DesignerHostService : IDesignerChildService
 	/// <c>Nodes.Add/AddRange</c> (directly, or nested in another reachable node's initializer) are
 	/// removed: another TreeView's nodes in the same InitializeComponent are left untouched.</summary>
 	static readonly HashSet<string> CarriedTreeNodeSettings = new(StringComparer.Ordinal) {
-		"Name", "Text", "Checked", "ImageIndex", "SelectedImageIndex", "ImageKey", "SelectedImageKey",
+		"Name", "Text", "Checked", "ImageIndex", "SelectedImageIndex", "StateImageIndex", "ImageKey", "SelectedImageKey",
 		"ToolTipText", "ForeColor", "BackColor", "NodeFont", "Tag" };
 
 	/// <returns>False, changing nothing, when a reachable local has an assignment the edit cannot
