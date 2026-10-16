@@ -72,8 +72,12 @@ Until this date the LibreWinForms child could not load **any** form on macOS: ev
 2. **A pumping UI thread.** Once registered, the ProGPU backend binds every control to its
    creating thread, and StreamJsonRpc dispatches on the thread pool, so `session/open` hung until
    the client timeout. `Program.Main` now runs `WinFormsHeadlessPump` (moved from `MicrosoftHost/`
-   to the shared `Host/` folder) and marshals every RPC onto it off Windows — the split the
-   Microsoft host always used. LibreWinForms on Windows keeps the direct path.
+   to the shared `Host/` folder) and marshals every RPC onto it on every OS — the split the
+   Microsoft host always used. (LibreWinForms on Windows used to keep the direct path; that deadlocked
+   `session/open` when a load completed: `DocumentDesigner.OnLoadComplete` sets the selection, which
+   refreshes the command status including paste, and that calls `Clipboard.GetDataObject`, which posts
+   to the ProGPU dispatcher of the creating thread and waits for it. It pumps there too, since the
+   project, not the OS, picks the backend.)
 3. **LibreWinForms portable gaps** (fixed in LibreWinForms, not worked around here):
    `FormDocumentDesigner.OnDesignerActivate/Deactivate` sent `WM_NCACTIVATE`/`RedrawWindow`
    (`EntryPointNotFoundException: SendMessageW`), and `TabControl` still wrapped comctl32 for

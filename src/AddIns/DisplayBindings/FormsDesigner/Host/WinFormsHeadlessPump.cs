@@ -4,10 +4,13 @@ namespace ICSharpCode.FormsDesigner.Host;
 
 /// <summary>
 /// A headless WinForms message pump for the WinForms child hosts, and the SynchronizationContext
-/// that marshals DDP calls onto it. The Microsoft WindowsDesktop host always uses it; the
-/// LibreWinForms host uses it off Windows, where its registered ProGPU platform backend gives every
-/// control the same thread affinity (a Form created on a thread-pool thread with no loop running
-/// hung session/open until the client's timeout, exactly as described below).
+/// that marshals DDP calls onto it. Both WinForms child hosts always use it, on every OS: the
+/// Microsoft WindowsDesktop host needs a pumping STA thread, and in the LibreWinForms host the
+/// registered ProGPU platform backend gives every control (and its dispatcher, which the designer's
+/// clipboard status query posts to and waits on) the same thread affinity. A Form created on a
+/// thread-pool thread with no loop running hung session/open until the client's timeout, exactly as
+/// described below. The project picks the backend, never the OS, so a LibreWinForms project is
+/// designed on Windows too.
 ///
 /// Why this exists at all: Microsoft WinForms designers create real Win32
 /// windows - <c>BehaviorService</c>'s <c>AdornerWindow</c> is an actual HWND, and building a design
