@@ -171,9 +171,13 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// host-published ItemsCollection row, so only this element's Items can be targeted.</summary>
 		void IItemsCollectionEditorHost.SetItems(string propertyName, System.Collections.Generic.IReadOnlyList<DesignerCollectionItemEdit> items)
 		{
-			if (!node.Properties.Any(property => property.Name == propertyName && property.EditorKind == "ItemsCollection"))
+			var property = node.Properties.SingleOrDefault(candidate => candidate.Name == propertyName
+				&& candidate.EditorKind is "ItemsCollection" or "BindingCollection");
+			if (property == null)
 				throw new InvalidOperationException("Not an editable items collection: " + propertyName);
-			var state = client.SetItemsAsync(currentBaseVersion(), node.Id, items).GetAwaiter().GetResult();
+			var state = property.EditorKind == "BindingCollection"
+				? client.SetBindingItemsAsync(currentBaseVersion(), node.Id, property.BindingPropertyName, items.ToArray()).GetAwaiter().GetResult()
+				: client.SetItemsAsync(currentBaseVersion(), node.Id, items).GetAwaiter().GetResult();
 			EnsureAccepted(state);
 			onStateChanged(state);
 		}
@@ -312,7 +316,7 @@ sealed class WpfSurfaceEventDescriptor : EventDescriptor, IPropertyGridEventType
 	}
 }
 
-sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollectionProperty, IBrushProperty, ITransformProperty
+sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollectionProperty, IItemsCollectionPropertyName, IBrushProperty, ITransformProperty
 	{
 		readonly WpfSurfaceElementPropertyAdapter owner;
 		readonly DesignerPropertyInfo property;
@@ -348,6 +352,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 
 		internal string ProtocolName => property.Name;
 
+		string IItemsCollectionPropertyName.PropertyName => ProtocolName;
+
 		static Attribute[] CreateAttributes(DesignerPropertyInfo property)
 		{
 			var attributes = new System.Collections.Generic.List<Attribute> {
@@ -361,7 +367,7 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 			if (property.Kind == "Enum" && property.AllowedValues.Count > 0)
 				attributes.Add(new TypeConverterAttribute(typeof(WpfDesignerEnumConverter)));
 			// The row stays read-only to generic editing; the "…" editor commits the whole list.
-			if (property.EditorKind == "ItemsCollection")
+			if (property.EditorKind is "ItemsCollection" or "BindingCollection")
 				attributes.Add(new EditorAttribute(typeof(WpfItemsCollectionEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 			// The brush editor replaces Xceed's own: it reaches gradients and "No brush", which a
 			// text or color-only editor cannot express.

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Linq;
 
 using ICSharpCode.SharpDevelop.Designer.Presentation;
@@ -90,5 +91,49 @@ public sealed class CollectionItemsEditingScriptTests
 		Assert.Equal("X", model.Entries[0].Text);
 		Assert.Throws<System.ArgumentException>(() => CollectionItemsEditing.ApplyScript(model, "up:0"));
 		Assert.Throws<System.ArgumentException>(() => CollectionItemsEditing.ApplyScript(model, "shuffle:0"));
+	}
+
+	[Fact]
+	public void EditUsesCanonicalPropertyNameWhenTheDescriptorProvidesOne()
+	{
+		var host = new CapturingItemsHost();
+		var descriptor = new CanonicalItemsDescriptor("Text_Bindings", "Text.Bindings");
+		CollectionItemsEditing.TestEdit = model => {
+			model.Rename(0, "Updated");
+			return true;
+		};
+		try {
+			CollectionItemsEditing.Edit(host, descriptor, null, exception => throw exception);
+		} finally {
+			CollectionItemsEditing.TestEdit = null;
+		}
+		Assert.Equal("Text.Bindings", host.PropertyName);
+		Assert.Equal(new[] { (0, "Updated") }, host.Items);
+	}
+
+	sealed class CapturingItemsHost : IItemsCollectionEditorHost
+	{
+		public string? PropertyName { get; private set; }
+		public (int, string)[] Items { get; private set; } = Array.Empty<(int, string)>();
+		public void SetItems(string propertyName, System.Collections.Generic.IReadOnlyList<DesignerCollectionItemEdit> items)
+		{
+			PropertyName = propertyName;
+			Items = items.Select(item => (item.SourceIndex, item.Text)).ToArray();
+		}
+	}
+
+	sealed class CanonicalItemsDescriptor : PropertyDescriptor, IItemsCollectionProperty, IItemsCollectionPropertyName
+	{
+		public CanonicalItemsDescriptor(string name, string propertyName) : base(name, null) => PropertyName = propertyName;
+		public string PropertyName { get; }
+		public System.Collections.Generic.IReadOnlyList<string> CollectionItems => new[] { "Original" };
+		public override Type ComponentType => typeof(CapturingItemsHost);
+		public override Type PropertyType => typeof(string);
+		public override bool IsReadOnly => true;
+		public override bool CanResetValue(object component) => false;
+		public override object? GetValue(object component) => null;
+		public override void ResetValue(object component) { }
+		public override void SetValue(object component, object? value) { }
+		public override bool ShouldSerializeValue(object component) => false;
 	}
 }

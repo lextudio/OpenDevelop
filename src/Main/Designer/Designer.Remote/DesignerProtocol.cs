@@ -72,7 +72,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v50 adds the "ResourceReference" editor kind (DesignerPropertyInfo.ResourceReferenceKind/Keys) and WPF's optional design/set-resource-reference.
 		// v53 adds DesignerPropertyInfo.BindingChildIndex and WPF's indexed design/set-binding-path
 		// support for direct MultiBinding/PriorityBinding children.
-		public const int Version = 53;
+		// v54 adds WPF's design/set-binding-items for a proven direct Binding collection.
+		public const int Version = 54;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

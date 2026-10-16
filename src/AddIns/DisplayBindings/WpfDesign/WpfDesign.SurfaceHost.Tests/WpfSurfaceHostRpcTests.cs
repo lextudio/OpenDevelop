@@ -1099,6 +1099,9 @@ public sealed class WpfSurfaceHostRpcTests
 		var opened = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
 		var multi = FindByName(opened.Tree!, "multi")!;
+		var collection = multi.Properties.Single(property => property.EditorKind == "BindingCollection");
+		Assert.Equal("Text", collection.BindingPropertyName);
+		Assert.Equal(new[] { "First", "Last" }, collection.CollectionItems);
 		var multiPaths = multi.Properties.Where(property => property.EditorKind == "BindingChildPath").OrderBy(property => property.BindingChildIndex).ToArray();
 		Assert.Equal(new[] { "First", "Last" }, multiPaths.Select(property => property.Value));
 		Assert.Equal(new[] { 0, 1 }, multiPaths.Select(property => property.BindingChildIndex));
@@ -1109,13 +1112,50 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.Contains("Path=\"First\"", text, StringComparison.Ordinal);
 		Assert.Contains("Path=\"FamilyName\"", text, StringComparison.Ordinal);
 		Assert.Contains("Mode=\"OneWay\"", text, StringComparison.Ordinal);
-		var priority = FindByName(edited.Tree!, "priority")!;
+		var collectionEdited = await client.SetBindingItemsAsync(edited.Version, multi.Id, "Text", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "Surname" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "FullName" },
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "GivenName" }
+		}, timeout.Token);
+		Assert.True(collectionEdited.Accepted, collectionEdited.Error);
+		text = (await client.FlushAsync(collectionEdited.Version, timeout.Token)).Files.Single().Text;
+		Assert.Matches("<Binding(?=[^>]*Path=\"Surname\")(?=[^>]*Mode=\"OneWay\")", text);
+		Assert.Contains("Path=\"FullName\"", text, StringComparison.Ordinal);
+		Assert.Contains("Path=\"GivenName\"", text, StringComparison.Ordinal);
+		var reordered = FindByName(collectionEdited.Tree!, "multi")!.Properties.Single(property => property.EditorKind == "BindingCollection");
+		Assert.Equal(new[] { "Surname", "FullName", "GivenName" }, reordered.CollectionItems);
+		var invalidSources = await client.SetBindingItemsAsync(collectionEdited.Version, multi.Id, "Text", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "First" },
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Duplicate" }
+		}, timeout.Token);
+		Assert.False(invalidSources.Accepted);
+		Assert.Contains("source index", invalidSources.Error, StringComparison.OrdinalIgnoreCase);
+		Assert.DoesNotContain("Duplicate", (await client.FlushAsync(collectionEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var invalidNew = await client.SetBindingItemsAsync(collectionEdited.Version, multi.Id, "Text", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = -2, Text = "Invalid" }
+		}, timeout.Token);
+		Assert.False(invalidNew.Accepted);
+		Assert.Contains("source index", invalidNew.Error, StringComparison.OrdinalIgnoreCase);
+		Assert.DoesNotContain("Invalid", (await client.FlushAsync(collectionEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var empty = await client.SetBindingItemsAsync(collectionEdited.Version, multi.Id, "Text", Array.Empty<DesignerCollectionItemEdit>(), timeout.Token);
+		Assert.False(empty.Accepted);
+		Assert.Contains("at least one", empty.Error, StringComparison.OrdinalIgnoreCase);
+		Assert.Contains("FullName", (await client.FlushAsync(collectionEdited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var removed = await client.SetBindingItemsAsync(collectionEdited.Version, multi.Id, "Text", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "OnlyLast" }
+		}, timeout.Token);
+		Assert.True(removed.Accepted, removed.Error);
+		text = (await client.FlushAsync(removed.Version, timeout.Token)).Files.Single().Text;
+		Assert.Contains("Path=\"OnlyLast\"", text, StringComparison.Ordinal);
+		Assert.DoesNotContain("FullName", text, StringComparison.Ordinal);
+		Assert.Single(FindByName(removed.Tree!, "multi")!.Properties.Single(property => property.EditorKind == "BindingCollection").CollectionItems);
+		var priority = FindByName(removed.Tree!, "priority")!;
 		var priorityPaths = priority.Properties.Where(property => property.EditorKind == "BindingChildPath").OrderBy(property => property.BindingChildIndex).ToArray();
 		Assert.Equal(new[] { "Preferred", "Fallback" }, priorityPaths.Select(property => property.Value));
-		var rejected = await client.SetBindingChildPathAsync(edited.Version, multi.Id, "Text", 2, "Nope", timeout.Token);
+		var rejected = await client.SetBindingChildPathAsync(removed.Version, multi.Id, "Text", 1, "Nope", timeout.Token);
 		Assert.False(rejected.Accepted);
 		Assert.Contains("Binding child", rejected.Error, StringComparison.Ordinal);
-		Assert.DoesNotContain("Nope", (await client.FlushAsync(edited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("Nope", (await client.FlushAsync(removed.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
 	}
 
 	[Fact]

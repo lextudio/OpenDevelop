@@ -25,6 +25,14 @@ message with `opencode export <session-id>`. Only an explicit final `VERDICT: AP
 exported session is approval. Do not start another review while the first is running, and do not infer
 approval from exit status, a partial transcript, or an empty final tool response. Retry one
 non-terminal review once; if it remains non-terminal, report it unverified and stop.
+Treat `CHANGES_REQUESTED` as terminal and authoritative for that staged tree: do not launch a
+second "confirming" review, and an approval from another concurrent or later session cannot
+override it. Fix every actionable finding, stage the resulting new tree, and review that new tree
+from scratch. A command runner returning early or going quiet is not an OpenCode exit; retain and
+poll the *same* foreground process/session handle until it exits, then export its session. Never
+use a separate `ps` observation or a new runner's timeout as evidence that the original review is
+finished. If an already-launched concurrent review eventually reports a verdict, record it only as
+diagnostic disagreement; it is not a valid retry or approval.
 Capture the session IDs before launch as well: the accepted session must be absent from that snapshot,
 have the exact unique title, the intended directory, reviewer agent and model, and be created after
 launch. A title match alone can select an old approval. The reviewer's mandatory initial evidence is
@@ -33,6 +41,12 @@ user-facing intent, staged paths/tree hash, relevant invariants and risks, and c
 command/result (or why no executable test applies), then ask it to inspect the full cached diff and
 surrounding source. Do not treat a short prompt or a diff stat as a meaningful
 review of a change whose correctness depends on context.
+For a change crossing a UI, descriptor/adaptor, serialization, RPC, or protocol boundary, name the
+complete user-action-to-host call chain and its canonical identifiers in the prompt. The reviewer
+must inspect each mapping (including any display/sanitized name versus wire/protocol name) and the
+relevant executable test must exercise that path, not only call the final RPC directly. A review
+which merely asserts that a mapping works without tracing the input and output identifiers is
+insufficient; request changes and add the missing focused test.
 Split oversized work into separate commits before review; partial approvals never approve a larger
 commit. Record the staged-tree hash before review and verify it immediately before commit; a changed
 hash invalidates the approval. The OpenCode commit agent must first verify that exact hash and the

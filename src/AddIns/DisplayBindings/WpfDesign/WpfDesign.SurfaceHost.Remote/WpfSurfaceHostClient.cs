@@ -195,6 +195,13 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-path",
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, path, childIndex }, cancellationToken), cancellationToken);
 
+	/// <summary>Replaces the ordered direct Binding children of a proven MultiBinding or
+	/// PriorityBinding. Existing source indices retain their complete Binding objects; only a
+	/// <c>-1</c> entry creates a new blank Binding.</summary>
+	public Task<DesignerSessionState> SetBindingItemsAsync(long baseVersion, string elementId, string propertyName, DesignerCollectionItemEdit[] items, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-items",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, items }, cancellationToken), cancellationToken);
+
 	public Task<DesignerSessionState> SetBindingModeAsync(long baseVersion, string elementId, string propertyName, string mode, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-mode",
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, mode }, cancellationToken), cancellationToken);

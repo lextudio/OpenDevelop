@@ -3541,8 +3541,16 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					else if (reference.Component is System.Windows.Data.MultiBinding or System.Windows.Data.PriorityBinding)
 					{
 						var children = reference.Properties["Bindings"]?.CollectionElements;
-						if (children != null)
+						if (children != null && children.All(child => child.Component is System.Windows.Data.Binding))
 						{
+							result.Add(new DesignerPropertyInfo {
+								Name = descriptor.Name + ".Bindings", DisplayName = descriptor.Name + " Bindings",
+								Category = "Binding", TypeName = typeof(System.Windows.Data.BindingBase).FullName ?? "",
+								Kind = "Collection", EditorKind = "BindingCollection", IsReadOnly = true,
+								Value = "(" + children.Count + (children.Count == 1 ? " binding)" : " bindings)"),
+								CollectionItems = children.Select(child => ((System.Windows.Data.Binding)child.Component).Path?.Path ?? "").ToList(),
+								BindingPropertyName = descriptor.Name, ShouldSerialize = children.Count > 0
+							});
 							for (var index = 0; index < children.Count; index++)
 							{
 								if (children[index].Component is not System.Windows.Data.Binding child)
@@ -3688,6 +3696,68 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				state.Accepted = true;
 				return state;
 			});
+
+		/// <summary>Edits the direct child collection of a MultiBinding or PriorityBinding where
+		/// every existing child is a plain Binding. Existing source indices retain their complete
+		/// design items (Mode, Source, converters and other authored settings); new entries create
+		/// only a blank Binding whose Path is set below. A complex/non-Binding child makes the whole
+		/// collection unavailable rather than risking a lossy graph rewrite.</summary>
+		[JsonRpcMethod("design/set-binding-items")]
+		public DesignerSessionState SetBindingItems(long baseVersion, string elementId, string propertyName, DesignerCollectionItemEdit[] items)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var element))
+					return NotFound(state, "Element not found: " + elementId);
+				if (!TryGetEditableBindingItems(element, propertyName, out var bindingsProperty) || bindingsProperty == null)
+					return NotFound(state, "The Binding collection is not safely editable: " + propertyName);
+				items ??= Array.Empty<DesignerCollectionItemEdit>();
+				if (items.Length == 0)
+					return NotFound(state, "A composite Binding must contain at least one Binding.");
+				var existing = bindingsProperty.CollectionElements.ToList();
+				var sources = items.Where(entry => entry.SourceIndex >= 0).Select(entry => entry.SourceIndex).ToList();
+				if (items.Any(entry => entry.SourceIndex < -1) || sources.Any(index => index >= existing.Count)
+					|| sources.Distinct().Count() != sources.Count)
+					return NotFound(state, "Invalid Binding source index.");
+				try
+				{
+					using var changeGroup = element.OpenGroup("Edit Bindings");
+					var collection = bindingsProperty.CollectionElements;
+					collection.Clear();
+					foreach (var entry in items)
+					{
+						var binding = entry.SourceIndex >= 0
+							? existing[entry.SourceIndex]
+							: element.Services.Component.RegisterComponentForDesigner(new System.Windows.Data.Binding());
+						collection.Add(binding);
+						var path = binding.Properties["Path"];
+						if (string.IsNullOrEmpty(entry.Text))
+							path.Reset();
+						else if (!Equals(path.ValueOnInstance, entry.Text) || !path.IsSet)
+							path.SetValue(entry.Text);
+					}
+					changeGroup.Commit();
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
+		static bool TryGetEditableBindingItems(DesignItem element, string propertyName, out DesignItemProperty? bindingsProperty)
+		{
+			bindingsProperty = null;
+			if (String.IsNullOrWhiteSpace(propertyName)
+				|| element.Properties[propertyName]?.Value is not DesignItem binding
+				|| binding.Component is not (System.Windows.Data.MultiBinding or System.Windows.Data.PriorityBinding))
+				return false;
+			var children = binding.Properties["Bindings"]?.CollectionElements;
+			if (children == null || !children.All(child => child.Component is System.Windows.Data.Binding))
+				return false;
+			bindingsProperty = binding.Properties["Bindings"];
+			return true;
+		}
 
 		/// <summary>Publishes WPF's browsable XAML events separately from ordinary properties.
 		/// Handler names are source text, never runtime delegates, so listing them cannot invoke

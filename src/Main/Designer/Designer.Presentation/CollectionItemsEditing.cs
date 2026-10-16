@@ -16,6 +16,13 @@ public interface IItemsCollectionProperty
 	IReadOnlyList<string> CollectionItems { get; }
 }
 
+/// <summary>Supplies the canonical host identifier when a property-grid descriptor has to use a
+/// display-safe name (for example, a dotted protocol name represented as an Xceed binding name).</summary>
+public interface IItemsCollectionPropertyName
+{
+	string PropertyName { get; }
+}
+
 /// <summary>The Properties pad's selected object, which commits an edited item list.</summary>
 public interface IItemsCollectionEditorHost
 {
@@ -104,7 +111,7 @@ public static class CollectionItemsEditing
 				? TestEdit(model)
 				: new CollectionItemsDialog(model) { Owner = owner }.ShowDialog() == true;
 			if (accepted && model.IsChanged)
-				host.SetItems(descriptor.Name, model.ToEdits());
+				host.SetItems((descriptor as IItemsCollectionPropertyName)?.PropertyName ?? descriptor.Name, model.ToEdits());
 		} catch (Exception exception) {
 			if (TestEdit != null) {
 				TestException = exception;
