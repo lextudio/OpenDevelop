@@ -52,7 +52,9 @@ attribute order, implicit content and default-valued properties are all rewritte
 an edited document.
 
 Remaining load differences, the 6 that load plus the 1 that does not (XamlDom is wrong, Microsoft's loader is the reference).
-All results were confirmed on Windows against real WPF (net10.0-windows, arm64); the same 96 tests pass there:
+The test project builds with `LibreWPF.Sdk`, so on Windows too the reference loader is LibreWPF (portable
+`LibreWPF.Transport`, no `Microsoft.WindowsDesktop.App`); Windows differs only in needing STA threads. All 96 tests pass
+there (net10.0-windows, arm64). Real WPF was checked only for the one case below, by a standalone `UseWPF` console project:
 
 | Difference | Effect |
 |---|---|
@@ -69,9 +71,11 @@ investigated.
 
 Not XamlDom's fault:
 
-- The suspected LibreWPF quirk for `Lookup by system key` was **refuted** on Windows: real WPF also resolves to the system
-  brush, so `ReferenceQuirksOffWindows` was removed and XamlDom was fixed (see below). No other result differed between
-  LibreWPF and real WPF.
+- The suspected LibreWPF quirk for `Lookup by system key` was **refuted** against real WPF: a standalone console project
+  on `Microsoft.WindowsDesktop.App` 10.0.12 also gives `Button.Background = #FFF0F0F0` (the system brush) with the local
+  `#FFFF0000` brush defined, which matches WPF's source (`StaticResourceExtension.ProvideValue`). So
+  `ReferenceQuirksOffWindows` was removed and XamlDom was fixed (see below). **Not yet checked against real WPF:** the other
+  results; each is only as good as LibreWPF's agreement with WPF.
 - `ComboBox` cannot be constructed under LibreWPF (both loaders hang), and `x:Shared` is
 rejected by Microsoft's loader outside compiled dictionaries.
 
