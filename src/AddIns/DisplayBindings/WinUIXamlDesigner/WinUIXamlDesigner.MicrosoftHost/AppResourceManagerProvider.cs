@@ -16,10 +16,15 @@ namespace ICSharpCode.WinUIXamlDesigner.MicrosoftHost;
 /// replacement app ResourceManager when it initializes ("Give the app a chance to provide its own
 /// ResourceManager to handle app resources" - microsoft-ui-xaml,
 /// src/dxaml/xcp/components/mrt/ModernResourceProvider.cpp), which surfaces as the
-/// <see cref="Application.ResourceManagerRequested"/> event. The framework's OWN resources keep
-/// working because they are served by a separate framework-package ResourceManager that this does
-/// not touch, and this host declares no XAML of its own, so nothing is lost by handing the app's
-/// resources over wholesale.
+/// <see cref="Application.ResourceManagerRequested"/> event. The replacement manager serves the
+/// app's resources wholesale, and WinUI loads ITS OWN XBFs (for example
+/// <c>Files/Microsoft.UI.Xaml/Themes/themeresources.xbf</c>) through it too, so it is only safe to
+/// hand over a manager that carries those: the .pri of a self-contained app (WinUI-Gallery) was
+/// merged with the framework's and does, while the .pri of a framework-dependent app lists only
+/// its own files and makes the host fail fast (STATUS_STOWED_EXCEPTION, 0xC000027B). For the
+/// latter nothing is served (see <c>ServesFrameworkResources</c>), so such an app's own
+/// <c>ms-appx:///</c> XAML controls cannot be constructed - the lesser evil compared with a host
+/// that dies before it connects.
 ///
 /// Two details are load-bearing:
 ///  * The event is raised ONCE, while the resource provider initializes, so the handler has to be
@@ -66,8 +71,34 @@ static class AppResourceManagerProvider
                 + $" {e.GetBaseException().Message}");
             return;
         }
+        // The custom manager REPLACES the provider's app ResourceManager, and WinUI loads its own XBFs
+        // (Files/Microsoft.UI.Xaml/Themes/themeresources.xbf) through it. A .pri that was merged with the
+        // framework's (a self-contained app such as WinUI-Gallery) has them; the .pri of a framework-dependent
+        // app lists only its own files (App.xbf, MainPage.xbf), and handing that one over made the host fail
+        // fast about 0.4 s after start (STATUS_STOWED_EXCEPTION, 0xC000027B), so the designer only saw the
+        // child exit before it connected ("A task was canceled"). Leave the default manager in place then.
+        if (!ServesFrameworkResources(appResourceManager))
+        {
+            Console.Error.WriteLine($"design-host: {Path.GetFileName(appPriPath)} carries no framework resources"
+                + " (a framework-dependent app); not serving it as the app resource manager.");
+            appResourceManager = null;
+            return;
+        }
         application.ResourceManagerRequested += OnResourceManagerRequested;
         Serving = true;
+    }
+
+    static bool ServesFrameworkResources(Microsoft.Windows.ApplicationModel.Resources.ResourceManager manager)
+    {
+        try
+        {
+            return manager.MainResourceMap.TryGetValue("Files/Microsoft.UI.Xaml/Themes/themeresources.xbf") is not null;
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"design-host: could not inspect the app .pri: {e.GetBaseException().Message}");
+            return false;
+        }
     }
 
     static void OnResourceManagerRequested(object sender, ResourceManagerRequestedEventArgs args)
