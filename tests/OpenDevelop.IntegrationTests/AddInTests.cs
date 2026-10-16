@@ -2757,7 +2757,27 @@ public sealed class AddInTests : IAsyncDisposable
             return status.TryGetProperty("active", out var active) && active.GetBoolean()
                 && status.GetProperty("rendered").GetBoolean();
         }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
-        Assert.True(ready, status.ToString());
+        if (!ready)
+        {
+            // The status only carries the last message ("... failed to start: A task was canceled."); the
+            // designer's own channel has the child process's output and the IDE channel the lifecycle.
+            var details = new System.Text.StringBuilder(status.ToString());
+            foreach (var category in new[] { "WinUI Designer", "IDE" })
+            {
+                try
+                {
+                    var output = await _app.InvokeAsync("od.output-text", category);
+                    details.Append($"\n--- output channel '{category}':\n")
+                        .Append(output.TryGetProperty("text", out var text) ? text.GetString() : output.ToString());
+                }
+                catch (Exception e)
+                {
+                    // A diagnostic must never replace the real failure with its own.
+                    details.Append($"\n--- output channel '{category}' unreadable: {e.GetType().Name}: {e.Message}");
+                }
+            }
+            Assert.Fail(details.ToString());
+        }
         return status;
     }
 
@@ -3664,6 +3684,7 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWinForms)]
     public async Task LibreWinFormsDesigner_DocumentOutline_ShowsControlTreeWithToolboxIcons()
     {
         // The LibreWinForms counterpart of the Microsoft-backend test above, runnable on every OS:
@@ -3693,6 +3714,9 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.True(formRow >= 0, "Expected a Form1 row; labels: " + string.Join(", ", padLabels));
         Assert.Equal("bitmap", padIcons[formRow]);
         Assert.All(padIcons, icon => Assert.NotNull(icon));
+
+        // The sample is the LibreWinForms project on every OS, so the designer must report that backend.
+        RuntimeCell.AssertWinFormsBackend(await _app.InvokeAsync("od.forms-designer.status"), RuntimeCell.LibreWinForms);
 
         await _app.InvokeAsync("od.close-all-document-views");
     }

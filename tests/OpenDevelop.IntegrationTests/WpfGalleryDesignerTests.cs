@@ -335,7 +335,19 @@ public sealed class WpfGalleryDesignerTests
             return false;
         }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
 
-        Assert.True(ready, relativePage + ": WPF designer never finished loading. last status=" + status);
+        if (!ready)
+        {
+            // The status only says the host is gone; the designer's own channel carries the host's last output.
+            string output;
+            try {
+                var channel = await _app.InvokeAsync("od.output-text", "WPF Designer");
+                output = channel.TryGetProperty("text", out var text) ? text.GetString()! : channel.ToString();
+            } catch (Exception e) {
+                // A diagnostic must never replace the real failure with its own.
+                output = "(could not read the output channel: " + e.GetType().Name + ": " + e.Message + ")";
+            }
+            Assert.Fail(relativePage + ": WPF designer never finished loading. last status=" + status + "\nWPF Designer output:\n" + output);
+        }
         return status;
     }
 
