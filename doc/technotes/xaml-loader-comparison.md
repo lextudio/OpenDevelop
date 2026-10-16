@@ -23,8 +23,19 @@ text and whitespace, and attached properties. Two axes are measured:
    equal the source. A designer changes only what the user edited, so this is the property it cannot do without.
    Microsoft's `XamlWriter` is the contrast: it serializes the live object graph.
 
-Both axes keep a list of known differences with the reason. A case that starts matching fails its test
-until it is removed from the list, so the lists only shrink.
+What the dump leaves out: each loader's own bookkeeping attached properties (base URI, namespace maps, name
+scopes, `mc:Ignorable`, `d:` values, the text editor's internal state), layout, and anything that is not a local
+value, a resource, a logical child or one of the items above. Two loaders can still differ there unnoticed.
+
+The expected differences live in four lists, each with the reason, and each enforced in both directions: a case
+that starts matching (or loading) fails its test until it is removed, so the lists only shrink.
+
+| List | Where | Meaning |
+|---|---|---|
+| `NotLoadableByXamlDom` | `XamlCorpus` | XamlDom cannot load the case at all |
+| `KnownDifferences` | `XamlLoaderComparisonTests` | XamlDom loads it but builds a different graph |
+| `KnownRoundTripDifferences` | `XamlRoundTripTests` | XamlDom does not save the source back unchanged |
+| `ReferenceQuirksOffWindows` | `XamlLoaderComparisonTests` | the reference loader is believed wrong, off Windows only |
 
 ## Results
 
@@ -47,13 +58,14 @@ Remaining load differences, the 6 that load plus the 1 that does not (XamlDom is
 |---|---|
 | A `DataTemplate` with only `DataType` gets no implicit `DataTemplateKey` | The template is stored under a different key than the one WPF derives from `DataType` |
 | Inline text between `Run`/`Italic` is trimmed; whitespace-only runs are dropped | Design view text differs from runtime |
-| `DataTrigger.Binding` is null | A trigger's data condition is lost in the design model |
-| `MenuItem.Role` is computed against the wrong parent | Items are attached to their parent after the subtree is built |
-| `x:Uid` is not applied to the instance (2 snippets) | Minor |
-| `mc:AlternateContent` is not supported | Rare |
+| `DataTrigger.Binding` is null | A trigger's data condition is lost in the design model. Cause not yet investigated |
+| `MenuItem.Role` differs (`TopLevelHeader` in the reference, `SubmenuHeader` in XamlDom) | The item's role depends on its parent. Probable cause, not verified: the item is given its parent after its subtree is built |
+| `x:Uid` is not applied to the instance (2 snippets) | Minor. Cause not yet investigated |
+| `mc:AlternateContent` is not supported (`Cannot find type mc:AlternateContent`) | Rare |
 
-Write-back difference: the `Storyboard` content of `BeginStoryboard` is rewritten as an explicit
-`<BeginStoryboard.Storyboard>` property element, so an unedited document would change on save.
+Write-back difference: the `Storyboard` content of `BeginStoryboard` is written back as an explicit
+`<BeginStoryboard.Storyboard>` property element, so an unedited document would change on save. Cause not yet
+investigated.
 
 Not XamlDom's fault:
 
@@ -64,6 +76,8 @@ Not XamlDom's fault:
   resources, which is how local system-colour overrides work, and XamlDom finds the local brush. This is a judgement, not a
   measurement: **to verify, run `OpenDevelop.XamlDom.Tests` on Windows**. There the case is compared like any other, so it
   passes if real WPF agrees with XamlDom (then delete the entry), and fails if not (then XamlDom has a lookup difference).
+  The same run is the way to find out whether any *other* result here rests on a LibreWPF quirk: every case is compared
+  against LibreWPF off Windows, so a difference listed above that disappears on Windows was the reference's, not XamlDom's.
 - `ComboBox` cannot be constructed under LibreWPF (both loaders hang), and `x:Shared` is
 rejected by Microsoft's loader outside compiled dictionaries.
 
@@ -73,10 +87,26 @@ Keep XamlDom's document model: nothing in `System.Xaml` replaces its lossless ed
 designer is built on it. Its **XAML semantics** (type resolution, built-in types, key evaluation, implicit keys,
 text handling) are where it falls short of Microsoft's loader, and those are the parts to take from
 `System.Xaml` (`XamlSchemaContext`, `XamlLanguage`, value conversion) one difference at a time, each closed by
-deleting its line from `KnownDifferences`. Suggested order: implicit
-`DataTemplate` keys, inline text, `DataTrigger.Binding`.
+deleting its line from the list. Suggested order: implicit `DataTemplate` keys, inline text, `DataTrigger.Binding`.
+
+Open items, each with the test that tracks it (the case name in `XamlCorpus`):
+
+| Item | Case | List |
+|---|---|---|
+| Implicit `DataTemplateKey` for a `DataType`-only template | `ControlTemplate and DataTemplate` | `KnownDifferences` |
+| Trimmed inline text between `Run`/`Italic` | `Content property and text` | `KnownDifferences` |
+| `DataTrigger.Binding` is null | `Triggers` | `KnownDifferences` |
+| `MenuItem.Role` | `ToolTip, ContextMenu and Menu` | `KnownDifferences` |
+| `x:Uid` not applied | `x:Name x:Uid x:Key forms`, `Uri and Key as attribute order` | `KnownDifferences` |
+| `mc:AlternateContent` | `Designer attributes` | `NotLoadableByXamlDom` |
+| `BeginStoryboard` content written back as a property element | `Animations and storyboards` | `KnownRoundTripDifferences` |
+| Is the system-key lookup quirk LibreWPF's? Verify on Windows | `Lookup by system key` | `ReferenceQuirksOffWindows` |
 
 Fixed during this comparison:
+
+The fixes are commits in the nested `WpfDesigner` repository (`externals/vscode-wpf/external/WpfDesigner`, branch
+`opendevelop`), picked up through the `vscode-wpf` submodule pointer: `7760bcc` (XAML language primitives), `27dcc3f`
+(merged dictionaries) and `e4bb51a` (`x:Key` markup).
 
 - A `{x:Static ...}` or `{x:Type ...}` `x:Key` was stored as its markup text, so the dictionary key was a string; it is now
   evaluated (`CollectionSupport.GetDictionaryKey`), and the `{}` escape is removed. System resource keys and type keys are
