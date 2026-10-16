@@ -64,10 +64,16 @@ Windows (PowerShell, measured 2026-10): install with `npm install -g opencode-ai
 and auth sit under `%USERPROFILE%\.config\opencode` and `.local\share\opencode`. Call `opencode run ...`
 directly with the prompt in a here-string variable and `*> file`. `Start-Process opencode` fails (`%1 is
 not a valid Win32 application`), and `Start-Process <exe> -ArgumentList $prompt` splits a multi-line
-prompt on spaces, so OpenCode only prints its usage, exits 1 and creates no session. For a time limit
-use `Start-Job` + `Wait-Job -Timeout`; on timeout kill only the child whose command line contains
-`opencode` and `--agent` (`Get-CimInstance Win32_Process`), never the OpenCode desktop app.
-PowerShell has no `</dev/null`; the Windows runs made so far completed without a stdin redirect.
+prompt on spaces, so OpenCode only prints its usage, exits 1 and creates no session. A review took
+from about 5 to over 10 minutes here, and the command runner's foreground limit is 10 minutes: when a
+foreground call returns (or times out) its child is killed with the shell, and the half-finished
+session is a non-terminal review, not an approval (this cost one review). So launch a review with the
+runner's own background mode (`run_in_background`) and wait for its completion notice; never put a
+short `Wait-Job -Timeout` in front of it. A commit (1-4 minutes) is safe in the foreground inside
+`Start-Job` + `Wait-Job -Timeout 420`. To stop a hung run, kill only the child whose command line
+contains `opencode` and `--agent` (`Get-CimInstance Win32_Process`), never the OpenCode desktop app.
+`opencode export <id>` prints a header line before the JSON: write it to a file and parse from the
+first `{`. PowerShell has no `</dev/null`; the Windows runs made so far completed without a stdin redirect.
 Pin each agent's model in `~/.config/opencode/opencode.jsonc` (`agent.<name>.model`) and still pass
 `-m`: the built-in `build` agent has no model of its own and fell back to `qwen3.5:397b`, which was
 retired, so it failed at launch with an error naming the retirement. `reviewer` has bash allow-listed to
@@ -87,7 +93,9 @@ Give the build agent the exact tree hash, path list and message. Chain `git add 
 under `.git/modules/...` for submodules) otherwise yields an empty review target. Integration runs
 used to leave one because the IDE's status overlay ran a locking `git status` on this repo and
 was killed; `GitStatusService` now sets `GIT_OPTIONAL_LOCKS=0`. Remove a lock only after checking
-no git process is running. Review a submodule change with `--dir <submodule>`; the parent diff shows only its pointer.
+no git process is running; on Windows a lock can also be transient (an IDE's background `git fetch`), so
+re-check `Test-Path .git/index.lock` and retry before treating it as stale. Review a submodule change
+with `--dir <submodule>`; the parent diff shows only its pointer.
 
 ## DevFlow
 
