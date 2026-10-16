@@ -95,6 +95,19 @@ static class XamlCorpus
 			  <Style x:Key="{x:Type Button}" TargetType="Button"><Setter Property="Width" Value="9"/></Style>
 			</StackPanel.Resources>
 			"""),
+		("Key forms: escape, Type and static members", """
+			<StackPanel.Resources>
+			  <SolidColorBrush x:Key="{}{literal}" Color="Red"/>
+			  <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="Blue"/>
+			  <DataTemplate x:Key="{x:Type TextBox}"><TextBlock/></DataTemplate>
+			  <SolidColorBrush x:Key="  spaced  " Color="Green"/>
+			  <SolidColorBrush x:Key="{x:Static SystemParameters.IconWidthKey}" Color="Gray"/>
+			</StackPanel.Resources>
+			"""),
+		("Lookup by system key", """
+			<StackPanel.Resources><SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="Red"/></StackPanel.Resources>
+			<Button Background="{StaticResource {x:Static SystemColors.ControlBrushKey}}" Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+			"""),
 		("Merged dictionaries", """
 			<StackPanel.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>
 			  <ResourceDictionary><SolidColorBrush x:Key="M" Color="Blue"/></ResourceDictionary>

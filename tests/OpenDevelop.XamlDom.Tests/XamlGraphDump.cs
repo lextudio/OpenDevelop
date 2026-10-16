@@ -159,7 +159,12 @@ static class XamlGraphDump
 
 	static string Locals(DependencyObject dependencyObject) => " {" + string.Join("; ", LocalValues(dependencyObject)) + "}";
 
-	static string KeyText(object key) => key is Type type ? "{x:Type " + type.Name + "}" : Convert.ToString(key, CultureInfo.InvariantCulture) ?? "";
+	/// <summary>A key's kind is part of its identity: the string "{x:Type Button}" and the Type Button are different keys.</summary>
+	static string KeyText(object key) => key switch {
+		string text => "\"" + text + "\"",
+		Type type => "{x:Type " + type.Name + "}",
+		_ => key.GetType().Name + ":" + Convert.ToString(key, CultureInfo.InvariantCulture)
+	};
 
 	/// <summary>One-line form of a value, recursing into Freezables, templates and collections so nested
 	/// content (gradient stops, transforms, geometries, template trees) takes part in the comparison.</summary>

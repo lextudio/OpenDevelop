@@ -8,7 +8,7 @@ it means for replacing parts of XamlDom. The harness is `tests/OpenDevelop.XamlD
 
 ## Method
 
-45 XAML snippets (`XamlCorpus.cs`) cover resources of every primitive and freezable kind, markup
+47 XAML snippets (`XamlCorpus.cs`) cover resources of every primitive and freezable kind, markup
 extensions, styles, templates, triggers, animations, bindings, transforms, geometry, input bindings, menus,
 text and whitespace, and attached properties. Two axes are measured:
 
@@ -30,9 +30,9 @@ until it is removed from the list, so the lists only shrink.
 
 | | cases | match | differ | XamlDom cannot load |
 |---|---|---|---|---|
-| Load fidelity | 45 | 37 | 7 | 1 |
-| Write-back, XamlDom | 44 (the other one does not load) | 43 | 1 | - |
-| Write-back, `XamlWriter` | 45 | **0** | 45 | - |
+| Load fidelity | 47 | 39 | 6 (+1 reference quirk) | 1 |
+| Write-back, XamlDom | 46 (the other one does not load) | 45 | 1 | - |
+| Write-back, `XamlWriter` | 47 | **0** | 47 | - |
 
 The "cannot load" cases are listed once, in `XamlCorpus.NotLoadableByXamlDom`; the load comparison checks the
 list against what XamlDom really does, and the round-trip test skips exactly those.
@@ -41,11 +41,10 @@ list against what XamlDom really does, and the round-trip test skips exactly tho
 attribute order, implicit content and default-valued properties are all rewritten. It cannot be used to save
 an edited document.
 
-Remaining load differences, the 7 that load plus the 1 that does not (XamlDom is wrong, Microsoft's loader is the reference):
+Remaining load differences, the 6 that load plus the 1 that does not (XamlDom is wrong, Microsoft's loader is the reference):
 
 | Difference | Effect |
 |---|---|
-| An `{x:Static ...}` resource key is kept as markup text instead of being evaluated | System resource keys never match; the resource picker shows markup text |
 | A `DataTemplate` with only `DataType` gets no implicit `DataTemplateKey` | The template is stored under a different key than the one WPF derives from `DataType` |
 | Inline text between `Run`/`Italic` is trimmed; whitespace-only runs are dropped | Design view text differs from runtime |
 | `DataTrigger.Binding` is null | A trigger's data condition is lost in the design model |
@@ -56,7 +55,16 @@ Remaining load differences, the 7 that load plus the 1 that does not (XamlDom is
 Write-back difference: the `Storyboard` content of `BeginStoryboard` is rewritten as an explicit
 `<BeginStoryboard.Storyboard>` property element, so an unedited document would change on save.
 
-Not XamlDom's fault: `ComboBox` cannot be constructed under LibreWPF (both loaders hang), and `x:Shared` is
+Not XamlDom's fault:
+
+- A **reference quirk** (`Lookup by system key`, `ReferenceQuirksOffWindows` in `XamlLoaderComparisonTests`). Off Windows the
+  "Microsoft" loader is LibreWPF's reimplementation. With `<SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"/>`
+  in the element's own `Resources`, LibreWPF resolves `{StaticResource {x:Static SystemColors.ControlBrushKey}}` to the system
+  brush even though its own dictionary holds the key (the indexer finds it). Real WPF searches the element tree before system
+  resources, which is how local system-colour overrides work, and XamlDom finds the local brush. This is a judgement, not a
+  measurement: **to verify, run `OpenDevelop.XamlDom.Tests` on Windows**. There the case is compared like any other, so it
+  passes if real WPF agrees with XamlDom (then delete the entry), and fails if not (then XamlDom has a lookup difference).
+- `ComboBox` cannot be constructed under LibreWPF (both loaders hang), and `x:Shared` is
 rejected by Microsoft's loader outside compiled dictionaries.
 
 ## Conclusion
@@ -65,11 +73,14 @@ Keep XamlDom's document model: nothing in `System.Xaml` replaces its lossless ed
 designer is built on it. Its **XAML semantics** (type resolution, built-in types, key evaluation, implicit keys,
 text handling) are where it falls short of Microsoft's loader, and those are the parts to take from
 `System.Xaml` (`XamlSchemaContext`, `XamlLanguage`, value conversion) one difference at a time, each closed by
-deleting its line from `KnownDifferences`. Suggested order: `x:Static` keys, implicit
+deleting its line from `KnownDifferences`. Suggested order: implicit
 `DataTemplate` keys, inline text, `DataTrigger.Binding`.
 
 Fixed during this comparison:
 
+- A `{x:Static ...}` or `{x:Type ...}` `x:Key` was stored as its markup text, so the dictionary key was a string; it is now
+  evaluated (`CollectionSupport.GetDictionaryKey`), and the `{}` escape is removed. System resource keys and type keys are
+  the same objects as in WPF.
 - A `ResourceDictionary` nested in `<ResourceDictionary.MergedDictionaries>` that had any entry made the whole file
   fail to load (`The reference node is not a child of this node`). `ParseObjectContent` treated every
   collection-typed element as the collection instance of its parent's property, so the nested dictionary's
