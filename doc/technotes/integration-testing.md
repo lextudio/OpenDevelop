@@ -67,6 +67,82 @@ Some test classes need their own fixture also built first (e.g. `IlSpyAddInTests
 `tests/fixtures/DebugTestApp/DebugTestApp.csproj` built) - check the prerequisites comment at the
 top of the test file.
 
+## Platform and runtime matrix
+
+The designers run on several UI runtimes, and the same test body can be meaningful on more than one. The matrix to
+cover is:
+
+| Runtime (the "cell") | Windows | macOS | Selected by (the project, never the host OS; `OD_WINUI_RUNTIME` only orders implementations within the WinUI family; see [designer-common.md](designer-common.md)) |
+|---|---|---|---|
+| LibreWPF | yes | yes | `LibreWPF.Sdk` project |
+| Microsoft WPF | yes | no | `Microsoft.NET.Sdk` + `UseWPF` project |
+| LibreWinForms | yes | yes | `UseMicrosoftDesktopRuntime=false`, or `LibreWPF.Sdk`/`LibreWinForms.Sdk` |
+| Microsoft WinForms | yes | no | `UseMicrosoftDesktopRuntime=true`, or a `-windows` TFM |
+| Microsoft WinUI | yes | no | `UseWinUI` (Windows App SDK) project, and `OD_WINUI_RUNTIME=microsoft` |
+| Uno Platform | yes | yes | `Uno.Sdk` / `Uno.WinUI` project |
+| ProGPU.WinUI | yes | yes | `OD_WINUI_RUNTIME=progpu` |
+
+A cell is a runtime, not an OS. An OS is a column: a test that runs on Windows has not thereby run against Microsoft
+WPF, and one that runs on macOS has not thereby run against "the" LibreWPF. The XamlDom unit suite learned this the hard
+way (its "Windows run" was LibreWPF all along; see [xaml-loader-comparison.md](xaml-loader-comparison.md) and its
+per-runtime hosts), and this suite must not repeat it.
+
+### Where the suite stands
+
+This is what exists, so the plan below is a delta and not a rewrite:
+
+- **Microsoft cells (WPF, WinForms, WinUI):** `[Trait("DesignerBackend", "Microsoft")]` is applied 20 times: to 18 test
+  methods in `AddInTests` and to the whole `WinUIGalleryDesignerTests` and `WpfGalleryDesignerTests` classes. Twelve of
+  the 18 methods skip off Windows (`SkipUnless = nameof(MicrosoftDesignerBackendsAvailable)`). **The other six are plain
+  `[Fact]`s that deliberately run everywhere** ("`WpfSampleSolutionPath` is the LibreWPF sample off Windows"), so the trait
+  does not mean "Microsoft backend" for them: off Windows they run against LibreWPF, and `RunMicrosoftDesignerIntegration`
+  selects them anyway. One of them, `WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement`, asserts
+  `backend == "LibreWPF"` unconditionally, which by reading cannot hold on Windows where the sample is Microsoft WPF (not
+  run to confirm). The Microsoft cells are run on Windows by the csproj target
+  `RunMicrosoftDesignerIntegration`, which builds the Microsoft design hosts first and sets
+  `OD_FORMS_RUNTIME`/`OD_WPF_RUNTIME`/`OD_WINUI_RUNTIME=microsoft` (see [TESTING.md](../../tests/OpenDevelop.IntegrationTests/TESTING.md)).
+- **Libre cells:** there is no trait for them. They run as "the default" in an unfiltered run, and **which backend that
+  is depends on the host OS**: `WpfSampleSolutionPath` is the Microsoft WPF sample on Windows and `LibreWpfSample`
+  elsewhere, and `AddInTests.WaitForWpfDesignerStatusAsync` defaults `expectedBackend` to `OperatingSystem.IsWindows() ?
+  "WPF" : "LibreWPF"`. So an unfiltered Windows run exercises Microsoft WPF, an unfiltered macOS run exercises LibreWPF,
+  and **LibreWPF and LibreWinForms on Windows are covered only where a test names the Libre fixture explicitly**.
+  `FormsMenuEditingTests` likewise uses `OperatingSystem.IsWindows()` as a stand-in for "Microsoft WinForms".
+- **ProGPU.WinUI:** `ProGpuWinUIDesignerTests` skip unless the whole process runs with `OD_WINUI_RUNTIME=progpu`. They have no OS
+  gate, so this suite does not confirm the macOS column for this cell; it is the target, not a measured fact.
+- **Uno:** the default WinUI order prefers the Uno child, so Uno is covered implicitly by the WinUI tests of
+  `AddInTests`; `UnoHotReloadIntegrationTests` is skipped on purpose.
+
+### Plan
+
+1. **Every designer test declares its cell, and the fixture checks it.** Add traits `Runtime=<cell>` (`LibreWpf`,
+   `MicrosoftWpf`, `LibreWinForms`, `MicrosoftWinForms`, `MicrosoftWinUI`, `Uno`, `ProGpuWinUI`) next to the existing
+   `DesignerBackend` one (keep `DesignerBackend=Microsoft` working until the runner scripts move). After the designer
+   opens, assert the backend the app reports (`od.wpf-designer.status` `backend`, the Forms/WinUI equivalents)
+   equals the declared cell. `AddInTests.AssertDesignerBackend` already does this for WinForms, but it takes the
+   expectation from an environment variable (`OD_FORMS_RUNTIME`), which no longer selects the backend; it should take the
+   declared cell instead. A test that silently ran on another
+   backend then fails loudly, which is the integration-level version of `TestHostIdentityTests`.
+2. **Stop inferring the backend from the OS.** Replace `OperatingSystem.IsWindows()`-as-backend checks (the
+   `expectedBackend ??=` default, `FormsMenuEditingTests`, the `WpfSampleSolutionPath` split, and the six
+   cross-everywhere `DesignerBackend=Microsoft` methods) with an explicit cell passed by the test and a fixture chosen per
+   cell; split each of those six into one test per cell it is meant for. OS checks stay only for "this cell cannot exist
+   on this OS".
+3. **One fixture project per cell, chosen by the project rule.** Reuse what exists (`LibreWpfSample`, the Microsoft WPF
+   sample, `LibreWinFormsSample`, `WinFormsSample`, `ProGpuWinUISample`) and add the missing ones rather than parametrize
+   one sample across runtimes, because the file's runtime comes from the project that contains it. A portable sample
+   owns real copies of its XAML, not links.
+4. **Run one cell per process, sequentially.** The shared single app instance and DevFlow port 9299 forbid concurrent
+   runs, and `OD_WINUI_RUNTIME` is a whole-process setting, so a cell is a separate invocation. Provide one entry point
+   (an MSBuild target next to `RunMicrosoftDesignerIntegration`, or a script) that loops over the cells this OS supports
+   and passes `-trait "Runtime=<cell>"`, building each cell's prerequisites first (the Microsoft hosts via Visual Studio's
+   MSBuild, as today).
+5. **Report skips per cell.** Cells absent on an OS are excluded by trait filter (not by in-test `Assert.Skip`) so a
+   macOS run does not show Microsoft cells as skipped-and-green; a cell that is meant to run but skips (missing host,
+   missing env var) is a failure of the run, not a skip.
+
+Order of work: (1) first, since it makes every later change safe; then (2) for WPF, (2) for WinForms, then WinUI/Uno/ProGPU
+via the same traits. None of this is implemented yet except what the "stands" list describes.
+
 ## Test stability rules
 
 Each rule below exists because skipping it produced real, repeated failures (2026-08 stability
