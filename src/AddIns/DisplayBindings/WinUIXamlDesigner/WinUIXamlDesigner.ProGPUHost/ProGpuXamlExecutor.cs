@@ -234,7 +234,9 @@ sealed class ProGpuXamlExecutor : IProGpuXamlExecutor, IDisposable
 		var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		var trusted = (string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? string.Empty;
 		foreach (var path in trusted.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)) {
-			if (File.Exists(path))
+			// The list also names native libraries on Windows (e.g. wpfgfx_cor3.dll, vcruntime140_cor3.dll and
+			// ijwhost.dll under runtimes\win-*\lib\net10.0); Roslyn cannot open those as metadata.
+			if (File.Exists(path) && IsManagedAssembly(path))
 				paths.Add(path);
 		}
 
