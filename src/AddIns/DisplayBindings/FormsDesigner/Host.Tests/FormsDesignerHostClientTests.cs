@@ -856,6 +856,38 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Matches(@"ContextMenuStrip\s*=\s*(this\.)?contextMenuStrip1", afterAgain);
 	}
 
+	/// <summary>An inline ContextMenuStrip has no component name that source can reference. Keep
+	/// the Nodes row unavailable instead of accepting an edit that would silently discard it.</summary>
+	[Fact]
+	public async Task ChildHost_RefusesATreeNodeEditThatWouldDropAnUnsitedContextMenuStrip()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", """
+				System.Windows.Forms.TreeNode treeNode1 = new System.Windows.Forms.TreeNode("Leaf");
+				        this.tree = new System.Windows.Forms.TreeView();
+				        treeNode1.ContextMenuStrip = new System.Windows.Forms.ContextMenuStrip();
+				        this.tree.Nodes.AddRange(new System.Windows.Forms.TreeNode[] { treeNode1 });
+				        this.Controls.Add(this.button1);
+				        this.Controls.Add(this.tree);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;",
+				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TreeView tree;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var nodes = opened.Components.Single(component => component.Name == "tree").Properties.Single(property => property.Name == "Nodes");
+		Assert.NotEqual("ItemsCollection", nodes.EditorKind);
+		var before = DesignerText(await client.FlushAsync(1, timeout.Token));
+
+		await Assert.ThrowsAnyAsync<Exception>(() => client.SetItemsAsync(1, "tree", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Renamed" } }, timeout.Token));
+
+		Assert.Equal(before, DesignerText(await client.FlushAsync(1, timeout.Token)));
+	}
+
 	/// <summary>Regression: the loader evaluates InitializeComponent locals (for TreeNodes), and the
 	/// ComponentResourceManager every form with resources declares threw on its null typeof(Form1),
 	/// failing the whole designer load with "Value cannot be null (resourceSource)".</summary>
