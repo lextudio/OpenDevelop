@@ -75,7 +75,7 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	[JsonRpcMethod("design/set-binding-notify-on-validation-error")]
 	public DesignerSessionState SetBindingNotifyOnValidationError(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, bool notify) => Checked(sessionId, documentId).SetBindingNotifyOnValidationError(baseVersion, elementId, propertyName, notify);
 	[JsonRpcMethod("design/set-binding-validation-option")]
-	public DesignerSessionState SetBindingValidationOption(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string optionName, bool enabled) => Checked(sessionId, documentId).SetBindingValidationOption(baseVersion, elementId, propertyName, optionName, enabled);
+	public DesignerSessionState SetBindingValidationOption(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string optionName, bool enabled, int childIndex = -1) => Checked(sessionId, documentId).SetBindingValidationOption(baseVersion, elementId, propertyName, optionName, enabled, childIndex);
 	[JsonRpcMethod("design/set-binding-text-option")]
 	public DesignerSessionState SetBindingTextOption(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string optionName, string value, int childIndex = -1) => Checked(sessionId, documentId).SetBindingTextOption(baseVersion, elementId, propertyName, optionName, value, childIndex);
 	[JsonRpcMethod("design/set-binding-converter")]
@@ -89,7 +89,7 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	[JsonRpcMethod("design/set-z-order")]
 	public DesignerSessionState SetZOrder(string sessionId, string documentId, long baseVersion, string elementId, string placement) => Checked(sessionId, documentId).SetZOrder(baseVersion, elementId, placement);
 	[JsonRpcMethod("design/set-binding-delay")]
-	public DesignerSessionState SetBindingDelay(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, int delay) => Checked(sessionId, documentId).SetBindingDelay(baseVersion, elementId, propertyName, delay);
+	public DesignerSessionState SetBindingDelay(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, int delay, int childIndex = -1) => Checked(sessionId, documentId).SetBindingDelay(baseVersion, elementId, propertyName, delay, childIndex);
 	[JsonRpcMethod("design/add-element")]
 	public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget) => Checked(sessionId, documentId).AddElement(baseVersion, parentId, item, proposedName, x, y, dropTarget);
 	[JsonRpcMethod("design/add-menu-item")]

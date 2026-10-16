@@ -1567,14 +1567,19 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		static readonly HashSet<string> bindingValidationOptions = new(bindingValidationOptionNames, StringComparer.Ordinal);
 
 		[JsonRpcMethod("design/set-binding-validation-option")]
-		public DesignerSessionState SetBindingValidationOption(long baseVersion, string elementId, string propertyName, string optionName, bool enabled)
+		public DesignerSessionState SetBindingValidationOption(long baseVersion, string elementId, string propertyName, string optionName, bool enabled, int childIndex = -1)
 			=> dispatcher.Dispatch(() => {
 				if (RejectIfStale(baseVersion) is { } stale) return stale;
 				var state = NewState(baseVersion);
 				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
 				if (!bindingValidationOptions.Contains(optionName)) return NotFound(state, "Unsupported Binding validation option: " + optionName);
-				var property = item.Properties[propertyName];
-				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding)
+				DesignItem? bindingItem;
+				if (childIndex >= 0) {
+					if (!TryGetEditableBindingItems(item, propertyName, out var bindingsProperty) || bindingsProperty == null || childIndex >= bindingsProperty.CollectionElements.Count)
+						return NotFound(state, "Binding child is not editable: " + propertyName);
+					bindingItem = bindingsProperty.CollectionElements[childIndex];
+				} else bindingItem = item.Properties[propertyName]?.Value as DesignItem;
+				if (bindingItem?.Component is not System.Windows.Data.Binding)
 					return NotFound(state, "Property is not an editable Binding: " + propertyName);
 				try
 				{
@@ -1774,14 +1779,19 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// <summary>Sets the bounded millisecond debounce delay on an existing Binding. Zero is
 		/// represented as a design-model reset so the default is not redundantly serialized.</summary>
 		[JsonRpcMethod("design/set-binding-delay")]
-		public DesignerSessionState SetBindingDelay(long baseVersion, string elementId, string propertyName, int delay)
+		public DesignerSessionState SetBindingDelay(long baseVersion, string elementId, string propertyName, int delay, int childIndex = -1)
 			=> dispatcher.Dispatch(() => {
 				if (RejectIfStale(baseVersion) is { } stale) return stale;
 				var state = NewState(baseVersion);
 				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
 				if (delay < 0) return NotFound(state, "Binding Delay must be non-negative: " + delay);
-				var property = item.Properties[propertyName];
-				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding)
+				DesignItem? bindingItem;
+				if (childIndex >= 0) {
+					if (!TryGetEditableBindingItems(item, propertyName, out var bindingsProperty) || bindingsProperty == null || childIndex >= bindingsProperty.CollectionElements.Count)
+						return NotFound(state, "Binding child is not editable: " + propertyName);
+					bindingItem = bindingsProperty.CollectionElements[childIndex];
+				} else bindingItem = item.Properties[propertyName]?.Value as DesignItem;
+				if (bindingItem?.Component is not System.Windows.Data.Binding)
 					return NotFound(state, "Property is not an editable Binding: " + propertyName);
 				try
 				{
@@ -3682,6 +3692,27 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						BindingChildIndex = index, BindingOptionName = optionName, ShouldSerialize = false
 					});
 				}
+				foreach (var optionName in bindingValidationOptionNames)
+				{
+					if (children[index].Properties[optionName]?.ValueOnInstance is not bool enabled)
+						continue;
+					result.Add(new DesignerPropertyInfo {
+						Name = descriptor.Name + ".Bindings[" + index.ToString(CultureInfo.InvariantCulture) + "]." + optionName,
+						DisplayName = descriptor.Name + " Binding " + (index + 1).ToString(CultureInfo.InvariantCulture) + " " + optionName,
+						Category = "Binding", TypeName = typeof(bool).FullName ?? "",
+						Kind = "Boolean", EditorKind = "BindingChildValidationOption",
+						Value = enabled.ToString(CultureInfo.InvariantCulture), BindingPropertyName = descriptor.Name,
+						BindingChildIndex = index, BindingOptionName = optionName, ShouldSerialize = false
+					});
+				}
+				result.Add(new DesignerPropertyInfo {
+					Name = descriptor.Name + ".Bindings[" + index.ToString(CultureInfo.InvariantCulture) + "].Delay",
+					DisplayName = descriptor.Name + " Binding " + (index + 1).ToString(CultureInfo.InvariantCulture) + " Delay",
+					Category = "Binding", TypeName = typeof(int).FullName ?? "",
+					Kind = "Number", EditorKind = "BindingChildDelay",
+					Value = child.Delay.ToString(CultureInfo.InvariantCulture), BindingPropertyName = descriptor.Name,
+					BindingChildIndex = index, ShouldSerialize = false
+				});
 							}
 						}
 					}

@@ -183,6 +183,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		internal void SetBindingChildValidationOption(string propertyName, int childIndex, string optionName, bool enabled)
+		{
+			var state = client.SetBindingValidationOptionAsync(currentBaseVersion(), node.Id, propertyName, optionName, enabled, childIndex)
+				.GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		internal void SetBindingTextOption(string propertyName, string optionName, string value)
 		{
 			var state = client.SetBindingTextOptionAsync(currentBaseVersion(), node.Id, propertyName, optionName, value)
@@ -266,6 +274,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		internal void SetBindingDelay(string propertyName, int delay)
 		{
 			var state = client.SetBindingDelayAsync(currentBaseVersion(), node.Id, propertyName, delay)
+				.GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
+		internal void SetBindingChildDelay(string propertyName, int childIndex, int delay)
+		{
+			var state = client.SetBindingDelayAsync(currentBaseVersion(), node.Id, propertyName, delay, childIndex)
 				.GetAwaiter().GetResult();
 			EnsureAccepted(state);
 			onStateChanged(state);
@@ -512,6 +528,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 				owner.SetBindingNotifyOnValidationError(property.BindingPropertyName, Convert.ToBoolean(value, CultureInfo.InvariantCulture));
 			else if (property.EditorKind == "BindingValidationOption")
 				owner.SetBindingValidationOption(property.BindingPropertyName, property.BindingOptionName, Convert.ToBoolean(value, CultureInfo.InvariantCulture));
+			else if (property.EditorKind == "BindingChildValidationOption")
+				owner.SetBindingChildValidationOption(property.BindingPropertyName, property.BindingChildIndex, property.BindingOptionName, Convert.ToBoolean(value, CultureInfo.InvariantCulture));
 			else if (property.EditorKind == "BindingTextOption")
 				owner.SetBindingTextOption(property.BindingPropertyName, property.BindingOptionName, serialized);
 			else if (property.EditorKind == "BindingChildTextOption")
@@ -522,6 +540,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 				owner.SetBindingChildConverter(property.BindingPropertyName, property.BindingChildIndex, serialized);
 			else if (property.EditorKind == "BindingDelay")
 				owner.SetBindingDelay(property.BindingPropertyName, Convert.ToInt32(value, CultureInfo.InvariantCulture));
+			else if (property.EditorKind == "BindingChildDelay")
+				owner.SetBindingChildDelay(property.BindingPropertyName, property.BindingChildIndex, Convert.ToInt32(value, CultureInfo.InvariantCulture));
 			else
 				owner.SetProperty(property.Name, serialized);
 			// The WPF TwoWay Value binding re-reads GetValue() right after a successful commit to
