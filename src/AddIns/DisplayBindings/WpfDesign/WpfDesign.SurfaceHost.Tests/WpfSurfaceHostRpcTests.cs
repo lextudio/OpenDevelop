@@ -1086,6 +1086,39 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task ChildHost_UpdatesDirectCompositeBindingPathsWithoutReplacingTheBindingGraph()
+	{
+		const string xaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+			  <TextBlock x:Name="multi"><TextBlock.Text><MultiBinding StringFormat="{}{0} {1}"><Binding Path="First"/><Binding Path="Last" Mode="OneWay"/></MultiBinding></TextBlock.Text></TextBlock>
+			  <TextBlock x:Name="priority"><TextBlock.Text><PriorityBinding><Binding Path="Preferred"/><Binding Path="Fallback"/></PriorityBinding></TextBlock.Text></TextBlock>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var multi = FindByName(opened.Tree!, "multi")!;
+		var multiPaths = multi.Properties.Where(property => property.EditorKind == "BindingChildPath").OrderBy(property => property.BindingChildIndex).ToArray();
+		Assert.Equal(new[] { "First", "Last" }, multiPaths.Select(property => property.Value));
+		Assert.Equal(new[] { 0, 1 }, multiPaths.Select(property => property.BindingChildIndex));
+		var edited = await client.SetBindingChildPathAsync(opened.Version, multi.Id, "Text", 1, "FamilyName", timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var text = (await client.FlushAsync(edited.Version, timeout.Token)).Files.Single().Text;
+		Assert.Contains("<MultiBinding", text, StringComparison.Ordinal);
+		Assert.Contains("Path=\"First\"", text, StringComparison.Ordinal);
+		Assert.Contains("Path=\"FamilyName\"", text, StringComparison.Ordinal);
+		Assert.Contains("Mode=\"OneWay\"", text, StringComparison.Ordinal);
+		var priority = FindByName(edited.Tree!, "priority")!;
+		var priorityPaths = priority.Properties.Where(property => property.EditorKind == "BindingChildPath").OrderBy(property => property.BindingChildIndex).ToArray();
+		Assert.Equal(new[] { "Preferred", "Fallback" }, priorityPaths.Select(property => property.Value));
+		var rejected = await client.SetBindingChildPathAsync(edited.Version, multi.Id, "Text", 2, "Nope", timeout.Token);
+		Assert.False(rejected.Accepted);
+		Assert.Contains("Binding child", rejected.Error, StringComparison.Ordinal);
+		Assert.DoesNotContain("Nope", (await client.FlushAsync(edited.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public async Task ChildHost_UpdatesBindingPathWithoutReplacingBindingObject()
 	{
 		const string xaml = """

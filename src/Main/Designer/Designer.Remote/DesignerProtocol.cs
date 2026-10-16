@@ -70,7 +70,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v52 adds DesignerBrushInfo.Transform/RelativeTransform (brush transforms in the brush editor).
 		// v51 adds the WinForms "ImageListImages" editor kind (DesignerPropertyInfo.ImageListImages/Size/ColorDepth) and the Forms host's optional design/build-image-list-resource.
 		// v50 adds the "ResourceReference" editor kind (DesignerPropertyInfo.ResourceReferenceKind/Keys) and WPF's optional design/set-resource-reference.
-		public const int Version = 52;
+		// v53 adds DesignerPropertyInfo.BindingChildIndex and WPF's indexed design/set-binding-path
+		// support for direct MultiBinding/PriorityBinding children.
+		public const int Version = 53;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -626,6 +628,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>For a structured child descriptor, the owning authored property (for example
 		/// a Binding's target property). Empty means this is an ordinary scalar descriptor.</summary>
 		public string BindingPropertyName { get; set; } = "";
+		/// <summary>For a direct child of a MultiBinding or PriorityBinding, its index in the
+		/// current snapshot. <c>-1</c> denotes the top-level Binding. This addresses an existing
+		/// child only; it never grants collection add/remove/reorder authority.</summary>
+		public int BindingChildIndex { get; set; } = -1;
 		/// <summary>For a structured Binding option descriptor, the nested Binding property which
 		/// the child explicitly whitelisted. Empty means this is not a generic Binding option.</summary>
 		public string BindingOptionName { get; set; } = "";

@@ -1317,7 +1317,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// literally and destroys the Binding. The child owns both type validation and the nested
 		/// object-model mutation, so rejection leaves the source untouched.</summary>
 		[JsonRpcMethod("design/set-binding-path")]
-		public DesignerSessionState SetBindingPath(long baseVersion, string elementId, string propertyName, string path)
+		public DesignerSessionState SetBindingPath(long baseVersion, string elementId, string propertyName, string path, int childIndex = -1)
 			=> dispatcher.Dispatch(() => {
 				if (RejectIfStale(baseVersion) is { } stale)
 					return stale;
@@ -1327,8 +1327,17 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				if (String.IsNullOrWhiteSpace(propertyName))
 					return NotFound(state, "A Binding property name is required.");
 				var property = item.Properties[propertyName];
-				if (property?.Value is not DesignItem bindingItem
-					|| bindingItem.Component is not System.Windows.Data.Binding)
+				if (property?.Value is not DesignItem bindingItem)
+					return NotFound(state, "Property is not an editable Binding: " + propertyName);
+				if (childIndex >= 0)
+				{
+					var children = bindingItem.Properties["Bindings"]?.CollectionElements;
+					if (children == null || childIndex >= children.Count
+						|| children[childIndex].Component is not System.Windows.Data.Binding)
+						return NotFound(state, "Binding child is not an editable Binding: " + propertyName);
+					bindingItem = children[childIndex];
+				}
+				else if (bindingItem.Component is not System.Windows.Data.Binding)
 					return NotFound(state, "Property is not an editable Binding: " + propertyName);
 				try
 				{
@@ -3528,6 +3537,25 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 							Value = binding.Delay.ToString(CultureInfo.InvariantCulture), BindingPropertyName = descriptor.Name,
 							ShouldSerialize = false
 						});
+					}
+					else if (reference.Component is System.Windows.Data.MultiBinding or System.Windows.Data.PriorityBinding)
+					{
+						var children = reference.Properties["Bindings"]?.CollectionElements;
+						if (children != null)
+						{
+							for (var index = 0; index < children.Count; index++)
+							{
+								if (children[index].Component is not System.Windows.Data.Binding child)
+									continue;
+								result.Add(new DesignerPropertyInfo {
+									Name = descriptor.Name + ".Bindings[" + index.ToString(CultureInfo.InvariantCulture) + "].Path",
+									DisplayName = descriptor.Name + " Binding " + (index + 1).ToString(CultureInfo.InvariantCulture) + " Path",
+									Category = "Binding", TypeName = typeof(string).FullName ?? "",
+									Kind = "String", EditorKind = "BindingChildPath", Value = child.Path?.Path ?? "",
+									BindingPropertyName = descriptor.Name, BindingChildIndex = index, ShouldSerialize = false
+								});
+							}
+						}
 					}
 				}
 				result.Add(MarkResourceReference(MarkImageSource(ToPropertyInfo(property), property), property));

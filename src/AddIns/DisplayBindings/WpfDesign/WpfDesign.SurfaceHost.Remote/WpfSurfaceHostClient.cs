@@ -186,7 +186,14 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	/// Binding object with a literal <c>{Binding ...}</c> string.</summary>
 	public Task<DesignerSessionState> SetBindingPathAsync(long baseVersion, string elementId, string propertyName, string path, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-path",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, path }, cancellationToken), cancellationToken);
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, path, childIndex = -1 }, cancellationToken), cancellationToken);
+
+	/// <summary>Updates one direct, already-authored child Binding in a MultiBinding or
+	/// PriorityBinding. The host rejects an invalid index or a non-Binding child, so this cannot
+	/// reshape or replace the binding graph.</summary>
+	public Task<DesignerSessionState> SetBindingChildPathAsync(long baseVersion, string elementId, string propertyName, int childIndex, string path, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-path",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, path, childIndex }, cancellationToken), cancellationToken);
 
 	public Task<DesignerSessionState> SetBindingModeAsync(long baseVersion, string elementId, string propertyName, string mode, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-mode",

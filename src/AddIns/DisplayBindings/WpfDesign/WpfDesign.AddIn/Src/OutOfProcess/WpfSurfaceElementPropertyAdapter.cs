@@ -87,6 +87,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		internal void SetBindingChildPath(string propertyName, int childIndex, string path)
+		{
+			var state = client.SetBindingChildPathAsync(currentBaseVersion(), node.Id, propertyName, childIndex, path)
+				.GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		internal void SetBindingMode(string propertyName, string mode)
 		{
 			var state = client.SetBindingModeAsync(currentBaseVersion(), node.Id, propertyName, mode)
@@ -433,6 +441,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 				: Convert.ToString(value, CultureInfo.InvariantCulture) ?? "";
 			if (property.EditorKind == "BindingPath")
 				owner.SetBindingPath(property.Name, serialized);
+			else if (property.EditorKind == "BindingChildPath")
+				owner.SetBindingChildPath(property.BindingPropertyName, property.BindingChildIndex, serialized);
 			else if (property.EditorKind == "BindingMode")
 				owner.SetBindingMode(property.BindingPropertyName, serialized);
 			else if (property.EditorKind == "BindingUpdateSourceTrigger")
