@@ -1450,13 +1450,18 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			});
 
 		[JsonRpcMethod("design/set-binding-relative-source")]
-		public DesignerSessionState SetBindingRelativeSource(long baseVersion, string elementId, string propertyName, string relativeSource)
+		public DesignerSessionState SetBindingRelativeSource(long baseVersion, string elementId, string propertyName, string relativeSource, int childIndex = -1)
 			=> dispatcher.Dispatch(() => {
 				if (RejectIfStale(baseVersion) is { } stale) return stale;
 				var state = NewState(baseVersion);
 				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
-				var property = item.Properties[propertyName];
-				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding binding
+				DesignItem? bindingItem;
+				if (childIndex >= 0) {
+					if (!TryGetEditableBindingItems(item, propertyName, out var bindingsProperty) || bindingsProperty == null || childIndex >= bindingsProperty.CollectionElements.Count)
+						return NotFound(state, "Binding child is not editable: " + propertyName);
+					bindingItem = bindingsProperty.CollectionElements[childIndex];
+				} else bindingItem = item.Properties[propertyName]?.Value as DesignItem;
+				if (bindingItem?.Component is not System.Windows.Data.Binding binding
 					|| !HasUnsetBindingSource(bindingItem) || (binding.RelativeSource != null
 						&& binding.RelativeSource.Mode is not (System.Windows.Data.RelativeSourceMode.Self or System.Windows.Data.RelativeSourceMode.TemplatedParent)))
 					return NotFound(state, "Property is not an editable RelativeSource Binding: " + propertyName);
@@ -3663,6 +3668,19 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						Category = "Binding", TypeName = typeof(string).FullName ?? "",
 						Kind = "String", EditorKind = "BindingChildElementName", Value = child.ElementName ?? "",
 						BindingPropertyName = descriptor.Name, BindingChildIndex = index, ShouldSerialize = false
+					});
+				}
+				if (HasUnsetBindingSource(children[index]) && (child.RelativeSource == null
+					|| child.RelativeSource.Mode is System.Windows.Data.RelativeSourceMode.Self or System.Windows.Data.RelativeSourceMode.TemplatedParent))
+				{
+					result.Add(new DesignerPropertyInfo {
+						Name = descriptor.Name + ".Bindings[" + index.ToString(CultureInfo.InvariantCulture) + "].RelativeSource",
+						DisplayName = descriptor.Name + " Binding " + (index + 1).ToString(CultureInfo.InvariantCulture) + " Relative Source",
+						Category = "Binding", TypeName = typeof(string).FullName ?? "",
+						Kind = "Enum", EditorKind = "BindingChildRelativeSource",
+						Value = child.RelativeSource?.Mode.ToString() ?? "", BindingPropertyName = descriptor.Name,
+						BindingChildIndex = index, ShouldSerialize = false,
+						AllowedValues = new List<string> { "", "Self", "TemplatedParent" }
 					});
 				}
 				var childConverter = children[index].Properties["Converter"];

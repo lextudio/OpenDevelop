@@ -151,6 +151,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		internal void SetBindingChildRelativeSource(string propertyName, int childIndex, string relativeSource)
+		{
+			var state = client.SetBindingRelativeSourceAsync(currentBaseVersion(), node.Id, propertyName, relativeSource, childIndex)
+				.GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		internal void SetBindingAncestorLevel(string propertyName, int level)
 		{
 			var state = client.SetBindingAncestorLevelAsync(currentBaseVersion(), node.Id, propertyName, level)
@@ -520,6 +528,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 				owner.SetBindingChildElementName(property.BindingPropertyName, property.BindingChildIndex, serialized);
 			else if (property.EditorKind == "BindingRelativeSource")
 				owner.SetBindingRelativeSource(property.BindingPropertyName, serialized);
+			else if (property.EditorKind == "BindingChildRelativeSource")
+				owner.SetBindingChildRelativeSource(property.BindingPropertyName, property.BindingChildIndex, serialized);
 			else if (property.EditorKind == "BindingAncestorLevel")
 				owner.SetBindingAncestorLevel(property.BindingPropertyName, Convert.ToInt32(value, CultureInfo.InvariantCulture));
 			else if (property.EditorKind == "BindingSource")

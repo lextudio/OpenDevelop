@@ -67,7 +67,7 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	[JsonRpcMethod("design/set-binding-element-name")]
 	public DesignerSessionState SetBindingElementName(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string elementName, int childIndex = -1) => Checked(sessionId, documentId).SetBindingElementName(baseVersion, elementId, propertyName, elementName, childIndex);
 	[JsonRpcMethod("design/set-binding-relative-source")]
-	public DesignerSessionState SetBindingRelativeSource(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string relativeSource) => Checked(sessionId, documentId).SetBindingRelativeSource(baseVersion, elementId, propertyName, relativeSource);
+	public DesignerSessionState SetBindingRelativeSource(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string relativeSource, int childIndex = -1) => Checked(sessionId, documentId).SetBindingRelativeSource(baseVersion, elementId, propertyName, relativeSource, childIndex);
 	[JsonRpcMethod("design/set-binding-ancestor-level")]
 	public DesignerSessionState SetBindingAncestorLevel(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, int level) => Checked(sessionId, documentId).SetBindingAncestorLevel(baseVersion, elementId, propertyName, level);
 	[JsonRpcMethod("design/set-binding-source")]

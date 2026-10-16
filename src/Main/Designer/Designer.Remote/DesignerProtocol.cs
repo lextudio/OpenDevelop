@@ -80,7 +80,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v58 adds indexed design/set-binding-converter support for a direct child of that collection.
 		// v59 adds indexed design/set-binding-text-option support for a direct child of that collection.
 		// v60 adds indexed design/set-binding-validation-option and set-binding-delay support.
-	public const int Version = 60;
+		// v61 adds indexed design/set-binding-relative-source support for direct Binding children.
+	public const int Version = 61;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
