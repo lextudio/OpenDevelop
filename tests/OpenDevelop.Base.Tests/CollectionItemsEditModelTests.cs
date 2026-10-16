@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Linq;
 
 using ICSharpCode.SharpDevelop.Designer.Presentation;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 
 using Xunit;
 
