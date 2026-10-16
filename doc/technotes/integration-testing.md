@@ -201,11 +201,20 @@ via the same traits.
     **LibreWinForms selects none and fails**, which is correct and shows the gap (no LibreWinForms test is tagged yet); the
     matrix target ran all seven, reported that one failure and exited 1. Not run: the macOS cells, every cell with more than
     one test, and the Microsoft-host build step of a Microsoft cell (every check above used `NoBuild`).
-  - One real run, `-p:RuntimeCell=LibreWpf -p:NoBuild=true`: the app started, the single test ran and the failure came back
-    through MSBuild with exit code 1. The test's backend assertion passed (`backend` was `LibreWPF`), but the designer never
-    loaded (`designerLoaded=false`, `hostProcessId=0`, `hostAlive=false`): **the LibreWPF design host did not start on Windows
-    arm64 in this run.** That is the Windows x LibreWPF cell nothing covered before; the cause is not investigated (the host
-    is deployed under `AddIns/DisplayBindings/WpfDesign/Host`, and a manual `dotnet exec` of it stays up waiting for input).
+  - Real runs of `-p:RuntimeCell=LibreWpf -p:NoBuild=true` (Windows arm64, the Windows x LibreWPF cell nothing covered before),
+    six in a row; the app started each time, the single test ran and its result came back through MSBuild:
+    1. and 2. failed: `designerLoaded=false`, `hostProcessId=0`. The cause is the designer's own build of the sample inside
+       the app: on a cold run it took 29.8 s (`Directory.Build.props changed` forced it), and the host connected about 1.2 s
+       after the test's 30 s wait had expired. (An earlier version of this note said the host did not start; that was wrong.)
+       The test now waits up to 120 s and says why.
+    3. failed with the host connection lost while opening the document (`StreamJsonRpc.ConnectionLostException`), the host
+       having connected normally (`acquired surface host`). **Cause unknown and not reproduced.**
+    4. to 6. passed (56 to 67 s, warm build).
+    So the cell works here, with one unexplained intermittent host loss. `WaitForWpfDesignerStatusAsync` takes
+    `requireLoaded` (opt-in, only the LibreWpf test passes it): when set and the designer never loads it puts the designer's
+    own output channel (build and host lines) into the failure message, so the next occurrence shows the host's last
+    output. It is opt-in because other callers ignore the result or only need the editor, and the status already reports a
+    matching backend while the designer is still building.
 - **Still open for the WinUI family:** the dual-cell resize test above; `OD_WINUI_RUNTIME` still selects the cell for a whole
   process (`microsoft`, `progpu`), which the runner entry point (plan step 4) has to set per cell.
 

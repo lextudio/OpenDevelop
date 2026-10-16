@@ -2956,7 +2956,9 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
             var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
             Assert.True(openFileResult.GetProperty("opened").GetBoolean());
-            var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "Window", timeoutSeconds: 30, reactivatePath: xamlPath, expectedCell: RuntimeCell.LibreWpf);
+            // The designer builds the sample inside the app before it connects to the host; on a cold run that
+            // build alone took ~30 s on Windows arm64 and the host connected just after a 30 s wait had expired.
+            var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "Window", timeoutSeconds: 120, reactivatePath: xamlPath, expectedCell: RuntimeCell.LibreWpf, requireLoaded: true);
             Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
             RuntimeCell.AssertWpfBackend(status, RuntimeCell.LibreWpf);
 
@@ -5140,12 +5142,12 @@ public sealed class AddInTests : IAsyncDisposable
 	// LibreWPF is therefore only the actual default on non-Windows hosts, where Microsoft WPF
 	// cannot run at all.
 	async Task<JsonElement> WaitForWpfDesignerStatusAsync(string expectedRootItemType, int timeoutSeconds,
-		string reactivatePath = null, string expectedCell = null)
+		string reactivatePath = null, string expectedCell = null, bool requireLoaded = false)
     {
 		expectedCell ??= _app.WpfSampleCell;
         JsonElement status = default;
         var previousCount = -1;
-        await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        var settled = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             status = await _app.InvokeAsync("od.wpf-designer.status");
             if (status.GetProperty("active").GetBoolean() &&
@@ -5167,6 +5169,23 @@ public sealed class AddInTests : IAsyncDisposable
             }
             return false;
 		}, TimeSpan.FromSeconds(timeoutSeconds), initialDelayMs: 50, maxDelayMs: 250);
+		// Opt-in: some callers only need the editor and never looked at the result, and the status already
+		// reports a matching backend while the designer is still building, so failing here for everyone would
+		// turn their passing runs into failures.
+		if (requireLoaded && !settled && !(status.TryGetProperty("designerLoaded", out var designerLoaded) && designerLoaded.GetBoolean()))
+		{
+			// Without this the failure reads "did not report a backend", which hides why the designer never
+			// loaded; the designer's own output channel carries the build and host (child process) lines.
+			string outputText;
+			try {
+				var output = await _app.InvokeAsync("od.output-text", "WPF Designer");
+				outputText = output.TryGetProperty("text", out var text) ? text.GetString() : output.ToString();
+			} catch (Exception e) {
+				// A diagnostic must never replace the real failure with its own (the app may be what failed).
+				outputText = "(could not read the output channel: " + e.GetType().Name + ": " + e.Message + ")";
+			}
+			Assert.Fail($"The WPF designer did not finish loading within {timeoutSeconds}s. Status: {status}\nWPF Designer output:\n" + outputText);
+		}
 		RuntimeCell.AssertWpfBackend(status, expectedCell);
 		return status;
     }
