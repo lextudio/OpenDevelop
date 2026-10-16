@@ -306,7 +306,9 @@
        Options: -p:NoBuild=true skips the build; -p:RuntimeCellListOnly=true only lists the cell's tests
        (nothing is launched); -p:RuntimeCellAllowSkips=true stops a skipped test counting as a failure
        (by default a test that is skipped inside a cell the OS supports fails the run, because that cell is
-       then not actually covered). A cell that selects no test at all always fails. -->
+       then not actually covered). A cell that selects no test at all always fails. Tests tagged
+       [Trait("OptIn", "true")] skip by design unless an environment variable asks for them (for example the full
+       WPF Gallery sweep) and are left out of a cell's run, so they neither count nor fail it. -->
   <PropertyGroup>
     <RuntimeCellsOnThisOS Condition="$([MSBuild]::IsOSPlatform('Windows'))">LibreWpf;MicrosoftWpf;LibreWinForms;MicrosoftWinForms;MicrosoftWinUI;Uno;ProGpuWinUI</RuntimeCellsOnThisOS>
     <RuntimeCellsOnThisOS Condition="$([MSBuild]::IsOSPlatform('OSX'))">LibreWpf;LibreWinForms;Uno;ProGpuWinUI</RuntimeCellsOnThisOS>
@@ -335,7 +337,7 @@
                 Condition="'$(_CellIsMicrosoft)' == 'true' And '$(NoBuild)' != 'true'" />
 
     <!-- A cell that selects nothing must fail, not pass. Listing starts no app. -->
-    <Exec Command="dotnet &quot;$(TargetPath)&quot; -list tests -trait &quot;Runtime=$(RuntimeCell)&quot;" ConsoleToMSBuild="true">
+    <Exec Command="dotnet &quot;$(TargetPath)&quot; -list tests -trait &quot;Runtime=$(RuntimeCell)&quot; -notrait &quot;OptIn=true&quot;" ConsoleToMSBuild="true">
       <Output TaskParameter="ConsoleOutput" ItemName="_CellListLine" />
     </Exec>
     <ItemGroup>
@@ -345,7 +347,7 @@
     <Message Importance="high" Text="Runtime cell $(RuntimeCell): @(_CellTest->Count()) test(s)" />
 
     <Exec Condition="'$(RuntimeCellListOnly)' != 'true'"
-          Command="dotnet &quot;$(TargetPath)&quot; -trait &quot;Runtime=$(RuntimeCell)&quot; $(_CellFailSkips)"
+          Command="dotnet &quot;$(TargetPath)&quot; -trait &quot;Runtime=$(RuntimeCell)&quot; -notrait &quot;OptIn=true&quot; $(_CellFailSkips)"
           EnvironmentVariables="$(_CellEnv)" />
   </Target>
 

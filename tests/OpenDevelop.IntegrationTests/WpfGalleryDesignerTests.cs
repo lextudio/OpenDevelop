@@ -253,6 +253,7 @@ public sealed class WpfGalleryDesignerTests
     /// a parse-success/black-frame regression without comparing unstable pixels.
     /// </summary>
     [Fact]
+    [Trait("OptIn", "true")] // skips unless OD_WPF_GALLERY_FULL=1; the cell runner leaves opt-in tests out
     public async Task Gallery_AllViewPages_BuildOutlineAndNativeRenderFrame()
     {
         if (_skip) { Assert.Skip(_skipReason); return; }
