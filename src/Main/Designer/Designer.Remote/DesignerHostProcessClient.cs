@@ -237,8 +237,17 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>Kills the child process tree.</summary>
 		public void TerminateHost()
 		{
-			if (!process.HasExited)
-				process.Kill(entireProcessTree: true);
+			try {
+				if (!process.HasExited)
+					process.Kill(entireProcessTree: true);
+			} catch (InvalidOperationException) {
+				// The child exited, or this client was disposed, between the check and the kill (a Process whose
+				// handle is gone reports "No process is associated with this object"). Either way it is gone, and
+				// letting this escape replaced the TimeoutException - with the child's log - that InvokeCoreAsync is
+				// about to throw with an error that says nothing about why the host was being terminated.
+			} catch (System.ComponentModel.Win32Exception) {
+				// Access denied or already terminating: the same race, seen from the OS.
+			}
 		}
 
 		async Task PumpAsync(StreamReader reader)
