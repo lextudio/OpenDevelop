@@ -478,6 +478,11 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	{
 		try
 		{
+			// Create (and so cache) this designer's output channel here, on the UI thread and before a host
+			// exists: when the project output is current nothing below writes to it first, and the first
+			// request would then come from the thread that pumps the child's output, which must never wait
+			// for the UI thread (see DesignerOutput.Channel).
+			DesignerOutput.Channel(UnoDesignClient.OutputChannelName);
 			var designProject = SD.ProjectService.FindProjectContainingFile(FileName.Create(documentFileName));
 			if (designProject != null)
 			{
