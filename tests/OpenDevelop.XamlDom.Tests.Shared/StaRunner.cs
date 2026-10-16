@@ -11,7 +11,7 @@ static class StaRunner
 			try { result = action(); } catch (Exception e) { error = e; }
 			finally { System.Windows.Threading.Dispatcher.CurrentDispatcher.InvokeShutdown(); }
 		});
-		if (OperatingSystem.IsWindows())
+		if (TestHost.IsWindows)
 			thread.SetApartmentState(ApartmentState.STA);
 		thread.Start();
 		thread.Join();

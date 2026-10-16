@@ -16,7 +16,7 @@ public sealed class XamlLoaderComparisonTests
 			try { result = LoadCore(xaml, designer); }
 			finally { System.Windows.Threading.Dispatcher.CurrentDispatcher.InvokeShutdown(); }
 		}) { IsBackground = true };
-		if (OperatingSystem.IsWindows())
+		if (TestHost.IsWindows)
 			thread.SetApartmentState(ApartmentState.STA); // real WPF refuses to build UI objects off an STA thread
 		thread.Start();
 		return thread.Join(TimeSpan.FromSeconds(20)) ? result! : "HANG (no result within 20s)";

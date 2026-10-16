@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Host for the shared XamlDom tests (../OpenDevelop.XamlDom.Tests.Shared) that runs them against Microsoft's WPF
+       (Microsoft.WindowsDesktop.App). Windows only. XamlDom's own project is built by LibreWPF.Sdk against LibreWPF's
+       reference assemblies, which cannot be assumed to run on Microsoft's PresentationFramework, so this host compiles
+       XamlDom's source files itself, against Microsoft WPF. The LibreWPF counterpart is OpenDevelop.XamlDom.Tests.LibreWPF. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <IsPackable>false</IsPackable>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <IsTestProject>true</IsTestProject>
+    <XamlDomSource>..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.XamlDom\Project\</XamlDomSource>
+    <NoWarn>$(NoWarn);CS1572;CS1573;CS1591;CS8632</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\OpenDevelop.XamlDom.Tests.Shared\**\*.cs" LinkBase="Shared" />
+    <Compile Include="$(XamlDomSource)**\*.cs" Exclude="$(XamlDomSource)obj\**;$(XamlDomSource)bin\**" LinkBase="XamlDom" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+</Project>

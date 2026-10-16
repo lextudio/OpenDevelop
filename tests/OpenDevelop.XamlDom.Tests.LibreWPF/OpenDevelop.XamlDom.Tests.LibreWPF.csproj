@@ -1,7 +1,9 @@
 <Project Sdk="LibreWPF.Sdk">
 
-  <!-- Compares what the designer's XamlDom builds from a XAML text with what Microsoft's
-       System.Xaml (XamlReader) builds from the same text. Run with the dotnet test command on this project (Microsoft.Testing.Platform). -->
+  <!-- Host for the shared XamlDom tests (../OpenDevelop.XamlDom.Tests.Shared) that runs them against LibreWPF
+       (portable LibreWPF.Transport) on Windows and macOS. XamlDom is the net10.0-windows build, which LibreWPF.Sdk
+       compiles against LibreWPF. The Microsoft WPF counterpart is OpenDevelop.XamlDom.Tests.MicrosoftWPF.
+       Run with the dotnet test command on this project (Microsoft.Testing.Platform). -->
 
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -15,6 +17,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\OpenDevelop.XamlDom.Tests.Shared\**\*.cs" LinkBase="Shared" />
     <PackageReference Include="xunit.v3" />
     <ProjectReference Include="..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.XamlDom\Project\WpfDesign.XamlDom.csproj" />
   </ItemGroup>

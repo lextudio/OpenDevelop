@@ -121,7 +121,8 @@
   <Folder Name="/tests/">
     <Project Path="tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj" />
     <Project Path="tests/OpenDevelop.Base.Tests/OpenDevelop.Base.Tests.csproj" />
-    <Project Path="tests/OpenDevelop.XamlDom.Tests/OpenDevelop.XamlDom.Tests.csproj" />
+    <Project Path="tests/OpenDevelop.XamlDom.Tests.LibreWPF/OpenDevelop.XamlDom.Tests.LibreWPF.csproj" />
+    <Project Path="tests/OpenDevelop.XamlDom.Tests.MicrosoftWPF/OpenDevelop.XamlDom.Tests.MicrosoftWPF.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/Misc/SearchAndReplace/">
     <Project Path="src/AddIns/Misc/SearchAndReplace/Project/SearchAndReplace.csproj" />

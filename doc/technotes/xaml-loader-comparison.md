@@ -3,8 +3,26 @@
 The WPF designer edits through **XamlDom** (`externals/vscode-wpf/external/WpfDesigner/WpfDesign.XamlDom`),
 the SharpDevelop-derived document model. Microsoft open-sourced the WPF XAML stack
 (`System.Xaml`, `XamlReader`, `XamlWriter`). This note records a measured comparison of the two, and what
-it means for replacing parts of XamlDom. The harness is `tests/OpenDevelop.XamlDom.Tests`; run it with
-`dotnet test --project tests/OpenDevelop.XamlDom.Tests/OpenDevelop.XamlDom.Tests.csproj`.
+it means for replacing parts of XamlDom.
+
+## Harness
+
+The tests are written once, in `tests/OpenDevelop.XamlDom.Tests.Shared` (no project file; corpus, graph dump,
+comparison, round-trip), and compiled into one thin host per WPF implementation. A project can only choose one SDK, so the
+host is what decides which implementation is the reference:
+
+| Host (`tests/...`) | Reference loader | Windows | macOS |
+|---|---|---|---|
+| `OpenDevelop.XamlDom.Tests.LibreWPF` | LibreWPF (`LibreWPF.Sdk`, portable `LibreWPF.Transport`) | yes | yes |
+| `OpenDevelop.XamlDom.Tests.MicrosoftWPF` | Microsoft WPF (`Microsoft.WindowsDesktop.App`), XamlDom's sources compiled into the host | yes | no |
+
+Run one with the dotnet test command on its project (for example
+`dotnet test --project tests/OpenDevelop.XamlDom.Tests.MicrosoftWPF/OpenDevelop.XamlDom.Tests.MicrosoftWPF.csproj`).
+Each host's `TestHost.cs` names its implementation, and `TestHostIdentityTests` fails if the loaded `PresentationFramework`
+is not the one the host claims, so "ran on Windows" is never mistaken for "ran on Microsoft WPF". The Microsoft host builds
+XamlDom's sources itself because XamlDom's own project is compiled against LibreWPF's reference assemblies. Other
+frameworks (LibreWinForms, Microsoft WinForms, WinUI, Uno, ProGPU.WinUI) are not XamlDom concerns and get their own
+shared test project and hosts.
 
 ## Method
 
@@ -52,9 +70,8 @@ attribute order, implicit content and default-valued properties are all rewritte
 an edited document.
 
 Remaining load differences, the 6 that load plus the 1 that does not (XamlDom is wrong, Microsoft's loader is the reference).
-The test project builds with `LibreWPF.Sdk`, so on Windows too the reference loader is LibreWPF (portable
-`LibreWPF.Transport`, no `Microsoft.WindowsDesktop.App`); Windows differs only in needing STA threads. All 96 tests pass
-there (net10.0-windows, arm64). Real WPF was checked only for the one case below, by a standalone `UseWPF` console project:
+Both hosts give the same result: all 97 tests pass on each (Windows, net10.0-windows, arm64), so every difference below exists
+against Microsoft WPF and not only against LibreWPF:
 
 | Difference | Effect |
 |---|---|
@@ -71,11 +88,10 @@ investigated.
 
 Not XamlDom's fault:
 
-- The suspected LibreWPF quirk for `Lookup by system key` was **refuted** against real WPF: a standalone console project
-  on `Microsoft.WindowsDesktop.App` 10.0.12 also gives `Button.Background = #FFF0F0F0` (the system brush) with the local
-  `#FFFF0000` brush defined, which matches WPF's source (`StaticResourceExtension.ProvideValue`). So
-  `ReferenceQuirksOffWindows` was removed and XamlDom was fixed (see below). **Not yet checked against real WPF:** the other
-  results; each is only as good as LibreWPF's agreement with WPF.
+- The suspected LibreWPF quirk for `Lookup by system key` was **refuted** against Microsoft WPF
+  (`Microsoft.WindowsDesktop.App` 10.0.12 also gives `Button.Background = #FFF0F0F0`, the system brush, with the local
+  `#FFFF0000` brush defined; this matches WPF's source, `StaticResourceExtension.ProvideValue`). So
+  `ReferenceQuirksOffWindows` was removed and XamlDom was fixed (see below). No result differs between the two hosts.
 - `ComboBox` cannot be constructed under LibreWPF (both loaders hang), and `x:Shared` is
 rejected by Microsoft's loader outside compiled dictionaries.
 
