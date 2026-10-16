@@ -85,7 +85,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 				line = existing.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
 				return null;
 			}
-			var typeName = argsType.Replace("global::", "Global.", StringComparison.Ordinal);
+			var typeName = ToVisualBasicTypeName(argsType);
 			var member = VisualBasicSyntaxTree.ParseText("Class Placeholder\n    Private Sub " + handlerName + "(sender As Object, e As " + typeName + ")\n    End Sub\nEnd Class")
 				.GetRoot().DescendantNodes().OfType<VBSyntax.ClassBlockSyntax>().Single().Members.Single()
 				.WithAdditionalAnnotations(Formatter.Annotation);
@@ -94,6 +94,15 @@ namespace ICSharpCode.WpfDesign.AddIn
 			var inserted = formatted.DescendantNodes().OfType<VBSyntax.MethodBlockSyntax>().FirstOrDefault(m => m.SubOrFunctionStatement.Identifier.ValueText == handlerName);
 			line = inserted != null ? inserted.GetLocation().GetLineSpan().StartLinePosition.Line + 1 : 0;
 			return formatted.ToFullString();
+		}
+
+		static string ToVisualBasicTypeName(string typeName)
+		{
+			typeName = typeName.Replace("global::", "Global.", StringComparison.Ordinal);
+			var open = typeName.IndexOf('<');
+			if (open < 0 || !typeName.EndsWith('>'))
+				return typeName;
+			return typeName[..open] + "(Of " + typeName[(open + 1)..^1] + ")";
 		}
 
 		/// <summary>

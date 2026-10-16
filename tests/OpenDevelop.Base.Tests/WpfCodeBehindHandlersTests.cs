@@ -71,4 +71,12 @@ public sealed class WpfCodeBehindHandlersTests
 		Assert.Null(WpfCodeBehindHandlers.AddVisualBasicHandler(updated, "MainWindow", "owner_Click", "global::System.EventArgs", out var existingLine));
 		Assert.True(existingLine > 0);
 	}
+
+	[Fact]
+	public void AddsAVisualBasicHandlerWithGenericEventArgs()
+	{
+		const string source = "Public Partial Class MainWindow\nEnd Class\n";
+		var updated = WpfCodeBehindHandlers.AddVisualBasicHandler(source, "MainWindow", "owner_Changed", "global::System.Windows.RoutedPropertyChangedEventArgs<global::System.Double>", out _);
+		Assert.Contains("e As Global.System.Windows.RoutedPropertyChangedEventArgs(Of Global.System.Double)", updated, StringComparison.Ordinal);
+	}
 }
