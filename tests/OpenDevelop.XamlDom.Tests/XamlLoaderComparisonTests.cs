@@ -46,8 +46,8 @@ public sealed class XamlLoaderComparisonTests
 		["x:Name x:Uid x:Key forms"] = "x:Uid is not applied to the instance",
 		["Uri and Key as attribute order"] = "x:Uid is not applied to the instance (Image.Source local value also differs)",
 		["Non-string keys"] = "an {x:Static ...} key is kept as its markup text instead of being evaluated",
-		["Merged dictionaries"] = "a ResourceDictionary with MergedDictionaries and its own entries throws ArgumentException",
-		["Designer attributes"] = "mc:AlternateContent is not supported",
+		["Triggers"] = "DataTrigger.Binding is null: a {Binding} assigned to a trigger's Binding property is lost",
+		["ToolTip, ContextMenu and Menu"] = "MenuItem.Role differs: items are attached to their parent after the subtree is built, so Role is computed against the wrong parent",
 	};
 
 	public static IEnumerable<TheoryDataRow<string>> CaseNames() => XamlCorpus.Cases.Select(c => new TheoryDataRow<string>(c.Name));
@@ -62,6 +62,13 @@ public sealed class XamlLoaderComparisonTests
 		var designer = Load(xaml, designer: true);
 		// The reference load must succeed, or "both loaders fail alike" would count as a match.
 		Assert.False(microsoft.StartsWith("EXCEPTION") || microsoft.StartsWith("HANG"), "Microsoft's XamlReader did not load the case: " + microsoft);
+		// A case XamlDom cannot load is listed in XamlCorpus.NotLoadableByXamlDom, and only those.
+		var designerFailed = designer.StartsWith("EXCEPTION") || designer.StartsWith("HANG");
+		if (XamlCorpus.NotLoadableByXamlDom.TryGetValue(name, out var notLoadable)) {
+			Assert.True(designerFailed, "XamlDom now loads this case; remove it from XamlCorpus.NotLoadableByXamlDom (was: " + notLoadable + ")");
+			return;
+		}
+		Assert.False(designerFailed, "XamlDom failed to load a case that is not listed as not loadable: " + designer);
 		if (KnownDifferences.TryGetValue(name, out var reason)) {
 			Assert.True(microsoft != designer, "This case now matches; remove it from KnownDifferences (was: " + reason + ")");
 			return;

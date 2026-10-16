@@ -13,6 +13,13 @@ static class XamlCorpus
 		            mc:Ignorable="d">
 		""";
 
+	/// <summary>Cases XamlDom cannot load at all, with why. Both the load comparison and the round-trip test use this
+	/// one list, and the load comparison verifies it against what XamlDom really does, so it cannot go stale.</summary>
+	public static readonly Dictionary<string, string> NotLoadableByXamlDom = new() {
+		["Merged dictionaries"] = "a ResourceDictionary with MergedDictionaries and its own entries throws ArgumentException",
+		["Designer attributes"] = "mc:AlternateContent is not supported",
+	};
+
 	public static readonly (string Name, string Body)[] Cases = {
 		("x:Double/String/Boolean/Int32 resources", """
 			<StackPanel.Resources>
@@ -112,6 +119,118 @@ static class XamlCorpus
 			"""),
 		("Uri and Key as attribute order", """
 			<Image Source="pack://application:,,,/a.png"/><Button x:Name="n" Width="3" x:Uid="z"/>
+			"""),
+		("Style BasedOn and TemplateBinding", """
+			<StackPanel.Resources>
+			  <Style x:Key="Base" TargetType="Control"><Setter Property="Padding" Value="3"/></Style>
+			  <Style x:Key="Derived" TargetType="Button" BasedOn="{StaticResource Base}">
+			    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+			      <Border Background="{TemplateBinding Background}" Width="{TemplateBinding Width}"><ContentPresenter/></Border>
+			    </ControlTemplate></Setter.Value></Setter>
+			  </Style>
+			</StackPanel.Resources>
+			<Button Style="{StaticResource Derived}"/>
+			"""),
+		("ControlTemplate triggers with TargetName", """
+			<StackPanel.Resources><ControlTemplate x:Key="T" TargetType="Button">
+			  <Border x:Name="bd" Background="Red"><ContentPresenter/></Border>
+			  <ControlTemplate.Triggers><Trigger Property="IsPressed" Value="True"><Setter TargetName="bd" Property="Background" Value="Blue"/></Trigger></ControlTemplate.Triggers>
+			</ControlTemplate></StackPanel.Resources>
+			<Button Template="{StaticResource T}"/>
+			"""),
+		("Transforms", """
+			<Button><Button.RenderTransform><TransformGroup>
+			  <RotateTransform Angle="30"/><ScaleTransform ScaleX="2" ScaleY="3"/><TranslateTransform X="4" Y="5"/>
+			</TransformGroup></Button.RenderTransform></Button>
+			<Border RenderTransform="1,0,0,1,10,20"/>
+			"""),
+		("Geometry mini-language and shapes", """
+			<Path Data="M 0,0 L 10,10 L 0,10 Z" Stroke="Black" StrokeThickness="2" Fill="Red"/>
+			<Rectangle Width="10" Height="5" RadiusX="2" Stroke="Blue" StrokeDashArray="2 1"/>
+			<Ellipse><Ellipse.Fill><RadialGradientBrush GradientOrigin="0.3,0.3"><GradientStop Color="White" Offset="0"/><GradientStop Color="Black" Offset="1"/></RadialGradientBrush></Ellipse.Fill></Ellipse>
+			"""),
+		("Drawing and tile brushes", """
+			<Border><Border.Background><DrawingBrush TileMode="Tile" Viewport="0,0,10,10" ViewportUnits="Absolute"><DrawingBrush.Drawing>
+			  <GeometryDrawing Brush="Red"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,5,5"/></GeometryDrawing.Geometry></GeometryDrawing>
+			</DrawingBrush.Drawing></DrawingBrush></Border.Background></Border>
+			"""),
+		("Animations and storyboards", """
+			<Button><Button.Triggers><EventTrigger RoutedEvent="Button.Loaded"><BeginStoryboard><Storyboard>
+			  <DoubleAnimation Storyboard.TargetProperty="Width" From="0" To="100" Duration="0:0:1.5" AutoReverse="True" RepeatBehavior="Forever"/>
+			  <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Button.Background).(SolidColorBrush.Color)"><LinearColorKeyFrame KeyTime="0:0:1" Value="Red"/></ColorAnimationUsingKeyFrames>
+			</Storyboard></BeginStoryboard></EventTrigger></Button.Triggers></Button>
+			"""),
+		("MultiBinding and RelativeSource", """
+			<TextBlock><TextBlock.Text><MultiBinding StringFormat="{}{0} {1}"><Binding Path="A"/><Binding Path="B" Mode="OneWay"/></MultiBinding></TextBlock.Text></TextBlock>
+			<TextBlock Tag="{Binding RelativeSource={RelativeSource Self}, Path=Name}" Text="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type StackPanel}, AncestorLevel=1}}"/>
+			"""),
+		("Input and command bindings", """
+			<StackPanel.InputBindings><KeyBinding Key="F5" Modifiers="Control" Command="ApplicationCommands.Open"/></StackPanel.InputBindings>
+			<StackPanel.CommandBindings><CommandBinding Command="ApplicationCommands.Copy"/></StackPanel.CommandBindings>
+			<Button Command="ApplicationCommands.Paste"/>
+			"""),
+		("ToolTip, ContextMenu and Menu", """
+			<Button ToolTip="tip"><Button.ContextMenu><ContextMenu><MenuItem Header="A" InputGestureText="Ctrl+A"/><Separator/><MenuItem Header="B" IsCheckable="True"/></ContextMenu></Button.ContextMenu></Button>
+			<Menu><MenuItem Header="File"><MenuItem Header="Open"/></MenuItem></Menu>
+			"""),
+		("TabControl and Expander", """
+			<TabControl><TabItem Header="One"><TextBlock Text="a"/></TabItem><TabItem><TabItem.Header><TextBlock Text="two"/></TabItem.Header></TabItem></TabControl>
+			<Expander Header="E" IsExpanded="True"><Button/></Expander>
+			"""),
+		("Grid definitions and DockPanel", """
+			<Grid><Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="Auto" MinWidth="10"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
+			<Button Grid.ColumnSpan="2" Grid.Column="1"/></Grid>
+			<DockPanel LastChildFill="False"><Button DockPanel.Dock="Right"/><Button DockPanel.Dock="Top"/></DockPanel>
+			"""),
+		("Fonts, cursors and enums", """
+			<TextBlock FontFamily="Arial, Segoe UI" FontStyle="Italic" FontStretch="Condensed" TextDecorations="Underline" Foreground="Transparent" Cursor="Wait" FlowDirection="RightToLeft"/>
+			<Button Width="1e2" Height="  7  " IsEnabled="false" ClipToBounds="TRUE"/>
+			"""),
+		("Freezable and value-type resources", """
+			<StackPanel.Resources>
+			  <SolidColorBrush x:Key="F" Color="Red"/>
+			  <Color x:Key="C">#FF102030</Color>
+			  <Thickness x:Key="Th">1,2,3,4</Thickness>
+			  <CornerRadius x:Key="Cr">5</CornerRadius>
+			  <FontFamily x:Key="Ff">Arial</FontFamily>
+			  <sys:TimeSpan x:Key="Ts">0:0:2</sys:TimeSpan>
+			  <GridLength x:Key="Gl">Auto</GridLength>
+			</StackPanel.Resources>
+			<Border BorderThickness="{StaticResource Th}" CornerRadius="{StaticResource Cr}"/>
+			"""),
+		("Collections of non-UI elements", """
+			<StackPanel.Resources><x:Array x:Key="A" Type="sys:Int32"><sys:Int32>1</sys:Int32><sys:Int32>2</sys:Int32></x:Array></StackPanel.Resources>
+			<ListBox><ListBox.Resources><DataTemplate x:Key="I"><TextBlock Text="{Binding}"/></DataTemplate></ListBox.Resources><ListBox.ItemTemplate><StaticResource ResourceKey="I"/></ListBox.ItemTemplate></ListBox>
+			"""),
+		("Element syntax for markup extensions", """
+			<StackPanel.Resources><SolidColorBrush x:Key="B" Color="Red"/></StackPanel.Resources>
+			<Button><Button.Background><StaticResource ResourceKey="B"/></Button.Background><Button.Tag><x:Null/></Button.Tag><Button.Content><Binding Path="X"/></Button.Content></Button>
+			"""),
+		("Whitespace and comments", """
+			<!-- a comment before -->
+			<Button>
+			   <!-- inside -->
+			   Padded text
+			</Button>
+			<TextBlock Text="  attr  spaces  "/>
+			<TextBox>&lt;escaped&gt; &amp; entity &#169;</TextBox>
+			"""),
+		("Inline elements", """
+			<TextBlock><Run Text="a"/><LineBreak/><Hyperlink NavigateUri="http://example.com">link</Hyperlink><Span FontSize="9">s<Bold>b</Bold></Span></TextBlock>
+			"""),
+		("Image and media-free pack URIs", """
+			<Image Stretch="UniformToFill" StretchDirection="DownOnly"/>
+			<Border><Border.Background><ImageBrush Stretch="Fill" TileMode="None" Opacity="0.5"/></Border.Background></Border>
+			"""),
+		("Attached properties on property elements", """
+			<Canvas><Button Canvas.Left="5" Canvas.Top="6"/><Button><Canvas.Left>9</Canvas.Left></Button></Canvas>
+			<TextBlock TextOptions.TextFormattingMode="Display" ScrollViewer.CanContentScroll="True" ToolTipService.ShowDuration="500"/>
+			"""),
+		("Clr-namespace types and generic-free objects", """
+			<StackPanel.Resources>
+			  <sys:Uri x:Key="U">http://a/b</sys:Uri><sys:Guid x:Key="G">00000000-0000-0000-0000-000000000001</sys:Guid>
+			  <sys:DateTime x:Key="Dt">2020-01-02</sys:DateTime><sys:Char x:Key="Ch">x</sys:Char><sys:Decimal x:Key="De">1.5</sys:Decimal>
+			</StackPanel.Resources>
 			"""),
 	};
 }
