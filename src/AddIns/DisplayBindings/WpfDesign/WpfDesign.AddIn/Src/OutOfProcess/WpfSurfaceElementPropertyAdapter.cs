@@ -119,6 +119,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		internal void SetBindingChildUpdateSourceTrigger(string propertyName, int childIndex, string trigger)
+		{
+			var state = client.SetBindingUpdateSourceTriggerAsync(currentBaseVersion(), node.Id, propertyName, trigger, childIndex)
+				.GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		internal void SetBindingElementName(string propertyName, string elementName)
 		{
 			var state = client.SetBindingElementNameAsync(currentBaseVersion(), node.Id, propertyName, elementName)
@@ -464,6 +472,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 				owner.SetBindingChildMode(property.BindingPropertyName, property.BindingChildIndex, serialized);
 			else if (property.EditorKind == "BindingUpdateSourceTrigger")
 				owner.SetBindingUpdateSourceTrigger(property.BindingPropertyName, serialized);
+			else if (property.EditorKind == "BindingChildUpdateSourceTrigger")
+				owner.SetBindingChildUpdateSourceTrigger(property.BindingPropertyName, property.BindingChildIndex, serialized);
 			else if (property.EditorKind == "BindingElementName")
 				owner.SetBindingElementName(property.BindingPropertyName, serialized);
 			else if (property.EditorKind == "BindingRelativeSource")

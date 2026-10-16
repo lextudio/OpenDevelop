@@ -1381,7 +1381,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			});
 
 		[JsonRpcMethod("design/set-binding-update-source-trigger")]
-		public DesignerSessionState SetBindingUpdateSourceTrigger(long baseVersion, string elementId, string propertyName, string trigger)
+		public DesignerSessionState SetBindingUpdateSourceTrigger(long baseVersion, string elementId, string propertyName, string trigger, int childIndex = -1)
 			=> dispatcher.Dispatch(() => {
 				if (RejectIfStale(baseVersion) is { } stale) return stale;
 				var state = NewState(baseVersion);
@@ -1389,8 +1389,17 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				if (!Enum.IsDefined(typeof(System.Windows.Data.UpdateSourceTrigger), trigger)
 					|| !Enum.TryParse<System.Windows.Data.UpdateSourceTrigger>(trigger, ignoreCase: false, out var parsed))
 					return NotFound(state, "Invalid Binding UpdateSourceTrigger: " + trigger);
-				var property = item.Properties[propertyName];
-				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding)
+				DesignItem? bindingItem;
+				if (childIndex >= 0)
+				{
+					if (!TryGetEditableBindingItems(item, propertyName, out var bindingsProperty) || bindingsProperty == null
+						|| childIndex >= bindingsProperty.CollectionElements.Count)
+						return NotFound(state, "Binding child is not editable: " + propertyName);
+					bindingItem = bindingsProperty.CollectionElements[childIndex];
+				}
+				else
+					bindingItem = item.Properties[propertyName]?.Value as DesignItem;
+				if (bindingItem?.Component is not System.Windows.Data.Binding)
 					return NotFound(state, "Property is not an editable Binding: " + propertyName);
 				try { bindingItem.Properties["UpdateSourceTrigger"].SetValue(parsed); }
 				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
@@ -3579,6 +3588,14 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 									BindingPropertyName = descriptor.Name, BindingChildIndex = index, ShouldSerialize = false,
 									AllowedValues = Enum.GetNames(typeof(System.Windows.Data.BindingMode)).ToList()
 								});
+				result.Add(new DesignerPropertyInfo {
+					Name = descriptor.Name + ".Bindings[" + index.ToString(CultureInfo.InvariantCulture) + "].UpdateSourceTrigger",
+					DisplayName = descriptor.Name + " Binding " + (index + 1).ToString(CultureInfo.InvariantCulture) + " Update Source Trigger",
+					Category = "Binding", TypeName = typeof(System.Windows.Data.UpdateSourceTrigger).FullName ?? "",
+					Kind = "Enum", IsEnum = true, EditorKind = "BindingChildUpdateSourceTrigger", Value = child.UpdateSourceTrigger.ToString(),
+					BindingPropertyName = descriptor.Name, BindingChildIndex = index, ShouldSerialize = false,
+					AllowedValues = Enum.GetNames(typeof(System.Windows.Data.UpdateSourceTrigger)).ToList()
+				});
 							}
 						}
 					}

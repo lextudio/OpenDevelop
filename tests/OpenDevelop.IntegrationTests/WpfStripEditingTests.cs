@@ -841,9 +841,13 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
                 edited = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.Bindings[0].Mode", "OneWay");
                 return edited.GetProperty("success").GetBoolean();
             }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), edited.ToString());
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                edited = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.Bindings[0].UpdateSourceTrigger", "PropertyChanged");
+                return edited.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), edited.ToString());
             Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
             var saved = await File.ReadAllTextAsync(xamlPath);
-            Assert.Matches("<Binding(?=[^>]*Path=\"First\")(?=[^>]*Mode=\"OneWay\")", saved);
+            Assert.Matches("<Binding(?=[^>]*Path=\"First\")(?=[^>]*Mode=\"OneWay\")(?=[^>]*UpdateSourceTrigger=\"PropertyChanged\")", saved);
             Assert.Contains("Path=\"Last\"", saved, StringComparison.Ordinal);
         } finally {
             await app.InvokeAsync("od.close-active-view");
