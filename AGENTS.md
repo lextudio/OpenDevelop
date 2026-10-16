@@ -16,6 +16,8 @@ Use OpenCode with `opencode-go/deepseek-v4.1-flash` at High effort. One commit i
 complete review target. Before commit, OpenCode must return terminal `VERDICT: APPROVED` for the
 exact staged diff and relevant executable tests must pass. `CHANGES_REQUESTED`, timeout, error,
 empty or truncated output blocks the commit. After any staged-diff change, re-review the full target.
+Ask the reviewer for exactly those two terminal tokens; free-form wording such as "OK TO COMMIT" or
+"BLOCKING" is not an approval and cannot be matched mechanically.
 The command's streamed output is not the record of approval: it can be truncated while OpenCode is
 still working. Record the review launch time and distinctive prompt title; after its process exits,
 locate the matching newly-created session in `opencode session list`, then inspect its final assistant
@@ -43,9 +45,9 @@ Invocation (measured): review with `opencode run --agent reviewer -m opencode-go
 --variant high --title "<unique title> <tree>" "<context>" </dev/null > out 2>&1` and commit with
 `--agent build` in the same form. `reviewer` (`~/.config/opencode/agents/reviewer.md`) is read-only
 and begins with the full `git diff --cached` before its bounded context reads, so put the intent and
-test evidence in the prompt; the default agent is not a reviewer. Redirect stdin from `/dev/null`
-(one `run` hung after `init` without it;
-the log is `~/.local/share/opencode/log/opencode.log`). A review takes roughly 4-7 minutes and a
+test evidence in the prompt; the default agent is not a reviewer. On macOS redirect stdin from
+`/dev/null` (one `run` hung after `init` without it; Windows: see below); the log is
+`~/.local/share/opencode/log/opencode.log` (`%USERPROFILE%\.local\share\opencode\log` on Windows). A review takes roughly 4-7 minutes and a
 commit about 1-2. `opencode export <id>` must go to a file before JSON parsing (piping truncates),
 and only with a non-empty id: a bare `opencode export` waits on an interactive picker forever.
 Run OpenCode in the foreground of the command runner and retain/poll that runner's process handle
@@ -56,6 +58,30 @@ with a foreground no-tool diagnostic session if necessary, then apply the normal
 Empty intermediate polls are normal while the reviewer is reading code: wait for the original
 foreground process to exit before looking up its session or deciding that the launch failed. Do not
 start a second review merely because its streamed output is quiet.
+
+Windows (PowerShell, measured 2026-10): install with `npm install -g opencode-ai`. The real binary is
+`%APPDATA%\npm\node_modules\opencode-ai\bin\opencode.exe`; the `opencode` on PATH is a shim, and config
+and auth sit under `%USERPROFILE%\.config\opencode` and `.local\share\opencode`. Call `opencode run ...`
+directly with the prompt in a here-string variable and `*> file`. `Start-Process opencode` fails (`%1 is
+not a valid Win32 application`), and `Start-Process <exe> -ArgumentList $prompt` splits a multi-line
+prompt on spaces, so OpenCode only prints its usage, exits 1 and creates no session. For a time limit
+use `Start-Job` + `Wait-Job -Timeout`; on timeout kill only the child whose command line contains
+`opencode` and `--agent` (`Get-CimInstance Win32_Process`), never the OpenCode desktop app.
+PowerShell has no `</dev/null`; the Windows runs made so far completed without a stdin redirect.
+Pin each agent's model in `~/.config/opencode/opencode.jsonc` (`agent.<name>.model`) and still pass
+`-m`: the built-in `build` agent has no model of its own and fell back to `qwen3.5:397b`, which was
+retired, so it failed at launch with an error naming the retirement. `reviewer` has bash allow-listed to
+read-only git; its other denied calls, and anything outside the repository (NuGet cache, URLs), are
+auto-rejected and a run can end on a rejected call, so tell it to stay inside the repository, use only
+`git diff`/`git status` and file reads, and end with the terminal verdict line (it cannot build or run
+tests, so the test evidence in the prompt is all it has). Redirect the full output to a file and read its
+end: the console tail can stop mid-exploration. New files must be staged (or `git add -N`) before the
+review, because the diff only shows tracked paths. Keep the build agent's prompt short: with a long one
+that mentioned the review it spent over ten minutes looking for that session in `opencode session list`
+and never committed, though the staged files were right. "The files are already staged; run only
+`git status --short`, `git commit` with this message, `git log --oneline -1`" finished in under four
+minutes.
+
 Give the build agent the exact tree hash, path list and message. Chain `git add ... && git diff
 --cached --stat && git write-tree` before launching a review: a stale `.git/index.lock` (also
 under `.git/modules/...` for submodules) otherwise yields an empty review target. Integration runs
