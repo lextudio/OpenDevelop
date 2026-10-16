@@ -92,4 +92,16 @@ public sealed class ImageListEditModelTests
 		Assert.Throws<System.ArgumentException>(() => ImageListEditing.ApplyScript(model, "remove:9"));
 		Assert.Throws<System.ArgumentException>(() => ImageListEditing.ApplyScript(model, "add:/no/such/file.png"));
 	}
+
+	[Fact]
+	public void ScriptsEditImageSizeAndColorDepthInTheSameTransaction()
+	{
+		var model = new ImageListEditModel(new[] { Image("a") }, "16,16", "Depth32Bit");
+		Assert.True(ImageListEditing.ApplyScript(model, "size:24x32;depth:Depth8Bit"));
+		Assert.True(model.IsChanged);
+		Assert.Equal((24, 32, "Depth8Bit"), (model.Width, model.Height, model.ColorDepth));
+		Assert.False(model.SetImageSize(0, 32));
+		Assert.False(model.SetColorDepth("Depth3Bit"));
+		Assert.Throws<System.ArgumentException>(() => ImageListEditing.ApplyScript(model, "size:24x0"));
+	}
 }

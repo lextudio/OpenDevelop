@@ -25,7 +25,7 @@ public interface IImageListProperty
 /// <summary>The Properties pad's selected object, which commits an edited image list.</summary>
 public interface IImageListEditorHost
 {
-	void SetImageList(string propertyName, IReadOnlyList<DesignerImageListEntry> images);
+	void SetImageList(string propertyName, IReadOnlyList<DesignerImageListEntry> images, string imageSize, string colorDepth);
 }
 
 /// <summary>
@@ -55,9 +55,9 @@ public sealed class ImageListEditModel
 	}
 
 	public IReadOnlyList<Entry> Entries => entries;
-	public int Width { get; }
-	public int Height { get; }
-	public string ColorDepth { get; }
+	public int Width { get; private set; }
+	public int Height { get; private set; }
+	public string ColorDepth { get; private set; }
 	public bool IsChanged => Fingerprint() != initial;
 
 	/// <summary>Adds an image at the end, making <paramref name="key"/> unique (blank stays unnamed). Returns its index, or -1 for no pixels.</summary>
@@ -101,6 +101,25 @@ public sealed class ImageListEditModel
 		return true;
 	}
 
+	/// <summary>Changes the serialized ImageSize. ImageList accepts sizes from one through 256 pixels.</summary>
+	public bool SetImageSize(int width, int height)
+	{
+		if (width is < 1 or > 256 || height is < 1 or > 256)
+			return false;
+		Width = width;
+		Height = height;
+		return true;
+	}
+
+	/// <summary>Changes the serialized ColorDepth to one of the WinForms enum names.</summary>
+	public bool SetColorDepth(string colorDepth)
+	{
+		if (colorDepth is not ("Depth4Bit" or "Depth8Bit" or "Depth16Bit" or "Depth24Bit" or "Depth32Bit"))
+			return false;
+		ColorDepth = colorDepth;
+		return true;
+	}
+
 	/// <summary>The key for a new image: <paramref name="wanted"/> itself, else with " (2)", " (3)"... appended; blank stays blank.</summary>
 	public string UniqueKey(string wanted, int ignoreIndex)
 	{
@@ -124,7 +143,8 @@ public sealed class ImageListEditModel
 		=> entries.Select(entry => new DesignerImageListEntry { Key = entry.Key, Png = entry.Png }).ToList();
 
 	string Fingerprint()
-		=> string.Join("|", entries.Select(entry => entry.Key + ":" + Convert.ToHexString(SHA256.HashData(entry.Png))));
+		=> Width.ToString(CultureInfo.InvariantCulture) + "x" + Height.ToString(CultureInfo.InvariantCulture) + ":" + ColorDepth + "|"
+			+ string.Join("|", entries.Select(entry => entry.Key + ":" + Convert.ToHexString(SHA256.HashData(entry.Png))));
 }
 
 /// <summary>
@@ -163,7 +183,8 @@ public static class ImageListEditing
 
 	/// <summary>
 	/// Applies an edit script to a model, as a user would in the dialog: ';'-separated <c>add:&lt;path&gt;</c> (an image file; its file
-	/// name becomes the key), <c>remove:&lt;i&gt;</c>, <c>up:&lt;i&gt;</c>, <c>down:&lt;i&gt;</c>, <c>rename:&lt;i&gt;:&lt;key&gt;</c>, or
+	/// name becomes the key), <c>remove:&lt;i&gt;</c>, <c>up:&lt;i&gt;</c>, <c>down:&lt;i&gt;</c>, <c>rename:&lt;i&gt;:&lt;key&gt;</c>,
+	/// <c>size:&lt;width&gt;x&lt;height&gt;</c>, <c>depth:&lt;ColorDepth name&gt;</c>, or
 	/// <c>cancel</c>. Returns false for cancel; throws for an unknown or rejected step.
 	/// </summary>
 	public static bool ApplyScript(ImageListEditModel model, string script)
@@ -179,12 +200,22 @@ public static class ImageListEditing
 				"up" => model.MoveUp(index),
 				"down" => model.MoveDown(index),
 				"rename" => model.Rename(index, parts.Length > 2 ? parts[2] : ""),
+				"size" => TryParseSize(parts.Length > 1 ? parts[1] : "", out var width, out var height) && model.SetImageSize(width, height),
+				"depth" => model.SetColorDepth(parts.Length > 1 ? parts[1] : ""),
 				_ => throw new ArgumentException("Unknown image list edit step: " + step)
 			};
 			if (!ok)
 				throw new ArgumentException("Rejected image list edit step: " + step);
 		}
 		return true;
+	}
+
+	static bool TryParseSize(string text, out int width, out int height)
+	{
+		width = height = 0;
+		var parts = text.Split('x', 'X');
+		return parts.Length == 2 && Int32.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out width)
+			&& Int32.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out height);
 	}
 
 	public sealed record ScriptedEditResult(bool Success, string? Error, string[]? Before, string[]? After, bool Committed);
@@ -225,7 +256,7 @@ public static class ImageListEditing
 				? TestEdit(model)
 				: new ImageListEditorDialog(model, descriptor.DisplayName) { Owner = owner }.ShowDialog() == true;
 			if (accepted && model.IsChanged)
-				host.SetImageList(descriptor.Name, model.ToEntries());
+				host.SetImageList(descriptor.Name, model.ToEntries(), model.Width + "," + model.Height, model.ColorDepth);
 		} catch (Exception exception) {
 			if (TestEdit != null) {
 				TestException = exception;
@@ -269,13 +300,27 @@ public sealed class ImageListEditorDialog : Window
 		commands.Children.Add(Command("Remove", () => { var index = list.SelectedIndex; if (model.Remove(index)) Refresh(Math.Min(index, model.Entries.Count - 1)); }));
 		commands.Children.Add(Command("Move Up", () => { var index = list.SelectedIndex; if (model.MoveUp(index)) Refresh(index - 1); }));
 		commands.Children.Add(Command("Move Down", () => { var index = list.SelectedIndex; if (model.MoveDown(index)) Refresh(index + 1); }));
-		commands.Children.Add(new TextBlock {
-			Text = "Size " + model.Width + " x " + model.Height, Margin = new Thickness(0, 12, 0, 0), Opacity = 0.7,
-			ToolTip = "Images are scaled to the list's ImageSize."
-		});
+		commands.Children.Add(new TextBlock { Text = "Image size", Margin = new Thickness(0, 12, 0, 2), Opacity = 0.7 });
+		var width = new TextBox { Text = model.Width.ToString(CultureInfo.InvariantCulture), Width = 84, ToolTip = "Width (1–256 pixels)" };
+		var height = new TextBox { Text = model.Height.ToString(CultureInfo.InvariantCulture), Width = 84, Margin = new Thickness(0, 2, 0, 0), ToolTip = "Height (1–256 pixels)" };
+		commands.Children.Add(width);
+		commands.Children.Add(height);
+		commands.Children.Add(new TextBlock { Text = "Color depth", Margin = new Thickness(0, 8, 0, 2), Opacity = 0.7 });
+		var depth = new ComboBox { Width = 112, ItemsSource = new[] { "Depth4Bit", "Depth8Bit", "Depth16Bit", "Depth24Bit", "Depth32Bit" }, SelectedItem = model.ColorDepth };
+		commands.Children.Add(depth);
 
 		var ok = new Button { Content = "OK", IsDefault = true, MinWidth = 75, Margin = new Thickness(0, 0, 6, 0) };
-		ok.Click += (_, _) => DialogResult = true;
+		ok.Click += (_, _) => {
+			if (!Int32.TryParse(width.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedWidth)
+				|| !Int32.TryParse(height.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedHeight)
+				|| !model.SetImageSize(parsedWidth, parsedHeight)
+				|| !model.SetColorDepth(depth.SelectedItem as string ?? "")) {
+				MessageBox.Show(this, "Image size must be between 1 and 256 pixels, and color depth must be supported.", Title,
+					MessageBoxButton.OK, MessageBoxImage.Warning);
+				return;
+			}
+			DialogResult = true;
+		};
 		var cancel = new Button { Content = "Cancel", IsCancel = true, MinWidth = 75 };
 		var footer = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0) };
 		footer.Children.Add(ok);

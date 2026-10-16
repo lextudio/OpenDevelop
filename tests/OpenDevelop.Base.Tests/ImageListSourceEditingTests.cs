@@ -99,6 +99,20 @@ public sealed class ImageListSourceEditingTests
 	}
 
 	[Fact]
+	public void CSharp_RewritesOnlyRequestedImageListSettings()
+	{
+		Assert.True(ImageListSourceEditing.TryRewriteCSharpSettings(CSharpWithStream, "imageList1", 24, 32, "Depth8Bit", out var text, out var error), error);
+		Assert.Contains("this.imageList1.ImageSize = new System.Drawing.Size(24, 32);", text, System.StringComparison.Ordinal);
+		Assert.Contains("this.imageList1.ColorDepth = System.Windows.Forms.ColorDepth.Depth8Bit;", text, System.StringComparison.Ordinal);
+		Assert.Equal(1, Count(text, "ImageSize ="));
+		Assert.Equal(1, Count(text, "ColorDepth ="));
+
+		Assert.True(ImageListSourceEditing.TryRewriteCSharpSettings(text, "imageList1", null, null, "Depth32Bit", out var depthOnly, out error), error);
+		Assert.Contains("new System.Drawing.Size(24, 32)", depthOnly, System.StringComparison.Ordinal);
+		Assert.Contains("ColorDepth.Depth32Bit", depthOnly, System.StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public void CSharp_RefusesAForeignStreamKeyAMissingListAndBrokenSource()
 	{
 		Assert.False(ImageListSourceEditing.TryRewriteCSharp(CSharpWithStream, "imageList1", "other.ImageStream", new[] { "a" }, out var unchanged, out var foreign));
@@ -128,5 +142,16 @@ public sealed class ImageListSourceEditingTests
 		Assert.True(ImageListSourceEditing.TryRewriteVisualBasic(VbWithStream, "imageList1", "imageList1.ImageStream", System.Array.Empty<string>(), out var cleared, out error), error);
 		Assert.DoesNotContain("ImageStream", cleared, System.StringComparison.Ordinal);
 		Assert.False(ImageListSourceEditing.TryRewriteVisualBasic(VbWithStream, "imageList1", "other.ImageStream", new[] { "a" }, out _, out _));
+	}
+
+	[Fact]
+	public void VisualBasic_AddsImageListSettingsAfterTheProvenCreation()
+	{
+		Assert.True(ImageListSourceEditing.TryRewriteVisualBasicSettings(VbWithoutStream, "imageList1", 20, 25, "Depth16Bit", out var text, out var error), error);
+		var creation = text.IndexOf("Me.imageList1 = New", System.StringComparison.Ordinal);
+		var size = text.IndexOf("Me.imageList1.ImageSize = New System.Drawing.Size(20, 25)", System.StringComparison.Ordinal);
+		Assert.True(creation >= 0 && size > creation, text);
+		Assert.Contains("Me.imageList1.ColorDepth = System.Windows.Forms.ColorDepth.Depth16Bit", text, System.StringComparison.Ordinal);
+		Assert.False(ImageListSourceEditing.TryRewriteVisualBasicSettings(VbWithStream, "imageList1", 0, 16, null, out _, out _));
 	}
 }

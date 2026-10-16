@@ -178,7 +178,7 @@ public sealed class DesignerEditorJourneyTests(OpenDevelopAppFixture app)
 
             JsonElement edit = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
-                edit = await app.InvokeAsync("od.forms-designer.properties-pad.edit-image-list", "Images", "add:" + imagePath);
+				edit = await app.InvokeAsync("od.forms-designer.properties-pad.edit-image-list", "Images", "add:" + imagePath + ";size:24x20;depth:Depth8Bit");
                 return edit.GetProperty("success").GetBoolean();
             }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 300), edit.ToString());
             Assert.True(edit.GetProperty("committed").GetBoolean(), edit.ToString());
@@ -188,16 +188,20 @@ public sealed class DesignerEditorJourneyTests(OpenDevelopAppFixture app)
             var source = await File.ReadAllTextAsync(designerPath);
             Assert.Contains("imageList1.ImageStream", source, StringComparison.Ordinal);
             Assert.Contains("imageList1.Images.SetKeyName(0, \"" + Path.GetFileName(imagePath) + "\")", source, StringComparison.Ordinal);
+			Assert.Contains("imageList1.ImageSize = new System.Drawing.Size(24, 20);", source, StringComparison.Ordinal);
+			Assert.Contains("imageList1.ColorDepth = System.Windows.Forms.ColorDepth.Depth8Bit;", source, StringComparison.Ordinal);
 
             Assert.True((await app.InvokeAsync("od.forms-designer.undo")).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
             Assert.DoesNotContain("imageList1.ImageStream", await File.ReadAllTextAsync(designerPath), StringComparison.Ordinal);
             Assert.DoesNotContain("imageList1.ImageStream", File.Exists(resourcePath) ? await File.ReadAllTextAsync(resourcePath) : "", StringComparison.Ordinal);
+			Assert.DoesNotContain("imageList1.ImageSize", await File.ReadAllTextAsync(designerPath), StringComparison.Ordinal);
 
             Assert.True((await app.InvokeAsync("od.forms-designer.redo")).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
             Assert.Contains("imageList1.ImageStream", await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
             Assert.Contains("imageList1.ImageStream", await File.ReadAllTextAsync(designerPath), StringComparison.Ordinal);
+			Assert.Contains("ColorDepth.Depth8Bit", await File.ReadAllTextAsync(designerPath), StringComparison.Ordinal);
         } finally {
             await app.InvokeAsync("od.close-all-document-views");
             await File.WriteAllBytesAsync(designerPath, originalDesigner);

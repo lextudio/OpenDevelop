@@ -231,7 +231,7 @@ namespace ICSharpCode.FormsDesigner
 		/// <summary>Replaces an ImageList's images as one IDE-owned document transaction: the host builds the <c>ImageStream</c> resx entry (it only
 		/// returns it), and the IDE writes that entry into the form's .resx and rewrites the stream binding and <c>SetKeyName</c> keys in the designer
 		/// source, then hands the child the completed snapshot. An empty list removes the binding and the entry.</summary>
-		internal void SetRemoteImageList(string componentName, DesignerPropertyInfo property, IReadOnlyList<DesignerImageListEntry> images)
+		internal void SetRemoteImageList(string componentName, DesignerPropertyInfo property, IReadOnlyList<DesignerImageListEntry> images, string imageSize, string colorDepth)
 		{
 			EnsureRemoteDesignerLoaded();
 			if (property == null || !String.Equals(property.EditorKind, "ImageListImages", StringComparison.Ordinal))
@@ -247,12 +247,17 @@ namespace ICSharpCode.FormsDesigner
 			if (resource == null && images.Count > 0)
 				throw new InvalidOperationException("Create a form .resx resource file before adding images to an image list.");
 
+			var size = (imageSize ?? "").Split(',');
+			if (size.Length != 2 || !Int32.TryParse(size[0], out var width) || !Int32.TryParse(size[1], out var height)
+				|| width is < 1 or > 256 || height is < 1 or > 256)
+				throw new InvalidOperationException("The image list's size must be between 1 and 256.");
+			if (colorDepth is not ("Depth4Bit" or "Depth8Bit" or "Depth16Bit" or "Depth24Bit" or "Depth32Bit"))
+				throw new InvalidOperationException("The image list's color depth is unknown.");
+			var sizeChanged = !String.Equals(property.ImageListSize, imageSize, StringComparison.Ordinal);
+			var colorDepthChanged = !String.Equals(property.ImageListColorDepth, colorDepth, StringComparison.Ordinal);
 			DesignerImageListResource built = null;
 			if (images.Count > 0) {
-				var size = (property.ImageListSize ?? "").Split(',');
-				if (size.Length != 2 || !Int32.TryParse(size[0], out var width) || !Int32.TryParse(size[1], out var height))
-					throw new InvalidOperationException("The image list's size is unknown.");
-				built = remoteClient.BuildImageListResourceAsync(images, width, height, property.ImageListColorDepth,
+				built = remoteClient.BuildImageListResourceAsync(images, width, height, colorDepth,
 					System.Threading.CancellationToken.None).GetAwaiter().GetResult();
 				if (!built.Accepted)
 					throw new InvalidOperationException(built.Error);
@@ -264,9 +269,16 @@ namespace ICSharpCode.FormsDesigner
 			var target = CaptureRemoteDocuments();
 			var sourceName = DesignerCodeFile.FileName.ToString();
 			var keys = images.Select(image => image.Key ?? "").ToList();
-			var rewritten = sourceName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase)
+			var visualBasic = sourceName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase);
+			var rewritten = visualBasic
 				? ImageListSourceEditing.TryRewriteVisualBasic(target.SourceTexts[sourceName], componentName, streamKey, keys, out var text, out var error)
 				: ImageListSourceEditing.TryRewriteCSharp(target.SourceTexts[sourceName], componentName, streamKey, keys, out text, out error);
+			if (rewritten && (sizeChanged || colorDepthChanged))
+				rewritten = visualBasic
+					? ImageListSourceEditing.TryRewriteVisualBasicSettings(text, componentName, sizeChanged ? width : null, sizeChanged ? height : null,
+						colorDepthChanged ? colorDepth : null, out text, out error)
+					: ImageListSourceEditing.TryRewriteCSharpSettings(text, componentName, sizeChanged ? width : null, sizeChanged ? height : null,
+						colorDepthChanged ? colorDepth : null, out text, out error);
 			if (!rewritten)
 				throw new InvalidOperationException(error);
 			target.SourceTexts[sourceName] = text;
@@ -2225,13 +2237,13 @@ namespace ICSharpCode.FormsDesigner
 					owner.SetRemoteStringArray(name, propertyName, items.Select(item => item.Text ?? "").ToList());
 			}
 
-			void IImageListEditorHost.SetImageList(string propertyName, IReadOnlyList<DesignerImageListEntry> images)
+			void IImageListEditorHost.SetImageList(string propertyName, IReadOnlyList<DesignerImageListEntry> images, string imageSize, string colorDepth)
 			{
 				var imageListProperty = remoteProperties.SingleOrDefault(item => String.Equals(item.Name, propertyName, StringComparison.Ordinal)
 					&& String.Equals(item.EditorKind, "ImageListImages", StringComparison.Ordinal));
 				if (imageListProperty == null)
 					throw new InvalidOperationException("This property is not an editable image list.");
-				owner.SetRemoteImageList(name, imageListProperty, images);
+				owner.SetRemoteImageList(name, imageListProperty, images, imageSize, colorDepth);
 			}
 
 			void IResourceImageEditorHost.ReplaceResourceImage(string propertyName, byte[] imageBytes)

@@ -181,6 +181,102 @@ namespace ICSharpCode.FormsDesigner.Services
 			return true;
 		}
 
+		/// <summary>Writes only explicitly changed ImageSize/ColorDepth settings. A setting may be replaced when it is one plain
+		/// assignment, or appended directly after the proven ImageList creation; any other source shape is rejected unchanged.</summary>
+		public static bool TryRewriteCSharpSettings(string source, string imageListName, int? width, int? height, string colorDepth,
+			out string updated, out string error)
+		{
+			updated = source;
+			if (!ValidateSettings(imageListName, width, height, colorDepth, out error)) return false;
+			var tree = CSharpSyntaxTree.ParseText(source);
+			if (tree.GetDiagnostics().Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)) { error = "The designer source has syntax errors."; return false; }
+			var root = tree.GetCompilationUnitRoot();
+			var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>().Where(item => item.Identifier.ValueText == "InitializeComponent" && item.ParameterList.Parameters.Count == 0 && item.Body != null).ToArray();
+			var method = methods.Length == 1 ? methods[0] : null;
+			if (method == null) { error = "The designer source has no unambiguous InitializeComponent method."; return false; }
+			static string Normalize(ExpressionSyntax expression) => expression.ToString().Replace("this.", "", StringComparison.Ordinal);
+			var sizeTarget = imageListName + ".ImageSize";
+			var depthTarget = imageListName + ".ColorDepth";
+			var statements = method.Body!.Statements.ToList();
+			bool IsAssignment(StatementSyntax statement, string target) => statement is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax assignment } && Normalize(assignment.Left) == target;
+			bool Mentions(StatementSyntax statement, string target) => statement.ToString().Replace("this.", "", StringComparison.Ordinal).Contains(target, StringComparison.Ordinal);
+			var sizeMatches = statements.Where(statement => IsAssignment(statement, sizeTarget)).ToList();
+			var depthMatches = statements.Where(statement => IsAssignment(statement, depthTarget)).ToList();
+			if ((width.HasValue && (sizeMatches.Count > 1 || statements.Any(statement => Mentions(statement, sizeTarget) && !IsAssignment(statement, sizeTarget))))
+				|| (!String.IsNullOrEmpty(colorDepth) && (depthMatches.Count > 1 || statements.Any(statement => Mentions(statement, depthTarget) && !IsAssignment(statement, depthTarget))))) {
+				error = "The image list's existing size or color-depth setting is not a single plain assignment.";
+				return false;
+			}
+			var creation = statements.FindIndex(statement => statement is ExpressionStatementSyntax { Expression: AssignmentExpressionSyntax assignment } && Normalize(assignment.Left) == imageListName);
+			if ((width.HasValue && sizeMatches.Count == 0 || !String.IsNullOrEmpty(colorDepth) && depthMatches.Count == 0) && creation < 0) {
+				error = "The designer source never creates the image list '" + imageListName + "'.";
+				return false;
+			}
+			var replacementSize = width.HasValue ? SyntaxFactory.ParseStatement("this." + sizeTarget + " = new System.Drawing.Size(" + width.Value + ", " + height!.Value + ");\n") : null;
+			var replacementDepth = !String.IsNullOrEmpty(colorDepth) ? SyntaxFactory.ParseStatement("this." + depthTarget + " = System.Windows.Forms.ColorDepth." + colorDepth + ";\n") : null;
+			var rebuilt = new List<StatementSyntax>();
+			for (var index = 0; index < statements.Count; index++) {
+				if (replacementSize != null && IsAssignment(statements[index], sizeTarget)) rebuilt.Add(replacementSize);
+				else if (replacementDepth != null && IsAssignment(statements[index], depthTarget)) rebuilt.Add(replacementDepth);
+				else rebuilt.Add(statements[index]);
+				if (index == creation) {
+					if (replacementSize != null && sizeMatches.Count == 0) rebuilt.Add(replacementSize);
+					if (replacementDepth != null && depthMatches.Count == 0) rebuilt.Add(replacementDepth);
+				}
+			}
+			updated = Rebuild(root, method, rebuilt); error = ""; return true;
+		}
+
+		/// <summary>Visual Basic counterpart of <see cref="TryRewriteCSharpSettings"/>.</summary>
+		public static bool TryRewriteVisualBasicSettings(string source, string imageListName, int? width, int? height, string colorDepth,
+			out string updated, out string error)
+		{
+			updated = source;
+			if (!ValidateSettings(imageListName, width, height, colorDepth, out error)) return false;
+			var tree = Vb.VisualBasicSyntaxTree.ParseText(source);
+			if (tree.GetDiagnostics().Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)) { error = "The designer source has syntax errors."; return false; }
+			var root = (VbSyntax.CompilationUnitSyntax)tree.GetRoot();
+			var methods = root.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>().Where(item => item.BlockStatement is VbSyntax.MethodStatementSyntax statement && statement.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword) && statement.Identifier.ValueText == "InitializeComponent" && statement.ParameterList.Parameters.Count == 0).ToArray();
+			var method = methods.Length == 1 ? methods[0] : null;
+			if (method == null) { error = "The designer source has no unambiguous InitializeComponent method."; return false; }
+			static string Normalize(VbSyntax.ExpressionSyntax expression) => expression.ToString().Replace("Me.", "", StringComparison.OrdinalIgnoreCase);
+			var sizeTarget = imageListName + ".ImageSize";
+			var depthTarget = imageListName + ".ColorDepth";
+			var statements = method.Statements.ToList();
+			bool IsAssignment(VbSyntax.StatementSyntax statement, string target) => statement is VbSyntax.AssignmentStatementSyntax assignment && String.Equals(Normalize(assignment.Left), target, StringComparison.OrdinalIgnoreCase);
+			bool Mentions(VbSyntax.StatementSyntax statement, string target) => statement.ToString().Replace("Me.", "", StringComparison.OrdinalIgnoreCase).IndexOf(target, StringComparison.OrdinalIgnoreCase) >= 0;
+			var sizeMatches = statements.Where(statement => IsAssignment(statement, sizeTarget)).ToList();
+			var depthMatches = statements.Where(statement => IsAssignment(statement, depthTarget)).ToList();
+			if ((width.HasValue && (sizeMatches.Count > 1 || statements.Any(statement => Mentions(statement, sizeTarget) && !IsAssignment(statement, sizeTarget))))
+				|| (!String.IsNullOrEmpty(colorDepth) && (depthMatches.Count > 1 || statements.Any(statement => Mentions(statement, depthTarget) && !IsAssignment(statement, depthTarget))))) {
+				error = "The image list's existing size or color-depth setting is not a single plain assignment.";
+				return false;
+			}
+			var creation = statements.FindIndex(statement => statement is VbSyntax.AssignmentStatementSyntax assignment && String.Equals(Normalize(assignment.Left), imageListName, StringComparison.OrdinalIgnoreCase));
+			if ((width.HasValue && sizeMatches.Count == 0 || !String.IsNullOrEmpty(colorDepth) && depthMatches.Count == 0) && creation < 0) { error = "The designer source never creates the image list '" + imageListName + "'."; return false; }
+			var replacementSize = width.HasValue ? Vb.SyntaxFactory.ParseExecutableStatement("Me." + sizeTarget + " = New System.Drawing.Size(" + width.Value + ", " + height!.Value + ")") : null;
+			var replacementDepth = !String.IsNullOrEmpty(colorDepth) ? Vb.SyntaxFactory.ParseExecutableStatement("Me." + depthTarget + " = System.Windows.Forms.ColorDepth." + colorDepth) : null;
+			var rebuilt = new List<VbSyntax.StatementSyntax>();
+			for (var index = 0; index < statements.Count; index++) {
+				if (replacementSize != null && IsAssignment(statements[index], sizeTarget)) rebuilt.Add(replacementSize);
+				else if (replacementDepth != null && IsAssignment(statements[index], depthTarget)) rebuilt.Add(replacementDepth);
+				else rebuilt.Add(statements[index]);
+				if (index == creation) {
+					if (replacementSize != null && sizeMatches.Count == 0) rebuilt.Add(replacementSize);
+					if (replacementDepth != null && depthMatches.Count == 0) rebuilt.Add(replacementDepth);
+				}
+			}
+			updated = Rebuild(root, method, rebuilt); error = ""; return true;
+		}
+
+		static bool ValidateSettings(string imageListName, int? width, int? height, string colorDepth, out string error)
+		{
+			if (!SyntaxFacts.IsValidIdentifier(imageListName ?? "")) { error = "The image list name must be valid."; return false; }
+			if (width.HasValue != height.HasValue || width is < 1 or > 256 || height is < 1 or > 256) { error = "The image list size must be between 1 and 256."; return false; }
+			if (!String.IsNullOrEmpty(colorDepth) && colorDepth is not ("Depth4Bit" or "Depth8Bit" or "Depth16Bit" or "Depth24Bit" or "Depth32Bit")) { error = "The image list color depth is unknown."; return false; }
+			error = ""; return true;
+		}
+
 		static string Rebuild(CompilationUnitSyntax root, MethodDeclarationSyntax method, IEnumerable<StatementSyntax> statements)
 			=> root.ReplaceNode(method, method.WithBody(method.Body!.WithStatements(SyntaxFactory.List(statements)))).ToFullString();
 
