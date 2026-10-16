@@ -1220,6 +1220,43 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task ChildHost_EditsOnlyTheLevelOfAnExistingFindAncestorBinding()
+	{
+		const string xaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Tag="outer">
+			  <Grid Tag="inner">
+			    <TextBlock x:Name="bound" Text="{Binding Path=Tag, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type Grid}, AncestorLevel=2}}" />
+			  </Grid>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var bound = FindByName(opened.Tree!, "bound")!;
+		var level = bound.Properties.Single(property => property.EditorKind == "BindingAncestorLevel");
+		Assert.Equal("2", level.Value);
+		Assert.Equal("Text", level.BindingPropertyName);
+		Assert.DoesNotContain(bound.Properties, property => property.EditorKind == "BindingRelativeSource");
+
+		var changed = await client.SetBindingAncestorLevelAsync(opened.Version, bound.Id, "Text", 1, timeout.Token);
+		Assert.True(changed.Accepted, changed.Error);
+		var text = (await client.FlushAsync(changed.Version, timeout.Token)).Files.Single().Text;
+		Assert.Contains("AncestorLevel=1", text, StringComparison.Ordinal);
+		// XamlDom may expand the compact RelativeSource markup into a property element, so preserve
+		// the binding semantics rather than requiring the original token layout.
+		Assert.Contains("AncestorType", text, StringComparison.Ordinal);
+		Assert.Contains("FindAncestor", text, StringComparison.Ordinal);
+
+		var invalid = await client.SetBindingAncestorLevelAsync(changed.Version, bound.Id, "Text", 0, timeout.Token);
+		Assert.False(invalid.Accepted);
+		Assert.Contains("between 1 and 1000", invalid.Error, StringComparison.Ordinal);
+		var nonAncestor = FindByName(changed.Tree!, "bound")!;
+		var rejected = await client.SetBindingAncestorLevelAsync(changed.Version, nonAncestor.Id, "Width", 1, timeout.Token);
+		Assert.False(rejected.Accepted);
+	}
+
+	[Fact]
 	public async Task ChildHost_OnlyEditsBindingSourceWhenXamlDomProvesStaticResourceSyntax()
 	{
 		const string xaml = """

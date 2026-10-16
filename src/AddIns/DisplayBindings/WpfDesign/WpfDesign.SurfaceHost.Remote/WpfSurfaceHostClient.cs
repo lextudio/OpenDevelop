@@ -204,6 +204,13 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-relative-source",
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, relativeSource }, cancellationToken), cancellationToken);
 
+	/// <summary>Changes the level of an already-authored <c>RelativeSource FindAncestor</c> Binding.
+	/// The host refuses a Binding without a proven ancestor type, so this never creates an incomplete
+	/// RelativeSource expression.</summary>
+	public Task<DesignerSessionState> SetBindingAncestorLevelAsync(long baseVersion, string elementId, string propertyName, int level, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-ancestor-level",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, level }, cancellationToken), cancellationToken);
+
 	/// <summary>Sets an existing Binding's Source to a resource key that the child proved is an
 	/// authored <c>{StaticResource}</c> reference. This cannot carry arbitrary source markup.</summary>
 	public Task<DesignerSessionState> SetBindingSourceAsync(long baseVersion, string elementId, string propertyName, string resourceKey, CancellationToken cancellationToken = default)

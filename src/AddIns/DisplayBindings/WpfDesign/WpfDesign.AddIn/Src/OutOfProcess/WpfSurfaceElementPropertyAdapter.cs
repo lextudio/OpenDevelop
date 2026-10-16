@@ -119,6 +119,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		internal void SetBindingAncestorLevel(string propertyName, int level)
+		{
+			var state = client.SetBindingAncestorLevelAsync(currentBaseVersion(), node.Id, propertyName, level)
+				.GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		internal void SetBindingSource(string propertyName, string resourceKey)
 		{
 			var state = client.SetBindingSourceAsync(currentBaseVersion(), node.Id, propertyName, resourceKey)
@@ -433,6 +441,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 				owner.SetBindingElementName(property.BindingPropertyName, serialized);
 			else if (property.EditorKind == "BindingRelativeSource")
 				owner.SetBindingRelativeSource(property.BindingPropertyName, serialized);
+			else if (property.EditorKind == "BindingAncestorLevel")
+				owner.SetBindingAncestorLevel(property.BindingPropertyName, Convert.ToInt32(value, CultureInfo.InvariantCulture));
 			else if (property.EditorKind == "BindingSource")
 				owner.SetBindingSource(property.BindingPropertyName, serialized);
 			else if (property.EditorKind == "BindingNotifyOnValidationError")

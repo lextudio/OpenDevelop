@@ -1437,6 +1437,27 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				RebuildTreeAndRender(state); state.Accepted = true; return state;
 			});
 
+		/// <summary>Edits only the level of an existing <c>RelativeSource FindAncestor</c> Binding.
+		/// Switching an ordinary Binding to FindAncestor would also require an ancestor type, so that
+		/// larger edit is deliberately outside this narrow, lossless mutation.</summary>
+		[JsonRpcMethod("design/set-binding-ancestor-level")]
+		public DesignerSessionState SetBindingAncestorLevel(long baseVersion, string elementId, string propertyName, int level)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale) return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
+				var property = item.Properties[propertyName];
+				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding binding
+					|| binding.RelativeSource?.Mode != System.Windows.Data.RelativeSourceMode.FindAncestor
+					|| binding.RelativeSource.AncestorType == null)
+					return NotFound(state, "Property is not an editable FindAncestor Binding: " + propertyName);
+				if (level < 1 || level > 1000)
+					return NotFound(state, "Binding FindAncestor level must be between 1 and 1000.");
+				try { bindingItem.Properties["RelativeSource"].Value!.Properties["AncestorLevel"].SetValue(level); }
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state); state.Accepted = true; return state;
+			});
+
 		/// <summary>Sets the source of an existing Binding only when XamlDom still proves that it is
 		/// unset or an authored <c>{StaticResource key}</c>.  Binding.Source is an object slot: the
 		/// runtime Binding can flatten an inline object or <c>x:Static</c> form to an apparent null,
@@ -3418,6 +3439,17 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 								Value = binding.RelativeSource?.Mode.ToString() ?? "", BindingPropertyName = descriptor.Name,
 								ShouldSerialize = false,
 								AllowedValues = new List<string> { "", "Self", "TemplatedParent" }
+							});
+						}
+						if (binding.RelativeSource?.Mode == System.Windows.Data.RelativeSourceMode.FindAncestor
+							&& binding.RelativeSource.AncestorType != null)
+						{
+							result.Add(new DesignerPropertyInfo {
+								Name = descriptor.Name + ".AncestorLevel", DisplayName = descriptor.Name + " FindAncestor Level",
+								Category = "Binding", TypeName = typeof(int).FullName ?? "",
+								Kind = "Number", EditorKind = "BindingAncestorLevel",
+								Value = binding.RelativeSource.AncestorLevel.ToString(CultureInfo.InvariantCulture), BindingPropertyName = descriptor.Name,
+								ShouldSerialize = false
 							});
 						}
 						var sourceProperty = reference.Properties["Source"];
