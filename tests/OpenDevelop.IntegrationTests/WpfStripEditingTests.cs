@@ -802,6 +802,56 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
+    public async Task PropertiesPad_CompositeBindingChildModeEditsTheSelectedChild()
+    {
+        // This must use the visible PropertyItem, not the child RPC: its protocol name is dotted
+        // and indexed while Xceed receives the binding-safe descriptor name.
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+        try {
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Composite binding mode">
+              <Grid><TextBlock x:Name="owner"><TextBlock.Text><MultiBinding><Binding Path="First" /><Binding Path="Last" /></MultiBinding></TextBlock.Text></TextBlock></Grid>
+            </Window>
+            """);
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean()
+                    && status.GetProperty("diagnostics").GetArrayLength() == 0;
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            JsonElement selected = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                selected = await app.InvokeAsync("od.wpf-designer.select", "owner");
+                return selected.GetProperty("success").GetBoolean()
+                    && selected.GetProperty("propertiesPadSelectedName").GetString() == "owner";
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), selected.ToString());
+
+            // Selection reports before the Xceed grid has necessarily regenerated all rows for
+            // its new adapter. Retrying a "not found" probe is safe (no mutation occurred), and
+            // keeps this a visible PropertyItem journey rather than a direct child-RPC test.
+            JsonElement edited = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                edited = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.Bindings[0].Mode", "OneWay");
+                return edited.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), edited.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var saved = await File.ReadAllTextAsync(xamlPath);
+            Assert.Matches("<Binding(?=[^>]*Path=\"First\")(?=[^>]*Mode=\"OneWay\")", saved);
+            Assert.Contains("Path=\"Last\"", saved, StringComparison.Ordinal);
+        } finally {
+            await app.InvokeAsync("od.close-active-view");
+            await File.WriteAllTextAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task Clipboard_CopyPasteAndCutThroughTheEditCommands()
     {
         // The in-process designer's Cut/Copy/Paste: a copied Button pastes into the selected panel

@@ -73,7 +73,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v53 adds DesignerPropertyInfo.BindingChildIndex and WPF's indexed design/set-binding-path
 		// support for direct MultiBinding/PriorityBinding children.
 		// v54 adds WPF's design/set-binding-items for a proven direct Binding collection.
-		public const int Version = 54;
+		// v55 adds indexed design/set-binding-mode support for a direct child of that collection.
+	public const int Version = 55;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

@@ -103,6 +103,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		internal void SetBindingChildMode(string propertyName, int childIndex, string mode)
+		{
+			var state = client.SetBindingModeAsync(currentBaseVersion(), node.Id, propertyName, mode, childIndex)
+				.GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		internal void SetBindingUpdateSourceTrigger(string propertyName, string trigger)
 		{
 			var state = client.SetBindingUpdateSourceTriggerAsync(currentBaseVersion(), node.Id, propertyName, trigger)
@@ -345,10 +353,11 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 		}
 
 		// Xceed binds each PropertyItem with new Binding(descriptor.Name). A protocol name such as
-		// "Text.Mode" (a nested Binding editor) or "Grid.Row" would then be parsed as a property
-		// path, resolve to nothing, and silently drop every edit. The protocol name stays intact
-		// in ProtocolName for RPCs and lookups.
-		static string ToBindingSafeName(string name) => name.Replace('.', '_');
+		// "Text.Mode" (a nested Binding editor), "Grid.Row", or an indexed composite-Binding
+		// child such as "Text.Bindings[0].Mode" would otherwise be parsed as a property path
+		// (including an indexer), resolve to nothing, and be omitted from the grid. The protocol
+		// name stays intact in ProtocolName for RPCs and DevFlow lookups.
+		static string ToBindingSafeName(string name) => name.Replace('.', '_').Replace('[', '_').Replace("]", "");
 
 		internal string ProtocolName => property.Name;
 
@@ -451,6 +460,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 				owner.SetBindingChildPath(property.BindingPropertyName, property.BindingChildIndex, serialized);
 			else if (property.EditorKind == "BindingMode")
 				owner.SetBindingMode(property.BindingPropertyName, serialized);
+			else if (property.EditorKind == "BindingChildMode")
+				owner.SetBindingChildMode(property.BindingPropertyName, property.BindingChildIndex, serialized);
 			else if (property.EditorKind == "BindingUpdateSourceTrigger")
 				owner.SetBindingUpdateSourceTrigger(property.BindingPropertyName, serialized);
 			else if (property.EditorKind == "BindingElementName")

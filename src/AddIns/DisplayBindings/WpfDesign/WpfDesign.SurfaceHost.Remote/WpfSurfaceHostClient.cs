@@ -203,8 +203,12 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, items }, cancellationToken), cancellationToken);
 
 	public Task<DesignerSessionState> SetBindingModeAsync(long baseVersion, string elementId, string propertyName, string mode, CancellationToken cancellationToken = default)
+		=> SetBindingModeAsync(baseVersion, elementId, propertyName, mode, -1, cancellationToken);
+
+	/// <summary>Edits a direct child Binding of a proven composite.</summary>
+	public Task<DesignerSessionState> SetBindingModeAsync(long baseVersion, string elementId, string propertyName, string mode, int childIndex, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-mode",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, mode }, cancellationToken), cancellationToken);
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, mode, childIndex }, cancellationToken), cancellationToken);
 
 	public Task<DesignerSessionState> SetBindingUpdateSourceTriggerAsync(long baseVersion, string elementId, string propertyName, string trigger, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-update-source-trigger",
