@@ -1460,11 +1460,13 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						case "": bindingItem.Properties["RelativeSource"].Reset(); break;
 						case "Self":
 							bindingItem.Properties["ElementName"].Reset();
-							bindingItem.Properties["RelativeSource"].SetValue(System.Windows.Data.RelativeSource.Self);
+						bindingItem.Properties["RelativeSource"].SetValue(new System.Windows.Data.RelativeSource());
+						bindingItem.Properties["RelativeSource"].Value!.Properties["Mode"].SetValue(System.Windows.Data.RelativeSourceMode.Self);
 							break;
 						case "TemplatedParent":
 							bindingItem.Properties["ElementName"].Reset();
-							bindingItem.Properties["RelativeSource"].SetValue(System.Windows.Data.RelativeSource.TemplatedParent);
+						bindingItem.Properties["RelativeSource"].SetValue(new System.Windows.Data.RelativeSource());
+						bindingItem.Properties["RelativeSource"].Value!.Properties["Mode"].SetValue(System.Windows.Data.RelativeSourceMode.TemplatedParent);
 							break;
 						default: return NotFound(state, "Invalid Binding RelativeSource: " + relativeSource);
 					}
