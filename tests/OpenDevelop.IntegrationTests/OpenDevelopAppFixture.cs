@@ -71,6 +71,9 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     // (XamlFrameworkDetector), and Microsoft WPF runs only on Windows, so off Windows these tests
     // exercise the LibreWPF copy of the same sample instead of the Microsoft project.
     public string WpfSampleSolutionPath => OperatingSystem.IsWindows() ? LocateWpfSampleSolution() : LibreWpfSampleSolutionPath;
+    /// <summary>The runtime cell <see cref="WpfSampleSolutionPath"/> belongs to. Tests that use that OS-dependent path
+    /// must assert this cell, never a hard-coded one; prefer the explicit cell fixtures below in new tests.</summary>
+    public string WpfSampleCell => OperatingSystem.IsWindows() ? RuntimeCell.MicrosoftWpf : RuntimeCell.LibreWpf;
     public string LibreWpfSampleSolutionPath => LocateLibreWpfSampleSolution();
     // LibreWinForms counterpart of WinFormsSample (LibreWPF.Sdk + UseWindowsForms). Its Form1 sources
     // are links to WinFormsSample's, which the WinForms designer attributes to this project.

@@ -45,10 +45,9 @@ namespace OpenDevelop.IntegrationTests;
 /// </summary>
 [Collection("30 Add-ins and specialized fixtures")]
 [Trait("DesignerBackend", "Microsoft")]
+[Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWpf)]
 public sealed class WpfGalleryDesignerTests
 {
-    const string ExpectedBackend = "WPF";
-
     readonly OpenDevelopAppFixture _app;
     readonly string? _galleryRoot;
     readonly bool _skip;
@@ -113,7 +112,7 @@ public sealed class WpfGalleryDesignerTests
         // outline-count stabilization alone can declare "ready" one poll too early.
         var status = await OpenDesignerAsync(relativePage, rootName, leafTypeName);
 
-        Assert.Equal(ExpectedBackend, status.GetProperty("backend").GetString());
+        RuntimeCell.AssertWpfBackend(status, RuntimeCell.MicrosoftWpf);
         Assert.Equal("Page", status.GetProperty("rootItemType").GetString());
         Assert.True(
             status.TryGetProperty("designerLoaded", out var loaded) && loaded.GetBoolean(),
@@ -194,7 +193,7 @@ public sealed class WpfGalleryDesignerTests
 
         // The same page the corpus theories start from, so a routing regression surfaces once here.
         var status = await OpenDesignerAsync("Views/BasicInput/ButtonPage.xaml", "ContentPagePane", "Button");
-        Assert.Equal(ExpectedBackend, status.GetProperty("backend").GetString());
+        RuntimeCell.AssertWpfBackend(status, RuntimeCell.MicrosoftWpf);
         Assert.Equal("Page", status.GetProperty("rootItemType").GetString());
 
         // The owning project must be the Gallery app itself - the designer's project-dependency
@@ -272,7 +271,7 @@ public sealed class WpfGalleryDesignerTests
         {
             var relative = Path.GetRelativePath(_galleryRoot!, page).Replace(Path.DirectorySeparatorChar, '/');
             var status = await OpenDesignerAsync(relative, "Page");
-            Assert.Equal(ExpectedBackend, status.GetProperty("backend").GetString());
+            RuntimeCell.AssertWpfBackend(status, RuntimeCell.MicrosoftWpf);
             Assert.True(status.GetProperty("hasRenderFrame").GetBoolean(), relative + ": no native render frame: " + status);
             Assert.True(status.GetProperty("renderWidth").GetInt32() > 0 && status.GetProperty("renderHeight").GetInt32() > 0,
                 relative + ": non-positive render size: " + status);

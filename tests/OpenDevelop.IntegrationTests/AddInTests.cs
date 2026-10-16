@@ -1338,6 +1338,7 @@ public sealed class AddInTests : IAsyncDisposable
 
 	[Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
 	[Trait("DesignerBackend", "Microsoft")]
+	[Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWpf)]
 	public async Task MicrosoftWpfProject_UsesMicrosoftSurfaceHost()
 	{
 		var openedSolution = await _app.ReopenSolutionAsync(_app.MicrosoftWpfSampleSolutionPath);
@@ -1346,7 +1347,7 @@ public sealed class AddInTests : IAsyncDisposable
 		var opened = await _app.InvokeAsync("od.open-file", xamlPath);
 		Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
 
-		var status = await WaitForWpfDesignerStatusAsync("Window", 45, xamlPath, "WPF");
+		var status = await WaitForWpfDesignerStatusAsync("Window", 45, xamlPath, RuntimeCell.MicrosoftWpf);
 		Assert.Contains("NativeButton", status.GetProperty("outlineNames").EnumerateArray().Select(item => item.GetString()));
 	}
 
@@ -2934,6 +2935,7 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWpf)]
     public async Task LibreWpf_PropertiesPadEditAndSave_ChangesOnlyTheEditedAttribute()
     {
         // LibreWPF counterpart of SelectControl_EditingContentInPropertiesPad_UpdatesAndSavesXaml,
@@ -2951,9 +2953,9 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
             var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
             Assert.True(openFileResult.GetProperty("opened").GetBoolean());
-            var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "Window", timeoutSeconds: 30, reactivatePath: xamlPath);
+            var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "Window", timeoutSeconds: 30, reactivatePath: xamlPath, expectedCell: RuntimeCell.LibreWpf);
             Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
-            Assert.Equal("LibreWPF", status.GetProperty("backend").GetString());
+            RuntimeCell.AssertWpfBackend(status, RuntimeCell.LibreWpf);
 
             JsonElement selected = default;
             await OpenDevelopAppFixture.PollUntilAsync(async () =>
@@ -3196,6 +3198,7 @@ public sealed class AddInTests : IAsyncDisposable
 
     [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWpf)]
     public async Task DragToolboxItem_OntoXamlSourceEditor_InsertsMarkupAtDropPoint()
     {
         // Covers the OTHER drag-drop target for a WPF toolbox item: the plain XAML text/source
@@ -4938,7 +4941,7 @@ public sealed class AddInTests : IAsyncDisposable
                 return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
             }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
             Assert.True(loaded, "The WPF designer did not load. Status: " + status);
-			Assert.Equal("LibreWPF", status.GetProperty("backend").GetString());
+			RuntimeCell.AssertWpfBackend(status, _app.WpfSampleCell);
 
             var sel = await _app.InvokeAsync("od.wpf-designer.select", "PaneStack");
             Assert.True(sel.GetProperty("success").GetBoolean(), sel.ToString());
@@ -5134,9 +5137,9 @@ public sealed class AddInTests : IAsyncDisposable
 	// LibreWPF is therefore only the actual default on non-Windows hosts, where Microsoft WPF
 	// cannot run at all.
 	async Task<JsonElement> WaitForWpfDesignerStatusAsync(string expectedRootItemType, int timeoutSeconds,
-		string reactivatePath = null, string expectedBackend = null)
+		string reactivatePath = null, string expectedCell = null)
     {
-		expectedBackend ??= OperatingSystem.IsWindows() ? "WPF" : "LibreWPF";
+		expectedCell ??= _app.WpfSampleCell;
         JsonElement status = default;
         var previousCount = -1;
         await OpenDevelopAppFixture.PollUntilAsync(async () =>
@@ -5161,9 +5164,7 @@ public sealed class AddInTests : IAsyncDisposable
             }
             return false;
 		}, TimeSpan.FromSeconds(timeoutSeconds), initialDelayMs: 50, maxDelayMs: 250);
-		Assert.True(status.TryGetProperty("backend", out var backend),
-			"WPF designer status did not include a backend: " + status);
-		Assert.Equal(expectedBackend, backend.GetString());
+		RuntimeCell.AssertWpfBackend(status, expectedCell);
 		return status;
     }
 

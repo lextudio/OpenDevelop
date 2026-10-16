@@ -96,15 +96,14 @@ This is what exists, so the plan below is a delta and not a rewrite:
   the 18 methods skip off Windows (`SkipUnless = nameof(MicrosoftDesignerBackendsAvailable)`). **The other six are plain
   `[Fact]`s that deliberately run everywhere** ("`WpfSampleSolutionPath` is the LibreWPF sample off Windows"), so the trait
   does not mean "Microsoft backend" for them: off Windows they run against LibreWPF, and `RunMicrosoftDesignerIntegration`
-  selects them anyway. One of them, `WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement`, asserts
-  `backend == "LibreWPF"` unconditionally, which by reading cannot hold on Windows where the sample is Microsoft WPF (not
-  run to confirm). The Microsoft cells are run on Windows by the csproj target
+  selects them anyway. (One of them, `WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement`, used to assert
+  `backend == "LibreWPF"` unconditionally, which by reading could not hold on Windows; fixed, see Progress.) The Microsoft cells are run on Windows by the csproj target
   `RunMicrosoftDesignerIntegration`, which builds the Microsoft design hosts first and sets
   `OD_FORMS_RUNTIME`/`OD_WPF_RUNTIME`/`OD_WINUI_RUNTIME=microsoft` (see [TESTING.md](../../tests/OpenDevelop.IntegrationTests/TESTING.md)).
-- **Libre cells:** there is no trait for them. They run as "the default" in an unfiltered run, and **which backend that
-  is depends on the host OS**: `WpfSampleSolutionPath` is the Microsoft WPF sample on Windows and `LibreWpfSample`
-  elsewhere, and `AddInTests.WaitForWpfDesignerStatusAsync` defaults `expectedBackend` to `OperatingSystem.IsWindows() ?
-  "WPF" : "LibreWPF"`. So an unfiltered Windows run exercises Microsoft WPF, an unfiltered macOS run exercises LibreWPF,
+- **Libre cells:** they mostly run as "the default" in an unfiltered run, and **which backend that is depends on the host
+  OS**: `WpfSampleSolutionPath` is the Microsoft WPF sample on Windows and `LibreWpfSample` elsewhere (before the step 1
+  work below, `WaitForWpfDesignerStatusAsync` also defaulted its expected backend from `OperatingSystem.IsWindows()`; it
+  now defaults to `OpenDevelopAppFixture.WpfSampleCell`, which encodes the same rule in one place). So an unfiltered Windows run exercises Microsoft WPF, an unfiltered macOS run exercises LibreWPF,
   and **LibreWPF and LibreWinForms on Windows are covered only where a test names the Libre fixture explicitly**.
   `FormsMenuEditingTests` likewise uses `OperatingSystem.IsWindows()` as a stand-in for "Microsoft WinForms".
 - **ProGPU.WinUI:** `ProGpuWinUIDesignerTests` skip unless the whole process runs with `OD_WINUI_RUNTIME=progpu`. They have no OS
@@ -127,10 +126,13 @@ This is what exists, so the plan below is a delta and not a rewrite:
    cross-everywhere `DesignerBackend=Microsoft` methods) with an explicit cell passed by the test and a fixture chosen per
    cell; split each of those six into one test per cell it is meant for. OS checks stay only for "this cell cannot exist
    on this OS".
-3. **One fixture project per cell, chosen by the project rule.** Reuse what exists (`LibreWpfSample`, the Microsoft WPF
-   sample, `LibreWinFormsSample`, `WinFormsSample`, `ProGpuWinUISample`) and add the missing ones rather than parametrize
-   one sample across runtimes, because the file's runtime comes from the project that contains it. A portable sample
-   owns real copies of its XAML, not links.
+3. **One fixture project per cell, chosen by the project rule.** Most already exist as explicit fixtures on
+   `OpenDevelopAppFixture` (`LibreWpfSampleSolutionPath`, `MicrosoftWpfSampleSolutionPath`, `UnoXamlSampleSolutionPath`,
+   `ProGpuWinUISampleSolutionPath`, `WinUISampleSolutionPath`; `XamlLanguageService_EachRuntime_UsesItsOwnServerAndControls`
+   already loops over them). New tests use these, never the OS-dependent `WpfSampleSolutionPath`; add the missing
+   ones (the WinForms pair is `WinFormsSample`/`LibreWinFormsSample`) rather than parametrize one sample across runtimes,
+   because the file's runtime comes from the project that contains it. A portable sample owns real copies of its XAML, not
+   links.
 4. **Run one cell per process, sequentially.** The shared single app instance and DevFlow port 9299 forbid concurrent
    runs, and `OD_WINUI_RUNTIME` is a whole-process setting, so a cell is a separate invocation. Provide one entry point
    (an MSBuild target next to `RunMicrosoftDesignerIntegration`, or a script) that loops over the cells this OS supports
@@ -141,7 +143,28 @@ This is what exists, so the plan below is a delta and not a rewrite:
    missing env var) is a failure of the run, not a skip.
 
 Order of work: (1) first, since it makes every later change safe; then (2) for WPF, (2) for WinForms, then WinUI/Uno/ProGPU
-via the same traits. None of this is implemented yet except what the "stands" list describes.
+via the same traits.
+
+### Progress
+
+- **Step 1, WPF cells (started: foundation plus three tagged tests and one tagged class; compiled, not run):** `tests/OpenDevelop.IntegrationTests/RuntimeCell.cs` names the seven
+  cells, defines the `Runtime` trait, and provides `RuntimeCell.AssertWpfBackend(status, cell)`. Tagged so far:
+  `MicrosoftWpfProject_UsesMicrosoftSurfaceHost`, `DragToolboxItem_OntoXamlSourceEditor_InsertsMarkupAtDropPoint` and
+  `WpfGalleryDesignerTests` as `Runtime=MicrosoftWpf`; `LibreWpf_PropertiesPadEditAndSave_ChangesOnlyTheEditedAttribute`
+  as `Runtime=LibreWpf`. `WaitForWpfDesignerStatusAsync` now takes a cell (default: the cell of the OS-dependent
+  `WpfSampleSolutionPath`, exposed as `OpenDevelopAppFixture.WpfSampleCell`) and asserts through the helper, as do the
+  gallery tests. The hard-coded `backend == "LibreWPF"` in `WpfDesigner_ResizeDrag_...` became
+  `AssertWpfBackend(status, _app.WpfSampleCell)`, which removes the Windows failure described above.
+- **Still open for WPF:**
+  - the six cross-everywhere `AddInTests` methods keep their OS-dependent fixture and have no `Runtime` trait, because
+    one `[Fact]` cannot carry a different cell per OS; they have to be split per cell (the drag tests drive the pointer
+    with cliclick, so check what each cell needs before splitting);
+  - `WpfStripEditingTests` (56 uses of `WpfSampleSolutionPath`), `DesignerEditorJourneyTests` (2) and `WorkbenchTests` (1)
+    use the OS-dependent fixture and are untagged;
+  - `WpfHotReloadJourneyTests` asserts `framework == "WPF"` on the hot-reload session and, with
+    `WpfDesignerAssemblyLockTests`, uses `WpfHotReloadFixturePath` with no `Runtime` trait; decide whether `framework` is a
+    design-host backend (then it belongs to this matrix) or a hot-reload adapter name (then document it as such).
+  The WinForms, WinUI, Uno and ProGPU tests are not tagged yet.
 
 ## Test stability rules
 
