@@ -774,10 +774,10 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("StateImageIndex = 1", after, StringComparison.Ordinal);
 	}
 
-	/// <summary>StateImageKey still has no lossless source representation in the list editor;
-	/// accepting it merely because StateImageIndex is now carried would drop author intent.</summary>
+	/// <summary>StateImageKey is the string form of the state image, parallel to ImageKey.
+	/// Editing text/nesting must retain it rather than treating it as an opaque node setting.</summary>
 	[Fact]
-	public async Task ChildHost_RefusesATreeEditThatWouldDropAStateImageKey()
+	public async Task ChildHost_EditsATreeNodeKeepingItsStateImageKey()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
@@ -799,10 +799,12 @@ public sealed class FormsDesignerHostClientTests
 				"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TreeView tree;", StringComparison.Ordinal);
 		var opened = await client.OpenAsync(snapshot, timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
-		var before = DesignerText(await client.FlushAsync(1, timeout.Token));
-		await Assert.ThrowsAnyAsync<Exception>(() => client.SetItemsAsync(1, "tree", new[] {
-			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Renamed" } }, timeout.Token));
-		Assert.Equal(before, DesignerText(await client.FlushAsync(1, timeout.Token)));
+		var edited = await client.SetItemsAsync(1, "tree", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Renamed" } }, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var after = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("Renamed", after, StringComparison.Ordinal);
+		Assert.Contains("StateImageKey = \"state\"", after, StringComparison.Ordinal);
 	}
 
 	/// <summary>Regression: the loader evaluates InitializeComponent locals (for TreeNodes), and the
