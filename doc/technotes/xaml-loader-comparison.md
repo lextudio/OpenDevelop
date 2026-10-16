@@ -8,7 +8,7 @@ it means for replacing parts of XamlDom. The harness is `tests/OpenDevelop.XamlD
 
 ## Method
 
-43 XAML snippets (`XamlCorpus.cs`) cover resources of every primitive and freezable kind, markup
+45 XAML snippets (`XamlCorpus.cs`) cover resources of every primitive and freezable kind, markup
 extensions, styles, templates, triggers, animations, bindings, transforms, geometry, input bindings, menus,
 text and whitespace, and attached properties. Two axes are measured:
 
@@ -30,9 +30,9 @@ until it is removed from the list, so the lists only shrink.
 
 | | cases | match | differ | XamlDom cannot load |
 |---|---|---|---|---|
-| Load fidelity | 43 | 34 | 7 | 2 |
-| Write-back, XamlDom | 41 (the other 2 do not load) | 40 | 1 | - |
-| Write-back, `XamlWriter` | 43 | **0** | 43 | - |
+| Load fidelity | 45 | 37 | 7 | 1 |
+| Write-back, XamlDom | 44 (the other one does not load) | 43 | 1 | - |
+| Write-back, `XamlWriter` | 45 | **0** | 45 | - |
 
 The "cannot load" cases are listed once, in `XamlCorpus.NotLoadableByXamlDom`; the load comparison checks the
 list against what XamlDom really does, and the round-trip test skips exactly those.
@@ -41,11 +41,10 @@ list against what XamlDom really does, and the round-trip test skips exactly tho
 attribute order, implicit content and default-valued properties are all rewritten. It cannot be used to save
 an edited document.
 
-Load differences, the 7 that load plus the 2 that do not (XamlDom is wrong, Microsoft's loader is the reference):
+Remaining load differences, the 7 that load plus the 1 that does not (XamlDom is wrong, Microsoft's loader is the reference):
 
 | Difference | Effect |
 |---|---|
-| A `ResourceDictionary` with `MergedDictionaries` and its own entries throws `ArgumentException` | The whole file fails to load. Most severe: real application dictionaries are written this way |
 | An `{x:Static ...}` resource key is kept as markup text instead of being evaluated | System resource keys never match; the resource picker shows markup text |
 | A `DataTemplate` with only `DataType` gets no implicit `DataTemplateKey` | The template is stored under a different key than the one WPF derives from `DataType` |
 | Inline text between `Run`/`Italic` is trimmed; whitespace-only runs are dropped | Design view text differs from runtime |
@@ -66,12 +65,18 @@ Keep XamlDom's document model: nothing in `System.Xaml` replaces its lossless ed
 designer is built on it. Its **XAML semantics** (type resolution, built-in types, key evaluation, implicit keys,
 text handling) are where it falls short of Microsoft's loader, and those are the parts to take from
 `System.Xaml` (`XamlSchemaContext`, `XamlLanguage`, value conversion) one difference at a time, each closed by
-deleting its line from `KnownDifferences`. Suggested order: merged dictionaries, `x:Static` keys, implicit
+deleting its line from `KnownDifferences`. Suggested order: `x:Static` keys, implicit
 `DataTemplate` keys, inline text, `DataTrigger.Binding`.
 
-Fixed during this comparison: `<x:Double>`, `<x:String>` and the other XAML language primitives were dropped
-by XamlDom entirely (commit `7760bcc` in WpfDesigner), which made the resource picker offer nothing for
-`FontSize="{StaticResource Small}"`.
+Fixed during this comparison:
+
+- A `ResourceDictionary` nested in `<ResourceDictionary.MergedDictionaries>` that had any entry made the whole file
+  fail to load (`The reference node is not a child of this node`). `ParseObjectContent` treated every
+  collection-typed element as the collection instance of its parent's property, so the nested dictionary's
+  children were added to the parent's `MergedDictionaries`; it now does so only when the element's type fits
+  that property. The same change keeps the original stack of load errors (`ReportException` used `throw x;`).
+- `<x:Double>`, `<x:String>` and the other XAML language primitives were dropped by XamlDom entirely (commit
+  `7760bcc` in WpfDesigner), which made the resource picker offer nothing for `FontSize="{StaticResource Small}"`.
 
 Not measured: error positions and recovery (line/column of load errors, behaviour on invalid XAML), and load
 speed. XamlDom keeps source positions from the XML document; `System.Xaml`'s exceptions carry line numbers

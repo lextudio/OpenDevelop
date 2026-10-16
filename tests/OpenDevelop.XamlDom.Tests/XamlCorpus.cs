@@ -16,7 +16,6 @@ static class XamlCorpus
 	/// <summary>Cases XamlDom cannot load at all, with why. Both the load comparison and the round-trip test use this
 	/// one list, and the load comparison verifies it against what XamlDom really does, so it cannot go stale.</summary>
 	public static readonly Dictionary<string, string> NotLoadableByXamlDom = new() {
-		["Merged dictionaries"] = "a ResourceDictionary with MergedDictionaries and its own entries throws ArgumentException",
 		["Designer attributes"] = "mc:AlternateContent is not supported",
 	};
 
@@ -100,6 +99,21 @@ static class XamlCorpus
 			<StackPanel.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>
 			  <ResourceDictionary><SolidColorBrush x:Key="M" Color="Blue"/></ResourceDictionary>
 			</ResourceDictionary.MergedDictionaries><SolidColorBrush x:Key="Own" Color="Green"/></ResourceDictionary></StackPanel.Resources>
+			"""),
+		("Merged dictionaries with several entries and styles", """
+			<StackPanel.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>
+			  <ResourceDictionary><SolidColorBrush x:Key="A" Color="Red"/><SolidColorBrush x:Key="B" Color="Blue"/>
+			    <Style x:Key="S" TargetType="Button"><Setter Property="Width" Value="9"/></Style></ResourceDictionary>
+			  <ResourceDictionary><x:Double x:Key="D">3</x:Double></ResourceDictionary>
+			</ResourceDictionary.MergedDictionaries><SolidColorBrush x:Key="Own" Color="Green"/></ResourceDictionary></StackPanel.Resources>
+			<Button Style="{StaticResource S}" Background="{StaticResource Own}"/>
+			"""),
+		("Nested merged dictionaries", """
+			<StackPanel.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>
+			  <ResourceDictionary><ResourceDictionary.MergedDictionaries>
+			    <ResourceDictionary><SolidColorBrush x:Key="Deep" Color="Red"/></ResourceDictionary>
+			  </ResourceDictionary.MergedDictionaries><SolidColorBrush x:Key="Mid" Color="Blue"/></ResourceDictionary>
+			</ResourceDictionary.MergedDictionaries></ResourceDictionary></StackPanel.Resources>
 			"""),
 		("Designer attributes", """
 			<Button d:DesignWidth="10" d:Background="Red" Content="x"/>
