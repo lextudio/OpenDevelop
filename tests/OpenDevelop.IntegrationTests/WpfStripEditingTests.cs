@@ -683,7 +683,6 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
                 status = await app.InvokeAsync("od.wpf-designer.status");
                 return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
             }, TimeSpan.FromSeconds(90)), status.ToString());
-
             JsonElement selected = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 selected = await app.InvokeAsync("od.wpf-designer.select", "owner");
@@ -755,6 +754,10 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
                 status = await app.InvokeAsync("od.wpf-designer.status");
                 return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
             }, TimeSpan.FromSeconds(90)), status.ToString());
+            // `designerLoaded` only proves transport acceptance. The canvas must also have no
+            // parser/materialisation diagnostics, otherwise the visible design surface can show
+            // an error while the edit below still appears to succeed.
+            Assert.Empty(status.GetProperty("diagnostics").EnumerateArray());
 
             JsonElement selected = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -777,6 +780,10 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             // The Converter row offers the in-scope IValueConverter resource keys.
             var converter = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.Converter", "visible");
             Assert.True(converter.GetProperty("success").GetBoolean(), converter.ToString());
+            // Native Binding booleans use the same descriptor route as the validation switches;
+            // this proves the new safe options are not merely advertised by the child snapshot.
+            var isAsync = await app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text.IsAsync", "True");
+            Assert.True(isAsync.GetProperty("success").GetBoolean(), isAsync.ToString());
 
             var savedResult = await app.InvokeAsync("od.file.save", xamlPath);
             Assert.True(savedResult.GetProperty("success").GetBoolean(), savedResult.ToString());
@@ -787,6 +794,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             Assert.Contains("Mode=OneWay", saved, StringComparison.Ordinal);
             Assert.Contains(@"StringFormat=\{0:N2\}", saved, StringComparison.Ordinal);
             Assert.Contains("Converter={StaticResource visible}", saved, StringComparison.Ordinal);
+            Assert.Contains("IsAsync=True", saved, StringComparison.Ordinal);
         } finally {
             await app.InvokeAsync("od.close-active-view");
             await File.WriteAllTextAsync(xamlPath, originalXaml);

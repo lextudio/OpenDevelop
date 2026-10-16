@@ -143,6 +143,16 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				// is the bare type name, matching what the old in-process
 				// DesignContext.RootItem.ComponentType.Name used to report.
 				rootItemType = SimpleTypeName(state?.RootType),
+				// A successful session/open can still return parse or materialisation diagnostics.
+				// Expose those separately from designerLoaded: journey tests must not mistake an
+				// accepted transport response for a clean, usable design canvas.
+				diagnostics = state?.Diagnostics.Select(diagnostic => new {
+					diagnostic.Severity,
+					diagnostic.Message,
+					diagnostic.FileName,
+					diagnostic.Line,
+					diagnostic.Column
+				}).ToArray() ?? Array.Empty<object>(),
 				toolboxItemCount = toolboxItems.Length,
 				toolboxGroupCount = toolboxItems.Select(i => i.CategoryName).Distinct().Count(),
 				toolboxFilterText = SharedToolbox.Instance.FilterText,

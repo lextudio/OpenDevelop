@@ -1511,8 +1511,13 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				RebuildTreeAndRender(state); state.Accepted = true; return state;
 			});
 
+		// These are the Binding's boolean options that XamlDom represents as independent
+		// scalar properties.  They are deliberately a closed list: a generic nested-property
+		// setter would let the Properties pad overwrite object-valued Binding members whose
+		// authored form we cannot prove lossless.
 		static readonly string[] bindingValidationOptionNames = {
-			"ValidatesOnDataErrors", "ValidatesOnExceptions", "ValidatesOnNotifyDataErrors"
+			"ValidatesOnDataErrors", "ValidatesOnExceptions", "ValidatesOnNotifyDataErrors",
+			"BindsDirectlyToSource", "IsAsync", "NotifyOnSourceUpdated", "NotifyOnTargetUpdated"
 		};
 		static readonly HashSet<string> bindingValidationOptions = new(bindingValidationOptionNames, StringComparer.Ordinal);
 

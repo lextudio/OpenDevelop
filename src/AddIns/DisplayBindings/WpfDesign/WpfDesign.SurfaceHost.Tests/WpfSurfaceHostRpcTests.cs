@@ -1163,7 +1163,8 @@ public sealed class WpfSurfaceHostRpcTests
 		var validationOptions = FindByName(notifyCleared.Tree!, "bound")!.Properties
 			.Where(property => property.EditorKind == "BindingValidationOption")
 			.ToDictionary(property => property.BindingOptionName, StringComparer.Ordinal);
-		Assert.Equal(new[] { "ValidatesOnDataErrors", "ValidatesOnExceptions", "ValidatesOnNotifyDataErrors" },
+		Assert.Equal(new[] { "BindsDirectlyToSource", "IsAsync", "NotifyOnSourceUpdated", "NotifyOnTargetUpdated",
+			"ValidatesOnDataErrors", "ValidatesOnExceptions", "ValidatesOnNotifyDataErrors" },
 			validationOptions.Keys.OrderBy(name => name, StringComparer.Ordinal));
 		var validationOption = validationOptions["ValidatesOnExceptions"];
 		Assert.Equal("BindingValidationOption", validationOption.EditorKind);
@@ -1174,10 +1175,17 @@ public sealed class WpfSurfaceHostRpcTests
 		var validationCleared = await client.SetBindingValidationOptionAsync(validationEnabled.Version, bound.Id, validationOption.BindingPropertyName, validationOption.BindingOptionName, false, timeout.Token);
 		Assert.True(validationCleared.Accepted, validationCleared.Error);
 		Assert.DoesNotContain("ValidatesOnExceptions", (await client.FlushAsync(validationCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
-		var delay = FindByName(validationCleared.Tree!, "bound")!.Properties.Single(property => property.EditorKind == "BindingDelay");
+		var asyncOption = validationOptions["IsAsync"];
+		var asyncEnabled = await client.SetBindingValidationOptionAsync(validationCleared.Version, bound.Id, asyncOption.BindingPropertyName, asyncOption.BindingOptionName, true, timeout.Token);
+		Assert.True(asyncEnabled.Accepted, asyncEnabled.Error);
+		Assert.Contains("IsAsync=True", (await client.FlushAsync(asyncEnabled.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var asyncCleared = await client.SetBindingValidationOptionAsync(asyncEnabled.Version, bound.Id, asyncOption.BindingPropertyName, asyncOption.BindingOptionName, false, timeout.Token);
+		Assert.True(asyncCleared.Accepted, asyncCleared.Error);
+		Assert.DoesNotContain("IsAsync", (await client.FlushAsync(asyncCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var delay = FindByName(asyncCleared.Tree!, "bound")!.Properties.Single(property => property.EditorKind == "BindingDelay");
 		Assert.Equal("Number", delay.Kind);
 		Assert.Equal("0", delay.Value);
-		var delayed = await client.SetBindingDelayAsync(validationCleared.Version, bound.Id, delay.BindingPropertyName, 250, timeout.Token);
+		var delayed = await client.SetBindingDelayAsync(asyncCleared.Version, bound.Id, delay.BindingPropertyName, 250, timeout.Token);
 		Assert.True(delayed.Accepted, delayed.Error);
 		Assert.Contains("Delay=250", (await client.FlushAsync(delayed.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
 		var delayCleared = await client.SetBindingDelayAsync(delayed.Version, bound.Id, delay.BindingPropertyName, 0, timeout.Token);
