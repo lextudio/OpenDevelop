@@ -250,8 +250,11 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, optionName, enabled }, cancellationToken), cancellationToken);
 
 	public Task<DesignerSessionState> SetBindingTextOptionAsync(long baseVersion, string elementId, string propertyName, string optionName, string value, CancellationToken cancellationToken = default)
+		=> SetBindingTextOptionAsync(baseVersion, elementId, propertyName, optionName, value, -1, cancellationToken);
+
+	public Task<DesignerSessionState> SetBindingTextOptionAsync(long baseVersion, string elementId, string propertyName, string optionName, string value, int childIndex, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-binding-text-option",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, optionName, value }, cancellationToken), cancellationToken);
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, optionName, value, childIndex }, cancellationToken), cancellationToken);
 
 	public Task<DesignerSessionState> SetBindingConverterAsync(long baseVersion, string elementId, string propertyName, string resourceKey, CancellationToken cancellationToken = default)
 		=> SetBindingConverterAsync(baseVersion, elementId, propertyName, resourceKey, -1, cancellationToken);

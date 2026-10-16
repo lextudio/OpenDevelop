@@ -1594,14 +1594,19 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// nested property so no redundant empty assignment is serialized; a non-string authored value
 		/// (for example an x:Static FallbackValue) is never overwritten through this text path.</summary>
 		[JsonRpcMethod("design/set-binding-text-option")]
-		public DesignerSessionState SetBindingTextOption(long baseVersion, string elementId, string propertyName, string optionName, string value)
+		public DesignerSessionState SetBindingTextOption(long baseVersion, string elementId, string propertyName, string optionName, string value, int childIndex = -1)
 			=> dispatcher.Dispatch(() => {
 				if (RejectIfStale(baseVersion) is { } stale) return stale;
 				var state = NewState(baseVersion);
 				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
 				if (!bindingTextOptions.Contains(optionName)) return NotFound(state, "Unsupported Binding text option: " + optionName);
-				var property = item.Properties[propertyName];
-				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding)
+				DesignItem? bindingItem;
+				if (childIndex >= 0) {
+					if (!TryGetEditableBindingItems(item, propertyName, out var bindingsProperty) || bindingsProperty == null || childIndex >= bindingsProperty.CollectionElements.Count)
+						return NotFound(state, "Binding child is not editable: " + propertyName);
+					bindingItem = bindingsProperty.CollectionElements[childIndex];
+				} else bindingItem = item.Properties[propertyName]?.Value as DesignItem;
+				if (bindingItem?.Component is not System.Windows.Data.Binding)
 					return NotFound(state, "Property is not an editable Binding: " + propertyName);
 				var option = bindingItem.Properties[optionName];
 				if (!IsTextBindingOption(option))
@@ -3661,6 +3666,20 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						DisplayName = descriptor.Name + " Binding " + (index + 1).ToString(CultureInfo.InvariantCulture) + " Converter",
 						Category = "Binding", TypeName = typeof(string).FullName ?? "", Kind = "Enum", EditorKind = "BindingChildConverter",
 						Value = childConverterKey, BindingPropertyName = descriptor.Name, BindingChildIndex = index, ShouldSerialize = false, AllowedValues = choices
+					});
+				}
+				foreach (var optionName in bindingTextOptionNames)
+				{
+					var option = children[index].Properties[optionName];
+					if (!IsTextBindingOption(option))
+						continue;
+					result.Add(new DesignerPropertyInfo {
+						Name = descriptor.Name + ".Bindings[" + index.ToString(CultureInfo.InvariantCulture) + "]." + optionName,
+						DisplayName = descriptor.Name + " Binding " + (index + 1).ToString(CultureInfo.InvariantCulture) + " " + optionName,
+						Category = "Binding", TypeName = typeof(string).FullName ?? "",
+						Kind = "String", EditorKind = "BindingChildTextOption",
+						Value = option.ValueOnInstance as string ?? "", BindingPropertyName = descriptor.Name,
+						BindingChildIndex = index, BindingOptionName = optionName, ShouldSerialize = false
 					});
 				}
 							}

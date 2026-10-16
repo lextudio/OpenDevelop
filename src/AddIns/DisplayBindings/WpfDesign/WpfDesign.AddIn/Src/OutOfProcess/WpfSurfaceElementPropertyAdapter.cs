@@ -191,6 +191,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		internal void SetBindingChildTextOption(string propertyName, int childIndex, string optionName, string value)
+		{
+			var state = client.SetBindingTextOptionAsync(currentBaseVersion(), node.Id, propertyName, optionName, value, childIndex)
+				.GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		/// <summary>Commits an edited plain item list (<c>design/set-items</c>); the property is the
 		/// host-published ItemsCollection row, so only this element's Items can be targeted.</summary>
 		void IItemsCollectionEditorHost.SetItems(string propertyName, System.Collections.Generic.IReadOnlyList<DesignerCollectionItemEdit> items)
@@ -506,6 +514,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 				owner.SetBindingValidationOption(property.BindingPropertyName, property.BindingOptionName, Convert.ToBoolean(value, CultureInfo.InvariantCulture));
 			else if (property.EditorKind == "BindingTextOption")
 				owner.SetBindingTextOption(property.BindingPropertyName, property.BindingOptionName, serialized);
+			else if (property.EditorKind == "BindingChildTextOption")
+				owner.SetBindingChildTextOption(property.BindingPropertyName, property.BindingChildIndex, property.BindingOptionName, serialized);
 			else if (property.EditorKind == "BindingConverter")
 				owner.SetBindingConverter(property.BindingPropertyName, serialized);
 			else if (property.EditorKind == "BindingChildConverter")
