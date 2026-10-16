@@ -185,6 +185,27 @@ via the same traits.
   by the cell assertion. `WinUIXamlDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement`, which picks Uno or Microsoft
   WinUI from `OD_WINUI_RUNTIME`, asserted backend `"WinUI"` even for the Uno document it opens by default (it could only fail
   there); it now asserts the cell its own switch selects, and stays untagged because one method serves two cells.
+- **Steps 4 and 5, the runner (written; one cell run for real):** `OpenDevelop.IntegrationTests.csproj` has two targets next to
+  `RunMicrosoftDesignerIntegration`, which stays as it is.
+  - `dotnet msbuild tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj -t:RunRuntimeCell -p:RuntimeCell=<cell>`
+    runs one cell in its own process: it rejects an unknown cell or one that cannot exist on this OS, builds the Microsoft hosts
+    for a Microsoft cell, sets the process-wide switch the cell needs (`OD_WINUI_RUNTIME=microsoft|uno|progpu`, and the
+    `OD_WPF_RUNTIME`/`OD_FORMS_RUNTIME` the Microsoft target already set), lists the cell's tests first and **fails if there are
+    none**, then runs `-trait "Runtime=<cell>" -failSkips`, so a test skipped inside a cell the OS supports fails the run
+    (`-p:RuntimeCellAllowSkips=true` turns that off).
+  - `-t:RunRuntimeMatrix` runs every cell this OS supports in turn (Windows: all seven; macOS: LibreWpf, LibreWinForms, Uno,
+    ProGpuWinUI), carries on after a failing cell and ends failed if any failed.
+  - `-p:NoBuild=true` skips the build and `-p:RuntimeCellListOnly=true` only lists, which starts no app.
+  - Verified on Windows (arm64) with list-only: an unknown cell and a missing `RuntimeCell` fail with the list of valid cells;
+    LibreWpf 1, MicrosoftWpf 7, MicrosoftWinForms 3, MicrosoftWinUI 14, Uno 21 and ProGpuWinUI 4 tests are selected;
+    **LibreWinForms selects none and fails**, which is correct and shows the gap (no LibreWinForms test is tagged yet); the
+    matrix target ran all seven, reported that one failure and exited 1. Not run: the macOS cells, every cell with more than
+    one test, and the Microsoft-host build step of a Microsoft cell (every check above used `NoBuild`).
+  - One real run, `-p:RuntimeCell=LibreWpf -p:NoBuild=true`: the app started, the single test ran and the failure came back
+    through MSBuild with exit code 1. The test's backend assertion passed (`backend` was `LibreWPF`), but the designer never
+    loaded (`designerLoaded=false`, `hostProcessId=0`, `hostAlive=false`): **the LibreWPF design host did not start on Windows
+    arm64 in this run.** That is the Windows x LibreWPF cell nothing covered before; the cause is not investigated (the host
+    is deployed under `AddIns/DisplayBindings/WpfDesign/Host`, and a manual `dotnet exec` of it stays up waiting for input).
 - **Still open for the WinUI family:** the dual-cell resize test above; `OD_WINUI_RUNTIME` still selects the cell for a whole
   process (`microsoft`, `progpu`), which the runner entry point (plan step 4) has to set per cell.
 

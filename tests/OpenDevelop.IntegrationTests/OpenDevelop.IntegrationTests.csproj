@@ -297,6 +297,71 @@
     <Exec Command="set &quot;OD_FORMS_RUNTIME=microsoft&quot; &amp;&amp; set &quot;OD_WPF_RUNTIME=microsoft&quot; &amp;&amp; set &quot;OD_WINUI_RUNTIME=microsoft&quot; &amp;&amp; dotnet &quot;$(TargetPath)&quot; -trait &quot;DesignerBackend=Microsoft&quot;" />
   </Target>
 
+  <!-- Runtime matrix entry points (doc/technotes/integration-testing.md, "Platform and runtime matrix").
+       A cell is one designer runtime, selected with the Runtime trait (see RuntimeCell.cs). One cell runs
+       in one process: the app instance and DevFlow port 9299 are shared, and OD_WINUI_RUNTIME is a
+       whole-process setting, so cells never run concurrently.
+         dotnet msbuild <this csproj> -t:RunRuntimeCell -p:RuntimeCell=LibreWpf
+         dotnet msbuild <this csproj> -t:RunRuntimeMatrix            (every cell this OS supports, in turn)
+       Options: -p:NoBuild=true skips the build; -p:RuntimeCellListOnly=true only lists the cell's tests
+       (nothing is launched); -p:RuntimeCellAllowSkips=true stops a skipped test counting as a failure
+       (by default a test that is skipped inside a cell the OS supports fails the run, because that cell is
+       then not actually covered). A cell that selects no test at all always fails. -->
+  <PropertyGroup>
+    <RuntimeCellsOnThisOS Condition="$([MSBuild]::IsOSPlatform('Windows'))">LibreWpf;MicrosoftWpf;LibreWinForms;MicrosoftWinForms;MicrosoftWinUI;Uno;ProGpuWinUI</RuntimeCellsOnThisOS>
+    <RuntimeCellsOnThisOS Condition="$([MSBuild]::IsOSPlatform('OSX'))">LibreWpf;LibreWinForms;Uno;ProGpuWinUI</RuntimeCellsOnThisOS>
+    <_RuntimeCellBuild Condition="'$(NoBuild)' != 'true'">Build</_RuntimeCellBuild>
+  </PropertyGroup>
+
+  <Target Name="_ValidateRuntimeCell">
+    <Error Condition="'$(RuntimeCellsOnThisOS)' == ''" Text="The runtime matrix is defined for Windows and macOS only." />
+    <Error Condition="'$(RuntimeCell)' == ''" Text="Pass -p:RuntimeCell=&lt;cell&gt;. Cells on this OS: $(RuntimeCellsOnThisOS)" />
+    <Error Condition="!$([System.String]::Copy(';$(RuntimeCellsOnThisOS);').Contains(';$(RuntimeCell);'))"
+           Text="Runtime cell '$(RuntimeCell)' does not exist on this OS (Microsoft runtimes are Windows-only). Cells on this OS: $(RuntimeCellsOnThisOS)" />
+    <PropertyGroup>
+      <_CellIsMicrosoft Condition="$(RuntimeCell.StartsWith('Microsoft'))">true</_CellIsMicrosoft>
+      <_CellEnv Condition="'$(RuntimeCell)' == 'MicrosoftWpf'">OD_WPF_RUNTIME=microsoft</_CellEnv>
+      <_CellEnv Condition="'$(RuntimeCell)' == 'MicrosoftWinForms'">OD_FORMS_RUNTIME=microsoft</_CellEnv>
+      <_CellEnv Condition="'$(RuntimeCell)' == 'MicrosoftWinUI'">OD_WINUI_RUNTIME=microsoft</_CellEnv>
+      <_CellEnv Condition="'$(RuntimeCell)' == 'Uno'">OD_WINUI_RUNTIME=uno</_CellEnv>
+      <_CellEnv Condition="'$(RuntimeCell)' == 'ProGpuWinUI'">OD_WINUI_RUNTIME=progpu</_CellEnv>
+      <_CellFailSkips Condition="'$(RuntimeCellAllowSkips)' != 'true'">-failSkips</_CellFailSkips>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="RunRuntimeCell" DependsOnTargets="_ValidateRuntimeCell;$(_RuntimeCellBuild)">
+    <!-- The Microsoft hosts are not built by `dotnet build` (see RunMicrosoftDesignerIntegration). -->
+    <CallTarget Targets="BuildMicrosoftDesignerHostsForIntegrationTests"
+                Condition="'$(_CellIsMicrosoft)' == 'true' And '$(NoBuild)' != 'true'" />
+
+    <!-- A cell that selects nothing must fail, not pass. Listing starts no app. -->
+    <Exec Command="dotnet &quot;$(TargetPath)&quot; -list tests -trait &quot;Runtime=$(RuntimeCell)&quot;" ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" ItemName="_CellListLine" />
+    </Exec>
+    <ItemGroup>
+      <_CellTest Include="@(_CellListLine)" Condition="$([System.String]::Copy('%(Identity)').Contains('OpenDevelop.IntegrationTests.'))" />
+    </ItemGroup>
+    <Error Condition="'@(_CellTest)' == ''" Text="Runtime cell '$(RuntimeCell)' selects no test: tag its tests with [Trait(RuntimeCell.TraitName, RuntimeCell.&lt;cell&gt;)]." />
+    <Message Importance="high" Text="Runtime cell $(RuntimeCell): @(_CellTest->Count()) test(s)" />
+
+    <Exec Condition="'$(RuntimeCellListOnly)' != 'true'"
+          Command="dotnet &quot;$(TargetPath)&quot; -trait &quot;Runtime=$(RuntimeCell)&quot; $(_CellFailSkips)"
+          EnvironmentVariables="$(_CellEnv)" />
+  </Target>
+
+  <Target Name="RunRuntimeMatrix" DependsOnTargets="$(_RuntimeCellBuild)">
+    <Error Condition="'$(RuntimeCellsOnThisOS)' == ''" Text="The runtime matrix is defined for Windows and macOS only." />
+    <!-- Build the Microsoft hosts once here: the per-cell runs below use NoBuild. -->
+    <CallTarget Targets="BuildMicrosoftDesignerHostsForIntegrationTests"
+                Condition="$([MSBuild]::IsOSPlatform('Windows')) And '$(NoBuild)' != 'true'" />
+    <ItemGroup>
+      <_MatrixCell Include="$(RuntimeCellsOnThisOS)" />
+    </ItemGroup>
+    <!-- Every cell runs even if an earlier one fails; each failure is reported and the build ends failed. -->
+    <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="RunRuntimeCell"
+             Properties="RuntimeCell=%(_MatrixCell.Identity);NoBuild=true" ContinueOnError="ErrorAndContinue" />
+  </Target>
+
   <!-- Serialize test collections: every collection shares ONE assembly-scoped app process
        (port 9299) and the same on-disk fixture directories, so parallel collections race on
        both - e.g. one collection's od.build-solution observes another's ScratchBroken.cs, or
