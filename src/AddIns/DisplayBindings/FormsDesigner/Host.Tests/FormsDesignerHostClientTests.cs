@@ -807,6 +807,55 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("StateImageKey = \"state\"", after, StringComparison.Ordinal);
 	}
 
+	/// <summary>A TreeNode may refer to a component in the form container. A text/nesting edit must
+	/// keep that named reference; an unsited ContextMenuStrip is deliberately not representable.</summary>
+	[Fact]
+	public async Task ChildHost_EditsATreeNodeKeepingItsNamedContextMenuStrip()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.button1 = new System.Windows.Forms.Button();", """
+				this.components = new System.ComponentModel.Container();
+				        this.contextMenuStrip1 = new System.Windows.Forms.ContextMenuStrip(this.components);
+				        System.Windows.Forms.TreeNode treeNode1 = new System.Windows.Forms.TreeNode("Leaf");
+				        this.button1 = new System.Windows.Forms.Button();
+				""", StringComparison.Ordinal)
+			.Replace("this.Controls.Add(this.button1);", """
+				this.tree = new System.Windows.Forms.TreeView();
+				        treeNode1.ContextMenuStrip = this.contextMenuStrip1;
+				        this.tree.Nodes.AddRange(new System.Windows.Forms.TreeNode[] { treeNode1 });
+				        this.Controls.Add(this.button1);
+				        this.Controls.Add(this.tree);
+				""", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;", """
+				private System.Windows.Forms.Button button1;
+				    private System.ComponentModel.IContainer components;
+				    private System.Windows.Forms.ContextMenuStrip contextMenuStrip1;
+				    private System.Windows.Forms.TreeView tree;
+				""", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var edited = await client.SetItemsAsync(1, "tree", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Renamed" } }, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var after = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("Renamed", after, StringComparison.Ordinal);
+		Assert.Matches(@"ContextMenuStrip\s*=\s*(this\.)?contextMenuStrip1", after);
+
+		designer.Text = after;
+		snapshot.Version = 2;
+		var reopened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(reopened.Accepted, reopened.Error);
+		var again = await client.SetItemsAsync(2, "tree", new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Again" } }, timeout.Token);
+		Assert.True(again.Accepted, again.Error);
+		var afterAgain = DesignerText(await client.FlushAsync(2, timeout.Token));
+		Assert.Matches(@"ContextMenuStrip\s*=\s*(this\.)?contextMenuStrip1", afterAgain);
+	}
+
 	/// <summary>Regression: the loader evaluates InitializeComponent locals (for TreeNodes), and the
 	/// ComponentResourceManager every form with resources declares threw on its null typeof(Form1),
 	/// failing the whole designer load with "Value cannot be null (resourceSource)".</summary>

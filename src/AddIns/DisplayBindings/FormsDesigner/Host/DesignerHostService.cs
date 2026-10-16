@@ -397,9 +397,11 @@ sealed class DesignerHostService : IDesignerChildService
 		bool Walk(TreeNodeCollection level, int depth)
 		{
 			foreach (TreeNode node in level) {
-				// Name, images (including the state image), checked state, colours, font, tooltip and a string Tag are carried
-				// through an edit (TreeNodeSettings); only a non-string Tag has no source form here.
+				// Name, images (including the state image), checked state, colours, font, tooltip, a string Tag and a
+				// named component ContextMenuStrip are carried through an edit (TreeNodeSettings). An unsited menu
+				// has no durable source reference, so it must keep the collection editor unavailable rather than be lost.
 				if (node.Tag is not (null or string)
+					|| node.ContextMenuStrip is IComponent menu && menu.Site?.Name is not { Length: > 0 }
 					|| node.Text.Trim().Length == 0 || node.Text.StartsWith(" ", StringComparison.Ordinal))
 					return false;
 				result.Add(String.Concat(Enumerable.Repeat(TreeIndent, depth)) + node.Text);
@@ -997,6 +999,7 @@ sealed class DesignerHostService : IDesignerChildService
 		if (!node.BackColor.IsEmpty) yield return ("BackColor", node.BackColor);
 		if (node.NodeFont != null) yield return ("NodeFont", node.NodeFont);
 		if (node.Tag is string tag) yield return ("Tag", tag);
+		if (node.ContextMenuStrip is IComponent menu && menu.Site?.Name is { Length: > 0 }) yield return ("ContextMenuStrip", menu);
 	}
 
 	static void CopyTreeNodeSettings(TreeNode source, TreeNode target)
@@ -1035,7 +1038,7 @@ sealed class DesignerHostService : IDesignerChildService
 	/// removed: another TreeView's nodes in the same InitializeComponent are left untouched.</summary>
 	static readonly HashSet<string> CarriedTreeNodeSettings = new(StringComparer.Ordinal) {
 		"Name", "Text", "Checked", "ImageIndex", "SelectedImageIndex", "StateImageIndex", "ImageKey", "SelectedImageKey", "StateImageKey",
-		"ToolTipText", "ForeColor", "BackColor", "NodeFont", "Tag" };
+		"ToolTipText", "ForeColor", "BackColor", "NodeFont", "Tag", "ContextMenuStrip" };
 
 	/// <returns>False, changing nothing, when a reachable local has an assignment the edit cannot
 	/// carry through (<paramref name="unsupported"/> names it): removing it would lose the value.</returns>
