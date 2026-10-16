@@ -149,29 +149,50 @@ via the same traits.
 
 ### Measured status per cell
 
-Every cell was run for real with `RunRuntimeCell` on Windows arm64 (.NET 10, 2026-10-16, after a full build; macOS was not
-run). "Cases" counts xunit test cases (theory rows and class-level tags expand), not methods.
+Every cell was run for real with `RunRuntimeCell` on Windows arm64 (.NET 10, 2026-10-16, with a full build; macOS was not run).
+"Cases" counts xunit test cases (theory rows and class-level tags expand), not methods. The numbers below are from the last run
+of each cell after the product fixes listed under the table; a full `RunRuntimeMatrix` pass over all seven after the last fix
+has not been made.
 
 | Cell | Result | Notes |
 |---|---|---|
-| LibreWpf | pass (1 test) | Seven runs: the last four passed; the third lost the host while opening the document (cause unknown); the first two failed on a cold in-app build (see the runner notes below). |
-| LibreWinForms | pass (1 test) | Failed before the fix in `be084bff6b`: `session/open` deadlocked, see below. |
-| MicrosoftWinForms | pass (5 cases) | No test skipped. |
-| ProGpuWinUI | pass (4 tests) | Failed 0/4 before the fix in `bd30a97a03`: Roslyn was given native DLLs as references. |
-| Uno | 19 of 21 pass | `WinUIDesigner_DesignSizePresets_ResizeCanvas` ("Status should contain '768', last was: Rendered by Uno design host (390x53)") and `WinUIDesigner_ThemeSwitch_ChangesRenderedBackgroundPixels` ("Light theme should render the Light PageBackgroundBrush") fail. **Not investigated.** |
-| MicrosoftWpf | 9 of 24 cases pass | The first run failed everything with `Protocol 52 is not supported`: the deployed Microsoft WPF host was stale (a `NoBuild` run does not rebuild it; `BuildMicrosoftDesignerHostsForIntegrationTests` does). After rebuilding it, 15 cases fail: the Gallery pages and `DragToolboxItem_OntoXamlSourceEditor_InsertsMarkupAtDropPoint` report `The designer host is not running`. A single Gallery test passes when run alone; run as a class it ends 22 total / 13 failed / 1 skipped, and the designer output holds no crash text. **Cause not found.** |
-| MicrosoftWinUI | 20 of 35 cases pass | The eight `WinUIOnly_*` tests fail with `WinUI design host failed to start: A task was canceled.` **Cause isolated, not fixed:** the host process fail-fasts with exit code `0xC000027B` (`STATUS_STOWED_EXCEPTION`) about 0.4 s after start, right after it logs `serving app resources from WinUISample.pri` (`AppResourceManagerProvider`, the `ResourceManagerRequested` path of `435575e501`); the client sees the child exit before it connects and reports the cancelled wait. Reproduced outside the IDE: `dotnet exec --runtimeconfig <WinUISample bin>\WinUISample.runtimeconfig.json --depsfile <...>\WinUISample.deps.json <AddIns>\...\MicrosoftHost\net10.0\win-arm64\WinUIXamlDesigner.MicrosoftHost.dll --port N --token T --appbin <WinUISample bin>` crashes; the same command with `WinUISample.pri` renamed (so no custom resource manager is served) does not crash and runs on to the TCP connect. The Gallery's own `.pri` works with the same host, so this is specific to the sample's `.pri` (or to how this machine built it). Six Gallery pages and `VisualStateSwitch_AppliesStateAndShowsLoadingChrome` also fail and were **not investigated**. |
+| LibreWpf | pass (1 test) | Seven runs, the last four passed; the third lost the host while opening the document (cause unknown); the first two failed on a cold in-app build (see the runner notes below). Not re-run after the output-channel and `TerminateHost` fixes. |
+| LibreWinForms | pass (1 test) | Failed before the Forms host fix: `session/open` deadlocked. Not re-run after the later fixes. |
+| MicrosoftWinForms | pass (5 cases) | No test skipped. Not re-run after the later fixes. |
+| ProGpuWinUI | pass (4 tests) | Failed 0/4 before the ProGPU fix: Roslyn was given native DLLs as references. Not re-run after the later fixes. |
+| Uno | 19 of 21 pass | `WinUIDesigner_DesignSizePresets_ResizeCanvas` ("Status should contain '768', last was: Rendered by Uno design host (390x53)"; on another run the same step reported the other size) and `WinUIDesigner_ThemeSwitch_ChangesRenderedBackgroundPixels` ("Light theme should render the Light PageBackgroundBrush") fail on every run, also when run alone. The size status looks one step behind the preset that was just applied. **Not investigated further.** |
+| MicrosoftWpf | 21 of 23 cases pass | Was 9 of 24. `DragToolboxItem_OntoXamlSourceEditor_InsertsMarkupAtDropPoint` fails its own precondition (the drop target's screen Y, 529, is outside the text area's usable range 368-507: the window does not show it on this display), not the feature. `SettingsPage_...` fails with `The designer host did not complete 'session/open' within 00:00:30` (a heavy page; the timeout is the product's). The full Gallery sweep is opt-in (`OD_WPF_GALLERY_FULL=1`) and left out of the run. A `NoBuild` run against a stale host fails everything with `Protocol N is not supported`: rebuild the hosts first. |
+| MicrosoftWinUI | 28 of 35 cases pass | Was 20 of 35. The eight `WinUIOnly_*` tests pass since the `.pri` fix. Six `WinUIGalleryDesignerTests.GalleryPage_RendersWithRealContent` pages fail: five report `The design preview did not settle within two seconds; its content may be animated.` (Slider, ProgressBar, TextBox, NavigationView, SystemBackdropElement; ProgressBar is genuinely animated), `TreeViewPage` renders `sampleTreeView` with zero height. `VisualStateSwitch_AppliesStateAndShowsLoadingChrome` never sees the `Favorites` state applied. **Not investigated further.** |
 
-Two product bugs were found by running the cells and fixed (each was Windows-only for the same reason: the project, not the OS,
-picks the backend, but the code assumed otherwise):
+Product bugs found by running the cells and fixed. Each was Windows-only for the same reason: the project, not the OS, picks the
+backend, or an assumption about thread and process behaviour that holds elsewhere:
 
-- **ProGPU preview** passed every `TRUSTED_PLATFORM_ASSEMBLIES` entry to Roslyn as a metadata reference. On Windows that list
-  names native libraries (`wpfgfx_cor3.dll`, `vcruntime140_cor3.dll`, `ijwhost.dll`), so no ProGPU document rendered. The list is
-  now filtered with `IsManagedAssembly` like the runtime-directory loop. `RoslynWorkspaceHelper.cs` (around line 328) and
-  `ClassDiagramDocument.cs` (around line 373) build references from the same list unfiltered and are not changed.
-- **LibreWinForms host** skipped the message pump on Windows, so `Main` blocked in `WaitForShutdown` while the designer's
-  paste-status query (`Clipboard.GetDataObject` at the end of a load) posted to the ProGPU dispatcher of the creating thread and
-  waited for it. Found from a `dotnet-stack` dump of the hung host; the host now always pumps.
+- **ProGPU preview** (`bd30a97a03`) passed every `TRUSTED_PLATFORM_ASSEMBLIES` entry to Roslyn as a metadata reference. On Windows
+  that list names native libraries (`wpfgfx_cor3.dll`, `vcruntime140_cor3.dll`, `ijwhost.dll`), so no ProGPU document rendered.
+  The list is now filtered with `IsManagedAssembly` like the runtime-directory loop. `RoslynWorkspaceHelper.cs` (around line 328)
+  and `ClassDiagramDocument.cs` (around line 373) build references from the same list unfiltered and are not changed.
+- **LibreWinForms host** (`be084bff6b`) skipped the message pump on Windows, so `Main` blocked in `WaitForShutdown` while the
+  designer's paste-status query (`Clipboard.GetDataObject` at the end of a load) posted to the ProGPU dispatcher of the creating
+  thread and waited for it. Found from a `dotnet-stack` dump of the hung host; the host now always pumps.
+- **WinUI design host and framework-dependent apps** (`c83f287597`): the host handed the app's `.pri` to WinUI as the replacement
+  resource manager, and WinUI loads its own XBFs through it. `WinUISample.pri` (framework-dependent) lists only `App.xbf` and `MainPage.xbf`, and serving it made the host fail fast with `0xC000027B` (`STATUS_STOWED_EXCEPTION`) about 0.4 s after
+  start, which the designer reported as `A task was canceled`. Now it is served only if it carries
+  `Files/Microsoft.UI.Xaml/Themes/themeresources.xbf` (a merged, self-contained `.pri` such as WinUI-Gallery's does). Cost: a
+  framework-dependent app's own `ms-appx:///` XAML controls cannot be constructed.
+- **Designer output pump deadlock** (`b9765c6235`): `DesignerOutput.Channel` called `OutputPad.GetOrCreateCategory` on every call,
+  which marshals synchronously to the UI thread, and the thread that pumps a design host's stdout/stderr calls it for every
+  line. With the UI thread parked on a synchronous host RPC (`WpfViewContent.FlushCurrentXaml`), the pump stopped reading, the
+  host's stderr pipe filled and the host blocked in `Console.Error.WriteLine`: pages could not load for 60 s each, and the host
+  was replaced about every 70 s. Found from `dotnet-stack` dumps of the IDE and the host. Channels are now cached and primed on the
+  UI thread. Not removed: the Output pad makes the calling thread wait for the UI thread after about 2000 queued appends.
+- **Terminating the host** (`6761407c96`): `TerminateHost` could throw `InvalidOperationException` when the process had exited
+  between `HasExited` and `Kill`, replacing the `TimeoutException` (with the host log) that was about to be thrown.
+
+How the evidence was gathered, since it will be needed again: `dotnet-stack report -p <pid>` of the hung host and of the IDE
+(the IDE is the `dotnet.exe` whose command line contains `OpenDevelop.dll`, not the `dotnet run` launcher) shows what each is
+blocked on; `makepri dump` shows what a `.pri` contains; running a host by hand with the command line the designer uses
+(`DesignerHostLaunchSpec`) gives its exit code and output in under a second; the designer output channels (`WPF Designer`,
+`WinUI Designer`, `IDE`) are now part of the failure message of the WPF Gallery and WinUI helpers.
 
 A cell is only as good as its prerequisites: `NoBuild` skips building the Microsoft hosts, so a Microsoft cell can run against
 a stale host and fail everything with a protocol error. Treat `Protocol N is not supported` as "rebuild the hosts" first.
@@ -221,13 +242,15 @@ a stale host and fail everything with a protocol error. Treat `Protocol N is not
     runs one cell in its own process: it rejects an unknown cell or one that cannot exist on this OS, builds the Microsoft hosts
     for a Microsoft cell, sets the process-wide switch the cell needs (`OD_WINUI_RUNTIME=microsoft|uno|progpu`, and the
     `OD_WPF_RUNTIME`/`OD_FORMS_RUNTIME` the Microsoft target already set), lists the cell's tests first and **fails if there are
-    none**, then runs `-trait "Runtime=<cell>" -failSkips`, so a test skipped inside a cell the OS supports fails the run
-    (`-p:RuntimeCellAllowSkips=true` turns that off).
+    none**, then runs `-trait "Runtime=<cell>" -notrait "OptIn=true" -failSkips`, so a test skipped inside a cell the OS
+    supports fails the run (`-p:RuntimeCellAllowSkips=true` turns that off); tests tagged `[Trait("OptIn", "true")]`, which skip
+    by design unless an environment variable asks for them (the full WPF Gallery sweep), are left out.
   - `-t:RunRuntimeMatrix` runs every cell this OS supports in turn (Windows: all seven; macOS: LibreWpf, LibreWinForms, Uno,
     ProGpuWinUI), carries on after a failing cell and ends failed if any failed.
   - `-p:NoBuild=true` skips the build and `-p:RuntimeCellListOnly=true` only lists, which starts no app.
   - Verified on Windows (arm64) with list-only: an unknown cell and a missing `RuntimeCell` fail with the list of valid cells;
-    LibreWpf 1, MicrosoftWpf 7, MicrosoftWinForms 3, MicrosoftWinUI 14, Uno 21 and ProGpuWinUI 4 tests are selected;
+    LibreWpf 1, MicrosoftWpf 7 (6 once the opt-in sweep was excluded), MicrosoftWinForms 3, MicrosoftWinUI 14, Uno 21 and
+    ProGpuWinUI 4 tests are selected;
     **LibreWinForms selected none and failed** at that point (no test was tagged yet; it now selects 1); the
     matrix target ran all seven, reported that one failure and exited 1. Not run at that point: the macOS cells, every cell with more
     than one test, and the Microsoft-host build step of a Microsoft cell (every check above used `NoBuild`). The per-cell table
