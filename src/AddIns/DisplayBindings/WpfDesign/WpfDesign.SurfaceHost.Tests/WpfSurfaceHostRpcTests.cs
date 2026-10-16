@@ -1010,7 +1010,7 @@ public sealed class WpfSurfaceHostRpcTests
 		var bound = FindByName(opened.Tree!, "bound")!;
 		var options = bound.Properties.Where(property => property.EditorKind == "BindingTextOption")
 			.Select(property => property.BindingOptionName).ToArray();
-		Assert.Equal(new[] { "StringFormat", "FallbackValue", "TargetNullValue", "ConverterParameter" }, options);
+		Assert.Equal(new[] { "StringFormat", "FallbackValue", "TargetNullValue", "ConverterParameter", "BindingGroupName" }, options);
 		Assert.DoesNotContain(FindByName(opened.Tree!, "static")!.Properties,
 			property => property.EditorKind == "BindingTextOption" && property.BindingOptionName == "FallbackValue");
 
@@ -1018,15 +1018,18 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.True(formatted.Accepted, formatted.Error);
 		var fallback = await client.SetBindingTextOptionAsync(formatted.Version, bound.Id, "Text", "FallbackValue", "N/A", timeout.Token);
 		Assert.True(fallback.Accepted, fallback.Error);
-		var text = (await client.FlushAsync(fallback.Version, timeout.Token)).Files.Single().Text;
+		var grouped = await client.SetBindingTextOptionAsync(fallback.Version, bound.Id, "Text", "BindingGroupName", "checkout", timeout.Token);
+		Assert.True(grouped.Accepted, grouped.Error);
+		var text = (await client.FlushAsync(grouped.Version, timeout.Token)).Files.Single().Text;
 		// Braces inside a markup-extension argument are escaped, not emitted raw.
 		Assert.Contains(@"StringFormat=\{0:N2\}", text, StringComparison.Ordinal);
 		Assert.Contains("FallbackValue=N/A", text, StringComparison.Ordinal);
+		Assert.Contains("BindingGroupName=checkout", text, StringComparison.Ordinal);
 		Assert.Equal("{0:N2}", FindByName(fallback.Tree!, "bound")!.Properties
 			.Single(property => property.BindingOptionName == "StringFormat").Value);
 
 		// The flushed markup must reload as the same Binding rather than a parse error.
-		var reopened = await client.UpdateAsync(Snapshot(fallback.Version + 1, text), timeout.Token);
+		var reopened = await client.UpdateAsync(Snapshot(grouped.Version + 1, text), timeout.Token);
 		Assert.True(reopened.Accepted, reopened.Error + "\n" + text);
 		Assert.Equal("{0:N2}", FindByName(reopened.Tree!, "bound")!.Properties
 			.Single(property => property.BindingOptionName == "StringFormat").Value);
