@@ -1630,13 +1630,18 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// A converter authored in another form (an inline object, DynamicResource) is never
 		/// overwritten through this path.</summary>
 		[JsonRpcMethod("design/set-binding-converter")]
-		public DesignerSessionState SetBindingConverter(long baseVersion, string elementId, string propertyName, string resourceKey)
+		public DesignerSessionState SetBindingConverter(long baseVersion, string elementId, string propertyName, string resourceKey, int childIndex = -1)
 			=> dispatcher.Dispatch(() => {
 				if (RejectIfStale(baseVersion) is { } stale) return stale;
 				var state = NewState(baseVersion);
 				if (!pathToItem.TryGetValue(elementId, out var item)) return NotFound(state, "Element not found: " + elementId);
-				var property = item.Properties[propertyName];
-				if (property?.Value is not DesignItem bindingItem || bindingItem.Component is not System.Windows.Data.Binding)
+				DesignItem? bindingItem;
+				if (childIndex >= 0) {
+					if (!TryGetEditableBindingItems(item, propertyName, out var bindingsProperty) || bindingsProperty == null || childIndex >= bindingsProperty.CollectionElements.Count)
+						return NotFound(state, "Binding child is not editable: " + propertyName);
+					bindingItem = bindingsProperty.CollectionElements[childIndex];
+				} else bindingItem = item.Properties[propertyName]?.Value as DesignItem;
+				if (bindingItem?.Component is not System.Windows.Data.Binding)
 					return NotFound(state, "Property is not an editable Binding: " + propertyName);
 				var converter = bindingItem.Properties["Converter"];
 				if (!TryGetStaticResourceConverterKey(converter, out _))
@@ -3643,6 +3648,19 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						Category = "Binding", TypeName = typeof(string).FullName ?? "",
 						Kind = "String", EditorKind = "BindingChildElementName", Value = child.ElementName ?? "",
 						BindingPropertyName = descriptor.Name, BindingChildIndex = index, ShouldSerialize = false
+					});
+				}
+				var childConverter = children[index].Properties["Converter"];
+				if (childConverter != null && TryGetStaticResourceConverterKey(childConverter, out var childConverterKey))
+				{
+					var choices = new List<string> { "" };
+					choices.AddRange(ConverterResourceKeys(item));
+					if (!choices.Contains(childConverterKey)) choices.Add(childConverterKey);
+					result.Add(new DesignerPropertyInfo {
+						Name = descriptor.Name + ".Bindings[" + index.ToString(CultureInfo.InvariantCulture) + "].Converter",
+						DisplayName = descriptor.Name + " Binding " + (index + 1).ToString(CultureInfo.InvariantCulture) + " Converter",
+						Category = "Binding", TypeName = typeof(string).FullName ?? "", Kind = "Enum", EditorKind = "BindingChildConverter",
+						Value = childConverterKey, BindingPropertyName = descriptor.Name, BindingChildIndex = index, ShouldSerialize = false, AllowedValues = choices
 					});
 				}
 							}

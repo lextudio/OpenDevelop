@@ -79,7 +79,7 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	[JsonRpcMethod("design/set-binding-text-option")]
 	public DesignerSessionState SetBindingTextOption(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string optionName, string value) => Checked(sessionId, documentId).SetBindingTextOption(baseVersion, elementId, propertyName, optionName, value);
 	[JsonRpcMethod("design/set-binding-converter")]
-	public DesignerSessionState SetBindingConverter(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string resourceKey) => Checked(sessionId, documentId).SetBindingConverter(baseVersion, elementId, propertyName, resourceKey);
+	public DesignerSessionState SetBindingConverter(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string resourceKey, int childIndex = -1) => Checked(sessionId, documentId).SetBindingConverter(baseVersion, elementId, propertyName, resourceKey, childIndex);
 	[JsonRpcMethod("design/set-items")]
 	public DesignerSessionState SetItems(string sessionId, string documentId, long baseVersion, string elementId, DesignerCollectionItemEdit[] items) => Checked(sessionId, documentId).SetItems(baseVersion, elementId, items);
 	[JsonRpcMethod("design/wrap-elements")]

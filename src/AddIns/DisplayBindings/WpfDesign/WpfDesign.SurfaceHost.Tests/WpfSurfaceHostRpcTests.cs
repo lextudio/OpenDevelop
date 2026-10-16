@@ -1090,6 +1090,7 @@ public sealed class WpfSurfaceHostRpcTests
 	{
 		const string xaml = """
 			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+			<Grid.Resources><BooleanToVisibilityConverter x:Key="visible"/></Grid.Resources>
 			<TextBlock x:Name="source" Text="source"/>
 			<TextBlock x:Name="multi"><TextBlock.Text><MultiBinding StringFormat="{}{0} {1}"><Binding Path="First"/><Binding Path="Last" Mode="OneWay"/></MultiBinding></TextBlock.Text></TextBlock>
 			  <TextBlock x:Name="priority"><TextBlock.Text><PriorityBinding><Binding Path="Preferred"/><Binding Path="Fallback"/></PriorityBinding></TextBlock.Text></TextBlock>
@@ -1138,6 +1139,17 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.True(elementNameEdited.Accepted, elementNameEdited.Error);
 		var elementNameText = (await client.FlushAsync(elementNameEdited.Version, timeout.Token)).Files.Single().Text;
 		Assert.Matches("<Binding(?=[^>]*Path=\"First\")(?=[^>]*ElementName=\"source\")", elementNameText);
+		var childConverter = FindByName(elementNameEdited.Tree!, "multi")!.Properties.Single(property => property.EditorKind == "BindingChildConverter" && property.BindingChildIndex == 0);
+		Assert.Equal("Text", childConverter.BindingPropertyName);
+		Assert.Contains("visible", childConverter.AllowedValues);
+		var converterEdited = await client.SetBindingConverterAsync(elementNameEdited.Version, multi.Id, "Text", "visible", 0, timeout.Token);
+		Assert.True(converterEdited.Accepted, converterEdited.Error);
+		var converterText = (await client.FlushAsync(converterEdited.Version, timeout.Token)).Files.Single().Text;
+		Assert.Matches("<Binding(?=[^>]*Path=\"First\")(?=[^>]*ElementName=\"source\")(?=[^>]*Converter=\"{StaticResource visible}\")", converterText);
+		var converterCleared = await client.SetBindingConverterAsync(converterEdited.Version, multi.Id, "Text", "", 0, timeout.Token);
+		Assert.True(converterCleared.Accepted, converterCleared.Error);
+		Assert.DoesNotContain("Converter=\"{StaticResource visible}\"", (await client.FlushAsync(converterCleared.Version, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		elementNameEdited = converterCleared;
 		var invalidChild = await client.SetBindingModeAsync(elementNameEdited.Version, multi.Id, "Text", "TwoWay", 9, timeout.Token);
 		Assert.False(invalidChild.Accepted);
 		Assert.Contains("Binding child", invalidChild.Error, StringComparison.Ordinal);

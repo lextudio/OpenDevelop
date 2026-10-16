@@ -247,6 +247,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		internal void SetBindingChildConverter(string propertyName, int childIndex, string resourceKey)
+		{
+			var state = client.SetBindingConverterAsync(currentBaseVersion(), node.Id, propertyName, resourceKey, childIndex)
+				.GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		internal void SetBindingDelay(string propertyName, int delay)
 		{
 			var state = client.SetBindingDelayAsync(currentBaseVersion(), node.Id, propertyName, delay)
@@ -500,6 +508,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 				owner.SetBindingTextOption(property.BindingPropertyName, property.BindingOptionName, serialized);
 			else if (property.EditorKind == "BindingConverter")
 				owner.SetBindingConverter(property.BindingPropertyName, serialized);
+			else if (property.EditorKind == "BindingChildConverter")
+				owner.SetBindingChildConverter(property.BindingPropertyName, property.BindingChildIndex, serialized);
 			else if (property.EditorKind == "BindingDelay")
 				owner.SetBindingDelay(property.BindingPropertyName, Convert.ToInt32(value, CultureInfo.InvariantCulture));
 			else
