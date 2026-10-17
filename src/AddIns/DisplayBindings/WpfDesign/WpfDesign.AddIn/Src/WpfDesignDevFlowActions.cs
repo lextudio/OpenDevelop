@@ -234,6 +234,17 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			});
 		}
 
+		static TreeViewItem? FindOutlineRow(ItemCollection items, string id)
+		{
+			foreach (var item in items.OfType<TreeViewItem>()) {
+				if ((item.Tag as DesignerElementNode)?.Id == id)
+					return item;
+				if (FindOutlineRow(item.Items, id) is { } match)
+					return match;
+			}
+			return null;
+		}
+
 		[DevFlowAction("od.wpf-designer.outline-select", Description = "Select a named WPF element through the live Document Outline control and report the resulting canvas selection")]
 		public static string SelectOutlineElement(string elementName)
 		{
@@ -249,8 +260,18 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				return Failure("WPF Document Outline is unavailable");
 
 			// Do not call surface.SelectElementId here: this must exercise the same
-			// Outline SelectionCommitted -> WpfViewContent -> adorner path as a user click.
-			outline.SelectNodeById(node.Id);
+			// Outline SelectionCommitted -> WpfViewContent -> adorner path as a user click. Nor
+			// outline.SelectNodeById: that is the surface -> outline sync and deliberately commits
+			// nothing (it selects under applyingSelection so a selection cannot bounce back), so
+			// the surface never heard of it. Select the row itself, as a click does.
+			var row = FindOutlineRow(outline.Items, node.Id);
+			if (row == null)
+				return Failure("The Document Outline does not show " + elementName);
+			// Already the outline's row (synced from an earlier surface pick): setting it again raises
+			// nothing, so release it first and the selection below is a real change.
+			if (row.IsSelected)
+				row.IsSelected = false;
+			row.IsSelected = true;
 			var selected = surface.SelectedElementId;
 			return JsonSerializer.Serialize(new {
 				success = StringComparer.Ordinal.Equals(selected, node.Id),
