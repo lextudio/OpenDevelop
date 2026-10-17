@@ -1101,8 +1101,12 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			var (width, height) = DesignSize(text);
 			var dpi = DisplayDpi();
 			lastRenderDpi = dpi;
-			// Surface size/DPI is presentation state and stays out of the document snapshot.
+			// Surface size/DPI is presentation state and stays out of the document snapshot. It travels as
+			// the request's explicit viewport: the client otherwise reuses the viewport of the last ACCEPTED
+			// render for an update, so a design-size preset was sent with the previous size and the canvas
+			// never resized.
 			client.SetViewport(width, height, dpi);
+			var viewport = new DesignerViewport { Width = width, Height = height, Dpi = dpi };
 			var document = new DocumentSnapshot {
 				SessionId = client.SessionId,
 				DocumentId = client.DocumentId,
@@ -1113,12 +1117,12 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			};
 			if (!sessionOpened)
 			{
-				snapshot = await client.OpenAsync(document);
+				snapshot = await client.OpenAsync(document, viewport);
 				sessionOpened = true;
 			}
 			else
 			{
-				snapshot = await client.UpdateAsync(document);
+				snapshot = await client.UpdateAsync(document, viewport);
 			}
 		}
 		catch (Exception e)
