@@ -221,7 +221,10 @@ public sealed class WpfGalleryDesignerTests
 
         var output = await _app.InvokeAsync("od.output-text", "WPF Designer");
         var text = output.GetProperty("text").GetString() ?? "";
-        Assert.Contains("runtime=MicrosoftWpf (isolated MicrosoftHost payload)", text);
+        // The runtime comes from the designer's own status, not the host's "runtime=" startup banner: the
+        // child is shared, so when an earlier test in the cell already started it that line was written
+        // before this test and is not in the channel.
+        RuntimeCell.AssertWpfBackend(await _app.InvokeAsync("od.wpf-designer.status"), RuntimeCell.MicrosoftWpf);
         Assert.Contains("attached design root to isolated native WPF presentation source", text);
         Assert.DoesNotContain("all-black frame", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("software fallback frame", text, StringComparison.OrdinalIgnoreCase);

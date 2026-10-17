@@ -82,7 +82,10 @@ public sealed class WinUIGalleryDesignerTests
         { "WinUIGallery/Samples/ProgressBar/ProgressBarPage.xaml", "ProgressBar2", "ProgressBar2" },
         { "WinUIGallery/Samples/RadioButton/RadioButtonPage.xaml", "BackgroundRadioButtons,BorderRadioButtons", "BackgroundRadioButtons" },
         { "WinUIGallery/Samples/Expander/ExpanderPage.xaml", "Expander1", "Expander1" },
-        { "WinUIGallery/Samples/TreeView/TreeViewPage.xaml", "sampleTreeView", "sampleTreeView" },
+        // No size probe: every TreeView on this page gets its nodes from code-behind (or x:Bind to a
+        // code-behind DataSource), so at design time each is empty and top-aligned, and a height of 0 is
+        // the correct layout - not a rendering failure. All four in the rendered tree is the evidence.
+        { "WinUIGallery/Samples/TreeView/TreeViewPage.xaml", "sampleTreeView,sampleTreeView2,TreeView1,FileTree", "" },
         { "WinUIGallery/Samples/AppBarButton/AppBarButtonPage.xaml", "Button1,Button2", "Button1" },
         // These two have no named inner control (the sample control is the ControlExample's direct
         // content and carries no x:Name), so they assert the document loaded and drew, with no
