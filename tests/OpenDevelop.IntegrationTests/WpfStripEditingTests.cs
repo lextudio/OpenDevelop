@@ -57,7 +57,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
 		var xamlPath = Path.Combine(sample, "MainWindow.xaml");
 		var originalXaml = await File.ReadAllTextAsync(xamlPath);
 		try {
-			await File.WriteAllTextAsync(xamlPath, """
+			await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
 			<Window x:Class="sample.MainWindow"
 			        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 			        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -181,7 +181,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
 			catch {
 				// Preserve the original test failure; the source restoration below is still required.
 			}
-			await File.WriteAllTextAsync(xamlPath, originalXaml);
+			await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
 		}
 	}
 
@@ -197,7 +197,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -278,7 +278,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
             Assert.Contains("Text=\"Line1&#xA;Line2\"", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
         } finally {
             await app.InvokeAsync("od.close-active-view");
-            await File.WriteAllTextAsync(xamlPath, originalXaml);
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
         }
     }
 
@@ -291,7 +291,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -350,7 +350,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -409,7 +409,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -496,7 +496,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
             Assert.True(ViewboxKeepsWrappedPosition(redoneText), redoneText);
         } finally {
             await app.InvokeAsync("od.close-active-view");
-            await File.WriteAllTextAsync(xamlPath, originalXaml);
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
         }
     }
 
@@ -509,7 +509,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -564,7 +564,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
             Assert.False(undo.GetProperty("canUndo").GetBoolean(), undo.ToString());
         } finally {
             await app.InvokeAsync("od.close-active-view");
-            await File.WriteAllTextAsync(xamlPath, originalXaml);
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
         }
     }
 
@@ -578,7 +578,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -597,6 +597,12 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
             var failedProcessId = status.GetProperty("hostProcessId").GetInt32();
 
             Assert.True((await app.InvokeAsync("od.wpf-designer.select", "owner")).GetProperty("success").GetBoolean());
+            // Selecting rebuilds the Properties pad, a CPU-bound regeneration of the Xceed PropertyGrid that takes
+            // seconds on a slow machine (stack samples of the UI thread during the test showed it, not an RPC wait).
+            // Time one selection with the host alive, so the budget below measures only the extra wait for a dead child.
+            var healthyWatch = System.Diagnostics.Stopwatch.StartNew();
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "owner")).GetProperty("success").GetBoolean());
+            var healthySelect = healthyWatch.Elapsed;
             var terminated = await app.InvokeAsync("od.wpf-designer.terminate-host");
             Assert.True(terminated.GetProperty("success").GetBoolean(), terminated.ToString());
             Assert.Equal(failedProcessId, terminated.GetProperty("oldHostProcessId").GetInt32());
@@ -608,7 +614,9 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
             var selectedDuringRecovery = await app.InvokeAsync("od.wpf-designer.select", "owner");
             stopwatch.Stop();
             Assert.True(selectedDuringRecovery.GetProperty("success").GetBoolean(), selectedDuringRecovery.ToString());
-            Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2), "Snapshot selection waited for the dead child: " + stopwatch.Elapsed);
+            // 5 s of slack, not 2: with the host killed the selection can overlap the replacement host starting up (measured 2-3.5 s more
+            // than the healthy selection on LibreWPF), while waiting out an RPC timeout is an order of magnitude longer.
+            Assert.True(stopwatch.Elapsed < healthySelect + TimeSpan.FromSeconds(5), "Snapshot selection waited for the dead child: " + stopwatch.Elapsed + " (the same selection took " + healthySelect + " with the host alive)");
 
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 status = await app.InvokeAsync("od.wpf-designer.status");
@@ -621,7 +629,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
             Assert.True(geometry.GetProperty("selection").GetProperty("width").GetDouble() > 0, geometry.ToString());
             await app.InvokeAsync("od.close-active-view");
         } finally {
-            await File.WriteAllTextAsync(xamlPath, originalXaml);
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
         }
     }
 
@@ -639,7 +647,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var originalCodeBehind = await File.ReadAllBytesAsync(codeBehindPath);
         try {
             await app.InvokeAsync("od.close-all-document-views");
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -691,7 +699,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
             Assert.Equal(afterAgain.IndexOf("owner_TargetUpdated", StringComparison.Ordinal), afterAgain.LastIndexOf("owner_TargetUpdated", StringComparison.Ordinal));
         } finally {
             await app.InvokeAsync("od.close-all-document-views");
-            await File.WriteAllTextAsync(xamlPath, originalXaml);
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
             await File.WriteAllBytesAsync(codeBehindPath, originalCodeBehind);
         }
     }
@@ -705,7 +713,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -760,7 +768,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
             Assert.DoesNotContain("Authored text", saved, StringComparison.Ordinal);
         } finally {
             await app.InvokeAsync("od.close-active-view");
-            await File.WriteAllTextAsync(xamlPath, originalXaml);
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
         }
     }
 
@@ -775,7 +783,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -834,7 +842,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
             Assert.Contains("IsAsync=True", saved, StringComparison.Ordinal);
         } finally {
             await app.InvokeAsync("od.close-active-view");
-            await File.WriteAllTextAsync(xamlPath, originalXaml);
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
         }
     }
 
@@ -848,7 +856,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -902,7 +910,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
             Assert.Contains("Path=\"Last\"", saved, StringComparison.Ordinal);
         } finally {
             await app.InvokeAsync("od.close-active-view");
-            await File.WriteAllTextAsync(xamlPath, originalXaml);
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
         }
     }
 
@@ -915,7 +923,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -1013,7 +1021,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -1069,7 +1077,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -1125,7 +1133,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -1183,7 +1191,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -1242,7 +1250,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -1304,7 +1312,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -1362,7 +1370,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -1421,7 +1429,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -1521,7 +1529,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
             // A 1x1 PNG.
             await File.WriteAllBytesAsync(Path.Combine(imageFolder, "dot.png"), Convert.FromBase64String(
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="));
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -1567,7 +1575,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -1693,7 +1701,7 @@ public abstract class WpfStripOverlayEditingTestsBase(OpenDevelopAppFixture fixt
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -1716,20 +1724,25 @@ public abstract class WpfStripOverlayEditingTestsBase(OpenDevelopAppFixture fixt
                 return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
             }, TimeSpan.FromSeconds(90)), status.ToString());
 
-            var bounds = await app.InvokeAsync("od.wpf-designer.query-element-screen-bounds", "fileItem");
-            Assert.True(bounds.GetProperty("success").GetBoolean(), bounds.ToString());
-            var x = bounds.GetProperty("centerX").GetDouble();
-            var y = bounds.GetProperty("centerY").GetDouble();
-            await app.InvokeAsync("od.activate");
-            Assert.True((await app.ClickPointerAsync(x, y, clickCount: 2)).GetProperty("ok").GetBoolean());
-
+            // A native double-click is occasionally swallowed (the other gesture tests retry for the same reason):
+            // reactivate the window, re-read the item's position and try again.
             JsonElement editor = default;
-            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
-                editor = await app.InvokeAsync("od.wpf-designer.inline-editor-status");
-                return editor.GetProperty("editing").GetBoolean()
-                    && editor.GetProperty("visible").GetBoolean()
-                    && editor.GetProperty("focused").GetBoolean();
-            }, TimeSpan.FromSeconds(10)), editor.ToString());
+            var editing = false;
+            for (var attempt = 1; attempt <= 3 && !editing; attempt++) {
+                var bounds = await app.InvokeAsync("od.wpf-designer.query-element-screen-bounds", "fileItem");
+                Assert.True(bounds.GetProperty("success").GetBoolean(), bounds.ToString());
+                var x = bounds.GetProperty("centerX").GetDouble();
+                var y = bounds.GetProperty("centerY").GetDouble();
+                await app.InvokeAsync("od.activate");
+                Assert.True((await app.ClickPointerAsync(x, y, clickCount: 2)).GetProperty("ok").GetBoolean());
+                editing = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                    editor = await app.InvokeAsync("od.wpf-designer.inline-editor-status");
+                    return editor.GetProperty("editing").GetBoolean()
+                        && editor.GetProperty("visible").GetBoolean()
+                        && editor.GetProperty("focused").GetBoolean();
+                }, TimeSpan.FromSeconds(6));
+            }
+            Assert.True(editing, "The inline editor did not open after three double-clicks on the File menu item: " + editor);
             Assert.Equal("Header", editor.GetProperty("propertyName").GetString());
             Assert.Equal("File", editor.GetProperty("text").GetString());
 
@@ -1775,7 +1788,7 @@ public abstract class WpfStripOverlayEditingTestsBase(OpenDevelopAppFixture fixt
             Assert.Contains("Header=\"Delete\"", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
             await app.InvokeAsync("od.close-active-view");
         } finally {
-            await File.WriteAllTextAsync(xamlPath, originalXaml);
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
         }
     }
 
@@ -1792,7 +1805,7 @@ public abstract class WpfStripOverlayEditingTestsBase(OpenDevelopAppFixture fixt
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -1908,7 +1921,7 @@ public abstract class WpfStripOverlayEditingTestsBase(OpenDevelopAppFixture fixt
 
             await app.InvokeAsync("od.close-active-view");
         } finally {
-            await File.WriteAllTextAsync(xamlPath, originalXaml);
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
         }
     }
 
@@ -1928,7 +1941,7 @@ public abstract class WpfStripOverlayEditingTestsBase(OpenDevelopAppFixture fixt
             // mainMenu starts genuinely empty - no MenuItems at all - unlike every other
             // Type-Here fact in this file, which all start from a Menu/ContextMenu that already
             // has at least one item.
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -2006,7 +2019,7 @@ public abstract class WpfStripOverlayEditingTestsBase(OpenDevelopAppFixture fixt
 
             await app.InvokeAsync("od.close-active-view");
         } finally {
-            await File.WriteAllTextAsync(xamlPath, originalXaml);
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
         }
     }
 
@@ -2022,7 +2035,7 @@ public abstract class WpfStripOverlayEditingTestsBase(OpenDevelopAppFixture fixt
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -2081,7 +2094,7 @@ public abstract class WpfStripOverlayEditingTestsBase(OpenDevelopAppFixture fixt
 
             await app.InvokeAsync("od.close-active-view");
         } finally {
-            await File.WriteAllTextAsync(xamlPath, originalXaml);
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
         }
     }
 
@@ -2095,7 +2108,7 @@ public abstract class WpfStripOverlayEditingTestsBase(OpenDevelopAppFixture fixt
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -2174,7 +2187,7 @@ public abstract class WpfStripOverlayEditingTestsBase(OpenDevelopAppFixture fixt
 
             await app.InvokeAsync("od.close-active-view");
         } finally {
-            await File.WriteAllTextAsync(xamlPath, originalXaml);
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
         }
     }
 
@@ -2189,7 +2202,7 @@ public abstract class WpfStripOverlayEditingTestsBase(OpenDevelopAppFixture fixt
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
-            await File.WriteAllTextAsync(xamlPath, """
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
             <Window x:Class="sample.MainWindow"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -2261,7 +2274,7 @@ public abstract class WpfStripOverlayEditingTestsBase(OpenDevelopAppFixture fixt
 
             await app.InvokeAsync("od.close-active-view");
         } finally {
-            await File.WriteAllTextAsync(xamlPath, originalXaml);
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
         }
     }
 

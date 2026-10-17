@@ -10,6 +10,36 @@ namespace ICSharpCode.FormsDesigner.Host.Tests;
 public sealed class FormsDesignerHostClientTests
 {
 	[Fact]
+	public async Task AddElement_UsesTheHostsWinFormsWhenTheProjectShipsItsOwnCopy()
+	{
+		// A LibreWinForms project's output folder carries its own System.Windows.Forms.dll, and the IDE
+		// passes it as a reference. Loaded as a second copy, it supplied the toolbox types, whose
+		// LibrePlatform was never registered, so adding a ComboBox threw.
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		// This file is also compiled into the Microsoft host's tests. A Microsoft WinForms project's output does
+		// not carry System.Windows.Forms.dll (it comes from the shared framework), so there is nothing to copy.
+		Assert.Skip("The project-ships-its-own-System.Windows.Forms scenario exists only for LibreWinForms projects.");
+#endif
+		var projectOutput = Directory.CreateTempSubdirectory("od-forms-copy-").FullName;
+		try {
+			var hostCopy = Path.Combine(Path.GetDirectoryName(HostDll())!, "System.Windows.Forms.dll");
+			var projectCopy = Path.Combine(projectOutput, "System.Windows.Forms.dll");
+			File.Copy(hostCopy, projectCopy);
+			using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+			using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+			var snapshot = Snapshot(1, "button1");
+			snapshot.ReferencedAssemblyPaths.Add(projectCopy);
+			Assert.True((await client.OpenAsync(snapshot, timeout.Token)).Accepted);
+
+			var added = await client.AddElementAsync(1, "Form1", new DesignerToolboxItemInfo { TypeName = "System.Windows.Forms.ComboBox" }, "combo1", 30, 30, cancellationToken: timeout.Token);
+
+			Assert.Contains(added.Components, component => component.Name == "combo1" && component.Type == "System.Windows.Forms.ComboBox");
+		} finally {
+			try { Directory.Delete(projectOutput, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+		}
+	}
+
+	[Fact]
 	public async Task ChildHost_PublishesTheControlDesignersTextBaseline()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));

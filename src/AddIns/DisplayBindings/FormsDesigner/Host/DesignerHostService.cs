@@ -3558,8 +3558,24 @@ sealed class DesignerHostService : IDesignerChildService
 			projectLoadContext = new ProjectAssemblyLoadContext(Path.GetFullPath(referencePaths[0]));
 		if (projectLoadContext != null) {
 			int loaded = 0;
+			// A LibreWinForms project's output carries its own copies of the framework the host itself
+			// runs on (System.Windows.Forms, LibreWinForms.Platform, ...), and the IDE lists them as
+			// references. LoadFromAssemblyPath bypasses ProjectAssemblyLoadContext.Load's sharing, so a
+			// second System.Windows.Forms landed in referencedAssemblies; ResolveControlType searches it
+			// before the host's own, and a toolbox ComboBox or Label then came from that copy, whose
+			// LibrePlatform was never registered ("No LibreWinForms platform backend is registered").
+			// A reference the host has already loaded is the host's copy.
+			var hostAssemblies = AssemblyLoadContext.Default.Assemblies
+				.GroupBy(assembly => assembly.GetName().Name ?? "", StringComparer.OrdinalIgnoreCase)
+				.ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
 			foreach (var path in referencePaths) {
-				try { referencedAssemblies.Add(projectLoadContext.LoadFromAssemblyPath(Path.GetFullPath(path))); loaded++; } catch { }
+				try {
+					var fullPath = Path.GetFullPath(path);
+					referencedAssemblies.Add(hostAssemblies.TryGetValue(AssemblyName.GetAssemblyName(fullPath).Name ?? "", out var shared)
+						? shared
+						: projectLoadContext.LoadFromAssemblyPath(fullPath));
+					loaded++;
+				} catch { }
 			}
 		}
 		Trace("CreateDesignSurface constructing DesignSurface");

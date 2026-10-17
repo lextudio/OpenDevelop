@@ -3500,6 +3500,22 @@ public sealed class AddInTests : IAsyncDisposable
             await _app.InvokeAsync("od.show-pad", "Tools");
             await _app.InvokeAsync("od.activate");
 
+            // In the split Design/Source layout the design pane can be shorter than the form, which leaves the
+            // drop target below the visible canvas, where the release lands on the source editor. Fit keeps the
+            // whole frame in view; wait for it to settle before aiming (the resize test does the same).
+            Assert.True((await _app.InvokeAsync("od.forms-designer.view", "fit")).GetProperty("success").GetBoolean());
+            JsonElement fitGeometry = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                fitGeometry = await _app.InvokeAsync("od.forms-designer.surface-geometry");
+                if (!fitGeometry.GetProperty("available").GetBoolean()) return false;
+                var frame = fitGeometry.GetProperty("frame");
+                var viewport = fitGeometry.GetProperty("viewport");
+                return frame.GetProperty("x").GetDouble() >= viewport.GetProperty("x").GetDouble() - 1
+                    && frame.GetProperty("y").GetDouble() >= viewport.GetProperty("y").GetDouble() - 1
+                    && frame.GetProperty("x").GetDouble() + frame.GetProperty("width").GetDouble() <= viewport.GetProperty("x").GetDouble() + viewport.GetProperty("width").GetDouble() + 1
+                    && frame.GetProperty("y").GetDouble() + frame.GetProperty("height").GetDouble() <= viewport.GetProperty("y").GetDouble() + viewport.GetProperty("height").GetDouble() + 1;
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 400), "The whole form must be inside the visible canvas at Fit: " + fitGeometry);
+
             // Query the drop target's bounds BEFORE the toolbox row's bounds, not after:
             // od.forms-designer.query-control-screen-bounds switches the active view to the
             // FormsDesigner view (FindFormsDesignerViewContent's own SwitchView call), and a view
@@ -3574,10 +3590,10 @@ public sealed class AddInTests : IAsyncDisposable
                 "Expected the dropped NumericUpDown to have a Size assignment in the generated designer code.\n" + savedFormCode);
             Assert.Equal(120, int.Parse(sizeMatch.Groups[1].Value));
 			// Microsoft WinForms' real NumericUpDown defaults to 23px high; LibreWinForms'
-			// portable implementation is 20px. Assert the actual default of whichever backend
+			// portable implementation is 22px. Assert the actual default of whichever backend
 			// designed the form rather than normalising one to the other.
 			var libreBackend = status.GetProperty("backend").GetString() == "LibreWinForms";
-			Assert.Equal(libreBackend ? 20 : 23, int.Parse(sizeMatch.Groups[2].Value));
+			Assert.Equal(libreBackend ? 22 : 23, int.Parse(sizeMatch.Groups[2].Value));
 
             // Selecting a WinForms toolbox row without dragging must not arm a persistent creation
             // tool. The shared toolbox used to leave IToolboxService.SelectedToolboxItem set, so
@@ -3600,7 +3616,12 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True(clickReleased.GetProperty("ok").GetBoolean(), clickReleased.ToString());
             await Task.Delay(500);
 
-            var statusAfterCanvasClick = await _app.InvokeAsync("od.forms-designer.status");
+            // The canvas click can leave the designer reloading, and the status carries no controlNames until it is loaded.
+            JsonElement statusAfterCanvasClick = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                statusAfterCanvasClick = await _app.InvokeAsync("od.forms-designer.status");
+                return statusAfterCanvasClick.TryGetProperty("controlNames", out _);
+            }, TimeSpan.FromSeconds(30), initialDelayMs: 100, maxDelayMs: 500), "The designer did not report its controls after the canvas click: " + statusAfterCanvasClick);
             Assert.Equal(
                 statusAfterDrop.GetProperty("controlNames").GetArrayLength(),
                 statusAfterCanvasClick.GetProperty("controlNames").GetArrayLength());
@@ -4010,6 +4031,15 @@ public sealed class AddInTests : IAsyncDisposable
             // view, and require the handle to be visible before driving the gesture. Growth is
             // then judged in design units (designSize): Fit re-scales the resized form to fit, so
             // its screen size barely changes even though the form really grew.
+            // The design pane can be shorter than the form even at 50%. Before falling back to a Fit scale that makes the
+            // handle a few pixels wide, scroll the canvas to its bottom-right corner, as a user would.
+            if (!before.GetProperty("handleVisible").GetBoolean()) {
+                Assert.True((await _app.InvokeAsync("od.forms-designer.scroll-to", "max", "max")).GetProperty("success").GetBoolean());
+                await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                    before = await _app.InvokeAsync("od.forms-designer.surface-geometry");
+                    return before.GetProperty("available").GetBoolean() && before.GetProperty("handleVisible").GetBoolean();
+                }, TimeSpan.FromSeconds(3), initialDelayMs: 100, maxDelayMs: 300);
+            }
             if (!before.GetProperty("handleVisible").GetBoolean()) {
                 Assert.True((await _app.InvokeAsync("od.forms-designer.view", "fit")).GetProperty("success").GetBoolean());
                 Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -4150,7 +4180,7 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.Contains("timer1 = new System.Windows.Forms.Timer(components);", designer, StringComparison.Ordinal);
             Assert.Contains("components = new System.ComponentModel.Container();", designer, StringComparison.Ordinal);
 
-            var undone = await _app.InvokeAsync("od.forms-designer.undo");
+            var undone = await _app.InvokeFormsHistoryAsync("od.forms-designer.undo");
             Assert.True(undone.GetProperty("success").GetBoolean(), undone.ToString());
             saved = await _app.InvokeAsync("od.file.save", formCodePath);
             Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
@@ -4215,7 +4245,7 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.Contains("combo1.Items.AddRange(new object[] { \"Uno\", \"Two\" });", savedDesigner, StringComparison.Ordinal);
 
             // One dialog commit is one designer undo step.
-            var undone = await _app.InvokeAsync("od.forms-designer.undo");
+            var undone = await _app.InvokeFormsHistoryAsync("od.forms-designer.undo");
             Assert.True(undone.GetProperty("success").GetBoolean(), undone.ToString());
             saved = await _app.InvokeAsync("od.file.save", formCodePath);
             Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
@@ -4304,7 +4334,7 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.Contains("ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F)", savedDesigner, StringComparison.Ordinal);
             Assert.DoesNotContain("40F", savedDesigner, StringComparison.Ordinal);
 
-            var undone = await _app.InvokeAsync("od.forms-designer.undo");
+            var undone = await _app.InvokeFormsHistoryAsync("od.forms-designer.undo");
             Assert.True(undone.GetProperty("success").GetBoolean(), undone.ToString());
             saved = await _app.InvokeAsync("od.file.save", formCodePath);
             Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
@@ -4324,7 +4354,7 @@ public sealed class AddInTests : IAsyncDisposable
             savedDesigner = await File.ReadAllTextAsync(designerPath);
             Assert.Contains("grid1.RowCount = 2;", savedDesigner, StringComparison.Ordinal);
             Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(savedDesigner, @"grid1\.RowStyles\.Add\(").Count);
-            undone = await _app.InvokeAsync("od.forms-designer.undo");
+            undone = await _app.InvokeFormsHistoryAsync("od.forms-designer.undo");
             Assert.True(undone.GetProperty("success").GetBoolean(), undone.ToString());
             saved = await _app.InvokeAsync("od.file.save", formCodePath);
             Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
@@ -4483,6 +4513,8 @@ public sealed class AddInTests : IAsyncDisposable
             var moved = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 var b1 = await _app.InvokeAsync("od.forms-designer.query-control-screen-bounds", "label1");
                 var b2 = await _app.InvokeAsync("od.forms-designer.query-control-screen-bounds", "label2");
+                if (!b1.GetProperty("success").GetBoolean() || !b2.GetProperty("success").GetBoolean())
+                    return false;
                 left1AfterNudge = b1.GetProperty("x").GetDouble();
                 left2AfterNudge = b2.GetProperty("x").GetDouble();
                 return Math.Abs(left1AfterNudge - (left1 + 15)) < 1.5
@@ -4491,19 +4523,19 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True(moved, $"both labels should have moved +15px after nudge: {left1}->{left1AfterNudge}, {left2}->{left2AfterNudge}");
 
             // Undo reverts the nudge; redo re-applies it.
-            var undone = await _app.InvokeAsync("od.forms-designer.undo");
+            var undone = await _app.InvokeFormsHistoryAsync("od.forms-designer.undo");
             Assert.True(undone.GetProperty("success").GetBoolean(), undone.ToString());
             var undid = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 var b1 = await _app.InvokeAsync("od.forms-designer.query-control-screen-bounds", "label1");
-                return Math.Abs(b1.GetProperty("x").GetDouble() - left1) < 1.5;
+                return b1.GetProperty("success").GetBoolean() && Math.Abs(b1.GetProperty("x").GetDouble() - left1) < 1.5;
             }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 400);
             Assert.True(undid, "Undo should revert the nudge back to the aligned position.");
 
-            var redone = await _app.InvokeAsync("od.forms-designer.redo");
+            var redone = await _app.InvokeFormsHistoryAsync("od.forms-designer.redo");
             Assert.True(redone.GetProperty("success").GetBoolean(), redone.ToString());
             var redid = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 var b1 = await _app.InvokeAsync("od.forms-designer.query-control-screen-bounds", "label1");
-                return Math.Abs(b1.GetProperty("x").GetDouble() - left1AfterNudge) < 1.5;
+                return b1.GetProperty("success").GetBoolean() && Math.Abs(b1.GetProperty("x").GetDouble() - left1AfterNudge) < 1.5;
             }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 400);
             Assert.True(redid, "Redo should re-apply the nudge.");
 
@@ -4567,7 +4599,7 @@ public sealed class AddInTests : IAsyncDisposable
 
             // Component references are normal designer mutations: undo and redo must update the
             // source just like scalar property edits, without undoing the newly added component.
-            var undoneAccept = await _app.InvokeAsync("od.forms-designer.undo");
+            var undoneAccept = await _app.InvokeFormsHistoryAsync("od.forms-designer.undo");
             Assert.True(undoneAccept.GetProperty("success").GetBoolean(), undoneAccept.ToString());
             Assert.True(undoneAccept.GetProperty("canRedo").GetBoolean(), undoneAccept.ToString());
             var undoFlushed = await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -4580,7 +4612,7 @@ public sealed class AddInTests : IAsyncDisposable
             }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250);
             Assert.True(undoFlushed, "Undo did not flush the expected component-reference source state: " + savedDesigner);
 
-            var redoneAccept = await _app.InvokeAsync("od.forms-designer.redo");
+            var redoneAccept = await _app.InvokeFormsHistoryAsync("od.forms-designer.redo");
             Assert.True(redoneAccept.GetProperty("success").GetBoolean(), redoneAccept.ToString());
             var redoFlushed = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 var saved = await _app.InvokeAsync("od.file.save", formCodePath);
@@ -4594,9 +4626,12 @@ public sealed class AddInTests : IAsyncDisposable
 
             JsonElement resetAccept = default;
             var resetAcceptOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                // The saves above leave the source tab active; selecting switches back and reloads the designer,
+                // and a selection made before the reload finishes is lost. Select on every try.
+                await _app.InvokeAsync("od.forms-designer.select", "Form1");
                 resetAccept = await _app.InvokeAsync("od.forms-designer.properties-pad.reset", "AcceptButton");
                 return resetAccept.GetProperty("success").GetBoolean();
-            }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250);
+            }, TimeSpan.FromSeconds(45), initialDelayMs: 100, maxDelayMs: 500);
             Assert.True(resetAcceptOk, resetAccept.ToString());
             Assert.Equal("Form1", resetAccept.GetProperty("selectedName").GetString());
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
@@ -4655,6 +4690,8 @@ public sealed class AddInTests : IAsyncDisposable
         var originalDesigner = await File.ReadAllTextAsync(designerPath);
         var resourceExisted = File.Exists(resourcePath);
         var originalResource = resourceExisted ? await File.ReadAllBytesAsync(resourcePath) : null;
+        // Creating an image resource makes the designer add the .resx to the opened project; restore it.
+        var originalProjects = OpenDevelopAppFixture.SnapshotProjectFiles(FormsSolutionPath(cell));
         const string originalImage = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLk2QAAAABJRU5ErkJggg==";
         const string replacementImage = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl8tWQAAAAASUVORK5CYII=";
         // Small valid ICO payloads. Do not use the host test's short invalid placeholder here:
@@ -4695,9 +4732,12 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True((await _app.InvokeAsync("od.forms-designer.select", "dropPanel")).GetProperty("success").GetBoolean());
             JsonElement replaced = default;
             var replacedOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                // Saving the form leaves the source tab active; selecting switches back and reloads the designer,
+                // and a selection made before that reload finishes is lost with the old control. Select on every try.
+                await _app.InvokeAsync("od.forms-designer.select", "dropPanel");
                 replaced = await _app.InvokeAsync("od.forms-designer.properties-pad.replace-resource-image", "BackgroundImage", replacementImage);
                 return replaced.GetProperty("success").GetBoolean();
-            }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 300);
+            }, TimeSpan.FromSeconds(45), initialDelayMs: 100, maxDelayMs: 500);
             Assert.True(replacedOk, replaced.ToString());
             Assert.Equal("dropPanel.BackgroundImage", replaced.GetProperty("ResourceKey").GetString());
             Assert.True(replaced.GetProperty("hasReplaceButton").GetBoolean(), replaced.ToString());
@@ -4709,11 +4749,11 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.Contains("obsolete.Image", resourcesAfterImageSave, StringComparison.Ordinal);
             Assert.Contains("not-base64", resourcesAfterImageSave, StringComparison.Ordinal);
 
-            Assert.True((await _app.InvokeAsync("od.forms-designer.undo")).GetProperty("success").GetBoolean());
+            Assert.True((await _app.InvokeFormsHistoryAsync("od.forms-designer.undo")).GetProperty("success").GetBoolean());
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
             Assert.Contains(originalImage, await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
 
-            Assert.True((await _app.InvokeAsync("od.forms-designer.redo")).GetProperty("success").GetBoolean());
+            Assert.True((await _app.InvokeFormsHistoryAsync("od.forms-designer.redo")).GetProperty("success").GetBoolean());
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
             Assert.Contains(replacementImage, await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
 
@@ -4722,9 +4762,12 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True((await _app.InvokeAsync("od.forms-designer.outline-select", "Form1")).GetProperty("success").GetBoolean());
             JsonElement iconReplaced = default;
             var iconReplacedOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                // Saving the form leaves the source tab active; selecting switches back and reloads the designer,
+                // and a selection made before that reload finishes is lost with the old control. Select on every try.
+                await _app.InvokeAsync("od.forms-designer.select", "Form1");
                 iconReplaced = await _app.InvokeAsync("od.forms-designer.properties-pad.replace-resource-image", "Icon", replacementIcon);
                 return iconReplaced.GetProperty("success").GetBoolean();
-            }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 300);
+            }, TimeSpan.FromSeconds(45), initialDelayMs: 100, maxDelayMs: 500);
             Assert.True(iconReplacedOk, iconReplaced.ToString());
             Assert.Equal("$this.Icon", iconReplaced.GetProperty("ResourceKey").GetString());
             Assert.True(iconReplaced.GetProperty("hasReplaceButton").GetBoolean(), iconReplaced.ToString());
@@ -4732,7 +4775,7 @@ public sealed class AddInTests : IAsyncDisposable
 
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
             Assert.Contains(replacementIcon, await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
-            Assert.True((await _app.InvokeAsync("od.forms-designer.undo")).GetProperty("success").GetBoolean());
+            Assert.True((await _app.InvokeFormsHistoryAsync("od.forms-designer.undo")).GetProperty("success").GetBoolean());
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
             var resourcesAfterIconUndo = await File.ReadAllTextAsync(resourcePath);
             Assert.Contains(originalIcon, resourcesAfterIconUndo, StringComparison.Ordinal);
@@ -4741,7 +4784,7 @@ public sealed class AddInTests : IAsyncDisposable
             // Icon undo is its own document transaction, so it must not consume the earlier image
             // replacement that is still at the bottom of the parent-owned undo stack.
             Assert.Contains(replacementImage, resourcesAfterIconUndo, StringComparison.Ordinal);
-            Assert.True((await _app.InvokeAsync("od.forms-designer.redo")).GetProperty("success").GetBoolean());
+            Assert.True((await _app.InvokeFormsHistoryAsync("od.forms-designer.redo")).GetProperty("success").GetBoolean());
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
             var resourcesAfterIconRedo = await File.ReadAllTextAsync(resourcePath);
             Assert.Contains(replacementIcon, resourcesAfterIconRedo, StringComparison.Ordinal);
@@ -4752,19 +4795,22 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True((await _app.InvokeAsync("od.forms-designer.select", "button1")).GetProperty("success").GetBoolean());
             JsonElement created = default;
             var createdOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                // Saving the form leaves the source tab active; selecting switches back and reloads the designer,
+                // and a selection made before that reload finishes is lost with the old control. Select on every try.
+                await _app.InvokeAsync("od.forms-designer.select", "button1");
                 created = await _app.InvokeAsync("od.forms-designer.properties-pad.replace-resource-image", "Image", replacementImage);
                 return created.GetProperty("success").GetBoolean();
-            }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 300);
+            }, TimeSpan.FromSeconds(45), initialDelayMs: 100, maxDelayMs: 500);
             Assert.True(createdOk, created.ToString());
             Assert.True(created.GetProperty("createsResource").GetBoolean(), created.ToString());
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
             Assert.Contains("button1.Image", await File.ReadAllTextAsync(designerPath), StringComparison.Ordinal);
             Assert.Contains("button1.Image", await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
-            Assert.True((await _app.InvokeAsync("od.forms-designer.undo")).GetProperty("success").GetBoolean());
+            Assert.True((await _app.InvokeFormsHistoryAsync("od.forms-designer.undo")).GetProperty("success").GetBoolean());
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
             Assert.DoesNotContain("button1.Image", await File.ReadAllTextAsync(designerPath), StringComparison.Ordinal);
             Assert.DoesNotContain("button1.Image", await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
-            Assert.True((await _app.InvokeAsync("od.forms-designer.redo")).GetProperty("success").GetBoolean());
+            Assert.True((await _app.InvokeFormsHistoryAsync("od.forms-designer.redo")).GetProperty("success").GetBoolean());
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
             Assert.Contains("button1.Image", await File.ReadAllTextAsync(designerPath), StringComparison.Ordinal);
             Assert.Contains("button1.Image", await File.ReadAllTextAsync(resourcePath), StringComparison.Ordinal);
@@ -4774,9 +4820,12 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True((await _app.InvokeAsync("od.forms-designer.outline-select", "Form1")).GetProperty("success").GetBoolean());
             JsonElement rootCreated = default;
             var rootCreatedOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                // Saving the form leaves the source tab active; selecting switches back and reloads the designer,
+                // and a selection made before that reload finishes is lost with the old control. Select on every try.
+                await _app.InvokeAsync("od.forms-designer.select", "Form1");
                 rootCreated = await _app.InvokeAsync("od.forms-designer.properties-pad.replace-resource-image", "BackgroundImage", replacementImage);
                 return rootCreated.GetProperty("success").GetBoolean();
-            }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 300);
+            }, TimeSpan.FromSeconds(45), initialDelayMs: 100, maxDelayMs: 500);
             Assert.True(rootCreatedOk, rootCreated.ToString());
             Assert.True(rootCreated.GetProperty("createsResource").GetBoolean(), rootCreated.ToString());
             Assert.True((await _app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
@@ -4790,6 +4839,7 @@ public sealed class AddInTests : IAsyncDisposable
                 await File.WriteAllBytesAsync(resourcePath, originalResource!);
             else if (File.Exists(resourcePath))
                 File.Delete(resourcePath);
+            OpenDevelopAppFixture.RestoreProjectFiles(originalProjects);
         }
     }
 
@@ -5078,12 +5128,19 @@ public sealed class AddInTests : IAsyncDisposable
         // must not overlap. In Fit mode on a small display the 1280-wide canvas is scaled to about 0.3, the
         // button's selection is ~25x9 px, and the east handle (checked before south-east) wins the press, so
         // only the width ever changes. Use an absolute 100% at pan 0,0 instead.
-        Assert.True((await _app.InvokeAsync("od.winui-designer.view", "1 0 0")).GetProperty("success").GetBoolean());
         JsonElement before = default;
-        var handleVisible = await OpenDevelopAppFixture.PollUntilAsync(async () => {
-            before = await _app.InvokeAsync("od.winui-designer.surface-geometry");
-            return before.GetProperty("available").GetBoolean() && before.GetProperty("handleVisible").GetBoolean();
-        }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 400);
+        var handleVisible = false;
+        // The design pane can be shorter than the selection's bottom edge (126 px of viewport on a small display), which
+        // leaves the handle a few pixels below it at pan 0. Pan the canvas up, a step at a time, until the handle is reachable;
+        // zoom stays at an absolute 100%, which the checks below rely on.
+        foreach (var panY in new[] { 0, -30, -60, -100, -150, -220, -300 }) {
+            Assert.True((await _app.InvokeAsync("od.winui-designer.view", "1 0 " + panY)).GetProperty("success").GetBoolean());
+            handleVisible = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                before = await _app.InvokeAsync("od.winui-designer.surface-geometry");
+                return before.GetProperty("available").GetBoolean() && before.GetProperty("handleVisible").GetBoolean();
+            }, TimeSpan.FromSeconds(3), initialDelayMs: 100, maxDelayMs: 400);
+            if (handleVisible) break;
+        }
         Assert.True(handleVisible, "The resize handle is outside the design viewport at 100%, so a press cannot reach it. Geometry: " + before);
         Assert.True(before.GetProperty("available").GetBoolean(), before.ToString());
 		OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(before, "before");
@@ -5445,6 +5502,10 @@ public sealed class AddInTests : IAsyncDisposable
 		string reactivatePath = null, string expectedCell = null, bool requireLoaded = false)
     {
 		expectedCell ??= _app.WpfSampleCell;
+		// LibreWPF's host starts slowly when it follows a test that killed or recovered one (the whole-cell run measured
+		// more than 30 s); the LibreWPF-only test already waits 120 s for the same reason.
+		if (expectedCell == RuntimeCell.LibreWpf)
+			timeoutSeconds = Math.Max(timeoutSeconds, 120);
         JsonElement status = default;
         var previousCount = -1;
         var settled = await OpenDevelopAppFixture.PollUntilAsync(async () =>

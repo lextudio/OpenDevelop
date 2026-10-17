@@ -83,6 +83,18 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			return JsonSerializer.Serialize(new { success = true, zoom = surface.SetZoom(value) });
 		}
 
+		[DevFlowAction("od.forms-designer.scroll-to", Description = "Scroll the WinForms design canvas like its scrollbars do (offsets in DIPs, clamped; 'max' scrolls to the end) and report the scroll status - for a gesture whose target is below or right of a short design pane; zoom is unchanged")]
+		public static string ScrollTo(string horizontal = "max", string vertical = "max")
+		{
+			if (FindFormsDesignerViewContent()?.RemoteDesignSurface is not RemoteFormsDesignerControl surface)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			static double Offset(string value, double max)
+				=> value == "max" ? max : double.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+			surface.ScrollTo(Offset(horizontal, surface.ScrollStatus.ScrollableWidth), Offset(vertical, surface.ScrollStatus.ScrollableHeight));
+			var status = surface.ScrollStatus;
+			return JsonSerializer.Serialize(new { success = true, status.ScrollableWidth, status.ScrollableHeight, status.HorizontalOffset, status.VerticalOffset });
+		}
+
 		[DevFlowAction("od.forms-designer.item-editor-status", Description = "Inspect the inline item editor's selection, visibility, focus and text without changing the designer")]
 		public static string GetItemEditorStatus()
 		{
@@ -179,6 +191,9 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			// path first, then synchronize the outline node.
 			viewContent.SelectRemoteComponents(name);
 			outline.SelectNodeById(name);
+			// Like od.forms-designer.select: a selection that does not change (or a pad refresh still queued
+			// behind a reload) must not leave the Properties pad empty for the caller's next step.
+			viewContent.RefreshRemotePropertyPad();
 			return JsonSerializer.Serialize(new {
 				success = true,
 				selected = viewContent.RemoteDesignerSelectedComponent
@@ -333,7 +348,9 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 				viewContent.AddRemoteControl(parentName, controlType, componentName, x, y);
 				return JsonSerializer.Serialize(new { success = true });
 			} catch (Exception exception) {
-				return JsonSerializer.Serialize(new { success = false, error = exception.Message });
+				// A host-side failure arrives wrapped ("Exception has been thrown by the target of an
+				// invocation."); the detail is what says which call failed.
+				return JsonSerializer.Serialize(new { success = false, error = exception.Message, detail = exception.ToString() });
 			}
 		}
 
@@ -390,21 +407,30 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 		[DevFlowAction("od.forms-designer.undo", Description = "Undo the last WinForms designer edit - mirrors od.winui-designer.undo")]
 		public static string Undo()
 		{
-			return History(view => view.Undo());
+			return History("Undo", view => view.TryUndo());
 		}
 
 		[DevFlowAction("od.forms-designer.redo", Description = "Redo the last undone WinForms designer edit - mirrors od.winui-designer.redo")]
 		public static string Redo()
 		{
-			return History(view => view.Redo());
+			return History("Redo", view => view.TryRedo());
 		}
 
-		static string History(Action<FormsDesignerViewContent> operation)
+		static string History(string name, Func<FormsDesignerViewContent, bool> operation)
 		{
 			var viewContent = LoadedViewOr();
 			if (viewContent == null)
 				return Failure("The out-of-process WinForms designer is not loaded");
-			operation(viewContent);
+			// LoadedViewOr switches to the designer tab when another one is active (saving the form
+			// leaves the source tab active), which starts a reload; the command is disabled until it has
+			// finished. Say so, rather than report a history step that never happened: the caller retries.
+			if (!operation(viewContent))
+				return JsonSerializer.Serialize(new {
+					success = false,
+					error = name + " did not run: loaded=" + viewContent.IsRemoteDesignerLoaded
+						+ ", canUndo=" + viewContent.EnableUndo + ", canRedo=" + viewContent.EnableRedo,
+					loaded = viewContent.IsRemoteDesignerLoaded
+				});
 			var after = viewContent.RemoteDesignerState;
 			return JsonSerializer.Serialize(new {
 				success = true,

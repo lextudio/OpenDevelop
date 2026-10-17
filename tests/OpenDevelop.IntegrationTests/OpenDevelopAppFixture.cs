@@ -94,6 +94,28 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string FormsDesignSolutionPath => OperatingSystem.IsWindows() ? WinFormsSampleSolutionPath : LibreWinFormsSampleSolutionPath;
     /// <summary>The runtime cell <see cref="FormsDesignSolutionPath"/> belongs to; assert this cell, never a hard-coded one.</summary>
     public string FormsDesignCell => OperatingSystem.IsWindows() ? RuntimeCell.MicrosoftWinForms : RuntimeCell.LibreWinForms;
+    /// <summary>Writes a fixture file, retrying while another process still holds it (the previous test's designer or host
+    /// can release a document a moment after its view closed); the whole-cell run hit an IOException on MainWindow.xaml.</summary>
+    public static async Task WriteAllTextWithRetryAsync(string path, string contents)
+    {
+        for (var attempt = 1; ; attempt++) {
+            try { await File.WriteAllTextAsync(path, contents); return; }
+            catch (IOException) when (attempt < 20) { await Task.Delay(500); }
+        }
+    }
+
+    /// <summary>The bytes of every project file next to <paramref name="solutionPath"/>, for <see cref="RestoreProjectFiles"/>.
+    /// A designer save may add a new .resx to the project (the LibreWinForms sample links Form1 but not its .resx), and a
+    /// test that leaves that edit behind changes what the next run starts from.</summary>
+    public static Dictionary<string, byte[]> SnapshotProjectFiles(string solutionPath)
+        => Directory.GetFiles(Path.GetDirectoryName(solutionPath)!, "*.*proj").ToDictionary(path => path, File.ReadAllBytes);
+
+    public static void RestoreProjectFiles(Dictionary<string, byte[]> snapshot)
+    {
+        foreach (var (path, bytes) in snapshot)
+            if (!File.Exists(path) || !File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes))
+                File.WriteAllBytes(path, bytes);
+    }
     public string UnoXamlSampleSolutionPath => LocateUnoXamlSampleSolution();
     public string ProGpuWinUISampleSolutionPath => LocateProGpuWinUISampleSolution();
     public string WinUISampleSolutionPath => LocateWinUISampleSolution();
@@ -687,6 +709,22 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 				return false;
 			await Task.Delay(Math.Min(delayMs, maxDelayMs));
 			delayMs = Math.Min(delayMs * 2, maxDelayMs);
+		}
+	}
+
+	/// <summary>Runs <c>od.forms-designer.undo</c> or <c>od.forms-designer.redo</c> and waits for it to take effect.
+	/// Saving a form leaves its source tab active, and the action switches back to the designer tab, which
+	/// reloads; the command does nothing until the reload has finished, and the action then reports
+	/// <c>success: false</c> (it used to report success for a history step that never happened). The last
+	/// result is returned if it never runs, so a caller asserting <c>success</c> fails with the reason.</summary>
+	public async Task<JsonElement> InvokeFormsHistoryAsync(string action, TimeSpan? timeout = null)
+	{
+		var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(60));
+		while (true) {
+			var result = await InvokeAsync(action);
+			if (result.GetProperty("success").GetBoolean() || DateTime.UtcNow >= deadline)
+				return result;
+			await Task.Delay(500);
 		}
 	}
 

@@ -61,7 +61,7 @@ public sealed class FormsMenuEditingTests(OpenDevelopAppFixture app)
         Assert.True((await app.InvokeAsync("od.forms-designer.item-editor-input", "Edited", false)).GetProperty("success").GetBoolean());
         Assert.Equal("Edited", (await Editor()).GetProperty("selectedText").GetString());
         Assert.True((await app.InvokeAsync("od.forms-designer.status")).GetProperty("canUndo").GetBoolean());
-        await app.InvokeAsync("od.forms-designer.undo");
+        await app.InvokeFormsHistoryAsync("od.forms-designer.undo");
         await app.InvokeAsync("od.forms-designer.select", owner);
         await ClickItem(item);
         await AssertEditing(item, "Original");
@@ -104,7 +104,7 @@ public sealed class FormsMenuEditingTests(OpenDevelopAppFixture app)
         }, TimeSpan.FromSeconds(10)), afterAdd.ToString());
         await app.InvokeAsync("od.forms-designer.select", createdName);
         Assert.Equal("Created", (await Editor()).GetProperty("selectedText").GetString());
-        await app.InvokeAsync("od.forms-designer.undo");
+        await app.InvokeFormsHistoryAsync("od.forms-designer.undo");
         JsonElement afterUndo = default;
         Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
             afterUndo = await app.InvokeAsync("od.forms-designer.status");
@@ -141,7 +141,7 @@ public sealed class FormsMenuEditingTests(OpenDevelopAppFixture app)
                 .Any(name => name.GetString() == "toolStripStatusLabel");
         }, TimeSpan.FromSeconds(10)), afterAdd.ToString());
         Assert.True(afterAdd.GetProperty("canUndo").GetBoolean());
-        await app.InvokeAsync("od.forms-designer.undo");
+        await app.InvokeFormsHistoryAsync("od.forms-designer.undo");
         JsonElement afterUndo = default;
         Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
             afterUndo = await app.InvokeAsync("od.forms-designer.status");

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -620,11 +620,22 @@ namespace ICSharpCode.FormsDesigner
 				if (documents.ResourceBytes.TryGetValue(resource.FileName.ToString(), out var bytes)
 					&& (!resourceStore.Contains(resource) || resourceStore.WouldRestoreChange(resource, bytes)))
 					EnsureResourceIsNotOwnedByAnotherEditor(resource);
+			// Neither setting a source document's text nor OpenedFile.SetData marks the file dirty, and
+			// SaveInternal writes Form1.Designer.cs and a .resx only when they are dirty: an undo/redo
+			// that changed them must say so, as SynchronizeRemoteEdits does for host edits. Without it a
+			// save after undo kept the undone text on disk unless something else happened to dirty it.
 			foreach (var source in SourceFiles)
-				if (documents.SourceTexts.TryGetValue(source.Key.FileName.ToString(), out var text)) source.Value.Text = text;
+				if (documents.SourceTexts.TryGetValue(source.Key.FileName.ToString(), out var text)
+					&& !String.Equals(source.Value.Text, text, StringComparison.Ordinal)) {
+					source.Value.Text = text;
+					source.Key.MakeDirty();
+				}
 			foreach (var resource in Files.Where(file => !sourceCodeStorage.ContainsFile(file)))
-				if (documents.ResourceBytes.TryGetValue(resource.FileName.ToString(), out var bytes)
-					&& !resourceStore.Restore(resource, bytes)) resource.SetData(bytes);
+				if (documents.ResourceBytes.TryGetValue(resource.FileName.ToString(), out var bytes)) {
+					var changed = !resourceStore.Contains(resource) || resourceStore.WouldRestoreChange(resource, bytes);
+					if (!resourceStore.Restore(resource, bytes)) resource.SetData(bytes);
+					if (changed) resource.MakeDirty();
+				}
 		}
 		
 		public OpenedFile DesignerCodeFile {
@@ -2461,6 +2472,9 @@ namespace ICSharpCode.FormsDesigner
 			}
 		}
 			public virtual void Undo() => commands.Execute("Undo");
+			/// <summary>Whether the command actually ran. It does not while the designer is (re)loading or has
+			/// nothing to undo; <see cref="Undo"/> ignores that, as a menu command is simply disabled then.</summary>
+			public bool TryUndo() => commands.Execute("Undo");
 			bool UndoCore()
 			{
 				var before = CaptureRemoteDocuments();
@@ -2473,6 +2487,7 @@ namespace ICSharpCode.FormsDesigner
 			}
 
 			public virtual void Redo() => commands.Execute("Redo");
+			public bool TryRedo() => commands.Execute("Redo");
 			bool RedoCore()
 			{
 				var before = CaptureRemoteDocuments();
