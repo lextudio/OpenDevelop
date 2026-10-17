@@ -82,6 +82,11 @@ namespace ICSharpCode.WpfDesign.AddIn
 		// convention (same pattern as FormsDesignerViewContent.LoadRemoteDesigner).
 		long loadGeneration;
 		string? lastLoadedSourceText;
+		// The text the current (latest-generation) load was started with, until it finishes either way.
+		// A Load with the same text while it is still running is the same request again - in the
+		// side-by-side workbench that is simply focus moving between the panes - and must wait for it
+		// rather than restart it.
+		string? inFlightSourceText;
 
 		// Undo/redo: whole-document XAML text snapshot stacks, mirroring
 		// DesignerViewContent's own remoteUndo/remoteRedo pattern for the WinForms designer -
@@ -161,6 +166,8 @@ namespace ICSharpCode.WpfDesign.AddIn
 				this.UserContent = surfaceControl;
 				return;
 			}
+			if (inFlightSourceText != null && String.Equals(sourceText, inFlightSourceText, StringComparison.Ordinal))
+				return;
 
 			wasChangedInDesigner = false;
 			undoStack.Clear();
@@ -168,6 +175,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			lastKnownGoodXaml = null;
 
 			var myGeneration = ++loadGeneration;
+			inFlightSourceText = null;
 			// Keep showing the last-rendered surface (dimmed by the loading overlay) across a
 			// reload when one already exists; only fall back to a bare placeholder on this view's
 			// very first load.
@@ -194,6 +202,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			}
 			canvas.SetLoading(true, string.Format(ResourceService.GetString("WpfDesign.Status.StartingHost"), WpfSurfaceHostClient.GetBackendName(backend)));
 
+			inFlightSourceText = sourceText;
 			_ = LoadDesignerAsync(myGeneration, sourceText, backend);
 		}
 
@@ -320,6 +329,13 @@ namespace ICSharpCode.WpfDesign.AddIn
 			{
 				if (generation == loadGeneration && !IsDisposed)
 					ShowDesignerError(e);
+			}
+			finally
+			{
+				// Only this attempt's own record: a superseded attempt finishing must not release the
+				// newer one that replaced it.
+				if (generation == loadGeneration)
+					inFlightSourceText = null;
 			}
 		}
 

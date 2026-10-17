@@ -45,6 +45,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	readonly PropertyContainer propertyContainer = new();
 	readonly WinUIXamlDocumentEditor editor = new();
 	string documentError;
+	// The editor starts out holding "", which would otherwise make an empty file's first load look
+	// already designed.
+	bool designedOnce;
 	string loadedText = "";
 	bool toolboxPopulated;
 	// Mirrors WpfViewContent.wasChangedInDesigner. Without it, saving while the Design tab happens
@@ -1854,11 +1857,22 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	{
 		using var reader = new StreamReader(stream, leaveOpen: true);
 		var text = reader.ReadToEnd();
+		// HasRenderedPreview: a runtime whose render failed (it keeps no frame) must still be re-asked on
+		// the next activation, which is the only retry it gets.
+		var alreadyDesigned = designedOnce && documentError == null && previewHost.HasRenderedPreview
+			&& String.Equals(text, editor.Text, StringComparison.Ordinal);
+		designedOnce = true;
 		loadedText = text;
 		wasChangedInDesigner = false;
 
-		// Called again whenever this secondary view is re-activated after the Source view changed
-		// the file, which is what keeps the design surface in sync with hand edits.
+		// Called again whenever this secondary view is re-activated, which is what keeps the design
+		// surface in sync with hand edits. When the document model already holds exactly this text -
+		// focus moved between the side-by-side panes, or the Source pane just received this view's own
+		// edits - nothing is re-parsed or re-rendered and the selection stays: see
+		// doc/technotes/designer-common.md's Design-tab-activation convention. A render of this text
+		// still in flight is the runtime's own (versioned) business.
+		if (alreadyDesigned)
+			return;
 		if (!editor.Reset(text, out documentError)) {
 			outline.SetRoot(null);
 			previewHost.LoadXaml(text);

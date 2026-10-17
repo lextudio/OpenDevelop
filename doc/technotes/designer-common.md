@@ -2046,7 +2046,12 @@ rules also cover an explicit reload after source edits:
 1. **Skip entirely when nothing changed.** Compare the incoming source text against the text used
    for the last successful load. If it's identical AND the out-of-process session is still alive,
    just re-assign `UserContent` to the existing canvas and return - no RPC at all. This is the
-   fix for the common case of moving focus between panes without editing.
+   fix for the common case of moving focus between panes without editing. The same holds while
+   the load for that text is **still in flight**: keep the text the current load was started
+   with until that attempt finishes (applied, failed or faulted), and return when an identical
+   one arrives. Comparing only against the last *successful* load restarts a slow first load on
+   every focus change - the host's Form window taking focus on Windows made the WinForms designer
+   do exactly that in a loop.
 2. **Never block the dispatcher on the acquire/open/update round-trip.** `LoadInternal` starts the
    async chain and returns immediately; it must not call `.GetAwaiter().GetResult()` on the
    acquire/open/update calls. Two ways to get the continuation back onto the dispatcher safely:

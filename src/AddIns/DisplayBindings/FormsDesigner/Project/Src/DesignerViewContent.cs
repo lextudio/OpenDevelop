@@ -76,6 +76,11 @@ namespace ICSharpCode.FormsDesigner
 		// see doc/technotes/designer-common.md's Design-tab-activation convention.
 		long loadGeneration;
 		RemoteDocumentSet lastLoadedDocuments;
+		// The documents the current (latest-generation) load was started with, until it finishes either
+		// way. A Load with the same documents while it is still running is the same request again - in
+		// the side-by-side workbench that is simply focus moving between the panes - and must wait for
+		// it rather than supersede it with an identical one.
+		RemoteDocumentSet inFlightDocuments;
 		readonly Stack<RemoteDocumentSet> remoteUndo = new Stack<RemoteDocumentSet>();
 		readonly Stack<RemoteDocumentSet> remoteRedo = new Stack<RemoteDocumentSet>();
 			readonly DesignerCommandController commands = new DesignerCommandController();
@@ -917,8 +922,11 @@ namespace ICSharpCode.FormsDesigner
 				base.UserContent = remoteControl;
 				return;
 			}
+			if (inFlightDocuments != null && RemoteDocumentsUnchanged(currentTexts, inFlightDocuments))
+				return;
 
 			var myGeneration = ++loadGeneration;
+			inFlightDocuments = currentTexts;
 			// Keep showing the last-rendered canvas (dimmed by the loading overlay) across a
 			// reload when one already exists; only fall back to a bare placeholder on this view's
 			// very first load.
@@ -940,7 +948,14 @@ namespace ICSharpCode.FormsDesigner
 			// (ConfigureAwait(false)), so it must not read dispatcher-affine state itself.
 			var snapshot = CreateRemoteSnapshot(++remoteDocumentVersion);
 			FormsProjectToolbox.AddProjectControls(snapshot);
-			_ = LoadRemoteDesignerAsync(myGeneration, currentTexts, snapshot, canvas, oldClient, backend);
+			// Cleared when the attempt is over by any route - applied, failed, superseded, or faulted outside its
+			// own handlers - and only if it is still this attempt's record: a stale entry would park every later
+			// Load of the same text behind a load that will never finish.
+			_ = LoadRemoteDesignerAsync(myGeneration, currentTexts, snapshot, canvas, oldClient, backend)
+				.ContinueWith(_ => SD.MainThread.InvokeAsyncAndForget(() => {
+					if (ReferenceEquals(inFlightDocuments, currentTexts))
+						inFlightDocuments = null;
+				}), System.Threading.Tasks.TaskScheduler.Default);
 		}
 
 		async System.Threading.Tasks.Task LoadRemoteDesignerAsync(long generation, RemoteDocumentSet documents,
@@ -1176,6 +1191,7 @@ namespace ICSharpCode.FormsDesigner
 			OutputChannel.Write("WinForms", "Design host disposed");
 			remoteClient?.Dispose();
 			remoteClient = null;
+			inFlightDocuments = null;
 		}
 
 		void RemoteHostExited(object sender, EventArgs e)
