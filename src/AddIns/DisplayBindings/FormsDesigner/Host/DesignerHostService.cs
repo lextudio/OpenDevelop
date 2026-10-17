@@ -48,6 +48,7 @@ sealed class DesignerHostService : IDesignerChildService
 	long frameSequence;
 	bool initialized;
 	static volatile bool portableGpuReadbackUnavailable;
+	static volatile bool portableGpuReadbackWarm;
 	static readonly bool traceSessionOpen = String.Equals(Environment.GetEnvironmentVariable("OPENDEVELOP_DESIGNER_TRACE"), "1", StringComparison.Ordinal);
 
 	public DesignerHostService(string expectedToken) => this.expectedToken = expectedToken;
@@ -4820,11 +4821,24 @@ sealed class DesignerHostService : IDesignerChildService
 				bitmap.Dispose();
 			}
 		});
-		if (!encoding.Wait(TimeSpan.FromSeconds(2))) {
+		// The first readback of a process is slow, not blocked: it brings up the GPU device, and took 6-8 s
+		// on Windows arm64 (measured on the pumping thread and off it alike), against well under a second
+		// once warm. A 2 s budget for that one turned a working renderer into the outline-only fallback for
+		// the rest of the session. Give it its own budget - still inside the client's 30 s open - and if a
+		// timed-out readback does finish, treat it as slow rather than broken so later frames use the GPU.
+		var budget = portableGpuReadbackWarm ? TimeSpan.FromSeconds(2) : TimeSpan.FromSeconds(12);
+		if (!encoding.Wait(budget)) {
 			portableGpuReadbackUnavailable = true;
-			_ = encoding.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
+			_ = encoding.ContinueWith(task => {
+				if (task.Status == TaskStatus.RanToCompletion) {
+					portableGpuReadbackWarm = true;
+					portableGpuReadbackUnavailable = false;
+				}
+				_ = task.Exception;
+			}, TaskScheduler.Default);
 			return FallbackFrame(root, renderSize);
 		}
+		portableGpuReadbackWarm = true;
 		Trace("Render encoded PNG");
 		return new DesignerRenderFrame {
 			Sequence = Interlocked.Increment(ref frameSequence), Width = renderSize.Width, Height = renderSize.Height, Dpi = 1,
