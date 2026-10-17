@@ -193,6 +193,34 @@ public sealed class WinUIGridTrackEditorTests
 	}
 
 	[Fact]
+	public void ComponentTray_HoldsNonVisualObjectsButNotControlsMissingFromTheRender()
+	{
+		var document = XDocument.Parse("""
+			<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+			  <StackPanel>
+			    <Button x:Name="Rendered">
+			      <Button.ContextFlyout><Flyout x:Name="ActionsFlyout"><TextBlock x:Name="FlyoutText"/></Flyout></Button.ContextFlyout>
+			      <Button.Flyout><MenuFlyout x:Name="Menu"><MenuFlyoutItem x:Name="MenuItem"/></MenuFlyout></Button.Flyout>
+			      <Button.KeyboardAccelerators><KeyboardAccelerator x:Name="CtrlS"/></Button.KeyboardAccelerators>
+			      <ToolTipService.ToolTip><ToolTip x:Name="Tip"/></ToolTipService.ToolTip>
+			    </Button>
+			    <StackPanel Visibility="Collapsed"><Button x:Name="HiddenButton"/></StackPanel>
+			    <ContentControl><ContentControl.ContentTemplate><DataTemplate><Button x:Name="TemplateButton"/></DataTemplate></ContentControl.ContentTemplate></ContentControl>
+			  </StackPanel>
+			</Page>
+			""");
+		XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+		XElement Named(string name) => document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name);
+		var rendered = new HashSet<string>(StringComparer.Ordinal) { "Rendered" };
+
+		foreach (var name in new[] { "ActionsFlyout", "FlyoutText", "Menu", "MenuItem", "CtrlS", "Tip" })
+			Assert.True(WinUIXamlDesignerViewContent.IsComponentTrayCandidate(Named(name), rendered), name + " belongs in the tray");
+		// A rendered control, a control the render does not show (Collapsed) and a template part are not components.
+		foreach (var name in new[] { "Rendered", "HiddenButton", "TemplateButton" })
+			Assert.False(WinUIXamlDesignerViewContent.IsComponentTrayCandidate(Named(name), rendered), name + " must not be in the tray");
+	}
+
+	[Fact]
 	public void ContextFlyoutInsertion_IsSourceOwnedAndUndoable()
 	{
 		const string source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Button x:Name="Target"/></Grid>""";

@@ -657,16 +657,35 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			CollectTreeNames(child, names);
 	}
 
-	static bool IsComponentTrayCandidate(XElement element, ISet<string> visibleNames)
+	// Property elements whose value is never part of the page's visual tree: flyouts (shown on demand), a
+	// tool tip, keyboard accelerators, text highlighters, behaviors. Neither the render nor the Document
+	// Outline (which mirrors the rendered tree) has a node for them, so the tray is their only place on the
+	// design surface.
+	static readonly HashSet<string> NonVisualOwnerMembers = new(StringComparer.Ordinal) {
+		"Flyout", "ContextFlyout", "SelectionFlyout", "AttachedFlyout",
+		"ToolTip", "KeyboardAccelerators", "TextHighlighters", "Behaviors"
+	};
+
+	internal static bool IsComponentTrayCandidate(XElement element, ISet<string> visibleNames)
 	{
 		var name = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
 		if (string.IsNullOrEmpty(name) || visibleNames.Contains(name) || element.Name.LocalName.Contains('.'))
 			return false;
 		// Named resources/templates are declarations, not live component instances. Showing one
 		// as a tray component would promise editable instance properties that do not exist.
-		return !element.Ancestors().Any(ancestor => ancestor.Name.LocalName is "ResourceDictionary"
+		if (element.Ancestors().Any(ancestor => ancestor.Name.LocalName is "ResourceDictionary"
 			or "Style" or "ControlTemplate" or "DataTemplate" or "ItemsPanelTemplate"
-			or "VisualState" or "VisualStateGroup" || ancestor.Name.LocalName.EndsWith(".Resources", StringComparison.Ordinal));
+			or "VisualState" or "VisualStateGroup" || ancestor.Name.LocalName.EndsWith(".Resources", StringComparison.Ordinal)))
+			return false;
+		// What makes something a tray component is what it IS - the value of a property that is not part of
+		// the visual tree, or something inside one - not merely that the render has no bounds for it. A
+		// visual control missing from the render (inside a Collapsed panel, an unselected tab, an unrealized
+		// list item) is a control of the page, not a component: it is edited in the Source view, and in the
+		// Outline once it renders. Treating every such one as a component filled the tray of pages like WinUI
+		// Gallery's HomePage with ordinary controls.
+		return element.Ancestors().Any(ancestor => ancestor.Name.LocalName is var local
+			&& local.LastIndexOf('.') is var dot and > 0
+			&& NonVisualOwnerMembers.Contains(local.Substring(dot + 1)));
 	}
 
 	void OnComponentTrayItemSelected(object sender, string id)
