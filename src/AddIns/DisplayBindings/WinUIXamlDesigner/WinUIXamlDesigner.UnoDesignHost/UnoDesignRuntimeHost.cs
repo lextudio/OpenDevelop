@@ -1527,9 +1527,13 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		canvas.ApplySnapshot(snapshot);
 		if (snapshot.Render != null)
 			HasRenderedPreview = true;
-		StatusText = snapshot.Diagnostics.Count == 0
-			? $"Rendered by {hostDisplayName} ({FormatSize(snapshot.Render)})."
-			: string.Join(Environment.NewLine, snapshot.Diagnostics.Select(d => d.Message));
+		// A warning accompanies a frame that is shown (e.g. a page that never stops animating), so it reads
+		// after "Rendered by ..." rather than replacing it the way an error does.
+		var errors = snapshot.Diagnostics.Where(d => !string.Equals(d.Severity, "Warning", StringComparison.OrdinalIgnoreCase)).ToList();
+		var warnings = snapshot.Diagnostics.Where(d => string.Equals(d.Severity, "Warning", StringComparison.OrdinalIgnoreCase)).Select(d => d.Message);
+		StatusText = errors.Count > 0 || snapshot.Render == null && snapshot.Diagnostics.Count > 0
+			? string.Join(Environment.NewLine, (errors.Count > 0 ? errors : snapshot.Diagnostics).Select(d => d.Message))
+			: string.Join(" ", warnings.Prepend($"Rendered by {hostDisplayName} ({FormatSize(snapshot.Render)})."));
 		ApplyPersistedSettingsIfNeeded();
 		StateChanged?.Invoke(this, EventArgs.Empty);
 	}

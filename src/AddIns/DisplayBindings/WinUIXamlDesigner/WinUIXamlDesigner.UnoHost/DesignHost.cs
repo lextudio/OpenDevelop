@@ -1580,8 +1580,17 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 						snapshot.Render = nextFrame;
 					}
 					if (stableFrames < 3) {
-						snapshot.Render = null;
-						throw new InvalidOperationException("The design preview did not settle within two seconds; its content may be animated.");
+						// Waiting exists to skip entrance transitions, not to refuse a page that never stops
+						// moving: a ProgressRing, an indeterminate ProgressBar or a blinking caret is a
+						// perfectly good page. It used to discard the frame and fail the load, so those pages
+						// showed no preview at all - just this message. Keep the latest frame and say why it
+						// is a snapshot.
+						snapshot.Diagnostics.Add(new DesignerDiagnostic {
+							Severity = "Warning",
+							Message = "Part of this page keeps animating (for example a ProgressRing or an"
+								+ " indeterminate ProgressBar), so the preview shows how it looked about two"
+								+ " seconds after loading."
+						});
 					}
 				}
 				// Read committed visual geometry after capture.
