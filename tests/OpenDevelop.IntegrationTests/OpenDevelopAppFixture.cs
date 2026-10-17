@@ -75,6 +75,14 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     /// must assert this cell, never a hard-coded one; prefer the explicit cell fixtures below in new tests.</summary>
     public string WpfSampleCell => OperatingSystem.IsWindows() ? RuntimeCell.MicrosoftWpf : RuntimeCell.LibreWpf;
     public string LibreWpfSampleSolutionPath => LocateLibreWpfSampleSolution();
+    /// <summary>The "sample" WPF project (MainWindow, SamplePane, App) for one cell: the Microsoft project for
+    /// <see cref="RuntimeCell.MicrosoftWpf"/>, its LibreWPF copy for <see cref="RuntimeCell.LibreWpf"/>. Their XAML is
+    /// identical, so a test written against one runs unchanged against the other.</summary>
+    public string WpfPaneSampleSolutionPath(string cell) => cell switch {
+        RuntimeCell.MicrosoftWpf => LocateWpfSampleSolution(),
+        RuntimeCell.LibreWpf => LibreWpfSampleSolutionPath,
+        _ => throw new ArgumentException("Not a WPF cell: " + cell, nameof(cell))
+    };
     // LibreWinForms counterpart of WinFormsSample (LibreWPF.Sdk + UseWindowsForms). Its Form1 sources
     // are links to WinFormsSample's, which the WinForms designer attributes to this project.
     public string LibreWinFormsSampleSolutionPath => LocateSample(Path.Combine("src", "Samples", "LibreWinFormsSample", "LibreWinFormsSample.slnx"));

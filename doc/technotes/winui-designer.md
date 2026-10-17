@@ -1822,8 +1822,10 @@ held - verified). `forcedVisualStates` is tracked rather than trusting
 with no setters at all, and IS the unmodified arrangement - the reload alone already produces it.
 
 Transitions are skipped: a design surface wants the settled end state, and `FinishLayoutAsync`'s
-frame-stability loop would otherwise time out against a running animation with "The design preview
-did not settle within two seconds".
+frame-stability loop would otherwise run out its two seconds against a running animation. When frames
+never stabilise (an indeterminate ProgressBar), the last frame is kept and the snapshot carries a
+Warning diagnostic ("Part of this page keeps animating...") that the status line shows after
+"Rendered by ..."; it is not a load failure.
 
 **An error snapshot must still carry the groups.** The client repopulates its combos from every
 snapshot, so an early-return error snapshot with an empty list blanked the whole states panel the

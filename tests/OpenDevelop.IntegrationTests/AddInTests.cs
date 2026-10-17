@@ -2939,19 +2939,27 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal("vector", padIcons[rootRow]);
     }
 
-    [Fact] // WpfSampleSolutionPath is the LibreWPF sample off Windows.
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
-    public async Task OpenSamplePaneXaml_LoadsDesignerWithNestedControlTree()
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWpf)]
+    public Task OpenSamplePaneXaml_LoadsDesignerWithNestedControlTree_MicrosoftWpf() => OpenSamplePaneXaml_LoadsDesignerWithNestedControlTreeCore(RuntimeCell.MicrosoftWpf);
+
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWpf)]
+    public Task OpenSamplePaneXaml_LoadsDesignerWithNestedControlTree_LibreWpf() => OpenSamplePaneXaml_LoadsDesignerWithNestedControlTreeCore(RuntimeCell.LibreWpf);
+
+    async Task OpenSamplePaneXaml_LoadsDesignerWithNestedControlTreeCore(string cell)
     {
+        var solutionPath = _app.WpfPaneSampleSolutionPath(cell);
         // SamplePane.xaml is a UserControl with deeply nested named elements (Border→StackPanel→
         // TextBlocks, ListBox). The designer's Outline pad should reflect the full hierarchy.
-        await _app.EnsureSolutionOpenAsync(_app.WpfSampleSolutionPath);
+        await _app.EnsureSolutionOpenAsync(solutionPath);
 
-        var xamlPath = Path.Combine(Path.GetDirectoryName(_app.WpfSampleSolutionPath)!, "SamplePane.xaml");
+        var xamlPath = Path.Combine(Path.GetDirectoryName(solutionPath)!, "SamplePane.xaml");
         var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
         Assert.True(openFileResult.GetProperty("opened").GetBoolean(), $"Failed to open {xamlPath}");
 
-        var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30, reactivatePath: xamlPath);
+        var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30, reactivatePath: xamlPath, expectedCell: cell);
 
         Assert.True(status.GetProperty("active").GetBoolean());
         Assert.True(status.GetProperty("designerLoaded").GetBoolean(),
@@ -3025,21 +3033,29 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
-    [Fact] // WpfSampleSolutionPath is the LibreWPF sample off Windows.
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
-    public async Task SelectControl_EditingContentInPropertiesPad_UpdatesAndSavesXaml()
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWpf)]
+    public Task SelectControl_EditingContentInPropertiesPad_UpdatesAndSavesXaml_MicrosoftWpf() => SelectControl_EditingContentInPropertiesPad_UpdatesAndSavesXamlCore(RuntimeCell.MicrosoftWpf);
+
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWpf)]
+    public Task SelectControl_EditingContentInPropertiesPad_UpdatesAndSavesXaml_LibreWpf() => SelectControl_EditingContentInPropertiesPad_UpdatesAndSavesXamlCore(RuntimeCell.LibreWpf);
+
+    async Task SelectControl_EditingContentInPropertiesPad_UpdatesAndSavesXamlCore(string cell)
     {
-        var solutionDirectory = Path.GetDirectoryName(_app.WpfSampleSolutionPath)!;
+        var solutionPath = _app.WpfPaneSampleSolutionPath(cell);
+        var solutionDirectory = Path.GetDirectoryName(solutionPath)!;
         var xamlPath = Path.Combine(solutionDirectory, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
 
         try
         {
-            var openSolutionResult = await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
+            var openSolutionResult = await _app.ReopenSolutionAsync(solutionPath);
             Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
             var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
             Assert.True(openFileResult.GetProperty("opened").GetBoolean());
-            var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "Window", timeoutSeconds: 30, reactivatePath: xamlPath);
+            var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "Window", timeoutSeconds: 30, reactivatePath: xamlPath, expectedCell: cell);
             Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
             Assert.Contains(status.GetProperty("outlineNames").EnumerateArray(),
                 name => name.GetString() == "PrimaryButton");
@@ -3093,10 +3109,18 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
-    [Fact] // WpfSampleSolutionPath is the LibreWPF sample off Windows.
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
-    public async Task DragToolboxItem_OntoDesignSurface_InsertsAndPersistsControl()
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWpf)]
+    public Task DragToolboxItem_OntoDesignSurface_InsertsAndPersistsControl_MicrosoftWpf() => DragToolboxItem_OntoDesignSurface_InsertsAndPersistsControlCore(RuntimeCell.MicrosoftWpf);
+
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWpf)]
+    public Task DragToolboxItem_OntoDesignSurface_InsertsAndPersistsControl_LibreWpf() => DragToolboxItem_OntoDesignSurface_InsertsAndPersistsControlCore(RuntimeCell.LibreWpf);
+
+    async Task DragToolboxItem_OntoDesignSurface_InsertsAndPersistsControlCore(string cell)
     {
+        var solutionPath = _app.WpfPaneSampleSolutionPath(cell);
         // Covers the toolbox -> design surface path end to end using a REAL
         // synthetic mouse drag (press/drag-move/release via cliclick, same primitives AvalonDock's
         // own DevFlowClient uses), not an API shortcut: PortableDragDropOperation (LibreWPF's
@@ -3107,17 +3131,17 @@ public sealed class AddInTests : IAsyncDisposable
         // through the Properties pad is covered by the named-element pad tests elsewhere; the
         // dropped item is unnamed, and click-to-select after the drop's canvas auto-scroll
         // cannot address it deterministically (see the assertion comment below).
-        var solutionDirectory = Path.GetDirectoryName(_app.WpfSampleSolutionPath)!;
+        var solutionDirectory = Path.GetDirectoryName(solutionPath)!;
         var xamlPath = Path.Combine(solutionDirectory, "SamplePane.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
 
         try
         {
-            var openSolutionResult = await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
+            var openSolutionResult = await _app.ReopenSolutionAsync(solutionPath);
             Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
             var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
             Assert.True(openFileResult.GetProperty("opened").GetBoolean());
-            var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30, reactivatePath: xamlPath);
+            var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30, reactivatePath: xamlPath, expectedCell: cell);
             Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
             var outlineNamesBefore = status.GetProperty("outlineNames").EnumerateArray()
                 .Select(n => n.GetString()).ToArray();
@@ -3129,6 +3153,9 @@ public sealed class AddInTests : IAsyncDisposable
             // items exist (Items.Count is already non-zero) but have no generated containers, so
             // ItemContainerGenerator.ContainerFromItem returns null and there's nothing to press on.
             await _app.InvokeAsync("od.show-pad", "Tools");
+            // The drop point is near PaneStack's bottom edge, which can be below a short design pane
+            // (see WpfDesigner_ResizeDrag_...); scroll the canvas to its end first.
+            await _app.InvokeAsync("od.wpf-designer.scroll-to", "0", "max");
 
             // OD_TEST_MODE=1 sets ShowActivated=false so a normal test run never steals focus
             // from the developer's foreground app - but cliclick's synthetic mouse input is real
@@ -3185,7 +3212,7 @@ public sealed class AddInTests : IAsyncDisposable
                 // made the later Properties-pad edit land on PaneTitle instead of the new TextBox.
                 outlineGrew = await OpenDevelopAppFixture.PollUntilAsync(async () =>
                 {
-                    statusAfterDrop = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 10);
+                    statusAfterDrop = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 10, expectedCell: cell);
                     return statusAfterDrop.GetProperty("outlineNames").GetArrayLength() > outlineNamesBefore.Length;
                 }, TimeSpan.FromSeconds(8), initialDelayMs: 50, maxDelayMs: 250);
             }
@@ -4835,22 +4862,30 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.True(toolbox.GetProperty("centerX").GetDouble() > 0, toolbox.ToString());
     }
 
-    [Fact] // WpfSampleSolutionPath is the LibreWPF sample off Windows.
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
-    public async Task WpfDesigner_DeleteAndViewSwitching_AndUnsupportedSurfaceReports()
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWpf)]
+    public Task WpfDesigner_DeleteAndViewSwitching_AndUnsupportedSurfaceReports_MicrosoftWpf() => WpfDesigner_DeleteAndViewSwitching_AndUnsupportedSurfaceReportsCore(RuntimeCell.MicrosoftWpf);
+
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWpf)]
+    public Task WpfDesigner_DeleteAndViewSwitching_AndUnsupportedSurfaceReports_LibreWpf() => WpfDesigner_DeleteAndViewSwitching_AndUnsupportedSurfaceReportsCore(RuntimeCell.LibreWpf);
+
+    async Task WpfDesigner_DeleteAndViewSwitching_AndUnsupportedSurfaceReportsCore(string cell)
     {
+        var solutionPath = _app.WpfPaneSampleSolutionPath(cell);
         // WPF designer alignment additions: selection-based delete and Source/Design view
         // switching exist (mirroring the WinUI designer), undo/redo/multi-select/layout ops are
         // real surface operations, and the one capability the out-of-process host genuinely
         // lacks (nudge) reports a deterministic "supported=false" instead of failing with a
         // missing-action error.
-        var xamlPath = Path.Combine(Path.GetDirectoryName(_app.WpfSampleSolutionPath)!, "SamplePane.xaml");
+        var xamlPath = Path.Combine(Path.GetDirectoryName(solutionPath)!, "SamplePane.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
 
         try {
-            await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
+            await _app.ReopenSolutionAsync(solutionPath);
             await _app.InvokeAsync("od.open-file", xamlPath);
-            var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30, reactivatePath: xamlPath);
+            var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30, reactivatePath: xamlPath, expectedCell: cell);
             Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
             var namesBefore = status.GetProperty("outlineNames").EnumerateArray().Select(n => n.GetString()).ToArray();
             Assert.Contains("PaneListItemTwo", namesBefore);
@@ -5170,18 +5205,26 @@ public sealed class AddInTests : IAsyncDisposable
             $"PrimaryButton's persisted Height ({persistedHeight}) should roughly match the rendered post-drag height ({afterHeight}).");
     }
 
-    [Fact] // WpfSampleSolutionPath is the LibreWPF sample off Windows.
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
-    public async Task WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement()
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWpf)]
+    public Task WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement_MicrosoftWpf() => WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElementCore(RuntimeCell.MicrosoftWpf);
+
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWpf)]
+    public Task WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement_LibreWpf() => WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElementCore(RuntimeCell.LibreWpf);
+
+    async Task WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElementCore(string cell)
     {
+        var solutionPath = _app.WpfPaneSampleSolutionPath(cell);
         // Drag a selected element's bottom-right resize handle in the WPF designer and assert
         // the invariant: the selection outline coincides with the element's rendered bounds
         // and the resize handle sits at its bottom-right corner, before and after.
-        var xamlPath = Path.Combine(Path.GetDirectoryName(_app.WpfSampleSolutionPath)!, "SamplePane.xaml");
+        var xamlPath = Path.Combine(Path.GetDirectoryName(solutionPath)!, "SamplePane.xaml");
         var original = await File.ReadAllTextAsync(xamlPath);
 
         try {
-            await _app.EnsureSolutionOpenAsync(_app.WpfSampleSolutionPath);
+            await _app.EnsureSolutionOpenAsync(solutionPath);
             await _app.InvokeAsync("od.open-file", xamlPath);
 
             JsonElement status = default;
@@ -5190,7 +5233,7 @@ public sealed class AddInTests : IAsyncDisposable
                 return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
             }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
             Assert.True(loaded, "The WPF designer did not load. Status: " + status);
-			RuntimeCell.AssertWpfBackend(status, _app.WpfSampleCell);
+			RuntimeCell.AssertWpfBackend(status, cell);
 
             var sel = await _app.InvokeAsync("od.wpf-designer.select", "PaneStack");
             Assert.True(sel.GetProperty("success").GetBoolean(), sel.ToString());
@@ -5236,6 +5279,11 @@ public sealed class AddInTests : IAsyncDisposable
                 // PaneStack's resize path.
                 sel = await _app.InvokeAsync("od.wpf-designer.select", "PaneStack");
                 Assert.True(sel.GetProperty("success").GetBoolean(), sel.ToString());
+                // In the split Design/Source layout the design pane can be shorter than the frame plus
+                // the canvas margin (145px for a 120px-tall frame when this test runs first), leaving
+                // PaneStack's bottom-right handle below the visible canvas, where the press lands on the
+                // source editor. Scroll the canvas to its end, as a user would, at an unchanged 100% zoom.
+                await _app.InvokeAsync("od.wpf-designer.scroll-to", "0", "max");
                 var current = await _app.InvokeAsync("od.wpf-designer.surface-geometry");
                 Assert.True(current.GetProperty("available").GetBoolean(), current.ToString());
 				OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(current, $"attempt {attempt}");
@@ -5320,22 +5368,30 @@ public sealed class AddInTests : IAsyncDisposable
         return null;
     }
 
-    [Fact] // WpfSampleSolutionPath is the LibreWPF sample off Windows.
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
-    public async Task SelectControlOnSamplePane_ShowsSelectionInPropertiesPad()
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWpf)]
+    public Task SelectControlOnSamplePane_ShowsSelectionInPropertiesPad_MicrosoftWpf() => SelectControlOnSamplePane_ShowsSelectionInPropertiesPadCore(RuntimeCell.MicrosoftWpf);
+
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWpf)]
+    public Task SelectControlOnSamplePane_ShowsSelectionInPropertiesPad_LibreWpf() => SelectControlOnSamplePane_ShowsSelectionInPropertiesPadCore(RuntimeCell.LibreWpf);
+
+    async Task SelectControlOnSamplePane_ShowsSelectionInPropertiesPadCore(string cell)
     {
+        var solutionPath = _app.WpfPaneSampleSolutionPath(cell);
         // SamplePane.xaml is a UserControl root (unlike MainWindow.xaml's Window root): verify the
         // designer + Properties pad selection round-trip for a non-Window document. The Xceed pad
         // exposes only a narrow filtered property set (same as for MainWindow's Button - see the
         // SelectControl_EditingContent test), and none of SamplePane's elements carry a string
         // property in that set, so assert the selection/type linkage instead of editing.
-        var solutionDirectory = Path.GetDirectoryName(_app.WpfSampleSolutionPath)!;
+        var solutionDirectory = Path.GetDirectoryName(solutionPath)!;
         var xamlPath = Path.Combine(solutionDirectory, "SamplePane.xaml");
 
-        await _app.EnsureSolutionOpenAsync(_app.WpfSampleSolutionPath);
+        await _app.EnsureSolutionOpenAsync(solutionPath);
         var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
         Assert.True(openFileResult.GetProperty("opened").GetBoolean());
-        var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30, reactivatePath: xamlPath);
+        var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30, reactivatePath: xamlPath, expectedCell: cell);
         Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
         Assert.Contains(status.GetProperty("outlineNames").EnumerateArray(),
             name => name.GetString() == "PaneTitle");

@@ -468,6 +468,15 @@ public class DesignSurface : DesignerCanvas
 		scroller.ScrollToVerticalOffset(0);
 	}
 
+	/// <summary>Scrolls the canvas the way its scrollbars do (offsets in surface DIPs, clamped by
+	/// the ScrollViewer); the zoom and pan are unchanged.</summary>
+	public void ScrollTo(double horizontalOffset, double verticalOffset)
+	{
+		scroller.ScrollToHorizontalOffset(horizontalOffset);
+		scroller.ScrollToVerticalOffset(verticalOffset);
+		scroller.UpdateLayout();
+	}
+
 	/// <summary>
 	/// A layer for a backend's own design-time chrome (WPF's detached-ContextMenu tray and "Type
 	/// Here" hotspots, WinForms' ToolStrip editors, ...). It scrolls with the design; place children

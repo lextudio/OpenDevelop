@@ -92,11 +92,12 @@ per-runtime hosts), and this suite must not repeat it.
 This is what exists, so the plan below is a delta and not a rewrite:
 
 - **Microsoft cells (WPF, WinForms, WinUI):** `[Trait("DesignerBackend", "Microsoft")]` is applied 20 times: to 18 test
-  methods in `AddInTests` and to the whole `WinUIGalleryDesignerTests` and `WpfGalleryDesignerTests` classes. Twelve of
-  the 18 methods skip off Windows (`SkipUnless = nameof(MicrosoftDesignerBackendsAvailable)`). **The other six are plain
-  `[Fact]`s that deliberately run everywhere** ("`WpfSampleSolutionPath` is the LibreWPF sample off Windows"), so the trait
-  does not mean "Microsoft backend" for them: off Windows they run against LibreWPF, and `RunMicrosoftDesignerIntegration`
-  selects them anyway. (One of them, `WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement`, used to assert
+  methods in `AddInTests` and to the whole `WinUIGalleryDesignerTests` and `WpfGalleryDesignerTests` classes. All 18
+  methods skip off Windows (`SkipUnless = nameof(MicrosoftDesignerBackendsAvailable)`). Six of them used to be plain
+  `[Fact]`s that deliberately ran everywhere ("`WpfSampleSolutionPath` is the LibreWPF sample off Windows"), so the trait
+  did not mean "Microsoft backend" for them and `RunMicrosoftDesignerIntegration` selected them off Windows too. They are
+  now split per cell (see Progress): the `_MicrosoftWpf` half carries the trait and skips off Windows like the rest, and
+  the `_LibreWpf` half does not carry it. (One of them, `WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement`, used to assert
   `backend == "LibreWPF"` unconditionally, which by reading could not hold on Windows; fixed, see Progress.) The Microsoft cells are run on Windows by the csproj target
   `RunMicrosoftDesignerIntegration`, which builds the Microsoft design hosts first and sets
   `OD_FORMS_RUNTIME`/`OD_WPF_RUNTIME`/`OD_WINUI_RUNTIME=microsoft` (see [TESTING.md](../../tests/OpenDevelop.IntegrationTests/TESTING.md)).
@@ -151,21 +152,21 @@ via the same traits.
 
 ### Measured status per cell
 
-Every cell was run for real with `RunRuntimeCell` on Windows arm64 (.NET 10, 2026-10-16, with a full build); the macOS cells were
-run on 2026-10-17, see "Measured status on macOS" below the Windows notes.
-"Cases" counts xunit test cases (theory rows and class-level tags expand), not methods. The numbers below are from the last run
-of each cell after the product fixes listed under the table; a full `RunRuntimeMatrix` pass over all seven after the last fix
-has not been made.
+Every cell was run for real with `RunRuntimeCell` on Windows arm64 (.NET 10, with a full build); the macOS cells were
+run on 2026-10-17, see "Measured status on macOS" below the Windows notes. "Cases" counts xunit test cases (theory rows and
+class-level tags expand), not methods. The Windows numbers below are one full pass over all seven cells on 2026-10-17, after
+a rebuild that was checked against each host's last source commit (the Microsoft WinUI host built with Visual Studio's
+MSBuild, the Microsoft WPF host built on its own: building the test project does not rebuild it).
 
 | Cell | Result | Notes |
 |---|---|---|
-| LibreWpf | pass (1 test) | Seven runs, the last four passed; the third lost the host while opening the document (cause unknown); the first two failed on a cold in-app build (see the runner notes below). Not re-run after the output-channel and `TerminateHost` fixes. |
-| LibreWinForms | pass (1 test) | Failed before the Forms host fix: `session/open` deadlocked. Not re-run after the later fixes. |
-| MicrosoftWinForms | pass (5 cases) | No test skipped. Not re-run after the later fixes. |
-| ProGpuWinUI | pass (4 tests) | Failed 0/4 before the ProGPU fix: Roslyn was given native DLLs as references. Not re-run after the later fixes. |
-| Uno | 19 of 21 pass | `WinUIDesigner_DesignSizePresets_ResizeCanvas` ("Status should contain '768', last was: Rendered by Uno design host (390x53)"; on another run the same step reported the other size) and `WinUIDesigner_ThemeSwitch_ChangesRenderedBackgroundPixels` ("Light theme should render the Light PageBackgroundBrush") fail on every run, also when run alone. The size status looks one step behind the preset that was just applied. **Not investigated further.** |
-| MicrosoftWpf | 21 of 23 cases pass | Was 9 of 24. `DragToolboxItem_OntoXamlSourceEditor_InsertsMarkupAtDropPoint` fails its own precondition (the drop target's screen Y, 529, is outside the text area's usable range 368-507: the window does not show it on this display), not the feature. `SettingsPage_...` fails with `The designer host did not complete 'session/open' within 00:00:30` (a heavy page; the timeout is the product's). The full Gallery sweep is opt-in (`OD_WPF_GALLERY_FULL=1`) and left out of the run. A `NoBuild` run against a stale host fails everything with `Protocol N is not supported`: rebuild the hosts first. |
-| MicrosoftWinUI | 28 of 35 cases pass | Was 20 of 35. The eight `WinUIOnly_*` tests pass since the `.pri` fix. Six `WinUIGalleryDesignerTests.GalleryPage_RendersWithRealContent` pages fail: five report `The design preview did not settle within two seconds; its content may be animated.` (Slider, ProgressBar, TextBox, NavigationView, SystemBackdropElement; ProgressBar is genuinely animated), `TreeViewPage` renders `sampleTreeView` with zero height. `VisualStateSwitch_AppliesStateAndShowsLoadingChrome` never sees the `Favorites` state applied. **Not investigated further.** |
+| LibreWpf | pass (1 test), then 7 | The pass was made before the six cross-everywhere WPF tests were split per cell (see Progress); the cell now has 7 tests, and 7 of 7 passed after the split. |
+| LibreWinForms | pass (1 test) | The test also asserts the Document Outline rows show their labels. |
+| MicrosoftWinForms | pass (5 cases) | No test skipped. |
+| ProGpuWinUI | pass (5 cases) | |
+| Uno | pass (21 cases) | The size-preset and theme-switch failures of the earlier runs are fixed. |
+| MicrosoftWpf | 22 of 23 cases pass, then 23 | Since the split the cell has 29 cases (8 in `AddInTests`, 21 in `WpfGalleryDesignerTests`); the six added ones are the same tests that ran untagged in the pass, and the two pointer-gesture ones were re-run on their own after the scroll fix in Progress. `SettingsPage_...` failed with `The designer host did not complete 'session/open' within 00:00:30` only after the Gallery theory had opened about 115 documents in the same host; fixed by the app-resources fix below and confirmed with the `WpfGalleryDesignerTests` class (21 pass, 1 skip). The full Gallery sweep is opt-in (`OD_WPF_GALLERY_FULL=1`) and left out of the run. A `NoBuild` run against a stale host fails everything with `Protocol N is not supported`: rebuild the hosts first. |
+| MicrosoftWinUI | pass (35 cases) | A page whose frames never stop changing (ProgressBar) now renders with a warning instead of failing. |
 
 Product bugs found by running the cells and fixed. Each was Windows-only for the same reason: the project, not the OS, picks the
 backend, or an assumption about thread and process behaviour that holds elsewhere:
@@ -188,6 +189,10 @@ backend, or an assumption about thread and process behaviour that holds elsewher
   host's stderr pipe filled and the host blocked in `Console.Error.WriteLine`: pages could not load for 60 s each, and the host
   was replaced about every 70 s. Found from `dotnet-stack` dumps of the IDE and the host. Channels are now cached and primed on the
   UI thread. Not removed: the Output pad makes the calling thread wait for the UI thread after about 2000 queued appends.
+- **WPF design host app resources** (`4888b6890b`): every document opened in the shared host left its parsed `App.xaml`
+  dictionary merged into `Application.Current.Resources`, so the resource-key walk behind the Properties data grew with each
+  open until `session/open` took over 30 s. Found from `dotnet-stack` snapshots of the hung host. Only the active document's
+  dictionary stays installed now, and each request re-activates its own.
 - **Terminating the host** (`6761407c96`): `TerminateHost` could throw `InvalidOperationException` when the process had exited
   between `HasExited` and `Kill`, replacing the `TimeoutException` (with the host log) that was about to be thrown.
 
@@ -255,11 +260,18 @@ What running the cells on macOS turned up, all of it invisible while the tests r
   as `Runtime=LibreWpf`. `WaitForWpfDesignerStatusAsync` now takes a cell (default: the cell of the OS-dependent
   `WpfSampleSolutionPath`, exposed as `OpenDevelopAppFixture.WpfSampleCell`) and asserts through the helper, as do the
   gallery tests. The hard-coded `backend == "LibreWPF"` in `WpfDesigner_ResizeDrag_...` became
-  `AssertWpfBackend(status, _app.WpfSampleCell)`, which removes the Windows failure described above.
+  `AssertWpfBackend(status, _app.WpfSampleCell)`, which removes the Windows failure described above (since the split below
+  it asserts the cell its `...Core(cell)` body was given).
 - **Still open for WPF:**
-  - the six cross-everywhere `AddInTests` methods keep their OS-dependent fixture and have no `Runtime` trait, because
-    one `[Fact]` cannot carry a different cell per OS; they have to be split per cell (the drag tests drive the pointer
-    with cliclick, so check what each cell needs before splitting);
+  - ~~the six cross-everywhere `AddInTests` methods~~ are split per cell: each body is a private `...Core(cell)` that
+    opens `OpenDevelopAppFixture.WpfPaneSampleSolutionPath(cell)` (the Microsoft `sample` project or its LibreWPF copy,
+    whose XAML is identical) and asserts that cell, with a `_MicrosoftWpf` fact (Windows only) and a `_LibreWpf` fact
+    tagged accordingly. Running the Libre variants on Windows for the first time exposed an order dependency in both
+    pointer-gesture tests, on either cell: run first, the split Design/Source layout leaves a 145px design pane for a
+    120px frame plus the canvas margin, so PaneStack's bottom edge is below the visible canvas and the press landed on the
+    source editor (the app log showed a quick-info tooltip per attempt). They now scroll the canvas to its end first
+    (`od.wpf-designer.scroll-to`, backed by `DesignSurface.ScrollTo`), keeping 100% zoom so the persisted-size checks
+    still compare design units with screen pixels;
   - done on 2026-10-17: `WpfStripEditingTests.cs` is `WpfCellTestsBase` (picks the sample by cell, skips the Microsoft cell off
     Windows, checks the reported backend after every test) with `WpfStripEditingTestsBase` (23 runtime-neutral tests, both
     cells) and `WpfStripOverlayEditingTestsBase` (6 overlay tests, MicrosoftWpf only because of the LibreWPF gap under

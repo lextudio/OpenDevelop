@@ -72,6 +72,18 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.wpf-designer.scroll-to", Description = "Scroll the WPF design canvas like its scrollbars do (offsets in DIPs, clamped; 'max' scrolls to the end) and report the resulting scroll status - for a gesture whose target is below or right of a short design pane")]
+		public static string ScrollTo(string horizontal = "0", string vertical = "max")
+		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
+			static double Offset(string value, double max)
+				=> value == "max" ? max : double.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+			surface.ScrollTo(Offset(horizontal, surface.ScrollStatus.ScrollableWidth), Offset(vertical, surface.ScrollStatus.ScrollableHeight));
+			return GetScrollStatus();
+		}
+
 		[DevFlowAction("od.wpf-designer.inline-editor-status", Description = "Inspect WPF's on-canvas Text/Content/Header editor without changing the document")]
 		public static string GetInlineEditorStatus()
 		{
