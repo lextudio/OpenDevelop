@@ -426,6 +426,8 @@ function Test-PackagedAppStartup {
             $ready = $true
             break
         }
+        # A launcher forwards its "dotnet exec" child's output whenever it was itself started with
+        # standard handles (as here), so the same marker covers the launcher path.
     }
     if (-not $ready) {
         $reason = if ($proc.HasExited) {

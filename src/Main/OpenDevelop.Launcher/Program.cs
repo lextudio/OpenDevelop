@@ -78,6 +78,16 @@ namespace OpenDevelop.Launcher
 			foreach (string arg in args)
 				startInfo.ArgumentList.Add(arg);
 
+			// A double-clicked WinExe has no standard handles, and the child's output then goes to
+			// its own hidden console. When whoever started this launcher DID give it handles (a
+			// script redirecting to files, e.g. dist.ps1's smoke test waiting for the app's
+			// "startup/main-window-rendered" log line), forward the child's output to them.
+			bool forwardOutput = HasStandardHandle(STD_OUTPUT_HANDLE) && HasStandardHandle(STD_ERROR_HANDLE);
+			if (forwardOutput) {
+				startInfo.RedirectStandardOutput = true;
+				startInfo.RedirectStandardError = true;
+			}
+
 			Process process;
 			try {
 				process = Process.Start(startInfo) ?? throw new InvalidOperationException("Process.Start returned null.");
@@ -85,6 +95,12 @@ namespace OpenDevelop.Launcher
 				ShowError("Could not start OpenDevelop:" + Environment.NewLine + ex.Message +
 					Environment.NewLine + Environment.NewLine + "dotnet host: " + dotnetExecutable);
 				return 1;
+			}
+			if (forwardOutput) {
+				process.OutputDataReceived += (sender, e) => { if (e.Data != null) Console.Out.WriteLine(e.Data); };
+				process.ErrorDataReceived += (sender, e) => { if (e.Data != null) Console.Error.WriteLine(e.Data); };
+				process.BeginOutputReadLine();
+				process.BeginErrorReadLine();
 			}
 
 			// Block for the app's whole lifetime rather than exiting immediately: this keeps
@@ -126,6 +142,18 @@ namespace OpenDevelop.Launcher
 				}
 			}
 			return null;
+		}
+
+		const int STD_OUTPUT_HANDLE = -11;
+		const int STD_ERROR_HANDLE = -12;
+
+		[DllImport("kernel32.dll", SetLastError = true)]
+		static extern IntPtr GetStdHandle(int nStdHandle);
+
+		static bool HasStandardHandle(int which)
+		{
+			IntPtr handle = GetStdHandle(which);
+			return handle != IntPtr.Zero && handle != new IntPtr(-1);
 		}
 
 		[DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
