@@ -37,6 +37,24 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 		}
 		
+		/// <summary>
+		/// Stops a solution build after the first project fails, instead of building the remaining
+		/// projects. Modelled on Visual Studio 2026's "Stop solution build after first failure"; the
+		/// default (false) keeps the existing behavior of collecting every project's result.
+		/// Unlike Visual Studio it does not stop projects that are already building: it only keeps
+		/// projects that have not started from starting, so the wait after a failure is bounded by
+		/// the slowest project that was in flight (a wave's siblings in the one-process build, the
+		/// other workers in the per-project scheduler). The build is reported as failed, not cancelled.
+		/// </summary>
+		public static bool StopSolutionBuildAfterFirstFailure {
+			get {
+				return PropertyService.Get("SharpDevelop.StopSolutionBuildAfterFirstFailure", false);
+			}
+			set {
+				PropertyService.Set("SharpDevelop.StopSolutionBuildAfterFirstFailure", value);
+			}
+		}
+
 		public static int DefaultParallelProjectCount {
 			get {
 				// One project per core, as Visual Studio's default: each project here is its own

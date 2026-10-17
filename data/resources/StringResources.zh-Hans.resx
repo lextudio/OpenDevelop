@@ -1927,6 +1927,9 @@
   <data name="Dialog.Options.IDEOptions.ProjectAndSolutionOptions.ShowErrorListPadCheckBox" xml:space="preserve">
     <value>如果生成出现错误，显示错误列表。</value>
   </data>
+  <data name="Dialog.Options.IDEOptions.ProjectAndSolutionOptions.StopSolutionBuildAfterFirstFailureCheckBox" xml:space="preserve">
+    <value>在第一个项目失败后停止生成解决方案。</value>
+  </data>
   <data name="Dialog.Options.IDEOptions.ProjectAndSolutionOptions.WhenRunning" xml:space="preserve">
     <value>当运行：</value>
   </data>

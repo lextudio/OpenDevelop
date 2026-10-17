@@ -301,6 +301,24 @@ Measured on OpenDevelop.Mvp: the Designer.Remote edit 166-173 s → 86 s, all 56
 build with a compile error in Designer.Remote 80-123 s → 10-14 s, the error listed once; a no-op
 build 3 s. `OD_ONE_PROCESS_BUILD=0` disables it.
 
+**Stop solution build after first failure** (Tools > Options > Projects and Solutions > Build and Run, off by
+default; modelled on Visual Studio 2026 18.11). With it on, once a project has failed no project that has not
+started is started: the scheduler reports each one as "<name> was not built because an earlier project failed."
+(the solution root is skipped silently) and the build ends as `Error`, not `Cancelled`; the failing project's own
+diagnostics are still listed. Without it, the projects that do not depend on the failure are built as before.
+How it meets the one-process build: the traversal already does not start later waves after a failure, and
+`BuildUpFrontAsync` marks the projects that built (`builtUpFront`, still scheduled so their result is recorded)
+and those that failed with errors (`failedUpFront`); a project that was only left over, such as the next wave's
+project that depends on one that built, is the one the option then skips instead of building on its own.
+**Unlike Visual Studio it does not stop projects that are already building**: a wave's siblings finish in the
+one-process build and the other workers finish in the per-project scheduler, so the wait after a failure is
+bounded by the slowest project in flight, not near zero. MSBuild's `StopOnFirstFailure` does not help: its
+documentation says it is not supported when building in parallel (with multiple processors). Skipped projects are completed after the scheduler's lock is released:
+their message goes to the Output pad, which can make the calling thread wait for the UI thread, and the UI thread
+takes that lock when the user cancels. Covered by `StopAfterFirstFailureBuildTests` (per-project scheduler with a
+parallel count of 1, and a four-project one-process build, each with the option on and off) and
+`BuildOptionsStopAfterFailureTests`.
+
 The up-to-date answers are now computed once per build, off the UI thread and four projects at a
 time (`BuildEngine.CheckUpToDateUpFrontAsync`), and kept per build until anything is built or
 forgotten; the restore and one-process decisions and the per-project builds reuse them. Before,

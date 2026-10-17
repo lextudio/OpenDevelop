@@ -2270,6 +2270,9 @@ system. I don't think that it needs translation.</comment>
   <data name="Dialog.Options.IDEOptions.ProjectAndSolutionOptions.ShowErrorListPadCheckBox" xml:space="preserve">
     <value>Show error list pad if build finishes with errors</value>
   </data>
+  <data name="Dialog.Options.IDEOptions.ProjectAndSolutionOptions.StopSolutionBuildAfterFirstFailureCheckBox" xml:space="preserve">
+    <value>Stop solution build after first failure</value>
+  </data>
   <data name="Dialog.Options.IDEOptions.ProjectAndSolutionOptions.WhenRunning" xml:space="preserve">
     <value>When running:</value>
     <comment>option that specifies how to build when running the project</comment>

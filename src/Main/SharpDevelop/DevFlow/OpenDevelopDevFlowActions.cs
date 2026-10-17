@@ -2306,14 +2306,16 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
-		[DevFlowAction("od.build-solution", Description = "Build the current solution (or a single project by name) and return error/warning counts, diagnostics, and the raw build log. Optional second argument 'rebuild' always runs MSBuild; a plain build skips projects the fast up-to-date check finds unchanged")]
-		public static async Task<string> BuildSolutionAsync(string projectName = null, string target = null)
+		[DevFlowAction("od.build-solution", Description = "Build the current solution (or a single project by name) and return error/warning counts, diagnostics, and the raw build log. Optional second argument 'rebuild' always runs MSBuild; a plain build skips projects the fast up-to-date check finds unchanged. Optional third argument sets the parallel project count")]
+		public static async Task<string> BuildSolutionAsync(string projectName = null, string target = null, int? parallelProjectCount = null)
 		{
 			var solution = SD.ProjectService.CurrentSolution;
 			if (solution == null)
 				return JsonSerializer.Serialize(new { success = false, error = "No solution is open." });
 
 			var options = new BuildOptions(string.Equals(target, "rebuild", StringComparison.OrdinalIgnoreCase) ? BuildTarget.Rebuild : BuildTarget.Build);
+			if (parallelProjectCount.HasValue)
+				options.ParallelProjectCount = Math.Max(1, parallelProjectCount.Value);
 
 			BuildResults results;
 			if (string.IsNullOrEmpty(projectName)) {
@@ -2354,6 +2356,14 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			var previous = BuildOptions.BuildOnExecute;
 			BuildOptions.BuildOnExecute = parsed;
 			return JsonSerializer.Serialize(new { success = true, previous = previous.ToString(), current = parsed.ToString() });
+		}
+
+		[DevFlowAction("od.build.set-stop-after-first-failure", Description = "Set the Stop solution build after first failure preference for an isolated integration journey and return its previous value")]
+		public static string SetStopAfterFirstFailure(bool enabled)
+		{
+			var previous = BuildOptions.StopSolutionBuildAfterFirstFailure;
+			BuildOptions.StopSolutionBuildAfterFirstFailure = enabled;
+			return JsonSerializer.Serialize(new { success = true, previous, current = BuildOptions.StopSolutionBuildAfterFirstFailure });
 		}
 
 		// The IDE's own "Start Without Debugging" (ICSharpCode.SharpDevelop.Project.Commands.Execute

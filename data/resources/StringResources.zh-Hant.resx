@@ -1927,6 +1927,9 @@
   <data name="Dialog.Options.IDEOptions.ProjectAndSolutionOptions.ShowErrorListPadCheckBox" xml:space="preserve">
     <value>如果建置出現錯誤，顯示錯誤清單。</value>
   </data>
+  <data name="Dialog.Options.IDEOptions.ProjectAndSolutionOptions.StopSolutionBuildAfterFirstFailureCheckBox" xml:space="preserve">
+    <value>在第一個專案失敗後停止建置解決方案。</value>
+  </data>
   <data name="Dialog.Options.IDEOptions.ProjectAndSolutionOptions.WhenRunning" xml:space="preserve">
     <value>當執行：</value>
   </data>

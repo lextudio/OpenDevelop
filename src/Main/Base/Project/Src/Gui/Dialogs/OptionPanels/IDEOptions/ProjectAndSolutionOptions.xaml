@@ -27,6 +27,8 @@
 			<StackPanel>
 				<CheckBox Content="{core:Localize Dialog.Options.IDEOptions.ProjectAndSolutionOptions.ShowErrorListPadCheckBox}"
 				          IsChecked="{core:OptionBinding project:BuildOptions.ShowErrorListAfterBuild}" />
+				<CheckBox Content="{core:Localize Dialog.Options.IDEOptions.ProjectAndSolutionOptions.StopSolutionBuildAfterFirstFailureCheckBox}"
+				          IsChecked="{core:OptionBinding project:BuildOptions.StopSolutionBuildAfterFirstFailure}" />
 				<StackPanel Orientation="Horizontal">
 					<Label
 						Content="{core:Localize Dialog.Options.IDEOptions.ProjectAndSolutionOptions.ParallelBuild}"

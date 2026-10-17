@@ -247,6 +247,12 @@ namespace ICSharpCode.SharpDevelop.Project
 			// Their errors are already in the Error List; building them again would only repeat them.
 			foreach (var project in result.FailedWithErrors)
 				nodeOf[project].failedUpFront = true;
+			foreach (var project in result.Built)
+				nodeOf[project].builtUpFront = true;
+			// A failure here is already final: the scheduler must not start anything else, but the
+			// projects that failed still run their node so their errors are not lost.
+			if (SolutionBuildFailurePolicy.ShouldStop(stopAfterFirstFailure, result.FailedWithErrors.Count > 0))
+				buildHasFailed = true;
 		}
 		#endregion
 		
@@ -269,6 +275,10 @@ namespace ICSharpCode.SharpDevelop.Project
 			internal bool hasErrors;
 			/// <summary>Failed, with its errors reported, in the one-process build; not built again.</summary>
 			internal bool failedUpFront;
+			/// <summary>Built successfully in the one-process build; still scheduled to record its result.</summary>
+			internal bool builtUpFront;
+			/// <summary>Not built because the build stopped after an earlier project failed.</summary>
+			internal bool skippedAfterFailure;
 			
 			/// <summary>The number of dependencies missing until this node can be built</summary>
 			internal int outstandingDependencies;
@@ -383,6 +393,8 @@ namespace ICSharpCode.SharpDevelop.Project
 		#region BuildEngine fields and constructor
 		readonly Dictionary<IBuildable, BuildNode> nodeDict = new Dictionary<IBuildable, BuildNode>();
 		readonly BuildOptions options;
+		readonly bool stopAfterFirstFailure;
+		bool buildHasFailed;
 		IProgressMonitor progressMonitor;
 		CancellationTokenRegistration cancellationRegistration;
 		readonly TaskCompletionSource<BuildResults> tcs = new TaskCompletionSource<BuildResults>();
@@ -399,6 +411,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		{
 			this.options = options;
 			this.rootProject = rootProject;
+			this.stopAfterFirstFailure = BuildOptions.StopSolutionBuildAfterFirstFailure;
 		}
 		#endregion
 		
@@ -470,6 +483,22 @@ namespace ICSharpCode.SharpDevelop.Project
 		#region Building
 		void StartBuildProjects()
 		{
+			// Projects skipped because the build already failed are only chosen under the lock; their
+			// message and completion run after it is released. The message goes to the output pad,
+			// which can make the calling thread wait for the UI thread, and the UI thread takes this
+			// lock when the user cancels (BuildCancelled): reporting under the lock could deadlock.
+			var skippedAfterFailure = new List<BuildNode>();
+			StartBuildProjects(skippedAfterFailure);
+			foreach (BuildNode node in skippedAfterFailure) {
+				// The root is the solution (or a wrapper of it), not a project: only projects are named.
+				if (node != rootNode && !string.IsNullOrEmpty(node.project.Name))
+					ReportMessage(node, new RichText(node.project.Name + " was not built because an earlier project failed."));
+				node.Done(false);
+			}
+		}
+
+		void StartBuildProjects(List<BuildNode> skippedAfterFailure)
+		{
 			lock (this) {
 				while (workersToStart > 0) {
 					if (buildIsCancelled || projectsReadyForBuildStart.Count == 0) {
@@ -504,7 +533,13 @@ namespace ICSharpCode.SharpDevelop.Project
 					ICSharpCode.Core.LoggingService.Info("Start building " + node.project.Name);
 					runningWorkers++;
 					projectsCurrentlyBuilding.Add(node);
-					if (hasDependencyErrors) {
+					if (SolutionBuildFailurePolicy.ShouldStop(stopAfterFirstFailure, buildHasFailed)
+					    && !node.failedUpFront && !node.builtUpFront) {
+						ICSharpCode.Core.LoggingService.Debug("Skipped building " + node.project.Name + " (an earlier project failed)");
+						node.skippedAfterFailure = true;
+						// Counted as running until StartBuildProjects() completes it outside the lock.
+						skippedAfterFailure.Add(node);
+					} else if (hasDependencyErrors) {
 						ICSharpCode.Core.LoggingService.Debug("Skipped building " + node.project.Name + " (errors in dependencies)");
 						node.hasErrors = true;
 						node.Done(false);
@@ -553,7 +588,9 @@ namespace ICSharpCode.SharpDevelop.Project
 				}
 				runningWorkers--;
 				node.buildFinished = true;
-				node.hasErrors = !success;
+				node.hasErrors = !success && !node.skippedAfterFailure;
+				if (!success && !node.skippedAfterFailure)
+					buildHasFailed = true;
 				
 				projectsCurrentlyBuilding.Remove(node);
 				
@@ -591,7 +628,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				results.Result = BuildResultCode.Cancelled;
 				
 				ReportMessageLine("${res:MainWindow.CompilerMessages.BuildCancelled}");
-			} else if (rootNode.hasErrors) {
+			} else if (rootNode.hasErrors || (stopAfterFirstFailure && buildHasFailed)) {
 				results.Result = BuildResultCode.Error;
 				
 				ReportMessageLine("${res:MainWindow.CompilerMessages.BuildFailed}" + buildTime);
