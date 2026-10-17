@@ -139,7 +139,12 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			ConfigureChildProcess(startInfo);
 			process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
 			process.Exited += (sender, args) => {
-				if (!disposing) HostExited?.Invoke(this, EventArgs.Empty);
+				// Raised off the calling thread on purpose: Process.HasExited (read by IsAlive) runs this
+				// handler inline on whoever asked, and a subscriber that re-enters the shared host broker
+				// (FormsDesignerHostClient.OnConnectionExited -> Invalidate) then waits on the semaphore that
+				// same caller - SharedDesignerHostBroker.AcquireAsync checking IsAlive - already holds. That
+				// self-deadlocked the UI thread.
+				if (!disposing) Task.Run(() => HostExited?.Invoke(this, EventArgs.Empty));
 			};
 			process.Start();
 			started = true;
@@ -198,21 +203,25 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 
 		/// <summary>Invokes a JSON-RPC method on the child with the shared timeout; a timeout
 		/// terminates the host (it can no longer be trusted to be responsive).</summary>
-		public Task<T> InvokeAsync<T>(string method, object arguments, CancellationToken cancellationToken, TimeSpan? timeout = null)
+		/// <param name="terminateHostOnTimeout">False for a call whose timeout says nothing about the host's
+		/// health - closing a session on a host that is still busy opening the next document - so that a late
+		/// answer does not take the other sessions of a shared host down with it.</param>
+		public Task<T> InvokeAsync<T>(string method, object arguments, CancellationToken cancellationToken, TimeSpan? timeout = null, bool terminateHostOnTimeout = true)
 		{
 			if (!IsAlive)
 				throw new IOException("The designer host is not running.");
-			return InvokeCoreAsync<T>(method, arguments, cancellationToken, timeout ?? operationTimeout);
+			return InvokeCoreAsync<T>(method, arguments, cancellationToken, timeout ?? operationTimeout, terminateHostOnTimeout);
 		}
 
-		async Task<T> InvokeCoreAsync<T>(string method, object arguments, CancellationToken cancellationToken, TimeSpan timeout)
+		async Task<T> InvokeCoreAsync<T>(string method, object arguments, CancellationToken cancellationToken, TimeSpan timeout, bool terminateHostOnTimeout)
 		{
 			try {
 				return await rpc.InvokeWithParameterObjectAsync<T>(method, arguments, cancellationToken)
 					.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
 			} catch (TimeoutException) {
 				var log = ChildLog;
-				TerminateHost();
+				if (terminateHostOnTimeout)
+					TerminateHost();
 				throw new TimeoutException($"The designer host did not complete '{method}' within {timeout}."
 					+ (String.IsNullOrWhiteSpace(log) ? "" : Environment.NewLine + "Child log:" + Environment.NewLine + log));
 			} catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested) {

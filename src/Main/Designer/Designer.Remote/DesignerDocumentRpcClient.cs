@@ -70,7 +70,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			=> connection.InvokeAsync<DesignerHitTestResult>("design/hit-test", new { sessionId = SessionId, documentId = DocumentId, baseVersion, x, y }, cancellationToken);
 
 		public Task CloseAsync(CancellationToken cancellationToken = default)
-			=> connection.InvokeAsync<object>("session/close", new { sessionId = SessionId, documentId = DocumentId }, cancellationToken, TimeSpan.FromSeconds(3));
+			=> connection.InvokeAsync<object>("session/close", new { sessionId = SessionId, documentId = DocumentId }, cancellationToken, TimeSpan.FromSeconds(3), terminateHostOnTimeout: false);
 
 		void SetIdentity(DesignerDocumentSnapshot snapshot)
 		{
