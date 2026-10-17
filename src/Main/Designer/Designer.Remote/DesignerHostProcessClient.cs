@@ -144,7 +144,16 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				// (FormsDesignerHostClient.OnConnectionExited -> Invalidate) then waits on the semaphore that
 				// same caller - SharedDesignerHostBroker.AcquireAsync checking IsAlive - already holds. That
 				// self-deadlocked the UI thread.
-				if (!disposing) Task.Run(() => HostExited?.Invoke(this, EventArgs.Empty));
+				if (disposing) return;
+				// The host's own output rarely says why it died (a native crash writes nothing), so the exit
+				// code goes into the child log: it is attached to every error shown for this host and is
+				// what tells a crash (0xC0000005, 0xC000027B ...) from a kill (-1) when it is diagnosed.
+				try {
+					lock (childLog) childLog.AppendLine($"[designer host exited, exit code {unchecked((uint)process.ExitCode):X8} ({process.ExitCode})]");
+				} catch (InvalidOperationException) {
+					// Disposed between the check and the read: the code is gone, the exit still reported below.
+				}
+				Task.Run(() => HostExited?.Invoke(this, EventArgs.Empty));
 			};
 			process.Start();
 			started = true;
@@ -201,7 +210,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>Allows a designer to supply runtime-specific child environment settings.</summary>
 		protected virtual void ConfigureChildProcess(ProcessStartInfo startInfo) { }
 
-		/// <summary>Invokes a JSON-RPC method on the child with the shared timeout; a timeout
+		/// <summary>Invokes a JSON-RPC method on the child with the shared timeout; by default a timeout
 		/// terminates the host (it can no longer be trusted to be responsive).</summary>
 		/// <param name="terminateHostOnTimeout">False for a call whose timeout says nothing about the host's
 		/// health - closing a session on a host that is still busy opening the next document - so that a late
