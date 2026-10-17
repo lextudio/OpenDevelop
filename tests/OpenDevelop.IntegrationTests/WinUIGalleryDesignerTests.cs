@@ -300,10 +300,23 @@ public sealed class WinUIGalleryDesignerTests
         Assert.True(cleared, group.Name + "/" + state + ": the loading chrome never cleared.");
 
         // ...and the state is really applied, not just requested: the host reports it as current.
-        var applied = await OpenDevelopAppFixture.PollUntilAsync(async () =>
-            (await ReadVisualStatesAsync()).Any(g => g.Name == group.Name && g.Current == state),
-            TimeSpan.FromSeconds(30), initialDelayMs: 100, maxDelayMs: 500);
-        Assert.True(applied, group.Name + ": state '" + state + "' was never reported as applied.");
+        IReadOnlyList<VisualStateGroupInfo> lastGroups = Array.Empty<VisualStateGroupInfo>();
+        var applied = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            lastGroups = await ReadVisualStatesAsync();
+            return lastGroups.Any(g => g.Name == group.Name && g.Current == state);
+        }, TimeSpan.FromSeconds(30), initialDelayMs: 100, maxDelayMs: 500);
+        if (!applied)
+        {
+            // The whole child log goes to a file: a state switch reloads the document, whose type-resolution
+            // notes alone fill any tail short enough to put in an assertion message.
+            var childLogFile = Path.Combine(Path.GetTempPath(), "od-visualstate-childlog.txt");
+            var childLog = await _app.InvokeAsync("od.winui-designer.child-log");
+            await File.WriteAllTextAsync(childLogFile, childLog.TryGetProperty("log", out var log) ? log.GetString() : childLog.ToString());
+            Assert.Fail(group.Name + ": state '" + state + "' was never reported as applied. Groups: "
+                + string.Join("; ", lastGroups.Select(g => g.Name + "=" + (g.Current ?? "(none)")))
+                + " status: " + await _app.InvokeAsync("od.winui-designer.status")
+                + " child log: " + childLogFile);
+        }
 
         // Releasing the group must also work and must go through the same chrome.
         var releaseLoadsBefore = (await _app.InvokeAsync("od.winui-designer.status")).GetProperty("visualStateLoads").GetInt32();

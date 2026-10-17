@@ -164,6 +164,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			}
 			catch (Exception e)
 			{
+				LoggingService.Warn("WinUI designer: visual state '" + group + "/" + (state ?? "(none)") + "' failed", e);
 				dispatcher.BeginInvoke(() => {
 					// No snapshot is coming, so nothing else will end the overlay.
 					surface.EndVisualStateLoading();

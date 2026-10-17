@@ -162,11 +162,33 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		public DesignerSessionState Layout(double width, double height, double dpi)
 			=> HeadlessDispatcher.DispatchAsync(() => LayoutAsync(new LayoutRequest { Width = width, Height = height, Dpi = dpi })).GetAwaiter().GetResult();
 
+		// Theme and visual state change only how the document is presented, never its source, so a base
+		// version NEWER than the open document is accepted and adopted the way session/update does it; an
+		// older one is still rejected. The client numbers every request it sends - the persisted theme and
+		// size it re-applies after an open each take a number - while session/open always starts the
+		// document at 1, so with an exact match the first theme switch after opening a page was refused as
+		// "stale" and the theme never changed.
+		//
+		// Both run through DispatchAsync like every other re-rendering request, never Dispatch with a blocking
+		// GetResult inside: they re-render, and the WinUI host's render waits for composition frames
+		// (HostAwaitFrame) that only arrive while this dispatcher is free. Blocking it inside the dispatched
+		// call deadlocked every visual-state switch (and theme switch) on the Microsoft WinUI host until the
+		// client's 30 s timeout killed it; the Uno host has no frame wait, which is why it never showed there.
 		public DesignerSessionState SetTheme(string sessionId, string documentId, long baseVersion, string theme)
-			=> HeadlessDispatcher.Dispatch(() => RejectIfStale(sessionId, documentId, baseVersion) is { } stale ? stale : SetThemeAsync(theme).GetAwaiter().GetResult());
+			=> HeadlessDispatcher.DispatchAsync(async () => RejectIfStale(sessionId, documentId, baseVersion, allowNewerVersion: true) is { } stale
+				? stale : AdoptVersion(baseVersion, await SetThemeAsync(theme))).GetAwaiter().GetResult();
 
 		public DesignerSessionState GoToState(string sessionId, string documentId, long baseVersion, string group, string state)
-			=> HeadlessDispatcher.Dispatch(() => RejectIfStale(sessionId, documentId, baseVersion) is { } stale ? stale : GoToStateAsync(group, state).GetAwaiter().GetResult());
+			=> HeadlessDispatcher.DispatchAsync(async () => RejectIfStale(sessionId, documentId, baseVersion, allowNewerVersion: true) is { } stale
+				? stale : AdoptVersion(baseVersion, await GoToStateAsync(group, state))).GetAwaiter().GetResult();
+
+		DesignerSessionState AdoptVersion(long baseVersion, DesignerSessionState snapshot)
+		{
+			if (snapshot.Accepted)
+				version = Math.Max(version, baseVersion);
+			snapshot.Version = version;
+			return snapshot;
+		}
 
 		public DesignerAppResourcesResult LoadAppResources(string xaml)
 			=> HeadlessDispatcher.Dispatch(() => LoadAppResourcesCore(xaml));

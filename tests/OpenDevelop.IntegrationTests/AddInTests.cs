@@ -1430,12 +1430,14 @@ public sealed class AddInTests : IAsyncDisposable
         // The designer persists its theme across sessions, so a previous run (or manual
         // session) may have left it Dark - pin to Light and wait for the re-render first.
         await _app.InvokeAsync("od.winui-designer.theme", "Light");
+        JsonElement lightSample = default;
         var lightBaseline = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
-            var s = await _app.InvokeAsync("od.winui-designer.render-sample");
-            return s.GetProperty("sample").GetString()?.Contains("center=#EEEEEE") == true;
+            lightSample = await _app.InvokeAsync("od.winui-designer.render-sample");
+            return lightSample.GetProperty("sample").GetString()?.Contains("center=#EEEEEE") == true;
         }, TimeSpan.FromSeconds(20));
-        Assert.True(lightBaseline, "Light theme should render the Light PageBackgroundBrush");
+        Assert.True(lightBaseline, "Light theme should render the Light PageBackgroundBrush, got: " + lightSample
+            + " status: " + await _app.InvokeAsync("od.winui-designer.status"));
 
         var light = await _app.InvokeAsync("od.winui-designer.render-sample");
         Assert.Contains("center=#EEEEEE", light.GetProperty("sample").GetString());
