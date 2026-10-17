@@ -11,9 +11,19 @@ public sealed class FormsMenuEditingTests(OpenDevelopAppFixture app)
 	bool MicrosoftCell => app.FormsDesignCell == RuntimeCell.MicrosoftWinForms;
 
 	[Fact]
-	public async Task ComponentTray_ContainsStripLevelObjects_NotToolStripItems()
+	[Trait(RuntimeCell.TraitName, RuntimeCell.LibreWinForms)]
+	public Task ComponentTray_ContainsStripLevelObjects_NotToolStripItems_LibreWinForms()
+		=> ComponentTray_ContainsStripLevelObjects_NotToolStripItemsAsync(RuntimeCell.LibreWinForms);
+
+	[Fact(Skip = "The Microsoft designer backends are Windows-only; see AddInTests.MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(AddInTests.MicrosoftDesignerBackendsAvailable), SkipType = typeof(AddInTests))]
+	[Trait("DesignerBackend", "Microsoft")]
+	[Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinForms)]
+	public Task ComponentTray_ContainsStripLevelObjects_NotToolStripItems_MicrosoftWinForms()
+		=> ComponentTray_ContainsStripLevelObjects_NotToolStripItemsAsync(RuntimeCell.MicrosoftWinForms);
+
+	async Task ComponentTray_ContainsStripLevelObjects_NotToolStripItemsAsync(string cell)
 	{
-		await OpenFixture();
+		await OpenFixture(cell);
 		JsonElement tray = default;
 		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
 			tray = await app.InvokeAsync("od.forms-designer.component-tray-status");
@@ -40,7 +50,7 @@ public sealed class FormsMenuEditingTests(OpenDevelopAppFixture app)
 		// LibreWinForms attaches ToolStripMenuItemDesigner, but selecting a menu item does not expand
 		// its dropdown yet (no popup, no "Type Here"/insertion node), so skip off Windows for now.
 		Assert.SkipUnless(MicrosoftCell, "LibreWinForms: selecting a menu item does not expand its dropdown yet.");
-        await OpenFixture();
+        await OpenFixture(RuntimeCell.MicrosoftWinForms);
         Assert.True((await app.InvokeAsync("od.forms-designer.select", owner)).GetProperty("success").GetBoolean());
         await ClickItem(item);
         await AssertEditing(item, "Original");
@@ -68,7 +78,7 @@ public sealed class FormsMenuEditingTests(OpenDevelopAppFixture app)
 		// LibreWinForms attaches ToolStripMenuItemDesigner, but selecting a menu item does not expand
 		// its dropdown yet (no popup, no "Type Here"/insertion node), so skip off Windows for now.
 		Assert.SkipUnless(MicrosoftCell, "LibreWinForms: selecting a menu item does not expand its dropdown yet.");
-        await OpenFixture();
+        await OpenFixture(RuntimeCell.MicrosoftWinForms);
         var beforeNames = (await app.InvokeAsync("od.forms-designer.status")).GetProperty("controlNames")
             .EnumerateArray().Select(name => name.GetString()).ToHashSet(StringComparer.Ordinal);
         await app.InvokeAsync("od.forms-designer.select", owner);
@@ -110,7 +120,7 @@ public sealed class FormsMenuEditingTests(OpenDevelopAppFixture app)
 		// LibreWinForms attaches ToolStripMenuItemDesigner, but selecting a menu item does not expand
 		// its dropdown yet (no popup, no "Type Here"/insertion node), so skip off Windows for now.
 		Assert.SkipUnless(MicrosoftCell, "LibreWinForms: selecting a menu item does not expand its dropdown yet.");
-        await OpenFixture();
+        await OpenFixture(RuntimeCell.MicrosoftWinForms);
         await app.InvokeAsync("od.forms-designer.select", "statusStrip");
         var state = await Editor();
         var bounds = state.GetProperty("insertion");
@@ -169,14 +179,15 @@ public sealed class FormsMenuEditingTests(OpenDevelopAppFixture app)
         finally { Assert.True((await app.ReleasePointerAsync(x, y)).GetProperty("ok").GetBoolean()); }
     }
 
-    async Task OpenFixture()
+    async Task OpenFixture(string cell)
     {
+        var microsoft = cell == RuntimeCell.MicrosoftWinForms;
         // Never edit the user's Jexus solution or the tracked sample. Keep a unique temporary
         // fixture for failure inspection; assembly fixture shutdown releases all its handles.
         // Off Windows the fixture sits in the LibreWinForms sample's own obj/ (git-ignored, outside
         // its compile globs) so it inherits the same SDK, package-version and feed configuration
         // the real sample restores with; a system temp folder has none of them.
-        var directory = MicrosoftCell
+        var directory = microsoft
             ? Directory.CreateTempSubdirectory("od-menu-edit-").FullName
             : Directory.CreateDirectory(Path.Combine(Path.GetDirectoryName(app.LibreWinFormsSampleSolutionPath)!, "obj", "od-menu-edit-" + Guid.NewGuid().ToString("N"))).FullName;
         var sample = Path.GetDirectoryName(app.WinFormsSampleSolutionPath)!;
@@ -213,7 +224,7 @@ public sealed class FormsMenuEditingTests(OpenDevelopAppFixture app)
         // Off Windows the form is designed by LibreWinForms: swap the Microsoft project for the
         // LibreWinForms sample's, pointed at the local copies of the same Form1 sources.
         var projectName = "WinFormsSample";
-        if (!MicrosoftCell) {
+        if (!microsoft) {
             projectName = "LibreWinFormsSample";
             foreach (var microsoftFile in new[] { "WinFormsSample.csproj", "WinFormsSample.sln", "WinFormsSample.slnx" })
                 File.Delete(Path.Combine(directory, microsoftFile));
@@ -230,13 +241,13 @@ public sealed class FormsMenuEditingTests(OpenDevelopAppFixture app)
         })!;
         await restore.WaitForExitAsync();
         Assert.Equal(0, restore.ExitCode);
-        Assert.True((await app.ReopenSolutionAsync(Path.Combine(directory, MicrosoftCell ? "WinFormsSample.sln" : "LibreWinFormsSample.slnx"))).GetProperty("success").GetBoolean());
+        Assert.True((await app.ReopenSolutionAsync(Path.Combine(directory, microsoft ? "WinFormsSample.sln" : "LibreWinFormsSample.slnx"))).GetProperty("success").GetBoolean());
         await app.InvokeAsync("od.open-file", Path.Combine(directory, "Form1.cs"));
         JsonElement status = default;
         Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
             status = await app.InvokeAsync("od.forms-designer.status");
             return status.GetProperty("designerLoaded").GetBoolean();
         }, TimeSpan.FromSeconds(120)), status.ToString());
-        RuntimeCell.AssertWinFormsBackend(status, app.FormsDesignCell);
+        RuntimeCell.AssertWinFormsBackend(status, cell);
     }
 }

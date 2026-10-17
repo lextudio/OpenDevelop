@@ -133,6 +133,19 @@ public sealed class AddInTests : IAsyncDisposable
     /// </summary>
     public static bool MicrosoftDesignerBackendsAvailable => OperatingSystem.IsWindows();
 
+    /// <summary>The WinForms sample project a cell opens: the project, never the host OS, selects the backend.</summary>
+    string FormsSolutionPath(string cell) => cell == RuntimeCell.LibreWinForms ? _app.LibreWinFormsSampleSolutionPath : _app.WinFormsSampleSolutionPath;
+
+    /// <summary>When a WinForms designer is still open at the end of a test, it must be served by the test's cell.
+    /// Tests that close their views first are covered by the project selecting the backend alone.</summary>
+    async Task AssertFormsBackendIfActiveAsync(string cell)
+    {
+        var status = await _app.InvokeAsync("od.forms-designer.status");
+        if (status.ValueKind == JsonValueKind.Object && status.TryGetProperty("backend", out _)
+            && status.TryGetProperty("designerLoaded", out var loaded) && loaded.GetBoolean())
+            RuntimeCell.AssertWinFormsBackend(status, cell);
+    }
+
     [Fact]
     public async Task FSharpAddIn_IsLoaded()
     {
@@ -3385,8 +3398,24 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
-    [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
-    public async Task DragToolboxItem_OntoWinFormsDesignSurface_AddsControlToForm()
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWinForms)]
+    public async Task DragToolboxItem_OntoWinFormsDesignSurface_AddsControlToForm_LibreWinForms()
+    {
+        await DragToolboxItem_OntoWinFormsDesignSurface_AddsControlToFormAsync(RuntimeCell.LibreWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.LibreWinForms);
+    }
+
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
+    [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinForms)]
+    public async Task DragToolboxItem_OntoWinFormsDesignSurface_AddsControlToForm_MicrosoftWinForms()
+    {
+        await DragToolboxItem_OntoWinFormsDesignSurface_AddsControlToFormAsync(RuntimeCell.MicrosoftWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.MicrosoftWinForms);
+    }
+
+    async Task DragToolboxItem_OntoWinFormsDesignSurface_AddsControlToFormAsync(string cell)
     {
         // Covers the THIRD drag-drop target for the shared WPF-hosted toolbox: an out-of-process
         // WinForms design surface (FormsDesignerViewContent; the designer itself runs in the
@@ -3402,7 +3431,7 @@ public sealed class AddInTests : IAsyncDisposable
 
         try
         {
-            var openSolutionResult = await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath);
+            var openSolutionResult = await _app.ReopenSolutionAsync(FormsSolutionPath(cell));
             Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
             var openFileResult = await _app.InvokeAsync("od.open-file", formCodePath.Replace(".Designer.cs", ".cs"));
             Assert.True(openFileResult.GetProperty("opened").GetBoolean());
@@ -3416,7 +3445,7 @@ public sealed class AddInTests : IAsyncDisposable
             }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000);
             Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
             Assert.False(status.GetProperty("usesCodeDomLoader").GetBoolean(), status.ToString());
-            RuntimeCell.AssertWinFormsBackend(status, _app.FormsDesignCell);
+            RuntimeCell.AssertWinFormsBackend(status, cell);
             Assert.Contains("RoslynDesignerLoader", status.GetProperty("loaderType").GetString(), StringComparison.Ordinal);
             Assert.True(status.GetProperty("toolboxSearchHosted").GetBoolean(), status.ToString());
             var filteredTools = await _app.InvokeAsync("od.forms-designer.toolbox.filter", "button");
@@ -3620,8 +3649,24 @@ public sealed class AddInTests : IAsyncDisposable
             savedPrimary, StringComparison.Ordinal);
     }
 
-    [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
-    public async Task WinFormsDesigner_DocumentOutline_ShowsControlTreeAndSelects()
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWinForms)]
+    public async Task WinFormsDesigner_DocumentOutline_ShowsControlTreeAndSelects_LibreWinForms()
+    {
+        await WinFormsDesigner_DocumentOutline_ShowsControlTreeAndSelectsAsync(RuntimeCell.LibreWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.LibreWinForms);
+    }
+
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
+    [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinForms)]
+    public async Task WinFormsDesigner_DocumentOutline_ShowsControlTreeAndSelects_MicrosoftWinForms()
+    {
+        await WinFormsDesigner_DocumentOutline_ShowsControlTreeAndSelectsAsync(RuntimeCell.MicrosoftWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.MicrosoftWinForms);
+    }
+
+    async Task WinFormsDesigner_DocumentOutline_ShowsControlTreeAndSelectsAsync(string cell)
     {
         // The Document Outline pad is the shared control (ICSharpCode.SharpDevelop.Widgets.
         // DocumentOutlineControl) fed by the out-of-process protocol's element tree
@@ -3635,7 +3680,7 @@ public sealed class AddInTests : IAsyncDisposable
         // test) opens the pad to see it.
         var formCodePath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.cs");
 
-        var openSolutionResult = await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath);
+        var openSolutionResult = await _app.ReopenSolutionAsync(FormsSolutionPath(cell));
         Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
         var openFileResult = await _app.InvokeAsync("od.open-file", formCodePath);
         Assert.True(openFileResult.GetProperty("opened").GetBoolean());
@@ -3728,8 +3773,24 @@ public sealed class AddInTests : IAsyncDisposable
         await _app.InvokeAsync("od.close-all-document-views");
     }
 
-    [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
-    public async Task WinFormsDesigner_DoubleClickEventRow_CreatesAndBindsHandler()
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWinForms)]
+    public async Task WinFormsDesigner_DoubleClickEventRow_CreatesAndBindsHandler_LibreWinForms()
+    {
+        await WinFormsDesigner_DoubleClickEventRow_CreatesAndBindsHandlerAsync(RuntimeCell.LibreWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.LibreWinForms);
+    }
+
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
+    [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinForms)]
+    public async Task WinFormsDesigner_DoubleClickEventRow_CreatesAndBindsHandler_MicrosoftWinForms()
+    {
+        await WinFormsDesigner_DoubleClickEventRow_CreatesAndBindsHandlerAsync(RuntimeCell.MicrosoftWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.MicrosoftWinForms);
+    }
+
+    async Task WinFormsDesigner_DoubleClickEventRow_CreatesAndBindsHandlerAsync(string cell)
     {
         // VS behavior: double-clicking a row in the Properties pad's Events view creates the
         // conventional <component>_<event> handler and binds it (persisted into .Designer.cs on
@@ -3742,7 +3803,7 @@ public sealed class AddInTests : IAsyncDisposable
         var originalDesigner = await File.ReadAllTextAsync(designerPath);
 
         try {
-            await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath);
+            await _app.ReopenSolutionAsync(FormsSolutionPath(cell));
             await _app.InvokeAsync("od.open-file", formCodePath);
 
             JsonElement status = default;
@@ -3858,8 +3919,24 @@ public sealed class AddInTests : IAsyncDisposable
     }
 }
 
-    [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
-    public async Task WinFormsDesigner_ResizeDrag_SelectionAndHandleTrackRenderedFrame()
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWinForms)]
+    public async Task WinFormsDesigner_ResizeDrag_SelectionAndHandleTrackRenderedFrame_LibreWinForms()
+    {
+        await WinFormsDesigner_ResizeDrag_SelectionAndHandleTrackRenderedFrameAsync(RuntimeCell.LibreWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.LibreWinForms);
+    }
+
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
+    [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinForms)]
+    public async Task WinFormsDesigner_ResizeDrag_SelectionAndHandleTrackRenderedFrame_MicrosoftWinForms()
+    {
+        await WinFormsDesigner_ResizeDrag_SelectionAndHandleTrackRenderedFrameAsync(RuntimeCell.MicrosoftWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.MicrosoftWinForms);
+    }
+
+    async Task WinFormsDesigner_ResizeDrag_SelectionAndHandleTrackRenderedFrameAsync(string cell)
     {
         // Resize the root form by dragging its bottom-right handle, then assert the invariant
         // the shared canvas guarantees: the selection outline must coincide with the rendered
@@ -3873,7 +3950,7 @@ public sealed class AddInTests : IAsyncDisposable
         var originalDesigner = await File.ReadAllTextAsync(designerPath);
 
         try {
-            await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath);
+            await _app.ReopenSolutionAsync(FormsSolutionPath(cell));
             await _app.InvokeAsync("od.open-file", formCodePath);
 
             JsonElement status = default;
@@ -4004,8 +4081,24 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
-    [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
-    public async Task WinFormsDesigner_ToolboxComponentJoinsTheTrayAndUndoes()
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWinForms)]
+    public async Task WinFormsDesigner_ToolboxComponentJoinsTheTrayAndUndoes_LibreWinForms()
+    {
+        await WinFormsDesigner_ToolboxComponentJoinsTheTrayAndUndoesAsync(RuntimeCell.LibreWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.LibreWinForms);
+    }
+
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
+    [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinForms)]
+    public async Task WinFormsDesigner_ToolboxComponentJoinsTheTrayAndUndoes_MicrosoftWinForms()
+    {
+        await WinFormsDesigner_ToolboxComponentJoinsTheTrayAndUndoesAsync(RuntimeCell.MicrosoftWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.MicrosoftWinForms);
+    }
+
+    async Task WinFormsDesigner_ToolboxComponentJoinsTheTrayAndUndoesAsync(string cell)
     {
         // A Toolbox component (Timer) is not a Control: it joins the component tray and is created
         // into the form's components container, as the in-process designer did.
@@ -4014,7 +4107,7 @@ public sealed class AddInTests : IAsyncDisposable
         var originalForm = await File.ReadAllBytesAsync(formCodePath);
         var originalDesigner = await File.ReadAllBytesAsync(designerPath);
         try {
-            await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath);
+            await _app.ReopenSolutionAsync(FormsSolutionPath(cell));
             await _app.InvokeAsync("od.open-file", formCodePath);
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -4042,8 +4135,24 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
-    [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
-    public async Task WinFormsDesigner_ItemsEditorWritesOneItemsAddRange()
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWinForms)]
+    public async Task WinFormsDesigner_ItemsEditorWritesOneItemsAddRange_LibreWinForms()
+    {
+        await WinFormsDesigner_ItemsEditorWritesOneItemsAddRangeAsync(RuntimeCell.LibreWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.LibreWinForms);
+    }
+
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
+    [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinForms)]
+    public async Task WinFormsDesigner_ItemsEditorWritesOneItemsAddRange_MicrosoftWinForms()
+    {
+        await WinFormsDesigner_ItemsEditorWritesOneItemsAddRangeAsync(RuntimeCell.MicrosoftWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.MicrosoftWinForms);
+    }
+
+    async Task WinFormsDesigner_ItemsEditorWritesOneItemsAddRangeAsync(string cell)
     {
         // The in-process WinForms string collection editor: a ComboBox's Items row "…" button edits
         // the list, and the result lands in Form1.Designer.cs as one Items.AddRange.
@@ -4053,7 +4162,7 @@ public sealed class AddInTests : IAsyncDisposable
         var originalForm = await File.ReadAllBytesAsync(formCodePath);
         var originalDesigner = await File.ReadAllBytesAsync(designerPath);
         try {
-            await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath);
+            await _app.ReopenSolutionAsync(FormsSolutionPath(cell));
             await _app.InvokeAsync("od.open-file", formCodePath);
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -4091,8 +4200,24 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
-    [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
-    public async Task WinFormsDesigner_TableLayoutDividerWritesTheAuthoredColumnStyle()
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWinForms)]
+    public async Task WinFormsDesigner_TableLayoutDividerWritesTheAuthoredColumnStyle_LibreWinForms()
+    {
+        await WinFormsDesigner_TableLayoutDividerWritesTheAuthoredColumnStyleAsync(RuntimeCell.LibreWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.LibreWinForms);
+    }
+
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
+    [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinForms)]
+    public async Task WinFormsDesigner_TableLayoutDividerWritesTheAuthoredColumnStyle_MicrosoftWinForms()
+    {
+        await WinFormsDesigner_TableLayoutDividerWritesTheAuthoredColumnStyleAsync(RuntimeCell.MicrosoftWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.MicrosoftWinForms);
+    }
+
+    async Task WinFormsDesigner_TableLayoutDividerWritesTheAuthoredColumnStyleAsync(string cell)
     {
         // Selecting a TableLayoutPanel shows the host's measured divider guides; releasing a
         // divider rewrites that authored ColumnStyle in Form1.Designer.cs as one undo step.
@@ -4121,7 +4246,7 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.Contains("Controls.Add(grid1);", text, StringComparison.Ordinal);
             await File.WriteAllTextAsync(designerPath, text);
 
-            await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath);
+            await _app.ReopenSolutionAsync(FormsSolutionPath(cell));
             await _app.InvokeAsync("od.open-file", formCodePath);
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -4221,8 +4346,24 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
-    [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
-    public async Task WinFormsDesigner_MultiSelectAlignNudgeUndoRedo_LandAsDesignerEdits()
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWinForms)]
+    public async Task WinFormsDesigner_MultiSelectAlignNudgeUndoRedo_LandAsDesignerEdits_LibreWinForms()
+    {
+        await WinFormsDesigner_MultiSelectAlignNudgeUndoRedo_LandAsDesignerEditsAsync(RuntimeCell.LibreWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.LibreWinForms);
+    }
+
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
+    [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinForms)]
+    public async Task WinFormsDesigner_MultiSelectAlignNudgeUndoRedo_LandAsDesignerEdits_MicrosoftWinForms()
+    {
+        await WinFormsDesigner_MultiSelectAlignNudgeUndoRedo_LandAsDesignerEditsAsync(RuntimeCell.MicrosoftWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.MicrosoftWinForms);
+    }
+
+    async Task WinFormsDesigner_MultiSelectAlignNudgeUndoRedo_LandAsDesignerEditsAsync(string cell)
     {
         // The out-of-process WinForms designer now exposes the same editing surface as the
         // WinUI designer (three-way DevFlow alignment): multi-select, align, nudge, undo/redo,
@@ -4235,7 +4376,7 @@ public sealed class AddInTests : IAsyncDisposable
         var bodySucceeded = false;
 
         try {
-            await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath);
+            await _app.ReopenSolutionAsync(FormsSolutionPath(cell));
             await _app.InvokeAsync("od.open-file", formCodePath);
 
             JsonElement status = default;
@@ -4458,8 +4599,24 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
-    [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
-    public async Task WinFormsDesigner_ResourceImageThroughPropertiesPad_RoundTripsAndUndoes()
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWinForms)]
+    public async Task WinFormsDesigner_ResourceImageThroughPropertiesPad_RoundTripsAndUndoes_LibreWinForms()
+    {
+        await WinFormsDesigner_ResourceImageThroughPropertiesPad_RoundTripsAndUndoesAsync(RuntimeCell.LibreWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.LibreWinForms);
+    }
+
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
+    [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinForms)]
+    public async Task WinFormsDesigner_ResourceImageThroughPropertiesPad_RoundTripsAndUndoes_MicrosoftWinForms()
+    {
+        await WinFormsDesigner_ResourceImageThroughPropertiesPad_RoundTripsAndUndoesAsync(RuntimeCell.MicrosoftWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.MicrosoftWinForms);
+    }
+
+    async Task WinFormsDesigner_ResourceImageThroughPropertiesPad_RoundTripsAndUndoesAsync(string cell)
     {
         // This is deliberately a Properties-pad journey rather than a child-RPC test. The child
         // may prove the resource origin, but replacement bytes must travel through the IDE-owned
@@ -4499,7 +4656,7 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.Contains(iconAssignment, resourceDesigner, StringComparison.Ordinal);
             await File.WriteAllTextAsync(designerPath, resourceDesigner);
 
-            Assert.True((await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await _app.ReopenSolutionAsync(FormsSolutionPath(cell))).GetProperty("success").GetBoolean());
             await _app.InvokeAsync("od.open-file", formCodePath);
             JsonElement status = default;
             var loaded = await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -4609,8 +4766,24 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
-    [Fact] // FormsDesignSolutionPath is the LibreWinForms sample off Windows.
-    public async Task WinFormsDesigner_PadViewModeAndViewSwitching_RoundTrip()
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWinForms)]
+    public async Task WinFormsDesigner_PadViewModeAndViewSwitching_RoundTrip_LibreWinForms()
+    {
+        await WinFormsDesigner_PadViewModeAndViewSwitching_RoundTripAsync(RuntimeCell.LibreWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.LibreWinForms);
+    }
+
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
+    [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinForms)]
+    public async Task WinFormsDesigner_PadViewModeAndViewSwitching_RoundTrip_MicrosoftWinForms()
+    {
+        await WinFormsDesigner_PadViewModeAndViewSwitching_RoundTripAsync(RuntimeCell.MicrosoftWinForms);
+        await AssertFormsBackendIfActiveAsync(RuntimeCell.MicrosoftWinForms);
+    }
+
+    async Task WinFormsDesigner_PadViewModeAndViewSwitching_RoundTripAsync(string cell)
     {
         // The WinForms designer's shared pad now switches Properties/Events views through the
         // same od.forms-designer.pad-view-mode action as the WinUI designer, and the document
@@ -4620,7 +4793,7 @@ public sealed class AddInTests : IAsyncDisposable
         // handler.
         var formCodePath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.cs");
 
-        await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath);
+        await _app.ReopenSolutionAsync(FormsSolutionPath(cell));
         await _app.InvokeAsync("od.open-file", formCodePath);
 
         JsonElement status = default;
