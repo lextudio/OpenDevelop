@@ -148,12 +148,26 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				// The host's own output rarely says why it died (a native crash writes nothing), so the exit
 				// code goes into the child log: it is attached to every error shown for this host and is
 				// what tells a crash (0xC0000005, 0xC000027B ...) from a kill (-1) when it is diagnosed.
+				// It is also raised as an output line, because the designers' output channels outlive the
+				// host: after a recovery the child log belongs to the replacement host, and the dead one's
+				// exit code would otherwise be gone.
+				string? exitLine = null;
 				try {
-					lock (childLog) childLog.AppendLine($"[designer host exited, exit code {unchecked((uint)process.ExitCode):X8} ({process.ExitCode})]");
+					exitLine = $"[designer host exited, exit code {unchecked((uint)process.ExitCode):X8} ({process.ExitCode})]";
+					lock (childLog) childLog.AppendLine(exitLine);
 				} catch (InvalidOperationException) {
 					// Disposed between the check and the read: the code is gone, the exit still reported below.
 				}
-				Task.Run(() => HostExited?.Invoke(this, EventArgs.Empty));
+				Task.Run(() => {
+					if (exitLine != null) {
+						try {
+							OutputLineReceived?.Invoke(this, exitLine);
+						} catch {
+							// Same rule as the output pump: a subscriber's failure must not stop the exit report.
+						}
+					}
+					HostExited?.Invoke(this, EventArgs.Empty);
+				});
 			};
 			process.Start();
 			started = true;
