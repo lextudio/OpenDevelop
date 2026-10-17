@@ -2031,6 +2031,59 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task SharedClients_SeeOnlyTheirOwnAppXamlResources()
+	{
+		// Application.Current is shared by every document in one host process. Each document's
+		// App.xaml dictionary used to stay merged into it for the rest of the process, so a long
+		// session accumulated them (and a resource-key walk eventually took longer than session/open's
+		// timeout); a document must also not lose its own when a sibling opens or closes.
+		static DesignerDocumentSnapshot WithAppBrush(string key) => new() {
+			Version = 1,
+			PrimaryFileName = "/project/Page.xaml",
+			Files = {
+				new DesignerSourceFileSnapshot { FileName = "/project/Page.xaml", Kind = "Source", Text = """
+					<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Width="200" Height="100">
+					  <Border Background="Red"/>
+					</Grid>
+					""" },
+				new DesignerSourceFileSnapshot { FileName = "/project/App.xaml", Kind = "AppXaml", Text = $"""
+					<Application xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+					  <Application.Resources>
+					    <SolidColorBrush x:Key="{key}" Color="Blue"/>
+					  </Application.Resources>
+					</Application>
+					""" }
+			}
+		};
+		static IEnumerable<string>? BrushKeys(DesignerSessionState state)
+			=> Assert.Single(state.Tree!.Children[0].Properties, p => p.Name == "Background").BrushResourceKeys;
+
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var first = await WpfSurfaceHostClient.AcquireSharedAsync(HostDll(), timeout.Token);
+		var second = await WpfSurfaceHostClient.AcquireSharedAsync(HostDll(), timeout.Token);
+		try
+		{
+			var opened = await first.OpenAsync(WithAppBrush("FirstAppBrush"), timeout.Token);
+			Assert.True(opened.Accepted, opened.Error);
+			var border = opened.Tree!.Children[0].Id;
+			Assert.True((await second.OpenAsync(WithAppBrush("SecondAppBrush"), timeout.Token)).Accepted);
+
+			var afterSiblingOpened = await first.SetPropertyAsync(1, border, "Width", "50", timeout.Token);
+			Assert.True(afterSiblingOpened.Accepted, afterSiblingOpened.Error);
+			Assert.Equal(new[] { "FirstAppBrush" }, BrushKeys(afterSiblingOpened));
+
+			second.Dispose();
+			var afterSiblingClosed = await first.SetPropertyAsync(1, border, "Width", "60", timeout.Token);
+			Assert.True(afterSiblingClosed.Accepted, afterSiblingClosed.Error);
+			Assert.Equal(new[] { "FirstAppBrush" }, BrushKeys(afterSiblingClosed));
+		}
+		finally
+		{
+			second.Dispose();
+		}
+	}
+
+	[Fact]
 	public async Task SharedClients_RecoverEveryOpenDocumentAfterTheChildExits()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));

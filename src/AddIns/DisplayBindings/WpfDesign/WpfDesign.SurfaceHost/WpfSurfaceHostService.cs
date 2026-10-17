@@ -140,10 +140,15 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		Dictionary<string, string>? themeSources;
 		ResourceDictionary? appliedThemeDictionary;
 		string? appliedThemeName;
-		// The current document's app-resources dictionary as installed into
-		// Application.Current.Resources (see InstallApplicationResources), so it can be replaced on
-		// the next open instead of accumulating one copy per document.
-		ResourceDictionary? appliedAppResources;
+		// The app-resources dictionary currently installed into Application.Current.Resources (see
+		// InstallApplicationResources), so the next parse replaces it instead of accumulating one
+		// copy per document. Static because Application.Current is shared by every document in a
+		// multi-document host: a per-instance slot only ever removed its own document's copy, so
+		// each document opened in one host process left another dictionary behind and every
+		// ResourceKeys walk grew with it (a long WPF Gallery run ended in a 30 s session/open).
+		static ResourceDictionary? appliedAppResources;
+		// What this document last installed there, so Close removes it only while it is still current.
+		ResourceDictionary? ownAppResources;
 
 		public WpfSurfaceHostService(string expectedToken, WpfHeadlessDispatcher dispatcher)
 		{
@@ -471,6 +476,21 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				Application.Current.Resources.MergedDictionaries.Add(appResources);
 				appliedAppResources = appResources;
 			}
+			ownAppResources = appResources;
+		}
+
+		/// <summary>Makes this document's app resources the installed ones again when another
+		/// document's open (or close) has replaced them since. The multi-document host calls this
+		/// before routing any request to this document: besides the parse in <see cref="OpenCore"/>,
+		/// edits such as AddElement instantiate controls whose compiled BAML resolves StaticResource
+		/// through Application.Current.</summary>
+		internal void ActivateApplicationResources()
+		{
+			dispatcher.Dispatch(() => {
+				if (ownAppResources != null && !ReferenceEquals(appliedAppResources, ownAppResources))
+					InstallApplicationResources(ownAppResources);
+				return true;
+			});
 		}
 
 		/// <summary>Parses an app-level resource dictionary out of the snapshot's "AppXaml" file and
@@ -1768,14 +1788,21 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		static List<string> ResourceKeys(DesignItem item, Func<object?, bool> matches)
 		{
 			var keys = new List<string>();
+			var seenKeys = new HashSet<string>(StringComparer.Ordinal);
+			// The same dictionary instance can be merged at several levels (the app resources are
+			// merged into both the design root and Application.Current); walking it once is enough.
+			var visited = new HashSet<ResourceDictionary>(ReferenceEqualityComparer.Instance);
 			void Collect(ResourceDictionary? dictionary)
 			{
-				if (dictionary == null)
+				if (dictionary == null || !visited.Add(dictionary))
 					return;
 				foreach (var key in dictionary.Keys)
 				{
-					if (key is string name && !keys.Contains(name) && matches(dictionary[key]))
+					if (key is string name && !seenKeys.Contains(name) && matches(dictionary[key]))
+					{
+						seenKeys.Add(name);
 						keys.Add(name);
+					}
 				}
 				foreach (var merged in dictionary.MergedDictionaries)
 					Collect(merged);
@@ -3399,6 +3426,10 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		internal void Close()
 		{
 			dispatcher.Dispatch(() => {
+				// Only while it is still this document's: another document may have installed its own since.
+				if (ownAppResources != null && ReferenceEquals(appliedAppResources, ownAppResources))
+					InstallApplicationResources(null);
+				ownAppResources = null;
 				current = null;
 				pathToItem.Clear();
 				appliedThemeDictionary = null;

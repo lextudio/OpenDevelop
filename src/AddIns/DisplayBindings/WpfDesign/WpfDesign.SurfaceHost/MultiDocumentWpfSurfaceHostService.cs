@@ -37,7 +37,11 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 
 	WpfSurfaceHostService Checked(string requestSessionId, string documentId)
 	{
-		return documents.Get(requestSessionId, documentId);
+		var service = documents.Get(requestSessionId, documentId);
+		// Application.Current.Resources holds one document's app resources at a time; an edit that
+		// instantiates a control outside a parse (AddElement and friends) needs this document's.
+		service.ActivateApplicationResources();
+		return service;
 	}
 
 	[JsonRpcMethod("session/open")]
