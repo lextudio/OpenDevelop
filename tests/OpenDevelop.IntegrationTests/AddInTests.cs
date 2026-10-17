@@ -3716,6 +3716,11 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.True(formRow >= 0, "Expected a Form1 row; labels: " + string.Join(", ", padLabels));
         Assert.Equal("bitmap", padIcons[formRow]);
         Assert.All(padIcons, icon => Assert.NotNull(icon));
+        // The label text must actually be drawn, not just present: a null Foreground once left every row
+        // showing its icon and no text, while the label strings above still matched.
+        var padInk = padContent.GetProperty("labelInk").EnumerateArray().Select(ink => ink.GetBoolean()).ToList();
+        Assert.True(padInk.Count == padLabels.Count && padInk.All(ink => ink),
+            "Outline rows drew no label text: " + string.Join(", ", padLabels.Select((label, i) => label + "=" + (i < padInk.Count && padInk[i]))));
 
         // The sample is the LibreWinForms project on every OS, so the designer must report that backend.
         RuntimeCell.AssertWinFormsBackend(await _app.InvokeAsync("od.forms-designer.status"), RuntimeCell.LibreWinForms);

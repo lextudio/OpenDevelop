@@ -5092,8 +5092,9 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			var names = new List<string>();
 			var labels = new List<string>();
 			var icons = new List<string>();
+			var labelInk = new List<bool>();
 			foreach (TreeViewItem root in outline.Items.OfType<TreeViewItem>())
-				CollectOutlineItems(root, names, labels, icons);
+				CollectOutlineItems(root, names, labels, icons, labelInk);
 
 			return JsonSerializer.Serialize(new {
 				available = true,
@@ -5105,6 +5106,10 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				// the pad is showing designed elements rather than, say, source symbols.
 
 				labels = labels.ToArray(),
+				// Whether each row's label is actually drawn: its TextBlocks have a brush with some colour. A
+				// label's Text survives a null Foreground, which is how rows once showed only their icons
+				// while `labels` still looked right.
+				labelInk = labelInk.ToArray(),
 				// Each row's glyph: "vector" (a VS Image Library DrawingImage), "bitmap" (e.g. a
 				// WinForms toolbox icon), or null when the row has none.
 				icons = icons.ToArray(),
@@ -5114,15 +5119,21 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
-		static void CollectOutlineItems(TreeViewItem item, List<string> names, List<string> labels, List<string> icons)
+		static void CollectOutlineItems(TreeViewItem item, List<string> names, List<string> labels, List<string> icons, List<bool> labelInk)
 		{
 			if (item.Tag is DesignerElementNode node)
 				names.Add(string.IsNullOrEmpty(node.Name) ? node.Type : node.Name);
-			labels.Add(string.Join("", DescendantTextBlocks(item).Select(text => text.Text)).Trim());
+			var texts = DescendantTextBlocks(item).ToList();
+			labels.Add(string.Join("", texts.Select(text => text.Text)).Trim());
+			labelInk.Add(texts.Count > 0 && texts.All(text => text.Foreground switch {
+				null => false,
+				System.Windows.Media.SolidColorBrush solid => solid.Color.A > 0,
+				_ => true
+			}));
 			var glyph = (item.Header as Panel)?.Children.OfType<Image>().FirstOrDefault()?.Source;
 			icons.Add(glyph is System.Windows.Media.DrawingImage ? "vector" : glyph != null ? "bitmap" : null);
 			foreach (TreeViewItem child in item.Items.OfType<TreeViewItem>())
-				CollectOutlineItems(child, names, labels, icons);
+				CollectOutlineItems(child, names, labels, icons, labelInk);
 		}
 
 		/// <summary>The TextBlocks of one outline row's own header, stopping before nested rows so

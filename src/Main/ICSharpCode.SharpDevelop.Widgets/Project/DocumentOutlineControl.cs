@@ -428,8 +428,16 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		{
 			var isSecondary = item.Tag is DesignerElementNode node && selectedIds.Contains(node.Id)
 				&& !StringComparer.Ordinal.Equals(node.Id, SelectedNode?.Id);
-			item.Background = isSecondary ? SystemColors.HighlightBrush : null;
-			item.Foreground = isSecondary ? SystemColors.HighlightTextBrush : null;
+			// ClearValue, never "= null": assigning null sets a local null brush that overrides the inherited
+			// Foreground, and every row's TextBlock then drew no text - only the icons were left - after the
+			// first selection change.
+			if (isSecondary) {
+				item.Background = SystemColors.HighlightBrush;
+				item.Foreground = SystemColors.HighlightTextBrush;
+			} else {
+				item.ClearValue(Control.BackgroundProperty);
+				item.ClearValue(Control.ForegroundProperty);
+			}
 			foreach (TreeViewItem child in item.Items.OfType<TreeViewItem>())
 				RefreshSelectionVisuals(child);
 		}
