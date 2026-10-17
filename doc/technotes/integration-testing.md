@@ -109,7 +109,9 @@ This is what exists, so the plan below is a delta and not a rewrite:
   Progress), and `FormsDesignSolutionPath` is the same OS-dependent split for WinForms (`WinFormsSample` on Windows,
   `LibreWinFormsSample` elsewhere; its cell is `OpenDevelopAppFixture.FormsDesignCell`).
 - **ProGPU.WinUI:** `ProGpuWinUIDesignerTests` skip unless the whole process runs with `OD_WINUI_RUNTIME=progpu`. They have no OS
-  gate, so this suite does not confirm the macOS column for this cell; it is the target, not a measured fact.
+  gate; the macOS column was measured on 2026-10-17 (see "Measured status on macOS"). This cell is the **retired** in-process
+  profile (see [designer-common.md](designer-common.md), "Retired profile"): it renders, but has no selection, toolbox or
+  property editing, so it is not a target for reusing the Uno/WinUI designer-behaviour tests (tried, see below).
 - **Uno:** the default WinUI order prefers the Uno child, so Uno is covered implicitly by the WinUI tests of
   `AddInTests`; `UnoHotReloadIntegrationTests` is skipped on purpose.
 
@@ -149,7 +151,8 @@ via the same traits.
 
 ### Measured status per cell
 
-Every cell was run for real with `RunRuntimeCell` on Windows arm64 (.NET 10, 2026-10-16, with a full build; macOS was not run).
+Every cell was run for real with `RunRuntimeCell` on Windows arm64 (.NET 10, 2026-10-16, with a full build); the macOS cells were
+run on 2026-10-17, see "Measured status on macOS" below the Windows notes.
 "Cases" counts xunit test cases (theory rows and class-level tags expand), not methods. The numbers below are from the last run
 of each cell after the product fixes listed under the table; a full `RunRuntimeMatrix` pass over all seven after the last fix
 has not been made.
@@ -197,6 +200,52 @@ blocked on; `makepri dump` shows what a `.pri` contains; running a host by hand 
 A cell is only as good as its prerequisites: `NoBuild` skips building the Microsoft hosts, so a Microsoft cell can run against
 a stale host and fail everything with a protocol error. Treat `Protocol N is not supported` as "rebuild the hosts" first.
 
+### Measured status on macOS
+
+`-t:RunRuntimeMatrix` on macOS arm64 (.NET 10.0.10, 2026-10-17, one run per cell, screen unlocked, no Microsoft cells exist
+here). The last full pass:
+
+| Cell | Result | Notes |
+|---|---|---|
+| LibreWpf | 24 of 24 pass (about 195 s) | Was 1 test. The 23 added are the runtime-neutral `WpfStripEditing*` tests. |
+| LibreWinForms | 13 of 13 pass (about 116 s) | Was 1 test. Ten `AddInTests` methods, `ComponentTray_...` and the ImageList journey were split per cell. |
+| Uno | 22 of 22 pass (about 125-140 s) | Includes the Uno half of the resize-drag test, which had never run on macOS. The two tests that fail on Windows (design size presets, theme switch) pass here. |
+| ProGpuWinUI | 5 of 5 pass (about 35 s) | Unchanged; see the reuse experiment below. |
+
+Nothing was skipped. A cell's tests are only the ones tagged `Runtime=<cell>`, so this is not "macOS is green": it is those 64
+tests. Untagged tests are not in the matrix, and the OS-dependent fixtures are still used by the ones listed under "Still open".
+The first macOS attempt selected no test for LibreWinForms because the built test assembly was stale (a `NoBuild` run uses what
+is in `bin`); build first.
+
+What running the cells on macOS turned up, all of it invisible while the tests ran as "the default":
+
+- **The Uno resize-drag test never ran on macOS** (it was `SkipUnless` Windows). Three independent test preconditions failed in
+  turn, each found from the failure message and not by guessing: the handle sat 1 px below the viewport (`handleVisible:false`),
+  so the press missed it; the Uno host sizes the canvas to its content (1280x53, a design preset applies only its width), so the
+  button was flush with the bottom edge and had no room to grow; and in Fit mode the selection is about 25x9 px, the 8 handles
+  overlap and the hit test returns the east handle first, so only `Width` changed (the saved `<Button ... Height="33">` never
+  moved). Fixed in the test: `MinHeight="300"` on `RootStack` in the temp copy, view `1 0 0`, wait for `handleVisible`, and
+  every attempt's geometry, `od.pointer-events` and saved button markup in the failure message. The Microsoft WinUI branch got the
+  same view and `handleVisible` steps and is **not verified** (needs Windows).
+- **Six `WpfStripEditing` tests were green without running** off Windows (`if (!OperatingSystem.IsWindows()) return;`). Run for
+  real on LibreWPF all six fail: the press is delivered at the reported point (`od.pointer-events` shows it, window coordinates
+  plus the window origin equal the target's screen coordinates) but lands on the design `Image`, not on the overlay (the "Type
+  Here" hotspot or the ContextMenu tray), so no editor opens. A menu item drawn in the frame itself does edit inline on LibreWPF
+  (the first stage of the first test passes). **A LibreWPF gap, not investigated.** The six now live in
+  `WpfStripOverlayEditingTestsBase`, which only the MicrosoftWpf subclass derives from; add a LibreWpf subclass when the product
+  works. The two Ctrl-gesture tests that return unless macOS are the same pattern the other way round and are still there.
+- **A product bug in the WinForms ImageList journey** (`ResourceStore.ResourceStorage.InitializeEmptyResx`): loading the new
+  file's empty placeholder leaves a zero-length (not `null`) buffer, and the `buffer != null` guard then skipped generating the
+  ResX, so the first image failed with `The .resx document has no complete root element.` An empty buffer now counts as
+  uninitialised. Why Windows did not hit it is not known. The fix also makes the designer add `Form1.resx` to the opened project,
+  which dirtied the tracked `LibreWinFormsSample.csproj`; the test restores that file.
+- **Reusing the Uno designer-behaviour tests for ProGpuWinUI does not work.** All 20 non-pixel-specific ones were parametrised
+  by cell and run in the ProGpuWinUI cell: 4 passed, 16 failed (selection does nothing, `toolboxItemCount` is 0, property edits
+  never reach the source, presets are ignored, the theme never leaves white). The in-process ProGPU profile is retired (see
+  [designer-common.md](designer-common.md)): no selection, toolbox or property editing. The attempt was reverted; the 4 that passed
+  were not kept because with `ElementTree == null` they could be passing without exercising anything. Libre reusing Microsoft
+  (WPF, WinForms) is the model that holds; Uno reusing Microsoft WinUI is untested (Windows only).
+
 ### Progress
 
 - **Step 1, WPF cells (foundation plus three tagged tests and one tagged class):** `tests/OpenDevelop.IntegrationTests/RuntimeCell.cs` names the seven
@@ -211,8 +260,13 @@ a stale host and fail everything with a protocol error. Treat `Protocol N is not
   - the six cross-everywhere `AddInTests` methods keep their OS-dependent fixture and have no `Runtime` trait, because
     one `[Fact]` cannot carry a different cell per OS; they have to be split per cell (the drag tests drive the pointer
     with cliclick, so check what each cell needs before splitting);
-  - `WpfStripEditingTests` (56 uses of `WpfSampleSolutionPath`), `DesignerEditorJourneyTests` (2) and `WorkbenchTests` (1)
-    use the OS-dependent fixture and are untagged;
+  - done on 2026-10-17: `WpfStripEditingTests.cs` is `WpfCellTestsBase` (picks the sample by cell, skips the Microsoft cell off
+    Windows, checks the reported backend after every test) with `WpfStripEditingTestsBase` (23 runtime-neutral tests, both
+    cells) and `WpfStripOverlayEditingTestsBase` (6 overlay tests, MicrosoftWpf only because of the LibreWPF gap under
+    "Measured status on macOS"). Not yet checked on Windows: the Microsoft subclasses keep `WpfSampleSolutionPath`, which is the
+    Microsoft sample there. Still untagged and still on the OS-dependent `WpfSampleSolutionPath` (counted in HEAD):
+    `DesignerEditorJourneyTests` (2 uses, in its WPF journey; its WinForms ImageList journey is the one that was split, see
+    the WinForms bullet) and `WorkbenchTests` (1 use);
   - `WpfHotReloadJourneyTests` asserts `framework == "WPF"` on the hot-reload session and, with
     `WpfDesignerAssemblyLockTests`, uses `WpfHotReloadFixturePath` with no `Runtime` trait; decide whether `framework` is a
     design-host backend (then it belongs to this matrix) or a hot-reload adapter name (then document it as such).
@@ -224,18 +278,24 @@ a stale host and fail everything with a protocol error. Treat `Protocol N is not
   asserts the backend after the designer loads. The first `AddInTests` test that used `AssertDesignerBackend` asserts the
   fixture's cell instead. `LibreWinFormsDesigner_DocumentOutline_ShowsControlTreeWithToolboxIcons` (it opens the LibreWinForms
   sample on every OS) carries `Runtime=LibreWinForms` and asserts the backend, so that cell has one test.
-- **Still open for WinForms:** `ComponentTray_ContainsStripLevelObjects_NotToolStripItems` and the 11 `AddInTests` tests that
-  use `FormsDesignSolutionPath` (plus one in `DesignerEditorJourneyTests`) run on whichever cell the OS picks and are
-  untagged, for the same reason as the WPF six; the VB WinForms sample (`VbWinFormsSampleSolutionPath`) has not been
-  classified.
+- **WinForms, done on 2026-10-17 (macOS verified, Microsoft halves not):** `ComponentTray_ContainsStripLevelObjects_NotToolStripItems`,
+  ten `AddInTests` methods and the ImageList journey in `DesignerEditorJourneyTests` are one `...Async(string cell)` body with a
+  `_LibreWinForms` and a `_MicrosoftWinForms` test each (the project, `LibreWinFormsSampleSolutionPath` or
+  `WinFormsSampleSolutionPath`, selects the backend; the Microsoft half skips off Windows). `AddInTests` checks the backend after
+  the test only when a WinForms designer is still open, so a test that closes its views first relies on the project selecting the
+  backend. **Still open:** `Editor_Exposes_VsTextBuffer_Over_LiveDocument` still opens `FormsDesignSolutionPath`, but it edits
+  `Program.cs` in the text editor and involves no designer, so it belongs to no cell; the VB WinForms sample
+  (`VbWinFormsSampleSolutionPath`) has not been classified; the three Microsoft-only menu tests in `FormsMenuEditingTests` stay
+  that way (LibreWinForms does not expand a menu item's dropdown yet).
 - **Step 1, WinUI family:** `RuntimeCell.AssertWinUIBackend` checks the `backend` that
   `od.winui-designer.status` reports (`WinUI`, `Uno`, `ProGPU`). Tagged: the 21 `AddInTests` methods that open the Uno
   sample (`OpenUnoXamlFile_...` and every `WinUIDesigner_*`, through `OpenUnoDesignerAsync`) as `Runtime=Uno`; the eight
   `WinUIOnly_*` methods and `WinUIGalleryDesignerTests` as `Runtime=MicrosoftWinUI`; `ProGpuWinUIDesigner_UsesTheSharedDesignCanvas`
   and `ProGpuWinUIDesignerTests` as `Runtime=ProGpuWinUI`. The two `Assert...RenderedBySelectedBackend` helpers were replaced
-  by the cell assertion. `WinUIXamlDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement`, which picks Uno or Microsoft
+  by the cell assertion. `WinUIXamlDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement`, which picked Uno or Microsoft
   WinUI from `OD_WINUI_RUNTIME`, asserted backend `"WinUI"` even for the Uno document it opens by default (it could only fail
-  there); it now asserts the cell its own switch selects, and stays untagged because one method serves two cells.
+  there); it was first made to assert the cell its own switch selected and left untagged because one method served two cells,
+  and has since been split into `..._ResizeDrag_Uno_...` and `..._ResizeDrag_MicrosoftWinUI_...` (see "WinUI family" below).
 - **Steps 4 and 5, the runner (all seven cells run for real, see the table above):** `OpenDevelop.IntegrationTests.csproj` has two targets next to
   `RunMicrosoftDesignerIntegration`, which stays as it is.
   - `dotnet msbuild tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj -t:RunRuntimeCell -p:RuntimeCell=<cell>`
@@ -269,8 +329,10 @@ a stale host and fail everything with a protocol error. Treat `Protocol N is not
     own output channel (build and host lines) into the failure message, so the next occurrence shows the host's last
     output. It is opt-in because other callers ignore the result or only need the editor, and the status already reports a
     matching backend while the designer is still building.
-- **Still open for the WinUI family:** the dual-cell resize test above; `OD_WINUI_RUNTIME` still selects the cell for a whole
-  process (`microsoft`, `progpu`), which the runner entry point (plan step 4) has to set per cell.
+- **WinUI family:** the dual-cell resize test is now `..._Uno_...` (runs everywhere, including macOS) and `..._MicrosoftWinUI_...`
+  (Windows), sharing `WinUIResizeDragSelectionAndHandleTrackRenderedElementAsync(cell)`. `OD_WINUI_RUNTIME` still selects the
+  cell for a whole process (`microsoft`, `progpu`), which `RunRuntimeCell` sets per cell. ProGpuWinUI is not extended (see the
+  reuse experiment under "Measured status on macOS").
 
 ## Test stability rules
 

@@ -1832,7 +1832,7 @@ acceptance check, so the list can be resumed by a fresh session at any point.
   exactly. **Fixed** by translating the point into `scroller`'s coordinate space with
   `TranslatePoint` before applying scroll offset and running the viewport math - correct
   regardless of the toolbar's actual height, not a hardcoded constant. Verified live and via
-  `WinUIXamlDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement`: `PrimaryButton` itself
+  `WinUIXamlDesigner_ResizeDrag_Uno_SelectionAndHandleTrackRenderedElement` (then one method, since split per cell): `PrimaryButton` itself
   now gets the resized `Width`/`Height`, `RootStack` is untouched, and the exact-delta assertion
   passes (grew by the exact dragged distance).
   - **Fixed** - `WinUIXamlDesignerViewContent.RebuildOutline` cleared `SelectedElementName` on
