@@ -4801,11 +4801,20 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal(length, result.GetProperty("text").GetString()!.Length);
     }
 
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
+    public Task WinUIXamlDesigner_ResizeDrag_Uno_SelectionAndHandleTrackRenderedElement()
+        => WinUIResizeDragSelectionAndHandleTrackRenderedElementAsync(RuntimeCell.Uno);
+
     [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
-    public async Task WinUIXamlDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement()
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinUI)]
+    public Task WinUIXamlDesigner_ResizeDrag_MicrosoftWinUI_SelectionAndHandleTrackRenderedElement()
+        => WinUIResizeDragSelectionAndHandleTrackRenderedElementAsync(RuntimeCell.MicrosoftWinUI);
+
+    async Task WinUIResizeDragSelectionAndHandleTrackRenderedElementAsync(string cell)
     {
-		var microsoftWinUi = string.Equals(Environment.GetEnvironmentVariable("OD_WINUI_RUNTIME"), "microsoft", StringComparison.OrdinalIgnoreCase);
+		var microsoftWinUi = cell == RuntimeCell.MicrosoftWinUI;
         // Drag a selected element's bottom-right resize handle and assert the shared-canvas
         // invariant: the selection outline always hugs the rendered element and the resize
         // handle stays at the element's bottom-right corner, before and after the drag. The
@@ -4826,6 +4835,21 @@ public sealed class AddInTests : IAsyncDisposable
 				System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 			await File.WriteAllTextAsync(mainPage, fixtureXaml);
 		}
+		else
+		{
+			// The Uno design host sizes its canvas to the page content (1280x53), which leaves PrimaryButton flush
+			// against the bottom edge: its resize handle then straddles the rendered image's edge (a press misses
+			// it) and a downward drag has no canvas to grow into. Give the canvas room below the button. Design
+			// presets cannot do this: only the width of a preset is applied. `mainPage` is the test's temp copy.
+			var fixtureXaml = await File.ReadAllTextAsync(mainPage);
+			fixtureXaml = System.Text.RegularExpressions.Regex.Replace(
+				fixtureXaml,
+				"(<StackPanel\\s+x:Name=\"RootStack\")",
+				"$1 MinHeight=\"300\"",
+				System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+			Assert.Contains("MinHeight=\"300\"", fixtureXaml);
+			await File.WriteAllTextAsync(mainPage, fixtureXaml);
+		}
 
         await _app.ReopenSolutionAsync(solution);
         await _app.InvokeAsync("od.open-file", mainPage);
@@ -4837,12 +4861,22 @@ public sealed class AddInTests : IAsyncDisposable
         }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
 		Assert.True(rendered, "The selected WinUI runtime host did not render. Status: " + status);
 		Assert.Equal(microsoftWinUi ? "WinUI" : "Uno", status.GetProperty("framework").GetString());
-		RuntimeCell.AssertWinUIBackend(status, microsoftWinUi ? RuntimeCell.MicrosoftWinUI : RuntimeCell.Uno);
+		RuntimeCell.AssertWinUIBackend(status, cell);
 
         await _app.InvokeAsync("od.winui-designer.activate-design");
         await _app.InvokeAsync("od.winui-designer.select", "PrimaryButton");
 
-		var before = await _app.InvokeAsync("od.winui-designer.surface-geometry");
+        // The press must land on the handle, so the handle has to be inside the viewport, and the 8 handles
+        // must not overlap. In Fit mode on a small display the 1280-wide canvas is scaled to about 0.3, the
+        // button's selection is ~25x9 px, and the east handle (checked before south-east) wins the press, so
+        // only the width ever changes. Use an absolute 100% at pan 0,0 instead.
+        Assert.True((await _app.InvokeAsync("od.winui-designer.view", "1 0 0")).GetProperty("success").GetBoolean());
+        JsonElement before = default;
+        var handleVisible = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            before = await _app.InvokeAsync("od.winui-designer.surface-geometry");
+            return before.GetProperty("available").GetBoolean() && before.GetProperty("handleVisible").GetBoolean();
+        }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 400);
+        Assert.True(handleVisible, "The resize handle is outside the design viewport at 100%, so a press cannot reach it. Geometry: " + before);
         Assert.True(before.GetProperty("available").GetBoolean(), before.ToString());
 		OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(before, "before");
 
@@ -4886,6 +4920,7 @@ public sealed class AddInTests : IAsyncDisposable
         JsonElement after = default;
         JsonElement effectiveBefore = before;
         var grew = false;
+        var attempts = new System.Text.StringBuilder();
         for (int attempt = 1; attempt <= 4 && !grew; attempt++) {
             await _app.InvokeAsync("od.activate");
             var current = await _app.InvokeAsync("od.winui-designer.surface-geometry");
@@ -4894,9 +4929,14 @@ public sealed class AddInTests : IAsyncDisposable
             var hx = current.GetProperty("handle").GetProperty("x").GetDouble();
             var hy = current.GetProperty("handle").GetProperty("y").GetDouble();
 
+            // A zero mouse-down count is a pointer-delivery failure, not a designer one; keep it in the message.
+            await _app.InvokeAsync("od.pointer-events", true);
             var pressed = await _app.PressPointerAsync(hx, hy);
             Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
             await _app.DragPointerInStepsAsync(hx, hy, hx + dx, hy + dy);
+            attempts.AppendLine($"attempt {attempt}: press ({hx},{hy}) geometry={current} mouseDowns={await _app.InvokeAsync("od.pointer-events", false)}");
+            await _app.InvokeAsync("od.file.save", mainPage);
+            attempts.AppendLine("    source: " + System.Text.RegularExpressions.Regex.Match(await File.ReadAllTextAsync(mainPage), "<Button[^>]*>").Value);
 
             grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 after = await _app.InvokeAsync("od.winui-designer.surface-geometry");
@@ -4905,7 +4945,7 @@ public sealed class AddInTests : IAsyncDisposable
                     && after.GetProperty("selection").GetProperty("height").GetDouble() > current.GetProperty("selection").GetProperty("height").GetDouble() + 10;
             }, TimeSpan.FromSeconds(8), initialDelayMs: 100, maxDelayMs: 400);
         }
-        Assert.True(grew, "The resize drag did not grow the selected element, even after retries. before=" + before);
+        Assert.True(grew, "The resize drag did not grow the selected element, even after retries. before=" + before + "\n" + attempts);
 		OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(after, "after");
 
         // A real OS pointer is measured in physical screen pixels, while Width/Height are
