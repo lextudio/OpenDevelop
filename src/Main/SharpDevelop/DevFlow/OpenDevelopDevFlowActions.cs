@@ -3714,10 +3714,15 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			// targets text rather than a scrollbar.
 			var location = document.GetLocation(offset);
 			// Keep the desired drop line safely inside the TextView rather than at its lower
-			// edge, where AvalonEdit's horizontal scrollbar overlaps the apparent position.
-			// The visual position below still addresses `location`; this only chooses the
-			// viewport's scroll origin.
-			editor.JumpTo(Math.Max(1, location.Line - 3), 1);
+			// edge, where AvalonEdit's horizontal scrollbar overlaps the apparent position: centre
+			// it vertically. Scrolling only - the caret is left where the caller put it (a drop test
+			// parks it at offset 0 to prove the insert follows the pointer, not the caret). Revealing
+			// a few lines above the target was not enough in the side-by-side layout, whose short
+			// source pane could still leave the target on the bottom edge.
+			textView.EnsureVisualLines();
+			var lineTop = textView.GetVisualTopByDocumentLine(location.Line);
+			((System.Windows.Controls.Primitives.IScrollInfo)textView).SetVerticalOffset(
+				Math.Max(0, lineTop - textView.ActualHeight / 2));
 			textView.EnsureVisualLines();
 
 			var visualPosition = textView.GetVisualPosition(
