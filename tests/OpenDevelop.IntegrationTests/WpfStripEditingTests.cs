@@ -3,8 +3,45 @@ using Xunit;
 
 namespace OpenDevelop.IntegrationTests;
 
-[Collection("30 Add-ins and specialized fixtures")]
-public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
+/// <summary>
+/// Shared by the WPF designer test bases: a subclass declares the cell it runs against (<see cref="RuntimeCell"/>),
+/// which selects the sample project (the sample, never the host OS, selects the backend), and every test ends by
+/// checking that the designer reported that cell's backend, so a test cannot silently run on another one.
+/// </summary>
+public abstract class WpfCellTestsBase(OpenDevelopAppFixture fixture) : IAsyncLifetime
+{
+	protected readonly OpenDevelopAppFixture app = fixture;
+
+	/// <summary>The <see cref="RuntimeCell"/> this subclass runs against: LibreWpf or MicrosoftWpf.</summary>
+	protected abstract string Cell { get; }
+
+	// LibreWpfSampleSolutionPath is the LibreWPF sample on every OS. WpfSampleSolutionPath is the Microsoft WPF
+	// sample on Windows only (off Windows it is the LibreWPF one), so it is used for the Microsoft cell alone.
+	protected string SampleSolutionPath => Cell == RuntimeCell.LibreWpf ? app.LibreWpfSampleSolutionPath : app.WpfSampleSolutionPath;
+
+	public ValueTask InitializeAsync()
+	{
+		if (Cell == RuntimeCell.MicrosoftWpf && !OperatingSystem.IsWindows())
+			Assert.Skip("The Microsoft WPF cell exists only on Windows; select cells with -trait \"Runtime=...\".");
+		return ValueTask.CompletedTask;
+	}
+
+	public async ValueTask DisposeAsync()
+	{
+		JsonElement status;
+		try { status = await app.InvokeAsync("od.wpf-designer.status"); }
+		catch (Exception) { return; }
+		// No designer open (or none that reports a backend): nothing to compare.
+		if (status.ValueKind == JsonValueKind.Object && status.TryGetProperty("active", out var active)
+			&& active.GetBoolean() && status.TryGetProperty("backend", out _))
+			RuntimeCell.AssertWpfBackend(status, Cell);
+	}
+}
+
+/// <summary>
+/// Menu/strip/inline-editing journeys in the WPF designer whose bodies are runtime-neutral and run in every WPF cell.
+/// </summary>
+public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : WpfCellTestsBase(fixture)
 {
 	[Fact]
 	public async Task CtrlPointerGestures_DistinguishClickCollapseFromGroupDrag()
@@ -16,7 +53,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
 		// Exercise the actual native modifier state. The shared canvas delays selection until
 		// mouse-up: a Ctrl-click on a selected member collapses to it, while a Ctrl-drag takes
 		// the group-drag path and must keep the whole selection.
-		var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+		var sample = Path.GetDirectoryName(SampleSolutionPath)!;
 		var xamlPath = Path.Combine(sample, "MainWindow.xaml");
 		var originalXaml = await File.ReadAllTextAsync(xamlPath);
 		try {
@@ -31,7 +68,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
 			  </Canvas>
 			</Window>
 			""");
-			Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+			Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
 			Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
 			JsonElement status = default;
 			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -156,7 +193,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
 
         // The in-process WPF InPlaceEditor contract: Enter commits, Shift+Enter inserts a newline
         // in a TextBlock's text, Escape cancels.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
@@ -169,7 +206,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -250,7 +287,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     {
         // The in-process QuickOperationMenu: alignment for any element, Orientation for a StackPanel
         // and Dock for a DockPanel child, each as one property edit.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
@@ -265,7 +302,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -309,7 +346,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     {
         // The in-process Grid rail's GridUnitSelector (Fixed/Star/Auto) as context-menu commands for
         // the selected Grid's row/column under the right-click point.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
@@ -326,7 +363,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -368,7 +405,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     {
         // The in-process designer's ArrangeItems and RightClick context menus: Align needs a
         // multi-selection, Order a single element; both land as source edits.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
@@ -384,7 +421,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -468,7 +505,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     {
         // The in-process CollectionEditor role for plain list items: the Items row's "…" button opens
         // the IDE dialog, and its result is one document edit.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
@@ -486,7 +523,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -537,7 +574,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
         // OpenDevelopAppFixture selects Microsoft WPF on Windows and LibreWPF elsewhere.
         // This journey touches only the protocol snapshot/canvas and normal process lifecycle,
         // so it is deliberately exercised by both hosts.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
@@ -549,7 +586,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
               <Grid><Button x:Name="owner" Width="120" Height="40" Content="Open" /></Grid>
             </Window>
             """);
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -594,7 +631,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
         // The in-process designer's double-click: the XAML attribute is bound and the IDE creates
         // the method in the code-behind. TargetUpdated (an EventHandler<DataTransferEventArgs>) is
         // available through LibreWPF's design model, so this is covered on macOS as well.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var codeBehindPath = xamlPath + ".cs";
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
@@ -610,7 +647,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
               <Grid><Button x:Name="owner" Content="Open" /></Grid>
             </Window>
             """);
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -664,7 +701,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     {
         // Reset must travel through the same visible PropertyGrid descriptor that exposes the
         // user-facing reset command, rather than calling the child's reset RPC directly.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
@@ -676,7 +713,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
               <Grid><TextBlock x:Name="owner" Text="Authored text" /></Grid>
             </Window>
             """);
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -734,7 +771,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
         // fractional value is rejected instead of being silently rounded on its way to the child.
         // Nested Binding rows have dotted protocol names ("Text.Delay"); this journey also locks
         // that such a row actually commits through the pad's own value binding.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
@@ -747,7 +784,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
               <Grid><TextBox x:Name="owner" Text="{Binding Path=Title}" /></Grid>
             </Window>
             """);
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -807,7 +844,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
         // This must use the visible PropertyItem, not the child RPC: its protocol name is dotted
         // and indexed while Xceed receives the binding-safe descriptor name. The composite
         // itself uses the ordinary dotted row name and must not be confused with child zero.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
@@ -819,7 +856,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
               <Grid><TextBlock x:Name="source" Text="source" /><TextBlock x:Name="owner"><TextBlock.Text><MultiBinding><Binding Path="First" /><Binding Path="Last" /></MultiBinding></TextBlock.Text></TextBlock></Grid>
             </Window>
             """);
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -874,7 +911,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     {
         // The in-process designer's Cut/Copy/Paste: a copied Button pastes into the selected panel
         // with a unique name and is selected; Cut removes the element and undoes as one step.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
@@ -891,7 +928,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -972,7 +1009,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     {
         // Pointer Paste Here uses the real context-menu design coordinate, not the current selected
         // child: its Canvas-local anchor moves a copied group as one while retaining group offsets.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
@@ -988,7 +1025,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -1028,7 +1065,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     public async Task Clipboard_PasteHerePlacesIntoTheGridCellUnderTheContextPoint()
     {
         // Over a Grid, Paste Here assigns the measured cell under the context-menu point.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
@@ -1045,7 +1082,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -1084,7 +1121,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     {
         // The in-process Outline's drag and drop: a Button dropped into a nested StackPanel after its
         // TextBlock moves there in the source, stays selected, and undoes as one step.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
@@ -1100,7 +1137,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -1142,7 +1179,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     {
         // A row dragged out of Grid/Canvas/DockPanel must not carry source-parent layout metadata
         // into an unrelated StackPanel; all three clears and the structural move undo together.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
@@ -1160,7 +1197,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -1201,7 +1238,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     {
         // Ctrl-selected Outline rows use the same atomic host move as a canvas multi-selection:
         // their order is retained, the source collection is emptied, and one undo restores both.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
@@ -1217,7 +1254,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -1263,7 +1300,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
         // Ctrl-drag keeps the source, inserts its uniquely-named clone at the exact outline rail,
         // selects that clone, and has one undo step. DevFlow uses the same Outline event route as a
         // pointer Ctrl-drop after the pointer has resolved its target geometry.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
@@ -1279,7 +1316,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -1321,7 +1358,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     {
         // The in-process Outline's eye and lock toggles: d:IsHidden takes the element off the
         // surface, d:IsLocked makes the surface skip it; both stay in the Outline.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
@@ -1334,7 +1371,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -1380,7 +1417,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     {
         // Visual Studio's brush editor: a solid Background becomes a linear gradient, then "No brush"
         // ({x:Null}); each commit is one undo step.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
@@ -1396,7 +1433,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -1475,7 +1512,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     public async Task PropertiesPad_ImageSourcePickerOffersProjectImages()
     {
         // Visual Studio's Image.Source drop-down: the project's images, relative to the XAML file.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var imageFolder = Path.Combine(sample, "OdPickerImages");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
@@ -1495,7 +1532,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -1526,7 +1563,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     public async Task PropertiesPad_EditsAndResetsTheParentGridsAttachedRow()
     {
         // The in-process Properties pad lists the parent panel's attached layout properties.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllBytesAsync(xamlPath);
         try {
@@ -1542,7 +1579,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             </Window>
             """);
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -1579,7 +1616,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
         // toolbar must expose the same controls, and they must change the drag settings the
         // canvas controller actually uses, keep the visible gridlines on the same raster, and
         // persist for the next designer.
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         async Task<JsonElement> OpenAsync()
         {
@@ -1599,7 +1636,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             // Start from no open documents: a design view left by another journey would be
             // reported instead of ours and would keep the settings it was created with.
             await app.InvokeAsync("od.close-all-document-views");
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             var status = await OpenAsync();
             Assert.False(status.GetProperty("snapToGrid").GetBoolean(), status.ToString());
             Assert.True(status.GetProperty("snapToGuides").GetBoolean(), status.ToString());
@@ -1637,11 +1674,22 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
         }
     }
 
+}
+
+/// <summary>
+/// Inline editing through the designer's overlay affordances (the "Type Here" hotspot, the ContextMenu tray). Runs in
+/// the MicrosoftWpf cell only. These six were once skipped off Windows by an early <c>return</c> (green, nothing run);
+/// run for real in the LibreWpf cell on macOS they all fail: the native press is delivered (<c>od.pointer-events</c>
+/// shows it at the reported point) but lands on the design <c>Image</c>, not on the overlay, so no editor opens. The
+/// double-click inline edit of a menu item drawn in the frame itself works there (first stage of the first test). Not
+/// investigated further: a LibreWPF hit-testing gap, to be fixed in the product and then given a LibreWpf subclass.
+/// </summary>
+public abstract class WpfStripOverlayEditingTestsBase(OpenDevelopAppFixture fixture) : WpfCellTestsBase(fixture)
+{
     [Fact]
     public async Task MenuItem_DoubleClick_InlineEditsHeader_AndUndoRestoresIt()
     {
-        if (!OperatingSystem.IsWindows()) return;
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
@@ -1660,7 +1708,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
               </DockPanel>
             </Window>
             """);
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -1740,8 +1788,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     [Fact]
     public async Task MenuItem_TypeHere_ClicksAddNewSiblings_AndUndoRemovesThem()
     {
-        if (!OperatingSystem.IsWindows()) return;
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
@@ -1758,7 +1805,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
               </DockPanel>
             </Window>
             """);
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -1776,6 +1823,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             }, TimeSpan.FromSeconds(10)), tray.ToString());
             var typeHere = tray.GetProperty("items").EnumerateArray()
                 .Single(item => item.GetProperty("elementId").GetString() == "@type-here");
+            await app.InvokeAsync("od.pointer-events", true);
             Assert.True((await app.ClickPointerAsync(typeHere.GetProperty("centerX").GetDouble(),
                 typeHere.GetProperty("centerY").GetDouble())).GetProperty("ok").GetBoolean());
 
@@ -1783,7 +1831,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 editor = await app.InvokeAsync("od.wpf-designer.inline-editor-status");
                 return editor.GetProperty("editing").GetBoolean() && editor.GetProperty("focused").GetBoolean();
-            }, TimeSpan.FromSeconds(10)), editor.ToString());
+            }, TimeSpan.FromSeconds(10)), editor + "\ntypeHere=" + typeHere + "\ntray=" + tray + "\nmouseDowns=" + await app.InvokeAsync("od.pointer-events", false));
             // The editor must open ON the "Type Here" slot it was clicked at, not jump to the
             // design surface's own origin - a real regression once caught only functionally (typed
             // text still landed correctly) while visually landing at the top of the surface.
@@ -1873,8 +1921,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     [Fact]
     public async Task MenuItem_CreateTopLevelThenNestChild_ViaTypeHereBothLevels_AndUndoRestoresBoth()
     {
-        if (!OperatingSystem.IsWindows()) return;
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
@@ -1889,7 +1936,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
               <Menu x:Name="mainMenu" />
             </Window>
             """);
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -1971,8 +2018,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     [Fact]
     public async Task MenuItem_TypeHere_InTray_CreatesFirstNestedSubmenuItem_AndUndoRemovesIt()
     {
-        if (!OperatingSystem.IsWindows()) return;
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
@@ -1984,7 +2030,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
               <Menu x:Name="mainMenu"><MenuItem x:Name="fileItem" Header="File" /></Menu>
             </Window>
             """);
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -2045,8 +2091,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     [Fact]
     public async Task ContextMenuTray_ReorderArrowsAndDelete_MutateAndUndoRestore()
     {
-        if (!OperatingSystem.IsWindows()) return;
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
@@ -2066,7 +2111,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
               </Button>
             </Window>
             """);
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -2140,8 +2185,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     [Fact]
     public async Task StatusBarAndToolBar_TypeHere_AddsAnItem_AndUndoRemovesIt()
     {
-        if (!OperatingSystem.IsWindows()) return;
-        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
         try {
@@ -2156,7 +2200,7 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
               </DockPanel>
             </Window>
             """);
-            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
             Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -2228,4 +2272,25 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
     static void AssertNear(double expected, double actual, double tolerance = 30)
         => Assert.True(Math.Abs(expected - actual) <= tolerance,
             $"expected {expected} within {tolerance} of {actual}");
+}
+
+[Collection("30 Add-ins and specialized fixtures")]
+[Trait(RuntimeCell.TraitName, RuntimeCell.LibreWpf)]
+public sealed class WpfStripEditingLibreWpfTests(OpenDevelopAppFixture app) : WpfStripEditingTestsBase(app)
+{
+	protected override string Cell => RuntimeCell.LibreWpf;
+}
+
+[Collection("30 Add-ins and specialized fixtures")]
+[Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWpf)]
+public sealed class WpfStripEditingMicrosoftWpfTests(OpenDevelopAppFixture app) : WpfStripEditingTestsBase(app)
+{
+	protected override string Cell => RuntimeCell.MicrosoftWpf;
+}
+
+[Collection("30 Add-ins and specialized fixtures")]
+[Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWpf)]
+public sealed class WpfStripOverlayEditingMicrosoftWpfTests(OpenDevelopAppFixture app) : WpfStripOverlayEditingTestsBase(app)
+{
+	protected override string Cell => RuntimeCell.MicrosoftWpf;
 }
