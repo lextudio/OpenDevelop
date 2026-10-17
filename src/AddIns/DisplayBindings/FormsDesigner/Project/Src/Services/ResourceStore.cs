@@ -288,7 +288,9 @@ namespace ICSharpCode.FormsDesigner.Services
 
 			public void InitializeEmptyResx()
 			{
-				if (!IsNewFile || buffer != null)
+				// An empty buffer is what loading the new file's empty placeholder leaves behind; it is not a
+				// document, so it must not stop the real ResX being generated.
+				if (!IsNewFile || (buffer != null && buffer.Length != 0))
 					return;
 				// ResxImageResourceEditor works structurally, so a new file must start with a
 				// real ResX document rather than the empty OpenedFile placeholder used while

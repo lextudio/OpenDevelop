@@ -159,12 +159,25 @@ public sealed class DesignerEditorJourneyTests(OpenDevelopAppFixture app)
     }
 
     [Fact]
-    public async Task WinFormsDesigner_ImageListEditorWritesSourceAndResxAsOneUndoableTransaction()
+    [Trait(RuntimeCell.TraitName, RuntimeCell.LibreWinForms)]
+    public Task WinFormsDesigner_ImageListEditorWritesSourceAndResxAsOneUndoableTransaction_LibreWinForms() => WinFormsDesigner_ImageListEditorWritesSourceAndResxAsOneUndoableTransactionAsync(RuntimeCell.LibreWinForms);
+
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see AddInTests.MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(AddInTests.MicrosoftDesignerBackendsAvailable), SkipType = typeof(AddInTests))]
+    [Trait("DesignerBackend", "Microsoft")]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.MicrosoftWinForms)]
+    public Task WinFormsDesigner_ImageListEditorWritesSourceAndResxAsOneUndoableTransaction_MicrosoftWinForms() => WinFormsDesigner_ImageListEditorWritesSourceAndResxAsOneUndoableTransactionAsync(RuntimeCell.MicrosoftWinForms);
+
+    async Task WinFormsDesigner_ImageListEditorWritesSourceAndResxAsOneUndoableTransactionAsync(string cell)
     {
         var directory = Path.GetDirectoryName(app.WinFormsSampleSolutionPath)!;
         var formCodePath = Path.Combine(directory, "Form1.cs");
         var designerPath = Path.Combine(directory, "Form1.Designer.cs");
         var resourcePath = Path.Combine(directory, "Form1.resx");
+        // Creating the form's first .resx makes the designer add it to the opened project, so that file is restored too.
+        var projectPath = cell == RuntimeCell.LibreWinForms
+            ? Path.Combine(Path.GetDirectoryName(app.LibreWinFormsSampleSolutionPath)!, "LibreWinFormsSample.csproj")
+            : Path.Combine(directory, "WinFormsSample.csproj");
+        var originalProject = await File.ReadAllBytesAsync(projectPath);
         var originalDesigner = await File.ReadAllBytesAsync(designerPath);
         var originalResource = File.Exists(resourcePath) ? await File.ReadAllBytesAsync(resourcePath) : null;
         var imagePath = Path.Combine(Path.GetTempPath(), "od-journey-" + Guid.NewGuid().ToString("N") + ".png");
@@ -180,7 +193,7 @@ public sealed class DesignerEditorJourneyTests(OpenDevelopAppFixture app)
             Assert.NotEqual(designer, created);
             await File.WriteAllTextAsync(designerPath, created);
 
-            Assert.True((await app.ReopenSolutionAsync(app.FormsDesignSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.ReopenSolutionAsync((cell == RuntimeCell.LibreWinForms ? app.LibreWinFormsSampleSolutionPath : app.WinFormsSampleSolutionPath))).GetProperty("success").GetBoolean());
             await app.InvokeAsync("od.open-file", formCodePath);
             JsonElement status = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -195,10 +208,15 @@ public sealed class DesignerEditorJourneyTests(OpenDevelopAppFixture app)
             }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), selected.ToString());
 
             JsonElement edit = default;
+            // The action is retried until the designer is ready; keep every attempt's answer, because a
+            // later attempt can fail differently from the first (a half-applied first attempt changes state).
+            var editAttempts = new List<string>();
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
 				edit = await app.InvokeAsync("od.forms-designer.properties-pad.edit-image-list", "Images", "add:" + imagePath + ";size:24x20;depth:Depth8Bit");
+                var text = edit.ToString();
+                if (editAttempts.Count == 0 || editAttempts[^1] != text) editAttempts.Add(text);
                 return edit.GetProperty("success").GetBoolean();
-            }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 300), edit.ToString());
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 300), string.Join("\n", editAttempts));
             Assert.True(edit.GetProperty("committed").GetBoolean(), edit.ToString());
 
             Assert.True((await app.InvokeAsync("od.file.save", formCodePath)).GetProperty("success").GetBoolean());
@@ -224,6 +242,7 @@ public sealed class DesignerEditorJourneyTests(OpenDevelopAppFixture app)
         } finally {
             await app.InvokeAsync("od.close-all-document-views");
             await File.WriteAllBytesAsync(designerPath, originalDesigner);
+            await File.WriteAllBytesAsync(projectPath, originalProject);
             if (originalResource != null) await File.WriteAllBytesAsync(resourcePath, originalResource);
             else File.Delete(resourcePath);
             File.Delete(imagePath);
