@@ -2,21 +2,17 @@
 
 ## Status (2026-08-07): UI implemented
 
-All three gaps this technote originally identified are now closed, using the shell notification
-banner built for exactly this purpose (see `doc/technotes/ilspy.md`, "Follow-on infrastructure: a
-shell-wide notification banner"):
+All three gaps this technote originally identified are now closed:
 
 - **Help-menu command**: `ICSharpCode.SharpDevelop.Commands.CheckForUpdates`
   (`src/Main/Base/Project/Src/Commands/AboutCommands.cs`), registered in
   `ICSharpCode.SharpDevelop.addin` right before `About`. Always force-checks
   (`UpdateService.CheckForUpdatesAsync`, not the `...IfEnabledAsync` weekly-cadence path) and
-  reports through `INotificationHost` - "Checking...", then either "A new version is available"
-  with a Download action (opens the release URL via `Process.Start`) or "You have the latest
-  version."
-- **Notification surface**: the silent startup check in `WorkbenchStartup.cs` now calls
-  `SD.StatusBar.SetMessage(...)` when (and only when) an update is actually found - never on
-  failure or "no update", so it stays non-intrusive. The manual command above uses the banner
-  instead, since that path is user-initiated and can afford a more visible surface.
+  reports through the status bar - "Checking...", then either "A new version is available" with
+  a Download button (opens the release URL via `Process.Start`) or "You have the latest version."
+- **Notification surface**: both the silent startup check and manual command use
+  `SD.StatusBar.SetMessage(...)`. When an update is found, the status bar includes a Download
+  button; startup remains silent for failure or "no update".
 - **Options panel**: `ICSharpCode.SharpDevelop.OptionPanels.UpdatesOptions`
   (`src/Main/SharpDevelop/OptionPanels/UpdatesOptions.xaml{,.cs}`), registered under
   `/SharpDevelop/Dialogs/OptionsDialog/UIOptions` next to `LoadSave`/`IdeTheme`. One checkbox bound
@@ -24,31 +20,10 @@ shell-wide notification banner"):
   `UpdateService.CheckForUpdatesAsync` directly (its own inline result text, not the shared banner,
   since it's already inside a dialog).
 
-Verified live (2026-08-07), not just by build: added two small DevFlow actions for this
-(`od.menu.invoke` - instantiate any `ICommand`/`AbstractMenuCommand` by fully-qualified class name
-and call `Execute(null)`, since no existing action can click an arbitrary menu item by id;
-`od.notification.status` - read the live `NotificationBannerViewModel`'s state), since neither
-existed before. Launched a real (non-interactive-user) instance and drove it headlessly:
-
-- `od.menu.invoke "ICSharpCode.SharpDevelop.Commands.CheckForUpdates"` → `success:true`.
-- `od.notification.status` immediately after → `isVisible:true`,
-  `message:"You have the latest version."` - a real `GetLatestVersionAsync()` call against
-  `api.github.com/repos/lextudio/OpenDevelop/releases/latest` completed and routed through
-  `INotificationHost` correctly.
-- `/api/v1/ui/tree` confirms this isn't just view-model state: a real
-  `System.Windows.Controls.TextBlock` with `Text:"You have the latest version."` is visible at
-  real layout bounds (996×14 at y=76, just below the toolbar) - the XAML binding chain
-  (`WpfWorkbench.xaml`'s `notificationBar` → `NotificationBannerViewModel`) works end to end, not
-  only in isolation.
-- `od.menu.invoke "ICSharpCode.SharpDevelop.OptionPanels.UpdatesOptions"` → constructs cleanly
-  (fails only on the expected "not an ICommand" cast, not on BAML/XAML load), confirming the
-  options panel's XAML compiles and its constructor (which reads
-  `UpdateSettings().AutomaticUpdateCheckEnabled`) runs without throwing.
-
-The already-running interactive `/Applications/OpenDevelop.app` instance (a real user session, not
-a test artifact) was left untouched throughout - the DevFlow agent's port-9299-in-use fallback
-(logs "Port 9299 is already in use; listening on 57804 instead") made this automatic, not something
-that had to be arranged.
+The earlier live verification for this feature targeted a now-removed update banner. The current
+manual path is intentionally status-bar-only. `AddInTests.CheckForUpdatesCommand_RoutesResultToStatusBar`
+invokes the Help command and verifies its rendered status-bar result; the update-check service test
+continues to cover network/parse outcomes separately.
 
 ## Status quo (as of the original plan, superseded by the above)
 

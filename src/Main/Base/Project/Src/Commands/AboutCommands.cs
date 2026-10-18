@@ -4,8 +4,6 @@ using System.Windows;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Updates;
-using ICSharpCode.SharpDevelop.ViewModels;
-using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.SharpDevelop.Commands
 {
@@ -26,33 +24,32 @@ namespace ICSharpCode.SharpDevelop.Commands
 	/// <summary>
 	/// User-initiated update check (doc/technotes/auto-update.md). Always force-checks
 	/// (<see cref="UpdateService.CheckForUpdatesAsync"/>), unlike the silent weekly startup check
-	/// in WorkbenchStartup, and reports its result through the shell-wide notification banner
-	/// (doc/technotes/ilspy.md "Follow-on infrastructure: a shell-wide notification banner") rather
-	/// than a dialog, so it doesn't block the UI thread while the GitHub request is in flight.
+	/// in WorkbenchStartup. Results are shown in the status bar so checking does not interrupt the
+	/// current work; an available update includes a Download button there.
 	/// </summary>
 	public class CheckForUpdates : AbstractMenuCommand
 	{
 		public override async void Run()
 		{
-			var notificationHost = SD.Services.GetService(typeof(INotificationHost)) as INotificationHost;
-			notificationHost?.Show("Checking for updates...", null, null);
+			SD.StatusBar.SetMessage("${res:Updates.StatusBar.Checking}");
 
 			string downloadUrl;
 			try {
 				downloadUrl = await UpdateService.CheckForUpdatesAsync(new UpdateSettings());
 			} catch (Exception ex) {
 				LoggingService.Debug("Update check failed: " + ex.Message);
-				notificationHost?.Show("Update check failed.", null, null);
+				SD.StatusBar.SetMessage("${res:Updates.StatusBar.CheckFailed}", highlighted: true);
 				return;
 			}
 
 			if (downloadUrl != null) {
-				notificationHost?.Show(
-					"A new version of OpenDevelop is available.",
-					"Download",
-					() => Process.Start(new ProcessStartInfo(downloadUrl) { UseShellExecute = true }));
+				SD.StatusBar.SetMessage(
+					"${res:Updates.StatusBar.UpdateAvailable}",
+					highlighted: true,
+					actionText: "${res:Updates.StatusBar.Download}",
+					action: () => Process.Start(new ProcessStartInfo(downloadUrl) { UseShellExecute = true }));
 			} else {
-				notificationHost?.Show("You have the latest version.", null, null);
+				SD.StatusBar.SetMessage("${res:Updates.StatusBar.LatestVersion}");
 			}
 		}
 	}

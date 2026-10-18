@@ -59,7 +59,10 @@ namespace ICSharpCode.SharpDevelop.Gui
 		/// <param name="message">The message text.</param>
 		/// <param name="highlighted">Whether to highlight the text</param>
 		/// <param name="icon">Icon to show next to the text</param>
-		void SetMessage(string message, bool highlighted = false, IImage icon = null);
+		/// <param name="actionText">Optional text for an action button displayed next to the message.</param>
+		/// <param name="action">Action run when the optional action button is clicked.</param>
+		void SetMessage(string message, bool highlighted = false, IImage icon = null,
+			string actionText = null, Action action = null);
 		
 		/// <summary>
 		/// Creates a new <see cref="IProgressMonitor"/> that can be used to report

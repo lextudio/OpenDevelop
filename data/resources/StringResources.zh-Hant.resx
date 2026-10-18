@@ -9760,6 +9760,21 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
   <data name="UpdatesOptions.CheckFailed" xml:space="preserve">
     <value>檢查失敗：</value>
   </data>
+  <data name="Updates.StatusBar.Checking" xml:space="preserve">
+    <value>正在檢查更新...</value>
+  </data>
+  <data name="Updates.StatusBar.CheckFailed" xml:space="preserve">
+    <value>更新檢查失敗。</value>
+  </data>
+  <data name="Updates.StatusBar.UpdateAvailable" xml:space="preserve">
+    <value>有可用的 OpenDevelop 新版本。</value>
+  </data>
+  <data name="Updates.StatusBar.Download" xml:space="preserve">
+    <value>下載</value>
+  </data>
+  <data name="Updates.StatusBar.LatestVersion" xml:space="preserve">
+    <value>您使用的已是最新版本。</value>
+  </data>
   <data name="Workbench.DragToResizeToolTip" xml:space="preserve">
     <value>拖曳以調整設計和 XAML 檢視的大小</value>
   </data>

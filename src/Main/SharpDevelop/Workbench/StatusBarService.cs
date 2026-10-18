@@ -105,12 +105,17 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			refreshMode();
 		}
 
-		public void SetMessage(string message, bool highlighted, IImage icon)
+		public void SetMessage(string message, bool highlighted, IImage icon, string actionText, Action action)
 		{
 			// Only re-render a ${res:...} template; a message the caller already resolved to plain
-			// text has nothing to re-localize (and re-parsing it could expand stray ${...}).
-			refreshMessage = message != null && message.Contains("${") ? () => statusBar.SetMessage(StringParser.Parse(message), highlighted) : null;
-			statusBar.SetMessage(StringParser.Parse(message), highlighted);
+			// text has nothing to re-localize (and re-parsing it could expand stray ${...}). The
+			// optional action label follows the same rule: both pieces must change language together.
+			refreshMessage = (message != null && message.Contains("${"))
+				|| (actionText != null && actionText.Contains("${"))
+				? () => statusBar.SetMessage(
+					StringParser.Parse(message), highlighted, StringParser.Parse(actionText), action)
+				: null;
+			statusBar.SetMessage(StringParser.Parse(message), highlighted, StringParser.Parse(actionText), action);
 		}
 		
 		#region Progress Monitor

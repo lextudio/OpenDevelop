@@ -24,10 +24,10 @@ namespace ICSharpCode.SharpDevelop.ViewModels
 	/// <summary>
 	/// Shell-wide "show a message with an optional single action" surface (doc/technotes/ilspy.md
 	/// "Follow-on infrastructure: a shell-wide notification banner", 2026-08-07) - the thing between
-	/// a status-bar message (cheap, no action, easy to miss) and a modal dialog (interrupts). First
-	/// consumer is the manual "Check for Updates" command (doc/technotes/auto-update.md), but this
-	/// type carries no update-specific state on purpose so any future caller (extension-install
-	/// prompts, solution-reload notices, ...) can reuse the same one instance.
+	/// a status-bar message (cheap, no action, easy to miss) and a modal dialog (interrupts). This
+	/// type carries no update-specific state, so future callers (extension-install prompts,
+	/// solution-reload notices, ...) can reuse the same one instance. Update checks use the status
+	/// bar directly; see doc/technotes/auto-update.md.
 	///
 	/// Registered via <c>SD.Services.AddService(typeof(INotificationHost), this)</c> by
 	/// <c>WpfWorkbench</c>'s constructor and resolved via

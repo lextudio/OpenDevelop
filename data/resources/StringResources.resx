@@ -10154,6 +10154,21 @@ Press Esc to cancel this operation.</value>
   <data name="UpdatesOptions.CheckFailed" xml:space="preserve">
     <value>Check failed: </value>
   </data>
+  <data name="Updates.StatusBar.Checking" xml:space="preserve">
+    <value>Checking for updates...</value>
+  </data>
+  <data name="Updates.StatusBar.CheckFailed" xml:space="preserve">
+    <value>Update check failed.</value>
+  </data>
+  <data name="Updates.StatusBar.UpdateAvailable" xml:space="preserve">
+    <value>A new version of OpenDevelop is available.</value>
+  </data>
+  <data name="Updates.StatusBar.Download" xml:space="preserve">
+    <value>Download</value>
+  </data>
+  <data name="Updates.StatusBar.LatestVersion" xml:space="preserve">
+    <value>You have the latest version.</value>
+  </data>
   <data name="Workbench.DragToResizeToolTip" xml:space="preserve">
     <value>Drag to resize the Design and XAML views</value>
   </data>

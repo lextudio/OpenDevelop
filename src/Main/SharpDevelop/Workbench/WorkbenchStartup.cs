@@ -228,12 +228,9 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			if (SD.ParserService is ParserService parserService)
 				parserService.StartParserThread();
 
-			// Background update check (weekly, opt-out via UpdateSettings): never blocks startup
-			// and never shows the notification banner on failure or "no update" (that would be an
-			// unprompted, unwanted interruption on every session) - only the (rare) "update found"
-			// case gets a status-bar message (doc/technotes/auto-update.md). The manual "Check for
-			// Updates" command (Commands/AboutCommands.cs) always reports its result via the
-			// banner instead, since that path is user-initiated.
+			// Background update check (weekly, opt-out via UpdateSettings): never blocks startup and
+			// only surfaces the rare "update found" result. Its status-bar Download button avoids an
+			// unprompted banner while still making the update directly actionable.
 			Task.Run(async () => {
 				try {
 					var url = await ICSharpCode.SharpDevelop.Updates.UpdateService
@@ -241,7 +238,12 @@ namespace ICSharpCode.SharpDevelop.Workbench
 					if (url != null) {
 						LoggingService.Info("An OpenDevelop update is available: " + url);
 						SD.MainThread.InvokeAsyncAndForget(() =>
-							SD.StatusBar.SetMessage("An OpenDevelop update is available - see Help > Check for Updates…", highlighted: true));
+							SD.StatusBar.SetMessage(
+								"${res:Updates.StatusBar.UpdateAvailable}",
+								highlighted: true,
+								actionText: "${res:Updates.StatusBar.Download}",
+								action: () => System.Diagnostics.Process.Start(
+									new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true })));
 					}
 				} catch (Exception ex) {
 					LoggingService.Warn("Update check failed: " + ex.Message);

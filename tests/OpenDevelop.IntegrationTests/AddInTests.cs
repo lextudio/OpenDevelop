@@ -5723,6 +5723,35 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal(assemblyVersion, currentVersion);
     }
 
+    [Fact]
+    public async Task CheckForUpdatesCommand_RoutesResultToStatusBar()
+    {
+        var invoked = await _app.InvokeAsync("od.menu.invoke", "ICSharpCode.SharpDevelop.Commands.CheckForUpdates");
+        Assert.True(invoked.GetProperty("success").GetBoolean(), invoked.ToString());
+
+        string? finalMessage = null;
+        var completed = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            var tree = await _app.GetUITreeAsync();
+            finalMessage = FlattenElements(tree)
+                .Where(e => e.TryGetProperty("type", out var type) && type.GetString() == "TextBlock"
+                    && e.TryGetProperty("text", out var text))
+                .Select(e => e.GetProperty("text").GetString())
+                .FirstOrDefault(text => text is "You have the latest version."
+                    or "A new version of OpenDevelop is available."
+                    or "Update check failed.");
+            return finalMessage != null;
+        }, TimeSpan.FromSeconds(30));
+
+        Assert.True(completed, $"The update command did not publish a final status-bar result. Last message: {finalMessage ?? "<none>"}");
+
+        // The Help command used to drive this generic banner. Its status must remain unchanged;
+        // this verifies the command-to-status-bar route rather than only the final update RPC.
+        var banner = await _app.InvokeAsync("od.notification.status");
+        Assert.True(banner.GetProperty("found").GetBoolean(), banner.ToString());
+        Assert.False(banner.GetProperty("isVisible").GetBoolean(), banner.ToString());
+    }
+
     void SetUpGitRepo()
     {
         CopyDirectory(_app.GitFixtureTemplatePath, _repoDir);

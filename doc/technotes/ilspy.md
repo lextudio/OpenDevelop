@@ -3560,8 +3560,9 @@ docked above the document area with a message and a "Download"/"Check again" but
 has no equivalent surface today, and auto-update is not the only feature that will eventually want
 one (extension-install prompts, "solution reload needed", crash-recovery notices are the same
 shape). Rather than building an update-specific banner, this section plans the generic shell
-primitive once, using the conventions the pad-migration work above already established, so
-auto-update becomes the *first consumer*, not a one-off.
+primitive once, using the conventions the pad-migration work above already established. The original
+plan made auto-update the first consumer; the current implementation intentionally uses the status
+bar for both manual and automatic update checks, leaving the banner available for future callers.
 
 ### What already exists and is directly reusable
 
@@ -3614,12 +3615,10 @@ has no analogous slot. That slot, plus one generic view model, is the actual gap
    `WpfWorkbench.xaml`/`AvalonDockLayout`'s chrome — above the `DockingManager`'s document area, not
    inside it (so it survives layout switches and isn't itself a pane/document), collapsed
    (`Visibility` bound to `IsVisible`) when idle so it costs nothing when unused.
-4. **Auto-update becomes the first consumer**: `auto-update.md`'s manual "Check for Updates"
-   command calls `SD.Services.GetService(typeof(INotificationHost))`'s `Show(...)` with the
-   download-available message/action, instead of (or in addition to) the dialog fallback that
-   technote sketches. The silent startup check keeps using the status bar, per that document's own
-   reasoning (never surface an unprompted banner from a background check) — the banner is for the
-   user-initiated path only, unless/until that policy is deliberately revisited.
+4. **Original auto-update consumer plan (superseded)**: this technote originally proposed that the
+   manual "Check for Updates" command call `INotificationHost.Show(...)`. The implemented design
+   instead keeps both manual and startup update results in the status bar, including a Download
+   action when available. The banner remains generic for a future caller that needs it.
 
 ### Sequencing
 

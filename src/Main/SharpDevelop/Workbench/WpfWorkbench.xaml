@@ -4,6 +4,7 @@
 	xmlns = "http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 	xmlns:x = "http://schemas.microsoft.com/winfx/2006/xaml"
 	xmlns:core = "http://icsharpcode.net/sharpdevelop/core"
+	xmlns:presentation = "clr-namespace:ICSharpCode.Core.Presentation;assembly=ICSharpCode.Core.Presentation"
 	xmlns:wb = "clr-namespace:ICSharpCode.SharpDevelop.Workbench"
 	Title = "{core:Localize MainWindow.DialogName}"
 	Icon = "pack://application:,,,/Resources/opendevelop.ico"
@@ -50,8 +51,8 @@
 			shell-wide notification banner", 2026-08-07). DataContext is set to a
 			NotificationBannerViewModel in WpfWorkbench's constructor and the view model is
 			registered as INotificationHost so any AddIn can call
-			SD.Services.GetService(typeof(INotificationHost)) to show it - see auto-update.md for
-			the first consumer. Docked above mainContent, not inside it, so it survives layout
+			SD.Services.GetService(typeof(INotificationHost)) to show it. Docked above mainContent,
+			not inside it, so it survives layout
 			switches and is never itself a pane/document.
 		-->
 		<Border Name="notificationBar"
@@ -63,11 +64,13 @@
 		        Padding="8,4">
 			<DockPanel LastChildFill="True">
 				<Button DockPanel.Dock="Right"
-				        Content="✕"
+				        ToolTip="{core:Localize Global.Close}"
 				        Padding="6,0"
 				        Background="Transparent"
 				        BorderThickness="0"
-				        Command="{Binding DismissCommand}" />
+				        Command="{Binding DismissCommand}">
+					<Image Width="16" Height="16" Source="{presentation:GetBitmap Icons.16x16.CloseFileIcon}" />
+				</Button>
 				<Button DockPanel.Dock="Right"
 				        Margin="8,0"
 				        Padding="8,0"

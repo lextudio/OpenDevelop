@@ -102,7 +102,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			Items.Add(txtStatusBarPanel);
 		}
 		
-		public void SetMessage(string message, bool highlighted)
+		public void SetMessage(string message, bool highlighted, string actionText = null, Action action = null)
 		{
 			Action setMessageAction = delegate {
 				// Resource references (DynamicResource-equivalent) into the semantic theme dict
@@ -116,7 +116,23 @@ namespace ICSharpCode.SharpDevelop.Workbench
 					txtStatusBarPanel.SetResourceReference(Control.BackgroundProperty, "WindowBackground");
 					txtStatusBarPanel.SetResourceReference(Control.ForegroundProperty, "Foreground");
 				}
-				txtStatusBarPanel.Content = message;
+				if (actionText != null && action != null) {
+					var content = new StackPanel { Orientation = Orientation.Horizontal };
+					content.Children.Add(new TextBlock {
+						Text = message,
+						VerticalAlignment = VerticalAlignment.Center
+					});
+					var actionButton = new Button {
+						Content = actionText,
+						Margin = new Thickness(8, 0, 0, 0),
+						Padding = new Thickness(6, 0, 6, 0)
+					};
+					actionButton.Click += (_, _) => action();
+					content.Children.Add(actionButton);
+					txtStatusBarPanel.Content = content;
+				} else {
+					txtStatusBarPanel.Content = message;
+				}
 			};
 			if (SD.MainThread.InvokeRequired) {
 				SD.MainThread.InvokeAsyncAndForget(setMessageAction);
