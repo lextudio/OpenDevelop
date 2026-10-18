@@ -109,7 +109,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v62 adds indexed design/set-binding-source support for direct Binding children.
 		// v63 adds WPF's optional rich TextBlock inline-run snapshot and design/set-rich-text.
 		// v64 separates explicitly chosen WinForms toolbox assemblies from project references.
-	public const int Version = 64;
+		// v65 adds WinForms' atomic design/get-table-layout-tracks and
+		// design/apply-table-layout-tracks used by Edit Rows and Columns.
+	public const int Version = 65;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -332,6 +334,24 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public string Error { get; set; } = "";
 		public List<DesignerGridTrackInfo> RowTracks { get; set; } = new List<DesignerGridTrackInfo>();
 		public List<DesignerGridTrackInfo> ColumnTracks { get; set; } = new List<DesignerGridTrackInfo>();
+	}
+
+	/// <summary>An authored WinForms TableLayoutPanel row or column style. SourceIndex identifies
+	/// the authored position that the host must still recognize when applying an edit.</summary>
+	public sealed class DesignerTableLayoutTrackEdit
+	{
+		public int SourceIndex { get; set; }
+		public string SizeType { get; set; } = "AutoSize";
+		public double Value { get; set; }
+	}
+
+	/// <summary>Proven authored styles returned for the WinForms Edit Rows and Columns dialog.</summary>
+	public sealed class DesignerTableLayoutTracks
+	{
+		public bool Accepted { get; set; }
+		public string Error { get; set; } = "";
+		public List<DesignerTableLayoutTrackEdit> Rows { get; set; } = new List<DesignerTableLayoutTrackEdit>();
+		public List<DesignerTableLayoutTrackEdit> Columns { get; set; } = new List<DesignerTableLayoutTrackEdit>();
 	}
 
 	/// <summary>Measured edge distances that explain an element's current placement.  This is

@@ -34,6 +34,7 @@ using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Designer.Shell;
 using ICSharpCode.FormsDesigner.Services;
+using ICSharpCode.FormsDesigner.Gui;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
@@ -1782,6 +1783,17 @@ namespace ICSharpCode.FormsDesigner
 				}
 			};
 			var none = System.Threading.CancellationToken.None;
+			yield return new VerbMenuEntry {
+				Text = "Edit Rows and Columns...", Enabled = true,
+				Invoke = () => {
+					try {
+						var source = remoteClient.GetTableLayoutTracksAsync(remoteDocumentVersion, componentName, none).GetAwaiter().GetResult();
+						if (!source.Accepted) { MessageService.ShowError(source.Error); return; }
+						if (TableLayoutTracksDialog.Show(Application.Current?.MainWindow, source, out var rows, out var columns))
+							ExecuteRemoteEdit(() => remoteClient.ApplyTableLayoutTracksAsync(remoteDocumentVersion, componentName, rows, columns, none).GetAwaiter().GetResult());
+					} catch (Exception exception) { LoggingService.Error(exception); MessageService.ShowError(exception.Message); }
+				}
+			};
 			yield return Entry("Add Column", () => remoteClient.AddTableLayoutTrackAsync(remoteDocumentVersion, componentName, false, none).GetAwaiter().GetResult());
 			yield return Entry("Add Row", () => remoteClient.AddTableLayoutTrackAsync(remoteDocumentVersion, componentName, true, none).GetAwaiter().GetResult());
 			yield return Entry("Remove Last Column", () => remoteClient.RemoveTableLayoutTrackAsync(remoteDocumentVersion, componentName, false, none).GetAwaiter().GetResult());

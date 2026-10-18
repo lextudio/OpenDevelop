@@ -148,7 +148,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		{
 			var host = Path.GetFullPath(hostDllPath ?? LocateChildDll());
 			var key = new CompatibilityKey(Normalize(runtimeConfigPath), Normalize(depsFilePath), host,
-				operationTimeout ?? TimeSpan.FromSeconds(30), RuntimeInformation.ProcessArchitecture);
+				operationTimeout ?? TimeSpan.FromSeconds(30), RuntimeInformation.ProcessArchitecture, DesignerProtocol.Version);
 			return new FormsDesignerHostClient(await sharedPool.AcquireAsync(key, cancellationToken).ConfigureAwait(false), key, true);
 		}
 
@@ -211,6 +211,13 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		/// <summary>Sets one authored TableLayoutPanel row/column style (<c>design/set-table-layout-track</c>).</summary>
 		public Task<DesignerSessionState> SetTableLayoutTrackAsync(long baseVersion, string elementId, bool isRow, int index, string sizeType, double value, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-table-layout-track", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, index, sizeType, value }, cancellationToken), cancellationToken);
+
+		public Task<DesignerTableLayoutTracks> GetTableLayoutTracksAsync(long baseVersion, string elementId, CancellationToken cancellationToken)
+			=> connection.InvokeAsync<DesignerTableLayoutTracks>("design/get-table-layout-tracks", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken);
+
+		public Task<DesignerSessionState> ApplyTableLayoutTracksAsync(long baseVersion, string elementId,
+			IReadOnlyList<DesignerTableLayoutTrackEdit> rows, IReadOnlyList<DesignerTableLayoutTrackEdit> columns, CancellationToken cancellationToken)
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/apply-table-layout-tracks", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, rows, columns }, cancellationToken), cancellationToken);
 
 		/// <summary>Resizes a TableLayoutPanel track from a divider drag (<c>design/resize-table-layout-track</c>).</summary>
 		public Task<DesignerSessionState> ResizeTableLayoutTrackAsync(long baseVersion, string elementId, bool isRow, int index, double size, CancellationToken cancellationToken)
@@ -399,7 +406,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		}
 
 		sealed record CompatibilityKey(string RuntimeConfigPath, string DepsFilePath,
-			string HostDllPath, TimeSpan OperationTimeout, Architecture Architecture);
+			string HostDllPath, TimeSpan OperationTimeout, Architecture Architecture, int ProtocolVersion);
 
 		sealed class Connection : DesignerHostProcessClient
 		{

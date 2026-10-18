@@ -1157,6 +1157,15 @@ Absolute takes the measured size (no layout jump), Percent the average of the ot
 rather than recorded as an empty edit. The pointer menu adds Column Size / Row Size → Absolute,
 Percent, AutoSize; the journey turns a 120px Percent column into `Absolute, 120F`.
 
+**TableLayout "Edit Rows and Columns" (2026-10-18).** Protocol **v65** adds
+`design/get-table-layout-tracks(elementId)` and
+`design/apply-table-layout-tracks(elementId, rows, columns)`. The one modal editor keeps copies of
+both authored style lists, lets the user edit Rows or Columns, commits the current item before a
+selection or axis change, and sends both lists only when OK is chosen. The host proves every style
+source first, validates the complete lists, prepares both source rewrites, and then changes both
+live axes inside one designer transaction; rejection cannot partially update either source or live styles. The TableLayout menu
+offers the dialog while preserving the existing per-track commands.
+
 **C4 event handler generation (2026-10-12).** Double-clicking a WPF event in the Properties pad now
 matches the in-process designer (`AbstractEventHandlerService`): the XAML attribute is bound through
 `design/set-event` if the event is unhandled, then the IDE creates the method in `<file>.xaml.cs`
@@ -1351,7 +1360,7 @@ checked.
 | Item | Older text | Evidence |
 |---|---|---|
 | `ZoomStepCalculator` unit tests | "Its unit tests await `LeXtudio.DevFlow.Agent.Core` 0.3.1" (C3 zoom rounding, 2026-10-12) | `tests/OpenDevelop.Base.Tests/ZoomStepCalculatorTests.cs` is tracked (`f61c543dec`); 6 of 6 pass. |
-| Forms TableLayout track affordances: divider drag (protocol v33), Insert and Remove Column/Row at the pointer, Size Type (v37) | "Not yet: insertion before an arbitrary track, removing an occupied track" (2026-10-13) and "the next slice must add an explicit host-owned track mutation" | `DesignerViewContent.TableLayoutTrackMenuEntries` has Insert Column/Row Before, Remove This Column/Row and Column/Row Size; DevFlow `od.forms-designer.table-layout-guides` and `table-layout-divider` exist; `WinFormsDesigner_TableLayoutDividerWritesTheAuthoredColumnStyle_LibreWinForms` passes in the macOS LibreWinForms cell. Only the single "Edit Rows and Columns..." dialog is missing (the per-track menu replaces its Size Type). |
+| Forms TableLayout track affordances: divider drag (protocol v33), Insert and Remove Column/Row at the pointer, Size Type (v37), Edit Rows and Columns (v65) | "Not yet: insertion before an arbitrary track, removing an occupied track" (2026-10-13) and "the next slice must add an explicit host-owned track mutation" | `DesignerViewContent.TableLayoutTrackMenuEntries` has Insert Column/Row Before, Remove This Column/Row, Column/Row Size and the single Edit Rows and Columns dialog. The dialog reads and writes both source-proved style lists atomically; focused host tests cover both-axis application and refused/tampered edits, while the context-menu journey verifies its label. |
 | WPF event-handler generation in code-behind | C4 row: "add transactional WPF code-behind handler generation only if independently desired" | Delivered 2026-10-12 (`WpfCodeBehindHandlers`, see "C4 event handler generation"). What is not done is one undo record across the XAML and the code-behind: they stay on two undo stacks, as in-process. |
 | Forms resource, image, collection and type editors | 9.1 table: "the strongest remaining *Forms-specific* parity area" | `ResourceImage`, ImageList (v51), `Items`, `string[]`, `System.Type`, TreeView and ListView columns are each described as delivered by a dated note. Re-run on 2026-10-17 in the macOS LibreWinForms cell: the resource-image, Items editor and ImageList journeys pass (the ImageList one needed the `ResourceStore` fix `7f5893bded`). TreeView, ListView and Type have no `OpenDevelop/tests` journey and were not re-run. |
 
@@ -1366,7 +1375,6 @@ checked.
   creatable controls/components, persists their paths and type names, and passes the selected DLL plus sibling dependencies only
   to the collectible Forms child. The removed XmlForms sidebar/configuration implementation remains excluded; no third-party
   assembly is loaded into the IDE process.
-- **The "Edit Rows and Columns..." dialog** as one dialog (see the TableLayout row above).
 - **One undo record across XAML and code-behind** for a generated handler (deliberately not done, see the handler row above).
 
 #### Cannot be checked on macOS (needs Windows with the Microsoft backends)
@@ -1388,11 +1396,12 @@ checked.
 
 #### Documentation lag
 
-The protocol notes in this file stop at v52, but `DesignerProtocol.Version` is 62. v53 to v62 are WPF
+The protocol notes in this file otherwise stop at v52, but `DesignerProtocol.Version` is 65. v53 to v62 are WPF
 composite Binding children: indexed `design/set-binding-path` (v53, `DesignerPropertyInfo.BindingChildIndex`),
 `set-binding-items` (v54), mode (v55), UpdateSourceTrigger (v56), ElementName (v57), converter (v58), text options (v59),
 validation option and delay (v60), RelativeSource (v61), Source (v62). The C2 row mentions composite bindings in prose without
-the versions.
+the versions. v63 and v64 cover subsequent designer-host compatibility work; v65 is the WinForms TableLayout
+Rows and Columns dialog described above.
 
 ### 9.1 WinForms in-process baseline — initial inventory complete
 

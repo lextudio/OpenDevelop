@@ -166,6 +166,9 @@ public sealed class FormsDesignerHostClientTests
 		Assert.All(Assert.IsType<DesignerGridGuides>(implicitTable.GridTracks).RowTracks
 			.Concat(Assert.IsType<DesignerGridGuides>(implicitTable.GridTracks).ColumnTracks), track => Assert.Null(track.Unit));
 		Assert.Null(FindTreeNode(opened.Tree!, "button1")!.GridTracks);
+		var implicitTracks = await client.GetTableLayoutTracksAsync(1, "implicitTable", timeout.Token);
+		Assert.False(implicitTracks.Accepted);
+		Assert.NotEmpty(implicitTracks.Error);
 
 		// Runtime-created default styles have no source statement, so they are never editable.
 		await Assert.ThrowsAnyAsync<Exception>(() => client.SetTableLayoutTrackAsync(1, "implicitTable", false, 0, "Absolute", 10, timeout.Token));
@@ -190,6 +193,46 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("table.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.AutoSize));", text);
 		Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(text, @"table\.ColumnStyles\.Add\(").Count);
 		Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(text, @"table\.RowStyles\.Add\(").Count);
+	}
+
+	[Fact]
+	public async Task ChildHost_EditRowsAndColumnsReadsAndAppliesBothAxesAtomically()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text.Replace("this.Controls.Add(this.button1);", """
+			this.table = new System.Windows.Forms.TableLayoutPanel();
+			this.table.ColumnCount = 1;
+			this.table.RowCount = 1;
+			this.table.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 40F));
+			this.table.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+			this.Controls.Add(this.button1);
+			this.Controls.Add(this.table);
+			""", StringComparison.Ordinal).Replace("private System.Windows.Forms.Button button1;",
+			"private System.Windows.Forms.Button button1;\n    private System.Windows.Forms.TableLayoutPanel table;", StringComparison.Ordinal);
+		Assert.True((await client.OpenAsync(snapshot, timeout.Token)).Accepted);
+		var tracks = await client.GetTableLayoutTracksAsync(1, "table", timeout.Token);
+		Assert.True(tracks.Accepted, tracks.Error);
+		Assert.Equal("Percent", Assert.Single(tracks.Rows).SizeType);
+		Assert.Equal("Absolute", Assert.Single(tracks.Columns).SizeType);
+		tracks.Rows[0].SizeType = "Absolute"; tracks.Rows[0].Value = 25;
+		tracks.Columns[0].SizeType = "Percent"; tracks.Columns[0].Value = 100;
+		var edited = await client.ApplyTableLayoutTracksAsync(1, "table", tracks.Rows, tracks.Columns, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var text = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("RowStyle(System.Windows.Forms.SizeType.Absolute, 25F)", text);
+		Assert.Contains("ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F)", text);
+		tracks.Rows[0].Value = 90;
+		tracks.Columns[0].SourceIndex = 1;
+		await Assert.ThrowsAnyAsync<Exception>(() => client.ApplyTableLayoutTracksAsync(1, "table", tracks.Rows, tracks.Columns, timeout.Token));
+		var afterRejectedTracks = await client.GetTableLayoutTracksAsync(1, "table", timeout.Token);
+		Assert.Equal(25, Assert.Single(afterRejectedTracks.Rows).Value);
+		var afterRejectedApply = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("RowStyle(System.Windows.Forms.SizeType.Absolute, 25F)", afterRejectedApply);
+		Assert.DoesNotContain("RowStyle(System.Windows.Forms.SizeType.Absolute, 90F)", afterRejectedApply);
+		Assert.Contains("ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F)", afterRejectedApply);
 	}
 
 	[Fact]

@@ -1276,6 +1276,83 @@ sealed class DesignerHostService : IDesignerChildService
 		return CurrentState(baseVersion);
 	}
 
+	/// <summary>Returns both authored style lists for the single Edit Rows and Columns dialog.
+	/// Proving them here lets the client avoid presenting an editor whose OK action cannot safely
+	/// rewrite Designer.cs.</summary>
+	[JsonRpcMethod("design/get-table-layout-tracks")]
+	public DesignerTableLayoutTracks GetTableLayoutTracks(string sessionId, string documentId, long baseVersion, string elementId)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "inspect");
+		try {
+			var (_, table) = FindTableLayoutPanel(elementId);
+			var file = CurrentDesignerFile();
+			ProveTableLayoutTrackSource(file.Text, elementId, true, table.RowStyles.Count, table.RowCount);
+			ProveTableLayoutTrackSource(file.Text, elementId, false, table.ColumnStyles.Count, table.ColumnCount);
+			return new DesignerTableLayoutTracks {
+				Accepted = true,
+				Rows = table.RowStyles.Cast<RowStyle>().Select((style, index) => new DesignerTableLayoutTrackEdit { SourceIndex = index, SizeType = style.SizeType.ToString(), Value = StyleLength(style) }).ToList(),
+				Columns = table.ColumnStyles.Cast<ColumnStyle>().Select((style, index) => new DesignerTableLayoutTrackEdit { SourceIndex = index, SizeType = style.SizeType.ToString(), Value = StyleLength(style) }).ToList()
+			};
+		} catch (Exception exception) {
+			return new DesignerTableLayoutTracks { Error = exception.Message };
+		}
+	}
+
+	/// <summary>Applies both lists from Edit Rows and Columns as one undoable source/live mutation.
+	/// Structural changes remain available through the explicit Insert/Remove commands; this dialog
+	/// deliberately edits the authored definitions it displayed, so rows and columns cannot drift
+	/// through two independently committed RPC calls.</summary>
+	[JsonRpcMethod("design/apply-table-layout-tracks")]
+	public DesignerSessionState ApplyTableLayoutTracks(string sessionId, string documentId, long baseVersion, string elementId,
+		IReadOnlyList<DesignerTableLayoutTrackEdit> rows, IReadOnlyList<DesignerTableLayoutTrackEdit> columns)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
+		var (host, table) = FindTableLayoutPanel(elementId);
+		if (rows == null || columns == null || rows.Count != table.RowStyles.Count || columns.Count != table.ColumnStyles.Count)
+			throw new ArgumentException("The track list changed; reopen Edit Rows and Columns.");
+		var rowEdits = ValidateTableLayoutTrackEdits(rows, table.RowStyles.Count);
+		var columnEdits = ValidateTableLayoutTrackEdits(columns, table.ColumnStyles.Count);
+		var file = CurrentDesignerFile();
+		var rowText = IsVisualBasic
+			? RewriteTableLayoutStylesVisualBasic(file.Text, elementId, "RowStyles", "RowStyle", table.RowStyles.Count, rowEdits)
+			: RewriteTableLayoutStyles(file.Text, elementId, "RowStyles", "RowStyle", table.RowStyles.Count, rowEdits);
+		var newText = IsVisualBasic
+			? RewriteTableLayoutStylesVisualBasic(rowText, elementId, "ColumnStyles", "ColumnStyle", table.ColumnStyles.Count, columnEdits)
+			: RewriteTableLayoutStyles(rowText, elementId, "ColumnStyles", "ColumnStyle", table.ColumnStyles.Count, columnEdits);
+		using (var transaction = host.CreateTransaction($"Edit rows and columns of {elementId}")) {
+			ApplyLiveTableLayoutStyles(table.RowStyles, rowEdits);
+			ApplyLiveTableLayoutStyles(table.ColumnStyles, columnEdits);
+			transaction.Commit();
+		}
+		file.Text = newText;
+		return CurrentState(baseVersion);
+	}
+
+	static List<(int Index, SizeType Type, double Value)> ValidateTableLayoutTrackEdits(IReadOnlyList<DesignerTableLayoutTrackEdit> edits, int count)
+	{
+		var result = new List<(int, SizeType, double)>();
+		for (var index = 0; index < edits.Count; index++) {
+			var edit = edits[index] ?? throw new ArgumentException("A track is missing.");
+			if (edit.SourceIndex != index || !Enum.TryParse<SizeType>(edit.SizeType, false, out var type) || !Enum.IsDefined(type)
+				|| (type != SizeType.AutoSize && (!Double.IsFinite(edit.Value) || edit.Value < 0 || edit.Value > Single.MaxValue)))
+				throw new ArgumentException("The track list contains an invalid style.");
+			result.Add((index, type, edit.Value));
+		}
+		if (result.Count != count) throw new ArgumentException("The track list changed.");
+		return result;
+	}
+
+	static void ApplyLiveTableLayoutStyles(TableLayoutStyleCollection styles, IReadOnlyList<(int Index, SizeType Type, double Value)> edits)
+	{
+		foreach (var (index, type, value) in edits) {
+			var style = styles[index]; style.SizeType = type;
+			if (type != SizeType.AutoSize) {
+				if (style is RowStyle row) row.Height = (float)value;
+				else ((ColumnStyle)style).Width = (float)value;
+			}
+		}
+	}
+
 	/// <summary>A divider drag: track <paramref name="index"/> should become
 	/// <paramref name="size"/> pixels. Between two Percent tracks the pair's percentages are
 	/// redistributed in proportion to their measured sizes, keeping their sum (the in-process

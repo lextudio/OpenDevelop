@@ -4347,6 +4347,7 @@ public sealed class AddInTests : IAsyncDisposable
             var labels = menu.GetProperty("items").EnumerateArray().Select(item => item.GetString()).ToList();
             Assert.Contains("Add Row", labels);
             Assert.Contains("Remove Last Column", labels);
+			Assert.Contains("Edit Rows and Columns...", labels);
             var addedRow = await _app.InvokeAsync("od.forms-designer.context-menu-entry", "grid1", "Add Row");
             Assert.True(addedRow.GetProperty("success").GetBoolean(), addedRow.ToString());
             saved = await _app.InvokeAsync("od.file.save", formCodePath);

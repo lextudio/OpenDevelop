@@ -59,6 +59,10 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	public DesignerSessionState SetStringArray(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string[] values) => GetChecked(sessionId, documentId).SetStringArray(sessionId, documentId, baseVersion, elementId, propertyName, values);
 	[JsonRpcMethod("design/set-table-layout-track")]
 	public DesignerSessionState SetTableLayoutTrack(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index, string sizeType, double value) => GetChecked(sessionId, documentId).SetTableLayoutTrack(sessionId, documentId, baseVersion, elementId, isRow, index, sizeType, value);
+	[JsonRpcMethod("design/get-table-layout-tracks")]
+	public DesignerTableLayoutTracks GetTableLayoutTracks(string sessionId, string documentId, long baseVersion, string elementId) => GetChecked(sessionId, documentId).GetTableLayoutTracks(sessionId, documentId, baseVersion, elementId);
+	[JsonRpcMethod("design/apply-table-layout-tracks")]
+	public DesignerSessionState ApplyTableLayoutTracks(string sessionId, string documentId, long baseVersion, string elementId, DesignerTableLayoutTrackEdit[] rows, DesignerTableLayoutTrackEdit[] columns) => GetChecked(sessionId, documentId).ApplyTableLayoutTracks(sessionId, documentId, baseVersion, elementId, rows, columns);
 	[JsonRpcMethod("design/resize-table-layout-track")]
 	public DesignerSessionState ResizeTableLayoutTrack(string sessionId, string documentId, long baseVersion, string elementId, bool isRow, int index, double size) => GetChecked(sessionId, documentId).ResizeTableLayoutTrack(sessionId, documentId, baseVersion, elementId, isRow, index, size);
 	[JsonRpcMethod("design/add-table-layout-track")]
