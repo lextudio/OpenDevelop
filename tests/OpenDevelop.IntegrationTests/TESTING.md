@@ -63,6 +63,16 @@ everything the suite needs: it builds the addins, the out-of-process designer ho
 apps that tests assume are prebuilt, and packs the local NuGet feed fixture. Prefer
 `dotnet build tests/OpenDevelop.IntegrationTests/...` over building the app alone.
 
+`NewProjectDialogIntegrationTests.NewSolutionDialog_StillCreatesAWorkingProject_WhenTheSelectedSdkIsUnusable`
+(issue #19) has one case, `dotnetup-sdk9`, that installs a real .NET SDK 9 with
+[dotnetup](https://github.com/dotnet/sdk/tree/main/documentation/general/dotnetup) (public preview;
+`DotnetupSdkProvider`). It needs network access to `aka.ms` and about 300 MB of temp space, caches
+everything under `%TEMP%\opendevelop-it-dotnetup` (delete it to force a clean install), writes
+nothing to your own dotnetup state or machine-wide SDKs, and is Windows-only. When the SDK cannot
+be acquired - offline, blocked `aka.ms`, a changed script or dotnetup option, a non-Windows host -
+that case is reported as **Skipped**, not failed, so a green run with a skip there means the
+real-SDK-9 coverage did not run; the `fake-sdk9-root` and `10.0` cases always run.
+
 Tests carrying `[Trait("DesignerBackend", "Microsoft")]` exercise the Microsoft WinForms/WPF/WinUI
 backends, which only exist on Windows. They skip themselves elsewhere (see
 `AddInTests.MicrosoftDesignerBackendsAvailable`), so an unfiltered run is correct on every

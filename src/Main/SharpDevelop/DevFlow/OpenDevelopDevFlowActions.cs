@@ -497,6 +497,27 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { success = true, effective = effectiveJson });
 		}
 
+		[DevFlowAction("od.sdk.add-custom-root", Description = "Register a .NET SDK root (a folder holding dotnet and sdk/) as a custom root, the same effect as adding one under Tools > Options > .NET SDK, so it appears in od.sdk.list. Validated the way the Options page validates it")]
+		public static string AddCustomDotNetSdkRoot(string rootPath)
+		{
+			if (!DotNetSdkService.TryDescribeCustomRoot(rootPath, out var sdk, out string error))
+				return JsonSerializer.Serialize(new { success = false, error });
+			// The validated, normalised root - what the Options page stores - not the caller's raw string.
+			DotNetSdkService.AddCustomRoot(sdk.RootPath);
+			return JsonSerializer.Serialize(new { success = true, sdk = new { sdk.Label, sdk.RootPath, sdk.HighestSdkVersion } });
+		}
+
+		[DevFlowAction("od.sdk.remove-custom-root", Description = "Remove a custom .NET SDK root added with od.sdk.add-custom-root (or Tools > Options > .NET SDK)")]
+		public static string RemoveCustomDotNetSdkRoot(string rootPath)
+		{
+			// Match by directory (trailing separators, "..", separator style), then remove the stored
+			// spelling, because RemoveCustomRoot compares raw strings.
+			var stored = DotNetSdkService.CustomRoots.Where(r => DotNetSdkService.SameRoot(r, rootPath)).ToList();
+			foreach (var root in stored)
+				DotNetSdkService.RemoveCustomRoot(root);
+			return JsonSerializer.Serialize(new { success = true, removed = stored.Count });
+		}
+
 		[DevFlowAction("od.update.check", Description = "Check for OpenDevelop updates on GitHub (lextudio/OpenDevelop latest release). Returns the running version, the latest published version, whether an update is available, and the download URL. No published release yet is reported as updateAvailable=false; network/parse failures set checkFailed")]
 		public static async Task<string> CheckForUpdateAsync()
 		{

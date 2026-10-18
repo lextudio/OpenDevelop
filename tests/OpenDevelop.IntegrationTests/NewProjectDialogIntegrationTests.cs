@@ -52,44 +52,89 @@ public sealed class NewProjectDialogIntegrationTests
     public Task NewSolutionDialog_CreatesProjectAndSolutionFiles() => CreateConsoleSolutionAndBuildAsync();
 
     // Issue #19: the machine there evaluated the new project under SDK 9.0.316, where the Roslyn
-    // targets path comes out empty. Whatever SDK the user's setting points at - a root that only
-    // holds SDK 9, or a bare version such as "10.0" that is not a root at all - the IDE must keep
-    // using a .NET 10+ SDK and the project it creates must still load and build.
+    // targets path comes out empty. Whatever SDK the user's setting points at, the IDE must keep
+    // using a .NET 10+ SDK and the project it creates must still load and build:
+    //  - dotnetup-sdk9: a REAL SDK 9, installed with dotnetup (see DotnetupSdkProvider), registered
+    //    as a custom root so the IDE discovers it, then selected;
+    //  - fake-sdk9-root: the same shape with an empty SDK 9 folder, without the download;
+    //  - 10.0: the bare version string the reporter had selected, which is not a root at all.
     [Theory]
-    [InlineData("sdk9-root")]
+    [InlineData("dotnetup-sdk9")]
+    [InlineData("fake-sdk9-root")]
     [InlineData("10.0")]
     public async Task NewSolutionDialog_StillCreatesAWorkingProject_WhenTheSelectedSdkIsUnusable(string selection)
     {
         var fakeRoot = Path.Combine(Path.GetTempPath(), "opendevelop-fake-sdk9-" + Guid.NewGuid().ToString("N"));
+        string? customRoot = null;
+        JsonElement removed = default;
         try
         {
             string selected = selection;
-            if (selection == "sdk9-root")
+            if (selection == "fake-sdk9-root")
             {
                 Directory.CreateDirectory(Path.Combine(fakeRoot, "sdk", "9.0.316"));
                 await File.WriteAllTextAsync(Path.Combine(fakeRoot, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet"), "");
-                selected = fakeRoot;
+                selected = customRoot = fakeRoot;
+            }
+            else if (selection == "dotnetup-sdk9")
+            {
+                selected = customRoot = await DotnetupSdkProvider.EnsureSdkAsync("9.0");
+            }
+
+            if (customRoot is not null)
+            {
+                var added = await _app.InvokeAsync("od.sdk.add-custom-root", customRoot);
+                Assert.True(added.GetProperty("success").GetBoolean(), added.ToString());
+
+                // Discovered, so the selection below really is "an SDK the IDE knows but must not use".
+                var list = await _app.InvokeAsync("od.sdk.list");
+                Assert.Contains(list.GetProperty("sdks").EnumerateArray(), s =>
+                    string.Equals(TrimRoot(s.GetProperty("RootPath").GetString()), TrimRoot(customRoot), StringComparison.OrdinalIgnoreCase)
+                    && s.GetProperty("HighestSdkVersion").GetString()!.StartsWith("9."));
             }
 
             var select = await _app.InvokeAsync("od.sdk.select", selected);
             Assert.True(select.GetProperty("success").GetBoolean(), select.ToString());
 
+            // The unusable selection must really be stored; otherwise "effective is SDK 10" below
+            // would hold trivially and nothing would have been tested.
+            var afterSelect = await _app.InvokeAsync("od.sdk.list");
+            Assert.Equal(selected, afterSelect.GetProperty("selectedRootPath").GetString());
+
+            // Tell "this machine has no .NET 10+ SDK" (environment) apart from "the IDE returned none
+            // although one is discovered" (product regression).
+            var discovered = (await _app.InvokeAsync("od.sdk.list")).GetProperty("sdks").EnumerateArray().ToList();
+            Assert.True(discovered.Any(s => int.TryParse(s.GetProperty("HighestSdkVersion").GetString()?.Split('.')[0], out var v) && v >= 10),
+                "This machine has no discovered .NET SDK 10 or newer, which the IDE (net10.0) needs.");
+
             var effective = select.GetProperty("effective");
             Assert.True(effective.ValueKind == JsonValueKind.Object,
-                "Expected a .NET 10+ SDK to remain effective; null means none is installed on this machine.");
+                "A .NET 10+ SDK is discovered, but no effective SDK was returned after selecting an unusable one.");
             var effectiveVersion = effective.GetProperty("HighestSdkVersion").GetString();
             Assert.True(int.TryParse(effectiveVersion?.Split('.')[0], out var major) && major >= 10,
                 $"Selecting '{selected}' made SDK {effectiveVersion} effective; it must never be older than .NET 10.");
-            Assert.NotEqual(fakeRoot, effective.GetProperty("RootPath").GetString());
+            if (customRoot is not null)
+                Assert.NotEqual(TrimRoot(customRoot), TrimRoot(effective.GetProperty("RootPath").GetString()));
 
             await CreateConsoleSolutionAndBuildAsync();
         }
         finally
         {
             await _app.InvokeAsync("od.sdk.select", "");
+            if (customRoot is not null)
+                // A different spelling than the one added: removal must match by directory, so a
+                // regression to raw string comparison leaves the root behind and fails below.
+                removed = await _app.InvokeAsync("od.sdk.remove-custom-root", customRoot + Path.DirectorySeparatorChar);
             if (Directory.Exists(fakeRoot)) Directory.Delete(fakeRoot, recursive: true);
         }
+
+        // Checked after the cleanup so a failure above is not masked, and a leaked root is not silent.
+        if (customRoot is not null)
+            Assert.True(removed.GetProperty("removed").GetInt32() >= 1,
+                $"The custom SDK root '{customRoot}' was not removed again: {removed}");
     }
+
+    static string TrimRoot(string? path) => (path ?? "").TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
     async Task CreateConsoleSolutionAndBuildAsync()
     {
