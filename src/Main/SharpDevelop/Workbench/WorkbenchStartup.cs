@@ -180,6 +180,12 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public void Run(IList<string> fileList)
 		{
+			// Report the .NET SDK situation before anything is opened. A missing or mismatched SDK
+			// otherwise shows up only as SDK-style projects that load with no children/items, and
+			// the message belongs next to the build output the user will be looking at anyway.
+			// Once per session, and a no-op on a healthy machine.
+			SD.ProjectService.ReportSdkAvailability();
+
 			bool didLoadSolutionOrFile = false;
 			
 			NavigationService.SuspendLogging();

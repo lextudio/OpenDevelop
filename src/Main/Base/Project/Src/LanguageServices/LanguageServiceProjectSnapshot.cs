@@ -488,7 +488,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 
                     var sdk = Project.Sdk.DotNetSdkService.ResolveEffectiveSdk();
                     var text = new StringBuilder();
-                    text.Append("v1|").Append(sdk.DotnetExecutablePath).Append('|').Append(sdk.HighestSdkVersion).Append('\n');
+                    // A null SDK (no supported .NET 10+ install) still has to yield a stable
+                    // fingerprint, so an empty slot stands in rather than throwing here.
+                    text.Append("v1|").Append(sdk?.DotnetExecutablePath ?? string.Empty).Append('|').Append(sdk?.HighestSdkVersion ?? string.Empty).Append('\n');
                     foreach (var input in inputs.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
                     {
                         text.Append(input).Append('|');

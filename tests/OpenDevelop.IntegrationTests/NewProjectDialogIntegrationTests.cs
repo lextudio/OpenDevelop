@@ -69,7 +69,21 @@ public sealed class NewProjectDialogIntegrationTests
             await WaitForFileAsync(projectFile);
             await WaitForFileAsync(Path.Combine(solutionRoot, solutionName + ".slnx"));
             Assert.Contains("Microsoft.NET.Sdk", await File.ReadAllTextAsync(projectFile));
+            Assert.Contains("<TargetFramework>net10.0</TargetFramework>", await File.ReadAllTextAsync(projectFile));
             Assert.Contains("Hello, World!", await File.ReadAllTextAsync(programFile));
+
+            // Files alone are not sufficient: issue #19 wrote the template then failed while the IDE
+            // loaded its SDK-style project. Verify the created project reached the live solution model
+            // and can pass through the same in-process evaluation/build path a user sees.
+            var solution = await WaitForProjectInSolutionAsync(Path.Combine(solutionRoot, solutionName + ".slnx"), projectFile);
+            Assert.Equal(Path.Combine(solutionRoot, solutionName + ".slnx"), solution.GetProperty("solutionFile").GetString());
+            Assert.Contains(solution.GetProperty("projects").EnumerateArray(), p =>
+                p.GetProperty("name").GetString() == projectName
+                && p.GetProperty("fileName").GetString() == projectFile);
+
+            var build = await _app.InvokeAsync("od.build-solution", projectName);
+            Assert.True(build.GetProperty("success").GetBoolean(), build.ToString());
+            Assert.Equal("Success", build.GetProperty("result").GetString());
         }
         finally
         {
@@ -162,5 +176,19 @@ public sealed class NewProjectDialogIntegrationTests
             await Task.Delay(250);
         }
         Assert.Fail($"Expected generated file was not created: {path}");
+    }
+
+    async Task<JsonElement> WaitForProjectInSolutionAsync(string solutionFile, string projectFile)
+    {
+        for (var attempt = 0; attempt < 80; attempt++)
+        {
+            var solution = await _app.InvokeAsync("od.solution-tree");
+            if (solution.GetProperty("solutionFile").GetString() == solutionFile
+                && solution.GetProperty("projects").EnumerateArray().Any(p => p.GetProperty("fileName").GetString() == projectFile))
+                return solution;
+            await Task.Delay(250);
+        }
+        Assert.Fail($"Timed out waiting for '{projectFile}' to load into '{solutionFile}'.");
+        return default;
     }
 }

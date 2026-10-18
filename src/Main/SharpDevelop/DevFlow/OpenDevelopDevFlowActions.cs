@@ -462,9 +462,14 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		{
 			var discovered = DotNetSdkService.DiscoverSdks();
 			var effective = DotNetSdkService.ResolveEffectiveSdk();
+			// null when no supported (.NET 10+) SDK is installed: there is deliberately no fallback
+			// to an older one, so "effective" can legitimately have no value.
+			object effectiveJson = effective == null
+				? null
+				: new { effective.Label, effective.RootPath, effective.HighestSdkVersion, origin = effective.Origin.ToString() };
 			return JsonSerializer.Serialize(new {
 				selectedRootPath = DotNetSdkService.SelectedSdkRootPath,
-				effective = new { effective.Label, effective.RootPath, effective.HighestSdkVersion, origin = effective.Origin.ToString() },
+				effective = effectiveJson,
 				sdks = discovered.Select(s => new { s.Label, s.RootPath, s.HighestSdkVersion, origin = s.Origin.ToString() }).ToArray()
 			});
 		}
@@ -474,7 +479,12 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		{
 			DotNetSdkService.SelectedSdkRootPath = rootPath ?? string.Empty;
 			var effective = DotNetSdkService.ResolveEffectiveSdk();
-			return JsonSerializer.Serialize(new { success = true, effective = new { effective.Label, effective.RootPath, effective.HighestSdkVersion } });
+			// null when the selection (or the machine) leaves no supported SDK: selecting one that
+			// is not .NET 10+ is reported, never silently replaced by an older SDK.
+			object effectiveJson = effective == null
+				? null
+				: new { effective.Label, effective.RootPath, effective.HighestSdkVersion };
+			return JsonSerializer.Serialize(new { success = true, effective = effectiveJson });
 		}
 
 		[DevFlowAction("od.update.check", Description = "Check for OpenDevelop updates on GitHub (lextudio/OpenDevelop latest release). Returns the running version, the latest published version, whether an update is available, and the download URL. No published release yet is reported as updateAvailable=false; network/parse failures set checkFailed")]

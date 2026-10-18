@@ -934,8 +934,12 @@ namespace Debugger.AddIn.Service.Dap
 			// StartAsync), but PropertyService (which DotNetSdkService reads through) is
 			// UI-thread-affinitized - marshal over instead of throwing
 			// "different thread owns it".
+			// No supported (.NET 10+) SDK means ResolveEffectiveSdk() is null. Fall back to the bare
+			// "dotnet" on PATH (not rooted, so UseDotNetHost leaves the environment alone) instead of
+			// naming an older SDK's host; the adapter's own launch error then reports the cause.
 			return SD.MainThread.InvokeIfRequired(() =>
-				ICSharpCode.SharpDevelop.Project.Sdk.DotNetSdkService.ResolveEffectiveSdk().DotnetExecutablePath);
+				ICSharpCode.SharpDevelop.Project.Sdk.DotNetSdkService.ResolveEffectiveSdk()?.DotnetExecutablePath)
+				?? "dotnet";
 		}
 
 		/// <summary>

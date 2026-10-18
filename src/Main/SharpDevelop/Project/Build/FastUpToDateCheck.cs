@@ -236,6 +236,12 @@ namespace ICSharpCode.SharpDevelop.Project
 				var sorted = files.OrderBy(file => file, StringComparer.Ordinal).ToList();
 				var sortedReferences = referenceOutputs.OrderBy(file => file, StringComparer.Ordinal).ToList();
 				var sdk = Sdk.DotNetSdkService.ResolveEffectiveSdk();
+				if (sdk == null) {
+					// No supported (.NET 10+) SDK: there is nothing to key the check on, and the
+					// build path reports the same condition with its own message.
+					reason = "no .NET 10 (or newer) SDK is installed";
+					return null;
+				}
 				return new Inputs {
 					Key = "v3|" + sdk.DotnetExecutablePath + "|" + sdk.HighestSdkVersion + "|" + MinimalMSBuildEngine.GlobalPropertiesKey(options),
 					Hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", sorted) + "\n|\n" + string.Join("\n", sortedReferences)))),

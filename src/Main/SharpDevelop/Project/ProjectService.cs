@@ -195,18 +195,33 @@ namespace ICSharpCode.SharpDevelop.Project
 				this.CurrentSolution = solution;
 			}
 			PerfTimeline.Mark(PerfTimeline.SolutionOpen, "projects-evaluated", solution.Projects.Count() + " projects");
-			WarnOnceIfNoCompatibleInProcessSdk();
+			ReportSdkAvailability();
 			OnSolutionOpened(solution);
 			PerfTimeline.Mark(PerfTimeline.SolutionOpen, "solution-opened-handlers-done");
 		}
 
-		static bool warnedAboutMissingCompatibleSdk;
+		static bool reportedSdkAvailability;
+		static bool reportedAfterEvaluationFailure;
 
 		/// <summary>
-		/// Every SDK-style project silently ends up with no children/items in this state - see
-		/// MSBuildInternals.NoCompatibleInProcessSdkFound - and the only other trace is a build-
-		/// channel message easy to miss ("The SDK resolver assembly ... could not be loaded").
-		/// Report it once per session, at the point a user actually notices (opening a solution).
+		/// Reports, once per session (plus once more if in-process evaluation later fails for real), whether this machine has a .NET SDK this IDE can actually use,
+		/// and whether the SDK picked under Tools &gt; Options &gt; .NET SDK is still installed.
+		///
+		/// Runs at startup (WorkbenchStartup.Run) as well as when a solution is opened, because the
+		/// failure it describes is silent: every SDK-style project simply loads with no children/items,
+		/// and the only other trace is a build-channel message ("The SDK resolver assembly ... could
+		/// not be loaded") the user has no reason to be looking at. Saying it before anything is opened
+		/// is what makes it actionable.
+		///
+		/// Three separate facts go into the message, because each fails differently:
+		///  - .NET SDK 10 is what this IDE and the projects it opens target (net10.0);
+		///  - the NuGet SDK resolver this IDE loads in-process is an architecture-specific
+		///    (ReadyToRun) assembly, so an SDK of another architecture cannot stand in for a missing
+		///    one, even though "dotnet build" from a terminal works fine with it;
+		///  - the SDK picked in Options can be gone (uninstalled, moved, a network root that is not
+		///    mounted).
+		/// A preferred SDK being present is therefore not reassurance on its own, which is why the
+		/// message says so instead of stopping at "found".
 		///
 		/// Deliberately the Output pad's Build category - the same channel ErrorProject.ProjectLoaded
 		/// uses for a project that failed to load - and NOT a MessageBox: this text names SDK paths
@@ -215,35 +230,98 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// pad that can be scrolled back to, not in a popup that must be dismissed to see the tree it
 		/// is describing.
 		/// </summary>
-		void WarnOnceIfNoCompatibleInProcessSdk()
+		public void ReportSdkAvailability()
 		{
-			if (!MSBuildInternals.NoCompatibleInProcessSdkFound || warnedAboutMissingCompatibleSdk)
+			// The startup call runs before any project is evaluated, so it can only infer from
+			// discovery. NoCompatibleInProcessSdkFound is the definitive signal and is only produced
+			// by the first real evaluation; when it flips to true after an earlier report (e.g. the
+			// SDK was uninstalled while the IDE ran), report again once rather than stay silent.
+			bool evaluationFailed = MSBuildInternals.NoCompatibleInProcessSdkFound;
+			if (reportedSdkAvailability && (reportedAfterEvaluationFailure || !evaluationFailed))
 				return;
-			warnedAboutMissingCompatibleSdk = true;
-			
+
+			var discovered = DotNetSdkService.DiscoverSdks();
+			var availability = DotNetSdkService.DescribeAvailability(
+				discovered,
+				DotNetSdkService.SelectedSdkRootPath,
+				evaluationFailed);
+			string preferredRoot = DotNetSdkService.SelectedSdkRootPath ?? string.Empty;
+
+			// Set only once discovery has succeeded, so a transient failure above does not
+			// suppress the report for the rest of the session.
+			reportedSdkAvailability = true;
+			reportedAfterEvaluationFailure = evaluationFailed;
+
+			// Say nothing when there is nothing to act on: an in-process SDK 10, plus either no
+			// preference or a preference that still resolves, is a working setup.
+			if (availability.IsHealthy)
+				return;
+
 			var architecture = RuntimeInformation.ProcessArchitecture;
 			var category = SD.OutputPad.BuildCategory;
 			category.Activate(bringPadToFront: true);
 			category.AppendLine(string.Empty);
-			category.AppendLine($"No installed .NET SDK matches this application's own architecture ({architecture}).");
-			category.AppendLine(
-				"SDK-style projects (most modern .csproj/.vbproj files) load with no items until an SDK of that architecture "
-				+ "is installed. The NuGet SDK resolver this IDE loads in-process is an architecture-specific (ReadyToRun) "
-				+ "assembly, so an SDK of a different architecture cannot supply it - even though 'dotnet build' on the "
-				+ "command line works fine with that same SDK, because that runs as its own separate process.");
-			category.AppendLine("Searched these .NET SDK roots:");
-			foreach (var candidate in DotNetSdkService.DiscoverSdks()) {
+			category.AppendLine(".NET SDK check");
+
+			if (availability.SupportedSdkRoot != null)
 				category.AppendLine(
-					$"  {candidate.RootPath}  (.NET SDK {candidate.HighestSdkVersion}, "
-					+ $"{candidate.Architecture?.ToString() ?? "unknown architecture"})");
-			}
+					$"  .NET SDK 10 or newer: found - {availability.SupportedSdkRoot.RootPath} (SDK {availability.SupportedSdkVersion}, "
+					+ $"{availability.SupportedSdkRoot.Architecture?.ToString() ?? "unknown architecture"}).");
+			else
+				category.AppendLine(
+					"  .NET SDK 10 or newer: NOT FOUND. This IDE and the projects it opens require .NET SDK 10 or newer, "
+					+ "so building and loading them may fail.");
+
+			if (!availability.PreferredRootSet)
+				category.AppendLine("  Preferred SDK (Tools > Options > .NET SDK): none set - the system default is used.");
+			else if (availability.PreferredRootUnsupported)
+				category.AppendLine(
+					$"  Preferred SDK (Tools > Options > .NET SDK): {preferredRoot} - found, but it is ignored: it needs .NET SDK 10 or newer "
+					+ $"matching this {architecture} process (it has SDK {availability.PreferredSdk.HighestSdkVersion}, "
+					+ $"{availability.PreferredSdk.Architecture?.ToString() ?? "unknown architecture"}).");
+			else if (availability.PreferredSdk != null)
+				category.AppendLine(
+					$"  Preferred SDK (Tools > Options > .NET SDK): {preferredRoot} - found "
+					+ $"(SDK {availability.PreferredSdk.HighestSdkVersion}).");
+			else
+				category.AppendLine(
+					$"  Preferred SDK (Tools > Options > .NET SDK): {preferredRoot} - NOT FOUND. The IDE falls "
+					+ "back to a system SDK; re-select it or clear the setting.");
+
+			if (availability.InProcessSdk != null)
+				category.AppendLine(
+					$"  In-process SDK (must match this {architecture} process): {availability.InProcessSdk.RootPath} "
+					+ $"(SDK {availability.InProcessSdk.HighestSdkVersion}).");
+			else
+				category.AppendLine(
+					$"  In-process SDK (must match this {architecture} process): NONE. Every SDK-style project "
+					+ $"will load with no items until a {ArchitectureInstallerName(architecture)} SDK is installed.");
+
+			// The explicit caveat: a preferred SDK that exists does not by itself mean the setup is
+			// fine, which is the part a bare "found" would hide.
 			category.AppendLine(
-				$"To fix: install the {ArchitectureInstallerName(architecture)} .NET SDK 10 (or newer) side-by-side - "
-				+ $"\"winget install Microsoft.DotNet.SDK.10 --architecture {ArchitectureInstallerName(architecture)}\" - "
-				+ "then restart OpenDevelop. An SDK added under Tools > Options > .NET SDK is picked up the same way.");
+				"  Note: a preferred SDK being present is not a guarantee on its own. The NuGet SDK resolver "
+				+ "this IDE loads in-process is architecture-specific, so the SDK must both be version 10 or newer "
+				+ "and match this process.");
+
+			if (discovered.Count > 0) {
+				category.AppendLine("  Installed .NET SDK roots:");
+				foreach (var candidate in discovered) {
+					category.AppendLine(
+						$"    {candidate.RootPath}  (SDK {candidate.HighestSdkVersion}, "
+						+ $"{candidate.Architecture?.ToString() ?? "unknown architecture"})");
+				}
+			}
+
+			if (availability.InProcessSdk == null || availability.SupportedSdkRoot == null) {
+				category.AppendLine(
+					$"  To fix: install the {ArchitectureInstallerName(architecture)} .NET SDK 10 or newer side-by-side - "
+					+ $"\"winget install Microsoft.DotNet.SDK.10 --architecture {ArchitectureInstallerName(architecture)}\" - "
+					+ "then restart OpenDevelop. An SDK added under Tools > Options > .NET SDK is picked up the same way.");
+			}
 			category.AppendLine(string.Empty);
 		}
-		
+
 		/// <summary>The spelling the .NET installers and winget use for an architecture.</summary>
 		static string ArchitectureInstallerName(Architecture architecture)
 		{
@@ -283,7 +361,7 @@ namespace ICSharpCode.SharpDevelop.Project
 
 			string dotnetPath;
 			try {
-				dotnetPath = Sdk.DotNetSdkService.ResolveEffectiveSdk().DotnetExecutablePath;
+				dotnetPath = Sdk.DotNetSdkService.ResolveEffectiveSdk()?.DotnetExecutablePath;
 			} catch (Exception ex) {
 				LoggingService.Warn("Could not resolve a dotnet host to migrate " + fileName + " to .slnx.", ex);
 				return fileName;

@@ -80,7 +80,14 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// </summary>
 		static ProcessStartInfo CreateDotnetChildStartInfo()
 		{
-			var sdk = DotNetSdkService.ResolveEffectiveSdk();
+			// No fallback: with no supported (.NET 10+) SDK there is no host to launch, and running
+			// the build under an older one is exactly what made a net10.0 project fail with an
+			// unexplained missing-import error (issue #19) instead of a message naming the cause.
+			var sdk = DotNetSdkService.ResolveEffectiveSdk()
+				?? throw new InvalidOperationException(
+					"No .NET 10 (or newer) SDK is installed, so this build cannot run. Install one"
+					+ " side-by-side (\"winget install Microsoft.DotNet.SDK.10\"), or select one under"
+					+ " Tools > Options > .NET SDK, then build again.");
 			var psi = new ProcessStartInfo(sdk.DotnetExecutablePath) {
 				// Deliberately NOT project.Directory: dotnet's SDK resolution walks up from the
 				// current working directory looking for global.json, and OpenDevelop's own repo
@@ -479,13 +486,15 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// </summary>
 		internal async Task<bool> RestoreAsync(string solutionOrProject, ProjectBuildOptions options, IBuildFeedbackSink feedbackSink, CancellationToken cancellationToken)
 		{
-			var psi = CreateDotnetChildStartInfo();
-			psi.ArgumentList.Add("restore");
-			psi.ArgumentList.Add(solutionOrProject);
-			psi.ArgumentList.Add("--nologo");
-			AddGlobalProperties(psi, options);
 			var output = new List<string>();
 			try {
+				// Inside the try: with no supported SDK this throws, and the contract here is that a
+				// restore that cannot run returns false (each project's own build then reports it).
+				var psi = CreateDotnetChildStartInfo();
+				psi.ArgumentList.Add("restore");
+				psi.ArgumentList.Add(solutionOrProject);
+				psi.ArgumentList.Add("--nologo");
+				AddGlobalProperties(psi, options);
 				using var process = new Process { StartInfo = psi };
 				process.OutputDataReceived += (sender, e) => { if (e.Data != null) lock (output) output.Add(e.Data); };
 				process.ErrorDataReceived += (sender, e) => { if (e.Data != null) lock (output) output.Add(e.Data); };
@@ -814,7 +823,15 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (options.Target == BuildTarget.Build)
 				LoggingService.Debug("Fast up-to-date check: building " + project.Name + " (" + notUpToDate + ")");
 			var buildStartedUtc = DateTime.UtcNow;
-			var psi = CreateDotnetChildStartInfo();
+			ProcessStartInfo psi;
+			try {
+				psi = CreateDotnetChildStartInfo();
+			} catch (InvalidOperationException ex) {
+				// No supported SDK: report through the sink. The caller (BuildEngine.DoStartBuild) is
+				// async void and would take the whole process down on an unhandled exception.
+				feedbackSink.ReportError(new BuildError(project.FileName.ToString(), ex.Message));
+				return false;
+			}
 			psi.ArgumentList.Add(TargetToVerb(options.Target));
 			psi.ArgumentList.Add(project.FileName.ToString());
 			psi.ArgumentList.Add("--nologo");

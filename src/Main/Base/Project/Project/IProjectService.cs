@@ -99,6 +99,15 @@ namespace ICSharpCode.SharpDevelop.Project
 		bool OpenSolutionOrProject(FileName fileName);
 
 		/// <summary>
+		/// Reports, once per session, whether this machine has a .NET SDK the IDE can actually use
+		/// in-process, whether a .NET SDK 10 (what this IDE and its projects target) is installed,
+		/// and whether the SDK picked under Tools &gt; Options &gt; .NET SDK still exists. Writes to
+		/// the Build output pad, and is a no-op when nothing needs attention. Called at startup, and
+		/// again when a solution is opened (where the second call does nothing).
+		/// </summary>
+		void ReportSdkAvailability();
+
+		/// <summary>
 		/// Re-reads one project of the open solution from disk in place, without closing the
 		/// solution or any document, and publishes <see cref="ProjectReloadedMessageEventArgs"/>.
 		/// Returns false when the project cannot be reloaded on its own (the caller then reloads

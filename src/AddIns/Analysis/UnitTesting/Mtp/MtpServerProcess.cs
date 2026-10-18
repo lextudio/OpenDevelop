@@ -64,8 +64,11 @@ namespace ICSharpCode.UnitTesting.Mtp
 				return host;
 			// PropertyService (which DotNetSdkService reads through) is UI-thread-affinitized;
 			// this can run on a background thread.
+			// ResolveEffectiveSdk() is null with no .NET 10+ SDK; say so rather than throw an NRE.
 			return SD.MainThread.InvokeIfRequired(() =>
-				ICSharpCode.SharpDevelop.Project.Sdk.DotNetSdkService.ResolveEffectiveSdk().DotnetExecutablePath);
+				ICSharpCode.SharpDevelop.Project.Sdk.DotNetSdkService.ResolveEffectiveSdk()?.DotnetExecutablePath)
+				?? throw new InvalidOperationException(
+					"No .NET 10 (or newer) SDK is installed, so tests cannot be run. Install one or select one under Tools > Options > .NET SDK.");
 		}
 
 		public static async Task<MtpServerProcess> StartAsync(string testAssemblyPath, string? workingDirectory, CancellationToken cancellationToken)

@@ -403,21 +403,33 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 
 		/// <summary>
 		/// Resolves the SDK to actually use: the user's stored selection if it still exists on
-		/// disk, otherwise the system default (falling back to a bare "dotnet"/PATH resolution if
-		/// even that can't be found - matching the previous fallback behavior).
+		/// disk and is supported (.NET 10+), otherwise the highest supported system default.
+		/// Returns <c>null</c> when no supported SDK exists; callers must report that, not fall back.
 		/// </summary>
 		public static DotNetSdkInfo ResolveEffectiveSdk()
 		{
-			return ResolveEffectiveSdk(DiscoverSdks());
+			return ResolveEffectiveSdk(DiscoverSdks(), SelectedSdkRootPath);
 		}
 
 		internal static DotNetSdkInfo ResolveEffectiveSdk(IReadOnlyList<DotNetSdkInfo> discovered)
 		{
+			return ResolveEffectiveSdk(discovered, SelectedSdkRootPath);
+		}
+
+		/// <summary>
+		/// Resolves the SDK to actually use from an already-discovered set, for a given preferred
+		/// root. A preference is honoured only when it names a supported SDK; otherwise a supported
+		/// one is chosen, and <c>null</c> when there is none - there is deliberately no fallback to
+		/// an older major version, which is what silently produced the .NET 9 evaluation behind
+		/// issue #19.
+		/// </summary>
+		public static DotNetSdkInfo ResolveEffectiveSdk(IReadOnlyList<DotNetSdkInfo> discovered, string preferredRoot)
+		{
 			if (discovered == null)
 				throw new ArgumentNullException(nameof(discovered));
-			string selected = SelectedSdkRootPath;
+			string selected = preferredRoot;
 			if (!string.IsNullOrEmpty(selected)) {
-				var match = discovered.FirstOrDefault(s => string.Equals(s.RootPath, NormalizeRoot(selected), StringComparison.OrdinalIgnoreCase));
+				var match = discovered.FirstOrDefault(s => IsSupportedSdk(s) && SameRoot(s.RootPath, selected));
 				if (match != null)
 					return match;
 			}
@@ -434,20 +446,19 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			// evaluation of any net10.0+-targeted project - Microsoft.NET.Sdk from an old SDK doesn't
 			// understand newer TFMs/item-default conventions correctly). Version-sort instead so the
 			// outcome doesn't depend on PATH-resolution succeeding or on candidate enumeration order.
+			// System-origin SDKs win, but a supported Bundled/Custom one is still better than none
+			// (the IDE's own SDK 10 beside a system SDK 9 is a valid setup), so rank rather than filter.
 			var systemDefault = discovered
-				.Where(s => s.Origin == DotNetSdkOrigin.System)
-				.OrderByDescending(s => Version.TryParse(s.HighestSdkVersion?.Split('-')[0], out var v) ? v : new Version(0, 0))
+				.Where(IsSupportedSdk)
+				.OrderByDescending(s => s.Origin == DotNetSdkOrigin.System)
+				.ThenByDescending(s => Version.TryParse(s.HighestSdkVersion?.Split('-')[0], out var v) ? v : new Version(0, 0))
 				.FirstOrDefault();
 			if (systemDefault != null)
 				return systemDefault;
 
-			return new DotNetSdkInfo {
-				Label = "PATH (unresolved)",
-				RootPath = null,
-				DotnetExecutablePath = "dotnet",
-				HighestSdkVersion = null,
-				Origin = DotNetSdkOrigin.System
-			};
+			// Deliberately no synthetic bare-"dotnet" fallback any more: PATH would resolve straight
+			// back to the unsupported SDK, which is the silent .NET 9 evaluation of issue #19.
+			return null;
 		}
 
 		/// <summary>
@@ -464,22 +475,33 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 		/// </summary>
 		public static DotNetSdkInfo ResolveEffectiveSdkForInProcessHosting()
 		{
-			return ResolveEffectiveSdkForInProcessHosting(DiscoverSdks());
+			return ResolveEffectiveSdkForInProcessHosting(DiscoverSdks(), SelectedSdkRootPath);
 		}
 
 		internal static DotNetSdkInfo ResolveEffectiveSdkForInProcessHosting(IReadOnlyList<DotNetSdkInfo> discovered)
+		{
+			return ResolveEffectiveSdkForInProcessHosting(discovered, SelectedSdkRootPath);
+		}
+
+		/// <summary>
+		/// Like <see cref="ResolveEffectiveSdkForInProcessHosting()"/>, from an already-discovered
+		/// set and for a given preferred root: the candidates are restricted to SDKs this process's
+		/// architecture can load in-process <em>and</em> that are supported, and the result is null
+		/// when none is - never a mismatched or too-old SDK that would crash or confuse evaluation.
+		/// </summary>
+		public static DotNetSdkInfo ResolveEffectiveSdkForInProcessHosting(IReadOnlyList<DotNetSdkInfo> discovered, string preferredRoot)
 		{
 			if (discovered == null)
 				throw new ArgumentNullException(nameof(discovered));
 
 			var processArchitecture = RuntimeInformation.ProcessArchitecture;
-			var compatible = discovered.Where(s => s.Architecture == processArchitecture).ToList();
+			var compatible = discovered.Where(s => s.Architecture == processArchitecture && IsSupportedSdk(s)).ToList();
 			if (compatible.Count == 0)
 				return null;
 
-			string selected = SelectedSdkRootPath;
+			string selected = preferredRoot;
 			if (!string.IsNullOrEmpty(selected)) {
-				var match = compatible.FirstOrDefault(s => string.Equals(s.RootPath, NormalizeRoot(selected), StringComparison.OrdinalIgnoreCase));
+				var match = compatible.FirstOrDefault(s => SameRoot(s.RootPath, selected));
 				if (match != null)
 					return match;
 			}
@@ -494,6 +516,111 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			return compatible
 				.OrderByDescending(s => Version.TryParse(s.HighestSdkVersion?.Split('-')[0], out var v) ? v : new Version(0, 0))
 				.First();
+		}
+
+		/// <summary>
+		/// What the machine's .NET SDK situation looks like for this IDE, as plain facts a caller can
+		/// report. Deliberately separate from the reporting so the decision can be unit-tested
+		/// without an IDE, an output pad or a live property service.
+		/// </summary>
+		public sealed class DotNetSdkAvailability
+		{
+			/// <summary>An SDK this process's own architecture can load in-process, or null.</summary>
+			public DotNetSdkInfo InProcessSdk { get; init; }
+
+			/// <summary>The discovered root holding a supported .NET SDK (10 or newer).</summary>
+			public DotNetSdkInfo SupportedSdkRoot { get; init; }
+
+			/// <summary>The supported SDK version found in <see cref="SupportedSdkRoot"/>, or null.</summary>
+			public string SupportedSdkVersion { get; init; }
+
+			/// <summary>Whether Tools &gt; Options &gt; .NET SDK names a root at all.</summary>
+			public bool PreferredRootSet { get; init; }
+
+			/// <summary>The preferred root as discovered, or null when it is set but no longer installed.</summary>
+			public DotNetSdkInfo PreferredSdk { get; init; }
+
+			/// <summary>True when a preferred root is set but nothing at that path was discovered.</summary>
+			public bool PreferredRootMissing => PreferredRootSet && PreferredSdk == null;
+
+			/// <summary>
+			/// True when nothing here needs the user's attention. Note this is about the facts above
+			/// only: a healthy result still does not promise a build will succeed, which is why the
+			/// report says so rather than treating "healthy" as "fine".
+			/// </summary>
+			public bool IsHealthy => InProcessSdk != null && SupportedSdkRoot != null && !PreferredRootMissing && !PreferredRootUnsupported;
+
+			/// <summary>True when the preferred root exists but holds no supported SDK, or one of another architecture than this process, so it is ignored.</summary>
+			public bool PreferredRootUnsupported => PreferredSdk != null
+				&& (!IsSupportedSdk(PreferredSdk) || PreferredSdk.Architecture != RuntimeInformation.ProcessArchitecture);
+		}
+
+		/// <summary>
+		/// Describes the .NET SDK situation for a set of already-discovered roots.
+		/// </summary>
+		/// <param name="discovered">Roots from <see cref="DiscoverSdks()"/>.</param>
+		/// <param name="preferredRoot">The root named under Tools &gt; Options &gt; .NET SDK, or null/empty.</param>
+		/// <param name="noCompatibleInProcessSdkFound">
+		/// The definitive post-evaluation signal from <c>MSBuildInternals</c>: when set, in-process
+		/// project evaluation has already failed for real, whatever discovery says.
+		/// </param>
+		public static DotNetSdkAvailability DescribeAvailability(
+			IReadOnlyList<DotNetSdkInfo> discovered,
+			string preferredRoot,
+			bool noCompatibleInProcessSdkFound = false)
+		{
+			if (discovered == null)
+				throw new ArgumentNullException(nameof(discovered));
+
+			var inProcess = noCompatibleInProcessSdkFound
+				? null
+				: ResolveEffectiveSdkForInProcessHosting(discovered, preferredRoot);
+
+			var supportedSdkRoot = discovered.FirstOrDefault(IsSupportedSdk);
+
+			bool preferredSet = !string.IsNullOrEmpty(preferredRoot);
+			var preferred = preferredSet
+				? discovered.FirstOrDefault(s => SameRoot(s.RootPath, preferredRoot))
+				: null;
+
+			return new DotNetSdkAvailability {
+				InProcessSdk = inProcess,
+				SupportedSdkRoot = supportedSdkRoot,
+				SupportedSdkVersion = supportedSdkRoot?.InstalledSdkVersions.LastOrDefault(IsSupportedSdkVersion),
+				PreferredRootSet = preferredSet,
+				PreferredSdk = preferred
+			};
+		}
+
+		/// <summary>Major version of an SDK version string ("10.0.401" -&gt; 10), or -1 if unparsable.</summary>
+		public static int SdkMajorVersion(string version)
+		{
+			if (string.IsNullOrEmpty(version))
+				return -1;
+			int dot = version.IndexOf('.');
+			return int.TryParse(dot < 0 ? version : version.Substring(0, dot), out var major) ? major : -1;
+		}
+
+		static bool IsSupportedSdk(DotNetSdkInfo sdk)
+		{
+			return sdk != null && sdk.InstalledSdkVersions.Any(IsSupportedSdkVersion);
+		}
+
+		static bool IsSupportedSdkVersion(string version)
+		{
+			return SdkMajorVersion(version) >= 10;
+		}
+
+		/// <summary>Whether two SDK root paths name the same directory, ignoring a trailing separator.</summary>
+		public static bool SameRoot(string left, string right)
+		{
+			if (string.IsNullOrEmpty(left) || string.IsNullOrEmpty(right))
+				return false;
+			// Normalise both sides (as the old NormalizeRoot comparison did) so mixed separators,
+			// "..", and relative stored preferences still match.
+			string l = NormalizeRoot(left) ?? left.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+			string r = NormalizeRoot(right) ?? right.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+			return string.Equals(l, r, StringComparison.OrdinalIgnoreCase);
 		}
 
 		/// <summary>

@@ -131,12 +131,16 @@ public sealed class WorkbenchTests
         // names (Label/RootPath/HighestSdkVersion), only "origin" and "selectedRootPath" are
         // explicitly cased.
         var effective = result.GetProperty("effective");
+        Assert.True(effective.ValueKind == JsonValueKind.Object,
+            "Expected an effective SDK; null means no .NET SDK 10 or newer is installed on this machine.");
         Assert.False(string.IsNullOrEmpty(effective.GetProperty("Label").GetString()),
             "Expected an effective SDK label to be resolved");
         Assert.False(string.IsNullOrEmpty(effective.GetProperty("RootPath").GetString()),
             "Expected the effective SDK to have a root path");
         Assert.False(string.IsNullOrEmpty(effective.GetProperty("HighestSdkVersion").GetString()),
             "Expected the effective SDK to report its highest version");
+        Assert.True(SdkMajorVersion(effective.GetProperty("HighestSdkVersion").GetString()) >= 10,
+            "OpenDevelop supports only .NET SDK 10 or newer; the effective SDK must never fall back to an older SDK.");
 
         var sdks = result.GetProperty("sdks").EnumerateArray().ToList();
         Assert.True(sdks.Count > 0, "Expected at least one discovered .NET SDK");
@@ -149,7 +153,8 @@ public sealed class WorkbenchTests
         var list = await _app.InvokeAsync("od.sdk.list");
         var sdks = list.GetProperty("sdks").EnumerateArray().ToList();
         Assert.True(sdks.Count > 0, "Expected at least one discovered .NET SDK");
-        var target = sdks[0].GetProperty("RootPath").GetString()!;
+        var target = sdks.First(s => SdkMajorVersion(s.GetProperty("HighestSdkVersion").GetString()) >= 10)
+            .GetProperty("RootPath").GetString()!;
 
         try
         {
@@ -168,6 +173,11 @@ public sealed class WorkbenchTests
             var effectiveRoot = after.GetProperty("effective").GetProperty("RootPath").GetString();
             Assert.False(string.IsNullOrEmpty(effectiveRoot));
         }
+    }
+
+    static int SdkMajorVersion(string? version)
+    {
+        return int.TryParse(version?.Split('.')[0], out var major) ? major : -1;
     }
 
     [Fact]
