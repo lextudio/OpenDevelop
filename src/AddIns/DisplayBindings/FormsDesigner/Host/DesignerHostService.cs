@@ -3546,16 +3546,20 @@ sealed class DesignerHostService : IDesignerChildService
 		referencedAssemblies.Clear();
 		rootDesignSize = ReadRootDesignSize(snapshot);
 		rootAutoScaleDimensions = ReadRootAutoScaleDimensions(snapshot);
+		var projectReferencePaths = snapshot.ReferencedAssemblyPaths
+			.Where(path => File.Exists(path) && !string.Equals(path, snapshot.ProjectAssemblyPath, StringComparison.OrdinalIgnoreCase))
+			.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+		var referencePaths = projectReferencePaths.Concat(snapshot.ToolboxAssemblyPaths)
+			.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 		if (!String.IsNullOrWhiteSpace(snapshot.ProjectAssemblyPath) && File.Exists(snapshot.ProjectAssemblyPath)) {
 			var managedAssemblyPath = ResolveManagedAssemblyPath(snapshot.ProjectAssemblyPath);
 			if (File.Exists(managedAssemblyPath)) {
-				projectLoadContext = new ProjectAssemblyLoadContext(managedAssemblyPath);
+				projectLoadContext = new ProjectAssemblyLoadContext(managedAssemblyPath, snapshot.ToolboxAssemblyPaths);
 				projectAssembly = projectLoadContext.LoadFromAssemblyPath(managedAssemblyPath);
 			}
 		}
-		var referencePaths = snapshot.ReferencedAssemblyPaths.Where(path => File.Exists(path) && !string.Equals(path, snapshot.ProjectAssemblyPath, StringComparison.OrdinalIgnoreCase)).ToArray();
 		if (projectLoadContext == null && referencePaths.Length > 0)
-			projectLoadContext = new ProjectAssemblyLoadContext(Path.GetFullPath(referencePaths[0]));
+			projectLoadContext = new ProjectAssemblyLoadContext(Path.GetFullPath(referencePaths[0]), snapshot.ToolboxAssemblyPaths);
 		if (projectLoadContext != null) {
 			int loaded = 0;
 			// A LibreWinForms project's output carries its own copies of the framework the host itself
@@ -5105,12 +5109,29 @@ sealed class MeQualifierRewriter : Vb.VisualBasicSyntaxRewriter
 sealed class ProjectAssemblyLoadContext : AssemblyLoadContext
 {
 	readonly AssemblyDependencyResolver resolver;
-	public ProjectAssemblyLoadContext(string assemblyPath) : base(isCollectible: true) => resolver = new AssemblyDependencyResolver(assemblyPath);
+	readonly IReadOnlyDictionary<string, string> additionalAssemblies;
+	public ProjectAssemblyLoadContext(string assemblyPath, IEnumerable<string> additionalAssemblyPaths) : base(isCollectible: true)
+	{
+		resolver = new AssemblyDependencyResolver(assemblyPath);
+		var paths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		foreach (var path in additionalAssemblyPaths.Where(File.Exists)) {
+			try {
+				var name = AssemblyName.GetAssemblyName(path).Name;
+				if (!String.IsNullOrEmpty(name) && !paths.ContainsKey(name)) paths.Add(name, path);
+			} catch (Exception exception) when (exception is BadImageFormatException or IOException or UnauthorizedAccessException) {
+				// Native DLLs beside a selected control are dependencies for native loading, not
+				// managed assemblies we may index or LoadFromAssemblyPath.
+			}
+		}
+		additionalAssemblies = paths;
+	}
 	protected override Assembly? Load(AssemblyName assemblyName)
 	{
 		if (assemblyName.Name is "System.Windows.Forms" or "System.Drawing.Common" or "System.Drawing") return null;
 		var path = resolver.ResolveAssemblyToPath(assemblyName);
-		return path == null ? null : LoadFromAssemblyPath(path);
+		if (path != null) return LoadFromAssemblyPath(path);
+		return assemblyName.Name != null && additionalAssemblies.TryGetValue(assemblyName.Name, out var additional)
+			? LoadFromAssemblyPath(additional) : null;
 	}
 }
 

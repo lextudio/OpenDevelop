@@ -100,6 +100,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 		readonly ListBox toolbox = new();
 		readonly CollectionViewSource itemsView = new();
 		readonly List<SharedToolboxItem> items = new();
+		readonly List<ToolboxContextAction> contextActions = new();
 		HashSet<string> activeScopes;
 		IReadOnlyDictionary<string, int>? activeCategoryPriorities;
 		IReadOnlyList<DesignerToolboxFilterInfo> activeConsumerFilters = Array.Empty<DesignerToolboxFilterInfo>();
@@ -225,6 +226,46 @@ namespace ICSharpCode.SharpDevelop.Gui
 			itemsView.View.Refresh();
 		}
 
+		/// <summary>Removes rows owned by a caller. This deliberately uses a predicate instead of
+		/// a category name: WinForms' selectable third-party rows share the normal WinForms scope
+		/// and must never remove the built-in or project catalog.</summary>
+		public void RemoveItems(Func<SharedToolboxItem, bool> predicate)
+		{
+			if (predicate == null) throw new ArgumentNullException(nameof(predicate));
+			items.RemoveAll(item => predicate(item));
+			itemsView.View.Refresh();
+		}
+
+		/// <summary>Registers a context-menu command visible only while its scope is active. The
+		/// shared pad stays framework-neutral; the action itself remains owned by its add-in.</summary>
+		public void RegisterContextAction(string scope, string label, Action execute)
+		{
+			if (String.IsNullOrWhiteSpace(scope)) throw new ArgumentException("A scope is required.", nameof(scope));
+			if (String.IsNullOrWhiteSpace(label)) throw new ArgumentException("A label is required.", nameof(label));
+			if (execute == null) throw new ArgumentNullException(nameof(execute));
+			if (contextActions.Any(action => action.Scope == scope && action.Label == label)) return;
+			contextActions.Add(new ToolboxContextAction(scope, label, execute));
+			RebuildContextMenu();
+		}
+
+		void RebuildContextMenu()
+		{
+			var available = contextActions.Where(action => activeScopes?.Contains(action.Scope) == true).ToList();
+			if (available.Count == 0) {
+				toolbox.ContextMenu = null;
+				return;
+			}
+			var menu = new ContextMenu();
+			foreach (var action in available) {
+				var menuItem = new MenuItem { Header = action.Label };
+				menuItem.Click += (_, _) => action.Execute();
+				menu.Items.Add(menuItem);
+			}
+			toolbox.ContextMenu = menu;
+		}
+
+		sealed record ToolboxContextAction(string Scope, string Label, Action Execute);
+
 		/// <summary>Applies the same case-insensitive display-name/category filter to whichever
 		/// designer scopes are active. The owning pad may expose this through its search chrome.</summary>
 		public void Filter(string text)
@@ -313,6 +354,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 			activeCategoryPriorities = nextPriorities;
 			activeConsumerFilters = consumerFilters ?? Array.Empty<DesignerToolboxFilterInfo>();
 			activeCustomFilterEvaluator = customFilterEvaluator;
+			RebuildContextMenu();
 			itemsView.View.Refresh();
 			resetSelectsFirst = selectFirst;
 			if (selectFirst)

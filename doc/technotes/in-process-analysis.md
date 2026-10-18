@@ -1361,10 +1361,11 @@ checked.
   runtime's default theme style, which under LibreWPF is not the Microsoft theme). "Create Empty" for a style and a template
   exist (v41, v42).
 - **Rich-text in-place editor** (`FormatedTextEditor`, section 5 item 6). `DesignSurface.BeginTextEdit` is plain text. Optional.
-- **Sidebar and custom component catalogue** (the old "Choose Toolbox Items"). `Src/Gui/AddComponentsDialog.cs`,
-  `ConfigureSideBarDialog.cs`, `ComponentLibraryLoader.cs` and `Src/Commands/SideBarCommands.cs` are `Compile Remove`d in the
-  FormsDesigner csproj and nothing in the out-of-process designer replaces them. The shared Toolbox's document category priority
-  (section 5 item 15, delivered) is a different thing.
+- **Sidebar and custom component catalogue** (the old "Choose Toolbox Items") is now replaced by a WinForms-scoped
+  shared-Toolbox context command. It scans user-selected directories as PE metadata, lets the user choose individual public
+  creatable controls/components, persists their paths and type names, and passes the selected DLL plus sibling dependencies only
+  to the collectible Forms child. The removed XmlForms sidebar/configuration implementation remains excluded; no third-party
+  assembly is loaded into the IDE process.
 - **The "Edit Rows and Columns..." dialog** as one dialog (see the TableLayout row above).
 - **One undo record across XAML and code-behind** for a generated handler (deliberately not done, see the handler row above).
 

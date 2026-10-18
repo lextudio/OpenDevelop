@@ -2755,6 +2755,44 @@ public sealed class FormsDesignerHostClientTests
 			DesignerText(await client.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
 	}
 
+	/// <summary>A "Choose Toolbox Items" selection is intentionally not a project reference:
+	/// the parent puts the selected third-party DLL and its sibling dependencies into the document
+	/// snapshot, and only the collectible child resolves it. This keeps a broken custom control out
+	/// of the IDE process while still making the selected toolbox row creatable.</summary>
+	[Fact]
+	public void ToolboxSelectionCodec_RoundTripsDottedTypeAndRejectsInvalidValues()
+	{
+		var value = ToolboxSelectionCodec.Encode(@"C:\controls\Acme.Controls.dll", "Acme.Controls.Outer+Nested");
+		Assert.True(ToolboxSelectionCodec.TryDecode(value, out var assemblyPath, out var typeName));
+		Assert.Equal(@"C:\controls\Acme.Controls.dll", assemblyPath);
+		Assert.Equal("Acme.Controls.Outer+Nested", typeName);
+		Assert.False(ToolboxSelectionCodec.TryDecode("not-a-selection", out _, out _));
+	}
+
+	[Fact]
+	public async Task ChildHost_AddsControlFromExternalToolboxAssembly()
+	{
+		var fixtureAssembly = CustomControlFixtureDll();
+		Assert.True(File.Exists(fixtureAssembly), fixtureAssembly);
+		var references = Directory.EnumerateFiles(Path.GetDirectoryName(fixtureAssembly)!, "*.dll").ToArray();
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "external-toolbox");
+		// Unlike the project-control test above, this deliberately leaves ProjectAssemblyPath empty.
+		snapshot.ToolboxAssemblyPaths.AddRange(references);
+		Assert.True((await client.OpenAsync(snapshot, timeout.Token)).Accepted);
+
+		var added = await client.AddElementAsync(1, "Form1", new DesignerToolboxItemInfo {
+			TypeName = "FormsDesigner.CustomControlFixture.GreetingPanel"
+		}, "externalGreetingPanel1", 20, 30, cancellationToken: timeout.Token);
+
+		Assert.Contains(added.Components, component => component.Name == "externalGreetingPanel1"
+			&& component.Type == "FormsDesigner.CustomControlFixture.GreetingPanel");
+		Assert.Contains("new FormsDesigner.CustomControlFixture.GreetingPanel()",
+			DesignerText(await client.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+		Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), assembly => assembly.GetName().Name == "FormsDesigner.CustomControlFixture");
+	}
+
 	[Fact]
 	public async Task ChildHost_WritesProjectComponentDateTimePropertyToVisualBasic()
 	{

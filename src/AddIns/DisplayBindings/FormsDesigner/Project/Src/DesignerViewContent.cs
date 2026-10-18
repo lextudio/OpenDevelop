@@ -81,6 +81,7 @@ namespace ICSharpCode.FormsDesigner
 		// the side-by-side workbench that is simply focus moving between the panes - and must wait for
 		// it rather than supersede it with an identical one.
 		RemoteDocumentSet inFlightDocuments;
+		bool pendingCustomToolboxRefresh;
 		readonly Stack<RemoteDocumentSet> remoteUndo = new Stack<RemoteDocumentSet>();
 		readonly Stack<RemoteDocumentSet> remoteRedo = new Stack<RemoteDocumentSet>();
 			readonly DesignerCommandController commands = new DesignerCommandController();
@@ -689,6 +690,7 @@ namespace ICSharpCode.FormsDesigner
 		FormsDesignerViewContent(IViewContent primaryViewContent)
 			: base()
 			{
+				CustomToolboxCatalog.SelectionsChanged += CustomToolboxSelectionsChanged;
 				commands.RegisterStandard(() => IsRemoteDesignerLoaded && remoteUndo.Count > 0, UndoCore,
 					() => IsRemoteDesignerLoaded && remoteRedo.Count > 0, RedoCore,
 					() => SelectedRemoteComponents().Count > 0, DeleteCore);
@@ -925,11 +927,11 @@ namespace ICSharpCode.FormsDesigner
 		/// still the most recent load request when it completes. See
 		/// doc/technotes/designer-common.md's Design-tab-activation convention.
 		/// </summary>
-		void LoadRemoteDesigner()
+		void LoadRemoteDesigner(bool force = false)
 		{
 			var backend = GetProjectBackend();
 			var currentTexts = CaptureRemoteDocuments();
-			if (IsRemoteDesignerLoaded && RemoteDocumentsUnchanged(currentTexts, lastLoadedDocuments)) {
+			if (!force && IsRemoteDesignerLoaded && RemoteDocumentsUnchanged(currentTexts, lastLoadedDocuments)) {
 				base.UserContent = remoteControl;
 				return;
 			}
@@ -964,9 +966,28 @@ namespace ICSharpCode.FormsDesigner
 			// Load of the same text behind a load that will never finish.
 			_ = LoadRemoteDesignerAsync(myGeneration, currentTexts, snapshot, canvas, oldClient, backend)
 				.ContinueWith(_ => SD.MainThread.InvokeAsyncAndForget(() => {
-					if (ReferenceEquals(inFlightDocuments, currentTexts))
+					if (ReferenceEquals(inFlightDocuments, currentTexts)) {
 						inFlightDocuments = null;
+						if (pendingCustomToolboxRefresh) {
+							pendingCustomToolboxRefresh = false;
+							LoadRemoteDesigner(force: true);
+						}
+					}
 				}), System.Threading.Tasks.TaskScheduler.Default);
+		}
+
+		void CustomToolboxSelectionsChanged()
+		{
+			// Saving the chooser must make its newly visible rows usable in every already-open
+			// design session. A forced snapshot update rebuilds the child collectible context with
+			// ToolboxAssemblyPaths; normal unchanged-source activation intentionally skips it.
+			if (disposing) return;
+			if (inFlightDocuments != null) {
+				pendingCustomToolboxRefresh = true;
+				return;
+			}
+			if (IsRemoteDesignerLoaded)
+				LoadRemoteDesigner(force: true);
 		}
 
 		async System.Threading.Tasks.Task LoadRemoteDesignerAsync(long generation, RemoteDocumentSet documents,
@@ -1164,6 +1185,10 @@ namespace ICSharpCode.FormsDesigner
 			if (!string.IsNullOrEmpty(outputDirectory) && Directory.Exists(outputDirectory))
 				snapshot.ReferencedAssemblyPaths.AddRange(Directory.EnumerateFiles(outputDirectory, "*.dll")
 					.Where(path => !string.Equals(path, snapshot.ProjectAssemblyPath, StringComparison.OrdinalIgnoreCase)));
+			// Third-party items chosen from the custom catalogue are still only paths here. Their
+			// metadata was inspected in the workbench, but their code and dependencies load solely
+			// into the disposable child along with the normal copy-local project references.
+			snapshot.ToolboxAssemblyPaths.AddRange(CustomToolboxCatalog.ReferencedAssemblyPaths());
 			foreach (var source in SourceFiles) {
 				snapshot.Files.Add(new DesignerSourceFileSnapshot {
 					FileName = source.Key.FileName.ToString(),
@@ -1203,6 +1228,7 @@ namespace ICSharpCode.FormsDesigner
 			remoteClient?.Dispose();
 			remoteClient = null;
 			inFlightDocuments = null;
+			pendingCustomToolboxRefresh = false;
 		}
 
 		void RemoteHostExited(object sender, EventArgs e)
@@ -2090,6 +2116,7 @@ namespace ICSharpCode.FormsDesigner
 
 		public override void Dispose()
 		{
+			CustomToolboxCatalog.SelectionsChanged -= CustomToolboxSelectionsChanged;
 			disposing = true;
 			try {
 				// base.Dispose() is called first because it may trigger a call
@@ -2712,6 +2739,10 @@ namespace ICSharpCode.FormsDesigner
 			// eagerly, so the same single ListBox (Base's SharedToolbox) is what the pad mounts
 			// regardless of which designer opened the file.
 			get {
+				// ToolsContent is queried by the WPF workbench dispatcher. Registering here keeps
+				// SharedToolbox.Instance (which asserts dispatcher affinity) out of this type's
+				// static initializer, because legacy/background consumers may construct a view first.
+				CustomToolboxCatalog.EnsureRegistered();
 				return SharedToolboxAccess.ToolboxControl;
 			}
 		}

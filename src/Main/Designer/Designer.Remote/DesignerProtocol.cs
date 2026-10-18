@@ -16,6 +16,31 @@ using System.Collections.Generic;
 
 namespace ICSharpCode.SharpDevelop.Designer.Remote
 {
+	/// <summary>XML-safe persistence codec for a selected external toolbox type.</summary>
+	public static class ToolboxSelectionCodec
+	{
+		const char Separator = '.';
+
+		public static string Encode(string assemblyPath, string typeName) =>
+			Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(assemblyPath)) + Separator
+			+ Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(typeName));
+
+		public static bool TryDecode(string value, out string assemblyPath, out string typeName)
+		{
+			assemblyPath = typeName = String.Empty;
+			var separator = value.IndexOf(Separator);
+			if (separator <= 0 || separator == value.Length - 1) return false;
+			try {
+				assemblyPath = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(value.Substring(0, separator)));
+				typeName = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(value.Substring(separator + 1)));
+				return !String.IsNullOrWhiteSpace(assemblyPath) && !String.IsNullOrWhiteSpace(typeName);
+			} catch (FormatException) {
+				assemblyPath = typeName = String.Empty;
+				return false;
+			}
+		}
+	}
+
 	/// <summary>Protocol version. Bump on incompatible wire changes; the handshake rejects
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
@@ -83,7 +108,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v61 adds indexed design/set-binding-relative-source support for direct Binding children.
 		// v62 adds indexed design/set-binding-source support for direct Binding children.
 		// v63 adds WPF's optional rich TextBlock inline-run snapshot and design/set-rich-text.
-	public const int Version = 63;
+		// v64 separates explicitly chosen WinForms toolbox assemblies from project references.
+	public const int Version = 64;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -121,6 +147,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// without reflecting into the IDE's project system. Empty for stock-controls-only
 		/// documents.</summary>
 		public List<string> ReferencedAssemblyPaths { get; set; } = new List<string>();
+		/// <summary>Third-party assemblies selected by the WinForms custom-toolbox catalogue and
+		/// their dependency probes. They are deliberately not project references: only the Forms
+		/// child consumes them, so they cannot leak extra rows into project discovery.</summary>
+		public List<string> ToolboxAssemblyPaths { get; set; } = new List<string>();
 		public string PrimaryFileName { get; set; } = "";
 		public string DesignerFileName { get; set; } = "";
 		/// <summary>Roslyn language name: "CSharp" or "VisualBasic" (defaults to CSharp). XAML backends leave it empty.</summary>
