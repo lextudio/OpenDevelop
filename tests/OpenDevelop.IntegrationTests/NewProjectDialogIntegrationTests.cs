@@ -49,9 +49,51 @@ public sealed class NewProjectDialogIntegrationTests
     }
 
     [Fact]
-    public async Task NewSolutionDialog_CreatesProjectAndSolutionFiles()
+    public Task NewSolutionDialog_CreatesProjectAndSolutionFiles() => CreateConsoleSolutionAndBuildAsync();
+
+    // Issue #19: the machine there evaluated the new project under SDK 9.0.316, where the Roslyn
+    // targets path comes out empty. Whatever SDK the user's setting points at - a root that only
+    // holds SDK 9, or a bare version such as "10.0" that is not a root at all - the IDE must keep
+    // using a .NET 10+ SDK and the project it creates must still load and build.
+    [Theory]
+    [InlineData("sdk9-root")]
+    [InlineData("10.0")]
+    public async Task NewSolutionDialog_StillCreatesAWorkingProject_WhenTheSelectedSdkIsUnusable(string selection)
     {
-        var root = Path.Combine(Path.GetTempPath(), "opendevelop-new-solution-" + Guid.NewGuid().ToString("N"));
+        var fakeRoot = Path.Combine(Path.GetTempPath(), "opendevelop-fake-sdk9-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            string selected = selection;
+            if (selection == "sdk9-root")
+            {
+                Directory.CreateDirectory(Path.Combine(fakeRoot, "sdk", "9.0.316"));
+                await File.WriteAllTextAsync(Path.Combine(fakeRoot, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet"), "");
+                selected = fakeRoot;
+            }
+
+            var select = await _app.InvokeAsync("od.sdk.select", selected);
+            Assert.True(select.GetProperty("success").GetBoolean(), select.ToString());
+
+            var effective = select.GetProperty("effective");
+            Assert.True(effective.ValueKind == JsonValueKind.Object,
+                "Expected a .NET 10+ SDK to remain effective; null means none is installed on this machine.");
+            var effectiveVersion = effective.GetProperty("HighestSdkVersion").GetString();
+            Assert.True(int.TryParse(effectiveVersion?.Split('.')[0], out var major) && major >= 10,
+                $"Selecting '{selected}' made SDK {effectiveVersion} effective; it must never be older than .NET 10.");
+            Assert.NotEqual(fakeRoot, effective.GetProperty("RootPath").GetString());
+
+            await CreateConsoleSolutionAndBuildAsync();
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.sdk.select", "");
+            if (Directory.Exists(fakeRoot)) Directory.Delete(fakeRoot, recursive: true);
+        }
+    }
+
+    async Task CreateConsoleSolutionAndBuildAsync()
+    {
+        var root =Path.Combine(Path.GetTempPath(), "opendevelop-new-solution-" + Guid.NewGuid().ToString("N"));
         const string solutionName = "CreatedSolution";
         const string projectName = "CreatedConsole";
         try

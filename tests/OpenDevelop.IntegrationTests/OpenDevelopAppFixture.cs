@@ -1490,8 +1490,14 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         if (!Directory.Exists(sdkRoot))
             return;
 
+        // Highest *stable* SDK by numeric version. Ordinal name order puts "8.0.418" after
+        // "10.0.401" and "11.0.100-rc.1" ('8' > '1'), which pointed the child's MSBuild paths at
+        // SDK 8 and made "dotnet run" fail with a missing ComputeRunArguments target.
         var sdkDir = Directory.GetDirectories(sdkRoot)
-            .OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
+            .Select(d => (Dir: d, Name: Path.GetFileName(d)))
+            .Where(s => !s.Name.Contains('-') && Version.TryParse(s.Name, out _))
+            .OrderBy(s => Version.Parse(s.Name))
+            .Select(s => s.Dir)
             .LastOrDefault();
         if (sdkDir == null)
             return;

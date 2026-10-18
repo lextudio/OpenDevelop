@@ -50,7 +50,13 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		[DevFlowAction("od.new-solution-dialog", Description = "Open the WPF New Solution dialog for integration testing")]
 		public static object NewSolutionDialog()
 		{
-			ServiceSingleton.GetRequiredService<Services.IProjectBrowserController>().CreateNewSolution();
+			// Posted, not called: with the templates already cached, CreateNewSolution() runs
+			// synchronously into the modal ShowDialog() nested loop, so the action never returned,
+			// kept the UI-mutation lock held, and every following action got "ui-mutation-busy".
+			var controller = ServiceSingleton.GetRequiredService<Services.IProjectBrowserController>();
+			System.Windows.Application.Current.Dispatcher.BeginInvoke(
+				System.Windows.Threading.DispatcherPriority.Background,
+				new Action(controller.CreateNewSolution));
 			return "{\"started\":true}";
 		}
 
@@ -67,8 +73,12 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		[DevFlowAction("od.new-item-dialog", Description = "Open the WPF New File dialog for integration testing")]
 		public static object NewItemDialog(string targetDirectory)
 		{
-			ServiceSingleton.GetRequiredService<Services.IProjectBrowserController>()
-				.AddNewItemInDirectory(targetDirectory);
+			// Posted for the same reason as NewSolutionDialog: with the templates cached the whole
+			// chain runs synchronously into the modal ShowDialog() and the action never returns.
+			var controller = ServiceSingleton.GetRequiredService<Services.IProjectBrowserController>();
+			System.Windows.Application.Current.Dispatcher.BeginInvoke(
+				System.Windows.Threading.DispatcherPriority.Background,
+				new Action(() => controller.AddNewItemInDirectory(targetDirectory)));
 			return "{\"started\":true}";
 		}
 
