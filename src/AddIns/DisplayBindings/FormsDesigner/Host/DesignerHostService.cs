@@ -4450,6 +4450,18 @@ sealed class DesignerHostService : IDesignerChildService
 				result[^1].AllowedValues.AddRange(referenceCandidates.Select(candidate => candidate.Site!.Name!));
 			}
 		}
+		// RichTextBox.Rtf is intentionally non-browsable in WinForms, but it is the control's
+		// native, lossless persistence format. Expose it only through the dedicated editor;
+		// SetProperty still validates and serializes the real descriptor.
+		if (String.Equals(component.GetType().FullName, "System.Windows.Forms.RichTextBox", StringComparison.Ordinal)
+			&& TypeDescriptor.GetProperties(component)["Rtf"] is { } rtf)
+			result.Add(new DesignerPropertyInfo {
+				Name = "Rtf", DisplayName = "Formatted Text", Category = "Appearance",
+				TypeName = typeof(string).FullName!, Kind = "String", Value = rtf.GetValue(component) as string ?? "",
+				// Rtf has no ResetValue/ShouldSerialize contract. Do not advertise a grid
+				// reset that the host cannot carry out; the dedicated editor owns writes.
+				EditorKind = "RichText", IsReadOnly = false, ShouldSerialize = false
+			});
 		return result;
 	}
 

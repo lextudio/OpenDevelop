@@ -13,6 +13,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -24,6 +25,7 @@ using System.Xml;
 
 using ICSharpCode.WpfDesign;
 using ICSharpCode.WpfDesign.Designer.Services;
+using ICSharpCode.WpfDesign.Designer.PropertyGrid.Editors.FormatedTextEditor;
 using ICSharpCode.WpfDesign.Designer.Xaml;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 
@@ -981,6 +983,56 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					return NotFound(state, e.GetBaseException().Message);
 				}
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
+		[JsonRpcMethod("design/set-rich-text")]
+		public DesignerSessionState SetRichText(long baseVersion, string elementId, DesignerRichTextRun[] runs)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item) || !TryGetEditableRichText(item, out _))
+					return NotFound(state, "The TextBlock's inline content is not safely editable.");
+				runs ??= Array.Empty<DesignerRichTextRun>();
+				if (runs.Any(run => run == null || !Double.IsFinite(run.FontSize) && !Double.IsNaN(run.FontSize) || Double.IsFinite(run.FontSize) && run.FontSize <= 0))
+					return NotFound(state, "Invalid rich-text run.");
+				try
+				{
+					using var changeGroup = item.OpenGroup("Edit formatted text");
+					var editor = new RichTextBox { Document = new FlowDocument() };
+					var paragraph = new Paragraph();
+					editor.Document.Blocks.Add(paragraph);
+					foreach (var entry in runs)
+					{
+						var run = new Run(entry.Text ?? "");
+						if (entry.Bold) run.FontWeight = FontWeights.Bold;
+						if (entry.Italic) run.FontStyle = FontStyles.Italic;
+						if (!String.IsNullOrWhiteSpace(entry.FontFamily)) run.FontFamily = new FontFamily(entry.FontFamily);
+						if (Double.IsFinite(entry.FontSize)) run.FontSize = entry.FontSize;
+						if (!String.IsNullOrWhiteSpace(entry.Foreground))
+							run.Foreground = new SolidColorBrush((System.Windows.Media.Color)ColorConverter.ConvertFromString(entry.Foreground)!);
+						if (entry.Underline || entry.Strikethrough)
+						{
+							var decorations = new TextDecorationCollection();
+							if (entry.Underline) decorations.Add(TextDecorations.Underline[0]);
+							if (entry.Strikethrough) decorations.Add(TextDecorations.Strikethrough[0]);
+							run.TextDecorations = decorations;
+						}
+						paragraph.Inlines.Add(run);
+					}
+					// The reusable in-process helper collapses one Run into TextBlock.Text plus
+					// element formatting.  That shape is deliberately not rich-editable because
+					// inherited element formatting is outside the portable DTO. Keep a harmless
+					// second inline so a one-run edit remains an Inlines-based round trip.
+					if (paragraph.Inlines.Count == 1)
+						paragraph.Inlines.Add(new Run());
+					FormatedTextEditor.SetTextBlockTextFromRichTextBlox(item, editor);
+					changeGroup.Commit();
+				}
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
 				RebuildTreeAndRender(state);
 				state.Accepted = true;
 				return state;
@@ -3823,7 +3875,94 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					CollectionItems = texts, ShouldSerialize = texts.Count > 0
 				});
 			}
+			if (TryGetEditableRichText(item, out var runs))
+			{
+				result.RemoveAll(info => info.Name == "Inlines");
+				result.Add(new DesignerPropertyInfo {
+					Name = "Inlines", DisplayName = "Formatted Text", Category = "Common",
+					TypeName = typeof(TextBlock).FullName ?? "", Kind = "Collection", EditorKind = "RichText",
+					IsReadOnly = true, Value = "(" + runs.Count + (runs.Count == 1 ? " run)" : " runs)"),
+					RichTextRuns = runs, ShouldSerialize = true
+				});
+			}
 			return result;
+		}
+
+		static bool TryGetEditableRichText(DesignItem item, out List<DesignerRichTextRun> runs)
+		{
+			runs = new List<DesignerRichTextRun>();
+			if (item.Component is not TextBlock)
+				return false;
+			// FormatedTextEditor rewrites these element-level values while converting a
+			// FlowDocument back to XamlDom.  The portable run DTO cannot represent an
+			// inherited override, so decline editing rather than silently deleting it.
+			if (new[] { "FontSize", "FontFamily", "FontStretch", "FontWeight", "Background", "Foreground", "FontStyle", "TextEffects", "TextDecorations" }
+				.Any(name => item.Properties[name]?.IsSet == true))
+				return false;
+			if (item.Properties["Text"]?.IsSet == true) {
+				var authoredInlines = item.Properties["Inlines"];
+				if (authoredInlines?.IsCollection == true && authoredInlines.CollectionElements.Any())
+					return false;
+				if (item.Properties["Text"]?.Value is DesignItem || item.Properties["Text"]?.ValueOnInstance is not string plainText)
+					return false;
+				runs.Add(new DesignerRichTextRun { Text = plainText });
+				return true;
+			}
+			var inlines = item.Properties["Inlines"];
+			if (inlines?.IsCollection != true || !inlines.CollectionElements.Any())
+				return false;
+			foreach (var child in inlines.CollectionElements)
+			{
+				if (child.Component is not Run run || child.Properties["Text"]?.Value is DesignItem || child.Properties["Text"]?.ValueOnInstance is not string text)
+					return false;
+				// The helper reconstructs a fresh Run. Permit only the properties represented
+				// by DesignerRichTextRun; every other authored local value (including attached
+				// Typography values) would otherwise disappear on an innocent OK.
+				if (HasUnsupportedRichTextLocalValue(run) || child.Properties.Any(property => property.IsSet && property.Name is not "Text" and not "FontWeight" and not "FontStyle" and not "TextDecorations" and not "Foreground" and not "FontFamily" and not "FontSize"))
+					return false;
+				var weight = child.Properties["FontWeight"];
+				var style = child.Properties["FontStyle"];
+				var decorations = child.Properties["TextDecorations"];
+				var foreground = child.Properties["Foreground"];
+				var family = child.Properties["FontFamily"];
+				var size = child.Properties["FontSize"];
+				// Do not turn inherited/default values into authored markup.  Conversely, reject
+				// values this compact editor cannot reproduce exactly (for example Semibold,
+				// Oblique, custom decorations or a non-solid brush).
+				if (weight?.IsSet == true && (weight.Value is DesignItem || run.FontWeight != FontWeights.Bold)
+					|| style?.IsSet == true && run.FontStyle != FontStyles.Italic
+					|| foreground?.IsSet == true && (foreground.Value is DesignItem || run.Foreground is not SolidColorBrush)
+					|| family?.IsSet == true && family.Value is DesignItem
+					|| size?.IsSet == true && size.Value is DesignItem
+					|| decorations?.IsSet == true && (decorations.Value is DesignItem || !HasOnlySupportedDecorations(run.TextDecorations)))
+					return false;
+				runs.Add(new DesignerRichTextRun {
+					Text = text,
+					Bold = weight?.IsSet == true && run.FontWeight == FontWeights.Bold,
+					Italic = style?.IsSet == true && run.FontStyle == FontStyles.Italic,
+					Underline = decorations?.IsSet == true && run.TextDecorations?.Any(item => item.Location == TextDecorationLocation.Underline) == true,
+					Strikethrough = decorations?.IsSet == true && run.TextDecorations?.Any(item => item.Location == TextDecorationLocation.Strikethrough) == true,
+					Foreground = foreground?.IsSet == true ? ((SolidColorBrush)run.Foreground).Color.ToString() : "",
+					FontFamily = family?.IsSet == true ? run.FontFamily?.Source ?? "" : "",
+					FontSize = size?.IsSet == true ? run.FontSize : Double.NaN
+				});
+			}
+			return runs.Count > 0;
+		}
+
+		static bool HasOnlySupportedDecorations(TextDecorationCollection? decorations)
+			=> decorations == null || decorations.All(decoration => decoration.Location is TextDecorationLocation.Underline or TextDecorationLocation.Strikethrough && decoration.Pen == null);
+
+		static bool HasUnsupportedRichTextLocalValue(Run run)
+		{
+			var locals = run.GetLocalValueEnumerator();
+			while (locals.MoveNext())
+			{
+				var name = locals.Current.Property.Name;
+				if (name is not "Text" and not "FontWeight" and not "FontStyle" and not "TextDecorations" and not "Foreground" and not "FontFamily" and not "FontSize")
+					return true;
+			}
+			return false;
 		}
 
 		static readonly DependencyProperty[] LayoutAttachedProperties = {

@@ -87,8 +87,10 @@ runner's own background mode (`run_in_background`) and wait for its completion n
 short `Wait-Job -Timeout` in front of it. A commit (1-4 minutes) is safe in the foreground inside
 `Start-Job` + `Wait-Job -Timeout 420`. To stop a hung run, kill only the child whose command line
 contains `opencode` and `--agent` (`Get-CimInstance Win32_Process`), never the OpenCode desktop app.
-`opencode session export <id>` prints a header line before the JSON: write it to a file and parse from the
-first `{`. PowerShell has no `</dev/null`; the Windows runs made so far completed without a stdin redirect.
+OpenCode CLI v2 exports with `opencode session export <id>` (not the removed top-level `opencode export`):
+write it to a file before JSON parsing. Its current v2 output is JSON directly; tolerate a leading header and
+parse from the first `{` if a future build adds one. PowerShell has no `</dev/null`; the Windows runs made so far
+completed without a stdin redirect.
 Pin each agent's model in `~/.config/opencode/opencode.jsonc` (`agent.<name>.model`) and still pass
 `-m`: the built-in `build` agent has no model of its own and fell back to `qwen3.5:397b`, which was
 retired, so it failed at launch with an error naming the retirement. `reviewer` has bash allow-listed to

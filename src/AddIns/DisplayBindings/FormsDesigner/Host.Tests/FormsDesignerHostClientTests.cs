@@ -10,6 +10,27 @@ namespace ICSharpCode.FormsDesigner.Host.Tests;
 public sealed class FormsDesignerHostClientTests
 {
 	[Fact]
+	public async Task RichTextBox_ExposesAndPersistsItsNativeRtf()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text
+			.Replace("this.Controls.Add(this.button1);", "this.rich = new System.Windows.Forms.RichTextBox();\nthis.Controls.Add(this.button1);\nthis.Controls.Add(this.rich);", StringComparison.Ordinal)
+			.Replace("private System.Windows.Forms.Button button1;", "private System.Windows.Forms.Button button1;\nprivate System.Windows.Forms.RichTextBox rich;", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var rtfProperty = Assert.Single(opened.Components.Single(component => component.Name == "rich").Properties,
+			property => property.Name == "Rtf");
+		Assert.Equal("RichText", rtfProperty.EditorKind);
+		Assert.False(rtfProperty.ShouldSerialize);
+		var rtf = "{\\rtf1\\ansi \\b bold\\b0}";
+		await client.SetPropertyAsync(1, "rich", "Rtf", rtf, timeout.Token);
+		Assert.Contains("rich.Rtf", DesignerText(await client.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public async Task AddElement_UsesTheHostsWinFormsWhenTheProjectShipsItsOwnCopy()
 	{
 		// A LibreWinForms project's output folder carries its own System.Windows.Forms.dll, and the IDE

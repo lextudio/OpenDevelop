@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 
 namespace ICSharpCode.WinUIXamlDesigner;
 
@@ -295,6 +296,112 @@ sealed class WinUIXamlDocumentEditor
 		element.Add(new XText(text ?? ""));
 		CommitChange();
 	}
+
+	/// <summary>Reads the deliberately small, cross-runtime subset of a WinUI/Uno
+	/// <c>RichTextBlock</c>: one Paragraph containing direct Runs.  A false result is a safety
+	/// decision, not a parse failure: nested Span/Hyperlink/InlineUIContainer, multiple paragraphs,
+	/// bindings and unknown run attributes remain source-only so an edit cannot erase them.</summary>
+	public bool TryGetRichTextRuns(XElement element, out IReadOnlyList<DesignerRichTextRun> runs)
+	{
+		runs = Array.Empty<DesignerRichTextRun>();
+		if (element?.Document != Document || element.Name != XName.Get("RichTextBlock", "http://schemas.microsoft.com/winfx/2006/xaml/presentation")
+			|| !HasOnlyRichTextContainerNodes(element))
+			return false;
+		var paragraphs = element.Elements().ToList();
+		if (paragraphs.Count == 0) {
+			runs = new[] { new DesignerRichTextRun() };
+			return true;
+		}
+		if (paragraphs.Count != 1 || paragraphs[0].Name != element.Name.Namespace + "Paragraph"
+			|| paragraphs[0].Attributes().Any(attribute => !attribute.IsNamespaceDeclaration)
+			|| !HasOnlyRichTextContainerNodes(paragraphs[0]))
+			return false;
+		var result = new List<DesignerRichTextRun>();
+		foreach (var run in paragraphs[0].Elements()) {
+			if (run.Name != element.Name.Namespace + "Run" || run.Elements().Any()
+				|| run.Nodes().Any(node => node is not XText)
+				|| run.Attributes().Any(attribute => attribute.IsNamespaceDeclaration || !String.IsNullOrEmpty(attribute.Name.NamespaceName) || !IsSupportedRichTextRunAttribute(attribute.Name.LocalName))
+				|| !HasOnlyRepresentableRichTextValues(run))
+				return false;
+			var text = String.Concat(run.Nodes().OfType<XText>().Select(node => node.Value));
+			result.Add(new DesignerRichTextRun {
+				Text = text,
+				Bold = String.Equals((string?)run.Attribute("FontWeight"), "Bold", StringComparison.OrdinalIgnoreCase),
+				Italic = String.Equals((string?)run.Attribute("FontStyle"), "Italic", StringComparison.OrdinalIgnoreCase),
+				Underline = ContainsDecoration((string?)run.Attribute("TextDecorations"), "Underline"),
+				Strikethrough = ContainsDecoration((string?)run.Attribute("TextDecorations"), "Strikethrough"),
+				Foreground = (string?)run.Attribute("Foreground") ?? "",
+				FontFamily = (string?)run.Attribute("FontFamily") ?? "",
+				FontSize = Double.TryParse((string?)run.Attribute("FontSize"), System.Globalization.NumberStyles.Float,
+					System.Globalization.CultureInfo.InvariantCulture, out var size) ? size : Double.NaN
+			});
+		}
+		if (result.Count == 0) result.Add(new DesignerRichTextRun());
+		runs = result;
+		return true;
+	}
+
+	/// <summary>Replaces only a RichTextBlock's proved-safe Paragraph/Run subtree in one undo entry.
+	/// This is shared by the WinUI and Uno designer paths; the runtime only receives the resulting
+	/// source snapshot.</summary>
+	public void SetRichTextRuns(XElement element, IReadOnlyList<DesignerRichTextRun> runs)
+	{
+		if (!TryGetRichTextRuns(element, out _))
+			throw new InvalidOperationException("The RichTextBlock contains content the visual editor cannot preserve.");
+		if (runs == null || runs.Any(run => run == null || !Double.IsNaN(run.FontSize) && (!Double.IsFinite(run.FontSize) || run.FontSize <= 0)))
+			throw new ArgumentException("At least one valid rich-text run is required.", nameof(runs));
+		var ns = element.Name.Namespace;
+		BeginChange();
+		element.RemoveNodes();
+		var paragraph = new XElement(ns + "Paragraph");
+		foreach (var value in runs.Count == 0 ? new[] { new DesignerRichTextRun() } : runs) {
+			var run = new XElement(ns + "Run", new XText(value.Text ?? ""));
+			if (value.Bold) run.SetAttributeValue("FontWeight", "Bold");
+			if (value.Italic) run.SetAttributeValue("FontStyle", "Italic");
+			if (value.Underline || value.Strikethrough)
+				run.SetAttributeValue("TextDecorations", String.Join(",", new[] { value.Underline ? "Underline" : null, value.Strikethrough ? "Strikethrough" : null }.Where(item => item != null)));
+			if (!String.IsNullOrWhiteSpace(value.Foreground)) run.SetAttributeValue("Foreground", value.Foreground);
+			if (!String.IsNullOrWhiteSpace(value.FontFamily)) run.SetAttributeValue("FontFamily", value.FontFamily);
+			if (Double.IsFinite(value.FontSize)) run.SetAttributeValue("FontSize", value.FontSize.ToString(System.Globalization.CultureInfo.InvariantCulture));
+			paragraph.Add(run);
+		}
+		element.Add(paragraph);
+		CommitChange();
+	}
+
+	static bool IsSupportedRichTextRunAttribute(string name)
+		=> name is "FontWeight" or "FontStyle" or "TextDecorations" or "Foreground" or "FontFamily" or "FontSize";
+
+	static bool HasOnlyRichTextContainerNodes(XElement element)
+		=> element.Nodes().All(node => node is XElement || node is XText text && String.IsNullOrWhiteSpace(text.Value));
+
+	static bool HasOnlyRepresentableRichTextValues(XElement run)
+	{
+		var weight = (string?)run.Attribute("FontWeight");
+		var style = (string?)run.Attribute("FontStyle");
+		var decorations = (string?)run.Attribute("TextDecorations");
+		var foreground = (string?)run.Attribute("Foreground");
+		var family = (string?)run.Attribute("FontFamily");
+		return (weight == null || String.Equals(weight, "Bold", StringComparison.OrdinalIgnoreCase))
+			&& (style == null || String.Equals(style, "Italic", StringComparison.OrdinalIgnoreCase))
+			&& (decorations == null || decorations.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Length > 0 && decorations.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).All(value => value.Equals("Underline", StringComparison.OrdinalIgnoreCase) || value.Equals("Strikethrough", StringComparison.OrdinalIgnoreCase)))
+			&& (foreground == null || IsLiteralForeground(foreground))
+			&& (family == null || !String.IsNullOrWhiteSpace(family))
+			&& (run.Attribute("FontSize") == null || Double.TryParse((string?)run.Attribute("FontSize"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var size) && Double.IsFinite(size) && size > 0);
+	}
+
+	static bool IsLiteralForeground(string value)
+	{
+		try {
+			return System.Windows.Media.ColorConverter.ConvertFromString(value) is System.Windows.Media.Color;
+		} catch (Exception) {
+			return false;
+		}
+	}
+
+	static bool ContainsDecoration(string? value, string decoration)
+		=> value?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+			.Any(item => String.Equals(item, decoration, StringComparison.OrdinalIgnoreCase)) == true;
 
 	/// <summary>Wraps a non-root source element in a named container, preserving the original
 	/// sibling position and recording the complete structural change as one undo entry.</summary>

@@ -2386,6 +2386,8 @@ namespace ICSharpCode.FormsDesigner
 				// Read-only to generic editing; the "…" editor commits the whole list.
 				if (String.Equals(property.EditorKind, "ItemsCollection", StringComparison.Ordinal))
 					attributes.Add(new EditorAttribute(typeof(FormsItemsCollectionEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
+				else if (String.Equals(property.EditorKind, "RichText", StringComparison.Ordinal))
+					attributes.Add(new EditorAttribute(typeof(FormsRichTextEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 				else if (String.Equals(property.EditorKind, "ImageListImages", StringComparison.Ordinal))
 					attributes.Add(new EditorAttribute(typeof(FormsImageListEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 				return attributes.ToArray();

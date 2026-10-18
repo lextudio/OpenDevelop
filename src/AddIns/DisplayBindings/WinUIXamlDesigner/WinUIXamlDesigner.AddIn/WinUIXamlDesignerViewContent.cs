@@ -336,7 +336,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			componentTraySelection = false;
 			SelectedElementName = name;
 			shellSelection.Select(name);
-			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor);
+			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor, EditRichTextBlock, value => editor.TryGetRichTextRuns(value, out _));
 			SelectOutlineNode(name);
 			// The runtime's selection set is managed by surface picks and MultiSelect -
 			// this path only syncs the pad/outline, so it never collapses a multi-selection.
@@ -720,7 +720,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			// pretending that a visual overlay could represent it.
 			componentTraySelection = true;
 			SelectedElementName = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
-			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor);
+			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor, EditRichTextBlock, value => editor.TryGetRichTextRuns(value, out _));
 			previewHost.ClearSelection();
 			previewHost.ClearGridGuides();
 		}
@@ -852,12 +852,38 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			return;
 		}
 		var element = editor.FindElement(info.Name);
+		if (element?.Name.LocalName == "RichTextBlock" && editor.TryGetRichTextRuns(element, out _)) {
+			EditRichTextBlock(element);
+			return;
+		}
 		if (element == null || !TryGetInlineText(element, out _, out var text))
 		{
 			previewHost.FitView();
 			return;
 		}
 		previewHost.BeginTextEdit(info.X, info.Y, info.Width, info.Height, text);
+	}
+
+	void EditRichTextBlock(XElement element)
+	{
+		var sourcePath = editor.GetElementPath(element);
+		if (!editor.TryGetRichTextRuns(element, out var runs)) {
+			MessageService.ShowError("Formatted text can be edited only when it has one paragraph containing direct Run elements.");
+			return;
+		}
+		if (!RichTextRunEditorDialog.Edit(Window.GetWindow(root), runs, out var changed))
+			return;
+		try {
+			editor.SetRichTextRuns(element, changed);
+		} catch (Exception exception) {
+			MessageService.ShowError(exception.Message);
+			return;
+		}
+		ApplyDocumentChange();
+		if (editor.FindElementAtPath(sourcePath) is { } updated)
+			SelectSourceElement(updated, sourcePath);
+		else
+			SelectElement(SelectedElementName);
 	}
 
 	/// <summary>Applies the inline-edited text to the source document.</summary>
@@ -1492,7 +1518,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		try {
 		componentTraySelection = false;
 			SelectedElementName = null;
-			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor);
+			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor, EditRichTextBlock, value => editor.TryGetRichTextRuns(value, out _));
 			if (string.IsNullOrEmpty(path))
 				previewHost.ClearSelection();
 			else
@@ -1823,7 +1849,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	void BindPropertySelection(IReadOnlyList<string> names)
 	{
 		var adapters = names.Select(editor.FindElement).Where(element => element != null)
-			.Select(element => (object)new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor)).ToArray();
+			.Select(element => (object)new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor, EditRichTextBlock, value => editor.TryGetRichTextRuns(value, out _))).ToArray();
 		propertyContainer.SelectedObject = adapters.Length > 1 ? new DesignerMultiPropertyAdapter(adapters) : adapters.FirstOrDefault();
 	}
 

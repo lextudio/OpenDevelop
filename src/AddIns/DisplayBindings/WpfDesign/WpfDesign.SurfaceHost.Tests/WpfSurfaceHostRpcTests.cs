@@ -105,6 +105,80 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task DesignSetRichText_RoundTripsSupportedTextBlockRuns()
+	{
+		const string xaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="200" Height="100">
+			  <TextBlock x:Name="formatted"><Run FontWeight="Bold">old</Run><Run Foreground="Blue"> text</Run></TextBlock>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var target = FindByName(opened.Tree!, "formatted")!;
+		var property = Assert.Single(target.Properties, item => item.EditorKind == "RichText");
+		Assert.Collection(property.RichTextRuns!,
+			run => { Assert.Equal("old", run.Text); Assert.True(run.Bold); },
+			run => { Assert.Equal("text", run.Text); Assert.Equal("#FF0000FF", run.Foreground); });
+
+		var changed = await client.SetRichTextAsync(opened.Version, target.Id, new[] {
+			new DesignerRichTextRun { Text = "new", Italic = true, Foreground = "#FFFF0000" },
+			new DesignerRichTextRun { Text = " text", Underline = true },
+			new DesignerRichTextRun { Text = Environment.NewLine + "next line" }
+		}, timeout.Token);
+		Assert.True(changed.Accepted, changed.Error);
+		var saved = (await client.FlushAsync(changed.Version, timeout.Token)).Files.Single().Text;
+		Assert.Contains("new", saved, StringComparison.Ordinal);
+		Assert.Contains("FontStyle=\"Italic\"", saved, StringComparison.Ordinal);
+		Assert.Contains("Foreground=", saved, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task DesignSetRichText_PreservesInlineRepresentationForOneRun()
+	{
+		const string xaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+			  <TextBlock x:Name="formatted"><Run FontWeight="Bold">old</Run></TextBlock>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var target = FindByName(opened.Tree!, "formatted")!;
+		Assert.Contains(target.Properties, item => item.EditorKind == "RichText");
+
+		var changed = await client.SetRichTextAsync(opened.Version, target.Id, new[] {
+			new DesignerRichTextRun { Text = "new", Bold = true }
+		}, timeout.Token);
+		Assert.True(changed.Accepted, changed.Error);
+		var saved = (await client.FlushAsync(changed.Version, timeout.Token)).Files.Single().Text;
+		Assert.Contains("<Run", saved, StringComparison.Ordinal);
+		Assert.Contains("FontWeight=\"Bold\"", saved, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task DesignSetRichText_HidesRowsThatWouldLoseAuthoredFormatting()
+	{
+		const string xaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+			  <TextBlock x:Name="plain" Text="ordinary text" />
+			  <TextBlock x:Name="styled"><Run Background="Yellow">highlighted</Run></TextBlock>
+			  <TextBlock x:Name="baseline"><Run BaselineAlignment="Superscript">raised</Run></TextBlock>
+			  <TextBlock x:Name="mixed" Text="plain"><Run FontWeight="Bold">inline</Run></TextBlock>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		Assert.DoesNotContain(FindByName(opened.Tree!, "styled")!.Properties, item => item.EditorKind == "RichText");
+		Assert.DoesNotContain(FindByName(opened.Tree!, "baseline")!.Properties, item => item.EditorKind == "RichText");
+		Assert.DoesNotContain(FindByName(opened.Tree!, "mixed")!.Properties, item => item.EditorKind == "RichText");
+	}
+
+	[Fact]
 	public async Task ChildHost_PublishesMeasuredCanvasPositionInsets()
 	{
 		const string canvasXaml = """

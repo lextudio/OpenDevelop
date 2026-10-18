@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 
@@ -75,6 +76,24 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			Padding = new Thickness(2),
 			AcceptsReturn = false
 		};
+		// This is deliberately a separate overlay from the scalar TextBox above.  A TextBlock's
+		// inline graph is a different edit contract: flattening it through Text would silently
+		// discard the authored character formatting.
+		readonly RichTextBox richTextEditor = new RichTextBox {
+			AcceptsReturn = true,
+			BorderThickness = new Thickness(0),
+			VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+			Document = new FlowDocument()
+		};
+		readonly Border richTextOverlay = new() {
+			Visibility = Visibility.Collapsed,
+			Background = Brushes.White,
+			BorderBrush = Brushes.DodgerBlue,
+			BorderThickness = new Thickness(1)
+		};
+		bool richTextEditing;
+		Rect richTextEditRect;
+		string? richTextElementId;
 		bool textEditing;
 		/// <summary>Whether the open edit is multi-line text (a TextBlock's Text), where
 		/// Shift+Enter inserts a newline instead of committing.</summary>
@@ -187,6 +206,30 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			textEditor.KeyDown += OnTextEditorKeyDown;
 			textEditor.LostKeyboardFocus += OnTextEditorLostFocus;
 			ExtensionLayer.Children.Add(textEditor);
+			var richTextPanel = new DockPanel();
+			var richTextTools = new StackPanel { Orientation = Orientation.Horizontal, Background = Brushes.Gainsboro };
+			var fontFamily = new ComboBox { Width = 135, Margin = new Thickness(2), ToolTip = "Font family", ItemsSource = Fonts.SystemFontFamilies };
+			fontFamily.SelectionChanged += (_, _) => {
+				if (fontFamily.SelectedItem is FontFamily value)
+					richTextEditor.Selection.ApplyPropertyValue(TextElement.FontFamilyProperty, value);
+			};
+			richTextTools.Children.Add(fontFamily);
+			var fontSize = new ComboBox { Width = 52, Margin = new Thickness(2), ToolTip = "Font size", IsEditable = true,
+				ItemsSource = new[] { "8", "9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "36" } };
+			fontSize.SelectionChanged += (_, _) => ApplyRichTextFontSize(fontSize.Text);
+			fontSize.LostKeyboardFocus += (_, _) => ApplyRichTextFontSize(fontSize.Text);
+			richTextTools.Children.Add(fontSize);
+			richTextTools.Children.Add(RichTextTool("B", "Bold (Ctrl+B)", () => EditingCommands.ToggleBold.Execute(null, richTextEditor)));
+			richTextTools.Children.Add(RichTextTool("I", "Italic (Ctrl+I)", () => EditingCommands.ToggleItalic.Execute(null, richTextEditor)));
+			richTextTools.Children.Add(RichTextTool("U", "Underline (Ctrl+U)", () => EditingCommands.ToggleUnderline.Execute(null, richTextEditor)));
+			richTextTools.Children.Add(RichTextTool("S", "Strikethrough", ToggleStrikethrough));
+			DockPanel.SetDock(richTextTools, Dock.Top);
+			richTextPanel.Children.Add(richTextTools);
+			richTextPanel.Children.Add(richTextEditor);
+			richTextOverlay.Child = richTextPanel;
+			richTextEditor.KeyDown += OnRichTextEditorKeyDown;
+			richTextEditor.LostKeyboardFocus += OnRichTextEditorLostFocus;
+			ExtensionLayer.Children.Add(richTextOverlay);
 			ViewportChanged += (_, _) => LayoutExtensions();
 
 			// Two toolbar entries stay hidden because they are other backends' concepts: design
@@ -457,6 +500,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			UpdateContextMenuTray();
 			UpdateMenuTypeHereHotspot();
 			LayoutTextEditor();
+			LayoutRichTextEditor();
 		}
 
 		/// <summary>Re-places the extension-layer chrome after a zoom, fit, pan or new frame.</summary>
@@ -467,6 +511,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			if (menuTypeHereHotspot.Visibility == Visibility.Visible)
 				PlaceMenuTypeHereHotspot();
 			LayoutTextEditor();
+			LayoutRichTextEditor();
 		}
 
 		public event EventHandler? SelectionChanged;
@@ -890,6 +935,12 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// intent for a double-click so Header remains editable.
 			if (ResolveTextPropertyName(hitNode) == null && SelectedNode?.Type == "MenuItem")
 				hitNode = SelectedNode;
+			var richText = hitNode?.Properties.FirstOrDefault(property => property.EditorKind == "RichText" && property.RichTextRuns != null);
+			var textProperty = hitNode?.Properties.FirstOrDefault(property => property.Name == "Text");
+			if (richText != null && textProperty?.ShouldSerialize != true) {
+				BeginRichTextEdit(hitNode!.Id, new Rect(hitNode.X, hitNode.Y, hitNode.Width, hitNode.Height), richText.RichTextRuns!);
+				return;
+			}
 			if (hitNode != null && ResolveTextPropertyName(hitNode) is { } propertyName)
 			{
 				var currentValue = hitNode.Properties.First(p => p.Name == propertyName).Value;
@@ -897,7 +948,22 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				// The in-process InPlaceEditor offered Shift+Enter line breaks for TextBlock text.
 				textEditAcceptsNewlines = propertyName == "Text" && hitNode.Type == "TextBlock";
 				textEditor.ToolTip = textEditAcceptsNewlines ? InlineTextEditKeys.MultilineToolTip : null;
+				return;
 			}
+		}
+
+		Button RichTextTool(string text, string toolTip, Action action)
+		{
+			var button = new Button {
+				Content = text, ToolTip = toolTip, MinWidth = 26, Padding = new Thickness(4, 1, 4, 1),
+				FontWeight = text == "B" ? FontWeights.Bold : FontWeights.Normal,
+				FontStyle = text == "I" ? FontStyles.Italic : FontStyles.Normal
+			};
+			button.Click += (_, _) => {
+				action();
+				richTextEditor.Focus();
+			};
+			return button;
 		}
 
 		/// <summary>Shows the inline editor over the given design rect, pre-filled with
@@ -923,6 +989,175 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			LayoutTextEditor();
 			textEditor.Focus();
 			textEditor.SelectAll();
+		}
+
+		void BeginRichTextEdit(string elementId, Rect designRect, IReadOnlyList<DesignerRichTextRun> runs)
+		{
+			if (textEditing)
+				EndInlineEdit(commit: true);
+			richTextEditing = true;
+			richTextElementId = elementId;
+			richTextEditRect = designRect;
+			richTextEditor.Document = new FlowDocument { PagePadding = new Thickness(4) };
+			var paragraph = new Paragraph { Margin = new Thickness(0) };
+			richTextEditor.Document.Blocks.Add(paragraph);
+			foreach (var value in runs)
+				paragraph.Inlines.Add(CreateRichTextRun(value));
+			richTextOverlay.ToolTip = "Enter commits; Shift+Enter inserts a line break; Esc cancels.";
+			richTextOverlay.Visibility = Visibility.Visible;
+			LayoutRichTextEditor();
+			richTextEditor.Focus();
+			richTextEditor.SelectAll();
+		}
+
+		static Run CreateRichTextRun(DesignerRichTextRun value)
+		{
+			var run = new Run(value.Text ?? "");
+			if (value.Bold) run.FontWeight = FontWeights.Bold;
+			if (value.Italic) run.FontStyle = FontStyles.Italic;
+			if (!String.IsNullOrWhiteSpace(value.FontFamily)) run.FontFamily = new FontFamily(value.FontFamily);
+			if (Double.IsFinite(value.FontSize) && value.FontSize > 0) run.FontSize = value.FontSize;
+			if (!String.IsNullOrWhiteSpace(value.Foreground))
+				run.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(value.Foreground)!);
+			if (value.Underline || value.Strikethrough) {
+				var decorations = new TextDecorationCollection();
+				if (value.Underline) decorations.Add(TextDecorations.Underline[0]);
+				if (value.Strikethrough) decorations.Add(TextDecorations.Strikethrough[0]);
+				run.TextDecorations = decorations;
+			}
+			return run;
+		}
+
+		void LayoutRichTextEditor()
+		{
+			if (!richTextEditing)
+				return;
+			var scale = ViewportScale;
+			var origin = DesignToContentPoint(richTextEditRect.X, richTextEditRect.Y);
+			Canvas.SetLeft(richTextOverlay, origin.X);
+			Canvas.SetTop(richTextOverlay, origin.Y);
+			richTextOverlay.Width = Math.Max(140, richTextEditRect.Width * scale);
+			richTextOverlay.Height = Math.Max(100, richTextEditRect.Height * scale + 30);
+			richTextEditor.FontSize = 14 * scale;
+		}
+
+		void OnRichTextEditorKeyDown(object sender, KeyEventArgs e)
+		{
+			if (e.Key == Key.Escape) {
+				EndRichTextEdit(commit: false);
+				e.Handled = true;
+			} else if (e.Key == Key.Enter && !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) {
+				EndRichTextEdit(commit: true);
+				e.Handled = true;
+			} else if (e.Key == Key.Enter) {
+				richTextEditor.Selection.Text += Environment.NewLine;
+				e.Handled = true;
+			}
+		}
+
+		void OnRichTextEditorLostFocus(object sender, KeyboardFocusChangedEventArgs e)
+		{
+			Dispatcher.BeginInvoke(new Action(() => {
+				if (richTextEditing && !richTextOverlay.IsKeyboardFocusWithin)
+					EndRichTextEdit(commit: true);
+			}));
+		}
+
+		void ApplyRichTextFontSize(string? text)
+		{
+			if (Double.TryParse(text, out var value) && Double.IsFinite(value) && value > 0)
+				richTextEditor.Selection.ApplyPropertyValue(TextElement.FontSizeProperty, value);
+		}
+
+		void ToggleStrikethrough()
+		{
+			var decorations = richTextEditor.Selection.GetPropertyValue(Inline.TextDecorationsProperty) as TextDecorationCollection;
+			var hasStrike = decorations?.Any(item => item.Location == TextDecorationLocation.Strikethrough) == true;
+			var updated = new TextDecorationCollection(decorations ?? new TextDecorationCollection());
+			if (hasStrike) updated.Remove(updated.First(item => item.Location == TextDecorationLocation.Strikethrough));
+			else updated.Add(TextDecorations.Strikethrough[0]);
+			richTextEditor.Selection.ApplyPropertyValue(Inline.TextDecorationsProperty, updated.Count == 0 ? null : updated);
+		}
+
+		void EndRichTextEdit(bool commit)
+		{
+			if (!richTextEditing)
+				return;
+			var elementId = richTextElementId;
+			var runs = commit ? ExtractRichTextRuns() : null;
+			if (commit && runs == null) {
+				// Pasting an inline graph (for example a Hyperlink) must never turn into a
+				// successful-looking no-op or a destructive flattened save.  Keep the editor
+				// open so the user can remove it or cancel with Esc.
+				richTextOverlay.ToolTip = "This content cannot be saved as direct formatted text. Remove it or press Esc to cancel.";
+				return;
+			}
+			richTextEditing = false;
+			richTextElementId = null;
+			richTextOverlay.Visibility = Visibility.Collapsed;
+			if (!commit || state == null || elementId == null || runs == null)
+				return;
+			var result = client.SetRichTextAsync(RequireVersion(), elementId, runs).GetAwaiter().GetResult();
+			Show(result);
+			if (result.Accepted)
+				DocumentChanged?.Invoke(this, result);
+		}
+
+		List<DesignerRichTextRun>? ExtractRichTextRuns()
+		{
+			var result = new List<DesignerRichTextRun>();
+			// A paragraph boundary is not representable by the direct-Run wire contract.
+			// Refuse rather than joining paragraphs and changing visible text.
+			if (richTextEditor.Document.Blocks.Count != 1)
+				return null;
+			foreach (var block in richTextEditor.Document.Blocks) {
+				if (block is not Paragraph paragraph)
+					return null;
+				foreach (var inline in paragraph.Inlines) {
+					// Shift+Enter creates a LineBreak in a WPF RichTextBox.  The portable
+					// direct-Run protocol represents it as a newline character, which has
+					// the same TextBlock rendering and remains editable on the next pass.
+					if (inline is LineBreak) {
+						result.Add(new DesignerRichTextRun { Text = Environment.NewLine });
+						continue;
+					}
+					if (inline is not Run run) return null;
+					if (HasUnsupportedRichTextLocalValue(run) || HasLocalValue(run, TextElement.ForegroundProperty) && run.Foreground is not SolidColorBrush)
+						return null;
+					var hasWeight = HasLocalValue(run, TextElement.FontWeightProperty);
+					var hasStyle = HasLocalValue(run, TextElement.FontStyleProperty);
+					var hasDecorations = HasLocalValue(run, Inline.TextDecorationsProperty);
+					var hasForeground = HasLocalValue(run, TextElement.ForegroundProperty);
+					var hasFamily = HasLocalValue(run, TextElement.FontFamilyProperty);
+					var hasSize = HasLocalValue(run, TextElement.FontSizeProperty);
+					var decorations = run.TextDecorations;
+					if (hasWeight && run.FontWeight != FontWeights.Bold || hasStyle && run.FontStyle != FontStyles.Italic
+						|| hasDecorations && decorations?.Any(item => item.Location is not TextDecorationLocation.Underline and not TextDecorationLocation.Strikethrough || item.Pen != null) == true)
+						return null;
+					result.Add(new DesignerRichTextRun {
+						Text = run.Text ?? "", Bold = hasWeight && run.FontWeight == FontWeights.Bold,
+						Italic = hasStyle && run.FontStyle == FontStyles.Italic,
+						Underline = hasDecorations && decorations?.Any(item => item.Location == TextDecorationLocation.Underline) == true,
+						Strikethrough = hasDecorations && decorations?.Any(item => item.Location == TextDecorationLocation.Strikethrough) == true,
+						Foreground = hasForeground ? (run.Foreground as SolidColorBrush)?.Color.ToString() ?? "" : "",
+						FontFamily = hasFamily ? run.FontFamily?.Source ?? "" : "",
+						FontSize = hasSize ? run.FontSize : Double.NaN
+					});
+				}
+			}
+			return result;
+		}
+
+		static bool HasLocalValue(DependencyObject element, DependencyProperty property)
+			=> element.ReadLocalValue(property) != DependencyProperty.UnsetValue;
+
+		static bool HasUnsupportedRichTextLocalValue(Run run)
+		{
+			var locals = run.GetLocalValueEnumerator();
+			while (locals.MoveNext())
+				if (locals.Current.Property.Name is not "Text" and not "FontWeight" and not "FontStyle" and not "TextDecorations" and not "Foreground" and not "FontFamily" and not "FontSize")
+					return true;
+			return false;
 		}
 
 		void LayoutTextEditor()

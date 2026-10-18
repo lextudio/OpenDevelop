@@ -27,8 +27,10 @@ namespace ICSharpCode.WinUIXamlDesigner
 		readonly XElement documentRoot;
 		readonly Action<XElement, XName, string> setAttribute;
 		readonly Action<XElement, XName, string> setEventHandler;
+		readonly Action<XElement> editRichText;
+		readonly Func<XElement, bool> canEditRichText;
 
-		public WinUIXamlElementPropertyAdapter(XElement element, XElement documentRoot, Action<XElement, XName, string> setAttribute, Action<XElement, XName, string> setEventHandler = null)
+		public WinUIXamlElementPropertyAdapter(XElement element, XElement documentRoot, Action<XElement, XName, string> setAttribute, Action<XElement, XName, string> setEventHandler = null, Action<XElement> editRichText = null, Func<XElement, bool> canEditRichText = null)
 		{
 			this.element = element ?? throw new ArgumentNullException(nameof(element));
 			this.documentRoot = documentRoot;
@@ -37,6 +39,8 @@ namespace ICSharpCode.WinUIXamlDesigner
 			// (design/set-event) from a plain attribute edit (design/set-property); callers that
 			// don't care about that distinction may omit it and share the property callback.
 			this.setEventHandler = setEventHandler ?? setAttribute;
+			this.editRichText = editRichText;
+			this.canEditRichText = canEditRichText;
 		}
 
 		public override string ToString() => element.Name.LocalName;
@@ -82,6 +86,8 @@ namespace ICSharpCode.WinUIXamlDesigner
 					continue;
 				descriptors.Add(new XamlAttributeDescriptor(element, attribute.Name, attribute.Value, setAttribute, resourceKeys));
 			}
+			if (element.Name.LocalName == "RichTextBlock" && editRichText != null && (canEditRichText?.Invoke(element) ?? false))
+				descriptors.Add(new RichTextBlockDescriptor(element, editRichText));
 			// The pad lists the element's common properties even when they are not set yet,
 			// so users can add them (VS-style) instead of only editing existing attributes.
 			foreach (var name in CommonProperties(element.Name.LocalName))
@@ -236,6 +242,35 @@ namespace ICSharpCode.WinUIXamlDesigner
 		/// <summary>Descriptor name for an attribute; the Properties pad's binding-path parser
 		/// would otherwise split a dotted attached-property name.</summary>
 		internal static string BindingSafeName(string localName) => localName.Replace('.', '_');
+
+		/// <summary>A synthetic row for the structured child content of a RichTextBlock.
+		/// It deliberately has no XAML attribute counterpart: the editor owns the direct
+		/// Paragraph/Run subtree and commits it as one source-document operation.</summary>
+		sealed class RichTextBlockDescriptor : PropertyDescriptor
+		{
+			readonly XElement element;
+			readonly Action<XElement> edit;
+
+			public RichTextBlockDescriptor(XElement element, Action<XElement> edit)
+				: base("FormattedText", new Attribute[] {
+					new EditorAttribute(typeof(WinUIRichTextBlockEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor))
+				})
+			{
+				this.element = element;
+				this.edit = edit;
+			}
+
+			public override Type ComponentType => typeof(WinUIXamlElementPropertyAdapter);
+			public override string DisplayName => "Formatted Text";
+			public override string Category => "XAML";
+			public override Type PropertyType => typeof(string);
+			public override bool IsReadOnly => false;
+			public override object GetValue(object component) => "Edit rich text…";
+			public override void SetValue(object component, object value) => edit(element);
+			public override bool CanResetValue(object component) => false;
+			public override void ResetValue(object component) { }
+			public override bool ShouldSerializeValue(object component) => false;
+		}
 
 		sealed class XamlAttributeDescriptor : PropertyDescriptor
 		{

@@ -63,6 +63,13 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		internal void SetRichText(System.Collections.Generic.IReadOnlyList<DesignerRichTextRun> runs)
+		{
+			var state = client.SetRichTextAsync(currentBaseVersion(), node.Id, runs).GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		internal void ResetProperty(string propertyName)
 		{
 			var state = client.ResetPropertyAsync(currentBaseVersion(), node.Id, propertyName)
@@ -442,6 +449,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 			// The row stays read-only to generic editing; the "…" editor commits the whole list.
 			if (property.EditorKind is "ItemsCollection" or "BindingCollection")
 				attributes.Add(new EditorAttribute(typeof(WpfItemsCollectionEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
+			else if (property.EditorKind == "RichText")
+				attributes.Add(new EditorAttribute(typeof(WpfRichTextEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 			// The brush editor replaces Xceed's own: it reaches gradients and "No brush", which a
 			// text or color-only editor cannot express.
 			else if (property.EditorKind == "Brush")
@@ -462,6 +471,7 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 			=> DesignerPropertySemantics.IsReadOnly(property);
 
 		internal System.Collections.Generic.IReadOnlyList<string> AllowedValues => property.AllowedValues;
+		internal System.Collections.Generic.IReadOnlyList<DesignerRichTextRun> RichTextRuns => property.RichTextRuns is { } runs ? runs : Array.Empty<DesignerRichTextRun>();
 
 		System.Collections.Generic.IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => property.CollectionItems;
 

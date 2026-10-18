@@ -404,6 +404,10 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> SetTransformAsync(long baseVersion, string elementId, string propertyName, IReadOnlyList<DesignerTransformOp> ops, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-transform", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, ops }, cancellationToken), cancellationToken);
 
+	/// <summary>Replaces a TextBlock's losslessly-editable Inline run collection in one host undo transaction.</summary>
+	public Task<DesignerSessionState> SetRichTextAsync(long baseVersion, string elementId, IReadOnlyList<DesignerRichTextRun> runs, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-rich-text", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, runs }, cancellationToken), cancellationToken);
+
 	/// <summary>Points a property at a resource (<c>kind</c> "Static" or "Dynamic" with a key from the property's
 	/// <see cref="DesignerPropertyInfo.ResourceReferenceKeys"/>), or clears the reference (empty kind) (<c>design/set-resource-reference</c>).</summary>
 	public Task<DesignerSessionState> SetResourceReferenceAsync(long baseVersion, string elementId, string propertyName, string kind, string key, CancellationToken cancellationToken = default)

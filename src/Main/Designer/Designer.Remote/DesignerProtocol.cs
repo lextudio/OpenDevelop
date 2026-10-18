@@ -82,7 +82,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v60 adds indexed design/set-binding-validation-option and set-binding-delay support.
 		// v61 adds indexed design/set-binding-relative-source support for direct Binding children.
 		// v62 adds indexed design/set-binding-source support for direct Binding children.
-	public const int Version = 62;
+		// v63 adds WPF's optional rich TextBlock inline-run snapshot and design/set-rich-text.
+	public const int Version = 63;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -685,6 +686,24 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>For a <c>ResourceReference</c> editor, the string keys of the resources in the element's scope whose value fits
 		/// the property's type, in name order. v50.</summary>
 		public List<string> ResourceReferenceKeys { get; set; } = new List<string>();
+		/// <summary>For WPF's <c>RichText</c> editor, the losslessly editable TextBlock inline runs;
+		/// null means the child found an inline graph it must not rewrite. v63.</summary>
+		public List<DesignerRichTextRun>? RichTextRuns { get; set; }
+	}
+
+	/// <summary>A losslessly editable WPF TextBlock inline run. v63.</summary>
+	public sealed class DesignerRichTextRun
+	{
+		public string Text { get; set; } = "";
+		public bool Bold { get; set; }
+		public bool Italic { get; set; }
+		public bool Underline { get; set; }
+		public bool Strikethrough { get; set; }
+		/// <summary><c>#AARRGGBB</c>, or empty for the inherited foreground.</summary>
+		public string Foreground { get; set; } = "";
+		public string FontFamily { get; set; } = "";
+		/// <summary>NaN means inherited.</summary>
+		public double FontSize { get; set; } = double.NaN;
 	}
 
 	/// <summary>One image of a WinForms ImageList: its key (empty when unnamed) and its pixels as PNG. v51.</summary>
