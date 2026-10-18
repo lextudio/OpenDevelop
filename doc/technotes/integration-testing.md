@@ -154,19 +154,30 @@ via the same traits.
 
 Every cell was run for real with `RunRuntimeCell` on Windows arm64 (.NET 10, with a full build); the macOS cells were
 run on 2026-10-17, see "Measured status on macOS" below the Windows notes. "Cases" counts xunit test cases (theory rows and
-class-level tags expand), not methods. The Windows numbers below are one full pass over all seven cells on 2026-10-17, after
-a rebuild that was checked against each host's last source commit (the Microsoft WinUI host built with Visual Studio's
+class-level tags expand), not methods. The Windows numbers below are each cell's LAST whole-cell run on 2026-10-17, after the
+branch was rebased onto origin/master (so the case counts include the upstream per-cell splits): LibreWinForms, MicrosoftWinForms,
+MicrosoftWinUI, LibreWpf and MicrosoftWpf from the run after the Libre WinForms fixes, ProGpuWinUI and Uno from the full pass
+just before it. A cell's notes say when a fix was only checked on individual tests and the cell was not re-run whole. The hosts
+were rebuilt and checked against each host's last source commit first (the Microsoft WinUI host built with Visual Studio's
 MSBuild, the Microsoft WPF host built on its own: building the test project does not rebuild it).
 
 | Cell | Result | Notes |
 |---|---|---|
-| LibreWpf | pass (1 test), then 7 | The pass was made before the six cross-everywhere WPF tests were split per cell (see Progress); the cell now has 7 tests, and 7 of 7 passed after the split. |
-| LibreWinForms | pass (1 test) | The test also asserts the Document Outline rows show their labels. |
-| MicrosoftWinForms | pass (5 cases) | No test skipped. |
-| ProGpuWinUI | pass (5 cases) | |
-| Uno | pass (21 cases) | The size-preset and theme-switch failures of the earlier runs are fixed. |
-| MicrosoftWpf | 22 of 23 cases pass, then 23 | Since the split the cell has 29 cases (8 in `AddInTests`, 21 in `WpfGalleryDesignerTests`); the six added ones are the same tests that ran untagged in the pass, and the two pointer-gesture ones were re-run on their own after the scroll fix in Progress. `SettingsPage_...` failed with `The designer host did not complete 'session/open' within 00:00:30` only after the Gallery theory had opened about 115 documents in the same host; fixed by the app-resources fix below and confirmed with the `WpfGalleryDesignerTests` class (21 pass, 1 skip). The full Gallery sweep is opt-in (`OD_WPF_GALLERY_FULL=1`) and left out of the run. A `NoBuild` run against a stale host fails everything with `Protocol N is not supported`: rebuild the hosts first. |
-| MicrosoftWinUI | pass (35 cases) | A page whose frames never stop changing (ProgressBar) now renders with a warning instead of failing. |
+| LibreWpf | **27 of 30 pass** (last whole run) | Failed: `AddInTests.DragToolboxItem_OntoDesignSurface_InsertsAndPersistsControl_LibreWpf` (designer not loaded within 30 s: the Libre host starts slowly after a test that killed or recovered one); `WpfStripEditingLibreWpfTests.PropertiesPad_ItemsEditorEditsAListBoxsItems` (`IOException`: `MainWindow.xaml` still held by another process when the `finally` restores it right after `od.close-active-view`); `WpfStripEditingLibreWpfTests.SnapshotSelection_RemainsResponsiveWhileTheWpfHostRecovers` (4.36 s against the healthy selection time of 2.13 s plus 2 s). The run before had 29 of 30, only the selection test failing (5.8 s against an absolute 2 s). Since then: the Libre designer wait is at least 120 s, fixture writes retry on `IOException`, and the selection budget is the healthy selection time plus 5 s. All three were checked on the individual tests (all passed); **the cell has not been re-run as a whole.** |
+| LibreWinForms | pass (13 of 13) | Whole cell after the fixes. Before them 12 of 13: the toolbox drop (the last status had no `controlNames` while the designer reloaded). |
+| MicrosoftWinForms | pass (17 of 17) | Whole cell. The WinForms resize-drag test failed on the previous pass (the handle was too small at Fit in a 145 px pane) and now scrolls to the handle at 0.5 zoom first (`od.forms-designer.scroll-to`). |
+| ProGpuWinUI | pass (5 of 5) | From the full pass before the Libre WinForms fixes; nothing it runs changed since. |
+| Uno | pass (22 of 22) | From the full pass before the Libre WinForms fixes; nothing it runs changed since. |
+| MicrosoftWpf | **57 of 58 pass** (last whole run) | Failed: `WpfStripEditingMicrosoftWpfTests.PropertiesPad_ItemsEditorEditsAListBoxsItems`, the same `IOException` on `externals/vscode-wpf/sample/net6.0/MainWindow.xaml` in the `finally` restore. The run before had 56 of 58: `SnapshotSelection_RemainsResponsiveWhileTheWpfHostRecovers` (2.2 s against an absolute 2 s) and `WpfStripOverlayEditingMicrosoftWpfTests.MenuItem_DoubleClick_InlineEditsHeader_AndUndoRestoresIt` (the inline editor never opened after a single double-click; it now retries up to 3 times). The write retry, the selection budget and the double-click retry were checked on the individual tests, **not as a whole cell.** The 58 cases are 8 in `AddInTests`, 21 in `WpfGalleryDesignerTests`, and the `WpfStripEditing*` tests of both groups; the opt-in full Gallery sweep (`OD_WPF_GALLERY_FULL=1`) is left out. The earlier `SettingsPage_...` `session/open` timeout (the host kept every document's App.xaml resources) is fixed. A `NoBuild` run against a stale host fails everything with `Protocol N is not supported`: rebuild the hosts first. |
+| MicrosoftWinUI | pass (36 of 36) | Whole cell. The WinUI resize-drag test failed on the previous pass (the handle was 11 px below a 126 px viewport) and now pans the canvas until the handle is reachable. A page whose frames never stop changing (ProgressBar) renders with a warning instead of failing. |
+
+About `SnapshotSelection_RemainsResponsiveWhileTheWpfHostRecovers`: it asserts that selecting an element returns at once while the shared host is killed
+and its replacement is starting. It originally had an absolute 2 s budget, which this machine exceeds with the host alive (2.1 s on LibreWPF): UI-thread
+stack samples during the test showed the time going to a CPU-bound rebuild of the Xceed PropertyGrid (`PropertyGrid.OnSelectedObjectChanged`), not to an
+RPC wait. The budget is now the same selection timed with the host alive plus 5 s. With the host killed the selection still takes 2-3.5 s longer on
+LibreWPF, probably because `WpfSurfaceDesignerControl.NotifySelectionChanged` makes a blocking `design/select` round trip that overlaps the replacement host
+starting, so the test now only catches a wait of the order of an RPC timeout, not "returns immediately". A real fix would make that round trip
+asynchronous or skip it while the host is recovering; an `IsAlive` check does not work, because the replacement process is already running.
 
 Product bugs found by running the cells and fixed. Each was Windows-only for the same reason: the project, not the OS, picks the
 backend, or an assumption about thread and process behaviour that holds elsewhere:

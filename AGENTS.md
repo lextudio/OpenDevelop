@@ -21,7 +21,7 @@ Ask the reviewer for exactly those two terminal tokens; free-form wording such a
 The command's streamed output is not the record of approval: it can be truncated while OpenCode is
 still working. Record the review launch time and distinctive prompt title; after its process exits,
 locate the matching newly-created session in `opencode session list`, then inspect its final assistant
-message with `opencode export <session-id>`. Only an explicit final `VERDICT: APPROVED` in that
+message with `opencode session export <session-id>`. Only an explicit final `VERDICT: APPROVED` in that
 exported session is approval. Do not start another review while the first is running, and do not infer
 approval from exit status, a partial transcript, or an empty final tool response. Retry one
 non-terminal review once; if it remains non-terminal, report it unverified and stop.
@@ -55,15 +55,16 @@ intended staged paths (however many), commit only those paths, then report the n
 If no relevant test exists or cannot run, record why in the handoff; never waive approval. OpenCode
 commits; never push without the user's explicit request.
 
-Invocation (measured): review with `opencode run --agent reviewer -m opencode-go/deepseek-v4.1-flash
---variant high --title "<unique title> <tree>" "<context>" </dev/null > out 2>&1` and commit with
+Invocation (OpenCode CLI v2): review with `opencode run --agent reviewer -m
+opencode-go/deepseek-v4.1-flash#high --title "<unique title> <tree>" "<context>" </dev/null > out 2>&1`
+and commit with
 `--agent build` in the same form. `reviewer` (`~/.config/opencode/agents/reviewer.md`) is read-only
 and begins with the full `git diff --cached` before its bounded context reads, so put the intent and
 test evidence in the prompt; the default agent is not a reviewer. On macOS redirect stdin from
 `/dev/null` (one `run` hung after `init` without it; Windows: see below); the log is
 `~/.local/share/opencode/log/opencode.log` (`%USERPROFILE%\.local\share\opencode\log` on Windows). A review takes roughly 4-7 minutes and a
-commit about 1-2. `opencode export <id>` must go to a file before JSON parsing (piping truncates),
-and only with a non-empty id: a bare `opencode export` waits on an interactive picker forever.
+commit about 1-2. `opencode session export <id>` must go to a file before JSON parsing (piping truncates),
+and only with a non-empty id: a bare `opencode session export` waits on an interactive picker forever.
 Run OpenCode in the foreground of the command runner and retain/poll that runner's process handle
 until exit; never append `&`, use `nohup`, or otherwise daemonize it. In managed command runners,
 the background child can be terminated before OpenCode initializes, leaving no log record and no
@@ -73,8 +74,8 @@ Empty intermediate polls are normal while the reviewer is reading code: wait for
 foreground process to exit before looking up its session or deciding that the launch failed. Do not
 start a second review merely because its streamed output is quiet.
 
-Windows (PowerShell, measured 2026-10): install with `npm install -g opencode-ai`. The real binary is
-`%APPDATA%\npm\node_modules\opencode-ai\bin\opencode.exe`; the `opencode` on PATH is a shim, and config
+Windows (PowerShell, OpenCode CLI v2): install with `npm install -g @opencode/cli`. The real binary is
+`%APPDATA%\npm\node_modules\@opencode\cli\bin\opencode.exe`; the `opencode` on PATH is a shim, and config
 and auth sit under `%USERPROFILE%\.config\opencode` and `.local\share\opencode`. Call `opencode run ...`
 directly with the prompt in a here-string variable and `*> file`. `Start-Process opencode` fails (`%1 is
 not a valid Win32 application`), and `Start-Process <exe> -ArgumentList $prompt` splits a multi-line
@@ -86,7 +87,7 @@ runner's own background mode (`run_in_background`) and wait for its completion n
 short `Wait-Job -Timeout` in front of it. A commit (1-4 minutes) is safe in the foreground inside
 `Start-Job` + `Wait-Job -Timeout 420`. To stop a hung run, kill only the child whose command line
 contains `opencode` and `--agent` (`Get-CimInstance Win32_Process`), never the OpenCode desktop app.
-`opencode export <id>` prints a header line before the JSON: write it to a file and parse from the
+`opencode session export <id>` prints a header line before the JSON: write it to a file and parse from the
 first `{`. PowerShell has no `</dev/null`; the Windows runs made so far completed without a stdin redirect.
 Pin each agent's model in `~/.config/opencode/opencode.jsonc` (`agent.<name>.model`) and still pass
 `-m`: the built-in `build` agent has no model of its own and fell back to `qwen3.5:397b`, which was
