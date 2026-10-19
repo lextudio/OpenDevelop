@@ -92,6 +92,15 @@ example a build of commit `df5e306bf1` (before the fix), where it fails with all
 which is how to confirm the test still detects the defect. Like the dotnetup theory it is Windows-only,
 so on macOS it always reports Skipped and this startup path has no automated coverage there.
 
+`Net11ProjectIntegrationTests` covers a project whose target framework no stable SDK supports yet
+(net11.0 while .NET 11 is a release candidate), again each test in its own IDE.
+`Net11Project_LoadsButFailsToBuild_WithoutAnSdk11` expects the build to fail with NETSDK1045; it is
+**Skipped** on a machine where any discovered SDK root holds an 11.x SDK, because there the build
+rightly succeeds - so it only runs on a machine without .NET 11. `Net11Project_BuildsAndRuns_WithADotnetupInstalledPreviewSdk11`
+installs the `11.0` channel with dotnetup (a pre-release until .NET 11 ships), registers it as a
+custom SDK root, and requires that the IDE keeps a stable SDK as its own, builds the project with the
+pre-release SDK, and runs it to completion on the .NET 11 runtime from that root.
+
 Tests carrying `[Trait("DesignerBackend", "Microsoft")]` exercise the Microsoft WinForms/WPF/WinUI
 backends, which only exist on Windows. They skip themselves elsewhere (see
 `AddInTests.MicrosoftDesignerBackendsAvailable`), so an unfiltered run is correct on every

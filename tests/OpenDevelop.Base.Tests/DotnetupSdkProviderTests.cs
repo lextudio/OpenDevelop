@@ -46,6 +46,18 @@ public sealed class DotnetupSdkProviderTests : IDisposable
     }
 
     [Fact]
+    public void FindCompleteSdkVersion_AcceptsAPreRelease_OnlyWhenAllowed_AndStillPrefersAStableOne()
+    {
+        CreateSdk("11.0.100-rc.2.26504.105");
+
+        Assert.Null(DotnetupSdkProvider.FindCompleteSdkVersion(root, "11.0"));
+        Assert.Equal("11.0.100-rc.2.26504.105", DotnetupSdkProvider.FindCompleteSdkVersion(root, "11.0", allowPrerelease: true));
+
+        CreateSdk("11.0.100");
+        Assert.Equal("11.0.100", DotnetupSdkProvider.FindCompleteSdkVersion(root, "11.0", allowPrerelease: true));
+    }
+
+    [Fact]
     public void FindCompleteSdkVersion_IgnoresAnIncompleteInstall()
     {
         CreateSdk("9.0.319", complete: false);

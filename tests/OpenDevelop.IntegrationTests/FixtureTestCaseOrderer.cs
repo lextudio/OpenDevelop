@@ -48,6 +48,7 @@ public sealed class FixtureTestCaseOrderer : ITestCaseOrderer
         // the shared app's state. This only orders classes inside mixed runs; the class's named
         // collection ("90 ...") is what places it after the others, as collections sort by name.
         if (testName.Contains("SdkSelectedAtStartupIntegrationTests", StringComparison.Ordinal)) return 80;
+        if (testName.Contains("Net11ProjectIntegrationTests", StringComparison.Ordinal)) return 81;
         return 1000;
     }
 

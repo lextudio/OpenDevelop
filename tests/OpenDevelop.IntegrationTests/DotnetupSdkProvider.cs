@@ -52,8 +52,10 @@ static class DotnetupSdkProvider
     /// Returns the root directory of a dotnetup-installed SDK for <paramref name="channel"/>
     /// (for example "9.0"), installing it first when it is not cached. The returned root holds
     /// <c>dotnet.exe</c> and an <c>sdk</c> folder with a complete, stable SDK of that channel.
+    /// With <paramref name="allowPrerelease"/> a pre-release SDK satisfies the channel too - the only
+    /// kind a channel has before its release (dotnetup's "11.0" installs an RC until .NET 11 ships).
     /// </summary>
-    public static async Task<string> EnsureSdkAsync(string channel)
+    public static async Task<string> EnsureSdkAsync(string channel, bool allowPrerelease = false)
     {
         // Windows only for now: the bootstrapper is a PowerShell script and the SDK root layout
         // below assumes dotnet.exe. Skipped, not failed, elsewhere.
@@ -66,7 +68,7 @@ static class DotnetupSdkProvider
             SafeDelete(LegacyCacheRoot);
 
             string sdkRoot = Path.Combine(CacheRoot, "sdk-" + channel);
-            if (FindCompleteSdkVersion(sdkRoot, channel) is not null)
+            if (FindCompleteSdkVersion(sdkRoot, channel, allowPrerelease) is not null)
                 return sdkRoot;
 
             // Anything here is a killed or failed earlier install: start clean so it can never be adopted.
@@ -91,7 +93,7 @@ static class DotnetupSdkProvider
             }
 
             // A reported success with an incomplete tree is a real problem, not a missing prerequisite.
-            Assert.True(FindCompleteSdkVersion(sdkRoot, channel) is not null,
+            Assert.True(FindCompleteSdkVersion(sdkRoot, channel, allowPrerelease) is not null,
                 $"dotnetup reported success but '{sdkRoot}' holds no complete SDK for channel {channel}.");
             return sdkRoot;
         }
@@ -104,10 +106,10 @@ static class DotnetupSdkProvider
     /// <summary>
     /// The newest STABLE SDK version under <paramref name="sdkRoot"/> that belongs to the channel AND
     /// looks completely installed (MSBuild.dll and the Microsoft.NET.Sdk props are what a finished
-    /// install guarantees), or null. Pre-release folders are ignored, as the product ignores them
-    /// when it describes an SDK root (DotNetSdkService.TryDescribeRoot).
+    /// install guarantees), or null. Pre-release folders are ignored unless
+    /// <paramref name="allowPrerelease"/> - a stable SDK of the channel still wins over them.
     /// </summary>
-    internal static string? FindCompleteSdkVersion(string sdkRoot, string channel)
+    internal static string? FindCompleteSdkVersion(string sdkRoot, string channel, bool allowPrerelease = false)
     {
         string sdkDir = Path.Combine(sdkRoot, "sdk");
         if (!File.Exists(Path.Combine(sdkRoot, "dotnet.exe")) || !Directory.Exists(sdkDir))
@@ -115,12 +117,14 @@ static class DotnetupSdkProvider
         return Directory.GetDirectories(sdkDir)
             .Select(d => (Dir: d, Name: Path.GetFileName(d)))
             .Where(s => s.Name.StartsWith(channel + ".", StringComparison.Ordinal)
-                && !s.Name.Contains('-')
-                && Version.TryParse(s.Name, out _)
+                && (allowPrerelease || !s.Name.Contains('-'))
+                && Version.TryParse(s.Name.Split('-')[0], out _)
                 && File.Exists(Path.Combine(s.Dir, "MSBuild.dll"))
                 && File.Exists(Path.Combine(s.Dir, "Sdks", "Microsoft.NET.Sdk", "Sdk", "Sdk.props")))
             .Select(s => s.Name)
-            .OrderBy(Version.Parse)
+            .OrderBy(name => !name.Contains('-'))              // pre-releases first, so a stable one wins
+            .ThenBy(name => Version.Parse(name.Split('-')[0]))
+            .ThenBy(name => name, StringComparer.Ordinal)
             .LastOrDefault();
     }
 
