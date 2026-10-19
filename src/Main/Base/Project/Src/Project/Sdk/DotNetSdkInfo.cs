@@ -19,7 +19,17 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 		public string Label { get; set; }
 		public string RootPath { get; set; }
 		public string DotnetExecutablePath { get; set; }
+		/// <summary>Stable SDK versions in this root, ascending. Only these make it an effective SDK.</summary>
 		public IReadOnlyList<string> InstalledSdkVersions { get; set; } = new List<string>();
+
+		/// <summary>
+		/// Pre-release SDK versions in this root (names with a '-', e.g. "11.0.100-rc.1.26425.128"),
+		/// ascending. Never used for the IDE as a whole; only to build and run a project whose target
+		/// framework no stable SDK supports (see <see cref="DotNetSdkService.ResolveSdkForProject"/>).
+		/// </summary>
+		public IReadOnlyList<string> PreviewSdkVersions { get; set; } = new List<string>();
+
+		/// <summary>The highest stable version, or - for a root that holds only pre-releases - the highest pre-release.</summary>
 		public string HighestSdkVersion { get; set; }
 		public DotNetSdkOrigin Origin { get; set; }
 

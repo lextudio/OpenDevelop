@@ -72,22 +72,66 @@ namespace ICSharpCode.SharpDevelop.Project
 		// process itself (see the type-level comment) - just needs its own consistent SDK/MSBuild
 		// toolset, which any selected installed SDK provides.
 
+		static readonly object pinLock = new object();
+
+		/// <summary>
+		/// A temp folder whose global.json pins <paramref name="sdkVersion"/> exactly (pre-releases
+		/// allowed). Projects built side by side share it, and so may another IDE instance: the file is
+		/// written to a unique temp name and moved into place, so a reader never sees it half-written,
+		/// and an unchanged file is left alone. A failure is an InvalidOperationException, which every
+		/// caller reports as a build or resolution error instead of letting it escape.
+		/// </summary>
+		static string PinnedSdkDirectory(string sdkVersion)
+		{
+			string directory = Path.Combine(Path.GetTempPath(), "OpenDevelop-sdk-pin", sdkVersion);
+			string globalJson = Path.Combine(directory, "global.json");
+			string content = "{\n  \"sdk\": {\n    \"version\": \"" + sdkVersion + "\",\n    \"rollForward\": \"disable\",\n    \"allowPrerelease\": true\n  }\n}\n";
+			try {
+				lock (pinLock) {
+					Directory.CreateDirectory(directory);
+					if (File.Exists(globalJson) && File.ReadAllText(globalJson) == content)
+						return directory;
+					string temp = globalJson + "." + Guid.NewGuid().ToString("N") + ".tmp";
+					File.WriteAllText(temp, content);
+					File.Move(temp, globalJson, overwrite: true);
+				}
+				return directory;
+			} catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) {
+				// Another IDE instance may have just written the same content; that is fine.
+				try {
+					if (File.Exists(globalJson) && File.ReadAllText(globalJson) == content)
+						return directory;
+				} catch (Exception inner) when (inner is IOException || inner is UnauthorizedAccessException) {
+				}
+				throw new InvalidOperationException(
+					"Could not prepare the global.json that pins .NET SDK " + sdkVersion + " in " + directory + ": " + ex.Message, ex);
+			}
+		}
+
 		/// <summary>
 		/// The child-process setup shared by <see cref="BuildAsync"/> and
 		/// <see cref="ResolveAssemblyReferences"/>: selected SDK, scrubbed environment, pinned
 		/// locale, and a working directory outside this repo. Both paths need exactly the same
 		/// treatment - see the comments inside - and having two copies of it is how they drift.
 		/// </summary>
-		static ProcessStartInfo CreateDotnetChildStartInfo()
+		/// <param name="choice">The SDK for the project being built (<see cref="DotNetSdkService.ResolveSdkForProject"/>);
+		/// null means the IDE's effective SDK, as before.</param>
+		static ProcessStartInfo CreateDotnetChildStartInfo(DotNetSdkService.SdkChoice choice = null)
 		{
 			// No fallback: with no supported (.NET 10+) SDK there is no host to launch, and running
 			// the build under an older one is exactly what made a net10.0 project fail with an
 			// unexplained missing-import error (issue #19) instead of a message naming the cause.
-			var sdk = DotNetSdkService.ResolveEffectiveSdk()
-				?? throw new InvalidOperationException(
+			if (choice == null) {
+				var effective = DotNetSdkService.ResolveEffectiveSdk();
+				if (effective != null)
+					choice = new DotNetSdkService.SdkChoice { Sdk = effective, Version = effective.HighestSdkVersion, IsDefault = true };
+			}
+			if (choice == null)
+				throw new InvalidOperationException(
 					"No .NET 10 (or newer) SDK is installed, so this build cannot run. Install one"
 					+ " side-by-side (\"winget install Microsoft.DotNet.SDK.10\"), or select one under"
 					+ " Tools > Options > .NET SDK, then build again.");
+			var sdk = choice.Sdk;
 			var psi = new ProcessStartInfo(sdk.DotnetExecutablePath) {
 				// Deliberately NOT project.Directory: dotnet's SDK resolution walks up from the
 				// current working directory looking for global.json, and OpenDevelop's own repo
@@ -120,7 +164,13 @@ namespace ICSharpCode.SharpDevelop.Project
 			}) {
 				psi.EnvironmentVariables.Remove(name);
 			}
-			foreach (var kv in DotNetSdkService.GetEnvironmentVariablesFor(sdk)) {
+			if (choice.IsPreview) {
+				// The muxer picks an SDK by itself from the working directory's global.json (or the
+				// newest in its root). Pin the exact pre-release chosen for this project, from a folder
+				// of its own, so a root with several SDKs cannot hand the build a different one.
+				psi.WorkingDirectory = PinnedSdkDirectory(choice.Version);
+			}
+			foreach (var kv in DotNetSdkService.GetEnvironmentVariablesFor(sdk, choice.Version)) {
 				// Only propagate variables the dotnet muxer itself requires. The remaining
 				// entries are in-process MSBuild settings. In particular, this application's
 				// bundled SdkResolvers folder contains the ARM64 NuGet resolver; exposing it
@@ -239,7 +289,8 @@ namespace ICSharpCode.SharpDevelop.Project
 				return results;
 
 			try {
-				foreach (var path in RunResolveReferences(baseProject.FileName.ToString(), InnerBuildTargetFramework(baseProject), logErrorsToOutputPad)) {
+				foreach (var path in RunResolveReferences(baseProject.FileName.ToString(), InnerBuildTargetFramework(baseProject), logErrorsToOutputPad,
+				             DotNetSdkService.ResolveSdkForProject(baseProject))) {
 					// Include is the assembly's simple name, matching what a hand-written
 					// <Reference Include="..."/> would carry; the resolved path goes in HintPath,
 					// which is what RoslynWorkspaceHelper.GetMetadataReferences reads.
@@ -310,6 +361,10 @@ namespace ICSharpCode.SharpDevelop.Project
 			string traversal = Path.Combine(scratch, "resolve-references-" + Guid.NewGuid().ToString("N") + ".proj");
 			try {
 				Directory.CreateDirectory(scratch);
+				// One process means one SDK. A batch with a project that needs another one (net11.0 on a
+				// pre-release SDK 11) is resolved one by one instead, each project with its own SDK.
+				if (projects.Any(project => DotNetSdkService.ResolveSdkForProject(project) is { IsDefault: false }))
+					return null;
 				var requests = projects.Select(project => (Project: project, File: project.FileName.ToString(), TargetFramework: InnerBuildTargetFramework(project))).ToList();
 				File.WriteAllText(traversal, ReferenceResolutionBatch.CreateResolveReferencesTraversal(requests.Select(r => (r.File, r.TargetFramework)).ToList()));
 
@@ -380,9 +435,9 @@ namespace ICSharpCode.SharpDevelop.Project
 			return string.Join("\n", lines);
 		}
 
-		static IEnumerable<string> RunResolveReferences(string projectFileName, string targetFramework, bool logErrorsToOutputPad)
+		static IEnumerable<string> RunResolveReferences(string projectFileName, string targetFramework, bool logErrorsToOutputPad, DotNetSdkService.SdkChoice sdk = null)
 		{
-			var psi = CreateDotnetChildStartInfo();
+			var psi = CreateDotnetChildStartInfo(sdk);
 			psi.ArgumentList.Add("msbuild");
 			psi.ArgumentList.Add(projectFileName);
 			psi.ArgumentList.Add("--nologo");
@@ -581,6 +636,21 @@ namespace ICSharpCode.SharpDevelop.Project
 			// read from the entry project's directory); others keep the per-project path.
 			string globalJsonDirectory = ReferenceResolutionBatch.GlobalJsonDirectory(solutionFile);
 			bool SameGlobalJson(IProject project) => string.Equals(ReferenceResolutionBatch.GlobalJsonDirectory(project.FileName.ToString()), globalJsonDirectory, StringComparison.Ordinal);
+			// One process means one SDK. If any project here needs another one (net11.0 built with a
+			// pre-release SDK 11) - or its SDK cannot even be determined because its evaluation throws -
+			// the one-process build is skipped altogether. Leaving just that project out is not enough:
+			// its dependents would be compiled here before it is built anywhere. Every project is then
+			// built on its own, in dependency order, each with its own SDK.
+			bool OnDefaultSdk(IProject project)
+			{
+				try {
+					return DotNetSdkService.ResolveSdkForProject(project) is not { IsDefault: false };
+				} catch (Exception) {
+					return false;
+				}
+			}
+			if (waves.SelectMany(wave => wave).Where(SameGlobalJson).Any(project => !OnDefaultSdk(project)))
+				return nothing;
 			var includedWaves = waves.Select(wave => wave.Where(SameGlobalJson).ToList()).Where(wave => wave.Count > 0).ToList();
 			var included = includedWaves.SelectMany(wave => wave).ToList();
 			if (included.Count == 0)
@@ -823,9 +893,22 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (options.Target == BuildTarget.Build)
 				LoggingService.Debug("Fast up-to-date check: building " + project.Name + " (" + notUpToDate + ")");
 			var buildStartedUtc = DateTime.UtcNow;
+			// Choosing the SDK reads the project's evaluated TargetFramework(s), which re-evaluates a
+			// dirty project and can throw for any reason a project load can (a removed import after a
+			// branch switch, an IOException). Report that as a build error: the caller is async void and
+			// an escaping exception would end the process. An unloaded project keeps its own handling.
+			DotNetSdkService.SdkChoice sdkChoice;
+			try {
+				sdkChoice = DotNetSdkService.ResolveSdkForProject(project);
+			} catch (ObjectDisposedException) {
+				throw;
+			} catch (Exception ex) {
+				feedbackSink.ReportError(new BuildError(project.FileName.ToString(), "Could not determine the .NET SDK to build this project with: " + ex.Message));
+				return false;
+			}
 			ProcessStartInfo psi;
 			try {
-				psi = CreateDotnetChildStartInfo();
+				psi = CreateDotnetChildStartInfo(sdkChoice);
 			} catch (InvalidOperationException ex) {
 				// No supported SDK: report through the sink. The caller (BuildEngine.DoStartBuild) is
 				// async void and would take the whole process down on an unhandled exception.

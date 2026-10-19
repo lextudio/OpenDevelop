@@ -75,7 +75,9 @@ namespace ICSharpCode.SharpDevelop.Project
 #else
 			switch (StartAction) {
 				case StartAction.Project:
-					return CreateStartInfo(Project.OutputAssemblyFullPath, Project.Directory, StartWorkingDirectory, StartArguments);
+					var psi = CreateStartInfo(Project.OutputAssemblyFullPath, Project.Directory, StartWorkingDirectory, StartArguments);
+					UseRuntimeOfProjectSdk(psi);
+					return psi;
 				case StartAction.Program:
 					return CreateStartInfo(StartProgram, Project.Directory, StartWorkingDirectory, StartArguments);
 				case StartAction.StartURL:
@@ -124,6 +126,22 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 			RemoveHostBuildEnvironment(psi);
 			return psi;
+		}
+
+		/// <summary>
+		/// A project built with an SDK other than the IDE's (net11.0 built with a pre-release SDK 11,
+		/// see DotNetSdkService.ResolveSdkForProject) needs that SDK's runtime, which may exist only in
+		/// that root - not in the machine-wide install the apphost would otherwise use. Point the
+		/// apphost at it. Every other project keeps the environment exactly as before.
+		/// </summary>
+		void UseRuntimeOfProjectSdk(ProcessStartInfo psi)
+		{
+			var choice = ICSharpCode.SharpDevelop.Project.Sdk.DotNetSdkService.ResolveSdkForProject(Project);
+			if (choice == null || choice.IsDefault || choice.Sdk?.RootPath == null)
+				return;
+			foreach (string name in new[] { "DOTNET_ROOT_X64", "DOTNET_ROOT_ARM64", "DOTNET_ROOT_X86" })
+				psi.Environment.Remove(name);
+			psi.Environment["DOTNET_ROOT"] = choice.Sdk.RootPath;
 		}
 
 		/// <summary>

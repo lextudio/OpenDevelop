@@ -137,7 +137,8 @@ namespace Debugger.AddIn.Service.Dap
 			DapLaunchMode launchMode = DapLaunchMode.Launch, CancellationToken cancellationToken = default,
 			IEnumerable<KeyValuePair<string, string>> launchEnvironment = null,
 			bool noDebug = false,
-			int? attachProcessId = null)
+			int? attachProcessId = null,
+			string debuggeeRuntimeHost = null)
 		{
 			var argumentList = arguments != null ? arguments.ToList() : new List<string>();
 			string adapterDll = ResolveAdapterDll();
@@ -149,6 +150,17 @@ namespace Debugger.AddIn.Service.Dap
 			launchTarget = targetPath;
 			cancellationTokenSource = new CancellationTokenSource();
 			string debuggeeHost = launchMode == DapLaunchMode.AttachToProcess ? ResolveDotNetHost() : ResolveDebuggeeHost(targetPath);
+			// The adapter stays on debuggeeHost (it needs that root's runtime, and the dbgshim of its own
+			// architecture). The DEBUGGEE may need another root's runtime: a net11.0 program built with a
+			// pre-release SDK 11 runs only on the .NET 11 runtime in that SDK's root (see
+			// DotNetStartBehavior.UseRuntimeOfProjectSdk). Use that host for the debuggee when it is of
+			// the same architecture as the adapter's, so the adapter can still debug it.
+			string debuggeeLaunchHost = debuggeeHost;
+			if (!string.IsNullOrEmpty(debuggeeRuntimeHost) && File.Exists(debuggeeRuntimeHost)) {
+				var adapterMachine = ReadMachine(debuggeeHost);
+				if (adapterMachine == null || adapterMachine == ReadMachine(debuggeeRuntimeHost))
+					debuggeeLaunchHost = debuggeeRuntimeHost;
+			}
 			adapterLogPath = CreateAdapterLogPath();
 			adapterProcess = LaunchAdapter(adapterDll, debuggeeHost, adapterLogPath);
 			// Surface the adapter's (and, since the debuggee inherits it, the debuggee's) stderr to
@@ -191,7 +203,7 @@ namespace Debugger.AddIn.Service.Dap
 					["justMyCode"] = true
 				}, cancellationToken).ConfigureAwait(false);
 			} else if (launchMode == DapLaunchMode.AttachToSuspendedProcess) {
-				debuggeeProcess = LaunchDebuggeeSuspended(debuggeeHost, targetPath, workingDirectory, argumentList, launchEnvironment);
+				debuggeeProcess = LaunchDebuggeeSuspended(debuggeeLaunchHost, targetPath, workingDirectory, argumentList, launchEnvironment);
 				await client.SendRequestAsync("attach", new JsonObject {
 					["processId"] = debuggeeProcess.Id,
 					["console"] = "internalConsole",

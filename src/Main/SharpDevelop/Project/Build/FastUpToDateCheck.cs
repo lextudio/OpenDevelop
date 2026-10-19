@@ -235,7 +235,10 @@ namespace ICSharpCode.SharpDevelop.Project
 				files.ExceptWith(referenceOutputs);
 				var sorted = files.OrderBy(file => file, StringComparer.Ordinal).ToList();
 				var sortedReferences = referenceOutputs.OrderBy(file => file, StringComparer.Ordinal).ToList();
-				var sdk = Sdk.DotNetSdkService.ResolveEffectiveSdk();
+				// The SDK this project is built with (its own when it targets a framework the IDE's SDK
+				// cannot build), so installing or removing that SDK makes it out of date. For every
+				// other project this is the effective SDK at its highest version - the same key as before.
+				var sdk = Sdk.DotNetSdkService.ResolveSdkForProject(project);
 				if (sdk == null) {
 					// No supported (.NET 10+) SDK: there is nothing to key the check on, and the
 					// build path reports the same condition with its own message.
@@ -243,7 +246,7 @@ namespace ICSharpCode.SharpDevelop.Project
 					return null;
 				}
 				return new Inputs {
-					Key = "v3|" + sdk.DotnetExecutablePath + "|" + sdk.HighestSdkVersion + "|" + MinimalMSBuildEngine.GlobalPropertiesKey(options),
+					Key = "v3|" + sdk.Sdk.DotnetExecutablePath + "|" + sdk.Version + "|" + MinimalMSBuildEngine.GlobalPropertiesKey(options),
 					Hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", sorted) + "\n|\n" + string.Join("\n", sortedReferences)))),
 					Files = sorted,
 					ReferenceOutputs = sortedReferences,

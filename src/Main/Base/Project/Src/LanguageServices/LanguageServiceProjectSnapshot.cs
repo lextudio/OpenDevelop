@@ -486,11 +486,15 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                     if (!string.IsNullOrWhiteSpace(assetsFile))
                         inputs.Add(assetsFile);
 
-                    var sdk = Project.Sdk.DotNetSdkService.ResolveEffectiveSdk();
+                    // The SDK this project's references are resolved with: its own when it targets a
+                    // framework the IDE's SDK cannot build (a pre-release SDK 11 for net11.0), so
+                    // replacing or removing that SDK invalidates the entry. For every other project it
+                    // is the effective SDK at its highest version - the same string as before.
+                    var sdk = Project.Sdk.DotNetSdkService.ResolveSdkForProject(project);
                     var text = new StringBuilder();
                     // A null SDK (no supported .NET 10+ install) still has to yield a stable
                     // fingerprint, so an empty slot stands in rather than throwing here.
-                    text.Append("v1|").Append(sdk?.DotnetExecutablePath ?? string.Empty).Append('|').Append(sdk?.HighestSdkVersion ?? string.Empty).Append('\n');
+                    text.Append("v1|").Append(sdk?.Sdk?.DotnetExecutablePath ?? string.Empty).Append('|').Append(sdk?.Version ?? string.Empty).Append('\n');
                     foreach (var input in inputs.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
                     {
                         text.Append(input).Append('|');

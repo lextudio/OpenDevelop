@@ -262,8 +262,15 @@ namespace ICSharpCode.SharpDevelop.Services
 					bool nativeHost = !IsManagedAssembly(targetPath);
 					if (nativeHost)
 						PrintDebugMessage("> " + Path.GetFileName(targetPath) + " is a native program; debugging starts once it loads the .NET runtime.\n");
+					// DotNetStartBehavior clears the DOTNET_ROOT the IDE inherited and sets one only for a
+					// project built with another SDK's runtime (a pre-release SDK 11 for net11.0); its
+					// host is the one that can run the debuggee. Absent, the session picks the host as before.
+					string debuggeeRuntimeHost = null;
+					if (processStartInfo.Environment.TryGetValue("DOTNET_ROOT", out var projectDotnetRoot) && !string.IsNullOrEmpty(projectDotnetRoot))
+						debuggeeRuntimeHost = Path.Combine(projectDotnetRoot, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
 					await CurrentSession.StartAsync(targetPath, processStartInfo.WorkingDirectory, breakAtBeginning, arguments,
-						nativeHost ? DapLaunchMode.Launch : DapLaunchMode.AttachToSuspendedProcess, default, hotReloadEnvironment, noDebug).ConfigureAwait(false);
+						nativeHost ? DapLaunchMode.Launch : DapLaunchMode.AttachToSuspendedProcess, default, hotReloadEnvironment, noDebug,
+						debuggeeRuntimeHost: debuggeeRuntimeHost).ConfigureAwait(false);
 
 				// Breakpoints must be sent after "launch" but before "configurationDone" -
 				// most DAP adapters (including SharpDbg) ignore breakpoints set any later. Run

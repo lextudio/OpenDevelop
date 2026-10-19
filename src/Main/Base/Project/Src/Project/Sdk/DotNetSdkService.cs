@@ -91,7 +91,7 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 				return false;
 			}
 			if (sdk == null) {
-				error = $"No stable SDK version was found under:\n{sdkDirectory}";
+				error = $"No SDK version was found under:\n{sdkDirectory}";
 				return false;
 			}
 			return true;
@@ -244,21 +244,33 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			// Order by numeric version (stable releases only, like ResolveEffectiveSdk's version
 			// comparison below): plain ordinal sorting puts "9.0.305" above "10.0.200" ('1' < '9'),
 			// which wrongly picked an ancient SDK and failed every net10.0 build with NETSDK1045.
-			var versions = Directory.GetDirectories(sdkDir)
+			var names = Directory.GetDirectories(sdkDir)
 				.Select(Path.GetFileName)
-				.Where(v => v != null && !v.Contains('-'))
-				.OrderBy(v => Version.TryParse(v, out var ver) ? ver : new Version(0, 0))
-				.Select(v => v)
+				.Where(v => v != null)
 				.ToList();
-			if (versions.Count == 0)
+			var versions = names
+				.Where(v => !v.Contains('-'))
+				.OrderBy(v => Version.TryParse(v, out var ver) ? ver : new Version(0, 0))
+				.ToList();
+			// Pre-releases are kept apart: they never become the IDE's SDK, but a project targeting a
+			// framework no stable SDK supports yet (net11.0 before .NET 11 ships) can only be built with one.
+			var previews = names
+				.Where(v => v.Contains('-') && Version.TryParse(v.Split('-')[0], out _))
+				.OrderBy(v => v, PrereleaseVersionComparer.Instance)
+				.ToList();
+			if (versions.Count == 0 && previews.Count == 0)
 				return null;
 
+			string highest = versions.Count > 0 ? versions[versions.Count - 1] : previews[previews.Count - 1];
 			return new DotNetSdkInfo {
-				Label = $"{label} (.NET SDK {versions[versions.Count - 1]})",
+				Label = versions.Count > 0
+					? $"{label} (.NET SDK {highest})"
+					: $"{label} (.NET SDK {highest}, preview only)",
 				RootPath = rootPath,
 				DotnetExecutablePath = dotnetExe,
 				InstalledSdkVersions = versions,
-				HighestSdkVersion = versions[versions.Count - 1],
+				PreviewSdkVersions = previews,
+				HighestSdkVersion = highest,
 				Origin = origin,
 				Architecture = DetectHostArchitecture(dotnetExe)
 			};
@@ -637,11 +649,161 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 		/// </summary>
 		public static string ResolveDotnetHostForArchitecture(Architecture targetArchitecture)
 		{
+			// Roots with a stable SDK only: a pre-release-only root (a dotnetup RC) would otherwise
+			// outrank every stable one by version, and need not carry the runtime the child uses. Such
+			// roots were not discovered at all before pre-release SDKs were tracked; this keeps that.
 			return DiscoverSdks()
-				.Where(s => s.Architecture == targetArchitecture)
+				.Where(s => s.Architecture == targetArchitecture && s.InstalledSdkVersions.Count > 0)
 				.OrderByDescending(s => Version.TryParse(s.HighestSdkVersion?.Split('-')[0], out var v) ? v : new Version(0, 0))
 				.Select(s => s.DotnetExecutablePath)
 				.FirstOrDefault();
+		}
+
+		/// <summary>The SDK root, and the exact SDK version in it, to build and run one project with.</summary>
+		public sealed class SdkChoice
+		{
+			public DotNetSdkInfo Sdk { get; init; }
+
+			/// <summary>The SDK version folder to use, e.g. "10.0.401" or "11.0.100-rc.1.26425.128".</summary>
+			public string Version { get; init; }
+
+			/// <summary>True when this is the IDE's effective SDK at its highest version - the choice every project got before.</summary>
+			public bool IsDefault { get; init; }
+
+			public bool IsPreview => Version != null && Version.Contains('-');
+		}
+
+		/// <summary>
+		/// The .NET major version a target framework moniker needs ("net11.0" and "net11.0-windows" -&gt; 11,
+		/// "netcoreapp3.1" -&gt; 3), or null for one no .NET SDK version gates (net48, netstandard2.0, empty).
+		/// </summary>
+		public static int? TargetFrameworkMajor(string targetFramework)
+		{
+			if (string.IsNullOrWhiteSpace(targetFramework))
+				return null;
+			var match = System.Text.RegularExpressions.Regex.Match(targetFramework.Trim(), @"^net(?:coreapp)?(\d+)\.\d+", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+			return match.Success && int.TryParse(match.Groups[1].Value, out var major) ? major : null;
+		}
+
+		/// <summary>
+		/// The SDK to build and run a project with that targets <paramref name="targetFrameworks"/>.
+		/// The IDE's effective SDK whenever it is new enough - the common case, unchanged. Only when the
+		/// project needs a newer .NET major than that (net11.0 on an SDK 10 setup) does it look further:
+		/// first for a STABLE SDK of that major in any discovered root, then - since a framework can be
+		/// targeted before its SDK ships - for a PRE-RELEASE one. With none, the effective SDK is kept
+		/// and the build reports NETSDK1045 itself. This choice is for the out-of-process build and the
+		/// launched program only; the IDE's in-process MSBuild stays on the effective SDK.
+		/// </summary>
+		public static SdkChoice ResolveSdkForTargetFrameworks(IReadOnlyList<DotNetSdkInfo> discovered, string preferredRoot, IEnumerable<string> targetFrameworks)
+		{
+			if (discovered == null)
+				throw new ArgumentNullException(nameof(discovered));
+			var effective = ResolveEffectiveSdk(discovered, preferredRoot);
+			// No supported (.NET 10+) SDK at all: no choice, exactly as before - callers report it. Never
+			// fall back to an older stable SDK or to a pre-release one here (that is issue #19's trap).
+			if (effective == null)
+				return null;
+			SdkChoice Default() => new SdkChoice { Sdk = effective, Version = effective.HighestSdkVersion, IsDefault = true };
+
+			// From here every candidate is newer than the effective SDK, which is itself .NET 10+.
+			int? required = (targetFrameworks ?? Enumerable.Empty<string>()).Select(TargetFrameworkMajor).Max();
+			if (required == null || SdkMajorVersion(effective.HighestSdkVersion) >= required)
+				return Default();
+
+			var stable = discovered
+				.SelectMany(s => s.InstalledSdkVersions.Select(v => (Sdk: s, Version: v)))
+				.Where(c => SdkMajorVersion(c.Version) >= required && System.Version.TryParse(c.Version, out _))
+				.OrderByDescending(c => SameRoot(c.Sdk.RootPath, preferredRoot))
+				.ThenByDescending(c => c.Sdk.Origin == DotNetSdkOrigin.System)
+				.ThenByDescending(c => System.Version.Parse(c.Version))
+				.FirstOrDefault();
+			if (stable.Sdk != null)
+				return new SdkChoice { Sdk = stable.Sdk, Version = stable.Version };
+
+			var preview = discovered
+				.SelectMany(s => s.PreviewSdkVersions.Select(v => (Sdk: s, Version: v)))
+				.Where(c => SdkMajorVersion(c.Version) >= required)
+				.OrderByDescending(c => SameRoot(c.Sdk.RootPath, preferredRoot))
+				.ThenByDescending(c => c.Sdk.Origin == DotNetSdkOrigin.System)
+				.ThenByDescending(c => c.Version, PrereleaseVersionComparer.Instance)
+				.FirstOrDefault();
+			if (preview.Sdk != null)
+				return new SdkChoice { Sdk = preview.Sdk, Version = preview.Version };
+
+			return Default();
+		}
+
+		/// <summary>
+		/// Orders pre-release SDK versions the way they were released: by the numeric version, then by
+		/// the label's dot-separated parts, numerically where both are numbers ("preview.10" after
+		/// "preview.7", which an ordinal string compare gets wrong) and ordinally otherwise ("rc" after
+		/// "preview").
+		/// </summary>
+		public sealed class PrereleaseVersionComparer : IComparer<string>
+		{
+			public static readonly PrereleaseVersionComparer Instance = new PrereleaseVersionComparer();
+
+			public int Compare(string x, string y)
+			{
+				if (ReferenceEquals(x, y)) return 0;
+				if (x == null) return -1;
+				if (y == null) return 1;
+				string[] xs = x.Split(new[] { '-' }, 2), ys = y.Split(new[] { '-' }, 2);
+				Version.TryParse(xs[0], out var xv);
+				Version.TryParse(ys[0], out var yv);
+				int byVersion = Comparer<Version>.Default.Compare(xv, yv);
+				if (byVersion != 0)
+					return byVersion;
+				string[] xl = xs.Length > 1 ? xs[1].Split('.') : Array.Empty<string>();
+				string[] yl = ys.Length > 1 ? ys[1].Split('.') : Array.Empty<string>();
+				for (int i = 0; i < Math.Min(xl.Length, yl.Length); i++) {
+					int part = int.TryParse(xl[i], out var xn) && int.TryParse(yl[i], out var yn)
+						? xn.CompareTo(yn)
+						: string.CompareOrdinal(xl[i], yl[i]);
+					if (part != 0)
+						return part;
+				}
+				return xl.Length.CompareTo(yl.Length);
+			}
+		}
+
+		// ResolveSdkForProject runs once per project on paths that must stay cheap (the one-process
+		// build and batched reference resolution ask it for every project of a solution), and
+		// DiscoverSdks touches the disk for every root. Reuse one discovery for a short while, keyed
+		// on the settings it reads, so a changed selection or custom root is seen immediately.
+		static readonly object discoveryCacheLock = new object();
+		// Monotonic milliseconds (Environment.TickCount64), so a wall-clock change cannot keep an entry alive.
+		static (long At, string Key, IReadOnlyList<DotNetSdkInfo> Sdks) discoveryCache;
+		const long DiscoveryCacheLifetimeMilliseconds = 5000;
+
+		static IReadOnlyList<DotNetSdkInfo> DiscoverSdksCached(string selectedRoot, IReadOnlyList<string> customRoots)
+		{
+			string key = (selectedRoot ?? "") + "\n" + string.Join("\n", customRoots);
+			lock (discoveryCacheLock) {
+				if (discoveryCache.Sdks != null && discoveryCache.Key == key
+				    && Environment.TickCount64 - discoveryCache.At < DiscoveryCacheLifetimeMilliseconds)
+					return discoveryCache.Sdks;
+			}
+			var sdks = DiscoverSdks(customRoots);
+			lock (discoveryCacheLock)
+				discoveryCache = (Environment.TickCount64, key, sdks);
+			return sdks;
+		}
+
+		/// <summary><see cref="ResolveSdkForTargetFrameworks"/> for a loaded project (its TargetFramework / TargetFrameworks).</summary>
+		public static SdkChoice ResolveSdkForProject(IProject project)
+		{
+			var frameworks = new List<string>();
+			if (project is MSBuildBasedProject msbuild) {
+				string single = msbuild.GetEvaluatedProperty("TargetFramework");
+				if (!string.IsNullOrWhiteSpace(single))
+					frameworks.Add(single);
+				string multiple = msbuild.GetEvaluatedProperty("TargetFrameworks");
+				if (!string.IsNullOrWhiteSpace(multiple))
+					frameworks.AddRange(multiple.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(f => f.Trim()));
+			}
+			string selected = SelectedSdkRootPath;
+			return ResolveSdkForTargetFrameworks(DiscoverSdksCached(selected, CustomRoots), selected, frameworks);
 		}
 
 		/// <summary>
@@ -652,11 +814,17 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 		/// </summary>
 		public static IReadOnlyDictionary<string, string> GetEnvironmentVariablesFor(DotNetSdkInfo sdk)
 		{
+			return GetEnvironmentVariablesFor(sdk, sdk?.HighestSdkVersion);
+		}
+
+		/// <summary>Like <see cref="GetEnvironmentVariablesFor(DotNetSdkInfo)"/>, for a specific SDK version folder in that root.</summary>
+		public static IReadOnlyDictionary<string, string> GetEnvironmentVariablesFor(DotNetSdkInfo sdk, string sdkVersion)
+		{
 			var result = new Dictionary<string, string>();
-			if (sdk?.RootPath == null || sdk.HighestSdkVersion == null)
+			if (sdk?.RootPath == null || sdkVersion == null)
 				return result;
 
-			string sdkVersionDir = Path.Combine(sdk.RootPath, "sdk", sdk.HighestSdkVersion);
+			string sdkVersionDir = Path.Combine(sdk.RootPath, "sdk", sdkVersion);
 			result["DOTNET_ROOT"] = sdk.RootPath;
 			result["DOTNET_HOST_PATH"] = sdk.DotnetExecutablePath;
 			result["MSBuildSDKsPath"] = Path.Combine(sdkVersionDir, "Sdks");

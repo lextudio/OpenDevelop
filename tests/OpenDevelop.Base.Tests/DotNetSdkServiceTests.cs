@@ -249,6 +249,145 @@ public class DotNetSdkServiceTests
 	}
 
 	[Theory]
+	[InlineData("net11.0", 11)]
+	[InlineData("net11.0-windows", 11)]
+	[InlineData("NET10.0", 10)]
+	[InlineData("netcoreapp3.1", 3)]
+	[InlineData("net48", null)]
+	[InlineData("netstandard2.0", null)]
+	[InlineData("", null)]
+	public void TargetFrameworkMajor_ReadsTheDotNetMajorVersion(string tfm, int? expected)
+	{
+		Assert.Equal(expected, DotNetSdkService.TargetFrameworkMajor(tfm));
+	}
+
+	[Fact]
+	public void ResolveSdkForTargetFrameworks_KeepsTheEffectiveSdk_WhenItIsNewEnough()
+	{
+		var sdk10 = Sdk("C:\\dotnet", "10.0.401", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System,
+			previews: new[] { "11.0.100-rc.1.26425.128" });
+
+		var choice = DotNetSdkService.ResolveSdkForTargetFrameworks(new[] { sdk10 }, string.Empty, new[] { "net10.0" });
+
+		Assert.True(choice!.IsDefault);
+		Assert.Equal("10.0.401", choice.Version);
+		Assert.False(choice.IsPreview);
+	}
+
+	[Fact]
+	public void ResolveSdkForTargetFrameworks_UsesAPreviewSdk_OnlyWhenNoStableOneSupportsTheFramework()
+	{
+		var sdk10 = Sdk("C:\\dotnet", "10.0.401", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System);
+		var dotnetup11 = Sdk("C:\\dotnetup", "11.0.100-rc.1.26425.128", RuntimeInformation.ProcessArchitecture,
+			versions: Array.Empty<string>(), previews: new[] { "11.0.100-preview.7.1", "11.0.100-rc.1.26425.128" });
+
+		var choice = DotNetSdkService.ResolveSdkForTargetFrameworks(new[] { sdk10, dotnetup11 }, string.Empty, new[] { "net11.0" });
+
+		Assert.False(choice!.IsDefault);
+		Assert.True(choice.IsPreview);
+		Assert.Same(dotnetup11, choice.Sdk);
+		Assert.Equal("11.0.100-rc.1.26425.128", choice.Version);
+		// ...and a preview-only root still never becomes the IDE's own SDK.
+		Assert.Same(sdk10, DotNetSdkService.ResolveEffectiveSdk(new[] { sdk10, dotnetup11 }, string.Empty));
+	}
+
+	[Fact]
+	public void ResolveSdkForTargetFrameworks_PrefersAStableSdkOfThatMajor_OverAPreview()
+	{
+		var sdk10 = Sdk("C:\\dotnet", "10.0.401", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System,
+			previews: new[] { "11.0.100-rc.1.26425.128" });
+		var custom11 = Sdk("C:\\sdk11", "11.0.100", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.Custom);
+
+		var choice = DotNetSdkService.ResolveSdkForTargetFrameworks(new[] { sdk10, custom11 }, string.Empty, new[] { "net10.0", "net11.0" });
+
+		Assert.Same(custom11, choice!.Sdk);
+		Assert.Equal("11.0.100", choice.Version);
+		Assert.False(choice.IsPreview);
+	}
+
+	[Fact]
+	public void ResolveSdkForTargetFrameworks_KeepsTheEffectiveSdk_WhenNothingSupportsTheFramework()
+	{
+		// The build then reports NETSDK1045 itself, naming the missing SDK.
+		var sdk10 = Sdk("C:\\dotnet", "10.0.401", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System);
+
+		var choice = DotNetSdkService.ResolveSdkForTargetFrameworks(new[] { sdk10 }, string.Empty, new[] { "net11.0" });
+
+		Assert.True(choice!.IsDefault);
+		Assert.Same(sdk10, choice.Sdk);
+	}
+
+	[Fact]
+	public void ResolveSdkForTargetFrameworks_ReturnsNull_WithoutAnySupportedSdk_NeverFallingBackToAnOlderOrPreviewOne()
+	{
+		// SDK 9 plus a preview SDK 11: no .NET 10+ stable SDK, so no choice at all (issue #19's rule).
+		var sdk9 = Sdk("C:\\dotnet", "9.0.305", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System,
+			previews: new[] { "11.0.100-rc.2.26504.105" });
+
+		Assert.Null(DotNetSdkService.ResolveSdkForTargetFrameworks(new[] { sdk9 }, string.Empty, new[] { "net9.0" }));
+		Assert.Null(DotNetSdkService.ResolveSdkForTargetFrameworks(new[] { sdk9 }, string.Empty, new[] { "net11.0" }));
+	}
+
+	[Fact]
+	public void ResolveSdkForTargetFrameworks_KeepsTheEffectiveSdk_ForAFrameworkNoSdkVersionGates()
+	{
+		var sdk10 = Sdk("C:\\dotnet", "10.0.401", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System,
+			previews: new[] { "11.0.100-rc.2.26504.105" });
+
+		var choice = DotNetSdkService.ResolveSdkForTargetFrameworks(new[] { sdk10 }, string.Empty, new[] { "net48" });
+
+		Assert.True(choice!.IsDefault);
+	}
+
+	[Fact]
+	public void ResolveSdkForTargetFrameworks_PrefersThePreferredRoot_ThenASystemOne()
+	{
+		var sdk10 = Sdk("C:\\dotnet", "10.0.401", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System);
+		var custom11 = Sdk("C:\\custom11", "11.0.100", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.Custom);
+		var system11 = Sdk("C:\\system11", "11.0.100", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System);
+		var all = new[] { sdk10, custom11, system11 };
+
+		Assert.Same(system11, DotNetSdkService.ResolveSdkForTargetFrameworks(all, string.Empty, new[] { "net11.0" })!.Sdk);
+		Assert.Same(custom11, DotNetSdkService.ResolveSdkForTargetFrameworks(all, custom11.RootPath, new[] { "net11.0" })!.Sdk);
+
+		var previewA = Sdk("C:\\previewA", "11.0.100-rc.2.1", RuntimeInformation.ProcessArchitecture, versions: Array.Empty<string>(), previews: new[] { "11.0.100-rc.2.1" });
+		var previewB = Sdk("C:\\previewB", "11.0.100-rc.1.1", RuntimeInformation.ProcessArchitecture, versions: Array.Empty<string>(), previews: new[] { "11.0.100-rc.1.1" });
+		Assert.Same(previewA, DotNetSdkService.ResolveSdkForTargetFrameworks(new[] { sdk10, previewA, previewB }, string.Empty, new[] { "net11.0" })!.Sdk);
+		Assert.Same(previewB, DotNetSdkService.ResolveSdkForTargetFrameworks(new[] { sdk10, previewA, previewB }, previewB.RootPath, new[] { "net11.0" })!.Sdk);
+
+		// Same order for pre-releases: a System root beats a Custom one with a newer pre-release,
+		// unless the Custom one is the preferred root.
+		var systemPreview = Sdk("C:\\systemPreview", "11.0.100-rc.1.1", RuntimeInformation.ProcessArchitecture,
+			versions: Array.Empty<string>(), origin: DotNetSdkOrigin.System, previews: new[] { "11.0.100-rc.1.1" });
+		Assert.Same(systemPreview, DotNetSdkService.ResolveSdkForTargetFrameworks(new[] { sdk10, previewA, systemPreview }, string.Empty, new[] { "net11.0" })!.Sdk);
+		Assert.Same(previewA, DotNetSdkService.ResolveSdkForTargetFrameworks(new[] { sdk10, previewA, systemPreview }, previewA.RootPath, new[] { "net11.0" })!.Sdk);
+	}
+
+	[Theory]
+	[InlineData("11.0.100-preview.7.1", "11.0.100-preview.10.1")]
+	[InlineData("11.0.100-preview.7.1", "11.0.100-rc.1.1")]
+	[InlineData("11.0.100-rc.1.26425.128", "11.0.100-rc.2.26504.105")]
+	[InlineData("11.0.100-rc.2.1", "11.0.101-preview.1.1")]
+	public void PrereleaseVersionComparer_OrdersReleasesChronologically(string older, string newer)
+	{
+		Assert.True(DotNetSdkService.PrereleaseVersionComparer.Instance.Compare(older, newer) < 0);
+		Assert.True(DotNetSdkService.PrereleaseVersionComparer.Instance.Compare(newer, older) > 0);
+	}
+
+	[Fact]
+	public void TryDescribeCustomRoot_AcceptsARootThatHoldsOnlyAPreviewSdk()
+	{
+		using var root = new TemporaryDirectory();
+		File.WriteAllText(System.IO.Path.Combine(root.Path, DotnetExecutableName), "");
+		Directory.CreateDirectory(System.IO.Path.Combine(root.Path, "sdk", "11.0.100-rc.1.26425.128"));
+
+		Assert.True(DotNetSdkService.TryDescribeCustomRoot(root.Path, out var sdk, out string? error), error);
+		Assert.Empty(sdk.InstalledSdkVersions);
+		Assert.Equal(new[] { "11.0.100-rc.1.26425.128" }, sdk.PreviewSdkVersions);
+		Assert.Equal("11.0.100-rc.1.26425.128", sdk.HighestSdkVersion);
+	}
+
+	[Theory]
 	[InlineData("10.0.401", 10)]
 	[InlineData("11.0.100-preview.7", 11)]
 	[InlineData("9.0.316", 9)]
@@ -260,12 +399,13 @@ public class DotNetSdkServiceTests
 	}
 
 	static DotNetSdkInfo Sdk(string rootPath, string highest, Architecture architecture,
-		IEnumerable<string>? versions = null, DotNetSdkOrigin origin = DotNetSdkOrigin.Custom)
+		IEnumerable<string>? versions = null, DotNetSdkOrigin origin = DotNetSdkOrigin.Custom, IEnumerable<string>? previews = null)
 		=> new DotNetSdkInfo {
 			Label = rootPath,
 			RootPath = rootPath,
 			DotnetExecutablePath = System.IO.Path.Combine(rootPath, "dotnet"),
 			InstalledSdkVersions = versions?.ToList() ?? new List<string> { highest },
+			PreviewSdkVersions = previews?.ToList() ?? new List<string>(),
 			HighestSdkVersion = highest,
 			Origin = origin,
 			Architecture = architecture
