@@ -26,6 +26,25 @@ namespace ICSharpCode.SharpDevelop.Startup
 			Version.Text = "v" + RevisionClass.FullVersion;
 			ICSharpCode.Core.StartupProgress.Reported += OnProgressReported;
 			Closed += (_, _) => ICSharpCode.Core.StartupProgress.Reported -= OnProgressReported;
+			WarmUpFontsThenShowText();
+		}
+
+		/// <summary>
+		/// The status row holds the only text on the splash. The first text measurement makes
+		/// LibreWPF scan every system font (seconds on macOS), so do that on a helper thread while
+		/// the artwork is already showing, and reveal the row once the font data is ready.
+		/// </summary>
+		void WarmUpFontsThenShowText()
+		{
+			System.Threading.Tasks.Task.Run(() => {
+				try {
+					// Runs FontFamily's static initialisation, which builds the system font collection.
+					_ = new System.Windows.Media.FontFamily("Segoe UI").FamilyNames;
+				} catch {
+					// Text is cosmetic; show it anyway rather than leave the row hidden.
+				}
+				Dispatcher.BeginInvoke(new Action(() => StatusRow.Visibility = Visibility.Visible));
+			});
 		}
 
 		void OnProgressReported(string message)

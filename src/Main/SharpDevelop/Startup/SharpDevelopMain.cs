@@ -283,7 +283,37 @@ namespace ICSharpCode.SharpDevelop.Startup
 						app.MainWindow = mainWindow;
 						app.ShutdownMode = System.Windows.ShutdownMode.OnMainWindowClose;
 					}
-					try { splash.Close(); } catch { /* the splash must never affect startup */ }
+					// Keep the splash up until the workbench has really settled on screen. RunWorkbench
+					// returns once the main window is shown, but its layout, docking panes and first
+					// render are still queued; closing the splash then shows a half-built workbench.
+					// Closing after the dispatcher has gone idle twice (queued work drained) leaves
+					// no window-less gap and no half-drawn window. A timer bounds the wait.
+					bool splashClosed = false;
+					void CloseSplash()
+					{
+						if (splashClosed) return;
+						splashClosed = true;
+						try { splash.Close(); } catch { /* the splash must never affect startup */ }
+					}
+					if (mainWindow == null) {
+						CloseSplash();
+					} else {
+						var fallback = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
+						fallback.Tick += (s, e) => { fallback.Stop(); CloseSplash(); };
+						fallback.Start();
+						void WaitForIdle(int remaining)
+						{
+							app.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() => {
+								if (remaining > 1 || !mainWindow.IsVisible) {
+									WaitForIdle(remaining > 1 ? remaining - 1 : 1);
+								} else {
+									fallback.Stop();
+									CloseSplash();
+								}
+							}));
+						}
+						WaitForIdle(2);
+					}
 				}
 			}));
 			app.Run(splash);

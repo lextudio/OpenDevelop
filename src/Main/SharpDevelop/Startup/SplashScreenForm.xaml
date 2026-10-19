@@ -11,9 +11,12 @@
 	<!-- Compact layout: the 2:1 artwork at its exact aspect (640x320, so Uniform never
 	     letterboxes it), with a status line and unobtrusive version at the bottom. HighQuality scaling because the
 	     source is 1774x887 and the default scaler aliases the text in the artwork. -->
+	<!-- The status row stays Collapsed until the first progress report: measuring any text makes
+	     LibreWPF build the system font collection (seconds on macOS, scanning ~1800 font files on
+	     the UI thread), which would delay the first paint. The artwork alone shows instantly. -->
 	<DockPanel>
 		<Border DockPanel.Dock="Bottom" Height="26" Padding="12,0" Background="#FF120F45">
-			<Grid>
+			<Grid x:Name="StatusRow" Visibility="Collapsed">
 				<Grid.ColumnDefinitions>
 					<ColumnDefinition Width="*" />
 					<ColumnDefinition Width="Auto" />
