@@ -1012,7 +1012,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         return await resp.Content.ReadFromJsonAsync<JsonElement>();
     }
 
-    static string LocateOpenDevelopProject()
+    internal static string LocateOpenDevelopProject()
     {
         var dir = AppContext.BaseDirectory;
         while (dir is not null)

@@ -79,6 +79,19 @@ carry a valid Microsoft Authenticode signature. That includes a non-HTML body fr
 (for example plain-text `Access Denied`): it cannot be told apart from a tampered script, so it is
 a failure, not a skip.
 
+`SdkSelectedAtStartupIntegrationTests` covers the other half of issue #19. The IDE's in-process MSBuild
+is initialised once, early in startup, and then stays on that SDK, and the shared app
+instance is long running, so changing the SDK at run time (as the theory above does) cannot reach
+that path. This test starts its **own** IDE process (own `-configdir`, own `DEVFLOW_AGENT_PORT`)
+with a real dotnetup-installed SDK 9 already persisted as the selected SDK, opens a net10.0
+project, and requires that the effective SDK is 10+, the project loads with items, the Output
+pad's **Build** channel holds no `Microsoft.CSharp.Core.targets` error, and the build succeeds.
+It needs the same dotnetup prerequisite (skipped the same way) and about a minute. Set
+`OD_IT_IDE_DLL` to the `OpenDevelop.dll` of another IDE build to run it against that build - for
+example a build of commit `df5e306bf1` (before the fix), where it fails with all three symptoms,
+which is how to confirm the test still detects the defect. Like the dotnetup theory it is Windows-only,
+so on macOS it always reports Skipped and this startup path has no automated coverage there.
+
 Tests carrying `[Trait("DesignerBackend", "Microsoft")]` exercise the Microsoft WinForms/WPF/WinUI
 backends, which only exist on Windows. They skip themselves elsewhere (see
 `AddInTests.MicrosoftDesignerBackendsAvailable`), so an unfiltered run is correct on every

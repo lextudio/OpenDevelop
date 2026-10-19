@@ -44,6 +44,10 @@ public sealed class FixtureTestCaseOrderer : ITestCaseOrderer
         // Launches and hot-reloads its own application, so it runs after the debugger journeys
         // that own the debug session.
         if (testName.Contains("WpfHotReloadJourneyTests", StringComparison.Ordinal)) return 70;
+        // Starts its own isolated IDE process (own config and DevFlow port), so it does not touch
+        // the shared app's state. This only orders classes inside mixed runs; the class's named
+        // collection ("90 ...") is what places it after the others, as collections sort by name.
+        if (testName.Contains("SdkSelectedAtStartupIntegrationTests", StringComparison.Ordinal)) return 80;
         return 1000;
     }
 
