@@ -40,6 +40,7 @@ tests/fixtures/CoverageFixture/CoverageTests/CodeCoverage/coverage.xml
 .od/
 *.dmg
 /artifacts/
+/tmp/opencode/
 
 # keep the macOS and Windows packaging assets tracked
 /build/*
@@ -53,3 +54,4 @@ tests/fixtures/SampleTestProject/CodeCoverage/
 /OpenDevelop-win*/
 *.zip
 tests/fixtures/CoverageFixture/CoverageTests/CodeCoverage/
+tmp/
