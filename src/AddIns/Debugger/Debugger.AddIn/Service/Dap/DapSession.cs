@@ -270,10 +270,36 @@ namespace Debugger.AddIn.Service.Dap
 			// resume it now that configuration is done, the same point a plain "launch" adapter
 			// would start the debuggee at.
 			if (launchMode == DapLaunchMode.AttachToSuspendedProcess && debuggeeProcess != null) {
-				new DiagnosticsClient(debuggeeProcess.Id).ResumeRuntime();
+				await ResumeDebuggeeRuntimeAsync().ConfigureAwait(false);
 			}
 
 			Started?.Invoke();
+		}
+
+		/// <summary>
+		/// Resumes the runtime the debuggee was started suspended. The diagnostic socket is created by
+		/// the runtime, so a debuggee that is still starting has none yet, and one that already died
+		/// never will; the two need different answers, so wait only while the process is alive and
+		/// name the exit code when it is not (its own stderr has already gone to the Debug output).
+		/// </summary>
+		async Task ResumeDebuggeeRuntimeAsync()
+		{
+			var process = debuggeeProcess;
+			var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+			while (true) {
+				try {
+					new DiagnosticsClient(process.Id).ResumeRuntime();
+					return;
+				} catch (ServerNotAvailableException) {
+					if (process.HasExited) {
+						throw new InvalidOperationException(
+							"The debuggee exited with code " + process.ExitCode + " before it could be resumed.");
+					}
+					if (DateTime.UtcNow >= deadline)
+						throw;
+					await Task.Delay(100).ConfigureAwait(false);
+				}
+			}
 		}
 
 		public async Task SetExceptionBreakpointsAsync(IEnumerable<string> filters, CancellationToken cancellationToken = default)

@@ -253,7 +253,12 @@ namespace ICSharpCode.SharpDevelop.Services
 					BreakAtBeginning = false;
 					var hotReloadEnvironment = processStartInfo.Environment
 						.Where(variable => variable.Key.StartsWith("UNO_DEV_SERVER_", StringComparison.Ordinal)
-							|| string.Equals(variable.Key, "DOTNET_MODIFIABLE_ASSEMBLIES", StringComparison.Ordinal))
+							|| string.Equals(variable.Key, "DOTNET_MODIFIABLE_ASSEMBLIES", StringComparison.Ordinal)
+							// The WPF Hot Reload agent is injected as a startup hook and finds its pipe and
+							// log through these; without them the debuggee runs with no agent at all.
+							|| string.Equals(variable.Key, "DOTNET_STARTUP_HOOKS", StringComparison.Ordinal)
+							|| string.Equals(variable.Key, "ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO", StringComparison.Ordinal)
+							|| variable.Key.StartsWith("WPF_HOTRELOAD_", StringComparison.Ordinal))
 						.Select(variable => new KeyValuePair<string, string>(variable.Key, variable.Value))
 						.ToArray();
 					// A start program that is not a managed assembly is a native host (e.g. EXCEL.EXE
