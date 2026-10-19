@@ -108,6 +108,96 @@ public class DotNetSdkServiceTests
 	}
 
 	[Fact]
+	public void DescribeChoice_NamesTheSdkTheReasonAndEveryDiscoveredRoot()
+	{
+		var old = Sdk("/home/u/.dotnet", "10.0.201", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System);
+		var current = Sdk("/opt/dotnet", "10.0.302", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System);
+		var choice = DotNetSdkService.ResolveSdkForTargetFrameworks(new[] { old, current }, "", new[] { "net10.0" });
+
+		string text = DotNetSdkService.DescribeChoice(choice, "", new[] { old, current });
+
+		Assert.Contains("10.0.302 at /opt/dotnet", text);
+		Assert.Contains("no SDK is selected in Options", text);
+		Assert.Contains("/home/u/.dotnet (System, 10.0.201)", text);
+		Assert.Contains("/opt/dotnet (System, 10.0.302)", text);
+	}
+
+	[Fact]
+	public void DescribeChoice_SaysWhenTheSelectionIsHonouredOrUnusable()
+	{
+		var sdk9 = Sdk("/dotnet9", "9.0.203", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System);
+		var sdk10 = Sdk("/dotnet10", "10.0.401", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System);
+		var discovered = new[] { sdk9, sdk10 };
+
+		var honoured = DotNetSdkService.ResolveSdkForTargetFrameworks(discovered, sdk10.RootPath, new[] { "net10.0" });
+		var ignored = DotNetSdkService.ResolveSdkForTargetFrameworks(discovered, sdk9.RootPath, new[] { "net10.0" });
+
+		Assert.Contains("selected in Tools > Options", DotNetSdkService.DescribeChoice(honoured, sdk10.RootPath, discovered));
+		Assert.Contains("is not usable", DotNetSdkService.DescribeChoice(ignored, sdk9.RootPath, discovered));
+	}
+
+	[Fact]
+	public void DescribeChoice_SaysWhenTheProjectNeedsANewerSdkThanTheDefault()
+	{
+		var sdk10 = Sdk("/dotnet10", "10.0.401", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System);
+		var sdk11 = Sdk("/dotnetup", "11.0.100-rc.1.26425.128", RuntimeInformation.ProcessArchitecture,
+			versions: Array.Empty<string>(), previews: new[] { "11.0.100-rc.1.26425.128" });
+		var discovered = new[] { sdk10, sdk11 };
+		var choice = DotNetSdkService.ResolveSdkForTargetFrameworks(discovered, "", new[] { "net11.0" });
+
+		Assert.False(choice.IsDefault);
+		Assert.Contains("targets a newer .NET", DotNetSdkService.DescribeChoice(choice, "", discovered));
+	}
+
+	[Fact]
+	public void DescribeChoice_ReportsAChoiceWithoutAnSdk()
+	{
+		Assert.Contains("No .NET SDK", DotNetSdkService.DescribeChoice(new DotNetSdkService.SdkChoice(), "", Array.Empty<DotNetSdkInfo>()));
+	}
+
+	[Fact]
+	public void SdkDiagnosticResources_MatchEnglishPlaceholdersAndFormat()
+	{
+		string root = ProductCopyrightTests.RepositoryRoot();
+		string[] files = { "StringResources.resx", "StringResources.zh-Hans.resx", "StringResources.zh-Hant.resx" };
+		// Every key the service looks up, read from its source so a new diagnostic is covered automatically.
+		string[] keys = System.Text.RegularExpressions.Regex
+			.Matches(File.ReadAllText(Path.Combine(root, "src", "Main", "Base", "Project", "Src", "Project", "Sdk", "DotNetSdkService.cs")),
+				"\"(Build\\.Sdk\\.\\w+)\"")
+			.Select(m => m.Groups[1].Value).Distinct().ToArray();
+		Assert.True(keys.Length >= 8, "expected the Build.Sdk.* keys in DotNetSdkService.cs");
+		// Read through an XML parser: that is the string the resource loader hands the runtime, with
+		// every entity (named and numeric) already resolved.
+		string Value(string file, string key)
+		{
+			var doc = System.Xml.Linq.XDocument.Load(Path.Combine(root, "data", "resources", file));
+			string? value = doc.Root!.Elements("data")
+				.FirstOrDefault(d => (string?)d.Attribute("name") == key)?.Element("value")?.Value;
+			Assert.True(value != null, key + " missing from " + file);
+			return value!;
+		}
+		// Proves the read went through the parser rather than the raw XML text: the numeric-entity
+		// case depends on exactly this property.
+		Assert.Contains(">", Value(files[1], "Build.Sdk.ReasonSelected"));
+		Assert.DoesNotContain("&gt;", Value(files[1], "Build.Sdk.ReasonSelected"));
+		string Placeholders(string v) => string.Concat(System.Text.RegularExpressions.Regex.Matches(v, @"\{\d+\}").Select(x => x.Value).OrderBy(x => x));
+		foreach (string key in keys)
+			foreach (string file in files) {
+				string value = Value(file, key);
+				// Localized falls back to English on a FormatException; a broken brace should not reach it.
+				string.Format(value, "a", "b", "c", "d");
+				if (file != files[0])
+					Assert.Equal(Placeholders(Value(files[0], key)), Placeholders(Value(file, key)));
+			}
+	}
+
+	[Fact]
+	public void DescribeChoice_ReportsAMissingChoice()
+	{
+		Assert.Contains("No .NET SDK", DotNetSdkService.DescribeChoice(null, "", Array.Empty<DotNetSdkInfo>()));
+	}
+
+	[Fact]
 	public void ResolveEffectiveSdkForInProcessHosting_NeverFallsBackToSdk9()
 	{
 		var sdk9 = Sdk("C:\\dotnet9", "9.0.203", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System);

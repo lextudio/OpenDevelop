@@ -9952,4 +9952,28 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   <data name="ProjectBrowser.Dependencies.Imports" xml:space="preserve">
     <value>导入</value>
   </data>
+  <data name="Build.Sdk.NoneSelected" xml:space="preserve">
+    <value>此次生成未选择 .NET SDK。</value>
+  </data>
+  <data name="Build.Sdk.ReasonSelected" xml:space="preserve">
+    <value>已在“工具 &gt; 选项 &gt; .NET SDK”中选定</value>
+  </data>
+  <data name="Build.Sdk.ReasonSelectedUnusable" xml:space="preserve">
+    <value>所选 SDK“{0}”不可用，因此使用了版本最高的系统 SDK</value>
+  </data>
+  <data name="Build.Sdk.ReasonDefault" xml:space="preserve">
+    <value>选项中未选择 SDK；使用了受支持的最高版本系统 SDK</value>
+  </data>
+  <data name="Build.Sdk.ReasonNewerFramework" xml:space="preserve">
+    <value>项目面向的 .NET 版本高于默认 SDK 所支持的版本</value>
+  </data>
+  <data name="Build.Sdk.DiscoveredNone" xml:space="preserve">
+    <value>无</value>
+  </data>
+  <data name="Build.Sdk.Using" xml:space="preserve">
+    <value>使用 .NET SDK {0}（位于 {1}）：{2}。已发现：{3}。</value>
+  </data>
+  <data name="Build.Sdk.DescribeFailed" xml:space="preserve">
+    <value>无法说明此次生成使用的 .NET SDK：{0}</value>
+  </data>
 </root>

@@ -10346,4 +10346,28 @@ Press Esc to cancel this operation.</value>
   <data name="ProjectBrowser.Dependencies.Imports" xml:space="preserve">
     <value>Imports</value>
   </data>
+  <data name="Build.Sdk.NoneSelected" xml:space="preserve">
+    <value>No .NET SDK was selected for this build.</value>
+  </data>
+  <data name="Build.Sdk.ReasonSelected" xml:space="preserve">
+    <value>selected in Tools &gt; Options &gt; .NET SDK</value>
+  </data>
+  <data name="Build.Sdk.ReasonSelectedUnusable" xml:space="preserve">
+    <value>the selected SDK '{0}' is not usable, so the highest system SDK was used</value>
+  </data>
+  <data name="Build.Sdk.ReasonDefault" xml:space="preserve">
+    <value>no SDK is selected in Options; the highest supported system SDK was used</value>
+  </data>
+  <data name="Build.Sdk.ReasonNewerFramework" xml:space="preserve">
+    <value>the project targets a newer .NET than the default SDK supports</value>
+  </data>
+  <data name="Build.Sdk.DiscoveredNone" xml:space="preserve">
+    <value>none</value>
+  </data>
+  <data name="Build.Sdk.Using" xml:space="preserve">
+    <value>Using .NET SDK {0} at {1}: {2}. Discovered: {3}.</value>
+  </data>
+  <data name="Build.Sdk.DescribeFailed" xml:space="preserve">
+    <value>Could not describe the .NET SDK for this build: {0}</value>
+  </data>
 </root>

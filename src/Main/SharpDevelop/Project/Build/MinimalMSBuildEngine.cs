@@ -108,6 +108,20 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 		}
 
+		/// <summary>The SDK that <see cref="CreateDotnetChildStartInfo"/> uses when given no choice.</summary>
+		static DotNetSdkService.SdkChoice DefaultChoice()
+		{
+			return DefaultChoice(DotNetSdkService.DiscoverSdks());
+		}
+
+		/// <summary><see cref="DefaultChoice()"/> from an SDK list the caller already has, so a build that
+		/// also prints that list scans the machine (one process per root) only once.</summary>
+		static DotNetSdkService.SdkChoice DefaultChoice(IReadOnlyList<DotNetSdkInfo> discovered)
+		{
+			var effective = DotNetSdkService.ResolveEffectiveSdk(discovered, DotNetSdkService.SelectedSdkRootPath);
+			return effective == null ? null : new DotNetSdkService.SdkChoice { Sdk = effective, Version = effective.HighestSdkVersion, IsDefault = true };
+		}
+
 		/// <summary>
 		/// The child-process setup shared by <see cref="BuildAsync"/> and
 		/// <see cref="ResolveAssemblyReferences"/>: selected SDK, scrubbed environment, pinned
@@ -121,17 +135,14 @@ namespace ICSharpCode.SharpDevelop.Project
 			// No fallback: with no supported (.NET 10+) SDK there is no host to launch, and running
 			// the build under an older one is exactly what made a net10.0 project fail with an
 			// unexplained missing-import error (issue #19) instead of a message naming the cause.
-			if (choice == null) {
-				var effective = DotNetSdkService.ResolveEffectiveSdk();
-				if (effective != null)
-					choice = new DotNetSdkService.SdkChoice { Sdk = effective, Version = effective.HighestSdkVersion, IsDefault = true };
-			}
+			choice ??= DefaultChoice();
 			if (choice == null)
 				throw new InvalidOperationException(
 					"No .NET 10 (or newer) SDK is installed, so this build cannot run. Install one"
 					+ " side-by-side (\"winget install Microsoft.DotNet.SDK.10\"), or select one under"
 					+ " Tools > Options > .NET SDK, then build again.");
 			var sdk = choice.Sdk;
+			LoggingService.Info("Build child process: " + sdk.DotnetExecutablePath + " (SDK " + choice.Version + ")");
 			var psi = new ProcessStartInfo(sdk.DotnetExecutablePath) {
 				// Deliberately NOT project.Directory: dotnet's SDK resolution walks up from the
 				// current working directory looking for global.json, and OpenDevelop's own repo
@@ -545,7 +556,12 @@ namespace ICSharpCode.SharpDevelop.Project
 			try {
 				// Inside the try: with no supported SDK this throws, and the contract here is that a
 				// restore that cannot run returns false (each project's own build then reports it).
-				var psi = CreateDotnetChildStartInfo();
+				var discovered = DotNetSdkService.DiscoverSdks();
+				var choice = DefaultChoice(discovered);
+				// Before the child-process setup: with no usable SDK that throws, and that is the
+				// build whose output most needs to say what was (not) found.
+				feedbackSink?.ReportMessage(new RichText(DotNetSdkService.DescribeChoiceForOutput(choice, discovered)));
+				var psi = CreateDotnetChildStartInfo(choice);
 				psi.ArgumentList.Add("restore");
 				psi.ArgumentList.Add(solutionOrProject);
 				psi.ArgumentList.Add("--nologo");
@@ -689,7 +705,10 @@ namespace ICSharpCode.SharpDevelop.Project
 			try {
 				Directory.CreateDirectory(scratch);
 				File.WriteAllText(traversal, CreateBuildTraversal(includedWaves.Select(wave => (IReadOnlyList<string>)wave.Select(project => realPathOf[project]).ToList()).ToList()));
-				var psi = CreateDotnetChildStartInfo();
+				var discovered = DotNetSdkService.DiscoverSdks();
+				var choice = DefaultChoice(discovered);
+				reportLine(DotNetSdkService.DescribeChoiceForOutput(choice, discovered));
+				var psi = CreateDotnetChildStartInfo(choice);
 				psi.ArgumentList.Add("msbuild");
 				psi.ArgumentList.Add(traversal);
 				psi.ArgumentList.Add("--nologo");
@@ -906,6 +925,10 @@ namespace ICSharpCode.SharpDevelop.Project
 				feedbackSink.ReportError(new BuildError(project.FileName.ToString(), "Could not determine the .NET SDK to build this project with: " + ex.Message));
 				return false;
 			}
+			// One line per project would bury the Output pad; the whole-solution paths report the
+			// default SDK once, and a project built under a different one says so itself.
+			if (sdkChoice is { IsDefault: false })
+				feedbackSink.ReportMessage(new RichText(project.Name + ": " + DotNetSdkService.DescribeChoiceForOutput(sdkChoice)));
 			ProcessStartInfo psi;
 			try {
 				psi = CreateDotnetChildStartInfo(sdkChoice);

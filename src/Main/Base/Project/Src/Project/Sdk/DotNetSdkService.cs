@@ -790,6 +790,71 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			return sdks;
 		}
 
+		/// <summary>
+		/// One line for the Output pad saying which SDK a build runs under and why, plus every SDK
+		/// the IDE discovered. A build that fails inside the wrong SDK (an older copy under ~/.dotnet
+		/// reading assets that a newer one restored) is otherwise indistinguishable from any other
+		/// MSB4018, and the choice depends on the machine, so it has to be visible where the
+		/// failure is.
+		/// </summary>
+		public static string DescribeChoice(SdkChoice choice, string selectedRoot, IReadOnlyList<DotNetSdkInfo> discovered)
+		{
+			if (choice?.Sdk == null)
+				return Localized("Build.Sdk.NoneSelected", "No .NET SDK was selected for this build.");
+			string reason;
+			if (!string.IsNullOrEmpty(selectedRoot) && SameRoot(choice.Sdk.RootPath, selectedRoot))
+				reason = Localized("Build.Sdk.ReasonSelected", "selected in Tools > Options > .NET SDK");
+			else if (!string.IsNullOrEmpty(selectedRoot))
+				reason = Localized("Build.Sdk.ReasonSelectedUnusable",
+					"the selected SDK '{0}' is not usable, so the highest system SDK was used", selectedRoot);
+			else if (choice.IsDefault)
+				reason = Localized("Build.Sdk.ReasonDefault", "no SDK is selected in Options; the highest supported system SDK was used");
+			else
+				// Implicit: ResolveSdkForTargetFrameworks returns a non-default choice only when a
+				// project needs a newer major than the default SDK; revisit if it gains another reason.
+				reason = Localized("Build.Sdk.ReasonNewerFramework", "the project targets a newer .NET than the default SDK supports");
+			string found = discovered == null || discovered.Count == 0
+				? Localized("Build.Sdk.DiscoveredNone", "none")
+				: string.Join("; ", discovered.Select(s => s.RootPath + " (" + s.Origin + ", " + s.HighestSdkVersion + ")"));
+			return Localized("Build.Sdk.Using", "Using .NET SDK {0} at {1}: {2}. Discovered: {3}.",
+				choice.Version, choice.Sdk.RootPath, reason, found);
+		}
+
+		/// <summary><see cref="DescribeChoice(SdkChoice, string, IReadOnlyList{DotNetSdkInfo})"/> for the IDE's own current settings; never throws.
+		/// Pass the <paramref name="discovered"/> list the choice was resolved from so the printed list is the one used.</summary>
+		public static string DescribeChoiceForOutput(SdkChoice choice, IReadOnlyList<DotNetSdkInfo> discovered = null)
+		{
+			try {
+				return DescribeChoice(choice, SelectedSdkRootPath, discovered ?? DiscoverSdks());
+			} catch (Exception ex) {
+				return Localized("Build.Sdk.DescribeFailed", "Could not describe the .NET SDK for this build: {0}", ex.Message);
+			}
+		}
+
+		/// <summary>
+		/// The localized template for <paramref name="key"/> filled with <paramref name="args"/>. The
+		/// English text is the fallback when the resource service is not running (unit tests, early
+		/// startup) or the key is missing; a diagnostic must still say something then.
+		/// </summary>
+		static string Localized(string key, string english, params object[] args)
+		{
+			string template = null;
+			try {
+				template = ResourceService.GetString(key);
+			} catch (Exception) {
+			}
+			if (string.IsNullOrEmpty(template))
+				template = english;
+			if (args.Length == 0)
+				return template;
+			try {
+				return string.Format(template, args);
+			} catch (FormatException) {
+				// A translation with a broken placeholder must not make the diagnostic vanish.
+				return string.Format(english, args);
+			}
+		}
+
 		/// <summary><see cref="ResolveSdkForTargetFrameworks"/> for a loaded project (its TargetFramework / TargetFrameworks).</summary>
 		public static SdkChoice ResolveSdkForProject(IProject project)
 		{

@@ -82,7 +82,7 @@ public sealed class ProductCopyrightTests
 		return match.Groups[1].Value;
 	}
 
-	static string RepositoryRoot()
+	internal static string RepositoryRoot()
 	{
 		var directory = AppContext.BaseDirectory;
 		while (directory != null && !Directory.Exists(Path.Combine(directory, "tests", "fixtures")))
