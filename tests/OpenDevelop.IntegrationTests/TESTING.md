@@ -67,11 +67,17 @@ apps that tests assume are prebuilt, and packs the local NuGet feed fixture. Pre
 (issue #19) has one case, `dotnetup-sdk9`, that installs a real .NET SDK 9 with
 [dotnetup](https://github.com/dotnet/sdk/tree/main/documentation/general/dotnetup) (public preview;
 `DotnetupSdkProvider`). It needs network access to `aka.ms` and about 300 MB of temp space, caches
-everything under `%TEMP%\opendevelop-it-dotnetup` (delete it to force a clean install), writes
+everything under `%TEMP%\opendevelop-it-dotnetup-preview` (delete it to force a clean install), writes
 nothing to your own dotnetup state or machine-wide SDKs, and is Windows-only. When the SDK cannot
-be acquired - offline, blocked `aka.ms`, a changed script or dotnetup option, a non-Windows host -
-that case is reported as **Skipped**, not failed, so a green run with a skip there means the
-real-SDK-9 coverage did not run; the `fake-sdk9-root` and `10.0` cases always run.
+be acquired - offline, blocked `aka.ms`, a changed script or dotnetup option, a non-Windows host,
+another test process holding the cache lock for the length of one cold acquisition (about 20
+minutes), a proxy that answers with an HTML block page - that case is reported as **Skipped**,
+not failed, so a green run with a skip there means the real-SDK-9 coverage did not run; the
+`fake-sdk9-root` and `10.0` cases always run. It uses dotnetup's `preview` channel (never `daily`,
+which is unsigned) and **fails** if the bootstrap script or the `dotnetup.exe` it fetches does not
+carry a valid Microsoft Authenticode signature. That includes a non-HTML body from a filtering proxy
+(for example plain-text `Access Denied`): it cannot be told apart from a tampered script, so it is
+a failure, not a skip.
 
 Tests carrying `[Trait("DesignerBackend", "Microsoft")]` exercise the Microsoft WinForms/WPF/WinUI
 backends, which only exist on Windows. They skip themselves elsewhere (see

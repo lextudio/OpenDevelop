@@ -23,6 +23,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The integration tests' dotnetup SDK provider is pure process/file-system logic; link it so
+         its version filter and signature verdicts are tested here, offline, without booting the IDE. -->
+    <Compile Include="..\OpenDevelop.IntegrationTests\DotnetupSdkProvider.cs" Link="Dotnetup\DotnetupSdkProvider.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The resource payload rewriter is deliberately framework-independent. Link its source so
          the maintained Base test suite can exercise the exact implementation without loading the
          Forms designer add-in or a design host. -->
