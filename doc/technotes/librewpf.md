@@ -1,5 +1,13 @@
 # Packing LibreWPF locally for OpenDevelop
 
+> **Authority:** `../openavalon/AGENTS.md` is the maintained source for the feed. Where this note
+> disagrees, it wins. Known drift: versions are now a single `0.1.0-preview.65` pair set at the top
+> of `dist.local.sh` (not the `.57`/`.62` split below); `dist.local.sh` is incremental (receipts
+> under `artifacts/dist-receipts`, `--force` to ignore them; the "~25 min" is a cold run); there is a
+> macOS lane (`osx-arm64`, SDKROOT pin, stale-native-dylib check); `dev-overlay.sh` replaces a
+> single assembly without repacking; and openavalon says not to delete the global NuGet cache as a
+> first response to a mismatch (the cache trap below still applies to a same-version republish).
+
 OpenDevelop doesn't reference LibreWPF (the portable/cross-platform WPF fork that ProGPU.Wpf
 renders through, checked out at `wpf-tools/openavalon/LibreWPF`) via ProjectReference — it
 consumes it as NuGet packages from a local feed. This means every time you change LibreWPF

@@ -9,6 +9,13 @@ Keep this file concise and operational. Read the referenced technote only when t
 - Use one .NET SDK on macOS. Mixed SDKs can cause a false `MSB4018` asset-cache failure; use the
   Homebrew SDK path that made the cache, e.g. `/opt/homebrew/Cellar/dotnet/<version>/libexec/dotnet`.
 - `SharpDevelop.sln` is stale; use `OpenDevelop.Mvp.slnx`.
+- LibreWPF source lives in the sibling repo `../openavalon` (not in this repo); look there for
+  window/ProGPU behaviour, e.g. first-window init and show timing. OpenDevelop consumes it only as
+  NuGet packages from the local feed `../openavalon/artifacts/local-feed`, so a LibreWPF change is
+  invisible until it is published to the feed (or overlaid). **`../openavalon/AGENTS.md` is
+  authoritative** for versions, lanes, incremental receipts and `dev-overlay.sh` (one-assembly
+  inner loop, no feed); `doc/technotes/librewpf.md` is consumer-side background and may lag it.
+  Publish with `./repack-librewpf.sh` (wraps `dist.local.sh`); never hand-pack or hand-copy DLLs.
 
 ## OpenCode review and commits
 
@@ -253,5 +260,6 @@ the excluded `Startup/SplashScreen.cs`, `src/Setup/**` WiX and `.tgitconfig`. Th
 ## References
 
 - `doc/technotes/fast-mode.md`, `doc/technotes/build-from-source.md`
+- `doc/technotes/librewpf.md` (LibreWPF local feed, repack, stale-cache traps)
 - `doc/technotes/in-process-analysis.md`, `doc/technotes/winforms-designer.md`
 - `tests/OpenDevelop.IntegrationTests/TESTING.md`
