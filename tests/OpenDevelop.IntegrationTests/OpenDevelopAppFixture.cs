@@ -62,6 +62,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string DebugTestProjectPath => LocateDebugTestProject();
 	public string UnoHotReloadFixturePath => LocateUnoHotReloadFixture();
 	public string WpfHotReloadFixturePath => LocateWpfHotReloadFixture();
+	public string WpfHotReloadClassLibFixturePath => LocateFixtureFile("WpfHotReloadClassLibFixture", "WpfHotReloadClassLibFixture.slnx");
     // A template rather than a path used in place: the runtime-upgrade test rewrites the
     // project's TargetFramework, so it works on a per-test copy instead of this repo's tracked
     // fixture (same reasoning as the NuGet and Git fixtures).
@@ -1116,6 +1117,18 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 			dir = Path.GetDirectoryName(dir);
 		}
 		throw new FileNotFoundException("Could not locate tests/fixtures/UnoHotReloadFixture/UnoHotReloadFixture.slnx by walking up from " + AppContext.BaseDirectory);
+	}
+
+	static string LocateFixtureFile(string fixture, string file)
+	{
+		var dir = AppContext.BaseDirectory;
+		while (dir is not null)
+		{
+			var candidate = Path.Combine(dir, "tests", "fixtures", fixture, file);
+			if (File.Exists(candidate)) return candidate;
+			dir = Path.GetDirectoryName(dir);
+		}
+		throw new FileNotFoundException($"Could not locate tests/fixtures/{fixture}/{file} by walking up from " + AppContext.BaseDirectory);
 	}
 
 	static string LocateWpfHotReloadFixture()

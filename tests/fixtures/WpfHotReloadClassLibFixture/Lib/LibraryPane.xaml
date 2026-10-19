@@ -1,0 +1,17 @@
+<UserControl x:Class="HotReloadClassLib.LibraryPane"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Border x:Name="PaneBorder"
+          Padding="12"
+          Background="LightBlue"
+          CornerRadius="8">
+    <StackPanel x:Name="PaneStack">
+      <TextBlock x:Name="PaneTitle"
+                 FontSize="18"
+                 FontWeight="SemiBold"
+                 Text="Library pane" />
+      <TextBlock x:Name="PaneBody"
+                 Text="Defined in a class library." />
+    </StackPanel>
+  </Border>
+</UserControl>

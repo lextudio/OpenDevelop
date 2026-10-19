@@ -1,0 +1,17 @@
+<Project Sdk="LibreWPF.Sdk">
+
+  <!-- A WPF class library: no entry point, no Application. Its XAML only ever runs inside the host
+       the project's "Start external program" debug option names (Host/), which is the project
+       shape behind GitHub issue #18 (Hot Reload on a class-library project). The test sets that
+       option itself, through the project options, and restores this file afterwards. -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>HotReloadClassLib</RootNamespace>
+    <AssemblyName>HotReloadClassLib</AssemblyName>
+  </PropertyGroup>
+
+</Project>

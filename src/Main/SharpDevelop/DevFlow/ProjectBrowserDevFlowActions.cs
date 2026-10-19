@@ -212,7 +212,9 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				startAction = panel.StartAction.Value.ToString(),
 				startProgram = panel.StartProgram.Value,
 				workingDirectory = panel.StartWorkingDirectory.Value,
-				startable = project.IsStartable
+				startable = project.IsStartable,
+				startupProject = project.ParentSolution.StartupProject?.Name,
+				hotReloadSupported = ICSharpCode.SharpDevelop.Project.HotReload.HotReloadService.IsSupported(project)
 			});
 		}
 

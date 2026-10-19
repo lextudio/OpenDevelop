@@ -2458,7 +2458,13 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		[DevFlowAction("od.hot-reload.start-command", Description = "Run the Start Hot Reload command exactly as the toolbar button does")]
 		public static string RunStartHotReloadCommand()
 		{
-			new ICSharpCode.SharpDevelop.Project.Commands.ExecuteWithHotReload().Run();
+			// The toolbar button is disabled while a build runs (only one build can run at a time, and
+			// the designer starts its own when a XAML file opens). Run() does not check that itself,
+			// so ignoring it silently dropped the launch; report it the way the button would behave.
+			var command = new ICSharpCode.SharpDevelop.Project.Commands.ExecuteWithHotReload();
+			if (!command.IsEnabled)
+				return JsonSerializer.Serialize(new { success = false, error = "The Start Hot Reload command is disabled (a build is running)." });
+			command.Run();
 			return JsonSerializer.Serialize(new { success = true });
 		}
 
