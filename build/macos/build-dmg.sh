@@ -53,6 +53,7 @@ layout_height=640
 app_icon_x=120
 apps_icon_x=360
 icons_y=500
+icon_size=84
 stage_background=""
 
 if [[ -f "$background_image" ]]; then
@@ -86,24 +87,31 @@ if [[ -f "$background_image" ]]; then
     layout_height=$h_scaled
   fi
 
+  # Place the two icons inside the light panel of social.png. 10%/30% rather than the 15%/25% of the
+  # SharpDevelop-era layout: that left 8px between the two 84px slots, while the wider spacing leaves
+  # ~100px, which is the room the drag arrow needs to sit between them.
+  app_icon_x=$(( layout_width * 10 / 100 ))
+  apps_icon_x=$(( layout_width * 30 / 100 ))
+  icons_y=$(( layout_height * 80 / 100 ))
+  # Finder draws a label under each icon, so the cell - not just the icon - has to fit the window.
+  bottom_inset=60
+  (( icons_y > layout_height - bottom_inset )) && icons_y=$(( layout_height - bottom_inset ))
+
   if sips -z "$layout_height" "$layout_width" "$background_image" --out "$stage_background" >/dev/null 2>&1; then
     has_background=1
+    # The arrow is drawn here, not in the icon-position block above: it only makes sense on a
+    # background that has already reached window size, and the cp fallback below leaves the image at
+    # its source resolution, where these window-space coordinates would point somewhere else.
+    if command -v python3 >/dev/null 2>&1; then
+      python3 "$script_dir/draw-dmg-arrow.py" "$stage_background" "$app_icon_x" "$apps_icon_x" "$icons_y" "$icon_size" \
+        || echo "Warning: could not draw the drag arrow; continuing without it."
+    else
+      echo "Warning: python3 not found; the DMG background will have no drag arrow."
+    fi
   else
     cp "$background_image" "$stage_background"
     has_background=1
   fi
-
-  # Place icons in the lower-left area (inside the light panel of social.png).
-  app_icon_x=$(( layout_width * 15 / 100 ))
-  apps_icon_x=$(( layout_width * 25 / 100 ))
-  icons_y=$(( layout_height * 74 / 100 ))
-
-  left_inset=140
-  bottom_inset=95
-  # The social background switches from light panel to dark panel around ~40% width.
-  left_panel_limit=$(( layout_width * 40 / 100 ))
-  apps_right_margin=80
-  (( icons_y > layout_height - bottom_inset )) && icons_y=$(( layout_height - bottom_inset ))
 fi
 
 echo "Creating writable DMG: $rw_dmg"
@@ -154,7 +162,7 @@ tell application "Finder"
     end tell
     set viewOptions to the icon view options of container window
     set arrangement of viewOptions to not arranged
-    set icon size of viewOptions to 84
+    set icon size of viewOptions to $icon_size
     set text size of viewOptions to 14
 EOF
 )
