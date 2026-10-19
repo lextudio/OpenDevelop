@@ -79,4 +79,44 @@ public sealed class WpfCodeBehindHandlersTests
 		var updated = WpfCodeBehindHandlers.AddVisualBasicHandler(source, "MainWindow", "owner_Changed", "global::System.Windows.RoutedPropertyChangedEventArgs<global::System.Double>", out _);
 		Assert.Contains("e As Global.System.Windows.RoutedPropertyChangedEventArgs(Of Global.System.Double)", updated, StringComparison.Ordinal);
 	}
+
+	[Fact]
+	public void RemovingAnEmptyGeneratedHandlerRestoresTheFileExactly()
+	{
+		var added = WpfCodeBehindHandlers.AddHandler(CodeBehind, "MainWindow", "owner_Click", "global::System.EventArgs", out _)!;
+		var removed = WpfCodeBehindHandlers.RemoveEmptyHandler(added, "MainWindow", "owner_Click");
+		Assert.Equal(CodeBehind, removed);
+	}
+
+	[Fact]
+	public void AHandlerTheUserHasStartedWritingIsNeverRemoved()
+	{
+		var added = WpfCodeBehindHandlers.AddHandler(CodeBehind, "MainWindow", "owner_Click", "global::System.EventArgs", out _)!;
+		var body = System.Text.RegularExpressions.Regex.Replace(added, @"(owner_Click\([^)]*\)\s*\{)", "$1 System.Console.WriteLine();");
+		Assert.NotEqual(added, body);
+		Assert.Null(WpfCodeBehindHandlers.RemoveEmptyHandler(body, "MainWindow", "owner_Click"));
+		var commented = System.Text.RegularExpressions.Regex.Replace(added, @"(owner_Click\([^)]*\)\s*\{)", "$1 // TODO");
+		Assert.Null(WpfCodeBehindHandlers.RemoveEmptyHandler(commented, "MainWindow", "owner_Click"));
+	}
+
+	[Fact]
+	public void RemovingAMissingHandlerOrOneInAnotherClassDoesNothing()
+	{
+		Assert.Null(WpfCodeBehindHandlers.RemoveEmptyHandler(CodeBehind, "MainWindow", "owner_Click"));
+		Assert.Null(WpfCodeBehindHandlers.RemoveEmptyHandler("namespace empty { }", "MainWindow", "owner_Click"));
+	}
+
+	[Fact]
+	public void RemovesAnEmptyVisualBasicHandlerAndKeepsOneWithCode()
+	{
+		const string source = "Namespace sample\n    Public Partial Class MainWindow\n    End Class\nEnd Namespace\n";
+		var added = WpfCodeBehindHandlers.AddVisualBasicHandler(source, "MainWindow", "owner_Click", "global::System.EventArgs", out _)!;
+		var removed = WpfCodeBehindHandlers.RemoveEmptyVisualBasicHandler(added, "MainWindow", "owner_Click");
+		Assert.NotNull(removed);
+		Assert.DoesNotContain("owner_Click", removed, StringComparison.Ordinal);
+		var withCode = added.Replace("End Sub", "    Console.WriteLine()\n    End Sub", StringComparison.Ordinal);
+		Assert.Null(WpfCodeBehindHandlers.RemoveEmptyVisualBasicHandler(withCode, "MainWindow", "owner_Click"));
+		var commented = added.Replace("End Sub", "    ' note\n    End Sub", StringComparison.Ordinal);
+		Assert.Null(WpfCodeBehindHandlers.RemoveEmptyVisualBasicHandler(commented, "MainWindow", "owner_Click"));
+	}
 }

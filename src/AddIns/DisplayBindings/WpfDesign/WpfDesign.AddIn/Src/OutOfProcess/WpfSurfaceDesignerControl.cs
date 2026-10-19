@@ -576,9 +576,9 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 
 		/// <summary>Raised after a Properties-pad double-click bound (or found) an event handler; the
 		/// view creates or opens the method in the code-behind.</summary>
-		public event EventHandler<DesignerEventInfo>? EventHandlerBound;
+		public event EventHandler<WpfEventBinding>? EventHandlerBound;
 
-		void OnEventHandlerBound(DesignerEventInfo boundEvent) => EventHandlerBound?.Invoke(this, boundEvent);
+		void OnEventHandlerBound(WpfEventBinding binding) => EventHandlerBound?.Invoke(this, binding);
 
 		/// <summary>The currently selected element's id (its tree path), or null.</summary>
 		public string? SelectedElementId => controller.SelectedElementName;

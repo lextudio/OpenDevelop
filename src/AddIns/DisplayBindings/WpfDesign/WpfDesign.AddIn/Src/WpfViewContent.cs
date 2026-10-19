@@ -96,8 +96,13 @@ namespace ICSharpCode.WpfDesign.AddIn
 		// every document reload. lastKnownGoodXaml is the text as of the last accepted mutation
 		// (or load); OnDocumentChanged pushes it onto undoStack right before replacing it with the
 		// new post-mutation text, so Undo can restore exactly what preceded that mutation.
-		readonly Stack<string> undoStack = new();
-			readonly Stack<string> redoStack = new();
+		// An entry is the XAML text to restore plus, when that mutation also generated a code-behind
+		// handler, the means to take the method back (Undo) and add it again (Redo), so one Undo or
+		// Redo covers the XAML binding and the method it names.
+		sealed record UndoEntry(string Xaml, WpfCodeBehindHandlers.GeneratedHandler? Companion = null);
+
+		readonly Stack<UndoEntry> undoStack = new();
+			readonly Stack<UndoEntry> redoStack = new();
 			readonly DesignerCommandController commands = new();
 		string? lastKnownGoodXaml;
 
@@ -157,7 +162,12 @@ namespace ICSharpCode.WpfDesign.AddIn
 			_stream.Position = 0;
 
 			if (surfaceControl != null && hasLoadedOnce
-				&& String.Equals(sourceText, lastLoadedSourceText, StringComparison.Ordinal))
+				&& (String.Equals(sourceText, lastLoadedSourceText, StringComparison.Ordinal)
+					// The text the designer itself last produced (what Save wrote) is not an outside
+					// change either: the session already is that document. Reloading it threw away
+					// the undo history, so leaving for the code-behind after a double-click and
+					// coming back lost the very edit the user wanted to undo.
+					|| (wasChangedInDesigner && String.Equals(sourceText, lastKnownGoodXaml, StringComparison.Ordinal))))
 			{
 				// Nothing changed since the last successful load (e.g. Source -> Design -> Source
 				// without editing) - reuse the live session instead of paying another RPC
@@ -527,15 +537,24 @@ namespace ICSharpCode.WpfDesign.AddIn
 		}
 
 		/// <summary>Creates or opens the code-behind method a double-clicked event names, as the
-		/// in-process designer did. The XAML attribute is already a designer edit; the method is an
-		/// edit of the code-behind document and lands on that document's own undo stack.</summary>
-		void OnEventHandlerBound(object? sender, DesignerEventInfo boundEvent)
+		/// in-process designer did. The XAML attribute is already a designer edit with its own undo
+		/// entry; a method created now is attached to that entry, so the designer's Undo removes the
+		/// binding and the empty method together and Redo restores both. Undo from the code editor
+		/// still only affects that document's text.</summary>
+		void OnEventHandlerBound(object? sender, WpfEventBinding binding)
 		{
 			var xamlText = SD.FileService.GetOpenFile(PrimaryFile.FileName)?.GetService(typeof(ICSharpCode.SharpDevelop.Editor.ITextEditor)) is ICSharpCode.SharpDevelop.Editor.ITextEditor editor
 				? editor.Document.Text
 				: System.IO.File.Exists(PrimaryFile.FileName) ? System.IO.File.ReadAllText(PrimaryFile.FileName) : null;
-			WpfCodeBehindHandlers.EnsureAndNavigate(PrimaryFile.FileName, xamlText, boundEvent.Handler,
-				ICSharpCode.SharpDevelop.Designer.Presentation.EventHandlerSignature.EventArgsTypeName(boundEvent.HandlerTypeName));
+			var result = WpfCodeBehindHandlers.EnsureAndNavigate(PrimaryFile.FileName, xamlText, binding.Event.Handler,
+				ICSharpCode.SharpDevelop.Designer.Presentation.EventHandlerSignature.EventArgsTypeName(binding.Event.HandlerTypeName));
+			// Only the entry this very double-click pushed may carry the method: a binding that was
+			// already in the XAML pushed nothing, and the top entry then belongs to an older edit.
+			if (result?.Generated is { } generated && binding.XamlChanged && undoStack.Count > 0)
+			{
+				var top = undoStack.Pop();
+				undoStack.Push(top with { Companion = generated });
+			}
 		}
 
 		/// <summary>Marks the file dirty after any accepted mutation (bounds/add/delete/rename/
@@ -561,7 +580,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			// before LoadInternal's own post-load flush completes.
 			if (lastKnownGoodXaml != null)
 			{
-				undoStack.Push(lastKnownGoodXaml);
+				undoStack.Push(new UndoEntry(lastKnownGoodXaml));
 				redoStack.Clear();
 			}
 			lastKnownGoodXaml = FlushCurrentXaml();
@@ -607,16 +626,20 @@ namespace ICSharpCode.WpfDesign.AddIn
 			public void Undo() => commands.Execute("Undo");
 			bool UndoCore()
 			{
-				redoStack.Push(lastKnownGoodXaml ?? FlushCurrentXaml());
-				RestoreXaml(undoStack.Pop());
+				var entry = undoStack.Pop();
+				redoStack.Push(new UndoEntry(lastKnownGoodXaml ?? FlushCurrentXaml(), entry.Companion));
+				RestoreXaml(entry.Xaml);
+				entry.Companion?.Undo();
 				return true;
 			}
 
 			public void Redo() => commands.Execute("Redo");
 			bool RedoCore()
 			{
-				undoStack.Push(lastKnownGoodXaml ?? FlushCurrentXaml());
-				RestoreXaml(redoStack.Pop());
+				var entry = redoStack.Pop();
+				undoStack.Push(new UndoEntry(lastKnownGoodXaml ?? FlushCurrentXaml(), entry.Companion));
+				RestoreXaml(entry.Xaml);
+				entry.Companion?.Redo();
 				return true;
 			}
 

@@ -25,16 +25,21 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 	/// this codebase) and the result is handed back through <paramref name="onStateChanged"/> so
 	/// the caller can refresh the surface/tree the same way a mutation RPC always does.
 	/// </summary>
+	/// <summary>A double-clicked event that now names a handler. <see cref="XamlChanged"/> is true when
+	/// this double-click wrote the attribute (and so pushed a designer undo entry) and false when it
+	/// found the event already bound.</summary>
+	public sealed record WpfEventBinding(DesignerEventInfo Event, bool XamlChanged);
+
 	public sealed class WpfSurfaceElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IItemsCollectionEditorHost, IBrushEditorHost, ITransformEditorHost, IDesignFrameSource, IImageSourceCandidates
 	{
 		readonly WpfSurfaceHostClient client;
 		readonly Func<long> currentBaseVersion;
 		readonly DesignerElementNode node;
 		readonly Action<DesignerSessionState> onStateChanged;
-		readonly Action<DesignerEventInfo>? onEventHandlerBound;
+		readonly Action<WpfEventBinding>? onEventHandlerBound;
 
 		public WpfSurfaceElementPropertyAdapter(WpfSurfaceHostClient client, Func<long> currentBaseVersion,
-			DesignerElementNode node, Action<DesignerSessionState> onStateChanged, Action<DesignerEventInfo>? onEventHandlerBound = null)
+			DesignerElementNode node, Action<DesignerSessionState> onStateChanged, Action<WpfEventBinding>? onEventHandlerBound = null)
 		{
 			this.onEventHandlerBound = onEventHandlerBound;
 			this.client = client ?? throw new ArgumentNullException(nameof(client));
@@ -339,10 +344,11 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		// and open it. The isolated host only ever writes the attribute; project code is the IDE's.
 		void IEventBindingHost.BindEvent(string eventName)
 		{
-			if (string.IsNullOrEmpty(((IPropertyGridEventSource)this).GetEventHandler(eventName)))
+			var bindsXaml = string.IsNullOrEmpty(((IPropertyGridEventSource)this).GetEventHandler(eventName));
+			if (bindsXaml)
 				((IPropertyGridEventSource)this).SetEventHandler(eventName, (node.Name ?? node.Type) + "_" + eventName);
 			if (node.Events.FirstOrDefault(candidate => candidate.Name == eventName) is { Handler.Length: > 0 } bound)
-				onEventHandlerBound?.Invoke(bound);
+				onEventHandlerBound?.Invoke(new WpfEventBinding(bound, bindsXaml));
 		}
 
 		public string GetClassName() => node.Type;

@@ -705,6 +705,109 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
     }
 
     [Fact]
+    public async Task PropertiesPad_BindEvent_UndoAndRedoCoverTheXamlAndTheGeneratedHandler()
+    {
+        // One designer Undo takes back the event binding AND the empty method the double-click
+        // generated, one Redo restores both. A handler the user has since written code in stays.
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var codeBehindPath = xamlPath + ".cs";
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+        var originalCodeBehind = await File.ReadAllBytesAsync(codeBehindPath);
+        var originalCodeBehindText = await File.ReadAllTextAsync(codeBehindPath);
+        const string handler = "owner_TargetUpdated";
+        try {
+            await app.InvokeAsync("od.close-all-document-views");
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Event binding undo">
+              <Grid><Button x:Name="owner" Content="Open" /></Grid>
+            </Window>
+            """);
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "owner")).GetProperty("success").GetBoolean());
+
+            // Binding navigates to the code-behind; the designer has to be brought back before Undo.
+            async Task ReturnToDesignerAsync()
+            {
+                Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+                var design = await app.InvokeAsync("od.wpf-designer.activate-design");
+                Assert.True(design.GetProperty("success").GetBoolean(), design.ToString());
+            }
+
+            async Task<(string Xaml, string CodeBehind)> SaveBothAsync()
+            {
+                await app.InvokeAsync("od.file.save", xamlPath);
+                await app.InvokeAsync("od.file.save", codeBehindPath);
+                return (await File.ReadAllTextAsync(xamlPath), await File.ReadAllTextAsync(codeBehindPath));
+            }
+
+            static int Count(string text, string value)
+            {
+                var count = 0;
+                for (var at = text.IndexOf(value, StringComparison.Ordinal); at >= 0; at = text.IndexOf(value, at + 1, StringComparison.Ordinal))
+                    count++;
+                return count;
+            }
+
+            var binding = await app.InvokeAsync("od.wpf-designer.properties-pad.bind-event", "TargetUpdated");
+            Assert.True(binding.GetProperty("success").GetBoolean(), binding.ToString());
+            Assert.Equal(handler, binding.GetProperty("handler").GetString());
+            Assert.True((await app.InvokeAsync("od.wpf-designer.status")).GetProperty("canUndo").GetBoolean(), "the binding itself must be undoable");
+            var bound = await SaveBothAsync();
+            Assert.Contains($"TargetUpdated=\"{handler}\"", bound.Xaml, StringComparison.Ordinal);
+            Assert.Contains($"private void {handler}(", bound.CodeBehind, StringComparison.Ordinal);
+
+            // One Undo: the attribute and the generated method both go, and the code-behind is
+            // exactly what it was before the double-click.
+            await ReturnToDesignerAsync();
+            Assert.True((await app.InvokeAsync("od.wpf-designer.status")).GetProperty("canUndo").GetBoolean(),
+                "returning to the designer from the code-behind must not discard its undo history");
+            var undo = await app.InvokeAsync("od.wpf-designer.undo");
+            Assert.True(undo.GetProperty("success").GetBoolean(), undo.ToString());
+            var undone = await SaveBothAsync();
+            Assert.DoesNotContain("TargetUpdated=", undone.Xaml, StringComparison.Ordinal);
+            Assert.DoesNotContain(handler, undone.CodeBehind, StringComparison.Ordinal);
+            Assert.Equal(originalCodeBehindText, undone.CodeBehind);
+
+            // One Redo: both are back, and the method exists once.
+            await ReturnToDesignerAsync();
+            var redo = await app.InvokeAsync("od.wpf-designer.redo");
+            Assert.True(redo.GetProperty("success").GetBoolean(), redo.ToString());
+            var redone = await SaveBothAsync();
+            Assert.Contains($"TargetUpdated=\"{handler}\"", redone.Xaml, StringComparison.Ordinal);
+            Assert.Equal(1, Count(redone.CodeBehind, $"void {handler}("));
+
+            // The user writes in the handler; Undo then removes only the XAML binding.
+            var emptyBody = System.Text.RegularExpressions.Regex.Match(redone.CodeBehind,
+                @"private void " + handler + @"\([^)]*\)\s*\{\s*\}");
+            Assert.True(emptyBody.Success, redone.CodeBehind);
+            var replaced = await app.InvokeAsync("od.file.replace-text", codeBehindPath, emptyBody.Value,
+                emptyBody.Value.Replace("{", "{ System.Console.WriteLine(\"mine\");", StringComparison.Ordinal));
+            Assert.True(replaced.GetProperty("success").GetBoolean(), replaced.ToString());
+            await ReturnToDesignerAsync();
+            var undoAgain = await app.InvokeAsync("od.wpf-designer.undo");
+            Assert.True(undoAgain.GetProperty("success").GetBoolean(), undoAgain.ToString());
+            var kept = await SaveBothAsync();
+            Assert.DoesNotContain("TargetUpdated=", kept.Xaml, StringComparison.Ordinal);
+            Assert.Contains("System.Console.WriteLine(\"mine\");", kept.CodeBehind, StringComparison.Ordinal);
+            Assert.Equal(1, Count(kept.CodeBehind, $"void {handler}("));
+        } finally {
+            await app.InvokeAsync("od.close-all-document-views");
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
+            await File.WriteAllBytesAsync(codeBehindPath, originalCodeBehind);
+        }
+    }
+
+    [Fact]
     public async Task PropertiesPad_ResetProperty_RemovesTheAuthoredXamlValue()
     {
         // Reset must travel through the same visible PropertyGrid descriptor that exposes the
