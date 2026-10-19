@@ -51,7 +51,10 @@ Split oversized work into separate commits before review; partial approvals neve
 commit. Record the staged-tree hash before review and verify it immediately before commit; a changed
 hash invalidates the approval. The OpenCode commit agent must first verify that exact hash and the
 intended staged paths (however many), commit only those paths, then report the new commit hash and
-`git status`.
+`git status`. OpenCode writes every commit message itself, from `git diff --cached` and the one-line
+intent in its prompt; the invoking agent must not draft, dictate, or amend it. Check afterwards that
+the message describes the staged change (`git show --stat HEAD`); if it does not, report that to the
+user instead of rewriting it.
 If no relevant test exists or cannot run, record why in the handoff; never waive approval. OpenCode
 commits; never push without the user's explicit request.
 
@@ -108,11 +111,12 @@ end: the console tail can stop mid-exploration. New files must be staged (or `gi
 review, because the diff only shows tracked paths. Keep the build agent's prompt short: with a long one
 that mentioned the review it spent over ten minutes looking for that session in `opencode session list`
 and never committed, though the staged files were right. "The files are already staged; run only
-`git status --short`, `git commit` with this message, `git log --oneline -1`" finished in under four
-minutes.
+`git status --short`, `git commit` with a message you write from `git diff --cached`, `git log
+--oneline -1`" finished in under four minutes.
 
-Give the build agent the exact tree hash, path list and message. Chain `git add ... && git diff
---cached --stat && git write-tree` before launching a review: a stale `.git/index.lock` (also
+Give the build agent the exact tree hash, the path list and a one-line intent, not a message, and ask
+it to write the message (a short imperative subject, then a body saying what changed and why). Chain
+`git add ... && git diff --cached --stat && git write-tree` before launching a review: a stale `.git/index.lock` (also
 under `.git/modules/...` for submodules) otherwise yields an empty review target. Integration runs
 used to leave one because the IDE's status overlay ran a locking `git status` on this repo and
 was killed; `GitStatusService` now sets `GIT_OPTIONAL_LOCKS=0`. Remove a lock only after checking
