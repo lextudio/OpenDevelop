@@ -6178,8 +6178,11 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
   <data name="StartPage.StartPageContentName" xml:space="preserve">
     <value>起始頁</value>
   </data>
+  <data name="StartPage.CopyrightLabel" xml:space="preserve">
+    <value>版權所有</value>
+  </data>
   <data name="StartPage.Copyright" xml:space="preserve">
-    <value>© 2000–2026 AlphaSierraPapa（SharpDevelop 團隊）。© 2026 LeXtudio Inc.</value>
+    <value>© {0} AlphaSierraPapa（SharpDevelop 團隊）；© {1} AlphaSierraPapa 及 ILSpy 貢獻者；© {2} LeXtudio Inc.</value>
   </data>
   <data name="StartPage.License" xml:space="preserve">
     <value>OpenDevelop 採用 MIT 授權條款。</value>

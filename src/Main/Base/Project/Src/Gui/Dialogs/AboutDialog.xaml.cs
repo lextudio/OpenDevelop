@@ -44,11 +44,11 @@ namespace ICSharpCode.SharpDevelop.Gui
 
 			VersionText.Text = $"Version {major}.{minor}.{build} (rev {revision})";
 
-			var copyrightAttr = (AssemblyCopyrightAttribute)assembly
-				.GetCustomAttributes(typeof(AssemblyCopyrightAttribute), false)
-				.FirstOrDefault();
-			CopyrightText.Text = "Copyright " + (copyrightAttr?.Copyright ?? "")
-				+ Environment.NewLine + "Copyright © 2026 LeXtudio Inc.";
+			// One notice for the whole product (ProductCopyright): this is the same string the Start
+			// Page footer prints, so the two surfaces cannot disagree, and the year ranges are not
+			// restated here. The English clauses also sit in the assembly attribute, which is what
+			// ProductCopyrightTests hold against ProductCopyright.AssemblyNotice.
+			CopyrightText.Text = ProductCopyright.Notice;
 
 			VersionInfoBox.Text = BuildVersionInformation(assembly, fileVersion);
 			AssemblyList.ItemsSource = LoadAssemblyList();

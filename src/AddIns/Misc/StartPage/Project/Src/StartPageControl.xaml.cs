@@ -39,7 +39,10 @@ namespace ICSharpCode.StartPage
 			List<BoxEntry> entries = items.ConvertAll(control => new BoxEntry { Control = control } );
 			startPageItems.ItemsSource = entries;
 			
-			copyrightText.Text = ResourceService.GetString("StartPage.Copyright");
+			copyrightLabel.Text = ResourceService.GetString("StartPage.CopyrightLabel");
+			// One notice for the whole product (ProductCopyright), so the footer and the About box
+			// cannot drift apart; only its LeXtudio clause moves, and that comes from the clock.
+			copyrightText.Text = ProductCopyright.Notice;
 			licenseText.Text = ResourceService.GetString("StartPage.License");
 
 			versionTextBlock.Text = string.Format(ResourceService.GetString("StartPage.Version"), RevisionClass.FullVersion);

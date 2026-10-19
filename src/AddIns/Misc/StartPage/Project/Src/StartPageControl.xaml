@@ -75,9 +75,7 @@
 				Grid.Row="2"
 				Padding="4,0,4,0"
 				TextWrapping="WrapWithOverflow">
-				Copyright <Run Name="copyrightText"/>
-				<Run Text="  "/>
-				<Run Name="licenseText" />
+				<Run Name="copyrightLabel" /><Run Text=" " /><Run Name="copyrightText" /><Run Text=" " /><Run Name="licenseText" />
 			</TextBlock>
 		</Grid>
 	</ScrollViewer>

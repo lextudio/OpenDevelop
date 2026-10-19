@@ -7045,8 +7045,11 @@ The resources files have been renamed/moved accordingly.</value>
   <data name="StartPage.StartPageContentName" xml:space="preserve">
     <value>Start Page</value>
   </data>
+  <data name="StartPage.CopyrightLabel" xml:space="preserve">
+    <value>Copyright</value>
+  </data>
   <data name="StartPage.Copyright" xml:space="preserve">
-    <value>© 2000–2026 AlphaSierraPapa for the SharpDevelop Team. © 2026 LeXtudio Inc.</value>
+    <value>© {0} AlphaSierraPapa for the SharpDevelop Team; © {1} AlphaSierraPapa and the ILSpy contributors; © {2} LeXtudio Inc.</value>
   </data>
   <data name="StartPage.License" xml:space="preserve">
     <value>OpenDevelop is licensed under the MIT License.</value>

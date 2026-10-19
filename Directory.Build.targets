@@ -186,7 +186,7 @@
       <_OdAssemblyInfoLine Include="[assembly: System.Runtime.Versioning.SupportedOSPlatform(&quot;windows&quot;)]" />
       <_OdAssemblyInfoLine Include="[assembly: AssemblyCompany(&quot;ic#code&quot;)]" />
       <_OdAssemblyInfoLine Include="[assembly: AssemblyProduct(&quot;SharpDevelop&quot;)]" />
-      <_OdAssemblyInfoLine Include="[assembly: AssemblyCopyright(&quot;2000-$([System.DateTime]::Now.Year) AlphaSierraPapa for the SharpDevelop Team&quot;)]" />
+      <_OdAssemblyInfoLine Include="[assembly: AssemblyCopyright(&quot;&#169; 2002&#x2013;2016 AlphaSierraPapa for the SharpDevelop Team%3B &#169; 2011&#x2013;2026 AlphaSierraPapa and the ILSpy contributors&quot;)]" />
       <_OdAssemblyInfoLine Include="[assembly: AssemblyVersion(RevisionClass.Major + &quot;.&quot; + RevisionClass.Minor + &quot;.&quot; + RevisionClass.Build + &quot;.&quot; + RevisionClass.Revision)]" />
       <_OdAssemblyInfoLine Include="[assembly: AssemblyInformationalVersion(RevisionClass.FullVersion + &quot;+$(_OdSha)&quot;)]" />
       <_OdAssemblyInfoLine Include="[assembly: NeutralResourcesLanguage(&quot;en-US&quot;)]" />
