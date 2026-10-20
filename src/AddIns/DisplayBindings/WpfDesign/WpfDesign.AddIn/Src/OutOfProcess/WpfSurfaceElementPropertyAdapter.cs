@@ -254,9 +254,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 
 		void ITreeItemsEditorHost.SetTreeItems(string propertyName, System.Collections.Generic.IReadOnlyList<DesignerTreeItemEdit> items)
 		{
-			if (!node.Properties.Any(property => property.Name == propertyName && property.EditorKind == "TreeItems"))
+			var editorKind = node.Properties.SingleOrDefault(property => property.Name == propertyName)?.EditorKind;
+			if (editorKind is not ("TreeItems" or "MenuItems"))
 				throw new InvalidOperationException("Not an editable tree items collection: " + propertyName);
-			var state = client.SetTreeItemsAsync(currentBaseVersion(), node.Id, items).GetAwaiter().GetResult();
+			var state = editorKind == "MenuItems" ? client.SetMenuItemsAsync(currentBaseVersion(), node.Id, items).GetAwaiter().GetResult() : client.SetTreeItemsAsync(currentBaseVersion(), node.Id, items).GetAwaiter().GetResult();
 			EnsureAccepted(state);
 			onStateChanged(state);
 		}
@@ -466,7 +467,7 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 			// The row stays read-only to generic editing; the "…" editor commits the whole list.
 			if (property.EditorKind is "ItemsCollection" or "BindingCollection" or "GridViewColumns")
 				attributes.Add(new EditorAttribute(typeof(WpfItemsCollectionEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
-			else if (property.EditorKind == "TreeItems")
+			else if (property.EditorKind is "TreeItems" or "MenuItems")
 				attributes.Add(new EditorAttribute(typeof(WpfTreeItemsEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 			else if (property.EditorKind == "RichText")
 				attributes.Add(new EditorAttribute(typeof(WpfRichTextEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));

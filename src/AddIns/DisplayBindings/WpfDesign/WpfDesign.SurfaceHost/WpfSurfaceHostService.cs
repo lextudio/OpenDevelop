@@ -3887,6 +3887,11 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					TreeItems = treeItems, ShouldSerialize = treeItems.Count > 0
 				});
 			}
+			if (TryGetEditableMenuItems(item, out var menuItemsProperty) && menuItemsProperty != null)
+			{
+				result.RemoveAll(info => info.Name == "Items"); var menuItems = SnapshotTreeItems(menuItemsProperty.CollectionElements);
+				result.Add(new DesignerPropertyInfo { Name = "Items", DisplayName = "Items", Category = "Common", TypeName = typeof(MenuItem).FullName ?? "", Kind = "Collection", EditorKind = "MenuItems", IsReadOnly = true, Value = "(" + menuItems.Count + (menuItems.Count == 1 ? " item)" : " items)"), TreeItems = menuItems, ShouldSerialize = menuItems.Count > 0 });
+			}
 			if (TryGetEditableGridViewColumns(item, out var columnsProperty) && columnsProperty != null)
 			{
 				var texts = columnsProperty.CollectionElements.Select(column => column.Properties["Header"].ValueOnInstance as string ?? "").ToList();
@@ -4075,6 +4080,16 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			return true;
 		}
 
+		static bool TryGetEditableMenuItems(DesignItem item, out DesignItemProperty? itemsProperty)
+		{
+			itemsProperty = null;
+			if (item.Component is not MenuBase || item.Properties["ItemsSource"]?.IsSet == true) return false;
+			var items = item.Properties["Items"];
+			if (items?.IsCollection != true || !IsEditableMenuLevel(items.CollectionElements)) return false;
+			itemsProperty = items; return true;
+		}
+		static bool IsEditableMenuLevel(IEnumerable<DesignItem> items) => items.All(item => item.Component?.GetType() == typeof(MenuItem) && item.Properties["ItemsSource"]?.IsSet != true && item.Properties["Header"] is { } header && (!header.IsSet || header.Value == null && header.ValueOnInstance is string) && item.Properties["Items"] is { IsCollection: true } children && IsEditableMenuLevel(children.CollectionElements));
+
 		static bool IsEditableTreeLevel(IEnumerable<DesignItem> items)
 		{
 			foreach (var item in items)
@@ -4163,6 +4178,10 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		[JsonRpcMethod("design/set-menu-items")]
+		public DesignerSessionState SetMenuItems(long baseVersion, string elementId, DesignerTreeItemEdit[] items)
+			=> dispatcher.Dispatch(() => { if (RejectIfStale(baseVersion) is { } stale) return stale; var state = NewState(baseVersion); if (!pathToItem.TryGetValue(elementId, out var element) || !TryGetEditableMenuItems(element, out var property) || property == null) return NotFound(state, "The menu items are not a safely editable explicit hierarchy."); try { using var group = element.OpenGroup("Edit Menu Items"); ApplyHierarchicalItems(element, property.CollectionElements, items ?? Array.Empty<DesignerTreeItemEdit>(), typeof(MenuItem)); group.Commit(); } catch (Exception e) { return NotFound(state, e.GetBaseException().Message); } RebuildTreeAndRender(state); state.Accepted = true; return state; });
+
 		[JsonRpcMethod("design/set-grid-view-columns")]
 		public DesignerSessionState SetGridViewColumns(long baseVersion, string elementId, DesignerCollectionItemEdit[] items)
 			=> dispatcher.Dispatch(() => {
@@ -4179,6 +4198,8 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			});
 
 		static void ApplyTreeItems(DesignItem owner, ICollection<DesignItem> collection, IReadOnlyList<DesignerTreeItemEdit> edits)
+			=> ApplyHierarchicalItems(owner, collection, edits, typeof(TreeViewItem));
+		static void ApplyHierarchicalItems(DesignItem owner, ICollection<DesignItem> collection, IReadOnlyList<DesignerTreeItemEdit> edits, Type itemType)
 		{
 			var existing = collection.ToList();
 			var sources = edits.Where(edit => edit.SourceIndex >= 0).Select(edit => edit.SourceIndex).ToList();
@@ -4189,14 +4210,14 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			foreach (var edit in edits)
 			{
 				var item = edit.SourceIndex >= 0 ? existing[edit.SourceIndex]
-					: owner.Services.Component.RegisterComponentForDesigner(new TreeViewItem());
+					: owner.Services.Component.RegisterComponentForDesigner(Activator.CreateInstance(itemType)!);
 				collection.Add(item);
 				var header = item.Properties["Header"];
 				if (String.IsNullOrEmpty(edit.Text)) header.Reset(); else header.SetValue(edit.Text);
 				var children = item.Properties["Items"];
 				if (children == null || !children.IsCollection)
-					throw new InvalidOperationException("TreeViewItem has no editable Items collection.");
-				ApplyTreeItems(item, children.CollectionElements, edit.Children ?? new List<DesignerTreeItemEdit>());
+					throw new InvalidOperationException("Hierarchical item has no editable Items collection.");
+				ApplyHierarchicalItems(item, children.CollectionElements, edit.Children ?? new List<DesignerTreeItemEdit>(), itemType);
 			}
 		}
 

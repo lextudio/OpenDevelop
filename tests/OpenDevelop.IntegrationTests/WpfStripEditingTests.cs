@@ -640,6 +640,36 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
     }
 
     [Fact]
+    public async Task PropertiesPad_TreeEditorEditsAMenusHierarchy()
+    {
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+        try {
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="420" Height="220">
+              <Grid><Menu x:Name="menu"><MenuItem x:Name="file" Header="File" InputGestureText="Alt+F"><MenuItem x:Name="open" Header="Open" Command="ApplicationCommands.Open" /></MenuItem></Menu></Grid>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => { status = await app.InvokeAsync("od.wpf-designer.status"); return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean(); }, TimeSpan.FromSeconds(90)), status.ToString());
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "menu")).GetProperty("success").GetBoolean());
+            var edited = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-tree-items", "Items", "rename:0:File menu;add-child:0:Exit");
+            Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var text = await File.ReadAllTextAsync(xamlPath);
+            Assert.Contains("Header=\"File menu\"", text, StringComparison.Ordinal);
+            Assert.Contains("Header=\"Exit\"", text, StringComparison.Ordinal);
+            Assert.Contains("InputGestureText=\"Alt+F\"", text, StringComparison.Ordinal);
+            Assert.Contains("Command=\"ApplicationCommands.Open\"", text, StringComparison.Ordinal);
+            Assert.True((await app.InvokeAsync("od.wpf-designer.undo")).GetProperty("success").GetBoolean());
+        } finally { await app.InvokeAsync("od.close-active-view"); await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml); }
+    }
+
+    [Fact]
     public async Task PropertiesPad_ColumnsEditorEditsAListViewsGridViewColumns()
     {
         var sample = Path.GetDirectoryName(SampleSolutionPath)!;

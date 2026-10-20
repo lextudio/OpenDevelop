@@ -1028,6 +1028,46 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task ChildHost_EditsExplicitMenuAndContextMenuHierarchiesKeepingCommands()
+	{
+		const string xaml = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+			  <Menu x:Name="menu"><MenuItem x:Name="file" Header="File" InputGestureText="Alt+F"><MenuItem x:Name="open" Header="Open" Command="ApplicationCommands.Open" /></MenuItem><MenuItem x:Name="edit" Header="Edit" InputGestureText="Alt+E"><MenuItem x:Name="close" Header="Close" Command="ApplicationCommands.Close" /></MenuItem></Menu>
+			  <Button x:Name="button"><Button.ContextMenu><ContextMenu x:Name="context"><MenuItem x:Name="copy" Header="Copy" Command="ApplicationCommands.Copy" /></ContextMenu></Button.ContextMenu></Button>
+			  <Menu x:Name="rich"><MenuItem><MenuItem.Header><TextBlock Text="Rich" /></MenuItem.Header></MenuItem></Menu>
+			  <Menu x:Name="bound" ItemsSource="{Binding Commands}" />
+			  <Menu x:Name="mixed"><Separator /></Menu>
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60)); using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var state = await client.OpenAsync(Snapshot(1, xaml), timeout.Token); Assert.True(state.Accepted, state.Error);
+		DesignerPropertyInfo? Items(DesignerSessionState value, string name) => FindByName(value.Tree!, name)!.Properties.SingleOrDefault(p => p.EditorKind == "MenuItems");
+		Assert.Equal(new[] { "File", "Edit" }, Items(state, "menu")!.TreeItems.Select(item => item.Text)); Assert.Equal("Copy", Items(state, "context")!.TreeItems.Single().Text);
+		foreach (var unsafeMenu in new[] { "rich", "bound", "mixed" })
+		{
+			Assert.Null(Items(state, unsafeMenu));
+			var rejected = await client.SetMenuItemsAsync(state.Version, FindByName(state.Tree!, unsafeMenu)!.Id, Array.Empty<DesignerTreeItemEdit>(), timeout.Token);
+			Assert.False(rejected.Accepted); Assert.Contains("safely editable", rejected.Error, StringComparison.Ordinal);
+		}
+		var edited = await client.SetMenuItemsAsync(state.Version, FindByName(state.Tree!, "menu")!.Id, new[] {
+			new DesignerTreeItemEdit { SourceIndex = 1, Text = "Edit menu", Children = new List<DesignerTreeItemEdit> { new() { SourceIndex = 0, Text = "Close file" } } },
+			new DesignerTreeItemEdit { SourceIndex = 0, Text = "File menu", Children = new List<DesignerTreeItemEdit> { new() { SourceIndex = 0, Text = "Open file" }, new() { SourceIndex = -1, Text = "Exit" } } }
+		}, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var contextEdited = await client.SetMenuItemsAsync(edited.Version, FindByName(edited.Tree!, "context")!.Id, new[] { new DesignerTreeItemEdit { SourceIndex = 0, Text = "Copy menu" } }, timeout.Token);
+		Assert.True(contextEdited.Accepted, contextEdited.Error);
+		var consecutive = await client.SetMenuItemsAsync(contextEdited.Version, FindByName(contextEdited.Tree!, "menu")!.Id, new[] {
+			new DesignerTreeItemEdit { SourceIndex = 0, Text = "Edit final", Children = new List<DesignerTreeItemEdit> { new() { SourceIndex = 0, Text = "Close final" } } },
+			new DesignerTreeItemEdit { SourceIndex = 1, Text = "File final", Children = new List<DesignerTreeItemEdit> { new() { SourceIndex = 0, Text = "Open final" }, new() { SourceIndex = 1, Text = "Exit final" } } }
+		}, timeout.Token);
+		Assert.True(consecutive.Accepted, consecutive.Error); var text = (await client.FlushAsync(consecutive.Version, timeout.Token)).Files.Single().Text;
+		Assert.True(text.IndexOf("x:Name=\"edit\"", StringComparison.Ordinal) < text.IndexOf("x:Name=\"file\"", StringComparison.Ordinal), text);
+		Assert.Contains("InputGestureText=\"Alt+E\"", text, StringComparison.Ordinal); Assert.Contains("InputGestureText=\"Alt+F\"", text, StringComparison.Ordinal);
+		Assert.Contains("Command=\"ApplicationCommands.Close\"", text, StringComparison.Ordinal); Assert.Contains("Command=\"ApplicationCommands.Open\"", text, StringComparison.Ordinal); Assert.Contains("Command=\"ApplicationCommands.Copy\"", text, StringComparison.Ordinal);
+		Assert.Contains("Header=\"Copy menu\"", text, StringComparison.Ordinal); Assert.Contains("Header=\"Exit final\"", text, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public async Task ChildHost_WrapsAndUnwrapsElementsKeepingTheirPlacement()
 	{
 		const string xaml = """

@@ -113,7 +113,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// design/apply-table-layout-tracks used by Edit Rows and Columns.
 		// v66 adds WPF's recursive TreeViewItem snapshot and design/set-tree-items.
 		// v67 adds WPF's optional design/set-grid-view-columns for a ListView's explicit GridView.
-	public const int Version = 67;
+		// v68 adds WPF's optional design/set-menu-items for explicit Menu/ContextMenu trees.
+	public const int Version = 68;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

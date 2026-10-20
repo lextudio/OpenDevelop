@@ -331,6 +331,8 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> SetTreeItemsAsync(long baseVersion, string elementId, IReadOnlyList<DesignerTreeItemEdit> items, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-tree-items",
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, items }, cancellationToken), cancellationToken);
+	public Task<DesignerSessionState> SetMenuItemsAsync(long baseVersion, string elementId, IReadOnlyList<DesignerTreeItemEdit> items, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-menu-items", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, items }, cancellationToken), cancellationToken);
 
 	/// <summary>Wraps sibling elements in a new Canvas/Grid/Viewbox (<c>design/wrap-elements</c>).</summary>
 	public Task<DesignerSessionState> WrapElementsAsync(long baseVersion, IReadOnlyList<string> elementIds, string containerType, CancellationToken cancellationToken = default)
