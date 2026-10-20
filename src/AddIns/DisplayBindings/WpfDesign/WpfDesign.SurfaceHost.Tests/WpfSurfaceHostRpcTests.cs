@@ -889,6 +889,70 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task ChildHost_EditsExplicitDataGridTextColumnsKeepingBindings()
+	{
+		const string xaml = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="300" Height="300">
+			  <DataGrid x:Name="grid" AutoGenerateColumns="False">
+			    <DataGrid.Columns>
+			      <DataGridTextColumn Header="Given name" Binding="{Binding GivenName}" Width="120" />
+			      <DataGridTextColumn Header="Surname" Binding="{Binding Surname}" />
+			    </DataGrid.Columns>
+			  </DataGrid>
+			  <DataGrid x:Name="empty" AutoGenerateColumns="False"><DataGrid.Columns /></DataGrid>
+			  <DataGrid x:Name="withoutColumns" AutoGenerateColumns="False" />
+			  <DataGrid x:Name="automatic"><DataGrid.Columns><DataGridTextColumn Header="No" /></DataGrid.Columns></DataGrid>
+			  <DataGrid x:Name="bound" AutoGenerateColumns="False" ItemsSource="{Binding People}"><DataGrid.Columns><DataGridTextColumn Header="No" /></DataGrid.Columns></DataGrid>
+			  <DataGrid x:Name="rich" AutoGenerateColumns="False"><DataGrid.Columns><DataGridCheckBoxColumn Header="No" /></DataGrid.Columns></DataGrid>
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var state = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(state.Accepted, state.Error);
+		DesignerPropertyInfo? Columns(DesignerSessionState s, string name)
+			=> FindByName(s.Tree!, name)!.Properties.SingleOrDefault(property => property.Name == "Columns" && property.EditorKind == "ItemsCollection");
+		Assert.Equal(new[] { "Given name", "Surname" }, Columns(state, "grid")!.CollectionItems);
+		Assert.Empty(Columns(state, "empty")!.CollectionItems);
+		Assert.Empty(Columns(state, "withoutColumns")!.CollectionItems);
+		Assert.Null(Columns(state, "automatic"));
+		Assert.Null(Columns(state, "bound"));
+		Assert.Null(Columns(state, "rich"));
+		var empty = await client.SetItemsAsync(state.Version, FindByName(state.Tree!, "empty")!.Id,
+			new[] { new DesignerCollectionItemEdit { SourceIndex = -1, Text = "First" } }, timeout.Token);
+		Assert.True(empty.Accepted, empty.Error);
+		Assert.Equal(new[] { "First" }, Columns(empty, "empty")!.CollectionItems);
+		var withoutColumns = await client.SetItemsAsync(empty.Version, FindByName(empty.Tree!, "withoutColumns")!.Id,
+			new[] { new DesignerCollectionItemEdit { SourceIndex = -1, Text = "First implicit" } }, timeout.Token);
+		Assert.True(withoutColumns.Accepted, withoutColumns.Error);
+		Assert.Equal(new[] { "First implicit" }, Columns(withoutColumns, "withoutColumns")!.CollectionItems);
+		var firstColumnsText = (await client.FlushAsync(withoutColumns.Version, timeout.Token)).Files.Single().Text;
+		Assert.Contains("Header=\"First\"", firstColumnsText, StringComparison.Ordinal);
+		Assert.Contains("Header=\"First implicit\"", firstColumnsText, StringComparison.Ordinal);
+		var firstColumnsReloaded = await client.UpdateAsync(Snapshot(withoutColumns.Version + 1, firstColumnsText), timeout.Token);
+		Assert.True(firstColumnsReloaded.Accepted, firstColumnsReloaded.Error + "\n" + firstColumnsText);
+		Assert.Equal(new[] { "First" }, Columns(firstColumnsReloaded, "empty")!.CollectionItems);
+		Assert.Equal(new[] { "First implicit" }, Columns(firstColumnsReloaded, "withoutColumns")!.CollectionItems);
+
+		var grid = FindByName(firstColumnsReloaded.Tree!, "grid")!.Id;
+		var edited = await client.SetItemsAsync(firstColumnsReloaded.Version, grid, new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "Family name" },
+			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Given" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "New column" }
+		}, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		Assert.Equal(new[] { "Family name", "Given", "New column" }, Columns(edited, "grid")!.CollectionItems);
+		var text = (await client.FlushAsync(edited.Version, timeout.Token)).Files.Single().Text;
+		Assert.True(text.IndexOf("Header=\"Family name\"", StringComparison.Ordinal) < text.IndexOf("Header=\"Given\"", StringComparison.Ordinal), text);
+		Assert.Contains("<DataGridTextColumn Binding=\"{Binding Surname}\" Header=\"Family name\" />", text, StringComparison.Ordinal);
+		Assert.Contains("<DataGridTextColumn Binding=\"{Binding GivenName}\" Width=\"120\" Header=\"Given\" />", text, StringComparison.Ordinal);
+		Assert.Contains("Header=\"New column\"", text, StringComparison.Ordinal);
+		var reloaded = await client.UpdateAsync(Snapshot(edited.Version + 1, text), timeout.Token);
+		Assert.True(reloaded.Accepted, reloaded.Error + "\n" + text);
+		Assert.Equal(new[] { "Family name", "Given", "New column" }, Columns(reloaded, "grid")!.CollectionItems);
+	}
+
+	[Fact]
 	public async Task ChildHost_WrapsAndUnwrapsElementsKeepingTheirPlacement()
 	{
 		const string xaml = """

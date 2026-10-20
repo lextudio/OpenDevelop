@@ -3865,11 +3865,11 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			}
 			if (TryGetEditableItems(item, out var itemsProperty, out var itemKind) && itemsProperty != null && itemKind != null)
 			{
-				result.RemoveAll(info => info.Name == "Items");
+				result.RemoveAll(info => info.Name == itemKind.CollectionProperty);
 				var texts = itemsProperty.CollectionElements.Select(element => element.Properties[itemKind.TextProperty].ValueOnInstance as string ?? "").ToList();
 				result.Add(new DesignerPropertyInfo {
-					Name = "Items", DisplayName = "Items", Category = "Common",
-					TypeName = typeof(ItemCollection).FullName ?? "",
+					Name = itemKind.CollectionProperty, DisplayName = itemKind.CollectionProperty, Category = "Common",
+					TypeName = itemKind.ContainerType.FullName ?? "",
 					Kind = "Collection", EditorKind = "ItemsCollection", IsReadOnly = true,
 					Value = "(" + texts.Count + (texts.Count == 1 ? " item)" : " items)"),
 					CollectionItems = texts, ShouldSerialize = texts.Count > 0
@@ -3978,31 +3978,47 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			_ => Array.Empty<DependencyProperty>()
 		};
 
-		/// <summary>An editable item kind: the container each item must be, and the property holding
-		/// its text (Content for list items, Header for tab pages).</summary>
-		sealed record EditableItemKind(Type ContainerType, string TextProperty);
+		/// <summary>An editable collection kind: its element type, text property and source property.
+		/// The Properties pad deliberately presents every one through the existing text-list editor;
+		/// a kind is registered only when retaining an existing element and editing that one text
+		/// property cannot discard the element's other authored state.</summary>
+		sealed record EditableItemKind(Type ContainerType, string TextProperty, string CollectionProperty, string ChangeGroupName);
 
 		/// <summary>The item containers a plain-list editor handles; other ItemsControls (TreeView,
 		/// menus) have nested or command semantics this text list cannot express.</summary>
 		static readonly Dictionary<Type, EditableItemKind> editableItemContainers = new() {
-			[typeof(ListBox)] = new(typeof(ListBoxItem), "Content"),
-			[typeof(ComboBox)] = new(typeof(ComboBoxItem), "Content"),
-			[typeof(ListView)] = new(typeof(ListViewItem), "Content"),
-			[typeof(TabControl)] = new(typeof(TabItem), "Header")
+			[typeof(ListBox)] = new(typeof(ListBoxItem), "Content", "Items", "Edit Items"),
+			[typeof(ComboBox)] = new(typeof(ComboBoxItem), "Content", "Items", "Edit Items"),
+			[typeof(ListView)] = new(typeof(ListViewItem), "Content", "Items", "Edit Items"),
+			[typeof(TabControl)] = new(typeof(TabItem), "Header", "Items", "Edit Items")
 		};
 
-		/// <summary>True when the element's Items are a plain, editable list: no ItemsSource, and every
-		/// item is the control's own container type holding plain text (or nothing) in its text
-		/// property (Content, or a TabItem's Header).</summary>
+		static readonly EditableItemKind dataGridTextColumns = new(typeof(DataGridTextColumn), "Header", "Columns", "Edit Columns");
+
+		/// <summary>True when an element owns a deliberately narrow, lossless text collection. Plain
+		/// ItemsControls must have no ItemsSource. DataGrid columns are available only when automatic
+		/// generation is disabled and every authored column is a DataGridTextColumn with a plain Header;
+		/// bindings and all other column state remain on moved existing design items.</summary>
 		static bool TryGetEditableItems(DesignItem item, out DesignItemProperty? itemsProperty, out EditableItemKind? kind)
 		{
 			itemsProperty = null;
 			kind = null;
-			if (item.Component is not ItemsControl control || !editableItemContainers.TryGetValue(control.GetType(), out kind))
+			if (item.Component is ItemsControl control && editableItemContainers.TryGetValue(control.GetType(), out kind))
+			{
+				if (item.Properties["ItemsSource"]?.IsSet == true)
+					return false;
+			}
+			else if (item.Component is DataGrid grid)
+			{
+				// A bound or auto-generated grid has a second, runtime-owned column source. Do not
+				// pretend the explicit Columns collection is the complete model in that situation.
+				if (grid.AutoGenerateColumns || item.Properties["ItemsSource"]?.IsSet == true)
+					return false;
+				kind = dataGridTextColumns;
+			}
+			else
 				return false;
-			if (item.Properties["ItemsSource"]?.IsSet == true)
-				return false;
-			var items = item.Properties["Items"];
+			var items = item.Properties[kind.CollectionProperty];
 			if (items == null || !items.IsCollection)
 				return false;
 			var expected = kind;
@@ -4014,9 +4030,9 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			return true;
 		}
 
-		/// <summary>Replaces a ListBox/ComboBox/ListView's plain items (or a TabControl's page headers) in one undo group. Each entry
-		/// names the item's previous index (moved items keep their other authored state) or -1 for
-		/// a new container item; items not named are removed.</summary>
+		/// <summary>Replaces a supported plain list or DataGrid's simple text columns in one undo
+		/// group. Each entry names the previous index (moved items keep their other authored state) or
+		/// -1 for a new element; items not named are removed.</summary>
 		[JsonRpcMethod("design/set-items")]
 		public DesignerSessionState SetItems(long baseVersion, string elementId, DesignerCollectionItemEdit[] items)
 			=> dispatcher.Dispatch(() => {
@@ -4034,7 +4050,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					return NotFound(state, "Invalid item source index.");
 				try
 				{
-					using var changeGroup = element.OpenGroup("Edit Items");
+					using var changeGroup = element.OpenGroup(kind.ChangeGroupName);
 					var collection = itemsProperty.CollectionElements;
 					collection.Clear();
 					foreach (var entry in items)
