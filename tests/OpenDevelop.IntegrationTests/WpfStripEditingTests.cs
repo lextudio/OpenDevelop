@@ -36,6 +36,23 @@ public abstract class WpfCellTestsBase(OpenDevelopAppFixture fixture) : IAsyncLi
 			&& active.GetBoolean() && status.TryGetProperty("backend", out _))
 			RuntimeCell.AssertWpfBackend(status, Cell);
 	}
+    [Fact]
+    public async Task PropertiesPad_EditsExplicitToolBarAndStatusBarItems()
+    {
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml"); var original = await File.ReadAllTextAsync(xamlPath);
+        try {
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><DockPanel><ToolBarTray DockPanel.Dock="Top"><ToolBar x:Name="tools"><Button x:Name="save" Content="Save" Command="ApplicationCommands.Save" /><Separator /><Button x:Name="open" Content="Open" Command="ApplicationCommands.Open" /></ToolBar></ToolBarTray><StatusBar x:Name="status" DockPanel.Dock="Bottom"><StatusBarItem x:Name="ready" Content="Ready" /><StatusBarItem x:Name="line" Content="Line 1" /></StatusBar></DockPanel></Window>
+            """);
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean()); Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement designer = default; Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => { designer = await app.InvokeAsync("od.wpf-designer.status"); return designer.GetProperty("active").GetBoolean() && designer.GetProperty("designerLoaded").GetBoolean(); }, TimeSpan.FromSeconds(90)), designer.ToString());
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "tools")).GetProperty("success").GetBoolean()); var toolsEdit = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-items", "Items", "up:2;rename:1:Open file"); Assert.True(toolsEdit.GetProperty("success").GetBoolean(), toolsEdit.ToString());
+            await app.InvokeAsync("od.file.save", xamlPath); var tools = await File.ReadAllTextAsync(xamlPath); Assert.True(tools.IndexOf("x:Name=\"save\"", StringComparison.Ordinal) < tools.IndexOf("x:Name=\"open\"", StringComparison.Ordinal), tools); Assert.Contains("Command=\"ApplicationCommands.Open\"", tools, StringComparison.Ordinal); Assert.Contains("Content=\"Open file\"", tools, StringComparison.Ordinal);
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "status")).GetProperty("success").GetBoolean()); var statusEdit = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-items", "Items", "down:0;rename:0:Line 2;add:1:Column 1"); Assert.True(statusEdit.GetProperty("success").GetBoolean(), statusEdit.ToString());
+            await app.InvokeAsync("od.file.save", xamlPath); var status = await File.ReadAllTextAsync(xamlPath); Assert.Contains("Content=\"Line 2\"", status, StringComparison.Ordinal); Assert.Contains("Content=\"Column 1\"", status, StringComparison.Ordinal); Assert.True((await app.InvokeAsync("od.wpf-designer.undo")).GetProperty("success").GetBoolean()); await app.InvokeAsync("od.file.save", xamlPath); var undone = await File.ReadAllTextAsync(xamlPath); Assert.Contains("Content=\"Ready\"", undone, StringComparison.Ordinal); Assert.Contains("Content=\"Line 1\"", undone, StringComparison.Ordinal); Assert.DoesNotContain("Content=\"Column 1\"", undone, StringComparison.Ordinal); await app.InvokeAsync("od.close-active-view");
+        } finally { await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, original); }
+    }
 }
 
 /// <summary>

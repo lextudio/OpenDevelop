@@ -92,6 +92,8 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerSessionState SetTreeItems(string sessionId, string documentId, long baseVersion, string elementId, DesignerTreeItemEdit[] items) => Checked(sessionId, documentId).SetTreeItems(baseVersion, elementId, items);
 	[JsonRpcMethod("design/set-menu-items")]
 	public DesignerSessionState SetMenuItems(string sessionId, string documentId, long baseVersion, string elementId, DesignerTreeItemEdit[] items) => Checked(sessionId, documentId).SetMenuItems(baseVersion, elementId, items);
+	[JsonRpcMethod("design/set-strip-items")]
+	public DesignerSessionState SetStripItems(string sessionId, string documentId, long baseVersion, string elementId, DesignerCollectionItemEdit[] items) => Checked(sessionId, documentId).SetStripItems(baseVersion, elementId, items);
 	[JsonRpcMethod("design/wrap-elements")]
 	public DesignerSessionState WrapElements(string sessionId, string documentId, long baseVersion, string[] elementIds, string containerType) => Checked(sessionId, documentId).WrapElements(baseVersion, elementIds, containerType);
 	[JsonRpcMethod("design/unwrap-element")]

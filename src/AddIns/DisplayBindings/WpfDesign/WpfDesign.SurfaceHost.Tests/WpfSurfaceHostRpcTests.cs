@@ -2035,6 +2035,34 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task ChildHost_EditsExplicitToolBarAndStatusBarItemsKeepingCommands()
+	{
+		const string xaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+			  <ToolBar x:Name="tools"><Button x:Name="save" Content="Save" Command="ApplicationCommands.Save" ToolTip="Save the document" /><Separator x:Name="divider" /><Button x:Name="open" Content="Open" Command="ApplicationCommands.Open" /></ToolBar>
+			  <StatusBar x:Name="status"><StatusBarItem x:Name="ready" Content="Ready" ToolTip="Status" /><StatusBarItem x:Name="line" Content="Line 1" /></StatusBar>
+			  <ToolBar x:Name="rich"><Button><Button.Content><TextBlock Text="Rich" /></Button.Content></Button></ToolBar>
+			  <ToolBar x:Name="bound" ItemsSource="{Binding Commands}" />
+			  <ToolBar x:Name="dash"><Button Content="- " /></ToolBar>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60)); using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var state = await client.OpenAsync(Snapshot(1, xaml), timeout.Token); Assert.True(state.Accepted, state.Error);
+		DesignerPropertyInfo? Items(DesignerSessionState value, string name) => FindByName(value.Tree!, name)!.Properties.SingleOrDefault(p => p.EditorKind == "StripItems");
+		Assert.Equal(new[] { "Save", "-", "Open" }, Items(state, "tools")!.CollectionItems); Assert.Equal(new[] { "Ready", "Line 1" }, Items(state, "status")!.CollectionItems);
+		foreach (var unsafeStrip in new[] { "rich", "bound", "dash" }) { Assert.Null(Items(state, unsafeStrip)); Assert.False((await client.SetStripItemsAsync(state.Version, FindByName(state.Tree!, unsafeStrip)!.Id, Array.Empty<DesignerCollectionItemEdit>(), timeout.Token)).Accepted); }
+		Assert.False((await client.SetStripItemsAsync(state.Version, FindByName(state.Tree!, "tools")!.Id, new[] { new DesignerCollectionItemEdit { SourceIndex = 0, Text = "-" }, new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Save" } }, timeout.Token)).Accepted);
+		var tools = await client.SetStripItemsAsync(state.Version, FindByName(state.Tree!, "tools")!.Id, new[] { new DesignerCollectionItemEdit { SourceIndex = 2, Text = "Open file" }, new DesignerCollectionItemEdit { SourceIndex = 1, Text = "-" }, new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Save all" }, new DesignerCollectionItemEdit { SourceIndex = -1, Text = "Close" } }, timeout.Token);
+		Assert.True(tools.Accepted, tools.Error);
+		var status = await client.SetStripItemsAsync(tools.Version, FindByName(tools.Tree!, "status")!.Id, new[] { new DesignerCollectionItemEdit { SourceIndex = 1, Text = "Line 2" }, new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Ready now" }, new DesignerCollectionItemEdit { SourceIndex = -1, Text = "Column 1" } }, timeout.Token);
+		Assert.True(status.Accepted, status.Error); var text = (await client.FlushAsync(status.Version, timeout.Token)).Files.Single().Text;
+		Assert.True(text.IndexOf("x:Name=\"open\"", StringComparison.Ordinal) < text.IndexOf("x:Name=\"save\"", StringComparison.Ordinal), text);
+		Assert.Contains("Command=\"ApplicationCommands.Open\"", text, StringComparison.Ordinal); Assert.Contains("Command=\"ApplicationCommands.Save\"", text, StringComparison.Ordinal); Assert.Contains("ToolTip=\"Save the document\"", text, StringComparison.Ordinal); Assert.Contains("ToolTip=\"Status\"", text, StringComparison.Ordinal);
+		Assert.Contains("Content=\"Column 1\"", text, StringComparison.Ordinal); Assert.Contains("Content=\"Close\"", text, StringComparison.Ordinal);
+		Assert.True((await client.SetStripItemsAsync(status.Version, FindByName(status.Tree!, "tools")!.Id, new[] { new DesignerCollectionItemEdit { SourceIndex = -1, Text = null! } }, timeout.Token)).Accepted);
+	}
+
+	[Fact]
 	public async Task MoveElement_ReordersAMenuItem_AmongItsSiblings()
 	{
 		const string menuXaml = """

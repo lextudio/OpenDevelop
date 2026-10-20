@@ -240,13 +240,15 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		void IItemsCollectionEditorHost.SetItems(string propertyName, System.Collections.Generic.IReadOnlyList<DesignerCollectionItemEdit> items)
 		{
 			var property = node.Properties.SingleOrDefault(candidate => candidate.Name == propertyName
-				&& candidate.EditorKind is "ItemsCollection" or "BindingCollection" or "GridViewColumns");
+				&& candidate.EditorKind is "ItemsCollection" or "BindingCollection" or "GridViewColumns" or "StripItems");
 			if (property == null)
 				throw new InvalidOperationException("Not an editable items collection: " + propertyName);
 			var state = property.EditorKind == "BindingCollection"
 				? client.SetBindingItemsAsync(currentBaseVersion(), node.Id, property.BindingPropertyName, items.ToArray()).GetAwaiter().GetResult()
 				: property.EditorKind == "GridViewColumns"
 					? client.SetGridViewColumnsAsync(currentBaseVersion(), node.Id, items).GetAwaiter().GetResult()
+					: property.EditorKind == "StripItems"
+						? client.SetStripItemsAsync(currentBaseVersion(), node.Id, items).GetAwaiter().GetResult()
 					: client.SetItemsAsync(currentBaseVersion(), node.Id, items).GetAwaiter().GetResult();
 			EnsureAccepted(state);
 			onStateChanged(state);
@@ -465,7 +467,7 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 			if (property.Kind == "Enum" && property.AllowedValues.Count > 0)
 				attributes.Add(new TypeConverterAttribute(typeof(WpfDesignerEnumConverter)));
 			// The row stays read-only to generic editing; the "…" editor commits the whole list.
-			if (property.EditorKind is "ItemsCollection" or "BindingCollection" or "GridViewColumns")
+			if (property.EditorKind is "ItemsCollection" or "BindingCollection" or "GridViewColumns" or "StripItems")
 				attributes.Add(new EditorAttribute(typeof(WpfItemsCollectionEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 			else if (property.EditorKind is "TreeItems" or "MenuItems")
 				attributes.Add(new EditorAttribute(typeof(WpfTreeItemsEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));

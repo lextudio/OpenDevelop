@@ -3892,6 +3892,11 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				result.RemoveAll(info => info.Name == "Items"); var menuItems = SnapshotTreeItems(menuItemsProperty.CollectionElements);
 				result.Add(new DesignerPropertyInfo { Name = "Items", DisplayName = "Items", Category = "Common", TypeName = typeof(MenuItem).FullName ?? "", Kind = "Collection", EditorKind = "MenuItems", IsReadOnly = true, Value = "(" + menuItems.Count + (menuItems.Count == 1 ? " item)" : " items)"), TreeItems = menuItems, ShouldSerialize = menuItems.Count > 0 });
 			}
+			if (TryGetEditableStripItems(item, out var stripItemsProperty, out var isToolBar) && stripItemsProperty != null)
+			{
+				result.RemoveAll(info => info.Name == "Items"); var texts = stripItemsProperty.CollectionElements.Select(element => isToolBar && element.Component?.GetType() == typeof(Separator) ? "-" : element.Properties["Content"].ValueOnInstance as string ?? "").ToList();
+				result.Add(new DesignerPropertyInfo { Name = "Items", DisplayName = "Items", Category = "Common", TypeName = (isToolBar ? typeof(Button) : typeof(StatusBarItem)).FullName ?? "", Kind = "Collection", EditorKind = "StripItems", IsReadOnly = true, Value = "(" + texts.Count + (texts.Count == 1 ? " item)" : " items)"), CollectionItems = texts, ShouldSerialize = texts.Count > 0 });
+			}
 			if (TryGetEditableGridViewColumns(item, out var columnsProperty) && columnsProperty != null)
 			{
 				var texts = columnsProperty.CollectionElements.Select(column => column.Properties["Header"].ValueOnInstance as string ?? "").ToList();
@@ -4090,6 +4095,21 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		}
 		static bool IsEditableMenuLevel(IEnumerable<DesignItem> items) => items.All(item => item.Component?.GetType() == typeof(MenuItem) && item.Properties["ItemsSource"]?.IsSet != true && item.Properties["Header"] is { } header && (!header.IsSet || header.Value == null && header.ValueOnInstance is string) && item.Properties["Items"] is { IsCollection: true } children && IsEditableMenuLevel(children.CollectionElements));
 
+		static bool TryGetEditableStripItems(DesignItem item, out DesignItemProperty? itemsProperty, out bool isToolBar)
+		{
+			itemsProperty = null; var toolBar = item.Component?.GetType() == typeof(ToolBar); isToolBar = toolBar;
+			var isStatusBar = item.Component?.GetType() == typeof(StatusBar);
+			if ((!toolBar && !isStatusBar) || item.Properties["ItemsSource"]?.IsSet == true) return false;
+			var items = item.Properties["Items"];
+			if (items?.IsCollection != true || !items.CollectionElements.All(element => toolBar
+				? element.Component?.GetType() == typeof(Separator) || element.Component?.GetType() == typeof(Button) && IsPlainTextProperty(element.Properties["Content"]) && !IsStripSeparatorText(element.Properties["Content"].ValueOnInstance as string)
+				: element.Component?.GetType() == typeof(StatusBarItem) && IsPlainTextProperty(element.Properties["Content"]))) return false;
+			itemsProperty = items; return true;
+		}
+
+		static bool IsPlainTextProperty(DesignItemProperty? property) => property != null && (!property.IsSet || property.Value == null && property.ValueOnInstance is string);
+		static bool IsStripSeparatorText(string? text) => String.Equals(text?.Trim(), "-", StringComparison.Ordinal);
+
 		static bool IsEditableTreeLevel(IEnumerable<DesignItem> items)
 		{
 			foreach (var item in items)
@@ -4181,6 +4201,27 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		[JsonRpcMethod("design/set-menu-items")]
 		public DesignerSessionState SetMenuItems(long baseVersion, string elementId, DesignerTreeItemEdit[] items)
 			=> dispatcher.Dispatch(() => { if (RejectIfStale(baseVersion) is { } stale) return stale; var state = NewState(baseVersion); if (!pathToItem.TryGetValue(elementId, out var element) || !TryGetEditableMenuItems(element, out var property) || property == null) return NotFound(state, "The menu items are not a safely editable explicit hierarchy."); try { using var group = element.OpenGroup("Edit Menu Items"); ApplyHierarchicalItems(element, property.CollectionElements, items ?? Array.Empty<DesignerTreeItemEdit>(), typeof(MenuItem)); group.Commit(); } catch (Exception e) { return NotFound(state, e.GetBaseException().Message); } RebuildTreeAndRender(state); state.Accepted = true; return state; });
+
+		[JsonRpcMethod("design/set-strip-items")]
+		public DesignerSessionState SetStripItems(long baseVersion, string elementId, DesignerCollectionItemEdit[] items)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale) return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var element) || !TryGetEditableStripItems(element, out var property, out var isToolBar) || property == null)
+					return NotFound(state, "The strip items are not a safely editable explicit collection.");
+				items ??= Array.Empty<DesignerCollectionItemEdit>(); var existing = property.CollectionElements.ToList();
+				var sources = items.Where(edit => edit.SourceIndex >= 0).Select(edit => edit.SourceIndex).ToList();
+				if (items.Any(edit => edit.SourceIndex < -1) || sources.Any(index => index >= existing.Count) || sources.Distinct().Count() != sources.Count)
+					return NotFound(state, "Invalid strip item source index.");
+				if (items.Any(edit => edit.SourceIndex >= 0 && existing[edit.SourceIndex].Component?.GetType() != (isToolBar && IsStripSeparatorText(edit.Text) ? typeof(Separator) : isToolBar ? typeof(Button) : typeof(StatusBarItem))))
+					return NotFound(state, "A retained strip item cannot change its type.");
+				try { using var group = element.OpenGroup("Edit Strip Items"); property.CollectionElements.Clear(); foreach (var edit in items) {
+					var separator = isToolBar && IsStripSeparatorText(edit.Text); var itemType = separator ? typeof(Separator) : isToolBar ? typeof(Button) : typeof(StatusBarItem);
+					var child = edit.SourceIndex >= 0 ? existing[edit.SourceIndex] : element.Services.Component.RegisterComponentForDesigner(Activator.CreateInstance(itemType)!);
+					property.CollectionElements.Add(child); if (!separator) { var content = child.Properties["Content"]; if (String.IsNullOrEmpty(edit.Text)) content.Reset(); else content.SetValue(edit.Text); }
+				} group.Commit(); } catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state); state.Accepted = true; return state;
+			});
 
 		[JsonRpcMethod("design/set-grid-view-columns")]
 		public DesignerSessionState SetGridViewColumns(long baseVersion, string elementId, DesignerCollectionItemEdit[] items)
