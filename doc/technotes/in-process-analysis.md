@@ -32,7 +32,8 @@ classified by destination.
 
 The WPF and WinUI baselines are open source and present as submodules. The WinForms baseline is in
 repository history rather than a checkout; its focused initial inventory is complete in correction 3
-and section 9. The remaining Forms-specific parity work is capability-gated complex/resource editing.
+and section 9. The Forms-specific parity work that inventory named is delivered, and section 7 now carries
+the protocol notes through v65; the Windows-side verification is what section 9 still defers.
 
 For scale, the shared canvas that currently serves all five out-of-process designers is
 **3 files / 2282 lines**: `src/AddIns/DisplayBindings/DesignerCanvas/{DesignSurface,DesignSurfaceController,IDesignCanvasBackend}.cs`.
@@ -472,7 +473,7 @@ Ranked by (a) parity gap closed per line, (b) genuinely missing rather than re-i
 | **3** | **Snapline concepts on a nearest-match rule** | `SnaplinePlacementBehavior` (concepts only), `RasterPlacementBehavior` | Adds baselines, `RequireOverlap`, `Group`, margin-inflated map, paired guide rendering. Basic sibling edge/centre snapping now calls `SetSnapGuides` through `DesignSurfaceController`; this phase enriches that working baseline rather than adding its first caller. |
 | **4** | **Margin / position handles** | `Controls/{MarginHandle,CanvasPositionHandle}.cs` (UI half) | WPF now publishes structured Grid Margin and Canvas-position insets under v5, and the shared canvas renders draggable L/T/R/B edge readouts with dashed rulers (including zero-distance stubs) that track selection, zoom and pan. Nonzero rulers end in an arrow following their measured direction, including negative overflow; a zero-distance ruler keeps the legacy compact circular stub. These endpoint marks are presentational, leaving the labeled readout as the only drag/click target. The WPF-only commit preserves effective Canvas anchors (including Right/Bottom, margins and overflow) in one native undo group. Clicking a Grid Margin readout toggles that edge between its explicit alignment anchor and Stretch while preserving the rendered bounds. As in the legacy designer, the affordance is intentionally suppressed for non-identity Layout/RenderTransform because visual-edge coordinates cannot safely round-trip to Canvas attached properties. |
 | **5** | **Grid rail + a `split-grid-track` verb** | `Controls/GridAdorner.cs` (rail/splitter half) | **WPF delivered:** explicit measured tracks can be split through an atomic host mutation; Ctrl exposes amber insertion rails, Ctrl-click inserts a row and Ctrl+Shift-click a column. The rail's `GridUnitSelector` is delivered as Grid Row/Column → Fixed/Star/Auto context-menu commands (v22). **WinUI (Uno) delivered (2026-10-11/13):** measured-track splitting and the same unit commands as source edits. **Forms delivered (2026-10-13):** TableLayoutPanel dividers, add/insert/remove tracks and SizeType commands through host-proven source rewrites. ProGPU stays out (source-only track approximation). |
-| **6** | **In-place text editor** | `Controls/InPlaceEditor.cs` | **WPF key contract delivered (2026-10-12)**; the font commit was reviewed and is not a gap (see the C2 quick-commands note). Remaining: rich text (`FormatedTextEditor`, 845 lines of XAML) is a later optional step. `DesignSurface.BeginTextEdit` (`:310`) is plain-text already. |
+| **6** | **In-place text editor** | `Controls/InPlaceEditor.cs` | **WPF key contract delivered (2026-10-12)**; the font commit was reviewed and is not a gap (see the C2 quick-commands note). Rich text is no longer a gap: protocol v63 added the TextBlock inline-run snapshot and `design/set-rich-text`, delivered as the `RichText` editor kind rather than an in-place canvas editor (see section 9.0), and `DesignSurface.BeginTextEdit` (`:310`) is still plain text. |
 | **7** | **`CecilPropertyDescriptor` side-store** | `CecilPropertyDescriptor.cs:88-127` | Property values live in the model, never in the control. Exactly the out-of-process shape; we have no equivalent. |
 | **8** | **Cecil-based / process-isolated toolbox scanning** | `CecilToolboxItemLoader`, `CecilWidgetLibrary`, `IToolboxLoader.LoadItemsIsolated` + ping-and-respawn | **Delivered for WPF and WinForms:** project toolbox discovery is PE-metadata-only (`ToolboxMetadataDiscovery`, inherited ToolboxItem/DesignTimeVisible included) and type resolution happens only in the child. The legacy Forms `TypeDiscoveryService`/side-bar loaders are excluded from the build, and the unused WPF `MyTypeFinder` (an in-IDE `LoadAssembly` path) was deleted (2026-10-13). |
 | **9** | **Session state capture/restore across child restart** | `WidgetEditSession.SaveState`/`RestoreState` | **Delivered (C4):** recovery reopens the authoritative document and replays child-local state (WPF theme; WinUI/Uno theme and forced visual states); selection survives through stable node ids. |
@@ -942,6 +943,52 @@ Resources tab lists them as `Color/<key>` between the brush and system entries. 
 
 **Brush transforms (2026-10-15).** The Transform editor's operation list is reused for a brush's own `Transform` and `RelativeTransform`. Protocol **v52** adds both as `DesignerBrushInfo.Transform`/`RelativeTransform` (`DesignerTransformOp` lists, empty = unset) for every brush kind with pixels of its own - solid, gradients, image, colour-resource, drawing and visual; a brush that is no brush, a resource or a system brush has none. The host now describes a brush whose transforms are simple (the same lossless rules as `RenderTransform`: no Matrix, binding, named or non-finite transform), where it used to keep any transformed brush a read-only reference, and `design/set-brush` writes them through the design model in the same change group: a solid brush with a transform is written as a `SolidColorBrush` element (an attribute cannot hold one), an empty list clears a transform, and a transform on a null/resource/system brush is refused with the source untouched. A Drawing/Visual brush's in-place edit rewrites the transforms with its tile settings. **IDE slice:** `BrushEditModel` carries both lists (copied, never shared), the dialog gains "Transform..." and "Relative transform..." buttons opening the Transform editor dialog with a one-line summary, and the script step `transform:<Transform|RelativeTransform>:<steps separated by '|'>` drives the same steps. Not yet: dragging a brush's rotation, scale or skew on the canvas (the gradient handles move geometry only).
 
+**Composite Binding children (2026-10-16).** A direct child of a `MultiBinding` or `PriorityBinding`
+used to be a read-only `Reference` value, so changing a child's `Path` meant rewriting brace text.
+Protocol **v53** adds `DesignerPropertyInfo.BindingChildIndex` and makes `design/set-binding-path`
+indexed: the host addresses one direct child and mutates it through the design model, so the existing
+`Binding` objects survive and a flush writes markup rather than a string. **v54** adds
+`design/set-binding-items` for a property whose value is a proven direct `Binding` collection, so a
+composite can gain or lose children. **v55–v62** extend the same indexed route to the rest of the
+safe row set - mode, `UpdateSourceTrigger`, `ElementName`, converter, text options, validation option
+and delay, `RelativeSource` and a `{StaticResource}` `Source` - each advertised as its own editor kind
+(`BindingChildMode`, `BindingChildUpdateSourceTrigger`, `BindingChildElementName`,
+`BindingChildConverter`, `BindingChildTextOption`, `BindingChildValidationOption`, `BindingChildDelay`,
+`BindingChildRelativeSource`, `BindingChildSource`, alongside v53's `BindingChildPath`). The rules
+that keep it honest: only direct children are addressable, `ElementName` is offered only while the
+child has neither an explicit `Source` nor a `RelativeSource` (choosing `RelativeSource` removes that
+row), and every other nested design-model value stays a read-only `Reference`. `MultiBinding` itself
+exposes its own mode and `UpdateSourceTrigger` through the same direct row/RPC route;
+`PriorityBinding` deliberately does not, because WPF defines no such container properties.
+`WpfSurfaceHostRpcTests` walks one composite through mode, `UpdateSourceTrigger`, `ElementName`,
+`RelativeSource`, `Source` and converter.
+
+**Rich TextBlock inline runs (2026-10-18).** Protocol **v63** adds the lossless inline-run snapshot and
+`design/set-rich-text`. A `TextBlock` whose content is expressible as runs advertises
+`EditorKind = "RichText"`; the row carries `DesignerPropertyInfo.RichTextRuns`, each run with its text,
+bold/italic/underline/strikethrough, `#AARRGGBB` foreground (empty = inherited), font family and size
+(`NaN` = inherited). A committed edit opens one change group, rebuilds a `FlowDocument` paragraph from
+the runs and applies it through the in-process `FormatedTextEditor`, so the Properties pad and the
+out-of-process host share one conversion. A single run stays an `Inlines` round trip on purpose (the
+host appends an empty second run): the reusable in-process helper collapses one run into
+`TextBlock.Text` plus element formatting, and inherited element formatting is outside the portable
+DTO. This is the `RichText` editor kind, not an in-place canvas editor; `DesignSurface.BeginTextEdit`
+is still plain text.
+
+**Toolbox assemblies are not project references (2026-10-18).** Protocol **v64** separates the
+assemblies the WinForms custom-toolbox catalogue selected from the project's own references:
+`DesignerDocumentSnapshot.ToolboxAssemblyPaths` carries the chosen DLLs and their dependency probes,
+so the collectible Forms child can resolve a custom control's type without the IDE treating the DLL
+as part of the project's reference graph. Only the child loads them.
+
+**Edit Rows and Columns as one atomic edit (2026-10-18).** Protocol **v65** adds the WinForms host's
+`design/get-table-layout-tracks` and `design/apply-table-layout-tracks`: one request reads both
+source-proved style lists, and one request writes them, so the dialog edits rows and columns as a
+single host transaction instead of two. The host applies only styles it can prove against the authored
+lists and refuses a tampered payload with the source untouched; focused host tests cover both axes
+and the refusal. The context menu offers it as the single "Edit Rows and Columns" entry beside the
+per-track Insert/Remove/Size commands of v32-v37.
+
 **On-canvas gradient handles (2026-10-15).** The shared canvas draws a selected element's linear or radial gradient over it (`DesignSurface.SetBrushHandles`): a linear gradient's Start and End with its stops marked along the line, a radial one's Center, Origin and the RadiusX/RadiusY handles on a dashed ellipse. `BrushHandleLayout` (pure, in `Designer.Presentation`) owns the geometry both ways - fractions of the element's bounds for `RelativeToBoundingBox`, element-local units for `Absolute`, values rounded to three decimals, a radius never negative - so overlay and tests agree. Dragging a dot previews the moved gradient and, on release past the drag threshold, `DesignSurfaceController` raises `BrushHandleEditCommitted` with the whole new brush; the WPF control writes it through the same `design/set-brush` the Properties pad uses (one undoable change). The controller picks the first of Fill, Background, Foreground, Stroke, BorderBrush that holds an editable gradient (else any). Escape or losing capture cancels a drag, and the wheel is ignored during one, as for an inset drag. `od.wpf-designer.brush-handles` reports the dots' screen centers for pointer-driven tests. `DesignerEditorJourneyTests.WpfDesigner_TransformResourceBrushAndHandleEditsRoundTrip` now requires empty diagnostics and a fully visible handle, injects one native drag transaction, and requires the main window to record mouse-down before accepting an XAML change. It passed on macOS on 2026-10-16 after unlocking the desktop; the earlier zero-event result was a locked-session/security-input delivery failure, not a designer failure.
 
 **C4 WinForms Toolbox components (2026-10-12).** The WinForms Toolbox catalog lists Timer, ToolTip,
@@ -1367,11 +1414,12 @@ what still needs the Microsoft backends on Windows.
 
 ## 9. Outstanding work
 
-### 9.0 Current status (re-verified 2026-10-17)
+### 9.0 Current status (re-verified 2026-10-19)
 
 This document is a dated log, so an earlier "not yet" or "next slice" is often superseded further down. This is the
-current reading. It was checked on macOS arm64 (.NET 10) against HEAD `7bfaaaadc0`, by reading the code, by running
-the named tests, and by `git log`; each row says which. Anything that needs Windows is listed separately and was not
+current reading. It was re-checked on macOS arm64 (.NET 10) against HEAD `d168d53f19` by reading the code and `git log`;
+the tests named below were not re-run in this pass (`tests/OpenDevelop.Base.Tests` passes separately, 486 tests, 8
+skipped), so a row says which method its status rests on. Anything that needs Windows is listed separately and was not
 checked.
 
 #### Delivered, although an older note still says it is open
@@ -1382,19 +1430,17 @@ checked.
 | Forms TableLayout track affordances: divider drag (protocol v33), Insert and Remove Column/Row at the pointer, Size Type (v37), Edit Rows and Columns (v65) | "Not yet: insertion before an arbitrary track, removing an occupied track" (2026-10-13) and "the next slice must add an explicit host-owned track mutation" | `DesignerViewContent.TableLayoutTrackMenuEntries` has Insert Column/Row Before, Remove This Column/Row, Column/Row Size and the single Edit Rows and Columns dialog. The dialog reads and writes both source-proved style lists atomically; focused host tests cover both-axis application and refused/tampered edits, while the context-menu journey verifies its label. |
 | WPF event-handler generation in code-behind | C4 row: "add transactional WPF code-behind handler generation only if independently desired" | Delivered 2026-10-12 (`WpfCodeBehindHandlers`, see "C4 event handler generation"). The designer's Undo/Redo is now one step across the XAML binding and the generated method (2026-10-19); only Ctrl+Z inside the code editor stays separate. |
 | Forms resource, image, collection and type editors | 9.1 table: "the strongest remaining *Forms-specific* parity area" | `ResourceImage`, ImageList (v51), `Items`, `string[]`, `System.Type`, TreeView and ListView columns are each described as delivered by a dated note. Re-run on 2026-10-17 in the macOS LibreWinForms cell: the resource-image, Items editor and ImageList journeys pass (the ImageList one needed the `ResourceStore` fix `7f5893bded`). TreeView, ListView and Type have no `OpenDevelop/tests` journey and were not re-run. |
+| Edit Style → "Edit a Copy" | This file's §9 list (2026-10-17): "No implementation. Deferred for the theme reason in section 7" | Delivered as protocol **v45** `design/copy-theme-style`, taking the style from the **project's** selected design theme (`WpfSurfaceHostService.cs:1115`) rather than the child runtime's default theme that section 7 deferred it for. The command is registered at `WpfSurfaceDesignerControl.cs:256`, only for a non-root single selection, and `WpfSurfaceHostRpcTests.cs:2760` covers the refusal for the root and the accepted copy. |
+| Rich text | §5 item 6 row: "rich text (`FormatedTextEditor`, 845 lines of XAML) is a later optional step"; §9 "still open" | Delivered as the `RichText` editor kind rather than an in-place canvas editor: protocol **v63** adds the lossless TextBlock inline-run snapshot and `design/set-rich-text` (`DesignerRichTextRun`); the host applies the runs through `FormatedTextEditor` (`WpfSurfaceHostService.cs:1032`) and advertises `EditorKind = "RichText"` for a TextBlock (`:3883`). `DesignSurface.BeginTextEdit` is still plain text, which is the wording the old note used. |
+| Sidebar / custom component catalogue | §9 "still open"; the §9.1 table row below | Replaced, not restored. `SideBarCommands`, `AddComponentsDialog`, `ComponentLibraryLoader` and `ConfigureSideBarDialog` stay `Compile Remove`d (`FormsDesigner.csproj:81`), and the capability moved to the shared Toolbox: `CustomToolboxCatalog.cs` scans user-selected assemblies as PE metadata, persists each chosen path and type name through `ToolboxSelectionCodec`, and `DesignerViewContent` sends the selected DLLs (and siblings) only to the child (`:1192`); project controls also join the shared Toolbox through `FormsProjectToolbox.cs`/`SharedToolboxAccess.cs`. No third-party assembly is loaded into the IDE process. |
 
-#### Still open, verified absent in HEAD
+#### Still open
 
-- **Edit Style, "Edit a Copy".** No implementation. Deferred for the theme reason in section 7 (it would serialize the child
-  runtime's default theme style, which under LibreWPF is not the Microsoft theme). "Create Empty" for a style and a template
-  exist (v41, v42).
-- **Rich-text in-place editor** (`FormatedTextEditor`, section 5 item 6). `DesignSurface.BeginTextEdit` is plain text. Optional.
-- **Sidebar and custom component catalogue** (the old "Choose Toolbox Items") is now replaced by a WinForms-scoped
-  shared-Toolbox context command. It scans user-selected directories as PE metadata, lets the user choose individual public
-  creatable controls/components, persists their paths and type names, and passes the selected DLL plus sibling dependencies only
-  to the collectible Forms child. The removed XmlForms sidebar/configuration implementation remains excluded; no third-party
-  assembly is loaded into the IDE process.
-- **Undo from the code editor reaching the XAML binding** for a generated handler (the designer-side Undo/Redo is one step across both since 2026-10-19; this direction is deliberately not done, see the handler row above).
+Nothing in code or in the protocol notes: v53–v65 are written up in section 7. The Windows-side verification below is the only work this document still defers, and section 7's C5 row names optional future extension (richer host-specific binding states, and a design-data contract for a backend that lacks one) that is not a tracked gap.
+
+#### Deliberately not done
+
+- **Undo from the code editor reaching the XAML binding** for a generated handler. The designer's own Undo/Redo has been one step across the XAML binding and the generated method since 2026-10-19 (`WpfViewContent.UndoEntry` carries the `Companion`), and Ctrl+Z inside the code editor stays local to that document by design, not for lack of a contract.
 
 #### Cannot be checked on macOS (needs Windows with the Microsoft backends)
 
@@ -1413,15 +1459,6 @@ checked.
   collapse step, earlier than the deselect step the older note names: after a Ctrl-click on the second of two selected buttons the
   selection was `["0,0"]` (the first) instead of `["0,1"]`. One sample; the cause is not identified.
 
-#### Documentation lag
-
-The protocol notes in this file otherwise stop at v52, but `DesignerProtocol.Version` is 65. v53 to v62 are WPF
-composite Binding children: indexed `design/set-binding-path` (v53, `DesignerPropertyInfo.BindingChildIndex`),
-`set-binding-items` (v54), mode (v55), UpdateSourceTrigger (v56), ElementName (v57), converter (v58), text options (v59),
-validation option and delay (v60), RelativeSource (v61), Source (v62). The C2 row mentions composite bindings in prose without
-the versions. v63 and v64 cover subsequent designer-host compatibility work; v65 is the WinForms TableLayout
-Rows and Columns dialog described above.
-
 ### 9.1 WinForms in-process baseline — initial inventory complete
 
 The actual removal boundary is `af32ec7e` (**Remove in-process legacy designer**), whose parent is
@@ -1438,14 +1475,14 @@ The focused inventory changes the ranking materially:
 | Keyboard select/move/resize/nudge/delete and ToolStrip-specific keyboard routing | `FormKeyHandler` maps arrows, Shift+arrows, Ctrl+arrows, Tab, Delete, and defers active template editors to WinForms' keyboard service | The shared canvas has nudge, tab-order and context/ToolStrip editing paths; preserve focused interaction checks rather than re-porting a WinForms message filter. |
 | Grid/snap preferences | `GridOptionsPanel` persists ShowGrid, SnapToGrid, SnapLines and X/Y grid size | Now consumed by the OOP Forms canvas; C3's cross-framework guide work is additive, not a parity repair. |
 | Undo | `FormsDesignerUndoEngine` wraps real designer transactions | OOP Forms uses child transactions/source rewrite and WPF uses source-authoritative document undo. Keep the atomic-operation tests; do not recreate the legacy live-object engine in the IDE. |
-| Resource, image, collection and type-selection editors; sidebar/custom component catalogue | Concrete `ImageResourceEditor`, resource serializers/stores, `TypeDiscoveryService`, `AddComponentsDialog` and sidebar classes were live files | This was the strongest remaining *Forms-specific* parity area. C2 should prioritize advertised resource/image/collection/ChooseClass editors behind capabilities, not blanket text serialization. **Status 2026-10-17 (see 9.0):** the image, collection and type editors are delivered; the sidebar/custom component catalogue is the part still open (`AddComponentsDialog`, `ConfigureSideBarDialog`, `ComponentLibraryLoader` and `SideBarCommands` are `Compile Remove`d in the FormsDesigner csproj). |
+| Resource, image, collection and type-selection editors; sidebar/custom component catalogue | Concrete `ImageResourceEditor`, resource serializers/stores, `TypeDiscoveryService`, `AddComponentsDialog` and sidebar classes were live files | This was the strongest remaining *Forms-specific* parity area. C2 should prioritize advertised resource/image/collection/ChooseClass editors behind capabilities, not blanket text serialization. **Status 2026-10-19 (see 9.0):** the image, collection and type editors are delivered, and the sidebar/custom component catalogue was replaced by the shared Toolbox (`CustomToolboxCatalog` scans user-selected assemblies as PE metadata and persists each chosen path and type name); the old `AddComponentsDialog`, `ConfigureSideBarDialog`, `ComponentLibraryLoader` and `SideBarCommands` remain `Compile Remove`d by design. |
 | Event handler generation | `Services/EventBindingService.cs` contains an entirely commented-out class, including method-name generation and ShowCode hooks | **Not a working legacy baseline.** The current safe XAML event-attribute binding is already ahead for WPF. Transactional WPF code-behind method generation remains a separately justified enhancement, not a parity prerequisite. |
 
-Thus the next cross-framework order is: retain C1 recovery validation; finish C2's capability-gated
-complex/resource editors; continue C3 measured layout interaction only where the host can write the
-container's real contract; then pursue optional code-behind event generation as a new feature with a
-source transaction boundary. The old `IComponentChangeService`/`DesignerWidget` arrangement is not
-an architecture to restore: it is precisely the in-process target-type boundary the OOP cutover
+That order has since been worked through: C1 recovery validation, C2's capability-gated complex and
+resource editors, C3's host-owned layout mutations and WPF code-behind event generation are all
+delivered, and section 9.0 carries the current state. What remains is the protocol notes for v53–v65
+and the Windows-side verification. The old `IComponentChangeService`/`DesignerWidget` arrangement is
+not an architecture to restore: it is precisely the in-process target-type boundary the OOP cutover
 removed.
 
 #### Resource-editor boundary (2026-10-09)
