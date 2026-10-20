@@ -63,6 +63,9 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 	public string UnoHotReloadFixturePath => LocateUnoHotReloadFixture();
 	public string WpfHotReloadFixturePath => LocateWpfHotReloadFixture();
 	public string WpfHotReloadClassLibFixturePath => LocateFixtureFile("WpfHotReloadClassLibFixture", "WpfHotReloadClassLibFixture.slnx");
+	// The Microsoft-adapter twin of the same class-library shape (issue #18). Windows-only in
+	// practice: Microsoft WPF needs the Windows Desktop runtime.
+	public string WpfHotReloadClassLibFixtureMicrosoftPath => LocateFixtureFile("WpfHotReloadClassLibFixture.Microsoft", "WpfHotReloadClassLibFixture.slnx");
     // A template rather than a path used in place: the runtime-upgrade test rewrites the
     // project's TargetFramework, so it works on a per-test copy instead of this repo's tracked
     // fixture (same reasoning as the NuGet and Git fixtures).

@@ -260,6 +260,12 @@
          the test failed as "MainPane not found in the outline", which reads like an outline bug. -->
     <_FixtureProject Include="../../externals/vscode-wpf/sample/net6.0/sample.csproj" />
   </ItemGroup>
+  <!-- The Microsoft WPF twin of the class-library fixture (the Microsoft-adapter half of issue
+       #18). Windows-only: Microsoft WPF needs the Windows Desktop runtime, so a non-Windows build
+       could not target it at all; the LibreWPF twin in the group above is what runs there. -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <_FixtureProject Include="../fixtures/WpfHotReloadClassLibFixture.Microsoft/Host/HotReloadClassLibHost.csproj" />
+  </ItemGroup>
   <!-- Restored in its own MSBuild invocation before Build: unlike the addin projects above these
        are standalone (deliberately outside the solution, since the IDE under test opens them as
        user projects), so nothing has ever restored them and Build alone fails with NETSDK1004. -->

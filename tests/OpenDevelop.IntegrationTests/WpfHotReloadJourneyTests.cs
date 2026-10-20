@@ -170,10 +170,28 @@ public sealed class WpfHotReloadJourneyTests
 	/// the library's XAML edit to the control the host created from it.
 	/// </summary>
 	[Fact]
-	public async Task StartHotReload_OnClassLibraryWithExternalProgram_UpdatesTheHostedControl()
+	public Task StartHotReload_OnClassLibraryWithExternalProgram_UpdatesTheHostedControl()
+		=> RunClassLibExternalProgramJourneyAsync(Path.GetDirectoryName(_app.WpfHotReloadClassLibFixturePath)!, LibreWpfSdk);
+
+	const string LibreWpfSdk = "LibreWPF.Sdk";
+	const string MicrosoftSdk = "Microsoft.NET.Sdk";
+
+	/// <summary>
+	/// The Microsoft-adapter half of GitHub issue #18. The adapter is chosen from the project's own
+	/// SDK, so the Microsoft fixture is what makes the Windows-only backend reachable at all; the
+	/// LibreWPF test above covers the same user journey through the other adapter, and because it
+	/// carries no OS gate it is also the LibreWPF-on-Windows case when the suite runs on Windows.
+	/// </summary>
+	[Fact(Skip = "Microsoft WPF class libraries only run on Windows.", SkipUnless = nameof(MicrosoftWpfAvailable))]
+	public Task StartHotReload_OnMicrosoftClassLibraryWithExternalProgram_UpdatesTheHostedControl()
+		=> RunClassLibExternalProgramJourneyAsync(Path.GetDirectoryName(_app.WpfHotReloadClassLibFixtureMicrosoftPath)!, MicrosoftSdk);
+
+	public static bool MicrosoftWpfAvailable => OperatingSystem.IsWindows();
+
+	async Task RunClassLibExternalProgramJourneyAsync(string fixtureDirectory, string expectedSdk)
 	{
-		var solution = _app.WpfHotReloadClassLibFixturePath;
-		var fixtureDirectory = Path.GetDirectoryName(solution)!;
+		AssertFixtureUsesSdk(fixtureDirectory, expectedSdk);
+		var solution = Path.Combine(fixtureDirectory, "WpfHotReloadClassLibFixture.slnx");
 		var xaml = Path.Combine(fixtureDirectory, "Lib", "LibraryPane.xaml");
 		var hostDirectory = Path.Combine(fixtureDirectory, "Host", "bin", "Debug", "net10.0-windows");
 		var hostExe = Path.Combine(hostDirectory, "HotReloadClassLibHost" + (OperatingSystem.IsWindows() ? ".exe" : ""));
@@ -237,15 +255,12 @@ public sealed class WpfHotReloadJourneyTests
 				throw new Xunit.Sdk.XunitException($"{ex.Message}\nHot Reload output:\n{log.GetProperty("text").GetString()}");
 			}
 			Assert.Equal("Defined in a class library.", await QueryAgentAsync(endpoint!, "PaneBody.Text"));
+
+				await ApplySecondEditAndAssertHealthyAsync(xaml, endpoint!, "Library hot reloaded");
 		} finally {
 			await File.WriteAllTextAsync(xaml, originalXaml);
 			await File.WriteAllTextAsync(projectFile, originalProject);
-			await _app.InvokeAsync("od.hot-reload.stop-command");
-			var status = await _app.InvokeAsync("od.debug.service-info");
-			if (status.TryGetProperty("isDebugging", out var debugging) && debugging.GetBoolean())
-				await _app.InvokeAsync("od.debug.stop");
-			await _app.InvokeAsync("od.stop-project");
-			await WaitForSessionInactiveAsync();
+			await StopHotReloadQuietlyAsync();
 		}
 	}
 
@@ -259,10 +274,18 @@ public sealed class WpfHotReloadJourneyTests
 	/// untested; the external-program journey below covers the other way to reach the same code.
 	/// </summary>
 	[Fact]
-	public async Task StartHotReload_WithTheHostAsStartupProject_UpdatesTheLibrarysControl()
+	public Task StartHotReload_WithTheHostAsStartupProject_UpdatesTheLibrarysControl()
+		=> RunClassLibStartupProjectJourneyAsync(Path.GetDirectoryName(_app.WpfHotReloadClassLibFixturePath)!, LibreWpfSdk);
+
+	/// <summary>The Microsoft-adapter half of the same startup-project setup (see above).</summary>
+	[Fact(Skip = "Microsoft WPF class libraries only run on Windows.", SkipUnless = nameof(MicrosoftWpfAvailable))]
+	public Task StartHotReload_WithTheMicrosoftHostAsStartupProject_UpdatesTheLibrarysControl()
+		=> RunClassLibStartupProjectJourneyAsync(Path.GetDirectoryName(_app.WpfHotReloadClassLibFixtureMicrosoftPath)!, MicrosoftSdk);
+
+	async Task RunClassLibStartupProjectJourneyAsync(string fixtureDirectory, string expectedSdk)
 	{
-		var solution = Path.Combine(Path.GetDirectoryName(_app.WpfHotReloadClassLibFixturePath)!, "WpfHotReloadHostedLibFixture.slnx");
-		var fixtureDirectory = Path.GetDirectoryName(solution)!;
+		AssertFixtureUsesSdk(fixtureDirectory, expectedSdk);
+		var solution = Path.Combine(fixtureDirectory, "WpfHotReloadHostedLibFixture.slnx");
 		var xaml = Path.Combine(fixtureDirectory, "Lib", "LibraryPane.xaml");
 		var hostDirectory = Path.Combine(fixtureDirectory, "Host", "bin", "Debug", "net10.0-windows");
 		var hostExe = Path.Combine(hostDirectory, "HotReloadClassLibHost" + (OperatingSystem.IsWindows() ? ".exe" : ""));
@@ -318,14 +341,72 @@ public sealed class WpfHotReloadJourneyTests
 				var log = await _app.InvokeAsync("od.output-text", "Hot Reload");
 				throw new Xunit.Sdk.XunitException($"{ex.Message}\nHot Reload output:\n{log.GetProperty("text").GetString()}");
 			}
+
+			await ApplySecondEditAndAssertHealthyAsync(xaml, endpoint!, "Library hot reloaded from a hosted startup");
 		} finally {
 			await File.WriteAllTextAsync(xaml, originalXaml);
+			await StopHotReloadQuietlyAsync();
+		}
+	}
+
+	/// <summary>
+	/// The Microsoft and LibreWPF fixtures are twins that differ only in the SDK their projects name,
+	/// and the adapter is chosen from that SDK. If one were edited to the other's SDK, both journeys
+	/// would still pass while testing the same backend twice, so pin it. This is the only proof that a
+	/// journey ran on its intended backend: the session does not report which agent served it.
+	/// </summary>
+	static void AssertFixtureUsesSdk(string fixtureDirectory, string expectedSdk)
+	{
+		foreach (var project in new[] { Path.Combine("Lib", "HotReloadClassLib.csproj"), Path.Combine("Host", "HotReloadClassLibHost.csproj") }) {
+			var first = File.ReadLines(Path.Combine(fixtureDirectory, project)).First(l => l.Contains("<Project"));
+			Assert.Contains($"Sdk=\"{expectedSdk}\"", first);
+		}
+	}
+
+	/// <summary>
+	/// A second edit after the first apply, then a check that nothing went wrong along the way. The
+	/// first apply can succeed on a session that is then unusable (a dropped agent connection, a build
+	/// that left the host stale), and apply-command reports success even when the agent fell back to
+	/// partial XML updates, so the output channel is the only place those show.
+	/// </summary>
+	async Task ApplySecondEditAndAssertHealthyAsync(string xaml, string endpoint, string currentTitle)
+	{
+		var next = currentTitle + " again";
+		var replaced = await _app.InvokeAsync("od.file.replace-text", xaml,
+			$"Text=\"{currentTitle}\"", $"Text=\"{next}\"");
+		Assert.True(replaced.GetProperty("success").GetBoolean(), replaced.ToString());
+		var applied = await _app.InvokeAsync("od.hot-reload.apply-command");
+		Assert.True(applied.GetProperty("success").GetBoolean(), applied.ToString());
+
+		var log = await _app.InvokeAsync("od.output-text", "Hot Reload");
+		var logText = log.GetProperty("text").GetString() ?? string.Empty;
+		try {
+			await WaitForAgentValueAsync(endpoint, "PaneTitle.Text", next, TimeSpan.FromSeconds(30));
+		} catch (Exception ex) when (ex is not OperationCanceledException) {
+			throw new Xunit.Sdk.XunitException($"{ex.Message}\nHot Reload output:\n{logText}");
+		}
+
+		log = await _app.InvokeAsync("od.output-text", "Hot Reload");
+		logText = log.GetProperty("text").GetString() ?? string.Empty;
+		Assert.DoesNotContain("full apply skipped", logText);
+	}
+
+	/// <summary>
+	/// Ends the session and the launched host from a <c>finally</c> block. A cleanup call that throws
+	/// there replaces the exception from the try block, which hid the real reason of a failed journey,
+	/// so a cleanup failure is reported on stderr instead of thrown.
+	/// </summary>
+	async Task StopHotReloadQuietlyAsync()
+	{
+		try {
 			await _app.InvokeAsync("od.hot-reload.stop-command");
 			var status = await _app.InvokeAsync("od.debug.service-info");
 			if (status.TryGetProperty("isDebugging", out var debugging) && debugging.GetBoolean())
 				await _app.InvokeAsync("od.debug.stop");
 			await _app.InvokeAsync("od.stop-project");
 			await WaitForSessionInactiveAsync();
+		} catch (Exception ex) when (ex is not OperationCanceledException) {
+			Console.Error.WriteLine($"Hot Reload cleanup failed (the journey result is unaffected): {ex.Message}");
 		}
 	}
 

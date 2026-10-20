@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Microsoft WPF twin of ../WpfHotReloadClassLibFixture: the same project shape (a WPF
+       class library with no entry point), built against Microsoft's SDK instead of LibreWPF's.
+       The Hot Reload adapter is selected from the project's own SDK, so this fixture is what
+       makes the Microsoft-adapter half of GitHub issue #18 reachable; the LibreWPF fixture
+       covers the other half. Windows-only: Microsoft WPF needs the Windows Desktop runtime. -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>HotReloadClassLib</RootNamespace>
+    <AssemblyName>HotReloadClassLib</AssemblyName>
+  </PropertyGroup>
+
+</Project>

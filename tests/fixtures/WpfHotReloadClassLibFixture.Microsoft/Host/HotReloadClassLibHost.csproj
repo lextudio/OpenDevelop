@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The executable the class library's debug options launch, built against Microsoft's WPF SDK
+       (the LibreWPF twin lives in ../WpfHotReloadClassLibFixture/Host). It is not part of the
+       solution the test opens; the integration test project builds it ahead of time. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>HotReloadClassLibHost</RootNamespace>
+    <AssemblyName>HotReloadClassLibHost</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Lib/HotReloadClassLib.csproj" />
+  </ItemGroup>
+
+</Project>
