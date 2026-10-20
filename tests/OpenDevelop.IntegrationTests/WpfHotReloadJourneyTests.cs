@@ -250,6 +250,86 @@ public sealed class WpfHotReloadJourneyTests
 	}
 
 	/// <summary>
+	/// The other half of GitHub issue #18: no external program is nominated for the library at all.
+	/// Instead the runnable host is a solution project and the user makes it the startup project,
+	/// as one does for a library that is only ever exercised through an application. The library has
+	/// no entry point, so Start Hot Reload can only launch the host - and the library's XAML edit
+	/// must still reach the control the host created, because Apply sends the active document and the
+	/// agent matches it by path inside the running application. This configuration was previously
+	/// untested; the external-program journey below covers the other way to reach the same code.
+	/// </summary>
+	[Fact]
+	public async Task StartHotReload_WithTheHostAsStartupProject_UpdatesTheLibrarysControl()
+	{
+		var solution = Path.Combine(Path.GetDirectoryName(_app.WpfHotReloadClassLibFixturePath)!, "WpfHotReloadHostedLibFixture.slnx");
+		var fixtureDirectory = Path.GetDirectoryName(solution)!;
+		var xaml = Path.Combine(fixtureDirectory, "Lib", "LibraryPane.xaml");
+		var hostDirectory = Path.Combine(fixtureDirectory, "Host", "bin", "Debug", "net10.0-windows");
+		var hostExe = Path.Combine(hostDirectory, "HotReloadClassLibHost" + (OperatingSystem.IsWindows() ? ".exe" : ""));
+		Assert.True(File.Exists(hostExe), $"The host fixture must be built first: {hostExe}");
+
+		var opened = await _app.ReopenSolutionAsync(solution);
+		Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+
+		var originalXaml = await File.ReadAllTextAsync(xaml);
+		try {
+			// The user's setup this time: the library stays a plain library with no Start external
+			// program, and the host becomes the startup project through the context-menu command a
+			// user clicks (Set as Startup Project).
+			Assert.DoesNotContain("StartProgram",
+				await File.ReadAllTextAsync(Path.Combine(fixtureDirectory, "Lib", "HotReloadClassLib.csproj")));
+			var selected = await _app.InvokeAsync("od.project-browser.set-startup-project", "HotReloadClassLibHost");
+			Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+			Assert.Equal("HotReloadClassLibHost", selected.GetProperty("startupProject").GetString());
+
+			await OpenAsActiveDocumentAsync(xaml);
+
+			await StartHotReloadAsync();
+
+			JsonElement session;
+			try {
+				session = await WaitForSessionAsync("Ready", TimeSpan.FromSeconds(90));
+			} catch (Xunit.Sdk.XunitException ex) {
+				var build = await _app.InvokeAsync("od.output-text", "Build");
+				var log = await _app.InvokeAsync("od.output-text", "Hot Reload");
+				var debug = await _app.InvokeAsync("od.debug.output");
+				throw new Xunit.Sdk.XunitException($"{ex.Message}\nBuild output:\n{build.GetProperty("text").GetString()}\nHot Reload output:\n{log.GetProperty("text").GetString()}\nDebug output: {debug}");
+			}
+			Assert.Equal("WPF", session.GetProperty("framework").GetString());
+			// A Ready session already proves the host was launched: the startup project is the
+			// library, which has no entry point, so nothing else could have been started. (A process
+			// probe is not a substitute - the launch runs the project's DLL, so the process name is
+			// the runtime's, not the host's.)
+			var endpoint = session.GetProperty("diagnostics").GetProperty("endpoint").GetString();
+			Assert.False(string.IsNullOrWhiteSpace(endpoint));
+
+			Assert.Equal("Library pane", await QueryAgentAsync(endpoint!, "PaneTitle.Text"));
+
+			var replaced = await _app.InvokeAsync("od.file.replace-text", xaml,
+				"Text=\"Library pane\"", "Text=\"Library hot reloaded from a hosted startup\"");
+			Assert.True(replaced.GetProperty("success").GetBoolean(), replaced.ToString());
+
+			var applied = await _app.InvokeAsync("od.hot-reload.apply-command");
+			Assert.True(applied.GetProperty("success").GetBoolean(), applied.ToString());
+
+			try {
+				await WaitForAgentValueAsync(endpoint!, "PaneTitle.Text", "Library hot reloaded from a hosted startup", TimeSpan.FromSeconds(30));
+			} catch (Exception ex) when (ex is not OperationCanceledException) {
+				var log = await _app.InvokeAsync("od.output-text", "Hot Reload");
+				throw new Xunit.Sdk.XunitException($"{ex.Message}\nHot Reload output:\n{log.GetProperty("text").GetString()}");
+			}
+		} finally {
+			await File.WriteAllTextAsync(xaml, originalXaml);
+			await _app.InvokeAsync("od.hot-reload.stop-command");
+			var status = await _app.InvokeAsync("od.debug.service-info");
+			if (status.TryGetProperty("isDebugging", out var debugging) && debugging.GetBoolean())
+				await _app.InvokeAsync("od.debug.stop");
+			await _app.InvokeAsync("od.stop-project");
+			await WaitForSessionInactiveAsync();
+		}
+	}
+
+	/// <summary>
 	/// Both tests share one IDE instance, so the application one of them launched must be gone before
 	/// the next Hot Reload build, which otherwise fails on the output the still-running process holds.
 	/// <para>

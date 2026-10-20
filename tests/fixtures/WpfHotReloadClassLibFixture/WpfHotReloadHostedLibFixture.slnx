@@ -1,0 +1,7 @@
+<Solution>
+  <!-- The other half of GitHub issue #18: instead of nominating an external program in the library's
+       Debug options (WpfHotReloadClassLibFixture.slnx), the runnable host is a solution project and
+       the user makes it the startup project. Same projects, different user setup. -->
+  <Project Path="Host/HotReloadClassLibHost.csproj" />
+  <Project Path="Lib/HotReloadClassLib.csproj" />
+</Solution>

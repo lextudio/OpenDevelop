@@ -115,6 +115,28 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.project-browser.set-startup-project", Description = "Make a solution project the startup project through the Project Browser controller command - the same path the Set as Startup Project context-menu entry takes (its command class is internal and not parameterless, so od.menu.invoke cannot instantiate it)")]
+		public static async Task<string> SetStartupProject(string name)
+		{
+			try {
+				var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<ProjectBrowserViewModel>();
+				await viewModel.WaitForCurrentRefreshAsync();
+				var node = FindNode(viewModel.RootNodes, n => n.Kind == ProjectBrowserNodeKind.Project
+					&& string.Equals(n.Name, name, StringComparison.OrdinalIgnoreCase));
+				if (node == null)
+					return JsonSerializer.Serialize(new { success = false, error = "No Project node named '" + name + "'." });
+				viewModel.SelectedNode = node;
+				ServiceSingleton.GetRequiredService<IProjectBrowserController>().SetStartupProject(node.ToContext());
+				var startup = SD.ProjectService.CurrentSolution?.StartupProject?.Name;
+				return JsonSerializer.Serialize(new {
+					success = string.Equals(startup, name, StringComparison.OrdinalIgnoreCase),
+					startupProject = startup
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
 		[DevFlowAction("od.project-browser.open-selected", Description = "Activate the selected Project Browser node as a double-click does and report any project options view")]
 		public static string OpenSelectedNode()
 		{
