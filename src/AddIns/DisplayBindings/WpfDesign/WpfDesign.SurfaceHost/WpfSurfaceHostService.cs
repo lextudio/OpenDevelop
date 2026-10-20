@@ -4026,8 +4026,8 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 
 		/// <summary>True when an element owns a deliberately narrow, lossless text collection. Plain
 		/// ItemsControls must have no ItemsSource. DataGrid columns are available only when automatic
-		/// generation is disabled and every authored column is a DataGridTextColumn with a plain Header;
-		/// bindings and all other column state remain on moved existing design items.</summary>
+		/// generation is disabled and every authored column is an explicit text, checkbox, or combo column
+		/// with a plain Header; bindings and all other column state remain on moved existing design items.</summary>
 		static bool TryGetEditableItems(DesignItem item, out DesignItemProperty? itemsProperty, out EditableItemKind? kind)
 		{
 			itemsProperty = null;
@@ -4051,13 +4051,19 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			if (items == null || !items.IsCollection)
 				return false;
 			var expected = kind;
+			if (item.Component is DataGrid && !items.CollectionElements.All(IsEditableDataGridColumn))
+				return false;
 			// A tab page's Content is its body and stays untouched; only its Header text is edited.
-			if (!items.CollectionElements.All(element => element.Component?.GetType() == expected.ContainerType
+			if (item.Component is not DataGrid && !items.CollectionElements.All(element => element.Component?.GetType() == expected.ContainerType
 				&& element.Properties[expected.TextProperty] is var text && (!text.IsSet || text.Value == null && text.ValueOnInstance is string)))
 				return false;
 			itemsProperty = items;
 			return true;
 		}
+
+		static bool IsEditableDataGridColumn(DesignItem column)
+			=> column.Component?.GetType() is var type && (type == typeof(DataGridTextColumn) || type == typeof(DataGridCheckBoxColumn) || type == typeof(DataGridComboBoxColumn))
+				&& IsPlainTextProperty(column.Properties["Header"]);
 
 		/// <summary>Accepts only an explicit TreeViewItem hierarchy with plain text Headers. A data
 		/// source, a custom item, or a header object would require a richer object editor, so it is

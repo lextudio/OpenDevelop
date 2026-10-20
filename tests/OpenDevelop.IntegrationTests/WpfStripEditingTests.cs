@@ -36,8 +36,7 @@ public abstract class WpfCellTestsBase(OpenDevelopAppFixture fixture) : IAsyncLi
 			&& active.GetBoolean() && status.TryGetProperty("backend", out _))
 			RuntimeCell.AssertWpfBackend(status, Cell);
 	}
-    [Fact]
-    public async Task PropertiesPad_EditsExplicitToolBarAndStatusBarItems()
+    protected async Task EditExplicitToolBarAndStatusBarItemsThroughPropertiesPad()
     {
         var sample = Path.GetDirectoryName(SampleSolutionPath)!;
         var xamlPath = Path.Combine(sample, "MainWindow.xaml"); var original = await File.ReadAllTextAsync(xamlPath);
@@ -60,6 +59,9 @@ public abstract class WpfCellTestsBase(OpenDevelopAppFixture fixture) : IAsyncLi
 /// </summary>
 public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : WpfCellTestsBase(fixture)
 {
+	[Fact]
+	public Task PropertiesPad_EditsExplicitToolBarAndStatusBarItems() => EditExplicitToolBarAndStatusBarItemsThroughPropertiesPad();
+
 	[Fact]
 	public async Task CtrlPointerGestures_DistinguishClickCollapseFromGroupDrag()
 	{
@@ -712,6 +714,21 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
             Assert.Contains("Header=\"New\"", text, StringComparison.Ordinal);
             Assert.True((await app.InvokeAsync("od.wpf-designer.undo")).GetProperty("success").GetBoolean());
         } finally { await app.InvokeAsync("od.close-active-view"); await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml); }
+    }
+
+    [Fact]
+    public async Task PropertiesPad_ColumnsEditorEditsMixedDataGridColumns()
+    {
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!; var xamlPath = Path.Combine(sample, "MainWindow.xaml"); var original = await File.ReadAllTextAsync(xamlPath);
+        try {
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><DataGrid x:Name="grid" AutoGenerateColumns="False"><DataGrid.Columns><DataGridTextColumn Header="Name" Binding="{Binding Name}" /><DataGridCheckBoxColumn Header="Active" Binding="{Binding Active}" /><DataGridComboBoxColumn Header="Role" SelectedItemBinding="{Binding Role}" /></DataGrid.Columns></DataGrid></Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views"); Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean()); Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default; Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => { status = await app.InvokeAsync("od.wpf-designer.status"); return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean(); }, TimeSpan.FromSeconds(90)), status.ToString());
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "grid")).GetProperty("success").GetBoolean()); var edit = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-items", "Columns", "up:2;rename:1:Position;rename:2:Enabled"); Assert.True(edit.GetProperty("success").GetBoolean(), edit.ToString());
+            await app.InvokeAsync("od.file.save", xamlPath); var text = await File.ReadAllTextAsync(xamlPath); Assert.Contains("DataGridComboBoxColumn SelectedItemBinding=\"{Binding Role}\" Header=\"Position\"", text, StringComparison.Ordinal); Assert.Contains("DataGridCheckBoxColumn Binding=\"{Binding Active}\" Header=\"Enabled\"", text, StringComparison.Ordinal); Assert.Contains("DataGridTextColumn Header=\"Name\" Binding=\"{Binding Name}\"", text, StringComparison.Ordinal); Assert.True((await app.InvokeAsync("od.wpf-designer.undo")).GetProperty("success").GetBoolean());
+        } finally { await app.InvokeAsync("od.close-active-view"); await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, original); }
     }
 
     [Fact]

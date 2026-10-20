@@ -889,7 +889,7 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
-	public async Task ChildHost_EditsExplicitDataGridTextColumnsKeepingBindings()
+	public async Task ChildHost_EditsExplicitDataGridColumnsKeepingBindingsAndColumnKinds()
 	{
 		const string xaml = """
 			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="300" Height="300">
@@ -897,13 +897,15 @@ public sealed class WpfSurfaceHostRpcTests
 			    <DataGrid.Columns>
 			      <DataGridTextColumn Header="Given name" Binding="{Binding GivenName}" Width="120" />
 			      <DataGridTextColumn Header="Surname" Binding="{Binding Surname}" />
+			      <DataGridCheckBoxColumn Header="Enabled" Binding="{Binding IsEnabled}" Width="80" />
+			      <DataGridComboBoxColumn Header="Role" SelectedItemBinding="{Binding Role}" />
 			    </DataGrid.Columns>
 			  </DataGrid>
 			  <DataGrid x:Name="empty" AutoGenerateColumns="False"><DataGrid.Columns /></DataGrid>
 			  <DataGrid x:Name="withoutColumns" AutoGenerateColumns="False" />
 			  <DataGrid x:Name="automatic"><DataGrid.Columns><DataGridTextColumn Header="No" /></DataGrid.Columns></DataGrid>
 			  <DataGrid x:Name="bound" AutoGenerateColumns="False" ItemsSource="{Binding People}"><DataGrid.Columns><DataGridTextColumn Header="No" /></DataGrid.Columns></DataGrid>
-			  <DataGrid x:Name="rich" AutoGenerateColumns="False"><DataGrid.Columns><DataGridCheckBoxColumn Header="No" /></DataGrid.Columns></DataGrid>
+			  <DataGrid x:Name="rich" AutoGenerateColumns="False"><DataGrid.Columns><DataGridTemplateColumn Header="No" /></DataGrid.Columns></DataGrid>
 			</StackPanel>
 			""";
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
@@ -912,7 +914,7 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.True(state.Accepted, state.Error);
 		DesignerPropertyInfo? Columns(DesignerSessionState s, string name)
 			=> FindByName(s.Tree!, name)!.Properties.SingleOrDefault(property => property.Name == "Columns" && property.EditorKind == "ItemsCollection");
-		Assert.Equal(new[] { "Given name", "Surname" }, Columns(state, "grid")!.CollectionItems);
+		Assert.Equal(new[] { "Given name", "Surname", "Enabled", "Role" }, Columns(state, "grid")!.CollectionItems);
 		Assert.Empty(Columns(state, "empty")!.CollectionItems);
 		Assert.Empty(Columns(state, "withoutColumns")!.CollectionItems);
 		Assert.Null(Columns(state, "automatic"));
@@ -936,20 +938,24 @@ public sealed class WpfSurfaceHostRpcTests
 
 		var grid = FindByName(firstColumnsReloaded.Tree!, "grid")!.Id;
 		var edited = await client.SetItemsAsync(firstColumnsReloaded.Version, grid, new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 3, Text = "Position" },
+			new DesignerCollectionItemEdit { SourceIndex = 2, Text = "Active" },
 			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "Family name" },
 			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Given" },
 			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "New column" }
 		}, timeout.Token);
 		Assert.True(edited.Accepted, edited.Error);
-		Assert.Equal(new[] { "Family name", "Given", "New column" }, Columns(edited, "grid")!.CollectionItems);
+		Assert.Equal(new[] { "Position", "Active", "Family name", "Given", "New column" }, Columns(edited, "grid")!.CollectionItems);
 		var text = (await client.FlushAsync(edited.Version, timeout.Token)).Files.Single().Text;
-		Assert.True(text.IndexOf("Header=\"Family name\"", StringComparison.Ordinal) < text.IndexOf("Header=\"Given\"", StringComparison.Ordinal), text);
+		Assert.True(text.IndexOf("Header=\"Position\"", StringComparison.Ordinal) < text.IndexOf("Header=\"Active\"", StringComparison.Ordinal), text);
 		Assert.Contains("<DataGridTextColumn Binding=\"{Binding Surname}\" Header=\"Family name\" />", text, StringComparison.Ordinal);
 		Assert.Contains("<DataGridTextColumn Binding=\"{Binding GivenName}\" Width=\"120\" Header=\"Given\" />", text, StringComparison.Ordinal);
+		Assert.Contains("<DataGridCheckBoxColumn Binding=\"{Binding IsEnabled}\" Width=\"80\" Header=\"Active\" />", text, StringComparison.Ordinal);
+		Assert.Contains("<DataGridComboBoxColumn SelectedItemBinding=\"{Binding Role}\" Header=\"Position\" />", text, StringComparison.Ordinal);
 		Assert.Contains("Header=\"New column\"", text, StringComparison.Ordinal);
 		var reloaded = await client.UpdateAsync(Snapshot(edited.Version + 1, text), timeout.Token);
 		Assert.True(reloaded.Accepted, reloaded.Error + "\n" + text);
-		Assert.Equal(new[] { "Family name", "Given", "New column" }, Columns(reloaded, "grid")!.CollectionItems);
+		Assert.Equal(new[] { "Position", "Active", "Family name", "Given", "New column" }, Columns(reloaded, "grid")!.CollectionItems);
 	}
 
 	[Fact]
