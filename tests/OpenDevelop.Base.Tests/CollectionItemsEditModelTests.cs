@@ -95,6 +95,14 @@ public sealed class CollectionItemsEditingScriptTests
 	}
 
 	[Fact]
+	public void DataGridKindScriptsPreserveExistingKindsAndCreateRequestedKinds()
+	{
+		var model = new CollectionItemsEditModel(new[] { "Name", "Active" }, new[] { "Text", "CheckBox" }, true);
+		Assert.True(CollectionItemsEditing.ApplyScript(model, "add-checkbox:1:New enabled;add-combo:2:New role"));
+		Assert.Equal(new[] { "Text", "CheckBox", "CheckBox", "ComboBox" }, model.ToEdits().Select(edit => edit.Kind));
+	}
+
+	[Fact]
 	public void EditUsesCanonicalPropertyNameWhenTheDescriptorProvidesOne()
 	{
 		var host = new CapturingItemsHost();
@@ -128,6 +136,8 @@ public sealed class CollectionItemsEditingScriptTests
 		public CanonicalItemsDescriptor(string name, string propertyName) : base(name, null) => PropertyName = propertyName;
 		public string PropertyName { get; }
 		public System.Collections.Generic.IReadOnlyList<string> CollectionItems => new[] { "Original" };
+		public System.Collections.Generic.IReadOnlyList<string> CollectionItemKinds => System.Array.Empty<string>();
+		public bool SupportsDataGridColumnKinds => false;
 		public override Type ComponentType => typeof(CapturingItemsHost);
 		public override Type PropertyType => typeof(string);
 		public override bool IsReadOnly => true;

@@ -14,6 +14,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation;
 public interface IItemsCollectionProperty
 {
 	IReadOnlyList<string> CollectionItems { get; }
+	IReadOnlyList<string> CollectionItemKinds { get; }
+	bool SupportsDataGridColumnKinds { get; }
 }
 
 /// <summary>Supplies the canonical host identifier when a property-grid descriptor has to use a
@@ -59,6 +61,8 @@ public static class CollectionItemsEditing
 				return false;
 			var ok = parts[0] switch {
 				"add" => model.Add(parts.Length > 2 ? parts[2] : "", index) >= 0,
+				"add-checkbox" => model.SupportsDataGridColumnKinds && model.Add(parts.Length > 2 ? parts[2] : "", index, "CheckBox") >= 0,
+				"add-combo" => model.SupportsDataGridColumnKinds && model.Add(parts.Length > 2 ? parts[2] : "", index, "ComboBox") >= 0,
 				"remove" => model.Remove(index),
 				"up" => model.MoveUp(index),
 				"down" => model.MoveDown(index),
@@ -106,7 +110,7 @@ public static class CollectionItemsEditing
 		try {
 			if (instance is not IItemsCollectionEditorHost host || descriptor is not IItemsCollectionProperty property)
 				throw new InvalidOperationException("The items editor is not hosted by a designer Properties pad.");
-			var model = new CollectionItemsEditModel(property.CollectionItems);
+			var model = new CollectionItemsEditModel(property.CollectionItems, property.CollectionItemKinds, property.SupportsDataGridColumnKinds);
 			var accepted = TestEdit != null
 				? TestEdit(model)
 				: new CollectionItemsDialog(model) { Owner = owner }.ShowDialog() == true;
@@ -149,7 +153,11 @@ public sealed class CollectionItemsDialog : Window
 			return button;
 		}
 		var commands = new StackPanel { Margin = new Thickness(8, 0, 0, 0) };
-		commands.Children.Add(Command("Add", () => Select(model.Add("Item " + (model.Entries.Count + 1), list.SelectedIndex))));
+		if (model.SupportsDataGridColumnKinds) {
+			commands.Children.Add(Command("Add Text", () => Select(model.Add("Column " + (model.Entries.Count + 1), list.SelectedIndex, "Text"))));
+			commands.Children.Add(Command("Add CheckBox", () => Select(model.Add("Column " + (model.Entries.Count + 1), list.SelectedIndex, "CheckBox"))));
+			commands.Children.Add(Command("Add ComboBox", () => Select(model.Add("Column " + (model.Entries.Count + 1), list.SelectedIndex, "ComboBox"))));
+		} else commands.Children.Add(Command("Add", () => Select(model.Add("Item " + (model.Entries.Count + 1), list.SelectedIndex))));
 		commands.Children.Add(Command("Remove", () => { var index = list.SelectedIndex; if (model.Remove(index)) Select(Math.Min(index, model.Entries.Count - 1)); }));
 		commands.Children.Add(Command("Move Up", () => { var index = list.SelectedIndex; if (model.MoveUp(index)) Select(index - 1); }));
 		commands.Children.Add(Command("Move Down", () => { var index = list.SelectedIndex; if (model.MoveDown(index)) Select(index + 1); }));

@@ -913,8 +913,9 @@ public sealed class WpfSurfaceHostRpcTests
 		var state = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
 		Assert.True(state.Accepted, state.Error);
 		DesignerPropertyInfo? Columns(DesignerSessionState s, string name)
-			=> FindByName(s.Tree!, name)!.Properties.SingleOrDefault(property => property.Name == "Columns" && property.EditorKind == "ItemsCollection");
+			=> FindByName(s.Tree!, name)!.Properties.SingleOrDefault(property => property.Name == "Columns" && property.EditorKind == "DataGridColumns");
 		Assert.Equal(new[] { "Given name", "Surname", "Enabled", "Role" }, Columns(state, "grid")!.CollectionItems);
+		Assert.Equal(new[] { "Text", "Text", "CheckBox", "ComboBox" }, Columns(state, "grid")!.CollectionItemKinds);
 		Assert.Empty(Columns(state, "empty")!.CollectionItems);
 		Assert.Empty(Columns(state, "withoutColumns")!.CollectionItems);
 		Assert.Null(Columns(state, "automatic"));
@@ -942,10 +943,12 @@ public sealed class WpfSurfaceHostRpcTests
 			new DesignerCollectionItemEdit { SourceIndex = 2, Text = "Active" },
 			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "Family name" },
 			new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Given" },
-			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "New column" }
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "New column", Kind = "Text" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "New enabled", Kind = "CheckBox" },
+			new DesignerCollectionItemEdit { SourceIndex = -1, Text = "New role", Kind = "ComboBox" }
 		}, timeout.Token);
 		Assert.True(edited.Accepted, edited.Error);
-		Assert.Equal(new[] { "Position", "Active", "Family name", "Given", "New column" }, Columns(edited, "grid")!.CollectionItems);
+		Assert.Equal(new[] { "Position", "Active", "Family name", "Given", "New column", "New enabled", "New role" }, Columns(edited, "grid")!.CollectionItems);
 		var text = (await client.FlushAsync(edited.Version, timeout.Token)).Files.Single().Text;
 		Assert.True(text.IndexOf("Header=\"Position\"", StringComparison.Ordinal) < text.IndexOf("Header=\"Active\"", StringComparison.Ordinal), text);
 		Assert.Contains("<DataGridTextColumn Binding=\"{Binding Surname}\" Header=\"Family name\" />", text, StringComparison.Ordinal);
@@ -953,9 +956,17 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.Contains("<DataGridCheckBoxColumn Binding=\"{Binding IsEnabled}\" Width=\"80\" Header=\"Active\" />", text, StringComparison.Ordinal);
 		Assert.Contains("<DataGridComboBoxColumn SelectedItemBinding=\"{Binding Role}\" Header=\"Position\" />", text, StringComparison.Ordinal);
 		Assert.Contains("Header=\"New column\"", text, StringComparison.Ordinal);
+		Assert.Contains("<DataGridCheckBoxColumn Header=\"New enabled\" />", text, StringComparison.Ordinal);
+		Assert.Contains("<DataGridComboBoxColumn Header=\"New role\" />", text, StringComparison.Ordinal);
+		var rejected = await client.SetItemsAsync(edited.Version, grid, new[] { new DesignerCollectionItemEdit { SourceIndex = 1, Text = "Tampered", Kind = "ComboBox" } }, timeout.Token);
+		Assert.False(rejected.Accepted);
+		var unsupported = await client.SetItemsAsync(edited.Version, grid, new[] { new DesignerCollectionItemEdit { SourceIndex = -1, Text = "Unsupported", Kind = "Template" } }, timeout.Token);
+		Assert.False(unsupported.Accepted);
 		var reloaded = await client.UpdateAsync(Snapshot(edited.Version + 1, text), timeout.Token);
 		Assert.True(reloaded.Accepted, reloaded.Error + "\n" + text);
-		Assert.Equal(new[] { "Position", "Active", "Family name", "Given", "New column" }, Columns(reloaded, "grid")!.CollectionItems);
+		Assert.Equal(new[] { "Position", "Active", "Family name", "Given", "New column", "New enabled", "New role" }, Columns(reloaded, "grid")!.CollectionItems);
+		var backwardCompatible = await client.SetItemsAsync(reloaded.Version, grid, new[] { new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Position again" } }, timeout.Token);
+		Assert.True(backwardCompatible.Accepted, backwardCompatible.Error);
 	}
 
 	[Fact]

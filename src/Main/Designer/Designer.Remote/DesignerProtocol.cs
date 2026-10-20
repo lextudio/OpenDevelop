@@ -115,7 +115,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v67 adds WPF's optional design/set-grid-view-columns for a ListView's explicit GridView.
 		// v68 adds WPF's optional design/set-menu-items for explicit Menu/ContextMenu trees.
 		// v69 adds WPF's optional design/set-strip-items for explicit ToolBar/StatusBar items.
-	public const int Version = 69;
+		// v70 adds collection item kinds for WPF's type-aware DataGrid column editor.
+	public const int Version = 70;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -190,6 +191,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	{
 		public int SourceIndex { get; set; } = -1;
 		public string Text { get; set; } = "";
+		public string Kind { get; set; } = "";
 	}
 
 	/// <summary>A losslessly editable TreeViewItem snapshot. It is deliberately separate from the
@@ -733,6 +735,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>For an <c>ItemsCollection</c> editor, the display text of each collection item in
 		/// order. The row itself is read-only; edits go through the backend's collection mutation.</summary>
 		public List<string> CollectionItems { get; set; } = new List<string>();
+		public List<string> CollectionItemKinds { get; set; } = new List<string>();
 		/// <summary>For the WPF <c>TreeItems</c> editor, the complete explicit TreeViewItem hierarchy.
 		/// Empty means no tree-editor capability; clients must not infer a tree from CollectionItems.</summary>
 		public List<DesignerTreeItem> TreeItems { get; set; } = new List<DesignerTreeItem>();

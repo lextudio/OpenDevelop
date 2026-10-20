@@ -3870,9 +3870,9 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				result.Add(new DesignerPropertyInfo {
 					Name = itemKind.CollectionProperty, DisplayName = itemKind.CollectionProperty, Category = "Common",
 					TypeName = itemKind.ContainerType.FullName ?? "",
-					Kind = "Collection", EditorKind = "ItemsCollection", IsReadOnly = true,
+					Kind = "Collection", EditorKind = item.Component is DataGrid ? "DataGridColumns" : "ItemsCollection", IsReadOnly = true,
 					Value = "(" + texts.Count + (texts.Count == 1 ? " item)" : " items)"),
-					CollectionItems = texts, ShouldSerialize = texts.Count > 0
+					CollectionItems = texts, CollectionItemKinds = item.Component is DataGrid ? itemsProperty.CollectionElements.Select(DataGridColumnKind).ToList() : new List<string>(), ShouldSerialize = texts.Count > 0
 				});
 			}
 			if (TryGetEditableTreeItems(item, out var treeItemsProperty) && treeItemsProperty != null)
@@ -4064,6 +4064,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		static bool IsEditableDataGridColumn(DesignItem column)
 			=> column.Component?.GetType() is var type && (type == typeof(DataGridTextColumn) || type == typeof(DataGridCheckBoxColumn) || type == typeof(DataGridComboBoxColumn))
 				&& IsPlainTextProperty(column.Properties["Header"]);
+		static string DataGridColumnKind(DesignItem column) => column.Component?.GetType() == typeof(DataGridCheckBoxColumn) ? "CheckBox" : column.Component?.GetType() == typeof(DataGridComboBoxColumn) ? "ComboBox" : "Text";
 
 		/// <summary>Accepts only an explicit TreeViewItem hierarchy with plain text Headers. A data
 		/// source, a custom item, or a header object would require a richer object editor, so it is
@@ -4156,6 +4157,10 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				var sources = items.Where(entry => entry.SourceIndex >= 0).Select(entry => entry.SourceIndex).ToList();
 				if (sources.Any(index => index >= existing.Count) || sources.Distinct().Count() != sources.Count)
 					return NotFound(state, "Invalid item source index.");
+				if (element.Component is DataGrid && items.Any(entry => !String.IsNullOrEmpty(entry.Kind) && entry.Kind is not ("Text" or "CheckBox" or "ComboBox")))
+					return NotFound(state, "Unsupported DataGrid column type.");
+				if (element.Component is DataGrid && items.Any(entry => entry.SourceIndex >= 0 && !String.Equals(DataGridColumnKind(existing[entry.SourceIndex]), String.IsNullOrEmpty(entry.Kind) ? DataGridColumnKind(existing[entry.SourceIndex]) : entry.Kind, StringComparison.Ordinal)))
+					return NotFound(state, "A retained DataGrid column cannot change its type.");
 				try
 				{
 					using var changeGroup = element.OpenGroup(kind.ChangeGroupName);
@@ -4165,7 +4170,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					{
 						var designItem = entry.SourceIndex >= 0
 							? existing[entry.SourceIndex]
-							: element.Services.Component.RegisterComponentForDesigner(Activator.CreateInstance(kind.ContainerType)!);
+							: element.Services.Component.RegisterComponentForDesigner(Activator.CreateInstance(element.Component is DataGrid && entry.Kind == "CheckBox" ? typeof(DataGridCheckBoxColumn) : element.Component is DataGrid && entry.Kind == "ComboBox" ? typeof(DataGridComboBoxColumn) : kind.ContainerType)!);
 						collection.Add(designItem);
 						var content = designItem.Properties[kind.TextProperty];
 						if (string.IsNullOrEmpty(entry.Text))

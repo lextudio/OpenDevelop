@@ -2443,6 +2443,8 @@ namespace ICSharpCode.FormsDesigner
 			internal IReadOnlyList<string> SuggestedValues => property.SuggestedValues;
 			string IResourceImageProperty.EditorKind => property.EditorKind;
 			IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => property.CollectionItems;
+			IReadOnlyList<string> IItemsCollectionProperty.CollectionItemKinds => Array.Empty<string>();
+			bool IItemsCollectionProperty.SupportsDataGridColumnKinds => false;
 			IReadOnlyList<DesignerImageListEntry> IImageListProperty.Images => property.ImageListImages;
 			string IImageListProperty.ImageSize => property.ImageListSize;
 			string IImageListProperty.ColorDepth => property.ImageListColorDepth;

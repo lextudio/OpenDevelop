@@ -850,7 +850,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			});
 		}
 
-		[DevFlowAction("od.wpf-designer.properties-pad.edit-items", Description = "Click a ListBox/ComboBox/ListView Items row's real \"…\" button and apply an edit script to the collection dialog's model instead of the modal dialog: ';'-separated add:<afterIndex>:<text>, remove:<i>, up:<i>, down:<i>, rename:<i>:<text>, or 'cancel'")]
+		[DevFlowAction("od.wpf-designer.properties-pad.edit-items", Description = "Click a collection row's real \"…\" button and apply an edit script to the collection dialog's model instead of the modal dialog: ';'-separated add:<afterIndex>:<text>, add-checkbox:<afterIndex>:<text> and add-combo:<afterIndex>:<text> for a DataGrid Columns row, remove:<i>, up:<i>, down:<i>, rename:<i>:<text>, or 'cancel'")]
 		public static string EditItemsThroughPropertiesPad(string propertyName, string script)
 		{
 			var grid = PropertyPadGrid;

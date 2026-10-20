@@ -152,6 +152,8 @@ sealed class MewUIPropertyDescriptor : PropertyDescriptor, IItemsCollectionPrope
 	static bool IsProtocolReadOnly(DesignerPropertyInfo info) => DesignerPropertySemantics.IsReadOnly(info);
 	internal IReadOnlyList<string> AllowedValues => info.AllowedValues;
 	IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => info.CollectionItems;
+	IReadOnlyList<string> IItemsCollectionProperty.CollectionItemKinds => Array.Empty<string>();
+	bool IItemsCollectionProperty.SupportsDataGridColumnKinds => false;
 	public override Type ComponentType => typeof(MewUIPropertyAdapter);
 	public override Type PropertyType => type;
 	public override bool IsReadOnly => IsProtocolReadOnly(info);

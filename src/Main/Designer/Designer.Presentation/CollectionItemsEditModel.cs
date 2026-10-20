@@ -17,34 +17,38 @@ public sealed class CollectionItemsEditModel
 {
 	public sealed class Entry
 	{
-		internal Entry(int sourceIndex, string text)
+		internal Entry(int sourceIndex, string text, string kind = "")
 		{
 			SourceIndex = sourceIndex;
 			Text = text;
+			Kind = kind;
 		}
 
 		public int SourceIndex { get; }
 		public string Text { get; set; }
+		public string Kind { get; }
 		public override string ToString() => Text;
 	}
 
 	readonly IReadOnlyList<string> original;
 
-	public CollectionItemsEditModel(IEnumerable<string> texts)
+	public CollectionItemsEditModel(IEnumerable<string> texts, IEnumerable<string>? kinds = null, bool supportsDataGridColumnKinds = false)
 	{
 		// Normalized once, so a null item text compares equal to its unedited "" entry.
 		original = (texts ?? throw new ArgumentNullException(nameof(texts))).Select(text => text ?? "").ToList();
-		Entries = new ObservableCollection<Entry>(original.Select((text, index) => new Entry(index, text)));
+		var kindList = (kinds ?? Array.Empty<string>()).ToList(); SupportsDataGridColumnKinds = supportsDataGridColumnKinds;
+		Entries = new ObservableCollection<Entry>(original.Select((text, index) => new Entry(index, text, index < kindList.Count ? kindList[index] : "")));
 	}
+	public bool SupportsDataGridColumnKinds { get; }
 
 	public ObservableCollection<Entry> Entries { get; }
 
 	/// <summary>Adds a new item after <paramref name="afterIndex"/> (at the end when out of range)
 	/// and returns its index.</summary>
-	public int Add(string text, int afterIndex = -1)
+	public int Add(string text, int afterIndex = -1, string kind = "")
 	{
 		var index = afterIndex >= 0 && afterIndex < Entries.Count ? afterIndex + 1 : Entries.Count;
-		Entries.Insert(index, new Entry(-1, text ?? ""));
+		Entries.Insert(index, new Entry(-1, text ?? "", kind));
 		return index;
 	}
 
@@ -84,5 +88,5 @@ public sealed class CollectionItemsEditModel
 
 	/// <summary>The edited list in the wire shape of a whole-collection mutation.</summary>
 	public IReadOnlyList<DesignerCollectionItemEdit> ToEdits()
-		=> Entries.Select(entry => new DesignerCollectionItemEdit { SourceIndex = entry.SourceIndex, Text = entry.Text }).ToList();
+		=> Entries.Select(entry => new DesignerCollectionItemEdit { SourceIndex = entry.SourceIndex, Text = entry.Text, Kind = entry.Kind }).ToList();
 }

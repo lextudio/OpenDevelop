@@ -138,6 +138,8 @@ sealed class GtkPropertyDescriptor : PropertyDescriptor, IItemsCollectionPropert
 
 	internal IReadOnlyList<string> AllowedValues => info.AllowedValues;
 	IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => info.CollectionItems;
+	IReadOnlyList<string> IItemsCollectionProperty.CollectionItemKinds => Array.Empty<string>();
+	bool IItemsCollectionProperty.SupportsDataGridColumnKinds => false;
 	/// <summary>Flags combine with '|', so their text is free; a plain enum is one of its nicks.</summary>
 	internal bool IsExclusiveChoice => info.IsEnum && info.AllowedValues.Count > 0;
 

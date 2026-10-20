@@ -240,7 +240,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		void IItemsCollectionEditorHost.SetItems(string propertyName, System.Collections.Generic.IReadOnlyList<DesignerCollectionItemEdit> items)
 		{
 			var property = node.Properties.SingleOrDefault(candidate => candidate.Name == propertyName
-				&& candidate.EditorKind is "ItemsCollection" or "BindingCollection" or "GridViewColumns" or "StripItems");
+				&& candidate.EditorKind is "ItemsCollection" or "DataGridColumns" or "BindingCollection" or "GridViewColumns" or "StripItems");
 			if (property == null)
 				throw new InvalidOperationException("Not an editable items collection: " + propertyName);
 			var state = property.EditorKind == "BindingCollection"
@@ -467,7 +467,7 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 			if (property.Kind == "Enum" && property.AllowedValues.Count > 0)
 				attributes.Add(new TypeConverterAttribute(typeof(WpfDesignerEnumConverter)));
 			// The row stays read-only to generic editing; the "…" editor commits the whole list.
-			if (property.EditorKind is "ItemsCollection" or "BindingCollection" or "GridViewColumns" or "StripItems")
+			if (property.EditorKind is "ItemsCollection" or "DataGridColumns" or "BindingCollection" or "GridViewColumns" or "StripItems")
 				attributes.Add(new EditorAttribute(typeof(WpfItemsCollectionEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 			else if (property.EditorKind is "TreeItems" or "MenuItems")
 				attributes.Add(new EditorAttribute(typeof(WpfTreeItemsEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
@@ -496,6 +496,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 		internal System.Collections.Generic.IReadOnlyList<DesignerRichTextRun> RichTextRuns => property.RichTextRuns is { } runs ? runs : Array.Empty<DesignerRichTextRun>();
 
 		System.Collections.Generic.IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => property.CollectionItems;
+		System.Collections.Generic.IReadOnlyList<string> IItemsCollectionProperty.CollectionItemKinds => property.CollectionItemKinds;
+		bool IItemsCollectionProperty.SupportsDataGridColumnKinds => property.EditorKind == "DataGridColumns";
 		System.Collections.Generic.IReadOnlyList<DesignerTreeItem> ITreeItemsProperty.TreeItems => property.TreeItems;
 
 		internal System.Collections.Generic.List<string> ResourceReferenceKeys => property.ResourceReferenceKeys;
