@@ -1469,7 +1469,7 @@ public class DesignSurface : DesignerCanvas
 			return;
 		var viewport = CurrentViewport();
 		var scale = viewport.Scale;
-		var (baseX, baseY) = (Math.Max(0, viewport.OriginX), Math.Max(0, viewport.OriginY));
+		var origin = viewport.BaseOrigin;
 		// Content spans the design at the current zoom; at fit the design is centered inside
 		// the viewport-sized content (no scroll range), when zoomed in it is top-left
 		// anchored so the scroll range covers the whole design. The design rect is placed at
@@ -1479,13 +1479,13 @@ public class DesignSurface : DesignerCanvas
 		// empty-canvas EdgePattern (see DesignerCanvas).
 		contentCanvas.Width = Math.Max(scroller.ViewportWidth, pixelWidth * scale + CanvasMargin * 2);
 		contentCanvas.Height = Math.Max(scroller.ViewportHeight, pixelHeight * scale + CanvasMargin * 2);
-		// viewport.PanX/PanY already have CanvasMargin folded in (see CurrentViewport) - reading
-		// the raw panX/panY fields here instead (as a previous pass did) placed the rendered
+		// BaseOrigin already has CanvasMargin folded in through viewport.PanX/PanY (see
+		// CurrentViewport) - reading the raw panX/panY fields here instead (as a previous pass did) placed the rendered
 		// frame CanvasMargin short of where every other conversion (ToDesignPoint,
 		// SurfaceGeometry, CanvasLocalViewport) expected it, so the bitmap, selection outline
 		// and click hit-testing all disagreed by a fixed 32px offset.
-		Canvas.SetLeft(viewportCanvas, baseX + viewport.PanX);
-		Canvas.SetTop(viewportCanvas, baseY + viewport.PanY);
+		Canvas.SetLeft(viewportCanvas, origin.X);
+		Canvas.SetTop(viewportCanvas, origin.Y);
 		viewportCanvas.Width = pixelWidth * scale;
 		viewportCanvas.Height = pixelHeight * scale;
 		frameBackdrop.Width = viewportCanvas.Width;
@@ -2215,21 +2215,22 @@ public class DesignSurface : DesignerCanvas
 		// DesignToSurface/SurfaceToDesign math - otherwise the "point under the cursor"
 		// this solves for drifts by CanvasMargin's worth of scale-dependent error on every zoom.
 		var viewport = CurrentViewport();
-		var (baseX, baseY) = (Math.Max(0, viewport.OriginX), Math.Max(0, viewport.OriginY));
-		var designX = (cursorSurface.X - baseX - viewport.PanX + scroller.HorizontalOffset) / viewport.Scale;
-		var designY = (cursorSurface.Y - baseY - viewport.PanY + scroller.VerticalOffset) / viewport.Scale;
+		var origin = viewport.BaseOrigin;
+		var designX = (cursorSurface.X - origin.X + scroller.HorizontalOffset) / viewport.Scale;
+		var designY = (cursorSurface.Y - origin.Y + scroller.VerticalOffset) / viewport.Scale;
 		// Keep the scroll-content position stable while the scale changes, so the point
 		// under the cursor does not jump and the scrollbar thumb stays put.
-		var contentX = baseX + viewport.PanX + designX * viewport.Scale;
-		var contentY = baseY + viewport.PanY + designY * viewport.Scale;
+		var contentX = origin.X + designX * viewport.Scale;
+		var contentY = origin.Y + designY * viewport.Scale;
 		// Zooming from Fit continues from the fitted scale, as an absolute zoom.
 		zoomScale = ZoomStepCalculator.Step(viewport.Scale, factor, MinZoom, MaxZoom);
 		fitMode = false;
 		var viewport2 = CurrentViewport();
-		var (baseX2, baseY2) = (Math.Max(0, viewport2.OriginX), Math.Max(0, viewport2.OriginY));
-		// Solve for the folded pan, then strip CanvasMargin back out for the raw field CurrentViewport() re-adds.
-		panX = contentX - baseX2 - designX * viewport2.Scale - CanvasMargin;
-		panY = contentY - baseY2 - designY * viewport2.Scale - CanvasMargin;
+		var foldedPan = viewport2.PanForDesignPointAtSurface(designX, designY, contentX, contentY);
+		// CurrentViewport folds CanvasMargin into its pan; store the raw field so it is added
+		// exactly once when the next viewport is made.
+		panX = foldedPan.X - CanvasMargin;
+		panY = foldedPan.Y - CanvasMargin;
 		ApplyViewport();
 	}
 

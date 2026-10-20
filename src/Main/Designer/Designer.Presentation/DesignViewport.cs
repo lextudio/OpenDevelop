@@ -110,5 +110,15 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 			var origin = BaseOrigin;
 			return ((x - origin.X) / Scale, (y - origin.Y) / Scale);
 		}
+
+		/// <summary>Returns the pan required to keep a design-space point at a given
+		/// surface-local position. The result is the viewport pan itself, not a host's raw
+		/// pan field: callers that fold a canvas margin into pan remove that margin afterwards.
+		/// This is the inverse placement operation used when a zoom changes scale under a
+		/// stationary cursor.</summary>
+		public (double X, double Y) PanForDesignPointAtSurface(double designX, double designY,
+			double surfaceX, double surfaceY)
+			=> (surfaceX - Math.Max(0, OriginX) - designX * Scale,
+				surfaceY - Math.Max(0, OriginY) - designY * Scale);
 	}
 }
