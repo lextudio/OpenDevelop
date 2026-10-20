@@ -588,6 +588,61 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
     }
 
     [Fact]
+    public async Task PropertiesPad_ItemsEditorEditsTabControlPagesKeepingTheirBodies()
+    {
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+        try {
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Page editor">
+              <Grid>
+                <TabControl x:Name="tabs">
+                  <TabItem Header="General"><TextBlock x:Name="generalBody" Text="General body" /></TabItem>
+                  <TabItem Header="Advanced"><TextBlock x:Name="advancedBody" Text="Advanced body" /></TabItem>
+                </TabControl>
+              </Grid>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "tabs")).GetProperty("success").GetBoolean());
+            var edited = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-items", "Items", "up:1;rename:0:Expert;rename:1:General settings;add:1:New page");
+            Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+            Assert.True(edited.GetProperty("committed").GetBoolean(), edited.ToString());
+            Assert.Equal(new[] { "General", "Advanced" }, edited.GetProperty("before").EnumerateArray().Select(item => item.GetString()));
+            Assert.Equal(new[] { "Expert", "General settings", "New page" }, edited.GetProperty("after").EnumerateArray().Select(item => item.GetString()));
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var text = await File.ReadAllTextAsync(xamlPath);
+            Assert.Contains("x:Name=\"advancedBody\" Text=\"Advanced body\"", text, StringComparison.Ordinal);
+            Assert.Contains("x:Name=\"generalBody\" Text=\"General body\"", text, StringComparison.Ordinal);
+            Assert.True(text.IndexOf("Header=\"Expert\"", StringComparison.Ordinal) < text.IndexOf("x:Name=\"advancedBody\"", StringComparison.Ordinal), text);
+            Assert.True(text.IndexOf("x:Name=\"advancedBody\"", StringComparison.Ordinal) < text.IndexOf("Header=\"General settings\"", StringComparison.Ordinal), text);
+            Assert.True(text.IndexOf("x:Name=\"generalBody\"", StringComparison.Ordinal) < text.IndexOf("Header=\"New page\"", StringComparison.Ordinal), text);
+            Assert.Contains("<TabItem Header=\"New page\" />", text, StringComparison.Ordinal);
+            var undo = await app.InvokeAsync("od.wpf-designer.undo");
+            Assert.True(undo.GetProperty("success").GetBoolean(), undo.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var undone = await File.ReadAllTextAsync(xamlPath);
+            Assert.True(undone.IndexOf("Header=\"General\"", StringComparison.Ordinal) < undone.IndexOf("Header=\"Advanced\"", StringComparison.Ordinal), undone);
+            Assert.DoesNotContain("Expert", undone, StringComparison.Ordinal);
+            Assert.DoesNotContain("New page", undone, StringComparison.Ordinal);
+        } finally {
+            await app.InvokeAsync("od.close-active-view");
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task PropertiesPad_TreeItemsEditorEditsATreeViewsHierarchy()
     {
         // A TreeView is structurally different from the flat Items editor: the same Properties-pad
