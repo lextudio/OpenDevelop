@@ -321,6 +321,13 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-items",
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, items }, cancellationToken), cancellationToken);
 
+	/// <summary>Replaces a proven explicit WPF TreeViewItem hierarchy in one source-model change.
+	/// Source indices are local to each sibling list; the host rejects arbitrary data items, bindings
+	/// and a cross-parent move rather than attempting a lossy rewrite.</summary>
+	public Task<DesignerSessionState> SetTreeItemsAsync(long baseVersion, string elementId, IReadOnlyList<DesignerTreeItemEdit> items, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-tree-items",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, items }, cancellationToken), cancellationToken);
+
 	/// <summary>Wraps sibling elements in a new Canvas/Grid/Viewbox (<c>design/wrap-elements</c>).</summary>
 	public Task<DesignerSessionState> WrapElementsAsync(long baseVersion, IReadOnlyList<string> elementIds, string containerType, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/wrap-elements",

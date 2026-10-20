@@ -86,6 +86,8 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerSessionState SetBindingConverter(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string resourceKey, int childIndex = -1) => Checked(sessionId, documentId).SetBindingConverter(baseVersion, elementId, propertyName, resourceKey, childIndex);
 	[JsonRpcMethod("design/set-items")]
 	public DesignerSessionState SetItems(string sessionId, string documentId, long baseVersion, string elementId, DesignerCollectionItemEdit[] items) => Checked(sessionId, documentId).SetItems(baseVersion, elementId, items);
+	[JsonRpcMethod("design/set-tree-items")]
+	public DesignerSessionState SetTreeItems(string sessionId, string documentId, long baseVersion, string elementId, DesignerTreeItemEdit[] items) => Checked(sessionId, documentId).SetTreeItems(baseVersion, elementId, items);
 	[JsonRpcMethod("design/wrap-elements")]
 	public DesignerSessionState WrapElements(string sessionId, string documentId, long baseVersion, string[] elementIds, string containerType) => Checked(sessionId, documentId).WrapElements(baseVersion, elementIds, containerType);
 	[JsonRpcMethod("design/unwrap-element")]

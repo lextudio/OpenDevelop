@@ -569,6 +569,77 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
     }
 
     [Fact]
+    public async Task PropertiesPad_TreeItemsEditorEditsATreeViewsHierarchy()
+    {
+        // A TreeView is structurally different from the flat Items editor: the same Properties-pad
+        // gesture must preserve existing item identity while it changes both sibling order and nesting.
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+        try {
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Tree items editor">
+              <Grid>
+                <TreeView x:Name="tree">
+                  <TreeViewItem x:Name="root" Header="Root" IsExpanded="True">
+                    <TreeViewItem x:Name="child" Header="Child" />
+                  </TreeViewItem>
+                  <TreeViewItem x:Name="other" Header="Other" />
+                </TreeView>
+              </Grid>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            JsonElement selected = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                selected = await app.InvokeAsync("od.wpf-designer.select", "tree");
+                return selected.GetProperty("success").GetBoolean()
+                    && selected.GetProperty("propertiesPadSelectedName").GetString() == "tree";
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250), selected.ToString());
+
+            // A scripted editor failure is returned by DevFlow; it must not open a modal error dialog
+            // or claim that a document edit occurred.
+            var rejected = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-tree-items", "Items", "rename:99:Ignored");
+            Assert.False(rejected.GetProperty("success").GetBoolean(), rejected.ToString());
+            Assert.False((await app.InvokeAsync("od.wpf-designer.status")).GetProperty("canUndo").GetBoolean());
+
+            var edited = await app.InvokeAsync(
+                "od.wpf-designer.properties-pad.edit-tree-items", "Items",
+                "rename:0:Root renamed;add-child:0:New child;add:-1:Sibling");
+            Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+            Assert.True(edited.GetProperty("committed").GetBoolean(), edited.ToString());
+            var saved = await app.InvokeAsync("od.file.save", xamlPath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var text = await File.ReadAllTextAsync(xamlPath);
+            Assert.Contains("x:Name=\"root\"", text, StringComparison.Ordinal);
+            Assert.Contains("IsExpanded=\"True\"", text, StringComparison.Ordinal);
+            Assert.Contains("x:Name=\"child\"", text, StringComparison.Ordinal);
+            Assert.Contains("Header=\"Root renamed\"", text, StringComparison.Ordinal);
+            Assert.Contains("Header=\"New child\"", text, StringComparison.Ordinal);
+            Assert.Contains("Header=\"Sibling\"", text, StringComparison.Ordinal);
+            Assert.True(text.IndexOf("New child", StringComparison.Ordinal) < text.IndexOf("Sibling", StringComparison.Ordinal), text);
+
+            // The whole hierarchy operation must remain a single undo step.
+            var undo = await app.InvokeAsync("od.wpf-designer.undo");
+            Assert.True(undo.GetProperty("success").GetBoolean(), undo.ToString());
+            Assert.False(undo.GetProperty("canUndo").GetBoolean(), undo.ToString());
+        } finally {
+            await app.InvokeAsync("od.close-active-view");
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task SnapshotSelection_RemainsResponsiveWhileTheWpfHostRecovers()
     {
         // OpenDevelopAppFixture selects Microsoft WPF on Windows and LibreWPF elsewhere.

@@ -953,6 +953,55 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task ChildHost_EditsExplicitTreeViewItemHierarchyKeepingExistingNodes()
+	{
+		const string xaml = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="300" Height="300">
+			  <TreeView x:Name="tree">
+			    <TreeViewItem x:Name="root" Header="Root" IsExpanded="True"><TreeViewItem x:Name="child" Header="Child" /></TreeViewItem>
+			    <TreeViewItem x:Name="other" Header="Other" />
+			  </TreeView>
+			  <TreeView x:Name="bound" ItemsSource="{Binding Nodes}" />
+			  <TreeView x:Name="rich"><TreeViewItem><TreeViewItem.Header><TextBlock Text="Rich" /></TreeViewItem.Header></TreeViewItem></TreeView>
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var state = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(state.Accepted, state.Error);
+		DesignerPropertyInfo? TreeItems(DesignerSessionState s, string name)
+			=> FindByName(s.Tree!, name)!.Properties.SingleOrDefault(property => property.EditorKind == "TreeItems");
+		var treeItems = TreeItems(state, "tree")!;
+		Assert.Equal(new[] { "Root", "Other" }, treeItems.TreeItems.Select(item => item.Text));
+		Assert.Equal(new[] { "Child" }, treeItems.TreeItems[0].Children.Select(item => item.Text));
+		Assert.Null(TreeItems(state, "bound"));
+		Assert.Null(TreeItems(state, "rich"));
+
+		var tree = FindByName(state.Tree!, "tree")!.Id;
+		var edited = await client.SetTreeItemsAsync(state.Version, tree, new[] {
+			new DesignerTreeItemEdit { SourceIndex = 1, Text = "Other renamed" },
+			new DesignerTreeItemEdit {
+				SourceIndex = 0, Text = "Root", Children = new List<DesignerTreeItemEdit> {
+					new() { SourceIndex = 0, Text = "Child renamed" },
+					new() { SourceIndex = -1, Text = "New child" }
+				}
+			}
+		}, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var editedItems = TreeItems(edited, "tree")!.TreeItems;
+		Assert.Equal(new[] { "Other renamed", "Root" }, editedItems.Select(item => item.Text));
+		Assert.Equal(new[] { "Child renamed", "New child" }, editedItems[1].Children.Select(item => item.Text));
+		var text = (await client.FlushAsync(edited.Version, timeout.Token)).Files.Single().Text;
+		Assert.True(text.IndexOf("x:Name=\"other\"", StringComparison.Ordinal) < text.IndexOf("x:Name=\"root\"", StringComparison.Ordinal), text);
+		Assert.Contains("x:Name=\"child\"", text, StringComparison.Ordinal);
+		Assert.Contains("IsExpanded=\"True\"", text, StringComparison.Ordinal);
+		Assert.Contains("Header=\"New child\"", text, StringComparison.Ordinal);
+		var reloaded = await client.UpdateAsync(Snapshot(edited.Version + 1, text), timeout.Token);
+		Assert.True(reloaded.Accepted, reloaded.Error + "\n" + text);
+		Assert.Equal(new[] { "Other renamed", "Root" }, TreeItems(reloaded, "tree")!.TreeItems.Select(item => item.Text));
+	}
+
+	[Fact]
 	public async Task ChildHost_WrapsAndUnwrapsElementsKeepingTheirPlacement()
 	{
 		const string xaml = """

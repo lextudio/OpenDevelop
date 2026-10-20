@@ -3875,6 +3875,18 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					CollectionItems = texts, ShouldSerialize = texts.Count > 0
 				});
 			}
+			if (TryGetEditableTreeItems(item, out var treeItemsProperty) && treeItemsProperty != null)
+			{
+				result.RemoveAll(info => info.Name == "Items");
+				var treeItems = SnapshotTreeItems(treeItemsProperty.CollectionElements);
+				result.Add(new DesignerPropertyInfo {
+					Name = "Items", DisplayName = "Items", Category = "Common",
+					TypeName = typeof(TreeViewItem).FullName ?? "", Kind = "Collection",
+					EditorKind = "TreeItems", IsReadOnly = true,
+					Value = "(" + treeItems.Count + (treeItems.Count == 1 ? " item)" : " items)"),
+					TreeItems = treeItems, ShouldSerialize = treeItems.Count > 0
+				});
+			}
 			if (TryGetEditableRichText(item, out var runs))
 			{
 				result.RemoveAll(info => info.Name == "Inlines");
@@ -4030,6 +4042,43 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			return true;
 		}
 
+		/// <summary>Accepts only an explicit TreeViewItem hierarchy with plain text Headers. A data
+		/// source, a custom item, or a header object would require a richer object editor, so it is
+		/// deliberately unavailable instead of being stringified.</summary>
+		static bool TryGetEditableTreeItems(DesignItem item, out DesignItemProperty? itemsProperty)
+		{
+			itemsProperty = null;
+			if (item.Component is not TreeView || item.Properties["ItemsSource"]?.IsSet == true)
+				return false;
+			var items = item.Properties["Items"];
+			if (items == null || !items.IsCollection || !IsEditableTreeLevel(items.CollectionElements))
+				return false;
+			itemsProperty = items;
+			return true;
+		}
+
+		static bool IsEditableTreeLevel(IEnumerable<DesignItem> items)
+		{
+			foreach (var item in items)
+			{
+				if (item.Component?.GetType() != typeof(TreeViewItem) || item.Properties["ItemsSource"]?.IsSet == true)
+					return false;
+				var header = item.Properties["Header"];
+				if (header == null || (header.IsSet && (header.Value != null || header.ValueOnInstance is not string)))
+					return false;
+				var children = item.Properties["Items"];
+				if (children == null || !children.IsCollection || !IsEditableTreeLevel(children.CollectionElements))
+					return false;
+			}
+			return true;
+		}
+
+		static List<DesignerTreeItem> SnapshotTreeItems(IEnumerable<DesignItem> items)
+			=> items.Select(item => new DesignerTreeItem {
+				Text = item.Properties["Header"].ValueOnInstance as string ?? "",
+				Children = SnapshotTreeItems(item.Properties["Items"].CollectionElements)
+			}).ToList();
+
 		/// <summary>Replaces a supported plain list or DataGrid's simple text columns in one undo
 		/// group. Each entry names the previous index (moved items keep their other authored state) or
 		/// -1 for a new element; items not named are removed.</summary>
@@ -4072,6 +4121,51 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				state.Accepted = true;
 				return state;
 			});
+
+		/// <summary>Rewrites a proven TreeViewItem hierarchy as one undoable mutation. Each existing
+		/// item can be retained only under its original parent, which preserves its full authored
+		/// state and prevents a move from silently changing an unknown object graph.</summary>
+		[JsonRpcMethod("design/set-tree-items")]
+		public DesignerSessionState SetTreeItems(long baseVersion, string elementId, DesignerTreeItemEdit[] items)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var element))
+					return NotFound(state, "Element not found: " + elementId);
+				if (!TryGetEditableTreeItems(element, out var property) || property == null)
+					return NotFound(state, "The TreeView items are not a safely editable explicit hierarchy.");
+				try {
+					using var group = element.OpenGroup("Edit Tree Items");
+					ApplyTreeItems(element, property.CollectionElements, items ?? Array.Empty<DesignerTreeItemEdit>());
+					group.Commit();
+				} catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
+		static void ApplyTreeItems(DesignItem owner, ICollection<DesignItem> collection, IReadOnlyList<DesignerTreeItemEdit> edits)
+		{
+			var existing = collection.ToList();
+			var sources = edits.Where(edit => edit.SourceIndex >= 0).Select(edit => edit.SourceIndex).ToList();
+			if (edits.Any(edit => edit.SourceIndex < -1) || sources.Any(index => index >= existing.Count)
+				|| sources.Distinct().Count() != sources.Count)
+				throw new InvalidOperationException("Invalid TreeViewItem source index.");
+			collection.Clear();
+			foreach (var edit in edits)
+			{
+				var item = edit.SourceIndex >= 0 ? existing[edit.SourceIndex]
+					: owner.Services.Component.RegisterComponentForDesigner(new TreeViewItem());
+				collection.Add(item);
+				var header = item.Properties["Header"];
+				if (String.IsNullOrEmpty(edit.Text)) header.Reset(); else header.SetValue(edit.Text);
+				var children = item.Properties["Items"];
+				if (children == null || !children.IsCollection)
+					throw new InvalidOperationException("TreeViewItem has no editable Items collection.");
+				ApplyTreeItems(item, children.CollectionElements, edit.Children ?? new List<DesignerTreeItemEdit>());
+			}
+		}
 
 		/// <summary>Edits the direct child collection of a MultiBinding or PriorityBinding where
 		/// every existing child is a plain Binding. Existing source indices retain their complete

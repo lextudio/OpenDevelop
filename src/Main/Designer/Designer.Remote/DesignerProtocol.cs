@@ -111,7 +111,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v64 separates explicitly chosen WinForms toolbox assemblies from project references.
 		// v65 adds WinForms' atomic design/get-table-layout-tracks and
 		// design/apply-table-layout-tracks used by Edit Rows and Columns.
-	public const int Version = 65;
+		// v66 adds WPF's recursive TreeViewItem snapshot and design/set-tree-items.
+	public const int Version = 66;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -186,6 +187,24 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	{
 		public int SourceIndex { get; set; } = -1;
 		public string Text { get; set; } = "";
+	}
+
+	/// <summary>A losslessly editable TreeViewItem snapshot. It is deliberately separate from the
+	/// flat collection DTO: an item's source index is meaningful only amongst its original siblings.</summary>
+	public sealed class DesignerTreeItem
+	{
+		public string Text { get; set; } = "";
+		public List<DesignerTreeItem> Children { get; set; } = new();
+	}
+
+	/// <summary>One recursive TreeViewItem edit. Existing entries name their original sibling index;
+	/// <c>-1</c> creates a new blank TreeViewItem at that level. Moving an existing entry across
+	/// parents is intentionally not represented, so the host never has to guess ownership.</summary>
+	public sealed class DesignerTreeItemEdit
+	{
+		public int SourceIndex { get; set; } = -1;
+		public string Text { get; set; } = "";
+		public List<DesignerTreeItemEdit> Children { get; set; } = new();
 	}
 
 	/// <summary>One target rectangle in an atomic <c>design/set-bounds-batch</c> mutation.
@@ -711,6 +730,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>For an <c>ItemsCollection</c> editor, the display text of each collection item in
 		/// order. The row itself is read-only; edits go through the backend's collection mutation.</summary>
 		public List<string> CollectionItems { get; set; } = new List<string>();
+		/// <summary>For the WPF <c>TreeItems</c> editor, the complete explicit TreeViewItem hierarchy.
+		/// Empty means no tree-editor capability; clients must not infer a tree from CollectionItems.</summary>
+		public List<DesignerTreeItem> TreeItems { get; set; } = new List<DesignerTreeItem>();
 		/// <summary>For a <c>Brush</c> editor, the current brush when it is one the editor can
 		/// round-trip (solid, or a plain linear/radial gradient); null when the property is unset.</summary>
 		public DesignerBrushInfo? Brush { get; set; }

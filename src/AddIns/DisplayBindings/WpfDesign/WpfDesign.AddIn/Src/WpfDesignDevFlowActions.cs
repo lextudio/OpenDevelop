@@ -867,6 +867,23 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				: JsonSerializer.Serialize(new { success = false, error = result.Error });
 		}
 
+		[DevFlowAction("od.wpf-designer.properties-pad.edit-tree-items", Description = "Click a TreeView Items row's real tree editor button and apply a test script: rename:<rootIndex>:<text>, add-child:<rootIndex>:<text>, add:<ignored>:<text>, remove:<rootIndex>, or cancel")]
+		public static string EditTreeItemsThroughPropertiesPad(string propertyName, string script)
+		{
+			var grid = PropertyPadGrid;
+			if (grid?.SelectedObject is not WpfSurfaceElementPropertyAdapter)
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
+			var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(candidate => IsPropertyItem(candidate, propertyName));
+			var button = (item?.Editor as DockPanel)?.Children.OfType<Button>()
+				.FirstOrDefault(candidate => candidate.Name == WpfTreeItemsEditor.EditButtonName);
+			if (button == null || !button.IsEnabled)
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad did not render an enabled tree items editor button: " + propertyName });
+			var result = TreeItemsEditing.RunScriptedEdit(button, script);
+			return result.Success
+				? JsonSerializer.Serialize(new { success = true, committed = result.Committed })
+				: JsonSerializer.Serialize(new { success = false, error = result.Error });
+		}
+
 		[DevFlowAction("od.wpf-designer.properties-pad.edit-brush", Description = "Click a Brush row's real \"…\" button and apply an edit script to the brush editor's model instead of the modal dialog: ';'-separated kind:<Null|Solid|LinearGradient|RadialGradient>, color:<color>, add:<offset>, select:<i>, offset:<i>:<offset>, remove:<i>, reverse, opacity:<0-1>, start/end/center/origin/radius:x,y, mapping:<mode>, spread:<method>, or 'cancel'")]
 		public static string EditBrushThroughPropertiesPad(string propertyName, string script)
 		{

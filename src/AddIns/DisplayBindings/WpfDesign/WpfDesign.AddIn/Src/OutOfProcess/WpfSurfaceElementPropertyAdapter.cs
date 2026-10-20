@@ -30,7 +30,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 	/// found the event already bound.</summary>
 	public sealed record WpfEventBinding(DesignerEventInfo Event, bool XamlChanged);
 
-	public sealed class WpfSurfaceElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IItemsCollectionEditorHost, IBrushEditorHost, ITransformEditorHost, IDesignFrameSource, IImageSourceCandidates
+	public sealed class WpfSurfaceElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IItemsCollectionEditorHost, ITreeItemsEditorHost, IBrushEditorHost, ITransformEditorHost, IDesignFrameSource, IImageSourceCandidates
 	{
 		readonly WpfSurfaceHostClient client;
 		readonly Func<long> currentBaseVersion;
@@ -250,6 +250,15 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			onStateChanged(state);
 		}
 
+		void ITreeItemsEditorHost.SetTreeItems(string propertyName, System.Collections.Generic.IReadOnlyList<DesignerTreeItemEdit> items)
+		{
+			if (!node.Properties.Any(property => property.Name == propertyName && property.EditorKind == "TreeItems"))
+				throw new InvalidOperationException("Not an editable tree items collection: " + propertyName);
+			var state = client.SetTreeItemsAsync(currentBaseVersion(), node.Id, items).GetAwaiter().GetResult();
+			EnsureAccepted(state);
+			onStateChanged(state);
+		}
+
 		/// <summary>Commits an edited brush (<c>design/set-brush</c>); only a host-published Brush
 		/// editor row of this element can be targeted.</summary>
 		void IBrushEditorHost.SetBrush(string propertyName, DesignerBrushInfo brush)
@@ -401,7 +410,7 @@ sealed class WpfSurfaceEventDescriptor : EventDescriptor, IPropertyGridEventType
 	}
 }
 
-sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollectionProperty, IItemsCollectionPropertyName, IBrushProperty, ITransformProperty
+sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollectionProperty, IItemsCollectionPropertyName, ITreeItemsProperty, IBrushProperty, ITransformProperty
 	{
 		readonly WpfSurfaceElementPropertyAdapter owner;
 		readonly DesignerPropertyInfo property;
@@ -455,6 +464,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 			// The row stays read-only to generic editing; the "…" editor commits the whole list.
 			if (property.EditorKind is "ItemsCollection" or "BindingCollection")
 				attributes.Add(new EditorAttribute(typeof(WpfItemsCollectionEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
+			else if (property.EditorKind == "TreeItems")
+				attributes.Add(new EditorAttribute(typeof(WpfTreeItemsEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 			else if (property.EditorKind == "RichText")
 				attributes.Add(new EditorAttribute(typeof(WpfRichTextEditor), typeof(Xceed.Wpf.Toolkit.PropertyGrid.Editors.ITypeEditor)));
 			// The brush editor replaces Xceed's own: it reaches gradients and "No brush", which a
@@ -480,6 +491,7 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 		internal System.Collections.Generic.IReadOnlyList<DesignerRichTextRun> RichTextRuns => property.RichTextRuns is { } runs ? runs : Array.Empty<DesignerRichTextRun>();
 
 		System.Collections.Generic.IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => property.CollectionItems;
+		System.Collections.Generic.IReadOnlyList<DesignerTreeItem> ITreeItemsProperty.TreeItems => property.TreeItems;
 
 		internal System.Collections.Generic.List<string> ResourceReferenceKeys => property.ResourceReferenceKeys;
 
