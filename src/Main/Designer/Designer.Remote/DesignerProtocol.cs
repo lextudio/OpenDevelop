@@ -112,7 +112,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		// v65 adds WinForms' atomic design/get-table-layout-tracks and
 		// design/apply-table-layout-tracks used by Edit Rows and Columns.
 		// v66 adds WPF's recursive TreeViewItem snapshot and design/set-tree-items.
-	public const int Version = 66;
+		// v67 adds WPF's optional design/set-grid-view-columns for a ListView's explicit GridView.
+	public const int Version = 67;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>

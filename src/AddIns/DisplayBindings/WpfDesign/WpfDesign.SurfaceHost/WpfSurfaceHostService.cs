@@ -3887,6 +3887,13 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					TreeItems = treeItems, ShouldSerialize = treeItems.Count > 0
 				});
 			}
+			if (TryGetEditableGridViewColumns(item, out var columnsProperty) && columnsProperty != null)
+			{
+				var texts = columnsProperty.CollectionElements.Select(column => column.Properties["Header"].ValueOnInstance as string ?? "").ToList();
+				result.Add(new DesignerPropertyInfo { Name = "Columns", DisplayName = "Columns", Category = "Common",
+					TypeName = typeof(GridViewColumn).FullName ?? "", Kind = "Collection", EditorKind = "GridViewColumns", IsReadOnly = true,
+					Value = "(" + texts.Count + (texts.Count == 1 ? " column)" : " columns)"), CollectionItems = texts, ShouldSerialize = texts.Count > 0 });
+			}
 			if (TryGetEditableRichText(item, out var runs))
 			{
 				result.RemoveAll(info => info.Name == "Inlines");
@@ -4057,6 +4064,17 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			return true;
 		}
 
+		static bool TryGetEditableGridViewColumns(DesignItem item, out DesignItemProperty? columns)
+		{
+			columns = null;
+			if (item.Component is not ListView || item.Properties["View"]?.Value is not DesignItem view || view.Component?.GetType() != typeof(GridView)) return false;
+			var candidate = view.Properties["Columns"];
+			if (candidate?.IsCollection != true || !candidate.CollectionElements.All(column => column.Component?.GetType() == typeof(GridViewColumn)
+				&& column.Properties["Header"] is var header && (!header.IsSet || header.Value == null && header.ValueOnInstance is string))) return false;
+			columns = candidate;
+			return true;
+		}
+
 		static bool IsEditableTreeLevel(IEnumerable<DesignItem> items)
 		{
 			foreach (var item in items)
@@ -4143,6 +4161,21 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				RebuildTreeAndRender(state);
 				state.Accepted = true;
 				return state;
+			});
+
+		[JsonRpcMethod("design/set-grid-view-columns")]
+		public DesignerSessionState SetGridViewColumns(long baseVersion, string elementId, DesignerCollectionItemEdit[] items)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale) return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var element) || !TryGetEditableGridViewColumns(element, out var columns) || columns == null)
+					return NotFound(state, "The ListView's GridView columns are not safely editable.");
+				var existing = columns.CollectionElements.ToList(); items ??= Array.Empty<DesignerCollectionItemEdit>();
+				var sources = items.Where(edit => edit.SourceIndex >= 0).Select(edit => edit.SourceIndex).ToList();
+				if (items.Any(edit => edit.SourceIndex < -1) || sources.Any(index => index >= existing.Count) || sources.Distinct().Count() != sources.Count) return NotFound(state, "Invalid column source index.");
+				try { using var group = element.OpenGroup("Edit GridView Columns"); columns.CollectionElements.Clear(); foreach (var edit in items) { var column = edit.SourceIndex >= 0 ? existing[edit.SourceIndex] : element.Services.Component.RegisterComponentForDesigner(new GridViewColumn()); columns.CollectionElements.Add(column); var header = column.Properties["Header"]; if (String.IsNullOrEmpty(edit.Text)) header.Reset(); else header.SetValue(edit.Text); } group.Commit(); }
+				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
+				RebuildTreeAndRender(state); state.Accepted = true; return state;
 			});
 
 		static void ApplyTreeItems(DesignItem owner, ICollection<DesignItem> collection, IReadOnlyList<DesignerTreeItemEdit> edits)

@@ -640,6 +640,34 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
     }
 
     [Fact]
+    public async Task PropertiesPad_ColumnsEditorEditsAListViewsGridViewColumns()
+    {
+        var sample = Path.GetDirectoryName(SampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+        try {
+            await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="420" Height="220">
+              <ListView x:Name="list"><ListView.View><GridView><GridViewColumn Header="Name" Width="120" DisplayMemberBinding="{Binding Name}" /><GridViewColumn Header="Age" /></GridView></ListView.View></ListView>
+            </Window>
+            """);
+            await app.InvokeAsync("od.close-all-document-views");
+            Assert.True((await app.ReopenSolutionAsync(SampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => { status = await app.InvokeAsync("od.wpf-designer.status"); return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean(); }, TimeSpan.FromSeconds(90)), status.ToString());
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "list")).GetProperty("success").GetBoolean());
+            var edited = await app.InvokeAsync("od.wpf-designer.properties-pad.edit-items", "Columns", "down:0;rename:1:Full name;add:1:New");
+            Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+            Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+            var text = await File.ReadAllTextAsync(xamlPath);
+            Assert.Contains("Header=\"Full name\" Width=\"120\" DisplayMemberBinding=\"{Binding Name}\"", text, StringComparison.Ordinal);
+            Assert.Contains("Header=\"New\"", text, StringComparison.Ordinal);
+            Assert.True((await app.InvokeAsync("od.wpf-designer.undo")).GetProperty("success").GetBoolean());
+        } finally { await app.InvokeAsync("od.close-active-view"); await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, originalXaml); }
+    }
+
+    [Fact]
     public async Task SnapshotSelection_RemainsResponsiveWhileTheWpfHostRecovers()
     {
         // OpenDevelopAppFixture selects Microsoft WPF on Windows and LibreWPF elsewhere.

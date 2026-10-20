@@ -953,6 +953,32 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task ChildHost_EditsExplicitListViewGridViewColumnsKeepingColumnState()
+	{
+		const string xaml = """
+			<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+			  <ListView x:Name="list"><ListView.View><GridView><GridViewColumn Header="Name" Width="120" DisplayMemberBinding="{Binding Name}" /><GridViewColumn Header="Age" /></GridView></ListView.View></ListView>
+			  <ListView x:Name="plain" />
+			</StackPanel>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var state = await client.OpenAsync(Snapshot(1, xaml), timeout.Token);
+		Assert.True(state.Accepted, state.Error);
+		DesignerPropertyInfo? Columns(DesignerSessionState value, string name) => FindByName(value.Tree!, name)!.Properties.SingleOrDefault(p => p.Name == "Columns" && p.EditorKind == "GridViewColumns");
+		Assert.Equal(new[] { "Name", "Age" }, Columns(state, "list")!.CollectionItems);
+		Assert.Null(Columns(state, "plain"));
+		var edited = await client.SetGridViewColumnsAsync(state.Version, FindByName(state.Tree!, "list")!.Id, new[] {
+			new DesignerCollectionItemEdit { SourceIndex = 1, Text = "Years" }, new DesignerCollectionItemEdit { SourceIndex = 0, Text = "Full name" }, new DesignerCollectionItemEdit { SourceIndex = -1, Text = "New" }
+		}, timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var text = (await client.FlushAsync(edited.Version, timeout.Token)).Files.Single().Text;
+		Assert.Contains("Header=\"Full name\" Width=\"120\" DisplayMemberBinding=\"{Binding Name}\"", text, StringComparison.Ordinal);
+		Assert.Contains("Header=\"Years\"", text, StringComparison.Ordinal);
+		Assert.Contains("Header=\"New\"", text, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public async Task ChildHost_EditsExplicitTreeViewItemHierarchyKeepingExistingNodes()
 	{
 		const string xaml = """

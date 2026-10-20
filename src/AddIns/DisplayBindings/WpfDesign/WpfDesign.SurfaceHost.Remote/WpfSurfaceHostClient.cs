@@ -321,6 +321,10 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-items",
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, items }, cancellationToken), cancellationToken);
 
+	public Task<DesignerSessionState> SetGridViewColumnsAsync(long baseVersion, string elementId, IReadOnlyList<DesignerCollectionItemEdit> items, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-grid-view-columns",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, items }, cancellationToken), cancellationToken);
+
 	/// <summary>Replaces a proven explicit WPF TreeViewItem hierarchy in one source-model change.
 	/// Source indices are local to each sibling list; the host rejects arbitrary data items, bindings
 	/// and a cross-parent move rather than attempting a lossy rewrite.</summary>
