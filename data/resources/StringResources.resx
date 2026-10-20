@@ -10353,10 +10353,10 @@ Press Esc to cancel this operation.</value>
     <value>selected in Tools &gt; Options &gt; .NET SDK</value>
   </data>
   <data name="Build.Sdk.ReasonSelectedUnusable" xml:space="preserve">
-    <value>the selected SDK '{0}' is not usable, so the highest system SDK was used</value>
+    <value>the selected SDK '{0}' is not usable, so a system SDK was chosen automatically (matching this IDE's architecture first, then the highest version)</value>
   </data>
   <data name="Build.Sdk.ReasonDefault" xml:space="preserve">
-    <value>no SDK is selected in Options; the highest supported system SDK was used</value>
+    <value>no SDK is selected in Options; a supported system SDK was chosen automatically (matching this IDE's architecture first, then the highest version)</value>
   </data>
   <data name="Build.Sdk.ReasonNewerFramework" xml:space="preserve">
     <value>the project targets a newer .NET than the default SDK supports</value>

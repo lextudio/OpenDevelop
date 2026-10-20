@@ -9959,10 +9959,10 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
     <value>已在「工具 &gt; 選項 &gt; .NET SDK」中選定</value>
   </data>
   <data name="Build.Sdk.ReasonSelectedUnusable" xml:space="preserve">
-    <value>所選 SDK「{0}」無法使用，因此使用了版本最高的系統 SDK</value>
+    <value>所選 SDK「{0}」無法使用，因此自動選擇了系統 SDK（優先與此 IDE 架構相同的，其次版本最高的）</value>
   </data>
   <data name="Build.Sdk.ReasonDefault" xml:space="preserve">
-    <value>選項中未選取 SDK；使用了支援的最高版本系統 SDK</value>
+    <value>選項中未選取 SDK；自動選擇了支援的系統 SDK（優先與此 IDE 架構相同的，其次版本最高的）</value>
   </data>
   <data name="Build.Sdk.ReasonNewerFramework" xml:space="preserve">
     <value>專案以高於預設 SDK 所支援版本的 .NET 為目標</value>

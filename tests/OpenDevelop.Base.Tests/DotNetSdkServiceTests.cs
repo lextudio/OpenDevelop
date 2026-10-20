@@ -290,6 +290,74 @@ public class DotNetSdkServiceTests
 	}
 
 	[Fact]
+	public void ResolveEffectiveSdk_PrefersTheProcessArchitecture_EvenWhenALowerVersion()
+	{
+		var other = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? Architecture.X64 : Architecture.Arm64;
+		var native10 = Sdk("C:\\dotnet", "10.0.103", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System);
+		var foreign10 = Sdk("C:\\dotnet\\other", "10.0.401", other, origin: DotNetSdkOrigin.System);
+
+		// Both orders: the result must not depend on discovery order.
+		Assert.Same(native10, DotNetSdkService.ResolveEffectiveSdk(new[] { native10, foreign10 }, string.Empty));
+		Assert.Same(native10, DotNetSdkService.ResolveEffectiveSdk(new[] { foreign10, native10 }, string.Empty));
+	}
+
+	[Fact]
+	public void ResolveEffectiveSdk_FallsBackToTheHighestVersion_WhenNoSdkMatchesTheProcessArchitecture()
+	{
+		var other = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? Architecture.X64 : Architecture.Arm64;
+		var older = Sdk("C:\\dotnet-a", "10.0.103", other, origin: DotNetSdkOrigin.System);
+		var newer = Sdk("C:\\dotnet-b", "10.0.401", other, origin: DotNetSdkOrigin.System);
+
+		Assert.Same(newer, DotNetSdkService.ResolveEffectiveSdk(new[] { older, newer }, string.Empty));
+	}
+
+	[Fact]
+	public void ResolveEffectiveSdk_StillPrefersASystemSdk_OverAnArchitectureMatchingBundledOne()
+	{
+		var other = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? Architecture.X64 : Architecture.Arm64;
+		var foreignSystem = Sdk("C:\\dotnet\\other", "10.0.401", other, origin: DotNetSdkOrigin.System);
+		var nativeBundled = Sdk("C:\\bundle", "10.0.401", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.Bundled);
+
+		Assert.Same(foreignSystem, DotNetSdkService.ResolveEffectiveSdk(new[] { nativeBundled, foreignSystem }, string.Empty));
+	}
+
+	[Fact]
+	public void ResolveEffectiveSdk_ByVersionOnly_WhenTheArchitectureIsUnknown()
+	{
+		var older = Sdk("/dotnet-a", "10.0.103", null, origin: DotNetSdkOrigin.System);
+		var newer = Sdk("/dotnet-b", "10.0.401", null, origin: DotNetSdkOrigin.System);
+
+		Assert.Same(newer, DotNetSdkService.ResolveEffectiveSdk(new[] { older, newer }, string.Empty));
+		Assert.Same(newer, DotNetSdkService.ResolveEffectiveSdk(new[] { newer, older }, string.Empty));
+	}
+
+	[Fact]
+	public void ResolveEffectiveSdk_HonoursAPreferredRootOfAnotherArchitecture()
+	{
+		var other = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? Architecture.X64 : Architecture.Arm64;
+		var native = Sdk("C:\\dotnet", "10.0.401", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System);
+		var foreign = Sdk("C:\\dotnet\\other", "10.0.103", other, origin: DotNetSdkOrigin.System);
+
+		Assert.Same(foreign, DotNetSdkService.ResolveEffectiveSdk(new[] { native, foreign }, foreign.RootPath));
+	}
+
+	[Fact]
+	public void DescribeChoice_DoesNotClaimTheHighestVersion_WhenTheArchitectureDecidedTheChoice()
+	{
+		var other = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? Architecture.X64 : Architecture.Arm64;
+		var native = Sdk("C:\\dotnet", "10.0.103", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System);
+		var foreign = Sdk("C:\\dotnet\\other", "10.0.401", other, origin: DotNetSdkOrigin.System);
+		var discovered = new[] { native, foreign };
+		var choice = DotNetSdkService.ResolveSdkForTargetFrameworks(discovered, "", new[] { "net10.0" });
+
+		string text = DotNetSdkService.DescribeChoice(choice, "", discovered);
+
+		Assert.Contains("10.0.103 at C:\\dotnet", text);
+		Assert.Contains("architecture", text);
+		Assert.DoesNotContain("the highest supported system SDK", text);
+	}
+
+	[Fact]
 	public void DescribeAvailability_ReportsTheHighestSupportedSdkVersion()
 	{
 		var sdk = Sdk("C:\\dotnet", "10.0.401", RuntimeInformation.ProcessArchitecture,
@@ -488,7 +556,7 @@ public class DotNetSdkServiceTests
 		Assert.Equal(expected, DotNetSdkService.SdkMajorVersion(version));
 	}
 
-	static DotNetSdkInfo Sdk(string rootPath, string highest, Architecture architecture,
+	static DotNetSdkInfo Sdk(string rootPath, string highest, Architecture? architecture,
 		IEnumerable<string>? versions = null, DotNetSdkOrigin origin = DotNetSdkOrigin.Custom, IEnumerable<string>? previews = null)
 		=> new DotNetSdkInfo {
 			Label = rootPath,

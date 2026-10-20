@@ -415,7 +415,8 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 
 		/// <summary>
 		/// Resolves the SDK to actually use: the user's stored selection if it still exists on
-		/// disk and is supported (.NET 10+), otherwise the highest supported system default.
+		/// disk and is supported (.NET 10+), otherwise a supported system default: System origin first,
+		/// then an SDK matching this process's architecture, then the highest version.
 		/// Returns <c>null</c> when no supported SDK exists; callers must report that, not fall back.
 		/// </summary>
 		public static DotNetSdkInfo ResolveEffectiveSdk()
@@ -446,7 +447,8 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 					return match;
 			}
 
-			// Prefer the highest-versioned System-origin SDK, not just the first one discovered:
+			// Prefer a System-origin SDK of this process's architecture, then the highest version,
+			// not just the first one discovered:
 			// DiscoverSdks() puts ResolvePathDotnetRoot()'s result (the literal "dotnet" on PATH)
 			// first specifically so that a plain FirstOrDefault would prefer it - but that silently
 			// breaks if PATH resolution comes back empty/differently in a given process's inherited
@@ -463,6 +465,10 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			var systemDefault = discovered
 				.Where(IsSupportedSdk)
 				.OrderByDescending(s => s.Origin == DotNetSdkOrigin.System)
+				// The architecture of the running OpenDevelop decides first, even over a higher version:
+				// an ARM64 OpenDevelop prefers an ARM64 SDK, an x64 one prefers an x64 SDK. Only supported
+				// (.NET 10+) SDKs are candidates here, so a lower version still means a usable one.
+				.ThenByDescending(s => s.Architecture == RuntimeInformation.ProcessArchitecture)
 				.ThenByDescending(s => Version.TryParse(s.HighestSdkVersion?.Split('-')[0], out var v) ? v : new Version(0, 0))
 				.FirstOrDefault();
 			if (systemDefault != null)
@@ -806,9 +812,9 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 				reason = Localized("Build.Sdk.ReasonSelected", "selected in Tools > Options > .NET SDK");
 			else if (!string.IsNullOrEmpty(selectedRoot))
 				reason = Localized("Build.Sdk.ReasonSelectedUnusable",
-					"the selected SDK '{0}' is not usable, so the highest system SDK was used", selectedRoot);
+					"the selected SDK '{0}' is not usable, so a system SDK was chosen automatically (matching this IDE's architecture first, then the highest version)", selectedRoot);
 			else if (choice.IsDefault)
-				reason = Localized("Build.Sdk.ReasonDefault", "no SDK is selected in Options; the highest supported system SDK was used");
+				reason = Localized("Build.Sdk.ReasonDefault", "no SDK is selected in Options; a supported system SDK was chosen automatically (matching this IDE's architecture first, then the highest version)");
 			else
 				// Implicit: ResolveSdkForTargetFrameworks returns a non-default choice only when a
 				// project needs a newer major than the default SDK; revisit if it gains another reason.
