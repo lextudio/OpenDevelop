@@ -38,7 +38,7 @@ of the total.
 | **MEF006** exported class without an `ImportingConstructor` | 94 | **Fixed** (`7651b881ff`): every occurrence is in the absorbed ILSpy WPF code, which uses System.ComponentModel.Composition's single-constructor convention. Disabled for that path only in `.editorconfig` - the build has no MEF006 outside it. |
 | **MSB3277 / MSB3243** reference conflicts | 129 + 94 | MSB3277 is `System.Security.Permissions` inside `externals/wpftoolkit`; MSB3243 is `System.Private.Windows.Core` 11 conflicts reached through the WPF references. Both are dependency-graph issues rather than source defects. |
 | **CA1416** platform compatibility | 60 | **Fixed** (`b5980a58ad`). The cause was not an unguarded Windows API: CodeQuality and LanguageServices.Roslyn were the only two projects that never linked `src/Main/GlobalAssemblyInfo.cs`, so they did not carry the product's `SupportedOSPlatform("windows")` declaration (nor the product version). Both link it now, with their duplicate attributes removed. |
-| **CS0618** obsolete members | ~41 | Real, small, and worth fixing individually rather than suppressing. |
+| **CS0618** obsolete members | ~41 | **Fixed** (`abb0117d04`): the eleven subscription sites now use `MessageBus<...>`; the three compatibility facades and the NuGet template accessor keep the deprecated members under scoped pragmas whose reasons sit next to them. Zero CS0618 in Base, the shell and PackageManagement, and in a full shell build. |
 
 ## Rejected approach
 
