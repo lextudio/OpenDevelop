@@ -45,8 +45,7 @@ public static class DesignerToolboxHitTest
 	{
 		for (var elapsed = 0; ; elapsed += 100) {
 			if (element.IsLoaded && element.IsVisible
-				&& HitTestResolvesToElement(itemsControl, element)
-				&& IsNotCoveredOutsideTheList(element))
+				&& HitTestResolvesToElement(itemsControl, element))
 				return true;
 			if (elapsed >= timeoutMilliseconds)
 				return false;
@@ -59,23 +58,6 @@ public static class DesignerToolboxHitTest
 		try {
 			var center = element.TranslatePoint(new Point(element.ActualWidth / 2, element.ActualHeight / 2), itemsControl);
 			for (DependencyObject? node = itemsControl.InputHitTest(center) as DependencyObject; node != null; node = VisualTreeHelper.GetParent(node)) {
-				if (ReferenceEquals(node, element)) return true;
-			}
-		} catch (InvalidOperationException) { }
-		return false;
-	}
-
-	/// <summary>When the docked pad has a normal visual presentation root, also prove that no
-	/// sibling popup or adorner covers the row. LibreWPF may expose a non-visual root for a docked
-	/// pad; in that case the list-local hit test above is the strongest available proof.</summary>
-	static bool IsNotCoveredOutsideTheList(FrameworkElement element)
-	{
-		if (PresentationSource.FromVisual(element)?.RootVisual is not Visual rootVisual)
-			return true;
-		try {
-			var center = element.TransformToAncestor(rootVisual)
-				.Transform(new Point(element.ActualWidth / 2, element.ActualHeight / 2));
-			for (DependencyObject? node = VisualTreeHelper.HitTest(rootVisual, center)?.VisualHit; node != null; node = VisualTreeHelper.GetParent(node)) {
 				if (ReferenceEquals(node, element)) return true;
 			}
 		} catch (InvalidOperationException) { }
