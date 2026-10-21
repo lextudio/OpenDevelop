@@ -176,7 +176,7 @@
        AddInsList_ContainsGitAddIn / UnitTestingService_IsAvailable coming back empty, a WPF/ILSpy/
        NuGet/ASP.NET Core pad never appearing) but are really just this same missing-deployment
        problem. Deliberately NOT the whole solution: this repo also carries a number of legacy
-       net45-targeting addins (Reporting, Data/EDMDesigner, Profiler, MachineSpecifications,
+       net45-targeting addins (Reporting, Data/EDMDesigner, the legacy Profiler under Frontend/ and Controller/ - its replacement, Profiler.AddIn, is listed below - MachineSpecifications,
        CodeAnalysis, AspNet.Mvc, ...) that were never migrated and fail NU1201 against the
        modernized net10.0 Core/Base projects - only add a project here once a test actually needs
        it. -->
@@ -206,6 +206,8 @@
          like "this repo has no working debugger" rather than one more addin nobody built. -->
     <_CoreAddinProject Include="../../src/AddIns/Debugger/Debugger.AddIn/Debugger.AddIn.csproj" />
     <_CoreAddinProject Include="../../src/AddIns/Misc/TextTemplating/Project/TextTemplating.csproj" />
+    <!-- The Profiler: ProfilerIntegrationTests capture a real process and read the report it opens. -->
+    <_CoreAddinProject Include="../../src/AddIns/Analysis/Profiler/AddIn/Profiler.AddIn.csproj" />
   </ItemGroup>
   <!-- Runtime-discovered addins are intentionally not ProjectReferences of SharpDevelop, so the
        integration runner owns their preparation graph.  Restore the complete graph here, before
@@ -245,6 +247,10 @@
     <_FixtureProject Include="../fixtures/DebugTestApp/DebugTestApp.csproj" />
     <!-- A long-running managed program the attach test starts itself, then attaches to. -->
     <_FixtureProject Include="../fixtures/AttachFixture/AttachFixture.csproj" />
+    <!-- A process with a known hot method and a known number of live objects, for the Profiler tests. -->
+    <_FixtureProject Include="../fixtures/ProfilerFixture/ProfilerFixture.csproj" />
+    <!-- An ASP.NET Core service under request load, for the Profiler tests. -->
+    <_FixtureProject Include="../fixtures/ProfilerWebFixture/ProfilerWebFixture.csproj" />
     <_FixtureProject Include="../fixtures/SampleTestProject/SampleTestProject.csproj" />
 	<_FixtureProject Include="../fixtures/UnoHotReloadFixture/UnoHotReloadFixture.csproj" />
     <!-- The WPF Hot Reload journey launches this fixture for real and hot-reloads it, so the test
@@ -264,6 +270,8 @@
        #18). Windows-only: Microsoft WPF needs the Windows Desktop runtime, so a non-Windows build
        could not target it at all; the LibreWPF twin in the group above is what runs there. -->
   <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <!-- A WPF application with a busy UI thread, for the Profiler tests. -->
+    <_FixtureProject Include="../fixtures/ProfilerWpfFixture/ProfilerWpfFixture.csproj" />
     <_FixtureProject Include="../fixtures/WpfHotReloadClassLibFixture.Microsoft/Host/HotReloadClassLibHost.csproj" />
   </ItemGroup>
   <!-- Restored in its own MSBuild invocation before Build: unlike the addin projects above these
