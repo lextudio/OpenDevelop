@@ -50,28 +50,8 @@ namespace ICSharpCode.UnitTesting
 			await base.RunAsync(confirmed, progress, output, cancellationToken);
 		}
 
-		protected override ProcessStartInfo GetProcessStartInfo(IEnumerable<ITest> selectedTests)
-		{
-			var methods = testProject.GetTestMethodsForSelectedTests(selectedTests);
-			var targetFramework = methods.Select(method => method.TargetFramework).Distinct(StringComparer.OrdinalIgnoreCase).Single();
-			var fullyQualifiedNames = methods.Select(method => method.FullyQualifiedName).ToList();
-			var assembly = MtpTestProject.ResolveAssemblyDll(testProject.Project, targetFramework);
-
-			if (assembly == null || !File.Exists(assembly)) {
-				throw new InvalidOperationException("Test assembly not found for target framework '" + targetFramework + "': " + assembly);
-			}
-
-			var startInfo = new ProcessStartInfo {
-				FileName = assembly,
-				WorkingDirectory = Path.GetDirectoryName(assembly) ?? testProject.Project.Directory ?? Environment.CurrentDirectory
-			};
-			foreach (var name in fullyQualifiedNames) {
-				startInfo.ArgumentList.Add("--filter-method");
-				startInfo.ArgumentList.Add(name);
-			}
-
-			return startInfo;
-		}
+		protected override ProcessStartInfo GetProcessStartInfo(IEnumerable<ITest> selectedTests) =>
+			testProject.CreateTestHostStartInfo(selectedTests);
 
 		protected override void OnBeforeDebugStart(IEnumerable<ITest> selectedTests)
 		{

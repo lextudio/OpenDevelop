@@ -404,6 +404,33 @@ namespace ICSharpCode.UnitTesting
 			return methods;
 		}
 
+		/// <summary>
+		/// The command that runs the selected tests in their own test host process: the built test assembly with one
+		/// <c>--filter-method</c> per test. For tools that have to start the host themselves, such as the debugger
+		/// and the profiler.
+		/// </summary>
+		public System.Diagnostics.ProcessStartInfo CreateTestHostStartInfo(IEnumerable<ITest> selectedTests)
+		{
+			var methods = GetTestMethodsForSelectedTests(selectedTests);
+			var targetFramework = methods.Select(method => method.TargetFramework).Distinct(StringComparer.OrdinalIgnoreCase).Single();
+			var assembly = ResolveAssemblyDll(Project, targetFramework);
+
+			if (assembly == null || !File.Exists(assembly)) {
+				throw new InvalidOperationException("Test assembly not found for target framework '" + targetFramework + "': " + assembly);
+			}
+
+			var startInfo = new System.Diagnostics.ProcessStartInfo {
+				FileName = assembly,
+				WorkingDirectory = Path.GetDirectoryName(assembly) ?? Project.Directory ?? Environment.CurrentDirectory
+			};
+			foreach (var method in methods) {
+				startInfo.ArgumentList.Add("--filter-method");
+				startInfo.ArgumentList.Add(method.FullyQualifiedName);
+			}
+
+			return startInfo;
+		}
+
 		internal async Task<IReadOnlyList<MtpTestMethod>> ConfirmTestMethodsAsync(
 			IEnumerable<ITest> selectedTests,
 			CancellationToken cancellationToken)
