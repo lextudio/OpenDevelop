@@ -256,8 +256,7 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 
 	public async Task<DesignerSessionState> SetThemeAsync(long baseVersion, string theme, CancellationToken cancellationToken = default)
 	{
-		var state = await connection.InvokeAsync<DesignerSessionState>("design/theme",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, theme }, cancellationToken).ConfigureAwait(false);
+		var state = await Document.SetThemeAsync(baseVersion, theme, cancellationToken).ConfigureAwait(false);
 		if (state.Accepted)
 			recoveryTheme = theme;
 		return state;

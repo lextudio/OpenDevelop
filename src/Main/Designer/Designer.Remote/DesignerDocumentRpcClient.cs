@@ -69,6 +69,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public Task<DesignerSessionState> RenameAsync(long baseVersion, string elementId, string newName, CancellationToken cancellationToken = default)
 			=> connection.InvokeAsync<DesignerSessionState>("design/rename", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, newName }, cancellationToken);
 
+		public Task<DesignerSessionState> SetThemeAsync(long baseVersion, string theme, CancellationToken cancellationToken = default)
+			=> connection.InvokeAsync<DesignerSessionState>("design/theme", new { sessionId = SessionId, documentId = DocumentId, baseVersion, theme }, cancellationToken);
+
 		public Task<DesignerHitTestResult> HitTestAsync(long baseVersion, double x, double y, CancellationToken cancellationToken = default)
 			=> connection.InvokeAsync<DesignerHitTestResult>("design/hit-test", new { sessionId = SessionId, documentId = DocumentId, baseVersion, x, y }, cancellationToken);
 

@@ -448,8 +448,7 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	/// which themes the project has at all, so the IDE can show exactly those in its combo.</summary>
 	public async Task<DesignerSessionState> SetThemeAsync(long baseVersion, string theme, CancellationToken cancellationToken = default)
 	{
-		var state = await HostConnection.InvokeAsync<DesignerSessionState>("design/theme",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, theme }, cancellationToken).ConfigureAwait(false);
+		var state = await Document.SetThemeAsync(baseVersion, theme, cancellationToken).ConfigureAwait(false);
 		if (state.Accepted)
 			recoveryTheme = theme;
 		return state;
