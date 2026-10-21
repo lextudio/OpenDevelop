@@ -1,6 +1,9 @@
 # ignore all obj and bin folders (even in subdirectories)
 obj/
 bin/
+# MSBuild leaves a WPF markup-compilation project beside the real one when a build is interrupted;
+# obj/ does not cover it because it sits in the project directory.
+*_wpftmp.csproj
 /REVISION
 /build/*
 /AddIns/
