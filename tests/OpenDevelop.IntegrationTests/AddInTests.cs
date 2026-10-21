@@ -5265,6 +5265,12 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         var original = await File.ReadAllTextAsync(xamlPath);
 
         try {
+            // Earlier shared-fixture designer tests restore SamplePane.xaml on disk after their
+            // edits, but force-close does not reload an already-open document's in-memory design
+            // session. Start from the restored file rather than silently resizing a predecessor's
+            // stale session (whose later save can omit the attributes this test is checking).
+            var closed = await _app.InvokeAsync("od.close-all-document-views");
+            Assert.True(closed.GetProperty("success").GetBoolean(), closed.ToString());
             await _app.EnsureSolutionOpenAsync(solutionPath);
             await _app.InvokeAsync("od.open-file", xamlPath);
 
