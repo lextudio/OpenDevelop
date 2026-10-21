@@ -346,6 +346,10 @@ The project intentionally develops these pieces in the open so that individual c
 
 ![Profiler](images/profiler.png)
 
+### Profiling sessions
+
+![Profiling sessions](images/profiler-sessions.png)
+
 ### Class diagrams
 
 ![Class diagram](images/class-diagram.png)

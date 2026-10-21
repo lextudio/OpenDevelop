@@ -36,6 +36,7 @@ This is an integration project with a self-built viewer, not a new sampling engi
 - Profile an OpenDevelop startup project, or attach to an existing supported .NET process.
 - Collect CPU sampling profiles without a custom native profiler.
 - Collect managed-heap snapshots and inspect them in native views.
+- Write memory dumps of a running process, and open dumps from anywhere (a Windows dump, a Linux or macOS core file), read offline with ClrMD, in the same heap views plus a threads view (section 7.3).
 - Same commands and session model on Windows, macOS, and Linux.
 - Reuse the project system, launch configuration, add-in infrastructure, workbench documents, and Output/Error reporting.
 - Keep captured files portable.
@@ -168,7 +169,8 @@ The flame graph is the one new graphical control that cannot be reused from the 
 | **Instances view** | Instances of a selected type | Phase 2 |
 | **Paths to Root / Referenced Types** | Who references the selection; what it references | Phase 2 |
 | **Compare To** | Diff two snapshots, sorted by growth | Phase 2 |
-| **Insights** | Duplicate Strings, Sparse Arrays, Event Handler Leaks | Phase 3 |
+| **Insights** | Event Handler Leaks (from the heap events); Duplicate Strings and Sparse Arrays on the Contents tab (from memory, section 7.4) | Phase 3 |
+| **Memory dump** | A `.dmp` or core file opened as the Heap tab (every view above) and a Threads tab (threads, exceptions, stacks) | Phase 3 |
 
 Show this warning before capture: collecting a managed-heap snapshot triggers a full (generation 2) garbage collection and may pause the target. A snapshot is a managed-heap graph, not a process memory dump or an allocation timeline.
 
@@ -213,9 +215,47 @@ Every report view is a pure function of the profile and a `ProfileFilter` (time 
 
 `HeapCapture` enables the runtime provider with the `GCHeapSnapshot` keywords at verbose level. That makes the runtime run one full (generation 2) collection and emit the whole object graph as events (`TypeBulkType` for type names, `GCBulkNode` for each object, `GCBulkEdge` and the root events for references). The capture tees the stream to the file while reading it, and stops the session once the collection's stop event has arrived after the node events, or after a timeout (two minutes) or cancellation. The target is paused for the length of that collection, which the picker says before the user starts.
 
-### 7.2 What is read today
+### 7.2 What is read
 
-`NettraceHeapReader` aggregates the node events by type name into a `HeapSnapshot`: object count, shallow size and share of the heap per type, plus a per-type comparison between two snapshots. The graph itself (edges and roots) is in the file but is not loaded yet, so there is no Paths to Root, Referenced Types or retained size. Adding them means loading the edge events into compact arrays and computing the dominator tree asynchronously; the file already holds everything needed.
+`NettraceHeapReader` aggregates the node events by type name into a `HeapSnapshot`: object count, shallow size and share of the heap per type, plus a per-type comparison between two snapshots. It also loads the edge and root events into a `HeapGraph` (compact arrays: every object's type, size and address, the references between objects, the GC roots). The graph answers who holds a type alive (shortest path from a root), what it holds, and, through a dominator tree computed off the UI thread, how much memory each type and instance keeps alive.
+
+### 7.3 Memory dumps
+
+A memory dump is the other source of a heap, and it carries what the GC events cannot: the objects' contents. Everything that reads one uses ClrMD (`Microsoft.Diagnostics.Runtime`, MIT), a deliberate exception to the rule of only using `DiagnosticsClient` and `TraceEvent`. It is isolated to three classes in `Core`, so it can be dropped without touching the EventPipe paths.
+
+**Two ways in, one reader.**
+
+| Way in | What happens |
+|---|---|
+| **Capture Memory Dump of Process...** | `DumpCapture` asks the runtime, over the diagnostic port, to write a dump with the heap (`DumpType.WithHeap`) into a new session as `process.dmp`, then opens it. The process is paused while the file is written; the picker says so, and the file is as large as the process's memory. |
+| **Open Profiling Report...** or File > Open on a dump | The file is recognised by its header, not its name: `MDMP` for a Windows dump, an ELF header of type core for a Linux core file, a Mach-O header of type core for macOS. The display binding claims the usual names (`.dmp`, `.mdmp`, `.hdmp`, and a bare `core` or `core.1234`); a dump with another name opens through Open Profiling Report, which checks the header. |
+
+**What `DumpReader` produces, in one walk of the heap.**
+
+1. A `HeapSnapshot` with its `HeapGraph`, built from `ClrHeap.EnumerateObjects`, each object's reference addresses and `EnumerateRoots`, through the same graph builder the EventPipe reader uses. A dump therefore opens in the existing heap views unchanged: Types, Path to Root, Instances, retained size, Insights, and Compare To (a dump can be the baseline or the subject of a comparison with a snapshot).
+2. The content findings (7.4), computed in the same walk by a `ContentScanner` that the opt-in scan after a snapshot also uses, so there is one definition of what a duplicate string or a sparse array is.
+3. The managed threads: managed and operating system id, state (alive, finalizer, GC, dead), the exception being handled, and up to 200 frames of stack, top frame first.
+4. What the dump is: the runtime version, the operating system and architecture it came from, and its size.
+
+**The report.** `DumpReportView` has a header line and two tabs: **Heap** (the heap report, with the Contents tab) and **Threads** (the list, with the selected thread's stack below it; it opens on a thread that holds an exception, else on the live thread with the deepest stack). A dump is read offline: nothing is attached to and nothing is paused when one is opened.
+
+**Limits and failure modes, stated in the product.**
+
+- **The data access library.** ClrMD needs the runtime's own `mscordaccore` to read managed memory. It finds it beside the runtime in a full dump or on the machine; for a minidump, or a dump from another machine, it fetches it from the Microsoft symbol server, which needs a network. When it cannot, the error says so rather than reporting a generic failure.
+- **Cross-platform.** A dump made on one operating system is readable on another where ClrMD and the matching library are available. Only Windows has been exercised (section 18.5).
+- **Size.** The whole object graph is held in memory as arrays (several tens of bytes per object and a few per reference; not yet measured on a large dump); a heap of more than 20 million objects stops with a message instead of exhausting memory. The "large capture" warning applies at ten times its threshold for a dump, because a dump's size on disk (all native pages included) says little about the cost of reading its managed heap.
+- **Not a dump.** A file that is not a dump is refused by its header before ClrMD sees it. ClrMD leaves a file it cannot open as a dump held open, which would block deleting it.
+- **Native code.** Only managed objects and managed frames are read; native frames and native memory are not.
+- **Privacy.** A dump contains the process's memory: strings, secrets, credentials. It is written to the session folder (or the folder chosen in Profiler Settings), never uploaded, and a dump written only to feed the opt-in content scan after a snapshot is deleted as soon as it has been read. Sessions of dumps are subject to the same retention as other captures.
+
+### 7.4 Content insights
+
+The GC heap events carry no object contents, so Duplicate Strings and Sparse Arrays come from reading memory. `ContentScanner` looks at each object as the heap is walked:
+
+- **Duplicate strings.** Strings of at least eight characters are grouped by value (a 64-bit hash of up to the first 4,096 characters, so memory stays flat on a heap of millions of strings). A group with more than one member is reported with its copies and the bytes the extra copies waste, when that is at least 1 KB. The 100 largest are kept.
+- **Sparse arrays.** A one-dimensional array of at least 16 elements whose elements are not structs, of which at least 90% are all-zero bytes (null for references, zero for numbers), and whose empty elements take at least 1 KB. An array over 64 MB is judged by its first 64 MB. The 100 largest are kept.
+
+The result is a `ContentInsights` that is saved as `heap.contents.json` beside a heap snapshot, so a snapshot reopens with it. Reading it for a live process is **opt-in** (Profiler Settings: after a heap snapshot, also read the process's memory) because it pauses the process a second time and writes a temporary dump. A scan that fails does not fail the snapshot. A dump opened as a report always has the findings, since the walk is already being made.
 
 ---
 
@@ -258,7 +298,8 @@ Keep the legacy sources in a clearly marked legacy location until migration is v
 | Profile Current Project (CPU) | Bounded capture, then open the report document |
 | Attach CPU Profiler to Process... | Pick process, capture, open report |
 | Capture Managed Heap Snapshot... | Pick process, capture, add to the snapshots table |
-| Open Profiling Report... | Open a `.nettrace` capture |
+| Capture Memory Dump of Process... | Pick process, write a dump with the heap into a session, open it (the process is paused meanwhile) |
+| Open Profiling Report... | Open a `.nettrace` capture or a memory dump (`.dmp`, `.mdmp`, `.hdmp`, a core file) |
 | Profiling Sessions | Recent sessions: open, reveal folder, delete |
 | Profiler Settings... | Tool locations, duration, output location |
 
@@ -390,10 +431,12 @@ Mock the process runner and file system for command construction, version discov
 
 ### Phase 3: Expansion (each needs its own value review)
 
-- Memory Insights: Duplicate Strings, Sparse Arrays, Event Handler Leaks.
-- Runtime counters and GC events.
-- Debugger-integrated profiling alongside sharpdbg.
-- Remote/container diagnostic-port support.
+- Memory Insights: done. Event Handler Leaks (a heuristic on delegate targets) come from the heap events. Duplicate Strings and Sparse Arrays need object contents, which those events lack, so they are read from a memory dump with ClrMD (`Microsoft.Diagnostics.Runtime`, a deliberate exception to "DiagnosticsClient and TraceEvent only"); the scan is opt-in (Profiler Settings), pauses the process while its dump is written, and the dump is deleted after reading.
+- Runtime counters and GC events: done. Captures record the `System.Runtime` counters once a second (CPU use, GC heap size, collections per generation, time in GC, allocation rate, exceptions, thread pool); the report has a Counters view on the same time axis as the samples.
+- Allocation profiling (added in this phase): done. One sample per allocation tick, with the allocating stack and the allocated type; every call tree view works on it, measured in KB.
+- Debugger-integrated profiling alongside sharpdbg: done. `IDebuggerService.DebuggedProcessId` (new) tells other tools which process the debugger is attached to; the DAP session records it for all three ways a session starts (attach, held launch, adapter launch via the `process` event). The profiler uses it for **Attach CPU Profiler to Debugged Process** (no picker) and to warn about a runtime paused at a breakpoint only when the process chosen is the debugged one.
+- Remote/container diagnostic-port support: done as "Attach to Diagnostic Port": the IDE listens at an address and the program connects to it (`DOTNET_DiagnosticPorts`), so it needs no local process.
+- Memory dumps: done. Write a dump of a running process and open any dump (Windows, Linux or macOS core) with ClrMD in the heap views, the content findings and a threads view (section 7.3). Verified on Windows with a dump of a real process; macOS and Linux dumps, minidumps without a local data access library, and very large dumps are not.
 
 ---
 
@@ -414,6 +457,9 @@ Mock the process runner and file system for command construction, version discov
 | F-11 | Cancellation | Collector stops safely; attached app is not killed; partial files not mislabeled |
 | F-12 | Old engine absent | MVP runs with no native hook, COM registration, or SQLite capture project |
 | F-13 | Paths | Spaces and Unicode paths work on all target platforms |
+| F-14 | Dump capture and open | A dump written from a running process opens as a report with the heap, the contents findings and the threads, and the process keeps running |
+| F-15 | Not a dump | A file that is not a dump is refused with a message before any reader touches it, and is not left locked |
+| F-16 | Dump without a data access library | The error names the missing runtime library and the symbol server instead of a generic failure |
 
 Platform and workload validation: short and long-running console apps, ASP.NET Core under load, a desktop app, manually selected processes, diagnostics disabled or lacking permission, restart-and-reopen, and a heap capture under a substantial allocation workload.
 
@@ -433,6 +479,10 @@ Platform and workload validation: short and long-running console apps, ASP.NET C
 | Diagnostics blocked by permissions, `TMPDIR`, containers | Capture fails | Preflight and clear errors; defer remote support |
 | Diagnostics tool flags or profile names change | Wrong command | Version detection; pin tested versions |
 | Reports contain sensitive data | Privacy | Local-only handling; no uploads |
+| A memory dump contains the process's memory (secrets, credentials) | Privacy | Written only to the session or chosen folder; never uploaded; a dump made only for the contents scan is deleted after reading; retention applies |
+| A dump needs the matching `mscordaccore`, possibly from the symbol server | Dump cannot be read offline or without a network | The error names the cause; a full dump from the same machine needs nothing |
+| A dump's object graph is held in memory | Out of memory on a huge heap | A 20-million-object cap with a message; the large-capture warning; streaming is future work |
+| ClrMD is a second diagnostics stack beside `DiagnosticsClient` and `TraceEvent` | Dependency and version drift | Isolated to the dump reader, the content scanner and the content analyzer; the EventPipe paths do not use it |
 | Restoring all old features at once | Delay | Phase gates |
 
 ---
@@ -468,7 +518,7 @@ Platform and workload validation: short and long-running console apps, ASP.NET C
 9. [Measure CPU utilization in your apps](https://learn.microsoft.com/en-us/visualstudio/profiling/beginners-guide-to-performance-profiling)
 10. [Measure memory usage in your apps](https://learn.microsoft.com/en-us/visualstudio/profiling/memory-usage)
 
-## 18. Implementation Status (October 20, 2026)
+## 18. Implementation Status (October 21, 2026)
 
 ### 18.1 What exists
 
@@ -476,12 +526,12 @@ Platform and workload validation: short and long-running console apps, ASP.NET C
 |---|---|---|
 | Data layer: capture, parsing, aggregation, sessions, heap graph | `src/AddIns/Analysis/Profiler/Core/` (`net10.0`, no WPF) | Done |
 | IDE add-in: commands, capture window, process picker, sessions window, report views | `src/AddIns/Analysis/Profiler/AddIn/` (`Profiler.AddIn`, in-process add-in) | Done; see 18.3 |
-| Unit tests (105) | `tests/OpenDevelop.Profiler.Tests/` | Aggregation, sessions, comparison, heap graph, frame-name parsing, plus real captures of a fixture process (attach, startup launch, heap) |
-| Integration tests (11) | `tests/OpenDevelop.IntegrationTests/ProfilerIntegrationTests.cs` | Through the real IDE: open project, build, Profile Current Project and analyse the run; attach; report views, find, range; heap graph, retained size and compare; sessions window; reopen; launch from startup; Go to Source; profiling a test; an ASP.NET Core service under request load; a WPF application with a busy UI thread |
+| Unit tests (143) | `tests/OpenDevelop.Profiler.Tests/` | Aggregation, sessions and pruning, comparison, heap graph, frame-name parsing, CSV export, plus real captures of a fixture process (attach, startup launch, diagnostic port, heap, allocations, counters) |
+| Integration tests (22) | `tests/OpenDevelop.IntegrationTests/ProfilerIntegrationTests.cs` | Through the real IDE: open project, build, Profile Current Project and analyse the run; attach; report views, find, range; heap graph, retained size and compare; sessions window; reopen; launch from startup; Go to Source; profiling a test; an ASP.NET Core service under request load; a WPF application with a busy UI thread |
 | Fixture programs | `tests/fixtures/ProfilerFixture/`, `ProfilerWebFixture/`, `ProfilerWpfFixture/` | A console program with a known hot method, live objects and startup work; an ASP.NET Core service; a WPF application with a busy UI thread |
 | Legacy profiler | `Controller/`, `Frontend/`, `Hook/`, `X64Converter/` | Sources kept, removed from `SharpDevelop.slnx` |
 
-The add-in keeps the `Profiler.AddIn` identity and the **Analysis > Profiler** menu: Profile Current Project (CPU), Attach CPU Profiler to Process, Capture Managed Heap Snapshot, Profiling Sessions, Open Profiling Report. **Run with Profiler** is in the Unit Tests pad's context menu. `.nettrace` files open in the report view from the file system or File > Open.
+The add-in keeps the `Profiler.AddIn` identity and the **Analysis > Profiler** menu: Profile Current Project (CPU), Attach CPU Profiler to Process, Attach CPU Profiler to Debugged Process, Allocation Profile Current Project, Attach Allocation Profiler to Process, Attach to Diagnostic Port, Capture Managed Heap Snapshot, Capture Memory Dump of Process, Profiling Sessions, Open Profiling Report, Profiler Settings. **Run with Profiler** is in the Unit Tests pad's context menu. `.nettrace` files open in the report view from the file system or File > Open.
 
 ### 18.2 Phase 0 results
 
@@ -509,8 +559,19 @@ The add-in keeps the `Profiler.AddIn` identity and the **Analysis > Profiler** m
 | Profile Current Project from startup | Done; falls back to attaching on a runtime that cannot suspend |
 | Run with Profiler for selected tests (Unit Tests pad) | Done for Microsoft.Testing.Platform test projects; the test host is started held at startup and sampled until it exits |
 | Heap: retained size per type and per instance, Instances tab | Done: the dominator tree is computed off the UI thread and the table fills in when it finishes |
-| Heap: Insights (Largest retainers, Event handler targets) | Done. Event handler targets lists the types that delegates point at, which is where to look for subscriptions never removed; delegates are recognised by type name, so it is a heuristic. Duplicate Strings and Sparse Arrays cannot be reported: a heap snapshot has no object contents |
-
+| Heap: Insights (Largest retainers, Event handler targets) | Done. Event handler targets lists the types that delegates point at, which is where to look for subscriptions never removed; delegates are recognised by type name, so it is a heuristic. Duplicate Strings and Sparse Arrays come from the opt-in contents scan (a memory dump read with ClrMD), shown on the Contents tab |
+| CPU compare with another capture (Functions view: change in each function's share of CPU time, in percentage points) | Done; matched on function and module name, so a renamed method shows as one that vanished and one that appeared |
+| Allocation profile (attach; one sample per ~100 KB allocated, with the allocating stack and the allocated type as the leaf) | Done; every CPU view applies, measured in KB. Sizes are estimates, and small allocations can be missed |
+| Counters view (CPU use, working set, GC heap size, collections per generation, time in GC, allocation rate, exceptions, thread pool, JIT) | Done for captures made by this version; older captures show a note |
+| Export to CSV (call tree or function list; heap type table) | Done; numbers in the invariant culture, units in the column headings, UTF-8 with a byte order mark |
+| Attach to Diagnostic Port (listen at an address; a program started elsewhere connects) | Done; for containers, forwarded sockets and service managers. The target is named by its host, since the protocol does not give a client its process id |
+| Large capture warning (default 200 MB and over) | Done; asks before opening; the threshold is a setting |
+| Views recomputed off the UI thread | Done: the call tree the report opens on, and every recomputation after a filter change on a capture of 100,000 samples or more (smaller ones recompute inline); a result a newer change has overtaken is dropped |
+| Allocation profile from startup and for the current project (Analysis > Profiler > Allocation Profile Current Project) | Done; the same held-at-startup launch as the CPU profile |
+| Profiler Settings (captures kept, large-capture threshold, store folder) | Done; stored in the IDE properties. Retention: starting a capture removes the oldest finished sessions beyond the newest N (default 30); the store folder defaults to `.opendevelop/profiling` in the solution folder |
+| Debugger integration: Attach CPU Profiler to Debugged Process, and a warning when the chosen process is the debugged one and is stopped at a breakpoint | Done; when the debugger does not report its process the warning falls back to "the debugger is stopped" |
+| Capture Memory Dump of Process | Done; writes a dump with the heap into a session and opens it; the process is paused meanwhile |
+| Open a memory dump (Heap tab and Threads tab) | Done; read offline with ClrMD in one walk: types, object graph (Path to Root, Instances, retained size, Insights, Compare To), duplicate strings and sparse arrays, threads with exceptions and stacks. Recognised by header; the usual names and `core` bind the display |
 The report toolbars use the Visual Studio Image Library glyphs the host already ships (`Resources/VS2026`), registered under `Profiler.*` in `PresentationResourceService`. Where the library has no equivalent (flame graph, just my code, blocked samples) the nearest glyph is used.
 
 ### 18.4 Reuse of the legacy controls: assessment
@@ -528,11 +589,10 @@ The legacy `Profiler.Controls` project is about 3,400 lines on .NET Framework 4.
 ### 18.5 Known gaps and next steps
 
 1. **macOS and Linux have not been run.** The code paths are the same, but the diagnostic-port discovery caveats (`TMPDIR`, containers) and the socket-based startup suspension are unexercised there.
-2. **Content-based heap insights** (Duplicate Strings, Sparse Arrays): impossible from the GC heap events, which carry no object contents; they would need a reader of a full dump (ClrMD).
-3. **Heap snapshot size**: the capture file holds the whole graph (about 1.9 MB for 41,000 objects), and the graph is loaded fully into memory. Large heaps need a size warning and a streaming reader.
-4. **Report parsing happens on the UI thread for the final view construction**: parsing is off-thread, but building the call tree for a very large capture (hundreds of thousands of samples) briefly blocks the UI.
-5. **Retention**: sessions accumulate under `.opendevelop/profiling/` until deleted from the Profiling Sessions window.
-6. **Tests that use another test framework** are not profiled (only Microsoft.Testing.Platform projects are supported).
+2. **Content-based heap insights** (Duplicate Strings, Sparse Arrays) read a memory dump through ClrMD after the snapshot. They are opt-in (the process is paused again and a dump as large as its memory is written to the temporary folder), strings longer than 4,096 characters are compared by their first 4,096, and only the 100 largest findings of each kind are kept. Measured on Windows only.
+3. **Heap snapshot size**: the capture file holds the whole graph (about 1.9 MB for 41,000 objects), and the graph is loaded fully into memory. A warning now precedes opening a capture of 200 MB or more; a streaming reader is not built, so a very large heap still needs memory several times its file size.
+4. **Tests that use another test framework** are not profiled (only Microsoft.Testing.Platform projects are supported).
+5. **Debugger integration** covers attaching to the debugged process and the breakpoint warning; it does not start a profiled run from a debug session, and a capture of a process stopped at a breakpoint records nothing until it continues.
 
 ---
 
