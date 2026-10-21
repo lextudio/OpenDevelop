@@ -17,6 +17,10 @@ public static class HeapCapture
     // breakpoint, or at startup) never acknowledges, and the capture must still return.
     static readonly TimeSpan StopGrace = TimeSpan.FromSeconds(10);
 
+    // The SampleProfiler provider answers this keyword by flushing the type table, which is what lets the heap dump
+    // name the objects it reports. dotnet-gcdump opens the same session before it asks for a dump.
+    const long TypeFlushKeyword = 0x000F000000000000;
+
     public static Task<CaptureResult> CaptureAsync(
         int processId,
         string outputPath,
@@ -34,6 +38,13 @@ public static class HeapCapture
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
         var clock = Stopwatch.StartNew();
+
+        // The runtime only walks the heap while a type-flush session is listening. Without one it suspends the target
+        // and then stalls: the dump session sees GC/SuspendEEStart and nothing else, the target stops answering the
+        // diagnostics port, and the capture times out (reproduced on macOS with .NET 10, where dotnet-gcdump captures
+        // the same process in seconds). Keep the session open for the whole capture, as dotnet-gcdump does.
+        using var typeFlush = StartTypeFlushSession(client);
+
         EventPipeSession session;
         try
         {
@@ -146,6 +157,37 @@ public static class HeapCapture
         }
 
         return new CaptureResult(outputPath, TargetExited: false, clock.Elapsed);
+    }
+
+    // Nothing reads the flush session, but its stream has to keep draining or the runtime blocks on the buffer it is
+    // writing into, which would freeze the target just as surely as no session at all.
+    static EventPipeSession? StartTypeFlushSession(DiagnosticsClient client)
+    {
+        EventPipeSession session;
+        try
+        {
+            session = client.StartEventPipeSession(
+                [new EventPipeProvider("Microsoft-DotNETCore-SampleProfiler", EventLevel.Informational, TypeFlushKeyword)],
+                requestRundown: false, circularBufferMB: 64);
+        }
+        catch (Exception)
+        {
+            // A target that refuses this session has no snapshot to lose; let the dump session report the real problem.
+            return null;
+        }
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                session.EventStream.CopyTo(Stream.Null);
+            }
+            catch (Exception)
+            {
+                // The session ends with the capture, which is the normal end of this reader.
+            }
+        });
+        return session;
     }
 
     /// <summary>Decides whether a finished capture is a complete snapshot; returns the reason when it is not.</summary>
