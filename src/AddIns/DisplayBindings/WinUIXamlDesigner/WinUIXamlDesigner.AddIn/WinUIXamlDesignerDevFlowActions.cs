@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
+using ICSharpCode.SharpDevelop.Designer.Surface;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Designer.Shell;
@@ -313,10 +314,12 @@ public static class WinUIXamlDesignerDevFlowActions
 		list.ScrollIntoView(listItem);
 		list.UpdateLayout();
 
-		if (list.ItemContainerGenerator.ContainerFromItem(listItem) is not FrameworkElement container)
+		if (DesignerToolboxHitTest.FindRealizedContainer(list, listItem) is not FrameworkElement container)
 			return Failure("Toolbox row has no realized container: " + controlName);
 		container.BringIntoView();
 		list.UpdateLayout();
+		if (!DesignerToolboxHitTest.WaitUntilHitTestableAt(container))
+			return Failure("Toolbox row never became hit-testable at its own layout position: " + controlName);
 
 		var origin = container.PointToScreen(new Point(0, 0));
 		return JsonSerializer.Serialize(new {
