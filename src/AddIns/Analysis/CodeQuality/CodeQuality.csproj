@@ -68,4 +68,10 @@
     <Page Include="Gui\DependencyMatrixView.xaml" />
     <Page Include="Gui\MainView.xaml" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Version and platform attributes come from the shared file the other 60 projects link.
+         Without it this assembly carried no product version and was not declared Windows-only,
+         which is what made every call into the rest of the product report CA1416. -->
+    <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
+  </ItemGroup>
 </Project>

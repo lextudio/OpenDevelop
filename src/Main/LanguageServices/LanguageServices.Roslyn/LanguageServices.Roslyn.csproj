@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>ICSharpCode.LanguageServices.Roslyn</AssemblyName>
     <RootNamespace>ICSharpCode.SharpDevelop.LanguageServices</RootNamespace>
@@ -13,5 +14,11 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" />
     <PackageReference Include="Microsoft.CodeAnalysis.VisualBasic.Workspaces" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Version and platform attributes come from the shared file the other 60 projects link.
+         Without it this assembly carried no product version and was not declared Windows-only,
+         which is what made every call into the rest of the product report CA1416. -->
+    <Compile Include="../../GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
 </Project>
