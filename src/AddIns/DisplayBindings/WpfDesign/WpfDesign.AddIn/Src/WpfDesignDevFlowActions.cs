@@ -552,10 +552,9 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			});
 		}
 
-		static object GetScreenBounds(UIElement element)
+		static object GetScreenBounds(FrameworkElement element)
 		{
-			var topLeft = element.PointToScreen(new Point(0, 0));
-			var bottomRight = element.PointToScreen(new Point(element.RenderSize.Width, element.RenderSize.Height));
+			var bounds = DesignerSurfaceGeometryProbe.ScreenBoundsOf(element, element.RenderSize);
 			// Raw DevFlow press/drag-move/release endpoints feed their coordinates straight
 			// to cliclick on macOS. LibreWPF can expose client-relative PointToScreen values
 			// while its portable presentation source is active, so calibrate both corners to
@@ -568,17 +567,16 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			{
 				var reportedOrigin = window.PointToScreen(new Point());
 				var delta = new Vector(nativeOrigin.X - reportedOrigin.X, nativeOrigin.Y - reportedOrigin.Y);
-				topLeft += delta;
-				bottomRight += delta;
+				bounds.Offset(delta.X, delta.Y);
 			}
 			return new {
 				success = true,
-				x = topLeft.X,
-				y = topLeft.Y,
-				width = bottomRight.X - topLeft.X,
-				height = bottomRight.Y - topLeft.Y,
-				centerX = (topLeft.X + bottomRight.X) / 2,
-				centerY = (topLeft.Y + bottomRight.Y) / 2
+				x = bounds.X,
+				y = bounds.Y,
+				width = bounds.Width,
+				height = bounds.Height,
+				centerX = bounds.X + bounds.Width / 2,
+				centerY = bounds.Y + bounds.Height / 2
 			};
 		}
 

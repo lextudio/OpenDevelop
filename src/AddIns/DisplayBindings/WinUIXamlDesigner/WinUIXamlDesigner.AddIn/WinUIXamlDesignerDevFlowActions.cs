@@ -321,16 +321,16 @@ public static class WinUIXamlDesignerDevFlowActions
 		if (!DesignerToolboxHitTest.WaitUntilHitTestableAt(container))
 			return Failure("Toolbox row never became hit-testable at its own layout position: " + controlName);
 
-		var origin = container.PointToScreen(new Point(0, 0));
+		var bounds = DesignerSurfaceGeometryProbe.ScreenBoundsOf(container);
 		return JsonSerializer.Serialize(new {
 			success = true,
 			name = tool.Name,
-			x = origin.X,
-			y = origin.Y,
-			width = container.ActualWidth,
-			height = container.ActualHeight,
-			centerX = origin.X + container.ActualWidth / 2,
-			centerY = origin.Y + container.ActualHeight / 2
+			x = bounds.X,
+			y = bounds.Y,
+			width = bounds.Width,
+			height = bounds.Height,
+			centerX = bounds.X + bounds.Width / 2,
+			centerY = bounds.Y + bounds.Height / 2
 		});
 	}
 

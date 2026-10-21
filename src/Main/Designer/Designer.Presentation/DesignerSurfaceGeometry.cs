@@ -33,9 +33,13 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 	{
 		/// <summary>An element's screen-space bounding rectangle (two-corner PointToScreen).</summary>
 		public static Rect ScreenBoundsOf(FrameworkElement element)
+			=> ScreenBoundsOf(element, new Size(element.ActualWidth, element.ActualHeight));
+
+		/// <summary>Screen-space bounds using an explicit rendered size when it differs from layout size.</summary>
+		public static Rect ScreenBoundsOf(FrameworkElement element, Size size)
 		{
 			var topLeft = element.PointToScreen(new Point(0, 0));
-			var bottomRight = element.PointToScreen(new Point(element.ActualWidth, element.ActualHeight));
+			var bottomRight = element.PointToScreen(new Point(size.Width, size.Height));
 			return new Rect(topLeft.X, topLeft.Y, bottomRight.X - topLeft.X, bottomRight.Y - topLeft.Y);
 		}
 
