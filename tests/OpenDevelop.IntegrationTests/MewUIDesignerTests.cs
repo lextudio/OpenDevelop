@@ -136,10 +136,12 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.True(status.GetProperty("toolboxItemCount").GetInt32() >= 16, status.ToString());
 		var filteredTools = await app.InvokeAsync("od.mewui-designer.toolbox.filter", "textbox"); Assert.Equal(1, filteredTools.GetProperty("itemCount").GetInt32());
 		var allTools = await app.InvokeAsync("od.mewui-designer.toolbox.filter", ""); Assert.True(allTools.GetProperty("itemCount").GetInt32() >= 16, allTools.ToString());
-		Assert.Equal(3, status.GetProperty("toolbarItemCount").GetInt32());
-		Assert.Equal(new[] { "Zoom", "Fit", "Gridlines" }, status.GetProperty("toolbarItems").EnumerateArray().Select(x => x.GetString()).ToArray());
+		Assert.Equal(4, status.GetProperty("toolbarItemCount").GetInt32());
+		Assert.Equal(new[] { "Zoom", "Fit", "Gridlines", "Show Names" }, status.GetProperty("toolbarItems").EnumerateArray().Select(x => x.GetString()).ToArray());
 		var zoomed = await app.InvokeAsync("od.mewui-designer.zoom", 1.25); Assert.Equal(1.25, zoomed.GetProperty("zoom").GetDouble());
 		var fitted = await app.InvokeAsync("od.mewui-designer.fit"); Assert.True(fitted.GetProperty("measured").GetBoolean(), fitted.ToString()); Assert.InRange(fitted.GetProperty("zoom").GetDouble(), .05, 2);
+		var namesShown = await app.InvokeAsync("od.mewui-designer.show-names", true); Assert.True(namesShown.GetProperty("showNames").GetBoolean(), namesShown.ToString());
+		var namesHidden = await app.InvokeAsync("od.mewui-designer.show-names", false); Assert.False(namesHidden.GetProperty("showNames").GetBoolean(), namesHidden.ToString());
 		// Fit's contract is that the whole frame is visible, margin included - not a particular scale.
 		Assert.True(fitted.GetProperty("frameFitsViewport").GetBoolean(), fitted.ToString());
 		// The shared DesignerCanvas toolbar's Fit action bypasses the Zoom combo - without syncing

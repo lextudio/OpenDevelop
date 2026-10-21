@@ -29,7 +29,7 @@ public static class MewUIDesignerDevFlowActions
 			selectedName = view.SelectedName, selectedIds = view.SelectedIds, hostProcessId = view.HostProcessId, hostPoolKey = view.HostPoolKey, hostSessionId = view.HostSessionId, hostDocumentId = view.HostDocumentId, activeHostLeases = view.ActiveHostLeases, hostRecoveryCount = view.HostRecoveryCount, canUndo = view.EnableUndo, canRedo = view.EnableRedo,
 			toolboxItemCount = view.ToolboxItemCount, toolboxDrag = SharedToolbox.Instance.DragDiagnostic, toolboxFilterText = view.ToolboxFilterText, toolboxSelectedItem = view.SelectedToolboxType, toolboxHosted = view.IsToolboxHosted, toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true, zoomComboSelectedIndex = view.ZoomComboSelectedIndex, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
 			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName, propertyPadPropertyCount = grid?.Properties?.Count ?? 0,
-			hasNativeFrame = view.HasNativeFrame, nativeFrameWidth = view.NativeFrameWidth, nativeFrameHeight = view.NativeFrameHeight, nativeBoundsCount = view.NativeBoundsCount, diagnostics = view.Diagnostics, toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines,
+			hasNativeFrame = view.HasNativeFrame, nativeFrameWidth = view.NativeFrameWidth, nativeFrameHeight = view.NativeFrameHeight, nativeBoundsCount = view.NativeBoundsCount, diagnostics = view.Diagnostics, toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines, showNames = view.ShowNames,
 			isDirty = view.IsDesignerDirty, hostLogTail = view.HostLogTail
 		});
 	}
@@ -116,6 +116,8 @@ public static class MewUIDesignerDevFlowActions
 	public static string Fit() { var v = Activate(); v?.FitDesign(); return JsonSerializer.Serialize(new { success = v != null, zoom = v?.Zoom ?? 0, measured = v?.FitMeasured ?? false, frameFitsViewport = v?.FrameFitsViewport ?? false }); }
 	[DevFlowAction("od.mewui-designer.gridlines", Description = "Toggle MewUI design-space gridlines")]
 	public static string Gridlines(bool enabled) { var v = Activate(); v?.ShowGridlines(enabled); return JsonSerializer.Serialize(new { success = v != null, gridlines = v?.Gridlines ?? false }); }
+	[DevFlowAction("od.mewui-designer.show-names", Description = "Toggle selection name labels through the MewUI designer canvas toolbar")]
+	public static string ShowNames(bool enabled) { var v = Activate(); if (v != null) v.ShowNames = enabled; return JsonSerializer.Serialize(new { success = v != null, showNames = v?.ShowNames ?? false }); }
 
 	// Mirrors od.wpf-designer.toolbox.query-item-bounds / od.gtk-designer.toolbox.query-item-bounds -
 	// real screen bounds via plain UIElement.PointToScreen, so a test can drive a REAL synthetic

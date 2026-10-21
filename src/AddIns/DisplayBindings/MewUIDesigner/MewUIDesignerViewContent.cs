@@ -84,7 +84,7 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	}
 	public int ToolboxItemCount => tools.VisibleItemCount; public bool IsToolboxHosted => tools.IsHosted; public bool IsOutlineHosted => ReferenceEquals((SD.Services.GetService(typeof(IOutlinePadHost)) as IOutlinePadHost)?.HostedContent, outline); public int OutlineItemCount => ElementCount;
 	public int ToolbarItemCount => canvas.VisibleToolbarItems.Count; public IReadOnlyList<string> ToolbarItems => canvas.VisibleToolbarItems; public string ToolbarCapabilities => canvas.Capabilities.ToString(); public double Zoom { get => canvas.ViewportScale; set => canvas.SetViewport(Math.Clamp(value, .25, 2), 0, 0); }
-	public bool Gridlines => canvas.Gridlines; public bool FitMeasured { get; private set; } public void FitDesign() => FitView(); public void ShowGridlines(bool show) { canvas.IsGridEnabled = show; canvas.SetGridlines(show); }
+	public bool Gridlines => canvas.Gridlines; public bool ShowNames { get => canvas.IsShowingNames; set => canvas.IsShowingNames = value; } public bool FitMeasured { get; private set; } public void FitDesign() => FitView(); public void ShowGridlines(bool show) { canvas.IsGridEnabled = show; canvas.SetGridlines(show); }
 	public bool HasNativeFrame => state.Render is { Width: > 0, Height: > 0 } r && (!string.IsNullOrEmpty(r.Data) || !string.IsNullOrEmpty(r.PngBase64)); public int NativeFrameWidth => state.Render?.Width ?? 0; public int NativeFrameHeight => state.Render?.Height ?? 0; public int NativeBoundsCount => state.Tree == null ? 0 : Flatten(state.Tree).Count(n => n.Width > 0 && n.Height > 0);
 	public string[] Diagnostics => state.Diagnostics.Select(d => d.Message).ToArray();
 	public string HostLogTail { get { var log = host?.ChildLog ?? ""; return log.Length <= 2000 ? log : log[^2000..]; } }
@@ -302,7 +302,7 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	void Select(DesignerElementNode? n, bool toggle = false) => selection.Select(n == null ? Array.Empty<DesignerElementNode>() : new[] { n }, toggle ? DesignerSelectionOperation.Toggle : DesignerSelectionOperation.Replace);
 	void ConfigureCanvas()
 	{
-		canvas.Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit | DesignerCanvasCapabilities.Gridlines;
+		canvas.Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit | DesignerCanvasCapabilities.Gridlines | DesignerCanvasCapabilities.ShowNames;
 		canvas.ResizeHandlesEnabled = false;
 		canvas.SetContextCommands(new[] { ("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete"),
 			("-", ""), ("Order/Move First", "move-first"), ("Order/Move Earlier", "move-earlier"), ("Order/Move Later", "move-later"), ("Order/Move Last", "move-last"),
