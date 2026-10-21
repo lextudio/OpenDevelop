@@ -69,9 +69,10 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
 		// native mouse injection but does not yet implement the matching held-key endpoint.
 		if (!OperatingSystem.IsMacOS()) return;
 
-		// Exercise the actual native modifier state. The shared canvas delays selection until
-		// mouse-up: a Ctrl-click on a selected member collapses to it, while a Ctrl-drag takes
-		// the group-drag path and must keep the whole selection.
+			// Exercise the actual native modifier state. The shared canvas defers selection until
+			// mouse-up but snapshots modifiers at mouse-down: a Ctrl-click on a selected member
+			// collapses to it even if the OS delivers Ctrl-up first, while a Ctrl-drag takes the
+			// group-drag path and must keep the whole selection.
 		var sample = Path.GetDirectoryName(SampleSolutionPath)!;
 		var xamlPath = Path.Combine(sample, "MainWindow.xaml");
 		var originalXaml = await File.ReadAllTextAsync(xamlPath);
@@ -123,8 +124,12 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
 
 			await HoldCtrlAsync();
 			Exception? clickFailure = null;
+			var ctrlReleasedBeforeMouseUp = false;
 			try {
 				Assert.True((await app.PressPointerAsync(secondX, secondY, ensureForeground: false)).GetProperty("ok").GetBoolean());
+				var released = await app.KeyUpAsync("ctrl");
+				ctrlReleasedBeforeMouseUp = true;
+				Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
 				Assert.True((await app.ReleasePointerAsync(secondX, secondY)).GetProperty("ok").GetBoolean());
 			}
 			catch (Exception ex) {
@@ -132,9 +137,11 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
 				throw;
 			}
 			finally {
-				var released = await app.KeyUpAsync("ctrl");
-				if (clickFailure is null)
-					Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+				if (!ctrlReleasedBeforeMouseUp) {
+					var released = await app.KeyUpAsync("ctrl");
+					if (clickFailure is null)
+						Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+				}
 			}
 
 			// This catches the former state where second was reported as primary although only

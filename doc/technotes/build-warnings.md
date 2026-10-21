@@ -31,7 +31,7 @@ of the total.
 
 | Family | Ours | Owner / disposition |
 |---|---|---|
-| **NU1902/NU1903** vulnerable packages | 203 + 75 | **MessagePack fixed here.** Central pin moved 3.1.8 → 3.1.12, and the 18 projects that resolved the vulnerable 2.5.x transitively now reference it directly, which is the pattern `UnitTesting` and `SharpDevelop` already documented. Verified: those three representative projects build with zero NU1902/1903 and zero NU1109. `System.Security.Cryptography.Xml/Pkcs` remain: every occurrence is in `externals/vscode-wpf` (WpfDesigner, wxsg), whose projects have their own central package policy, so our pins cannot reach them - that is a submodule change. `Tmds.DBus.Protocol` 0.21.2 arrives from `Uno.WinUI.Runtime.Skia.X11` (Linux-only runtime), so it needs an Uno upgrade rather than a pin. |
+| **NU1902/NU1903** vulnerable packages | 203 + 75 → **15** | **MessagePack fixed here.** Central pin moved 3.1.8 → 3.1.12, and the 18 projects that resolved the vulnerable 2.5.x transitively now reference it directly, which is the pattern `UnitTesting` and `SharpDevelop` already documented. Verified: those three representative projects build with zero NU1902/1903 and zero NU1109. **Crypto fixed in the SDK** (openavalon/LibreWPF `c921f1f6d`, `4e1b4a0c1`): `LibreWPF.Sdk` handed every project `System.Security.Cryptography.Xml` 10.0.11, with Pkcs through it, five high-severity advisories among them; the packaged default and the source tree's own copy of the band both went to 10.0.13. That removed WpfDesigner's 15 warnings and the 340 the LibreWPF source projects reported through our project references, and made the two consumer overrides in this repository redundant (both deleted). The remaining 15 are the ones no pin can reach: `System.Security.Cryptography.Xml/Pkcs` **9.0.0** in `externals/vscode-wpf/external/wxsg` (that tree pins 9.0.0 itself), `MessagePack` 2.5.302 in `externals/cps`, and `Tmds.DBus.Protocol` 0.21.2 from `Uno.WinUI.Runtime.Skia.X11` (Linux-only runtime, so an Uno upgrade rather than a pin). |
 | **CS8632** nullable annotation outside a nullable context | 902 | **Fixed here.** Fourteen projects used `?` on reference types without enabling the annotation context: GtkDesigner, the three WinUI addin/host projects, MewUIDesigner, WpfDesign.AddIn, `ICSharpCode.SharpDevelop`, FormsDesigner (addin, remote, custom-control fixture), Widgets, ProGPUHost, `SharpDevelop`, ILSpyAddIn. Each now sets `<Nullable>annotations</Nullable>` - the annotations become legal and the warning context stays off, so no new CS86xx appears. Verified: GtkDesigner, FormsDesigner.Host and Designer.Server build with zero CS8632; GtkDesigner had 354. |
 | **CS8618 / CS8600 / CS8625 / CS8602 / CS8603 / CS8604 / CS8601 / CS8622 / CS8765 / CS8612** | ~1700 of ours | Projects that already enable the nullable *warning* context on legacy code. Genuine but low-value per site; needs a decision per project (fix the hot spots, or downgrade the context) rather than a blanket change. Not touched. |
 | **VSTHRD200/110/100/002** thread-safety analyzer | ~346 | `Microsoft.VisualStudio.Threading.Analyzers`, pulled in transitively - it is not in `Directory.Packages.props`. **Vendored part fixed** (`aa7265310f`): the 82 sites under `ILSpyAddIn/ILSpy` are ILSpy's own async idioms and are disabled for that path in `.editorconfig`. **Ours still open**: 97 sites, dominated by the DevFlow action files and the build engine. `VSTHRD200` (naming) is mechanical - rename to the `Async` suffix; `002`/`003` (sync-over-async) and `110` (unobserved awaitable) need per-site triage. |
@@ -56,8 +56,19 @@ dependency can no longer drag an older release in behind the central pins.
 
 What pinning still cannot reach is a package that a **submodule** declares directly - its own central
 policy applies inside that project tree. In the same restore every remaining NU1902/NU1903 is one of
-those: `MessagePack` 2.5.302 and `System.Security.Cryptography.Xml/Pkcs` in `externals/cps` and
-`externals/vscode-wpf` (WpfDesigner, wxsg), plus `Tmds.DBus.Protocol` 0.21.2 in UnoHost, which comes
-from `Uno.WinUI.Runtime.Skia.X11` (a Linux-only runtime). Those need the submodule or Uno to move, or
-an explicit direct override validated on the runtime in question; they are not mitigable from this
+those: `MessagePack` 2.5.302 and `System.Security.Cryptography.Xml/Pkcs` 9.0.0 in `externals/cps` and
+`externals/vscode-wpf/external/wxsg`, plus `Tmds.DBus.Protocol` 0.21.2 in UnoHost, which comes from
+`Uno.WinUI.Runtime.Skia.X11` (a Linux-only runtime). Those need the submodule or Uno to move, or an
+explicit direct override validated on the runtime in question; they are not mitigable from this
 repository's props.
+
+The Crypto pair looked like a fourth instance of the same problem and was not. It arrives from the
+**SDK**: `LibreWPF.Sdk` adds `System.Security.Cryptography.Xml` to every project it builds, at the
+version in `ProGpuWpfNet10SupportPackageVersion`, so the fix belonged to the provider. The consumer
+override that was tried first worked for this repository's own projects but never reached a vendored
+tree - MSBuild reads only the *nearest* `Directory.Build.props`, and WpfDesigner, wxsg, AvalonDock and
+the CPS tree each carry their own, so the root one is not on their import path at all. Overriding
+`ProGpuWpfSystemSecurityCryptographyXmlVersion` inside WpfDesigner's own props proved the diagnosis
+(15 warnings to 0) and was then reverted in favour of moving the SDK default, which is why the two
+overrides this repository had are gone. The same shadowing is why `ProGpuWpfLibreWinFormsPackageVersion`
+and friends in the root props also stop at a vendored tree's boundary.

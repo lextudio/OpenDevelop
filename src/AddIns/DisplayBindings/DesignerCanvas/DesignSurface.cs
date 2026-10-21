@@ -113,6 +113,10 @@ public class DesignSurface : DesignerCanvas
 	// Manual double-click detection (LibreWPF does not populate ClickCount).
 	DateTime lastPressUtc;
 	Point lastPressPosition;
+	// Pointer injection and window deactivation can deliver the matching key-up before the
+	// mouse-up reaches this control. A click's modifier semantics belong to its press, so retain
+	// that state for the deferred pick instead of re-reading the potentially changed keyboard.
+	bool ctrlAtPress;
 
 	public DesignSurface()
 	{
@@ -1700,6 +1704,7 @@ public class DesignSurface : DesignerCanvas
 		var position = e.GetPosition(this);
 		if (IsOverToolbar(position) || !IsDesignInteraction(e))
 			return;
+		ctrlAtPress = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
 		if (spacePanning || middlePanning)
 		{
 			lastPanPoint = position;
@@ -1750,7 +1755,7 @@ public class DesignSurface : DesignerCanvas
 		// delivered, and the Preview handlers keep receiving them without capture.
 		CancelStuckDrag();
 		var designPoint = ToDesignPoint(position);
-		if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && TryRequestGridTrackSplit(designPoint))
+		if (ctrlAtPress && TryRequestGridTrackSplit(designPoint))
 		{
 			dragPossible = false;
 			e.Handled = true;
@@ -1888,8 +1893,7 @@ public class DesignSurface : DesignerCanvas
 			{
 				// Reserving a small edge hit band must not make the element under it impossible
 				// to select. A press that did not become an edge resize is the normal click path.
-				var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
-				SurfacePointerPressed?.Invoke(this, (new Vector2((float)dragStartSurface.X, (float)dragStartSurface.Y), ctrl));
+				SurfacePointerPressed?.Invoke(this, (new Vector2((float)dragStartSurface.X, (float)dragStartSurface.Y), ctrlAtPress));
 			}
 			Cursor = Cursors.Arrow;
 			e.Handled = true;
@@ -1981,8 +1985,7 @@ public class DesignSurface : DesignerCanvas
 		else
 		{
 			// A plain click: pick at the press point, carrying whether Ctrl was held.
-			var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
-			SurfacePointerPressed?.Invoke(this, (new Vector2((float)dragStartSurface.X, (float)dragStartSurface.Y), ctrl));
+			SurfacePointerPressed?.Invoke(this, (new Vector2((float)dragStartSurface.X, (float)dragStartSurface.Y), ctrlAtPress));
 		}
 		dragPossible = false;
 		dragActive = false;
