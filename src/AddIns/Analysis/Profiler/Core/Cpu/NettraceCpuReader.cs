@@ -9,7 +9,25 @@ public static class NettraceCpuReader
 {
     public const string SampleProfilerProvider = "Microsoft-DotNETCore-SampleProfiler";
 
-    public static CpuProfile Read(string nettracePath)
+    public static CpuProfile Read(string nettracePath) =>
+        ReadStacks(
+            nettracePath,
+            data => data.ProviderName == SampleProfilerProvider
+                ? new SampleSelection(
+                    data is ClrThreadSampleTraceData { Type: ClrThreadSampleType.External } ? SampleState.External : SampleState.Managed,
+                    LeafFrame: null)
+                : null,
+            () => (1.0, ProfileUnit.Milliseconds));
+
+    /// <summary>What makes an event a sample, and the frame (if any) to append below its stack, e.g. the allocated type.</summary>
+    internal sealed record SampleSelection(SampleState State, (string Name, string Module)? LeafFrame);
+
+    /// <summary>
+    /// Turns the events a selector accepts into a profile. The selector may collect what it sees; the interval is asked for
+    /// once every event has been read.
+    /// </summary>
+    internal static CpuProfile ReadStacks(
+        string nettracePath, Func<TraceEvent, SampleSelection?> select, Func<(double Interval, ProfileUnit Unit)> measure)
     {
         // TraceLog resolves method names from the capture's own rundown events, which a plain
         // EventPipeEventSource cannot do. It writes a side file; keep that out of the user's folder.
@@ -18,7 +36,7 @@ public static class NettraceCpuReader
         {
             TraceLog.CreateFromEventPipeDataFile(nettracePath, etlxPath);
             using var log = new TraceLog(etlxPath);
-            return Convert(log);
+            return Convert(log, select, measure);
         }
         finally
         {
@@ -26,7 +44,8 @@ public static class NettraceCpuReader
         }
     }
 
-    static CpuProfile Convert(TraceLog log)
+    static CpuProfile Convert(
+        TraceLog log, Func<TraceEvent, SampleSelection?> select, Func<(double Interval, ProfileUnit Unit)> measure)
     {
         var frames = new List<FrameInfo>();
         var frameByKey = new Dictionary<(string Method, string Module), int>();
@@ -37,7 +56,7 @@ public static class NettraceCpuReader
 
         foreach (var data in log.Events)
         {
-            if (data.ProviderName != SampleProfilerProvider)
+            if (select(data) is not { } selection)
                 continue;
             var callStack = data.CallStack();
             if (callStack is null)
@@ -61,19 +80,27 @@ public static class NettraceCpuReader
                 scratch.Add(id);
             }
             scratch.Reverse(); // TraceCallStack walks leaf to root; the model stores root to leaf.
+            if (selection.LeafFrame is { } leaf)
+            {
+                if (!frameByKey.TryGetValue(leaf, out var leafId))
+                {
+                    leafId = frames.Count;
+                    frames.Add(new FrameInfo(leaf.Name, leaf.Module));
+                    frameByKey[leaf] = leafId;
+                }
+                scratch.Add(leafId);
+            }
 
             if (double.IsNaN(firstMs))
                 firstMs = data.TimeStampRelativeMSec;
             var time = data.TimeStampRelativeMSec - firstMs;
             lastMs = Math.Max(lastMs, time);
 
-            var state = data is ClrThreadSampleTraceData { Type: ClrThreadSampleType.External }
-                ? SampleState.External
-                : SampleState.Managed;
-            samples.Add(new CpuSample(time, data.ThreadID, state, scratch.ToArray()));
+            samples.Add(new CpuSample(time, data.ThreadID, selection.State, scratch.ToArray()));
         }
 
-        return new CpuProfile(frames, samples, lastMs);
+        var (interval, unit) = measure();
+        return new CpuProfile(frames, samples, lastMs, interval, unit, double.IsNaN(firstMs) ? 0 : firstMs);
     }
 
     static string Describe(TraceCodeAddress address)

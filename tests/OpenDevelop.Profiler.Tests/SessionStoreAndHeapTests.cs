@@ -27,6 +27,47 @@ public sealed class SessionStoreTests : IDisposable
     }
 
     [Fact]
+    public void Prune_RemovesTheOldestFinishedSessionsBeyondTheLimitAndSparesRunningOnes()
+    {
+        var store = new ProfilingSessionStore(root);
+        var oldest = store.Create(SessionKind.Cpu, "oldest", 1);
+        store.Finish(oldest, SessionStatus.Completed);
+        Thread.Sleep(1100);
+        var running = store.Create(SessionKind.Cpu, "still running", 2);
+        Thread.Sleep(1100);
+        var middle = store.Create(SessionKind.Heap, "middle", 3);
+        store.Finish(middle, SessionStatus.Failed, "boom");
+        Thread.Sleep(1100);
+        var newest = store.Create(SessionKind.Cpu, "newest", 4);
+        store.Finish(newest, SessionStatus.Completed);
+
+        var removed = store.Prune(keep: 1);
+
+        // Only the newest is within the limit; the running one is older than it but is not finished, so it stays.
+        Assert.Equal(2, removed);
+        Assert.Equal([newest.Info.Id, running.Info.Id], store.List().Select(s => s.Info.Id));
+        Assert.False(Directory.Exists(oldest.Directory));
+    }
+
+    [Fact]
+    public void Prune_WithNothingToRemoveRemovesNothing()
+    {
+        var store = new ProfilingSessionStore(root);
+        store.Finish(store.Create(SessionKind.Cpu, "only", 1), SessionStatus.Completed);
+
+        Assert.Equal(0, store.Prune(keep: 5));
+        Assert.Single(store.List());
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(199L * 1024 * 1024, false)]
+    [InlineData(200L * 1024 * 1024, true)]
+    [InlineData(5L * 1024 * 1024 * 1024, true)]
+    public void IsLarge_WarnsFromTwoHundredMegabytes(long bytes, bool expected) =>
+        Assert.Equal(expected, ReportLoader.IsLarge(bytes));
+
+    [Fact]
     public void Create_WritesAnIndexAndNamesTheArtifact()
     {
         var store = new ProfilingSessionStore(root);

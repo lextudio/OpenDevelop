@@ -133,6 +133,20 @@ public sealed class CallTreeNode
 /// <summary>Per-function totals across the whole filtered profile.</summary>
 public sealed record FunctionStat(int FrameId, string Name, string Module, long Total, long Self);
 
+/// <summary>
+/// One function in two profiles. Counts are samples; the fractions are shares of each profile's own sample total, so two
+/// captures of different length can be compared. A function missing from one side has zero counts there.
+/// </summary>
+public sealed record FunctionDiff(
+    int FrameId, string Name, string Module, long Total, long Self, long BaseTotal, long BaseSelf, double TotalFraction, double SelfFraction,
+    double BaseTotalFraction, double BaseSelfFraction)
+{
+    /// <summary>Change of the share of CPU time spent in the function itself; positive means it got worse.</summary>
+    public double SelfFractionChange => SelfFraction - BaseSelfFraction;
+
+    public double TotalFractionChange => TotalFraction - BaseTotalFraction;
+}
+
 /// <summary>The neighbours of one function: who called it and what it called.</summary>
 public sealed class CallerCalleeView
 {

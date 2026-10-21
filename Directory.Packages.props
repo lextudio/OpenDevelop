@@ -53,6 +53,9 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.VisualBasic.Workspaces" Version="5.6.0" />
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.0.2" />
     <PackageVersion Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.661903" />
+    <!-- Reads a memory dump of the profiled process for the content-based heap insights (duplicate strings, sparse
+         arrays) that the GC heap events cannot give; see doc/technotes/profiler.md. -->
+    <PackageVersion Include="Microsoft.Diagnostics.Runtime" Version="3.1.512801" />
     <!-- Reads the EventPipe .nettrace files the Profiler add-in captures (CPU samples and the
          GC heap-snapshot events); see doc/technotes/profiler.md. -->
     <PackageVersion Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.21" />

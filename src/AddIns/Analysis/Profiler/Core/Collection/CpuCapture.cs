@@ -4,8 +4,17 @@ using Microsoft.Diagnostics.NETCore.Client;
 
 namespace OpenDevelop.Profiler.Collection;
 
+/// <summary>What a capture records: where CPU time goes, or where memory is allocated.</summary>
+public enum CaptureMode
+{
+    Cpu,
+    Allocation,
+}
+
 public sealed class CpuCaptureOptions
 {
+    public CaptureMode Mode { get; init; } = CaptureMode.Cpu;
+
     /// <summary>Stop on its own after this long. <c>null</c> keeps capturing until <see cref="CpuCapture.StopAsync"/>.</summary>
     public TimeSpan? Duration { get; init; }
 
@@ -48,11 +57,18 @@ public sealed class CpuCapture : IAsyncDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
         try
         {
-            var providers = new[]
-            {
-                new EventPipeProvider(Cpu.NettraceCpuReader.SampleProfilerProvider, EventLevel.Informational),
-                new EventPipeProvider("Microsoft-Windows-DotNETRuntime", EventLevel.Informational, RuntimeKeywords),
-            };
+            // Allocation ticks are verbose-level events of the GC keyword, which RuntimeKeywords includes; no sampler is needed.
+            var providers = options.Mode == CaptureMode.Allocation
+                ? new[] { new EventPipeProvider("Microsoft-Windows-DotNETRuntime", EventLevel.Verbose, RuntimeKeywords) }
+                : new[]
+                {
+                    new EventPipeProvider(Cpu.NettraceCpuReader.SampleProfilerProvider, EventLevel.Informational),
+                    new EventPipeProvider("Microsoft-Windows-DotNETRuntime", EventLevel.Informational, RuntimeKeywords),
+                };
+            // The runtime's own counters, once a second: cheap, and they give the report a timeline of GC and CPU behaviour.
+            providers = [.. providers, new EventPipeProvider(
+                Cpu.NettraceCounterReader.RuntimeCounterProvider, EventLevel.Informational, 0,
+                new Dictionary<string, string> { ["EventCounterIntervalSec"] = "1" })];
             var session = client
                 .StartEventPipeSession(providers, requestRundown: true, options.CircularBufferMegabytes);
             return new CpuCapture(session, outputPath, options);

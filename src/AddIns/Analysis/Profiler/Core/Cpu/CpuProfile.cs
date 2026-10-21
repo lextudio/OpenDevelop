@@ -1,5 +1,12 @@
 namespace OpenDevelop.Profiler.Cpu;
 
+/// <summary>The unit a profile's samples are measured in.</summary>
+public enum ProfileUnit
+{
+    Milliseconds,
+    Kilobytes,
+}
+
 /// <summary>
 /// A sampled CPU profile: an interned frame table plus every sampled stack. Every report view is a
 /// pure function of this object and a <see cref="ProfileFilter"/>, so range selection and
@@ -11,14 +18,27 @@ public sealed class CpuProfile
         IReadOnlyList<FrameInfo> frames,
         IReadOnlyList<CpuSample> samples,
         double durationMs,
-        double sampleIntervalMs = 1.0)
+        double sampleIntervalMs = 1.0,
+        ProfileUnit unit = ProfileUnit.Milliseconds,
+        double originMs = 0)
     {
+        Unit = unit;
+        OriginMs = originMs;
         Frames = frames;
         Samples = samples;
         DurationMs = durationMs;
         SampleIntervalMs = sampleIntervalMs;
         ThreadIds = samples.Select(s => s.ThreadId).Distinct().Order().ToArray();
     }
+
+    /// <summary>
+    /// Where sample time zero sits on the capture file's own clock (milliseconds from the start of the session), so data
+    /// read from the same file on that clock, such as runtime counters, can be lined up with the samples.
+    /// </summary>
+    public double OriginMs { get; }
+
+    /// <summary>What one sample weighs: a millisecond of thread time, or the kilobytes one allocation sample stands for.</summary>
+    public ProfileUnit Unit { get; }
 
     public IReadOnlyList<FrameInfo> Frames { get; }
     public IReadOnlyList<CpuSample> Samples { get; }
@@ -102,6 +122,46 @@ public sealed class CpuProfile
             .OrderByDescending(f => f.Self)
             .ThenByDescending(f => f.Total)
             .ThenBy(f => f.Name, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Compares this profile (filtered as given) with a baseline profile function by function, matched on name and module.
+    /// The baseline is taken whole, with the same Just My Code and blocked-sample settings but not this profile's time
+    /// range or thread, which refer to this capture only. Ordered by the largest change in self share first.
+    /// </summary>
+    public IReadOnlyList<FunctionDiff> CompareFunctions(CpuProfile baseline, ProfileFilter filter)
+    {
+        var baselineFilter = new ProfileFilter
+        {
+            IncludeExternalSamples = filter.IncludeExternalSamples,
+            JustMyCode = filter.JustMyCode,
+            IsUserCode = filter.IsUserCode,
+        };
+        var current = BuildFunctions(filter);
+        var before = baseline.BuildFunctions(baselineFilter);
+        double currentSamples = Math.Max(1, CountSamples(filter));
+        double baselineSamples = Math.Max(1, baseline.CountSamples(baselineFilter));
+
+        var previous = before.ToDictionary(f => (f.Name, f.Module));
+        var diffs = new List<FunctionDiff>();
+        foreach (var now in current)
+        {
+            previous.Remove((now.Name, now.Module), out var was);
+            diffs.Add(new FunctionDiff(
+                now.FrameId, now.Name, now.Module, now.Total, now.Self, was?.Total ?? 0, was?.Self ?? 0,
+                now.Total / currentSamples, now.Self / currentSamples,
+                (was?.Total ?? 0) / baselineSamples, (was?.Self ?? 0) / baselineSamples));
+        }
+        foreach (var gone in previous.Values)
+            diffs.Add(new FunctionDiff(
+                -1, gone.Name, gone.Module, 0, 0, gone.Total, gone.Self,
+                0, 0, gone.Total / baselineSamples, gone.Self / baselineSamples));
+
+        return diffs
+            .OrderByDescending(d => Math.Abs(d.SelfFractionChange))
+            .ThenByDescending(d => Math.Abs(d.TotalFractionChange))
+            .ThenBy(d => d.Name, StringComparer.Ordinal)
             .ToList();
     }
 

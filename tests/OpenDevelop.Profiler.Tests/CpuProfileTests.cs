@@ -28,6 +28,41 @@ public class CpuProfileTests
         ],
         durationMs: 5);
 
+    [Fact]
+    public void CompareFunctions_ComparesSharesAndKeepsFunctionsThatOnlyOneSideHas()
+    {
+        // Baseline: Helper is hot (3 of 4 samples). Now: Run does the work (2 of 4) and Helper is gone, Wait is new.
+        CpuProfile Profile(params int[][] stacks) => new(
+            Build().Frames, stacks.Select((s, i) => new CpuSample(i, 1, SampleState.Managed, s)).ToArray(), durationMs: stacks.Length);
+        var baseline = Profile([Main, Run, Helper], [Main, Run, Helper], [Main, Run, Helper], [Main, Run]);
+        var now = Profile([Main, Run], [Main, Run], [Main, Wait], [Main, Wait]);
+
+        var diffs = now.CompareFunctions(baseline, ProfileFilter.Default);
+
+        var helper = diffs.Single(d => d.Name == "App.Helper()");
+        Assert.Equal(0, helper.Self);
+        Assert.Equal(3, helper.BaseSelf);
+        Assert.Equal(-0.75, helper.SelfFractionChange, 6);
+        var wait = diffs.Single(d => d.Name.EndsWith("Wait()"));
+        Assert.Equal(0, wait.BaseSelf);
+        Assert.Equal(0.5, wait.SelfFractionChange, 6);
+        var run = diffs.Single(d => d.Name == "App.Run()");
+        Assert.Equal(0.25, run.SelfFractionChange, 6); // 2/4 now, 1/4 before
+        Assert.Equal("App.Helper()", diffs[0].Name); // the largest change comes first
+    }
+
+    [Fact]
+    public void CompareFunctions_IgnoresTheTimeRangeOfTheBaseline()
+    {
+        var profile = Build();
+        var narrowed = new ProfileFilter { StartMs = 0, EndMs = 2 };
+
+        var diffs = profile.CompareFunctions(profile, narrowed);
+
+        // The baseline is the whole capture, so a narrowed range against itself shows a difference.
+        Assert.Contains(diffs, d => d.BaseSelf != d.Self);
+    }
+
     static CallTreeNode Child(CallTreeNode node, int frameId) => node.Children.Single(c => c.FrameId == frameId);
 
     [Fact]

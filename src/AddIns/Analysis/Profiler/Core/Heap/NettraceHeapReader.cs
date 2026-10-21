@@ -87,7 +87,7 @@ public static class NettraceHeapReader
 
     // Edges arrive as one flat list in node order, each node owning the next EdgeCount of them. If the counts
     // do not add up (a truncated capture), the type table is still right but there is no graph to offer.
-    static HeapGraph? BuildGraph(
+    internal static HeapGraph? BuildGraph(
         string[] typeNames, int[] nodeType, List<ulong> nodeAddress, List<long> nodeSize, List<long> nodeEdgeCount,
         List<ulong> edgeTarget, List<ulong> rootAddress, List<string> rootKind)
     {

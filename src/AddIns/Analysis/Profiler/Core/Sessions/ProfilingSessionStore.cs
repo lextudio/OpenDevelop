@@ -7,6 +7,8 @@ public enum SessionKind
 {
     Cpu,
     Heap,
+    Allocation,
+    Dump,
 }
 
 public enum SessionStatus
@@ -70,7 +72,13 @@ public sealed class ProfilingSessionStore(string rootDirectory)
             StartedUtc = started,
             DisplayName = displayName,
             ProcessId = processId,
-            Artifact = kind == SessionKind.Cpu ? "cpu.nettrace" : "heap.nettrace",
+            Artifact = kind switch
+            {
+                SessionKind.Cpu => "cpu.nettrace",
+                SessionKind.Allocation => "allocation.nettrace",
+                SessionKind.Dump => "process.dmp",
+                _ => "heap.nettrace",
+            },
         };
         var directory = Path.Combine(RootDirectory, id);
         Directory.CreateDirectory(directory);
@@ -100,6 +108,28 @@ public sealed class ProfilingSessionStore(string rootDirectory)
                 sessions.Add(new SessionHandle(info, directory));
         }
         return sessions.OrderByDescending(s => s.Info.StartedUtc).ToList();
+    }
+
+    /// <summary>
+    /// Deletes the oldest sessions beyond the newest <paramref name="keep"/>, so captures do not pile up for ever. A session that
+    /// is still running is never deleted, and neither is anything that is not a session folder. Returns how many were removed.
+    /// </summary>
+    public int Prune(int keep)
+    {
+        var removed = 0;
+        foreach (var session in List().Skip(Math.Max(keep, 0)).Where(s => s.Info.Status != SessionStatus.Running))
+        {
+            try
+            {
+                Delete(session);
+                removed++;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // In use (a capture open in a viewer, say): leave it for the next time.
+            }
+        }
+        return removed;
     }
 
     /// <summary>Deletes a session folder. Refuses anything that is not a direct child of the root.</summary>

@@ -120,6 +120,10 @@ public static class HeapCapture
             }
             catch (Exception exception) when (exception is not (ProfilingException or OperationCanceledException))
             {
+                // A target that dies part way leaves a truncated stream, which the reader reports as a fault, not as an end.
+                if (Volatile.Read(ref snapshotDone) == 0 && Volatile.Read(ref stopRequested) == 0)
+                    throw new ProfilingException(
+                        $"Process {processId} ended while its heap snapshot was being written; the snapshot is incomplete.", exception);
                 throw new ProfilingException($"Reading the heap snapshot of process {processId} failed: {exception.Message}", exception);
             }
 
