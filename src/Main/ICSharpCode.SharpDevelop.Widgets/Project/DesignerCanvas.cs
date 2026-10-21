@@ -509,16 +509,22 @@ namespace ICSharpCode.SharpDevelop.Widgets
 
 		/// <summary>
 		/// Replaces the design surface with a single explanation of why this document cannot be
-		/// designed here (e.g. <see cref="UnsupportedOnThisOSMessage"/>), shown both over the surface
-		/// and in the status bar. No design host is started for such a document.
+		/// designed here (e.g. <see cref="UnsupportedOnThisOSMessage"/>), shown over the surface.
+		/// No design host is started for such a document.
 		/// </summary>
 		public void ShowUnavailable(string message)
 		{
 			IsUnavailable = true;
 			loadingText.Text = message;
 			loadingOverlay.Visibility = Visibility.Visible;
-			ShowStatusBar = true;
-			StatusText = message;
+			// The overlay is the single explanation, deliberately not mirrored into the status bar
+			// as well: the status bar is a separate row, so the same sentence stayed visible below
+			// the overlay, and a view content that also mirrors its host's status turned that into
+			// three copies. Only the TEXT is cleared - an empty text collapses the bar whatever
+			// capability the backend enabled (see UpdateStatusBarVisibility) - because clearing the
+			// StatusBar capability itself would also strip the status bar from a later normal load
+			// that reuses this canvas.
+			StatusText = string.Empty;
 		}
 
 		/// <summary>The shared wording for a project whose runtime cannot run on this OS: every

@@ -101,6 +101,11 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		root.Children.Add(status);
 		root.PreviewKeyDown += OnPreviewKeyDown;
 		status.Text = previewHost.StatusText;
+		// The canvas already explains why the surface is empty (its own overlay), so this view's
+		// status row would only repeat the same sentence. Its Text stays populated for
+		// od.winui-designer.status; only the on-screen row is hidden.
+		if (previewHost.IsUnavailable)
+			status.Visibility = Visibility.Collapsed;
 		outline.SelectedItemChanged += OnOutlineSelectionChanged;
 		outline.AllowDrop = true;
 		// Existing outline verbs are name-addressed. Unnamed rows use a source-owned menu; when

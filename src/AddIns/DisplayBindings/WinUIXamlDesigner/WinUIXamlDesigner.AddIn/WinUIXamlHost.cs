@@ -34,6 +34,7 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		// Microsoft WinUI and Uno are fully isolated: a Microsoft WinUI project is never designed by
 		// Uno, and off Windows (where Microsoft WinUI cannot run) no host is started for it at all.
 		if (!XamlFrameworkDetector.IsRuntimeSupportedOnThisOS(framework.Runtime)) {
+			IsUnavailable = true;
 			var unavailable = new ICSharpCode.SharpDevelop.Widgets.DesignerCanvas();
 			unavailable.BackendName = framework.Runtime switch {
 				XamlRuntimeKind.Uno => "Uno",
@@ -496,6 +497,11 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	// fault.
 	static string UnsupportedOnThisOSText
 		=> ICSharpCode.SharpDevelop.Widgets.DesignerCanvas.UnsupportedOnThisOSMessage("Microsoft WinUI", "Uno Platform");
+
+	/// <summary>True when this OS cannot run the document's runtime: no host was started, and the
+	/// surface only explains why. The view content keeps its own status line hidden in that case so
+	/// the explanation is not repeated (its Text still carries the message for diagnostics).</summary>
+	public bool IsUnavailable { get; }
 
 	public string StatusText => runtime?.StatusText ?? (!XamlFrameworkDetector.IsRuntimeSupportedOnThisOS(Framework.Runtime) ? UnsupportedOnThisOSText : null) ?? Framework.Runtime switch {
 		XamlRuntimeKind.MicrosoftWinUI => "WinUI 3 runtime host is not installed.",
