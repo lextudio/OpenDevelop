@@ -10,6 +10,7 @@ fi
 app_path="$1"
 output_dmg="$2"
 background_image="${3:-images/social.png}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ ! -d "$app_path" ]]; then
   echo "App bundle not found: $app_path"
