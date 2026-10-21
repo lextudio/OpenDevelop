@@ -23,9 +23,9 @@ public static class ProcessTargets
                 using var process = Process.GetProcessById(id);
                 result.Add(new ManagedProcess(id, process.ProcessName));
             }
-            catch (ArgumentException)
+            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
             {
-                // Exited between listing and lookup.
+                // Exited between listing and lookup (which exception says so differs by platform), or not ours to inspect.
             }
         }
         return result.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ThenBy(p => p.Id).ToList();
@@ -80,7 +80,7 @@ public static class ProcessTargets
         {
             process.Kill(entireProcessTree: true);
         }
-        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException or AggregateException)
         {
         }
     }

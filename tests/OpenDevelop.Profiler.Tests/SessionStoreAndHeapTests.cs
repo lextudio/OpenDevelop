@@ -15,6 +15,18 @@ public sealed class SessionStoreTests : IDisposable
     }
 
     [Fact]
+    public void Finish_ReplacesTheIndexWithoutLeavingATemporaryFile()
+    {
+        var store = new ProfilingSessionStore(root);
+        var session = store.Create(SessionKind.Cpu, "app", 1);
+
+        store.Finish(session, SessionStatus.Failed, "boom");
+
+        Assert.Empty(Directory.GetFiles(session.Directory, "*.tmp"));
+        Assert.Equal(SessionStatus.Failed, Assert.Single(store.List()).Info.Status);
+    }
+
+    [Fact]
     public void Create_WritesAnIndexAndNamesTheArtifact()
     {
         var store = new ProfilingSessionStore(root);

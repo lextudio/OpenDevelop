@@ -166,7 +166,7 @@ public sealed class SuspendedLaunch : IAsyncDisposable
         {
             process.Kill(entireProcessTree: true);
         }
-        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException or AggregateException)
         {
         }
     }

@@ -317,6 +317,39 @@ public sealed class CaptureTests : IDisposable
     }
 
     [Fact]
+    public async Task SuspendedLaunch_ExplainsAProgramThatCannotBeStarted()
+    {
+        var info = new ProcessStartInfo(Path.Combine(workDirectory, "does-not-exist.exe"));
+
+        var error = await Assert.ThrowsAsync<ProfilingException>(() => SuspendedLaunch.StartAsync(info, TimeSpan.FromSeconds(5)));
+
+        Assert.Contains("Could not start", error.Message);
+    }
+
+    [Fact]
+    public async Task ReportLoader_ReportsAFileItCannotParseAsProfilingException()
+    {
+        // A real capture cut short in the middle: recognisable at its start, unreadable as a whole.
+        var fixture = StartFixture("cpu", 30);
+        var path = Path.Combine(workDirectory, "cpu.nettrace");
+        await using (var capture = CpuCapture.Start(fixture.Id, path, new CpuCaptureOptions { Duration = TimeSpan.FromSeconds(2) }))
+            await capture.Completion;
+        var bytes = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+        var cut = Path.Combine(workDirectory, "cut.nettrace");
+        await File.WriteAllBytesAsync(cut, bytes.AsMemory(0, bytes.Length / 2).ToArray(), TestContext.Current.CancellationToken);
+
+        // Whatever the trace reader makes of it, a caller must only ever see a ProfilingException.
+        try
+        {
+            ReportLoader.Load(cut);
+        }
+        catch (Exception exception)
+        {
+            Assert.IsType<ProfilingException>(exception);
+        }
+    }
+
+    [Fact]
     public void StartAndWaitForDiagnostics_ExplainsAProgramThatCannotBeStarted()
     {
         var info = new ProcessStartInfo(Path.Combine(workDirectory, "does-not-exist.exe")) { UseShellExecute = false };

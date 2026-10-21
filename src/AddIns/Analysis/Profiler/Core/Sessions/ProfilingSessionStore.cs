@@ -114,8 +114,14 @@ public sealed class ProfilingSessionStore(string rootDirectory)
             Directory.Delete(full, recursive: true);
     }
 
-    void Save(SessionHandle handle) =>
-        File.WriteAllText(Path.Combine(handle.Directory, IndexFileName), JsonSerializer.Serialize(handle.Info, JsonOptions));
+    // Written beside the index and moved over it, so a crash part way leaves the previous index rather than a truncated one.
+    void Save(SessionHandle handle)
+    {
+        var index = Path.Combine(handle.Directory, IndexFileName);
+        var temporary = index + ".tmp";
+        File.WriteAllText(temporary, JsonSerializer.Serialize(handle.Info, JsonOptions));
+        File.Move(temporary, index, overwrite: true);
+    }
 
     static SessionInfo? TryLoad(string indexPath)
     {
