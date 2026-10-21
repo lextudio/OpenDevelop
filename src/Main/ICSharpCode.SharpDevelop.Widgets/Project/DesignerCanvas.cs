@@ -52,6 +52,20 @@ namespace ICSharpCode.SharpDevelop.Widgets
 
 	public class DesignerCanvas : ContentControl
 	{
+		/// <summary>Bounds for absolute design zoom.  The state belongs to the shared canvas so
+		/// every designer presents the same Fit/absolute-zoom contract.</summary>
+		public const double MinZoom = 0.1;
+		public const double MaxZoom = 16.0;
+		static readonly double[] ZoomPresets = { 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 4.0 };
+		static readonly string[] ZoomLabels = { "Fit", "25%", "50%", "75%", "100%", "125%", "150%", "200%", "400%" };
+		readonly GridlineOverlay gridlineOverlay = new();
+		bool syncingZoomCombo;
+		// Fit is a mode, not a scale.  Outside Fit, zoomScale is absolute: 1.0 is 100%.
+		protected bool fitMode;
+		protected double zoomScale = 1.0;
+		protected double panX;
+		protected double panY;
+		bool showGridlines;
 		readonly Grid root = new Grid();
 		readonly StackPanel toolbar = new StackPanel { Orientation = Orientation.Horizontal };
 		readonly Button fitButton;
@@ -201,19 +215,23 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			statusBar.Visibility = Visibility.Collapsed;
 			componentTray.Visibility = Visibility.Collapsed;
 
-			ZoomCombo.SelectionChanged += (_, _) => ZoomChanged?.Invoke(this, EventArgs.Empty);
+			foreach (var label in ZoomLabels)
+				ZoomCombo.Items.Add(label);
+			// Start at VS's 100% default rather than a window-dependent Fit scale.
+			ZoomCombo.SelectedIndex = 4;
+			ZoomCombo.SelectionChanged += OnZoomSelectionChanged;
 			DesignSizeCombo.SelectionChanged += (_, e) => {
 				if (e.AddedItems.Count > 0 && e.AddedItems[0] is string label && DesignSizeCombo.SelectedIndex > 0)
 					DesignSizeSelected?.Invoke(this, label);
 			};
-			fitButton.Click += (_, _) => FitRequested?.Invoke(this, EventArgs.Empty);
+			fitButton.Click += (_, _) => { FitView(); FitRequested?.Invoke(this, EventArgs.Empty); };
 			// Checked/Unchecked must also refresh the button's OWN highlight: ApplyDesignTheme
 			// only runs once at construction (and whenever the IDE/design theme switches), so
 			// without this a real click toggled the underlying behavior correctly but the button
 			// never looked pressed - which is exactly why "the grid button doesn't work" was
 			// reported: SetGridlines(true) WAS running, the button just never lit up to show it.
-			gridButton.Checked += (_, _) => { UpdateButtonHighlight(gridButton); GridRequested?.Invoke(this, true); };
-			gridButton.Unchecked += (_, _) => { UpdateButtonHighlight(gridButton); GridRequested?.Invoke(this, false); };
+			gridButton.Checked += (_, _) => { UpdateButtonHighlight(gridButton); SetGridlines(true); GridRequested?.Invoke(this, true); };
+			gridButton.Unchecked += (_, _) => { UpdateButtonHighlight(gridButton); SetGridlines(false); GridRequested?.Invoke(this, false); };
 			themeCombo.SelectionChanged += (_, _) => {
 				if (syncingTheme)
 					return;
@@ -405,6 +423,107 @@ namespace ICSharpCode.SharpDevelop.Widgets
 
 		/// <summary>Zoom preset labels ("Fit", "100%", ...). Index 0 is "Fit".</summary>
 		public ComboBox ZoomCombo { get; } = new ComboBox { Width = 84, Margin = new Thickness(4, 2, 4, 2) };
+
+		/// <summary>Current effective designer state. In Fit mode <see cref="ViewportZoom"/>
+		/// is supplied by the host layout; otherwise it is the absolute zoom.</summary>
+		public bool IsFitMode => fitMode;
+		public double ViewportZoom => zoomScale;
+		public (double X, double Y) ViewportPan => (panX, panY);
+
+		/// <summary>The grid overlay belongs to the canvas, while a concrete surface decides where
+		/// its visual sits in its viewport.</summary>
+		protected Canvas GridlineVisual => gridlineOverlay.Visual;
+
+		/// <summary>Shows or hides design-space gridlines. A surface redraws the shared brush from
+		/// its actual dimensions in <see cref="OnGridlinesChanged"/>.</summary>
+		public bool Gridlines => showGridlines;
+		public virtual double GridCellSize => gridlineOverlay.CellSize;
+		public void SetGridlines(bool show)
+		{
+			if (showGridlines == show)
+				return;
+			showGridlines = show;
+			OnGridlinesChanged();
+		}
+
+		public void SetGridCellSize(double cellSize)
+		{
+			if (cellSize <= 0 || gridlineOverlay.CellSize == cellSize)
+				return;
+			gridlineOverlay.CellSize = cellSize;
+			OnGridlinesChanged();
+		}
+
+		/// <summary>Sets absolute zoom and pan, leaving Fit mode.</summary>
+		public void SetViewport(double zoom, double panX, double panY)
+		{
+			fitMode = false;
+			zoomScale = Math.Clamp(zoom, MinZoom, MaxZoom);
+			this.panX = panX;
+			this.panY = panY;
+			SyncZoomCombo();
+			OnViewportStateChanged();
+		}
+
+		/// <summary>Resets the shared canvas to a fitted, centered view.</summary>
+		public void FitView()
+		{
+			fitMode = true;
+			panX = 0;
+			panY = 0;
+			SyncZoomCombo();
+			OnViewportStateChanged();
+			OnFitView();
+		}
+
+		/// <summary>Pans without changing whether the canvas is fitted or absolutely zoomed.</summary>
+		protected void PanViewport(double dx, double dy)
+		{
+			panX += dx;
+			panY += dy;
+			OnViewportStateChanged();
+		}
+
+		/// <summary>Lets a concrete surface redraw its grid with the dimensions and effective
+		/// scale it owns, without duplicating the grid brush or its state.</summary>
+		protected void UpdateGridlines(double width, double height, double scale)
+		{
+			gridlineOverlay.Visual.Width = width;
+			gridlineOverlay.Visual.Height = height;
+			gridlineOverlay.Update(width, height, scale, showGridlines);
+		}
+
+		protected virtual void OnViewportStateChanged() { }
+		protected virtual void OnFitView() { }
+		protected virtual void OnGridlinesChanged() { }
+
+		void OnZoomSelectionChanged(object sender, SelectionChangedEventArgs e)
+		{
+			if (syncingZoomCombo || ZoomCombo.SelectedIndex < 0)
+				return;
+			if (ZoomCombo.SelectedIndex == 0)
+				FitView();
+			else
+				SetViewport(ZoomPresets[ZoomCombo.SelectedIndex - 1], panX, panY);
+			ZoomChanged?.Invoke(this, EventArgs.Empty);
+		}
+
+		void SyncZoomCombo()
+		{
+			if (ZoomCombo.Items.Count == 0)
+				return;
+			syncingZoomCombo = true;
+			if (fitMode)
+				ZoomCombo.SelectedIndex = 0;
+			else {
+				var best = 0;
+				for (var i = 1; i < ZoomPresets.Length; i++)
+					if (Math.Abs(ZoomPresets[i] - zoomScale) < Math.Abs(ZoomPresets[best] - zoomScale))
+						best = i;
+				ZoomCombo.SelectedIndex = best + 1;
+			}
+			syncingZoomCombo = false;
+		}
 
 		/// <summary>Design-size preset labels ("Auto", "Phone 390x844", ...).</summary>
 		public ComboBox DesignSizeCombo { get; } = new ComboBox {
@@ -665,10 +784,6 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			rasterWidthCombo.SelectedItem = width;
 			return true;
 		}
-
-		/// <summary>Spacing of the design-space gridlines in design units, or 0 when this canvas
-		/// draws none.</summary>
-		public virtual double GridCellSize => 0;
 
 		/// <summary>Presses the toolbar's Fit button, as a user would; false when this canvas
 		/// does not offer Fit.</summary>

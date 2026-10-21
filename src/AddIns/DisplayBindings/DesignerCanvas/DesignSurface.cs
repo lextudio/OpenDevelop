@@ -42,8 +42,6 @@ namespace ICSharpCode.SharpDevelop.Designer.Surface;
 /// </summary>
 public class DesignSurface : DesignerCanvas
 {
-	public const double MinZoom = 0.1;
-	public const double MaxZoom = 16.0;
 	const double DragThreshold = 4;
 	/// <summary>Empty-canvas margin around the design bitmap, so the design surface never
 	/// touches the scroll-viewport edge (the dotted EdgePattern reads as "outside the design"
@@ -51,8 +49,6 @@ public class DesignSurface : DesignerCanvas
 	public const double CanvasMargin = 32;
 
 	static readonly Color SelectionColor = Color.FromRgb(0x00, 0x78, 0xD4);
-	static readonly double[] ZoomPresets = { 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 4.0 };
-	static readonly string[] ZoomLabels = { "Fit", "25%", "50%", "75%", "100%", "125%", "150%", "200%", "400%" };
 	static readonly string[] SizePresetLabels = { "Auto", "Phone 390x844", "Tablet 768x1024", "Desktop 1280x720" };
 	static readonly string[] HandleNames = { "nw", "n", "ne", "e", "se", "s", "sw", "w" };
 
@@ -61,7 +57,6 @@ public class DesignSurface : DesignerCanvas
 	// opts out of hit testing. Keeping this parent enabled lets the four layout-inset labels be
 	// real drag targets without swallowing clicks on the rendered design underneath.
 	readonly Canvas overlay = new();
-	readonly GridlineOverlay gridlineOverlay = new();
 	readonly Border frameBackdrop = new() { IsHitTestVisible = false };
 	readonly Canvas viewportCanvas = new();
 	readonly Canvas contentCanvas = new();
@@ -91,14 +86,6 @@ public class DesignSurface : DesignerCanvas
 	readonly SelectionAdornerLayer adornerLayer = new(HandleNames, new SolidColorBrush(SelectionColor));
 	int pixelWidth;
 	int pixelHeight;
-	// Viewport state, the shared canvas contract (WPF/Forms/MAUI): Fit is its own MODE, and
-	// otherwise zoomScale is ABSOLUTE (1.0 = 100%, the VS default). It used to be a factor on top
-	// of the fit scale ("100%" = 1/fitScale, captured once), which tied every zoom level to the
-	// fit and so to the window size - and to the scrollbars (see CurrentViewport).
-	bool fitMode;
-	double zoomScale = 1.0;
-	double panX;
-	double panY;
 	Rect designSelection = Rect.Empty;
 	// The selected element's key (null: nothing selected; the empty string is a valid key - an
 	// Id-keyed design root) and the text its outline is labelled with.
@@ -107,7 +94,6 @@ public class DesignSurface : DesignerCanvas
 	bool spacePanning;
 	bool middlePanning;
 	Point lastPanPoint;
-	bool syncingZoomCombo;
 	// Drag state.
 	bool dragPossible;
 	bool dragActive;
@@ -131,28 +117,18 @@ public class DesignSurface : DesignerCanvas
 	public DesignSurface()
 	{
 		Capabilities = DesignerCanvasCapabilities.All;
-		foreach (var label in ZoomLabels)
-			ZoomCombo.Items.Add(label);
-		// Default to 100% rather than Fit, matching VS's design surface.
-		ZoomCombo.SelectedIndex = 4;
-		syncingZoomCombo = true;
-		zoomComboSyncIndex = ZoomCombo.SelectedIndex;
-		syncingZoomCombo = false;
-		ZoomCombo.SelectionChanged += OnZoomSelectionChanged;
 		foreach (var label in SizePresetLabels)
 			DesignSizeCombo.Items.Add(label);
 		DesignSizeCombo.SelectedIndex = 0;
 		DesignSizeCombo.SelectionChanged += OnSizePresetSelected;
-		FitRequested += (_, _) => FitView();
 		ThemeRequested += OnThemeSelected;
 		VisualStateRequested += (_, request) => DesignVisualStateRequested?.Invoke(this, request);
-		GridRequested += (_, enabled) => SetGridlines(enabled);
 		ShowNamesRequested += (_, enabled) => adornerLayer.ShowNameLabel = enabled;
 		textEditor.KeyDown += OnTextEditorKeyDown;
 		textEditor.LostKeyboardFocus += OnTextEditorLostFocus;
 		viewportCanvas.Children.Add(frameBackdrop);
 		viewportCanvas.Children.Add(framePresenter.Visual);
-		viewportCanvas.Children.Add(gridlineOverlay.Visual);
+		viewportCanvas.Children.Add(GridlineVisual);
 		viewportCanvas.Children.Add(overlay);
 		viewportCanvas.Children.Add(textEditor);
 		overlay.Children.Add(adornerLayer.Visual);
@@ -196,8 +172,6 @@ public class DesignSurface : DesignerCanvas
 	{
 		Dispatcher.BeginInvoke(new Action(ApplyViewport));
 	}
-
-	int zoomComboSyncIndex;
 
 	/// <summary>Raised with a design-unit delta when the user nudges the selection with arrow keys.</summary>
 	public event EventHandler<(double DX, double DY)> NudgeRequested;
@@ -435,9 +409,6 @@ public class DesignSurface : DesignerCanvas
 	/// <summary>Current viewport state: the effective zoom (1.0 = 100%, whatever the mode) and pan in surface DIPs.</summary>
 	public (double Zoom, double PanX, double PanY) Viewport => (EffectiveScale(), panX, panY);
 
-	/// <summary>Whether the view is in Fit mode (the design follows the pane size).</summary>
-	public bool IsFitMode => fitMode;
-
 	/// <summary>The effective design-to-surface scale (fit scale x zoom).</summary>
 	public double ViewportScale => EffectiveScale();
 
@@ -446,27 +417,6 @@ public class DesignSurface : DesignerCanvas
 		designSelection.IsEmpty
 			? (0, 0, 0, 0)
 			: (designSelection.X, designSelection.Y, designSelection.Width, designSelection.Height);
-
-	/// <summary>Sets an ABSOLUTE zoom (1.0 = 100%) and pan; leaves Fit mode.</summary>
-	public void SetViewport(double zoom, double panX, double panY)
-	{
-		fitMode = false;
-		zoomScale = Math.Clamp(zoom, MinZoom, MaxZoom);
-		this.panX = panX;
-		this.panY = panY;
-		ApplyViewport();
-	}
-
-	/// <summary>Resets to the fitted, centered view.</summary>
-	public void FitView()
-	{
-		fitMode = true;
-		panX = 0;
-		panY = 0;
-		ApplyViewport();
-		scroller.ScrollToHorizontalOffset(0);
-		scroller.ScrollToVerticalOffset(0);
-	}
 
 	/// <summary>Scrolls the canvas the way its scrollbars do (offsets in surface DIPs, clamped by
 	/// the ScrollViewer); the zoom and pan are unchanged.</summary>
@@ -1494,9 +1444,7 @@ public class DesignSurface : DesignerCanvas
 		// the bitmap's natural DIP size (1 design unit = 1 DIP), which at fit scale is about
 		// 2x too large and drifts from the selection outline.
 		framePresenter.Resize(CurrentViewport());
-		gridlineOverlay.Visual.Width = viewportCanvas.Width;
-		gridlineOverlay.Visual.Height = viewportCanvas.Height;
-		gridlineOverlay.Update(viewportCanvas.Width, viewportCanvas.Height, scale, showGridlines);
+		UpdateGridlines(viewportCanvas.Width, viewportCanvas.Height, scale);
 		LayoutSelection();
 		foreach (var name in secondaryBounds.Keys)
 			LayoutSecondaryBox(name);
@@ -1508,33 +1456,19 @@ public class DesignSurface : DesignerCanvas
 		foreach (var guide in snapGuides)
 			LayoutSnapGuideFromStored(guide);
 		LayoutTextEditor();
-		UpdateZoomCombo();
 		ViewportChanged?.Invoke(this, EventArgs.Empty);
 	}
 
-	bool showGridlines;
+	protected override void OnViewportStateChanged() => ApplyViewport();
 
-	/// <summary>Whether the design-space gridlines are currently visible.</summary>
-	public bool Gridlines => showGridlines;
-
-	/// <summary>Shows or hides the design-space gridlines overlay.</summary>
-	public void SetGridlines(bool show)
+	protected override void OnFitView()
 	{
-		showGridlines = show;
-		gridlineOverlay.Update(viewportCanvas.Width, viewportCanvas.Height, EffectiveScale(), showGridlines);
+		scroller.ScrollToHorizontalOffset(0);
+		scroller.ScrollToVerticalOffset(0);
 	}
 
-	/// <summary>Gridline spacing in design units; kept equal to the controller's raster cell.</summary>
-	public override double GridCellSize => gridlineOverlay.CellSize;
-
-	public void SetGridCellSize(double cellSize)
-	{
-		// A non-positive raster disables snapping, not the gridlines: keep the previous spacing.
-		if (cellSize <= 0)
-			return;
-		gridlineOverlay.CellSize = cellSize;
-		gridlineOverlay.Update(viewportCanvas.Width, viewportCanvas.Height, EffectiveScale(), showGridlines);
-	}
+	protected override void OnGridlinesChanged()
+		=> UpdateGridlines(viewportCanvas.Width, viewportCanvas.Height, EffectiveScale());
 
 	/// <summary>The resize handle under a design-space point, or null - delegates to the
 	/// shared adorner layer (same tolerance/center-third-is-move logic as before).</summary>
@@ -1584,44 +1518,6 @@ public class DesignSurface : DesignerCanvas
 		textEditor.Visibility = Visibility.Collapsed;
 		if (commit)
 			TextEditCommitted?.Invoke(this, text);
-	}
-
-	/// <summary>Keeps the zoom dropdown in sync with the viewport: "Fit" in Fit mode, otherwise the
-	/// preset nearest the absolute zoom.</summary>
-	void UpdateZoomCombo()
-	{
-		if (ZoomCombo.Items.Count == 0)
-			return;
-		syncingZoomCombo = true;
-		if (fitMode)
-		{
-			ZoomCombo.SelectedIndex = 0; // Fit
-		}
-		else
-		{
-			var best = 0;
-			for (var i = 1; i < ZoomPresets.Length; i++)
-			{
-				if (Math.Abs(ZoomPresets[i] - zoomScale) < Math.Abs(ZoomPresets[best] - zoomScale))
-					best = i;
-			}
-			ZoomCombo.SelectedIndex = best + 1;
-		}
-		syncingZoomCombo = false;
-	}
-
-	void OnZoomSelectionChanged(object sender, SelectionChangedEventArgs e)
-	{
-		if (syncingZoomCombo || ZoomCombo.SelectedIndex < 0)
-			return;
-		if (ZoomCombo.SelectedIndex == 0)
-		{
-			FitView();
-			return;
-		}
-		fitMode = false;
-		zoomScale = Math.Clamp(ZoomPresets[ZoomCombo.SelectedIndex - 1], MinZoom, MaxZoom);
-		ApplyViewport();
 	}
 
 	/// <summary>Raised when the user picks a canvas size preset; arg is "phone"/"tablet"/"desktop"/"reset".</summary>
@@ -1931,10 +1827,8 @@ public class DesignSurface : DesignerCanvas
 		}
 		if (middlePanning)
 		{
-			panX += position.X - lastPanPoint.X;
-			panY += position.Y - lastPanPoint.Y;
+			PanViewport(position.X - lastPanPoint.X, position.Y - lastPanPoint.Y);
 			lastPanPoint = position;
-			ApplyViewport();
 			return;
 		}
 		if (gridGuideDragActive)
@@ -2223,15 +2117,20 @@ public class DesignSurface : DesignerCanvas
 		var contentX = origin.X + designX * viewport.Scale;
 		var contentY = origin.Y + designY * viewport.Scale;
 		// Zooming from Fit continues from the fitted scale, as an absolute zoom.
-		zoomScale = ZoomStepCalculator.Step(viewport.Scale, factor, MinZoom, MaxZoom);
+		var nextZoom = ZoomStepCalculator.Step(viewport.Scale, factor, MinZoom, MaxZoom);
+		// Calculate against the prospective absolute viewport, then atomically publish the
+		// shared canvas state so every backend gets the same cursor anchor.
+		var previousZoom = zoomScale;
+		var previousFitMode = fitMode;
+		zoomScale = nextZoom;
 		fitMode = false;
 		var viewport2 = CurrentViewport();
 		var foldedPan = viewport2.PanForDesignPointAtSurface(designX, designY, contentX, contentY);
+		zoomScale = previousZoom;
+		fitMode = previousFitMode;
 		// CurrentViewport folds CanvasMargin into its pan; store the raw field so it is added
 		// exactly once when the next viewport is made.
-		panX = foldedPan.X - CanvasMargin;
-		panY = foldedPan.Y - CanvasMargin;
-		ApplyViewport();
+		SetViewport(nextZoom, foldedPan.X - CanvasMargin, foldedPan.Y - CanvasMargin);
 	}
 
 	#endregion
