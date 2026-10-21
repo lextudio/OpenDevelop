@@ -28,33 +28,33 @@ namespace OpenDevelop.Profiler.AddIn.Views;
 /// </summary>
 internal readonly struct HsvColor(double hue, double saturation, double value)
 {
-    public double Hue { get; } = hue;
-    public double Saturation { get; } = saturation;
-    public double Value { get; } = value;
+	public double Hue { get; } = hue;
+	public double Saturation { get; } = saturation;
+	public double Value { get; } = value;
 
-    public HsvColor WithValue(double newValue) => new(Hue, Saturation, newValue);
+	public HsvColor WithValue(double newValue) => new(Hue, Saturation, newValue);
 
-    public Color ToColor()
-    {
-        var hue = ((Hue % 360) + 360) % 360;
-        var saturation = Math.Clamp(Saturation, 0, 1);
-        var value = Math.Clamp(Value, 0, 1);
+	public Color ToColor()
+	{
+		var hue = ((Hue % 360) + 360) % 360;
+		var saturation = Math.Clamp(Saturation, 0, 1);
+		var value = Math.Clamp(Value, 0, 1);
 
-        var sector = (int)Math.Floor(hue / 60);
-        var fraction = hue / 60 - sector;
-        var p = value * (1 - saturation);
-        var q = value * (1 - saturation * fraction);
-        var t = value * (1 - saturation * (1 - fraction));
+		var sector = (int)Math.Floor(hue / 60);
+		var fraction = hue / 60 - sector;
+		var p = value * (1 - saturation);
+		var q = value * (1 - saturation * fraction);
+		var t = value * (1 - saturation * (1 - fraction));
 
-        var (r, g, b) = sector switch
-        {
-            0 => (value, t, p),
-            1 => (q, value, p),
-            2 => (p, value, t),
-            3 => (p, q, value),
-            4 => (t, p, value),
-            _ => (value, p, q),
-        };
-        return Color.FromRgb((byte)(r * 255), (byte)(g * 255), (byte)(b * 255));
-    }
+		var (r, g, b) = sector switch
+		{
+			0 => (value, t, p),
+			1 => (q, value, p),
+			2 => (p, value, t),
+			3 => (p, q, value),
+			4 => (t, p, value),
+			_ => (value, p, q),
+		};
+		return Color.FromRgb((byte)(r * 255), (byte)(g * 255), (byte)(b * 255));
+	}
 }

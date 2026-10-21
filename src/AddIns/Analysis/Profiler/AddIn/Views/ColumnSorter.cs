@@ -10,45 +10,45 @@ namespace OpenDevelop.Profiler.AddIn.Views;
 /// </summary>
 internal sealed class ColumnSorter<T>
 {
-    readonly ListView list;
-    readonly IReadOnlyDictionary<string, Func<T, IComparable>> keys;
-    IReadOnlyList<T> items = [];
-    string? column;
-    bool descending;
+	readonly ListView list;
+	readonly IReadOnlyDictionary<string, Func<T, IComparable>> keys;
+	IReadOnlyList<T> items = [];
+	string? column;
+	bool descending;
 
-    public ColumnSorter(ListView list, IReadOnlyDictionary<string, Func<T, IComparable>> keys)
-    {
-        this.list = list;
-        this.keys = keys;
-        list.AddHandler(GridViewColumnHeader.ClickEvent, new RoutedEventHandler(OnHeaderClick));
-    }
+	public ColumnSorter(ListView list, IReadOnlyDictionary<string, Func<T, IComparable>> keys)
+	{
+		this.list = list;
+		this.keys = keys;
+		list.AddHandler(GridViewColumnHeader.ClickEvent, new RoutedEventHandler(OnHeaderClick));
+	}
 
-    /// <summary>Replaces the items and sorts them by the given column.</summary>
-    public void SetItems(IReadOnlyList<T> newItems, string defaultColumn, bool defaultDescending)
-    {
-        items = newItems;
-        column = defaultColumn;
-        descending = defaultDescending;
-        Apply();
-    }
+	/// <summary>Replaces the items and sorts them by the given column.</summary>
+	public void SetItems(IReadOnlyList<T> newItems, string defaultColumn, bool defaultDescending)
+	{
+		items = newItems;
+		column = defaultColumn;
+		descending = defaultDescending;
+		Apply();
+	}
 
-    void OnHeaderClick(object sender, RoutedEventArgs e)
-    {
-        if (e.OriginalSource is not GridViewColumnHeader { Tag: string tag } || !keys.ContainsKey(tag))
-            return;
-        // A new column starts ascending; clicking the same column again reverses it.
-        descending = column == tag && !descending;
-        column = tag;
-        Apply();
-    }
+	void OnHeaderClick(object sender, RoutedEventArgs e)
+	{
+		if (e.OriginalSource is not GridViewColumnHeader { Tag: string tag } || !keys.ContainsKey(tag))
+			return;
+		// A new column starts ascending; clicking the same column again reverses it.
+		descending = column == tag && !descending;
+		column = tag;
+		Apply();
+	}
 
-    void Apply()
-    {
-        if (column is null || !keys.TryGetValue(column, out var key))
-        {
-            list.ItemsSource = items;
-            return;
-        }
-        list.ItemsSource = (descending ? items.OrderByDescending(key) : items.OrderBy(key)).ToList();
-    }
+	void Apply()
+	{
+		if (column is null || !keys.TryGetValue(column, out var key))
+		{
+			list.ItemsSource = items;
+			return;
+		}
+		list.ItemsSource = (descending ? items.OrderByDescending(key) : items.OrderBy(key)).ToList();
+	}
 }

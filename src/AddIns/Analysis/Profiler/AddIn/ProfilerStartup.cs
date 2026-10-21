@@ -10,8 +10,8 @@ namespace OpenDevelop.Profiler.AddIn;
 /// </summary>
 public sealed class ProfilerStartup : AbstractCommand
 {
-    public override void Run()
-    {
-        // Nothing to do: creating this class is what loads the assembly.
-    }
+	public override void Run()
+	{
+		// Nothing to do: creating this class is what loads the assembly.
+	}
 }

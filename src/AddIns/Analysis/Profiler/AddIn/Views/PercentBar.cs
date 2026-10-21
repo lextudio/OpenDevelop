@@ -28,42 +28,42 @@ namespace OpenDevelop.Profiler.AddIn.Views;
 /// </summary>
 public sealed class PercentBar : FrameworkElement
 {
-    static readonly Brush FillBrush = CreateFill();
-    static readonly Pen OutlinePen = CreateOutline();
+	static readonly Brush FillBrush = CreateFill();
+	static readonly Pen OutlinePen = CreateOutline();
 
-    public static readonly DependencyProperty ValueProperty =
-        DependencyProperty.Register(
-            nameof(Value), typeof(double), typeof(PercentBar),
-            new FrameworkPropertyMetadata(
-                0.0, FrameworkPropertyMetadataOptions.AffectsRender | FrameworkPropertyMetadataOptions.AffectsMeasure));
+	public static readonly DependencyProperty ValueProperty =
+		DependencyProperty.Register(
+			nameof(Value), typeof(double), typeof(PercentBar),
+			new FrameworkPropertyMetadata(
+				0.0, FrameworkPropertyMetadataOptions.AffectsRender | FrameworkPropertyMetadataOptions.AffectsMeasure));
 
-    public double Value
-    {
-        get => (double)GetValue(ValueProperty);
-        set => SetValue(ValueProperty, value);
-    }
+	public double Value
+	{
+		get => (double)GetValue(ValueProperty);
+		set => SetValue(ValueProperty, value);
+	}
 
-    protected override void OnRender(DrawingContext drawingContext)
-    {
-        base.OnRender(drawingContext);
-        if (RenderSize.Height > 4 && RenderSize.Width > 0)
-        {
-            var width = RenderSize.Width * Math.Clamp(Value, 0, 1);
-            drawingContext.DrawRectangle(FillBrush, OutlinePen, new Rect(0, 2, width, RenderSize.Height - 4));
-        }
-    }
+	protected override void OnRender(DrawingContext drawingContext)
+	{
+		base.OnRender(drawingContext);
+		if (RenderSize.Height > 4 && RenderSize.Width > 0)
+		{
+			var width = RenderSize.Width * Math.Clamp(Value, 0, 1);
+			drawingContext.DrawRectangle(FillBrush, OutlinePen, new Rect(0, 2, width, RenderSize.Height - 4));
+		}
+	}
 
-    static Brush CreateFill()
-    {
-        var brush = new LinearGradientBrush(Colors.Red, Colors.Orange, 0);
-        brush.Freeze();
-        return brush;
-    }
+	static Brush CreateFill()
+	{
+		var brush = new LinearGradientBrush(Colors.Red, Colors.Orange, 0);
+		brush.Freeze();
+		return brush;
+	}
 
-    static Pen CreateOutline()
-    {
-        var pen = new Pen(Brushes.Black, 1);
-        pen.Freeze();
-        return pen;
-    }
+	static Pen CreateOutline()
+	{
+		var pen = new Pen(Brushes.Black, 1);
+		pen.Freeze();
+		return pen;
+	}
 }
