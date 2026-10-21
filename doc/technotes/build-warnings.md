@@ -40,11 +40,24 @@ of the total.
 | **CA1416** platform compatibility | 60 | **Fixed** (`b5980a58ad`). The cause was not an unguarded Windows API: CodeQuality and LanguageServices.Roslyn were the only two projects that never linked `src/Main/GlobalAssemblyInfo.cs`, so they did not carry the product's `SupportedOSPlatform("windows")` declaration (nor the product version). Both link it now, with their duplicate attributes removed. |
 | **CS0618** obsolete members | ~41 | **Fixed** (`abb0117d04`): the eleven subscription sites now use `MessageBus<...>`; the three compatibility facades and the NuGet template accessor keep the deprecated members under scoped pragmas whose reasons sit next to them. Zero CS0618 in Base, the shell and PackageManagement, and in a full shell build. |
 
-## Rejected approach
+## Transitive pinning: tried, rejected, then adopted
 
-`CentralPackageTransitivePinningEnabled=true` looked like a one-line fix for the whole vulnerable-
-package family, and it did remove every NU1902/NU1903. It also turned ordinary version drift into
-build errors: GtkDesigner failed with `NU1109` because its graph wants `SkiaSharp` 3.119.2 while the
-central pin is 3.119.1. A repository-wide transitive pin therefore needs every central version to be
-maximal and kept maximal; that is a dependency-policy change, not a warning cleanup, so it was
-reverted in favour of the explicit per-project `MessagePack` references.
+`CentralPackageTransitivePinningEnabled=true` was the obvious one-line fix for the vulnerable-package
+family, and it did remove every NU1902/NU1903 - but it turns ordinary version drift into build
+errors. On the first attempt GtkDesigner failed with `NU1109` because its graph wants `SkiaSharp`
+3.119.2 while the central pin was 3.119.1, so the setting was reverted and the affected projects took
+explicit `MessagePack` references instead.
+
+The second attempt raised the conflicting pins first and the whole solution converged:
+`SkiaSharp` 3.119.1 -> 3.119.2 (`LeXtudio.DevFlow.Agent.Core` requires it) and `System.Data.SqlClient`
+4.8.6 -> 4.9.1 (`Microsoft.PowerShell.SDK` requires it). `dotnet restore OpenDevelop.Mvp.slnx` then
+reported **zero NU1109 and zero errors**, and the shell builds clean, so the setting is now on: a
+dependency can no longer drag an older release in behind the central pins.
+
+What pinning still cannot reach is a package that a **submodule** declares directly - its own central
+policy applies inside that project tree. In the same restore every remaining NU1902/NU1903 is one of
+those: `MessagePack` 2.5.302 and `System.Security.Cryptography.Xml/Pkcs` in `externals/cps` and
+`externals/vscode-wpf` (WpfDesigner, wxsg), plus `Tmds.DBus.Protocol` 0.21.2 in UnoHost, which comes
+from `Uno.WinUI.Runtime.Skia.X11` (a Linux-only runtime). Those need the submodule or Uno to move, or
+an explicit direct override validated on the runtime in question; they are not mitigable from this
+repository's props.
