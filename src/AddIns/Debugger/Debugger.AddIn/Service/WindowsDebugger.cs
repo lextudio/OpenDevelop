@@ -186,6 +186,10 @@ namespace ICSharpCode.SharpDevelop.Services
 			get { return false; }
 		}
 
+		public override int? DebuggedProcessId {
+			get { return CurrentSession?.DebuggeeProcessId; }
+		}
+
 		public override bool IsProcessRunning {
 			get { return IsDebugging && !CurrentSession.IsPaused; }
 		}

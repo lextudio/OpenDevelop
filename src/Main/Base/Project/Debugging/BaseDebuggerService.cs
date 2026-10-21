@@ -187,6 +187,11 @@ namespace ICSharpCode.SharpDevelop.Debugging
 			get;
 		}
 
+		/// <inheritdoc />
+		public virtual int? DebuggedProcessId {
+			get { return null; }
+		}
+
 		public abstract void HandleToolTipRequest(ToolTipRequestEventArgs e);
 
 		static MessageViewCategory debugCategory = null;

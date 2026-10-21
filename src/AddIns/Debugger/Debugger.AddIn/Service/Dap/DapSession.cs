@@ -65,6 +65,9 @@ namespace Debugger.AddIn.Service.Dap
 	{
 		Process adapterProcess;
 		Process debuggeeProcess;
+
+		/// <summary>The operating system id of the program being debugged, once known; null before that.</summary>
+		public int? DebuggeeProcessId { get; private set; }
 		DapLaunchMode launchMode;
 		DapClient client;
 		CancellationTokenSource cancellationTokenSource;
@@ -197,6 +200,7 @@ namespace Debugger.AddIn.Service.Dap
 			Capabilities = ParseCapabilities(initializeResponse);
 
 			if (launchMode == DapLaunchMode.AttachToProcess) {
+				DebuggeeProcessId = attachProcessId;
 				await client.SendRequestAsync("attach", new JsonObject {
 					["processId"] = attachProcessId,
 					["console"] = "internalConsole",
@@ -204,6 +208,7 @@ namespace Debugger.AddIn.Service.Dap
 				}, cancellationToken).ConfigureAwait(false);
 			} else if (launchMode == DapLaunchMode.AttachToSuspendedProcess) {
 				debuggeeProcess = LaunchDebuggeeSuspended(debuggeeLaunchHost, targetPath, workingDirectory, argumentList, launchEnvironment);
+				DebuggeeProcessId = debuggeeProcess.Id;
 				await client.SendRequestAsync("attach", new JsonObject {
 					["processId"] = debuggeeProcess.Id,
 					["console"] = "internalConsole",
@@ -816,6 +821,12 @@ namespace Debugger.AddIn.Service.Dap
 					break;
 				case "module":
 					HandleModuleEvent(body);
+					break;
+				case "process":
+					// The adapter reports the program it launched; the attach modes already know theirs.
+					if (body?["systemProcessId"] != null) {
+						DebuggeeProcessId = body["systemProcessId"].GetValue<int>();
+					}
 					break;
 				case "terminated":
 				case "exited":

@@ -75,6 +75,14 @@ namespace ICSharpCode.SharpDevelop.Debugging
 			get;
 		}
 		
+		/// <summary>
+		/// The operating system id of the process being debugged, or <c>null</c> when there is none or the debugger does not know it.
+		/// Lets other tools, such as the profiler, tell whether a process they were handed is the one under the debugger.
+		/// </summary>
+		int? DebuggedProcessId {
+			get;
+		}
+		
 		bool CanDebug(IProject project);
 		
 		bool Supports(DebuggerFeatures feature);
