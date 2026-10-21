@@ -480,7 +480,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 
 			container.BringIntoView();
 			toolboxControl.UpdateLayout();
-			if (!DesignerToolboxHitTest.WaitUntilHitTestableAt(container))
+			if (!DesignerToolboxHitTest.WaitUntilHitTestableAt(toolboxControl, container))
 				return JsonSerializer.Serialize(new { success = false, error = "Toolbox row never became hit-testable at its own layout position (compositor did not catch up): " + typeName });
 
 			return JsonSerializer.Serialize(GetScreenBounds(container));
@@ -517,7 +517,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			container.BringIntoView();
 			toolboxControl.UpdateLayout();
 
-			if (!DesignerToolboxHitTest.WaitUntilHitTestableAt(container))
+			if (!DesignerToolboxHitTest.WaitUntilHitTestableAt(toolboxControl, container))
 				return JsonSerializer.Serialize(new { success = false, error = "Toolbox row never became hit-testable at its own layout position (compositor did not catch up): " + typeName });
 
 			return JsonSerializer.Serialize(GetScreenBounds(container));

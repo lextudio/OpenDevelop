@@ -11,4 +11,14 @@ public sealed class DesignerToolboxHitTestTests
 	{
 		Assert.False(DesignerToolboxHitTest.WaitUntilHitTestableAt(new ListBoxItem(), timeoutMilliseconds: 0));
 	}
+
+	[Fact]
+	public void DisconnectedRowWithAnOwningListIsNotReportedAsHitTestable()
+	{
+		var list = new ListBox();
+		var row = new ListBoxItem();
+		list.Items.Add(row);
+
+		Assert.False(DesignerToolboxHitTest.WaitUntilHitTestableAt(list, row, timeoutMilliseconds: 0));
+	}
 }

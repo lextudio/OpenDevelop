@@ -318,7 +318,7 @@ public static class WinUIXamlDesignerDevFlowActions
 			return Failure("Toolbox row has no realized container: " + controlName);
 		container.BringIntoView();
 		list.UpdateLayout();
-		if (!DesignerToolboxHitTest.WaitUntilHitTestableAt(container))
+		if (!DesignerToolboxHitTest.WaitUntilHitTestableAt(list, container))
 			return Failure("Toolbox row never became hit-testable at its own layout position: " + controlName);
 
 		var bounds = DesignerSurfaceGeometryProbe.ScreenBoundsOf(container);
