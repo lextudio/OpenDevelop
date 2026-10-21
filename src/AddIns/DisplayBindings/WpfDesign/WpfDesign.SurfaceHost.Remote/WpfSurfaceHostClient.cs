@@ -172,8 +172,7 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	/// <summary>Removes an explicitly authored WPF property value, letting the design model restore
 	/// its normal default. The child records this as its native undoable property transaction.</summary>
 	public Task<DesignerSessionState> ResetPropertyAsync(long baseVersion, string elementId, string propertyName, CancellationToken cancellationToken = default)
-		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/reset-property",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName }, cancellationToken), cancellationToken);
+		=> TrackMutationAsync(Document.ResetPropertyAsync(baseVersion, elementId, propertyName, cancellationToken), cancellationToken);
 
 	/// <summary>Writes an already-known handler name to a WPF XAML event attribute. This does not
 	/// execute project code or synthesize code-behind; the editor remains source-authoritative.</summary>

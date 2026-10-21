@@ -244,7 +244,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-table-layout-track-unit", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, index, sizeType }, cancellationToken), cancellationToken);
 
 		public Task<DesignerSessionState> ResetPropertyAsync(long baseVersion, string elementId, string propertyName, CancellationToken cancellationToken)
-			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/reset-property", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName }, cancellationToken), cancellationToken);
+			=> TrackMutationAsync(Document.ResetPropertyAsync(baseVersion, elementId, propertyName, cancellationToken), cancellationToken);
 
 		public Task<DesignerSessionState> RenameAsync(long baseVersion, string elementId, string newName, CancellationToken cancellationToken)
 			=> TrackMutationAsync(Document.RenameAsync(baseVersion, elementId, newName, cancellationToken), cancellationToken);
