@@ -10526,6 +10526,207 @@ Press Esc to cancel this operation.</value>
   <data name="AddIns.Profiler.Report.NotAHeapCapture" xml:space="preserve">
     <value>&apos;{0}&apos; is not a heap snapshot.</value>
   </data>
+  <data name="AddIns.Profiler.Report.NotACpuCapture" xml:space="preserve">
+    <value>&apos;{0}&apos; is not a CPU capture.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ComparingFunctionsWith" xml:space="preserve">
+    <value>Comparing with {0}: the change in each function&apos;s share of CPU time.</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.CaptureDump" xml:space="preserve">
+    <value>Capture Memory Dump of Process...</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.DumpPrompt" xml:space="preserve">
+    <value>Select a running .NET process to write a memory dump of:</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.DumpWarning" xml:space="preserve">
+    <value>The process is paused while the dump is written, and the file is as large as the process's memory.</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.WriteDump" xml:space="preserve">
+    <value>Write Dump</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.WritingDump" xml:space="preserve">
+    <value>Writing the memory dump... the process stays paused until it is done.</value>
+  </data>
+  <data name="AddIns.Profiler.FileFilter.Dump" xml:space="preserve">
+    <value>Memory dumps (*.dmp, *.mdmp, *.hdmp)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.DumpInfo" xml:space="preserve">
+    <value>Memory dump: .NET {0} on {1} ({2}), {3}</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Heap" xml:space="preserve">
+    <value>Heap</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Threads" xml:space="preserve">
+    <value>Threads</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ManagedId" xml:space="preserve">
+    <value>Managed ID</value>
+  </data>
+  <data name="AddIns.Profiler.Report.OsId" xml:space="preserve">
+    <value>OS ID</value>
+  </data>
+  <data name="AddIns.Profiler.Report.State" xml:space="preserve">
+    <value>State</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Exception" xml:space="preserve">
+    <value>Exception</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Stack" xml:space="preserve">
+    <value>Stack (top frame first)</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.ScanContents" xml:space="preserve">
+    <value>After a heap snapshot, also read the process's memory for duplicate strings and sparse arrays (pauses the process again and writes a temporary memory dump)</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.ReadingContents" xml:space="preserve">
+    <value>Reading the heap contents of {0}...</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.ContentsFailed" xml:space="preserve">
+    <value>The heap snapshot is saved, but its contents could not be read: {0}</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Contents" xml:space="preserve">
+    <value>Contents</value>
+  </data>
+  <data name="AddIns.Profiler.Report.DuplicateStrings" xml:space="preserve">
+    <value>Duplicate strings</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SparseArrays" xml:space="preserve">
+    <value>Sparse arrays</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Value" xml:space="preserve">
+    <value>Value</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Length" xml:space="preserve">
+    <value>Length</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Copies" xml:space="preserve">
+    <value>Copies</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Wasted" xml:space="preserve">
+    <value>Wasted</value>
+  </data>
+  <data name="AddIns.Profiler.Report.EmptyElements" xml:space="preserve">
+    <value>Empty elements</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ContentsNone" xml:space="preserve">
+    <value>The contents of this snapshot were not read. Turn on "also read the process's memory" in Profiler Settings and capture again to see duplicate strings and sparse arrays.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ContentsSummary" xml:space="preserve">
+    <value>{0:N0} objects read. Duplicate strings waste about {1}; sparse arrays waste about {2}.</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.ProfileDebugged" xml:space="preserve">
+    <value>Attach CPU Profiler to Debugged Process</value>
+  </data>
+  <data name="AddIns.Profiler.Messages.NotDebugging" xml:space="preserve">
+    <value>No program is being debugged.</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.DebuggedProcessStopped" xml:space="preserve">
+    <value>Process {0} is stopped at a breakpoint in the debugger, so the capture records nothing until it runs again. Continue anyway?</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.ProfileProjectAllocations" xml:space="preserve">
+    <value>Allocation Profile Current Project</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.Settings" xml:space="preserve">
+    <value>Profiler Settings...</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.Title" xml:space="preserve">
+    <value>Profiler Settings</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.Retained" xml:space="preserve">
+    <value>Captures to keep (older finished ones are deleted when a new capture starts):</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.LargeMb" xml:space="preserve">
+    <value>Ask before opening a capture of at least this many MB:</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.Folder" xml:space="preserve">
+    <value>Store captures in (empty: .opendevelop/profiling in the solution folder):</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.Browse" xml:space="preserve">
+    <value>Browse...</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.Invalid" xml:space="preserve">
+    <value>Enter a whole number of at least 1.</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.DebuggerStopped" xml:space="preserve">
+    <value>The debugger is stopped at a breakpoint. If the process you chose is the one being debugged, it is paused, so the capture records nothing until it runs again. Continue anyway?</value>
+  </data>
+  <data name="AddIns.Profiler.Report.LargeCapture" xml:space="preserve">
+    <value>This capture is {0}. Opening it needs several times that much memory and can take a while. Open it anyway?</value>
+  </data>
+  <data name="AddIns.Profiler.Report.NotOpened" xml:space="preserve">
+    <value>The capture was not opened.</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.AttachPort" xml:space="preserve">
+    <value>Attach to Diagnostic Port...</value>
+  </data>
+  <data name="AddIns.Profiler.Port.Title" xml:space="preserve">
+    <value>Attach to Diagnostic Port</value>
+  </data>
+  <data name="AddIns.Profiler.Port.Prompt" xml:space="preserve">
+    <value>Listen at this diagnostic port address. The program connects to it when it starts, so it can run in a container, on another machine through a forwarded socket, or under a service manager.</value>
+  </data>
+  <data name="AddIns.Profiler.Port.Address" xml:space="preserve">
+    <value>Address:</value>
+  </data>
+  <data name="AddIns.Profiler.Port.StartWith" xml:space="preserve">
+    <value>Start the program with this environment variable (drop ,suspend to not hold it at startup):</value>
+  </data>
+  <data name="AddIns.Profiler.Port.ModeCpu" xml:space="preserve">
+    <value>CPU usage</value>
+  </data>
+  <data name="AddIns.Profiler.Port.ModeAllocation" xml:space="preserve">
+    <value>Memory allocations</value>
+  </data>
+  <data name="AddIns.Profiler.Port.Listen" xml:space="preserve">
+    <value>Listen</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.Waiting" xml:space="preserve">
+    <value>Waiting for a program to connect to {0}...</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Counters" xml:space="preserve">
+    <value>Counters</value>
+  </data>
+  <data name="AddIns.Profiler.Report.NoCounters" xml:space="preserve">
+    <value>This capture has no runtime counters. Captures made by this version record them; older ones do not.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ExportCsv" xml:space="preserve">
+    <value>Export to CSV...</value>
+  </data>
+  <data name="AddIns.Profiler.FileFilter.Csv" xml:space="preserve">
+    <value>CSV files (*.csv)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Exported" xml:space="preserve">
+    <value>Exported to {0}.</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.AttachAllocation" xml:space="preserve">
+    <value>Attach Allocation Profiler to Process...</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.AllocationPrompt" xml:space="preserve">
+    <value>Select a running .NET process to record the allocations of:</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.StartRecording" xml:space="preserve">
+    <value>Start Recording</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.RecordingAllocations" xml:space="preserve">
+    <value>Recording allocations... {0}</value>
+  </data>
+  <data name="AddIns.Profiler.Report.TotalSize" xml:space="preserve">
+    <value>Total (KB)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SelfSize" xml:space="preserve">
+    <value>Self (KB)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.StatusAllocation" xml:space="preserve">
+    <value>{0:N0} allocation samples, about {1:N0} KB allocated, {2}.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.AllocationNote" xml:space="preserve">
+    <value>Sampled data: the runtime reports one sample about every 100 KB allocated, so sizes are estimates and small allocations can be missed.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SelfChange" xml:space="preserve">
+    <value>Self change</value>
+  </data>
+  <data name="AddIns.Profiler.Report.TotalChange" xml:space="preserve">
+    <value>Total change</value>
+  </data>
   <data name="AddIns.Profiler.Report.NotFound" xml:space="preserve">
     <value>&apos;{0}&apos; was not found in the call tree.</value>
   </data>

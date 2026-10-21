@@ -10132,6 +10132,207 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
   <data name="AddIns.Profiler.Report.NotAHeapCapture" xml:space="preserve">
     <value>「{0}」不是堆積快照。</value>
   </data>
+  <data name="AddIns.Profiler.Report.NotACpuCapture" xml:space="preserve">
+    <value>「{0}」不是 CPU 擷取檔。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ComparingFunctionsWith" xml:space="preserve">
+    <value>正在與 {0} 比較：顯示每個函式佔 CPU 時間份額的變化。</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.CaptureDump" xml:space="preserve">
+    <value>擷取處理序的記憶體傾印…</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.DumpPrompt" xml:space="preserve">
+    <value>選擇要寫入記憶體傾印的執行中 .NET 處理序：</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.DumpWarning" xml:space="preserve">
+    <value>寫入傾印期間處理序會被暫停，檔案大小與處理序記憶體相當。</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.WriteDump" xml:space="preserve">
+    <value>寫入傾印</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.WritingDump" xml:space="preserve">
+    <value>正在寫入記憶體傾印…完成之前處理序保持暫停。</value>
+  </data>
+  <data name="AddIns.Profiler.FileFilter.Dump" xml:space="preserve">
+    <value>記憶體傾印 (*.dmp, *.mdmp, *.hdmp)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.DumpInfo" xml:space="preserve">
+    <value>記憶體傾印：.NET {0}，{1}（{2}），{3}</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Heap" xml:space="preserve">
+    <value>堆積</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Threads" xml:space="preserve">
+    <value>執行緒</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ManagedId" xml:space="preserve">
+    <value>受控 ID</value>
+  </data>
+  <data name="AddIns.Profiler.Report.OsId" xml:space="preserve">
+    <value>系統 ID</value>
+  </data>
+  <data name="AddIns.Profiler.Report.State" xml:space="preserve">
+    <value>狀態</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Exception" xml:space="preserve">
+    <value>例外狀況</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Stack" xml:space="preserve">
+    <value>堆疊（頂端框架在前）</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.ScanContents" xml:space="preserve">
+    <value>堆積快照之後，還讀取處理序記憶體以尋找重複字串和稀疏陣列（會再次暫停處理序，並寫入暫存記憶體傾印）</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.ReadingContents" xml:space="preserve">
+    <value>正在讀取 {0} 的堆積內容…</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.ContentsFailed" xml:space="preserve">
+    <value>堆積快照已儲存，但無法讀取其內容：{0}</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Contents" xml:space="preserve">
+    <value>內容</value>
+  </data>
+  <data name="AddIns.Profiler.Report.DuplicateStrings" xml:space="preserve">
+    <value>重複字串</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SparseArrays" xml:space="preserve">
+    <value>稀疏陣列</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Value" xml:space="preserve">
+    <value>值</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Length" xml:space="preserve">
+    <value>長度</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Copies" xml:space="preserve">
+    <value>份數</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Wasted" xml:space="preserve">
+    <value>浪費</value>
+  </data>
+  <data name="AddIns.Profiler.Report.EmptyElements" xml:space="preserve">
+    <value>空元素</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ContentsNone" xml:space="preserve">
+    <value>未讀取此快照的內容。請在分析器設定中開啟「還讀取處理序記憶體」，然後重新擷取，即可檢視重複字串和稀疏陣列。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ContentsSummary" xml:space="preserve">
+    <value>已讀取 {0:N0} 個物件。重複字串約浪費 {1}；稀疏陣列約浪費 {2}。</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.ProfileDebugged" xml:space="preserve">
+    <value>將 CPU 分析器附加到被偵錯的處理序</value>
+  </data>
+  <data name="AddIns.Profiler.Messages.NotDebugging" xml:space="preserve">
+    <value>目前沒有正在偵錯的程式。</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.DebuggedProcessStopped" xml:space="preserve">
+    <value>處理序 {0} 在偵錯工具中停在中斷點上，在它繼續執行之前擷取不會記錄任何內容。仍要繼續嗎？</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.ProfileProjectAllocations" xml:space="preserve">
+    <value>對目前專案進行記憶體配置分析</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.Settings" xml:space="preserve">
+    <value>分析器設定…</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.Title" xml:space="preserve">
+    <value>分析器設定</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.Retained" xml:space="preserve">
+    <value>保留的擷取數量（開始新擷取時會刪除更舊的已完成擷取）：</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.LargeMb" xml:space="preserve">
+    <value>開啟不小於此大小（MB）的擷取前先詢問：</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.Folder" xml:space="preserve">
+    <value>擷取存放位置（留空：方案資料夾下的 .opendevelop/profiling）：</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.Browse" xml:space="preserve">
+    <value>瀏覽…</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.Invalid" xml:space="preserve">
+    <value>請輸入不小於 1 的整數。</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.DebuggerStopped" xml:space="preserve">
+    <value>偵錯工具目前停在中斷點上。如果您選擇的處理序正是被偵錯的處理序，它處於暫停狀態，在它繼續執行之前擷取不會記錄任何內容。仍要繼續嗎？</value>
+  </data>
+  <data name="AddIns.Profiler.Report.LargeCapture" xml:space="preserve">
+    <value>此擷取檔大小為 {0}。開啟它需要數倍於此的記憶體，且可能需要較長時間。仍要開啟嗎？</value>
+  </data>
+  <data name="AddIns.Profiler.Report.NotOpened" xml:space="preserve">
+    <value>未開啟該擷取檔。</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.AttachPort" xml:space="preserve">
+    <value>附加到診斷連接埠…</value>
+  </data>
+  <data name="AddIns.Profiler.Port.Title" xml:space="preserve">
+    <value>附加到診斷連接埠</value>
+  </data>
+  <data name="AddIns.Profiler.Port.Prompt" xml:space="preserve">
+    <value>在此診斷連接埠位址上接聽。程式啟動時會主動連線到它，因此程式可以在容器中、透過轉送的通訊端位於另一台電腦上，或由服務管理員啟動。</value>
+  </data>
+  <data name="AddIns.Profiler.Port.Address" xml:space="preserve">
+    <value>位址：</value>
+  </data>
+  <data name="AddIns.Profiler.Port.StartWith" xml:space="preserve">
+    <value>用此環境變數啟動程式（移除 ,suspend 則不在啟動時暫停）：</value>
+  </data>
+  <data name="AddIns.Profiler.Port.ModeCpu" xml:space="preserve">
+    <value>CPU 使用率</value>
+  </data>
+  <data name="AddIns.Profiler.Port.ModeAllocation" xml:space="preserve">
+    <value>記憶體配置</value>
+  </data>
+  <data name="AddIns.Profiler.Port.Listen" xml:space="preserve">
+    <value>接聽</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.Waiting" xml:space="preserve">
+    <value>正在等候程式連線到 {0}…</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Counters" xml:space="preserve">
+    <value>計數器</value>
+  </data>
+  <data name="AddIns.Profiler.Report.NoCounters" xml:space="preserve">
+    <value>此擷取沒有執行階段計數器。由目前版本製作的擷取會記錄它們，較舊的擷取則沒有。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ExportCsv" xml:space="preserve">
+    <value>匯出為 CSV…</value>
+  </data>
+  <data name="AddIns.Profiler.FileFilter.Csv" xml:space="preserve">
+    <value>CSV 檔案 (*.csv)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Exported" xml:space="preserve">
+    <value>已匯出到 {0}。</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.AttachAllocation" xml:space="preserve">
+    <value>將配置分析器附加到處理序…</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.AllocationPrompt" xml:space="preserve">
+    <value>選擇要記錄配置情況的執行中 .NET 處理序：</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.StartRecording" xml:space="preserve">
+    <value>開始記錄</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.RecordingAllocations" xml:space="preserve">
+    <value>正在記錄配置… {0}</value>
+  </data>
+  <data name="AddIns.Profiler.Report.TotalSize" xml:space="preserve">
+    <value>總計 (KB)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SelfSize" xml:space="preserve">
+    <value>自身 (KB)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.StatusAllocation" xml:space="preserve">
+    <value>{0:N0} 個配置取樣，約配置 {1:N0} KB，{2}。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.AllocationNote" xml:space="preserve">
+    <value>取樣資料：執行階段大約每配置 100 KB 回報一次取樣，因此大小只是估計值，較小的配置可能被遺漏。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SelfChange" xml:space="preserve">
+    <value>自身變化</value>
+  </data>
+  <data name="AddIns.Profiler.Report.TotalChange" xml:space="preserve">
+    <value>合計變化</value>
+  </data>
   <data name="AddIns.Profiler.Report.NotFound" xml:space="preserve">
     <value>在呼叫樹中找不到「{0}」。</value>
   </data>

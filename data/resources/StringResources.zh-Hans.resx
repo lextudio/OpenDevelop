@@ -10132,6 +10132,207 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   <data name="AddIns.Profiler.Report.NotAHeapCapture" xml:space="preserve">
     <value>“{0}”不是堆快照。</value>
   </data>
+  <data name="AddIns.Profiler.Report.NotACpuCapture" xml:space="preserve">
+    <value>“{0}”不是 CPU 捕获文件。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ComparingFunctionsWith" xml:space="preserve">
+    <value>正在与 {0} 比较：显示每个函数占 CPU 时间份额的变化。</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.CaptureDump" xml:space="preserve">
+    <value>捕获进程的内存转储…</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.DumpPrompt" xml:space="preserve">
+    <value>选择要写入内存转储的正在运行的 .NET 进程：</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.DumpWarning" xml:space="preserve">
+    <value>写入转储期间进程会被暂停，文件大小与进程内存相当。</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.WriteDump" xml:space="preserve">
+    <value>写入转储</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.WritingDump" xml:space="preserve">
+    <value>正在写入内存转储…完成之前进程保持暂停。</value>
+  </data>
+  <data name="AddIns.Profiler.FileFilter.Dump" xml:space="preserve">
+    <value>内存转储 (*.dmp, *.mdmp, *.hdmp)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.DumpInfo" xml:space="preserve">
+    <value>内存转储：.NET {0}，{1}（{2}），{3}</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Heap" xml:space="preserve">
+    <value>堆</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Threads" xml:space="preserve">
+    <value>线程</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ManagedId" xml:space="preserve">
+    <value>托管 ID</value>
+  </data>
+  <data name="AddIns.Profiler.Report.OsId" xml:space="preserve">
+    <value>系统 ID</value>
+  </data>
+  <data name="AddIns.Profiler.Report.State" xml:space="preserve">
+    <value>状态</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Exception" xml:space="preserve">
+    <value>异常</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Stack" xml:space="preserve">
+    <value>堆栈（顶部帧在前）</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.ScanContents" xml:space="preserve">
+    <value>堆快照之后，还读取进程内存以查找重复字符串和稀疏数组（会再次暂停进程，并写入临时内存转储）</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.ReadingContents" xml:space="preserve">
+    <value>正在读取 {0} 的堆内容…</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.ContentsFailed" xml:space="preserve">
+    <value>堆快照已保存，但无法读取其内容：{0}</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Contents" xml:space="preserve">
+    <value>内容</value>
+  </data>
+  <data name="AddIns.Profiler.Report.DuplicateStrings" xml:space="preserve">
+    <value>重复字符串</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SparseArrays" xml:space="preserve">
+    <value>稀疏数组</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Value" xml:space="preserve">
+    <value>值</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Length" xml:space="preserve">
+    <value>长度</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Copies" xml:space="preserve">
+    <value>份数</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Wasted" xml:space="preserve">
+    <value>浪费</value>
+  </data>
+  <data name="AddIns.Profiler.Report.EmptyElements" xml:space="preserve">
+    <value>空元素</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ContentsNone" xml:space="preserve">
+    <value>未读取此快照的内容。请在分析器设置中打开“还读取进程内存”，然后重新捕获，即可查看重复字符串和稀疏数组。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ContentsSummary" xml:space="preserve">
+    <value>已读取 {0:N0} 个对象。重复字符串约浪费 {1}；稀疏数组约浪费 {2}。</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.ProfileDebugged" xml:space="preserve">
+    <value>将 CPU 分析器附加到被调试的进程</value>
+  </data>
+  <data name="AddIns.Profiler.Messages.NotDebugging" xml:space="preserve">
+    <value>当前没有正在调试的程序。</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.DebuggedProcessStopped" xml:space="preserve">
+    <value>进程 {0} 在调试器中停在断点上，在它继续运行之前捕获不会记录任何内容。仍要继续吗？</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.ProfileProjectAllocations" xml:space="preserve">
+    <value>对当前项目进行内存分配分析</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.Settings" xml:space="preserve">
+    <value>分析器设置…</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.Title" xml:space="preserve">
+    <value>分析器设置</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.Retained" xml:space="preserve">
+    <value>保留的捕获数量（开始新捕获时会删除更旧的已完成捕获）：</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.LargeMb" xml:space="preserve">
+    <value>打开不小于此大小（MB）的捕获前先询问：</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.Folder" xml:space="preserve">
+    <value>捕获存放位置（留空：解决方案文件夹下的 .opendevelop/profiling）：</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.Browse" xml:space="preserve">
+    <value>浏览…</value>
+  </data>
+  <data name="AddIns.Profiler.Settings.Invalid" xml:space="preserve">
+    <value>请输入不小于 1 的整数。</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.DebuggerStopped" xml:space="preserve">
+    <value>调试器当前停在断点上。如果你选择的进程正是被调试的进程，它处于暂停状态，在它继续运行之前捕获不会记录任何内容。仍要继续吗？</value>
+  </data>
+  <data name="AddIns.Profiler.Report.LargeCapture" xml:space="preserve">
+    <value>此捕获文件大小为 {0}。打开它需要数倍于此的内存，并且可能需要较长时间。仍要打开吗？</value>
+  </data>
+  <data name="AddIns.Profiler.Report.NotOpened" xml:space="preserve">
+    <value>未打开该捕获文件。</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.AttachPort" xml:space="preserve">
+    <value>附加到诊断端口…</value>
+  </data>
+  <data name="AddIns.Profiler.Port.Title" xml:space="preserve">
+    <value>附加到诊断端口</value>
+  </data>
+  <data name="AddIns.Profiler.Port.Prompt" xml:space="preserve">
+    <value>在此诊断端口地址上监听。程序启动时会主动连接到它，因此程序可以在容器中、通过转发的套接字位于另一台机器上，或由服务管理器启动。</value>
+  </data>
+  <data name="AddIns.Profiler.Port.Address" xml:space="preserve">
+    <value>地址：</value>
+  </data>
+  <data name="AddIns.Profiler.Port.StartWith" xml:space="preserve">
+    <value>用此环境变量启动程序（去掉 ,suspend 则不在启动时挂起）：</value>
+  </data>
+  <data name="AddIns.Profiler.Port.ModeCpu" xml:space="preserve">
+    <value>CPU 使用率</value>
+  </data>
+  <data name="AddIns.Profiler.Port.ModeAllocation" xml:space="preserve">
+    <value>内存分配</value>
+  </data>
+  <data name="AddIns.Profiler.Port.Listen" xml:space="preserve">
+    <value>监听</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.Waiting" xml:space="preserve">
+    <value>正在等待程序连接到 {0}…</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Counters" xml:space="preserve">
+    <value>计数器</value>
+  </data>
+  <data name="AddIns.Profiler.Report.NoCounters" xml:space="preserve">
+    <value>此捕获没有运行时计数器。由当前版本制作的捕获会记录它们，较旧的捕获则没有。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ExportCsv" xml:space="preserve">
+    <value>导出为 CSV…</value>
+  </data>
+  <data name="AddIns.Profiler.FileFilter.Csv" xml:space="preserve">
+    <value>CSV 文件 (*.csv)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Exported" xml:space="preserve">
+    <value>已导出到 {0}。</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.AttachAllocation" xml:space="preserve">
+    <value>将分配分析器附加到进程…</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.AllocationPrompt" xml:space="preserve">
+    <value>选择要记录分配情况的正在运行的 .NET 进程：</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.StartRecording" xml:space="preserve">
+    <value>开始记录</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.RecordingAllocations" xml:space="preserve">
+    <value>正在记录分配… {0}</value>
+  </data>
+  <data name="AddIns.Profiler.Report.TotalSize" xml:space="preserve">
+    <value>总计 (KB)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SelfSize" xml:space="preserve">
+    <value>自身 (KB)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.StatusAllocation" xml:space="preserve">
+    <value>{0:N0} 个分配采样，约分配 {1:N0} KB，{2}。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.AllocationNote" xml:space="preserve">
+    <value>采样数据：运行时大约每分配 100 KB 报告一次采样，因此大小只是估计值，较小的分配可能被遗漏。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SelfChange" xml:space="preserve">
+    <value>自身变化</value>
+  </data>
+  <data name="AddIns.Profiler.Report.TotalChange" xml:space="preserve">
+    <value>合计变化</value>
+  </data>
   <data name="AddIns.Profiler.Report.NotFound" xml:space="preserve">
     <value>在调用树中未找到“{0}”。</value>
   </data>
