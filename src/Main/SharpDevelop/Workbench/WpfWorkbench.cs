@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -235,13 +235,14 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			UpdateMenu();
 			
 			AddHandler(Hyperlink.RequestNavigateEvent, new RequestNavigateEventHandler(OnRequestNavigate));
-			SD.ProjectService.CurrentProjectChanged += SetProjectTitle;
+			MessageBus<ActiveProjectChangedMessageEventArgs>.Subscribers += SetProjectTitle;
 			// Opening a solution surfaces the Projects pad (doc/technotes/ilspy.md, 2026-08-09):
 			// the tree the user just asked to inspect lives there, and nothing else in the shell
 			// moves focus to it. BringPadToFront routes through AvalonDockLayout.ActivatePad's
 			// LegacyPadClass match, so the migrated ToolPaneModel (ProjectBrowserViewModel) is the
 			// one that actually gets selected, not a second never-shown pad instance.
-			SD.ProjectService.SolutionOpened += delegate {
+			MessageBus<SolutionOpenedMessageEventArgs>.Subscribers += OnSolutionOpenedMessage;
+			void OnSolutionOpenedMessage(object? sender, SolutionOpenedMessageEventArgs args) {
 				// typeof(...) must name the MEF-migrated pad registered in the AddInTree
 				// (ICSharpCode.SharpDevelop.Services.ProjectBrowserPad), not the legacy
 				// ICSharpCode.SharpDevelop.Project.ProjectBrowserPad stub - GetPad matches on the
@@ -316,10 +317,15 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			}
 		}
 		
-		void SetProjectTitle(object sender, PropertyChangedEventArgs<IProject> e)
+		void SetProjectTitle(object sender, ActiveProjectChangedMessageEventArgs e)
 		{
-			if (e.NewValue != null) {
-				Title = e.NewValue.Name + " - " + ResourceService.GetString("MainWindow.DialogName");
+			SetProjectTitle(e.NewProject);
+		}
+		
+		void SetProjectTitle(IProject project)
+		{
+			if (project != null) {
+				Title = project.Name + " - " + ResourceService.GetString("MainWindow.DialogName");
 			} else {
 				Title = ResourceService.GetString("MainWindow.DialogName");
 			}
@@ -499,7 +505,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		void OnLanguageChanged(object sender, EventArgs e)
 		{
 			MenuService.UpdateText(mainMenu.Items);
-			SetProjectTitle(null, new PropertyChangedEventArgs<IProject>(null, SD.ProjectService.CurrentProject));
+			SetProjectTitle(SD.ProjectService.CurrentProject);
 			UpdateFlowDirection();
 		}
 		

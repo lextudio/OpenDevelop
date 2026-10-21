@@ -62,6 +62,10 @@ namespace ICSharpCode.SharpDevelop.Templates
             // package cache. They may expose the same template identity several times, although
             // creation resolves that identity to one current winner. Do the same at our DTO
             // boundary so a project picker never presents indistinguishable duplicate choices.
+            // ITemplateInfo.Parameters is deprecated in favour of the template engine's
+            // IParameterDefinitionSet/TryGetParameterDefinition, whose shape we have not mapped yet;
+            // the cache accessor still returns the same data, so this one call keeps using it until then.
+#pragma warning disable CS0618
             return templates
                 .Select(template => new TemplateSummary(
                     template.Identity,
@@ -90,6 +94,7 @@ namespace ICSharpCode.SharpDevelop.Templates
                     .First())
                 .OrderBy(summary => summary.Name, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+#pragma warning restore CS0618
         }
 
         /// <summary>

@@ -73,6 +73,11 @@ public static class ProjectServiceCompat
 		remove { SD.ProjectService.ProjectItemRemoved -= value; }
 	}
 	
+	// This type is the compatibility facade for the deprecated project-service events: its whole
+	// job is to keep the legacy EventHandler<SolutionEventArgs> shape available. The documented
+	// replacement (MessageBus<SolutionClosedMessageEventArgs>) has different event arguments, so
+	// moving it would change the facade's own contract. Revisit when the deprecated events go.
+#pragma warning disable CS0618
 	public static event EventHandler<SolutionEventArgs> SolutionClosed {
 		add { SD.ProjectService.SolutionClosed += value; }
 		remove { SD.ProjectService.SolutionClosed -= value; }
@@ -87,4 +92,5 @@ public static class ProjectServiceCompat
 		add { SD.ProjectService.SolutionOpened += value; }
 		remove { SD.ProjectService.SolutionOpened -= value; }
 	}
+#pragma warning restore CS0618
 }

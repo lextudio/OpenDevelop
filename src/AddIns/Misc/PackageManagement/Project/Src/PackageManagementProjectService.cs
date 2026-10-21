@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -90,6 +90,9 @@ namespace ICSharpCode.PackageManagement
 //			return SD.ParserService.GetProjectContent(project);
 //		}
 		
+		// NuGet's IProjectService declares these events, so the implementation has to expose them; it
+		// forwards the deprecated project-service events, whose replacement uses different arguments.
+#pragma warning disable CS0618
 		public event EventHandler<SolutionEventArgs> SolutionClosed {
 			add { SD.ProjectService.SolutionClosed += value; }
 			remove { SD.ProjectService.SolutionClosed -= value; }
@@ -99,6 +102,7 @@ namespace ICSharpCode.PackageManagement
 			add { SD.ProjectService.SolutionOpened += value; }
 			remove { SD.ProjectService.SolutionOpened -= value; }
 		}
+#pragma warning restore CS0618
 	
 		public IProjectBrowserUpdater CreateProjectBrowserUpdater()
 		{

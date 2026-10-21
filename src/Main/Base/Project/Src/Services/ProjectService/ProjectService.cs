@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -235,6 +235,9 @@ namespace ICSharpCode.SharpDevelop.Project
 			remove { SD.ProjectService.SolutionClosing -= value; }
 		}
 		
+		// The same compatibility case as ProjectServiceCompatibility: this static event forwards the
+		// deprecated interface event into the legacy ProjectEventArgs shape on purpose.
+#pragma warning disable CS0618
 		static EventAdapter<IProjectService, PropertyChangedEventHandler<IProject>, EventHandler<ProjectEventArgs>> currentProjectChangedAdapter =
 			new EventAdapter<IProjectService, PropertyChangedEventHandler<IProject>, EventHandler<ProjectEventArgs>>(
 				SD.GetService<IProjectService>(), (s, v) => s.CurrentProjectChanged += v, (s, v) => s.CurrentProjectChanged -= v,
@@ -244,6 +247,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		public static event EventHandler<ProjectEventArgs> CurrentProjectChanged {
 			add { currentProjectChangedAdapter.Add(value); }
 			remove { currentProjectChangedAdapter.Remove(value); }
+#pragma warning restore CS0618
 		}
 		
 		[Obsolete("Use SD.ProjectService.ProjectItemAdded instead")]

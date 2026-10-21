@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -86,7 +86,7 @@ namespace ICSharpCode.SharpDevelop
 					throw new InvalidOperationException("Initializing the NavigationService requires that the WorkbenchSingleton has already created a Workbench.");
 				}
 				// trap changes in the secondary tab via the workbench's ActiveViewContentChanged event
-				SD.Workbench.ActiveViewContentChanged += ActiveViewContentChanged;
+				MessageBus<WorkbenchContextChangedEventArgs>.Subscribers += ActiveViewContentChanged;
 				
 				SD.FileService.FileRenamed += FileService_FileRenamed;
 				MessageBus<SolutionClosedMessageEventArgs>.Subscribers += ProjectService_SolutionClosed;

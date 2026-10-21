@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -25,6 +25,7 @@ using System.IO;
 using ICSharpCode.Core;
 #if !HAS_UNO
 using ICSharpCode.Core.Presentation;
+using ICSharpCode.ILSpy.Util;
 #endif
 
 namespace ICSharpCode.SharpDevelop.Workbench
@@ -569,7 +570,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				if (!registeredOnViewContentChange) {
 					// register WorkbenchSingleton.Workbench.ActiveViewContentChanged only on demand
 					wasActiveViewContent = IsActiveViewContent;
-					SD.Workbench.ActiveViewContentChanged += OnActiveViewContentChanged;
+					MessageBus<WorkbenchContextChangedEventArgs>.Subscribers += OnActiveViewContentChanged;
 					registeredOnViewContentChange = true;
 				}
 				isActiveViewContentChanged += value;
@@ -582,7 +583,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		void UnregisterOnActiveViewContentChanged()
 		{
 			if (registeredOnViewContentChange) {
-				SD.Workbench.ActiveViewContentChanged -= OnActiveViewContentChanged;
+				MessageBus<WorkbenchContextChangedEventArgs>.Subscribers -= OnActiveViewContentChanged;
 				registeredOnViewContentChange = false;
 			}
 		}

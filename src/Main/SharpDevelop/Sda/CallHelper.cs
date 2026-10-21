@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -32,6 +32,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop.Commands;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Workbench;
@@ -198,8 +199,8 @@ namespace ICSharpCode.SharpDevelop.Sda
 			// Register events to marshal back
 			SD.BuildService.BuildStarted   += delegate { this.callback.StartBuild(); };
 			SD.BuildService.BuildFinished  += delegate { this.callback.EndBuild(); };
-			SD.ProjectService.SolutionOpened += delegate { this.callback.SolutionLoaded(); };
-			SD.ProjectService.SolutionClosed += delegate { this.callback.SolutionClosed(); };
+			MessageBus<SolutionOpenedMessageEventArgs>.Subscribers += OnSolutionOpenedMessage;
+			MessageBus<SolutionClosedMessageEventArgs>.Subscribers += OnSolutionClosedMessage;
 			FileUtility.FileLoaded += delegate(object sender, FileNameEventArgs e) { this.callback.FileLoaded(e.FileName); };
 			FileUtility.FileSaved  += delegate(object sender, FileNameEventArgs e) { this.callback.FileSaved(e.FileName); };
 			
@@ -210,6 +211,14 @@ namespace ICSharpCode.SharpDevelop.Sda
 		#endregion
 		
 		#region Initialize and run Workbench
+		// The message bus holds subscribers weakly, so the target has to be a long-lived object;
+		// these are instance methods on CallHelper for exactly that reason.
+		void OnSolutionOpenedMessage(object? sender, SolutionOpenedMessageEventArgs e)
+			=> this.callback.SolutionLoaded();
+
+		void OnSolutionClosedMessage(object? sender, SolutionClosedMessageEventArgs e)
+			=> this.callback.SolutionClosed();
+
 		public void RunWorkbench(WorkbenchSettings settings)
 		{
 			if (settings.RunOnNewThread) {
