@@ -32,7 +32,7 @@ using Xunit;
 namespace OpenDevelop.IntegrationTests;
 
 [Collection("30 Add-ins and specialized fixtures")]
-public sealed class AddInTests : IAsyncDisposable
+public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
 {
     readonly string _repoDir;
 
@@ -67,7 +67,7 @@ public sealed class AddInTests : IAsyncDisposable
 
     readonly OpenDevelopAppFixture _app;
 
-    public AddInTests(OpenDevelopAppFixture app)
+    public AddInTests(OpenDevelopAppFixture app) : base(app)
     {
         _app = app;
         _repoDir = Path.Combine(Path.GetTempPath(), "GitAddInTests-" + Guid.NewGuid().ToString("N"));
@@ -4057,46 +4057,25 @@ public sealed class AddInTests : IAsyncDisposable
                 "The root Form selection must exactly cover the rendered outer frame (including title and borders). " + before);
 
             const double dx = 60, dy = 40;
-            JsonElement after = default;
-            var effectiveBefore = before;
-            var grew = false;
-            var pointerEvents = "";
             // The test host deliberately starts with ShowActivated=false. A native input gesture
             // therefore must reacquire foreground focus immediately before it starts; a flyout or
             // window-manager transition can otherwise consume the first press. Re-read the handle
             // after every activation because its screen position can move with the host window.
-            for (int attempt = 1; attempt <= 4 && !grew; attempt++) {
-                await _app.InvokeAsync("od.activate");
-                effectiveBefore = await _app.InvokeAsync("od.forms-designer.surface-geometry");
-                Assert.True(effectiveBefore.GetProperty("available").GetBoolean(), effectiveBefore.ToString());
-                Assert.True(effectiveBefore.GetProperty("handleVisible").GetBoolean(), "The resize handle is outside the visible canvas: " + effectiveBefore);
-                var hx = effectiveBefore.GetProperty("handle").GetProperty("x").GetDouble();
-                var hy = effectiveBefore.GetProperty("handle").GetProperty("y").GetDouble();
-                // Use the decomposed native gesture here.  The DevFlow one-shot `drag` endpoint
-                // acknowledges Windows requests without delivering WM_MOUSE* to this embedded
-                // Forms surface; the press/move/release input pump does deliver them.  `global`
-                // is set by the fixture, so all points remain the actual screen coordinates
-                // obtained above after scrolling the canvas to its bottom-right corner.
-                await _app.InvokeAsync("od.pointer-events", true);
-                var pressed = await _app.PressPointerAsync(hx, hy);
-                Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
-                pointerEvents = (await _app.InvokeAsync("od.pointer-events", false)).ToString();
-                await _app.DragPointerInStepsAsync(hx, hy, hx + dx, hy + dy);
-                grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
-                    after = await _app.InvokeAsync("od.forms-designer.surface-geometry");
-                    if (!after.GetProperty("available").GetBoolean())
-                        return false;
-                    var fw = after.GetProperty("designSize").GetProperty("width").GetDouble();
-                    var fh = after.GetProperty("designSize").GetProperty("height").GetDouble();
-                    var bw = effectiveBefore.GetProperty("designSize").GetProperty("width").GetDouble();
-                    var bh = effectiveBefore.GetProperty("designSize").GetProperty("height").GetDouble();
-                    return fw > bw + 20
-                        && fh > bh + 20;
-                }, TimeSpan.FromSeconds(3), initialDelayMs: 100, maxDelayMs: 400);
-            }
-            before = effectiveBefore;
-            var afterFrameStr = after.TryGetProperty("frame", out var af) ? $"({af.GetProperty("width").GetDouble():F1},{af.GetProperty("height").GetDouble():F1})" : "N/A";
-			Assert.True(grew, "The resize drag did not grow the rendered frame.\nbefore=" + before + "\nPointer=" + pointerEvents + "\nafter=" + after);
+            var resize = await RetryResizeHandleDragAsync(
+                async _ => {
+                    await _app.InvokeAsync("od.activate");
+                    return await _app.InvokeAsync("od.forms-designer.surface-geometry");
+                },
+                () => _app.InvokeAsync("od.forms-designer.surface-geometry"),
+                (current, candidate) => {
+                    var currentSize = candidate.GetProperty("designSize");
+                    var beforeSize = current.GetProperty("designSize");
+                    return currentSize.GetProperty("width").GetDouble() > beforeSize.GetProperty("width").GetDouble() + 20
+                        && currentSize.GetProperty("height").GetDouble() > beforeSize.GetProperty("height").GetDouble() + 20;
+                },
+                dx, dy, TimeSpan.FromSeconds(3));
+            before = resize.Before;
+            var after = resize.After;
 			OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(after, "after");
 
             // The native gesture is expressed in screen pixels while the Forms canvas may be
@@ -5183,35 +5162,23 @@ public sealed class AddInTests : IAsyncDisposable
             + $"{buttonY - titleY}.\nTitleText=" + titleBounds + "\nPrimaryButton=" + buttonBounds);
 
         const double dx = 40, dy = 30;
-        JsonElement after = default;
-        JsonElement effectiveBefore = before;
-        var grew = false;
-        var attempts = new System.Text.StringBuilder();
-        for (int attempt = 1; attempt <= 4 && !grew; attempt++) {
-            await _app.InvokeAsync("od.activate");
-            var current = await _app.InvokeAsync("od.winui-designer.surface-geometry");
-            Assert.True(current.GetProperty("available").GetBoolean(), current.ToString());
-            effectiveBefore = current;
-            var hx = current.GetProperty("handle").GetProperty("x").GetDouble();
-            var hy = current.GetProperty("handle").GetProperty("y").GetDouble();
-
-            // A zero mouse-down count is a pointer-delivery failure, not a designer one; keep it in the message.
-            await _app.InvokeAsync("od.pointer-events", true);
-            var pressed = await _app.PressPointerAsync(hx, hy);
-            Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
-            await _app.DragPointerInStepsAsync(hx, hy, hx + dx, hy + dy);
-            attempts.AppendLine($"attempt {attempt}: press ({hx},{hy}) geometry={current} mouseDowns={await _app.InvokeAsync("od.pointer-events", false)}");
-            await _app.InvokeAsync("od.file.save", mainPage);
-            attempts.AppendLine("    source: " + System.Text.RegularExpressions.Regex.Match(await File.ReadAllTextAsync(mainPage), "<Button[^>]*>").Value);
-
-            grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
-                after = await _app.InvokeAsync("od.winui-designer.surface-geometry");
-                return after.GetProperty("available").GetBoolean()
-                    && after.GetProperty("selection").GetProperty("width").GetDouble() > current.GetProperty("selection").GetProperty("width").GetDouble() + 10
-                    && after.GetProperty("selection").GetProperty("height").GetDouble() > current.GetProperty("selection").GetProperty("height").GetDouble() + 10;
-            }, TimeSpan.FromSeconds(8), initialDelayMs: 100, maxDelayMs: 400);
-        }
-        Assert.True(grew, "The resize drag did not grow the selected element, even after retries. before=" + before + "\n" + attempts);
+        var resize = await RetryResizeHandleDragAsync(
+            async _ => {
+                await _app.InvokeAsync("od.activate");
+                return await _app.InvokeAsync("od.winui-designer.surface-geometry");
+            },
+            () => _app.InvokeAsync("od.winui-designer.surface-geometry"),
+            (current, candidate) => candidate.GetProperty("selection").GetProperty("width").GetDouble() > current.GetProperty("selection").GetProperty("width").GetDouble() + 10
+                && candidate.GetProperty("selection").GetProperty("height").GetDouble() > current.GetProperty("selection").GetProperty("height").GetDouble() + 10,
+            dx, dy, TimeSpan.FromSeconds(8),
+            afterGestureAsync: async _ => {
+                // The WinUI host commits its mutation through the document save path; retain the
+                // per-attempt save so the geometry poll observes the same persisted lifecycle.
+                var savedAttempt = await _app.InvokeAsync("od.file.save", mainPage);
+                Assert.True(savedAttempt.GetProperty("success").GetBoolean(), savedAttempt.ToString());
+            });
+        var effectiveBefore = resize.Before;
+        var after = resize.After;
 		OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(after, "after");
 
         // A real OS pointer is measured in physical screen pixels, while Width/Height are
@@ -5322,45 +5289,27 @@ public sealed class AddInTests : IAsyncDisposable
             // consecutive manual gestures resized correctly, the 7th only because the element had
             // grown until its handle left the surface), so a failing attempt here means the input
             // didn't reach the window, which is exactly what re-activating can recover from.
-            JsonElement after = default;
             // The base geometry a given attempt actually dragged from - NOT the original
             // "before", since a failed earlier attempt could have left a partial resize in
             // place, which would make an exact-delta check against the original "before"
             // wrong on a later, successful attempt.
-            JsonElement effectiveBefore = before;
-            var grew = false;
-            for (int attempt = 1; attempt <= 4 && !grew; attempt++) {
-                await _app.InvokeAsync("od.activate");
-                // A failed native gesture may cause the out-of-process preview to rebuild and
-                // clear its selection. Re-select the known target before reading its handle;
-                // otherwise a retry would aim at the default (0,0) geometry instead of testing
-                // PaneStack's resize path.
-                sel = await _app.InvokeAsync("od.wpf-designer.select", "PaneStack");
-                Assert.True(sel.GetProperty("success").GetBoolean(), sel.ToString());
-                // In the split Design/Source layout the design pane can be shorter than the frame plus
-                // the canvas margin (145px for a 120px-tall frame when this test runs first), leaving
-                // PaneStack's bottom-right handle below the visible canvas, where the press lands on the
-                // source editor. Scroll the canvas to its end, as a user would, at an unchanged 100% zoom.
-                await _app.InvokeAsync("od.wpf-designer.scroll-to", "0", "max");
-                var current = await _app.InvokeAsync("od.wpf-designer.surface-geometry");
-                Assert.True(current.GetProperty("available").GetBoolean(), current.ToString());
-				OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(current, $"attempt {attempt}");
-                effectiveBefore = current;
-                var hx = current.GetProperty("handle").GetProperty("x").GetDouble();
-                var hy = current.GetProperty("handle").GetProperty("y").GetDouble();
-
-                var pressed = await _app.PressPointerAsync(hx, hy);
-                Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
-                await _app.DragPointerInStepsAsync(hx, hy, hx + dx, hy + dy);
-
-                grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
-                    after = await _app.InvokeAsync("od.wpf-designer.surface-geometry");
-                    return after.GetProperty("available").GetBoolean()
-                        && after.GetProperty("element").GetProperty("width").GetDouble() > current.GetProperty("element").GetProperty("width").GetDouble() + 10
-                        && after.GetProperty("element").GetProperty("height").GetDouble() > current.GetProperty("element").GetProperty("height").GetDouble() + 10;
-                }, TimeSpan.FromSeconds(8), initialDelayMs: 100, maxDelayMs: 400);
-            }
-            Assert.True(grew, "The resize drag did not grow the selected element, even after retries. before=" + before);
+            var resize = await RetryResizeHandleDragAsync(
+                async _ => {
+                    await _app.InvokeAsync("od.activate");
+                    // A failed native gesture may cause the out-of-process preview to rebuild and
+                    // clear its selection. Re-select the known target before reading its handle.
+                    sel = await _app.InvokeAsync("od.wpf-designer.select", "PaneStack");
+                    Assert.True(sel.GetProperty("success").GetBoolean(), sel.ToString());
+                    // Keep the bottom-right handle above the split source pane at unchanged zoom.
+                    await _app.InvokeAsync("od.wpf-designer.scroll-to", "0", "max");
+                    return await _app.InvokeAsync("od.wpf-designer.surface-geometry");
+                },
+                () => _app.InvokeAsync("od.wpf-designer.surface-geometry"),
+                (current, candidate) => candidate.GetProperty("element").GetProperty("width").GetDouble() > current.GetProperty("element").GetProperty("width").GetDouble() + 10
+                    && candidate.GetProperty("element").GetProperty("height").GetDouble() > current.GetProperty("element").GetProperty("height").GetDouble() + 10,
+                dx, dy, TimeSpan.FromSeconds(8));
+            var effectiveBefore = resize.Before;
+            var after = resize.After;
 			OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(after, "after");
 
             // OS pointer coordinates are physical screen pixels, whereas Width/Height are XAML
