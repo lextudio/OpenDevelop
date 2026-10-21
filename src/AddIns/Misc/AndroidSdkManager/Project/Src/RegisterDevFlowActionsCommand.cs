@@ -17,10 +17,7 @@ namespace ICSharpCode.AndroidSdkManager
 	/// Forces AndroidSdkManager.dll to load at startup so DevFlow can discover od.androidsdk.*
 	/// actions without depending on the Tools menu item being clicked first.
 	/// </summary>
-	public sealed class RegisterDevFlowActionsCommand : AbstractCommand
+	public sealed class RegisterDevFlowActionsCommand : DevFlowActionRegistrationCommand
 	{
-		public override void Run()
-		{
-		}
 	}
 }

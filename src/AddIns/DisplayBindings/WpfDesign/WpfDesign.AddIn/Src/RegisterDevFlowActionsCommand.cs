@@ -12,10 +12,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 	/// (WpfDesignDevFlowActions.cs) could 404 until something else happened to load this addin
 	/// first. Same pattern as ILSpyAddIn's RegisterDevFlowActionsCommand.
 	/// </summary>
-	public sealed class RegisterDevFlowActionsCommand : AbstractCommand
+	public sealed class RegisterDevFlowActionsCommand : DevFlowActionRegistrationCommand
 	{
-		public override void Run()
-		{
-		}
 	}
 }

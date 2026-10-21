@@ -17,10 +17,7 @@ namespace SearchAndReplace
 	/// Forces SearchAndReplace.dll to load at startup so DevFlow can discover od.search.* actions
 	/// without depending on a Find/Replace menu item being clicked first.
 	/// </summary>
-	public sealed class RegisterDevFlowActionsCommand : AbstractCommand
+	public sealed class RegisterDevFlowActionsCommand : DevFlowActionRegistrationCommand
 	{
-		public override void Run()
-		{
-		}
 	}
 }

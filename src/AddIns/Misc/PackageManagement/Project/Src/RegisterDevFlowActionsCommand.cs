@@ -17,10 +17,7 @@ namespace ICSharpCode.PackageManagement
 	/// Forces PackageManagement.dll to load at startup so DevFlow can discover od.nuget.* actions
 	/// without depending on a specific pad or menu item being realized first.
 	/// </summary>
-	public sealed class RegisterDevFlowActionsCommand : AbstractCommand
+	public sealed class RegisterDevFlowActionsCommand : DevFlowActionRegistrationCommand
 	{
-		public override void Run()
-		{
-		}
 	}
 }

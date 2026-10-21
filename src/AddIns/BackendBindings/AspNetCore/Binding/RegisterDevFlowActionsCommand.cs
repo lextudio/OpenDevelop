@@ -7,10 +7,7 @@ namespace ICSharpCode.AspNetCore.AddIn
 	/// The command is a no-op; production behavior remains registered through the normal,
 	/// ASP.NET Core-conditioned AddInTree entries.
 	/// </summary>
-	public sealed class RegisterDevFlowActionsCommand : AbstractCommand
+	public sealed class RegisterDevFlowActionsCommand : DevFlowActionRegistrationCommand
 	{
-		public override void Run()
-		{
-		}
 	}
 }

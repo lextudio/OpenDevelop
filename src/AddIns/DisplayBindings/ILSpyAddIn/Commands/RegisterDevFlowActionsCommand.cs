@@ -11,10 +11,7 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 	/// GetAssemblies(), so od.ilspy.* actions (IlSpyDevFlowActions.cs) would 404 until something
 	/// else happened to load this addin first.
 	/// </summary>
-	public sealed class RegisterDevFlowActionsCommand : AbstractCommand
+	public sealed class RegisterDevFlowActionsCommand : DevFlowActionRegistrationCommand
 	{
-		public override void Run()
-		{
-		}
 	}
 }
