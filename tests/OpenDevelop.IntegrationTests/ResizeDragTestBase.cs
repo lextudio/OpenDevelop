@@ -20,6 +20,33 @@ public abstract class ResizeDragTestBase(OpenDevelopAppFixture app)
         IReadOnlyList<string> PointerDeliveries);
 
     /// <summary>
+    /// Reads the width and height from one named geometry member.  The three designer actions
+    /// expose different members (<c>designSize</c>, <c>selection</c>, or <c>element</c>), but
+    /// their resize contract is the same.
+    /// </summary>
+    protected static (double Width, double Height) GeometrySize(JsonElement geometry, string member)
+    {
+        var size = geometry.GetProperty(member);
+        return (size.GetProperty("width").GetDouble(), size.GetProperty("height").GetDouble());
+    }
+
+    protected static void AssertGeometryGrew(
+        JsonElement before,
+        JsonElement after,
+        string member,
+        double minimumWidthGrowth,
+        double minimumHeightGrowth,
+        string subject)
+    {
+        var beforeSize = GeometrySize(before, member);
+        var afterSize = GeometrySize(after, member);
+        Assert.True(
+            afterSize.Width > beforeSize.Width + minimumWidthGrowth
+            && afterSize.Height > beforeSize.Height + minimumHeightGrowth,
+            $"{subject} should have materially grown, but went from {beforeSize.Width}×{beforeSize.Height} to {afterSize.Width}×{afterSize.Height}.");
+    }
+
+    /// <summary>
     /// Retries a complete native resize gesture. <paramref name="prepareAttemptAsync"/> must
     /// reactivate/reselect/reposition its backend and return freshly sampled screen geometry.
     /// Geometry is deliberately sampled before every press: a previous failed gesture can move
@@ -28,7 +55,9 @@ public abstract class ResizeDragTestBase(OpenDevelopAppFixture app)
     protected async Task<ResizeDragResult> RetryResizeHandleDragAsync(
         Func<int, Task<JsonElement>> prepareAttemptAsync,
         Func<Task<JsonElement>> readGeometryAsync,
-        Func<JsonElement, JsonElement, bool> grew,
+        string growthMember,
+        double minimumWidthGrowth,
+        double minimumHeightGrowth,
         double dx,
         double dy,
         TimeSpan growthTimeout,
@@ -97,10 +126,14 @@ public abstract class ResizeDragTestBase(OpenDevelopAppFixture app)
 
             var resized = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 after = await readGeometryAsync();
-                return after.GetProperty("available").GetBoolean() && grew(before, after);
+                return after.GetProperty("available").GetBoolean()
+                    && GeometrySize(after, growthMember).Width > GeometrySize(before, growthMember).Width + minimumWidthGrowth
+                    && GeometrySize(after, growthMember).Height > GeometrySize(before, growthMember).Height + minimumHeightGrowth;
             }, growthTimeout, initialDelayMs: 100, maxDelayMs: 400);
-            if (resized)
+            if (resized) {
+                OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(after, "after");
                 return new ResizeDragResult(before, after, attempt, pointerDeliveries);
+            }
         }
 
         throw new Xunit.Sdk.XunitException(

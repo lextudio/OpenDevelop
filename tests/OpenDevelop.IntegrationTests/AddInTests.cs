@@ -4067,28 +4067,18 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
                     return await _app.InvokeAsync("od.forms-designer.surface-geometry");
                 },
                 () => _app.InvokeAsync("od.forms-designer.surface-geometry"),
-                (current, candidate) => {
-                    var currentSize = candidate.GetProperty("designSize");
-                    var beforeSize = current.GetProperty("designSize");
-                    return currentSize.GetProperty("width").GetDouble() > beforeSize.GetProperty("width").GetDouble() + 20
-                        && currentSize.GetProperty("height").GetDouble() > beforeSize.GetProperty("height").GetDouble() + 20;
-                },
+                "designSize", 20, 20,
                 dx, dy, TimeSpan.FromSeconds(3));
             before = resize.Before;
             var after = resize.After;
-			OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(after, "after");
 
             // The native gesture is expressed in screen pixels while the Forms canvas may be
             // zoomed; therefore its exact design-unit delta is scale-dependent.  `grew` above
             // establishes a material resize. The assertions below ensure the rendered frame,
             // selection and persisted root size all describe that same result.
             // Compare design units, not screen pixels: in Fit mode the grown form is re-scaled.
-            static (double w, double h) DesignSize(JsonElement g)
-                => (g.GetProperty("designSize").GetProperty("width").GetDouble(), g.GetProperty("designSize").GetProperty("height").GetDouble());
-            var beforeSize = DesignSize(before);
-            var afterSize = DesignSize(after);
-            Assert.True(afterSize.w > beforeSize.w + 20 && afterSize.h > beforeSize.h + 20,
-                $"Form1 should have materially grown, but went from {beforeSize.w}×{beforeSize.h} to {afterSize.w}×{afterSize.h} design units.");
+            AssertGeometryGrew(before, after, "designSize", 20, 20, "Form1");
+            var afterSize = GeometrySize(after, "designSize");
 
             // Concern 1 - correct element identity: the persisted Form1.Designer.cs must show
             // Form1 ITSELF (this.Size = ...) carrying the new size, not some other control.
@@ -4107,10 +4097,10 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             // resize that landed on the wrong control entirely), not a pixel-exact one - the
             // exact-delta check above already covers the precise rendered-size assertion.
             // Both sides are design units, whichever zoom (50% or Fit) the gesture used.
-            Assert.True(Math.Abs(persistedWidth - afterSize.w) < 40,
-                $"Form1's persisted ClientSize width ({persistedWidth}) should roughly match the rendered post-drag width ({afterSize.w}).");
-            Assert.True(Math.Abs(persistedHeight - afterSize.h) < 40,
-                $"Form1's persisted ClientSize height ({persistedHeight}) should roughly match the rendered post-drag height ({afterSize.h}).");
+            Assert.True(Math.Abs(persistedWidth - afterSize.Width) < 40,
+                $"Form1's persisted ClientSize width ({persistedWidth}) should roughly match the rendered post-drag width ({afterSize.Width}).");
+            Assert.True(Math.Abs(persistedHeight - afterSize.Height) < 40,
+                $"Form1's persisted ClientSize height ({persistedHeight}) should roughly match the rendered post-drag height ({afterSize.Height}).");
         } finally {
             await File.WriteAllTextAsync(formCodePath, originalForm);
             await File.WriteAllTextAsync(designerPath, originalDesigner);
@@ -5168,8 +5158,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
                 return await _app.InvokeAsync("od.winui-designer.surface-geometry");
             },
             () => _app.InvokeAsync("od.winui-designer.surface-geometry"),
-            (current, candidate) => candidate.GetProperty("selection").GetProperty("width").GetDouble() > current.GetProperty("selection").GetProperty("width").GetDouble() + 10
-                && candidate.GetProperty("selection").GetProperty("height").GetDouble() > current.GetProperty("selection").GetProperty("height").GetDouble() + 10,
+            "selection", 10, 10,
             dx, dy, TimeSpan.FromSeconds(8),
             afterGestureAsync: async _ => {
                 // The WinUI host commits its mutation through the document save path; retain the
@@ -5179,19 +5168,12 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             });
         var effectiveBefore = resize.Before;
         var after = resize.After;
-		OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(after, "after");
 
         // A real OS pointer is measured in physical screen pixels, while Width/Height are
         // XAML design units.  Those differ at non-100% DPI, so do not assert dx directly here;
         // the invariant is that the visible selection is the size committed to XAML below.
-        var beforeWidth = effectiveBefore.GetProperty("selection").GetProperty("width").GetDouble();
-        var beforeHeight = effectiveBefore.GetProperty("selection").GetProperty("height").GetDouble();
-        var afterWidth = after.GetProperty("selection").GetProperty("width").GetDouble();
-        var afterHeight = after.GetProperty("selection").GetProperty("height").GetDouble();
-        Assert.True(afterWidth > beforeWidth + 10,
-            $"PrimaryButton's selection should have grown materially, but went from {beforeWidth} to {afterWidth}.");
-        Assert.True(afterHeight > beforeHeight + 10,
-            $"PrimaryButton's selection should have grown materially, but went from {beforeHeight} to {afterHeight}.");
+        AssertGeometryGrew(effectiveBefore, after, "selection", 10, 10, "PrimaryButton's selection");
+        var afterSize = GeometrySize(after, "selection");
 
         // Concern 1 - correct element identity: PrimaryButton itself must carry the size change
         // in the persisted XAML, and no OTHER element (in particular, not its parent) should have
@@ -5224,10 +5206,10 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         // check: this is an identity/gross-mismatch guard (catching a resize landing on the
         // wrong element entirely), not a pixel-exact one - `afterWidth`/`afterHeight` above
         // already went through the tight, exact-delta assertion against the rendered values.
-        Assert.True(Math.Abs(persistedWidth - afterWidth) < 10,
-            $"PrimaryButton's persisted Width ({persistedWidth}) should roughly match the rendered post-drag width ({afterWidth}).");
-        Assert.True(Math.Abs(persistedHeight - afterHeight) < 10,
-            $"PrimaryButton's persisted Height ({persistedHeight}) should roughly match the rendered post-drag height ({afterHeight}).");
+        Assert.True(Math.Abs(persistedWidth - afterSize.Width) < 10,
+            $"PrimaryButton's persisted Width ({persistedWidth}) should roughly match the rendered post-drag width ({afterSize.Width}).");
+        Assert.True(Math.Abs(persistedHeight - afterSize.Height) < 10,
+            $"PrimaryButton's persisted Height ({persistedHeight}) should roughly match the rendered post-drag height ({afterSize.Height}).");
     }
 
     [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
@@ -5305,24 +5287,16 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
                     return await _app.InvokeAsync("od.wpf-designer.surface-geometry");
                 },
                 () => _app.InvokeAsync("od.wpf-designer.surface-geometry"),
-                (current, candidate) => candidate.GetProperty("element").GetProperty("width").GetDouble() > current.GetProperty("element").GetProperty("width").GetDouble() + 10
-                    && candidate.GetProperty("element").GetProperty("height").GetDouble() > current.GetProperty("element").GetProperty("height").GetDouble() + 10,
+                "element", 10, 10,
                 dx, dy, TimeSpan.FromSeconds(8));
             var effectiveBefore = resize.Before;
             var after = resize.After;
-			OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(after, "after");
 
             // OS pointer coordinates are physical screen pixels, whereas Width/Height are XAML
             // design units.  At non-100% DPI they are intentionally not numerically identical;
             // the persisted-size equality below is the relevant no-lost-resize invariant.
-            var beforeWidth = effectiveBefore.GetProperty("element").GetProperty("width").GetDouble();
-            var beforeHeight = effectiveBefore.GetProperty("element").GetProperty("height").GetDouble();
-            var afterWidth = after.GetProperty("element").GetProperty("width").GetDouble();
-            var afterHeight = after.GetProperty("element").GetProperty("height").GetDouble();
-            Assert.True(afterWidth > beforeWidth + 10,
-                $"Width should have grown materially, but went from {beforeWidth} to {afterWidth}.");
-            Assert.True(afterHeight > beforeHeight + 10,
-                $"Height should have grown materially, but went from {beforeHeight} to {afterHeight}.");
+            AssertGeometryGrew(effectiveBefore, after, "element", 10, 10, "PaneStack");
+            var afterSize = GeometrySize(after, "element");
 
             // Concern 1 - correct element identity: the persisted XAML must show PaneStack itself
             // (the element that was selected and dragged) carrying the new Width/Height, not some
@@ -5335,10 +5309,10 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
                 || (string)e.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "PaneStack");
             var persistedWidth = double.Parse((string)paneStack.Attribute("Width"), CultureInfo.InvariantCulture);
             var persistedHeight = double.Parse((string)paneStack.Attribute("Height"), CultureInfo.InvariantCulture);
-            Assert.True(Math.Abs(persistedWidth - afterWidth) < 1,
-                $"PaneStack's persisted Width ({persistedWidth}) should match the rendered post-drag width ({afterWidth}).");
-            Assert.True(Math.Abs(persistedHeight - afterHeight) < 1,
-                $"PaneStack's persisted Height ({persistedHeight}) should match the rendered post-drag height ({afterHeight}).");
+            Assert.True(Math.Abs(persistedWidth - afterSize.Width) < 1,
+                $"PaneStack's persisted Width ({persistedWidth}) should match the rendered post-drag width ({afterSize.Width}).");
+            Assert.True(Math.Abs(persistedHeight - afterSize.Height) < 1,
+                $"PaneStack's persisted Height ({persistedHeight}) should match the rendered post-drag height ({afterSize.Height}).");
         } finally {
             await File.WriteAllTextAsync(xamlPath, original);
         }
