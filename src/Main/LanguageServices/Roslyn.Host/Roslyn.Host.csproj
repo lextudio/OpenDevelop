@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>ICSharpCode.Roslyn.Host</AssemblyName>
@@ -17,5 +18,12 @@
     <!-- StreamJsonRpc pulls MessagePack transitively; reference it directly so NuGet unifies on the
          centrally pinned release instead of resolving the vulnerable 2.5.x (NU1902/NU1903). -->
     <PackageReference Include="MessagePack" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Version and platform attributes come from the shared file the other projects link. Without
+         it this host counted as reachable on every platform, so every call into the Windows-only
+         designer and language service reported CA1416. -->
+    <Compile Include="../../GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
 </Project>
