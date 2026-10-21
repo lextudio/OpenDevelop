@@ -8,3 +8,15 @@ indent_style = tab
 # transitively - reports as MEF006. Scoped to that tree on purpose: the code has no MEF006 outside it.
 [src/AddIns/DisplayBindings/ILSpyAddIn/ILSpy/**]
 dotnet_diagnostic.MEF006.severity = none
+
+# The same tree keeps ILSpy's own async idioms (TaskHelper, tree-node threading), which the
+# Microsoft.VisualStudio.Threading analyzer reports as VSTHRD002/003/100/103/105/110/200. Those are
+# upstream patterns in absorbed code rather than ours to rewrite here, so the codes are disabled for
+# this tree only; they stay enabled everywhere else.
+dotnet_diagnostic.VSTHRD002.severity = none
+dotnet_diagnostic.VSTHRD003.severity = none
+dotnet_diagnostic.VSTHRD100.severity = none
+dotnet_diagnostic.VSTHRD103.severity = none
+dotnet_diagnostic.VSTHRD105.severity = none
+dotnet_diagnostic.VSTHRD110.severity = none
+dotnet_diagnostic.VSTHRD200.severity = none
