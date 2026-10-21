@@ -250,6 +250,12 @@ Unit-test support is based on Microsoft Testing Platform.
 
 Code coverage integrates open-source engines including AltCover and coverlet, with results presented directly in the editor.
 
+### Profiling
+
+The profiler samples CPU usage and captures managed-heap snapshots of modern .NET processes using the runtime's EventPipe sample profiler rather than injected CLR hooks. Captures are ordinary `.nettrace` files, so other tools can open them too. It is built for Windows, macOS, and Linux, and Windows is the only platform verified so far.
+
+It can attach to a running process, or start a program or a test run with the profiler and hold the target at startup so its first instructions are sampled as well. Reports open in the workbench as a call tree, caller/callee, function list, flame graph, or ring diagram, and each capture is kept as a session beside the solution.
+
 ### Assembly and code exploration
 
 ILSpy is hosted directly in the workbench for assembly browsing and decompilation.
@@ -306,7 +312,7 @@ OpenDevelop uses existing open protocols where they already exist and is experim
 
 OpenDevelop is an active development project rather than a finished replacement for Visual Studio or Rider.
 
-Many core workflows are already functional, including project loading, editing, debugging, visual design, package management, testing, code coverage, assembly exploration, and class diagrams. Other areas, including deeper Visual Studio Editor API compatibility, decompiled-source debugging, newer XAML designers, and the generalized out-of-process visual designer protocol, are still evolving.
+Many core workflows are already functional, including project loading, editing, debugging, visual design, package management, testing, code coverage, profiling, assembly exploration, and class diagrams. Other areas, including deeper Visual Studio Editor API compatibility, decompiled-source debugging, newer XAML designers, and the generalized out-of-process visual designer protocol, are still evolving.
 
 The project intentionally develops these pieces in the open so that individual components can also improve independently.
 
@@ -335,6 +341,10 @@ The project intentionally develops these pieces in the open so that individual c
 ### Code coverage
 
 ![Code coverage](images/code-coverage.png)
+
+### Profiler
+
+![Profiler](images/profiler.png)
 
 ### Class diagrams
 
