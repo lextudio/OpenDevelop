@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A plain .NET console process with known behaviour for the Profiler tests to attach to:
+       "cpu" spins in a hot method with a known call shape, "heap" holds a known number of live objects.
+       Standalone (not in any solution); OpenDevelop.Profiler.Tests builds it. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Optimize>true</Optimize>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>

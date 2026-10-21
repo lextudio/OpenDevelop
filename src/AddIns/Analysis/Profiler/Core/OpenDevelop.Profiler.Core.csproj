@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Profiler data layer: EventPipe collection (DiagnosticsClient), .nettrace parsing (TraceEvent)
+       and the aggregation behind every report view. Deliberately has no WPF/IDE dependency so it is
+       unit-testable and shared by every platform build. See doc/technotes/profiler.md. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>OpenDevelop.Profiler</RootNamespace>
+    <AssemblyName>OpenDevelop.Profiler.Core</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpenDevelop.Profiler.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Diagnostics.NETCore.Client" />
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" />
+  </ItemGroup>
+</Project>
