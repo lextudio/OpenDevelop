@@ -958,6 +958,10 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 
     public async Task<JsonElement> DragPointerAsync(double fromX, double fromY, double toX, double toY, int steps = 6)
     {
+        // Unlike PressPointerAsync, this endpoint contains the whole native gesture in one
+        // request.  It still needs the same immediate foreground check: an earlier activation
+        // can be invalidated while the caller obtains fresh source/target geometry.
+        await EnsureForegroundForPointerInputAsync();
         var body = JsonSerializer.Serialize(new { global = true, fromX, fromY, toX, toY, steps });
         using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
         using var resp = await _http.PostAsync($"{BaseUrl}/api/v1/ui/actions/drag", content);

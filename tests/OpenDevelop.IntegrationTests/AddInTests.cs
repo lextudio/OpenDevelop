@@ -2261,10 +2261,34 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         var toX = target.GetProperty("centerX").GetDouble();
         var toY = target.GetProperty("centerY").GetDouble();
 
-        await _app.PressPointerAsync(fromX, fromY);
-        for (var step = 1; step <= 8; step++)
-            await _app.DragMovePointerAsync(fromX + (toX - fromX) * step / 8.0, fromY + (toY - fromY) * step / 8.0);
-        await _app.ReleasePointerAsync(toX, toY);
+        // A macOS press/move/release split across separate HTTP requests can be routed to
+        // different native windows.  Use the DevFlow held-drag path there so the OS sees one
+        // gesture, then prove the main window actually received its mouse-down before treating
+        // a missing insertion as a designer failure.
+        var resetPointerEvents = await _app.InvokeAsync("od.pointer-events", true);
+        Assert.True(resetPointerEvents.GetProperty("success").GetBoolean(), resetPointerEvents.ToString());
+        JsonElement pointerDelivery = default;
+        if (OperatingSystem.IsMacOS())
+        {
+            var dragged = await _app.DragPointerAsync(fromX, fromY, toX, toY, steps: 8);
+            Assert.True(dragged.GetProperty("ok").GetBoolean(), dragged.ToString());
+            var delivered = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+            {
+                pointerDelivery = await _app.InvokeAsync("od.pointer-events", false);
+                return pointerDelivery.GetProperty("count").GetInt32() > 0;
+            }, TimeSpan.FromSeconds(3), initialDelayMs: 50, maxDelayMs: 150);
+            Assert.True(delivered, "The native toolbox drag did not deliver a mouse-down to the main window: " + pointerDelivery);
+        }
+        else
+        {
+            var pressed = await _app.PressPointerAsync(fromX, fromY);
+            Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
+            pointerDelivery = await _app.InvokeAsync("od.pointer-events", false);
+            Assert.True(pointerDelivery.GetProperty("count").GetInt32() > 0,
+                "The native toolbox press did not deliver a mouse-down to the main window: " + pointerDelivery);
+            await _app.DragPointerInStepsAsync(fromX, fromY, toX, toY, steps: 8);
+        }
+        AssertPointerDeliveryMatchesScreenPoint(pointerDelivery, fromX, fromY);
 
         JsonElement after = default;
         var inserted = await OpenDevelopAppFixture.PollUntilAsync(async () =>
@@ -5335,6 +5359,20 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
                 return bounds;
         }
         return null;
+    }
+
+    static void AssertPointerDeliveryMatchesScreenPoint(JsonElement delivery, double screenX, double screenY)
+    {
+        Assert.True(delivery.GetProperty("success").GetBoolean(), delivery.ToString());
+        var recorded = delivery.GetProperty("events").EnumerateArray().Last().GetString();
+        Assert.False(string.IsNullOrWhiteSpace(recorded), delivery.ToString());
+        var coordinates = recorded.Split(' ', 2)[0].Split(',');
+        Assert.Equal(2, coordinates.Length);
+        var windowX = double.Parse(coordinates[0], CultureInfo.InvariantCulture);
+        var windowY = double.Parse(coordinates[1], CultureInfo.InvariantCulture);
+        var origin = delivery.GetProperty("clientOrigin");
+        Assert.InRange(Math.Abs(origin.GetProperty("X").GetDouble() + windowX - screenX), 0, 2);
+        Assert.InRange(Math.Abs(origin.GetProperty("Y").GetDouble() + windowY - screenY), 0, 2);
     }
 
     static (double x, double y, double width, double height)? FindUiTextBoundsCore(JsonElement node, string text)
