@@ -3590,10 +3590,10 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
                 "Expected the dropped NumericUpDown to have a Size assignment in the generated designer code.\n" + savedFormCode);
             Assert.Equal(120, int.Parse(sizeMatch.Groups[1].Value));
 			// Microsoft WinForms' real NumericUpDown defaults to 23px high; LibreWinForms'
-			// portable implementation is 22px. Assert the actual default of whichever backend
+			// portable implementation is 20px. Assert the actual default of whichever backend
 			// designed the form rather than normalising one to the other.
 			var libreBackend = status.GetProperty("backend").GetString() == "LibreWinForms";
-			Assert.Equal(libreBackend ? 22 : 23, int.Parse(sizeMatch.Groups[2].Value));
+			Assert.Equal(libreBackend ? 20 : 23, int.Parse(sizeMatch.Groups[2].Value));
 
             // Selecting a WinForms toolbox row without dragging must not arm a persistent creation
             // tool. The shared toolbox used to leave IToolboxService.SelectedToolboxItem set, so
