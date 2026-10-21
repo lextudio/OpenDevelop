@@ -57,7 +57,13 @@ cd "${repo_root}"
 # same interference launch.ps1 calls out. Set the OpenDevelop environment up afterwards, for the
 # restore only.
 echo "==> Building the local feed via ${openavalon_root}/dist.local.sh ..."
-bash "${openavalon_root}/dist.local.sh"
+# Run it from the provider checkout, not from here. dist.local.sh resolves its own paths from
+# BASH_SOURCE, but the LibreWPF muxer it drives (.dotnet/dotnet, an 11.0-preview SDK set) resolves
+# the SDK from the nearest global.json above the *working directory*. Started from OpenDevelop it
+# picked up this repository's global.json (10.0.100), which that muxer does not carry, and the stage
+# that packs the projects LibreWPF.Sdk depends on died with "A compatible .NET SDK was not found".
+# openavalon ships no global.json, so the provider checkout is where it means to run.
+( cd "${openavalon_root}" && bash ./dist.local.sh )
 
 dotnet="$(readlink -f "$(command -v dotnet)")"
 source "${repo_root}/dotnet-env.sh"
