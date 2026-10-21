@@ -66,10 +66,15 @@ Split oversized work into separate commits before review; partial approvals neve
 commit. Record the staged-tree hash before review and verify it immediately before commit; a changed
 hash invalidates the approval. The OpenCode commit agent must first verify that exact hash and the
 intended staged paths (however many), commit only those paths, then report the new commit hash and
-`git status`. OpenCode writes every commit message itself, from `git diff --cached` and the one-line
-intent in its prompt; the invoking agent must not draft, dictate, or amend it. Check afterwards that
-the message describes the staged change (`git show --stat HEAD`); if it does not, report that to the
-user instead of rewriting it.
+`git status`. The commit message is written by the *reviewer*, in the same review that approves: the
+review prompt asks it, only when it approves, to put the complete message (short imperative subject,
+blank line, body saying what changed and why, then any trailer line the invoking agent was told to
+include) between the lines `COMMIT_MESSAGE_BEGIN` and `COMMIT_MESSAGE_END`, immediately before the
+terminal `VERDICT: APPROVED`; it gives no message on `CHANGES_REQUESTED`. The invoking agent must not
+draft, dictate, or amend it: it extracts that block verbatim from the exported approved session into
+`tmp\opencode\<unique>-message.txt`, and the build agent commits with `git commit -F` on that file.
+Check afterwards that the message describes the staged change (`git show --stat HEAD`); if it does not,
+report that to the user instead of rewriting it.
 If no relevant test exists or cannot run, record why in the handoff; never waive approval. OpenCode
 commits; never push without the user's explicit request.
 
@@ -126,11 +131,11 @@ end: the console tail can stop mid-exploration. New files must be staged (or `gi
 review, because the diff only shows tracked paths. Keep the build agent's prompt short: with a long one
 that mentioned the review it spent over ten minutes looking for that session in `opencode session list`
 and never committed, though the staged files were right. "The files are already staged; run only
-`git status --short`, `git commit` with a message you write from `git diff --cached`, `git log
+`git status --short`, `git commit -F <message file>`, `git log
 --oneline -1`" finished in under four minutes.
 
-Give the build agent the exact tree hash, the path list and a one-line intent, not a message, and ask
-it to write the message (a short imperative subject, then a body saying what changed and why). Chain
+Give the build agent the exact tree hash, the path list and the message file path (the reviewer wrote
+the message; the build agent does not write one), and ask it to run `git commit -F <file>`. Chain
 `git add ... && git diff --cached --stat && git write-tree` before launching a review: a stale `.git/index.lock` (also
 under `.git/modules/...` for submodules) otherwise yields an empty review target. Integration runs
 used to leave one because the IDE's status overlay ran a locking `git status` on this repo and
