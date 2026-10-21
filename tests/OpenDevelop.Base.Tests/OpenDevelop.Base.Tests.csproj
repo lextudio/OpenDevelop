@@ -50,6 +50,7 @@
     <!-- Pure designer presentation logic (DesignerVerbMenuPlanner, ...), testable without booting
          any design surface. -->
     <ProjectReference Include="..\..\src\Main\Designer\Designer.Presentation\Designer.Presentation.csproj" />
+    <ProjectReference Include="..\..\src\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
   </ItemGroup>
 
   <Target Name="PrepareRoslynTestHost" AfterTargets="Build">

@@ -1528,6 +1528,10 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	{
 		if (disposed || Volatile.Read(ref version) != requested)
 			return;
+		// A child can surface one parser failure from more than one recovery path. Normalize at
+		// the DDP-to-presentation boundary so the status bar, diagnostics action and error jump
+		// list all describe the same set, while source-distinct errors remain visible.
+		snapshot.Diagnostics = DesignerDiagnosticSet.Distinct(snapshot.Diagnostics).ToList();
 		canvas.ApplySnapshot(snapshot);
 		if (snapshot.Render != null)
 			HasRenderedPreview = true;
