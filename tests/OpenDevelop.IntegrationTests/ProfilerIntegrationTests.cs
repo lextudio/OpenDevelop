@@ -102,6 +102,317 @@ public sealed class ProfilerIntegrationTests : IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task AllocationCapture_ShowsWhichTypeTakesTheMemoryAndWhoAllocatesIt()
+	{
+		var fixture = await StartFixtureAsync("alloc", 60);
+
+		var capture = await app.InvokeAsync("od.profiler.capture-allocation", fixture.Id, 3);
+		Assert.True(capture.GetProperty("success").GetBoolean(), capture.ToString());
+
+		var report = await app.InvokeAsync("od.profiler.report");
+		var state = report.GetProperty("state");
+		Assert.Equal("Kilobytes", state.GetProperty("unit").GetString());
+		var status = state.GetProperty("status").GetString()!;
+		Assert.Contains("allocation samples", status);
+		Assert.DoesNotContain("${res:", status);
+
+		await app.InvokeAsync("od.profiler.cpu.set-mode", "Functions");
+		state = (await app.InvokeAsync("od.profiler.report")).GetProperty("state");
+		var top = state.GetProperty("functions").EnumerateArray().First();
+		Assert.Equal("System.Byte[]", top.GetProperty("name").GetString());
+		Assert.Equal("[Allocated type]", top.GetProperty("module").GetString());
+
+		// The callers of the type are the methods that allocate it.
+		var neighbours = await app.InvokeAsync("od.profiler.cpu.show-caller-callee", "System.Byte[]");
+		Assert.True(neighbours.GetProperty("result").GetProperty("found").GetBoolean(), neighbours.ToString());
+		state = (await app.InvokeAsync("od.profiler.report")).GetProperty("state");
+		var callers = state.GetProperty("callerCallee").GetProperty("callers").EnumerateArray().Select(c => c.GetString()).ToList();
+		Assert.Contains(callers, name => name!.Contains("Allocator.Buffers"));
+	}
+
+	[Fact]
+	public async Task CpuReport_ShowsTheRuntimeCountersAndExportsCsv()
+	{
+		var fixture = await StartFixtureAsync("cpu", 60);
+		var capture = await app.InvokeAsync("od.profiler.capture-cpu", fixture.Id, 4);
+		Assert.True(capture.GetProperty("success").GetBoolean(), capture.ToString());
+
+		await app.InvokeAsync("od.profiler.cpu.set-mode", "Counters");
+		var state = (await app.InvokeAsync("od.profiler.report")).GetProperty("state");
+		Assert.Equal("Counters", state.GetProperty("mode").GetString());
+		var counters = state.GetProperty("counters");
+		Assert.False(counters.GetProperty("empty").GetBoolean());
+		var charts = counters.GetProperty("charts").EnumerateArray().Select(c => c.GetString()!).ToList();
+		Assert.Contains(charts, text => text.StartsWith("GC Heap Size", StringComparison.OrdinalIgnoreCase));
+		Assert.Contains(counters.GetProperty("points").EnumerateArray(), points => points.GetInt32() >= 2);
+
+		// Export what the Functions view shows; the file is what a spreadsheet would open.
+		await app.InvokeAsync("od.profiler.cpu.set-mode", "Functions");
+		var path = Path.Combine(Path.GetTempPath(), "od-export-" + Guid.NewGuid().ToString("N") + ".csv");
+		try
+		{
+			var exported = await app.InvokeAsync("od.profiler.export", path);
+			Assert.True(exported.GetProperty("success").GetBoolean(), exported.ToString());
+			var lines = await File.ReadAllLinesAsync(path);
+			Assert.Equal("Function,Module,Total (ms),Total (%),Self (ms),Self (%)", lines[0].TrimStart((char)0xFEFF));
+			Assert.Contains(lines, line => line.Contains("HotLeaf"));
+		}
+		finally
+		{
+			File.Delete(path);
+		}
+	}
+
+	[Fact]
+	public async Task DiagnosticPort_ProfilesAProgramThatConnectsToTheAddressTheIdeListensAt()
+	{
+		// The program is started the way an operator elsewhere would: told where to connect, held at startup. Nothing here
+		// gives the IDE its process id.
+		var address = OperatingSystem.IsWindows()
+			? "odp-it-" + Guid.NewGuid().ToString("N")[..10]
+			: Path.Combine(Path.GetTempPath(), "odp-it-" + Guid.NewGuid().ToString("N")[..10] + ".sock");
+		var listening = app.InvokeAsync("od.profiler.listen-port", address, "Cpu", 3, 90);
+		await Task.Delay(2000);
+
+		var info = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
+		info.ArgumentList.Add("exec");
+		info.ArgumentList.Add(LocateFixtureDll());
+		info.ArgumentList.Add("cpu");
+		info.ArgumentList.Add("60");
+		info.Environment["DOTNET_DiagnosticPorts"] = address + ",suspend";
+		var program = Process.Start(info)!;
+		started.Add(program);
+
+		var result = await listening;
+		Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
+		var state = (await app.InvokeAsync("od.profiler.report")).GetProperty("state");
+		Assert.True(state.GetProperty("samples").GetInt32() > 100);
+		Assert.Contains(
+			state.GetProperty("tree").EnumerateArray(), row => row.GetProperty("name").GetString()!.Contains("HotLeaf"));
+	}
+
+	[Fact]
+	public async Task Dialogs_LoadAndTheirTextIsLocalised()
+	{
+		foreach (var (name, expected) in new[] { ("settings", "Profiler Settings"), ("port", "Attach to Diagnostic Port") })
+		{
+			var shown = await app.InvokeAsync("od.profiler.show-dialog", name);
+			Assert.True(shown.GetProperty("success").GetBoolean(), shown.ToString());
+			var title = shown.GetProperty("title").GetString()!;
+			Assert.Equal(expected, title);
+			Assert.DoesNotContain("${res:", title);
+		}
+		var closed = await app.InvokeAsync("od.profiler.close-dialogs");
+		Assert.Equal(2, closed.GetProperty("closed").GetInt32());
+	}
+
+	[Fact]
+	public async Task AllocationLaunch_RecordsAProgramFromItsFirstInstruction()
+	{
+		var launched = await app.InvokeAsync("od.profiler.launch-allocation", LocateFixtureDll(), "alloc 60", 4);
+		Assert.True(launched.GetProperty("success").GetBoolean(), launched.ToString());
+
+		var state = (await app.InvokeAsync("od.profiler.report")).GetProperty("state");
+		Assert.Equal("Kilobytes", state.GetProperty("unit").GetString());
+		await app.InvokeAsync("od.profiler.cpu.set-mode", "Functions");
+		state = (await app.InvokeAsync("od.profiler.report")).GetProperty("state");
+		Assert.Equal("System.Byte[]", state.GetProperty("functions").EnumerateArray().First().GetProperty("name").GetString());
+	}
+
+	[Fact]
+	public async Task LargeCaptures_RecomputeTheirViewsOffTheUiThreadAndStillShowTheRightData()
+	{
+		var fixture = await StartFixtureAsync("cpu", 60);
+		var capture = await app.InvokeAsync("od.profiler.capture-cpu", fixture.Id, 3);
+		Assert.True(capture.GetProperty("success").GetBoolean(), capture.ToString());
+		await app.InvokeAsync("od.profiler.report");
+		try
+		{
+			// A threshold of one sample sends every recomputation through the background path.
+			await app.InvokeAsync("od.profiler.cpu.background-threshold", 1);
+			await app.InvokeAsync("od.profiler.cpu.just-my-code", false);
+			await app.InvokeAsync("od.profiler.cpu.set-mode", "Functions");
+			var state = (await app.InvokeAsync("od.profiler.report")).GetProperty("state");
+
+			Assert.Equal("Functions", state.GetProperty("mode").GetString());
+			Assert.False(state.GetProperty("justMyCode").GetBoolean());
+			Assert.Contains(
+				state.GetProperty("functions").EnumerateArray(), row => row.GetProperty("name").GetString()!.Contains("HotLeaf"));
+
+			await app.InvokeAsync("od.profiler.cpu.set-mode", "CallTree");
+			state = (await app.InvokeAsync("od.profiler.report")).GetProperty("state");
+			Assert.Contains(
+				state.GetProperty("tree").EnumerateArray(), row => row.GetProperty("name").GetString()!.Contains("HotLeaf"));
+		}
+		finally
+		{
+			await app.InvokeAsync("od.profiler.cpu.background-threshold", 100_000);
+		}
+	}
+
+	[Fact]
+	public async Task Debugger_TellsTheProfilerWhichProcessItIsDebugging()
+	{
+		var fixture = await StartFixtureAsync("cpu", 120);
+		var before = await app.InvokeAsync("od.profiler.debugged-process");
+		Assert.Equal(System.Text.Json.JsonValueKind.Null, before.GetProperty("processId").ValueKind);
+
+		var attached = await app.InvokeAsync("od.debug.attach", fixture.Id, false, 60);
+		try
+		{
+			Assert.True(attached.GetProperty("attached").GetBoolean(), attached.ToString());
+			var debugged = await app.InvokeAsync("od.profiler.debugged-process");
+			Assert.Equal(fixture.Id, debugged.GetProperty("processId").GetInt32());
+
+			// The process is under the debugger and the id the debugger reports is the one the profiler can sample.
+			var capture = await app.InvokeAsync("od.profiler.capture-cpu", debugged.GetProperty("processId").GetInt32(), 3);
+			Assert.True(capture.GetProperty("success").GetBoolean(), capture.ToString());
+		}
+		finally
+		{
+			await app.InvokeAsync("od.debug.stop");
+		}
+
+		var after = await app.InvokeAsync("od.profiler.debugged-process");
+		Assert.Equal(System.Text.Json.JsonValueKind.Null, after.GetProperty("processId").ValueKind);
+	}
+
+	[Fact]
+	public async Task HeapSnapshot_WithTheContentsScan_ListsDuplicateStringsAndSparseArrays()
+	{
+		var fixture = await StartFixtureAsync("contents", 120);
+		await app.InvokeAsync("od.profiler.scan-contents", true);
+		try
+		{
+			var snapshot = await app.InvokeAsync("od.profiler.capture-heap", fixture.Id);
+			Assert.True(snapshot.GetProperty("success").GetBoolean(), snapshot.ToString());
+
+			var contents = (await app.InvokeAsync("od.profiler.report")).GetProperty("state").GetProperty("contents");
+			Assert.Contains("objects read", contents.GetProperty("summary").GetString());
+			Assert.DoesNotContain("${res:", contents.GetProperty("summary").GetString());
+			var duplicate = contents.GetProperty("duplicates").EnumerateArray()
+				.Single(d => d.GetProperty("Preview").GetString()!.StartsWith("duplicate-string-held-by-the-fixture"));
+			Assert.True(duplicate.GetProperty("Copies").GetInt64() >= 2000);
+			Assert.Contains(
+				contents.GetProperty("sparse").EnumerateArray(),
+				d => d.GetProperty("Type").GetString() == "System.Int32[]" && d.GetProperty("Length").GetInt64() == 200_000);
+		}
+		finally
+		{
+			await app.InvokeAsync("od.profiler.scan-contents", false);
+		}
+
+		// Without the scan the tab says how to get one.
+		var plain = await app.InvokeAsync("od.profiler.capture-heap", fixture.Id);
+		Assert.True(plain.GetProperty("success").GetBoolean(), plain.ToString());
+		var note = (await app.InvokeAsync("od.profiler.report")).GetProperty("state").GetProperty("contents").GetProperty("summary").GetString();
+		Assert.Contains("not read", note);
+	}
+
+	[Fact]
+	public async Task MemoryDump_IsWrittenOpenedAndReadAsHeapContentsAndThreads()
+	{
+		var fixture = await StartFixtureAsync("contents", 120);
+
+		var written = await app.InvokeAsync("od.profiler.capture-dump", fixture.Id);
+		Assert.True(written.GetProperty("success").GetBoolean(), written.ToString());
+		var path = written.GetProperty("path").GetString()!;
+		Assert.EndsWith(".dmp", path);
+		Assert.True(new FileInfo(path).Length > 1_000_000);
+		Assert.False(fixture.HasExited);
+
+		var report = await app.InvokeAsync("od.profiler.report");
+		Assert.Equal("dump", report.GetProperty("kind").GetString());
+		var state = report.GetProperty("state");
+		Assert.Contains(".NET", state.GetProperty("info").GetString());
+		Assert.DoesNotContain("${res:", state.GetProperty("info").GetString());
+
+		// The heap tab is the heap report: the held strings, and what the contents scan found in the same read.
+		var heap = state.GetProperty("heap");
+		Assert.Contains(heap.GetProperty("rows").EnumerateArray(), row => row.GetProperty("name").GetString() == "System.String" && row.GetProperty("count").GetInt32() >= 2000);
+		Assert.Contains(
+			heap.GetProperty("contents").GetProperty("duplicates").EnumerateArray(),
+			d => d.GetProperty("Preview").GetString()!.StartsWith("duplicate-string-held-by-the-fixture"));
+
+		// The threads tab: the program's threads, and a stack for the one selected.
+		var threads = state.GetProperty("threads");
+		var all = threads.GetProperty("threads").EnumerateArray().ToList();
+		Assert.NotEmpty(all);
+		var main = all.First(t => t.GetProperty("frames").GetInt32() > 0);
+		await app.InvokeAsync("od.profiler.dump.show-tab", "threads");
+		var selected = await app.InvokeAsync("od.profiler.dump.select-thread", main.GetProperty("ManagedId").GetInt32());
+		Assert.True(selected.GetProperty("result").GetProperty("found").GetBoolean());
+		state = (await app.InvokeAsync("od.profiler.report")).GetProperty("state");
+		Assert.Equal("threadsTab", state.GetProperty("tab").GetString());
+		Assert.NotEmpty(state.GetProperty("threads").GetProperty("stack").EnumerateArray());
+	}
+
+	[Fact]
+	public async Task Settings_DecideWhereCapturesGoAndHowManyAreKept()
+	{
+		var folder = Path.Combine(Path.GetTempPath(), "od-profiler-settings 目录 " + Guid.NewGuid().ToString("N")[..8]);
+		try
+		{
+			var applied = await app.InvokeAsync("od.profiler.settings", 1, 150, folder);
+			Assert.Equal(1, applied.GetProperty("retainedSessions").GetInt32());
+			Assert.Equal(150, applied.GetProperty("largeCaptureMegabytes").GetInt32());
+
+			var fixture = await StartFixtureAsync("cpu", 90);
+			var first = await app.InvokeAsync("od.profiler.capture-cpu", fixture.Id, 2);
+			Assert.True(first.GetProperty("success").GetBoolean(), first.ToString());
+			var second = await app.InvokeAsync("od.profiler.capture-cpu", fixture.Id, 2);
+			Assert.True(second.GetProperty("success").GetBoolean(), second.ToString());
+			var third = await app.InvokeAsync("od.profiler.capture-cpu", fixture.Id, 2);
+			Assert.True(third.GetProperty("success").GetBoolean(), third.ToString());
+
+			// Captures went to the chosen folder (spaces and non-ASCII in it), and starting the third removed the older ones
+			// beyond the limit of one kept before it, so the folder holds the latest two at most.
+			Assert.StartsWith(folder, third.GetProperty("path").GetString());
+			var sessions = Directory.GetDirectories(folder);
+			Assert.InRange(sessions.Length, 1, 2);
+			Assert.True(File.Exists(third.GetProperty("path").GetString()));
+			Assert.False(File.Exists(first.GetProperty("path").GetString()), "the oldest capture should have been pruned");
+		}
+		finally
+		{
+			await app.InvokeAsync("od.profiler.settings", 30, 200, "");
+			if (Directory.Exists(folder))
+				Directory.Delete(folder, recursive: true);
+		}
+	}
+
+	[Fact]
+	public async Task CpuReport_ComparesTheFunctionsWithAnEarlierCapture()
+	{
+		var fixture = await StartFixtureAsync("cpu", 120);
+		var before = await app.InvokeAsync("od.profiler.capture-cpu", fixture.Id, 2);
+		Assert.True(before.GetProperty("success").GetBoolean(), before.ToString());
+		var baselinePath = before.GetProperty("path").GetString()!;
+		var after = await app.InvokeAsync("od.profiler.capture-cpu", fixture.Id, 2);
+		Assert.True(after.GetProperty("success").GetBoolean(), after.ToString());
+
+		var compared = await app.InvokeAsync("od.profiler.cpu.compare", baselinePath);
+		Assert.True(compared.GetProperty("success").GetBoolean(), compared.ToString());
+
+		var state = (await app.InvokeAsync("od.profiler.report")).GetProperty("state");
+		Assert.True(state.GetProperty("comparing").GetBoolean());
+		Assert.Equal("Functions", state.GetProperty("mode").GetString());
+		Assert.Contains(Path.GetFileName(baselinePath), state.GetProperty("status").GetString());
+		// A resource key that is missing from the built string table shows up verbatim, which no other assertion would notice.
+		Assert.DoesNotContain("${res:", state.GetProperty("status").GetString());
+		// The same program twice: the hot function is still the hot function, and its share barely moved.
+		var hot = state.GetProperty("functions").EnumerateArray()
+			.Single(row => row.GetProperty("name").GetString()!.Contains("HotLeaf"));
+		var change = hot.GetProperty("selfChange").GetString()!;
+		Assert.EndsWith(" pp", change);
+		Assert.True(Math.Abs(double.Parse(change[..^3].Replace("+", ""), System.Globalization.CultureInfo.CurrentCulture)) < 10, change);
+
+		await app.InvokeAsync("od.profiler.cpu.stop-compare");
+		state = (await app.InvokeAsync("od.profiler.report")).GetProperty("state");
+		Assert.False(state.GetProperty("comparing").GetBoolean());
+	}
+
+	[Fact]
 	public async Task HeapSnapshot_CountsTheObjectsTheFixtureHolds_AndComparesTwoSnapshots()
 	{
 		var fixture = await StartFixtureAsync("heap", 120);
