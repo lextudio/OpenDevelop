@@ -491,6 +491,32 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task MewUIDesigner_ItemsCollectionEditor_UsesThePropertiesPadAndPersistsOneUndoableEdit()
+	{
+		var openedProject = await app.ReopenSolutionAsync(projectPath); Assert.True(openedProject.GetProperty("success").GetBoolean(), openedProject.ToString());
+		var opened = await app.InvokeAsync("od.open-file", designerPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		await WaitForDesignerAsync();
+		var selected = await app.InvokeAsync("od.mewui-designer.select", "statusList"); Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+
+		// This presses the real Items row's editor button. The script adds two source-owned list
+		// entries then moves the second first; it must travel through the MewUI adapter and host.
+		var edited = await app.InvokeAsync("od.mewui-designer.properties.edit-items", "$items", "add:-1:Ready;add:0:Working;up:1");
+		Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+		Assert.True(edited.GetProperty("committed").GetBoolean(), edited.ToString());
+		Assert.Equal(new[] { "Working", "Ready" }, edited.GetProperty("after").EnumerateArray().Select(item => item.GetString()));
+
+		var saved = await app.InvokeAsync("od.file.save", designerPath); Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+		var mxaml = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
+		Assert.Matches("<ListBox Name=\"statusList\">\\s*<Item>Working</Item>\\s*<Item>Ready</Item>\\s*</ListBox>", mxaml);
+		var undone = await app.InvokeAsync("od.mewui-designer.undo"); Assert.True(undone.GetProperty("canRedo").GetBoolean(), undone.ToString());
+		var afterUndo = await app.InvokeAsync("od.mewui-designer.properties.edit-items", "$items", "cancel");
+		Assert.Empty(afterUndo.GetProperty("before").EnumerateArray());
+		var redone = await app.InvokeAsync("od.mewui-designer.redo"); Assert.False(redone.GetProperty("canRedo").GetBoolean(), redone.ToString());
+		var afterRedo = await app.InvokeAsync("od.mewui-designer.properties.edit-items", "$items", "cancel");
+		Assert.Equal(new[] { "Working", "Ready" }, afterRedo.GetProperty("before").EnumerateArray().Select(item => item.GetString()));
+	}
+
+	[Fact]
 	public async Task MewUIDesigner_SourceView_SharesTheDesignerToolbox_AndPlacesDroppedItems()
 	{
 		// The .mxaml Source half of a Design/Source document: the Tools pad keeps the MewUI list, and

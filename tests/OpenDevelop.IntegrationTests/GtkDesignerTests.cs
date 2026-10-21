@@ -383,6 +383,34 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_ItemsCollectionEditor_UsesThePropertiesPadAndPersistsOneUndoableEdit()
+	{
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", uiPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		await WaitAsync();
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "contentBox")).GetProperty("success").GetBoolean());
+		var inserted = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkDropDown"); Assert.True(inserted.GetProperty("success").GetBoolean(), inserted.ToString());
+		Assert.Equal("dropDown1", inserted.GetProperty("selectedId").GetString());
+
+		// Exercise the actual Properties-pad Items button rather than the RPC directly. GtkBuilder's
+		// shorthand list is source-owned, so the new entry must be serialized below the DropDown.
+		var edited = await app.InvokeAsync("od.gtk-designer.properties.edit-items", "$items", "add:-1:First;add:0:Second;up:1");
+		Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+		Assert.True(edited.GetProperty("committed").GetBoolean(), edited.ToString());
+		Assert.Equal(new[] { "Second", "First" }, edited.GetProperty("after").EnumerateArray().Select(item => item.GetString()));
+
+		var saved = await app.InvokeAsync("od.file.save", uiPath); Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+		var ui = await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken);
+		Assert.Matches("<object class=\"GtkDropDown\" id=\"dropDown1\">\\s*<items>\\s*<item translatable=\"yes\">Second</item>\\s*<item translatable=\"yes\">First</item>\\s*</items>\\s*</object>", ui);
+		var undone = await app.InvokeAsync("od.gtk-designer.undo"); Assert.True(undone.GetProperty("canRedo").GetBoolean(), undone.ToString());
+		var afterUndo = await app.InvokeAsync("od.gtk-designer.properties.edit-items", "$items", "cancel");
+		Assert.Empty(afterUndo.GetProperty("before").EnumerateArray());
+		var redone = await app.InvokeAsync("od.gtk-designer.redo"); Assert.False(redone.GetProperty("canRedo").GetBoolean(), redone.ToString());
+		var afterRedo = await app.InvokeAsync("od.gtk-designer.properties.edit-items", "$items", "cancel");
+		Assert.Equal(new[] { "Second", "First" }, afterRedo.GetProperty("before").EnumerateArray().Select(item => item.GetString()));
+	}
+
+	[Fact]
 	public async Task GtkDesigner_SourceView_SharesTheDesignerToolbox_AndPlacesDroppedItems()
 	{
 		// A .ui shown Design and Source side by side has one toolbox. With the Source half focused the

@@ -94,7 +94,7 @@ public sealed class GtkPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEve
 
 /// <summary>One GIR-described GTK property. The value travels as GtkBuilder text; the host has
 /// already type-checked and canonicalised it, and re-checks every edit before it is written.</summary>
-sealed class GtkPropertyDescriptor : PropertyDescriptor, IItemsCollectionProperty
+sealed class GtkPropertyDescriptor : PropertyDescriptor, IItemsCollectionProperty, IItemsCollectionPropertyName
 {
 	readonly GtkPropertyAdapter owner;
 	readonly DesignerPropertyInfo info;
@@ -140,6 +140,7 @@ sealed class GtkPropertyDescriptor : PropertyDescriptor, IItemsCollectionPropert
 	IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => info.CollectionItems;
 	IReadOnlyList<string> IItemsCollectionProperty.CollectionItemKinds => Array.Empty<string>();
 	bool IItemsCollectionProperty.SupportsDataGridColumnKinds => false;
+	string IItemsCollectionPropertyName.PropertyName => info.Name;
 	/// <summary>Flags combine with '|', so their text is free; a plain enum is one of its nicks.</summary>
 	internal bool IsExclusiveChoice => info.IsEnum && info.AllowedValues.Count > 0;
 

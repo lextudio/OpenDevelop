@@ -9,6 +9,7 @@ using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Designer.Shell;
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
 using Xceed.Wpf.Toolkit.PropertyGrid;
@@ -58,6 +59,22 @@ public static class MewUIDesignerDevFlowActions
 		var after = item.PropertyDescriptor?.GetValue(grid.SelectedObject)?.ToString();
 		var accepted = string.Equals(after, value, StringComparison.Ordinal);
 		return JsonSerializer.Serialize(new { success = accepted, selectedIds = view.SelectedIds, propertyName, after, error = accepted ? null : "The designer rejected the property value." });
+	}
+	[DevFlowAction("od.mewui-designer.properties.edit-items", Description = "Click a ComboBox/ListBox Items row's real \"…\" button and apply an edit script to the collection dialog's model: ';'-separated add:<afterIndex>:<text>, remove:<i>, up:<i>, down:<i>, rename:<i>:<text>, or 'cancel'")]
+	public static string EditItemsThroughPropertiesPad(string propertyName, string script)
+	{
+		var view = Activate(); var grid = PropertyGrid;
+		if (view == null || grid?.SelectedObject is not MewUIPropertyAdapter)
+			return DesignerDevFlowResults.Failure("Properties pad has no selected MewUI design item");
+		var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(candidate => candidate.PropertyName == propertyName || candidate.PropertyName == MewUIPropertyDescriptor.BindingSafeName(propertyName));
+		var button = (item?.Editor as DockPanel)?.Children.OfType<Button>()
+			.FirstOrDefault(candidate => candidate.Name == MewUIItemsCollectionEditor.EditButtonName);
+		if (button == null || !button.IsEnabled)
+			return DesignerDevFlowResults.Failure("Properties pad did not render an enabled items editor button: " + propertyName);
+		var result = CollectionItemsEditing.RunScriptedEdit(button, script);
+		return result.Success
+			? JsonSerializer.Serialize(new { success = true, selectedName = view.SelectedName, before = result.Before, after = result.After, committed = result.Committed })
+			: DesignerDevFlowResults.Failure(result.Error ?? "Items edit failed");
 	}
 	[DevFlowAction("od.mewui-designer.clipboard", Description = "Run the design surface's cut|copy|paste|duplicate|move-first|move-earlier|move-later|move-last|unwrap|wrap-<Container> command on the selection, as its context menu does")]
 	public static string Clipboard(string command)

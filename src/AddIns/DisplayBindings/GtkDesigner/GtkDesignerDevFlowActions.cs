@@ -10,6 +10,7 @@ using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Designer.Shell;
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
 using Xceed.Wpf.Toolkit.PropertyGrid;
@@ -114,6 +115,22 @@ public static class GtkDesignerDevFlowActions
 		var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(p => p.PropertyName == propertyName);
 		if (item == null) return JsonSerializer.Serialize(new { success = false, error = "Property not found", propertyNames = grid.Properties?.OfType<PropertyItem>().Select(p => p.PropertyName).ToArray() });
 		item.Value = value; return JsonSerializer.Serialize(new { success = true, selectedIds = view.SelectedIds, primarySelectedId = view.SelectedId, propertyName, after = item.Value?.ToString() });
+	}
+	[DevFlowAction("od.gtk-designer.properties.edit-items", Description = "Click a GtkDropDown Items row's real \"…\" button and apply an edit script to the collection dialog's model: ';'-separated add:<afterIndex>:<text>, remove:<i>, up:<i>, down:<i>, rename:<i>:<text>, or 'cancel'")]
+	public static string EditItemsThroughPropertiesPad(string propertyName, string script)
+	{
+		var view = Activate(); var grid = PropertyGrid;
+		if (view == null || grid?.SelectedObject is not GtkPropertyAdapter)
+			return DesignerDevFlowResults.Failure("Properties pad has no selected GTK design item");
+		var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(candidate => candidate.PropertyName == propertyName);
+		var button = (item?.Editor as DockPanel)?.Children.OfType<Button>()
+			.FirstOrDefault(candidate => candidate.Name == GtkItemsCollectionEditor.EditButtonName);
+		if (button == null || !button.IsEnabled)
+			return DesignerDevFlowResults.Failure("Properties pad did not render an enabled items editor button: " + propertyName);
+		var result = CollectionItemsEditing.RunScriptedEdit(button, script);
+		return result.Success
+			? JsonSerializer.Serialize(new { success = true, selectedId = view.SelectedId, before = result.Before, after = result.After, committed = result.Committed })
+			: DesignerDevFlowResults.Failure(result.Error ?? "Items edit failed");
 	}
 	[DevFlowAction("od.gtk-designer.properties.describe", Description = "Describe the selected object's Properties-pad items: descriptor name, display name, GTK category, .NET editor type, enum choices and whether Reset is available - the GIR-typed property contract")]
 	public static string DescribeProperties()

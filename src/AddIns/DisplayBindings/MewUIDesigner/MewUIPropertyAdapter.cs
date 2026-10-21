@@ -114,7 +114,7 @@ public sealed class MewUIPropertyAdapter : ICustomTypeDescriptor, IPropertyGridE
 	}
 }
 
-sealed class MewUIPropertyDescriptor : PropertyDescriptor, IItemsCollectionProperty
+sealed class MewUIPropertyDescriptor : PropertyDescriptor, IItemsCollectionProperty, IItemsCollectionPropertyName
 {
 	readonly MewUIPropertyAdapter owner;
 	readonly DesignerPropertyInfo info;
@@ -154,6 +154,7 @@ sealed class MewUIPropertyDescriptor : PropertyDescriptor, IItemsCollectionPrope
 	IReadOnlyList<string> IItemsCollectionProperty.CollectionItems => info.CollectionItems;
 	IReadOnlyList<string> IItemsCollectionProperty.CollectionItemKinds => Array.Empty<string>();
 	bool IItemsCollectionProperty.SupportsDataGridColumnKinds => false;
+	string IItemsCollectionPropertyName.PropertyName => info.Name;
 	public override Type ComponentType => typeof(MewUIPropertyAdapter);
 	public override Type PropertyType => type;
 	public override bool IsReadOnly => IsProtocolReadOnly(info);
