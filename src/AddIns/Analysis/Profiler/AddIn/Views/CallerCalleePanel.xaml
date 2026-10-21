@@ -1,0 +1,81 @@
+<UserControl
+	x:Class="OpenDevelop.Profiler.AddIn.Views.CallerCalleePanel"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:core="http://icsharpcode.net/sharpdevelop/core">
+	<!-- The three blocks are arranged in code (ApplyLayout): side by side when there is room, stacked in a
+	     narrow pane, where three columns of function names would each be a few characters wide. -->
+	<ScrollViewer x:Name="scroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+	<Grid x:Name="layoutGrid">
+		<DockPanel x:Name="callersPanel">
+			<TextBlock
+				DockPanel.Dock="Top"
+				Margin="0,0,0,4"
+				FontWeight="SemiBold"
+				Text="{core:Localize AddIns.Profiler.Report.CallingFunctions}" />
+			<ListView x:Name="callerList" SelectionMode="Single" MouseDoubleClick="NeighbourList_MouseDoubleClick">
+				<ListView.View>
+					<GridView>
+						<GridViewColumn Width="220" Header="{core:Localize AddIns.Profiler.Report.Function}" DisplayMemberBinding="{Binding Name}" />
+						<GridViewColumn Width="75" Header="{core:Localize AddIns.Profiler.Report.TotalMs}" DisplayMemberBinding="{Binding TotalMs, StringFormat=N0}" />
+						<GridViewColumn Width="60" Header="{core:Localize AddIns.Profiler.Report.TotalPercent}" DisplayMemberBinding="{Binding TotalFraction, StringFormat=P1}" />
+					</GridView>
+				</ListView.View>
+			</ListView>
+		</DockPanel>
+
+		<Border
+			x:Name="currentPanel"
+			Padding="12"
+			BorderThickness="1"
+			BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}">
+			<StackPanel>
+				<TextBlock FontWeight="SemiBold" Text="{core:Localize AddIns.Profiler.Report.CurrentFunction}" />
+				<TextBlock x:Name="functionName" Margin="0,4,0,0" FontSize="16" TextWrapping="Wrap" />
+				<TextBlock x:Name="functionModule" Margin="0,2,0,0" Opacity="0.7" TextWrapping="Wrap" />
+				<Grid Margin="0,14,0,0">
+					<Grid.ColumnDefinitions>
+						<ColumnDefinition Width="Auto" />
+						<ColumnDefinition Width="*" />
+					</Grid.ColumnDefinitions>
+					<Grid.RowDefinitions>
+						<RowDefinition />
+						<RowDefinition />
+						<RowDefinition />
+					</Grid.RowDefinitions>
+					<TextBlock Grid.Row="0" Margin="0,0,12,4" Text="{core:Localize AddIns.Profiler.Report.TotalMs}" />
+					<TextBlock x:Name="totalText" Grid.Row="0" Grid.Column="1" />
+					<TextBlock Grid.Row="1" Margin="0,0,12,4" Text="{core:Localize AddIns.Profiler.Report.FunctionBody}" />
+					<TextBlock x:Name="bodyText" Grid.Row="1" Grid.Column="1" />
+					<TextBlock Grid.Row="2" Margin="0,0,12,4" Text="{core:Localize AddIns.Profiler.Report.InCallees}" />
+					<TextBlock x:Name="calleesText" Grid.Row="2" Grid.Column="1" />
+				</Grid>
+				<Button
+					x:Name="backButton"
+					Margin="0,12,0,0"
+					HorizontalAlignment="Left"
+					MinWidth="80"
+					Click="Back_Click"
+					Content="{core:Localize AddIns.Profiler.Report.Back}" />
+			</StackPanel>
+		</Border>
+
+		<DockPanel x:Name="calleesPanel">
+			<TextBlock
+				DockPanel.Dock="Top"
+				Margin="0,0,0,4"
+				FontWeight="SemiBold"
+				Text="{core:Localize AddIns.Profiler.Report.CalledFunctions}" />
+			<ListView x:Name="calleeList" SelectionMode="Single" MouseDoubleClick="NeighbourList_MouseDoubleClick">
+				<ListView.View>
+					<GridView>
+						<GridViewColumn Width="220" Header="{core:Localize AddIns.Profiler.Report.Function}" DisplayMemberBinding="{Binding Name}" />
+						<GridViewColumn Width="75" Header="{core:Localize AddIns.Profiler.Report.TotalMs}" DisplayMemberBinding="{Binding TotalMs, StringFormat=N0}" />
+						<GridViewColumn Width="60" Header="{core:Localize AddIns.Profiler.Report.TotalPercent}" DisplayMemberBinding="{Binding TotalFraction, StringFormat=P1}" />
+					</GridView>
+				</ListView.View>
+			</ListView>
+		</DockPanel>
+	</Grid>
+	</ScrollViewer>
+</UserControl>

@@ -1,0 +1,155 @@
+<UserControl
+	x:Class="OpenDevelop.Profiler.AddIn.Views.HeapReportView"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:core="http://icsharpcode.net/sharpdevelop/core">
+	<DockPanel>
+		<ToolBarTray DockPanel.Dock="Top" IsLocked="True">
+			<ToolBar Band="0" BandIndex="0">
+				<Image
+					Width="16"
+					Height="16"
+					Margin="2,0,4,0"
+					ToolTip="{core:Localize AddIns.Profiler.Report.FilterTypes}"
+					Source="{core:GetBitmap Profiler.Filter}" />
+				<TextBox
+					x:Name="filterBox"
+					MinWidth="220"
+					ToolTip="{core:Localize AddIns.Profiler.Report.FilterTypes}"
+					TextChanged="FilterBox_TextChanged" />
+				<Separator />
+				<Button
+					x:Name="compareButton"
+					ToolTip="{core:Localize AddIns.Profiler.Report.CompareWith}"
+					Click="Compare_Click">
+					<Image Width="16" Height="16" Source="{core:GetBitmap Profiler.Compare}" />
+				</Button>
+				<Button
+					x:Name="stopCompareButton"
+					Visibility="Collapsed"
+					ToolTip="{core:Localize AddIns.Profiler.Report.StopComparing}"
+					Click="StopCompare_Click">
+					<Image Width="16" Height="16" Source="{core:GetBitmap Profiler.Close}" />
+				</Button>
+			</ToolBar>
+		</ToolBarTray>
+
+		<StackPanel DockPanel.Dock="Top" Margin="6,6,6,4">
+			<TextBlock x:Name="summaryText" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" />
+			<TextBlock x:Name="compareText" Margin="0,4,0,0" Visibility="Collapsed" TextWrapping="Wrap" />
+		</StackPanel>
+
+		<TextBlock
+			DockPanel.Dock="Bottom"
+			Margin="6,4"
+			TextWrapping="Wrap"
+			Text="{core:Localize AddIns.Profiler.Report.HeapNote}" />
+
+		<TabControl x:Name="detailTabs" DockPanel.Dock="Bottom" Height="170" Margin="4,4,4,0">
+			<TabItem Header="{core:Localize AddIns.Profiler.Report.PathToRoot}">
+				<ListBox x:Name="pathList" />
+			</TabItem>
+			<TabItem Header="{core:Localize AddIns.Profiler.Report.Instances}">
+				<ListView x:Name="instanceList" SelectionMode="Single" SelectionChanged="InstanceList_SelectionChanged">
+					<ListView.View>
+						<GridView>
+							<GridViewColumn Width="180" Header="{core:Localize AddIns.Profiler.Report.Address}" DisplayMemberBinding="{Binding AddressText}" />
+							<GridViewColumn Width="100" Header="{core:Localize AddIns.Profiler.Report.Size}" DisplayMemberBinding="{Binding SizeText}" />
+							<GridViewColumn Width="120" Header="{core:Localize AddIns.Profiler.Report.RetainedSize}" DisplayMemberBinding="{Binding RetainedText}" />
+						</GridView>
+					</ListView.View>
+				</ListView>
+			</TabItem>
+			<TabItem Header="{core:Localize AddIns.Profiler.Report.Insights}">
+				<ScrollViewer VerticalScrollBarVisibility="Auto">
+					<StackPanel Margin="4">
+						<TextBlock FontWeight="SemiBold" Text="{core:Localize AddIns.Profiler.Report.LargestRetainers}" />
+						<ListView x:Name="retainersList" Height="110" Margin="0,4,0,8">
+							<ListView.View>
+								<GridView>
+									<GridViewColumn Width="300" Header="{core:Localize AddIns.Profiler.Report.Type}" DisplayMemberBinding="{Binding TypeName}" />
+									<GridViewColumn Width="160" Header="{core:Localize AddIns.Profiler.Report.Address}" DisplayMemberBinding="{Binding AddressText}" />
+									<GridViewColumn Width="110" Header="{core:Localize AddIns.Profiler.Report.RetainedSize}" DisplayMemberBinding="{Binding RetainedText}" />
+								</GridView>
+							</ListView.View>
+						</ListView>
+						<TextBlock FontWeight="SemiBold" Text="{core:Localize AddIns.Profiler.Report.HandlerTargets}" />
+						<TextBlock Margin="0,2,0,0" Opacity="0.7" TextWrapping="Wrap" Text="{core:Localize AddIns.Profiler.Report.HandlersNote}" />
+						<ListView x:Name="handlerTargetList" Height="110" Margin="0,4,0,8">
+							<ListView.View>
+								<GridView>
+									<GridViewColumn Width="300" Header="{core:Localize AddIns.Profiler.Report.Type}" DisplayMemberBinding="{Binding TypeName}" />
+									<GridViewColumn Width="100" Header="{core:Localize AddIns.Profiler.Report.Handlers}" DisplayMemberBinding="{Binding Delegates, StringFormat=N0}" />
+									<GridViewColumn Width="110" Header="{core:Localize AddIns.Profiler.Report.RetainedSize}" DisplayMemberBinding="{Binding RetainedText}" />
+								</GridView>
+							</ListView.View>
+						</ListView>
+						<TextBlock Opacity="0.7" TextWrapping="Wrap" Text="{core:Localize AddIns.Profiler.Report.InsightsNote}" />
+					</StackPanel>
+				</ScrollViewer>
+			</TabItem>
+			<TabItem Header="{core:Localize AddIns.Profiler.Report.ReferencedBy}">
+				<ListView x:Name="referencedByList">
+					<ListView.View>
+						<GridView>
+							<GridViewColumn Width="320" Header="{core:Localize AddIns.Profiler.Report.Type}" DisplayMemberBinding="{Binding TypeName}" />
+							<GridViewColumn Width="100" Header="{core:Localize AddIns.Profiler.Report.References}" DisplayMemberBinding="{Binding References, StringFormat=N0}" />
+						</GridView>
+					</ListView.View>
+				</ListView>
+			</TabItem>
+			<TabItem Header="{core:Localize AddIns.Profiler.Report.References}">
+				<ListView x:Name="referencesList">
+					<ListView.View>
+						<GridView>
+							<GridViewColumn Width="320" Header="{core:Localize AddIns.Profiler.Report.Type}" DisplayMemberBinding="{Binding TypeName}" />
+							<GridViewColumn Width="100" Header="{core:Localize AddIns.Profiler.Report.References}" DisplayMemberBinding="{Binding References, StringFormat=N0}" />
+						</GridView>
+					</ListView.View>
+				</ListView>
+			</TabItem>
+		</TabControl>
+
+		<ListView x:Name="typeList" Margin="4,0,4,0" SelectionMode="Single" SelectionChanged="TypeList_SelectionChanged">
+			<ListView.View>
+				<GridView x:Name="typesGrid">
+					<GridViewColumn Width="300" DisplayMemberBinding="{Binding Name}">
+						<GridViewColumn.Header>
+							<GridViewColumnHeader Tag="Name" Content="{core:Localize AddIns.Profiler.Report.Type}" />
+						</GridViewColumn.Header>
+					</GridViewColumn>
+					<GridViewColumn Width="80" DisplayMemberBinding="{Binding Count, StringFormat=N0}">
+						<GridViewColumn.Header>
+							<GridViewColumnHeader Tag="Count" Content="{core:Localize AddIns.Profiler.Report.Count}" />
+						</GridViewColumn.Header>
+					</GridViewColumn>
+					<GridViewColumn Width="90" DisplayMemberBinding="{Binding SizeText}">
+						<GridViewColumn.Header>
+							<GridViewColumnHeader Tag="Size" Content="{core:Localize AddIns.Profiler.Report.Size}" />
+						</GridViewColumn.Header>
+					</GridViewColumn>
+					<GridViewColumn Width="100" DisplayMemberBinding="{Binding RetainedText}">
+						<GridViewColumn.Header>
+							<GridViewColumnHeader Tag="Retained" Content="{core:Localize AddIns.Profiler.Report.RetainedSize}" />
+						</GridViewColumn.Header>
+					</GridViewColumn>
+					<GridViewColumn Width="75" DisplayMemberBinding="{Binding SizeFraction, StringFormat=P1}">
+						<GridViewColumn.Header>
+							<GridViewColumnHeader Tag="SizeFraction" Content="{core:Localize AddIns.Profiler.Report.PercentOfHeap}" />
+						</GridViewColumn.Header>
+					</GridViewColumn>
+					<GridViewColumn x:Name="countDiffColumn" Width="0" DisplayMemberBinding="{Binding CountDiffText}">
+						<GridViewColumn.Header>
+							<GridViewColumnHeader Tag="CountDiff" Content="{core:Localize AddIns.Profiler.Report.CountDiff}" />
+						</GridViewColumn.Header>
+					</GridViewColumn>
+					<GridViewColumn x:Name="sizeDiffColumn" Width="0" DisplayMemberBinding="{Binding SizeDiffText}">
+						<GridViewColumn.Header>
+							<GridViewColumnHeader Tag="SizeDiff" Content="{core:Localize AddIns.Profiler.Report.SizeDiff}" />
+						</GridViewColumn.Header>
+					</GridViewColumn>
+				</GridView>
+			</ListView.View>
+		</ListView>
+	</DockPanel>
+</UserControl>

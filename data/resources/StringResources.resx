@@ -10370,4 +10370,334 @@ Press Esc to cancel this operation.</value>
   <data name="Build.Sdk.DescribeFailed" xml:space="preserve">
     <value>Could not describe the .NET SDK for this build: {0}</value>
   </data>
+  <data name="AddIns.Profiler.Attach.CpuPrompt" xml:space="preserve">
+    <value>Select a running .NET process to sample:</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.HeapPrompt" xml:space="preserve">
+    <value>Select a running .NET process to take a managed-heap snapshot of:</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.HeapWarning" xml:space="preserve">
+    <value>Taking a snapshot runs a full (generation 2) garbage collection and pauses the process while it runs. Be careful with large heaps or applications that are sensitive to pauses.</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.NoProcesses" xml:space="preserve">
+    <value>No .NET processes that can be profiled were found.</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.Refresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.StartSampling" xml:space="preserve">
+    <value>Start Sampling</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.TakeSnapshot" xml:space="preserve">
+    <value>Take Snapshot</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.Title" xml:space="preserve">
+    <value>Attach Profiler to Process</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.Failed" xml:space="preserve">
+    <value>Profiling failed: {0}</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.Hint" xml:space="preserve">
+    <value>Run the scenario you want to measure, then stop. Profile a Release build for realistic numbers; the first run includes JIT and loading costs.</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.Sampling" xml:space="preserve">
+    <value>Collecting samples... {0}</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.Snapshotting" xml:space="preserve">
+    <value>Taking a heap snapshot... {0}</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.Stop" xml:space="preserve">
+    <value>Stop and Show Report</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.Stopping" xml:space="preserve">
+    <value>Finishing the capture...</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.TargetExited" xml:space="preserve">
+    <value>{0} exited. Showing the samples collected so far.</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.UnexpectedFailure" xml:space="preserve">
+    <value>The profiler hit an unexpected error.</value>
+  </data>
+  <data name="AddIns.Profiler.FileFilter.Capture" xml:space="preserve">
+    <value>Profiler captures (*.nettrace)</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.AttachCpu" xml:space="preserve">
+    <value>Attach CPU Profiler to Process...</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.CaptureHeap" xml:space="preserve">
+    <value>Capture Managed Heap Snapshot...</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.OpenReport" xml:space="preserve">
+    <value>Open Profiling Report...</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.ProfileProject" xml:space="preserve">
+    <value>Profile Current Project (CPU)</value>
+  </data>
+  <data name="AddIns.Profiler.Messages.BuildFirst" xml:space="preserve">
+    <value>Project &apos;{0}&apos; has not been built. Build it before profiling.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.AllThreads" xml:space="preserve">
+    <value>All threads</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Back" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CalledFunctions" xml:space="preserve">
+    <value>Called Functions</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CallerCallee" xml:space="preserve">
+    <value>Caller/Callee</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CallingFunctions" xml:space="preserve">
+    <value>Calling Functions</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CallTree" xml:space="preserve">
+    <value>Call Tree</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ClearRange" xml:space="preserve">
+    <value>Show Whole Capture</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CompareWith" xml:space="preserve">
+    <value>Compare With Snapshot...</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ComparingWith" xml:space="preserve">
+    <value>Comparing with {0}. Showing the types that changed.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CopyRow" xml:space="preserve">
+    <value>Copy Row</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CopyStack" xml:space="preserve">
+    <value>Copy Stack</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Count" xml:space="preserve">
+    <value>Count</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CountDiff" xml:space="preserve">
+    <value>Count Diff</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CurrentFunction" xml:space="preserve">
+    <value>Current Function</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ExpandHotPath" xml:space="preserve">
+    <value>Expand Hot Path</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Find" xml:space="preserve">
+    <value>Find</value>
+  </data>
+  <data name="AddIns.Profiler.Report.FlameGraph" xml:space="preserve">
+    <value>Flame Graph</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Function" xml:space="preserve">
+    <value>Function</value>
+  </data>
+  <data name="AddIns.Profiler.Report.FunctionBody" xml:space="preserve">
+    <value>Function Body</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Functions" xml:space="preserve">
+    <value>Functions</value>
+  </data>
+  <data name="AddIns.Profiler.Report.HeapNote" xml:space="preserve">
+    <value>A heap snapshot lists the live objects by type. Sizes are shallow: the object itself, not what it references.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.HeapSummary" xml:space="preserve">
+    <value>Objects: {0:N0}    Heap size: {1}</value>
+  </data>
+  <data name="AddIns.Profiler.Report.InCallees" xml:space="preserve">
+    <value>In Called Functions</value>
+  </data>
+  <data name="AddIns.Profiler.Report.IncludeBlocked" xml:space="preserve">
+    <value>Include blocked and native-wait samples</value>
+  </data>
+  <data name="AddIns.Profiler.Report.JustMyCode" xml:space="preserve">
+    <value>Show Just My Code</value>
+  </data>
+  <data name="AddIns.Profiler.Report.LoadFailed" xml:space="preserve">
+    <value>Could not open the report: {0}</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Loading" xml:space="preserve">
+    <value>Loading {0}...</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Module" xml:space="preserve">
+    <value>Module</value>
+  </data>
+  <data name="AddIns.Profiler.Report.NoSamples" xml:space="preserve">
+    <value>No samples match the current filter.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.NotAHeapCapture" xml:space="preserve">
+    <value>&apos;{0}&apos; is not a heap snapshot.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.NotFound" xml:space="preserve">
+    <value>&apos;{0}&apos; was not found in the call tree.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.PercentOfHeap" xml:space="preserve">
+    <value>% of Heap</value>
+  </data>
+  <data name="AddIns.Profiler.Report.RangeSelected" xml:space="preserve">
+    <value>{0:N2} s to {1:N2} s</value>
+  </data>
+  <data name="AddIns.Profiler.Report.RangeWhole" xml:space="preserve">
+    <value>whole capture</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SamplingNote" xml:space="preserve">
+    <value>Sampled data: weights are sample counts, not exact call counts or durations.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SelfMs" xml:space="preserve">
+    <value>Self (ms)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SelfPercent" xml:space="preserve">
+    <value>Self %</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ShowCallerCallee" xml:space="preserve">
+    <value>Show Caller/Callee</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Size" xml:space="preserve">
+    <value>Size</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SizeDiff" xml:space="preserve">
+    <value>Size Diff</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Status" xml:space="preserve">
+    <value>{0:N0} samples, {1:N0} ms of sampled thread time, {2}.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.StopComparing" xml:space="preserve">
+    <value>Stop Comparing</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Thread" xml:space="preserve">
+    <value>Thread:</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ThreadN" xml:space="preserve">
+    <value>Thread {0}</value>
+  </data>
+  <data name="AddIns.Profiler.Report.TotalMs" xml:space="preserve">
+    <value>Total (ms)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.TotalPercent" xml:space="preserve">
+    <value>Total %</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="AddIns.Profiler.ReportViewTitle" xml:space="preserve">
+    <value>Profiler Report</value>
+  </data>
+  <data name="AddIns.Profiler.Report.FindNext" xml:space="preserve">
+    <value>Next match (Enter, F3)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.FindPrevious" xml:space="preserve">
+    <value>Previous match (Shift+Enter, Shift+F3)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.FindResults" xml:space="preserve">
+    <value>{0} of {1}</value>
+  </data>
+  <data name="AddIns.Profiler.Report.FindNoResults" xml:space="preserve">
+    <value>No results</value>
+  </data>
+  <data name="AddIns.Profiler.Report.FindTooltip" xml:space="preserve">
+    <value>Find in call tree (Ctrl+F)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.FilterTypes" xml:space="preserve">
+    <value>Filter types by name</value>
+  </data>
+  <data name="AddIns.Profiler.Report.View" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="AddIns.Profiler.Report.RingDiagram" xml:space="preserve">
+    <value>Ring Diagram</value>
+  </data>
+  <data name="AddIns.Profiler.Report.PathToRoot" xml:space="preserve">
+    <value>Path to Root</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ReferencedBy" xml:space="preserve">
+    <value>Referenced By</value>
+  </data>
+  <data name="AddIns.Profiler.Report.References" xml:space="preserve">
+    <value>References</value>
+  </data>
+  <data name="AddIns.Profiler.Report.PathNone" xml:space="preserve">
+    <value>No path: these objects are not reachable from a GC root and are only waiting to be collected.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.PathRoot" xml:space="preserve">
+    <value>GC root ({0})</value>
+  </data>
+  <data name="AddIns.Profiler.Report.NoGraph" xml:space="preserve">
+    <value>This capture has no reference graph, so only the type table is available.</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.Sessions" xml:space="preserve">
+    <value>Profiling Sessions...</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.Title" xml:space="preserve">
+    <value>Profiling Sessions</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.Kind" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.KindCpu" xml:space="preserve">
+    <value>CPU</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.KindHeap" xml:space="preserve">
+    <value>Heap</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.Started" xml:space="preserve">
+    <value>Started</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.Open" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.Reveal" xml:space="preserve">
+    <value>Show in Folder</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.Empty" xml:space="preserve">
+    <value>No profiling sessions have been recorded yet.</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.DeleteConfirm" xml:space="preserve">
+    <value>Delete the selected session and its capture file?</value>
+  </data>
+  <data name="AddIns.Profiler.Report.GoToSource" xml:space="preserve">
+    <value>Go to Source</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SourceNotFound" xml:space="preserve">
+    <value>The source of &apos;{0}&apos; was not found in the open solution.</value>
+  </data>
+  <data name="AddIns.Profiler.Messages.NoTestsSelected" xml:space="preserve">
+    <value>Select the tests to profile first.</value>
+  </data>
+  <data name="AddIns.Profiler.Messages.TestsFromOneProject" xml:space="preserve">
+    <value>Select tests from a single test project to profile.</value>
+  </data>
+  <data name="AddIns.Profiler.Messages.TestsNotSupported" xml:space="preserve">
+    <value>Only test projects that run on Microsoft.Testing.Platform can be profiled.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Instances" xml:space="preserve">
+    <value>Instances</value>
+  </data>
+  <data name="AddIns.Profiler.Report.RetainedSize" xml:space="preserve">
+    <value>Retained Size</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Address" xml:space="preserve">
+    <value>Address</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Insights" xml:space="preserve">
+    <value>Insights</value>
+  </data>
+  <data name="AddIns.Profiler.Report.LargestRetainers" xml:space="preserve">
+    <value>Largest retainers</value>
+  </data>
+  <data name="AddIns.Profiler.Report.HandlerTargets" xml:space="preserve">
+    <value>Event handler targets</value>
+  </data>
+  <data name="AddIns.Profiler.Report.HandlersNote" xml:space="preserve">
+    <value>Objects that delegates (event handlers and callbacks) keep alive. Many handlers on a type that retains a lot is where to look for subscriptions that were never removed. Delegates are recognised by their type name.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.InsightsNote" xml:space="preserve">
+    <value>Duplicate strings and sparse arrays are not reported: a heap snapshot lists objects and the references between them, not their contents.</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Handlers" xml:space="preserve">
+    <value>Handlers</value>
+  </data>
 </root>

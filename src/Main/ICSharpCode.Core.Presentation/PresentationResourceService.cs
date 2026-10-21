@@ -208,6 +208,28 @@ namespace ICSharpCode.Core.Presentation
 			// AddIn Manager.
 			{ "AddInManager.Installed", "Resources/VS2026/StatusOK/StatusOK_16x.xaml" },
 			{ "AddInManager.Warning", "Resources/VS2026/StatusWarning/StatusWarning_16x.xaml" },
+			// Profiler report toolbars. Glyphs follow the Visual Studio profiler's own choices where the
+			// image library has them (call tree, function, thread, filter, find) and the nearest
+			// neighbour where it has none (flame graph, just my code, blocked samples).
+			{ "Profiler.CallTree", "Resources/VS2026/TreeView/TreeView_16x.xaml" },
+			{ "Profiler.Functions", "Resources/VS2026/Method/Method_16x.xaml" },
+			{ "Profiler.CallerCallee", "Resources/VS2026/Relationship/Relationship_16x.xaml" },
+			{ "Profiler.FlameGraph", "Resources/VS2026/Timeline/Timeline_16x.xaml" },
+			{ "Profiler.RingDiagram", "Resources/VS2026/Ellipse/Ellipse_16x.xaml" },
+			{ "Profiler.JustMyCode", "Resources/VS2026/User/User_16x.xaml" },
+			{ "Profiler.IncludeBlocked", "Resources/VS2026/Pause/Pause_16x.xaml" },
+			{ "Profiler.Thread", "Resources/VS2026/Thread/Thread_16x.xaml" },
+			{ "Profiler.ExpandHotPath", "Resources/VS2026/ExpandAll/ExpandAll_16x.xaml" },
+			{ "Profiler.CollapseAll", "Resources/VS2026/CollapseAll/CollapseAll_16x.xaml" },
+			{ "Profiler.ShowWholeCapture", "Resources/VS2026/FitToScreen/FitToScreen_16x.xaml" },
+			{ "Profiler.Find", "Resources/VS2026/Search/Search_16x.xaml" },
+			{ "Profiler.FindNext", "Resources/VS2026/Next/Next_16x.xaml" },
+			{ "Profiler.FindPrevious", "Resources/VS2026/Previous/Previous_16x.xaml" },
+			{ "Profiler.Close", "Resources/VS2026/Close/Close_16x.xaml" },
+			{ "Profiler.Copy", "Resources/VS2026/Copy/Copy_16x.xaml" },
+			{ "Profiler.Filter", "Resources/VS2026/Filter/Filter_16x.xaml" },
+			{ "Profiler.Compare", "Resources/VS2026/SwitchSourceOrTarget/SwitchSourceOrTarget_16x.xaml" },
+			{ "Profiler.Stop", "Resources/VS2026/Stop/Stop_16x.xaml" },
 			{ "AddInManager.Search", "Resources/VS2026/Search/Search_16x.xaml" },
 			{ "AddInManager.Previous", "Resources/VS2026/Previous/Previous_16x.xaml" },
 			{ "AddInManager.Next", "Resources/VS2026/Next/Next_16x.xaml" },

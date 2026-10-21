@@ -1,0 +1,80 @@
+<AddIn name="Profiler AddIn"
+       author="OpenDevelop"
+       description="CPU sampling and managed-heap snapshots for running .NET processes"
+       addInManagerHidden="preinstalled">
+
+	<Manifest>
+		<Identity name="Profiler.AddIn" />
+		<Dependency addin="SharpDevelop" />
+		<Dependency addin="ICSharpCode.UnitTesting" />
+	</Manifest>
+
+	<Runtime>
+		<Import assembly="OpenDevelop.Profiler.AddIn.dll" />
+	</Runtime>
+
+	<Path name="/SharpDevelop/Autostart">
+		<Class id="ProfilerStartup" class="OpenDevelop.Profiler.AddIn.ProfilerStartup" />
+	</Path>
+
+	<Path name="/SharpDevelop/Workbench/MainMenu/Analysis">
+		<MenuItem id="Profiler" label="${res:Profiler.Menu.Title}" type="Menu" insertbefore="Separator1">
+			<ComplexCondition action="Disable">
+				<And>
+					<Condition name="SolutionOpen" />
+				</And>
+				<MenuItem
+					id="ProfileProject"
+					class="OpenDevelop.Profiler.AddIn.Commands.ProfileProjectCommand"
+					label="${res:AddIns.Profiler.Menu.ProfileProject}" />
+			</ComplexCondition>
+			<MenuItem
+				id="AttachCpuProfiler"
+				class="OpenDevelop.Profiler.AddIn.Commands.AttachCpuProfilerCommand"
+				label="${res:AddIns.Profiler.Menu.AttachCpu}" />
+			<MenuItem type="Separator" id="HeapSeparator" />
+			<MenuItem
+				id="CaptureHeapSnapshot"
+				class="OpenDevelop.Profiler.AddIn.Commands.CaptureHeapSnapshotCommand"
+				label="${res:AddIns.Profiler.Menu.CaptureHeap}" />
+			<MenuItem type="Separator" id="OpenSeparator" />
+			<MenuItem
+				id="ProfilingSessions"
+				class="OpenDevelop.Profiler.AddIn.Commands.ShowProfilingSessionsCommand"
+				label="${res:AddIns.Profiler.Menu.Sessions}" />
+			<MenuItem
+				id="OpenProfilingReport"
+				class="OpenDevelop.Profiler.AddIn.Commands.OpenProfilingReportCommand"
+				label="${res:AddIns.Profiler.Menu.OpenReport}" />
+		</MenuItem>
+	</Path>
+
+	<Path name="/SharpDevelop/Workbench/DisplayBindings">
+		<DisplayBinding id="ProfilerCaptureDisplayBinding"
+		                insertbefore="Text"
+		                fileNamePattern="\.(nettrace)$"
+		                title="${res:AddIns.Profiler.ReportViewTitle}"
+		                class="OpenDevelop.Profiler.AddIn.Views.ProfilerDisplayBinding" />
+	</Path>
+
+	<Path name="/SharpDevelop/Pads/UnitTestsPad/CommonTestCommands">
+		<ComplexCondition action="Disable">
+			<And>
+				<Condition name="SolutionOpen" />
+				<Not>
+					<Condition name="RunningTests" />
+				</Not>
+			</And>
+			<MenuItem id="RunWithProfiler"
+			          label="${res:AddIns.Profiler.UnitTests.RunWithProfiler}"
+			          class="OpenDevelop.Profiler.AddIn.Commands.ProfileSelectedTestsCommand" />
+		</ComplexCondition>
+	</Path>
+
+	<Path name="/SharpDevelop/Workbench/FileFilter">
+		<FileFilter id="ProfilerCapture"
+		            insertbefore="AllFiles"
+		            name="${res:AddIns.Profiler.FileFilter.Capture}"
+		            extensions="*.nettrace" />
+	</Path>
+</AddIn>

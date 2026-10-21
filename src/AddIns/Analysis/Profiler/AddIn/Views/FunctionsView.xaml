@@ -1,0 +1,55 @@
+<UserControl
+	x:Class="OpenDevelop.Profiler.AddIn.Views.FunctionsView"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:core="http://icsharpcode.net/sharpdevelop/core">
+	<ListView
+		x:Name="functionList"
+		SelectionMode="Single"
+		MouseDoubleClick="FunctionList_MouseDoubleClick">
+		<ListView.ContextMenu>
+			<ContextMenu>
+				<MenuItem
+					Header="{core:Localize AddIns.Profiler.Report.ShowCallerCallee}"
+					Click="ShowCallerCallee_Click" />
+				<MenuItem
+					Header="{core:Localize AddIns.Profiler.Report.GoToSource}"
+					Click="GoToSource_Click" />
+			</ContextMenu>
+		</ListView.ContextMenu>
+		<ListView.View>
+			<GridView>
+				<GridViewColumn Width="320" DisplayMemberBinding="{Binding Name}">
+					<GridViewColumn.Header>
+						<GridViewColumnHeader Tag="Name" Content="{core:Localize AddIns.Profiler.Report.Function}" />
+					</GridViewColumn.Header>
+				</GridViewColumn>
+				<GridViewColumn Width="90" DisplayMemberBinding="{Binding TotalMs, StringFormat=N0}">
+					<GridViewColumn.Header>
+						<GridViewColumnHeader Tag="TotalMs" Content="{core:Localize AddIns.Profiler.Report.TotalMs}" />
+					</GridViewColumn.Header>
+				</GridViewColumn>
+				<GridViewColumn Width="70" DisplayMemberBinding="{Binding TotalFraction, StringFormat=P1}">
+					<GridViewColumn.Header>
+						<GridViewColumnHeader Tag="TotalFraction" Content="{core:Localize AddIns.Profiler.Report.TotalPercent}" />
+					</GridViewColumn.Header>
+				</GridViewColumn>
+				<GridViewColumn Width="90" DisplayMemberBinding="{Binding SelfMs, StringFormat=N0}">
+					<GridViewColumn.Header>
+						<GridViewColumnHeader Tag="SelfMs" Content="{core:Localize AddIns.Profiler.Report.SelfMs}" />
+					</GridViewColumn.Header>
+				</GridViewColumn>
+				<GridViewColumn Width="70" DisplayMemberBinding="{Binding SelfFraction, StringFormat=P1}">
+					<GridViewColumn.Header>
+						<GridViewColumnHeader Tag="SelfFraction" Content="{core:Localize AddIns.Profiler.Report.SelfPercent}" />
+					</GridViewColumn.Header>
+				</GridViewColumn>
+				<GridViewColumn Width="150" DisplayMemberBinding="{Binding Module}">
+					<GridViewColumn.Header>
+						<GridViewColumnHeader Tag="Module" Content="{core:Localize AddIns.Profiler.Report.Module}" />
+					</GridViewColumn.Header>
+				</GridViewColumn>
+			</GridView>
+		</ListView.View>
+	</ListView>
+</UserControl>

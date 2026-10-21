@@ -1,0 +1,41 @@
+<Project Sdk="LibreWPF.Sdk">
+  <!-- The IDE side of the Profiler: commands, the capture window, and the WPF report views over
+       OpenDevelop.Profiler.Core. Replaces the SharpDevelop-era add-in kept under Frontend/ and
+       Controller/ (CLR profiler hooks, x86, .NET Framework 4.5); see doc/technotes/profiler.md. -->
+  <PropertyGroup>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>OpenDevelop.Profiler.AddIn</RootNamespace>
+    <AssemblyName>OpenDevelop.Profiler.AddIn</AssemblyName>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <OutputType>Library</OutputType>
+    <OutputPath>..\..\..\..\..\AddIns\Analysis\Profiler\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <NoWarn>$(NoWarn);CA1416;WFO1000</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Core\OpenDevelop.Profiler.Core.csproj" />
+    <!-- Profile Selected Tests asks the unit testing add-in for the test host's command line. -->
+    <ProjectReference Include="..\..\UnitTesting\UnitTesting.csproj" Private="false" />
+    <!-- Lets the loaded add-in expose narrow DevFlow probes (ProfilerDevFlowActions) for integration tests. -->
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" />
+    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Stamps the product version. Without it the DLL is 0.0.0.0 while the generated XAML locators ask
+         for "/OpenDevelop.Profiler.AddIn;V5.x.y.z;component/...", so every view fails to load. -->
+    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />
+    <None Include="Profiler.addin" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+</Project>

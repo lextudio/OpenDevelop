@@ -1,0 +1,90 @@
+<UserControl
+	x:Class="OpenDevelop.Profiler.AddIn.Views.CallTreeView"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:core="http://icsharpcode.net/sharpdevelop/core"
+	xmlns:local="clr-namespace:OpenDevelop.Profiler.AddIn.Views">
+	<ListView
+		x:Name="rowList"
+		SelectionMode="Single"
+		KeyDown="RowList_KeyDown"
+		MouseDoubleClick="RowList_MouseDoubleClick">
+		<ListView.ContextMenu>
+			<ContextMenu>
+				<MenuItem
+					Header="{core:Localize AddIns.Profiler.Report.ShowCallerCallee}"
+					Click="ShowCallerCallee_Click" />
+				<MenuItem
+					Header="{core:Localize AddIns.Profiler.Report.GoToSource}"
+					Click="GoToSource_Click" />
+				<MenuItem
+					Header="{core:Localize AddIns.Profiler.Report.ExpandHotPath}"
+					Click="ExpandHotPathFromSelection_Click" />
+				<Separator />
+				<MenuItem
+					Header="{core:Localize AddIns.Profiler.Report.CopyStack}"
+					Click="CopyStack_Click" />
+				<MenuItem
+					Header="{core:Localize AddIns.Profiler.Report.CopyRow}"
+					Click="CopyRow_Click" />
+			</ContextMenu>
+		</ListView.ContextMenu>
+		<ListView.View>
+			<GridView>
+				<GridViewColumn Width="320" Header="{core:Localize AddIns.Profiler.Report.Function}">
+					<GridViewColumn.CellTemplate>
+						<DataTemplate>
+							<StackPanel Orientation="Horizontal" Margin="{Binding Indent}">
+								<TextBlock
+									Width="14"
+									Text="{Binding Glyph}"
+									Cursor="Hand"
+									MouseLeftButtonDown="Glyph_MouseLeftButtonDown" />
+								<TextBlock Text="{Binding Name}" />
+							</StackPanel>
+						</DataTemplate>
+					</GridViewColumn.CellTemplate>
+				</GridViewColumn>
+				<GridViewColumn Width="90" Header="{core:Localize AddIns.Profiler.Report.TotalMs}">
+					<GridViewColumn.CellTemplate>
+						<DataTemplate>
+							<TextBlock Text="{Binding TotalMs, StringFormat=N0}" TextAlignment="Right" />
+						</DataTemplate>
+					</GridViewColumn.CellTemplate>
+				</GridViewColumn>
+				<GridViewColumn Width="70" Header="{core:Localize AddIns.Profiler.Report.TotalPercent}">
+					<GridViewColumn.CellTemplate>
+						<DataTemplate>
+							<TextBlock Text="{Binding TotalFraction, StringFormat=P1}" TextAlignment="Right" />
+						</DataTemplate>
+					</GridViewColumn.CellTemplate>
+				</GridViewColumn>
+				<GridViewColumn Width="80">
+					<GridViewColumn.CellTemplate>
+						<DataTemplate>
+							<local:PercentBar Height="16" Value="{Binding TotalFraction}" />
+						</DataTemplate>
+					</GridViewColumn.CellTemplate>
+				</GridViewColumn>
+				<GridViewColumn Width="90" Header="{core:Localize AddIns.Profiler.Report.SelfMs}">
+					<GridViewColumn.CellTemplate>
+						<DataTemplate>
+							<TextBlock Text="{Binding SelfMs, StringFormat=N0}" TextAlignment="Right" />
+						</DataTemplate>
+					</GridViewColumn.CellTemplate>
+				</GridViewColumn>
+				<GridViewColumn Width="70" Header="{core:Localize AddIns.Profiler.Report.SelfPercent}">
+					<GridViewColumn.CellTemplate>
+						<DataTemplate>
+							<TextBlock Text="{Binding SelfFraction, StringFormat=P1}" TextAlignment="Right" />
+						</DataTemplate>
+					</GridViewColumn.CellTemplate>
+				</GridViewColumn>
+				<GridViewColumn
+					Width="150"
+					Header="{core:Localize AddIns.Profiler.Report.Module}"
+					DisplayMemberBinding="{Binding Module}" />
+			</GridView>
+		</ListView.View>
+	</ListView>
+</UserControl>

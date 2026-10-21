@@ -121,6 +121,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj" />
     <Project Path="tests/OpenDevelop.Base.Tests/OpenDevelop.Base.Tests.csproj" />
+    <Project Path="tests/OpenDevelop.Profiler.Tests/OpenDevelop.Profiler.Tests.csproj" />
     <Project Path="tests/OpenDevelop.XamlDom.Tests.LibreWPF/OpenDevelop.XamlDom.Tests.LibreWPF.csproj" />
     <Project Path="tests/OpenDevelop.XamlDom.Tests.MicrosoftWPF/OpenDevelop.XamlDom.Tests.MicrosoftWPF.csproj" />
   </Folder>
@@ -132,6 +133,10 @@
   </Folder>
   <Folder Name="/src/AddIns/Misc/TextTemplating/">
     <Project Path="src/AddIns/Misc/TextTemplating/Project/TextTemplating.csproj" />
+  </Folder>
+  <Folder Name="/src/AddIns/Analysis/Profiler/">
+    <Project Path="src/AddIns/Analysis/Profiler/Core/OpenDevelop.Profiler.Core.csproj" />
+    <Project Path="src/AddIns/Analysis/Profiler/AddIn/Profiler.AddIn.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/Analysis/UnitTesting/">
     <Project Path="src/AddIns/Analysis/UnitTesting/UnitTesting.csproj" />

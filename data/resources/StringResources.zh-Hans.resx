@@ -9976,4 +9976,334 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   <data name="Build.Sdk.DescribeFailed" xml:space="preserve">
     <value>无法说明此次生成使用的 .NET SDK：{0}</value>
   </data>
+  <data name="AddIns.Profiler.Attach.CpuPrompt" xml:space="preserve">
+    <value>选择要采样的 .NET 进程：</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.HeapPrompt" xml:space="preserve">
+    <value>选择要抓取托管堆快照的 .NET 进程：</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.HeapWarning" xml:space="preserve">
+    <value>抓取快照会执行一次完整（第 2 代）垃圾回收，并在此期间暂停目标进程。对大型堆或对暂停敏感的应用请谨慎操作。</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.NoProcesses" xml:space="preserve">
+    <value>未找到可分析的 .NET 进程。</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.Refresh" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.StartSampling" xml:space="preserve">
+    <value>开始采样</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.TakeSnapshot" xml:space="preserve">
+    <value>抓取快照</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.Title" xml:space="preserve">
+    <value>将分析器附加到进程</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.Failed" xml:space="preserve">
+    <value>分析失败：{0}</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.Hint" xml:space="preserve">
+    <value>请运行要测量的场景，然后停止。请分析 Release 生成以获得真实数据；首次运行包含 JIT 和加载开销。</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.Sampling" xml:space="preserve">
+    <value>正在收集采样… {0}</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.Snapshotting" xml:space="preserve">
+    <value>正在抓取堆快照… {0}</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.Stop" xml:space="preserve">
+    <value>停止并显示报告</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.Stopping" xml:space="preserve">
+    <value>正在完成捕获…</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.TargetExited" xml:space="preserve">
+    <value>{0} 已退出。显示迄今收集的采样。</value>
+  </data>
+  <data name="AddIns.Profiler.Capture.UnexpectedFailure" xml:space="preserve">
+    <value>分析器遇到意外错误。</value>
+  </data>
+  <data name="AddIns.Profiler.FileFilter.Capture" xml:space="preserve">
+    <value>分析器捕获文件 (*.nettrace)</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.AttachCpu" xml:space="preserve">
+    <value>将 CPU 分析器附加到进程…</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.CaptureHeap" xml:space="preserve">
+    <value>抓取托管堆快照…</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.OpenReport" xml:space="preserve">
+    <value>打开分析报告…</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.ProfileProject" xml:space="preserve">
+    <value>分析当前项目（CPU）</value>
+  </data>
+  <data name="AddIns.Profiler.Messages.BuildFirst" xml:space="preserve">
+    <value>项目“{0}”尚未生成。请先生成再进行分析。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.AllThreads" xml:space="preserve">
+    <value>所有线程</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Back" xml:space="preserve">
+    <value>返回</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CalledFunctions" xml:space="preserve">
+    <value>被调用的函数</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CallerCallee" xml:space="preserve">
+    <value>调用者/被调用者</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CallingFunctions" xml:space="preserve">
+    <value>调用方函数</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CallTree" xml:space="preserve">
+    <value>调用树</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ClearRange" xml:space="preserve">
+    <value>显示整个捕获</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CompareWith" xml:space="preserve">
+    <value>与快照比较…</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ComparingWith" xml:space="preserve">
+    <value>正在与 {0} 比较。仅显示发生变化的类型。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CopyRow" xml:space="preserve">
+    <value>复制行</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CopyStack" xml:space="preserve">
+    <value>复制堆栈</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Count" xml:space="preserve">
+    <value>数量</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CountDiff" xml:space="preserve">
+    <value>数量差异</value>
+  </data>
+  <data name="AddIns.Profiler.Report.CurrentFunction" xml:space="preserve">
+    <value>当前函数</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ExpandHotPath" xml:space="preserve">
+    <value>展开热点路径</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Find" xml:space="preserve">
+    <value>查找</value>
+  </data>
+  <data name="AddIns.Profiler.Report.FlameGraph" xml:space="preserve">
+    <value>火焰图</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Function" xml:space="preserve">
+    <value>函数</value>
+  </data>
+  <data name="AddIns.Profiler.Report.FunctionBody" xml:space="preserve">
+    <value>函数体</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Functions" xml:space="preserve">
+    <value>函数</value>
+  </data>
+  <data name="AddIns.Profiler.Report.HeapNote" xml:space="preserve">
+    <value>堆快照按类型列出存活对象。大小为浅表大小：仅对象自身，不含其引用的对象。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.HeapSummary" xml:space="preserve">
+    <value>对象数：{0:N0}    堆大小：{1}</value>
+  </data>
+  <data name="AddIns.Profiler.Report.InCallees" xml:space="preserve">
+    <value>在被调用函数中</value>
+  </data>
+  <data name="AddIns.Profiler.Report.IncludeBlocked" xml:space="preserve">
+    <value>包含阻塞和原生等待的采样</value>
+  </data>
+  <data name="AddIns.Profiler.Report.JustMyCode" xml:space="preserve">
+    <value>仅显示我的代码</value>
+  </data>
+  <data name="AddIns.Profiler.Report.LoadFailed" xml:space="preserve">
+    <value>无法打开报告：{0}</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Loading" xml:space="preserve">
+    <value>正在加载 {0}…</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Module" xml:space="preserve">
+    <value>模块</value>
+  </data>
+  <data name="AddIns.Profiler.Report.NoSamples" xml:space="preserve">
+    <value>没有与当前筛选条件匹配的采样。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.NotAHeapCapture" xml:space="preserve">
+    <value>“{0}”不是堆快照。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.NotFound" xml:space="preserve">
+    <value>在调用树中未找到“{0}”。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.PercentOfHeap" xml:space="preserve">
+    <value>占堆百分比</value>
+  </data>
+  <data name="AddIns.Profiler.Report.RangeSelected" xml:space="preserve">
+    <value>{0:N2} 秒至 {1:N2} 秒</value>
+  </data>
+  <data name="AddIns.Profiler.Report.RangeWhole" xml:space="preserve">
+    <value>整个捕获</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SamplingNote" xml:space="preserve">
+    <value>采样数据：权重为采样次数，并非精确的调用次数或耗时。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SelfMs" xml:space="preserve">
+    <value>自身 (毫秒)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SelfPercent" xml:space="preserve">
+    <value>自身 %</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ShowCallerCallee" xml:space="preserve">
+    <value>显示调用者/被调用者</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Size" xml:space="preserve">
+    <value>大小</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SizeDiff" xml:space="preserve">
+    <value>大小差异</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Status" xml:space="preserve">
+    <value>{0:N0} 个采样，{1:N0} 毫秒采样线程时间，{2}。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.StopComparing" xml:space="preserve">
+    <value>停止比较</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Thread" xml:space="preserve">
+    <value>线程：</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ThreadN" xml:space="preserve">
+    <value>线程 {0}</value>
+  </data>
+  <data name="AddIns.Profiler.Report.TotalMs" xml:space="preserve">
+    <value>总计 (毫秒)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.TotalPercent" xml:space="preserve">
+    <value>总计 %</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Type" xml:space="preserve">
+    <value>类型</value>
+  </data>
+  <data name="AddIns.Profiler.ReportViewTitle" xml:space="preserve">
+    <value>分析器报告</value>
+  </data>
+  <data name="AddIns.Profiler.Report.FindNext" xml:space="preserve">
+    <value>下一个匹配项（Enter、F3）</value>
+  </data>
+  <data name="AddIns.Profiler.Report.FindPrevious" xml:space="preserve">
+    <value>上一个匹配项（Shift+Enter、Shift+F3）</value>
+  </data>
+  <data name="AddIns.Profiler.Report.FindResults" xml:space="preserve">
+    <value>第 {0} 项，共 {1} 项</value>
+  </data>
+  <data name="AddIns.Profiler.Report.FindNoResults" xml:space="preserve">
+    <value>无结果</value>
+  </data>
+  <data name="AddIns.Profiler.Report.FindTooltip" xml:space="preserve">
+    <value>在调用树中查找 (Ctrl+F)</value>
+  </data>
+  <data name="AddIns.Profiler.Report.FilterTypes" xml:space="preserve">
+    <value>按名称筛选类型</value>
+  </data>
+  <data name="AddIns.Profiler.Report.View" xml:space="preserve">
+    <value>视图</value>
+  </data>
+  <data name="AddIns.Profiler.Report.RingDiagram" xml:space="preserve">
+    <value>环形图</value>
+  </data>
+  <data name="AddIns.Profiler.Report.PathToRoot" xml:space="preserve">
+    <value>到根的路径</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ReferencedBy" xml:space="preserve">
+    <value>被引用于</value>
+  </data>
+  <data name="AddIns.Profiler.Report.References" xml:space="preserve">
+    <value>引用</value>
+  </data>
+  <data name="AddIns.Profiler.Report.PathNone" xml:space="preserve">
+    <value>没有路径：这些对象无法从 GC 根到达，只是在等待回收。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.PathRoot" xml:space="preserve">
+    <value>GC 根（{0}）</value>
+  </data>
+  <data name="AddIns.Profiler.Report.NoGraph" xml:space="preserve">
+    <value>此捕获没有引用图，只能显示类型表。</value>
+  </data>
+  <data name="AddIns.Profiler.Menu.Sessions" xml:space="preserve">
+    <value>分析会话…</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.Title" xml:space="preserve">
+    <value>分析会话</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.Kind" xml:space="preserve">
+    <value>类型</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.KindCpu" xml:space="preserve">
+    <value>CPU</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.KindHeap" xml:space="preserve">
+    <value>堆</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.Started" xml:space="preserve">
+    <value>开始时间</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.Status" xml:space="preserve">
+    <value>状态</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.Open" xml:space="preserve">
+    <value>打开</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.Reveal" xml:space="preserve">
+    <value>在文件夹中显示</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.Delete" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.Empty" xml:space="preserve">
+    <value>尚未记录任何分析会话。</value>
+  </data>
+  <data name="AddIns.Profiler.Sessions.DeleteConfirm" xml:space="preserve">
+    <value>删除所选会话及其捕获文件？</value>
+  </data>
+  <data name="AddIns.Profiler.Report.GoToSource" xml:space="preserve">
+    <value>转到源代码</value>
+  </data>
+  <data name="AddIns.Profiler.Report.SourceNotFound" xml:space="preserve">
+    <value>在打开的解决方案中未找到“{0}”的源代码。</value>
+  </data>
+  <data name="AddIns.Profiler.Messages.NoTestsSelected" xml:space="preserve">
+    <value>请先选择要分析的测试。</value>
+  </data>
+  <data name="AddIns.Profiler.Messages.TestsFromOneProject" xml:space="preserve">
+    <value>请选择同一个测试项目中的测试进行分析。</value>
+  </data>
+  <data name="AddIns.Profiler.Messages.TestsNotSupported" xml:space="preserve">
+    <value>只能分析基于 Microsoft.Testing.Platform 的测试项目。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Instances" xml:space="preserve">
+    <value>实例</value>
+  </data>
+  <data name="AddIns.Profiler.Report.RetainedSize" xml:space="preserve">
+    <value>保留大小</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Address" xml:space="preserve">
+    <value>地址</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Insights" xml:space="preserve">
+    <value>分析建议</value>
+  </data>
+  <data name="AddIns.Profiler.Report.LargestRetainers" xml:space="preserve">
+    <value>保留内存最多的对象</value>
+  </data>
+  <data name="AddIns.Profiler.Report.HandlerTargets" xml:space="preserve">
+    <value>事件处理程序的目标</value>
+  </data>
+  <data name="AddIns.Profiler.Report.HandlersNote" xml:space="preserve">
+    <value>委托（事件处理程序和回调）所保持存活的对象。若某类型被大量处理程序引用且保留了很多内存，应检查是否有从未取消的订阅。委托按类型名称识别。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.InsightsNote" xml:space="preserve">
+    <value>不报告重复字符串和稀疏数组：堆快照只列出对象及其引用关系，不包含对象内容。</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Handlers" xml:space="preserve">
+    <value>处理程序</value>
+  </data>
 </root>

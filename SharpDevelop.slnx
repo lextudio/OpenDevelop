@@ -10,12 +10,9 @@
     <Project Path="src/AddIns/Analysis/SourceAnalysis/SourceAnalysis.csproj" />
     <Project Path="src/AddIns/Analysis/UnitTesting/UnitTesting.csproj" />
   </Folder>
-  <Folder Name="/AddIns/Analysis/Profiler/">
-    <Project Path="src/AddIns/Analysis/Profiler/Controller/Profiler.Controller.csproj" />
-    <Project Path="src/AddIns/Analysis/Profiler/Frontend/AddIn/Profiler.AddIn.csproj" />
-    <Project Path="src/AddIns/Analysis/Profiler/Frontend/Controls/Profiler.Controls.csproj" />
-    <Project Path="src/AddIns/Analysis/Profiler/X64Converter/Profiler.X64Converter.csproj" />
-  </Folder>
+  <!-- The SharpDevelop-era profiler (Controller/, Frontend/, Hook/, X64Converter/: CLR profiler hooks, x86, .NET Framework 4.5)
+       is no longer built. Its sources stay under src/AddIns/Analysis/Profiler/ for reference; the working
+       replacement is Core/ + AddIn/, see doc/technotes/profiler.md. -->
   <Folder Name="/AddIns/Debugger/">
     <Project Path="src/AddIns/Debugger/Debugger.AddIn/Debugger.AddIn.csproj" />
     <Project Path="src/AddIns/Debugger/Debugger.Core/Debugger.Core.csproj" />

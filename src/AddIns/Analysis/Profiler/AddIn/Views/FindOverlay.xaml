@@ -1,0 +1,63 @@
+<UserControl
+	x:Class="OpenDevelop.Profiler.AddIn.Views.FindOverlay"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:core="http://icsharpcode.net/sharpdevelop/core"
+	Visibility="Collapsed"
+	HorizontalAlignment="Right"
+	VerticalAlignment="Top"
+	Margin="0,4,20,0">
+	<UserControl.Resources>
+		<!-- The default Button padding is wider than a 16px glyph leaves room for in a 26px button, which
+		     clipped each icon to its left half. -->
+		<Style TargetType="Button">
+			<Setter Property="Width" Value="26" />
+			<Setter Property="Height" Value="26" />
+			<Setter Property="Padding" Value="0" />
+			<Setter Property="HorizontalContentAlignment" Value="Center" />
+			<Setter Property="VerticalContentAlignment" Value="Center" />
+		</Style>
+	</UserControl.Resources>
+	<Border
+		Padding="6,4"
+		BorderThickness="1"
+		BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+		Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+		<StackPanel Orientation="Horizontal">
+			<Image
+				Width="16"
+				Height="16"
+				Margin="0,0,6,0"
+				Source="{core:GetBitmap Profiler.Find}" />
+			<TextBox
+				x:Name="queryBox"
+				Width="200"
+				VerticalContentAlignment="Center"
+				TextChanged="QueryBox_TextChanged"
+				PreviewKeyDown="QueryBox_PreviewKeyDown" />
+			<TextBlock
+				x:Name="resultText"
+				MinWidth="64"
+				Margin="8,0"
+				VerticalAlignment="Center"
+				Opacity="0.7" />
+			<Button
+				ToolTip="{core:Localize AddIns.Profiler.Report.FindPrevious}"
+				Click="Previous_Click">
+				<Image Width="16" Height="16" Source="{core:GetBitmap Profiler.FindPrevious}" />
+			</Button>
+			<Button
+				Margin="2,0,0,0"
+				ToolTip="{core:Localize AddIns.Profiler.Report.FindNext}"
+				Click="Next_Click">
+				<Image Width="16" Height="16" Source="{core:GetBitmap Profiler.FindNext}" />
+			</Button>
+			<Button
+				Margin="8,0,0,0"
+				ToolTip="{core:Localize Global.Close}"
+				Click="Close_Click">
+				<Image Width="16" Height="16" Source="{core:GetBitmap Profiler.Close}" />
+			</Button>
+		</StackPanel>
+	</Border>
+</UserControl>

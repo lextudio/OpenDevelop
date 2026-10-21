@@ -1,0 +1,50 @@
+<Window
+	x:Class="OpenDevelop.Profiler.AddIn.Dialogs.SessionsWindow"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:core="http://icsharpcode.net/sharpdevelop/core"
+	Title="{core:Localize AddIns.Profiler.Sessions.Title}"
+	WindowStartupLocation="CenterOwner"
+	WindowStyle="ToolWindow"
+	ShowInTaskbar="False"
+	Height="380"
+	Width="640">
+	<Grid Margin="8">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="*" />
+			<RowDefinition Height="Auto" />
+			<RowDefinition Height="Auto" />
+		</Grid.RowDefinitions>
+		<ListView
+			x:Name="sessionList"
+			Grid.Row="0"
+			SelectionMode="Single"
+			MouseDoubleClick="SessionList_MouseDoubleClick"
+			SelectionChanged="SessionList_SelectionChanged">
+			<ListView.View>
+				<GridView>
+					<GridViewColumn Width="60" Header="{core:Localize AddIns.Profiler.Sessions.Kind}" DisplayMemberBinding="{Binding Kind}" />
+					<GridViewColumn Width="170" Header="{core:Localize Global.Name}" DisplayMemberBinding="{Binding Name}" />
+					<GridViewColumn Width="150" Header="{core:Localize AddIns.Profiler.Sessions.Started}" DisplayMemberBinding="{Binding Started}" />
+					<GridViewColumn Width="90" Header="{core:Localize AddIns.Profiler.Sessions.Status}" DisplayMemberBinding="{Binding Status}" />
+					<GridViewColumn Width="80" Header="{core:Localize AddIns.Profiler.Report.Size}" DisplayMemberBinding="{Binding SizeText}" />
+				</GridView>
+			</ListView.View>
+		</ListView>
+		<TextBlock
+			x:Name="emptyText"
+			Grid.Row="1"
+			Margin="0,6,0,0"
+			Visibility="Collapsed"
+			Text="{core:Localize AddIns.Profiler.Sessions.Empty}" />
+		<DockPanel Grid.Row="2" Margin="0,8,0,0" LastChildFill="False">
+			<Button x:Name="openButton" DockPanel.Dock="Left" MinWidth="80" Margin="0,0,6,0" IsEnabled="False"
+			        Click="Open_Click" Content="{core:Localize AddIns.Profiler.Sessions.Open}" />
+			<Button x:Name="revealButton" DockPanel.Dock="Left" MinWidth="120" Margin="0,0,6,0" IsEnabled="False"
+			        Click="Reveal_Click" Content="{core:Localize AddIns.Profiler.Sessions.Reveal}" />
+			<Button x:Name="deleteButton" DockPanel.Dock="Left" MinWidth="80" IsEnabled="False"
+			        Click="Delete_Click" Content="{core:Localize AddIns.Profiler.Sessions.Delete}" />
+			<Button DockPanel.Dock="Right" MinWidth="80" IsCancel="True" Content="{core:Localize Global.Close}" />
+		</DockPanel>
+	</Grid>
+</Window>
