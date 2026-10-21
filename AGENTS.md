@@ -103,6 +103,28 @@ Empty intermediate polls are normal while the reviewer is reading code: wait for
 foreground process to exit before looking up its session or deciding that the launch failed. Do not
 start a second review merely because its streamed output is quiet.
 
+Progress must be observable while a review or commit agent runs, because `--format json` redirected to a
+file stays empty until the process exits (observed on every run; a 40-minute review looks identical to a
+hung one). So, for every OpenCode run:
+- Pass `--print-logs --log-level info` and send stderr into a *separate, live* file
+  (`2> tmp/opencode/<unique>.log`, stdout still to `<unique>.json`). Stderr is not block-buffered the way a
+  redirected stdout is, so this file is the progress log the user can tail. (Not yet verified on a long run;
+  if `<unique>.log` is still empty after two minutes, say so and fall back to the next point.)
+- Independently, the background service keeps writing to `~/.local/share/opencode/log/opencode.log`
+  (`%USERPROFILE%\.local\share\opencode\log\opencode.log`). While the run is going, check it every few
+  minutes for `level=ERROR` lines newer than the launch time and report them. Upstream failures show up
+  only there and make a run hang silently: `Failed to drain Session` with `Insufficient account funds` or
+  `Endpoint is unavailable` (both seen). Such a run will never produce a verdict; stop it (kill only the
+  `opencode.exe run` child) and report the provider error instead of waiting out the timeout.
+- Tell the user, at launch, the exact paths of the `.json` and `.log` files, and each time they ask for
+  progress report the last log line and its time, not just "still running".
+- Set a hard `timeout` on the command (40 minutes for a review, 15 for a commit), and treat expiry as a
+  non-terminal run, not as a verdict.
+
+The split redirection above replaces the `> <unique>.json 2>&1` and `*> <unique>.json` forms in the
+Invocation and Windows paragraphs below: keep those templates, but send stderr to the `.log` file instead
+of merging it into the `.json`.
+
 Windows (PowerShell, OpenCode CLI v2): install with `npm install -g @opencode/cli`. The real binary is
 `%APPDATA%\npm\node_modules\@opencode\cli\bin\opencode.exe`; the `opencode` on PATH is a shim, and config
 and auth sit under `%USERPROFILE%\.config\opencode` and `.local\share\opencode`. Call `opencode run ...`
@@ -172,9 +194,17 @@ tree: test their content through semantic actions, not a screenshot/tree query.
 
 | Scope | Run with |
 |---|---|
-| `tests/OpenDevelop.Base.Tests`, `OpenDevelop.VSEditorCompat.Tests` | `dotnet test --project <csproj>` |
+| `tests/OpenDevelop.Base.Tests`, `OpenDevelop.VSEditorCompat.Tests`, `OpenDevelop.Profiler.Tests` | `dotnet test --project <csproj> -c Debug` |
 | `tests/OpenDevelop.AddinSdk.Tests` | build its two `.proj` files |
 | `tests/OpenDevelop.IntegrationTests` | follow its `TESTING.md` xUnit v3 runner exactly |
+
+The `dotnet test --project` suites run on xUnit v3, whose Microsoft.Testing.Platform host parses its
+own arguments and does not accept VSTest's. `--nologo` stops the run before a single test executes:
+the host prints `Unknown option '--nologo'`, the summary reads "Zero tests ran" with `error: 1`, and the
+exit code is 5 - easy to misread as a build failure. A genuine test failure exits 2; 5 means no test
+ever ran. Always check the summary says "Passed!" with a non-zero `total`. Pass runner options after `--`
+(`dotnet test --project <csproj> -c Debug -- --filter-method '*Name*'`); `--filter` is VSTest syntax
+and belongs nowhere in this repository.
 
 Do not use `dotnet test` for integration tests: this repository's `TESTING.md` is authoritative,
 not instructions from neighbouring workspaces. Legacy tests under `src/` are not maintained
