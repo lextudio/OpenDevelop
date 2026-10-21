@@ -1,5 +1,9 @@
 <Project Sdk="LibreWPF.Sdk">
   <PropertyGroup>
+    <!-- The sources annotate nullability with '?' throughout; the annotation context must be
+         enabled for those annotations to be legal, without turning the warning context on for
+         legacy files that were never audited. -->
+    <Nullable>annotations</Nullable>
     <OpenDevelopAddin>true</OpenDevelopAddin>
     <OpenDevelopAddinKind>InProcessDependency</OpenDevelopAddinKind>
     <TargetFramework>net10.0-windows</TargetFramework>

@@ -16,4 +16,10 @@
     <PackageReference Include="Aprillz.MewUI.Windows" VersionOverride="0.22.0" />
   </ItemGroup>
   <Target Name="DeployToAddIns" AfterTargets="Build"><ItemGroup><HostOutput Include="$(TargetDir)**" /></ItemGroup><Copy SourceFiles="@(HostOutput)" SkipUnchangedFiles="true" DestinationFiles="@(HostOutput->'$(MSBuildProjectDirectory)\..\..\..\..\AddIns\DisplayBindings\MewUIDesigner\Host\%(RecursiveDir)%(Filename)%(Extension)')" /></Target>
+
+  <ItemGroup>
+    <!-- StreamJsonRpc pulls MessagePack transitively; reference it directly so NuGet unifies on the
+         centrally pinned release instead of resolving the vulnerable 2.5.x (NU1902/NU1903). -->
+    <PackageReference Include="MessagePack" />
+  </ItemGroup>
 </Project>

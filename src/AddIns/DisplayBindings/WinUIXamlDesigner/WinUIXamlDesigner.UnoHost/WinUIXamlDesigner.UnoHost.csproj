@@ -1,5 +1,9 @@
 <Project Sdk="Uno.Sdk/6.5.31">
   <PropertyGroup>
+    <!-- The sources annotate nullability with '?' throughout; the annotation context must be
+         enabled for those annotations to be legal, without turning the warning context on for
+         legacy files that were never audited. -->
+    <Nullable>annotations</Nullable>
     <TargetFramework>net10.0-desktop</TargetFramework>
     <OutputType>Exe</OutputType>
     <UnoSingleProject>true</UnoSingleProject>
@@ -23,4 +27,10 @@
     <Copy SourceFiles="@(HostOutput)" SkipUnchangedFiles="true"
           DestinationFiles="@(HostOutput->'$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\UnoHost\%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
+
+  <ItemGroup>
+    <!-- StreamJsonRpc pulls MessagePack transitively; reference it directly so NuGet unifies on the
+         centrally pinned release instead of resolving the vulnerable 2.5.x (NU1902/NU1903). -->
+    <PackageReference Include="MessagePack" />
+  </ItemGroup>
 </Project>

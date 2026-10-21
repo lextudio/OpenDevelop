@@ -16,4 +16,10 @@
     <ProjectReference Include="..\Host\FormsDesigner.Host.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
     <ProjectReference Include="CustomControl\FormsDesigner.CustomControlFixture.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- StreamJsonRpc pulls MessagePack transitively; reference it directly so NuGet unifies on the
+         centrally pinned release instead of resolving the vulnerable 2.5.x (NU1902/NU1903). -->
+    <PackageReference Include="MessagePack" />
+  </ItemGroup>
 </Project>

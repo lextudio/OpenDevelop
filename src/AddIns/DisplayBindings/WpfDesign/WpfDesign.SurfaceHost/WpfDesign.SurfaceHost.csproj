@@ -53,4 +53,10 @@
     </ItemGroup>
     <Copy SourceFiles="@(_LibreWpfArchitectureRuntimeAsset)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
   </Target>
+
+  <ItemGroup>
+    <!-- StreamJsonRpc pulls MessagePack transitively; reference it directly so NuGet unifies on the
+         centrally pinned release instead of resolving the vulnerable 2.5.x (NU1902/NU1903). -->
+    <PackageReference Include="MessagePack" />
+  </ItemGroup>
 </Project>

@@ -11,4 +11,10 @@
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
     <ProjectReference Include="..\WpfDesign.SurfaceHost\WpfDesign.SurfaceHost.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" SkipGetTargetFrameworkProperties="true" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- StreamJsonRpc pulls MessagePack transitively; reference it directly so NuGet unifies on the
+         centrally pinned release instead of resolving the vulnerable 2.5.x (NU1902/NU1903). -->
+    <PackageReference Include="MessagePack" />
+  </ItemGroup>
 </Project>
