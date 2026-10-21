@@ -466,6 +466,12 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         try { foreach (var proc in Process.GetProcessesByName("OpenDevelop")) { try { proc.Kill(true); } catch { } } } catch { }
         try { foreach (var proc in Process.GetProcessesByName("SharpDbg.Cli")) { try { proc.Kill(true); } catch { } } } catch { }
         try { foreach (var proc in Process.GetProcessesByName("DebugTestApp")) { try { proc.Kill(true); } catch { } } } catch { }
+        // The profiler tests profile programs the IDE starts on its own, so those never reach the
+        // test's own process list; a failed assertion would otherwise leave one spinning.
+        try {
+            foreach (var name in new[] { "ProfilerFixture", "ProfilerWebFixture", "ProfilerWpfFixture" })
+                foreach (var proc in Process.GetProcessesByName(name)) { try { proc.Kill(true); } catch { } }
+        } catch { }
         _app = null;
     }
 

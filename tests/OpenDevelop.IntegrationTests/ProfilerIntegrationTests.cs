@@ -24,7 +24,10 @@ public sealed class ProfilerIntegrationTests : IAsyncDisposable
 	{
 		foreach (var process in started)
 		{
-			try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+			// Kill throws Win32Exception as well as InvalidOperationException when the process is
+			// already exiting, and either one here would skip the remaining disposals and hide the
+			// real test failure.
+			try { process.Kill(entireProcessTree: true); } catch { /* already gone */ }
 			process.Dispose();
 		}
 		return ValueTask.CompletedTask;
@@ -240,8 +243,11 @@ public sealed class ProfilerIntegrationTests : IAsyncDisposable
 		// The session is recorded against the project, and the program the profiler started does not outlive the capture.
 		var sessions = (await app.InvokeAsync("od.profiler.sessions")).GetProperty("sessions").EnumerateArray().ToList();
 		Assert.Contains(sessions, s => s.GetProperty("name").GetString() == "ProfilerFixture" && s.GetProperty("status").GetString() == "Completed");
-		await Task.Delay(1000);
-		Assert.Empty(Process.GetProcessesByName("ProfilerFixture"));
+		// The profiler stops the program when the capture ends, but that exit is asynchronous: poll for
+		// it rather than assuming a fixed delay.
+		var exited = await OpenDevelopAppFixture.PollUntilAsync(
+			() => Task.FromResult(Process.GetProcessesByName("ProfilerFixture").Length == 0), TimeSpan.FromSeconds(10));
+		Assert.True(exited, "The profiled program outlived its capture.");
 	}
 
 	[Fact]
