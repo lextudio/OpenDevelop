@@ -1,3 +1,10 @@
 root = true
 [*]
 indent_style = tab
+
+# Vendored ILSpy WPF sources (absorbed from the ILSpy submodule; see
+# doc/technotes/in-process-analysis.md). They follow System.ComponentModel.Composition's
+# single-constructor convention, which Microsoft.VisualStudio.Composition.Analyzers - pulled in
+# transitively - reports as MEF006. Scoped to that tree on purpose: the code has no MEF006 outside it.
+[src/AddIns/DisplayBindings/ILSpyAddIn/ILSpy/**]
+dotnet_diagnostic.MEF006.severity = none
