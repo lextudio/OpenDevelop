@@ -139,10 +139,10 @@ public static class ProfilerDevFlowActions
 	}
 
 	[DevFlowAction("od.profiler.dump.select-thread", Description = "Select a thread by managed id in the open dump report's Threads tab")]
-	public static string SelectDumpThread(int managedId) => WithDump(dump => new { found = dump.SelectThread(managedId) });
+	public static Task<string> SelectDumpThread(int managedId) => WithDump(dump => new { found = dump.SelectThread(managedId) });
 
 	[DevFlowAction("od.profiler.dump.show-tab", Description = "Show the Heap or the Threads tab of the open dump report")]
-	public static string ShowDumpTab(string name) => WithDump(dump =>
+	public static Task<string> ShowDumpTab(string name) => WithDump(dump =>
 	{
 		dump.ShowTab(name);
 		return new { applied = true };
@@ -294,38 +294,38 @@ public static class ProfilerDevFlowActions
 	}
 
 	[DevFlowAction("od.profiler.cpu.set-mode", Description = "Switch the CPU report view: CallTree, Functions, CallerCallee or FlameGraph")]
-	public static string SetMode(string mode) => WithCpu(cpu => new { applied = cpu.SetMode(mode) });
+	public static Task<string> SetMode(string mode) => WithCpu(cpu => new { applied = cpu.SetMode(mode) });
 
 	[DevFlowAction("od.profiler.cpu.just-my-code", Description = "Turn Show Just My Code on or off in the CPU report")]
-	public static string JustMyCode(bool enabled) => WithCpu(cpu =>
+	public static Task<string> JustMyCode(bool enabled) => WithCpu(cpu =>
 	{
 		cpu.SetJustMyCode(enabled);
 		return new { applied = true };
 	});
 
 	[DevFlowAction("od.profiler.cpu.select-range", Description = "Select a time range (milliseconds from the first sample) on the CPU report's timeline")]
-	public static string SelectRange(double startMs, double endMs) => WithCpu(cpu =>
+	public static Task<string> SelectRange(double startMs, double endMs) => WithCpu(cpu =>
 	{
 		cpu.SelectRange(startMs, endMs);
 		return new { applied = true };
 	});
 
 	[DevFlowAction("od.profiler.cpu.clear-range", Description = "Clear the CPU report's selected time range")]
-	public static string ClearRange() => WithCpu(cpu =>
+	public static Task<string> ClearRange() => WithCpu(cpu =>
 	{
 		cpu.ClearRange();
 		return new { applied = true };
 	});
 
 	[DevFlowAction("od.profiler.export", Description = "Export the open report (call tree or function list, or the heap type table) as CSV to a path, as the toolbar button does")]
-	public static string Export(string path)
+	public static async Task<string> Export(string path)
 	{
-		switch (SD.Workbench.ActiveViewContent)
+		switch (await ActiveReportViewAsync<object>())
 		{
-			case ProfilerReportViewContent { ReportControl.ReportView: CpuReportView cpu }:
+			case CpuReportView cpu:
 				cpu.ExportTo(path);
 				return Serialize(new { success = true, path });
-			case ProfilerReportViewContent { ReportControl.ReportView: HeapReportView heap }:
+			case HeapReportView heap:
 				heap.ExportTo(path);
 				return Serialize(new { success = true, path });
 			default:
@@ -336,33 +336,33 @@ public static class ProfilerDevFlowActions
 	[DevFlowAction("od.profiler.cpu.compare", Description = "Compare the CPU report's Functions view with another CPU capture file")]
 	public static async Task<string> CompareCpu(string path)
 	{
-		if (SD.Workbench.ActiveViewContent is not ProfilerReportViewContent { ReportControl.ReportView: CpuReportView cpu })
+		if (await ActiveReportViewAsync<CpuReportView>() is not { } cpu)
 			return Serialize(new { success = false, error = "The active view is not a loaded CPU report." });
 		await cpu.CompareWithAsync(path);
 		return Serialize(new { success = true, result = new { applied = true } });
 	}
 
 	[DevFlowAction("od.profiler.cpu.stop-compare", Description = "Stop comparing the CPU report with another capture")]
-	public static string StopCompareCpu() => WithCpu(cpu =>
+	public static Task<string> StopCompareCpu() => WithCpu(cpu =>
 	{
 		cpu.StopComparing();
 		return new { applied = true };
 	});
 
 	[DevFlowAction("od.profiler.cpu.find", Description = "Find the next call tree node whose name contains the text")]
-	public static string Find(string text) => WithCpu(cpu =>
+	public static Task<string> Find(string text) => WithCpu(cpu =>
 	{
 		var (current, total) = cpu.FindNode(text);
 		return new { current, total };
 	});
 
 	[DevFlowAction("od.profiler.cpu.show-caller-callee", Description = "Show the caller/callee view of the first function whose name contains the text")]
-	public static string ShowCallerCallee(string nameFragment) => WithCpu(cpu => new { found = cpu.ShowCallerCalleeOf(nameFragment) });
+	public static Task<string> ShowCallerCallee(string nameFragment) => WithCpu(cpu => new { found = cpu.ShowCallerCalleeOf(nameFragment) });
 
 	[DevFlowAction("od.profiler.cpu.find-source", Description = "Look up where the first function whose name contains the text is declared in the open solution, as Go to Source would")]
 	public static async Task<string> FindSourceAsync(string nameFragment)
 	{
-		if (SD.Workbench.ActiveViewContent is not ProfilerReportViewContent { ReportControl.ReportView: CpuReportView cpu })
+		if (await ActiveReportViewAsync<CpuReportView>() is not { } cpu)
 			return Serialize(new { success = false, error = "The active view is not a loaded CPU report." });
 		var location = await cpu.FindSourceOfAsync(nameFragment);
 		return Serialize(new
@@ -375,11 +375,11 @@ public static class ProfilerDevFlowActions
 	}
 
 	[DevFlowAction("od.profiler.heap.filter", Description = "Filter the heap report's Types view by type name")]
-	public static string FilterHeap(string text) => WithHeap(heap =>
+	public static Task<string> FilterHeap(string text) => WithHeap(heap =>
 	{
 		heap.SetFilter(text);
 		return Task.FromResult<object>(new { applied = true });
-	}).GetAwaiter().GetResult();
+	});
 
 	[DevFlowAction("od.profiler.heap.select-type", Description = "Select a type in the heap report and describe its path to a GC root and its referrers")]
 	public static Task<string> SelectType(string typeName) => WithHeap(async heap =>
@@ -390,11 +390,11 @@ public static class ProfilerDevFlowActions
 	});
 
 	[DevFlowAction("od.profiler.heap.select-instance", Description = "Select the n-th listed instance of the selected heap type and describe the path to a GC root it shows")]
-	public static string SelectInstance(int index) => WithHeap(heap =>
+	public static Task<string> SelectInstance(int index) => WithHeap(heap =>
 	{
 		var selected = heap.SelectInstance(index);
 		return Task.FromResult<object>(new { selected, details = heap.Details() });
-	}).GetAwaiter().GetResult();
+	});
 
 	[DevFlowAction("od.profiler.heap.compare", Description = "Compare the heap report with another heap capture file")]
 	public static Task<string> CompareHeap(string path) => WithHeap(async heap =>
@@ -404,29 +404,44 @@ public static class ProfilerDevFlowActions
 	});
 
 	[DevFlowAction("od.profiler.heap.stop-compare", Description = "Stop comparing the heap report with another capture")]
-	public static string StopCompareHeap() => WithHeap(heap =>
+	public static Task<string> StopCompareHeap() => WithHeap(heap =>
 	{
 		heap.StopComparing();
 		return Task.FromResult<object>(new { applied = true });
-	}).GetAwaiter().GetResult();
+	});
 
-	static string WithCpu(Func<CpuReportView, object> action)
+	// A report parses its capture file off the UI thread and keeps a loading message as its content until
+	// the parse finishes, so ReportControl.ReportView is a TextBlock for that whole window. Every action
+	// that needs a loaded view waits for the parse first, the way od.profiler.report already does: a
+	// capture opens its report straight away, and an action that matched the placeholder instead reported
+	// "not a loaded report" for a report the user could already see.
+	static async Task<T?> ActiveReportViewAsync<T>() where T : class
 	{
-		if (SD.Workbench.ActiveViewContent is ProfilerReportViewContent { ReportControl.ReportView: CpuReportView cpu })
+		if (SD.Workbench.ActiveViewContent is not ProfilerReportViewContent content)
+			return null;
+		await content.ReportControl.Ready;
+		// Ready completes on a pool thread (its source runs continuations asynchronously), so come back to
+		// the UI thread before the caller touches the view.
+		return SD.MainThread.InvokeIfRequired(() => content.ReportControl.ReportView as T);
+	}
+
+	static async Task<string> WithCpu(Func<CpuReportView, object> action)
+	{
+		if (await ActiveReportViewAsync<CpuReportView>() is { } cpu)
 			return Serialize(new { success = true, result = action(cpu) });
 		return Serialize(new { success = false, error = "The active view is not a loaded CPU report." });
 	}
 
-	static string WithDump(Func<DumpReportView, object> action)
+	static async Task<string> WithDump(Func<DumpReportView, object> action)
 	{
-		if (SD.Workbench.ActiveViewContent is ProfilerReportViewContent { ReportControl.ReportView: DumpReportView dump })
+		if (await ActiveReportViewAsync<DumpReportView>() is { } dump)
 			return Serialize(new { success = true, result = action(dump) });
 		return Serialize(new { success = false, error = "The active view is not a loaded dump report." });
 	}
 
 	static async Task<string> WithHeap(Func<HeapReportView, Task<object>> action)
 	{
-		if (SD.Workbench.ActiveViewContent is ProfilerReportViewContent { ReportControl.ReportView: HeapReportView heap })
+		if (await ActiveReportViewAsync<HeapReportView>() is { } heap)
 			return Serialize(new { success = true, result = await action(heap) });
 		return Serialize(new { success = false, error = "The active view is not a loaded heap report." });
 	}
