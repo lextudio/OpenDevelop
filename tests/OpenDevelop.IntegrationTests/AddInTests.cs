@@ -2916,7 +2916,17 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         // type/member flattening turned every nested element into a detached root, and the pad
         // (SetRoot = first root only) then displayed a single arbitrary node. Walk what the PAD
         // actually displays, not just the model, so a display-side drop fails here too.
-        var padContent = await _app.InvokeAsync("od.outline-pad.content");
+        // The status action queries the LSP directly, while the visible pad is populated by the
+        // host's debounced UI projection.  On a busy shared fixture the former can become ready
+        // one dispatcher turn before the latter, so wait for the control the user actually sees
+        // without weakening the one-root hierarchy contract below.
+        JsonElement padContent = default;
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            padContent = await _app.InvokeAsync("od.outline-pad.content");
+            return padContent.GetProperty("available").GetBoolean()
+                && padContent.GetProperty("rootCount").GetInt32() == 1;
+        }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 100);
         Assert.True(padContent.GetProperty("available").GetBoolean());
         Assert.Equal(1, padContent.GetProperty("rootCount").GetInt32());
 
