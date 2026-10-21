@@ -1380,8 +1380,8 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
-		[DevFlowAction("od.t4.highlighting", Description = "Inspect the active T4 editor's actual syntax definition and colored source spans")]
-		public static string GetT4Highlighting()
+		[DevFlowAction("od.active-editor.highlighting", Description = "Inspect the active AvalonEdit editor's syntax definition and colored source spans")]
+		public static string GetActiveEditorHighlighting()
 		{
 			var view = (SD.Workbench as WpfWorkbench)?.WorkbenchLayout?.ActiveContent as IViewContent
 				?? SD.Workbench.ActiveViewContent;
@@ -1397,6 +1397,9 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				}).ToArray();
 			return JsonSerializer.Serialize(new { success = true, definition = textEditor.SyntaxHighlighting.Name, sections });
 		}
+
+		[DevFlowAction("od.t4.highlighting", Description = "Inspect the active T4 editor's actual syntax definition and colored source spans")]
+		public static string GetT4Highlighting() => GetActiveEditorHighlighting();
 
 		/// <summary>
 		/// Resolves the shared <see cref="ILanguageService"/> for a file (via <see cref="LanguageServiceRegistry"/>,

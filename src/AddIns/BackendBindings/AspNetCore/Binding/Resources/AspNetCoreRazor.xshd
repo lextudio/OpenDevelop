@@ -7,17 +7,31 @@
   <Color name="String" foreground="Blue" />
   <Color name="Keyword" foreground="Blue" fontWeight="bold" />
   <Color name="Type" foreground="Teal" />
+  <Color name="CssProperty" foreground="Red" />
+  <Color name="CssValue" foreground="Blue" />
 
   <RuleSet ignoreCase="false">
     <Span color="Comment" multiline="true" begin="@\*" end="\*@" />
+    <!-- A component's implementation block is C#, not markup.  The former syntax mode only
+         coloured its @code directive and returned to HTML immediately, leaving the body plain. -->
+    <Span ruleSet="CSharp" multiline="true"><Begin color="Directive">@(?:code|functions)\s*\{</Begin><End>\}</End></Span>
     <Span ruleSet="CSharp" multiline="true" begin="@\{" end="\}" />
     <Span ruleSet="CSharp" multiline="true" begin="@\(" end="\)" />
+    <!-- Keep Razor self-contained for component-local styles: CssBinding may be disabled while
+         Razor remains enabled, so importing its external definition would make this mode brittle. -->
+    <Span ruleSet="Css" multiline="true" begin="&lt;style(?:\s[^&gt;]*)?&gt;" end="&lt;/style\s*&gt;" />
     <Rule color="Directive">@(page|namespace|using|inject|implements|inherits|layout|typeparam|attribute|rendermode|preservewhitespace|key|ref|code|functions)\b</Rule>
     <Rule color="RazorMarker">@@|@(?=[A-Za-z_])</Rule>
     <Import ruleSet="HTML/" />
   </RuleSet>
 
   <RuleSet name="CSharp">
+    <!-- Keep inline component blocks in this ruleset across nested methods, properties and lambdas. -->
+    <Import ruleSet="CSharpTokens" />
+    <Span ruleSet="CSharp" multiline="true" begin="\{" end="\}" />
+  </RuleSet>
+
+  <RuleSet name="CSharpTokens">
     <Span color="Comment" begin="//" end="$" />
     <Span color="Comment" multiline="true" begin="/\*" end="\*/" />
     <Span color="String" begin="&quot;" end="&quot;">
@@ -39,5 +53,13 @@
       <Word>double</Word><Word>float</Word><Word>int</Word><Word>long</Word>
       <Word>object</Word><Word>short</Word><Word>string</Word><Word>void</Word>
     </Keywords>
+  </RuleSet>
+
+  <RuleSet name="Css">
+    <Span color="Comment" multiline="true" begin="/\*" end="\*/" />
+    <Span color="String" begin="&quot;" end="&quot;"><RuleSet><Span begin="\\" end="." /></RuleSet></Span>
+    <Span color="String" begin="'" end="'"><RuleSet><Span begin="\\" end="." /></RuleSet></Span>
+    <Rule color="CssProperty">\b[a-zA-Z-]+(?=\s*:)</Rule>
+    <Rule color="CssValue">(?&lt;=:\s*)[^;{}\s][^;{}]*</Rule>
   </RuleSet>
 </SyntaxDefinition>
