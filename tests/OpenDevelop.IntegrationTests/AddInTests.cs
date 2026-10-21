@@ -2365,7 +2365,16 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             // WPF's, via the design surface, before the source-view assertion below.
             await _app.InvokeAsync("od.show-pad", "Tools");
             await _app.InvokeAsync("od.activate");
-            var toolboxBounds = await _app.InvokeAsync("od.winui-designer.toolbox.query-item-bounds", "TextBox");
+            // Showing a docked pad creates its visual tree asynchronously.  Keep querying the
+            // action that verifies the live list-local hit target until it supplies fresh screen
+            // geometry; do not infer readiness from show-pad's model-level acknowledgement.
+            JsonElement toolboxBounds = default;
+            var toolboxReady = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+            {
+                toolboxBounds = await _app.InvokeAsync("od.winui-designer.toolbox.query-item-bounds", "TextBox");
+                return toolboxBounds.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 250);
+            Assert.True(toolboxReady, toolboxBounds.ToString());
             Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
 
             // Choose a tool that is neither the first row nor the one this test drags, so a reset
@@ -2399,7 +2408,12 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             // offset is reset. Re-querying anyway, through the action that does not activate
             // anything, keeps the drag anchored on the row this test asserts even if that ever
             // changes back.
-            toolboxBounds = await _app.InvokeAsync("od.winui-toolbox.query-item-bounds", "TextBox");
+            toolboxReady = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+            {
+                toolboxBounds = await _app.InvokeAsync("od.winui-toolbox.query-item-bounds", "TextBox");
+                return toolboxBounds.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 250);
+            Assert.True(toolboxReady, toolboxBounds.ToString());
             Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
 
             // Target the position right before "<TextBlock" - a sibling position where a
