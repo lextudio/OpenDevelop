@@ -39,7 +39,7 @@ public sealed class RingDiagramControl : FrameworkElement
 {
 	const int MaxLevels = 10;
 	const double MinSweepDegrees = 0.5;
-	const double Margin = 6;
+	const double SliceMargin = 6;
 
 	sealed record Slice(CallTreeNode Node, int Level, double StartAngle, double SweepAngle);
 
@@ -102,7 +102,7 @@ public sealed class RingDiagramControl : FrameworkElement
 
 	(Point Center, double CentreRadius, double RingThickness) Layout()
 	{
-		var half = Math.Max(Math.Min(ActualWidth, ActualHeight) / 2 - Margin, 20);
+		var half = Math.Max(Math.Min(ActualWidth, ActualHeight) / 2 - SliceMargin, 20);
 		var centreRadius = Math.Min(half * 0.18, 44);
 		var levels = slices.Count == 0 ? 1 : Math.Min(slices.Max(s => s.Level), MaxLevels);
 		var thickness = Math.Min((half - centreRadius) / levels, 70);

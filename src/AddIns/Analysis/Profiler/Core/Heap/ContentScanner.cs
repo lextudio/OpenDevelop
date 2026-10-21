@@ -39,8 +39,9 @@ internal sealed class ContentScanner
 
         if (type.IsString)
         {
-            var text = obj.AsString(MaxStringCharacters);
-            if (text is null || text.Length < MinStringLength)
+            // A string longer than the cap is left out: two that differ only past it cannot be told apart without keeping both.
+            var text = obj.AsString(MaxStringCharacters + 1);
+            if (text is null || text.Length > MaxStringCharacters || text.Length < MinStringLength)
                 return;
             var key = (Hash(text), text.Length);
             if (!strings.TryGetValue(key, out var group))

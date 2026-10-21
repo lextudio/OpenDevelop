@@ -117,9 +117,11 @@ public static class ReportLoader
         }
     }
 
-    public static ProfilingReport Load(string path)
+    public static ProfilingReport Load(string path) => Load(path, Detect(path));
+
+    /// <summary>Loads a capture whose kind the caller already has from <see cref="Detect"/>, so a large capture is not inspected twice.</summary>
+    public static ProfilingReport Load(string path, CaptureKind kind)
     {
-        var kind = Detect(path);
         if (kind is not (CaptureKind.Cpu or CaptureKind.Heap or CaptureKind.Allocation or CaptureKind.Dump))
             throw new ProfilingException($"'{Path.GetFileName(path)}' is not a CPU or heap capture the Profiler can show.");
         try

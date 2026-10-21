@@ -41,7 +41,8 @@ public sealed class ProfilerReportControl : ContentControl
 			var size = new FileInfo(path).Length;
 			// What a dump costs to read follows its managed heap, not its size on disk, which also holds every native page: ten times the
 			// threshold avoids asking about every ordinary dump.
-			var threshold = ProfilerSettings.LargeCaptureBytes * (await Task.Run(() => ReportLoader.Detect(path)) == CaptureKind.Dump ? 10 : 1);
+			var kind = await Task.Run(() => ReportLoader.Detect(path));
+			var threshold = ProfilerSettings.LargeCaptureBytes * (kind == CaptureKind.Dump ? 10 : 1);
 			if (ReportLoader.IsLarge(size, threshold) && !MessageService.AskQuestion(
 					StringParser.Format("${res:AddIns.Profiler.Report.LargeCapture}", ReportFormat.Bytes(size))))
 			{
@@ -51,9 +52,9 @@ public sealed class ProfilerReportControl : ContentControl
 
 			// Everything that takes time happens here, off the UI thread: parsing, and the call tree the report opens on.
 			var assemblies = ProfilerWorkspace.SolutionAssemblyNames();
-			var (report, userCode, tree) = await Task.Run(() =>
+			var (report, userCode, tree) = await Task.Run<(ProfilingReport Loaded, Func<FrameInfo, bool>? UserCode, CallTreeNode? Tree)>(() =>
 			{
-				var loaded = ReportLoader.Load(path);
+				var loaded = ReportLoader.Load(path, kind);
 				if (loaded.Cpu is not { } cpu)
 					return (loaded, null, null);
 				var isUserCode = UserCode.ForProfile(cpu, assemblies);
