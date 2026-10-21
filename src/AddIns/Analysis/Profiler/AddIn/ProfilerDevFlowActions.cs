@@ -36,8 +36,127 @@ public static class ProfilerDevFlowActions
 		}
 	}
 
+	[DevFlowAction("od.profiler.capture-allocation", Description = "Record the allocations of a running .NET process for a number of seconds through the Profiler's capture coordinator, then open the report")]
+	public static async Task<string> CaptureAllocationAsync(int processId, int seconds)
+	{
+		try
+		{
+			using var process = Process.GetProcessById(processId);
+			var path = await CaptureCoordinator.CaptureCpuAsync(
+				process.ProcessName, process, ownsProcess: false, TimeSpan.FromSeconds(seconds), mode: Collection.CaptureMode.Allocation);
+			return Serialize(new { success = true, path });
+		}
+		catch (Exception exception) when (exception is ProfilingException or ArgumentException)
+		{
+			return Serialize(new { success = false, error = exception.Message });
+		}
+	}
+
+	[DevFlowAction("od.profiler.listen-port", Description = "Listen at a diagnostic port address until a program connects, record it for a number of seconds (Cpu or Allocation), then open the report")]
+	public static async Task<string> ListenPortAsync(string address, string mode, int seconds, int waitSeconds)
+	{
+		try
+		{
+			var path = await CaptureCoordinator.CaptureFromPortAsync(
+				address, Enum.Parse<Collection.CaptureMode>(mode, ignoreCase: true), TimeSpan.FromSeconds(waitSeconds), TimeSpan.FromSeconds(seconds));
+			return Serialize(new { success = path is not null, path });
+		}
+		catch (Exception exception) when (exception is ProfilingException or ArgumentException)
+		{
+			return Serialize(new { success = false, error = exception.Message });
+		}
+	}
+
+	[DevFlowAction("od.profiler.settings", Description = "Read the Profiler settings, or change them: retained sessions, large-capture megabytes and store folder (pass 0, 0 and the current folder to only read)")]
+	public static string Settings(int retainedSessions, int largeCaptureMegabytes, string storeFolder)
+	{
+		if (retainedSessions > 0)
+			ProfilerSettings.RetainedSessions = retainedSessions;
+		if (largeCaptureMegabytes > 0)
+			ProfilerSettings.LargeCaptureMegabytes = largeCaptureMegabytes;
+		ProfilerSettings.StoreFolder = storeFolder;
+		return Serialize(new
+		{
+			success = true,
+			retainedSessions = ProfilerSettings.RetainedSessions,
+			largeCaptureMegabytes = ProfilerSettings.LargeCaptureMegabytes,
+			storeFolder = ProfilerSettings.StoreFolder,
+			sessions = ProfilerWorkspace.OpenStore().List().Count,
+		});
+	}
+
+	// Windows opened by the probe below, so the next call can close them.
+	static readonly List<System.Windows.Window> OpenedDialogs = [];
+
+	[DevFlowAction("od.profiler.show-dialog", Description = "Open one of the Profiler's dialogs without blocking (settings, port), so its layout and text can be checked; returns its title")]
+	public static string ShowDialog(string name)
+	{
+		System.Windows.Window window = name switch
+		{
+			"settings" => new Dialogs.SettingsWindow(),
+			"port" => new Dialogs.DiagnosticPortWindow(),
+			_ => throw new ArgumentException("Unknown dialog: " + name),
+		};
+		window.Owner = SD.Workbench.MainWindow;
+		window.Show();
+		OpenedDialogs.Add(window);
+		return Serialize(new { success = true, title = window.Title });
+	}
+
+	[DevFlowAction("od.profiler.close-dialogs", Description = "Close the dialogs opened by od.profiler.show-dialog")]
+	public static string CloseDialogs()
+	{
+		foreach (var window in OpenedDialogs)
+			window.Close();
+		var closed = OpenedDialogs.Count;
+		OpenedDialogs.Clear();
+		return Serialize(new { success = true, closed });
+	}
+
+	[DevFlowAction("od.profiler.debugged-process", Description = "The id of the process the debugger is attached to, or null; what Attach CPU Profiler to Debugged Process samples")]
+	public static string DebuggedProcess() => Serialize(new { success = true, processId = SD.Debugger.DebuggedProcessId });
+
+	[DevFlowAction("od.profiler.scan-contents", Description = "Turn the heap contents scan (duplicate strings, sparse arrays) after a snapshot on or off")]
+	public static string ScanContents(bool enabled)
+	{
+		ProfilerSettings.ScanHeapContents = enabled;
+		return Serialize(new { success = true, enabled = ProfilerSettings.ScanHeapContents });
+	}
+
+	[DevFlowAction("od.profiler.capture-dump", Description = "Write a memory dump (with the heap) of a running .NET process through the Profiler's capture coordinator, then open it as a report")]
+	public static async Task<string> CaptureDumpAsync(int processId)
+	{
+		try
+		{
+			using var process = Process.GetProcessById(processId);
+			var path = await CaptureCoordinator.WriteDumpAsync(new ManagedProcess(processId, process.ProcessName));
+			return Serialize(new { success = path is not null, path });
+		}
+		catch (Exception exception) when (exception is ProfilingException or ArgumentException)
+		{
+			return Serialize(new { success = false, error = exception.Message });
+		}
+	}
+
+	[DevFlowAction("od.profiler.dump.select-thread", Description = "Select a thread by managed id in the open dump report's Threads tab")]
+	public static string SelectDumpThread(int managedId) => WithDump(dump => new { found = dump.SelectThread(managedId) });
+
+	[DevFlowAction("od.profiler.dump.show-tab", Description = "Show the Heap or the Threads tab of the open dump report")]
+	public static string ShowDumpTab(string name) => WithDump(dump =>
+	{
+		dump.ShowTab(name);
+		return new { applied = true };
+	});
+
 	[DevFlowAction("od.profiler.launch-cpu", Description = "Start a .NET program (dotnet exec <dll> <arguments>) held at startup, sample it from its first instruction for a number of seconds, then open the report")]
-	public static async Task<string> LaunchCpuAsync(string dllPath, string arguments, int seconds)
+	public static Task<string> LaunchCpuAsync(string dllPath, string arguments, int seconds) =>
+		LaunchAsync(dllPath, arguments, seconds, Collection.CaptureMode.Cpu);
+
+	[DevFlowAction("od.profiler.launch-allocation", Description = "Start a .NET program (dotnet exec <dll> <arguments>) held at startup, record its allocations from its first instruction for a number of seconds, then open the report")]
+	public static Task<string> LaunchAllocationAsync(string dllPath, string arguments, int seconds) =>
+		LaunchAsync(dllPath, arguments, seconds, Collection.CaptureMode.Allocation);
+
+	static async Task<string> LaunchAsync(string dllPath, string arguments, int seconds, Collection.CaptureMode mode)
 	{
 		ProcessStartInfo StartInfo()
 		{
@@ -51,7 +170,7 @@ public static class ProfilerDevFlowActions
 
 		try
 		{
-			var path = await CaptureCoordinator.LaunchAndCaptureCpuAsync(StartInfo, Path.GetFileNameWithoutExtension(dllPath), TimeSpan.FromSeconds(seconds));
+			var path = await CaptureCoordinator.LaunchAndCaptureCpuAsync(StartInfo, Path.GetFileNameWithoutExtension(dllPath), TimeSpan.FromSeconds(seconds), mode);
 			return Serialize(new { success = true, path });
 		}
 		catch (ProfilingException exception)
@@ -155,13 +274,23 @@ public static class ProfilerDevFlowActions
 		if (SD.Workbench.ActiveViewContent is not ProfilerReportViewContent content)
 			return Serialize(new { success = false, error = "The active view is not a Profiler report." });
 		await content.ReportControl.Ready;
+		if (content.ReportControl.ReportView is CpuReportView settling)
+			await settling.Settled;
 		return content.ReportControl.ReportView switch
 		{
 			CpuReportView cpu => Serialize(new { success = true, kind = "cpu", state = cpu.Describe() }),
 			HeapReportView heap => Serialize(new { success = true, kind = "heap", state = heap.Snapshot(40) }),
+			DumpReportView dump => Serialize(new { success = true, kind = "dump", state = dump.Describe() }),
 			System.Windows.Controls.TextBlock message => Serialize(new { success = true, kind = "message", text = message.Text }),
 			_ => Serialize(new { success = false, error = "Unknown report content." }),
 		};
+	}
+
+	[DevFlowAction("od.profiler.cpu.background-threshold", Description = "Set how many samples a capture needs before its views are recomputed off the UI thread (1 makes every capture do so)")]
+	public static string BackgroundThreshold(int samples)
+	{
+		CpuReportView.BackgroundSampleThreshold = Math.Max(1, samples);
+		return Serialize(new { success = true, samples = CpuReportView.BackgroundSampleThreshold });
 	}
 
 	[DevFlowAction("od.profiler.cpu.set-mode", Description = "Switch the CPU report view: CallTree, Functions, CallerCallee or FlameGraph")]
@@ -185,6 +314,38 @@ public static class ProfilerDevFlowActions
 	public static string ClearRange() => WithCpu(cpu =>
 	{
 		cpu.ClearRange();
+		return new { applied = true };
+	});
+
+	[DevFlowAction("od.profiler.export", Description = "Export the open report (call tree or function list, or the heap type table) as CSV to a path, as the toolbar button does")]
+	public static string Export(string path)
+	{
+		switch (SD.Workbench.ActiveViewContent)
+		{
+			case ProfilerReportViewContent { ReportControl.ReportView: CpuReportView cpu }:
+				cpu.ExportTo(path);
+				return Serialize(new { success = true, path });
+			case ProfilerReportViewContent { ReportControl.ReportView: HeapReportView heap }:
+				heap.ExportTo(path);
+				return Serialize(new { success = true, path });
+			default:
+				return Serialize(new { success = false, error = "The active view is not a loaded report." });
+		}
+	}
+
+	[DevFlowAction("od.profiler.cpu.compare", Description = "Compare the CPU report's Functions view with another CPU capture file")]
+	public static async Task<string> CompareCpu(string path)
+	{
+		if (SD.Workbench.ActiveViewContent is not ProfilerReportViewContent { ReportControl.ReportView: CpuReportView cpu })
+			return Serialize(new { success = false, error = "The active view is not a loaded CPU report." });
+		await cpu.CompareWithAsync(path);
+		return Serialize(new { success = true, result = new { applied = true } });
+	}
+
+	[DevFlowAction("od.profiler.cpu.stop-compare", Description = "Stop comparing the CPU report with another capture")]
+	public static string StopCompareCpu() => WithCpu(cpu =>
+	{
+		cpu.StopComparing();
 		return new { applied = true };
 	});
 
@@ -254,6 +415,13 @@ public static class ProfilerDevFlowActions
 		if (SD.Workbench.ActiveViewContent is ProfilerReportViewContent { ReportControl.ReportView: CpuReportView cpu })
 			return Serialize(new { success = true, result = action(cpu) });
 		return Serialize(new { success = false, error = "The active view is not a loaded CPU report." });
+	}
+
+	static string WithDump(Func<DumpReportView, object> action)
+	{
+		if (SD.Workbench.ActiveViewContent is ProfilerReportViewContent { ReportControl.ReportView: DumpReportView dump })
+			return Serialize(new { success = true, result = action(dump) });
+		return Serialize(new { success = false, error = "The active view is not a loaded dump report." });
 	}
 
 	static async Task<string> WithHeap(Func<HeapReportView, Task<object>> action)

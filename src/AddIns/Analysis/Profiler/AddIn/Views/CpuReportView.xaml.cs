@@ -2,6 +2,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using Microsoft.Win32;
+using System.Text;
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop;
@@ -26,6 +28,7 @@ public partial class CpuReportView : UserControl
 		CallerCallee,
 		FlameGraph,
 		RingDiagram,
+		Counters,
 	}
 
 	sealed record ThreadChoice(int? Id, string Label);
@@ -33,22 +36,33 @@ public partial class CpuReportView : UserControl
 	sealed record ViewChoice(string Label, ImageSource Icon);
 
 	readonly CpuProfile profile;
+	readonly IReadOnlyList<CounterSeries> runtimeCounters;
 	readonly Func<FrameInfo, bool> isUserCode;
 	readonly Stack<int> history = new();
 	CallTreeNode? tree;
+	CpuProfile? baseline;
+	string? baselineName;
 	int? currentFrame;
 	double? rangeStartMs;
 	double? rangeEndMs;
 	bool initialised;
 
-	public CpuReportView(CpuProfile profile, IReadOnlyList<string> solutionAssemblies)
+	/// <summary>The filter a report opens with: Just My Code on, blocked samples off, every thread, the whole capture.</summary>
+	internal static ProfileFilter DefaultFilter(Func<FrameInfo, bool> isUserCode) => new() { JustMyCode = true, IsUserCode = isUserCode };
+
+	/// <param name="initialTree">The call tree for <see cref="DefaultFilter"/>, if the caller has already built it off the UI thread.</param>
+	public CpuReportView(
+		CpuProfile profile, IReadOnlyList<string> solutionAssemblies, IReadOnlyList<CounterSeries>? runtimeCounters = null,
+		Func<FrameInfo, bool>? userCode = null, CallTreeNode? initialTree = null)
 	{
 		this.profile = profile;
-		isUserCode = UserCode.ForProfile(profile, solutionAssemblies);
+		this.runtimeCounters = runtimeCounters ?? [];
+		isUserCode = userCode ?? UserCode.ForProfile(profile, solutionAssemblies);
+		tree = initialTree;
 		InitializeComponent();
 
 		// One entry per Mode, in Mode order: the selector's index is the mode.
-		viewSelector.ItemsSource = new[] { "CallTree", "Functions", "CallerCallee", "FlameGraph", "RingDiagram" }
+		viewSelector.ItemsSource = new[] { "CallTree", "Functions", "CallerCallee", "FlameGraph", "RingDiagram", "Counters" }
 			.Select(key => new ViewChoice(
 				StringParser.Parse("${res:AddIns.Profiler.Report." + key + "}"),
 				PresentationResourceService.GetImageSource("Profiler." + key)))
@@ -87,49 +101,104 @@ public partial class CpuReportView : UserControl
 		clearRangeButton.Visibility = Visibility.Collapsed;
 	}
 
+	/// <summary>Captures with at least this many samples recompute their views off the UI thread; smaller ones do it inline.</summary>
+	internal static int BackgroundSampleThreshold = 100_000;
+
+	Task settled = Task.CompletedTask;
+	int refreshVersion;
+
+	/// <summary>Completes once the view reflects the latest filter and mode (immediately for a small capture).</summary>
+	internal Task Settled => settled;
+
 	void Refresh()
 	{
-		if (!initialised)
-			return;
+		if (initialised)
+			settled = RefreshAsync();
+	}
 
+	// For a small capture everything below runs inline: the awaited helpers complete synchronously, so the view is already
+	// up to date when Refresh returns. For a large one the heavy work (the call tree, the function table) runs on a pool
+	// thread, and a result that a newer filter change has overtaken is dropped rather than shown.
+	async Task RefreshAsync()
+	{
+		var version = ++refreshVersion;
+		var background = profile.Samples.Count >= BackgroundSampleThreshold;
+		var mode = CurrentMode;
 		var filter = Filter();
 		var total = profile.CountSamples(filter);
 		UpdateStatus(total);
 		var interval = profile.SampleIntervalMs;
 
-		callTree.Visibility = Visible(CurrentMode == Mode.CallTree);
-		functions.Visibility = Visible(CurrentMode == Mode.Functions);
-		callerCallee.Visibility = Visible(CurrentMode == Mode.CallerCallee);
-		flameScroll.Visibility = Visible(CurrentMode == Mode.FlameGraph);
-		ringDiagram.Visibility = Visible(CurrentMode == Mode.RingDiagram);
-		expandHotPathButton.IsEnabled = CurrentMode == Mode.CallTree;
+		callTree.Visibility = Visible(mode == Mode.CallTree);
+		functions.Visibility = Visible(mode == Mode.Functions);
+		callerCallee.Visibility = Visible(mode == Mode.CallerCallee);
+		flameScroll.Visibility = Visible(mode == Mode.FlameGraph);
+		ringDiagram.Visibility = Visible(mode == Mode.RingDiagram);
+		counters.Visibility = Visible(mode == Mode.Counters);
+		expandHotPathButton.IsEnabled = mode == Mode.CallTree;
 
-		switch (CurrentMode)
+		async Task<T> Compute<T>(Func<T> work) => background ? await Task.Run(work) : work();
+
+		if (background)
+			Cursor = Cursors.Wait;
+		try
 		{
-			case Mode.CallTree:
-				callTree.Show(Tree(), interval);
-				break;
-			case Mode.Functions:
-				functions.Show(profile.BuildFunctions(filter), total, interval);
-				break;
-			case Mode.CallerCallee:
-				ShowCallerCallee(filter, total, interval);
-				break;
-			case Mode.FlameGraph:
-				flameGraph.Show(Tree(), interval);
-				break;
-			case Mode.RingDiagram:
-				ringDiagram.Show(Tree(), interval);
-				break;
+			switch (mode)
+			{
+				case Mode.CallTree:
+				case Mode.FlameGraph:
+				case Mode.RingDiagram:
+				{
+					var built = tree ?? await Compute(() => profile.BuildCallTree(filter));
+					if (version != refreshVersion)
+						return;
+					tree = built;
+					if (mode == Mode.CallTree)
+						callTree.Show(built, interval, profile.Unit);
+					else if (mode == Mode.FlameGraph)
+						flameGraph.Show(built, interval, profile.Unit);
+					else
+						ringDiagram.Show(built, interval, profile.Unit);
+					break;
+				}
+				case Mode.Functions:
+				{
+					var compared = baseline;
+					var stats = compared is null ? await Compute(() => profile.BuildFunctions(filter)) : null;
+					var diffs = compared is not null ? await Compute(() => profile.CompareFunctions(compared, filter)) : null;
+					if (version != refreshVersion)
+						return;
+					if (diffs is null)
+						functions.Show(stats!, total, interval, profile.Unit);
+					else
+						functions.ShowComparison(diffs, interval, profile.Unit);
+					break;
+				}
+				case Mode.CallerCallee:
+				{
+					// With nothing chosen yet, start from the function doing the most work itself.
+					var chosen = currentFrame;
+					var (frame, view) = await Compute(() =>
+					{
+						var f = chosen ?? profile.BuildFunctions(filter).FirstOrDefault()?.FrameId;
+						return (f, f is { } id ? profile.BuildCallerCallee(id, filter) : null);
+					});
+					if (version != refreshVersion)
+						return;
+					currentFrame = frame;
+					callerCallee.Show(view, total, interval, canGoBack: history.Count > 0, profile.Unit);
+					break;
+				}
+				case Mode.Counters:
+					counters.Show(runtimeCounters, profile.OriginMs, profile.DurationMs);
+					break;
+			}
 		}
-	}
-
-	void ShowCallerCallee(ProfileFilter filter, long total, double interval)
-	{
-		// With nothing chosen yet, start from the function doing the most work itself.
-		currentFrame ??= profile.BuildFunctions(filter).FirstOrDefault()?.FrameId;
-		var view = currentFrame is { } frame ? profile.BuildCallerCallee(frame, filter) : null;
-		callerCallee.Show(view, total, interval, canGoBack: history.Count > 0);
+		finally
+		{
+			if (background && version == refreshVersion)
+				Cursor = null;
+		}
 	}
 
 	void UpdateStatus(long totalSamples)
@@ -142,9 +211,13 @@ public partial class CpuReportView : UserControl
 		var range = rangeStartMs is { } start && rangeEndMs is { } end
 			? StringParser.Format("${res:AddIns.Profiler.Report.RangeSelected}", start / 1000, end / 1000)
 			: StringParser.Parse("${res:AddIns.Profiler.Report.RangeWhole}");
+		var allocation = profile.Unit == ProfileUnit.Kilobytes;
 		statusText.Text = StringParser.Format(
-				"${res:AddIns.Profiler.Report.Status}", totalSamples, totalSamples * profile.SampleIntervalMs, range)
-			+ "  " + StringParser.Parse("${res:AddIns.Profiler.Report.SamplingNote}");
+				allocation ? "${res:AddIns.Profiler.Report.StatusAllocation}" : "${res:AddIns.Profiler.Report.Status}",
+				totalSamples, totalSamples * profile.SampleIntervalMs, range)
+			+ "  " + StringParser.Parse(allocation ? "${res:AddIns.Profiler.Report.AllocationNote}" : "${res:AddIns.Profiler.Report.SamplingNote}");
+		if (baseline is not null)
+			statusText.Text += "  " + StringParser.Format("${res:AddIns.Profiler.Report.ComparingFunctionsWith}", baselineName);
 	}
 
 	static Visibility Visible(bool visible) => visible ? Visibility.Visible : Visibility.Collapsed;
@@ -231,6 +304,89 @@ public partial class CpuReportView : UserControl
 		return true;
 	}
 
+	/// <summary>Writes what the current view shows, as CSV: the call tree in tree view, otherwise the function list.</summary>
+	internal void ExportTo(string path)
+	{
+		var csv = CurrentMode == Mode.CallTree
+			? ReportExport.CallTreeCsv(profile, Filter())
+			: ReportExport.FunctionsCsv(profile, Filter());
+		// A byte order mark, so a spreadsheet reads non-ASCII names correctly.
+		File.WriteAllText(path, csv, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+	}
+
+	void Export_Click(object sender, RoutedEventArgs e)
+	{
+		var dialog = new SaveFileDialog
+		{
+			Filter = StringParser.Parse("${res:AddIns.Profiler.FileFilter.Csv}") + "|*.csv",
+			DefaultExt = ".csv",
+			FileName = CurrentMode == Mode.CallTree ? "call-tree.csv" : "functions.csv",
+		};
+		if (dialog.ShowDialog() != true)
+			return;
+		try
+		{
+			ExportTo(dialog.FileName);
+			SD.StatusBar.SetMessage(StringParser.Format("${res:AddIns.Profiler.Report.Exported}", dialog.FileName));
+		}
+		catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+		{
+			MessageService.ShowError(exception.Message);
+		}
+	}
+
+	async void Compare_Click(object sender, RoutedEventArgs e)
+	{
+		var dialog = new OpenFileDialog
+		{
+			Filter = StringParser.Parse("${res:AddIns.Profiler.FileFilter.Capture}") + "|*.nettrace",
+			CheckFileExists = true,
+		};
+		if (dialog.ShowDialog() != true)
+			return;
+
+		compareButton.IsEnabled = false;
+		try
+		{
+			await CompareWithAsync(dialog.FileName);
+		}
+		catch (ProfilingException exception)
+		{
+			MessageService.ShowError(exception.Message);
+		}
+		finally
+		{
+			compareButton.IsEnabled = true;
+		}
+	}
+
+	/// <summary>Compares the Functions view with another CPU capture; the other views stay absolute.</summary>
+	internal async Task CompareWithAsync(string path)
+	{
+		baseline = await Task.Run(() => LoadCpu(path));
+		baselineName = System.IO.Path.GetFileName(path);
+		stopCompareButton.Visibility = Visibility.Visible;
+		SelectMode(Mode.Functions);
+		Refresh();
+	}
+
+	internal void StopComparing() => StopCompare_Click(this, new RoutedEventArgs());
+
+	static CpuProfile LoadCpu(string path)
+	{
+		var report = ReportLoader.Load(path);
+		return report.Cpu
+			?? throw new ProfilingException(StringParser.Format("${res:AddIns.Profiler.Report.NotACpuCapture}", System.IO.Path.GetFileName(path)));
+	}
+
+	void StopCompare_Click(object sender, RoutedEventArgs e)
+	{
+		baseline = null;
+		baselineName = null;
+		stopCompareButton.Visibility = Visibility.Collapsed;
+		Refresh();
+	}
+
 	internal void SetJustMyCode(bool enabled)
 	{
 		justMyCode.IsChecked = enabled;
@@ -260,6 +416,8 @@ public partial class CpuReportView : UserControl
 		justMyCode = justMyCode.IsChecked == true,
 		includeBlocked = includeBlocked.IsChecked == true,
 		threadChoices = threadSelector.Items.Count,
+		comparing = baseline is not null,
+		unit = profile.Unit.ToString(),
 		hasRange = rangeStartMs is not null,
 		rangeStartMs,
 		rangeEndMs,
@@ -269,6 +427,7 @@ public partial class CpuReportView : UserControl
 		functions = functions.Snapshot(15),
 		callerCallee = callerCallee.Snapshot(),
 		ring = ringDiagram.Snapshot(),
+		counters = counters.Snapshot(),
 	};
 
 	async void GoToSourceRequested(object? sender, string frameName)

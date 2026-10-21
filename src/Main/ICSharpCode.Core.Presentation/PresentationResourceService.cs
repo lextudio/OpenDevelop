@@ -226,6 +226,8 @@ namespace ICSharpCode.Core.Presentation
 			{ "Profiler.FindNext", "Resources/VS2026/Next/Next_16x.xaml" },
 			{ "Profiler.FindPrevious", "Resources/VS2026/Previous/Previous_16x.xaml" },
 			{ "Profiler.Close", "Resources/VS2026/Close/Close_16x.xaml" },
+			{ "Profiler.Export", "Resources/VS2026/Export/Export_16x.xaml" },
+			{ "Profiler.Counters", "Resources/VS2026/Timer/Timer_16x.xaml" },
 			{ "Profiler.Copy", "Resources/VS2026/Copy/Copy_16x.xaml" },
 			{ "Profiler.Filter", "Resources/VS2026/Filter/Filter_16x.xaml" },
 			{ "Profiler.Compare", "Resources/VS2026/SwitchSourceOrTarget/SwitchSourceOrTarget_16x.xaml" },

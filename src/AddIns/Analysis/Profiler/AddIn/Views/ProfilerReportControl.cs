@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
 using ICSharpCode.Core;
+using OpenDevelop.Profiler.Cpu;
+using OpenDevelop.Profiler.Heap;
 using OpenDevelop.Profiler.AddIn.Services;
 
 namespace OpenDevelop.Profiler.AddIn.Views;
@@ -36,11 +38,32 @@ public sealed class ProfilerReportControl : ContentControl
 		started = true;
 		try
 		{
-			var report = await Task.Run(() => ReportLoader.Load(path));
+			var size = new FileInfo(path).Length;
+			// What a dump costs to read follows its managed heap, not its size on disk, which also holds every native page: ten times the
+			// threshold avoids asking about every ordinary dump.
+			var threshold = ProfilerSettings.LargeCaptureBytes * (await Task.Run(() => ReportLoader.Detect(path)) == CaptureKind.Dump ? 10 : 1);
+			if (ReportLoader.IsLarge(size, threshold) && !MessageService.AskQuestion(
+					StringParser.Format("${res:AddIns.Profiler.Report.LargeCapture}", ReportFormat.Bytes(size))))
+			{
+				Content = Message(StringParser.Parse("${res:AddIns.Profiler.Report.NotOpened}"));
+				return;
+			}
+
+			// Everything that takes time happens here, off the UI thread: parsing, and the call tree the report opens on.
+			var assemblies = ProfilerWorkspace.SolutionAssemblyNames();
+			var (report, userCode, tree) = await Task.Run(() =>
+			{
+				var loaded = ReportLoader.Load(path);
+				if (loaded.Cpu is not { } cpu)
+					return (loaded, null, null);
+				var isUserCode = UserCode.ForProfile(cpu, assemblies);
+				return (loaded, isUserCode, cpu.BuildCallTree(CpuReportView.DefaultFilter(isUserCode)));
+			});
 			Content = report.Kind switch
 			{
-				CaptureKind.Cpu => new CpuReportView(report.Cpu!, ProfilerWorkspace.SolutionAssemblyNames()),
-				CaptureKind.Heap => new HeapReportView(report.Heap!),
+				CaptureKind.Cpu or CaptureKind.Allocation => new CpuReportView(report.Cpu!, assemblies, report.Counters, userCode, tree),
+				CaptureKind.Heap => new HeapReportView(report.Heap!, ContentInsights.TryLoad(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(path) ?? string.Empty, ContentInsights.FileName))),
+				CaptureKind.Dump => new DumpReportView(report.Dump!),
 				_ => Message(string.Empty),
 			};
 		}

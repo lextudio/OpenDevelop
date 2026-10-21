@@ -17,7 +17,7 @@
 				<ListView.View>
 					<GridView>
 						<GridViewColumn Width="220" Header="{core:Localize AddIns.Profiler.Report.Function}" DisplayMemberBinding="{Binding Name}" />
-						<GridViewColumn Width="75" Header="{core:Localize AddIns.Profiler.Report.TotalMs}" DisplayMemberBinding="{Binding TotalMs, StringFormat=N0}" />
+						<GridViewColumn x:Name="callerTotalColumn" Width="75" Header="{core:Localize AddIns.Profiler.Report.TotalMs}" DisplayMemberBinding="{Binding TotalMs, StringFormat=N0}" />
 						<GridViewColumn Width="60" Header="{core:Localize AddIns.Profiler.Report.TotalPercent}" DisplayMemberBinding="{Binding TotalFraction, StringFormat=P1}" />
 					</GridView>
 				</ListView.View>
@@ -43,7 +43,7 @@
 						<RowDefinition />
 						<RowDefinition />
 					</Grid.RowDefinitions>
-					<TextBlock Grid.Row="0" Margin="0,0,12,4" Text="{core:Localize AddIns.Profiler.Report.TotalMs}" />
+					<TextBlock x:Name="totalLabel" Grid.Row="0" Margin="0,0,12,4" Text="{core:Localize AddIns.Profiler.Report.TotalMs}" />
 					<TextBlock x:Name="totalText" Grid.Row="0" Grid.Column="1" />
 					<TextBlock Grid.Row="1" Margin="0,0,12,4" Text="{core:Localize AddIns.Profiler.Report.FunctionBody}" />
 					<TextBlock x:Name="bodyText" Grid.Row="1" Grid.Column="1" />
@@ -70,7 +70,7 @@
 				<ListView.View>
 					<GridView>
 						<GridViewColumn Width="220" Header="{core:Localize AddIns.Profiler.Report.Function}" DisplayMemberBinding="{Binding Name}" />
-						<GridViewColumn Width="75" Header="{core:Localize AddIns.Profiler.Report.TotalMs}" DisplayMemberBinding="{Binding TotalMs, StringFormat=N0}" />
+						<GridViewColumn x:Name="calleeTotalColumn" Width="75" Header="{core:Localize AddIns.Profiler.Report.TotalMs}" DisplayMemberBinding="{Binding TotalMs, StringFormat=N0}" />
 						<GridViewColumn Width="60" Header="{core:Localize AddIns.Profiler.Report.TotalPercent}" DisplayMemberBinding="{Binding TotalFraction, StringFormat=P1}" />
 					</GridView>
 				</ListView.View>

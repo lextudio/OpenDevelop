@@ -15,7 +15,9 @@ internal static class ProfilerWorkspace
 	public static ProfilingSessionStore OpenStore()
 	{
 		var solution = ProjectService.OpenSolution;
-		var root = solution is null
+		var root = ProfilerSettings.StoreFolder is { Length: > 0 } custom
+			? custom
+			: solution is null
 			? Path.Combine(PropertyService.ConfigDirectory.ToString(), "profiling")
 			: Path.Combine(solution.Directory.ToString(), ".opendevelop", "profiling");
 		return new ProfilingSessionStore(root);

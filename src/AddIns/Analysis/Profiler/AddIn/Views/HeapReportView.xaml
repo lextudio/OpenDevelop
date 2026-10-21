@@ -31,6 +31,12 @@
 					Click="StopCompare_Click">
 					<Image Width="16" Height="16" Source="{core:GetBitmap Profiler.Close}" />
 				</Button>
+				<Separator />
+				<Button
+					ToolTip="{core:Localize AddIns.Profiler.Report.ExportCsv}"
+					Click="Export_Click">
+					<Image Width="16" Height="16" Source="{core:GetBitmap Profiler.Export}" />
+				</Button>
 			</ToolBar>
 		</ToolBarTray>
 
@@ -85,6 +91,35 @@
 							</ListView.View>
 						</ListView>
 						<TextBlock Opacity="0.7" TextWrapping="Wrap" Text="{core:Localize AddIns.Profiler.Report.InsightsNote}" />
+					</StackPanel>
+				</ScrollViewer>
+			</TabItem>
+			<TabItem Header="{core:Localize AddIns.Profiler.Report.Contents}">
+				<ScrollViewer VerticalScrollBarVisibility="Auto">
+					<StackPanel Margin="4">
+						<TextBlock x:Name="contentsSummary" TextWrapping="Wrap" />
+						<TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="{core:Localize AddIns.Profiler.Report.DuplicateStrings}" />
+						<ListView x:Name="duplicateList" Height="110" Margin="0,4,0,8">
+							<ListView.View>
+								<GridView>
+									<GridViewColumn Width="320" Header="{core:Localize AddIns.Profiler.Report.Value}" DisplayMemberBinding="{Binding Preview}" />
+									<GridViewColumn Width="70" Header="{core:Localize AddIns.Profiler.Report.Length}" DisplayMemberBinding="{Binding Length, StringFormat=N0}" />
+									<GridViewColumn Width="80" Header="{core:Localize AddIns.Profiler.Report.Copies}" DisplayMemberBinding="{Binding Copies, StringFormat=N0}" />
+									<GridViewColumn Width="100" Header="{core:Localize AddIns.Profiler.Report.Wasted}" DisplayMemberBinding="{Binding WastedText}" />
+								</GridView>
+							</ListView.View>
+						</ListView>
+						<TextBlock FontWeight="SemiBold" Text="{core:Localize AddIns.Profiler.Report.SparseArrays}" />
+						<ListView x:Name="sparseList" Height="110" Margin="0,4,0,8">
+							<ListView.View>
+								<GridView>
+									<GridViewColumn Width="260" Header="{core:Localize AddIns.Profiler.Report.Type}" DisplayMemberBinding="{Binding Type}" />
+									<GridViewColumn Width="90" Header="{core:Localize AddIns.Profiler.Report.Length}" DisplayMemberBinding="{Binding Length, StringFormat=N0}" />
+									<GridViewColumn Width="110" Header="{core:Localize AddIns.Profiler.Report.EmptyElements}" DisplayMemberBinding="{Binding EmptyElements, StringFormat=N0}" />
+									<GridViewColumn Width="100" Header="{core:Localize AddIns.Profiler.Report.Wasted}" DisplayMemberBinding="{Binding WastedText}" />
+								</GridView>
+							</ListView.View>
+						</ListView>
 					</StackPanel>
 				</ScrollViewer>
 			</TabItem>

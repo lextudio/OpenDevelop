@@ -1,0 +1,19 @@
+<UserControl
+	x:Class="OpenDevelop.Profiler.AddIn.Views.DumpReportView"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:core="http://icsharpcode.net/sharpdevelop/core">
+	<DockPanel>
+		<TextBlock
+			x:Name="infoText"
+			DockPanel.Dock="Top"
+			Margin="8,6,8,2"
+			FontSize="14"
+			FontWeight="SemiBold"
+			TextWrapping="Wrap" />
+		<TabControl x:Name="tabs" Margin="4">
+			<TabItem x:Name="heapTab" Header="{core:Localize AddIns.Profiler.Report.Heap}" />
+			<TabItem x:Name="threadsTab" Header="{core:Localize AddIns.Profiler.Report.Threads}" />
+		</TabControl>
+	</DockPanel>
+</UserControl>

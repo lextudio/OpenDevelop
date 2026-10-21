@@ -1,0 +1,47 @@
+<Window
+	x:Class="OpenDevelop.Profiler.AddIn.Dialogs.SettingsWindow"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:core="http://icsharpcode.net/sharpdevelop/core"
+	Title="{core:Localize AddIns.Profiler.Settings.Title}"
+	WindowStartupLocation="CenterOwner"
+	WindowStyle="ToolWindow"
+	ShowInTaskbar="False"
+	SizeToContent="Height"
+	Width="540">
+	<StackPanel Margin="10">
+		<TextBlock TextWrapping="Wrap" Text="{core:Localize AddIns.Profiler.Settings.Retained}" />
+		<TextBox x:Name="retainedBox" Margin="0,2,0,0" Width="90" HorizontalAlignment="Left" />
+		<TextBlock Margin="0,10,0,0" TextWrapping="Wrap" Text="{core:Localize AddIns.Profiler.Settings.LargeMb}" />
+		<TextBox x:Name="largeBox" Margin="0,2,0,0" Width="90" HorizontalAlignment="Left" />
+		<TextBlock Margin="0,10,0,0" TextWrapping="Wrap" Text="{core:Localize AddIns.Profiler.Settings.Folder}" />
+		<DockPanel Margin="0,2,0,0">
+			<Button
+				DockPanel.Dock="Right"
+				Margin="6,0,0,0"
+				Padding="8,0"
+				Click="Browse_Click"
+				Content="{core:Localize AddIns.Profiler.Settings.Browse}" />
+			<TextBox x:Name="folderBox" />
+		</DockPanel>
+		<CheckBox
+			x:Name="scanBox"
+			Margin="0,12,0,0"
+			Content="{core:Localize AddIns.Profiler.Settings.ScanContents}" />
+		<TextBlock x:Name="errorText" Margin="0,8,0,0" Foreground="Firebrick" TextWrapping="Wrap" Visibility="Collapsed" />
+		<DockPanel Margin="0,12,0,0" LastChildFill="False">
+			<Button
+				DockPanel.Dock="Right"
+				MinWidth="90"
+				IsCancel="True"
+				Content="{core:Localize Global.Cancel}" />
+			<Button
+				DockPanel.Dock="Right"
+				MinWidth="90"
+				Margin="0,0,8,0"
+				IsDefault="True"
+				Click="Ok_Click"
+				Content="{core:Localize Global.OK}" />
+		</DockPanel>
+	</StackPanel>
+</Window>

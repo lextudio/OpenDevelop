@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop;
 using Microsoft.Win32;
 using OpenDevelop.Profiler.Heap;
 
@@ -65,10 +66,16 @@ public partial class HeapReportView : UserControl
 	Dictionary<string, long>? retainedByType;
 	int detailsVersion;
 
-	public HeapReportView(HeapSnapshot snapshot)
+	sealed record DuplicateRow(string Preview, int Length, long Copies, string WastedText);
+
+	sealed record SparseRow(string Type, long Length, long EmptyElements, string WastedText);
+
+	/// <param name="contents">What reading the heap's contents found (a scan saved beside the capture, or read from a dump), if anything.</param>
+	public HeapReportView(HeapSnapshot snapshot, ContentInsights? contents = null)
 	{
 		this.snapshot = snapshot;
 		InitializeComponent();
+		ShowContents(contents);
 		sorter = new ColumnSorter<TypeRow>(typeList, new Dictionary<string, Func<TypeRow, IComparable>>
 		{
 			["Name"] = r => r.Name,
@@ -152,11 +159,36 @@ public partial class HeapReportView : UserControl
 	void FilterBox_TextChanged(object sender, TextChangedEventArgs e) =>
 		ApplyFilter(baseline is null ? "Size" : "SizeDiff");
 
+	/// <summary>Writes the type table as CSV: count, size and, with the graph, retained size.</summary>
+	internal void ExportTo(string path) =>
+		System.IO.File.WriteAllText(path, ReportExport.HeapTypesCsv(snapshot), new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+	void Export_Click(object sender, RoutedEventArgs e)
+	{
+		var dialog = new SaveFileDialog
+		{
+			Filter = StringParser.Parse("${res:AddIns.Profiler.FileFilter.Csv}") + "|*.csv",
+			DefaultExt = ".csv",
+			FileName = "heap-types.csv",
+		};
+		if (dialog.ShowDialog() != true)
+			return;
+		try
+		{
+			ExportTo(dialog.FileName);
+			SD.StatusBar.SetMessage(StringParser.Format("${res:AddIns.Profiler.Report.Exported}", dialog.FileName));
+		}
+		catch (Exception exception) when (exception is System.IO.IOException or UnauthorizedAccessException)
+		{
+			MessageService.ShowError(exception.Message);
+		}
+	}
+
 	async void Compare_Click(object sender, RoutedEventArgs e)
 	{
 		var dialog = new OpenFileDialog
 		{
-			Filter = StringParser.Parse("${res:AddIns.Profiler.FileFilter.Capture}") + "|*.nettrace",
+			Filter = StringParser.Parse("${res:AddIns.Profiler.FileFilter.Capture}") + "|*.nettrace" + "|" + StringParser.Parse("${res:AddIns.Profiler.FileFilter.Dump}") + "|*.dmp;*.mdmp;*.hdmp",
 			CheckFileExists = true,
 		};
 		if (dialog.ShowDialog() != true)
@@ -181,6 +213,7 @@ public partial class HeapReportView : UserControl
 	internal object Snapshot(int max) => new
 	{
 		summary = summaryText.Text,
+		contents = ContentsSnapshot(),
 		comparing = baseline is not null,
 		compareText = compareText.Text,
 		rows = (typeList.ItemsSource as IEnumerable<TypeRow> ?? [])
@@ -190,6 +223,33 @@ public partial class HeapReportView : UserControl
 	};
 
 	internal void SetFilter(string text) => filterBox.Text = text;
+
+	// What reading the heap's contents found, or a note on how to get it when the capture has no scan.
+	void ShowContents(ContentInsights? insights)
+	{
+		if (insights is null)
+		{
+			contentsSummary.Text = StringParser.Parse("${res:AddIns.Profiler.Report.ContentsNone}");
+			duplicateList.ItemsSource = sparseList.ItemsSource = null;
+			return;
+		}
+		contentsSummary.Text = StringParser.Format(
+			"${res:AddIns.Profiler.Report.ContentsSummary}", insights.ObjectsScanned,
+			ReportFormat.Bytes(insights.TotalWastedByDuplicateStrings), ReportFormat.Bytes(insights.TotalWastedBySparseArrays));
+		duplicateList.ItemsSource = insights.DuplicateStrings
+			.Select(s => new DuplicateRow(s.Preview, s.Length, s.Copies, ReportFormat.Bytes(s.WastedBytes))).ToList();
+		sparseList.ItemsSource = insights.SparseArrays
+			.Select(a => new SparseRow(a.Type, a.Length, a.EmptyElements, ReportFormat.Bytes(a.WastedBytes))).ToList();
+	}
+
+	/// <summary>What the Contents tab shows, for the integration-test probes.</summary>
+	internal object ContentsSnapshot() => new
+	{
+		summary = contentsSummary.Text,
+		duplicates = (duplicateList.ItemsSource as IEnumerable<DuplicateRow> ?? []).Select(r => new { r.Preview, r.Copies }).ToList(),
+		sparse = (sparseList.ItemsSource as IEnumerable<SparseRow> ?? []).Select(r => new { r.Type, r.Length, r.EmptyElements }).ToList(),
+	};
+
 
 	/// <summary>Selects a type by name, as a click on its row would, and shows what holds it.</summary>
 	internal async Task<bool> SelectTypeAsync(string name)
@@ -296,7 +356,7 @@ public partial class HeapReportView : UserControl
 	static HeapSnapshot LoadHeap(string path)
 	{
 		var report = ReportLoader.Load(path);
-		return report.Heap
+		return (report.Heap ?? report.Dump?.Heap)
 			?? throw new ProfilingException(StringParser.Format("${res:AddIns.Profiler.Report.NotAHeapCapture}", System.IO.Path.GetFileName(path)));
 	}
 

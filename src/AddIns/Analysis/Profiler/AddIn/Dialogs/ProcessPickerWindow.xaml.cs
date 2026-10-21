@@ -9,6 +9,8 @@ public enum ProcessPickerPurpose
 {
 	Cpu,
 	HeapSnapshot,
+	Allocation,
+	Dump,
 }
 
 /// <summary>Lets the user pick a running .NET process to sample or to take a heap snapshot of.</summary>
@@ -23,6 +25,18 @@ public partial class ProcessPickerWindow : Window
 			warning.Text = StringParser.Parse("${res:AddIns.Profiler.Attach.HeapWarning}");
 			warning.Visibility = Visibility.Visible;
 			startButton.Content = StringParser.Parse("${res:AddIns.Profiler.Attach.TakeSnapshot}");
+		}
+		else if (purpose == ProcessPickerPurpose.Dump)
+		{
+			prompt.Text = StringParser.Parse("${res:AddIns.Profiler.Attach.DumpPrompt}");
+			warning.Text = StringParser.Parse("${res:AddIns.Profiler.Attach.DumpWarning}");
+			warning.Visibility = Visibility.Visible;
+			startButton.Content = StringParser.Parse("${res:AddIns.Profiler.Attach.WriteDump}");
+		}
+		else if (purpose == ProcessPickerPurpose.Allocation)
+		{
+			prompt.Text = StringParser.Parse("${res:AddIns.Profiler.Attach.AllocationPrompt}");
+			startButton.Content = StringParser.Parse("${res:AddIns.Profiler.Attach.StartRecording}");
 		}
 		else
 		{

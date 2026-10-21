@@ -84,8 +84,10 @@ public partial class CallerCalleePanel : UserControl
 	/// <summary>Raised when the user asks to go back to the previously shown function.</summary>
 	public event EventHandler? BackRequested;
 
-	internal void Show(CallerCalleeView? view, long totalSamples, double sampleIntervalMs, bool canGoBack)
+	internal void Show(
+		CallerCalleeView? view, long totalSamples, double sampleIntervalMs, bool canGoBack, ProfileUnit unit = ProfileUnit.Milliseconds)
 	{
+		callerTotalColumn.Header = calleeTotalColumn.Header = totalLabel.Text = ReportFormat.TotalHeader(unit);
 		backButton.IsEnabled = canGoBack;
 		if (view is null)
 		{
@@ -100,9 +102,9 @@ public partial class CallerCalleePanel : UserControl
 		functionName.Text = function.Name;
 		functionModule.Text = function.Module;
 		var inCallees = function.Total - function.Self;
-		totalText.Text = Describe(function.Total, totalSamples, sampleIntervalMs);
-		bodyText.Text = Describe(function.Self, totalSamples, sampleIntervalMs);
-		calleesText.Text = Describe(inCallees, totalSamples, sampleIntervalMs);
+		totalText.Text = Describe(function.Total, totalSamples, sampleIntervalMs, unit);
+		bodyText.Text = Describe(function.Self, totalSamples, sampleIntervalMs, unit);
+		calleesText.Text = Describe(inCallees, totalSamples, sampleIntervalMs, unit);
 		callerList.ItemsSource = Rows(view.Callers, totalSamples, sampleIntervalMs);
 		calleeList.ItemsSource = Rows(view.Callees, totalSamples, sampleIntervalMs);
 	}
@@ -120,8 +122,8 @@ public partial class CallerCalleePanel : UserControl
 		canGoBack = backButton.IsEnabled,
 	};
 
-	static string Describe(long samples, long totalSamples, double sampleIntervalMs) =>
-		$"{samples * sampleIntervalMs:N0} ms  ({ReportFormat.Fraction(samples, totalSamples):P1})";
+	static string Describe(long samples, long totalSamples, double sampleIntervalMs, ProfileUnit unit) =>
+		$"{ReportFormat.Quantity(samples * sampleIntervalMs, unit)}  ({ReportFormat.Fraction(samples, totalSamples):P1})";
 
 	static List<NeighbourRow> Rows(IReadOnlyList<FunctionStat> stats, long totalSamples, double sampleIntervalMs) =>
 		stats

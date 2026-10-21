@@ -47,6 +47,7 @@ public sealed class RingDiagramControl : FrameworkElement
 	CallTreeNode? focus;
 	Slice? hovered;
 	double sampleIntervalMs = 1;
+	ProfileUnit unit = ProfileUnit.Milliseconds;
 
 	public RingDiagramControl()
 	{
@@ -57,8 +58,9 @@ public sealed class RingDiagramControl : FrameworkElement
 	/// <summary>Raised with a frame id when a slice is double-clicked.</summary>
 	public event EventHandler<int>? FrameActivated;
 
-	internal void Show(CallTreeNode treeRoot, double intervalMs)
+	internal void Show(CallTreeNode treeRoot, double intervalMs, ProfileUnit profileUnit = ProfileUnit.Milliseconds)
 	{
+		unit = profileUnit;
 		sampleIntervalMs = intervalMs;
 		SetFocus(treeRoot);
 	}
@@ -209,8 +211,8 @@ public sealed class RingDiagramControl : FrameworkElement
 		ToolTip = node is null || focus is null
 			? null
 			: $"{node.Name}\n{node.Module}\n"
-			  + $"Total {node.Total * sampleIntervalMs:N0} ms ({ReportFormat.Fraction(node.Total, focus.Total):P1} of the centre)   "
-			  + $"Self {node.Self * sampleIntervalMs:N0} ms";
+			  + $"Total {ReportFormat.Quantity(node.Total * sampleIntervalMs, unit)} ({ReportFormat.Fraction(node.Total, focus.Total):P1} of the centre)   "
+			  + $"Self {ReportFormat.Quantity(node.Self * sampleIntervalMs, unit)}";
 	}
 
 	protected override void OnMouseLeave(MouseEventArgs e)

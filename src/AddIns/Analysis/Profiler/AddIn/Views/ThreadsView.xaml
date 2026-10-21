@@ -1,0 +1,28 @@
+<UserControl
+	x:Class="OpenDevelop.Profiler.AddIn.Views.ThreadsView"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:core="http://icsharpcode.net/sharpdevelop/core">
+	<Grid>
+		<Grid.RowDefinitions>
+			<RowDefinition Height="2*" MinHeight="80" />
+			<RowDefinition Height="Auto" />
+			<RowDefinition Height="3*" MinHeight="80" />
+		</Grid.RowDefinitions>
+		<ListView x:Name="threadList" Grid.Row="0" SelectionMode="Single" SelectionChanged="ThreadList_SelectionChanged">
+			<ListView.View>
+				<GridView>
+					<GridViewColumn Width="90" Header="{core:Localize AddIns.Profiler.Report.ManagedId}" DisplayMemberBinding="{Binding ManagedId}" />
+					<GridViewColumn Width="90" Header="{core:Localize AddIns.Profiler.Report.OsId}" DisplayMemberBinding="{Binding OsIdText}" />
+					<GridViewColumn Width="90" Header="{core:Localize AddIns.Profiler.Report.State}" DisplayMemberBinding="{Binding State}" />
+					<GridViewColumn Width="360" Header="{core:Localize AddIns.Profiler.Report.Exception}" DisplayMemberBinding="{Binding Exception}" />
+				</GridView>
+			</ListView.View>
+		</ListView>
+		<GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" />
+		<DockPanel Grid.Row="2">
+			<TextBlock DockPanel.Dock="Top" Margin="2,2,2,2" FontWeight="SemiBold" Text="{core:Localize AddIns.Profiler.Report.Stack}" />
+			<ListBox x:Name="frameList" FontFamily="Consolas" />
+		</DockPanel>
+	</Grid>
+</UserControl>

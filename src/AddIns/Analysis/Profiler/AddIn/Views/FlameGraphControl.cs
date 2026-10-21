@@ -21,6 +21,7 @@ public sealed class FlameGraphControl : FrameworkElement
 	CallTreeNode? root;
 	CallTreeNode? zoom;
 	double sampleIntervalMs = 1;
+	ProfileUnit unit = ProfileUnit.Milliseconds;
 
 	public FlameGraphControl()
 	{
@@ -31,8 +32,9 @@ public sealed class FlameGraphControl : FrameworkElement
 	/// <summary>Raised with a frame id when a box is double-clicked.</summary>
 	public event EventHandler<int>? FrameActivated;
 
-	internal void Show(CallTreeNode treeRoot, double intervalMs)
+	internal void Show(CallTreeNode treeRoot, double intervalMs, ProfileUnit profileUnit = ProfileUnit.Milliseconds)
 	{
+		unit = profileUnit;
 		root = zoom = treeRoot;
 		sampleIntervalMs = intervalMs;
 		InvalidateMeasure();
@@ -176,8 +178,8 @@ public sealed class FlameGraphControl : FrameworkElement
 		if (NodeAt(e.GetPosition(this)) is { } node && root is not null)
 		{
 			ToolTip = $"{node.Name}\n{node.Module}\n"
-				+ $"Total {node.Total * sampleIntervalMs:N0} ms ({ReportFormat.Fraction(node.Total, root.Total):P1})   "
-				+ $"Self {node.Self * sampleIntervalMs:N0} ms ({ReportFormat.Fraction(node.Self, root.Total):P1})";
+				+ $"Total {ReportFormat.Quantity(node.Total * sampleIntervalMs, unit)} ({ReportFormat.Fraction(node.Total, root.Total):P1})   "
+				+ $"Self {ReportFormat.Quantity(node.Self * sampleIntervalMs, unit)} ({ReportFormat.Fraction(node.Self, root.Total):P1})";
 		}
 		else
 		{

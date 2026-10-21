@@ -33,8 +33,10 @@ public partial class CallTreeView : UserControl
 	CallTreeRow? SelectedRow => rowList.SelectedItem as CallTreeRow;
 
 	/// <summary>Replaces the tree. The root is shown expanded along its hot path.</summary>
-	internal void Show(CallTreeNode treeRoot, double intervalMs)
+	internal void Show(CallTreeNode treeRoot, double intervalMs, ProfileUnit unit = ProfileUnit.Milliseconds)
 	{
+		totalColumn.Header = ReportFormat.TotalHeader(unit);
+		selfColumn.Header = ReportFormat.SelfHeader(unit);
 		root = treeRoot;
 		rootTotal = treeRoot.Total;
 		sampleIntervalMs = intervalMs;

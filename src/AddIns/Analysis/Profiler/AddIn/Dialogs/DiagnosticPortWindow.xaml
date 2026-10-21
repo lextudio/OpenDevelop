@@ -1,0 +1,42 @@
+<Window
+	x:Class="OpenDevelop.Profiler.AddIn.Dialogs.DiagnosticPortWindow"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:core="http://icsharpcode.net/sharpdevelop/core"
+	Title="{core:Localize AddIns.Profiler.Port.Title}"
+	WindowStartupLocation="CenterOwner"
+	WindowStyle="ToolWindow"
+	ShowInTaskbar="False"
+	SizeToContent="Height"
+	Width="560">
+	<StackPanel Margin="10">
+		<TextBlock TextWrapping="Wrap" Text="{core:Localize AddIns.Profiler.Port.Prompt}" />
+		<TextBlock Margin="0,10,0,2" Text="{core:Localize AddIns.Profiler.Port.Address}" />
+		<TextBox x:Name="addressBox" TextChanged="AddressBox_TextChanged" />
+		<TextBlock Margin="0,10,0,2" TextWrapping="Wrap" Text="{core:Localize AddIns.Profiler.Port.StartWith}" />
+		<TextBox x:Name="commandBox" IsReadOnly="True" FontFamily="Consolas" />
+		<StackPanel Margin="0,10,0,0" Orientation="Horizontal">
+			<RadioButton
+				x:Name="cpuMode"
+				IsChecked="True"
+				Margin="0,0,16,0"
+				Content="{core:Localize AddIns.Profiler.Port.ModeCpu}" />
+			<RadioButton x:Name="allocationMode" Content="{core:Localize AddIns.Profiler.Port.ModeAllocation}" />
+		</StackPanel>
+		<DockPanel Margin="0,12,0,0" LastChildFill="False">
+			<Button
+				DockPanel.Dock="Right"
+				MinWidth="90"
+				IsCancel="True"
+				Content="{core:Localize Global.Cancel}" />
+			<Button
+				x:Name="listenButton"
+				DockPanel.Dock="Right"
+				MinWidth="90"
+				Margin="0,0,8,0"
+				IsDefault="True"
+				Click="Listen_Click"
+				Content="{core:Localize AddIns.Profiler.Port.Listen}" />
+		</DockPanel>
+	</StackPanel>
+</Window>

@@ -56,6 +56,19 @@
 					<Image Width="16" Height="16" Source="{core:GetBitmap Profiler.ExpandHotPath}" />
 				</Button>
 				<Button
+					x:Name="compareButton"
+					ToolTip="{core:Localize AddIns.Profiler.Report.CompareWith}"
+					Click="Compare_Click">
+					<Image Width="16" Height="16" Source="{core:GetBitmap Profiler.Compare}" />
+				</Button>
+				<Button
+					x:Name="stopCompareButton"
+					Visibility="Collapsed"
+					ToolTip="{core:Localize AddIns.Profiler.Report.StopComparing}"
+					Click="StopCompare_Click">
+					<Image Width="16" Height="16" Source="{core:GetBitmap Profiler.Close}" />
+				</Button>
+				<Button
 					x:Name="clearRangeButton"
 					Visibility="Collapsed"
 					ToolTip="{core:Localize AddIns.Profiler.Report.ClearRange}"
@@ -63,6 +76,12 @@
 					<Image Width="16" Height="16" Source="{core:GetBitmap Profiler.ShowWholeCapture}" />
 				</Button>
 				<Separator />
+				<Button
+					x:Name="exportButton"
+					ToolTip="{core:Localize AddIns.Profiler.Report.ExportCsv}"
+					Click="Export_Click">
+					<Image Width="16" Height="16" Source="{core:GetBitmap Profiler.Export}" />
+				</Button>
 				<Button
 					x:Name="findButton"
 					ToolTip="{core:Localize AddIns.Profiler.Report.FindTooltip}"
@@ -99,6 +118,7 @@
 				HorizontalScrollBarVisibility="Disabled">
 				<local:FlameGraphControl x:Name="flameGraph" FrameActivated="ShowCallerCalleeRequested" />
 			</ScrollViewer>
+			<local:CountersView x:Name="counters" Visibility="Collapsed" />
 			<local:RingDiagramControl x:Name="ringDiagram" Visibility="Collapsed" FrameActivated="ShowCallerCalleeRequested" />
 			<local:FindOverlay x:Name="findOverlay" FindRequested="FindOverlay_FindRequested" Closed="FindOverlay_Closed" />
 		</Grid>

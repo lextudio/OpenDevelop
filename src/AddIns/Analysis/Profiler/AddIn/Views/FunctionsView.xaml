@@ -24,9 +24,19 @@
 						<GridViewColumnHeader Tag="Name" Content="{core:Localize AddIns.Profiler.Report.Function}" />
 					</GridViewColumn.Header>
 				</GridViewColumn>
+				<GridViewColumn x:Name="selfChangeColumn" Width="0" DisplayMemberBinding="{Binding SelfChangeText}">
+					<GridViewColumn.Header>
+						<GridViewColumnHeader Tag="SelfChange" Content="{core:Localize AddIns.Profiler.Report.SelfChange}" />
+					</GridViewColumn.Header>
+				</GridViewColumn>
+				<GridViewColumn x:Name="totalChangeColumn" Width="0" DisplayMemberBinding="{Binding TotalChangeText}">
+					<GridViewColumn.Header>
+						<GridViewColumnHeader Tag="TotalChange" Content="{core:Localize AddIns.Profiler.Report.TotalChange}" />
+					</GridViewColumn.Header>
+				</GridViewColumn>
 				<GridViewColumn Width="90" DisplayMemberBinding="{Binding TotalMs, StringFormat=N0}">
 					<GridViewColumn.Header>
-						<GridViewColumnHeader Tag="TotalMs" Content="{core:Localize AddIns.Profiler.Report.TotalMs}" />
+						<GridViewColumnHeader x:Name="totalHeader" Tag="TotalMs" Content="{core:Localize AddIns.Profiler.Report.TotalMs}" />
 					</GridViewColumn.Header>
 				</GridViewColumn>
 				<GridViewColumn Width="70" DisplayMemberBinding="{Binding TotalFraction, StringFormat=P1}">
@@ -36,7 +46,7 @@
 				</GridViewColumn>
 				<GridViewColumn Width="90" DisplayMemberBinding="{Binding SelfMs, StringFormat=N0}">
 					<GridViewColumn.Header>
-						<GridViewColumnHeader Tag="SelfMs" Content="{core:Localize AddIns.Profiler.Report.SelfMs}" />
+						<GridViewColumnHeader x:Name="selfHeader" Tag="SelfMs" Content="{core:Localize AddIns.Profiler.Report.SelfMs}" />
 					</GridViewColumn.Header>
 				</GridViewColumn>
 				<GridViewColumn Width="70" DisplayMemberBinding="{Binding SelfFraction, StringFormat=P1}">

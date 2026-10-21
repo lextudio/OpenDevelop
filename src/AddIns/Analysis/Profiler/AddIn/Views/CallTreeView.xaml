@@ -45,7 +45,7 @@
 						</DataTemplate>
 					</GridViewColumn.CellTemplate>
 				</GridViewColumn>
-				<GridViewColumn Width="90" Header="{core:Localize AddIns.Profiler.Report.TotalMs}">
+				<GridViewColumn x:Name="totalColumn" Width="90" Header="{core:Localize AddIns.Profiler.Report.TotalMs}">
 					<GridViewColumn.CellTemplate>
 						<DataTemplate>
 							<TextBlock Text="{Binding TotalMs, StringFormat=N0}" TextAlignment="Right" />
@@ -66,7 +66,7 @@
 						</DataTemplate>
 					</GridViewColumn.CellTemplate>
 				</GridViewColumn>
-				<GridViewColumn Width="90" Header="{core:Localize AddIns.Profiler.Report.SelfMs}">
+				<GridViewColumn x:Name="selfColumn" Width="90" Header="{core:Localize AddIns.Profiler.Report.SelfMs}">
 					<GridViewColumn.CellTemplate>
 						<DataTemplate>
 							<TextBlock Text="{Binding SelfMs, StringFormat=N0}" TextAlignment="Right" />
