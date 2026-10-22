@@ -10244,7 +10244,7 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
     <value>打开不小于此大小（MB）的捕获前先询问：</value>
   </data>
   <data name="AddIns.Profiler.Settings.Folder" xml:space="preserve">
-    <value>捕获存放位置（留空：解决方案文件夹下的 .opendevelop/profiling）：</value>
+    <value>捕获存放位置（留空：解决方案文件夹下的 .od/profiling）：</value>
   </data>
   <data name="AddIns.Profiler.Settings.Browse" xml:space="preserve">
     <value>浏览…</value>

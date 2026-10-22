@@ -51,7 +51,7 @@ public sealed record SessionHandle(SessionInfo Info, string Directory)
     public string ArtifactPath => Path.Combine(Directory, Info.Artifact);
 }
 
-/// <summary>Keeps one directory per capture under a root, e.g. <c>.opendevelop/profiling</c>.</summary>
+/// <summary>Keeps one directory per capture under a root, e.g. <c>.od/profiling</c>.</summary>
 public sealed class ProfilingSessionStore(string rootDirectory)
 {
     const string IndexFileName = "session.json";

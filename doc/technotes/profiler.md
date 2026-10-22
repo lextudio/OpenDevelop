@@ -320,7 +320,7 @@ Best effort and not an MVP criterion. Inlining, generics, async state machines, 
 ## 10. Session Storage and Portability
 
 ```text
-<workspace>/.opendevelop/profiling/
+<workspace>/.od/profiling/
   <session-id>/
     session.json      # small OpenDevelop-only index (optional)
     cpu.nettrace      # raw CPU capture
@@ -568,7 +568,7 @@ The add-in keeps the `Profiler.AddIn` identity and the **Analysis > Profiler** m
 | Large capture warning (default 200 MB and over) | Done; asks before opening; the threshold is a setting |
 | Views recomputed off the UI thread | Done: the call tree the report opens on, and every recomputation after a filter change on a capture of 100,000 samples or more (smaller ones recompute inline); a result a newer change has overtaken is dropped |
 | Allocation profile from startup and for the current project (Analysis > Profiler > Allocation Profile Current Project) | Done; the same held-at-startup launch as the CPU profile |
-| Profiler Settings (captures kept, large-capture threshold, store folder) | Done; stored in the IDE properties. Retention: starting a capture removes the oldest finished sessions beyond the newest N (default 30); the store folder defaults to `.opendevelop/profiling` in the solution folder |
+| Profiler Settings (captures kept, large-capture threshold, store folder) | Done; stored in the IDE properties. Retention: starting a capture removes the oldest finished sessions beyond the newest N (default 30); the store folder defaults to `.od/profiling` in the solution folder |
 | Debugger integration: Attach CPU Profiler to Debugged Process, and a warning when the chosen process is the debugged one and is stopped at a breakpoint | Done; when the debugger does not report its process the warning falls back to "the debugger is stopped" |
 | Capture Memory Dump of Process | Done; writes a dump with the heap into a session and opens it; the process is paused meanwhile |
 | Open a memory dump (Heap tab and Threads tab) | Done; read offline with ClrMD in one walk: types, object graph (Path to Root, Instances, retained size, Insights, Compare To), duplicate strings and sparse arrays, threads with exceptions and stacks. Recognised by header; the usual names and `core` bind the display |

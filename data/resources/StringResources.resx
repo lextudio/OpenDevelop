@@ -10638,7 +10638,7 @@ Press Esc to cancel this operation.</value>
     <value>Ask before opening a capture of at least this many MB:</value>
   </data>
   <data name="AddIns.Profiler.Settings.Folder" xml:space="preserve">
-    <value>Store captures in (empty: .opendevelop/profiling in the solution folder):</value>
+    <value>Store captures in (empty: .od/profiling in the solution folder):</value>
   </data>
   <data name="AddIns.Profiler.Settings.Browse" xml:space="preserve">
     <value>Browse...</value>

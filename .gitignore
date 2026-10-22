@@ -60,6 +60,3 @@ tests/fixtures/SampleTestProject/CodeCoverage/
 *.zip
 tests/fixtures/CoverageFixture/CoverageTests/CodeCoverage/
 tmp/
-tests/fixtures/ProfilerFixture/.opendevelop/
-# The Profiler records captures beside the solution it was used on (.opendevelop/profiling).
-.opendevelop/

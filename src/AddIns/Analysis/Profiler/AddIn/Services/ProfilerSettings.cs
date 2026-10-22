@@ -34,7 +34,7 @@ internal static class ProfilerSettings
 		set => PropertyService.Set("Profiler.ScanHeapContents", value);
 	}
 
-	/// <summary>Where captures are stored; empty means <c>.opendevelop/profiling</c> in the solution folder.</summary>
+	/// <summary>Where captures are stored; empty means <c>.od/profiling</c> in the solution folder.</summary>
 	public static string StoreFolder
 	{
 		get => PropertyService.Get("Profiler.StoreFolder", string.Empty);
