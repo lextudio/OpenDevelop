@@ -91,12 +91,19 @@ if [[ -f "$background_image" ]]; then
   # Place the two icons inside the light panel of social.png. 10%/30% rather than the 15%/25% of the
   # SharpDevelop-era layout: that left 8px between the two 84px slots, while the wider spacing leaves
   # ~100px, which is the room the drag arrow needs to sit between them.
-  app_icon_x=$(( layout_width * 10 / 100 ))
+  # Finder will not keep an icon centre left of ~105px (measured with the 15-char "OpenDevelop.app"
+  # label): asked for x=92 it stored 105 and shifted the Applications slot with it, so the arrow
+  # drawn for 92/276 sat on top of the app icon. 12% (110px at 920) stays clear of that clamp.
+  app_icon_x=$(( layout_width * 12 / 100 ))
   apps_icon_x=$(( layout_width * 30 / 100 ))
   icons_y=$(( layout_height * 80 / 100 ))
   # Finder draws a label under each icon, so the cell - not just the icon - has to fit the window.
   bottom_inset=60
   (( icons_y > layout_height - bottom_inset )) && icons_y=$(( layout_height - bottom_inset ))
+  # What Finder stores for "set position" is 20px lower than what it was asked for (measured in the
+  # image's .DS_Store: asked y=368 and y=230, stored 388 and 250). icons_y stays the visual row the
+  # arrow is drawn on; this offset is only subtracted from the Finder request.
+  finder_y_offset=20
 
   if sips -z "$layout_height" "$layout_width" "$background_image" --out "$stage_background" >/dev/null 2>&1; then
     has_background=1
@@ -173,10 +180,10 @@ EOF
   fi
 
   applescript+=$'\n'"    try"
-  applescript+=$'\n'"      set position of item \"$app_name\" of container window to {$app_icon_x, $icons_y}"
+  applescript+=$'\n'"      set position of item \"$app_name\" of container window to {$app_icon_x, $((icons_y - finder_y_offset))}"
   applescript+=$'\n'"    end try"
   applescript+=$'\n'"    try"
-  applescript+=$'\n'"      set position of item \"Applications\" of container window to {$apps_icon_x, $icons_y}"
+  applescript+=$'\n'"      set position of item \"Applications\" of container window to {$apps_icon_x, $((icons_y - finder_y_offset))}"
   applescript+=$'\n'"    end try"
   applescript+=$'\n'"    update without registering applications"
   applescript+=$'\n'"    delay 1"
