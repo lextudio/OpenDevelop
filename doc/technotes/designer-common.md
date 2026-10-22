@@ -26,6 +26,54 @@ in the dedicated technotes:
 - [`xaml-services.md`](xaml-services.md) — the cross-designer roadmap, framework detection and
   the shared IDE-level contracts.
 
+## Product-experience parity matrix (reviewed 2026-10-20)
+
+This is the comparison users actually experience. It is deliberately **not** the much narrower
+`DesignerCanvasCapabilities` toolbar-flag list: a check mark below means that a user can complete
+the workflow through the shipped designer, not merely that the shared canvas can draw an affordance.
+`Limited` means a deliberately lossless subset; `Verify` means the implementation exists but the
+corresponding Microsoft-runtime journey has not yet been executed. WinUI means the Uno source-host
+path unless the cell calls out ProGPU or Microsoft WinUI explicitly.
+
+| Design task | WPF | WinForms | WinUI / Uno | GTK 4 | MewUI |
+|---|---|---|---|---|---|
+| Open, render, diagnostics, Design/Source switching | ✓ OOP host; source-positioned diagnostics | ✓ OOP host | ✓ OOP Uno host; Microsoft gallery corpus also verified | ✓ shared host | ✓ shared source-model host |
+| Crash recovery, stale-frame protection, selection/outline restoration | ✓ | ✓ | ✓; visual-state replay needs appbin fixture | ✓ | ✓ |
+| Click selection, drag move, resize and multi-selection | ✓; WPF batch layout mutation | ✓; native/source transaction | ✓ source-backed operations | ✓ basic shared-canvas path | ✓ basic shared-canvas path |
+| Marquee and full keyboard navigation | Limited: marquee and nudge are delivered; Tab rotation remains unverified here | ✓ marquee, nudge and Tab routing | Limited: no marquee; keyboard subset | Limited | Limited |
+| Zoom, fit, gridlines, show names and status | ✓ plus snapping | ✓ plus snap/grid preferences | ✓ supported Uno path | ✓ | Limited: zoom/fit/gridlines only |
+| Advanced layout editing | ✓ Grid rails/unit commands, margin/Canvas inset handles, align/order/wrap/unwrap | ✓ TableLayout tracks/units and layout transactions | ✓ Grid split/unit commands and Canvas insets; source-backed | Limited: shared move/resize only | Limited: shared move/resize only |
+| Properties: scalar values, reset, enums and read-only safety | ✓ broad native WPF types | ✓ broad CLR types | ✓ source-backed enum/Thickness/color/resource paths | ✓ supported scalar descriptors | ✓ supported scalar descriptors; fallback attributes |
+| Properties: nested/complex editors | ✓ Binding, brushes/gradient handles, transforms, resource references, text/image and selected collections | ✓ Images, ImageList, Type, string collections, TreeView/ListView slices | Limited: source-backed properties; not WPF/Forms-equivalent object editors | Limited: no comparable complex-editor set | Limited: no comparable complex-editor set |
+| Binding editing | ✓ direct and composite child Binding safe fields; full arbitrary graph remains read-only | N/A as a XAML Binding model | Limited: XAML/source attributes, not WPF Binding graph editing | N/A | N/A |
+| Toolbox | ✓ built-in + metadata-only project controls, filters | ✓ built-in, components/tray, metadata-only project controls, filters | ✓ built-in source catalogues | ✓ GIR/catalogue | ✓ source-model catalogue |
+| Non-visual components / component tray | Limited: no Forms-style component tray | ✓ Timer/ToolTip/ImageList and other supported components | Limited: component-specific source path; retired ProGPU is not a current capability | N/A | N/A |
+| Collections and resources | ✓ safe XAML Items/Tab/Binding collections and resource pickers | ✓ strongest resource path: images, ImageList, .resx, Items, columns/nodes where source proof exists | Limited: source structural edits, not Forms resource workflow | Limited | Limited |
+| Events and code-behind | ✓ event binding and transactional WPF code-behind generation | Limited: designer event path varies by source/runtime; no equivalent verified workflow listed here | Limited: source editing, no WPF-style handler transaction | Limited: signal/source binding only | Limited: generated-code/source convention |
+| Context commands / structural editing | ✓ align/order/cut/copy/paste/duplicate/wrap/unwrap/style-template safe subset | ✓ framework-specific context and TableLayout commands | ✓ cut/copy/paste/duplicate/wrap/unwrap/Grid commands | ✓ common source/model commands | ✓ common source/model commands |
+| Themes and visual states | ✓ project design themes | N/A | ✓ Uno theme/forced state replay; end-to-end state fixture pending | N/A | N/A |
+| Windows Microsoft-runtime confidence | ✓ real WPF gallery corpus; particular workflows still vary | **Verify** Forms journeys | ✓ WinUI gallery corpus 25/25; appbin visual-state replay still pending | N/A | N/A |
+
+### Reading the matrix
+
+The five designers are therefore **not product-parity-equivalent**. They share the safety and
+interaction floor — isolated host lifecycle, bitmap frame/overlay, snapshot-local selection,
+Toolbox/Outline/Properties shells, source refresh and accepted-mutation handling — but their
+authoritative models differ. WPF has the deepest XAML design-model editing; WinForms has the
+deepest resource and non-visual-component workflow; WinUI has supported Uno and Microsoft runtime
+paths and ProGPU remains a registered third runtime family (`OD_WINUI_RUNTIME=progpu`) rather than
+retired code; GTK and MewUI intentionally expose only operations their source model can
+round-trip safely.
+
+The practical parity backlog is consequently not “give every designer every toolbar button”. It is:
+
+1. verify the remaining WinForms Microsoft-runtime journeys and fill the narrower WPF/WinUI
+   workflow gaps not covered by their gallery corpora;
+2. give GTK and MewUI more safe structured property/collection/layout mutations before adding
+   framework-specific flourishes; and
+3. make WinUI's Microsoft and Uno experiences converge where both runtimes can prove the same
+   source-preserving operation.
+
 The protocol described here is a **target contract**. No implementation must be rewritten to
 match it in one step; each backend converges by extracting and renaming its existing RPC
 surface. The WinForms host (`FormsDesigner/Host/`), the Uno host
@@ -1364,7 +1412,14 @@ backend; the OOP Uno host is the only supported WinUI path.
 
 ---
 
-# Part III — Feature matrix across the three frameworks
+# Part III — Historical feature matrix across the three frameworks (2026-08 snapshot)
+
+> **Historical snapshot, not the current product-parity verdict.** This table records the
+> 2026-08 extraction state and is retained for protocol history. Later shared-canvas work
+> superseded several interaction cells — notably WPF keyboard nudge and multi-selection.
+> Use [Product-experience parity matrix](#product-experience-parity-matrix-reviewed-2026-10-20)
+> for the current user-facing comparison, and dated entries in `in-process-analysis.md` for
+> detailed evidence.
 
 Legend: **✓** implemented and exercised · **~** partial (see note) · **✗** not implemented ·
 **(–)** concept does not exist for this runtime.
@@ -1442,7 +1497,7 @@ Undo and Redo belong to document lifecycle or the IDE command system, not the ca
 | Drag threshold | ✗ (none — Thumb semantics) | ✓ (3 px) | ✓ (4 px) |
 | Multi-select | ~ (marquee + Shift/Ctrl) | ✓ (Ctrl-click; the Align commands need two or more) | ✓ (group drag + dashed outlines) |
 | Marquee rubber-band | ✓ | ✗ | ✗ |
-| Keyboard nudge | ✓ (step 1, Shift=10) | ✗ | ✓ (step 1, Ctrl=10) |
+| Keyboard nudge | ✓ (step 1, Shift=10) | ✓ (shared canvas / atomic bounds batch; superseded after this snapshot) | ✓ (step 1, Ctrl=10) |
 | Keyboard: Escape parent / Tab rotation | ✓ | ✗ | ✗ |
 | Double-click default event | ✓ (`ClickCount == 2`) | ✓ (binds `design/set-event`, then the IDE generates the code-behind method and opens it) | ~ (manual detection, 500 ms/8 px) |
 | Snap guides / alignment | ✗ | ✓ (Snap to Raster and Snap to Guides toolbar toggles + the Align context commands) | ✓ (8 design-unit tolerance) |
@@ -1657,12 +1712,15 @@ acceptance check, so the list can be resumed by a fresh session at any point.
    `baseVersion` in the read-only hit-test envelope. The value correlates the query with the
    caller's rendered document version; it does not itself mutate or reject a document.
 
-4. **Full three-designer integration regression run.** The RPC renames below are built and
-   the WinUI child-process suite (`UnoDesignHostRpcTests`, 3/3 green) plus the WinForms
-   resize/outline tests pass; a full `AddInTests` run against the renamed wire is still owed
-   once item 1 is fixed.
-   **Acceptance:** `dotnet test --project tests/OpenDevelop.IntegrationTests` green for the
-   FormsDesigner/WinUIXamlDesigner/WpfDesigner groups.
+4. **Full three-designer integration regression run.** This must use the xUnit v3 runner in
+   `tests/OpenDevelop.IntegrationTests/TESTING.md`, not `dotnet test`. The latest macOS run
+   (2026-10-20) completed 154 facts with 28 expected Windows-only skips and exposed two real
+   regressions: LibreWinForms serializes a dropped `NumericUpDown` at 20px high rather than the
+   stale 22px test baseline, and the WinUI toolbox-bounds action rejects an otherwise realized
+   row because its shared hit-test helper assumes a `PresentationSource.RootVisual` shape that
+   the docked LibreWPF Tools pad does not provide. Both require fixes and a fresh complete run.
+   **Acceptance:** the documented v3 runner is green for the FormsDesigner, WinUIXamlDesigner
+   and WpfDesigner journeys, with platform-limited Microsoft cases skipped only by their traits.
 
 ### P2 — Shared shell extraction (Part IV "Shared helpers")
 
@@ -1782,8 +1840,9 @@ acceptance check, so the list can be resumed by a fresh session at any point.
     divergence. Verified live: before the `OutlineContent` fix the probe reported
     `names: ["TextBlock [PaneTitle]"]`; after, it reports the full designed tree and tracks
     `selected` through a root selection made on the surface.
-  - Full 12-test cross-designer regression (all resize-drag/drag-drop/outline/properties
-    tests across WinForms, WPF, WinUI) green after these fixes.
+  - The then-current 12-test cross-designer regression was green after these fixes. This is
+    historical only: the 2026-10-20 full `AddInTests` run found the two regressions recorded in
+    P1-4 above, so it must not be treated as current verification.
 - **WPF mouse-driven mutations were silently not marking the document dirty.**
   `WpfSurfaceDesignerControl`'s four mutation-commit paths (resize/move drag, toolbox drop,
   hit-test/select, Delete key) were fire-and-forget `async void` handlers that called their
@@ -1879,39 +1938,23 @@ acceptance check, so the list can be resumed by a fresh session at any point.
 
 ### P4 — TypeScript/JavaScript addin (rebuilt, not migrated)
 
-13. **TS/JS support via the existing LSP infrastructure.** The legacy `TypeScriptBinding`
-    (SharpDevelop 5.x, `src/AddIns/BackendBindings/TypeScript/`) and `ICSharpCode.Scripting`
-    are dead: they depend on `Noesis.Javascript` (x86 V8 bridge) whose DLLs are gone from
-    `Libraries/`, package a 2014-era `typescriptServices.js`, and are v4.5/x86/old-style
-    csproj — they must be dropped from `SharpDevelop.sln` rather than migrated. The MonoDevelop
-    port (`mrward/typescript-addin`) is the same code on V8.NET; neither is a reference.
-    **No new LSP infrastructure is needed** — OpenDevelop already has a full LSP client stack
-    (`ICSharpCode.SharpDevelop.LanguageServices.Lsp` in
-    `src/Main/Base/Project/Src/LanguageServices/`: `LanguageServiceRegistry`,
-    `LspServiceManager` per-workspace-root service caching, `LspLanguageService`,
-    `LspCodeCompletionBinding`). `LspServerRegistry.CreateDefault()` already registers
-    `.ts/.tsx/.js/.jsx` → `typescript-language-server --stdio`
-    (src/Main/Base/Project/Src/LanguageServices/Lsp/LspServerRegistry.cs:107-111), and the
-    F# addin demonstrates the addin-side pattern — `RegisterFSharpLanguageServiceCommand`
-    is a 5-line `registry.RegisterExtension(".fs", LspServiceManager.GetService)`.
-    **Decision (2026-08-18): use the TypeScript 7 Go language server, preview build.** TS 7.0
-    is GA (2026-07-08; `typescript` npm package, `tsc --lsp --stdio` is the LSP entry point)
-    and the `@typescript/native-preview` npm package ships current nightlies with the same
-    `--lsp --stdio` surface; the native binary needs no Node runtime. The language service is
-    "nearly all features implemented" and the 7.1 iteration plan (Beta 2026-09-09, RC
-    2026-10-20, Stable 2026-11-10) is API stabilization — not LSP feature work — so an LSP
-    client is not exposed to the gap. Swap the `.ts/.tsx/.js/.jsx` launch spec in
-    `LspServerRegistry.CreateDefault()` (LspServerRegistry.cs:107-111) from
-    `typescript-language-server --stdio` to the TS 7 binary: command = the npm-installed
-    `tsgo`/`tsc` binary path (`@typescript/native-preview` or `typescript`), arguments =
-    `--lsp --stdio`, languageId stays `typescript`. Same for `.js`/`.jsx` (languageId
-    `javascript`). Validate the documented preview gaps (string-literal completion, signature
-    help in edge cases) against the sample workspace before treating them as regressions; pin
-    the npm version in a lockfile so a nightly cannot move underneath the IDE. Keep the F#
-    pattern as the addin shell.
-    **Acceptance:** `.ts`/`.tsx`/`.js`/`.jsx` open in AvalonEdit with highlighting,
-    completion, go-to-definition, find-references, rename, and diagnostics through the LSP
-    client; legacy `TypeScriptBinding`/`Scripting` removed from the solution.
+13. **TS/JS support via the existing LSP infrastructure.** This work is implemented by the
+    net10 `src/AddIns/BackendBindings/TypeScriptBinding/` addin, not by the obsolete
+    `src/AddIns/BackendBindings/TypeScript/` project. Its autostart command locates a native
+    TypeScript 7 `tsgo`/`tsc` binary (or `OD_TSGO_BIN`), launches it with `--lsp --stdio`, and
+    registers `.ts`/`.tsx` as `typescript` and `.js`/`.jsx` as `javascript`; the addin also owns
+    syntax highlighting, completion binding and outline registration.
+
+    The old TypeScript project remains only in stale legacy solution files and may be removed
+    from those indexes when they are deliberately maintained. `ICSharpCode.Scripting` is **not**
+    removable: current PackageManagement production projects and tests still reference it.
+    Treating it as dead would break those consumers. The active `OpenDevelop.Mvp.slnx` already
+    contains the net10 TypeScript addin and does not include the old TypeScript or Scripting
+    projects.
+
+    **Current acceptance:** `.ts`/`.tsx`/`.js`/`.jsx` open in AvalonEdit through the net10
+    TypeScriptBinding addin, with a native TypeScript 7 binary discoverable or explicitly
+    supplied. Do not remove `ICSharpCode.Scripting` while PackageManagement consumes it.
 
 ### Done (2026-08-20)
 
