@@ -298,3 +298,5 @@ the excluded `Startup/SplashScreen.cs`, `src/Setup/**` WiX and `.tgitconfig`. Th
 - `doc/technotes/librewpf.md` (LibreWPF local feed, repack, stale-cache traps)
 - `doc/technotes/in-process-analysis.md`, `doc/technotes/winforms-designer.md`
 - `tests/OpenDevelop.IntegrationTests/TESTING.md`
+- `../AGENTS.md` — the external add-in checkouts (CoreWF, Stride, MAUI-Designer), how to locate
+  them by their `.addin` manifests, and how their integration suites are run against this repo
