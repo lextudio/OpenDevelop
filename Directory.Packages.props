@@ -46,6 +46,8 @@
     <!-- <PackageVersion Include="LeXtudio.DevFlow.Agent.Wpf" Version="0.3.0" /> -->
     <PackageVersion Include="McMaster.Extensions.CommandLineUtils" Version="5.1.0" />
     <PackageVersion Include="MessagePack" Version="3.1.12" />
+    <!-- Transitive via Uno; 0.21.2 is flagged NU1903. -->
+    <PackageVersion Include="Tmds.DBus.Protocol" Version="0.95.1" />
     <PackageVersion Include="Microsoft.Build" Version="18.8.2" />
     <PackageVersion Include="Microsoft.Build.Framework" Version="18.8.2" />
     <PackageVersion Include="Microsoft.Build.Runtime" Version="18.8.2" />
@@ -111,6 +113,9 @@
     <PackageVersion Include="System.Composition.AttributedModel" Version="10.0.11" />
     <PackageVersion Include="System.Data.SqlClient" Version="4.9.1" />
     <PackageVersion Include="System.IO.Packaging" Version="11.0.0-preview.5.26302.115" />
+    <!-- Patched releases of transitive deps pulled in by LibreWPF; 10.0.11 trips NU1902/NU1903. -->
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+    <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.13" />
     <PackageVersion Include="System.Net.Http.Json" Version="11.0.0-preview.5.26302.115" />
     <PackageVersion Include="System.Windows.Extensions" Version="11.0.0-preview.5.26302.115" />
     <PackageVersion Include="TomsToolbox.Composition.Analyzer" Version="2.24.0" />

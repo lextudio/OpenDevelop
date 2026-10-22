@@ -1,5 +1,7 @@
 <Project>
   <PropertyGroup>
+    <!-- LibreWPF.Sdk defaults its net10 support packages (incl. System.Security.Cryptography.Xml/Pkcs) to 10.0.11, which trips NU1902/NU1903; 10.0.13 is the patched release. -->
+    <ProGpuWpfNet10SupportPackageVersion>10.0.13</ProGpuWpfNet10SupportPackageVersion>
     <!--
       LibreWPF.Sdk defaults every LibreWPF/LibreWinForms package it pulls in to its OWN package
       version (see ProGPU.Wpf.Sdk.targets: ProGpuWpfManagedPackageVersion and
