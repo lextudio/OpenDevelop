@@ -157,6 +157,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 
         CaptureFixtureBaseline();
         StopApp();
+        SweepStaleConfigDirectories();
         await WaitForPortFreeAsync(TimeSpan.FromSeconds(30));
         DeleteStaleViewStateMemento();
         await StartAsync();
@@ -248,14 +249,123 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     {
         StopApp();
         _http.Dispose();
+        // Before the gate is released: the next fixture may start writing into the same shared
+        // fixture folders the moment it is, and its captures must not be swept up with ours.
+        await CleanUpRunArtifactsAsync();
         if (_gateHeld)
         {
             _gateHeld = false;
             FixtureGate.Release();
         }
-        await Task.CompletedTask;
         VerifyFixturesUnchanged();
     }
+
+    #region Run artifact cleanup
+
+    // Everything a run leaves behind that nothing else will ever remove. The app under test is
+    // launched with a private -configdir, and the profiler tests capture real CPU, allocation and
+    // heap traces into it (a single run measured ~140 MB); the profiler tests also open solutions
+    // under tests/fixtures, so their captures land in <fixture>/.od/profiling inside the
+    // repository. Neither location is cleaned by the product (it only prunes down to its retained
+    // session count), so without this they accumulate for ever: 286 abandoned config directories
+    // and 821 MB had piled up in the temp folder before this existed.
+    //
+    // Set OD_TEST_KEEP_ARTIFACTS=1 to keep them, for example to open a failed run's capture.
+    const string KeepArtifactsVariable = "OD_TEST_KEEP_ARTIFACTS";
+
+    // A run that crashed or was killed never reaches DisposeAsync. Anything this old cannot belong
+    // to a run still in progress, so it is safe to remove even with other runs going concurrently.
+    static readonly TimeSpan StaleConfigAge = TimeSpan.FromDays(1);
+
+    static bool KeepArtifacts =>
+        Environment.GetEnvironmentVariable(KeepArtifactsVariable) is { Length: > 0 } value && value != "0";
+
+    async Task CleanUpRunArtifactsAsync()
+    {
+        if (KeepArtifacts)
+            return;
+        await TryDeleteDirectoryAsync(_configDirectory);
+        foreach (var store in EnumerateFixtureProfilingStores())
+        {
+            await TryDeleteDirectoryAsync(store);
+            // Only the folder this run created: leave .od alone if anything else is in it.
+            var parent = Path.GetDirectoryName(store);
+            try
+            {
+                if (parent is not null && Directory.Exists(parent) && !Directory.EnumerateFileSystemEntries(parent).Any())
+                    Directory.Delete(parent);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
+    }
+
+    void SweepStaleConfigDirectories()
+    {
+        if (KeepArtifacts)
+            return;
+        var root = Path.Combine(Path.GetTempPath(), "od-integration-config");
+        if (!Directory.Exists(root))
+            return;
+        foreach (var directory in Directory.EnumerateDirectories(root))
+        {
+            if (string.Equals(directory, _configDirectory, StringComparison.OrdinalIgnoreCase))
+                continue;
+            try
+            {
+                if (DateTime.UtcNow - Directory.GetLastWriteTimeUtc(directory) > StaleConfigAge)
+                    Directory.Delete(directory, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // In use by something else: the next run tries again.
+            }
+        }
+    }
+
+    // <fixture>/.od/profiling for every fixture that has one.
+    static IEnumerable<string> EnumerateFixtureProfilingStores()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var fixtures = Path.Combine(dir, "tests", "fixtures");
+            if (Directory.Exists(fixtures))
+            {
+                return Directory.EnumerateDirectories(fixtures)
+                    .Select(fixture => Path.Combine(fixture, ".od", "profiling"))
+                    .Where(Directory.Exists)
+                    .ToList();
+            }
+            dir = Path.GetDirectoryName(dir);
+        }
+        return [];
+    }
+
+    // Best effort: the app was only just killed, and Windows can hold a trace open for a moment
+    // after its process is gone. Failing to delete garbage must never fail the run.
+    async Task TryDeleteDirectoryAsync(string path)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                    Directory.Delete(path, recursive: true);
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (attempt >= 10)
+                {
+                    AppendAppOutput("fixture", $"WARNING: could not delete test artifacts '{path}': {ex.Message}");
+                    return;
+                }
+                await Task.Delay(500);
+            }
+        }
+    }
+
+    #endregion
 
     #region Fixture integrity
 

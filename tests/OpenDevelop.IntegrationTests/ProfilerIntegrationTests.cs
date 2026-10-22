@@ -17,6 +17,8 @@ public sealed class ProfilerIntegrationTests : IAsyncDisposable
 
 	readonly OpenDevelopAppFixture app;
 	readonly List<Process> started = [];
+	// Diagnostic-port socket files a test created in the temp folder (not named pipes, which the OS reclaims).
+	readonly List<string> socketFiles = [];
 
 	public ProfilerIntegrationTests(OpenDevelopAppFixture app) => this.app = app;
 
@@ -29,6 +31,10 @@ public sealed class ProfilerIntegrationTests : IAsyncDisposable
 			// real test failure.
 			try { process.Kill(entireProcessTree: true); } catch { /* already gone */ }
 			process.Dispose();
+		}
+		foreach (var socket in socketFiles)
+		{
+			try { File.Delete(socket); } catch { /* best effort: the temp folder is not ours to fail a run over */ }
 		}
 		return ValueTask.CompletedTask;
 	}
@@ -171,6 +177,8 @@ public sealed class ProfilerIntegrationTests : IAsyncDisposable
 		var address = OperatingSystem.IsWindows()
 			? "odp-it-" + Guid.NewGuid().ToString("N")[..10]
 			: Path.Combine(Path.GetTempPath(), "odp-it-" + Guid.NewGuid().ToString("N")[..10] + ".sock");
+		if (!OperatingSystem.IsWindows())
+			socketFiles.Add(address);
 		var listening = app.InvokeAsync("od.profiler.listen-port", address, "Cpu", 3, 90);
 		await Task.Delay(2000);
 
