@@ -116,6 +116,9 @@ public class DesignSurface : DesignerCanvas
 	// Pointer injection and window deactivation can deliver the matching key-up before the
 	// mouse-up reaches this control. A click's modifier semantics belong to its press, so retain
 	// that state for the deferred pick instead of re-reading the potentially changed keyboard.
+	// Only an accepted press assigns it, which is sufficient: the mouse-up click paths are also
+	// reachable only for a press that set dragPossible/pageResizeEdge, so a rejected press cannot
+	// be read with an older value.
 	bool ctrlAtPress;
 
 	public DesignSurface()

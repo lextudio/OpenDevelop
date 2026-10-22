@@ -69,10 +69,10 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
 		// native mouse injection but does not yet implement the matching held-key endpoint.
 		if (!OperatingSystem.IsMacOS()) return;
 
-			// Exercise the actual native modifier state. The shared canvas defers selection until
-			// mouse-up but snapshots modifiers at mouse-down: a Ctrl-click on a selected member
-			// collapses to it even if the OS delivers Ctrl-up first, while a Ctrl-drag takes the
-			// group-drag path and must keep the whole selection.
+		// Exercise the actual native modifier state. The shared canvas defers selection until
+		// mouse-up but snapshots modifiers at mouse-down: a Ctrl-click adds the unselected
+		// second member even if the OS delivers Ctrl-up first, while a Ctrl-drag takes the
+		// group-drag path and must keep the whole selection.
 		var sample = Path.GetDirectoryName(SampleSolutionPath)!;
 		var xamlPath = Path.Combine(sample, "MainWindow.xaml");
 		var originalXaml = await File.ReadAllTextAsync(xamlPath);
@@ -96,9 +96,10 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
 				return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
 			}, TimeSpan.FromSeconds(90)), status.ToString());
 
-			// The canvas reads Keyboard.Modifiers when the click completes. A native keydown sent
-			// while the window is still becoming active can be missed, turning the Ctrl-click into
-			// a plain click; confirm the IDE sees Ctrl before pressing, and retry the hold if not.
+			// The canvas snapshots the modifiers when the press arrives. A native keydown sent
+			// while the window is still becoming active can be missed before that press, turning
+			// the Ctrl-click into a plain click; confirm the IDE sees Ctrl before pressing, and
+			// retry the hold if not.
 			async Task HoldCtrlAsync()
 			{
 				JsonElement modifiers = default;
@@ -114,9 +115,15 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
 				Assert.Fail("The IDE never observed the held Ctrl key: " + modifiers);
 			}
 
-			var initial = await app.InvokeAsync("od.wpf-designer.multi-select", "first,second");
-			var initialIds = initial.GetProperty("selectedIds").EnumerateArray().Select(id => id.GetString()).ToArray();
-			Assert.Equal(2, initialIds.Length);
+			// selectedIds are index paths ("0,0"), not x:Names: learn both once, then set the
+			// initial state the modifier steps need.
+			var both = await app.InvokeAsync("od.wpf-designer.multi-select", "first,second");
+			var ids = both.GetProperty("selectedIds").EnumerateArray().Select(id => id.GetString()).ToArray();
+			Assert.Equal(2, ids.Length);
+			var idFirst = ids[0];
+			var idSecond = ids[1];
+			var initial = await app.InvokeAsync("od.wpf-designer.multi-select", "first");
+			Assert.Equal(new[] { idFirst }, initial.GetProperty("selectedIds").EnumerateArray().Select(id => id.GetString()).ToArray());
 			var second = await app.InvokeAsync("od.wpf-designer.query-element-screen-bounds", "second");
 			Assert.True(second.GetProperty("success").GetBoolean(), second.ToString());
 			var secondX = second.GetProperty("centerX").GetDouble();
@@ -126,10 +133,24 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
 			Exception? clickFailure = null;
 			var ctrlReleasedBeforeMouseUp = false;
 			try {
-				Assert.True((await app.PressPointerAsync(secondX, secondY, ensureForeground: false)).GetProperty("ok").GetBoolean());
+				Assert.True((await app.PressPointerAsync(secondX, secondY, ensureForeground: true)).GetProperty("ok").GetBoolean());
 				var released = await app.KeyUpAsync("ctrl");
 				ctrlReleasedBeforeMouseUp = true;
 				Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+				JsonElement modifiersAfterRelease = default;
+				Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+					modifiersAfterRelease = await app.InvokeAsync("od.keyboard.modifiers");
+					return !modifiersAfterRelease.GetProperty("control").GetBoolean();
+				}, TimeSpan.FromSeconds(2), initialDelayMs: 50, maxDelayMs: 200), modifiersAfterRelease.ToString());
+				// The key helper is its own process and can leave another window in front, which
+				// would deliver the release outside the design surface and drop the click. Make the
+				// IDE the foreground window again immediately before the release.
+				JsonElement activation = default;
+				Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+					activation = await app.InvokeAsync("od.activate");
+					return (activation.TryGetProperty("foregrounded", out var foreground) && foreground.ValueKind == JsonValueKind.True)
+						|| (activation.TryGetProperty("nativeFocused", out var native) && native.ValueKind == JsonValueKind.True);
+				}, TimeSpan.FromSeconds(5), initialDelayMs: 50, maxDelayMs: 200), activation.ToString());
 				Assert.True((await app.ReleasePointerAsync(secondX, secondY)).GetProperty("ok").GetBoolean());
 			}
 			catch (Exception ex) {
@@ -144,20 +165,48 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
 				}
 			}
 
-			// This catches the former state where second was reported as primary although only
-			// first remained selected, without adding a document mutation just to inspect it.
-			var collapsed = await app.InvokeAsync("od.wpf-designer.status");
-			Assert.Equal(new[] { initialIds[1] }, collapsed.GetProperty("selectedIds").EnumerateArray().Select(id => id.GetString()).ToArray());
+			// This is discriminating: the old mouse-up modifier read would produce only "second".
+			var expanded = await app.InvokeAsync("od.wpf-designer.status");
+			var expandedIds = expanded.GetProperty("selectedIds").EnumerateArray().Select(id => id.GetString()).ToArray();
+			if (!expandedIds.SequenceEqual(new[] { idFirst, idSecond })) {
+				// The intermittent shape of this failure is a selection that did not change at all,
+				// which looks like the click landing on the other element: capture fresh geometry
+				// and the second pointer target before failing, so the next run can be diagnosed.
+				var firstNow = await app.InvokeAsync("od.wpf-designer.query-element-screen-bounds", "first");
+				var secondNow = await app.InvokeAsync("od.wpf-designer.query-element-screen-bounds", "second");
+				Assert.Fail($"Expected [{idFirst},{idSecond}] after the Ctrl-click at ({secondX},{secondY}); "
+					+ $"got [{string.Join(",", expandedIds)}]. first={firstNow} second={secondNow} status={expanded}");
+			}
 
-			// A lone selection keeps the established Ctrl-toggle semantics. Poll because the
-			// selection owner refreshes the exposed status on the next UI dispatch turn.
+			// Clicking a member of a two-element selection collapses to that member. Poll because
+			// the selection owner refreshes the exposed status on the next UI dispatch turn.
 			// The surface also recognizes a double-click within 500 ms for inline edit, so make
 			// this an independent Ctrl-click rather than accidentally taking that gesture path.
 			await Task.Delay(550);
 			await HoldCtrlAsync();
+			Exception? collapseFailure = null;
+			try {
+				Assert.True((await app.PressPointerAsync(secondX, secondY, ensureForeground: true)).GetProperty("ok").GetBoolean());
+				Assert.True((await app.ReleasePointerAsync(secondX, secondY)).GetProperty("ok").GetBoolean());
+			}
+			catch (Exception ex) {
+				collapseFailure = ex;
+				throw;
+			}
+			finally {
+				var released = await app.KeyUpAsync("ctrl");
+				if (collapseFailure is null)
+					Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+			}
+			var collapsed = await app.InvokeAsync("od.wpf-designer.status");
+			Assert.Equal(new[] { idSecond }, collapsed.GetProperty("selectedIds").EnumerateArray().Select(id => id.GetString()).ToArray());
+
+			// A lone selection keeps the established Ctrl-toggle semantics.
+			await Task.Delay(550);
+			await HoldCtrlAsync();
 			Exception? deselectFailure = null;
 			try {
-				Assert.True((await app.PressPointerAsync(secondX, secondY, ensureForeground: false)).GetProperty("ok").GetBoolean());
+				Assert.True((await app.PressPointerAsync(secondX, secondY, ensureForeground: true)).GetProperty("ok").GetBoolean());
 				Assert.True((await app.ReleasePointerAsync(secondX, secondY)).GetProperty("ok").GetBoolean());
 			}
 			catch (Exception ex) {
@@ -185,7 +234,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
 			await HoldCtrlAsync();
 			Exception? dragFailure = null;
 			try {
-				Assert.True((await app.PressPointerAsync(firstX, firstY, ensureForeground: false)).GetProperty("ok").GetBoolean());
+				Assert.True((await app.PressPointerAsync(firstX, firstY, ensureForeground: true)).GetProperty("ok").GetBoolean());
 				await app.DragPointerInStepsAsync(firstX, firstY, firstX + 24, firstY + 12, steps: 4);
 			}
 			catch (Exception ex) {
@@ -199,7 +248,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
 			}
 
 			var retained = await app.InvokeAsync("od.wpf-designer.status");
-			Assert.Equal(initialIds, retained.GetProperty("selectedIds").EnumerateArray().Select(id => id.GetString()).ToArray());
+			Assert.Equal(new[] { idFirst, idSecond }, retained.GetProperty("selectedIds").EnumerateArray().Select(id => id.GetString()).ToArray());
 		} finally {
 			try {
 				await app.InvokeAsync("od.close-active-view");
