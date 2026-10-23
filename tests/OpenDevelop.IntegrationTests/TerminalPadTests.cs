@@ -743,6 +743,36 @@ public sealed class TerminalPadTests
 		}
 	}
 
+	[Fact]
+	public async Task TerminalPad_MapsTheMacEditingKeys()
+	{
+		if (!OperatingSystem.IsMacOS())
+			return; // the mapping exists only on macOS
+		await ShowPadAsync();
+		Assert.True((await app.InvokeAsync("od.terminal.new", "/bin/sh")).GetProperty("success").GetBoolean());
+		// Read 12 raw bytes (no line editing, so Ctrl+U and friends reach us) and print them in hex.
+		await SendAsync("stty -icanon -echo min 1 time 0; head -c 12 | od -An -tx1; stty sane\r");
+		await Task.Delay(500);
+		foreach (var (key, modifiers) in new[] { ("Left", "alt"), ("Right", "alt"), ("Back", "alt"), ("Left", "windows"), ("Right", "windows"), ("Back", "windows"), ("Delete", "windows"), ("Delete", "alt") })
+		{
+			var result = await app.InvokeAsync("od.terminal.key", key, modifiers);
+			Assert.True(result.GetProperty("handled").GetBoolean(), $"{modifiers}+{key}: {result}");
+		}
+		// Option+Left/Right/Backspace = ESC b / ESC f / ESC DEL; Cmd+Left/Right/Backspace/Delete = Ctrl+A / Ctrl+E / Ctrl+U / Ctrl+K; Option+Delete = ESC d.
+		// (BSD od pads its columns, so compare with the runs of spaces collapsed.)
+		const string expected = "1b 62 1b 66 1b 7f 01 05 15 0b 1b 64";
+		JsonElement screen = default;
+		for (var attempt = 0; attempt < 50; attempt++)
+		{
+			screen = await app.InvokeAsync("od.terminal.text");
+			if (Lines(screen).Any(l => string.Join(" ", l.Split(' ', StringSplitOptions.RemoveEmptyEntries)) == expected))
+				break;
+			await Task.Delay(100);
+		}
+		Assert.True(Lines(screen).Any(l => string.Join(" ", l.Split(' ', StringSplitOptions.RemoveEmptyEntries)) == expected), $"The shell never read {expected}.\n{screen}");
+		await app.InvokeAsync("od.terminal.kill");
+	}
+
 	async Task WaitForMouseTrackingAsync(bool expected)
 	{
 		JsonElement last = default;

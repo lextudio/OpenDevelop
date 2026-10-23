@@ -13,6 +13,31 @@ namespace OpenDevelop.Terminal
 			[Key.Insert] = G.KeyInsert, [Key.Delete] = G.KeyDelete,
 		};
 
+		/// <summary>
+		/// What a Mac user expects the Option/Cmd editing keys to do in a shell (the same mapping VS Code's terminal has by default):
+		/// Option+Left/Right/Backspace/Delete work on words (ESC b, ESC f, ESC DEL, ESC d); Cmd+Left/Right go to the start/end of the line
+		/// (Ctrl+A, Ctrl+E) and Cmd+Backspace/Delete delete to the start/end of the line (Ctrl+U, Ctrl+K). Only with exactly that one modifier.
+		/// </summary>
+		public static string MacLineEditing(Key key, ModifierKeys modifiers)
+		{
+			if (modifiers == ModifierKeys.Alt) {
+				switch (key) {
+					case Key.Left: return "\u001bb";
+					case Key.Right: return "\u001bf";
+					case Key.Back: return "\u001b\u007f";
+					case Key.Delete: return "\u001bd";
+				}
+			} else if (modifiers == ModifierKeys.Windows) { // Cmd
+				switch (key) {
+					case Key.Left: return "\u0001";
+					case Key.Right: return "\u0005";
+					case Key.Back: return "\u0015";
+					case Key.Delete: return "\u000b";
+				}
+			}
+			return null;
+		}
+
 		/// <param name="isText">The key types a character (letters, digits, space): those are only taken here with Ctrl/Alt.</param>
 		public static bool TryMap(Key key, out int ghosttyKey, out string text, out bool isText)
 		{

@@ -737,6 +737,12 @@ namespace OpenDevelop.Terminal
 					CloseRequested?.Invoke();
 				return true;
 			}
+			if (OperatingSystem.IsMacOS() && TerminalKeys.MacLineEditing(key == Key.System ? Key.None : key, modifiers) is { } macSequence) {
+				session.ScrollToBottom();
+				ClearSelection();
+				session.Send(macSequence);
+				return true;
+			}
 			if (command || !TerminalKeys.TryMap(key, out int ghosttyKey, out string text, out bool isText))
 				return false;
 			bool ctrlOrAlt = (modifiers & (ModifierKeys.Control | ModifierKeys.Alt)) != 0;
