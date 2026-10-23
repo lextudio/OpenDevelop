@@ -4,6 +4,16 @@
     <!-- Force transitive dependencies onto the versions pinned here; without it a package can
          drag in an older, vulnerable release (NU1902/NU1903) behind our back. -->
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+    <!-- LibGhostty.Net 1.0.3 carries the win-arm64 terminal assets, so it is used wherever those assets are built or
+         shipped and nowhere else: (1) an explicit win-arm64 RuntimeIdentifier, (2) a Windows distribution build, which is one
+         RID-less pass carrying every architecture's assets (dist.ps1/build.ps1 pass OpenDevelopDistributionBuild and
+         OpenDevelopDistributionRidFamily=win), (3) a plain build on a Windows ARM64 machine. Plain builds are RID-less (the
+         SDK assigns no RID unless ProGpuWpfUseCurrentRuntimeIdentifier is true, and then only after this file is imported),
+         so (3) keys on the process architecture instead of a RuntimeIdentifier. -->
+    <LibGhosttyNetVersion>1.0.2</LibGhosttyNetVersion>
+    <LibGhosttyNetVersion Condition="'$(RuntimeIdentifier)' == 'win-arm64'">1.0.3</LibGhosttyNetVersion>
+    <LibGhosttyNetVersion Condition="'$(OpenDevelopDistributionBuild)' == 'true' And '$(OpenDevelopDistributionRidFamily)' == 'win'">1.0.3</LibGhosttyNetVersion>
+    <LibGhosttyNetVersion Condition="$([MSBuild]::IsOSPlatform('Windows')) And '$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)' == 'Arm64'">1.0.3</LibGhosttyNetVersion>
   </PropertyGroup>
   <!-- Vendored UI libraries retain their upstream package policy. Avoid placing
        configuration files inside their working trees/submodules.
@@ -42,8 +52,9 @@
     <!-- Derives the assembly version from git tags; see GitVersion.yml. -->
     <PackageVersion Include="GitVersion.MsBuild" Version="6.5.1" />
     <PackageVersion Include="LeXtudio.DevFlow.Agent.Core" Version="0.3.1" />
-    <!-- Published by lextudio/libghostty-net to the private lextudio GitHub Packages feed. -->
-    <PackageVersion Include="LibGhostty.Net" Version="1.0.3" />
+    <!-- Published by lextudio/libghostty-net. 1.0.3 (private lextudio GitHub Packages feed) exists only to carry the
+         win-arm64 terminal assets, so every build that does not build or ship them keeps 1.0.2, which restores from nuget.org without credentials. -->
+    <PackageVersion Include="LibGhostty.Net" Version="$(LibGhosttyNetVersion)" />
     <PackageVersion Include="Porta.Pty" Version="2.2.3" />
     <PackageVersion Include="LeXtudio.DevFlow.Agent.LibreWpf" Version="0.3.1" />
     <!-- <PackageVersion Include="LeXtudio.DevFlow.Agent.Wpf" Version="0.3.0" /> -->
