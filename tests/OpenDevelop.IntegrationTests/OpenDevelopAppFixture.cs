@@ -1015,9 +1015,10 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 
     /// <summary>Holds a real OS key across later native pointer actions (for example Ctrl-click
     /// and Ctrl-drag), rather than sending an element-scoped semantic key event.</summary>
-    public async Task<JsonElement> KeyDownAsync(string key)
+    public async Task<JsonElement> KeyDownAsync(string key, bool ensureForeground = true)
     {
-        await EnsureForegroundForPointerInputAsync();
+        if (ensureForeground)
+            await EnsureForegroundForPointerInputAsync();
         return await PostKeyActionAsync("keydown", key);
     }
 

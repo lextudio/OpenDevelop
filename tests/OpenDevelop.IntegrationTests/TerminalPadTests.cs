@@ -1071,6 +1071,38 @@ public sealed class TerminalPadTests
 		}
 	}
 
+	/// <summary>
+	/// Typing with real OS key events: the characters reach the shell through WPF's own key and text routing. An input method would
+	/// compose the letters first, so the journey runs on the ABC layout and restores the previous input source afterwards.
+	/// </summary>
+	[Fact]
+	public async Task TerminalPad_TakesRealKeyboardInput()
+	{
+		if (!OperatingSystem.IsMacOS())
+			return; // real key injection is the macOS cliclick path
+		await ShowPadAsync();
+		Assert.True((await app.InvokeAsync("od.terminal.new", "/bin/sh")).GetProperty("success").GetBoolean());
+		await SendAsync("clear\r");
+		await Task.Delay(500);
+		var point = await app.InvokeAsync("od.terminal.screen-point", 2, 3);
+		await app.ClickPointerAsync(point.GetProperty("x").GetDouble(), point.GetProperty("y").GetDouble());
+		Assert.True((await app.InvokeAsync("od.terminal.screen-point", 0, 0)).GetProperty("focused").GetBoolean());
+		// Activate first, then select the layout, then type without activating again: macOS may restore an app's remembered input
+		// source when it is activated, which would bring a Pinyin source back mid-typing. A machine with neither ABC nor U.S. enabled
+		// fails here rather than skips.
+		await app.InvokeAsync("od.activate");
+		using var layout = MacInputSource.Select(MacInputSource.Abc) ?? MacInputSource.Select(MacInputSource.Us);
+		Assert.NotNull(layout);
+		var selected = MacInputSource.Current();
+		foreach (var key in new[] { "e", "c", "h", "o", "space", "q", "z", "return" })
+		{
+			Assert.True((await app.KeyDownAsync(key, ensureForeground: false)).GetProperty("ok").GetBoolean());
+			await app.KeyUpAsync(key);
+			Assert.Equal(selected, MacInputSource.Current()); // nothing switched the input source while typing
+		}
+		await WaitForLineAsync("qz");
+	}
+
 	async Task WaitForMouseTrackingAsync(bool expected)
 	{
 		JsonElement last = default;

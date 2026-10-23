@@ -137,9 +137,8 @@ Verified live (the journey above, plus the UI tree):
   its share of the available width or height and an independent shell; the combo lists them and
   activating one routes input; killing one leaves its sibling.
 
-Not verified / not done: actual pixels (no screenshot taken), WPF's own routing of real keyboard input (real pointer input is covered, see below; real typing reaches the view too, but with a Pinyin input source active the OS composes letters first - `echo ` arrived as two Chinese characters - so a typing journey is not deterministic and none is kept; DevFlow's pointer endpoints are click/press/drag/move/release only, so a real wheel and a real right-click cannot be injected either): the mouse
-handlers (`OnMouseLeftButtonDown/Move/Up`, wheel) and `OnKeyDown`/`OnTextInput` are only reached by real
-input, the journeys drive the same methods through DevFlow (`HandleKey`, `HandleLeftDown/Up`,
+Not verified / not done: actual pixels (no screenshot taken); WPF's routing of real wheel and right-button input (DevFlow cannot inject a wheel event, see Testing) while real left-button input and real typing are covered (see Testing); the wheel
+and right-button handlers are only reached by real input, the other journeys drive the same methods through DevFlow (`HandleKey`, `HandleLeftDown/Up`,
 `HandleWheel`, `ReportMouse`, `SelectRange`, `Paste`); the options page UI and the shell drop-down popup
 (only their data is tested), the draggable splitter between split panes (a `GridSplitter`, never
 dragged), the View menu shortcuts (commands are invoked through `od.menu.invoke`), vertical split, Windows (including its shell detection), Linux, win-arm64.
@@ -289,7 +288,7 @@ Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, nine
 actions, plus one journey with real OS input): shells, size and alternate screen, keys, horizontal and vertical/nested split; wide text, scrollback,
 selection, wrapped copy, bracketed paste; View menu, Project Browser "Open in Terminal", shell list;
 mouse reporting, alternate-screen wheel, word and line selection; settings; cycling, renaming and the
-end of a shell; IDE theme colours; links; find; the shell's current directory; the right-click menu; dropped files; zoom; Send to Terminal; the macOS editing keys; the cursor; the font family; the bell; real input (`od.terminal.screen-point` gives a cell's screen position): click focus, drag, double and triple click selection, and Ctrl+click on a link with a real held Ctrl key (each gesture waits out the double-click interval, or the OS merges it into the previous click count). The latest recorded macOS arm64 run passed; rerun the suite before treating a different worktree or payload as verified. There are no unit tests of
+end of a shell; IDE theme colours; links; find; the shell's current directory; the right-click menu; dropped files; zoom; Send to Terminal; the macOS editing keys; the cursor; the font family; the bell; real input (`od.terminal.screen-point` gives a cell's screen position): click focus, drag, double and triple click selection, and Ctrl+click on a link with a real held Ctrl key (each gesture waits out the double-click interval, or the OS merges it into the previous click count). Real typing (`TerminalPad_TakesRealKeyboardInput`) first selects the ABC layout through the Text Input Sources API (`MacInputSource`), because an active Pinyin input method composes letters before the app sees them (`echo ` arrived as two Chinese characters); it restores the previous source afterwards, so it briefly changes the machine's input source, and a machine with neither ABC nor U.S. enabled fails it. The latest recorded macOS arm64 run passed; rerun the suite before treating a different worktree or payload as verified. There are no unit tests of
 the engine on its own.
 
 ## Phasing
