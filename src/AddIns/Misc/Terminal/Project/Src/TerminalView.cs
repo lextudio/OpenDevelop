@@ -791,6 +791,10 @@ namespace OpenDevelop.Terminal
 				ClearSelection();
 				return true;
 			}
+			if (modifiers == ModifierKeys.Shift && (key == Key.PageUp || key == Key.PageDown) && !session.IsAlternateScreen) { // Shift+PageUp/Down page through the scrollback
+				Scroll(key == Key.PageUp ? -Math.Max(1, session.Rows - 1) : Math.Max(1, session.Rows - 1));
+				return true;
+			}
 			if (session.HasExited) {
 				// Nothing is listening any more: a key (other than a bare modifier) dismisses the finished terminal.
 				if (key is not (Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin or Key.System))

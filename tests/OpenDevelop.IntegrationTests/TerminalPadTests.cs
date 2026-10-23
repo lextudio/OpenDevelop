@@ -149,6 +149,29 @@ public sealed class TerminalPadTests
 		await KeyAsync("Enter");
 		await WaitForLineAsync("200");
 
+		// Shift+PageUp/PageDown page through the scrollback by a screen less one row; a plain PageUp is the program's key.
+		var page = (ulong)(rows - 1);
+		var bottomOffset = await OffsetAsync();
+		await KeyAsync("PageUp", "shift");
+		Assert.Equal(bottomOffset - page, await OffsetAsync());
+		await KeyAsync("PageDown", "shift");
+		Assert.Equal(bottomOffset, await OffsetAsync());
+		await KeyAsync("PageUp", "shift");
+		await KeyAsync("Enter"); // a key returns to the bottom
+		await SendAsync("echo page-ack-u21\r"); // and the shell still gets keys
+		await WaitForLineAsync("page-ack-u21");
+
+		// On the alternate screen the keys belong to the program: plain and Shift+PageUp arrive as ESC [ 5 ~ and ESC [ 5 ; 2 ~.
+		await SendAsync("printf '\\033[?1049h'; stty -icanon -echo min 1 time 0; head -c 10 | od -An -tx1 > /tmp/od-pgup-u21.txt; stty sane; printf '\\033[?1049l'; echo pgup-done\r");
+		await Task.Delay(500);
+		await KeyAsync("PageUp");
+		await KeyAsync("PageUp", "shift");
+		await WaitForLineAsync("pgup-done");
+		var received = string.Join(" ", (await File.ReadAllTextAsync("/tmp/od-pgup-u21.txt")).Split(new[] { ' ', '\n' }, StringSplitOptions.RemoveEmptyEntries));
+		File.Delete("/tmp/od-pgup-u21.txt");
+		Assert.Equal("1b 5b 35 7e 1b 5b 35 3b 32 7e", received);
+		await KeyAsync("Enter");
+
 		// Selection and Copy: the selected cells come back as text without the blanks after them.
 		await SendAsync("echo select-me-please\r");
 		await WaitForLineAsync("select-me-please");

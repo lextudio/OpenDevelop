@@ -121,6 +121,7 @@ Verified live (the journey above, plus the UI tree):
 - Mouse reporting: after a program enables it (DECSET 1000 + SGR 1006) press/release/wheel arrive as
   `ESC[<0;6;3M`, `...m`, `ESC[<64;6;3M` for the cell (1-based); before that the event goes nowhere. While a
   program tracks the mouse the view neither selects nor scrolls (hold Shift to select, as in xterm).
+- Scrollback paging: Shift+PageUp/PageDown scroll by a screen less one row (not on the alternate screen, where the program gets the key).
 - Alternate screen: the wheel sends arrow keys (xterm "alternate scroll"; `less` moves 3 lines per
   notch). Double click selects a word, triple click the line.
 - Copy: a long line the terminal wrapped is copied as one line (libghostty marks continuation rows), with
