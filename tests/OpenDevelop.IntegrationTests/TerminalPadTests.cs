@@ -554,6 +554,58 @@ public sealed class TerminalPadTests
 		await app.InvokeAsync("od.terminal.kill");
 	}
 
+	[Fact]
+	public async Task TerminalPad_KnowsWhereTheShellIs_ForLinksAndSplits()
+	{
+		await ShowPadAsync();
+		var folder = $"/tmp/od-cwd-{Guid.NewGuid():N}".Substring(0, 20);
+		Directory.CreateDirectory(folder);
+		File.WriteAllLines(Path.Combine(folder, "cwdfile.cs"), new[] { "// one", "// two", "// three" });
+		try
+		{
+			Assert.True((await app.InvokeAsync("od.terminal.new", "/bin/sh")).GetProperty("success").GetBoolean());
+			var started = (await app.InvokeAsync("od.terminal.cwd")).GetProperty("initial").GetString();
+			Assert.NotEqual(folder, started);
+
+			// The directory comes from the operating system, so a plain cd is enough (no shell integration needed).
+			await SendAsync($"cd {folder}\r");
+			string current = "";
+			for (var attempt = 0; attempt < 50; attempt++)
+			{
+				current = (await app.InvokeAsync("od.terminal.cwd")).GetProperty("current").GetString()!;
+				if (current.EndsWith(Path.GetFileName(folder), StringComparison.Ordinal))
+					break;
+				await Task.Delay(100);
+			}
+			Assert.EndsWith(Path.GetFileName(folder), current); // /tmp is /private/tmp on macOS, so only the end is compared
+			Assert.True(File.Exists(Path.Combine(current, "cwdfile.cs")));
+
+			// A relative file reference resolves against that directory, not the one the shell started in.
+			await SendAsync("printf 'lnk %s:2\\n' cwdfile.cs\r");
+			await WaitForLineAsync("lnk cwdfile.cs:2");
+			await Task.Delay(500);
+			var lines = Lines(await app.InvokeAsync("od.terminal.text")).ToList();
+			var row = lines.FindIndex(l => l.StartsWith("lnk ", StringComparison.Ordinal));
+			Assert.True(row >= 0, string.Join("\n", lines));
+			var link = (await app.InvokeAsync("od.terminal.links")).GetProperty("links").EnumerateArray().Single(l => l.GetProperty("row").GetInt32() == row);
+			Assert.Equal(Path.Combine(current, "cwdfile.cs"), link.GetProperty("target").GetString());
+			Assert.Equal(2, link.GetProperty("line").GetInt32());
+
+			// A split starts in the directory the terminal beside it is in now.
+			var split = await app.InvokeAsync("od.terminal.split");
+			Assert.True(split.GetProperty("success").GetBoolean(), split.ToString());
+			Assert.Equal(current, (await app.InvokeAsync("od.terminal.cwd")).GetProperty("current").GetString());
+			await SendAsync("echo here-$(basename \"$PWD\")\r");
+			await WaitForAsync("here-" + Path.GetFileName(folder));
+			await app.InvokeAsync("od.terminal.kill");
+			await app.InvokeAsync("od.terminal.kill");
+		}
+		finally
+		{
+			Directory.Delete(folder, true);
+		}
+	}
+
 	async Task WaitForMouseTrackingAsync(bool expected)
 	{
 		JsonElement last = default;

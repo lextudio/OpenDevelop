@@ -272,6 +272,15 @@ namespace OpenDevelop.Terminal
 			return JsonSerializer.Serialize(new { success = true, open = pad.FindBarOpen, status = pad.FindBarStatus, searches = pad.FindBarSearchCount });
 		}
 
+		[DevFlowAction("od.terminal.cwd", Description = "Where the active terminal's shell is now (read from the operating system) and where it was started")]
+		public static string WorkingDirectory()
+		{
+			var session = Pad()?.Active;
+			if (session == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No active terminal" });
+			return JsonSerializer.Serialize(new { success = true, current = session.CurrentDirectory, initial = session.InitialDirectory });
+		}
+
 		[DevFlowAction("od.terminal.cell", Description = "One visible cell of the active terminal: its text and the colours it is drawn with (#rrggbb, the default colours when the cell has none)")]
 		public static string Cell(int column, int row)
 		{

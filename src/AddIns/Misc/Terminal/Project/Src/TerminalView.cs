@@ -119,7 +119,7 @@ namespace OpenDevelop.Terminal
 				int start = columns[candidate.Start], end = columns[candidate.Start + candidate.Length - 1];
 				if (column < start || column > end)
 					continue;
-				var target = TerminalLinkOpener.Resolve(candidate, session.InitialDirectory);
+				var target = TerminalLinkOpener.Resolve(candidate, session.CurrentDirectory);
 				if (target != null)
 					return new TerminalLinkHit(candidate, target, row, start, end);
 			}
@@ -136,7 +136,7 @@ namespace OpenDevelop.Terminal
 			for (int row = 0; row < snap.Rows; row++) {
 				var text = snap.GetRowText(row, out var columns);
 				foreach (var candidate in TerminalLinks.Find(text)) {
-					var target = TerminalLinkOpener.Resolve(candidate, session.InitialDirectory);
+					var target = TerminalLinkOpener.Resolve(candidate, session.CurrentDirectory);
 					if (target != null)
 						hits.Add(new TerminalLinkHit(candidate, target, row, columns[candidate.Start], columns[candidate.Start + candidate.Length - 1]));
 				}

@@ -12,8 +12,7 @@ namespace OpenDevelop.Terminal
 	{
 		/// <summary>
 		/// The full path of an existing file for a file candidate, the URL for a URL candidate, else null. Relative paths are
-		/// tried against the folder the terminal started in, the solution folder and every project folder (the shell's
-		/// current directory is not known).
+		/// tried against the shell's current directory (<paramref name="startDirectory"/>), the solution folder and every project folder.
 		/// </summary>
 		static readonly Dictionary<string, (DateTime when, string target)> cache = new Dictionary<string, (DateTime, string)>();
 		static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(2);

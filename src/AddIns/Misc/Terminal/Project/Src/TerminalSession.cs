@@ -67,6 +67,12 @@ namespace OpenDevelop.Terminal
 		public string ShellPath { get; private set; } = "";
 		/// <summary>The folder this shell was started in.</summary>
 		public string InitialDirectory { get; private set; } = "";
+
+		/// <summary>
+		/// Where the shell is now (asked of the operating system, so it works whatever the shell does), or the start folder
+		/// when that cannot be read (an ended process, or Windows).
+		/// </summary>
+		public string CurrentDirectory => (HasExited ? null : TerminalProcessInfo.GetWorkingDirectory(Pid)) ?? InitialDirectory;
 		public int Pid => pty.Pid;
 		/// <summary>The program asked for bracketed paste (DECSET 2004).</summary>
 		public bool BracketedPaste { get; private set; }

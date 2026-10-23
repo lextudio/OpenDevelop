@@ -110,7 +110,8 @@ namespace OpenDevelop.Terminal
 			var group = activePane?.Group;
 			if (group == null)
 				return NewSessionAsync();
-			return StartPaneAsync(group, activePane.Session.ShellPath, EstimateColumns(group.Panes.Count + 1), EstimateRows());
+			// A split starts where the terminal beside it is now, not where that one started.
+			return StartPaneAsync(group, activePane.Session.ShellPath, EstimateColumns(group.Panes.Count + 1), EstimateRows(), activePane.Session.CurrentDirectory);
 		}
 
 		// A PTY must start near its final size: before its first layout a view cannot say, so use the

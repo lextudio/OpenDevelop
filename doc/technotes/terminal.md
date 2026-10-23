@@ -98,7 +98,7 @@ Project Browser "Open in Terminal" opens the integrated terminal in that folder 
 `ITerminalHost` (Base interface, registered by the add-in; external terminal app if the add-in is not
 loaded). DevFlow: `od.terminal.new|split|
 activate|send|key|mouse|wheel|click|scroll|select|copy|paste|shells|settings|text|list|kill`; host side
-`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (nine
+`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (ten
 journeys, pass; run with the xUnit v3 runner from `tests/OpenDevelop.IntegrationTests/TESTING.md`).
 
 Verified live (the journey above, plus the UI tree):
@@ -179,7 +179,7 @@ and is also the pad icon).
 | Session dropdown | lists every terminal ("1: <OSC title or shell>", `(split)` for panes sharing a group); selecting one activates its pane | (combo) |
 | New | new terminal with the default shell in the solution folder (else home) | `Add` |
 | Shell arrow beside New | menu of installed shells (macOS/Linux: `$SHELL` and `/etc/shells`; Windows: pwsh, powershell, `ComSpec`, Git bash, wsl) that starts one, and a checkable "Default Shell" submenu | (text) |
-| Split | another shell (same shell as the active one) beside the active pane, in the same group, with a draggable divider | `SplitWindowHorizontal` |
+| Split | another shell (same shell as the active one) beside the active pane, in the same group, starting in the directory the active shell is in now, with a draggable divider | `SplitWindowHorizontal` |
 | Kill | kills the active pane's shell and removes the pane (a new terminal starts if none is left) | `Delete` |
 | Clear | clears screen and scrollback and redraws the prompt | `ClearWindowContent` |
 | Copy / Paste | selection to clipboard / paste (bracketed when the program asked for it) | `Copy`, `Paste` |
@@ -198,12 +198,16 @@ standard xterm cube and grey ramp. A new terminal starts with the current colour
 noticed by each view within about a second (a timer compares the colours, the add-in cannot subscribe to
 the host's theme event) and recolours open terminals, text already on screen included.
 
+The shell's current directory is asked of the operating system (macOS `proc_pidinfo`, Linux
+`/proc/<pid>/cwd`), so it is right after a plain `cd` whatever the shell is and needs no shell integration;
+on Windows, and for an ended shell, the start folder is used instead. Split and link resolution use it.
+
 Links: holding Ctrl (Cmd on macOS) over a URL or a file reference underlines it and shows a hand;
 Ctrl/Cmd+click follows it. Recognised: `https://...` (trailing punctuation and unbalanced `)` dropped),
 `path:line[:col]`, `path(line[,col])` (MSBuild style), absolute/`~/`/relative paths containing a
 separator, Windows drive paths, and a bare `name.ext` only with a line number. A reference is a link only
-if the file exists: relative paths are tried against the folder the terminal started in, the solution
-folder and every project folder (the shell's current directory is not known to the terminal). A file opens
+if the file exists: relative paths are tried against the shell's current directory, the solution
+folder and every project folder. A file opens
 in the editor at the line and column (`SD.FileService.JumpToFilePosition`), a URL in the system browser
 (http/https only). Links are searched per screen row, so a reference wrapped over two rows is not found.
 While a program tracks the mouse, links are off (like selection). Resolving a reference stats the file under
@@ -236,11 +240,11 @@ not handled. Not checked on Windows.
 
 ## Testing
 
-Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, nine journeys, DevFlow
+Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, ten journeys, DevFlow
 actions instead of OS input): shells, size and alternate screen, keys, split; wide text, scrollback,
 selection, wrapped copy, bracketed paste; View menu, Project Browser "Open in Terminal", shell list;
 mouse reporting, alternate-screen wheel, word and line selection; settings; cycling, renaming and the
-end of a shell; IDE theme colours; links; find. There are no unit tests of
+end of a shell; IDE theme colours; links; find; the shell's current directory. There are no unit tests of
 the engine on its own.
 
 ## Phasing
