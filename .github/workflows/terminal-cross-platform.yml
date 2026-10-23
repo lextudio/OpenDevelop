@@ -1,4 +1,4 @@
-name: Terminal Windows ARM64
+name: Terminal integration
 
 # This is intentionally a Terminal-only integration lane.  It is not a general replacement for
 # the platform matrix: its build excludes the rest of the runtime-discovered add-ins and fixtures.
@@ -17,6 +17,7 @@ on:
       - 'externals/wpftoolkit'
       - '.gitmodules'
       - 'tests/OpenDevelop.IntegrationTests/TerminalCrossPlatformTests.cs'
+      - 'tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs'
       - 'tests/OpenDevelop.IntegrationTests/OpenDevelopAppFixture.cs'
       - 'tests/OpenDevelop.IntegrationTests/FixtureTestCaseOrderer.cs'
       - 'tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj'
@@ -37,6 +38,7 @@ on:
       - 'externals/wpftoolkit'
       - '.gitmodules'
       - 'tests/OpenDevelop.IntegrationTests/TerminalCrossPlatformTests.cs'
+      - 'tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs'
       - 'tests/OpenDevelop.IntegrationTests/OpenDevelopAppFixture.cs'
       - 'tests/OpenDevelop.IntegrationTests/FixtureTestCaseOrderer.cs'
       - 'tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj'
@@ -52,9 +54,38 @@ permissions:
 
 jobs:
   terminal:
-    name: Terminal (windows-11-arm)
-    runs-on: windows-11-arm
-    timeout-minutes: 25
+    name: Terminal (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Keep the two Windows architectures as separate native jobs. A successful x64 run must
+          # never be taken as evidence that the ARM64 ConPTY/LibGhostty asset chain also works.
+          - name: windows-x64
+            runner: windows-2025
+            dotnet_architecture: x64
+            rid: win-x64
+            expected_rid: win-x64
+            test_class: OpenDevelop.IntegrationTests.TerminalCrossPlatformTests
+            timeout: 25
+          - name: windows-arm64
+            runner: windows-11-arm
+            dotnet_architecture: arm64
+            rid: win-arm64
+            expected_rid: win-arm64
+            test_class: OpenDevelop.IntegrationTests.TerminalCrossPlatformTests
+            timeout: 25
+          # TerminalPadTests deliberately exercises POSIX terminal semantics (alternate screen,
+          # stty, shell programs and macOS key handling) on a native Apple Silicon runner.
+          - name: macos-arm64
+            runner: macos-15
+            dotnet_architecture: arm64
+            rid: osx-arm64
+            expected_rid: osx-arm64
+            test_class: OpenDevelop.IntegrationTests.TerminalPadTests
+            timeout: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,7 +97,22 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
-          architecture: arm64
+          architecture: ${{ matrix.dotnet_architecture }}
+      # The full macOS journey validates actual key and pointer delivery. Its test host invokes
+      # cliclick rather than simulating those events inside the process, so provision it explicitly
+      # instead of depending on the mutable runner image.
+      - name: Install macOS native input helper
+        if: runner.os == 'macOS'
+        run: brew install cliclick
+      - name: Record native test environment
+        shell: pwsh
+        run: |
+          Write-Host "runner=${{ matrix.name }}"
+          Write-Host "runner.os=$env:RUNNER_OS"
+          Write-Host "runner.arch=$env:RUNNER_ARCH"
+          [System.Runtime.InteropServices.RuntimeInformation]::OSDescription
+          [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture
+          dotnet --info
       - name: Skip the developer-local LibreWPF feed
         shell: pwsh
         run: |
@@ -85,10 +131,11 @@ jobs:
       - name: Build host and Terminal only
         shell: pwsh
         run: |
-          $rid = 'win-arm64'
+          $rid = '${{ matrix.rid }}'
           $dotnetInfo = dotnet --info | Out-String
-          if ($dotnetInfo -notmatch '(?m)^\s*RID:\s+win-arm64\s*$') {
-            throw "Expected the ARM64 .NET SDK. dotnet --info was:`n$dotnetInfo"
+          $expectedRid = '${{ matrix.expected_rid }}'
+          if ($dotnetInfo -notmatch "(?m)^\\s*RID:\\s+$([regex]::Escape($expectedRid))\\s*$") {
+            throw "Expected .NET SDK RID $expectedRid. dotnet --info was:`n$dotnetInfo"
           }
           dotnet build src/Main/SharpDevelop/SharpDevelop.csproj --configuration Debug
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -98,6 +145,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run the Terminal integration journey
         shell: pwsh
+        env:
+          OD_TEST_LOG_DIR: ${{ github.workspace }}/artifacts/terminal-logs
+          OD_TEST_KEEP_ARTIFACTS: '1'
         run: |
           $tests = 'tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll'
-          dotnet $tests -class OpenDevelop.IntegrationTests.TerminalCrossPlatformTests -parallel none
+          dotnet $tests -class '${{ matrix.test_class }}' -parallel none
+      - name: Upload Terminal diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminal-diagnostics-${{ matrix.name }}
+          if-no-files-found: ignore
+          path: |
+            artifacts/terminal-logs
+            ~/Library/Logs/DiagnosticReports/*.ips
