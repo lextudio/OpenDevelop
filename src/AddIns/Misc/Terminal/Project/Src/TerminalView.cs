@@ -40,7 +40,14 @@ namespace OpenDevelop.Terminal
 			TerminalSettings.Changed += OnSettingsChanged;
 			// Coalesce redraws: the PTY thread only sets `dirty`; the UI thread repaints at most every 16 ms.
 			refreshTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(16) };
-			refreshTimer.Tick += (_, _) => Refresh();
+			themeSignature = TerminalTheme.Current().Signature;
+			refreshTimer.Tick += (_, _) => {
+				Refresh();
+				if (++themeTicks >= 60) { // about once a second: the IDE theme can change at any time
+					themeTicks = 0;
+					CheckTheme();
+				}
+			};
 			refreshTimer.Start();
 		}
 
@@ -49,6 +56,19 @@ namespace OpenDevelop.Terminal
 
 		/// <summary>Raised on the UI thread after the view repainted from a fresh snapshot (title and size may have changed).</summary>
 		public event Action Updated;
+
+		string themeSignature;
+		int themeTicks;
+
+		void CheckTheme()
+		{
+			var colors = TerminalTheme.Current();
+			if (colors.Signature == themeSignature)
+				return;
+			themeSignature = colors.Signature;
+			session?.ApplyColors(colors);
+			dirty = true;
+		}
 
 		void OnSettingsChanged()
 		{

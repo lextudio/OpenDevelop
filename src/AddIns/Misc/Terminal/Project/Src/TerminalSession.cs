@@ -74,7 +74,8 @@ namespace OpenDevelop.Terminal
 		/// <summary>Raised on a background thread whenever the screen may have changed.</summary>
 		public event Action Changed;
 
-		public static async Task<TerminalSession> StartAsync(string shell, string workingDirectory, int columns, int rows)
+		/// <param name="colors">Taken by the caller on the UI thread (theme resources are not readable here).</param>
+		public static async Task<TerminalSession> StartAsync(string shell, string workingDirectory, int columns, int rows, TerminalColors colors)
 		{
 			var native = new G(FindNativeLibrary());
 			var environment = new Dictionary<string, string>();
@@ -120,6 +121,7 @@ namespace OpenDevelop.Terminal
 				session.Changed?.Invoke();
 				_ = session.AnnounceExitAsync(e.ExitCode);
 			};
+			session.ApplyColors(colors);
 			_ = Task.Run(session.ReadLoop);
 			return session;
 		}
@@ -252,6 +254,35 @@ namespace OpenDevelop.Terminal
 			if (on >= 0 || off >= 0)
 				BracketedPaste = on > off;
 			modeTail = window.AsSpan(Math.Max(0, window.Length - (BracketedOn.Length - 1))).ToArray();
+		}
+
+		// GHOSTTY_TERMINAL_OPT_COLOR_PALETTE: the C API takes 256 RGB triples (found by testing: setting entry 1
+		// to 123456 made SGR 31 resolve to 123456). The managed binding only names the foreground/background options.
+		const int TerminalOptionColorPalette = 14;
+
+		/// <summary>Sets the default foreground/background and the 256-colour palette; cells already on screen pick them up on the next snapshot.</summary>
+		public void ApplyColors(TerminalColors colors)
+		{
+			var palette = Marshal.AllocHGlobal(256 * 3);
+			var foreground = Marshal.AllocHGlobal(3);
+			var background = Marshal.AllocHGlobal(3);
+			try {
+				Marshal.Copy(colors.PaletteBytes(), 0, palette, 256 * 3);
+				Marshal.Copy(TerminalColors.Rgb(colors.Foreground), 0, foreground, 3);
+				Marshal.Copy(TerminalColors.Rgb(colors.Background), 0, background, 3);
+				lock (gate) {
+					if (disposed)
+						return;
+					native.TerminalSet(terminal, TerminalOptionColorPalette, palette);
+					native.TerminalSet(terminal, G.TerminalOptionColorForeground, foreground);
+					native.TerminalSet(terminal, G.TerminalOptionColorBackground, background);
+				}
+			} finally {
+				Marshal.FreeHGlobal(palette);
+				Marshal.FreeHGlobal(foreground);
+				Marshal.FreeHGlobal(background);
+			}
+			Changed?.Invoke();
 		}
 
 		/// <summary>Whether the program wants mouse reports (then the view must not use the mouse itself).</summary>

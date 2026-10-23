@@ -121,7 +121,7 @@ namespace OpenDevelop.Terminal
 				cwd = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 			TerminalSession session;
 			try {
-				session = await TerminalSession.StartAsync(shell ?? TerminalSession.DefaultShell(), cwd, columns, rows).ConfigureAwait(true);
+				session = await TerminalSession.StartAsync(shell ?? TerminalSession.DefaultShell(), cwd, columns, rows, TerminalTheme.Current()).ConfigureAwait(true);
 			} catch {
 				if (group.Panes.Count == 0)
 					groups.Remove(group);

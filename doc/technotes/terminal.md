@@ -98,7 +98,7 @@ Project Browser "Open in Terminal" opens the integrated terminal in that folder 
 `ITerminalHost` (Base interface, registered by the add-in; external terminal app if the add-in is not
 loaded). DevFlow: `od.terminal.new|split|
 activate|send|key|mouse|wheel|click|scroll|select|copy|paste|shells|settings|text|list|kill`; host side
-`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (six
+`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (seven
 journeys, pass; run with the xUnit v3 runner from `tests/OpenDevelop.IntegrationTests/TESTING.md`).
 
 Verified live (the journey above, plus the UI tree):
@@ -150,6 +150,9 @@ Pitfalls found (keep):
 - A big `dotnet run` of the integration project can look hung: the first test that opens a solution runs
   msbuild for a while, and a fixture start can stall once ("DevFlow agent did not respond within 2
   minutes"); one retry passed. Run it in the background and wait for the summary.
+- libghostty's palette setter is not named in the managed binding (only the foreground/background options
+  are): the C header's option 14 (`GHOSTTY_TERMINAL_OPT_COLOR_PALETTE`, 256 RGB triples) was found to work
+  by setting entry 1 and reading back what SGR 31 resolved to. Options 11 and 12 take one RGB triple.
 - Porta.Pty loads `libporta_pty` from the add-in DLL's directory only, but NuGet leaves it under
   `runtimes/<rid>/native/`; `TerminalSession` installs a `NativeLibrary.SetDllImportResolver`.
 - Porta.Pty's build target derives `OpenConsole.exe` from the first `conpty.dll` it sees, which is
@@ -188,9 +191,15 @@ title). A pane whose shell ended shows "[Process exited with code N]" and any ke
 modifier closes it. Cmd/Ctrl+Shift+C and V copy and paste in the terminal. Scrollback defaults to 10 000 lines (approximate, see pitfalls) and the PTY follows the
 view's size.
 
-Design intent that is **not built yet**: an ANSI palette derived from the editor theme (libghostty's
-default palette is used), find in terminal, clickable file:line links, vertical split, shell-integration
-cwd tracking.
+Colours follow the IDE theme: the default background and foreground are the theme's
+`ToolWindowBackground` and `Foreground` brushes, and the 16 ANSI colours are VS Code's dark or light set
+(dark when the background's luminance is below one half); the rest of the 256-colour palette is the
+standard xterm cube and grey ramp. A new terminal starts with the current colours, and a theme change is
+noticed by each view within about a second (a timer compares the colours, the add-in cannot subscribe to
+the host's theme event) and recolours open terminals, text already on screen included.
+
+Design intent that is **not built yet**: find in terminal, clickable file:line links, vertical split,
+shell-integration cwd tracking.
 
 Shutdown needs no sweep: with `sleep 4322 &` running in a terminal, killing the pane, and also
 terminating (SIGTERM) or killing (SIGKILL) the whole IDE, left no child behind on macOS, because the
@@ -208,11 +217,11 @@ not handled. Not checked on Windows.
 
 ## Testing
 
-Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, six journeys, DevFlow
+Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, seven journeys, DevFlow
 actions instead of OS input): shells, size and alternate screen, keys, split; wide text, scrollback,
 selection, wrapped copy, bracketed paste; View menu, Project Browser "Open in Terminal", shell list;
 mouse reporting, alternate-screen wheel, word and line selection; settings; cycling, renaming and the
-end of a shell. There are no unit tests of
+end of a shell; IDE theme colours. There are no unit tests of
 the engine on its own.
 
 ## Phasing

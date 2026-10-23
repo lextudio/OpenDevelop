@@ -150,7 +150,11 @@ namespace OpenDevelop.Terminal
 				TerminalSettings.ScrollbackLines = scrollbackLines;
 			if (fontSize > 0 || scrollbackLines >= 0)
 				TerminalSettings.RaiseChanged();
-			return JsonSerializer.Serialize(new { success = true, fontSize = TerminalSettings.FontSize, scrollbackLines = TerminalSettings.ScrollbackLines });
+			return JsonSerializer.Serialize(new {
+				success = true, fontSize = TerminalSettings.FontSize, scrollbackLines = TerminalSettings.ScrollbackLines,
+				// The stored IDE theme name ("Light"/"Dark"/"Blue"), so a test that switches the theme can put it back.
+				ideTheme = SD.PropertyService.Get("SharpDevelop.IdeTheme", "Light"),
+			});
 		}
 
 		[DevFlowAction("od.terminal.mouse", Description = "Send a mouse event to the active terminal at a cell, through the same path real mouse input takes: action press|release|motion, button left|right|middle|none; the program only receives it if it enabled mouse reporting")]
@@ -204,6 +208,25 @@ namespace OpenDevelop.Terminal
 			return true;
 		}
 
+		[DevFlowAction("od.terminal.cell", Description = "One visible cell of the active terminal: its text and the colours it is drawn with (#rrggbb, the default colours when the cell has none)")]
+		public static string Cell(int column, int row)
+		{
+			var snap = Pad()?.Active?.GetSnapshot();
+			if (snap == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No active terminal" });
+			if (column < 0 || column >= snap.Columns || row < 0 || row >= snap.Rows)
+				return JsonSerializer.Serialize(new { success = false, error = "Cell is outside the screen" });
+			var cell = snap[column, row];
+			return JsonSerializer.Serialize(new {
+				success = true, text = cell.Text,
+				foreground = Hex(cell.Foreground != 0 ? cell.Foreground : snap.DefaultForeground),
+				background = Hex(cell.Background != 0 ? cell.Background : snap.DefaultBackground),
+				bold = (cell.Flags & CellFlags.Bold) != 0, inverse = (cell.Flags & CellFlags.Inverse) != 0,
+			});
+		}
+
+		static string Hex(uint color) => "#" + (color & 0xffffff).ToString("x6");
+
 		[DevFlowAction("od.terminal.text", Description = "Visible screen text of the active terminal, plus size, cursor and title")]
 		public static string Text()
 		{
@@ -214,6 +237,7 @@ namespace OpenDevelop.Terminal
 				return JsonSerializer.Serialize(new { success = false, error = "No active terminal" });
 			return JsonSerializer.Serialize(new {
 				success = true, columns = snap.Columns, rows = snap.Rows, title = session.Title,
+				background = Hex(snap.DefaultBackground), foreground = Hex(snap.DefaultForeground),
 				cursor = new { column = snap.CursorColumn, row = snap.CursorRow },
 				exited = session.HasExited, exitCode = session.ExitCode,
 				scrollback = new { total = snap.ScrollbackTotal, offset = snap.ScrollbackOffset, length = snap.ScrollbackLength },

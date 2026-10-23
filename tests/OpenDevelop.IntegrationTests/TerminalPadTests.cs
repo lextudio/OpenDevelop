@@ -379,6 +379,50 @@ public sealed class TerminalPadTests
 		await WaitForSessionCountAsync(before);
 	}
 
+	[Fact]
+	public async Task TerminalPad_FollowsTheIdeTheme()
+	{
+		await ShowPadAsync();
+		var originalTheme = (await app.InvokeAsync("od.terminal.settings")).GetProperty("ideTheme").GetString()!;
+		try
+		{
+			// A terminal started under the Dark theme uses the Dark colours (the theme's tool window background and
+			// foreground, and the dark set of ANSI colours: SGR 32 is #0dbc79).
+			await app.InvokeAsync("od.workbench.set-theme", "Dark");
+			Assert.True((await app.InvokeAsync("od.terminal.new", "/bin/sh")).GetProperty("success").GetBoolean());
+			await SendAsync("printf '\\033[32mGREENXYZ\\033[0m\\n'\r");
+			await WaitForLineAsync("GREENXYZ");
+			await Task.Delay(500); // the next prompt may scroll a full screen
+			var dark = await app.InvokeAsync("od.terminal.text");
+			Assert.Equal("#252526", dark.GetProperty("background").GetString());
+			Assert.Equal("#f1f1f1", dark.GetProperty("foreground").GetString());
+			var row = Lines(dark).ToList().IndexOf("GREENXYZ");
+			Assert.True(row >= 0, "The coloured line is not on the screen:\n" + dark.GetProperty("text").GetString());
+			Assert.Equal("#0dbc79", (await app.InvokeAsync("od.terminal.cell", 0, row)).GetProperty("foreground").GetString());
+
+			// Switching the IDE theme recolours the terminal that is already open, text on screen included.
+			await app.InvokeAsync("od.workbench.set-theme", "Light");
+			JsonElement light = default;
+			for (var attempt = 0; attempt < 100; attempt++)
+			{
+				light = await app.InvokeAsync("od.terminal.text");
+				if (light.GetProperty("background").GetString() == "#f5f5f5")
+					break;
+				await Task.Delay(100);
+			}
+			Assert.Equal("#f5f5f5", light.GetProperty("background").GetString());
+			Assert.Equal("#000000", light.GetProperty("foreground").GetString());
+			var greenOnLight = await app.InvokeAsync("od.terminal.cell", 0, row);
+			Assert.Equal("G", greenOnLight.GetProperty("text").GetString());
+			Assert.Equal("#00bc00", greenOnLight.GetProperty("foreground").GetString());
+			await app.InvokeAsync("od.terminal.kill");
+		}
+		finally
+		{
+			await app.InvokeAsync("od.workbench.set-theme", originalTheme);
+		}
+	}
+
 	async Task WaitForMouseTrackingAsync(bool expected)
 	{
 		JsonElement last = default;
