@@ -1,0 +1,33 @@
+<Project Sdk="LibreWPF.Sdk">
+  <PropertyGroup>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>OpenDevelop.Terminal</RootNamespace>
+    <AssemblyName>OpenDevelop.Terminal</AssemblyName>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <OutputPath>..\..\..\..\..\AddIns\Misc\Terminal\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <NoWarn>$(NoWarn);CA1416;WFO1000</NoWarn>
+    <!-- Porta.Pty derives OpenConsole.exe's location from the first conpty.dll it sees, which is LibGhostty.Net's
+         (no OpenConsole next to it): MSB3030. Windows ConPTY packaging is phase 4 (doc/technotes/terminal.md). -->
+    <PortaPtyStageConPtyHost>false</PortaPtyStageConPtyHost>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" />
+    <!-- Only its VT half is used: the PTY is Porta.Pty, because LibGhostty.Net 1.0.2 writes a garbage
+         winsize on macOS arm64 (stty size after Resize printed random numbers). -->
+    <PackageReference Include="LibGhostty.Net" />
+    <PackageReference Include="Porta.Pty" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
+  </ItemGroup>
+</Project>

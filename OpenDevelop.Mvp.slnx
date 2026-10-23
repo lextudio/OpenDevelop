@@ -131,6 +131,9 @@
   <Folder Name="/src/AddIns/Misc/RegExpTk/">
     <Project Path="src/AddIns/Misc/RegExpTk/Project/RegExpTk.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/Misc/Terminal/">
+    <Project Path="src/AddIns/Misc/Terminal/Project/Terminal.csproj" />
+  </Folder>
   <Folder Name="/src/AddIns/Misc/TextTemplating/">
     <Project Path="src/AddIns/Misc/TextTemplating/Project/TextTemplating.csproj" />
   </Folder>
