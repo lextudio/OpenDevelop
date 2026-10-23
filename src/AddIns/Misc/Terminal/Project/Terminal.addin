@@ -29,6 +29,9 @@
 		             tooltip = "New Terminal"
 		             icon    = "Icons.16x16.Add"
 		             class   = "OpenDevelop.Terminal.NewTerminalCommand"/>
+		<ToolbarItem id    = "NewTerminalShell"
+		             class = "OpenDevelop.Terminal.TerminalNewShellButton"
+		             type  = "Custom"/>
 		<ToolbarItem id      = "SplitTerminal"
 		             tooltip = "Split Terminal"
 		             icon    = "Icons.16x16.SplitWindowHorizontal"
@@ -50,6 +53,17 @@
 		             tooltip = "Paste"
 		             icon    = "Icons.16x16.Paste"
 		             class   = "OpenDevelop.Terminal.PasteTerminalCommand"/>
+		<ToolbarItem type="Separator"/>
+		<ToolbarItem id      = "TerminalSettings"
+		             tooltip = "Terminal Options"
+		             icon    = "Icons.16x16.Settings"
+		             class   = "OpenDevelop.Terminal.TerminalSettingsCommand"/>
+	</Path>
+
+	<Path name = "/SharpDevelop/Dialogs/OptionsDialog/UIOptions">
+		<OptionPanel id    = "TerminalOptions"
+		             label = "Terminal"
+		             class = "OpenDevelop.Terminal.TerminalOptions"/>
 	</Path>
 
 	<Path name = "/SharpDevelop/Workbench/MainMenu/View">
