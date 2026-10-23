@@ -268,8 +268,31 @@ namespace OpenDevelop.Terminal
 				entry.Click += (_, _) => item.Run();
 				menu.Items.Add(entry);
 			}
+			menu.Closed += (_, _) => { if (ReferenceEquals(openMenu, menu)) openMenu = null; };
+			openMenu = menu;
 			menu.IsOpen = true;
 			e.Handled = true;
+		}
+
+		ContextMenu openMenu;
+
+		/// <summary>The headers of the right-click menu while it is open (empty when it is not): what a pointer test can observe of a popup.</summary>
+		public IReadOnlyList<string> OpenContextMenuHeaders()
+		{
+			var menu = openMenu;
+			if (menu == null || !menu.IsOpen)
+				return Array.Empty<string>();
+			var headers = new List<string>();
+			foreach (var entry in menu.Items)
+				if (entry is MenuItem item)
+					headers.Add(item.Header as string);
+			return headers;
+		}
+
+		public void CloseContextMenu()
+		{
+			if (openMenu != null)
+				openMenu.IsOpen = false;
 		}
 
 		static bool IsLinkModifier(ModifierKeys modifiers) => (modifiers & (ModifierKeys.Control | ModifierKeys.Windows)) != 0;

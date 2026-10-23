@@ -1071,6 +1071,55 @@ public sealed class TerminalPadTests
 		}
 	}
 
+	/// <summary>A real scroll-wheel event over the terminal pages through its scrollback (three lines per notch).</summary>
+	[Fact]
+	public async Task TerminalPad_ScrollsOnARealWheelEvent()
+	{
+		if (!OperatingSystem.IsMacOS())
+			return; // the wheel is posted through Quartz Event Services
+		await ShowPadAsync();
+		Assert.True((await app.InvokeAsync("od.terminal.new", "/bin/sh")).GetProperty("success").GetBoolean());
+		await SendAsync("seq 1 200\r");
+		await WaitForLineAsync("200");
+		async Task<ulong> OffsetAsync() => (await app.InvokeAsync("od.terminal.text")).GetProperty("scrollback").GetProperty("offset").GetUInt64();
+		var bottom = await OffsetAsync();
+		var point = await app.InvokeAsync("od.terminal.screen-point", 4, 2);
+		await app.InvokeAsync("od.activate");
+		await app.MovePointerAsync(point.GetProperty("x").GetDouble(), point.GetProperty("y").GetDouble());
+		Assert.True(MacWheel.Post(5), "Could not post a wheel event.");
+		ulong scrolled = bottom;
+		await OpenDevelopAppFixture.PollUntilAsync(async () => (scrolled = await OffsetAsync()) < bottom, TimeSpan.FromSeconds(5));
+		Assert.True(scrolled < bottom, $"The real wheel event did not scroll the terminal (offset {bottom} -> {scrolled}).");
+		Assert.True(MacWheel.Post(-30));
+		await OpenDevelopAppFixture.PollUntilAsync(async () => await OffsetAsync() == bottom, TimeSpan.FromSeconds(5));
+		Assert.Equal(bottom, await OffsetAsync());
+	}
+
+	/// <summary>A real right-button press and release over the terminal opens its context menu.</summary>
+	[Fact]
+	public async Task TerminalPad_OpensItsMenuOnARealRightClick()
+	{
+		await ShowPadAsync();
+		Assert.True((await app.InvokeAsync("od.terminal.new", "/bin/sh")).GetProperty("success").GetBoolean());
+		await SendAsync("clear\r");
+		await Task.Delay(500);
+		var point = await app.InvokeAsync("od.terminal.screen-point", 4, 1);
+		var (x, y) = (point.GetProperty("x").GetDouble(), point.GetProperty("y").GetDouble());
+		Assert.False((await app.InvokeAsync("od.terminal.menu-state")).GetProperty("open").GetBoolean());
+		await app.PressPointerAsync(x, y, button: "right");
+		await app.ReleasePointerAsync(x, y, button: "right");
+		JsonElement state = default;
+		await OpenDevelopAppFixture.PollUntilAsync(async () =>
+		{
+			state = await app.InvokeAsync("od.terminal.menu-state");
+			return state.GetProperty("open").GetBoolean();
+		}, TimeSpan.FromSeconds(5));
+		Assert.True(state.GetProperty("open").GetBoolean(), state.ToString());
+		Assert.Equal(new[] { "Copy", "Paste", "Select All", "Clear", "Find..." }, state.GetProperty("headers").EnumerateArray().Select(h => h.GetString()).ToArray());
+		Assert.NotEmpty(((await app.InvokeAsync("od.terminal.menu-state", true)).GetProperty("headers")).EnumerateArray());
+		Assert.False((await app.InvokeAsync("od.terminal.menu-state")).GetProperty("open").GetBoolean());
+	}
+
 	/// <summary>
 	/// Typing with real OS key events: the characters reach the shell through WPF's own key and text routing. An input method would
 	/// compose the letters first, so the journey runs on the ABC layout and restores the previous input source afterwards.

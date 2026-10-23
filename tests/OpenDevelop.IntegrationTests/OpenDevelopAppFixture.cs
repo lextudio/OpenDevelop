@@ -989,7 +989,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             throw new InvalidOperationException("OpenDevelop could not be brought to the OS foreground before pointer input: " + activation);
     }
 
-    public async Task<JsonElement> PressPointerAsync(double x, double y, bool ensureForeground = true)
+    public async Task<JsonElement> PressPointerAsync(double x, double y, bool ensureForeground = true, string button = null)
     {
         // The click begins a real OS gesture. Bring the native OpenDevelop window to the actual
         // foreground immediately before it, rather than relying on a designer test having
@@ -1008,10 +1008,11 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             if (!foregrounded)
                 throw new InvalidOperationException("OpenDevelop could not be brought to the OS foreground before pointer input: " + activation);
         }
-        return await PostPointActionAsync("press", x, y);
+        return await PostPointActionAsync("press", x, y, button);
     }
+    public Task<JsonElement> MovePointerAsync(double x, double y) => PostPointActionAsync("move", x, y);
     public Task<JsonElement> DragMovePointerAsync(double x, double y) => PostPointActionAsync("drag-move", x, y);
-    public Task<JsonElement> ReleasePointerAsync(double x, double y) => PostPointActionAsync("release", x, y);
+    public Task<JsonElement> ReleasePointerAsync(double x, double y, string button = null) => PostPointActionAsync("release", x, y, button);
 
     /// <summary>Holds a real OS key across later native pointer actions (for example Ctrl-click
     /// and Ctrl-drag), rather than sending an element-scoped semantic key event.</summary>
@@ -1106,14 +1107,14 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         return await resp.Content.ReadFromJsonAsync<JsonElement>();
     }
 
-    async Task<JsonElement> PostPointActionAsync(string action, double x, double y)
+    async Task<JsonElement> PostPointActionAsync(string action, double x, double y, string button = null)
     {
         // The DevFlow press/move/release endpoints feed the Windows native-input pump. Its
         // default coordinate contract is the screen-space PointToScreen values returned by the
         // designer queries above. In contrast, the one-shot drag endpoint accepts a separate
         // global flag; adding that flag to this protocol prevents the embedded Forms HWND from
         // receiving the mouse messages.
-        var body = JsonSerializer.Serialize(new { x, y });
+        var body = button == null ? JsonSerializer.Serialize(new { x, y }) : JsonSerializer.Serialize(new { x, y, button });
         using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
         using var resp = await _http.PostAsync($"{BaseUrl}/api/v1/ui/actions/{action}", content);
         if (!resp.IsSuccessStatusCode)

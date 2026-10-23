@@ -346,6 +346,18 @@ namespace OpenDevelop.Terminal
 			return JsonSerializer.Serialize(new { success = true, x = screen.X, y = screen.Y, focused = view.IsKeyboardFocused, visible = view.IsVisible });
 		}
 
+		[DevFlowAction("od.terminal.menu-state", Description = "The right-click menu of the active terminal as a real pointer left it: whether it is open and its entries. Pass close=true to close it")]
+		public static string MenuState(bool close = false)
+		{
+			var view = Pad()?.View;
+			if (view == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No active terminal" });
+			var headers = view.OpenContextMenuHeaders();
+			if (close)
+				view.CloseContextMenu();
+			return JsonSerializer.Serialize(new { success = true, open = headers.Count > 0, headers });
+		}
+
 		[DevFlowAction("od.terminal.cell", Description = "One visible cell of the active terminal: its text and the colours it is drawn with (#rrggbb, the default colours when the cell has none)")]
 		public static string Cell(int column, int row)
 		{
