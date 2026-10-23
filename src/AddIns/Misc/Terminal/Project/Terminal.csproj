@@ -27,10 +27,17 @@
     <PackageReference Include="LibGhostty.Net" GeneratePathProperty="true" />
     <PackageReference Include="Porta.Pty" />
     <!-- Porta.Pty's Windows loader finds conpty.dll in the add-in directory, then requires its
-         matching OpenConsole.exe under x64/. LibGhostty supplies the paired win-x64 assets. -->
+         matching OpenConsole.exe under the process architecture directory. LibGhostty supplies
+         the paired assets for both supported Windows RIDs. -->
     <None Include="$(PkgLibGhostty_Net)/runtimes/win-x64/native/OpenConsole.exe"
           Condition="'$(RuntimeIdentifier)' == 'win-x64'">
       <Link>x64/OpenConsole.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Include="$(PkgLibGhostty_Net)/runtimes/win-arm64/native/OpenConsole.exe"
+          Condition="'$(RuntimeIdentifier)' == 'win-arm64'">
+      <Link>arm64/OpenConsole.exe</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>

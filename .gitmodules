@@ -34,6 +34,3 @@
 [submodule "externals/vsmac-codecoverage"]
 	path = externals/vsmac-codecoverage
 	url = https://github.com/lextudio/VSMac-CodeCoverage.git
-[submodule "externals/libghostty-net"]
-	path = externals/libghostty-net
-	url = https://github.com/lextudio/libghostty-net.git

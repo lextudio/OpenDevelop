@@ -162,8 +162,8 @@ namespace OpenDevelop.Terminal
 
 		static string AddInDirectory => Path.GetDirectoryName(typeof(TerminalSession).Assembly.Location);
 
-		static string RuntimeId => OperatingSystem.IsWindows() ? "win-x64"
-			: (OperatingSystem.IsMacOS() ? "osx-" : "linux-") + (RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64" : "x64");
+		static string RuntimeId => (OperatingSystem.IsWindows() ? "win-" : OperatingSystem.IsMacOS() ? "osx-" : "linux-")
+			+ (RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64" : "x64");
 
 		static string FindNativeLibrary()
 		{

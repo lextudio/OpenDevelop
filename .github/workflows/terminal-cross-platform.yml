@@ -46,14 +46,14 @@ on:
       - '.github/workflows/terminal-cross-platform.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   terminal:
     name: Terminal (windows-11-arm)
     runs-on: windows-11-arm
-    # LibGhostty.Net currently ships only win-x64 native terminal assets.  Keep this native
-    # ARM64 lane visible while it establishes the exact failure to fix, without blocking
-    # unrelated changes on a gap that cannot yet be resolved in this repository.
-    continue-on-error: true
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -75,6 +75,13 @@ jobs:
           $mapping = @($config.configuration.packageSourceMapping.packageSource | Where-Object key -eq 'librewpf-local')
           foreach ($node in $source + $mapping) { [void]$node.ParentNode.RemoveChild($node) }
           $config.Save((Resolve-Path NuGet.config))
+      - name: Authenticate the lextudio package feed
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          dotnet nuget update source lextudio-github --username x-access-token --password $env:GITHUB_TOKEN --store-password-in-clear-text --configfile NuGet.config
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build host and Terminal only
         shell: pwsh
         run: |
