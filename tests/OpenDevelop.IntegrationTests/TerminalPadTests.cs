@@ -156,6 +156,10 @@ public sealed class TerminalPadTests
 		Assert.Equal(bottomOffset - page, await OffsetAsync());
 		await KeyAsync("PageDown", "shift");
 		Assert.Equal(bottomOffset, await OffsetAsync());
+		await KeyAsync("Home", "shift");
+		Assert.Equal(0UL, await OffsetAsync()); // the very top of the scrollback
+		await KeyAsync("End", "shift");
+		Assert.Equal(bottomOffset, await OffsetAsync());
 		await KeyAsync("PageUp", "shift");
 		await KeyAsync("Enter"); // a key returns to the bottom
 		await SendAsync("echo page-ack-u21\r"); // and the shell still gets keys

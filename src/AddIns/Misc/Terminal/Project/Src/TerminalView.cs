@@ -795,6 +795,15 @@ namespace OpenDevelop.Terminal
 				Scroll(key == Key.PageUp ? -Math.Max(1, session.Rows - 1) : Math.Max(1, session.Rows - 1));
 				return true;
 			}
+			if (modifiers == ModifierKeys.Shift && (key == Key.Home || key == Key.End) && !session.IsAlternateScreen) { // Shift+Home/End jump to the top/bottom of the scrollback
+				if (key == Key.Home)
+					Scroll(-int.MaxValue);
+				else {
+					ClearSelection();
+					session.ScrollToBottom();
+				}
+				return true;
+			}
 			if (session.HasExited) {
 				// Nothing is listening any more: a key (other than a bare modifier) dismisses the finished terminal.
 				if (key is not (Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin or Key.System))
