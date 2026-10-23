@@ -98,7 +98,7 @@ Project Browser "Open in Terminal" opens the integrated terminal in that folder 
 `ITerminalHost` (Base interface, registered by the add-in; external terminal app if the add-in is not
 loaded). DevFlow: `od.terminal.new|split|
 activate|send|key|mouse|wheel|click|scroll|select|copy|paste|shells|settings|text|list|kill`; host side
-`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (eleven
+`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (twelve
 journeys, pass; run with the xUnit v3 runner from `tests/OpenDevelop.IntegrationTests/TESTING.md`).
 
 Verified live (the journey above, plus the UI tree):
@@ -202,6 +202,12 @@ The shell's current directory is asked of the operating system (macOS `proc_pidi
 `/proc/<pid>/cwd`), so it is right after a plain `cd` whatever the shell is and needs no shell integration;
 on Windows, and for an ended shell, the start folder is used instead. Split and link resolution use it.
 
+Dropping files on the terminal pastes their paths, quoted for the shell (single quotes for sh/bash/zsh with
+an embedded `'` written `'\''`, doubled single quotes for PowerShell, double quotes for cmd) and separated by
+spaces with a trailing space; dropped text is pasted as it is (bracketed when the program asked for it).
+Zoom: Ctrl+wheel and Cmd/Ctrl+Shift with `=`, `-`, `0` change the font size by a point or reset it to 13;
+the size is the same setting the Options page edits, so it persists and applies to every terminal.
+
 Right-click menu: Copy (disabled without a selection), Paste, Select All (the visible screen), Clear, Find...,
 and Open Link / Open File when the click is on a link. It is not shown while a program tracks the mouse
 unless Shift is held (then the program does not get the click, as for selection).
@@ -244,11 +250,11 @@ not handled. Not checked on Windows.
 
 ## Testing
 
-Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, eleven journeys, DevFlow
+Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, twelve journeys, DevFlow
 actions instead of OS input): shells, size and alternate screen, keys, split; wide text, scrollback,
 selection, wrapped copy, bracketed paste; View menu, Project Browser "Open in Terminal", shell list;
 mouse reporting, alternate-screen wheel, word and line selection; settings; cycling, renaming and the
-end of a shell; IDE theme colours; links; find; the shell's current directory; the right-click menu. There are no unit tests of
+end of a shell; IDE theme colours; links; find; the shell's current directory; the right-click menu; dropped files; zoom. There are no unit tests of
 the engine on its own.
 
 ## Phasing

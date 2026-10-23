@@ -35,6 +35,7 @@ namespace OpenDevelop.Terminal
 		public TerminalView()
 		{
 			Focusable = true;
+			AllowDrop = true;
 			FocusVisualStyle = null;
 			ClipToBounds = true;
 			MeasureCell();
@@ -152,6 +153,43 @@ namespace OpenDevelop.Terminal
 			if (hit != null)
 				TerminalLinkOpener.Open(hit, launchUrls);
 			return hit;
+		}
+
+		/// <summary>
+		/// Something dropped on the terminal: files become their quoted paths separated by spaces (with a trailing space, ready
+		/// for more typing), text is pasted as it is. Returns whether anything was pasted.
+		/// </summary>
+		public bool HandleDrop(IDataObject data)
+		{
+			if (session == null || session.HasExited)
+				return false;
+			string text = null;
+			if (data.GetDataPresent(DataFormats.FileDrop) && data.GetData(DataFormats.FileDrop) is string[] files && files.Length > 0)
+				text = string.Join(" ", files.Select(f => TerminalQuote.Path(f, session.ShellPath))) + " ";
+			else if (data.GetDataPresent(DataFormats.UnicodeText) && data.GetData(DataFormats.UnicodeText) is string dropped && dropped.Length > 0)
+				text = dropped;
+			if (text == null)
+				return false;
+			ClearSelection();
+			session.Paste(text);
+			return true;
+		}
+
+		protected override void OnDragOver(DragEventArgs e)
+		{
+			base.OnDragOver(e);
+			e.Effects = session != null && !session.HasExited && (e.Data.GetDataPresent(DataFormats.FileDrop) || e.Data.GetDataPresent(DataFormats.UnicodeText))
+				? DragDropEffects.Copy : DragDropEffects.None;
+			e.Handled = true;
+		}
+
+		protected override void OnDrop(DragEventArgs e)
+		{
+			base.OnDrop(e);
+			if (HandleDrop(e.Data)) {
+				Focus();
+				e.Handled = true;
+			}
 		}
 
 		/// <summary>The right-click menu for a click at <paramref name="position"/>: Copy (when something is selected), Paste, Select All, Clear, Find, and Open Link when the click is on one.</summary>
@@ -615,6 +653,10 @@ namespace OpenDevelop.Terminal
 		{
 			if (session == null)
 				return false;
+			if ((modifiers & ModifierKeys.Control) != 0 && !session.MouseTrackingEnabled) {
+				TerminalSettings.Zoom(delta > 0 ? 1 : -1); // Ctrl+wheel zooms the font, as in the editor
+				return true;
+			}
 			int notches = Math.Max(1, Math.Abs(delta) / 120);
 			if (session.MouseTrackingEnabled) {
 				for (int i = 0; i < notches; i++)
@@ -668,6 +710,18 @@ namespace OpenDevelop.Terminal
 			if (chord && key == Key.C) {
 				CopySelection();
 				return HasSelection || command;
+			}
+			if (chord && (key == Key.OemPlus || key == Key.Add)) {
+				TerminalSettings.Zoom(1);
+				return true;
+			}
+			if (chord && (key == Key.OemMinus || key == Key.Subtract)) {
+				TerminalSettings.Zoom(-1);
+				return true;
+			}
+			if (chord && (key == Key.D0 || key == Key.NumPad0)) {
+				TerminalSettings.Zoom(0);
+				return true;
 			}
 			if (chord && key == Key.F) {
 				FindRequested?.Invoke();

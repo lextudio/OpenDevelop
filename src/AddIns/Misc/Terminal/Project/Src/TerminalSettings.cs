@@ -12,7 +12,7 @@ namespace OpenDevelop.Terminal
 		public static event Action Changed;
 
 		public static double FontSize {
-			get => Math.Clamp(SD.PropertyService.Get(FontSizeKey, 13.0), 6, 48);
+			get => Math.Clamp(SD.PropertyService.Get(FontSizeKey, DefaultFontSize), 6, 48);
 			set => SD.PropertyService.Set(FontSizeKey, Math.Clamp(value, 6, 48));
 		}
 
@@ -23,5 +23,14 @@ namespace OpenDevelop.Terminal
 		}
 
 		public static void RaiseChanged() => Changed?.Invoke();
+
+		public const double DefaultFontSize = 13;
+
+		/// <summary>Zooms the terminal font by <paramref name="points"/> (0 puts it back to the default) and tells the open views.</summary>
+		public static void Zoom(double points)
+		{
+			FontSize = points == 0 ? DefaultFontSize : FontSize + points;
+			RaiseChanged();
+		}
 	}
 }

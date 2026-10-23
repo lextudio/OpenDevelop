@@ -172,13 +172,15 @@ namespace OpenDevelop.Terminal
 			return JsonSerializer.Serialize(new { success = true, sent = view.ReportMouse(ghosttyAction, ghosttyButton, view.CellCenter(column, row), mods) });
 		}
 
-		[DevFlowAction("od.terminal.wheel", Description = "Turn the mouse wheel over a cell of the active terminal (positive delta = up, 120 per notch): reported to a mouse-aware program, arrow keys on the alternate screen, else scrollback")]
-		public static string Wheel(int delta, int column = 0, int row = 0)
+		[DevFlowAction("od.terminal.wheel", Description = "Turn the mouse wheel over a cell of the active terminal (positive delta = up, 120 per notch; optional modifiers such as ctrl, which zooms the font): reported to a mouse-aware program, arrow keys on the alternate screen, else scrollback")]
+		public static string Wheel(int delta, int column = 0, int row = 0, string modifiers = "")
 		{
 			var view = Pad()?.View;
 			if (view == null)
 				return JsonSerializer.Serialize(new { success = false, error = "No active terminal" });
-			return JsonSerializer.Serialize(new { success = view.HandleWheel(delta, view.CellCenter(column, row), System.Windows.Input.ModifierKeys.None) });
+			if (!TryParseModifiers(modifiers, out var mods, out var modifierError))
+				return JsonSerializer.Serialize(new { success = false, error = modifierError });
+			return JsonSerializer.Serialize(new { success = view.HandleWheel(delta, view.CellCenter(column, row), mods) });
 		}
 
 		[DevFlowAction("od.terminal.click", Description = "Left-click a cell of the active terminal clickCount times (2 = word, 3 = line selection) and release; returns the selected text")]
@@ -294,6 +296,18 @@ namespace OpenDevelop.Terminal
 				items = view.ContextMenuItems(at).Select(i => new { header = i.Header, enabled = i.Enabled }).ToArray(),
 				selection = view.SelectedText,
 			});
+		}
+
+		[DevFlowAction("od.terminal.drop", Description = "Drop files (paths separated by '|') or text on the active terminal as a drag and drop would: files paste their quoted paths and a trailing space, text pastes as it is; returns whether anything was pasted")]
+		public static string Drop(string paths = "", string text = "")
+		{
+			var view = Pad()?.View;
+			if (view == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No active terminal" });
+			var data = !string.IsNullOrEmpty(paths)
+				? new System.Windows.DataObject(System.Windows.DataFormats.FileDrop, paths.Split('|', StringSplitOptions.RemoveEmptyEntries))
+				: new System.Windows.DataObject(System.Windows.DataFormats.UnicodeText, text);
+			return JsonSerializer.Serialize(new { success = true, pasted = view.HandleDrop(data) });
 		}
 
 		[DevFlowAction("od.terminal.cell", Description = "One visible cell of the active terminal: its text and the colours it is drawn with (#rrggbb, the default colours when the cell has none)")]

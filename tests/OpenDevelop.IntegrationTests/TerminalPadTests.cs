@@ -656,6 +656,55 @@ public sealed class TerminalPadTests
 		await app.InvokeAsync("od.terminal.kill");
 	}
 
+	[Fact]
+	public async Task TerminalPad_TakesDroppedFiles_AndZoomsItsFont()
+	{
+		await ShowPadAsync();
+		var originalFont = (await app.InvokeAsync("od.terminal.settings")).GetProperty("fontSize").GetDouble();
+		var folder = $"/tmp/od drop {Guid.NewGuid():N}".Substring(0, 19);
+		Directory.CreateDirectory(folder);
+		var file = Path.Combine(folder, "it's.txt"); // a space and a quote: both must survive the shell
+		File.WriteAllText(file, "x");
+		try
+		{
+			Assert.True((await app.InvokeAsync("od.terminal.new", "/bin/sh")).GetProperty("success").GetBoolean());
+
+			// A dropped file pastes its quoted path, so the shell reads it back as the one argument it was.
+			await SendAsync("printf '[%s]\\n' ");
+			var dropped = await app.InvokeAsync("od.terminal.drop", file);
+			Assert.True(dropped.GetProperty("pasted").GetBoolean(), dropped.ToString());
+			await SendAsync("\r");
+			await WaitForLineAsync($"[{file}]");
+			// Dropped text is pasted as it is.
+			await SendAsync("echo ");
+			Assert.True((await app.InvokeAsync("od.terminal.drop", "", "dropped-text")).GetProperty("pasted").GetBoolean());
+			await SendAsync("\r");
+			await WaitForLineAsync("dropped-text");
+
+			// Zoom: Ctrl+Shift+= / Ctrl+Shift+- / Ctrl+Shift+0 and Ctrl+wheel change the font size by one point (0 = the default 13) and the pad re-fits.
+			await app.InvokeAsync("od.terminal.settings", 20.0, -1);
+			var columns = (await app.InvokeAsync("od.terminal.text")).GetProperty("columns").GetInt32();
+			async Task<double> FontAsync() => (await app.InvokeAsync("od.terminal.settings")).GetProperty("fontSize").GetDouble();
+			Assert.True((await app.InvokeAsync("od.terminal.key", "OemPlus", "ctrl,shift")).GetProperty("handled").GetBoolean());
+			Assert.Equal(21.0, await FontAsync());
+			await app.InvokeAsync("od.terminal.wheel", 120, 0, 0, "ctrl");
+			Assert.Equal(22.0, await FontAsync());
+			await app.InvokeAsync("od.terminal.wheel", -120, 0, 0, "ctrl");
+			await app.InvokeAsync("od.terminal.key", "OemMinus", "ctrl,shift");
+			Assert.Equal(20.0, await FontAsync());
+			await WaitForColumnsAsync(c => c == columns);
+			await app.InvokeAsync("od.terminal.key", "D0", "ctrl,shift");
+			Assert.Equal(13.0, await FontAsync());
+			await WaitForColumnsAsync(c => c > columns);
+			await app.InvokeAsync("od.terminal.kill");
+		}
+		finally
+		{
+			await app.InvokeAsync("od.terminal.settings", originalFont, -1);
+			Directory.Delete(folder, true);
+		}
+	}
+
 	async Task WaitForMouseTrackingAsync(bool expected)
 	{
 		JsonElement last = default;
