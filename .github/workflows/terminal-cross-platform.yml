@@ -1,4 +1,4 @@
-name: Terminal Windows
+name: Terminal Windows ARM64
 
 # This is intentionally a Terminal-only integration lane.  It is not a general replacement for
 # the platform matrix: its build excludes the rest of the runtime-discovered add-ins and fixtures.
@@ -48,8 +48,12 @@ on:
 
 jobs:
   terminal:
-    name: Terminal (windows-latest)
-    runs-on: windows-latest
+    name: Terminal (windows-11-arm)
+    runs-on: windows-11-arm
+    # LibGhostty.Net currently ships only win-x64 native terminal assets.  Keep this native
+    # ARM64 lane visible while it establishes the exact failure to fix, without blocking
+    # unrelated changes on a gap that cannot yet be resolved in this repository.
+    continue-on-error: true
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +66,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+          architecture: arm64
       - name: Skip the developer-local LibreWPF feed
         shell: pwsh
         run: |
@@ -73,7 +78,11 @@ jobs:
       - name: Build host and Terminal only
         shell: pwsh
         run: |
-          $rid = 'win-x64'
+          $rid = 'win-arm64'
+          $dotnetInfo = dotnet --info | Out-String
+          if ($dotnetInfo -notmatch '(?m)^\s*RID:\s+win-arm64\s*$') {
+            throw "Expected the ARM64 .NET SDK. dotnet --info was:`n$dotnetInfo"
+          }
           dotnet build src/Main/SharpDevelop/SharpDevelop.csproj --configuration Debug
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build src/AddIns/Misc/Terminal/Project/Terminal.csproj --configuration Debug --runtime $rid -p:AppendRuntimeIdentifierToOutputPath=false
