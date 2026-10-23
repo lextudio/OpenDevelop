@@ -134,7 +134,8 @@ jobs:
           $rid = '${{ matrix.rid }}'
           $dotnetInfo = dotnet --info | Out-String
           $expectedRid = '${{ matrix.expected_rid }}'
-          if ($dotnetInfo -notmatch "(?m)^\\s*RID:\\s+$([regex]::Escape($expectedRid))\\s*$") {
+          $ridPattern = '(?m)^\s*RID:\s+' + [regex]::Escape($expectedRid) + '\s*$'
+          if ($dotnetInfo -notmatch $ridPattern) {
             throw "Expected .NET SDK RID $expectedRid. dotnet --info was:`n$dotnetInfo"
           }
           dotnet build src/Main/SharpDevelop/SharpDevelop.csproj --configuration Debug
