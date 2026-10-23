@@ -93,12 +93,12 @@ active pane. The session combo lists every pane, `(split)` marks panes that shar
 
 Toolbar today: session combo, New, shell drop-down (installed shells; "Default Shell" submenu), Split,
 Kill, Clear, Copy, Paste, Settings (opens the Options dialog; the Terminal page is under the
-IDE options). View menu: Terminal (Ctrl+`) and New Terminal (Ctrl+Shift+`).
+IDE options). View menu: Terminal (Ctrl+`), New Terminal (Ctrl+Shift+`), Next/Previous Terminal and Rename Terminal....
 Project Browser "Open in Terminal" opens the integrated terminal in that folder through
 `ITerminalHost` (Base interface, registered by the add-in; external terminal app if the add-in is not
 loaded). DevFlow: `od.terminal.new|split|
 activate|send|key|mouse|wheel|click|scroll|select|copy|paste|shells|settings|text|list|kill`; host side
-`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (five
+`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (six
 journeys, pass; run with the xUnit v3 runner from `tests/OpenDevelop.IntegrationTests/TESTING.md`).
 
 Verified live (the journey above, plus the UI tree):
@@ -182,16 +182,20 @@ and is also the pad icon).
 | Copy / Paste | selection to clipboard / paste (bracketed when the program asked for it) | `Copy`, `Paste` |
 | Settings | opens the Options dialog (Terminal page: default shell, font size, scrollback lines) | `Settings` |
 
-View menu: Terminal (Ctrl+`) and New Terminal (Ctrl+Shift+`). Cmd/Ctrl+Shift+C and V copy and paste in
-the terminal. Scrollback defaults to 10 000 lines (approximate, see pitfalls) and the PTY follows the
+View menu: Terminal (Ctrl+`), New Terminal (Ctrl+Shift+`), Next Terminal and Previous Terminal (they wrap
+around the session list) and Rename Terminal... (an input box; an empty name restores the shell's own
+title). A pane whose shell ended shows "[Process exited with code N]" and any key other than a bare
+modifier closes it. Cmd/Ctrl+Shift+C and V copy and paste in the terminal. Scrollback defaults to 10 000 lines (approximate, see pitfalls) and the PTY follows the
 view's size.
 
-Design intent that is **not built yet**: renaming a terminal, next/previous terminal commands, showing
-"[Process exited with code N]" in a pane whose shell ended (the pane stays, it just stops accepting
-input), an ANSI palette derived from the editor theme (libghostty's default palette is used), killing
-all child shells and their process trees when the workbench closes (each session is killed when it is
-killed or disposed, nothing sweeps on shutdown), find in terminal, clickable file:line links, vertical
-split, shell-integration cwd tracking.
+Design intent that is **not built yet**: an ANSI palette derived from the editor theme (libghostty's
+default palette is used), find in terminal, clickable file:line links, vertical split, shell-integration
+cwd tracking.
+
+Shutdown needs no sweep: with `sleep 4322 &` running in a terminal, killing the pane, and also
+terminating (SIGTERM) or killing (SIGKILL) the whole IDE, left no child behind on macOS, because the
+kernel hangs up the PTY. A program that deliberately ignores SIGHUP (`nohup`) would survive; that is
+not handled. Not checked on Windows.
 
 ## Integration points
 
@@ -204,10 +208,11 @@ split, shell-integration cwd tracking.
 
 ## Testing
 
-Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, five journeys, DevFlow
+Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, six journeys, DevFlow
 actions instead of OS input): shells, size and alternate screen, keys, split; wide text, scrollback,
 selection, wrapped copy, bracketed paste; View menu, Project Browser "Open in Terminal", shell list;
-mouse reporting, alternate-screen wheel, word and line selection; settings. There are no unit tests of
+mouse reporting, alternate-screen wheel, word and line selection; settings; cycling, renaming and the
+end of a shell. There are no unit tests of
 the engine on its own.
 
 ## Phasing

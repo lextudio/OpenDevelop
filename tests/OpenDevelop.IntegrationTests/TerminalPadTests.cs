@@ -339,6 +339,46 @@ public sealed class TerminalPadTests
 		return default;
 	}
 
+	[Fact]
+	public async Task TerminalPad_CyclesRenamesAndShowsTheEndOfAShell()
+	{
+		await ShowPadAsync();
+		var before = (await app.InvokeAsync("od.terminal.list")).GetProperty("sessions").GetArrayLength();
+		var first = await app.InvokeAsync("od.terminal.new", "/bin/sh");
+		var second = await app.InvokeAsync("od.terminal.new", "/bin/sh");
+		var firstIndex = first.GetProperty("index").GetInt32();
+		var secondIndex = second.GetProperty("index").GetInt32();
+		Assert.Equal(before + 1, secondIndex);
+
+		async Task<int> ActiveIndexAsync()
+			=> (await app.InvokeAsync("od.terminal.list")).GetProperty("sessions").EnumerateArray().First(p => p.GetProperty("active").GetBoolean()).GetProperty("index").GetInt32();
+
+		// View > Next/Previous Terminal walk the session list and wrap around at both ends.
+		Assert.Equal(secondIndex, await ActiveIndexAsync());
+		Assert.True((await app.InvokeAsync("od.menu.invoke", "OpenDevelop.Terminal.NextTerminalCommand")).GetProperty("success").GetBoolean());
+		Assert.Equal(0, await ActiveIndexAsync());
+		Assert.True((await app.InvokeAsync("od.menu.invoke", "OpenDevelop.Terminal.PreviousTerminalCommand")).GetProperty("success").GetBoolean());
+		Assert.Equal(secondIndex, await ActiveIndexAsync());
+
+		// A name replaces the shell's title in the list; an empty name restores it.
+		var named = await app.InvokeAsync("od.terminal.rename", "build");
+		Assert.Equal($"{secondIndex + 1}: build", named.GetProperty("labels")[secondIndex].GetString());
+		var restored = await app.InvokeAsync("od.terminal.rename", "");
+		Assert.DoesNotContain("build", restored.GetProperty("labels")[secondIndex].GetString(), StringComparison.Ordinal);
+
+		// When the shell ends the pane stays, says so, and any key dismisses it; the other terminal is untouched.
+		await SendAsync("exit 7\r");
+		var ended = await WaitForAsync("[Process exited with code 7]");
+		Assert.True(ended.GetProperty("exited").GetBoolean(), ended.ToString());
+		Assert.Equal(7, ended.GetProperty("exitCode").GetInt32());
+		await KeyAsync("Enter");
+		await WaitForSessionCountAsync(before + 1);
+		Assert.Equal(firstIndex, await ActiveIndexAsync());
+		Assert.DoesNotContain(second.GetProperty("pid").GetInt32(), (await app.InvokeAsync("od.terminal.list")).GetProperty("sessions").EnumerateArray().Select(p => p.GetProperty("pid").GetInt32()));
+		await app.InvokeAsync("od.terminal.kill");
+		await WaitForSessionCountAsync(before);
+	}
+
 	async Task WaitForMouseTrackingAsync(bool expected)
 	{
 		JsonElement last = default;

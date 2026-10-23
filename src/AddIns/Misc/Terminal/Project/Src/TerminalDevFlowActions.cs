@@ -56,6 +56,16 @@ namespace OpenDevelop.Terminal
 			}
 		}
 
+		[DevFlowAction("od.terminal.rename", Description = "Name the active terminal (empty restores the shell's own title), as the Rename Terminal command does after its input box; returns the new list labels")]
+		public static string Rename(string name)
+		{
+			var pad = Pad();
+			if (pad?.ActivePane == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No active terminal" });
+			pad.RenameActive(name);
+			return JsonSerializer.Serialize(new { success = true, labels = pad.Labels() });
+		}
+
 		[DevFlowAction("od.terminal.activate", Description = "Make the terminal at the given index (as listed by od.terminal.list) the active one")]
 		public static string Activate(int index)
 		{

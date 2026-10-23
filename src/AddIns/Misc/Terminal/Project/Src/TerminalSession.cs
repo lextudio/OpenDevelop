@@ -28,6 +28,8 @@ namespace OpenDevelop.Terminal
 		IntPtr keyEncoder, keyEvent;
 		IntPtr mouseEncoder, mouseEvent;
 		byte[] modeTail = Array.Empty<byte>();
+		// Completed when the PTY output has been read to its end: the exit notice must not overtake the last output.
+		readonly TaskCompletionSource readFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 		bool disposed;
 
 		TerminalSession(G native, IPtyConnection pty, int columns, int rows)
@@ -116,6 +118,7 @@ namespace OpenDevelop.Terminal
 				session.ExitCode = e.ExitCode;
 				session.HasExited = true;
 				session.Changed?.Invoke();
+				_ = session.AnnounceExitAsync(e.ExitCode);
 			};
 			_ = Task.Run(session.ReadLoop);
 			return session;
@@ -159,6 +162,15 @@ namespace OpenDevelop.Terminal
 		}
 
 		async Task ReadLoop()
+		{
+			try {
+				await ReadUntilEndAsync().ConfigureAwait(false);
+			} finally {
+				readFinished.TrySetResult();
+			}
+		}
+
+		async Task ReadUntilEndAsync()
 		{
 			var buffer = new byte[16 * 1024];
 			while (!disposed) {
@@ -364,6 +376,28 @@ namespace OpenDevelop.Terminal
 			try {
 				pty.Resize(columns, rows);
 			} catch (Exception ex) when (ex is IOException or InvalidOperationException) {
+			}
+		}
+
+		async Task AnnounceExitAsync(int exitCode)
+		{
+			// Normally the output ends right after the process does; if something else still holds the PTY open, do not wait for it forever.
+			await Task.WhenAny(readFinished.Task, Task.Delay(1000)).ConfigureAwait(false);
+			WriteLocal($"\r\n[Process exited with code {exitCode}]\r\n");
+			Changed?.Invoke();
+		}
+
+		/// <summary>Writes text straight into the terminal's screen (not to the shell): messages from the terminal itself.</summary>
+		void WriteLocal(string text)
+		{
+			lock (gate) {
+				if (disposed)
+					return;
+				var bytes = Utf8.GetBytes(text);
+				unsafe {
+					fixed (byte* p = bytes)
+						native.TerminalWrite(terminal, (IntPtr)p, (UIntPtr)bytes.Length);
+				}
 			}
 		}
 

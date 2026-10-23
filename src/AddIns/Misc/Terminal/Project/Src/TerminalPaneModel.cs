@@ -14,6 +14,8 @@ namespace OpenDevelop.Terminal
 		public TerminalSession Session { get; init; }
 		public TerminalView View { get; init; }
 		public TerminalGroup Group { get; init; }
+		/// <summary>A name the user gave this terminal; null shows the shell's own title.</summary>
+		public string CustomName { get; set; }
 	}
 
 	/// <summary>Panes shown side by side; a plain terminal is a group of one, Split adds a pane.</summary>
@@ -66,7 +68,31 @@ namespace OpenDevelop.Terminal
 		public int GroupIndexOf(TerminalPane pane) => groups.IndexOf(pane.Group);
 
 		public IReadOnlyList<string> Labels()
-			=> Panes.Select((p, i) => $"{i + 1}: {(string.IsNullOrEmpty(p.Session.Title) ? p.Session.ShellName : p.Session.Title)}{(p.Group.Panes.Count > 1 ? "  (split)" : "")}").ToList();
+			=> Panes.Select((p, i) => $"{i + 1}: {Name(p)}{(p.Group.Panes.Count > 1 ? "  (split)" : "")}").ToList();
+
+		public static string Name(TerminalPane pane)
+			=> !string.IsNullOrEmpty(pane.CustomName) ? pane.CustomName
+				: string.IsNullOrEmpty(pane.Session.Title) ? pane.Session.ShellName : pane.Session.Title;
+
+		/// <summary>Names the active terminal; an empty name goes back to the shell's own title.</summary>
+		public void RenameActive(string name)
+		{
+			if (activePane == null)
+				return;
+			name = name?.Trim();
+			activePane.CustomName = string.IsNullOrEmpty(name) ? null : name;
+			RaiseChanged();
+		}
+
+		/// <summary>Moves to the next (+1) or previous (-1) terminal in the session list, wrapping around.</summary>
+		public void ActivateRelative(int delta)
+		{
+			var panes = Panes.ToList();
+			if (panes.Count == 0)
+				return;
+			int current = Math.Max(0, panes.IndexOf(activePane));
+			ActivateIndex(((current + delta) % panes.Count + panes.Count) % panes.Count);
+		}
 
 		public Task<TerminalPane> NewSessionAsync(string shell = null, string workingDirectory = null)
 		{
@@ -106,6 +132,7 @@ namespace OpenDevelop.Terminal
 			view.Session = session;
 			view.GotKeyboardFocus += (_, _) => SetActive(pane);
 			view.Updated += RaiseChangedIfLabelsChanged;
+			view.CloseRequested += () => KillPane(pane);
 			group.Panes.Add(pane);
 			LayoutGroup(group);
 			host.Child = group.Host;
@@ -151,15 +178,27 @@ namespace OpenDevelop.Terminal
 			pane.View.Focus();
 		}
 
-		public void KillActive()
+		public void KillActive() => KillPane(activePane);
+
+		/// <summary>Ends a pane's shell and removes the pane; the active pane moves to a neighbour when it was the active one.</summary>
+		void KillPane(TerminalPane pane)
 		{
-			var pane = activePane;
-			if (pane == null)
-				return;
+			if (pane == null || !pane.Group.Panes.Contains(pane))
+				return; // already gone (key repeat on an exited pane, for instance)
 			var group = pane.Group;
+			bool wasActive = pane == activePane;
 			group.Panes.Remove(pane);
 			pane.View.Dispose();
 			pane.Session.Dispose();
+			if (!wasActive) {
+				if (group.Panes.Count > 0) {
+					LayoutGroup(group);
+				} else {
+					groups.Remove(group);
+				}
+				RaiseChanged();
+				return;
+			}
 			activePane = null;
 			if (group.Panes.Count > 0) {
 				LayoutGroup(group);

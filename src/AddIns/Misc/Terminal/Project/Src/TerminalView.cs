@@ -44,6 +44,9 @@ namespace OpenDevelop.Terminal
 			refreshTimer.Start();
 		}
 
+		/// <summary>The shell has ended and the user pressed a key: the owner should close this pane.</summary>
+		public event Action CloseRequested;
+
 		/// <summary>Raised on the UI thread after the view repainted from a fresh snapshot (title and size may have changed).</summary>
 		public event Action Updated;
 
@@ -452,6 +455,12 @@ namespace OpenDevelop.Terminal
 			}
 			if (chord && key == Key.V) {
 				PasteFromClipboard();
+				return true;
+			}
+			if (session.HasExited) {
+				// Nothing is listening any more: a key (other than a bare modifier) dismisses the finished terminal.
+				if (key is not (Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin or Key.System))
+					CloseRequested?.Invoke();
 				return true;
 			}
 			if (command || !TerminalKeys.TryMap(key, out int ghosttyKey, out string text, out bool isText))

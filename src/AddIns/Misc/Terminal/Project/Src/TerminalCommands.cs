@@ -20,6 +20,29 @@ namespace OpenDevelop.Terminal
 			=> ICSharpCode.SharpDevelop.Commands.OptionsCommand.ShowTreeOptions("Options", AddInTree.GetTreeNode("/SharpDevelop/Dialogs/OptionsDialog"));
 	}
 
+	sealed class NextTerminalCommand : AbstractMenuCommand
+	{
+		public override void Run() => TerminalPaneModel.Instance?.ActivateRelative(1);
+	}
+
+	sealed class PreviousTerminalCommand : AbstractMenuCommand
+	{
+		public override void Run() => TerminalPaneModel.Instance?.ActivateRelative(-1);
+	}
+
+	sealed class RenameTerminalCommand : AbstractMenuCommand
+	{
+		public override void Run()
+		{
+			var pad = TerminalPaneModel.Instance;
+			if (pad?.ActivePane == null)
+				return;
+			var name = MessageService.ShowInputBox("Rename Terminal", "Name for this terminal (empty restores the shell's title):", TerminalPaneModel.Name(pad.ActivePane));
+			if (name != null)
+				pad.RenameActive(name);
+		}
+	}
+
 	sealed class SplitTerminalCommand : TerminalCommand
 	{
 		public override void Run() => Pad?.SplitActiveAsync().FireAndForget();

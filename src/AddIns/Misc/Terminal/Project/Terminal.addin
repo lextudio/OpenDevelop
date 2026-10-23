@@ -78,6 +78,18 @@
 		          shortcut     = "Control|Shift|OemTilde"
 		          insertbefore = "ViewItemsSeparator"
 		          class        = "OpenDevelop.Terminal.NewTerminalFromMenuCommand"/>
+		<MenuItem id           = "NextTerminal"
+		          label        = "Next Terminal"
+		          insertbefore = "ViewItemsSeparator"
+		          class        = "OpenDevelop.Terminal.NextTerminalCommand"/>
+		<MenuItem id           = "PreviousTerminal"
+		          label        = "Previous Terminal"
+		          insertbefore = "ViewItemsSeparator"
+		          class        = "OpenDevelop.Terminal.PreviousTerminalCommand"/>
+		<MenuItem id           = "RenameTerminal"
+		          label        = "Rename Terminal..."
+		          insertbefore = "ViewItemsSeparator"
+		          class        = "OpenDevelop.Terminal.RenameTerminalCommand"/>
 	</Path>
 
 	<Path name = "/SharpDevelop/Autostart">
