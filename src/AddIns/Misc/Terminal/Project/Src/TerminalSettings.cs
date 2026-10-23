@@ -8,6 +8,13 @@ namespace OpenDevelop.Terminal
 		const string FontSizeKey = "Terminal.FontSize";
 		const string ScrollbackKey = "Terminal.ScrollbackLines";
 		const string FontFamilyKey = "Terminal.FontFamily";
+		const string VisualBellKey = "Terminal.VisualBell";
+
+		/// <summary>Flash the terminal when a program rings the bell (BEL).</summary>
+		public static bool VisualBell {
+			get => SD.PropertyService.Get(VisualBellKey, true);
+			set => SD.PropertyService.Set(VisualBellKey, value);
+		}
 
 		/// <summary>The first choice that exists on the machine wins; the list ends with fonts every platform here has.</summary>
 		public const string DefaultFontFamily = "Menlo, Consolas, DejaVu Sans Mono, Courier New";

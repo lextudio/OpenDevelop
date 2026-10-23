@@ -141,8 +141,8 @@ namespace OpenDevelop.Terminal
 			return JsonSerializer.Serialize(new { success = true });
 		}
 
-		[DevFlowAction("od.terminal.settings", Description = "Read the terminal settings, optionally storing a new font size (points), scrollback line count and font family list ('default' restores the default list) first, as saving the Terminal options page does; open terminals re-measure, scrollback applies to terminals started afterwards")]
-		public static string Settings(double fontSize = 0, int scrollbackLines = -1, string fontFamily = "")
+		[DevFlowAction("od.terminal.settings", Description = "Read the terminal settings, optionally storing a new font size (points), scrollback line count and font family list ('default' restores the default list) and the visual bell ('on'/'off') first, as saving the Terminal options page does; open terminals re-measure, scrollback applies to terminals started afterwards")]
+		public static string Settings(double fontSize = 0, int scrollbackLines = -1, string fontFamily = "", string visualBell = "")
 		{
 			if (fontSize > 0)
 				TerminalSettings.FontSize = fontSize;
@@ -150,10 +150,12 @@ namespace OpenDevelop.Terminal
 				TerminalSettings.ScrollbackLines = scrollbackLines;
 			if (!string.IsNullOrEmpty(fontFamily))
 				TerminalSettings.FontFamily = fontFamily == "default" ? "" : fontFamily;
-			if (fontSize > 0 || scrollbackLines >= 0 || !string.IsNullOrEmpty(fontFamily))
+			if (visualBell == "on" || visualBell == "off")
+				TerminalSettings.VisualBell = visualBell == "on";
+			if (fontSize > 0 || scrollbackLines >= 0 || !string.IsNullOrEmpty(fontFamily) || visualBell.Length > 0)
 				TerminalSettings.RaiseChanged();
 			return JsonSerializer.Serialize(new {
-				success = true, fontSize = TerminalSettings.FontSize, scrollbackLines = TerminalSettings.ScrollbackLines, fontFamily = TerminalSettings.FontFamily,
+				success = true, fontSize = TerminalSettings.FontSize, scrollbackLines = TerminalSettings.ScrollbackLines, fontFamily = TerminalSettings.FontFamily, visualBell = TerminalSettings.VisualBell,
 				// The stored IDE theme name ("Light"/"Dark"/"Blue"), so a test that switches the theme can put it back.
 				ideTheme = SD.PropertyService.Get("SharpDevelop.IdeTheme", "Light"),
 			});
@@ -350,7 +352,7 @@ namespace OpenDevelop.Terminal
 				return JsonSerializer.Serialize(new { success = false, error = "No active terminal" });
 			return JsonSerializer.Serialize(new {
 				success = true, columns = snap.Columns, rows = snap.Rows, title = session.Title,
-				background = Hex(snap.DefaultBackground), foreground = Hex(snap.DefaultForeground), cellWidth = Pad()?.View?.CellWidth ?? 0,
+				background = Hex(snap.DefaultBackground), foreground = Hex(snap.DefaultForeground), cellWidth = Pad()?.View?.CellWidth ?? 0, bell = new { count = session.BellCount, flashes = Pad()?.View?.FlashCount ?? 0 },
 				cursor = new { column = snap.CursorColumn, row = snap.CursorRow, style = snap.CursorStyle.ToString().ToLowerInvariant(), visible = snap.CursorVisible },
 				exited = session.HasExited, exitCode = session.ExitCode,
 				scrollback = new { total = snap.ScrollbackTotal, offset = snap.ScrollbackOffset, length = snap.ScrollbackLength },

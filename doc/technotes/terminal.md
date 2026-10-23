@@ -98,7 +98,7 @@ Project Browser "Open in Terminal" opens the integrated terminal in that folder 
 `ITerminalHost` (Base interface, registered by the add-in; external terminal app if the add-in is not
 loaded). DevFlow: `od.terminal.new|split|
 activate|send|key|mouse|wheel|click|scroll|select|copy|paste|shells|settings|text|list|kill`; host side
-`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (sixteen
+`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (seventeen
 journeys, pass; run with the xUnit v3 runner from `tests/OpenDevelop.IntegrationTests/TESTING.md`).
 
 Verified live (the journey above, plus the UI tree):
@@ -208,6 +208,11 @@ spaces with a trailing space; dropped text is pasted as it is (bracketed when th
 Zoom: Ctrl+wheel and Cmd/Ctrl+Shift with `=`, `-`, `0` change the font size by a point or reset it to 13;
 the size is the same setting the Options page edits, so it persists and applies to every terminal.
 
+Bell: a BEL from a program (`printf '\a'`, a build script's last line) makes the terminal flash for 180 ms,
+unless "Flash the terminal when a program rings the bell" is off in the Options page; it is still counted.
+The BEL that ends an OSC sequence (a title change) is not a bell: libghostty's bell callback does not
+report it. There is no sound.
+
 Font: the Options page has a font family (a WPF family list, comma separated, the first installed one wins;
 blank means the default `Menlo, Consolas, DejaVu Sans Mono, Courier New`) next to the size; both apply to open
 terminals at once. A proportional family works but looks wrong (every cell is as wide as an "M").
@@ -271,11 +276,11 @@ not handled. Not checked on Windows.
 
 ## Testing
 
-Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, sixteen journeys, DevFlow
+Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, seventeen journeys, DevFlow
 actions instead of OS input): shells, size and alternate screen, keys, split; wide text, scrollback,
 selection, wrapped copy, bracketed paste; View menu, Project Browser "Open in Terminal", shell list;
 mouse reporting, alternate-screen wheel, word and line selection; settings; cycling, renaming and the
-end of a shell; IDE theme colours; links; find; the shell's current directory; the right-click menu; dropped files; zoom; Send to Terminal; the macOS editing keys; the cursor; the font family. There are no unit tests of
+end of a shell; IDE theme colours; links; find; the shell's current directory; the right-click menu; dropped files; zoom; Send to Terminal; the macOS editing keys; the cursor; the font family; the bell. There are no unit tests of
 the engine on its own.
 
 ## Phasing

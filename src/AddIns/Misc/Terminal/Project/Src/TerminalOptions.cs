@@ -10,6 +10,7 @@ namespace OpenDevelop.Terminal
 	{
 		const string Automatic = "(login shell)";
 		readonly ComboBox shell = new ComboBox { MinWidth = 260, HorizontalAlignment = HorizontalAlignment.Left };
+		readonly CheckBox visualBell = new CheckBox { Content = "Flash the terminal when a program rings the bell", Margin = new Thickness(0, 12, 0, 0) };
 		readonly TextBox fontSize = new TextBox { Width = 80, HorizontalAlignment = HorizontalAlignment.Left };
 		readonly TextBox fontFamily = new TextBox { MinWidth = 360, HorizontalAlignment = HorizontalAlignment.Left };
 		readonly TextBox scrollback = new TextBox { Width = 120, HorizontalAlignment = HorizontalAlignment.Left };
@@ -22,6 +23,7 @@ namespace OpenDevelop.Terminal
 			shell.SelectedItem = !string.IsNullOrEmpty(stored) && shells.Contains(stored, StringComparer.OrdinalIgnoreCase) ? stored : Automatic;
 			fontSize.Text = TerminalSettings.FontSize.ToString(CultureInfo.InvariantCulture);
 			fontFamily.Text = TerminalSettings.FontFamily;
+			visualBell.IsChecked = TerminalSettings.VisualBell;
 			scrollback.Text = TerminalSettings.ScrollbackLines.ToString(CultureInfo.InvariantCulture);
 
 			var panel = new StackPanel { Margin = new Thickness(8) };
@@ -34,12 +36,14 @@ namespace OpenDevelop.Terminal
 			Row("Font family (comma separated, the first installed one is used; applies immediately)", fontFamily);
 			Row("Font size (points, applies immediately)", fontSize);
 			Row("Scrollback lines (applies to terminals started afterwards)", scrollback);
+			panel.Children.Add(visualBell);
 			Content = panel;
 		}
 
 		public override bool SaveOptions()
 		{
 			TerminalShells.Default = Equals(shell.SelectedItem, Automatic) ? "" : (string)shell.SelectedItem;
+			TerminalSettings.VisualBell = visualBell.IsChecked == true;
 			TerminalSettings.FontFamily = string.Equals(fontFamily.Text.Trim(), TerminalSettings.DefaultFontFamily, StringComparison.Ordinal) ? "" : fontFamily.Text;
 			if (double.TryParse(fontSize.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var size))
 				TerminalSettings.FontSize = size;

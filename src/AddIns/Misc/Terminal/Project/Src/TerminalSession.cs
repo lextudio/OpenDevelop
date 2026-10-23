@@ -25,6 +25,8 @@ namespace OpenDevelop.Terminal
 		readonly IntPtr rowCells;
 		readonly G.WritePtyCallback writePtyCallback;
 		readonly G.TitleChangedCallback titleChangedCallback;
+		readonly G.TitleChangedCallback bellCallback; // the bell callback has the same shape as the title one: void (terminal, userdata)
+		int bellCount;
 		IntPtr keyEncoder, keyEvent;
 		IntPtr mouseEncoder, mouseEvent;
 		byte[] modeTail = Array.Empty<byte>();
@@ -53,6 +55,8 @@ namespace OpenDevelop.Terminal
 					Title = Marshal.PtrToStringUTF8(title.Pointer, (int)title.Length);
 				// No Changed here: this runs inside TerminalWrite under `gate`, and ReadLoop raises Changed once the lock is released.
 			};
+			bellCallback = (_, _) => Interlocked.Increment(ref bellCount);
+			native.TerminalSet(terminal, TerminalOptionBell, G.GetCallbackPointer(bellCallback));
 			native.TerminalSet(terminal, G.TerminalOptionWritePty, G.GetCallbackPointer(writePtyCallback));
 			native.TerminalSet(terminal, G.TerminalOptionTitleChanged, G.GetCallbackPointer(titleChangedCallback));
 		}
@@ -263,6 +267,12 @@ namespace OpenDevelop.Terminal
 				BracketedPaste = on > off;
 			modeTail = window.AsSpan(Math.Max(0, window.Length - (BracketedOn.Length - 1))).ToArray();
 		}
+
+		// GHOSTTY_TERMINAL_OPT_BELL: called for a BEL in the output, not for the BEL that ends an OSC sequence (checked in a spike).
+		const int TerminalOptionBell = 2;
+
+		/// <summary>How many times a program has rung the bell (BEL) in this terminal.</summary>
+		public int BellCount => Volatile.Read(ref bellCount);
 
 		// GHOSTTY_TERMINAL_OPT_COLOR_PALETTE: the C API takes 256 RGB triples (found by testing: setting entry 1
 		// to 123456 made SGR 31 resolve to 123456). The managed binding only names the foreground/background options.

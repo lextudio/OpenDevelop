@@ -47,6 +47,7 @@ namespace OpenDevelop.Terminal
 			refreshTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(16) };
 			themeSignature = TerminalTheme.Current().Signature;
 			refreshTimer.Tick += (_, _) => {
+				CheckBell();
 				Refresh();
 				if (++themeTicks >= 60) { // about once a second: the IDE theme can change at any time
 					themeTicks = 0;
@@ -64,6 +65,33 @@ namespace OpenDevelop.Terminal
 
 		/// <summary>Raised on the UI thread after the view repainted from a fresh snapshot (title and size may have changed).</summary>
 		public event Action Updated;
+
+		int seenBells;
+		DateTime flashUntil;
+		static readonly Brush FlashBrush = Frozen(Color.FromArgb(90, 255, 255, 255));
+
+		/// <summary>How many times the view has flashed for the bell (only counted while the visual bell is on).</summary>
+		public int FlashCount { get; private set; }
+
+		/// <summary>A bell rang since the last tick: flash the view briefly, if the setting asks for it.</summary>
+		void CheckBell()
+		{
+			if (session == null)
+				return;
+			int bells = session.BellCount;
+			if (bells != seenBells) {
+				seenBells = bells;
+				if (TerminalSettings.VisualBell) {
+					FlashCount++;
+					flashUntil = DateTime.UtcNow.AddMilliseconds(180);
+					dirty = true;
+				}
+			}
+			if (flashUntil != default && DateTime.UtcNow >= flashUntil) {
+				flashUntil = default;
+				dirty = true; // repaint without the flash
+			}
+		}
 
 		TerminalLinkHit hoveredLink;
 		IReadOnlyList<TerminalMatch> matches = Array.Empty<TerminalMatch>();
@@ -429,6 +457,9 @@ namespace OpenDevelop.Terminal
 						dc.DrawRectangle(i == currentMatch ? CurrentMatchBrush : MatchBrush, null, new Rect(left * cellWidth, row * cellHeight, (right - left + 1) * cellWidth, cellHeight));
 				}
 			}
+
+			if (flashUntil != default && DateTime.UtcNow < flashUntil)
+				dc.DrawRectangle(FlashBrush, null, new Rect(0, 0, ActualWidth, ActualHeight));
 
 			if (hoveredLink != null && hoveredLink.Row < snap.Rows) {
 				dc.DrawRectangle(BrushFor(defaultFg), null,

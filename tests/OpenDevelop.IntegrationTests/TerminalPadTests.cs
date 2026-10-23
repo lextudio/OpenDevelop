@@ -845,6 +845,64 @@ public sealed class TerminalPadTests
 		}
 	}
 
+	[Fact]
+	public async Task TerminalPad_FlashesWhenAProgramRingsTheBell()
+	{
+		await ShowPadAsync();
+		var originalBell = (await app.InvokeAsync("od.terminal.settings")).GetProperty("visualBell").GetBoolean();
+		try
+		{
+			Assert.True((await app.InvokeAsync("od.terminal.new", "/bin/sh")).GetProperty("success").GetBoolean());
+			await app.InvokeAsync("od.terminal.settings", 0, -1, "", "on");
+			async Task<(int count, int flashes)> BellAsync()
+			{
+				var bell = (await app.InvokeAsync("od.terminal.text")).GetProperty("bell");
+				return (bell.GetProperty("count").GetInt32(), bell.GetProperty("flashes").GetInt32());
+			}
+			async Task<(int count, int flashes)> WaitForBellAsync(Func<(int count, int flashes), bool> accept)
+			{
+				(int count, int flashes) last = default;
+				for (var attempt = 0; attempt < 50; attempt++)
+				{
+					last = await BellAsync();
+					if (accept(last))
+						return last;
+					await Task.Delay(100);
+				}
+				Assert.Fail($"The bell state never matched (last count={last.count}, flashes={last.flashes}).");
+				return last;
+			}
+			var start = await BellAsync();
+
+			// One BEL rings once and flashes once.
+			await SendAsync("printf '\\a'\r");
+			var one = await WaitForBellAsync(b => b.count == start.count + 1 && b.flashes == start.flashes + 1);
+
+			// More BELs ring more; the flash may merge bells that arrive within one tick, but it does happen again.
+			await SendAsync("printf '\\a\\a'\r");
+			var three = await WaitForBellAsync(b => b.count == start.count + 3 && b.flashes > one.flashes);
+
+			// A BEL that only ends a title sequence (OSC 0 ; text BEL) is not a bell.
+			await SendAsync("printf '\\033]0;quiet\\007'\r");
+			await Task.Delay(700);
+			Assert.Equal(three.count, (await BellAsync()).count);
+
+			// With the visual bell off the bell is still counted but nothing flashes.
+			await app.InvokeAsync("od.terminal.settings", 0, -1, "", "off");
+			var before = await BellAsync();
+			await SendAsync("printf '\\a'\r");
+			var off = await WaitForBellAsync(b => b.count == before.count + 1);
+			await Task.Delay(300);
+			Assert.Equal(before.flashes, (await BellAsync()).flashes);
+			Assert.Equal(before.flashes, off.flashes);
+			await app.InvokeAsync("od.terminal.kill");
+		}
+		finally
+		{
+			await app.InvokeAsync("od.terminal.settings", 0, -1, "", originalBell ? "on" : "off");
+		}
+	}
+
 	async Task WaitForMouseTrackingAsync(bool expected)
 	{
 		JsonElement last = default;
