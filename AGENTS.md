@@ -166,6 +166,14 @@ no git process is running; on Windows a lock can also be transient (an IDE's bac
 re-check `Test-Path .git/index.lock` and retry before treating it as stale. Review a submodule change
 with `--dir <submodule>`; the parent diff shows only its pointer.
 
+An index lock is a staging-integrity preflight, not a review finding. Before launching a reviewer,
+confirm there is no active Git process and successfully run `git diff --cached --check` and
+`git write-tree`; record that resulting tree hash in the review prompt. Once those checks succeed,
+the reviewer must inspect that exact cached tree and must not reject or defer the content review
+because it observes a transient or stale `.git/index.lock`. If the preflight cannot produce a tree
+hash, resolve the lock under the rules above and restart the preflight; do not let an empty or
+locked diff become an approval.
+
 ## DevFlow
 
 DevFlow uses `POST http://localhost:9299/api/v1/invoke/actions/<name>`. Parse JSON and check
