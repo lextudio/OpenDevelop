@@ -160,7 +160,9 @@ Pitfalls found (keep):
   are): the C header's option 14 (`GHOSTTY_TERMINAL_OPT_COLOR_PALETTE`, 256 RGB triples) was found to work
   by setting entry 1 and reading back what SGR 31 resolved to. Options 11 and 12 take one RGB triple.
 - Porta.Pty loads `libporta_pty` from the add-in DLL's directory only, but NuGet leaves it under
-  `runtimes/<rid>/native/`; `TerminalSession` installs a `NativeLibrary.SetDllImportResolver`.
+  `runtimes/<rid>/native/`; `TerminalSession` installs a `NativeLibrary.SetDllImportResolver` on
+  Unix only. On Windows Porta.Pty owns that resolver for `conpty.dll`; a second registration makes
+  `PseudoConsole`'s static constructor fail.
 - Porta.Pty's transitive staging target cannot distinguish LibGhostty.Net's `conpty.dll` from the
   official ConPTY package and derives a nonexistent `OpenConsole.exe` path. Terminal disables that
   target and stages LibGhostty's matching win-x64 host in `x64/`, beside the deployed add-in assets.

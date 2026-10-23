@@ -145,6 +145,10 @@ namespace OpenDevelop.Terminal
 
 		static TerminalSession()
 		{
+			// Porta.Pty installs its own resolver for conpty.dll on Windows. Registering a second
+			// resolver for the same assembly makes PseudoConsole's static constructor fail.
+			if (OperatingSystem.IsWindows())
+				return;
 			// Porta.Pty imports its helper with DllImportSearchPath.AssemblyDirectory, i.e. next to
 			// the add-in DLL, but NuGet leaves it under runtimes/<rid>/native/.
 			NativeLibrary.SetDllImportResolver(typeof(PtyProvider).Assembly, (name, assembly, searchPath) => {
