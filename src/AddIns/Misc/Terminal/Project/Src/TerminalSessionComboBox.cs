@@ -15,6 +15,7 @@ namespace OpenDevelop.Terminal
 			// LibreWPF's implicit-style lookup does not walk BaseType, so a ComboBox subclass would
 			// miss the themed ComboBox style (same workaround as the Task List scope combo).
 			Loaded += (_, _) => {
+				Visible = this;
 				if (Style == null && Application.Current != null)
 					Style = Application.Current.TryFindResource(typeof(ComboBox)) as Style;
 			};
@@ -31,6 +32,9 @@ namespace OpenDevelop.Terminal
 				Refresh();
 			}
 		}
+
+		/// <summary>The combo that was loaded last (what a pointer test needs to find).</summary>
+		internal static TerminalSessionComboBox Visible { get; private set; }
 
 		void Refresh()
 		{

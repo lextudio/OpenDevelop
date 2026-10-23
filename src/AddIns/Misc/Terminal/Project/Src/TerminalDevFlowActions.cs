@@ -358,6 +358,36 @@ namespace OpenDevelop.Terminal
 			return JsonSerializer.Serialize(new { success = true, open = headers.Count > 0, headers });
 		}
 
+		[DevFlowAction("od.terminal.toolbar", Description = "Screen centres (PointToScreen) of the Terminal toolbar's shell arrow and terminal combo, whether the combo's drop-down is open, and the open shell menu's entries (header and PointToScreen centre; a real click at an entry's centre was seen missing the popup)")]
+		public static string Toolbar()
+		{
+			var button = TerminalNewShellButton.Visible;
+			var combo = TerminalSessionComboBox.Visible;
+			static object Centre(System.Windows.FrameworkElement e)
+			{
+				if (e == null || !e.IsVisible)
+					return null;
+				var p = e.PointToScreen(new System.Windows.Point(e.ActualWidth / 2, e.ActualHeight / 2));
+				return new { x = p.X, y = p.Y };
+			}
+			return JsonSerializer.Serialize(new {
+				success = true,
+				shellArrow = Centre(button),
+				combo = Centre(combo),
+				comboOpen = combo?.IsDropDownOpen ?? false,
+				shellMenu = (button?.OpenMenuEntries() ?? new List<(string Header, System.Windows.Point Screen)>()).Select(e => new { header = e.Header, x = e.Screen.X, y = e.Screen.Y }).ToArray(),
+			});
+		}
+
+		[DevFlowAction("od.terminal.close-toolbar-popups", Description = "Close the shell menu and the terminal combo's drop-down if open")]
+		public static string CloseToolbarPopups()
+		{
+			TerminalNewShellButton.Visible?.CloseMenu();
+			if (TerminalSessionComboBox.Visible is { } combo)
+				combo.IsDropDownOpen = false;
+			return JsonSerializer.Serialize(new { success = true });
+		}
+
 		[DevFlowAction("od.terminal.cell", Description = "One visible cell of the active terminal: its text and the colours it is drawn with (#rrggbb, the default colours when the cell has none)")]
 		public static string Cell(int column, int row)
 		{

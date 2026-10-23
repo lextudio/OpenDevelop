@@ -1071,6 +1071,53 @@ public sealed class TerminalPadTests
 		}
 	}
 
+	/// <summary>Real clicks on the toolbar: the shell arrow opens its menu of shells, and the combo opens its drop-down.</summary>
+	[Fact]
+	public async Task TerminalPad_ToolbarWorksWithRealClicks()
+	{
+		await ShowPadAsync();
+		Assert.True((await app.InvokeAsync("od.terminal.new", "/bin/sh")).GetProperty("success").GetBoolean());
+		async Task<JsonElement> ToolbarAsync() => await app.InvokeAsync("od.terminal.toolbar");
+		async Task<int> SessionCountAsync() => (await app.InvokeAsync("od.terminal.list")).GetProperty("sessions").GetArrayLength();
+		var toolbar = await ToolbarAsync();
+		Assert.Equal(JsonValueKind.Object, toolbar.GetProperty("shellArrow").ValueKind);
+		Assert.Equal(0, toolbar.GetProperty("shellMenu").GetArrayLength());
+		var before = await SessionCountAsync();
+
+		// The arrow opens a menu of the installed shells and the default-shell submenu.
+		var arrow = toolbar.GetProperty("shellArrow");
+		// Now and then the first click never reaches the button: no mouse-down is recorded and the click handler does not run
+		// (seen in about half of the runs on one machine; the cause is not established). Click again until the menu is up, at most
+		// three times, rather than failing on that delivery gap.
+		JsonElement entries = default;
+		for (var attempt = 0; attempt < 3; attempt++)
+		{
+			await app.ClickPointerAsync(arrow.GetProperty("x").GetDouble(), arrow.GetProperty("y").GetDouble());
+			await OpenDevelopAppFixture.PollUntilAsync(async () =>
+			{
+				entries = (await ToolbarAsync()).GetProperty("shellMenu");
+				return entries.GetArrayLength() > 0;
+			}, TimeSpan.FromSeconds(2));
+			if (entries.GetArrayLength() > 0)
+				break;
+		}
+		Assert.True(entries.GetArrayLength() > 1, "The shell menu did not open: " + entries);
+		Assert.Equal("Default Shell", entries.EnumerateArray().Last().GetProperty("header").GetString());
+
+		// Popup entries are not clicked for real: a click at an entry's PointToScreen centre was seen landing on the main window below
+		// (the menu closed without running the entry); the cause is not investigated. Choosing a shell is covered through its data elsewhere.
+		await app.InvokeAsync("od.terminal.close-toolbar-popups");
+		Assert.Equal(0, (await ToolbarAsync()).GetProperty("shellMenu").GetArrayLength());
+		Assert.Equal(before, await SessionCountAsync());
+
+		// The combo opens its drop-down.
+		var combo = (await ToolbarAsync()).GetProperty("combo");
+		await app.ClickPointerAsync(combo.GetProperty("x").GetDouble(), combo.GetProperty("y").GetDouble());
+		await OpenDevelopAppFixture.PollUntilAsync(async () => (await ToolbarAsync()).GetProperty("comboOpen").GetBoolean(), TimeSpan.FromSeconds(5));
+		Assert.True((await ToolbarAsync()).GetProperty("comboOpen").GetBoolean(), "The terminal combo did not open on a real click.");
+		await app.InvokeAsync("od.terminal.close-toolbar-popups");
+	}
+
 	/// <summary>A real scroll-wheel event over the terminal pages through its scrollback (three lines per notch).</summary>
 	[Fact]
 	public async Task TerminalPad_ScrollsOnARealWheelEvent()
