@@ -70,6 +70,21 @@
 		             class = "OpenDevelop.Terminal.TerminalOptions"/>
 	</Path>
 
+	<Path name = "/SharpDevelop/Workbench/MainMenu/Edit">
+		<Condition name = "WindowActive" activewindow="ICSharpCode.SharpDevelop.Editor.ITextEditor" action="Disable">
+			<MenuItem id    = "SendToTerminal"
+			          label = "Send to Terminal"
+			          class = "OpenDevelop.Terminal.SendToTerminalCommand"/>
+		</Condition>
+	</Path>
+
+	<Path name = "/SharpDevelop/ViewContent/TextEditor/ContextMenu">
+		<MenuItem id          = "SendToTerminal"
+		          label       = "Send to Terminal"
+		          insertafter = "Delete"
+		          class       = "OpenDevelop.Terminal.SendToTerminalCommand"/>
+	</Path>
+
 	<Path name = "/SharpDevelop/Workbench/MainMenu/View">
 		<MenuItem id           = "Terminal"
 		          label        = "Terminal"

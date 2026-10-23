@@ -310,6 +310,15 @@ namespace OpenDevelop.Terminal
 			return JsonSerializer.Serialize(new { success = true, pasted = view.HandleDrop(data) });
 		}
 
+		[DevFlowAction("od.terminal.send-from-editor", Description = "Run Send to Terminal on the active editor: its selection, or the caret's line when nothing is selected, goes to the active terminal and Enter is pressed. selectStart >= 0 first selects selectLength characters from that offset; returns the text sent (null when there is no editor or the text is blank)")]
+		public static async Task<string> SendFromEditor(int selectStart = -1, int selectLength = 0)
+		{
+			if (selectStart >= 0)
+				ICSharpCode.SharpDevelop.SD.GetActiveViewContentService<ICSharpCode.SharpDevelop.Editor.ITextEditor>()?.Select(selectStart, selectLength);
+			var sent = await TerminalEditorBridge.SendActiveEditorTextAsync();
+			return JsonSerializer.Serialize(new { success = true, sent });
+		}
+
 		[DevFlowAction("od.terminal.cell", Description = "One visible cell of the active terminal: its text and the colours it is drawn with (#rrggbb, the default colours when the cell has none)")]
 		public static string Cell(int column, int row)
 		{

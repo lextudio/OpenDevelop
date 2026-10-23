@@ -705,6 +705,44 @@ public sealed class TerminalPadTests
 		}
 	}
 
+	[Fact]
+	public async Task TerminalPad_RunsTheEditorsTextInTheTerminal()
+	{
+		await ShowPadAsync();
+		Assert.True((await app.InvokeAsync("od.terminal.new", "/bin/sh")).GetProperty("success").GetBoolean());
+		var script = $"/tmp/od-send-{Guid.NewGuid():N}".Substring(0, 18) + ".sh";
+		File.WriteAllText(script, "echo from-editor-one\necho from-editor-two\necho multi-a\necho multi-b\n");
+		try
+		{
+			Assert.True((await app.InvokeAsync("od.open-file", script)).GetProperty("opened").GetBoolean());
+
+			// Nothing selected: the caret's line runs (line 2 starts at offset 21).
+			Assert.True((await app.InvokeAsync("od.file.set-caret-offset", script, 24)).GetProperty("success").GetBoolean());
+			var line = await app.InvokeAsync("od.terminal.send-from-editor");
+			Assert.Equal("echo from-editor-two", line.GetProperty("sent").GetString());
+			await WaitForLineAsync("from-editor-two"); // the output line; the echoed command line is "echo from-editor-two"
+			Assert.DoesNotContain("from-editor-one", Lines(await app.InvokeAsync("od.terminal.text")));
+
+			// A selection of two lines runs both, one after the other.
+			var selection = await app.InvokeAsync("od.terminal.send-from-editor", 42, "echo multi-a\necho multi-b".Length);
+			Assert.Contains("echo multi-a", selection.GetProperty("sent").GetString(), StringComparison.Ordinal);
+			Assert.Contains("echo multi-b", selection.GetProperty("sent").GetString(), StringComparison.Ordinal);
+			await WaitForLineAsync("multi-a");
+			await WaitForLineAsync("multi-b");
+
+			// No editor, nothing to send.
+			await app.InvokeAsync("od.close-all-document-views");
+			var none = await app.InvokeAsync("od.terminal.send-from-editor");
+			Assert.Equal(JsonValueKind.Null, none.GetProperty("sent").ValueKind);
+			await app.InvokeAsync("od.terminal.kill");
+		}
+		finally
+		{
+			await app.InvokeAsync("od.close-all-document-views");
+			File.Delete(script);
+		}
+	}
+
 	async Task WaitForMouseTrackingAsync(bool expected)
 	{
 		JsonElement last = default;

@@ -98,7 +98,7 @@ Project Browser "Open in Terminal" opens the integrated terminal in that folder 
 `ITerminalHost` (Base interface, registered by the add-in; external terminal app if the add-in is not
 loaded). DevFlow: `od.terminal.new|split|
 activate|send|key|mouse|wheel|click|scroll|select|copy|paste|shells|settings|text|list|kill`; host side
-`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (twelve
+`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (thirteen
 journeys, pass; run with the xUnit v3 runner from `tests/OpenDevelop.IntegrationTests/TESTING.md`).
 
 Verified live (the journey above, plus the UI tree):
@@ -208,6 +208,12 @@ spaces with a trailing space; dropped text is pasted as it is (bracketed when th
 Zoom: Ctrl+wheel and Cmd/Ctrl+Shift with `=`, `-`, `0` change the font size by a point or reset it to 13;
 the size is the same setting the Options page edits, so it persists and applies to every terminal.
 
+Send to Terminal (Edit menu and the editor's right-click menu, enabled while an editor is active): the
+editor's selection, or the line the caret is on when nothing is selected, is pasted into the active
+terminal (as Paste does: bracketed when the program asked for it, newlines as Enter) and Enter is pressed;
+the pad is shown, and a terminal is started if there is none. The keyboard stays in the editor. Blank
+text is not sent.
+
 Right-click menu: Copy (disabled without a selection), Paste, Select All (the visible screen), Clear, Find...,
 and Open Link / Open File when the click is on a link. It is not shown while a program tracks the mouse
 unless Shift is held (then the program does not get the click, as for selection).
@@ -250,11 +256,11 @@ not handled. Not checked on Windows.
 
 ## Testing
 
-Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, twelve journeys, DevFlow
+Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, thirteen journeys, DevFlow
 actions instead of OS input): shells, size and alternate screen, keys, split; wide text, scrollback,
 selection, wrapped copy, bracketed paste; View menu, Project Browser "Open in Terminal", shell list;
 mouse reporting, alternate-screen wheel, word and line selection; settings; cycling, renaming and the
-end of a shell; IDE theme colours; links; find; the shell's current directory; the right-click menu; dropped files; zoom. There are no unit tests of
+end of a shell; IDE theme colours; links; find; the shell's current directory; the right-click menu; dropped files; zoom; Send to Terminal. There are no unit tests of
 the engine on its own.
 
 ## Phasing

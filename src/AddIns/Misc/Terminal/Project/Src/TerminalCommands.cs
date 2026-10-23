@@ -20,6 +20,12 @@ namespace OpenDevelop.Terminal
 			=> ICSharpCode.SharpDevelop.Commands.OptionsCommand.ShowTreeOptions("Options", AddInTree.GetTreeNode("/SharpDevelop/Dialogs/OptionsDialog"));
 	}
 
+	/// <summary>Edit menu and editor context menu: run the selection (or the caret's line) in the active terminal.</summary>
+	sealed class SendToTerminalCommand : AbstractMenuCommand
+	{
+		public override void Run() => TerminalEditorBridge.SendActiveEditorTextAsync().FireAndForget();
+	}
+
 	sealed class NextTerminalCommand : AbstractMenuCommand
 	{
 		public override void Run() => TerminalPaneModel.Instance?.ActivateRelative(1);
