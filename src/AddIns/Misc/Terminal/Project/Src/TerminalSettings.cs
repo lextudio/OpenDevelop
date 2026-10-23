@@ -7,6 +7,19 @@ namespace OpenDevelop.Terminal
 	{
 		const string FontSizeKey = "Terminal.FontSize";
 		const string ScrollbackKey = "Terminal.ScrollbackLines";
+		const string FontFamilyKey = "Terminal.FontFamily";
+
+		/// <summary>The first choice that exists on the machine wins; the list ends with fonts every platform here has.</summary>
+		public const string DefaultFontFamily = "Menlo, Consolas, DejaVu Sans Mono, Courier New";
+
+		/// <summary>A WPF font family list (comma separated, first available wins); blank means <see cref="DefaultFontFamily"/>.</summary>
+		public static string FontFamily {
+			get {
+				var chosen = SD.PropertyService.Get(FontFamilyKey, "");
+				return string.IsNullOrWhiteSpace(chosen) ? DefaultFontFamily : chosen;
+			}
+			set => SD.PropertyService.Set(FontFamilyKey, (value ?? "").Trim());
+		}
 
 		/// <summary>Raised on the UI thread after the options were saved; open views re-measure with the new font size.</summary>
 		public static event Action Changed;

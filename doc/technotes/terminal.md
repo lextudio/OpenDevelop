@@ -98,7 +98,7 @@ Project Browser "Open in Terminal" opens the integrated terminal in that folder 
 `ITerminalHost` (Base interface, registered by the add-in; external terminal app if the add-in is not
 loaded). DevFlow: `od.terminal.new|split|
 activate|send|key|mouse|wheel|click|scroll|select|copy|paste|shells|settings|text|list|kill`; host side
-`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (fifteen
+`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (sixteen
 journeys, pass; run with the xUnit v3 runner from `tests/OpenDevelop.IntegrationTests/TESTING.md`).
 
 Verified live (the journey above, plus the UI tree):
@@ -208,6 +208,10 @@ spaces with a trailing space; dropped text is pasted as it is (bracketed when th
 Zoom: Ctrl+wheel and Cmd/Ctrl+Shift with `=`, `-`, `0` change the font size by a point or reset it to 13;
 the size is the same setting the Options page edits, so it persists and applies to every terminal.
 
+Font: the Options page has a font family (a WPF family list, comma separated, the first installed one wins;
+blank means the default `Menlo, Consolas, DejaVu Sans Mono, Courier New`) next to the size; both apply to open
+terminals at once. A proportional family works but looks wrong (every cell is as wide as an "M").
+
 Cursor: a focused terminal draws the shape the program asked for (DECSCUSR): a solid block with the
 character under it in the background colour, a 2 px bar, or a 2 px underline; an unfocused terminal draws a
 hollow box whatever was asked, and DECTCEM (hide/show cursor) is honoured. Blinking is not drawn: the
@@ -267,11 +271,11 @@ not handled. Not checked on Windows.
 
 ## Testing
 
-Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, fifteen journeys, DevFlow
+Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, sixteen journeys, DevFlow
 actions instead of OS input): shells, size and alternate screen, keys, split; wide text, scrollback,
 selection, wrapped copy, bracketed paste; View menu, Project Browser "Open in Terminal", shell list;
 mouse reporting, alternate-screen wheel, word and line selection; settings; cycling, renaming and the
-end of a shell; IDE theme colours; links; find; the shell's current directory; the right-click menu; dropped files; zoom; Send to Terminal; the macOS editing keys; the cursor. There are no unit tests of
+end of a shell; IDE theme colours; links; find; the shell's current directory; the right-click menu; dropped files; zoom; Send to Terminal; the macOS editing keys; the cursor; the font family. There are no unit tests of
 the engine on its own.
 
 ## Phasing

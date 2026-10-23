@@ -12,8 +12,11 @@ namespace OpenDevelop.Terminal
 	/// <summary>Draws a <see cref="TerminalSnapshot"/> cell by cell and turns keys into PTY input.</summary>
 	sealed class TerminalView : FrameworkElement
 	{
-		readonly Typeface typeface = new Typeface(new FontFamily("Menlo, Consolas, DejaVu Sans Mono, Courier New"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
-		readonly Typeface boldTypeface = new Typeface(new FontFamily("Menlo, Consolas, DejaVu Sans Mono, Courier New"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
+		Typeface typeface = MakeTypeface(FontWeights.Normal);
+		Typeface boldTypeface = MakeTypeface(FontWeights.Bold);
+
+		static Typeface MakeTypeface(FontWeight weight)
+			=> new Typeface(new FontFamily(TerminalSettings.FontFamily), FontStyles.Normal, weight, FontStretches.Normal);
 		double fontSize = TerminalSettings.FontSize;
 		readonly Dictionary<uint, Brush> brushes = new Dictionary<uint, Brush>();
 		readonly DispatcherTimer refreshTimer;
@@ -279,6 +282,8 @@ namespace OpenDevelop.Terminal
 		void OnSettingsChanged()
 		{
 			fontSize = TerminalSettings.FontSize;
+			typeface = MakeTypeface(FontWeights.Normal);
+			boldTypeface = MakeTypeface(FontWeights.Bold);
 			MeasureCell();
 			FitSession();
 			dirty = true;

@@ -802,6 +802,49 @@ public sealed class TerminalPadTests
 		await app.InvokeAsync("od.terminal.kill");
 	}
 
+	[Fact]
+	public async Task TerminalPad_UsesTheConfiguredFontFamily()
+	{
+		await ShowPadAsync();
+		var original = (await app.InvokeAsync("od.terminal.settings")).GetProperty("fontFamily").GetString()!;
+		try
+		{
+			Assert.True((await app.InvokeAsync("od.terminal.new", "/bin/sh")).GetProperty("success").GetBoolean());
+			await app.InvokeAsync("od.terminal.settings", 0, -1, "default");
+			async Task<double> CellWidthAsync() => (await app.InvokeAsync("od.terminal.text")).GetProperty("cellWidth").GetDouble();
+			async Task<double> WaitForCellWidthAsync(Func<double, bool> accept)
+			{
+				double width = 0;
+				for (var attempt = 0; attempt < 50; attempt++)
+				{
+					width = await CellWidthAsync();
+					if (accept(width))
+						return width;
+					await Task.Delay(100);
+				}
+				Assert.Fail($"The cell width never matched (last {width}).");
+				return width;
+			}
+			var monospace = await WaitForCellWidthAsync(w => w > 0);
+			Assert.Contains("Menlo", (await app.InvokeAsync("od.terminal.settings")).GetProperty("fontFamily").GetString(), StringComparison.Ordinal);
+
+			// A different family changes the measured cell (Times New Roman's "M" is far wider than a monospace font's), and the grid re-fits.
+			var columns = (await app.InvokeAsync("od.terminal.text")).GetProperty("columns").GetInt32();
+			await app.InvokeAsync("od.terminal.settings", 0, -1, "Times New Roman");
+			var wide = await WaitForCellWidthAsync(w => w > monospace * 1.15);
+			await WaitForColumnsAsync(c => c < columns);
+			// "default" puts the default list back, which measures as before.
+			await app.InvokeAsync("od.terminal.settings", 0, -1, "default");
+			Assert.Equal(monospace, await WaitForCellWidthAsync(w => Math.Abs(w - monospace) < 0.01));
+			Assert.True(wide > monospace);
+			await app.InvokeAsync("od.terminal.kill");
+		}
+		finally
+		{
+			await app.InvokeAsync("od.terminal.settings", 0, -1, original.StartsWith("Menlo,", StringComparison.Ordinal) ? "default" : original);
+		}
+	}
+
 	async Task WaitForMouseTrackingAsync(bool expected)
 	{
 		JsonElement last = default;
