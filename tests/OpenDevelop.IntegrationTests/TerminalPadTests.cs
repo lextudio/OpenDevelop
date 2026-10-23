@@ -773,6 +773,35 @@ public sealed class TerminalPadTests
 		await app.InvokeAsync("od.terminal.kill");
 	}
 
+	[Fact]
+	public async Task TerminalPad_FollowsTheCursorTheProgramAsksFor()
+	{
+		await ShowPadAsync();
+		Assert.True((await app.InvokeAsync("od.terminal.new", "/bin/sh")).GetProperty("success").GetBoolean());
+		async Task ExpectCursorAsync(string sequence, string style, bool visible)
+		{
+			await SendAsync($"printf '{sequence}'\r");
+			JsonElement cursor = default;
+			for (var attempt = 0; attempt < 50; attempt++)
+			{
+				cursor = (await app.InvokeAsync("od.terminal.text")).GetProperty("cursor");
+				if (cursor.GetProperty("style").GetString() == style && cursor.GetProperty("visible").GetBoolean() == visible)
+					return;
+				await Task.Delay(100);
+			}
+			Assert.Fail($"After {sequence} the cursor never became {style}, visible={visible}: {cursor}");
+		}
+
+		// DECSCUSR (CSI Ps SP q): 6 = bar, 4 = underline, 2 = block; DECTCEM (CSI ? 25 l/h) hides and shows it.
+		Assert.Equal("block", (await app.InvokeAsync("od.terminal.text")).GetProperty("cursor").GetProperty("style").GetString());
+		await ExpectCursorAsync("\\033[6 q", "bar", true);
+		await ExpectCursorAsync("\\033[4 q", "underline", true);
+		await ExpectCursorAsync("\\033[2 q", "block", true);
+		await ExpectCursorAsync("\\033[?25l", "block", false);
+		await ExpectCursorAsync("\\033[?25h", "block", true);
+		await app.InvokeAsync("od.terminal.kill");
+	}
+
 	async Task WaitForMouseTrackingAsync(bool expected)
 	{
 		JsonElement last = default;

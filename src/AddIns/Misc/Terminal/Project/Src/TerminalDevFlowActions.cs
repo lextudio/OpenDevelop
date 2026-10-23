@@ -349,7 +349,7 @@ namespace OpenDevelop.Terminal
 			return JsonSerializer.Serialize(new {
 				success = true, columns = snap.Columns, rows = snap.Rows, title = session.Title,
 				background = Hex(snap.DefaultBackground), foreground = Hex(snap.DefaultForeground),
-				cursor = new { column = snap.CursorColumn, row = snap.CursorRow },
+				cursor = new { column = snap.CursorColumn, row = snap.CursorRow, style = snap.CursorStyle.ToString().ToLowerInvariant(), visible = snap.CursorVisible },
 				exited = session.HasExited, exitCode = session.ExitCode,
 				scrollback = new { total = snap.ScrollbackTotal, offset = snap.ScrollbackOffset, length = snap.ScrollbackLength },
 				bracketedPaste = session.BracketedPaste,

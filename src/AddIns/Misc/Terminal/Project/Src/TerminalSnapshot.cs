@@ -23,6 +23,15 @@ namespace OpenDevelop.Terminal
 		public const uint ColorSet = 0x1000000;
 	}
 
+	/// <summary>The cursor shape the program asked for (DECSCUSR); the numbers are libghostty's render-state values (checked by setting each style and reading it back).</summary>
+	enum TerminalCursorStyle
+	{
+		Bar = 0,
+		Block = 1,
+		Underline = 2,
+		BlockHollow = 3,
+	}
+
 	/// <summary>A find result: the row counts from the top of the whole scrollback (0 = oldest line), the columns are cells.</summary>
 	readonly record struct TerminalMatch(ulong AbsoluteRow, int StartColumn, int EndColumn, string Text);
 
@@ -37,6 +46,7 @@ namespace OpenDevelop.Terminal
 		public uint DefaultForeground { get; init; }
 		public uint DefaultBackground { get; init; }
 		public bool CursorVisible { get; init; }
+		public TerminalCursorStyle CursorStyle { get; init; } = TerminalCursorStyle.Block;
 		public int CursorColumn { get; init; }
 		public int CursorRow { get; init; }
 		public ulong ScrollbackTotal { get; init; }

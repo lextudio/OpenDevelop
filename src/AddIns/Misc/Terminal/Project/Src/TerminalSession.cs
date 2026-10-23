@@ -552,6 +552,7 @@ namespace OpenDevelop.Terminal
 				}
 				native.RenderStateGetColor(renderState, G.RenderStateDataColorForeground, out var fg);
 				native.RenderStateGetColor(renderState, G.RenderStateDataColorBackground, out var bg);
+				native.RenderStateGetInt(renderState, G.RenderStateDataCursorVisualStyle, out var cursorStyle);
 				native.RenderStateGetByte(renderState, G.RenderStateDataCursorVisible, out var visible);
 				native.RenderStateGetByte(renderState, G.RenderStateDataCursorViewportHasValue, out var hasCursor);
 				native.RenderStateGetU16(renderState, G.RenderStateDataCursorViewportX, out var cx);
@@ -561,7 +562,7 @@ namespace OpenDevelop.Terminal
 					ScrollbackTotal = scrollbar.Total, ScrollbackOffset = scrollbar.Offset, ScrollbackLength = scrollbar.Length,
 					Columns = cols, Rows = rows, Cells = cells, RowContinues = continues,
 					DefaultForeground = Pack(fg), DefaultBackground = Pack(bg),
-					CursorVisible = visible != 0 && hasCursor != 0, CursorColumn = cx, CursorRow = cy,
+					CursorVisible = visible != 0 && hasCursor != 0, CursorStyle = Enum.IsDefined(typeof(TerminalCursorStyle), cursorStyle) ? (TerminalCursorStyle)cursorStyle : TerminalCursorStyle.Block, CursorColumn = cx, CursorRow = cy,
 				};
 			}
 		}

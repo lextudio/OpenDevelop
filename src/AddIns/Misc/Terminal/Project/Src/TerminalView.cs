@@ -441,9 +441,28 @@ namespace OpenDevelop.Terminal
 				}
 			}
 
-			if (snap.CursorVisible && IsKeyboardFocused) {
-				dc.DrawRectangle(null, new Pen(BrushFor(defaultFg), 1),
-					new Rect(snap.CursorColumn * cellWidth + 0.5, snap.CursorRow * cellHeight + 0.5, cellWidth - 1, cellHeight - 1));
+			if (snap.CursorVisible && snap.CursorColumn < snap.Columns && snap.CursorRow < snap.Rows) {
+				double left = snap.CursorColumn * cellWidth, top = snap.CursorRow * cellHeight;
+				var style = IsKeyboardFocused ? snap.CursorStyle : TerminalCursorStyle.BlockHollow; // an unfocused terminal shows a hollow box whatever the program asked for
+				switch (style) {
+					case TerminalCursorStyle.Bar:
+						dc.DrawRectangle(BrushFor(defaultFg), null, new Rect(left, top, 2, cellHeight));
+						break;
+					case TerminalCursorStyle.Underline:
+						dc.DrawRectangle(BrushFor(defaultFg), null, new Rect(left, top + cellHeight - 2, cellWidth, 2));
+						break;
+					case TerminalCursorStyle.Block:
+						// A solid block with the character under it drawn in the background colour so it stays readable.
+						dc.DrawRectangle(BrushFor(defaultFg), null, new Rect(left, top, cellWidth, cellHeight));
+						var under = snap[snap.CursorColumn, snap.CursorRow].Text;
+						if (!string.IsNullOrWhiteSpace(under)) {
+							dc.DrawText(new FormattedText(under, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, fontSize, BrushFor(defaultBg), pixelsPerDip), new Point(left, top));
+						}
+						break;
+					default:
+						dc.DrawRectangle(null, new Pen(BrushFor(defaultFg), 1), new Rect(left + 0.5, top + 0.5, cellWidth - 1, cellHeight - 1));
+						break;
+				}
 			}
 		}
 
