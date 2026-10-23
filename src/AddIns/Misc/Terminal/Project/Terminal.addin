@@ -33,9 +33,13 @@
 		             class = "OpenDevelop.Terminal.TerminalNewShellButton"
 		             type  = "Custom"/>
 		<ToolbarItem id      = "SplitTerminal"
-		             tooltip = "Split Terminal"
+		             tooltip = "Split Terminal Left and Right"
 		             icon    = "Icons.16x16.SplitWindowHorizontal"
 		             class   = "OpenDevelop.Terminal.SplitTerminalCommand"/>
+		<ToolbarItem id      = "SplitTerminalVertical"
+		             tooltip = "Split Terminal Above and Below"
+		             icon    = "Icons.16x16.SplitScreenVertically"
+		             class   = "OpenDevelop.Terminal.SplitTerminalVerticalCommand"/>
 		<ToolbarItem id      = "KillTerminal"
 		             tooltip = "Kill Terminal"
 		             icon    = "Icons.16x16.Delete"

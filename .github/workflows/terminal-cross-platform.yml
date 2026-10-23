@@ -1,0 +1,73 @@
+name: Terminal cross-platform
+
+# This is intentionally a Terminal-only integration lane.  It is not a general replacement for
+# the platform matrix: its build excludes the rest of the runtime-discovered add-ins and fixtures.
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'src/AddIns/Misc/Terminal/**'
+      - 'src/Main/Base/**'
+      - 'src/Main/Core/**'
+      - 'src/Main/ICSharpCode.Core.Presentation/**'
+      - 'src/Main/SharpDevelop/**'
+      - 'tests/OpenDevelop.IntegrationTests/TerminalCrossPlatformTests.cs'
+      - 'tests/OpenDevelop.IntegrationTests/OpenDevelopAppFixture.cs'
+      - 'tests/OpenDevelop.IntegrationTests/FixtureTestCaseOrderer.cs'
+      - 'tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'global.json'
+      - '.github/workflows/terminal-cross-platform.yml'
+  pull_request:
+    paths:
+      - 'src/AddIns/Misc/Terminal/**'
+      - 'src/Main/Base/**'
+      - 'src/Main/Core/**'
+      - 'src/Main/ICSharpCode.Core.Presentation/**'
+      - 'src/Main/SharpDevelop/**'
+      - 'tests/OpenDevelop.IntegrationTests/TerminalCrossPlatformTests.cs'
+      - 'tests/OpenDevelop.IntegrationTests/OpenDevelopAppFixture.cs'
+      - 'tests/OpenDevelop.IntegrationTests/FixtureTestCaseOrderer.cs'
+      - 'tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'global.json'
+      - '.github/workflows/terminal-cross-platform.yml'
+  workflow_dispatch:
+
+jobs:
+  terminal:
+    name: Terminal (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Install Linux display dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libgtk-3-0 libfontconfig1
+      - name: Build host and Terminal only
+        shell: pwsh
+        run: |
+          $rid = if ('${{ runner.os }}' -eq 'Windows') { 'win-x64' } else { 'linux-x64' }
+          dotnet build src/Main/SharpDevelop/SharpDevelop.csproj --configuration Debug
+          dotnet build src/AddIns/Misc/Terminal/Project/Terminal.csproj --configuration Debug --runtime $rid -p:AppendRuntimeIdentifierToOutputPath=false
+          dotnet build tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj --configuration Debug -p:BuildIntegrationRuntimeProjects=false -p:BuildIntegrationFixtures=false
+      - name: Run the Terminal integration journey
+        shell: pwsh
+        run: |
+          $tests = 'tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll'
+          if ('${{ runner.os }}' -eq 'Linux') {
+            xvfb-run -a dotnet $tests -class OpenDevelop.IntegrationTests.TerminalCrossPlatformTests -parallel none
+          } else {
+            dotnet $tests -class OpenDevelop.IntegrationTests.TerminalCrossPlatformTests -parallel none
+          }

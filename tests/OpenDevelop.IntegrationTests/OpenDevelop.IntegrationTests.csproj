@@ -32,6 +32,12 @@
          MTP-native project (no Microsoft.NET.Test.Sdk reference) never sets on its own. See
          AltCover.Mtp.targets for the rest of the MTP-compatibility wiring. -->
     <IsTestProject>true</IsTestProject>
+    <!-- A focused integration invocation may prepare just the app and add-in it exercises.  The
+         normal developer entry point retains the complete runtime graph below; CI's Terminal
+         matrix deliberately sets this to false so it does not turn into coverage for unrelated
+         designers, language services, fixtures, or package-management flows. -->
+    <BuildIntegrationRuntimeProjects Condition="'$(BuildIntegrationRuntimeProjects)' == ''">true</BuildIntegrationRuntimeProjects>
+    <BuildIntegrationFixtures Condition="'$(BuildIntegrationFixtures)' == ''">true</BuildIntegrationFixtures>
   </PropertyGroup>
 
   <!-- Code coverage: run
@@ -69,6 +75,7 @@
     <_DesignerAddinProject Include="../../src/AddIns/DisplayBindings/FormsDesigner/Project/FormsDesigner.csproj" />
   </ItemGroup>
   <Target Name="BuildDesignerAddinsForIntegrationTests" BeforeTargets="Build"
+          Condition="'$(BuildIntegrationRuntimeProjects)' == 'true'"
           DependsOnTargets="RestoreIntegrationRuntimeProjects">
     <MSBuild Projects="@(_DesignerAddinProject)" Targets="Build" BuildInParallel="true"
              Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true;ProGpuWpfUseCurrentRuntimeIdentifier=false" />
@@ -104,6 +111,7 @@
     <_LanguageAddinProject Include="../../src/AddIns/BackendBindings/VBBinding/Project/VBBinding.vbproj" />
   </ItemGroup>
   <Target Name="BuildLanguageAddinsForIntegrationTests" BeforeTargets="Build"
+          Condition="'$(BuildIntegrationRuntimeProjects)' == 'true'"
           DependsOnTargets="RestoreIntegrationRuntimeProjects">
     <MSBuild Projects="@(_LanguageAddinProject)" Targets="Build" BuildInParallel="true"
              Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true;ProGpuWpfUseCurrentRuntimeIdentifier=false" />
@@ -124,6 +132,7 @@
     <_OutOfProcessHostProject Include="../../src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoHost/WinUIXamlDesigner.UnoHost.csproj" />
   </ItemGroup>
   <Target Name="BuildOutOfProcessHostsForIntegrationTests" BeforeTargets="Build"
+          Condition="'$(BuildIntegrationRuntimeProjects)' == 'true'"
           DependsOnTargets="RestoreIntegrationRuntimeProjects">
     <MSBuild Projects="@(_OutOfProcessHostProject)" Targets="Build" BuildInParallel="true"
              Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true;ProGpuWpfUseCurrentRuntimeIdentifier=false" />
@@ -225,7 +234,8 @@
     <_IntegrationRuntimeProject Include="@(_OutOfProcessHostProject)" />
     <_IntegrationRuntimeProject Include="@(_CoreAddinProject)" />
   </ItemGroup>
-  <Target Name="RestoreIntegrationRuntimeProjects" BeforeTargets="Build">
+  <Target Name="RestoreIntegrationRuntimeProjects" BeforeTargets="Build"
+          Condition="'$(BuildIntegrationRuntimeProjects)' == 'true'">
     <!-- These runtime addins share a large transitive project graph.  Parallel Restore lets two
          MSBuild nodes write the same intermediate project.assets.json concurrently (especially
          after a clean checkout), producing MSB4018/"file already exists" and defeating the
@@ -235,6 +245,7 @@
              Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;RestoreDisableParallel=true;RestoreForceEvaluate=true;ProGpuWpfUseCurrentRuntimeIdentifier=false" />
   </Target>
   <Target Name="BuildCoreAddinsForIntegrationTests" BeforeTargets="Build"
+          Condition="'$(BuildIntegrationRuntimeProjects)' == 'true'"
           DependsOnTargets="RestoreIntegrationRuntimeProjects">
     <MSBuild Projects="@(_CoreAddinProject)" Targets="Build" BuildInParallel="true"
              Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true;ProGpuWpfUseCurrentRuntimeIdentifier=false" />
@@ -280,7 +291,8 @@
   <!-- Restored in its own MSBuild invocation before Build: unlike the addin projects above these
        are standalone (deliberately outside the solution, since the IDE under test opens them as
        user projects), so nothing has ever restored them and Build alone fails with NETSDK1004. -->
-  <Target Name="BuildFixturesForIntegrationTests" BeforeTargets="Build">
+  <Target Name="BuildFixturesForIntegrationTests" BeforeTargets="Build"
+          Condition="'$(BuildIntegrationFixtures)' == 'true'">
     <MSBuild Projects="@(_FixtureProject)" Targets="Restore" BuildInParallel="true"
              Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
     <MSBuild Projects="@(_FixtureProject)" Targets="Build" BuildInParallel="true"
@@ -293,6 +305,7 @@
        source project straight into the feed directory - nothing else produces that file, so both
        NuGet tests otherwise fail on a missing fixture rather than on the flow they test. -->
   <Target Name="PackLocalNuGetFeedFixture" BeforeTargets="Build"
+          Condition="'$(BuildIntegrationFixtures)' == 'true'"
           Inputs="../fixtures/LocalNuGetFeed/PackageSource/OpenDevelop.TestPackage.csproj"
           Outputs="../fixtures/LocalNuGetFeed/OpenDevelop.TestPackage.1.0.0.nupkg">
     <MSBuild Projects="../fixtures/LocalNuGetFeed/PackageSource/OpenDevelop.TestPackage.csproj"

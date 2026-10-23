@@ -25,8 +25,8 @@ no side list; the toolbar's session dropdown is the only session switcher.
 
 ```text
 TerminalPad (AvalonDock tool pad, Bottom)
- ├─ Toolbar          [Session ▾] [New] [shell ▾] [Split] [Kill] [Clear] [Copy] [Paste] [Settings]
- └─ Group            panes side by side (Grid + GridSplitters); one group per New, Split adds a pane
+ ├─ Toolbar          [Session ▾] [New] [shell ▾] [Split ↔] [Split ↕] [Kill] [Clear] [Copy] [Paste] [Settings]
+ └─ Group            nested left/right or above/below panes (Grid + GridSplitters); one group per New, Split adds a pane
       └─ Pane        TerminalView + TerminalSession
            TerminalView      draws an immutable TerminalSnapshot, turns keys/mouse/wheel into PTY input
            TerminalSession   one shell:
@@ -76,22 +76,26 @@ Known gaps in the package (1.0.2):
 - Third-party, young, and tracks an upstream whose C API was "early testing quality" when announced.
   Pin the version and keep the fallback.
 
-## Prototype status (macOS arm64, 2026-10-22)
+## Prototype status (macOS arm64, 2026-10-23)
 
 Files: `src/AddIns/Misc/Terminal/Project/` — `Terminal.addin` (pad, toolbar, autostart), `TerminalPad`
 (AddInTree shim, same shape as Debugger's `ConsolePad`), `TerminalPaneModel` (`ToolPaneModel`: toolbar +
 groups of panes), `TerminalSession` (Porta.Pty + libghostty-vt: snapshots, key encoder), `TerminalView`
 (drawing, key input), `TerminalKeys` (WPF `Key` → libghostty key), `TerminalSessionComboBox` and
 `TerminalNewShellButton` (toolbar `Custom` items), `TerminalShells` (detection, default shell in
-`SD.PropertyService` key `Terminal.DefaultShell`), `TerminalSettings` (font size, scrollback lines) and
+`SD.PropertyService` key `Terminal.DefaultShell`), `TerminalSettings` (font family, font size,
+scrollback lines and visual bell) and
 `TerminalOptions` (Tools > Options > Terminal page, also the toolbar's settings button), `TerminalCommands`, `TerminalDevFlowActions`. Icons `Console`, `Add`, `Delete`,
-`SplitWindowHorizontal` were copied into `ICSharpCode.Core.Presentation/Resources/VS2026/`.
+`SplitWindowHorizontal` and `SplitScreenVertically` were copied into
+`ICSharpCode.Core.Presentation/Resources/VS2026/`.
 
-Model: a *pane* is one shell + one `TerminalView`; a *group* is the panes shown side by side. New
-terminal = new group of one; Split = another pane in the active group (same shell); Kill removes the
-active pane. The session combo lists every pane, `(split)` marks panes that share a group.
+Model: a *pane* is one shell + one `TerminalView`; a *group* is a nested split tree. New terminal =
+a group of one; either Split adds another pane beside or below the active pane (same shell); Kill
+removes the active pane and collapses its now-unneeded split. The session combo lists every pane,
+`(split)` marks panes that share a group.
 
-Toolbar today: session combo, New, shell drop-down (installed shells; "Default Shell" submenu), Split,
+Toolbar today: session combo, New, shell drop-down (installed shells; "Default Shell" submenu), horizontal
+and vertical Split,
 Kill, Clear, Find, Copy, Paste, Settings (opens the Options dialog; the Terminal page is under the
 IDE options). View menu: Terminal (Ctrl+`), New Terminal (Ctrl+Shift+`), Next/Previous Terminal and Rename Terminal....
 Project Browser "Open in Terminal" opens the integrated terminal in that folder through
@@ -129,8 +133,9 @@ Verified live (the journey above, plus the UI tree):
 - Settings: a bigger font means fewer columns in the same pad and the shell is told (`stty size`);
   scrollback 0 keeps no history, 2000 keeps it. libghostty limits scrollback in *bytes* (rounded up to
   pages), so the line count is converted at about 16 bytes per cell and is approximate.
-- Split: two panes in one group, each with its share of the width (376.5 DIP each), independent
-  shells; the combo lists them and activating one routes input; killing one leaves its sibling.
+- Split: panes can be arranged left/right or above/below, including nested combinations. Each pane has
+  its share of the available width or height and an independent shell; the combo lists them and
+  activating one routes input; killing one leaves its sibling.
 
 Not verified / not done: actual pixels (no screenshot taken), WPF's own routing of real keyboard input (real pointer input is covered, see below; real typing reaches the view too, but with a Pinyin input source active the OS composes letters first - `echo ` arrived as two Chinese characters - so a typing journey is not deterministic and none is kept; DevFlow's pointer endpoints are click/press/drag/move/release only, so a real wheel and a real right-click cannot be injected either): the mouse
 handlers (`OnMouseLeftButtonDown/Move/Up`, wheel) and `OnKeyDown`/`OnTextInput` are only reached by real
@@ -180,7 +185,8 @@ and is also the pad icon).
 | Session dropdown | lists every terminal ("1: <OSC title or shell>", `(split)` for panes sharing a group); selecting one activates its pane | (combo) |
 | New | new terminal with the default shell in the solution folder (else home) | `Add` |
 | Shell arrow beside New | menu of installed shells (macOS/Linux: `$SHELL` and `/etc/shells`; Windows: pwsh, powershell, `ComSpec`, Git bash, wsl) that starts one, and a checkable "Default Shell" submenu | (text) |
-| Split | another shell (same shell as the active one) beside the active pane, in the same group, starting in the directory the active shell is in now, with a draggable divider | `SplitWindowHorizontal` |
+| Split left/right | another shell (same shell as the active one) beside the active pane, in the same group, starting in the directory the active shell is in now, with a draggable divider | `SplitWindowHorizontal` |
+| Split above/below | another shell (same shell as the active one) below the active pane, in the same group, starting in the directory the active shell is in now, with a draggable divider | `SplitScreenVertically` |
 | Kill | kills the active pane's shell and removes the pane (a new terminal starts if none is left) | `Delete` |
 | Clear | clears screen and scrollback and redraws the prompt | `ClearWindowContent` |
 | Copy / Paste | selection to clipboard / paste (bracketed when the program asked for it) | `Copy`, `Paste` |
@@ -259,7 +265,7 @@ session pages the viewport through it under its lock and puts the viewport back,
 moves the view. A match lies within one row (it cannot span a wrapped line), and the results are those of
 the last search: output that arrives later is not marked until the query changes or Enter is pressed.
 
-Design intent that is **not built yet**: vertical split, shell-integration cwd tracking.
+Design intent that is **not built yet**: shell-integration cwd tracking.
 
 Shutdown needs no sweep: with `sleep 4322 &` running in a terminal, killing the pane, and also
 terminating (SIGTERM) or killing (SIGKILL) the whole IDE, left no child behind on macOS, because the
@@ -277,11 +283,11 @@ not handled. Not checked on Windows.
 
 ## Testing
 
-Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, eighteen journeys, DevFlow
-actions, plus one journey with real OS input): shells, size and alternate screen, keys, split; wide text, scrollback,
+Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, nineteen journeys, DevFlow
+actions, plus one journey with real OS input): shells, size and alternate screen, keys, horizontal and vertical/nested split; wide text, scrollback,
 selection, wrapped copy, bracketed paste; View menu, Project Browser "Open in Terminal", shell list;
 mouse reporting, alternate-screen wheel, word and line selection; settings; cycling, renaming and the
-end of a shell; IDE theme colours; links; find; the shell's current directory; the right-click menu; dropped files; zoom; Send to Terminal; the macOS editing keys; the cursor; the font family; the bell; real input (`od.terminal.screen-point` gives a cell's screen position): click focus, drag, double and triple click selection, and Ctrl+click on a link with a real held Ctrl key (each gesture waits out the double-click interval, or the OS merges it into the previous click count). There are no unit tests of
+end of a shell; IDE theme colours; links; find; the shell's current directory; the right-click menu; dropped files; zoom; Send to Terminal; the macOS editing keys; the cursor; the font family; the bell; real input (`od.terminal.screen-point` gives a cell's screen position): click focus, drag, double and triple click selection, and Ctrl+click on a link with a real held Ctrl key (each gesture waits out the double-click interval, or the OS merges it into the previous click count). The latest recorded macOS arm64 run passed; rerun the suite before treating a different worktree or payload as verified. There are no unit tests of
 the engine on its own.
 
 ## Phasing

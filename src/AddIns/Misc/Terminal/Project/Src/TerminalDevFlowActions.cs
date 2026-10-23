@@ -56,6 +56,19 @@ namespace OpenDevelop.Terminal
 			}
 		}
 
+		[DevFlowAction("od.terminal.split-vertical", Description = "Split the active terminal above and below: a new shell (same shell as the active one) starts beneath it in the same group; returns the new pane")]
+		public static async Task<string> SplitVertical()
+		{
+			var pad = Pad();
+			if (pad == null)
+				return JsonSerializer.Serialize(new { success = false, error = "Terminal pad is not available" });
+			try {
+				return Describe(pad, await pad.SplitActiveAsync(TerminalSplitOrientation.Vertical));
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = "Could not start the shell: " + ex.Message });
+			}
+		}
+
 		[DevFlowAction("od.terminal.rename", Description = "Name the active terminal (empty restores the shell's own title), as the Rename Terminal command does after its input box; returns the new list labels")]
 		public static string Rename(string name)
 		{

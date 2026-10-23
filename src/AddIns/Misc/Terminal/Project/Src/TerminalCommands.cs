@@ -59,6 +59,11 @@ namespace OpenDevelop.Terminal
 		public override void Run() => Pad?.SplitActiveAsync().FireAndForget();
 	}
 
+	sealed class SplitTerminalVerticalCommand : TerminalCommand
+	{
+		public override void Run() => Pad?.SplitActiveAsync(TerminalSplitOrientation.Vertical).FireAndForget();
+	}
+
 	sealed class KillTerminalCommand : TerminalCommand
 	{
 		public override void Run() => Pad?.KillActive();

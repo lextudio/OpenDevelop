@@ -18,11 +18,88 @@ namespace OpenDevelop.Terminal
 		public string CustomName { get; set; }
 	}
 
-	/// <summary>Panes shown side by side; a plain terminal is a group of one, Split adds a pane.</summary>
+	enum TerminalSplitOrientation
+	{
+		Horizontal,
+		Vertical,
+	}
+
+	abstract class TerminalLayoutNode
+	{
+		public TerminalLayoutNode Parent { get; set; }
+	}
+
+	sealed class TerminalLayoutLeaf : TerminalLayoutNode
+	{
+		public TerminalPane Pane { get; init; }
+	}
+
+	sealed class TerminalLayoutSplit : TerminalLayoutNode
+	{
+		public TerminalSplitOrientation Orientation { get; init; }
+		public TerminalLayoutNode First { get; set; }
+		public TerminalLayoutNode Second { get; set; }
+	}
+
+	/// <summary>Panes in one terminal group. Its split tree permits horizontal and vertical splits to nest.</summary>
 	sealed class TerminalGroup
 	{
 		public List<TerminalPane> Panes { get; } = new List<TerminalPane>();
 		public Grid Host { get; } = new Grid();
+		public TerminalLayoutNode Root { get; private set; }
+
+		public void AddRoot(TerminalPane pane) => Root = new TerminalLayoutLeaf { Pane = pane };
+
+		public void Split(TerminalPane existing, TerminalPane added, TerminalSplitOrientation orientation)
+		{
+			var leaf = FindLeaf(Root, existing) ?? throw new InvalidOperationException("The terminal pane is not in its group.");
+			var split = new TerminalLayoutSplit {
+				Orientation = orientation,
+				First = leaf,
+				Second = new TerminalLayoutLeaf { Pane = added },
+				Parent = leaf.Parent,
+			};
+			leaf.Parent = split;
+			split.Second.Parent = split;
+			if (split.Parent == null)
+				Root = split;
+			else if (ReferenceEquals(split.Parent.First, leaf))
+				split.Parent.First = split;
+			else
+				split.Parent.Second = split;
+		}
+
+		public void Remove(TerminalPane pane)
+		{
+			var leaf = FindLeaf(Root, pane);
+			if (leaf == null)
+				return;
+			if (leaf.Parent == null) {
+				Root = null;
+				return;
+			}
+			var split = (TerminalLayoutSplit)leaf.Parent;
+			Replace(split, ReferenceEquals(split.First, leaf) ? split.Second : split.First);
+		}
+
+		void Replace(TerminalLayoutNode oldNode, TerminalLayoutNode newNode)
+		{
+			var parent = oldNode.Parent;
+			newNode.Parent = parent;
+			if (parent == null)
+				Root = newNode;
+			else if (ReferenceEquals(parent.First, oldNode))
+				parent.First = newNode;
+			else
+				parent.Second = newNode;
+		}
+
+		static TerminalLayoutLeaf FindLeaf(TerminalLayoutNode node, TerminalPane pane)
+			=> node switch {
+				TerminalLayoutLeaf leaf when ReferenceEquals(leaf.Pane, pane) => leaf,
+				TerminalLayoutSplit split => FindLeaf(split.First, pane) ?? FindLeaf(split.Second, pane),
+				_ => null,
+			};
 	}
 
 	/// <summary>
@@ -105,21 +182,25 @@ namespace OpenDevelop.Terminal
 			return StartPaneAsync(group, shell, EstimateColumns(1), EstimateRows(), workingDirectory);
 		}
 
-		public Task<TerminalPane> SplitActiveAsync()
+		public Task<TerminalPane> SplitActiveAsync(TerminalSplitOrientation orientation = TerminalSplitOrientation.Horizontal)
 		{
 			var group = activePane?.Group;
 			if (group == null)
 				return NewSessionAsync();
 			// A split starts where the terminal beside it is now, not where that one started.
-			return StartPaneAsync(group, activePane.Session.ShellPath, EstimateColumns(group.Panes.Count + 1), EstimateRows(), activePane.Session.CurrentDirectory);
+			return StartPaneAsync(group, activePane.Session.ShellPath, EstimateSplitColumns(orientation), EstimateSplitRows(orientation), activePane.Session.CurrentDirectory, activePane, orientation);
 		}
 
 		// A PTY must start near its final size: before its first layout a view cannot say, so use the
 		// active pane (shared width / full height) or 80x24.
 		int EstimateColumns(int panesInGroup) => activePane?.View is { IsLaidOut: true } v ? Math.Max(20, v.ColumnsFit * Math.Max(1, activePane.Group.Panes.Count) / panesInGroup) : 80;
 		int EstimateRows() => activePane?.View is { IsLaidOut: true } v ? v.RowsFit : 24;
+		int EstimateSplitColumns(TerminalSplitOrientation orientation)
+			=> activePane?.View is { IsLaidOut: true } v ? orientation == TerminalSplitOrientation.Horizontal ? Math.Max(20, v.ColumnsFit / 2) : v.ColumnsFit : 80;
+		int EstimateSplitRows(TerminalSplitOrientation orientation)
+			=> activePane?.View is { IsLaidOut: true } v ? orientation == TerminalSplitOrientation.Vertical ? Math.Max(1, v.RowsFit / 2) : v.RowsFit : 24;
 
-		async Task<TerminalPane> StartPaneAsync(TerminalGroup group, string shell, int columns, int rows, string workingDirectory = null)
+		async Task<TerminalPane> StartPaneAsync(TerminalGroup group, string shell, int columns, int rows, string workingDirectory = null, TerminalPane splitFrom = null, TerminalSplitOrientation orientation = TerminalSplitOrientation.Horizontal)
 		{
 			string cwd = !string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory) ? workingDirectory : SD.ProjectService?.CurrentSolution?.Directory?.ToString();
 			if (string.IsNullOrEmpty(cwd) || !Directory.Exists(cwd))
@@ -140,6 +221,10 @@ namespace OpenDevelop.Terminal
 			view.CloseRequested += () => KillPane(pane);
 			view.FindRequested += ShowFind;
 			group.Panes.Add(pane);
+			if (splitFrom == null)
+				group.AddRoot(pane);
+			else
+				group.Split(splitFrom, pane, orientation);
 			LayoutGroup(group);
 			host.Child = group.Host;
 			SetActive(pane);
@@ -149,20 +234,52 @@ namespace OpenDevelop.Terminal
 
 		static void LayoutGroup(TerminalGroup group)
 		{
-			var grid = group.Host;
-			grid.Children.Clear();
-			grid.ColumnDefinitions.Clear();
-			for (int i = 0; i < group.Panes.Count; i++) {
-				if (i > 0) {
-					var splitter = new GridSplitter { Width = 4, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch, Background = Brushes.Gray, ResizeBehavior = GridResizeBehavior.PreviousAndNext };
-					grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-					Grid.SetColumn(splitter, grid.ColumnDefinitions.Count - 1);
-					grid.Children.Add(splitter);
-				}
+			foreach (var child in group.Host.Children.OfType<UIElement>().ToList())
+				Detach(child);
+			group.Host.Children.Clear();
+			if (group.Root != null)
+				group.Host.Children.Add(BuildLayout(group.Root));
+		}
+
+		static void Detach(UIElement element)
+		{
+			if (element is not Panel panel)
+				return;
+			foreach (var child in panel.Children.OfType<UIElement>().ToList())
+				Detach(child);
+			panel.Children.Clear();
+		}
+
+		static UIElement BuildLayout(TerminalLayoutNode node)
+		{
+			if (node is TerminalLayoutLeaf leaf)
+				return leaf.Pane.View;
+			var split = (TerminalLayoutSplit)node;
+			var grid = new Grid();
+			if (split.Orientation == TerminalSplitOrientation.Horizontal) {
 				grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-				Grid.SetColumn(group.Panes[i].View, grid.ColumnDefinitions.Count - 1);
-				grid.Children.Add(group.Panes[i].View);
+				grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+				grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+				var divider = new GridSplitter { Width = 4, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch, Background = Brushes.Gray, ResizeBehavior = GridResizeBehavior.PreviousAndNext };
+				var first = BuildLayout(split.First);
+				Grid.SetColumn(first, 0);
+				Grid.SetColumn(divider, 1);
+				var second = BuildLayout(split.Second);
+				Grid.SetColumn(second, 2);
+				grid.Children.Add(first); grid.Children.Add(divider); grid.Children.Add(second);
+			} else {
+				grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+				grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+				grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+				var divider = new GridSplitter { Height = 4, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch, Background = Brushes.Gray, ResizeBehavior = GridResizeBehavior.PreviousAndNext };
+				var first = BuildLayout(split.First);
+				Grid.SetRow(first, 0);
+				Grid.SetRow(divider, 1);
+				var second = BuildLayout(split.Second);
+				Grid.SetRow(second, 2);
+				grid.Children.Add(first); grid.Children.Add(divider); grid.Children.Add(second);
 			}
+			return grid;
 		}
 
 		void SetActive(TerminalPane pane)
@@ -194,6 +311,7 @@ namespace OpenDevelop.Terminal
 			var group = pane.Group;
 			bool wasActive = pane == activePane;
 			group.Panes.Remove(pane);
+			group.Remove(pane);
 			pane.View.Dispose();
 			pane.Session.Dispose();
 			if (!wasActive) {

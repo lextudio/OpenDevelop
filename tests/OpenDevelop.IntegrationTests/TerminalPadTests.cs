@@ -222,6 +222,64 @@ public sealed class TerminalPadTests
 	}
 
 	[Fact]
+	public async Task TerminalPad_SplitsVertically_AndKeepsBothShellsRunning()
+	{
+		await ShowPadAsync();
+		var first = await app.InvokeAsync("od.terminal.new", "/bin/sh");
+		Assert.True(first.GetProperty("success").GetBoolean(), first.ToString());
+		var widthBefore = (await app.InvokeAsync("od.terminal.text")).GetProperty("columns").GetInt32();
+		var heightBefore = (await app.InvokeAsync("od.terminal.text")).GetProperty("rows").GetInt32();
+
+		var split = await app.InvokeAsync("od.terminal.split-vertical");
+		Assert.True(split.GetProperty("success").GetBoolean(), split.ToString());
+		Assert.Equal(first.GetProperty("group").GetInt32(), split.GetProperty("group").GetInt32());
+		await SendAsync("echo lower-pane\r");
+		await WaitForAsync("lower-pane");
+
+		JsonElement sessions = default;
+		for (var attempt = 0; attempt < 50; attempt++)
+		{
+			sessions = await app.InvokeAsync("od.terminal.list");
+			var group = sessions.GetProperty("sessions").EnumerateArray().Where(p => p.GetProperty("group").GetInt32() == first.GetProperty("group").GetInt32()).ToList();
+			if (group.Count == 2 && group.All(p => p.GetProperty("rows").GetInt32() < heightBefore))
+				break;
+			await Task.Delay(100);
+		}
+		var panes = sessions.GetProperty("sessions").EnumerateArray().Where(p => p.GetProperty("group").GetInt32() == first.GetProperty("group").GetInt32()).ToList();
+		Assert.True(panes.Count == 2 && panes.All(p => p.GetProperty("rows").GetInt32() < heightBefore), $"The vertical split panes did not share the height ({heightBefore} rows before).\n{sessions}");
+
+		Assert.True((await app.InvokeAsync("od.terminal.activate", first.GetProperty("index").GetInt32())).GetProperty("success").GetBoolean());
+		Assert.DoesNotContain("lower-pane", (await app.InvokeAsync("od.terminal.text")).GetProperty("text").GetString(), StringComparison.Ordinal);
+
+		// A second split targets the active leaf, rather than flattening the group back to one direction.
+		var nested = await app.InvokeAsync("od.terminal.split");
+		Assert.True(nested.GetProperty("success").GetBoolean(), nested.ToString());
+		Assert.Equal(first.GetProperty("group").GetInt32(), nested.GetProperty("group").GetInt32());
+		JsonElement nestedSessions = default;
+		for (var attempt = 0; attempt < 50; attempt++)
+		{
+			nestedSessions = await app.InvokeAsync("od.terminal.list");
+			var group = nestedSessions.GetProperty("sessions").EnumerateArray().Where(p => p.GetProperty("group").GetInt32() == first.GetProperty("group").GetInt32()).ToList();
+			var nestedPane = group.SingleOrDefault(p => p.GetProperty("pid").GetInt32() == nested.GetProperty("pid").GetInt32());
+			if (group.Count == 3 && nestedPane.ValueKind != JsonValueKind.Undefined && nestedPane.GetProperty("columns").GetInt32() < widthBefore && nestedPane.GetProperty("rows").GetInt32() < heightBefore)
+				break;
+			await Task.Delay(100);
+		}
+		var nestedGroup = nestedSessions.GetProperty("sessions").EnumerateArray().Where(p => p.GetProperty("group").GetInt32() == first.GetProperty("group").GetInt32()).ToList();
+		var nestedLayoutPane = nestedGroup.SingleOrDefault(p => p.GetProperty("pid").GetInt32() == nested.GetProperty("pid").GetInt32());
+		Assert.True(nestedGroup.Count == 3 && nestedLayoutPane.ValueKind != JsonValueKind.Undefined && nestedLayoutPane.GetProperty("columns").GetInt32() < widthBefore && nestedLayoutPane.GetProperty("rows").GetInt32() < heightBefore,
+			$"The nested horizontal split did not stay inside the upper vertical pane.\n{nestedSessions}");
+
+		// Killing the nested leaf restores the two-pane vertical layout instead of destroying its sibling.
+		Assert.True((await app.InvokeAsync("od.terminal.kill")).GetProperty("success").GetBoolean());
+		var collapsed = await app.InvokeAsync("od.terminal.list");
+		var collapsedGroup = collapsed.GetProperty("sessions").EnumerateArray().Where(p => p.GetProperty("group").GetInt32() == first.GetProperty("group").GetInt32()).ToList();
+		Assert.True(collapsedGroup.Count == 2 && collapsedGroup.All(p => p.GetProperty("rows").GetInt32() < heightBefore), $"Removing the nested pane did not restore the vertical split.\n{collapsed}");
+		Assert.True((await app.InvokeAsync("od.terminal.kill")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.terminal.kill")).GetProperty("success").GetBoolean());
+	}
+
+	[Fact]
 	public async Task TerminalPad_IsReachableFromTheMenu_TheProjectBrowser_AndTheShellList()
 	{
 		await ShowPadAsync();

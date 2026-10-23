@@ -39,7 +39,7 @@ public sealed class FixtureTestCaseOrderer : ITestCaseOrderer
         if (testName.Contains("T4IntegrationTests", StringComparison.Ordinal)) return 28;
         if (testName.Contains("AddInTests", StringComparison.Ordinal)) return 30;
         // Terminal pad journeys through its DevFlow actions; the Project Browser one opens the SolutionExplorerFixture itself.
-        if (testName.Contains("TerminalPadTests", StringComparison.Ordinal)) return 31;
+        if (testName.Contains("TerminalPadTests", StringComparison.Ordinal) || testName.Contains("TerminalCrossPlatformTests", StringComparison.Ordinal)) return 31;
         if (testName.Contains("CodeCoverageTests", StringComparison.Ordinal)) return 40;
         if (testName.Contains("DebuggerIntegrationTests", StringComparison.Ordinal)) return 50;
         if (testName.Contains("RuntimeUpgradeIntegrationTests", StringComparison.Ordinal)) return 60;

@@ -210,6 +210,7 @@ if ($Kill) {
 $dotnet = Find-DotNetHost
 
 $commonProperties = @()
+$gitVersionWasPinned = $false
 if (-not $NativeRid) { $commonProperties += '-p:ProGpuWpfUseCurrentRuntimeIdentifier=false' }
 if ($ForDistribution) {
     $ridFamily = if ($IsWindows) { 'win' } else { 'osx' }
@@ -222,6 +223,7 @@ if ($ForDistribution) {
 if (-not $NoPinVersion) {
     try {
         $commonProperties += Get-PinnedGitVersionProperties -GlobalAssemblyInfoPath (Join-Path $repoRoot 'src/Main/GlobalAssemblyInfo.cs')
+        $gitVersionWasPinned = $true
     } catch {
         Write-Host "build.ps1: not pinning GitVersion ($($_.Exception.Message))." -ForegroundColor Yellow
         Write-Host '           The first build of a fresh clone generates it; re-run to get pinning.' -ForegroundColor Yellow
@@ -259,7 +261,11 @@ foreach ($project in $targets) {
     }
 
     Write-Host "==> Building $relative ($Configuration)..."
-    Invoke-Native $dotnet build $project -c $Configuration '-v' 'minimal' @commonProperties
+    # Keep GitVersion from spawning a separate bare `dotnet` process only when the pinned
+    # -p:GitVersion_* values are present. If pinning was skipped or failed, GitVersion must run so
+    # Directory.Build.targets does not fall back to 0.0.0/nogit.
+    $gitVersionTaskProperty = if ($gitVersionWasPinned) { @('-p:DisableGitVersionTask=true') } else { @() }
+    Invoke-Native $dotnet build $project -c $Configuration @gitVersionTaskProperty '-v' 'minimal' @commonProperties
 
     if ($sharedAssemblyHints | Where-Object { $relative -like "*$_*" }) {
         Write-Host ''
