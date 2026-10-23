@@ -53,6 +53,24 @@ namespace OpenDevelop.Terminal
 			return sb.ToString().TrimEnd();
 		}
 
+		/// <summary>A row's text untrimmed, with for every character the column of the cell it came from (a wide character's spacer has none).</summary>
+		public string GetRowText(int row, out int[] columns)
+		{
+			var sb = new System.Text.StringBuilder(Columns);
+			var map = new List<int>(Columns);
+			for (int x = 0; x < Columns; x++) {
+				var cell = this[x, row];
+				if ((cell.Flags & CellFlags.Spacer) != 0)
+					continue;
+				var text = cell.Text ?? " ";
+				sb.Append(text);
+				for (int i = 0; i < text.Length; i++)
+					map.Add(x);
+			}
+			columns = map.ToArray();
+			return sb.ToString();
+		}
+
 		/// <summary>Text between two cells (inclusive, either order), rows joined by newlines, trailing blanks trimmed.</summary>
 		public string GetText(int startColumn, int startRow, int endColumn, int endRow)
 		{

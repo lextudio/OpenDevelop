@@ -423,6 +423,74 @@ public sealed class TerminalPadTests
 		}
 	}
 
+	[Fact]
+	public async Task TerminalPad_FindsLinksInTheOutput_AndOpensFilesInTheEditor()
+	{
+		await app.EnsureSolutionOpenAsync(app.SolutionExplorerFixturePath);
+		await ShowPadAsync();
+		var program = Path.Combine(Path.GetDirectoryName(app.SolutionExplorerFixturePath)!, "SampleApp", "Program.cs");
+		Assert.True(File.Exists(program), program);
+		var scratch = $"/tmp/od-link-test-{Guid.NewGuid():N}.cs".Substring(0, 24) + ".cs"; // short: it must fit a row next to its prefix
+		File.WriteAllLines(scratch, Enumerable.Range(1, 8).Select(i => $"// line {i}"));
+		try
+		{
+			// The terminal starts in the solution folder, so a relative path resolves against it. One link per line, each with a
+			// prefix that the typed command line does not start with, so the output rows can be told from the echoed input.
+			Assert.True((await app.InvokeAsync("od.terminal.new", "/bin/sh")).GetProperty("success").GetBoolean());
+			await SendAsync($"P='{scratch}'; printf 'abs %s:3:5\\n' \"$P\"; printf 'rel SampleApp/Program.cs(2,1)\\n'; printf 'none nothere/x.cs:9\\n'; printf 'big %s:99999999999999999999:5\\n' \"$P\"; printf 'wide %s:\uff11\uff12\\n' \"$P\"; printf 'web https://example.com/a.b-c, done\\n'\r");
+			await WaitForLineAsync("web https://example.com/a.b-c, done");
+			await Task.Delay(500);
+			var screen = await app.InvokeAsync("od.terminal.text");
+			var lines = Lines(screen).ToList();
+			int RowOf(string prefix) => lines.FindIndex(l => l.StartsWith(prefix, StringComparison.Ordinal));
+			var all = (await app.InvokeAsync("od.terminal.links")).GetProperty("links").EnumerateArray().ToList();
+			List<JsonElement> OnRow(string prefix) => all.Where(l => l.GetProperty("row").GetInt32() == RowOf(prefix)).ToList();
+			Assert.True(RowOf("abs ") >= 0 && RowOf("rel ") >= 0 && RowOf("none ") >= 0 && RowOf("big ") >= 0 && RowOf("wide ") >= 0 && RowOf("web ") >= 0, string.Join("\n", lines));
+
+			var abs = Assert.Single(OnRow("abs "));
+			Assert.Equal("file", abs.GetProperty("kind").GetString());
+			Assert.Equal(scratch, abs.GetProperty("target").GetString());
+			Assert.Equal((3, 5), (abs.GetProperty("line").GetInt32(), abs.GetProperty("column").GetInt32()));
+			Assert.Equal(4, abs.GetProperty("startColumn").GetInt32()); // right after "abs "
+
+			var rel = Assert.Single(OnRow("rel "));
+			Assert.Equal(Path.GetFullPath(program), rel.GetProperty("target").GetString());
+			Assert.Equal((2, 1), (rel.GetProperty("line").GetInt32(), rel.GetProperty("column").GetInt32()));
+
+			Assert.Empty(OnRow("none ")); // a path that does not exist is not a link
+
+			// A line number that cannot be one (20 digits; full-width digits) is not a suffix: the path alone is the link, and nothing throws.
+			foreach (var prefix in new[] { "big ", "wide " })
+			{
+				var odd = Assert.Single(OnRow(prefix));
+				Assert.Equal(scratch, odd.GetProperty("target").GetString());
+				Assert.Equal((0, 0), (odd.GetProperty("line").GetInt32(), odd.GetProperty("column").GetInt32()));
+			}
+
+			var web = Assert.Single(OnRow("web "));
+			Assert.Equal("url", web.GetProperty("kind").GetString());
+			Assert.Equal("https://example.com/a.b-c", web.GetProperty("target").GetString()); // the trailing comma is not part of it
+
+			// Following a file link (what Ctrl/Cmd+click does) opens it in the editor at its line and column; a cell with no link does nothing.
+			var nothing = await app.InvokeAsync("od.terminal.open-link", 0, RowOf("abs "));
+			Assert.False(nothing.GetProperty("opened").GetBoolean(), nothing.ToString());
+			var opened = await app.InvokeAsync("od.terminal.open-link", abs.GetProperty("startColumn").GetInt32() + 2, RowOf("abs "));
+			Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+			var view = await app.InvokeAsync("od.active-view");
+			Assert.EndsWith(Path.GetFileName(scratch), view.GetProperty("fileName").GetString());
+			Assert.Equal((3, 5), (view.GetProperty("caretLine").GetInt32(), view.GetProperty("caretColumn").GetInt32()));
+
+			var url = await app.InvokeAsync("od.terminal.open-link", web.GetProperty("startColumn").GetInt32(), RowOf("web "));
+			Assert.Equal("url", url.GetProperty("kind").GetString());
+			await app.InvokeAsync("od.terminal.kill");
+		}
+		finally
+		{
+			await app.InvokeAsync("od.close-all-document-views");
+			File.Delete(scratch);
+		}
+	}
+
 	async Task WaitForMouseTrackingAsync(bool expected)
 	{
 		JsonElement last = default;

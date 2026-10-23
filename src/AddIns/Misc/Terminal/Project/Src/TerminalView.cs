@@ -57,6 +57,75 @@ namespace OpenDevelop.Terminal
 		/// <summary>Raised on the UI thread after the view repainted from a fresh snapshot (title and size may have changed).</summary>
 		public event Action Updated;
 
+		TerminalLinkHit hoveredLink;
+
+		/// <summary>The link under a cell (file that exists, or http(s) URL), or null.</summary>
+		public TerminalLinkHit FindLinkAt(int column, int row)
+		{
+			var snap = snapshot;
+			if (snap == null || session == null || row < 0 || row >= snap.Rows || column < 0 || column >= snap.Columns)
+				return null;
+			var text = snap.GetRowText(row, out var columns);
+			foreach (var candidate in TerminalLinks.Find(text)) {
+				int start = columns[candidate.Start], end = columns[candidate.Start + candidate.Length - 1];
+				if (column < start || column > end)
+					continue;
+				var target = TerminalLinkOpener.Resolve(candidate, session.InitialDirectory);
+				if (target != null)
+					return new TerminalLinkHit(candidate, target, row, start, end);
+			}
+			return null;
+		}
+
+		/// <summary>Every link on the visible screen, in reading order.</summary>
+		public IReadOnlyList<TerminalLinkHit> FindLinks()
+		{
+			var snap = snapshot;
+			var hits = new List<TerminalLinkHit>();
+			if (snap == null || session == null)
+				return hits;
+			for (int row = 0; row < snap.Rows; row++) {
+				var text = snap.GetRowText(row, out var columns);
+				foreach (var candidate in TerminalLinks.Find(text)) {
+					var target = TerminalLinkOpener.Resolve(candidate, session.InitialDirectory);
+					if (target != null)
+						hits.Add(new TerminalLinkHit(candidate, target, row, columns[candidate.Start], columns[candidate.Start + candidate.Length - 1]));
+				}
+			}
+			return hits;
+		}
+
+		/// <summary>Follows the link under a cell as Ctrl/Cmd+click does; returns it, or null when there is none.</summary>
+		public TerminalLinkHit OpenLinkAt(int column, int row, bool launchUrls)
+		{
+			var hit = FindLinkAt(column, row);
+			if (hit != null)
+				TerminalLinkOpener.Open(hit, launchUrls);
+			return hit;
+		}
+
+		static bool IsLinkModifier(ModifierKeys modifiers) => (modifiers & (ModifierKeys.Control | ModifierKeys.Windows)) != 0;
+
+		void UpdateHoveredLink(Point position)
+		{
+			TerminalLinkHit hit = null;
+			if (IsLinkModifier(Keyboard.Modifiers) && session != null && !session.MouseTrackingEnabled) {
+				var cell = CellAt(position);
+				hit = FindLinkAt(cell.column, cell.row);
+			}
+			if (Equals(hit, hoveredLink))
+				return;
+			hoveredLink = hit;
+			Cursor = hit == null ? null : Cursors.Hand;
+			InvalidateVisual();
+		}
+
+		protected override void OnMouseLeave(MouseEventArgs e)
+		{
+			base.OnMouseLeave(e);
+			UpdateHoveredLink(new Point(-1, -1));
+		}
+
 		string themeSignature;
 		int themeTicks;
 
@@ -116,6 +185,7 @@ namespace OpenDevelop.Terminal
 				return;
 			dirty = false;
 			snapshot = session?.GetSnapshot();
+			hoveredLink = null; // the text under the pointer may have changed; the next mouse move finds the link again
 			InvalidateVisual();
 			Updated?.Invoke();
 		}
@@ -200,6 +270,11 @@ namespace OpenDevelop.Terminal
 					}
 					x = end;
 				}
+			}
+
+			if (hoveredLink != null && hoveredLink.Row < snap.Rows) {
+				dc.DrawRectangle(BrushFor(defaultFg), null,
+					new Rect(hoveredLink.StartColumn * cellWidth, (hoveredLink.Row + 1) * cellHeight - 1.5, (hoveredLink.EndColumn - hoveredLink.StartColumn + 1) * cellWidth, 1));
 			}
 
 			if (selectionStart is { } a && selectionEnd is { } b) {
@@ -339,6 +414,11 @@ namespace OpenDevelop.Terminal
 		{
 			if (session == null)
 				return false;
+			if (IsLinkModifier(modifiers) && !session.MouseTrackingEnabled) {
+				var linkCell = CellAt(position);
+				if (OpenLinkAt(linkCell.column, linkCell.row, launchUrls: true) != null)
+					return true; // Ctrl/Cmd+click on a link follows it instead of selecting
+			}
 			if (session.MouseTrackingEnabled && (modifiers & ModifierKeys.Shift) == 0) { // Shift keeps selection available, as in xterm.
 				reportedButton = G.MouseButtonLeft;
 				ReportMouse(G.MouseEventActionPress, G.MouseButtonLeft, position, modifiers);
@@ -370,6 +450,7 @@ namespace OpenDevelop.Terminal
 		protected override void OnMouseMove(MouseEventArgs e)
 		{
 			base.OnMouseMove(e);
+			UpdateHoveredLink(e.GetPosition(this));
 			if (session != null && session.MouseTrackingEnabled && (reportedButton != G.MouseButtonNone || Mouse.LeftButton != MouseButtonState.Pressed)) {
 				ReportMouse(G.MouseEventActionMotion, reportedButton, e.GetPosition(this), Keyboard.Modifiers);
 				return;

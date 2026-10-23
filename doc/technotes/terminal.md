@@ -98,7 +98,7 @@ Project Browser "Open in Terminal" opens the integrated terminal in that folder 
 `ITerminalHost` (Base interface, registered by the add-in; external terminal app if the add-in is not
 loaded). DevFlow: `od.terminal.new|split|
 activate|send|key|mouse|wheel|click|scroll|select|copy|paste|shells|settings|text|list|kill`; host side
-`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (seven
+`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (eight
 journeys, pass; run with the xUnit v3 runner from `tests/OpenDevelop.IntegrationTests/TESTING.md`).
 
 Verified live (the journey above, plus the UI tree):
@@ -198,8 +198,18 @@ standard xterm cube and grey ramp. A new terminal starts with the current colour
 noticed by each view within about a second (a timer compares the colours, the add-in cannot subscribe to
 the host's theme event) and recolours open terminals, text already on screen included.
 
-Design intent that is **not built yet**: find in terminal, clickable file:line links, vertical split,
-shell-integration cwd tracking.
+Links: holding Ctrl (Cmd on macOS) over a URL or a file reference underlines it and shows a hand;
+Ctrl/Cmd+click follows it. Recognised: `https://...` (trailing punctuation and unbalanced `)` dropped),
+`path:line[:col]`, `path(line[,col])` (MSBuild style), absolute/`~/`/relative paths containing a
+separator, Windows drive paths, and a bare `name.ext` only with a line number. A reference is a link only
+if the file exists: relative paths are tried against the folder the terminal started in, the solution
+folder and every project folder (the shell's current directory is not known to the terminal). A file opens
+in the editor at the line and column (`SD.FileService.JumpToFilePosition`), a URL in the system browser
+(http/https only). Links are searched per screen row, so a reference wrapped over two rows is not found.
+While a program tracks the mouse, links are off (like selection).
+
+Design intent that is **not built yet**: find in terminal, vertical split, shell-integration cwd
+tracking.
 
 Shutdown needs no sweep: with `sleep 4322 &` running in a terminal, killing the pane, and also
 terminating (SIGTERM) or killing (SIGKILL) the whole IDE, left no child behind on macOS, because the
@@ -217,11 +227,11 @@ not handled. Not checked on Windows.
 
 ## Testing
 
-Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, seven journeys, DevFlow
+Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, eight journeys, DevFlow
 actions instead of OS input): shells, size and alternate screen, keys, split; wide text, scrollback,
 selection, wrapped copy, bracketed paste; View menu, Project Browser "Open in Terminal", shell list;
 mouse reporting, alternate-screen wheel, word and line selection; settings; cycling, renaming and the
-end of a shell; IDE theme colours. There are no unit tests of
+end of a shell; IDE theme colours; links. There are no unit tests of
 the engine on its own.
 
 ## Phasing

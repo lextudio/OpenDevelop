@@ -208,6 +208,33 @@ namespace OpenDevelop.Terminal
 			return true;
 		}
 
+		[DevFlowAction("od.terminal.links", Description = "The links on the visible screen of the active terminal - URLs and files that exist, with optional line and column - with the cells they cover and the full path (or URL) they open")]
+		public static string Links()
+		{
+			var view = Pad()?.View;
+			if (view == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No active terminal" });
+			return JsonSerializer.Serialize(new {
+				success = true,
+				links = view.FindLinks().Select(l => new {
+					kind = l.Candidate.Kind.ToString().ToLowerInvariant(), text = l.Candidate.Path, target = l.Target,
+					line = l.Candidate.Line, column = l.Candidate.Column, row = l.Row, startColumn = l.StartColumn, endColumn = l.EndColumn,
+				}).ToArray(),
+			});
+		}
+
+		[DevFlowAction("od.terminal.open-link", Description = "Follow the link under a cell of the active terminal as Ctrl/Cmd+click does: a file opens in the editor at its line and column; a URL is only reported, never launched, here")]
+		public static string OpenLink(int column, int row)
+		{
+			var view = Pad()?.View;
+			if (view == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No active terminal" });
+			var hit = view.OpenLinkAt(column, row, launchUrls: false);
+			return hit == null
+				? JsonSerializer.Serialize(new { success = true, opened = false })
+				: JsonSerializer.Serialize(new { success = true, opened = true, kind = hit.Candidate.Kind.ToString().ToLowerInvariant(), target = hit.Target, line = hit.Candidate.Line, column = hit.Candidate.Column });
+		}
+
 		[DevFlowAction("od.terminal.cell", Description = "One visible cell of the active terminal: its text and the colours it is drawn with (#rrggbb, the default colours when the cell has none)")]
 		public static string Cell(int column, int row)
 		{

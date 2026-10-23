@@ -65,6 +65,8 @@ namespace OpenDevelop.Terminal
 		public string Title { get; private set; } = "";
 		public string ShellName { get; private set; } = "";
 		public string ShellPath { get; private set; } = "";
+		/// <summary>The folder this shell was started in.</summary>
+		public string InitialDirectory { get; private set; } = "";
 		public int Pid => pty.Pid;
 		/// <summary>The program asked for bracketed paste (DECSET 2004).</summary>
 		public bool BracketedPaste { get; private set; }
@@ -105,7 +107,7 @@ namespace OpenDevelop.Terminal
 			}
 			TerminalSession session;
 			try {
-				session = new TerminalSession(native, pty, columns, rows) { ShellName = Path.GetFileName(shell), ShellPath = shell };
+				session = new TerminalSession(native, pty, columns, rows) { ShellName = Path.GetFileName(shell), ShellPath = shell, InitialDirectory = workingDirectory ?? "" };
 			} catch {
 				try {
 					pty.Kill();
