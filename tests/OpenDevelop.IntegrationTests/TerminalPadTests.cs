@@ -770,6 +770,12 @@ public sealed class TerminalPadTests
 			await Task.Delay(100);
 		}
 		Assert.True(Lines(screen).Any(l => string.Join(" ", l.Split(' ', StringSplitOptions.RemoveEmptyEntries)) == expected), $"The shell never read {expected}.\n{screen}");
+		// Cmd+K clears the screen and scrollback, as in VS Code on macOS.
+		await SendAsync("printf 'clear-marker\\n'\r");
+		await WaitForLineAsync("clear-marker");
+		Assert.True((await app.InvokeAsync("od.terminal.key", "K", "windows")).GetProperty("handled").GetBoolean());
+		await Task.Delay(300);
+		Assert.DoesNotContain("clear-marker", (await app.InvokeAsync("od.terminal.text")).GetProperty("text").GetString()!, StringComparison.Ordinal);
 		await app.InvokeAsync("od.terminal.kill");
 	}
 

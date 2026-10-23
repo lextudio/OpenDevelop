@@ -786,6 +786,11 @@ namespace OpenDevelop.Terminal
 				PasteFromClipboard();
 				return true;
 			}
+			if (command && modifiers == ModifierKeys.Windows && key == Key.K && OperatingSystem.IsMacOS()) { // Cmd+K clears, as in VS Code on macOS
+				session.Clear();
+				ClearSelection();
+				return true;
+			}
 			if (session.HasExited) {
 				// Nothing is listening any more: a key (other than a bare modifier) dismisses the finished terminal.
 				if (key is not (Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin or Key.System))
