@@ -532,6 +532,20 @@ public sealed class TerminalPadTests
 		var typed = await app.InvokeAsync("od.terminal.find-bar", "needle");
 		Assert.Equal("1 of 2", typed.GetProperty("status").GetString());
 		Assert.True(await ShowsAsync("needle 20"));
+		// Typing is debounced: six keystrokes in one go cost one search, which runs after a short pause.
+		var searchesBefore = (await app.InvokeAsync("od.terminal.find-bar", "x")).GetProperty("searches").GetInt32(); // "x" opens it and searches once
+		var typedNow = await app.InvokeAsync("od.terminal.find-bar", "", false, "needle");
+		Assert.Equal(searchesBefore, typedNow.GetProperty("searches").GetInt32()); // nothing searched yet
+		JsonElement settled = default;
+		for (var attempt = 0; attempt < 50; attempt++)
+		{
+			settled = await app.InvokeAsync("od.terminal.find-bar");
+			if (settled.GetProperty("status").GetString() == "1 of 2")
+				break;
+			await Task.Delay(100);
+		}
+		Assert.Equal("1 of 2", settled.GetProperty("status").GetString());
+		Assert.Equal(searchesBefore + 1, settled.GetProperty("searches").GetInt32());
 		var none = await app.InvokeAsync("od.terminal.find-bar", "no-such-text-anywhere");
 		Assert.Equal("No results", none.GetProperty("status").GetString());
 		var closed = await app.InvokeAsync("od.terminal.find-bar", "", true);

@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 
 namespace OpenDevelop.Terminal
 {
@@ -12,6 +13,9 @@ namespace OpenDevelop.Terminal
 		readonly TextBlock status = new TextBlock { MinWidth = 70, Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
 		readonly Func<TerminalView> activeView;
 		readonly Action close;
+		// A search pages through the whole scrollback (about 0.2 s for 12 000 lines), so typing waits for a pause instead of searching per key.
+		readonly DispatcherTimer debounce = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(250) };
+		bool programmatic;
 
 		public TerminalFindBar(Func<TerminalView> activeView, Action close)
 		{
@@ -28,7 +32,16 @@ namespace OpenDevelop.Terminal
 				row.Children.Add(element);
 			Child = row;
 
-			query.TextChanged += (_, _) => Search();
+			debounce.Tick += (_, _) => {
+				debounce.Stop();
+				Search();
+			};
+			query.TextChanged += (_, _) => {
+				if (programmatic)
+					return;
+				debounce.Stop();
+				debounce.Start();
+			};
 			matchCase.Click += (_, _) => Search();
 			query.PreviewKeyDown += (_, e) => {
 				if (e.Key == Key.Enter) {
@@ -51,17 +64,35 @@ namespace OpenDevelop.Terminal
 		/// <summary>The query text, for tests and for refreshing the status.</summary>
 		public string Query => query.Text;
 
+		/// <summary>How many searches the bar has run (typing is debounced, so fewer than keystrokes).</summary>
+		public int SearchCount { get; private set; }
+
 		public void Show(string prefill)
 		{
 			Visibility = Visibility.Visible;
-			if (!string.IsNullOrEmpty(prefill))
+			debounce.Stop();
+			if (!string.IsNullOrEmpty(prefill)) {
+				programmatic = true; // one search below, not one per TextChanged
 				query.Text = prefill;
+				programmatic = false;
+			}
 			query.Focus();
 			query.SelectAll();
 			Search();
 		}
 
-		public void Hide() => Visibility = Visibility.Collapsed;
+		/// <summary>Types the text one character at a time, as the keyboard would (each step raises TextChanged).</summary>
+		public void TypeQuery(string text)
+		{
+			for (int i = 1; i <= text.Length; i++)
+				query.Text = text.Substring(0, i);
+		}
+
+		public void Hide()
+		{
+			debounce.Stop();
+			Visibility = Visibility.Collapsed;
+		}
 
 		public bool IsOpen => Visibility == Visibility.Visible;
 
@@ -73,6 +104,7 @@ namespace OpenDevelop.Terminal
 			var view = activeView();
 			if (view == null)
 				return;
+			SearchCount++;
 			int count = view.RunFind(query.Text, matchCase.IsChecked == true);
 			if (count > 0)
 				view.MoveToMatch(0);
@@ -84,8 +116,14 @@ namespace OpenDevelop.Terminal
 			var view = activeView();
 			if (view == null)
 				return;
-			if (view.MatchCount == 0)
+			if (debounce.IsEnabled) { // a typed query is still waiting for its search: run it now, then step from the start
+				debounce.Stop();
+				SearchCount++;
 				view.RunFind(query.Text, matchCase.IsChecked == true);
+			} else if (view.MatchCount == 0) {
+				SearchCount++;
+				view.RunFind(query.Text, matchCase.IsChecked == true);
+			}
 			view.MoveToMatch(delta);
 			UpdateStatus(view);
 		}

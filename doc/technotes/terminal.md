@@ -212,7 +212,8 @@ every base folder, so results (hits and misses) are remembered for two seconds.
 Find: the toolbar's Find button, Cmd+F and Ctrl+Shift+F (while the terminal has the keyboard) open a find
 bar under the toolbar: typing searches, Enter/Shift+Enter go to the next/previous match (wrapping, the
 match is scrolled to the middle of the viewport and shown in orange, the others in yellow), `Aa` matches
-case, Esc closes it and clears the highlights. The search covers the screen and the whole scrollback: the
+case, Esc closes it and clears the highlights. Typing waits 250 ms for a pause before searching (a search
+pages through the whole scrollback: about 0.2 s for 12 000 lines on a 7-row pad), Enter searches at once. The search covers the screen and the whole scrollback: the
 session pages the viewport through it under its lock and puts the viewport back, so a search alone never
 moves the view. A match lies within one row (it cannot span a wrapped line), and the results are those of
 the last search: output that arrives later is not marked until the query changes or Enter is pressed.

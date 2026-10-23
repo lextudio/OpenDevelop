@@ -257,8 +257,8 @@ namespace OpenDevelop.Terminal
 			});
 		}
 
-		[DevFlowAction("od.terminal.find-bar", Description = "Drive the find bar: a non-empty query opens it with that text (it searches and goes to the first match, as typing does), hide=true closes it; returns whether it is open and the status it shows (\"1 of 2\", \"No results\")")]
-		public static string FindBar(string query = "", bool hide = false)
+		[DevFlowAction("od.terminal.find-bar", Description = "Drive the find bar: a non-empty query opens it with that text and searches at once, typed (with the bar open) is typed character by character like the keyboard (the search follows after a 250 ms pause, once), hide=true closes it; returns whether it is open, the status it shows and how many searches the bar has run (\"1 of 2\", \"No results\")")]
+		public static string FindBar(string query = "", bool hide = false, string typed = "")
 		{
 			var pad = Pad();
 			if (pad?.ActivePane == null)
@@ -267,7 +267,9 @@ namespace OpenDevelop.Terminal
 				pad.HideFind();
 			else if (!string.IsNullOrEmpty(query))
 				pad.ShowFind(query);
-			return JsonSerializer.Serialize(new { success = true, open = pad.FindBarOpen, status = pad.FindBarStatus });
+			if (!string.IsNullOrEmpty(typed))
+				pad.TypeInFindBar(typed);
+			return JsonSerializer.Serialize(new { success = true, open = pad.FindBarOpen, status = pad.FindBarStatus, searches = pad.FindBarSearchCount });
 		}
 
 		[DevFlowAction("od.terminal.cell", Description = "One visible cell of the active terminal: its text and the colours it is drawn with (#rrggbb, the default colours when the cell has none)")]

@@ -240,6 +240,10 @@ namespace OpenDevelop.Terminal
 
 		public bool FindBarOpen => findBar.IsOpen;
 		public string FindBarStatus => findBar.StatusText;
+		public int FindBarSearchCount => findBar.SearchCount;
+
+		/// <summary>Types into the find bar like the keyboard: each character raises TextChanged and the search follows after a pause.</summary>
+		public void TypeInFindBar(string text) => findBar.TypeQuery(text);
 
 		/// <summary>Opens the find bar with this text and searches for it.</summary>
 		public void ShowFind(string query) => findBar.Show(query);
