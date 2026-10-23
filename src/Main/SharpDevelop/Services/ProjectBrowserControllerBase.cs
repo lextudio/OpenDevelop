@@ -804,11 +804,26 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
             return;
         }
 
-        var directory = target.IsFileNode
-            ? Path.GetDirectoryName(target.FullPath)
-            : target.FullPath;
+        // A project node's path is its .csproj file: the terminal belongs in the project's folder.
+        var directory = target.Kind == ProjectBrowserNodeKind.Project
+            ? ResolveProject(target)?.Directory.ToString()
+            : target.IsFileNode
+                ? Path.GetDirectoryName(target.FullPath)
+                : target.FullPath;
         if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
         {
+            return;
+        }
+
+        OpenTerminalIn(directory);
+    }
+
+    /// <summary>Opens a terminal in <paramref name="directory"/>: the integrated Terminal pad when the Terminal add-in is loaded, else the platform's terminal application.</summary>
+    void OpenTerminalIn(string directory)
+    {
+        if (SD.Services.GetService(typeof(ICSharpCode.SharpDevelop.Gui.ITerminalHost)) is ICSharpCode.SharpDevelop.Gui.ITerminalHost integrated)
+        {
+            integrated.OpenTerminalAsync(directory).FireAndForget();
             return;
         }
 

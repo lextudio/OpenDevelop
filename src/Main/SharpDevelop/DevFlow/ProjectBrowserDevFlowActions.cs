@@ -137,6 +137,26 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.project-browser.open-terminal", Description = "Run the Project Browser's Open in Terminal command on the first node of the given kind (optionally matching its name) through the controller, with that node as the command's context - the path the context-menu entry takes (its command class is internal and needs the owner node a menu supplies). Opens the integrated Terminal pad when the Terminal add-in is loaded")]
+		public static async Task<string> OpenTerminal(string kind, string? name = null)
+		{
+			try {
+				if (!Enum.TryParse<ProjectBrowserNodeKind>(kind, true, out var nodeKind))
+					return JsonSerializer.Serialize(new { success = false, error = "Unknown node kind '" + kind + "'." });
+				var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<ProjectBrowserViewModel>();
+				await viewModel.WaitForCurrentRefreshAsync();
+				var node = FindNode(viewModel.RootNodes, n => n.Kind == nodeKind
+					&& (string.IsNullOrEmpty(name) || string.Equals(n.Name, name, StringComparison.OrdinalIgnoreCase)));
+				if (node == null)
+					return JsonSerializer.Serialize(new { success = false, error = "No " + kind + " node" + (string.IsNullOrEmpty(name) ? "" : " named '" + name + "'") + "." });
+				viewModel.SelectedNode = node;
+				ServiceSingleton.GetRequiredService<IProjectBrowserController>().OpenTerminal(node.ToContext());
+				return JsonSerializer.Serialize(new { success = true, node = node.Name, kind = node.Kind.ToString() });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
 		[DevFlowAction("od.project-browser.open-selected", Description = "Activate the selected Project Browser node as a double-click does and report any project options view")]
 		public static string OpenSelectedNode()
 		{
