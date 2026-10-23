@@ -161,10 +161,10 @@ Pitfalls found (keep):
   by setting entry 1 and reading back what SGR 31 resolved to. Options 11 and 12 take one RGB triple.
 - Porta.Pty loads `libporta_pty` from the add-in DLL's directory only, but NuGet leaves it under
   `runtimes/<rid>/native/`; `TerminalSession` installs a `NativeLibrary.SetDllImportResolver`.
-- Porta.Pty's build target derives `OpenConsole.exe` from the first `conpty.dll` it sees, which is
-  LibGhostty.Net's (no OpenConsole beside it): `MSB3030` on any non-Windows build. The csproj sets
-  `PortaPtyStageConPtyHost=false`; Windows ConPTY packaging is still to do (phase 4).
-- LibGhostty.Net has no win-arm64 native assets.
+- Porta.Pty's transitive staging target cannot distinguish LibGhostty.Net's `conpty.dll` from the
+  official ConPTY package and derives a nonexistent `OpenConsole.exe` path. Terminal disables that
+  target and stages LibGhostty's matching win-x64 host in `x64/`, beside the deployed add-in assets.
+  LibGhostty still has no win-arm64 native assets.
 - The host shell must be rebuilt (`ICSharpCode.Core.Presentation` embeds the icons) before new icons
   resolve; the add-in alone is not enough. Use one SDK (Homebrew) for both builds.
 - xUnit's `Assert.DoesNotContain(string, string)` compares by culture: with ICU an ESC character is

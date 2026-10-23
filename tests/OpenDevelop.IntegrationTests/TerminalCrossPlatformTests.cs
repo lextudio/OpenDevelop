@@ -4,7 +4,7 @@ using Xunit;
 namespace OpenDevelop.IntegrationTests;
 
 /// <summary>
-/// A deliberately small, shell-agnostic Terminal journey for the Windows and Linux CI matrix.
+/// A deliberately small, shell-agnostic Terminal journey for the Windows CI lane.
 /// The richer <see cref="TerminalPadTests"/> suite uses POSIX programs and remains macOS coverage.
 /// </summary>
 [Collection("30 Add-ins and specialized fixtures")]

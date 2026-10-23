@@ -13,8 +13,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>enable</ImplicitUsings>
     <NoWarn>$(NoWarn);CA1416;WFO1000</NoWarn>
-    <!-- Porta.Pty derives OpenConsole.exe's location from the first conpty.dll it sees, which is LibGhostty.Net's
-         (no OpenConsole next to it): MSB3030. Windows ConPTY packaging is phase 4 (doc/technotes/terminal.md). -->
+    <!-- Porta.Pty's transitive target cannot distinguish LibGhostty.Net's conpty.dll from the
+         official package's. Stage LibGhostty's matching host explicitly below instead. -->
     <PortaPtyStageConPtyHost>false</PortaPtyStageConPtyHost>
   </PropertyGroup>
   <ItemGroup>
@@ -24,8 +24,16 @@
     <PackageReference Include="LeXtudio.DevFlow.Agent.Core" />
     <!-- Only its VT half is used: the PTY is Porta.Pty, because LibGhostty.Net 1.0.2 writes a garbage
          winsize on macOS arm64 (stty size after Resize printed random numbers). -->
-    <PackageReference Include="LibGhostty.Net" />
+    <PackageReference Include="LibGhostty.Net" GeneratePathProperty="true" />
     <PackageReference Include="Porta.Pty" />
+    <!-- Porta.Pty's Windows loader finds conpty.dll in the add-in directory, then requires its
+         matching OpenConsole.exe under x64/. LibGhostty supplies the paired win-x64 assets. -->
+    <None Include="$(PkgLibGhostty_Net)/runtimes/win-x64/native/OpenConsole.exe"
+          Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+      <Link>x64/OpenConsole.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />

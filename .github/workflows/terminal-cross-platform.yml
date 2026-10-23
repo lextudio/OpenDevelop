@@ -1,4 +1,4 @@
-name: Terminal cross-platform
+name: Terminal Windows
 
 # This is intentionally a Terminal-only integration lane.  It is not a general replacement for
 # the platform matrix: its build excludes the rest of the runtime-discovered add-ins and fixtures.
@@ -48,12 +48,8 @@ on:
 
 jobs:
   terminal:
-    name: Terminal (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    name: Terminal (windows-latest)
+    runs-on: windows-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -66,9 +62,6 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - name: Install Linux display dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install --yes xvfb libgtk-3-0 libfontconfig1
       - name: Skip the developer-local LibreWPF feed
         shell: pwsh
         run: |
@@ -80,7 +73,7 @@ jobs:
       - name: Build host and Terminal only
         shell: pwsh
         run: |
-          $rid = if ('${{ runner.os }}' -eq 'Windows') { 'win-x64' } else { 'linux-x64' }
+          $rid = 'win-x64'
           dotnet build src/Main/SharpDevelop/SharpDevelop.csproj --configuration Debug
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build src/AddIns/Misc/Terminal/Project/Terminal.csproj --configuration Debug --runtime $rid -p:AppendRuntimeIdentifierToOutputPath=false
@@ -91,8 +84,4 @@ jobs:
         shell: pwsh
         run: |
           $tests = 'tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll'
-          if ('${{ runner.os }}' -eq 'Linux') {
-            xvfb-run -a dotnet $tests -class OpenDevelop.IntegrationTests.TerminalCrossPlatformTests -parallel none
-          } else {
-            dotnet $tests -class OpenDevelop.IntegrationTests.TerminalCrossPlatformTests -parallel none
-          }
+          dotnet $tests -class OpenDevelop.IntegrationTests.TerminalCrossPlatformTests -parallel none
