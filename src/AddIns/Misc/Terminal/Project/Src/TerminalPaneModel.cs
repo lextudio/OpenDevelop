@@ -63,10 +63,10 @@ namespace OpenDevelop.Terminal
 			split.Second.Parent = split;
 			if (split.Parent == null)
 				Root = split;
-			else if (ReferenceEquals(split.Parent.First, leaf))
-				split.Parent.First = split;
+			else if (ReferenceEquals(((TerminalLayoutSplit)split.Parent).First, leaf))
+				((TerminalLayoutSplit)split.Parent).First = split;
 			else
-				split.Parent.Second = split;
+				((TerminalLayoutSplit)split.Parent).Second = split;
 		}
 
 		public void Remove(TerminalPane pane)
@@ -88,10 +88,10 @@ namespace OpenDevelop.Terminal
 			newNode.Parent = parent;
 			if (parent == null)
 				Root = newNode;
-			else if (ReferenceEquals(parent.First, oldNode))
-				parent.First = newNode;
+			else if (ReferenceEquals(((TerminalLayoutSplit)parent).First, oldNode))
+				((TerminalLayoutSplit)parent).First = newNode;
 			else
-				parent.Second = newNode;
+				((TerminalLayoutSplit)parent).Second = newNode;
 		}
 
 		static TerminalLayoutLeaf FindLeaf(TerminalLayoutNode node, TerminalPane pane)
