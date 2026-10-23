@@ -903,6 +903,83 @@ public sealed class TerminalPadTests
 		}
 	}
 
+	/// <summary>
+	/// The same selection and link gestures as above, but delivered as real OS pointer and key events at screen coordinates, so the
+	/// whole path from the window system to <c>TerminalView</c> is exercised rather than its handler methods.
+	/// </summary>
+	[Fact]
+	public async Task TerminalPad_TakesRealPointerInput_ForSelectionAndLinks()
+	{
+		await ShowPadAsync();
+		Assert.True((await app.InvokeAsync("od.terminal.new", "/bin/sh")).GetProperty("success").GetBoolean());
+		var scratch = $"/tmp/od-real-{Guid.NewGuid():N}.cs".Substring(0, 22) + ".cs";
+		File.WriteAllLines(scratch, new[] { "// a", "// b", "// c" });
+		try
+		{
+			await SendAsync($"printf 'real one two three\\n'; printf 'see %s:2:1\\n' '{scratch}'\r");
+			await WaitForLineAsync("real one two three");
+			await Task.Delay(500);
+			var lines = Lines(await app.InvokeAsync("od.terminal.text")).ToList();
+			var wordRow = lines.IndexOf("real one two three");
+			var linkRow = lines.FindIndex(l => l.StartsWith("see ", StringComparison.Ordinal));
+			Assert.True(wordRow >= 0 && linkRow >= 0, string.Join("\n", lines));
+
+			async Task<(double x, double y)> PointAsync(int column, int row)
+			{
+				var point = await app.InvokeAsync("od.terminal.screen-point", column, row);
+				Assert.True(point.GetProperty("success").GetBoolean(), point.ToString());
+				return (point.GetProperty("x").GetDouble(), point.GetProperty("y").GetDouble());
+			}
+			async Task<string> SelectionAsync() =>
+				(await app.InvokeAsync("od.terminal.context-menu", 0, wordRow)).GetProperty("selection").GetString() ?? "";
+
+			// A real click focuses the view (and the pointer event is recorded as delivered to it).
+			await app.InvokeAsync("od.pointer-events", true);
+			var word = await PointAsync(6, wordRow); // inside "one"
+			await app.ClickPointerAsync(word.x, word.y);
+			Assert.True((await app.InvokeAsync("od.terminal.screen-point", 0, 0)).GetProperty("focused").GetBoolean());
+			Assert.Contains("TerminalView", (await app.InvokeAsync("od.pointer-events", false)).ToString(), StringComparison.Ordinal);
+
+			// Real double click selects the word, a real triple click the line. Each gesture waits out the double-click interval,
+			// or the OS counts it as a continuation of the previous click.
+			await Task.Delay(900);
+			await app.ClickPointerAsync(word.x, word.y, 2);
+			Assert.Equal("one", await SelectionAsync());
+			await Task.Delay(900);
+			await app.ClickPointerAsync(word.x, word.y, 3);
+			Assert.Equal("real one two three", await SelectionAsync());
+
+			// A real press, move and release drags a selection.
+			await Task.Delay(900);
+			var from = await PointAsync(5, wordRow);
+			var to = await PointAsync(12, wordRow);
+			await app.DragPointerAsync(from.x - 3, from.y, to.x - 3, to.y);
+			Assert.Equal("one two", await SelectionAsync());
+
+			// A plain real click on a link does not open it; one with a real Ctrl key held does.
+			await app.InvokeAsync("od.close-all-document-views");
+			var link = await PointAsync(8, linkRow);
+			await Task.Delay(900);
+			await app.ClickPointerAsync(link.x, link.y);
+			Assert.False((await app.InvokeAsync("od.active-view")).GetProperty("active").GetBoolean());
+			await app.KeyDownAsync("ctrl");
+			try { await app.ClickPointerAsync(link.x, link.y); }
+			finally { await app.KeyUpAsync("ctrl"); }
+			JsonElement view = default;
+			await OpenDevelopAppFixture.PollUntilAsync(async () =>
+			{
+				view = await app.InvokeAsync("od.active-view");
+				return view.TryGetProperty("fileName", out var f) && f.GetString() == scratch;
+			}, TimeSpan.FromSeconds(10));
+			Assert.Equal(scratch, view.GetProperty("fileName").GetString());
+			Assert.Equal(2, view.GetProperty("caretLine").GetInt32());
+		}
+		finally
+		{
+			File.Delete(scratch);
+		}
+	}
+
 	async Task WaitForMouseTrackingAsync(bool expected)
 	{
 		JsonElement last = default;

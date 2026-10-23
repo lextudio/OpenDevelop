@@ -98,7 +98,7 @@ Project Browser "Open in Terminal" opens the integrated terminal in that folder 
 `ITerminalHost` (Base interface, registered by the add-in; external terminal app if the add-in is not
 loaded). DevFlow: `od.terminal.new|split|
 activate|send|key|mouse|wheel|click|scroll|select|copy|paste|shells|settings|text|list|kill`; host side
-`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (seventeen
+`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (eighteen
 journeys, pass; run with the xUnit v3 runner from `tests/OpenDevelop.IntegrationTests/TESTING.md`).
 
 Verified live (the journey above, plus the UI tree):
@@ -131,7 +131,7 @@ Verified live (the journey above, plus the UI tree):
 - Split: two panes in one group, each with its share of the width (376.5 DIP each), independent
   shells; the combo lists them and activating one routes input; killing one leaves its sibling.
 
-Not verified / not done: actual pixels (no screenshot taken), WPF's own routing of real input: the mouse
+Not verified / not done: actual pixels (no screenshot taken), WPF's own routing of real keyboard input (real pointer input is covered, see below): the mouse
 handlers (`OnMouseLeftButtonDown/Move/Up`, wheel) and `OnKeyDown`/`OnTextInput` are only reached by real
 input, the journeys drive the same methods through DevFlow (`HandleKey`, `HandleLeftDown/Up`,
 `HandleWheel`, `ReportMouse`, `SelectRange`, `Paste`); the options page UI and the shell drop-down popup
@@ -276,11 +276,11 @@ not handled. Not checked on Windows.
 
 ## Testing
 
-Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, seventeen journeys, DevFlow
-actions instead of OS input): shells, size and alternate screen, keys, split; wide text, scrollback,
+Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, eighteen journeys, DevFlow
+actions, plus one journey with real OS input): shells, size and alternate screen, keys, split; wide text, scrollback,
 selection, wrapped copy, bracketed paste; View menu, Project Browser "Open in Terminal", shell list;
 mouse reporting, alternate-screen wheel, word and line selection; settings; cycling, renaming and the
-end of a shell; IDE theme colours; links; find; the shell's current directory; the right-click menu; dropped files; zoom; Send to Terminal; the macOS editing keys; the cursor; the font family; the bell. There are no unit tests of
+end of a shell; IDE theme colours; links; find; the shell's current directory; the right-click menu; dropped files; zoom; Send to Terminal; the macOS editing keys; the cursor; the font family; the bell; real input (`od.terminal.screen-point` gives a cell's screen position): click focus, drag, double and triple click selection, and Ctrl+click on a link with a real held Ctrl key (each gesture waits out the double-click interval, or the OS merges it into the previous click count). There are no unit tests of
 the engine on its own.
 
 ## Phasing

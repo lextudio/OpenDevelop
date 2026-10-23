@@ -323,6 +323,16 @@ namespace OpenDevelop.Terminal
 			return JsonSerializer.Serialize(new { success = true, sent });
 		}
 
+		[DevFlowAction("od.terminal.screen-point", Description = "The screen coordinates (PointToScreen) of the centre of a cell of the active terminal, and whether the view has keyboard focus: what a real pointer injection needs to hit that cell")]
+		public static string ScreenPoint(int column = 0, int row = 0)
+		{
+			var view = Pad()?.View;
+			if (view == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No active terminal" });
+			var screen = view.PointToScreen(view.CellCenter(column, row));
+			return JsonSerializer.Serialize(new { success = true, x = screen.X, y = screen.Y, focused = view.IsKeyboardFocused, visible = view.IsVisible });
+		}
+
 		[DevFlowAction("od.terminal.cell", Description = "One visible cell of the active terminal: its text and the colours it is drawn with (#rrggbb, the default colours when the cell has none)")]
 		public static string Cell(int column, int row)
 		{
