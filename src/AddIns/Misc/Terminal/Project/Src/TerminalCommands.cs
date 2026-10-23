@@ -43,6 +43,11 @@ namespace OpenDevelop.Terminal
 		}
 	}
 
+	sealed class FindTerminalCommand : TerminalCommand
+	{
+		public override void Run() => Pad?.ShowFind();
+	}
+
 	sealed class SplitTerminalCommand : TerminalCommand
 	{
 		public override void Run() => Pad?.SplitActiveAsync().FireAndForget();

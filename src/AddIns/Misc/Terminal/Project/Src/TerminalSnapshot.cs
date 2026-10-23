@@ -23,6 +23,9 @@ namespace OpenDevelop.Terminal
 		public const uint ColorSet = 0x1000000;
 	}
 
+	/// <summary>A find result: the row counts from the top of the whole scrollback (0 = oldest line), the columns are cells.</summary>
+	readonly record struct TerminalMatch(ulong AbsoluteRow, int StartColumn, int EndColumn, string Text);
+
 	/// <summary>An immutable copy of the visible grid, safe to read on the UI thread while the PTY thread keeps writing.</summary>
 	sealed class TerminalSnapshot
 	{

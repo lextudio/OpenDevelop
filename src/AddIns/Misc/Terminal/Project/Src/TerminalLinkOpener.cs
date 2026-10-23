@@ -15,10 +15,30 @@ namespace OpenDevelop.Terminal
 		/// tried against the folder the terminal started in, the solution folder and every project folder (the shell's
 		/// current directory is not known).
 		/// </summary>
+		static readonly Dictionary<string, (DateTime when, string target)> cache = new Dictionary<string, (DateTime, string)>();
+		static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(2);
+
+		/// <summary>
+		/// <see cref="ResolveUncached"/> remembered for a couple of seconds: hovering with Ctrl held asks for the same row
+		/// on every mouse move, and each ask would otherwise stat the file under every project folder again.
+		/// </summary>
 		public static string Resolve(TerminalLinkCandidate candidate, string startDirectory)
 		{
 			if (candidate.Kind == TerminalLinkKind.Url)
 				return candidate.Path;
+			string key = startDirectory + "|" + candidate.Path;
+			var now = DateTime.UtcNow;
+			if (cache.TryGetValue(key, out var hit) && now - hit.when < CacheLifetime)
+				return hit.target;
+			string target = ResolveUncached(candidate, startDirectory);
+			if (cache.Count > 512)
+				cache.Clear();
+			cache[key] = (now, target);
+			return target;
+		}
+
+		static string ResolveUncached(TerminalLinkCandidate candidate, string startDirectory)
+		{
 			string path = candidate.Path;
 			if (path.StartsWith("~/", StringComparison.Ordinal))
 				path = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), path.Substring(2));

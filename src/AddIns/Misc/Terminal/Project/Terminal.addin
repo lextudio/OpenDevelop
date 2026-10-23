@@ -45,6 +45,10 @@
 		             tooltip = "Clear"
 		             icon    = "Icons.16x16.ClearWindowContent"
 		             class   = "OpenDevelop.Terminal.ClearTerminalCommand"/>
+		<ToolbarItem id      = "FindTerminal"
+		             tooltip = "Find in Terminal (Cmd+F, Ctrl+Shift+F)"
+		             icon    = "Icons.16x16.Search"
+		             class   = "OpenDevelop.Terminal.FindTerminalCommand"/>
 		<ToolbarItem id      = "CopyTerminal"
 		             tooltip = "Copy"
 		             icon    = "Icons.16x16.Copy"

@@ -491,6 +491,55 @@ public sealed class TerminalPadTests
 		}
 	}
 
+	[Fact]
+	public async Task TerminalPad_FindsTextInTheScrollback()
+	{
+		await ShowPadAsync();
+		Assert.True((await app.InvokeAsync("od.terminal.new", "/bin/sh")).GetProperty("success").GetBoolean());
+		// 200 rows, "needle" on rows 20 and 150 only (built with two string parts so the typed command line does not contain it).
+		await SendAsync("awk 'BEGIN { for (i = 1; i <= 200; i++) if (i == 20 || i == 150) print \"need\" \"le \" i; else print \"line \" i }'\r");
+		await WaitForLineAsync("line 200");
+		await Task.Delay(500);
+		async Task<ulong> OffsetAsync() => (await app.InvokeAsync("od.terminal.text")).GetProperty("scrollback").GetProperty("offset").GetUInt64();
+		async Task<bool> ShowsAsync(string text) => Lines(await app.InvokeAsync("od.terminal.text")).Any(l => l.Contains(text, StringComparison.Ordinal));
+		var bottom = await OffsetAsync();
+
+		// Searching alone finds both and leaves the viewport where it was (it has to page through the scrollback to look).
+		var searched = await app.InvokeAsync("od.terminal.find", "needle", false, "none");
+		Assert.Equal(2, searched.GetProperty("count").GetInt32());
+		Assert.Equal(bottom, await OffsetAsync());
+
+		// First / next / previous scroll the match into view and wrap around.
+		var first = await app.InvokeAsync("od.terminal.find", "", false, "first");
+		Assert.Equal("needle", first.GetProperty("match").GetProperty("text").GetString());
+		Assert.True(await ShowsAsync("needle 20"), "first match is row 20");
+		Assert.Equal(0, first.GetProperty("current").GetInt32());
+		Assert.True((await app.InvokeAsync("od.terminal.find", "", false, "next")).GetProperty("current").GetInt32() == 1 && await ShowsAsync("needle 150"));
+		Assert.True((await app.InvokeAsync("od.terminal.find", "", false, "next")).GetProperty("current").GetInt32() == 0 && await ShowsAsync("needle 20"));
+		Assert.True((await app.InvokeAsync("od.terminal.find", "", false, "previous")).GetProperty("current").GetInt32() == 1 && await ShowsAsync("needle 150"));
+
+		// Case: insensitive by default, exact on request.
+		Assert.Equal(2, (await app.InvokeAsync("od.terminal.find", "NEEDLE", false, "none")).GetProperty("count").GetInt32());
+		var exact = await app.InvokeAsync("od.terminal.find", "NEEDLE", true, "first");
+		Assert.Equal(0, exact.GetProperty("count").GetInt32());
+		Assert.Equal(JsonValueKind.Null, exact.GetProperty("match").ValueKind);
+
+		// The find bar: the shortcut opens it, typing a query searches and goes to the first match, closing hides it again.
+		await app.InvokeAsync("od.terminal.find", "", false, "clear");
+		var keyed = await app.InvokeAsync("od.terminal.key", "F", "ctrl,shift");
+		Assert.True(keyed.GetProperty("handled").GetBoolean(), keyed.ToString());
+		Assert.True((await app.InvokeAsync("od.terminal.find-bar")).GetProperty("open").GetBoolean());
+		var typed = await app.InvokeAsync("od.terminal.find-bar", "needle");
+		Assert.Equal("1 of 2", typed.GetProperty("status").GetString());
+		Assert.True(await ShowsAsync("needle 20"));
+		var none = await app.InvokeAsync("od.terminal.find-bar", "no-such-text-anywhere");
+		Assert.Equal("No results", none.GetProperty("status").GetString());
+		var closed = await app.InvokeAsync("od.terminal.find-bar", "", true);
+		Assert.False(closed.GetProperty("open").GetBoolean());
+
+		await app.InvokeAsync("od.terminal.kill");
+	}
+
 	async Task WaitForMouseTrackingAsync(bool expected)
 	{
 		JsonElement last = default;

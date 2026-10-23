@@ -92,13 +92,13 @@ terminal = new group of one; Split = another pane in the active group (same shel
 active pane. The session combo lists every pane, `(split)` marks panes that share a group.
 
 Toolbar today: session combo, New, shell drop-down (installed shells; "Default Shell" submenu), Split,
-Kill, Clear, Copy, Paste, Settings (opens the Options dialog; the Terminal page is under the
+Kill, Clear, Find, Copy, Paste, Settings (opens the Options dialog; the Terminal page is under the
 IDE options). View menu: Terminal (Ctrl+`), New Terminal (Ctrl+Shift+`), Next/Previous Terminal and Rename Terminal....
 Project Browser "Open in Terminal" opens the integrated terminal in that folder through
 `ITerminalHost` (Base interface, registered by the add-in; external terminal app if the add-in is not
 loaded). DevFlow: `od.terminal.new|split|
 activate|send|key|mouse|wheel|click|scroll|select|copy|paste|shells|settings|text|list|kill`; host side
-`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (eight
+`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (nine
 journeys, pass; run with the xUnit v3 runner from `tests/OpenDevelop.IntegrationTests/TESTING.md`).
 
 Verified live (the journey above, plus the UI tree):
@@ -206,10 +206,18 @@ if the file exists: relative paths are tried against the folder the terminal sta
 folder and every project folder (the shell's current directory is not known to the terminal). A file opens
 in the editor at the line and column (`SD.FileService.JumpToFilePosition`), a URL in the system browser
 (http/https only). Links are searched per screen row, so a reference wrapped over two rows is not found.
-While a program tracks the mouse, links are off (like selection).
+While a program tracks the mouse, links are off (like selection). Resolving a reference stats the file under
+every base folder, so results (hits and misses) are remembered for two seconds.
 
-Design intent that is **not built yet**: find in terminal, vertical split, shell-integration cwd
-tracking.
+Find: the toolbar's Find button, Cmd+F and Ctrl+Shift+F (while the terminal has the keyboard) open a find
+bar under the toolbar: typing searches, Enter/Shift+Enter go to the next/previous match (wrapping, the
+match is scrolled to the middle of the viewport and shown in orange, the others in yellow), `Aa` matches
+case, Esc closes it and clears the highlights. The search covers the screen and the whole scrollback: the
+session pages the viewport through it under its lock and puts the viewport back, so a search alone never
+moves the view. A match lies within one row (it cannot span a wrapped line), and the results are those of
+the last search: output that arrives later is not marked until the query changes or Enter is pressed.
+
+Design intent that is **not built yet**: vertical split, shell-integration cwd tracking.
 
 Shutdown needs no sweep: with `sleep 4322 &` running in a terminal, killing the pane, and also
 terminating (SIGTERM) or killing (SIGKILL) the whole IDE, left no child behind on macOS, because the
@@ -227,11 +235,11 @@ not handled. Not checked on Windows.
 
 ## Testing
 
-Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, eight journeys, DevFlow
+Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, nine journeys, DevFlow
 actions instead of OS input): shells, size and alternate screen, keys, split; wide text, scrollback,
 selection, wrapped copy, bracketed paste; View menu, Project Browser "Open in Terminal", shell list;
 mouse reporting, alternate-screen wheel, word and line selection; settings; cycling, renaming and the
-end of a shell; IDE theme colours; links. There are no unit tests of
+end of a shell; IDE theme colours; links; find. There are no unit tests of
 the engine on its own.
 
 ## Phasing

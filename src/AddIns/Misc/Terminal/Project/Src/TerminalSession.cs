@@ -349,6 +349,64 @@ namespace OpenDevelop.Terminal
 			}
 		}
 
+		/// <summary>
+		/// Every occurrence of <paramref name="query"/> in the screen and its scrollback, oldest first (one row at a time: a
+		/// match cannot span a wrapped line). It pages the viewport through the scrollback under the lock and puts the viewport back.
+		/// </summary>
+		public IReadOnlyList<TerminalMatch> Search(string query, bool matchCase)
+		{
+			var matches = new List<TerminalMatch>();
+			if (string.IsNullOrEmpty(query))
+				return matches;
+			var comparison = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+			lock (gate) {
+				if (disposed)
+					return matches;
+				native.TerminalGetScrollbar(terminal, out var original);
+				bool atBottom = original.Offset + original.Length >= original.Total;
+				native.ScrollViewport(terminal, new G.TerminalScrollViewport { Tag = G.ScrollViewportTop });
+				ulong next = 0; // the first absolute row not scanned yet: the last page may overlap the one before
+				for (int pages = 0; pages < 100_000; pages++) {
+					var snapshot = GetSnapshot();
+					ulong top = snapshot.ScrollbackOffset;
+					for (int row = 0; row < snapshot.Rows; row++) {
+						if (top + (ulong)row < next)
+							continue;
+						var text = snapshot.GetRowText(row, out var columns);
+						for (int index = text.IndexOf(query, comparison); index >= 0; index = text.IndexOf(query, index + query.Length, comparison))
+							matches.Add(new TerminalMatch(top + (ulong)row, columns[index], columns[index + query.Length - 1], text.Substring(index, query.Length)));
+					}
+					next = top + (ulong)snapshot.Rows;
+					if (top + snapshot.ScrollbackLength >= snapshot.ScrollbackTotal)
+						break;
+					native.ScrollViewport(terminal, new G.TerminalScrollViewport { Tag = G.ScrollViewportDelta, Value = new G.TerminalScrollViewportValue { Delta = (IntPtr)snapshot.Rows } });
+				}
+				if (atBottom)
+					native.ScrollViewport(terminal, new G.TerminalScrollViewport { Tag = G.ScrollViewportBottom });
+				else {
+					native.ScrollViewport(terminal, new G.TerminalScrollViewport { Tag = G.ScrollViewportTop });
+					native.ScrollViewport(terminal, new G.TerminalScrollViewport { Tag = G.ScrollViewportDelta, Value = new G.TerminalScrollViewportValue { Delta = (IntPtr)(long)original.Offset } });
+				}
+			}
+			return matches;
+		}
+
+		/// <summary>Scrolls so that the given absolute row (see <see cref="TerminalMatch"/>) is in the middle of the viewport, or as near as the scrollback allows.</summary>
+		public void ScrollToRow(ulong absoluteRow)
+		{
+			lock (gate) {
+				if (disposed)
+					return;
+				native.TerminalGetScrollbar(terminal, out var scrollbar);
+				ulong maxTop = scrollbar.Total > scrollbar.Length ? scrollbar.Total - scrollbar.Length : 0;
+				ulong want = Math.Min(absoluteRow > (ulong)(Rows / 2) ? absoluteRow - (ulong)(Rows / 2) : 0, maxTop);
+				long delta = (long)want - (long)scrollbar.Offset;
+				if (delta != 0)
+					native.ScrollViewport(terminal, new G.TerminalScrollViewport { Tag = G.ScrollViewportDelta, Value = new G.TerminalScrollViewportValue { Delta = (IntPtr)delta } });
+			}
+			Changed?.Invoke();
+		}
+
 		public void ScrollBy(int lines)
 		{
 			lock (gate) {

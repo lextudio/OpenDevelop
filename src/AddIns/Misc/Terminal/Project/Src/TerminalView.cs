@@ -51,6 +51,9 @@ namespace OpenDevelop.Terminal
 			refreshTimer.Start();
 		}
 
+		/// <summary>The user pressed the find shortcut (Cmd+F, Ctrl+Shift+F) in this view.</summary>
+		public event Action FindRequested;
+
 		/// <summary>The shell has ended and the user pressed a key: the owner should close this pane.</summary>
 		public event Action CloseRequested;
 
@@ -58,6 +61,52 @@ namespace OpenDevelop.Terminal
 		public event Action Updated;
 
 		TerminalLinkHit hoveredLink;
+		IReadOnlyList<TerminalMatch> matches = Array.Empty<TerminalMatch>();
+		int currentMatch = -1;
+		static readonly Brush MatchBrush = Frozen(Color.FromArgb(120, 255, 210, 0));
+		static readonly Brush CurrentMatchBrush = Frozen(Color.FromArgb(170, 255, 120, 0));
+
+		static Brush Frozen(Color color)
+		{
+			var brush = new SolidColorBrush(color);
+			brush.Freeze();
+			return brush;
+		}
+
+		public int MatchCount => matches.Count;
+		public int CurrentMatchIndex => currentMatch;
+		public TerminalMatch? CurrentMatch => currentMatch >= 0 && currentMatch < matches.Count ? matches[currentMatch] : null;
+
+		/// <summary>Searches the screen and scrollback; matches are highlighted where visible. Returns how many there are.</summary>
+		public int RunFind(string query, bool matchCase)
+		{
+			matches = session == null ? Array.Empty<TerminalMatch>() : session.Search(query, matchCase);
+			currentMatch = -1;
+			dirty = true;
+			InvalidateVisual();
+			return matches.Count;
+		}
+
+		/// <summary>Selects the first match (<paramref name="step"/> 0) or the next (+1) / previous (-1) one, wrapping around, and scrolls it into view.</summary>
+		public TerminalMatch? MoveToMatch(int step)
+		{
+			if (matches.Count == 0 || session == null)
+				return null;
+			currentMatch = step == 0 ? 0
+				: currentMatch < 0 ? (step > 0 ? 0 : matches.Count - 1)
+				: ((currentMatch + step) % matches.Count + matches.Count) % matches.Count;
+			ClearSelection();
+			session.ScrollToRow(matches[currentMatch].AbsoluteRow);
+			dirty = true;
+			return matches[currentMatch];
+		}
+
+		public void ClearFind()
+		{
+			matches = Array.Empty<TerminalMatch>();
+			currentMatch = -1;
+			InvalidateVisual();
+		}
 
 		/// <summary>The link under a cell (file that exists, or http(s) URL), or null.</summary>
 		public TerminalLinkHit FindLinkAt(int column, int row)
@@ -185,7 +234,10 @@ namespace OpenDevelop.Terminal
 				return;
 			dirty = false;
 			snapshot = session?.GetSnapshot();
-			hoveredLink = null; // the text under the pointer may have changed; the next mouse move finds the link again
+			if (hoveredLink != null) {
+				hoveredLink = null; // the text under the pointer may have changed; the next mouse move finds the link again
+				Cursor = null;
+			}
 			InvalidateVisual();
 			Updated?.Invoke();
 		}
@@ -269,6 +321,19 @@ namespace OpenDevelop.Terminal
 						dc.DrawText(ft, new Point(left, top));
 					}
 					x = end;
+				}
+			}
+
+			if (matches.Count > 0) {
+				ulong top = snap.ScrollbackOffset;
+				for (int i = 0; i < matches.Count; i++) {
+					var m = matches[i];
+					if (m.AbsoluteRow < top || m.AbsoluteRow >= top + (ulong)snap.Rows)
+						continue;
+					int row = (int)(m.AbsoluteRow - top);
+					int left = Math.Clamp(m.StartColumn, 0, snap.Columns - 1), right = Math.Clamp(m.EndColumn, 0, snap.Columns - 1);
+					if (right >= left)
+						dc.DrawRectangle(i == currentMatch ? CurrentMatchBrush : MatchBrush, null, new Rect(left * cellWidth, row * cellHeight, (right - left + 1) * cellWidth, cellHeight));
 				}
 			}
 
@@ -553,6 +618,10 @@ namespace OpenDevelop.Terminal
 			if (chord && key == Key.C) {
 				CopySelection();
 				return HasSelection || command;
+			}
+			if (chord && key == Key.F) {
+				FindRequested?.Invoke();
+				return true;
 			}
 			if (chord && key == Key.V) {
 				PasteFromClipboard();

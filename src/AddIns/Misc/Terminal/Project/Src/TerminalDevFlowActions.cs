@@ -235,6 +235,41 @@ namespace OpenDevelop.Terminal
 				: JsonSerializer.Serialize(new { success = true, opened = true, kind = hit.Candidate.Kind.ToString().ToLowerInvariant(), target = hit.Target, line = hit.Candidate.Line, column = hit.Candidate.Column });
 		}
 
+		[DevFlowAction("od.terminal.find", Description = "Search the active terminal's screen and scrollback (a non-empty query runs a new search, an empty one reuses the last results) and move to a match: step first|next|previous (wraps, scrolls the match to the middle of the viewport), none (search only: the viewport is left where it was) or clear (drop the highlights); returns the match count, the current index and the current match")]
+		public static string Find(string query = "", bool matchCase = false, string step = "first")
+		{
+			var view = Pad()?.View;
+			if (view == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No active terminal" });
+			if (step == "clear") {
+				view.ClearFind();
+				return JsonSerializer.Serialize(new { success = true, count = 0 });
+			}
+			int? delta = step switch { "first" => 0, "next" => 1, "previous" => -1, "none" => null, _ => -2 };
+			if (delta == -2)
+				return JsonSerializer.Serialize(new { success = false, error = "Unknown step " + step });
+			if (!string.IsNullOrEmpty(query))
+				view.RunFind(query, matchCase);
+			var match = delta.HasValue ? view.MoveToMatch(delta.Value) : view.CurrentMatch;
+			return JsonSerializer.Serialize(new {
+				success = true, count = view.MatchCount, current = view.CurrentMatchIndex,
+				match = match == null ? null : new { absoluteRow = match.Value.AbsoluteRow, startColumn = match.Value.StartColumn, endColumn = match.Value.EndColumn, text = match.Value.Text },
+			});
+		}
+
+		[DevFlowAction("od.terminal.find-bar", Description = "Drive the find bar: a non-empty query opens it with that text (it searches and goes to the first match, as typing does), hide=true closes it; returns whether it is open and the status it shows (\"1 of 2\", \"No results\")")]
+		public static string FindBar(string query = "", bool hide = false)
+		{
+			var pad = Pad();
+			if (pad?.ActivePane == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No active terminal" });
+			if (hide)
+				pad.HideFind();
+			else if (!string.IsNullOrEmpty(query))
+				pad.ShowFind(query);
+			return JsonSerializer.Serialize(new { success = true, open = pad.FindBarOpen, status = pad.FindBarStatus });
+		}
+
 		[DevFlowAction("od.terminal.cell", Description = "One visible cell of the active terminal: its text and the colours it is drawn with (#rrggbb, the default colours when the cell has none)")]
 		public static string Cell(int column, int row)
 		{

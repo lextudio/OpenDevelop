@@ -33,6 +33,7 @@ namespace OpenDevelop.Terminal
 	{
 		readonly List<TerminalGroup> groups = new List<TerminalGroup>();
 		readonly Border host = new Border();
+		readonly TerminalFindBar findBar;
 		TerminalPane activePane;
 		string lastLabels = "";
 
@@ -55,6 +56,9 @@ namespace OpenDevelop.Terminal
 			var toolBar = ToolBarService.CreateToolBar(host, this, "/SharpDevelop/Pads/TerminalPad/ToolBar");
 			DockPanel.SetDock(toolBar, Dock.Top);
 			panel.Children.Add(toolBar);
+			findBar = new TerminalFindBar(() => View, HideFind);
+			DockPanel.SetDock(findBar, Dock.Top);
+			panel.Children.Add(findBar);
 			panel.Children.Add(host);
 			Content = panel;
 		}
@@ -133,6 +137,7 @@ namespace OpenDevelop.Terminal
 			view.GotKeyboardFocus += (_, _) => SetActive(pane);
 			view.Updated += RaiseChangedIfLabelsChanged;
 			view.CloseRequested += () => KillPane(pane);
+			view.FindRequested += ShowFind;
 			group.Panes.Add(pane);
 			LayoutGroup(group);
 			host.Child = group.Host;
@@ -225,6 +230,26 @@ namespace OpenDevelop.Terminal
 		}
 
 		public void ClearActive() => Active?.Clear();
+
+		/// <summary>Shows the find bar (starting with the selected text, if any) and searches the active terminal.</summary>
+		public void ShowFind()
+		{
+			var selected = View?.SelectedText ?? "";
+			findBar.Show(selected.Length > 0 && !selected.Contains('\n') ? selected : null);
+		}
+
+		public bool FindBarOpen => findBar.IsOpen;
+		public string FindBarStatus => findBar.StatusText;
+
+		/// <summary>Opens the find bar with this text and searches for it.</summary>
+		public void ShowFind(string query) => findBar.Show(query);
+
+		public void HideFind()
+		{
+			findBar.Hide();
+			View?.ClearFind();
+			View?.Focus();
+		}
 
 		public string ScreenText() => Active?.GetSnapshot()?.GetText() ?? "";
 
