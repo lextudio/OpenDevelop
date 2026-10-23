@@ -206,6 +206,9 @@
          like "this repo has no working debugger" rather than one more addin nobody built. -->
     <_CoreAddinProject Include="../../src/AddIns/Debugger/Debugger.AddIn/Debugger.AddIn.csproj" />
     <_CoreAddinProject Include="../../src/AddIns/Misc/TextTemplating/Project/TextTemplating.csproj" />
+    <!-- Terminal owns the Terminal pad and od.terminal.*; undeployed, TerminalPadTests fail on a missing
+         pad/DevFlow action rather than on terminal behaviour. -->
+    <_CoreAddinProject Include="../../src/AddIns/Misc/Terminal/Project/Terminal.csproj" />
     <!-- The Profiler: ProfilerIntegrationTests capture a real process and read the report it opens. -->
     <_CoreAddinProject Include="../../src/AddIns/Analysis/Profiler/AddIn/Profiler.AddIn.csproj" />
   </ItemGroup>
