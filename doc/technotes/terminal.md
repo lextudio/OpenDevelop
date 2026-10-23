@@ -131,7 +131,7 @@ Verified live (the journey above, plus the UI tree):
 - Split: two panes in one group, each with its share of the width (376.5 DIP each), independent
   shells; the combo lists them and activating one routes input; killing one leaves its sibling.
 
-Not verified / not done: actual pixels (no screenshot taken), WPF's own routing of real keyboard input (real pointer input is covered, see below): the mouse
+Not verified / not done: actual pixels (no screenshot taken), WPF's own routing of real keyboard input (real pointer input is covered, see below; real typing reaches the view too, but with a Pinyin input source active the OS composes letters first - `echo ` arrived as two Chinese characters - so a typing journey is not deterministic and none is kept; DevFlow's pointer endpoints are click/press/drag/move/release only, so a real wheel and a real right-click cannot be injected either): the mouse
 handlers (`OnMouseLeftButtonDown/Move/Up`, wheel) and `OnKeyDown`/`OnTextInput` are only reached by real
 input, the journeys drive the same methods through DevFlow (`HandleKey`, `HandleLeftDown/Up`,
 `HandleWheel`, `ReportMouse`, `SelectRange`, `Paste`); the options page UI and the shell drop-down popup
