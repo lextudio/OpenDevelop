@@ -358,7 +358,7 @@ namespace OpenDevelop.Terminal
 			return JsonSerializer.Serialize(new { success = true, open = headers.Count > 0, headers });
 		}
 
-		[DevFlowAction("od.terminal.toolbar", Description = "Screen centres (PointToScreen) of the Terminal toolbar's shell arrow and terminal combo, whether the combo's drop-down is open, and the open shell menu's entries (header and PointToScreen centre; a real click at an entry's centre was seen missing the popup)")]
+		[DevFlowAction("od.terminal.toolbar", Description = "Screen centres (PointToScreen) of the Terminal toolbar's shell arrow and terminal combo, whether the combo's drop-down is open, and the open shell menu's entries (header and PointToScreen centre; move the pointer onto an entry before clicking it, or the click lands on the window beneath)")]
 		public static string Toolbar()
 		{
 			var button = TerminalNewShellButton.Visible;

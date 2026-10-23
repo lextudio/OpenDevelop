@@ -1082,10 +1082,10 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         return await resp.Content.ReadFromJsonAsync<JsonElement>();
     }
 
-    public async Task<JsonElement> ClickPointerAsync(double x, double y, int clickCount = 1)
+    public async Task<JsonElement> ClickPointerAsync(double x, double y, int clickCount = 1, bool ensureForeground = true)
     {
         JsonElement activation = default;
-        var foregrounded = false;
+        var foregrounded = !ensureForeground;
         for (var attempt = 0; attempt < 3 && !foregrounded; attempt++)
         {
             activation = await InvokeAsync("od.activate");

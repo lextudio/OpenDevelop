@@ -1071,7 +1071,7 @@ public sealed class TerminalPadTests
 		}
 	}
 
-	/// <summary>Real clicks on the toolbar: the shell arrow opens its menu of shells, and the combo opens its drop-down.</summary>
+	/// <summary>Real clicks on the toolbar: the shell arrow opens its menu and a shell in it starts a terminal; the combo opens its drop-down.</summary>
 	[Fact]
 	public async Task TerminalPad_ToolbarWorksWithRealClicks()
 	{
@@ -1084,31 +1084,55 @@ public sealed class TerminalPadTests
 		Assert.Equal(0, toolbar.GetProperty("shellMenu").GetArrayLength());
 		var before = await SessionCountAsync();
 
-		// The arrow opens a menu of the installed shells and the default-shell submenu.
 		var arrow = toolbar.GetProperty("shellArrow");
-		// Now and then the first click never reaches the button: no mouse-down is recorded and the click handler does not run
-		// (seen in about half of the runs on one machine; the cause is not established). Click again until the menu is up, at most
-		// three times, rather than failing on that delivery gap.
-		JsonElement entries = default;
-		for (var attempt = 0; attempt < 3; attempt++)
+		// Now and then a real click does not reach its target: no mouse-down is recorded and no handler runs (the arrow's first click
+		// failed in about half of the runs on one machine, a popup entry's in about one in four; the cause is not established).
+		// Each step is therefore retried a few times instead of failing on that delivery gap; a menu or entry that never works
+		// still fails the journey.
+		async Task<JsonElement> OpenShellMenuAsync()
 		{
-			await app.ClickPointerAsync(arrow.GetProperty("x").GetDouble(), arrow.GetProperty("y").GetDouble());
-			await OpenDevelopAppFixture.PollUntilAsync(async () =>
+			JsonElement shown = default;
+			for (var attempt = 0; attempt < 3; attempt++)
 			{
-				entries = (await ToolbarAsync()).GetProperty("shellMenu");
-				return entries.GetArrayLength() > 0;
-			}, TimeSpan.FromSeconds(2));
-			if (entries.GetArrayLength() > 0)
-				break;
+				await app.ClickPointerAsync(arrow.GetProperty("x").GetDouble(), arrow.GetProperty("y").GetDouble());
+				await OpenDevelopAppFixture.PollUntilAsync(async () =>
+				{
+					shown = (await ToolbarAsync()).GetProperty("shellMenu");
+					return shown.GetArrayLength() > 0;
+				}, TimeSpan.FromSeconds(2));
+				if (shown.GetArrayLength() > 0)
+					break;
+			}
+			return shown;
 		}
+
+		// The arrow opens a menu of the installed shells and the default-shell submenu.
+		var entries = await OpenShellMenuAsync();
 		Assert.True(entries.GetArrayLength() > 1, "The shell menu did not open: " + entries);
 		Assert.Equal("Default Shell", entries.EnumerateArray().Last().GetProperty("header").GetString());
 
-		// Popup entries are not clicked for real: a click at an entry's PointToScreen centre was seen landing on the main window below
-		// (the menu closed without running the entry); the cause is not investigated. Choosing a shell is covered through its data elsewhere.
-		await app.InvokeAsync("od.terminal.close-toolbar-popups");
-		Assert.Equal(0, (await ToolbarAsync()).GetProperty("shellMenu").GetArrayLength());
-		Assert.Equal(before, await SessionCountAsync());
+		// A real click on an entry only reaches the popup once the pointer has been moved onto it first and the app is not activated
+		// again: otherwise the click was seen landing on the main window beneath (the menu closed without running the entry).
+		// Choosing the first shell starts a terminal. A click that missed closes the menu, so the next attempt opens it again.
+		for (var attempt = 0; attempt < 3 && await SessionCountAsync() == before; attempt++)
+		{
+			if (attempt > 0)
+			{
+				entries = await OpenShellMenuAsync();
+				Assert.True(entries.GetArrayLength() > 1, "The shell menu did not reopen after a missed entry click: " + entries);
+			}
+			var first = entries[0];
+			var (entryX, entryY) = (first.GetProperty("x").GetDouble(), first.GetProperty("y").GetDouble());
+			await app.MovePointerAsync(entryX, entryY);
+			await Task.Delay(300);
+			await app.ClickPointerAsync(entryX, entryY, ensureForeground: false); // activating the app again would dismiss the popup
+			await OpenDevelopAppFixture.PollUntilAsync(async () => await SessionCountAsync() > before, TimeSpan.FromSeconds(2));
+		}
+		// The entry click skips the app activation (it would dismiss the popup), so a stolen OS focus is indistinguishable from a
+		// delivery gap here; the message names both.
+		Assert.True(await SessionCountAsync() > before, "Three real clicks on a shell entry started no terminal (delivery gap, or the app lost the OS focus).");
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => (await ToolbarAsync()).GetProperty("shellMenu").GetArrayLength() == 0, TimeSpan.FromSeconds(3)),
+			"The shell menu stayed open after a shell was chosen.");
 
 		// The combo opens its drop-down.
 		var combo = (await ToolbarAsync()).GetProperty("combo");
