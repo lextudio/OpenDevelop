@@ -606,6 +606,56 @@ public sealed class TerminalPadTests
 		}
 	}
 
+	[Fact]
+	public async Task TerminalPad_HasARightClickMenu()
+	{
+		await ShowPadAsync();
+		Assert.True((await app.InvokeAsync("od.terminal.new", "/bin/sh")).GetProperty("success").GetBoolean());
+		await SendAsync("printf 'menu-marker\\n'; printf 'web https://example.com/x\\n'\r");
+		await WaitForLineAsync("web https://example.com/x");
+		await Task.Delay(500);
+		var lines = Lines(await app.InvokeAsync("od.terminal.text")).ToList();
+		var markerRow = lines.IndexOf("menu-marker");
+		var webRow = lines.FindIndex(l => l.StartsWith("web ", StringComparison.Ordinal));
+		Assert.True(markerRow >= 0 && webRow >= 0, string.Join("\n", lines));
+		static string[] Headers(JsonElement menu) => menu.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("header").GetString()!).ToArray();
+		static bool Enabled(JsonElement menu, string header) => menu.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("header").GetString() == header).GetProperty("enabled").GetBoolean();
+
+		// Nothing selected: Copy is there but disabled and does nothing; the other entries are always available.
+		var menu = await app.InvokeAsync("od.terminal.context-menu", 0, markerRow);
+		Assert.Equal(new[] { "Copy", "Paste", "Select All", "Clear", "Find..." }, Headers(menu));
+		Assert.False(Enabled(menu, "Copy"));
+		Assert.False((await app.InvokeAsync("od.terminal.context-menu", 0, markerRow, "Copy")).GetProperty("invoked").GetBoolean());
+
+		// Select All selects the whole screen, which enables Copy.
+		var all = await app.InvokeAsync("od.terminal.context-menu", 0, markerRow, "Select All");
+		Assert.True(all.GetProperty("invoked").GetBoolean());
+		Assert.Contains("menu-marker", all.GetProperty("selection").GetString(), StringComparison.Ordinal);
+		var afterAll = await app.InvokeAsync("od.terminal.context-menu", 0, markerRow);
+		Assert.True(Enabled(afterAll, "Copy"));
+		Assert.True((await app.InvokeAsync("od.terminal.context-menu", 0, markerRow, "Copy")).GetProperty("invoked").GetBoolean());
+
+		// On a link the menu also offers to open it (not invoked here: it would start the browser).
+		var onLink = await app.InvokeAsync("od.terminal.context-menu", 6, webRow);
+		Assert.Equal(new[] { "Copy", "Paste", "Select All", "Clear", "Find...", "Open Link" }, Headers(onLink));
+
+		// Find... opens the find bar; Clear empties the screen of the marker.
+		Assert.True((await app.InvokeAsync("od.terminal.context-menu", 0, markerRow, "Find...")).GetProperty("invoked").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.terminal.find-bar")).GetProperty("open").GetBoolean());
+		await app.InvokeAsync("od.terminal.find-bar", "", true);
+		Assert.True((await app.InvokeAsync("od.terminal.context-menu", 0, markerRow, "Clear")).GetProperty("invoked").GetBoolean());
+		JsonElement cleared = default;
+		for (var attempt = 0; attempt < 50; attempt++)
+		{
+			cleared = await app.InvokeAsync("od.terminal.text");
+			if (!cleared.GetProperty("text").GetString()!.Contains("menu-marker", StringComparison.Ordinal))
+				break;
+			await Task.Delay(100);
+		}
+		Assert.DoesNotContain("menu-marker", cleared.GetProperty("text").GetString(), StringComparison.Ordinal);
+		await app.InvokeAsync("od.terminal.kill");
+	}
+
 	async Task WaitForMouseTrackingAsync(bool expected)
 	{
 		JsonElement last = default;

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Windows.Controls;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -151,6 +152,55 @@ namespace OpenDevelop.Terminal
 			if (hit != null)
 				TerminalLinkOpener.Open(hit, launchUrls);
 			return hit;
+		}
+
+		/// <summary>The right-click menu for a click at <paramref name="position"/>: Copy (when something is selected), Paste, Select All, Clear, Find, and Open Link when the click is on one.</summary>
+		public IReadOnlyList<(string Header, bool Enabled, Action Run)> ContextMenuItems(Point position)
+		{
+			var cell = CellAt(position);
+			var link = FindLinkAt(cell.column, cell.row);
+			var items = new List<(string, bool, Action)> {
+				("Copy", HasSelection, () => CopySelection()),
+				("Paste", true, PasteFromClipboard),
+				("Select All", snapshot != null, () => { if (snapshot != null) SelectRange(0, 0, snapshot.Columns - 1, snapshot.Rows - 1); }),
+				("Clear", true, () => session?.Clear()),
+				("Find...", true, () => FindRequested?.Invoke()),
+			};
+			if (link != null)
+				items.Add((link.Candidate.Kind == TerminalLinkKind.Url ? "Open Link" : "Open File", true, () => TerminalLinkOpener.Open(link, launchUrls: true)));
+			return items;
+		}
+
+		/// <summary>Runs the context-menu entry with this header (as a click on it would); false when there is no such enabled entry.</summary>
+		public bool InvokeContextMenuItem(Point position, string header)
+		{
+			foreach (var item in ContextMenuItems(position)) {
+				if (item.Header == header && item.Enabled) {
+					item.Run();
+					return true;
+				}
+			}
+			return false;
+		}
+
+		protected override void OnMouseRightButtonUp(MouseButtonEventArgs e)
+		{
+			base.OnMouseRightButtonUp(e);
+			// A program that tracks the mouse owns the right button too (Shift gives it back to us, as for selection).
+			if (session == null || (session.MouseTrackingEnabled && (Keyboard.Modifiers & ModifierKeys.Shift) == 0))
+				return;
+			var menu = new ContextMenu { PlacementTarget = this };
+			var items = ContextMenuItems(e.GetPosition(this));
+			for (int i = 0; i < items.Count; i++) {
+				if (i == 1 || i == 3 || i == 5)
+					menu.Items.Add(new Separator());
+				var item = items[i];
+				var entry = new MenuItem { Header = item.Header, IsEnabled = item.Enabled };
+				entry.Click += (_, _) => item.Run();
+				menu.Items.Add(entry);
+			}
+			menu.IsOpen = true;
+			e.Handled = true;
 		}
 
 		static bool IsLinkModifier(ModifierKeys modifiers) => (modifiers & (ModifierKeys.Control | ModifierKeys.Windows)) != 0;

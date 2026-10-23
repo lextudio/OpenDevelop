@@ -281,6 +281,21 @@ namespace OpenDevelop.Terminal
 			return JsonSerializer.Serialize(new { success = true, current = session.CurrentDirectory, initial = session.InitialDirectory });
 		}
 
+		[DevFlowAction("od.terminal.context-menu", Description = "The right-click menu of the active terminal for a click at a cell: its entries (header, enabled); a non-empty invoke runs the entry with that header, as clicking it would; returns the entries and the selected text afterwards")]
+		public static string ContextMenu(int column = 0, int row = 0, string invoke = "")
+		{
+			var view = Pad()?.View;
+			if (view == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No active terminal" });
+			var at = view.CellCenter(column, row);
+			bool? invoked = string.IsNullOrEmpty(invoke) ? null : view.InvokeContextMenuItem(at, invoke);
+			return JsonSerializer.Serialize(new {
+				success = true, invoked,
+				items = view.ContextMenuItems(at).Select(i => new { header = i.Header, enabled = i.Enabled }).ToArray(),
+				selection = view.SelectedText,
+			});
+		}
+
 		[DevFlowAction("od.terminal.cell", Description = "One visible cell of the active terminal: its text and the colours it is drawn with (#rrggbb, the default colours when the cell has none)")]
 		public static string Cell(int column, int row)
 		{

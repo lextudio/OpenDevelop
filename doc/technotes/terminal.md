@@ -98,7 +98,7 @@ Project Browser "Open in Terminal" opens the integrated terminal in that folder 
 `ITerminalHost` (Base interface, registered by the add-in; external terminal app if the add-in is not
 loaded). DevFlow: `od.terminal.new|split|
 activate|send|key|mouse|wheel|click|scroll|select|copy|paste|shells|settings|text|list|kill`; host side
-`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (ten
+`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (eleven
 journeys, pass; run with the xUnit v3 runner from `tests/OpenDevelop.IntegrationTests/TESTING.md`).
 
 Verified live (the journey above, plus the UI tree):
@@ -202,6 +202,10 @@ The shell's current directory is asked of the operating system (macOS `proc_pidi
 `/proc/<pid>/cwd`), so it is right after a plain `cd` whatever the shell is and needs no shell integration;
 on Windows, and for an ended shell, the start folder is used instead. Split and link resolution use it.
 
+Right-click menu: Copy (disabled without a selection), Paste, Select All (the visible screen), Clear, Find...,
+and Open Link / Open File when the click is on a link. It is not shown while a program tracks the mouse
+unless Shift is held (then the program does not get the click, as for selection).
+
 Links: holding Ctrl (Cmd on macOS) over a URL or a file reference underlines it and shows a hand;
 Ctrl/Cmd+click follows it. Recognised: `https://...` (trailing punctuation and unbalanced `)` dropped),
 `path:line[:col]`, `path(line[,col])` (MSBuild style), absolute/`~/`/relative paths containing a
@@ -240,11 +244,11 @@ not handled. Not checked on Windows.
 
 ## Testing
 
-Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, ten journeys, DevFlow
+Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, eleven journeys, DevFlow
 actions instead of OS input): shells, size and alternate screen, keys, split; wide text, scrollback,
 selection, wrapped copy, bracketed paste; View menu, Project Browser "Open in Terminal", shell list;
 mouse reporting, alternate-screen wheel, word and line selection; settings; cycling, renaming and the
-end of a shell; IDE theme colours; links; find; the shell's current directory. There are no unit tests of
+end of a shell; IDE theme colours; links; find; the shell's current directory; the right-click menu. There are no unit tests of
 the engine on its own.
 
 ## Phasing
