@@ -1,0 +1,480 @@
+using System.Globalization;
+using System.Text;
+using System.Windows;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
+using G = LibGhostty.GhosttyNativeLibrary;
+
+namespace OpenDevelop.Terminal
+{
+	/// <summary>Draws a <see cref="TerminalSnapshot"/> cell by cell and turns keys into PTY input.</summary>
+	sealed class TerminalView : FrameworkElement
+	{
+		readonly Typeface typeface = new Typeface(new FontFamily("Menlo, Consolas, DejaVu Sans Mono, Courier New"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+		readonly Typeface boldTypeface = new Typeface(new FontFamily("Menlo, Consolas, DejaVu Sans Mono, Courier New"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
+		double fontSize = TerminalSettings.FontSize;
+		readonly Dictionary<uint, Brush> brushes = new Dictionary<uint, Brush>();
+		readonly DispatcherTimer refreshTimer;
+		TerminalSession session;
+		TerminalSnapshot snapshot;
+		volatile bool dirty;
+		double cellWidth, cellHeight;
+		(int column, int row)? selectionStart, selectionEnd;
+		bool selecting;
+		static readonly Brush SelectionBrush = MakeSelectionBrush();
+
+		static Brush MakeSelectionBrush()
+		{
+			var brush = new SolidColorBrush(Color.FromArgb(110, 70, 130, 230));
+			brush.Freeze();
+			return brush;
+		}
+
+		public TerminalView()
+		{
+			Focusable = true;
+			FocusVisualStyle = null;
+			ClipToBounds = true;
+			MeasureCell();
+			TerminalSettings.Changed += OnSettingsChanged;
+			// Coalesce redraws: the PTY thread only sets `dirty`; the UI thread repaints at most every 16 ms.
+			refreshTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(16) };
+			refreshTimer.Tick += (_, _) => Refresh();
+			refreshTimer.Start();
+		}
+
+		/// <summary>Raised on the UI thread after the view repainted from a fresh snapshot (title and size may have changed).</summary>
+		public event Action Updated;
+
+		void OnSettingsChanged()
+		{
+			fontSize = TerminalSettings.FontSize;
+			MeasureCell();
+			FitSession();
+			dirty = true;
+		}
+
+		public void Dispose()
+		{
+			TerminalSettings.Changed -= OnSettingsChanged;
+			refreshTimer.Stop();
+			Session = null;
+		}
+
+		public TerminalSession Session {
+			get => session;
+			set {
+				if (session != null)
+					session.Changed -= OnSessionChanged;
+				session = value;
+				snapshot = null;
+				if (session != null) {
+					session.Changed += OnSessionChanged;
+					FitSession();
+				}
+				dirty = true;
+				Refresh();
+			}
+		}
+
+		public double CellWidth => cellWidth;
+		public double CellHeight => cellHeight;
+		/// <summary>False until the first layout pass: a PTY must not start at the 2x1 the fit maths would give then.</summary>
+		public bool IsLaidOut => ActualWidth >= cellWidth * 2 && ActualHeight >= cellHeight;
+		public int ColumnsFit => Math.Max(2, (int)(ActualWidth / cellWidth));
+		public int RowsFit => Math.Max(1, (int)(ActualHeight / cellHeight));
+
+		void OnSessionChanged() => dirty = true;
+
+		void Refresh()
+		{
+			if (!dirty)
+				return;
+			dirty = false;
+			snapshot = session?.GetSnapshot();
+			InvalidateVisual();
+			Updated?.Invoke();
+		}
+
+		void MeasureCell()
+		{
+			var ft = new FormattedText("M", CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, fontSize, Brushes.White, 1.0);
+			cellWidth = Math.Max(1, Math.Round(ft.WidthIncludingTrailingWhitespace, 2));
+			cellHeight = Math.Max(1, Math.Ceiling(ft.Height));
+		}
+
+		protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+		{
+			base.OnRenderSizeChanged(sizeInfo);
+			FitSession();
+		}
+
+		void FitSession()
+		{
+			if (session == null || ActualWidth < cellWidth || ActualHeight < cellHeight)
+				return;
+			int columns = session.Columns, rows = session.Rows;
+			session.Resize(ColumnsFit, RowsFit, (int)cellWidth, (int)cellHeight);
+			if (session.Columns != columns || session.Rows != rows)
+				ClearSelection(); // cell coordinates of the old grid mean something else (or nothing) in the new one
+			dirty = true;
+		}
+
+		protected override Size MeasureOverride(Size availableSize)
+			=> new Size(double.IsInfinity(availableSize.Width) ? 640 : availableSize.Width,
+			            double.IsInfinity(availableSize.Height) ? 240 : availableSize.Height);
+
+		Brush BrushFor(uint color)
+		{
+			if (!brushes.TryGetValue(color, out var brush)) {
+				brush = new SolidColorBrush(Color.FromRgb((byte)(color >> 16), (byte)(color >> 8), (byte)color));
+				brush.Freeze();
+				brushes[color] = brush;
+			}
+			return brush;
+		}
+
+		protected override void OnRender(DrawingContext dc)
+		{
+			var snap = snapshot;
+			var pixelsPerDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+			uint defaultBg = snap?.DefaultBackground ?? (TerminalCell.ColorSet | 0x1e1e1e);
+			uint defaultFg = snap?.DefaultForeground ?? (TerminalCell.ColorSet | 0xcccccc);
+			dc.DrawRectangle(BrushFor(defaultBg), null, new Rect(0, 0, ActualWidth, ActualHeight));
+			if (snap == null)
+				return;
+
+			for (int y = 0; y < snap.Rows; y++) {
+				int x = 0;
+				while (x < snap.Columns) {
+					var first = snap[x, y];
+					if ((first.Flags & CellFlags.Spacer) != 0) {
+						x++;
+						continue;
+					}
+					(uint fg, uint bg) = ResolveColors(first, defaultFg, defaultBg);
+					bool wide = (first.Flags & CellFlags.Wide) != 0;
+					// A wide character is drawn on its own so its two cells stay aligned whatever the font's advance is.
+					int end = wide ? Math.Min(snap.Columns, x + 2) : x + 1;
+					while (!wide && end < snap.Columns && SameStyle(first, snap[end, y]) && (snap[end, y].Flags & (CellFlags.Wide | CellFlags.Spacer)) == 0)
+						end++;
+					double left = x * cellWidth, top = y * cellHeight;
+					if (bg != defaultBg)
+						dc.DrawRectangle(BrushFor(bg), null, new Rect(left, top, (end - x) * cellWidth, cellHeight));
+					var text = new StringBuilder(end - x);
+					bool any = false;
+					for (int i = x; i < (wide ? x + 1 : end); i++) {
+						var t = snap[i, y].Text;
+						if (t == null) { text.Append(' '); } else { text.Append(t); any = true; }
+					}
+					if (any && (first.Flags & CellFlags.Invisible) == 0) {
+						var ft = new FormattedText(text.ToString(), CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+							(first.Flags & CellFlags.Bold) != 0 ? boldTypeface : typeface, fontSize, BrushFor(fg), pixelsPerDip);
+						if ((first.Flags & CellFlags.Underline) != 0)
+							ft.SetTextDecorations(TextDecorations.Underline);
+						dc.DrawText(ft, new Point(left, top));
+					}
+					x = end;
+				}
+			}
+
+			if (selectionStart is { } a && selectionEnd is { } b) {
+				var (from, to) = Order(a, b);
+				for (int y = Math.Max(0, from.row); y <= Math.Min(snap.Rows - 1, to.row); y++) {
+					int left = Math.Clamp(y == from.row ? from.column : 0, 0, snap.Columns - 1);
+					int right = Math.Clamp(y == to.row ? to.column : snap.Columns - 1, 0, snap.Columns - 1);
+					if (right < left)
+						continue;
+					dc.DrawRectangle(SelectionBrush, null, new Rect(left * cellWidth, y * cellHeight, (right - left + 1) * cellWidth, cellHeight));
+				}
+			}
+
+			if (snap.CursorVisible && IsKeyboardFocused) {
+				dc.DrawRectangle(null, new Pen(BrushFor(defaultFg), 1),
+					new Rect(snap.CursorColumn * cellWidth + 0.5, snap.CursorRow * cellHeight + 0.5, cellWidth - 1, cellHeight - 1));
+			}
+		}
+
+		static bool SameStyle(TerminalCell a, TerminalCell b) => a.Foreground == b.Foreground && a.Background == b.Background && a.Flags == b.Flags;
+
+		static (uint fg, uint bg) ResolveColors(TerminalCell cell, uint defaultFg, uint defaultBg)
+		{
+			uint fg = cell.Foreground != 0 ? cell.Foreground : defaultFg;
+			uint bg = cell.Background != 0 ? cell.Background : defaultBg;
+			return (cell.Flags & CellFlags.Inverse) != 0 ? (bg, fg) : (fg, bg);
+		}
+
+		protected override void OnMouseDown(MouseButtonEventArgs e)
+		{
+			base.OnMouseDown(e);
+			Focus();
+		}
+
+		(int column, int row) CellAt(Point p)
+			=> (Math.Max(0, (int)(p.X / cellWidth)), Math.Max(0, (int)(p.Y / cellHeight)));
+
+		static ((int column, int row) from, (int column, int row) to) Order((int column, int row) a, (int column, int row) b)
+			=> (a.row < b.row || (a.row == b.row && a.column <= b.column)) ? (a, b) : (b, a);
+
+		public bool HasSelection => selectionStart != null && selectionEnd != null && selectionStart != selectionEnd;
+
+		public string SelectedText {
+			get {
+				if (!HasSelection || snapshot == null)
+					return "";
+				var (from, to) = Order(selectionStart.Value, selectionEnd.Value);
+				return snapshot.GetText(from.column, from.row, to.column, to.row);
+			}
+		}
+
+		public void SelectRange(int startColumn, int startRow, int endColumn, int endRow)
+		{
+			selectionStart = (startColumn, startRow);
+			selectionEnd = (endColumn, endRow);
+			InvalidateVisual();
+		}
+
+		public void ClearSelection()
+		{
+			if (selectionStart == null && selectionEnd == null)
+				return;
+			selectionStart = selectionEnd = null;
+			InvalidateVisual();
+		}
+
+		/// <summary>Puts the selection on the clipboard; returns its text ("" and no clipboard change without a selection).</summary>
+		public string CopySelection()
+		{
+			var text = SelectedText;
+			if (text.Length > 0)
+				Clipboard.SetText(text);
+			return text;
+		}
+
+		public void PasteFromClipboard()
+		{
+			if (session != null && Clipboard.ContainsText()) {
+				ClearSelection();
+				session.Paste(Clipboard.GetText());
+			}
+		}
+
+		int reportedButton = G.MouseButtonNone;
+		int wheelRemainder;
+
+		public Point CellCenter(int column, int row) => new Point((column + 0.5) * cellWidth, (row + 0.5) * cellHeight);
+
+		static ushort GhosttyMods(ModifierKeys modifiers)
+		{
+			ushort mods = 0;
+			if ((modifiers & ModifierKeys.Shift) != 0) mods |= 1;
+			if ((modifiers & ModifierKeys.Control) != 0) mods |= 2;
+			if ((modifiers & ModifierKeys.Alt) != 0) mods |= 4;
+			return mods;
+		}
+
+		/// <summary>Sends a mouse event to the program (position in view pixels); false when the terminal's mode wants none.</summary>
+		public bool ReportMouse(int action, int button, Point position, ModifierKeys modifiers)
+		{
+			if (session == null)
+				return false;
+			// The encoder works in whole-pixel cells; the view's cells are fractional DIPs. Find the cell first, then
+			// express the position in the encoder's cell size so both agree on which cell was hit.
+			int cw = Math.Max(1, (int)Math.Round(cellWidth)), ch = Math.Max(1, (int)Math.Round(cellHeight));
+			double fx = Math.Max(0, position.X) / cellWidth, fy = Math.Max(0, position.Y) / cellHeight;
+			var bytes = session.EncodeMouse(action, button, GhosttyMods(modifiers), (float)(fx * cw), (float)(fy * ch),
+				cw, ch, reportedButton != G.MouseButtonNone);
+			if (bytes == null || bytes.Length == 0)
+				return false;
+			session.WriteBytes(bytes);
+			return true;
+		}
+
+		void WheelReport(bool up, Point position, ModifierKeys modifiers)
+		{
+			ReportMouse(G.MouseEventActionPress, up ? G.MouseButtonFour : G.MouseButtonFive, position, modifiers);
+		}
+
+		public void Scroll(int lines)
+		{
+			if (session == null)
+				return;
+			ClearSelection();
+			session.ScrollBy(lines);
+		}
+
+		protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
+		{
+			base.OnMouseLeftButtonDown(e);
+			if (HandleLeftDown(e.GetPosition(this), e.ClickCount, Keyboard.Modifiers))
+				e.Handled = true;
+		}
+
+		/// <summary>Left button pressed at <paramref name="position"/> (view pixels): report it to a mouse-aware program, else start a selection (double click: word, triple click: line).</summary>
+		public bool HandleLeftDown(Point position, int clickCount, ModifierKeys modifiers)
+		{
+			if (session == null)
+				return false;
+			if (session.MouseTrackingEnabled && (modifiers & ModifierKeys.Shift) == 0) { // Shift keeps selection available, as in xterm.
+				reportedButton = G.MouseButtonLeft;
+				ReportMouse(G.MouseEventActionPress, G.MouseButtonLeft, position, modifiers);
+				CaptureMouse();
+				return true;
+			}
+			var cell = CellAt(position);
+			if (clickCount >= 3 && snapshot != null && cell.row < snapshot.Rows) {
+				SelectRange(0, cell.row, snapshot.Columns - 1, cell.row);
+				return false;
+			}
+			if (clickCount == 2 && snapshot != null && cell.row < snapshot.Rows) {
+				int from = Math.Min(cell.column, snapshot.Columns - 1), to = from;
+				bool Blank(int x) => string.IsNullOrWhiteSpace(snapshot[x, cell.row].Text);
+				if (!Blank(from)) {
+					while (from > 0 && !Blank(from - 1)) from--;
+					while (to < snapshot.Columns - 1 && !Blank(to + 1)) to++;
+					SelectRange(from, cell.row, to, cell.row);
+				}
+				return false;
+			}
+			selectionStart = selectionEnd = cell;
+			selecting = true;
+			CaptureMouse();
+			InvalidateVisual();
+			return false;
+		}
+
+		protected override void OnMouseMove(MouseEventArgs e)
+		{
+			base.OnMouseMove(e);
+			if (session != null && session.MouseTrackingEnabled && (reportedButton != G.MouseButtonNone || Mouse.LeftButton != MouseButtonState.Pressed)) {
+				ReportMouse(G.MouseEventActionMotion, reportedButton, e.GetPosition(this), Keyboard.Modifiers);
+				return;
+			}
+			if (!selecting)
+				return;
+			var cell = CellAt(e.GetPosition(this));
+			if (snapshot != null)
+				cell = (Math.Min(cell.column, snapshot.Columns - 1), Math.Min(cell.row, snapshot.Rows - 1));
+			selectionEnd = cell;
+			InvalidateVisual();
+		}
+
+		protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+		{
+			base.OnMouseLeftButtonUp(e);
+			if (HandleLeftUp(e.GetPosition(this), Keyboard.Modifiers))
+				e.Handled = true;
+		}
+
+		public bool HandleLeftUp(Point position, ModifierKeys modifiers)
+		{
+			if (reportedButton != G.MouseButtonNone) {
+				ReportMouse(G.MouseEventActionRelease, reportedButton, position, modifiers);
+				reportedButton = G.MouseButtonNone;
+				ReleaseMouseCapture();
+				return true;
+			}
+			if (!selecting)
+				return false;
+			selecting = false;
+			ReleaseMouseCapture();
+			if (!HasSelection)
+				ClearSelection(); // a plain click
+			return false;
+		}
+
+		protected override void OnMouseWheel(MouseWheelEventArgs e)
+		{
+			base.OnMouseWheel(e);
+			if (HandleWheel(e.Delta, e.GetPosition(this), Keyboard.Modifiers))
+				e.Handled = true;
+		}
+
+		/// <summary>Wheel movement (positive = up, 120 per notch): mouse report, arrow keys on the alternate screen, else scrollback.</summary>
+		public bool HandleWheel(int delta, Point position, ModifierKeys modifiers)
+		{
+			if (session == null)
+				return false;
+			int notches = Math.Max(1, Math.Abs(delta) / 120);
+			if (session.MouseTrackingEnabled) {
+				for (int i = 0; i < notches; i++)
+					WheelReport(delta > 0, position, modifiers);
+			} else if (session.IsAlternateScreen) {
+				for (int i = 0; i < 3 * notches; i++) // xterm "alternate scroll": the wheel is the arrow keys on the alternate screen
+					HandleKey(delta > 0 ? Key.Up : Key.Down, ModifierKeys.None);
+			} else {
+				// 3 lines per notch (120); precision devices send small deltas, so keep the remainder until it adds up to a line.
+				wheelRemainder += delta;
+				int lines = wheelRemainder / 40;
+				wheelRemainder -= lines * 40;
+				if (lines != 0)
+					Scroll(-lines); // wheel up scrolls back
+			}
+			return true;
+		}
+
+		protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e) { base.OnGotKeyboardFocus(e); dirty = true; }
+		protected override void OnLostKeyboardFocus(KeyboardFocusChangedEventArgs e) { base.OnLostKeyboardFocus(e); dirty = true; }
+
+		protected override void OnTextInput(TextCompositionEventArgs e)
+		{
+			base.OnTextInput(e);
+			if (session != null && !string.IsNullOrEmpty(e.Text)) {
+				session.ScrollToBottom();
+				ClearSelection();
+				session.Send(e.Text);
+				e.Handled = true;
+			}
+		}
+
+		protected override void OnKeyDown(KeyEventArgs e)
+		{
+			base.OnKeyDown(e);
+			if (HandleKey(e.Key == Key.System ? e.SystemKey : e.Key, Keyboard.Modifiers))
+				e.Handled = true;
+		}
+
+		/// <summary>
+		/// Sends a key to the shell if it is one the terminal owns: non-text keys always, text keys only
+		/// with Ctrl/Alt (plain typing arrives through <see cref="OnTextInput"/>). Cmd/Windows combinations
+		/// stay with the IDE.
+		/// </summary>
+		public bool HandleKey(Key key, ModifierKeys modifiers)
+		{
+			if (session == null)
+				return false;
+			bool command = (modifiers & ModifierKeys.Windows) != 0;
+			bool chord = command || modifiers == (ModifierKeys.Control | ModifierKeys.Shift); // Cmd+C/V, Ctrl+Shift+C/V
+			if (chord && key == Key.C) {
+				CopySelection();
+				return HasSelection || command;
+			}
+			if (chord && key == Key.V) {
+				PasteFromClipboard();
+				return true;
+			}
+			if (command || !TerminalKeys.TryMap(key, out int ghosttyKey, out string text, out bool isText))
+				return false;
+			bool ctrlOrAlt = (modifiers & (ModifierKeys.Control | ModifierKeys.Alt)) != 0;
+			if (isText && !ctrlOrAlt)
+				return false;
+			session.ScrollToBottom();
+			ClearSelection();
+			ushort mods = 0;
+			if ((modifiers & ModifierKeys.Shift) != 0) mods |= 1;
+			if ((modifiers & ModifierKeys.Control) != 0) mods |= 2;
+			if ((modifiers & ModifierKeys.Alt) != 0) mods |= 4;
+			if (isText && (modifiers & ModifierKeys.Shift) != 0)
+				text = text.ToUpperInvariant();
+			var bytes = session.EncodeKey(ghosttyKey, mods, text, text != null ? char.ToLowerInvariant(text[0]) : 0u);
+			if (bytes == null || bytes.Length == 0)
+				return false;
+			// libghostty leaves Option as a composing key on macOS; shells expect Alt to be an ESC prefix.
+			if (isText && (modifiers & ModifierKeys.Alt) != 0 && bytes[0] != 0x1b)
+				bytes = new byte[] { 0x1b }.Concat(bytes).ToArray();
+			session.WriteBytes(bytes);
+			return true;
+		}
+	}
+}

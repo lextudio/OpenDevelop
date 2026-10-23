@@ -1,0 +1,75 @@
+<AddIn name        = "Terminal"
+       author      = "LeXtudio"
+       copyright   = "prj:///doc/copyright.txt"
+       description = "Integrated terminal pad"
+       addInManagerHidden = "preinstalled">
+
+	<Manifest>
+		<Identity name = "OpenDevelop.Terminal"/>
+	</Manifest>
+
+	<Runtime>
+		<Import assembly = "OpenDevelop.Terminal.dll"/>
+	</Runtime>
+
+	<Path name = "/SharpDevelop/Workbench/Pads">
+		<Pad id       = "TerminalPad"
+		     category = "Main"
+		     title    = "Terminal"
+		     icon     = "Icons.16x16.Console"
+		     class    = "OpenDevelop.Terminal.TerminalPad"
+		     defaultPosition = "Bottom, Hidden" />
+	</Path>
+
+	<Path name = "/SharpDevelop/Pads/TerminalPad/ToolBar">
+		<ToolbarItem id    = "TerminalSessions"
+		             class = "OpenDevelop.Terminal.TerminalSessionComboBox"
+		             type  = "Custom"/>
+		<ToolbarItem id      = "NewTerminal"
+		             tooltip = "New Terminal"
+		             icon    = "Icons.16x16.Add"
+		             class   = "OpenDevelop.Terminal.NewTerminalCommand"/>
+		<ToolbarItem id      = "SplitTerminal"
+		             tooltip = "Split Terminal"
+		             icon    = "Icons.16x16.SplitWindowHorizontal"
+		             class   = "OpenDevelop.Terminal.SplitTerminalCommand"/>
+		<ToolbarItem id      = "KillTerminal"
+		             tooltip = "Kill Terminal"
+		             icon    = "Icons.16x16.Delete"
+		             class   = "OpenDevelop.Terminal.KillTerminalCommand"/>
+		<ToolbarItem type="Separator"/>
+		<ToolbarItem id      = "ClearTerminal"
+		             tooltip = "Clear"
+		             icon    = "Icons.16x16.ClearWindowContent"
+		             class   = "OpenDevelop.Terminal.ClearTerminalCommand"/>
+		<ToolbarItem id      = "CopyTerminal"
+		             tooltip = "Copy"
+		             icon    = "Icons.16x16.Copy"
+		             class   = "OpenDevelop.Terminal.CopyTerminalCommand"/>
+		<ToolbarItem id      = "PasteTerminal"
+		             tooltip = "Paste"
+		             icon    = "Icons.16x16.Paste"
+		             class   = "OpenDevelop.Terminal.PasteTerminalCommand"/>
+	</Path>
+
+	<Path name = "/SharpDevelop/Workbench/MainMenu/View">
+		<MenuItem id           = "Terminal"
+		          label        = "Terminal"
+		          icon         = "Icons.16x16.Console"
+		          shortcut     = "Control|OemTilde"
+		          insertbefore = "ViewItemsSeparator"
+		          class        = "OpenDevelop.Terminal.ShowTerminalCommand"/>
+		<MenuItem id           = "NewTerminal"
+		          label        = "New Terminal"
+		          shortcut     = "Control|Shift|OemTilde"
+		          insertbefore = "ViewItemsSeparator"
+		          class        = "OpenDevelop.Terminal.NewTerminalFromMenuCommand"/>
+	</Path>
+
+	<Path name = "/SharpDevelop/Autostart">
+		<Class id    = "TerminalRegisterServicesCommand"
+		       class = "OpenDevelop.Terminal.RegisterTerminalServicesCommand"/>
+		<Class id    = "TerminalRegisterDevFlowActionsCommand"
+		       class = "OpenDevelop.Terminal.RegisterDevFlowActionsCommand"/>
+	</Path>
+</AddIn>
