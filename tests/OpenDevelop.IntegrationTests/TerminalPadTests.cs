@@ -858,6 +858,9 @@ public sealed class TerminalPadTests
 		// Cmd+K clears the screen and scrollback, as in VS Code on macOS.
 		await SendAsync("printf 'clear-marker\\n'\r");
 		await WaitForLineAsync("clear-marker");
+		// Cmd+A selects the whole screen, which then holds the marker.
+		Assert.True((await app.InvokeAsync("od.terminal.key", "A", "windows")).GetProperty("handled").GetBoolean());
+		Assert.Contains("clear-marker", (await app.InvokeAsync("od.terminal.context-menu", 0, 0)).GetProperty("selection").GetString(), StringComparison.Ordinal);
 		Assert.True((await app.InvokeAsync("od.terminal.key", "K", "windows")).GetProperty("handled").GetBoolean());
 		await Task.Delay(300);
 		Assert.DoesNotContain("clear-marker", (await app.InvokeAsync("od.terminal.text")).GetProperty("text").GetString()!, StringComparison.Ordinal);

@@ -809,6 +809,11 @@ namespace OpenDevelop.Terminal
 				PasteFromClipboard();
 				return true;
 			}
+			if (command && modifiers == ModifierKeys.Windows && key == Key.A && OperatingSystem.IsMacOS()) { // Cmd+A selects the whole screen, as the menu's Select All does
+				if (snapshot != null)
+					SelectRange(0, 0, snapshot.Columns - 1, snapshot.Rows - 1);
+				return true;
+			}
 			if (command && modifiers == ModifierKeys.Windows && key == Key.K && OperatingSystem.IsMacOS()) { // Cmd+K clears, as in VS Code on macOS
 				session.Clear();
 				ClearSelection();

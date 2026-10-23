@@ -231,7 +231,7 @@ request is read but the cursor stays steady.
 
 macOS editing keys (VS Code's terminal has the same defaults): Option+Left/Right move by word (ESC b / ESC f),
 Option+Backspace/Delete delete a word (ESC DEL / ESC d), Cmd+Left/Right go to the start/end of the line
-(Ctrl+A / Ctrl+E), Cmd+Backspace/Delete delete to the start/end of the line (Ctrl+U / Ctrl+K), and Cmd+K clears the screen and scrollback like the Clear menu entry. libghostty
+(Ctrl+A / Ctrl+E), Cmd+Backspace/Delete delete to the start/end of the line (Ctrl+U / Ctrl+K), Cmd+A selects the whole screen like the menu's Select All, and Cmd+K clears the screen and scrollback like the Clear menu entry. libghostty
 would send xterm's modified-arrow sequences for the Option+arrows, which readline in zsh/bash does not bind
 by default. Only with exactly that one modifier, and only on macOS.
 
