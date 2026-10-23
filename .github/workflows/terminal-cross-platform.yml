@@ -14,6 +14,7 @@ on:
       - 'src/Libraries/AvalonEdit'
       - 'src/Libraries/AvalonDock'
       - 'externals/cps'
+      - 'externals/wpftoolkit'
       - '.gitmodules'
       - 'tests/OpenDevelop.IntegrationTests/TerminalCrossPlatformTests.cs'
       - 'tests/OpenDevelop.IntegrationTests/OpenDevelopAppFixture.cs'
@@ -33,6 +34,7 @@ on:
       - 'src/Libraries/AvalonEdit'
       - 'src/Libraries/AvalonDock'
       - 'externals/cps'
+      - 'externals/wpftoolkit'
       - '.gitmodules'
       - 'tests/OpenDevelop.IntegrationTests/TerminalCrossPlatformTests.cs'
       - 'tests/OpenDevelop.IntegrationTests/OpenDevelopAppFixture.cs'
@@ -58,7 +60,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Initialize host UI submodules
-        run: git submodule update --init src/Libraries/AvalonEdit src/Libraries/AvalonDock externals/cps
+        run: |
+          git submodule update --init src/Libraries/AvalonEdit src/Libraries/AvalonDock externals/cps externals/wpftoolkit
+          git -C externals/cps submodule update --init
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
