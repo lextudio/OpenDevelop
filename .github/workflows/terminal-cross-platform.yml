@@ -11,6 +11,10 @@ on:
       - 'src/Main/Core/**'
       - 'src/Main/ICSharpCode.Core.Presentation/**'
       - 'src/Main/SharpDevelop/**'
+      - 'src/Libraries/AvalonEdit'
+      - 'src/Libraries/AvalonDock'
+      - 'externals/cps'
+      - '.gitmodules'
       - 'tests/OpenDevelop.IntegrationTests/TerminalCrossPlatformTests.cs'
       - 'tests/OpenDevelop.IntegrationTests/OpenDevelopAppFixture.cs'
       - 'tests/OpenDevelop.IntegrationTests/FixtureTestCaseOrderer.cs'
@@ -26,6 +30,10 @@ on:
       - 'src/Main/Core/**'
       - 'src/Main/ICSharpCode.Core.Presentation/**'
       - 'src/Main/SharpDevelop/**'
+      - 'src/Libraries/AvalonEdit'
+      - 'src/Libraries/AvalonDock'
+      - 'externals/cps'
+      - '.gitmodules'
       - 'tests/OpenDevelop.IntegrationTests/TerminalCrossPlatformTests.cs'
       - 'tests/OpenDevelop.IntegrationTests/OpenDevelopAppFixture.cs'
       - 'tests/OpenDevelop.IntegrationTests/FixtureTestCaseOrderer.cs'
@@ -49,6 +57,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Initialize host UI submodules
+        run: git submodule update --init src/Libraries/AvalonEdit src/Libraries/AvalonDock externals/cps
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
@@ -68,8 +78,11 @@ jobs:
         run: |
           $rid = if ('${{ runner.os }}' -eq 'Windows') { 'win-x64' } else { 'linux-x64' }
           dotnet build src/Main/SharpDevelop/SharpDevelop.csproj --configuration Debug
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build src/AddIns/Misc/Terminal/Project/Terminal.csproj --configuration Debug --runtime $rid -p:AppendRuntimeIdentifierToOutputPath=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj --configuration Debug -p:BuildIntegrationRuntimeProjects=false -p:BuildIntegrationFixtures=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run the Terminal integration journey
         shell: pwsh
         run: |
