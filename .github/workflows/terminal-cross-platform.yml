@@ -55,6 +55,14 @@ jobs:
       - name: Install Linux display dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install --yes xvfb libgtk-3-0 libfontconfig1
+      - name: Skip the developer-local LibreWPF feed
+        shell: pwsh
+        run: |
+          [xml]$config = Get-Content NuGet.config
+          $source = @($config.configuration.packageSources.add | Where-Object key -eq 'librewpf-local')
+          $mapping = @($config.configuration.packageSourceMapping.packageSource | Where-Object key -eq 'librewpf-local')
+          foreach ($node in $source + $mapping) { [void]$node.ParentNode.RemoveChild($node) }
+          $config.Save((Resolve-Path NuGet.config))
       - name: Build host and Terminal only
         shell: pwsh
         run: |
