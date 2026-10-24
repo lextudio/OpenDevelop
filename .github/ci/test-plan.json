@@ -1,85 +1,299 @@
 {
   "_comment": [
-    "Which local tests run on GitHub Actions, and in which order they are turned on.",
-    "A test is enabled by editing this file in a reviewed commit; the workflow never discovers tests by itself.",
+    "Which local tests run on GitHub Actions, and in which order they are turned on.  Enabling more is a reviewed edit of this file.",
+    "The single workflow .github/workflows/ci.yml compiles once per platform ('build' job), uploads the workspace, then runs every",
+    "(platform, lane) pair that has an enabled entry as its own job ('test' jobs, in parallel, each on a fresh machine, so lanes cannot",
+    "interfere through ports, config directories or temp files).  Test jobs never restore or compile: they run the built test assemblies.",
     "throughBatch: entries whose batch is greater than this are planned but not run.  workflow_dispatch can override it.",
-    "Per platform a test is 'observe' (a build or test failure is reported as a warning and does not fail the job),",
-    "'required' (a failure fails the job) or 'excluded' (does not run; 'reason' says why).",
-    "A new batch starts as 'observe'; promote it to 'required' after it has been green on that platform for several runs.",
-    "kind: dotnet-test = dotnet test --project <target>; dotnet-run = dotnet run --project <target>; msbuild = dotnet msbuild <target> -t:Build.",
-    "'measuredSeconds' is the last measured duration of the entry (local until a CI run has recorded it); keep it current when promoting a batch."
+    "Per platform an entry is 'observe' (runs; a failure is reported as a warning and does not fail the job), 'required' (a failure fails",
+    "the job) or 'excluded' (does not run; 'reason' says why).  A platform missing from an entry is excluded.  A new batch starts as 'observe';",
+    "promote it to 'required' after it has been green on that platform for several runs.",
+    "kind: xunit-exe = dotnet <target> [args] (an xUnit v3 test assembly, run directly); msbuild = dotnet msbuild <target> -t:Build.",
+    "'project' is built once in the build job (distinct projects only).  'measuredSeconds' is the last measured duration; keep it current when promoting a batch."
   ],
-  "throughBatch": 2,
+  "platformNotes": {
+    "macos-arm64": "Skipped for now: the Terminal journeys fail there on LibreWPF's Display text capability.  Add the platform back to 'platforms' and to entries to re-enable it."
+  },
+  "throughBatch": 3,
+  "platforms": {
+    "windows-x64": {
+      "runner": "windows-2025",
+      "dotnetArchitecture": "x64"
+    }
+  },
+  "lanes": {
+    "unit": {
+      "timeoutMinutes": 20
+    },
+    "integration-core": {
+      "timeoutMinutes": 45
+    }
+  },
   "entries": [
     {
       "id": "base-tests",
       "batch": 1,
-      "kind": "dotnet-test",
-      "target": "tests/OpenDevelop.Base.Tests/OpenDevelop.Base.Tests.csproj",
-      "measuredSeconds": 33,
-      "platforms": { "windows-x64": "observe", "macos-arm64": "observe" },
-      "note": "499 tests (9 skipped) when measured locally on macOS arm64."
+      "lane": "unit",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.Base.Tests/OpenDevelop.Base.Tests.csproj",
+      "target": "tests/OpenDevelop.Base.Tests/bin/Debug/net10.0-windows/OpenDevelop.Base.Tests.dll",
+      "measuredSeconds": null,
+      "platforms": {
+        "windows-x64": "observe"
+      },
+      "note": "499 tests (9 skipped) when measured on macOS arm64."
     },
     {
       "id": "vseditorcompat-tests",
       "batch": 1,
-      "kind": "dotnet-test",
-      "target": "tests/OpenDevelop.VSEditorCompat.Tests/OpenDevelop.VSEditorCompat.Tests.csproj",
-      "measuredSeconds": 8,
-      "platforms": { "windows-x64": "observe", "macos-arm64": "observe" },
-      "note": "141 tests when measured locally on macOS arm64."
+      "lane": "unit",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.VSEditorCompat.Tests/OpenDevelop.VSEditorCompat.Tests.csproj",
+      "target": "tests/OpenDevelop.VSEditorCompat.Tests/bin/Debug/net10.0-windows/OpenDevelop.VSEditorCompat.Tests.dll",
+      "measuredSeconds": null,
+      "platforms": {
+        "windows-x64": "observe"
+      },
+      "note": "141 tests when measured on macOS arm64."
     },
     {
       "id": "xamldom-tests-librewpf",
       "batch": 1,
-      "kind": "dotnet-run",
-      "target": "tests/OpenDevelop.XamlDom.Tests.LibreWPF/OpenDevelop.XamlDom.Tests.LibreWPF.csproj",
-      "measuredSeconds": 4,
-      "platforms": { "windows-x64": "observe", "macos-arm64": "observe" },
-      "note": "97 tests when measured locally on macOS arm64 (the test body is tests/OpenDevelop.XamlDom.Tests.Shared)."
+      "lane": "unit",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.XamlDom.Tests.LibreWPF/OpenDevelop.XamlDom.Tests.LibreWPF.csproj",
+      "target": "tests/OpenDevelop.XamlDom.Tests.LibreWPF/bin/Debug/net10.0-windows/OpenDevelop.XamlDom.Tests.LibreWPF.dll",
+      "measuredSeconds": null,
+      "platforms": {
+        "windows-x64": "observe"
+      },
+      "note": "97 tests; the test body is tests/OpenDevelop.XamlDom.Tests.Shared."
     },
     {
       "id": "addinsdk-tests",
       "batch": 1,
+      "lane": "unit",
       "kind": "msbuild",
       "target": "tests/OpenDevelop.AddinSdk.Tests/OpenDevelop.AddinSdk.Tests.proj",
-      "measuredSeconds": 1,
-      "platforms": { "windows-x64": "observe", "macos-arm64": "observe" },
-      "note": "Run with dotnet msbuild -t:Build as doc/technotes/addin-sdk.md says; 'dotnet build' fails the same file (its restore changes what the asserted targets see)."
+      "platforms": {
+        "windows-x64": "observe"
+      },
+      "note": "Run with dotnet msbuild -t:Build as doc/technotes/addin-sdk.md says; 'dotnet build' fails the same file."
     },
     {
       "id": "addinsdk-staging-tests",
       "batch": 1,
+      "lane": "unit",
       "kind": "msbuild",
       "target": "tests/OpenDevelop.AddinSdk.Tests/OpenDevelop.AddinSdk.Staging.Tests.proj",
-      "measuredSeconds": 1,
-      "platforms": { "windows-x64": "observe", "macos-arm64": "observe" }
+      "platforms": {
+        "windows-x64": "observe"
+      }
     },
     {
       "id": "xamldom-tests-microsoftwpf",
       "batch": 2,
-      "kind": "dotnet-test",
-      "target": "tests/OpenDevelop.XamlDom.Tests.MicrosoftWPF/OpenDevelop.XamlDom.Tests.MicrosoftWPF.csproj",
-      "measuredSeconds": 4,
-      "platforms": { "windows-x64": "observe", "macos-arm64": "excluded" },
-      "reason": "Microsoft.WindowsDesktop.App is Windows-only. This is the Microsoft WPF counterpart to batch 1's portable LibreWPF XamlDom host.",
-      "note": "97 shared XamlDom tests when measured locally; observe on Windows before making this branch required."
+      "lane": "unit",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.XamlDom.Tests.MicrosoftWPF/OpenDevelop.XamlDom.Tests.MicrosoftWPF.csproj",
+      "target": "tests/OpenDevelop.XamlDom.Tests.MicrosoftWPF/bin/Debug/net10.0-windows/OpenDevelop.XamlDom.Tests.MicrosoftWPF.dll",
+      "measuredSeconds": null,
+      "platforms": {
+        "windows-x64": "observe"
+      },
+      "note": "Compares the Microsoft WPF loader with LibreWPF's; Windows only."
+    },
+    {
+      "id": "devflow-tests",
+      "batch": 3,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.DevFlowTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe"
+      }
+    },
+    {
+      "id": "workbench-tests",
+      "batch": 3,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.WorkbenchTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe"
+      }
+    },
+    {
+      "id": "stop-after-first-failure-build-tests",
+      "batch": 3,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.StopAfterFirstFailureBuildTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe"
+      }
+    },
+    {
+      "id": "solution-folder-tests",
+      "batch": 3,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.SolutionFolderTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe"
+      }
+    },
+    {
+      "id": "project-options-tests",
+      "batch": 3,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.ProjectOptionsIntegrationTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe"
+      }
+    },
+    {
+      "id": "t4-tests",
+      "batch": 3,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.T4IntegrationTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe"
+      }
+    },
+    {
+      "id": "task-list-pad-tests",
+      "batch": 3,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.TaskListPadTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe"
+      }
+    },
+    {
+      "id": "vseditor-view-tests",
+      "batch": 3,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.VSEditorViewIntegrationTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe"
+      }
+    },
+    {
+      "id": "one-process-build-tests",
+      "batch": 3,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.OneProcessBuildTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe"
+      }
+    },
+    {
+      "id": "project-reload-tests",
+      "batch": 3,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.ProjectReloadTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe"
+      }
     },
     {
       "id": "profiler-tests",
       "batch": 0,
-      "kind": "dotnet-run",
+      "lane": "unit",
+      "kind": "xunit-exe",
       "target": "tests/OpenDevelop.Profiler.Tests",
-      "platforms": { "windows-x64": "excluded", "macos-arm64": "excluded" },
-      "reason": "Already runs on Windows, Linux and macOS in .github/workflows/profiler.yml."
+      "platforms": {
+        "windows-x64": "excluded"
+      },
+      "reason": "Still runs in .github/workflows/profiler.yml; moves here when that workflow is folded in."
     },
     {
       "id": "terminal-integration",
       "batch": 0,
-      "kind": "dotnet-run",
+      "lane": "integration-core",
+      "kind": "xunit-exe",
       "target": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
-      "platforms": { "windows-x64": "excluded", "macos-arm64": "excluded" },
-      "reason": "TerminalCrossPlatformTests / TerminalPadTests run in .github/workflows/terminal-cross-platform.yml."
+      "platforms": {
+        "windows-x64": "excluded"
+      },
+      "reason": "TerminalCrossPlatformTests still runs in .github/workflows/terminal-cross-platform.yml; moves here when that workflow is folded in."
     }
   ]
 }

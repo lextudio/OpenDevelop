@@ -1,0 +1,144 @@
+name: CI
+
+# One workflow for the local test suites that .github/ci/test-plan.json has switched on.
+#
+#   plan   -> reads the plan and emits the two job matrices
+#   build  -> per platform, compiles everything the enabled entries need exactly once and uploads the workspace
+#   test   -> per (platform, lane), downloads that workspace and runs the lane's test assemblies; no restore, no compile
+#
+# Lanes run in parallel, each on its own fresh machine, so they cannot interfere through ports, config directories
+# or temp files; the entries inside a lane run one after another.  What runs is decided by the plan, not by this file:
+# enabling more tests is a reviewed edit of the plan (a new batch starts as 'observe').  The Terminal journeys and the
+# Profiler tests still have their own workflows and are listed in the plan as excluded until they are folded in.
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - 'doc/**'
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - 'doc/**'
+      - '**/*.md'
+  workflow_dispatch:
+    inputs:
+      through_batch:
+        description: Run plan entries up to this batch (empty = the plan's throughBatch).
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+# A newer push supersedes an older run for the same PR or branch.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      build_matrix: ${{ steps.matrix.outputs.build_matrix }}
+      lane_matrix: ${{ steps.matrix.outputs.lane_matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/ci
+      - id: matrix
+        shell: pwsh
+        env:
+          THROUGH_BATCH: ${{ inputs.through_batch }}
+        run: |
+          $through = -1
+          if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
+          ./.github/ci/plan-matrix.ps1 -ThroughBatch $through
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: plan
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.build_matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The build stamps its version from git history (GitVersion).
+          fetch-depth: 0
+      # Everything the enabled entries compile: the ProjectReference closure of the integration test project reaches
+      # AvalonEdit, AvalonDock, cps, WPF Toolkit and vscode-wpf (with its nested WpfDesigner/wxsg); the debugger,
+      # coverage and XAML submodules are small and kept in case a build target uses them directly.  Not
+      # monodevelop or monodevelop-nuget-extensions: about 800 MB, and nothing here references them.
+      - name: Initialize the submodules the build needs
+        run: |
+          git submodule update --init src/Libraries/AvalonEdit src/Libraries/AvalonDock externals/wpftoolkit externals/sharpdbg externals/xamlstudio externals/altcover externals/vsmac-codecoverage
+          git submodule update --init --recursive externals/cps externals/vscode-wpf
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          architecture: ${{ matrix.dotnet_architecture }}
+      # The repository pins LibreWPF preview.65 for local development, where the developer-local
+      # feed ../openavalon/artifacts/local-feed supplies it; the runner has no such folder.
+      - name: Skip the developer-local LibreWPF feed
+        shell: pwsh
+        run: |
+          [xml]$config = Get-Content NuGet.config
+          $source = @($config.configuration.packageSources.add | Where-Object key -eq 'librewpf-local')
+          $mapping = @($config.configuration.packageSourceMapping.packageSource | Where-Object key -eq 'librewpf-local')
+          foreach ($node in $source + $mapping) { [void]$node.ParentNode.RemoveChild($node) }
+          $config.Save((Resolve-Path NuGet.config))
+      - name: Compile everything the enabled entries need, once
+        shell: pwsh
+        env:
+          THROUGH_BATCH: ${{ inputs.through_batch }}
+        run: |
+          $through = -1
+          if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
+          ./.github/ci/build-binaries.ps1 -Platform '${{ matrix.name }}' -ThroughBatch $through
+      - name: Pack the workspace
+        shell: pwsh
+        run: ./.github/ci/package-workspace.ps1 -Directory '${{ runner.temp }}/archive'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: workspace-${{ matrix.name }}
+          path: ${{ runner.temp }}/archive/
+          # The archive is compressed already; a second pass only costs time.
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+  test:
+    name: ${{ matrix.lane }} (${{ matrix.platform }})
+    needs: [plan, build]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.lane_matrix) }}
+    steps:
+      # Only the scripts: the archive carries the rest, including this same .github/ci.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: workspace-${{ matrix.platform }}
+          path: ${{ runner.temp }}/archive
+      - name: Unpack the workspace built by the build job
+        shell: pwsh
+        run: ./.github/ci/package-workspace.ps1 -Extract -Directory '${{ runner.temp }}/archive'
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          architecture: ${{ matrix.dotnet_architecture }}
+      - name: Run the lane
+        shell: pwsh
+        env:
+          THROUGH_BATCH: ${{ inputs.through_batch }}
+        run: |
+          $through = -1
+          if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
+          ./.github/ci/run-test-plan.ps1 -Platform '${{ matrix.platform }}' -Lane '${{ matrix.lane }}' -ThroughBatch $through
