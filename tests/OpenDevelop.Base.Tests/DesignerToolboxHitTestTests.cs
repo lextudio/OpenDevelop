@@ -1,19 +1,18 @@
 using System.Windows.Controls;
 using ICSharpCode.SharpDevelop.Designer.Surface;
 using Xunit;
-using UIFact = Xunit.UIFactAttribute;
 
 namespace OpenDevelop.Base.Tests;
 
 public sealed class DesignerToolboxHitTestTests
 {
-	[UIFact]
+	[Xunit.UIFactAttribute]
 	public void DisconnectedRowIsNotReportedAsHitTestable()
 	{
 		Assert.False(DesignerToolboxHitTest.WaitUntilHitTestableAt(new ListBoxItem(), timeoutMilliseconds: 0));
 	}
 
-	[UIFact]
+	[Xunit.UIFactAttribute]
 	public void DisconnectedRowWithAnOwningListIsNotReportedAsHitTestable()
 	{
 		var list = new ListBox();

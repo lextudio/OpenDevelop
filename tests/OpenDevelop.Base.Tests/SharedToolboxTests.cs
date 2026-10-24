@@ -4,13 +4,12 @@ using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Designer.Surface;
 using ICSharpCode.SharpDevelop.Gui;
 using Xunit;
-using UIFact = Xunit.UIFactAttribute;
 
 namespace OpenDevelop.Base.Tests;
 
 public sealed class SharedToolboxTests
 {
-	[UIFact]
+	[Xunit.UIFactAttribute]
 	public void CategoryPriority_ReordersCategoriesButPreservesItemRegistrationOrder()
 	{
 		var toolbox = SharedToolbox.Instance;
@@ -37,7 +36,7 @@ public sealed class SharedToolboxTests
 		return toolbox.VisibleItems.Where(item => item.Scope == scope).Select(item => item.DisplayName).ToArray();
 	}
 
-	[UIFact]
+	[Xunit.UIFactAttribute]
 	public void ConsumerFilters_RequireShowsItemOnlyWhenConsumerDeclaresTheFilter()
 	{
 		var toolbox = SharedToolbox.Instance;
@@ -51,7 +50,7 @@ public sealed class SharedToolboxTests
 		Assert.Equal(new[] { "Plain" }, VisibleNames(toolbox, scope, Rule("designer.other", "Require")));
 	}
 
-	[UIFact]
+	[Xunit.UIFactAttribute]
 	public void ConsumerFilters_PreventHidesItemWhenConsumerDeclaresTheFilter_CaseInsensitively()
 	{
 		var toolbox = SharedToolbox.Instance;
@@ -65,7 +64,7 @@ public sealed class SharedToolboxTests
 		Assert.Equal(new[] { "Plain", "Not in web" }, VisibleNames(toolbox, scope, Rule("designer.form", "Require")));
 	}
 
-	[UIFact]
+	[Xunit.UIFactAttribute]
 	public void ConsumerFilters_NoneDeclared_OrCustomRule_NeverHidesAnItem()
 	{
 		var toolbox = SharedToolbox.Instance;
@@ -81,7 +80,7 @@ public sealed class SharedToolboxTests
 		Assert.Equal(new[] { "Needs form", "Custom" }, VisibleNames(toolbox, scope, Rule("designer.form", "Require")));
 	}
 
-	[UIFact]
+	[Xunit.UIFactAttribute]
 	public void ConsumerFilters_CustomRule_UsesTheActiveDesignersEvaluatorWithoutLoadingThePayload()
 	{
 		var toolbox = SharedToolbox.Instance;
@@ -110,7 +109,7 @@ public sealed class SharedToolboxTests
 		Assert.Same(rejectedPayload, seenPayload);
 	}
 
-	[UIFact]
+	[Xunit.UIFactAttribute]
 	public void ConsumerFilters_CustomEvaluatorFailure_PreservesTheExistingVisibleRow()
 	{
 		var toolbox = SharedToolbox.Instance;
@@ -126,7 +125,7 @@ public sealed class SharedToolboxTests
 		Assert.Equal(new[] { "Custom" }, toolbox.VisibleItems.Where(item => item.Scope == scope).Select(item => item.DisplayName));
 	}
 
-	[UIFact]
+	[Xunit.UIFactAttribute]
 	public void DesignerToolboxScope_CustomEvaluatorFiltersItsMetadataAndReactivationKeepsTheSameCallback()
 	{
 		const string scopeName = "base-test-designer-toolbox-custom-evaluator";
@@ -153,7 +152,7 @@ public sealed class SharedToolboxTests
 		Assert.Equal("Allowed", scope.SelectedItem!.Name);
 	}
 
-	[UIFact]
+	[Xunit.UIFactAttribute]
 	public void DesignerVocabulary_WpfOnlyControlIsOfferedToWpfAndHiddenFromWinForms()
 	{
 		var toolbox = SharedToolbox.Instance;
