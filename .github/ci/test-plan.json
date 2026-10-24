@@ -3,7 +3,7 @@
     "Which local tests run on GitHub Actions, and in which order they are turned on.",
     "A test is enabled by editing this file in a reviewed commit; the workflow never discovers tests by itself.",
     "throughBatch: entries whose batch is greater than this are planned but not run.  workflow_dispatch can override it.",
-    "Per platform a test is 'observe' (runs, a failure is reported as a warning and does not fail the job),",
+    "Per platform a test is 'observe' (a build or test failure is reported as a warning and does not fail the job),",
     "'required' (a failure fails the job) or 'excluded' (does not run; 'reason' says why).",
     "A new batch starts as 'observe'; promote it to 'required' after it has been green on that platform for several runs.",
     "kind: dotnet-test = dotnet test --project <target>; dotnet-run = dotnet run --project <target>; msbuild = dotnet msbuild <target> -t:Build.",

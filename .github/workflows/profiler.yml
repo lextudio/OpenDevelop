@@ -23,6 +23,11 @@ on:
       - '.github/workflows/profiler.yml'
   workflow_dispatch:
 
+# Profiling runs are tied to a commit, so an older in-flight matrix has no value after a newer push.
+concurrency:
+  group: profiler-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   core-tests:
     name: Core tests (${{ matrix.os }})

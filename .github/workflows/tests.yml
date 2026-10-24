@@ -23,6 +23,12 @@ on:
 permissions:
   contents: read
 
+# A newer push supersedes an older test matrix for the same PR or branch.  Cancelling the stale run
+# saves the expensive hosted macOS runner without weakening validation of the latest commit.
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tests:
     name: Tests (${{ matrix.name }})
@@ -66,11 +72,21 @@ jobs:
           $mapping = @($config.configuration.packageSourceMapping.packageSource | Where-Object key -eq 'librewpf-local')
           foreach ($node in $source + $mapping) { [void]$node.ParentNode.RemoveChild($node) }
           $config.Save((Resolve-Path NuGet.config))
-      - name: Run the enabled tests
+      - name: Build the enabled test binaries once
         shell: pwsh
         env:
           THROUGH_BATCH: ${{ inputs.through_batch }}
+          TEST_PLAN_BUILD_STATE: ${{ runner.temp }}/opendevelop-test-plan-${{ matrix.name }}.json
         run: |
           $through = -1
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
-          ./.github/ci/run-test-plan.ps1 -Platform '${{ matrix.name }}' -ThroughBatch $through
+          ./.github/ci/run-test-plan.ps1 -Platform '${{ matrix.name }}' -ThroughBatch $through -Stage Build -BuildStatePath $env:TEST_PLAN_BUILD_STATE
+      - name: Run the enabled test areas without rebuilding
+        shell: pwsh
+        env:
+          THROUGH_BATCH: ${{ inputs.through_batch }}
+          TEST_PLAN_BUILD_STATE: ${{ runner.temp }}/opendevelop-test-plan-${{ matrix.name }}.json
+        run: |
+          $through = -1
+          if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
+          ./.github/ci/run-test-plan.ps1 -Platform '${{ matrix.name }}' -ThroughBatch $through -Stage Test -BuildStatePath $env:TEST_PLAN_BUILD_STATE

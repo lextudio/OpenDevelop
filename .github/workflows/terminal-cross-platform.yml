@@ -52,6 +52,11 @@ permissions:
   contents: read
   packages: read
 
+# Native macOS/ARM journeys are the most expensive lanes; keep only the latest run for a branch or PR.
+concurrency:
+  group: terminal-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   terminal:
     name: Terminal (${{ matrix.name }})
