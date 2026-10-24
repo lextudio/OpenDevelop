@@ -9,7 +9,7 @@
     "kind: dotnet-test = dotnet test --project <target>; dotnet-run = dotnet run --project <target>; msbuild = dotnet msbuild <target> -t:Build.",
     "'measuredSeconds' is the last measured duration of the entry (local until a CI run has recorded it); keep it current when promoting a batch."
   ],
-  "throughBatch": 1,
+  "throughBatch": 2,
   "entries": [
     {
       "id": "base-tests",
@@ -54,6 +54,16 @@
       "target": "tests/OpenDevelop.AddinSdk.Tests/OpenDevelop.AddinSdk.Staging.Tests.proj",
       "measuredSeconds": 1,
       "platforms": { "windows-x64": "observe", "macos-arm64": "observe" }
+    },
+    {
+      "id": "xamldom-tests-microsoftwpf",
+      "batch": 2,
+      "kind": "dotnet-test",
+      "target": "tests/OpenDevelop.XamlDom.Tests.MicrosoftWPF/OpenDevelop.XamlDom.Tests.MicrosoftWPF.csproj",
+      "measuredSeconds": 4,
+      "platforms": { "windows-x64": "observe", "macos-arm64": "excluded" },
+      "reason": "Microsoft.WindowsDesktop.App is Windows-only. This is the Microsoft WPF counterpart to batch 1's portable LibreWPF XamlDom host.",
+      "note": "97 shared XamlDom tests when measured locally; observe on Windows before making this branch required."
     },
     {
       "id": "profiler-tests",
