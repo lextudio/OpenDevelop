@@ -121,6 +121,35 @@ jobs:
           $mapping = @($config.configuration.packageSourceMapping.packageSource | Where-Object key -eq 'librewpf-local')
           foreach ($node in $source + $mapping) { [void]$node.ParentNode.RemoveChild($node) }
           $config.Save((Resolve-Path NuGet.config))
+      # Windows intentionally keeps restoring the public nuget.org packages.  The macOS
+      # Terminal journey instead consumes the identically-versioned package closure published
+      # by OpenAvalon's macOS ARM64 workflow; this isolates the portable text/runtime changes
+      # without changing the public package version used by the Windows lanes.  NuGet resolves
+      # a package id from the most specific matching mapping pattern, so LibreWPF.* on the
+      # GitHub source wins over nuget.org's catch-all '*'.
+      - name: Select the OpenAvalon GitHub Packages feed on macOS
+        if: runner.os == 'macOS'
+        shell: pwsh
+        run: |
+          [xml]$config = Get-Content NuGet.config
+          $githubMapping = @($config.configuration.packageSourceMapping.packageSource | Where-Object key -eq 'lextudio-github')
+          foreach ($node in $githubMapping) {
+            foreach ($pattern in @('LibreWPF', 'LibreWPF.*', 'LibreWinForms', 'LibreWinForms.*', 'ProGPU', 'ProGPU.*')) {
+              $package = $config.CreateElement('package')
+              [void]$package.SetAttribute('pattern', $pattern)
+              [void]$node.AppendChild($package)
+            }
+          }
+          $config.Save((Resolve-Path NuGet.config))
+      - name: Clear macOS LibreWPF package cache
+        if: runner.os == 'macOS'
+        shell: pwsh
+        run: |
+          $packages = Join-Path $HOME '.nuget/packages'
+          foreach ($prefix in @('librewpf', 'librewinforms', 'progpu')) {
+            Get-ChildItem $packages -Directory -Filter "$prefix*" -ErrorAction SilentlyContinue |
+              Remove-Item -Recurse -Force
+          }
       - name: Authenticate the lextudio package feed
         shell: pwsh
         env:
@@ -144,6 +173,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj --configuration Debug -p:BuildIntegrationRuntimeProjects=false -p:BuildIntegrationFixtures=false
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify macOS LibreWPF package provenance
+        if: runner.os == 'macOS'
+        shell: pwsh
+        run: |
+          $packages = Join-Path $HOME '.nuget/packages'
+          $metadata = @(Get-ChildItem $packages -Recurse -Force -Filter '*.nupkg.metadata' |
+            Where-Object { $_.FullName -match '/(librewpf|librewinforms|progpu)(\.|/)' })
+          if ($metadata.Count -eq 0) { throw 'No LibreWPF, LibreWinForms, or ProGPU package metadata was restored.' }
+          $wrongSource = @($metadata | Where-Object {
+            (Get-Content $_.FullName -Raw | ConvertFrom-Json).source -ne 'https://nuget.pkg.github.com/lextudio/index.json'
+          })
+          if ($wrongSource.Count -ne 0) {
+            throw "Expected OpenAvalon packages from GitHub Packages, but found: $($wrongSource.FullName -join ', ')"
+          }
       - name: Run the Terminal integration journey
         shell: pwsh
         env:
