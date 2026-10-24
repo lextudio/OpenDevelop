@@ -18,6 +18,12 @@
     <PortaPtyStageConPtyHost>false</PortaPtyStageConPtyHost>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The WPF SDK removes System.IO (and System.Net.Http) from the implicit usings to avoid clashes with WPF types.
+         LibreWPF.Sdk preview.65 switched UseWPF off for portable references, so they stayed; preview.69 keeps UseWPF on and
+         the removal applies.  Re-add System.IO, which the Terminal sources use (File, Path, IOException, ...). -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
     <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
     <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />
