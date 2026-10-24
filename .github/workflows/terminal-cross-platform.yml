@@ -121,34 +121,25 @@ jobs:
           $mapping = @($config.configuration.packageSourceMapping.packageSource | Where-Object key -eq 'librewpf-local')
           foreach ($node in $source + $mapping) { [void]$node.ParentNode.RemoveChild($node) }
           $config.Save((Resolve-Path NuGet.config))
-      # Windows intentionally keeps restoring the public nuget.org packages.  The macOS
-      # Terminal journey instead consumes the identically-versioned package closure published
-      # by OpenAvalon's macOS ARM64 workflow; this isolates the portable text/runtime changes
-      # without changing the public package version used by the Windows lanes.  NuGet resolves
-      # a package id from the most specific matching mapping pattern, so LibreWPF.* on the
-      # GitHub source wins over nuget.org's catch-all '*'.
-      - name: Select the OpenAvalon GitHub Packages feed on macOS
-        if: runner.os == 'macOS'
+      # CI trial: build against LibreWPF/LibreWinForms/ProGPU preview.69 (public nuget.org) while the repository
+      # still pins preview.65 for local development, where the pins resolve from the developer-local feed.  The macOS
+      # lane failed on preview.65 with PlatformNotSupportedException from Native WPF text integration.  Rewriting
+      # the pins here, in the checkout only, keeps the trial out of the repository; nothing is committed.
+      # nuget.org's newest ProGPU.Xaml, ProGPU.Xaml.Roslyn, ProGPU.Xaml.Workspaces, ProGPU.Xaml.SourceGenerator and
+      # ProGPU.WinUI.Designer is preview.67 (their ProGPU.* dependencies are lower bounds, so 67 sits with 69
+      # siblings); only the WinUI designer add-in uses them, which this lane does not build, but they are pinned to
+      # what exists.  src/Libraries/AvalonEdit carries its own global.json pin for the same SDK.
+      - name: Pin LibreWPF packages to preview.69 (CI trial)
         shell: pwsh
         run: |
-          [xml]$config = Get-Content NuGet.config
-          $githubMapping = @($config.configuration.packageSourceMapping.packageSource | Where-Object key -eq 'lextudio-github')
-          foreach ($node in $githubMapping) {
-            foreach ($pattern in @('LibreWPF', 'LibreWPF.*', 'LibreWinForms', 'LibreWinForms.*', 'ProGPU', 'ProGPU.*')) {
-              $package = $config.CreateElement('package')
-              [void]$package.SetAttribute('pattern', $pattern)
-              [void]$node.AppendChild($package)
-            }
-          }
-          $config.Save((Resolve-Path NuGet.config))
-      - name: Clear macOS LibreWPF package cache
-        if: runner.os == 'macOS'
-        shell: pwsh
-        run: |
-          $packages = Join-Path $HOME '.nuget/packages'
-          foreach ($prefix in @('librewpf', 'librewinforms', 'progpu')) {
-            Get-ChildItem $packages -Directory -Filter "$prefix*" -ErrorAction SilentlyContinue |
-              Remove-Item -Recurse -Force
+          $version = '0.1.0-preview.69'
+          $xamlVersion = '0.1.0-preview.67'
+          foreach ($file in @('global.json', 'src/Libraries/AvalonEdit/global.json', 'Directory.Build.props', 'Directory.Packages.props')) {
+            $text = Get-Content $file -Raw
+            $updated = $text -replace '0\.1\.0-preview\.65', $version
+            $updated = $updated -replace '(ProGPU\.(?:Xaml(?:\.Roslyn|\.Workspaces|\.SourceGenerator)?|WinUI\.Designer)" Version=")0\.1\.0-preview\.69', "`${1}$xamlVersion"
+            if ($updated -eq $text) { throw "$file does not pin preview.65" }
+            Set-Content -Path $file -Value $updated -NoNewline
           }
       - name: Authenticate the lextudio package feed
         shell: pwsh
@@ -173,19 +164,17 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj --configuration Debug -p:BuildIntegrationRuntimeProjects=false -p:BuildIntegrationFixtures=false
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Verify macOS LibreWPF package provenance
-        if: runner.os == 'macOS'
+      - name: Verify the restored LibreWPF packages are preview.69
         shell: pwsh
         run: |
+          $stale = @(Get-ChildItem -Recurse -Filter global.json -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch '[/\\](bin|obj|node_modules)[/\\]' } |
+            Select-String -Pattern '"LibreWPF\.Sdk"\s*:\s*"0\.1\.0-preview\.65"' -List)
+          if ($stale.Count -ne 0) { throw "A global.json still pins LibreWPF.Sdk preview.65: $($stale.Path -join ', ')" }
           $packages = Join-Path $HOME '.nuget/packages'
-          $metadata = @(Get-ChildItem $packages -Recurse -Force -Filter '*.nupkg.metadata' |
-            Where-Object { $_.FullName -match '/(librewpf|librewinforms|progpu)(\.|/)' })
-          if ($metadata.Count -eq 0) { throw 'No LibreWPF, LibreWinForms, or ProGPU package metadata was restored.' }
-          $wrongSource = @($metadata | Where-Object {
-            (Get-Content $_.FullName -Raw | ConvertFrom-Json).source -ne 'https://nuget.pkg.github.com/lextudio/index.json'
-          })
-          if ($wrongSource.Count -ne 0) {
-            throw "Expected OpenAvalon packages from GitHub Packages, but found: $($wrongSource.FullName -join ', ')"
+          $sdk = Join-Path $packages 'librewpf.sdk/0.1.0-preview.69'
+          if (-not (Test-Path $sdk)) {
+            throw "LibreWPF.Sdk preview.69 was not restored; found: $((Get-ChildItem (Join-Path $packages 'librewpf.sdk') -Name -ErrorAction SilentlyContinue) -join ', ')"
           }
       - name: Run the Terminal integration journey
         shell: pwsh
