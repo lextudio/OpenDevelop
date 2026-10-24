@@ -9,6 +9,8 @@
 	</Manifest>
 
 	<Runtime>
+		<!-- The host assembly, so the WindowActive condition below can resolve ITextEditor by name. -->
+		<Import assembly = ":ICSharpCode.SharpDevelop"/>
 		<Import assembly = "OpenDevelop.Terminal.dll"/>
 	</Runtime>
 
