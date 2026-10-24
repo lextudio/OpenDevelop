@@ -195,6 +195,18 @@ jobs:
         run: |
           $tests = 'tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll'
           dotnet $tests -class '${{ matrix.test_class }}' -parallel none
+      # The feed credential is written to NuGet.config in clear text so restore can use it.  The runner is
+      # discarded afterwards, but remove it as soon as nothing needs it, and always (also after a failure),
+      # so the token cannot ride along into anything a later step archives from the workspace.
+      - name: Remove the feed credential from NuGet.config
+        if: always()
+        shell: pwsh
+        run: |
+          [xml]$config = Get-Content NuGet.config
+          foreach ($node in @($config.configuration.packageSourceCredentials)) {
+            if ($node) { [void]$node.ParentNode.RemoveChild($node) }
+          }
+          $config.Save((Resolve-Path NuGet.config))
       - name: Upload Terminal diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
