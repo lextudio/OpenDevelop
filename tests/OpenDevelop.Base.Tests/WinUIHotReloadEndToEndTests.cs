@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
+using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Project.HotReload;
 using ICSharpCode.WinUIXamlDesigner.HotReload;
 
