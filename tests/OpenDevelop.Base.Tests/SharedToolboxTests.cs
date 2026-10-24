@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Windows.Threading;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Designer.Surface;
 using ICSharpCode.SharpDevelop.Gui;
@@ -7,11 +9,19 @@ using Xunit;
 
 namespace OpenDevelop.Base.Tests;
 
-public sealed class SharedToolboxTests
+public sealed class SharedToolboxTests : IClassFixture<SharedToolboxThreadFixture>
 {
-	[Xunit.UIFactAttribute]
+	readonly SharedToolboxThreadFixture toolboxThread;
+
+	public SharedToolboxTests(SharedToolboxThreadFixture toolboxThread)
+	{
+		this.toolboxThread = toolboxThread;
+	}
+
+	[Fact]
 	public void CategoryPriority_ReordersCategoriesButPreservesItemRegistrationOrder()
 	{
+		toolboxThread.Invoke(() => {
 		var toolbox = SharedToolbox.Instance;
 		const string scope = "base-test-category-priority";
 		toolbox.AddItems(new[] {
@@ -25,6 +35,7 @@ public sealed class SharedToolboxTests
 		var visible = toolbox.VisibleItems.Where(item => item.Scope == scope).ToArray();
 
 		Assert.Equal(new[] { "First container", "First input", "Second input" }, visible.Select(item => item.DisplayName));
+		});
 	}
 
 	static DesignerToolboxFilterInfo Rule(string text, string type) => new() { FilterString = text, FilterType = type };
@@ -36,9 +47,10 @@ public sealed class SharedToolboxTests
 		return toolbox.VisibleItems.Where(item => item.Scope == scope).Select(item => item.DisplayName).ToArray();
 	}
 
-	[Xunit.UIFactAttribute]
+	[Fact]
 	public void ConsumerFilters_RequireShowsItemOnlyWhenConsumerDeclaresTheFilter()
 	{
+		toolboxThread.Invoke(() => {
 		var toolbox = SharedToolbox.Instance;
 		const string scope = "base-test-filter-require";
 		toolbox.AddItems(new[] {
@@ -48,11 +60,13 @@ public sealed class SharedToolboxTests
 
 		Assert.Equal(new[] { "Plain", "Needs form" }, VisibleNames(toolbox, scope, Rule("designer.form", "Require")));
 		Assert.Equal(new[] { "Plain" }, VisibleNames(toolbox, scope, Rule("designer.other", "Require")));
+		});
 	}
 
-	[Xunit.UIFactAttribute]
+	[Fact]
 	public void ConsumerFilters_PreventHidesItemWhenConsumerDeclaresTheFilter_CaseInsensitively()
 	{
+		toolboxThread.Invoke(() => {
 		var toolbox = SharedToolbox.Instance;
 		const string scope = "base-test-filter-prevent";
 		toolbox.AddItems(new[] {
@@ -62,11 +76,13 @@ public sealed class SharedToolboxTests
 
 		Assert.Equal(new[] { "Plain" }, VisibleNames(toolbox, scope, Rule("designer.web", "Require")));
 		Assert.Equal(new[] { "Plain", "Not in web" }, VisibleNames(toolbox, scope, Rule("designer.form", "Require")));
+		});
 	}
 
-	[Xunit.UIFactAttribute]
+	[Fact]
 	public void ConsumerFilters_NoneDeclared_OrCustomRule_NeverHidesAnItem()
 	{
+		toolboxThread.Invoke(() => {
 		var toolbox = SharedToolbox.Instance;
 		const string scope = "base-test-filter-neutral";
 		toolbox.AddItems(new[] {
@@ -78,11 +94,13 @@ public sealed class SharedToolboxTests
 		Assert.Equal(new[] { "Needs form", "Custom" }, VisibleNames(toolbox, scope));
 		// Custom needs a designer evaluator, so it must not hide a row on its own.
 		Assert.Equal(new[] { "Needs form", "Custom" }, VisibleNames(toolbox, scope, Rule("designer.form", "Require")));
+		});
 	}
 
-	[Xunit.UIFactAttribute]
+	[Fact]
 	public void ConsumerFilters_CustomRule_UsesTheActiveDesignersEvaluatorWithoutLoadingThePayload()
 	{
+		toolboxThread.Invoke(() => {
 		var toolbox = SharedToolbox.Instance;
 		const string scope = "base-test-filter-custom-evaluator";
 		var permittedPayload = new object();
@@ -107,11 +125,13 @@ public sealed class SharedToolboxTests
 
 		Assert.Equal(new[] { "Existing require", "Permitted custom" }, toolbox.VisibleItems.Where(item => item.Scope == scope).Select(item => item.DisplayName));
 		Assert.Same(rejectedPayload, seenPayload);
+		});
 	}
 
-	[Xunit.UIFactAttribute]
+	[Fact]
 	public void ConsumerFilters_CustomEvaluatorFailure_PreservesTheExistingVisibleRow()
 	{
+		toolboxThread.Invoke(() => {
 		var toolbox = SharedToolbox.Instance;
 		const string scope = "base-test-filter-custom-evaluator-failure";
 		toolbox.AddItems(new[] {
@@ -123,11 +143,13 @@ public sealed class SharedToolboxTests
 			customFilterEvaluator: (_, _) => throw new InvalidOperationException("test evaluator failure"), scopes: new[] { scope });
 
 		Assert.Equal(new[] { "Custom" }, toolbox.VisibleItems.Where(item => item.Scope == scope).Select(item => item.DisplayName));
+		});
 	}
 
-	[Xunit.UIFactAttribute]
+	[Fact]
 	public void DesignerToolboxScope_CustomEvaluatorFiltersItsMetadataAndReactivationKeepsTheSameCallback()
 	{
+		toolboxThread.Invoke(() => {
 		const string scopeName = "base-test-designer-toolbox-custom-evaluator";
 		var scope = new DesignerToolboxScope(new object(), mapper: null);
 		scope.Register(scopeName, new[] {
@@ -150,11 +172,13 @@ public sealed class SharedToolboxTests
 
 		Assert.Equal(0, evaluations);
 		Assert.Equal("Allowed", scope.SelectedItem!.Name);
+		});
 	}
 
-	[Xunit.UIFactAttribute]
+	[Fact]
 	public void DesignerVocabulary_WpfOnlyControlIsOfferedToWpfAndHiddenFromWinForms()
 	{
+		toolboxThread.Invoke(() => {
 		var toolbox = SharedToolbox.Instance;
 		const string scope = "base-test-filter-vocabulary";
 		// The attributes of the WPF toolbox discovery fixture (GreetingBadge).
@@ -169,5 +193,51 @@ public sealed class SharedToolboxTests
 
 		Assert.Equal(new[] { "Plain", "WpfOnly" }, VisibleNames(toolbox, scope, DesignerToolboxFilters.Wpf.ToArray()));
 		Assert.Equal(new[] { "Plain" }, VisibleNames(toolbox, scope, DesignerToolboxFilters.WinForms.ToArray()));
+		});
+	}
+}
+
+/// <summary>
+/// Keeps the process-wide <see cref="SharedToolbox"/> on one dispatcher for this test class.
+/// xUnit's UI facts supply a dispatcher per test, but the singleton cannot move between them.
+/// </summary>
+public sealed class SharedToolboxThreadFixture : IDisposable
+{
+	readonly Thread thread;
+	readonly ManualResetEventSlim ready = new();
+	Dispatcher? dispatcher;
+	Exception? startupFailure;
+
+	public SharedToolboxThreadFixture()
+	{
+		thread = new Thread(() => {
+			try {
+				dispatcher = Dispatcher.CurrentDispatcher;
+				ready.Set();
+				Dispatcher.Run();
+			} catch (Exception ex) {
+				startupFailure = ex;
+				ready.Set();
+			}
+		}) { IsBackground = true };
+		if (OperatingSystem.IsWindows())
+			thread.SetApartmentState(ApartmentState.STA);
+		thread.Start();
+		ready.Wait();
+		if (startupFailure != null)
+			System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(startupFailure).Throw();
+	}
+
+	public void Invoke(Action action)
+	{
+		dispatcher!.Invoke(action);
+	}
+
+	public void Dispose()
+	{
+		if (dispatcher is { HasShutdownStarted: false, HasShutdownFinished: false })
+			dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
+		thread.Join();
+		ready.Dispose();
 	}
 }
