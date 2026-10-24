@@ -1,6 +1,7 @@
 using System.Windows.Controls;
 using ICSharpCode.SharpDevelop.Designer.Surface;
 using Xunit;
+using Fact = Xunit.UIFactAttribute;
 
 namespace OpenDevelop.Base.Tests;
 

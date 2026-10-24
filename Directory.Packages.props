@@ -143,6 +143,9 @@
     <PackageVersion Include="TomsToolbox.Wpf.Styles" Version="2.24.0" />
     <PackageVersion Include="UiPath.Workflow" Version="6.0.3" />
     <PackageVersion Include="log4net" Version="3.3.2" />
+    <!-- xUnit v3 UI-thread attributes for the maintained WPF/AvalonEdit unit tests. Version 3.0.13
+         depends on xunit.v3.extensibility.core 3.0.0, satisfied by the repository's xunit.v3 3.2.2. -->
+    <PackageVersion Include="Xunit.StaFact" Version="3.0.13" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
   </ItemGroup>
 </Project>

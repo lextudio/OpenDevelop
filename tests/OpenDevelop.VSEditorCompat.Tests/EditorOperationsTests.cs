@@ -7,6 +7,7 @@ using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Editing;
 using Microsoft.VisualStudio.Text.Operations;
 using Xunit;
+using Fact = Xunit.UIFactAttribute;
 
 namespace LeXtudio.OpenDevelop.VSEditor.Tests;
 

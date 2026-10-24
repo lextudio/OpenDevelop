@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Xunit.StaFact" />
   </ItemGroup>
 
   <ItemGroup>

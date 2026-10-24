@@ -43,7 +43,11 @@ public sealed class WinUIHotReloadEndToEndTests
 		Environment.SetEnvironmentVariable("OD_WINUI_HOTRELOAD_AGENT", agent);
 
 		var adapter = new WinUIApplicationHotReloadAdapter();
-		var startInfo = new ProcessStartInfo(fixture) { UseShellExecute = false };
+		// Use the same launch construction as a project start. In particular, this removes the
+		// test host's DOTNET_ROOT: an x64 runner can execute the x86 fixture, but an inherited x64
+		// host root makes the x86 apphost load the wrong hostfxr before the agent can start.
+		var startInfo = DotNetStartBehavior.CreateStartInfo(
+			Path.GetFileName(fixture), Path.GetDirectoryName(fixture)!, string.Empty, string.Empty);
 		var session = await adapter.StartAsync(
 			new HotReloadLaunchContext(project: null, withDebugger: false), startInfo, CancellationToken.None);
 		await using (session) {

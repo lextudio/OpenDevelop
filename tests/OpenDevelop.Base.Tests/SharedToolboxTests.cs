@@ -4,6 +4,7 @@ using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Designer.Surface;
 using ICSharpCode.SharpDevelop.Gui;
 using Xunit;
+using Fact = Xunit.UIFactAttribute;
 
 namespace OpenDevelop.Base.Tests;
 
