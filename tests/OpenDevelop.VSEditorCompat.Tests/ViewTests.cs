@@ -12,7 +12,7 @@ using ICSharpCode.AvalonEdit.Document;
 using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Editor;
 using Xunit;
-using Fact = Xunit.UIFactAttribute;
+using UIFact = Xunit.UIFactAttribute;
 
 namespace LeXtudio.OpenDevelop.VSEditor.Tests;
 
@@ -27,7 +27,7 @@ public sealed class ViewTests
 		return (buffer, textArea, view);
 	}
 
-	[Fact]
+	[UIFact]
 	public void TextView_Exposes_The_Same_Buffer_And_Current_Snapshot()
 	{
 		var (buffer, _, view) = CreateView("hello world");
@@ -36,7 +36,7 @@ public sealed class ViewTests
 		Assert.Equal("hello world", view.TextSnapshot.GetText());
 	}
 
-	[Fact]
+	[UIFact]
 	public void TextViewRegistry_Returns_The_Same_Instance_For_The_Same_TextArea()
 	{
 		var (_, textArea, view) = CreateView("x");
@@ -46,7 +46,7 @@ public sealed class ViewTests
 		Assert.Same(view, again);
 	}
 
-	[Fact]
+	[UIFact]
 	public void Caret_MoveTo_Updates_Position_And_Offset()
 	{
 		var (_, textArea, view) = CreateView("hello world");
@@ -57,7 +57,7 @@ public sealed class ViewTests
 		Assert.Equal(5, view.Caret.Position.BufferPosition.Position);
 	}
 
-	[Fact]
+	[UIFact]
 	public void Caret_PositionChanged_Fires_When_Caret_Moves()
 	{
 		var (_, textArea, view) = CreateView("hello world");
@@ -69,7 +69,7 @@ public sealed class ViewTests
 		Assert.Equal(1, raised);
 	}
 
-	[Fact]
+	[UIFact]
 	public void Caret_MoveToNextCaretPosition_Advances_By_One()
 	{
 		var (_, textArea, view) = CreateView("hello");
@@ -80,7 +80,7 @@ public sealed class ViewTests
 		Assert.Equal(3, textArea.Caret.Offset);
 	}
 
-	[Fact]
+	[UIFact]
 	public void Caret_MoveToNextCaretPosition_Clamps_At_End()
 	{
 		var (_, textArea, view) = CreateView("hi");
@@ -91,7 +91,7 @@ public sealed class ViewTests
 		Assert.Equal(2, textArea.Caret.Offset);
 	}
 
-	[Fact]
+	[UIFact]
 	public void Selection_Select_Sets_Start_And_End()
 	{
 		var (_, textArea, view) = CreateView("hello world");
@@ -104,7 +104,7 @@ public sealed class ViewTests
 		Assert.Equal("hello", view.Selection.SelectedSpans[0].GetText());
 	}
 
-	[Fact]
+	[UIFact]
 	public void Selection_Clear_Makes_It_Empty()
 	{
 		var (_, textArea, view) = CreateView("hello world");
@@ -115,7 +115,7 @@ public sealed class ViewTests
 		Assert.True(view.Selection.IsEmpty);
 	}
 
-	[Fact]
+	[UIFact]
 	public void Selection_Changed_Fires_On_Select()
 	{
 		var (_, _, view) = CreateView("hello world");
@@ -127,7 +127,7 @@ public sealed class ViewTests
 		Assert.Equal(1, raised);
 	}
 
-	[Fact]
+	[UIFact]
 	public void Roles_Default_To_The_Standard_Document_Roles()
 	{
 		var (_, _, view) = CreateView("x");
@@ -137,7 +137,7 @@ public sealed class ViewTests
 		Assert.False(view.Roles.Contains(PredefinedTextViewRoles.Debuggable));
 	}
 
-	[Fact]
+	[UIFact]
 	public void TextView_Close_Raises_Closed_And_Sets_IsClosed()
 	{
 		var (_, _, view) = CreateView("x");
@@ -150,7 +150,7 @@ public sealed class ViewTests
 		Assert.True(view.IsClosed);
 	}
 
-	[Fact]
+	[UIFact]
 	public void TextView_Close_Is_Idempotent()
 	{
 		var (_, _, view) = CreateView("x");
@@ -163,7 +163,7 @@ public sealed class ViewTests
 		Assert.Equal(1, raised);
 	}
 
-	[Fact]
+	[UIFact]
 	public void TextView_Options_Get_Set_RoundTrip()
 	{
 		var (_, _, view) = CreateView("x");
@@ -174,7 +174,7 @@ public sealed class ViewTests
 		Assert.True(view.Options.GetOptionValue(key));
 	}
 
-	[Fact]
+	[UIFact]
 	public void TextViewLines_Does_Not_Throw_Even_Without_A_Live_Window()
 	{
 		// Real coordinates (line ordering, flush rows, character bounds, ...) can only be

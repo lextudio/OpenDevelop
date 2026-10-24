@@ -7,7 +7,7 @@ using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Editing;
 using Microsoft.VisualStudio.Text.Operations;
 using Xunit;
-using Fact = Xunit.UIFactAttribute;
+using UIFact = Xunit.UIFactAttribute;
 
 namespace LeXtudio.OpenDevelop.VSEditor.Tests;
 
@@ -23,7 +23,7 @@ public sealed class EditorOperationsTests
 		return (textArea, ops);
 	}
 
-	[Fact]
+	[UIFact]
 	public void MoveToNextCharacter_Advances_The_Caret()
 	{
 		var (textArea, ops) = Create("abc");
@@ -34,7 +34,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal(1, textArea.Caret.Offset);
 	}
 
-	[Fact]
+	[UIFact]
 	public void MoveToNextWord_Stops_At_The_Next_Word_Start()
 	{
 		var (textArea, ops) = Create("foo bar baz");
@@ -45,7 +45,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal(4, textArea.Caret.Offset); // start of "bar"
 	}
 
-	[Fact]
+	[UIFact]
 	public void MoveToEndOfLine_And_MoveToStartOfLine_Roundtrip()
 	{
 		var (textArea, ops) = Create("hello\nworld");
@@ -58,7 +58,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal(0, textArea.Caret.Offset);
 	}
 
-	[Fact]
+	[UIFact]
 	public void MoveLineDown_Preserves_Column()
 	{
 		var (textArea, ops) = Create("abcde\nfg\nhijkl");
@@ -69,7 +69,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal(8, textArea.Caret.Offset); // line 2 ("fg") only has 2 chars - clamped to end
 	}
 
-	[Fact]
+	[UIFact]
 	public void Backspace_Removes_The_Previous_Character()
 	{
 		var (textArea, ops) = Create("abc");
@@ -81,7 +81,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal(1, textArea.Caret.Offset);
 	}
 
-	[Fact]
+	[UIFact]
 	public void Delete_Removes_The_Selection_When_Present()
 	{
 		var (textArea, ops) = Create("abcdef");
@@ -92,7 +92,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal("aef", textArea.Document.Text);
 	}
 
-	[Fact]
+	[UIFact]
 	public void DeleteWordToRight_Removes_The_Next_Word()
 	{
 		var (textArea, ops) = Create("foo bar");
@@ -103,7 +103,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal("bar", textArea.Document.Text);
 	}
 
-	[Fact]
+	[UIFact]
 	public void InsertNewLine_Uses_The_Line_Own_Delimiter()
 	{
 		var (textArea, ops) = Create("abc");
@@ -114,7 +114,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal("abc\n", textArea.Document.Text);
 	}
 
-	[Fact]
+	[UIFact]
 	public void Indent_Inserts_At_The_Caret_When_Selection_Is_Empty()
 	{
 		var (textArea, ops) = Create("abc");
@@ -125,7 +125,7 @@ public sealed class EditorOperationsTests
 		Assert.StartsWith("\t", textArea.Document.Text);
 	}
 
-	[Fact]
+	[UIFact]
 	public void Indent_Prefixes_Every_Selected_Line()
 	{
 		var (textArea, ops) = Create("one\ntwo\nthree");
@@ -136,7 +136,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal("\tone\n\ttwo\n\tthree", textArea.Document.Text);
 	}
 
-	[Fact]
+	[UIFact]
 	public void Unindent_Removes_A_Leading_Tab()
 	{
 		var (textArea, ops) = Create("\tabc");
@@ -147,7 +147,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal("abc", textArea.Document.Text);
 	}
 
-	[Fact]
+	[UIFact]
 	public void MakeUppercase_Transforms_The_Selection()
 	{
 		var (textArea, ops) = Create("hello world");
@@ -158,7 +158,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal("HELLO world", textArea.Document.Text);
 	}
 
-	[Fact]
+	[UIFact]
 	public void MakeUppercase_Falls_Back_To_The_Current_Word_When_No_Selection()
 	{
 		var (textArea, ops) = Create("hello world");
@@ -169,7 +169,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal("HELLO world", textArea.Document.Text);
 	}
 
-	[Fact]
+	[UIFact]
 	public void TransposeCharacter_Swaps_The_Two_Characters_Around_The_Caret()
 	{
 		var (textArea, ops) = Create("ab");
@@ -180,7 +180,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal("ba", textArea.Document.Text);
 	}
 
-	[Fact]
+	[UIFact]
 	public void SelectCurrentWord_Selects_The_Word_Under_The_Caret()
 	{
 		var (textArea, ops) = Create("foo bar baz");
@@ -191,7 +191,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal("bar", textArea.Selection.GetText());
 	}
 
-	[Fact]
+	[UIFact]
 	public void SelectAll_Selects_The_Whole_Document()
 	{
 		var (textArea, ops) = Create("hello world");
@@ -201,7 +201,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal("hello world", textArea.Selection.GetText());
 	}
 
-	[Fact]
+	[UIFact]
 	public void ReplaceAllMatches_Replaces_Every_Occurrence()
 	{
 		var (textArea, ops) = Create("cat cats catalog");
@@ -212,7 +212,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal("dog cats catalog", textArea.Document.Text);
 	}
 
-	[Fact]
+	[UIFact]
 	public void DuplicateSelection_Duplicates_The_Current_Line_When_No_Selection()
 	{
 		var (textArea, ops) = Create("hello\nworld");
@@ -223,7 +223,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal("hello\nhello\nworld", textArea.Document.Text);
 	}
 
-	[Fact]
+	[UIFact]
 	public void MoveSelectedLinesDown_Swaps_With_The_Following_Line()
 	{
 		var (textArea, ops) = Create("one\ntwo\nthree");
@@ -234,7 +234,7 @@ public sealed class EditorOperationsTests
 		Assert.Equal("two\none\nthree", textArea.Document.Text);
 	}
 
-	[Fact]
+	[UIFact]
 	public void TrimTrailingWhiteSpace_Removes_Trailing_Spaces_From_Every_Line()
 	{
 		var (textArea, ops) = Create("hello   \nworld\t\t");
