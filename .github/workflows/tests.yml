@@ -1,0 +1,76 @@
+name: Tests
+
+# Runs the local test suites that .github/ci/test-plan.json has switched on.  The plan, not this file,
+# decides what runs: enabling more tests is a reviewed edit of the plan (a new batch starts as 'observe').
+# The Terminal journeys and the Profiler tests have their own workflows and are listed in the plan as excluded.
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - 'doc/**'
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - 'doc/**'
+      - '**/*.md'
+  workflow_dispatch:
+    inputs:
+      through_batch:
+        description: Run plan entries up to this batch (empty = the plan's throughBatch).
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            runner: windows-2025
+            dotnet_architecture: x64
+            timeout: 40
+          - name: macos-arm64
+            runner: macos-15
+            dotnet_architecture: arm64
+            timeout: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The build stamps its version from git history (GitVersion).
+          fetch-depth: 0
+      # Only what the enabled entries reference: AvalonEdit and WPF Toolkit, plus vscode-wpf with its
+      # nested WpfDesigner/wxsg (not monodevelop: 750 MB and nothing here references it).  Widen this
+      # together with the plan when an entry needs another submodule.
+      - name: Initialize the submodules the enabled tests need
+        run: |
+          git submodule update --init src/Libraries/AvalonEdit externals/wpftoolkit
+          git submodule update --init --recursive externals/vscode-wpf
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          architecture: ${{ matrix.dotnet_architecture }}
+      # The repository pins LibreWPF preview.65 for local development, where the developer-local
+      # feed ../openavalon/artifacts/local-feed supplies it; the runner has no such folder.
+      - name: Skip the developer-local LibreWPF feed
+        shell: pwsh
+        run: |
+          [xml]$config = Get-Content NuGet.config
+          $source = @($config.configuration.packageSources.add | Where-Object key -eq 'librewpf-local')
+          $mapping = @($config.configuration.packageSourceMapping.packageSource | Where-Object key -eq 'librewpf-local')
+          foreach ($node in $source + $mapping) { [void]$node.ParentNode.RemoveChild($node) }
+          $config.Save((Resolve-Path NuGet.config))
+      - name: Run the enabled tests
+        shell: pwsh
+        env:
+          THROUGH_BATCH: ${{ inputs.through_batch }}
+        run: |
+          $through = -1
+          if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
+          ./.github/ci/run-test-plan.ps1 -Platform '${{ matrix.name }}' -ThroughBatch $through

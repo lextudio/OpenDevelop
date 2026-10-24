@@ -1,0 +1,75 @@
+{
+  "_comment": [
+    "Which local tests run on GitHub Actions, and in which order they are turned on.",
+    "A test is enabled by editing this file in a reviewed commit; the workflow never discovers tests by itself.",
+    "throughBatch: entries whose batch is greater than this are planned but not run.  workflow_dispatch can override it.",
+    "Per platform a test is 'observe' (runs, a failure is reported as a warning and does not fail the job),",
+    "'required' (a failure fails the job) or 'excluded' (does not run; 'reason' says why).",
+    "A new batch starts as 'observe'; promote it to 'required' after it has been green on that platform for several runs.",
+    "kind: dotnet-test = dotnet test --project <target>; dotnet-run = dotnet run --project <target>; msbuild = dotnet msbuild <target> -t:Build.",
+    "'measuredSeconds' is the last measured duration of the entry (local until a CI run has recorded it); keep it current when promoting a batch."
+  ],
+  "throughBatch": 1,
+  "entries": [
+    {
+      "id": "base-tests",
+      "batch": 1,
+      "kind": "dotnet-test",
+      "target": "tests/OpenDevelop.Base.Tests/OpenDevelop.Base.Tests.csproj",
+      "measuredSeconds": 33,
+      "platforms": { "windows-x64": "observe", "macos-arm64": "observe" },
+      "note": "499 tests (9 skipped) when measured locally on macOS arm64."
+    },
+    {
+      "id": "vseditorcompat-tests",
+      "batch": 1,
+      "kind": "dotnet-test",
+      "target": "tests/OpenDevelop.VSEditorCompat.Tests/OpenDevelop.VSEditorCompat.Tests.csproj",
+      "measuredSeconds": 8,
+      "platforms": { "windows-x64": "observe", "macos-arm64": "observe" },
+      "note": "141 tests when measured locally on macOS arm64."
+    },
+    {
+      "id": "xamldom-tests-librewpf",
+      "batch": 1,
+      "kind": "dotnet-run",
+      "target": "tests/OpenDevelop.XamlDom.Tests.LibreWPF/OpenDevelop.XamlDom.Tests.LibreWPF.csproj",
+      "measuredSeconds": 4,
+      "platforms": { "windows-x64": "observe", "macos-arm64": "observe" },
+      "note": "97 tests when measured locally on macOS arm64 (the test body is tests/OpenDevelop.XamlDom.Tests.Shared)."
+    },
+    {
+      "id": "addinsdk-tests",
+      "batch": 1,
+      "kind": "msbuild",
+      "target": "tests/OpenDevelop.AddinSdk.Tests/OpenDevelop.AddinSdk.Tests.proj",
+      "measuredSeconds": 1,
+      "platforms": { "windows-x64": "observe", "macos-arm64": "observe" },
+      "note": "Run with dotnet msbuild -t:Build as doc/technotes/addin-sdk.md says; 'dotnet build' fails the same file (its restore changes what the asserted targets see)."
+    },
+    {
+      "id": "addinsdk-staging-tests",
+      "batch": 1,
+      "kind": "msbuild",
+      "target": "tests/OpenDevelop.AddinSdk.Tests/OpenDevelop.AddinSdk.Staging.Tests.proj",
+      "measuredSeconds": 1,
+      "platforms": { "windows-x64": "observe", "macos-arm64": "observe" }
+    },
+    {
+      "id": "profiler-tests",
+      "batch": 0,
+      "kind": "dotnet-run",
+      "target": "tests/OpenDevelop.Profiler.Tests",
+      "platforms": { "windows-x64": "excluded", "macos-arm64": "excluded" },
+      "reason": "Already runs on Windows, Linux and macOS in .github/workflows/profiler.yml."
+    },
+    {
+      "id": "terminal-integration",
+      "batch": 0,
+      "kind": "dotnet-run",
+      "target": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "platforms": { "windows-x64": "excluded", "macos-arm64": "excluded" },
+      "reason": "TerminalCrossPlatformTests / TerminalPadTests run in .github/workflows/terminal-cross-platform.yml."
+    }
+  ]
+}
