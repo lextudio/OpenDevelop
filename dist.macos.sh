@@ -111,6 +111,7 @@ fi
 
 # Synchronize the authenticated GitHub Packages closure into this checkout before restore. The
 # helper reads gh's credential in memory only; it never writes a token to NuGet.config or output.
+export NUGET_PACKAGES="${repo_root}/artifacts/nuget-packages"
 "${pwsh_bin}" -NoProfile -File "${repo_root}/sync-openavalon-feed.ps1"
 
 # macOS's default bash (3.2) treats "${arr[@]}" on an EMPTY array as an unbound-variable

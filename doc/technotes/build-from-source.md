@@ -41,10 +41,12 @@ and no longer describe this tree. Use the `.slnx` and the scripts above.
   `vswhere`.
 - **PowerShell 7+** for any `.ps1`; the `.bat`/`.sh` wrappers only need `pwsh` on `PATH` (or in the
   well-known Homebrew/Program Files locations).
-- **Local LibreWPF packages.** `NuGet.config` maps `LibreWPF.*`, `LibreWinForms.*`, `ProGPU.*` and
-  `LeXtudio.*` to the sibling `../openavalon/artifacts/local-feed` and clears every other source.
-  Without that feed present AND populated, restore fails with "No packages exist with this id in
-  source(s): librewpf-local".
+- **OpenAvalon package feed.** Run `./sync-openavalon-feed.ps1` once after authenticating `gh` with
+  `read:packages`; the normal build and distribution scripts do this automatically. It downloads the
+  required GitHub Packages closure into `artifacts/openavalon-feed` without writing a token to disk.
+  `NuGet.config` keeps all restores in this checkout's `artifacts/nuget-packages` cache, including
+  direct `dotnet test --project` commands, so its same-version LibGhostty.Net fork cannot be confused
+  with a user-wide nuget.org cache entry.
 - **macOS:** `rsync` (the bundle script requires it), plus a working C toolchain. `LibreWPF.Sdk`
   compiles a native Win32-compat shim with `cc -dynamiclib`; `dist.macos.sh` probes for a linkable
   macOS SDK and pins `SDKROOT` if the default one is too old for the linker.

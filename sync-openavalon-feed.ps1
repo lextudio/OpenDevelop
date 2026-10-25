@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 # This is the exact closure OpenAvalon publishes to lextudio GitHub Packages. Keep it explicit:
 # packages that remain publicly available from nuget.org must not accidentally become a local-feed
 # dependency just because their names also start with ProGPU.
-$packages = @(
+$openAvalonPackages = @(
     'LibreWPF.Interop', 'LibreWPF.ProGPU', 'LibreWPF.Sdk', 'LibreWPF.Transport',
     'LibreWinForms.ProGPU', 'LibreWinForms.Sdk', 'LibreWinForms.System.Windows.Forms', 'LibreWinForms.WindowsFormsIntegration',
     'ProGPU.Avalonia', 'ProGPU.Backend', 'ProGPU.Backend.Dawn', 'ProGPU.Backend.Dx12', 'ProGPU.Backend.Native', 'ProGPU.Native.Sdk', 'ProGPU.Compute',
@@ -61,12 +61,24 @@ $proGpuVersion = Get-XmlPropertyValue (Join-Path $PSScriptRoot 'Directory.Build.
 if ($sdkVersion -ne $libreWinFormsVersion -or $sdkVersion -ne $proGpuVersion) {
     throw "The OpenAvalon package closure requires one version, but this checkout requests LibreWPF.Sdk $sdkVersion, LibreWinForms $libreWinFormsVersion, and ProGPU $proGpuVersion. Update the package pins or extend this script with an explicit multi-version closure."
 }
+$libGhosttyVersion = Get-XmlPropertyValue (Join-Path $PSScriptRoot 'Directory.Packages.props') 'LibGhosttyNetVersion'
+$packages = @($openAvalonPackages | ForEach-Object { [pscustomobject]@{ Id = $_; Version = $sdkVersion } }) +
+    [pscustomobject]@{ Id = 'LibGhostty.Net'; Version = $libGhosttyVersion }
 
 Write-Host "OpenAvalon local feed: $FeedPath"
-Write-Host "OpenAvalon package version: $sdkVersion ($($packages.Count) packages)"
+Write-Host "OpenAvalon package version: $sdkVersion ($($openAvalonPackages.Count) packages); LibGhostty.Net $libGhosttyVersion"
 if ($Plan) {
-    $packages | ForEach-Object { Write-Host "  $_ $sdkVersion" }
+    $packages | ForEach-Object { Write-Host "  $($_.Id) $($_.Version)" }
     exit 0
+}
+
+if (-not $Force -and (@($packages | Where-Object {
+    -not (Test-VerifiedNuGetPackage (Join-Path $FeedPath "$($_.Id).$($_.Version).nupkg") $_.Id $_.Version)
+}).Count -eq 0)) {
+    Write-Host 'Local package feed is already complete.'
+    # This script is dot-sourced by build.ps1/dist.ps1.  `exit` here would terminate the
+    # invoking build instead of merely skipping an unnecessary authenticated download.
+    return
 }
 
 $gh = Get-Command gh -ErrorAction SilentlyContinue
@@ -103,19 +115,21 @@ try {
 
     New-Item -ItemType Directory -Force -Path $FeedPath | Out-Null
     foreach ($package in $packages) {
-        $id = $package.ToLowerInvariant()
-        $version = $sdkVersion.ToLowerInvariant()
-        $fileName = "$package.$sdkVersion.nupkg"
+        $packageId = [string]$package.Id
+        $packageVersion = [string]$package.Version
+        $id = $packageId.ToLowerInvariant()
+        $version = $packageVersion.ToLowerInvariant()
+        $fileName = "$packageId.$packageVersion.nupkg"
         $destination = Join-Path $FeedPath $fileName
-        if (-not $Force -and (Test-VerifiedNuGetPackage $destination $package $sdkVersion)) {
+        if (-not $Force -and (Test-VerifiedNuGetPackage $destination $packageId $packageVersion)) {
             Write-Host "Already present: $fileName"
             continue
         }
 
         $versionsUri = "$flatContainer$id/index.json"
         $publishedVersions = ($client.GetStringAsync($versionsUri).GetAwaiter().GetResult() | ConvertFrom-Json).versions
-        if ($publishedVersions -notcontains $sdkVersion) {
-            throw "GitHub Packages does not contain $package $sdkVersion. Available versions include: $(($publishedVersions | Select-Object -Last 5) -join ', '). Update this checkout to a published OpenAvalon closure before syncing."
+        if ($publishedVersions -notcontains $packageVersion) {
+            throw "GitHub Packages does not contain $packageId $packageVersion. Available versions include: $(($publishedVersions | Select-Object -Last 5) -join ', '). Update this checkout to a published package closure before syncing."
         }
         $base = "$flatContainer$id/$version/$id.$version.nupkg"
         $temporary = "$destination.partial"
@@ -142,9 +156,9 @@ try {
                     Start-Sleep -Seconds $attempt
                 }
             }
-            if (-not (Test-NuGetPackage $temporary $package $sdkVersion)) { throw "Downloaded file is not the expected NuGet package: $fileName." }
+            if (-not (Test-NuGetPackage $temporary $packageId $packageVersion)) { throw "Downloaded file is not the expected NuGet package: $fileName." }
             Move-Item -LiteralPath $temporary -Destination $destination -Force
-            [IO.File]::WriteAllText("$destination.verified", "$package`n$sdkVersion`n", [Text.UTF8Encoding]::new($false))
+            [IO.File]::WriteAllText("$destination.verified", "$packageId`n$packageVersion`n", [Text.UTF8Encoding]::new($false))
             Write-Host "Synced: $fileName"
         } finally {
             Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue

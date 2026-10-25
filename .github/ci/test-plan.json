@@ -15,11 +15,12 @@
     "A lane with 'needsNuGetCache' also downloads the build job's NuGet package cache: the IDE host resolves its LibreWPF assemblies from the global packages folder at run time, so a lane that starts the IDE (the integration lanes) needs it; the unit lane does not.",
     "'buildLast' projects are built after everything else, with their own 'args' ('{rid}' is the platform's 'rid').  The host is built last with '--runtime <rid> -p:AppendRuntimeIdentifierToOutputPath=false', the recipe terminal-cross-platform.yml uses (it builds the Terminal add-in that way, which builds the host project it references as that RID into the same folder) and whose IDE does start on the Windows runner.  Measured on the runner without it: the host's OpenDevelop.deps.json is 166 libraries without a 'PresentationFramework/11.0.0.0' reference entry from the very first host build on, whatever is built afterwards in the default way (a macOS build has 193, with 28 'reference' entries for the LibreWPF assemblies), and the IDE dies at start-up with a FileNotFoundException for PresentationFramework 11.0.0.0.  The build summary records the host deps.json after every build, so the run shows what the RID-specific build changes.",
     "A lane definition holds 'timeoutMinutes', optionally 'needsNuGetCache' (the IDE host resolves its LibreWPF assemblies from the global packages folder at run time) and optionally 'buildsInLane'.",
-    "Profiler and Terminal are entries here; their own workflows (profiler.yml, terminal-cross-platform.yml) were deleted when they were folded in. Only Windows x64 is enabled: the other platforms recorded in platformNotes come back as their own entries."
+    "Profiler and Terminal are entries here; their own workflows (profiler.yml, terminal-cross-platform.yml) were deleted when they were folded in. Windows ARM64 and macOS ARM64 start as observed Terminal journeys and are promoted after repeated green runs."
   ],
   "platformNotes": {
-    "macos-arm64": "Skipped for now: the Terminal journeys fail there on LibreWPF's Display text capability, and profiler.yml's macOS matrix retired with that workflow. Add the platform back to 'platforms' and to entries to re-enable it.",
-    "windows-x64": "The only enabled platform. The unit lane is required except for base-tests and xamldom-tests-microsoftwpf, which carry one known flaky case each (recorded in their notes). integration-core is excluded until the Windows IDE host can start; see the entries' reason and AGENTS.md.",
+    "macos-arm64": "Runs the native Apple Silicon Terminal journey as observe first; the workflow provisions cliclick for real input delivery.",
+    "windows-x64": "Runs the existing unit and observed integration coverage. The unit lane is required except for base-tests and xamldom-tests-microsoftwpf, which carry one known flaky case each.",
+    "windows-arm64": "Runs the native Windows ARM64 TerminalCrossPlatform journey as observe first, independently validating the win-arm64 native asset chain.",
     "linux-x64": "Not enabled yet: profiler.yml ran the Profiler tests on ubuntu-latest and passed; it comes back as this platform's first entry when the platform is added."
   },
   "throughBatch": 3,
@@ -28,6 +29,17 @@
       "runner": "windows-2025",
       "dotnetArchitecture": "x64",
       "rid": "win-x64"
+    },
+    "windows-arm64": {
+      "runner": "windows-11-arm",
+      "dotnetArchitecture": "arm64",
+      "rid": "win-arm64"
+    },
+    "macos-arm64": {
+      "runner": "macos-15",
+      "dotnetArchitecture": "arm64",
+      "rid": "osx-arm64",
+      "needsCliclick": true
     }
   },
   "lanes": {
@@ -49,17 +61,17 @@
   ],
   "buildLast": [
     {
+      "project": "src/AddIns/Misc/Terminal/Project/Terminal.csproj",
+      "args": [ "--runtime", "{rid}", "-p:AppendRuntimeIdentifierToOutputPath=false" ],
+      "platforms": [ "windows-x64", "windows-arm64", "macos-arm64" ],
+      "note": "Build Terminal for the runner's native RID after the integration harness, staging its matching native assets."
+    },
+    {
       "project": "src/Main/SharpDevelop/SharpDevelop.csproj",
       "verb": "publish",
-      "args": [
-        "-o",
-        "src/Main/SharpDevelop/bin/Debug/net10.0-windows",
-        "--self-contained",
-        "false",
-        "-p:ProGpuWpfUseCurrentRuntimeIdentifier=false",
-        "-p:OpenDevelopDistributionBuild=true"
-      ],
-      "note": "Publish the host the way dist.ps1 does: RID-less, framework-dependent. The shipped Windows payload (v5.6.2) has 193 libraries and PresentationFramework.dll both at the app root and under runtimes/win-x64/lib/net10.0/, which is what lets the host resolve the LibreWPF payload by its runtime RID. A '--runtime win-x64' build prunes that tree and the IDE then dies at start-up with FileNotFoundException 11.0.0.0 (measured: 193 DLLs before, 178 after the integration build, no runtimes payload for PresentationFramework). Distribution mode is what dist.ps1 passes for the host publish; the shipped payload was built that way."
+      "args": [ "-o", "src/Main/SharpDevelop/bin/Debug/net10.0-windows", "--self-contained", "false", "-p:ProGpuWpfUseCurrentRuntimeIdentifier=false", "-p:OpenDevelopDistributionBuild=true" ],
+      "note": "Publish the Windows host after the RID-specific Terminal build restores its mutable payload outputs.",
+      "platforms": [ "windows-x64", "windows-arm64" ]
     }
   ],
   "entries": [
@@ -365,7 +377,8 @@
       "kind": "xunit-exe",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "platforms": {
-        "windows-x64": "observe"
+        "windows-x64": "observe",
+        "windows-arm64": "observe"
       },
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "args": [
@@ -374,11 +387,24 @@
         "-parallel",
         "none"
       ],
-      "note": "Windows x64 only: the Terminal add-in needs the platform RID build in buildLast, and the macOS journey failed on LibreWPF's Display text capability (see platformNotes).",
+      "note": "Runs the Windows terminal journey on each native Windows architecture.",
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
       ],
-      "reason": "Known-broken on this platform while the Windows IDE host cannot start (FileNotFoundException PresentationFramework 11.0.0.0: the payload is in the host folder but the portable bootstrap returns before preloading it on Windows and the deps manifest registers 167 libraries where the shipped payload has 193). Kept running so the failure stays visible as a warning; flip to 'required' when the LibreWPF SDK fix lands. See AGENTS.md."
+      "reason": "Observed while validating the all-platform LibGhostty.Net 1.0.2 package; promote after repeated green runs."
+    },
+    {
+      "id": "terminal-macos-integration",
+      "batch": 3,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "platforms": { "macos-arm64": "observe" },
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "args": [ "-class", "OpenDevelop.IntegrationTests.TerminalPadTests", "-parallel", "none" ],
+      "buildArgs": [ "-p:BuildIntegrationFixtures=false" ],
+      "note": "Native Apple Silicon Terminal journey: POSIX terminal behavior and macOS key/pointer delivery.",
+      "reason": "Observed while validating the all-platform LibGhostty.Net 1.0.2 package; promote after repeated green runs."
     }
   ]
 }

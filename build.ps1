@@ -207,6 +207,12 @@ if ($Kill) {
     Start-Sleep -Seconds 1
 }
 
+# LibGhostty.Net deliberately retains upstream's 1.0.2 version, so the user-wide NuGet cache
+# cannot distinguish the fork from nuget.org's package. Keep this checkout's restores isolated,
+# then synchronize the authenticated GitHub Packages closure into its tokenless local feed.
+$env:NUGET_PACKAGES = Join-Path $repoRoot 'artifacts/nuget-packages'
+& (Join-Path $repoRoot 'sync-openavalon-feed.ps1')
+
 $dotnet = Find-DotNetHost
 
 $commonProperties = @()

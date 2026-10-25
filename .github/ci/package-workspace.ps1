@@ -68,7 +68,9 @@ try {
     }
 
     [string[]]$exclusions = @()
-    if ($Kind -eq 'Workspace') { $exclusions += @('--exclude=.git', '--exclude=node_modules', '--exclude=.vs', '--exclude=.nuget', '--exclude=externals/monodevelop') }
+    # The project-local global packages folder is cached and transferred separately as NuGetCache.
+    # Including it here duplicates several GB into every workspace artifact and every test lane.
+    if ($Kind -eq 'Workspace') { $exclusions += @('--exclude=.git', '--exclude=node_modules', '--exclude=.vs', '--exclude=.nuget', '--exclude=artifacts/nuget-packages', '--exclude=externals/monodevelop') }
     if ($Platform -like 'windows-*') {
         $exclusions += @('--exclude=*.so', '--exclude=*.so.*', '--exclude=*.dylib', '--exclude=*.a', '--exclude=*.lib')
         foreach ($rid in @('linux', 'osx', 'android', 'ios', 'tvos', 'maccatalyst', 'browser')) { $exclusions += "--exclude=runtimes/$rid*" }

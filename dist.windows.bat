@@ -71,6 +71,8 @@ shift
 goto parse
 
 :run
+rem Keep same-version fork packages out of the user-wide NuGet cache.
+set "NUGET_PACKAGES=%REPO_ROOT%artifacts\nuget-packages"
 rem Synchronize the authenticated GitHub Packages closure into this checkout before restore. The
 rem helper reads gh's credential in memory only; it never writes a token to NuGet.config or output.
 "%PWSH%" -NoProfile -File "%REPO_ROOT%sync-openavalon-feed.ps1"

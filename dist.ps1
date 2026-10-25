@@ -1208,6 +1208,10 @@ function Invoke-DistributionPipeline {
     $selected = Resolve-SelectedPhases
     Write-Host "==> Phases: $($selected -join ' -> ')"
 
+    # Direct dist.ps1 callers need the same isolated, tokenless local feed as the platform wrappers.
+    $env:NUGET_PACKAGES = Join-Path $repoRoot 'artifacts/nuget-packages'
+    & (Join-Path $repoRoot 'sync-openavalon-feed.ps1')
+
     if ($Kill) {
         Write-Host '==> Stopping OpenDevelop and lingering build servers / design hosts...'
         Get-Process OpenDevelop, OpenDevelopARM64, dotnet, MSBuild -ErrorAction SilentlyContinue |

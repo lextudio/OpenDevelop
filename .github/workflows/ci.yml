@@ -55,7 +55,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  NUGET_CACHE_PATH: ~/.nuget/packages
+  NUGET_CACHE_PATH: ${{ github.workspace }}/artifacts/nuget-packages
+  NUGET_PACKAGES: ${{ github.workspace }}/artifacts/nuget-packages
   # NuGet consumes this conventional variable without writing the ephemeral token into NuGet.config,
   # the package cache key, or the workspace archive.
   NuGetPackageSourceCredentials_lextudio-github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
@@ -113,7 +114,7 @@ jobs:
         name: Compute the package cache key
         shell: pwsh
         run: |
-          $key = "nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config') }}"
+          $key = "nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config') }}"
           Write-Host "cache key: $key"
           "key=$key" | Add-Content -Path $env:GITHUB_OUTPUT
       # The package folder is the same cache entry the IDE lanes restore: restoring it here is what makes the
@@ -123,8 +124,6 @@ jobs:
         with:
           path: ${{ env.NUGET_CACHE_PATH }}
           key: ${{ steps.nuget-key.outputs.key }}
-          restore-keys: |
-            nuget-${{ runner.os }}-
       - name: Compile everything the enabled entries need, once
         shell: pwsh
         env:
@@ -133,6 +132,10 @@ jobs:
           $through = -1
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
           ./.github/ci/build-binaries.ps1 -Platform '${{ matrix.name }}' -ArchiveLanesOnly -ThroughBatch $through
+      - name: Verify native Terminal package assets
+        if: matrix.name == 'windows-x64' || matrix.name == 'windows-arm64' || matrix.name == 'macos-arm64'
+        shell: pwsh
+        run: ./.github/ci/verify-terminal-assets.ps1 -Platform '${{ matrix.name }}'
       # TEMPORARY: starts the host right after compiling, before it is archived, to tell a build-output problem from an
       # archive/extract problem. Run it with the 'diagnose' input; remove it with the matching test-job step.
       - name: Diagnose the freshly built IDE host (before packing)
@@ -180,6 +183,17 @@ jobs:
         with:
           global-json-file: global.json
           architecture: ${{ matrix.dotnet_architecture }}
+      - name: Install macOS native input helper
+        if: matrix.needs_cliclick
+        shell: bash
+        run: brew install cliclick
+      - id: nuget-key
+        name: Compute the package cache key
+        if: matrix.needs_nuget_cache
+        shell: pwsh
+        run: |
+          $key = "nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config') }}"
+          "key=$key" | Add-Content -Path $env:GITHUB_OUTPUT
       # The IDE host is not self-contained: at run time it resolves the LibreWPF assemblies from the global packages
       # folder, so a lane that starts the IDE needs that folder. Same key the build job saved, and a miss is a failure
       # rather than a silently slower lane that later dies at start-up.
@@ -188,8 +202,12 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.NUGET_CACHE_PATH }}
-          key: ${{ needs.build.outputs.nuget_cache_key }}
+          key: ${{ steps.nuget-key.outputs.key }}
           fail-on-cache-miss: true
+      - name: Verify native Terminal package assets
+        if: matrix.needs_nuget_cache && (matrix.platform == 'windows-x64' || matrix.platform == 'windows-arm64' || matrix.platform == 'macos-arm64')
+        shell: pwsh
+        run: ./.github/ci/verify-terminal-assets.ps1 -Platform '${{ matrix.platform }}'
       - name: Diagnose the IDE host start-up
         if: matrix.needs_nuget_cache && inputs.diagnose
         shell: pwsh
@@ -252,7 +270,7 @@ jobs:
         name: Compute the package cache key
         shell: pwsh
         run: |
-          $key = "nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config') }}"
+          $key = "nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config') }}"
           Write-Host "cache key: $key"
           "key=$key" | Add-Content -Path $env:GITHUB_OUTPUT
       # Restore only: the build job owns this entry. This lane starts before that job saves it, so a miss here is normal
@@ -262,8 +280,6 @@ jobs:
         with:
           path: ${{ env.NUGET_CACHE_PATH }}
           key: ${{ steps.nuget-key.outputs.key }}
-          restore-keys: |
-            nuget-${{ runner.os }}-
       # No host builds: nothing in this lane builds an add-in against the host manifest or starts the IDE.
       - name: Compile this lane's entries
         shell: pwsh

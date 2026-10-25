@@ -67,6 +67,7 @@ if (-not $SkipHostBuilds -and $plan.PSObject.Properties['buildLast']) {
     $platformEntry = $plan.platforms.PSObject.Properties[$Platform]
     $rid = if ($platformEntry -and $platformEntry.Value.PSObject.Properties['rid']) { [string]$platformEntry.Value.rid } else { '' }
     foreach ($item in @($plan.buildLast)) {
+        if ($item.PSObject.Properties['platforms'] -and $Platform -notin @($item.platforms)) { continue }
         [string[]]$itemArgs = if ($item.PSObject.Properties['args']) { @($item.args | ForEach-Object { $_ -replace '\{rid\}', $rid }) } else { @() }
         if (-not $rid -and ($item.args -join ' ') -match '\{rid\}') { throw "buildLast uses {rid} but platform '$Platform' defines no 'rid'." }
         $verb = if ($item.PSObject.Properties['verb']) { [string]$item.verb } else { 'build' }
@@ -105,6 +106,7 @@ function Get-HostDepsState {
 
 $rows = @()
 $failed = @()
+$requiresHostPayloadValidation = $false
 foreach ($build in $builds) {
     $project = $build.Project
     Write-Host "::group::$verb $project $($build.Args -join ' ')"
@@ -118,12 +120,22 @@ foreach ($build in $builds) {
     $seconds = [int][math]::Round($watch.Elapsed.TotalSeconds)
     $depsState = Get-HostDepsState
     Write-Host "host deps.json after '$project': $depsState"
+    if ($project -like '*Terminal.csproj' -or ($project -like '*SharpDevelop.csproj' -and $verb -eq 'publish')) { $requiresHostPayloadValidation = $true }
     $rows += [pscustomobject]@{ Project = $project; Seconds = $seconds; Outcome = $(if ($exit -eq 0) { 'passed' } else { 'failed' }); HostDeps = $depsState }
     if ($exit -ne 0) {
         $failed += $project
         Write-Host "::error title=build failed::$project exited with $exit after ${seconds}s."
         # Building the rest against a host that did not build would only produce untrimmed, misleading output.
         if ($build.First) { break }
+    }
+}
+
+# Terminal's RID build can temporarily clear the mutable package payload.  The final host publish is
+# intentionally ordered after it to restore that payload, so validate only the completed build plan.
+if ($failed.Count -eq 0 -and $requiresHostPayloadValidation -and $Platform -like 'windows-*') {
+    $depsState = Get-HostDepsState
+    if ($depsState -match 'absent|presentationFrameworkRef=False|presentationFramework=MISSING') {
+        throw "The final host payload is invalid on ${Platform}: $depsState"
     }
 }
 

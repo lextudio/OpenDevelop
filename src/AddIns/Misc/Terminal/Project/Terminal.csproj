@@ -28,8 +28,7 @@
     <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
     <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />
     <PackageReference Include="LeXtudio.DevFlow.Agent.Core" />
-    <!-- Only its VT half is used: the PTY is Porta.Pty, because LibGhostty.Net 1.0.2 writes a garbage
-         winsize on macOS arm64 (stty size after Resize printed random numbers). -->
+    <!-- Its VT surface is used alongside Porta.Pty. -->
     <PackageReference Include="LibGhostty.Net" GeneratePathProperty="true" />
     <PackageReference Include="Porta.Pty" />
     <!-- Porta.Pty's Windows loader finds conpty.dll in the add-in directory, then requires its
