@@ -252,6 +252,9 @@ Layout, so a change goes in the right place:
   deletes the host's mutable package outputs (`_ProGpuWpfSdkClearMutablePackageOutputs`) and does not put them back, so
   the folder ends up without `PresentationFramework.dll`. Measured on the runner: 193 DLLs present after the first build,
   173 and missing after a rebuild.
+- A lane can declare `allowAllFailures` in its plan definition: every entry still reports (warnings, summary table) but an
+  all-failed lane stays green. Only `integration-core` uses it, for the defect below; remove the flag when the fix lands
+  instead of leaving it as a permanent escape hatch.
 - Known open defect (2026-10-25): the IDE host still fails to start on the Windows runner with
   `FileNotFoundException: PresentationFramework, Version=11.0.0.0`. The file is in the folder and loads by path, but the
   deps manifest records it as a package-relative asset (`lib/net10.0/PresentationFramework.dll`) and the build produces no

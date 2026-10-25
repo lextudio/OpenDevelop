@@ -110,7 +110,10 @@ if ($requiredFailures.Count -gt 0) {
     exit 1
 }
 $passed = @($results | Where-Object { $_.Outcome -eq 'passed' })
-if ($results.Count -gt 0 -and $passed.Count -eq 0) {
+# A lane whose definition says 'allowAllFailures' is known broken for one tracked reason (see the plan); its failures stay
+# visible as warnings and in the summary, but they do not paint master red while the fix is not ours.
+$allowAllFailures = [bool]($plan.lanes.PSObject.Properties[$Lane].Value.PSObject.Properties['allowAllFailures'] -and $plan.lanes.PSObject.Properties[$Lane].Value.allowAllFailures)
+if ($results.Count -gt 0 -and $passed.Count -eq 0 -and -not $allowAllFailures) {
     Write-Host "::error title=$Lane::$($results.Count) entries ran and none passed; a lane that exercises nothing is not a pass, whatever its modes say."
     exit 1
 }
