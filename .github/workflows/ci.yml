@@ -101,6 +101,12 @@ jobs:
           $through = -1
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
           ./.github/ci/build-binaries.ps1 -Platform '${{ matrix.name }}' -ThroughBatch $through
+      # TEMPORARY, remove with the diagnose step in the test job: starts the host right after compiling, before it is
+      # archived, to tell a build-output problem from an archive/extract problem (the Terminal workflow's in-place host starts).
+      - name: Diagnose the freshly built IDE host (before packing)
+        continue-on-error: true
+        shell: pwsh
+        run: ./.github/ci/diagnose-host.ps1
       - name: Pack the workspace
         shell: pwsh
         run: ./.github/ci/package-workspace.ps1 -Platform '${{ matrix.name }}' -Directory '${{ runner.temp }}/archive'

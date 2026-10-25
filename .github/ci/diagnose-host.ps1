@@ -28,6 +28,13 @@ Get-ChildItem $HostDirectory -Filter 'OpenDevelop.*' | ForEach-Object { Write-Ho
 Write-Host "NUGET_PACKAGES=$env:NUGET_PACKAGES  HOME=$HOME  USERPROFILE=$env:USERPROFILE"
 $packages = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $HOME '.nuget/packages' }
 Write-Host "global packages folder '$packages' exists: $(Test-Path $packages); librewpf.transport: $(Test-Path (Join-Path $packages 'librewpf.transport'))"
+foreach ($name in 'WindowsBase', 'PresentationCore', 'PresentationFramework') {
+    $file = Join-Path $HostDirectory "$name.dll"
+    if (-not (Test-Path -LiteralPath $file)) { Write-Host "$name.dll is MISSING from the host folder"; continue }
+    $item = Get-Item -LiteralPath $file -Force
+    $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+    Write-Host "$name.dll attributes=$($item.Attributes) linkType=$($item.LinkType) sha256=$($hash.Substring(0, 16)) version=$($item.VersionInfo.FileVersion)"
+}
 dotnet --list-runtimes
 Write-Host '::endgroup::'
 
