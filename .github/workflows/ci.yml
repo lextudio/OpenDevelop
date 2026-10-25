@@ -201,7 +201,7 @@ jobs:
           # The IDE start-up log of every test launch lands here; it is uploaded below.
           OD_TEST_LOG_DIR: ${{ runner.temp }}/od-test-logs
           OD_TEST_KEEP_ARTIFACTS: '1'
-          OD_TEST_RESULTS: ${{ runner.temp }}/od-test-results
+          OD_TEST_RESULTS: TestResults
         run: |
           $through = -1
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
@@ -212,13 +212,13 @@ jobs:
         uses: dorny/test-reporter@v1
         with:
           name: ${{ matrix.lane }} (${{ matrix.platform }})
-          path: ${{ runner.temp }}/od-test-results/*.trx
+          path: TestResults/*.trx
           reporter: dotnet-trx
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: results-${{ matrix.lane }}-${{ matrix.platform }}
-          path: ${{ runner.temp }}/od-test-results
+          path: TestResults
           if-no-files-found: ignore
           retention-days: 3
       - uses: actions/upload-artifact@v4
@@ -287,7 +287,7 @@ jobs:
           THROUGH_BATCH: ${{ inputs.through_batch }}
           OD_TEST_LOG_DIR: ${{ runner.temp }}/od-test-logs
           OD_TEST_KEEP_ARTIFACTS: '1'
-          OD_TEST_RESULTS: ${{ runner.temp }}/od-test-results
+          OD_TEST_RESULTS: TestResults
         run: |
           $through = -1
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
@@ -298,13 +298,13 @@ jobs:
         uses: dorny/test-reporter@v1
         with:
           name: ${{ needs.plan.outputs.in_lane_name }} (${{ needs.plan.outputs.in_lane_platform }}, in place)
-          path: ${{ runner.temp }}/od-test-results/*.trx
+          path: TestResults/*.trx
           reporter: dotnet-trx
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: results-${{ needs.plan.outputs.in_lane_name }}-in-place
-          path: ${{ runner.temp }}/od-test-results
+          path: TestResults
           if-no-files-found: ignore
           retention-days: 3
       - uses: actions/upload-artifact@v4
