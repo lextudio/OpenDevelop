@@ -60,7 +60,27 @@ into lanes of this workflow next. macOS is skipped for now (see `platformNotes` 
 
 ## The build
 
-The build job initialises the submodules the integration test project's `ProjectReference` closure reaches (AvalonEdit,
-AvalonDock, cps, WPF Toolkit, vscode-wpf with its nested WpfDesigner and wxsg) plus the small debugger, coverage and
-XAML ones; not `externals/monodevelop` (about 750 MB). It builds against the repository's own LibreWPF pins (preview.65
-from nuget.org once the developer-local feed is removed); the preview.69 trial lives in the Terminal workflow only.
+The build job builds, in this order: the plan's `buildFirst` projects (the host, `src/Main/SharpDevelop`), then every
+distinct `project` of an enabled entry with that entry's `buildArgs`.
+
+* **The host goes first.** Its build writes `OpenDevelop.host-assemblies.txt`, which every add-in build uses to trim the
+  assemblies the host already ships (`src/SDK/OpenDevelop.Addin.Sdk`). The integration test project does not reference the
+  host, so on a clean checkout it would build the add-ins before that manifest exists and every add-in would carry its
+  own ~550 MB of copy-local dependencies: the first CI run measured `AddIns` at 13 GB, against 3.4 GB on a developer
+  machine. `tests/OpenDevelop.IntegrationTests/TESTING.md` says the same ("build the application first").
+* **Fixtures are not built with the integration project** (`-p:BuildIntegrationFixtures=false`): that target builds every
+  fixture inside one MSBuild process, where `UnoHotReloadFixture` (`Uno.Sdk/6.6.42`) clashes with the SDK version already
+  resolved (MSB4240, so no `InitializeComponent` is generated). A lane that needs a fixture lists the fixture's own
+  `.csproj` as an entry `project`, which builds in a process of its own.
+* `build-binaries.ps1 -List` prints these commands without running them; use it to check a plan edit.
+
+The job initialises the submodules the build reaches: AvalonEdit, AvalonDock, cps, WPF Toolkit, vscode-wpf (with its
+nested WpfDesigner and wxsg), the small debugger, coverage and XAML ones, and `externals/monodevelop` shallow, because
+the AspNetCore add-in compiles four files straight out of it (a `Compile Include`, which a `ProjectReference` closure does
+not show). The monodevelop sources stay out of the workspace archive. The build uses the repository's own LibreWPF pins
+(preview.65 from nuget.org once the developer-local feed is removed); the preview.69 trial lives in the Terminal workflow
+only.
+
+Measured on the first runs (windows-2025): the integration project build takes about ten minutes and the four unit test
+projects about two more; the numbers for the archive (size, pack, upload, download, unpack) come from the next run's job
+summaries and belong in this section once known.

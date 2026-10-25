@@ -1,13 +1,17 @@
 # Compiles, once, everything the enabled plan entries of one platform need.
 #
-#   pwsh .github/ci/build-binaries.ps1 -Platform windows-x64 [-ThroughBatch 3]
+#   pwsh .github/ci/build-binaries.ps1 -Platform windows-x64 [-ThroughBatch 3] [-List]
 #
-# Every distinct 'project' of an enabled entry is built (Debug).  Test jobs later run the compiled assemblies without
+# -List prints the build commands in order and exits, which is how to check a plan edit without building.
+#
+# The plan's 'buildFirst' projects (the host) are built first, then every distinct 'project' of an enabled entry (Debug,
+# with the entry's 'buildArgs').  Test jobs later run the compiled assemblies without
 # restoring or building, so anything an entry runs must be produced here.  Per-project durations and the size of the
 # biggest output folders go to the job summary: they are what the packaging step and the lane budgets are judged on.
 param(
     [Parameter(Mandatory = $true)][string]$Platform,
     [int]$ThroughBatch = -1,
+    [switch]$List,
     [string]$PlanPath = (Join-Path $PSScriptRoot 'test-plan.json')
 )
 
@@ -15,21 +19,42 @@ $ErrorActionPreference = 'Stop'
 $plan = Get-Content $PlanPath -Raw | ConvertFrom-Json
 if ($ThroughBatch -lt 0) { $ThroughBatch = [int]$plan.throughBatch }
 
-$projects = @($plan.entries |
-    Where-Object { $_.batch -le $ThroughBatch -and $_.PSObject.Properties['project'] -and $_.platforms.PSObject.Properties[$Platform] -and $_.platforms.$Platform -in @('observe', 'required') } |
-    ForEach-Object { $_.project } | Select-Object -Unique)
-if ($projects.Count -eq 0) { throw "No project to build for $Platform up to batch $ThroughBatch." }
+$entries = @($plan.entries | Where-Object {
+    $_.batch -le $ThroughBatch -and $_.PSObject.Properties['project'] -and $_.platforms.PSObject.Properties[$Platform] -and $_.platforms.$Platform -in @('observe', 'required')
+})
+if ($entries.Count -eq 0) { throw "No project to build for $Platform up to batch $ThroughBatch." }
 
-# The integration project's own Build deploys the add-ins, fixtures and out-of-process hosts, and builds
-# many of the same libraries the unit test projects need, so build it first and let the others reuse its output.
-$projects = @($projects | Sort-Object { if ($_ -like '*OpenDevelop.IntegrationTests*') { 0 } else { 1 } }, { $_ })
+# One build per distinct project.  Entries sharing a project must agree on its build arguments.
+$builds = @()
+foreach ($group in ($entries | Group-Object { $_.project })) {
+    $argumentSets = @($group.Group | ForEach-Object { if ($_.PSObject.Properties['buildArgs']) { ($_.buildArgs -join ' ') } else { '' } } | Select-Object -Unique)
+    if ($argumentSets.Count -ne 1) { throw "Entries of project '$($group.Name)' disagree on buildArgs: $($argumentSets -join ' | ')" }
+    [string[]]$extra = if ($argumentSets[0]) { $argumentSets[0] -split ' ' } else { @() }
+    $builds += [pscustomobject]@{ Project = $group.Name; Args = $extra; First = $false }
+}
+# The integration project's own Build deploys the add-ins, so it goes before the unit test projects, which then reuse its output.
+$builds = @($builds | Sort-Object { if ($_.Project -like '*OpenDevelop.IntegrationTests*') { 0 } else { 1 } }, { $_.Project })
+
+# The host goes first (see 'buildFirst' in the plan): its build writes the manifest every add-in build trims against.
+$first = @()
+if ($plan.PSObject.Properties['buildFirst']) {
+    foreach ($item in @($plan.buildFirst)) { $first += [pscustomobject]@{ Project = $item.project; Args = [string[]]@(); First = $true } }
+}
+$builds = @($first) + @($builds)
+
+if ($List) {
+    foreach ($build in $builds) { Write-Host "dotnet build $($build.Project) -c Debug $($build.Args -join ' ')".TrimEnd() }
+    exit 0
+}
 
 $rows = @()
 $failed = @()
-foreach ($project in $projects) {
-    Write-Host "::group::build $project"
+foreach ($build in $builds) {
+    $project = $build.Project
+    Write-Host "::group::build $project $($build.Args -join ' ')"
     $watch = [System.Diagnostics.Stopwatch]::StartNew()
-    & dotnet build $project -c Debug
+    [string[]]$arguments = @('build', $project, '-c', 'Debug') + $build.Args
+    & dotnet @arguments
     $exit = $LASTEXITCODE
     $watch.Stop()
     Write-Host '::endgroup::'
@@ -38,6 +63,8 @@ foreach ($project in $projects) {
     if ($exit -ne 0) {
         $failed += $project
         Write-Host "::error title=build failed::$project exited with $exit after ${seconds}s."
+        # Building the rest against a host that did not build would only produce untrimmed, misleading output.
+        if ($build.First) { break }
     }
 }
 
@@ -50,7 +77,7 @@ function Get-Size-Megabytes([string]$path) {
 $lines = @("### Build on $Platform (through batch $ThroughBatch)", '', '| Project | Result | Seconds |', '|---|---|---|')
 foreach ($r in $rows) { $lines += "| $($r.Project) | $($r.Outcome) | $($r.Seconds) |" }
 $lines += @('', '| Output folder | MB |', '|---|---|')
-foreach ($folder in @('AddIns', 'src/Main/SharpDevelop/bin', 'obj') + @($projects | ForEach-Object { Join-Path (Split-Path $_ -Parent) 'bin' })) {
+foreach ($folder in (@('AddIns', 'src/Main/SharpDevelop/bin', 'obj') + @($builds | ForEach-Object { (Join-Path (Split-Path $_.Project -Parent) 'bin') -replace '\\', '/' }) | Select-Object -Unique)) {
     $size = Get-Size-Megabytes $folder
     if ($null -ne $size) { $lines += "| $folder | $size |" }
 }
