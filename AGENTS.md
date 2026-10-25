@@ -255,6 +255,10 @@ Layout, so a change goes in the right place:
 - A lane can declare `allowAllFailures` in its plan definition: every entry still reports (warnings, summary table) but an
   all-failed lane stays green. Only `integration-core` uses it, for the defect below; remove the flag when the fix lands
   instead of leaving it as a permanent escape hatch.
+- `.github/ci/patch-host-deps.ps1` adds the LibreWPF payload as app-local library entries when the host manifest cannot
+  resolve it from the host directory (the shape the shipped Windows payload uses). It **detects first**: when every
+  transport assembly already resolves - what a fixed SDK will produce - it writes nothing and says so, so it is safe to
+  leave in place across LibreWPF upgrades. Delete it once a CI run reports "nothing to do" for the SDK in use.
 - Known open defect (2026-10-25): the IDE host still fails to start on the Windows runner with
   `FileNotFoundException: PresentationFramework, Version=11.0.0.0`. The file is in the folder and loads by path, but the
   deps manifest records it as a package-relative asset (`lib/net10.0/PresentationFramework.dll`) and the build produces no

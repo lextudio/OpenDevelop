@@ -144,6 +144,11 @@ jobs:
         if: inputs.diagnose
         shell: pwsh
         run: ./.github/ci/diagnose-host.ps1
+      # Detection-first: on a LibreWPF SDK that already registers the payload this prints "nothing to do" and writes
+      # nothing, so a future provider release removes the workaround by itself instead of conflicting with it.
+      - name: Register the LibreWPF payload in the host manifest
+        shell: pwsh
+        run: ./.github/ci/patch-host-deps.ps1
       - name: Pack the workspace
         shell: pwsh
         run: ./.github/ci/package-workspace.ps1 -Platform '${{ matrix.name }}' -Directory '${{ runner.temp }}/archive'
