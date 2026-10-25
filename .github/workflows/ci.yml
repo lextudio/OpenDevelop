@@ -44,7 +44,9 @@ permissions:
 # A newer pull request run supersedes an older one.  Master runs are not cancelled: a 40-minute run that is thrown away
 # by the next push never produced a result anyone could read.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # The event name is part of the group so a manual 'diagnose' run can run beside a push instead of being folded into it
+  # (a workflow_dispatch queued behind a push in the same group is cancelled, which is how the first diagnostic run died).
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:

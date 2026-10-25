@@ -53,11 +53,6 @@
         "{rid}",
         "-p:AppendRuntimeIdentifierToOutputPath=false"
       ]
-    },
-    {
-      "project": "src/Main/SharpDevelop/SharpDevelop.csproj",
-      "args": [],
-      "note": "RID-less last: the RID builds above delete the host's mutable package outputs (PresentationFramework, WindowsBase, ...) and the win-x64 transport copy does not put them back, so the host folder ends up holding only the app's own assemblies and the IDE dies at start-up with FileNotFoundException 11.0.0.0. A final RID-less build copies the complete payload. Remove once the SDK copies it for RID builds."
     }
   ],
   "entries": [
@@ -72,7 +67,7 @@
       "platforms": {
         "windows-x64": "observe"
       },
-      "note": "499 tests (9 skipped) when measured on macOS arm64."
+      "note": "499 tests (9 skipped) when measured on macOS arm64. On the Windows runner one WinUI Hot Reload case (x86 probe) intermittently reports hr=0x80070490 because the probe can run before the live application applies the change; x64 and ARM64 pass."
     },
     {
       "id": "vseditorcompat-tests",
@@ -132,7 +127,7 @@
       "platforms": {
         "windows-x64": "observe"
       },
-      "note": "Compares the Microsoft WPF loader with LibreWPF's; Windows only."
+      "note": "Microsoft's XamlReader is loaded on its own STA thread with a 20-second deadline; on a cold runner the first cases can exceed it and report HANG. One case failed that way on 2026-10-25 while the other 96 passed."
     },
     {
       "id": "devflow-tests",

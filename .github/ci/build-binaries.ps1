@@ -71,9 +71,10 @@ if ($List) {
     exit 0
 }
 
-# The host's OpenDevelop.deps.json after a build: other projects rebuild the host into the same folder with different
-# properties, so record what it looks like at each step (library count, whether the PresentationFramework reference
-# entry is there, when it was written).
+# The host's OpenDevelop.deps.json and folder after a build. A second build of the host project deletes its mutable
+# package outputs before copying and does not copy them again, so the folder can end up without PresentationFramework even
+# though the manifest still lists its libraries; the per-step numbers are what caught that on the runner (193 dlls with
+# the file present after the first build, 173 and missing after a rebuild).
 $hostDeps = 'src/Main/SharpDevelop/bin/Debug/net10.0-windows/OpenDevelop.deps.json'
 $hostDir = Split-Path $hostDeps -Parent
 function Get-HostDepsState {
