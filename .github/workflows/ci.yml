@@ -40,6 +40,8 @@ on:
 
 permissions:
   contents: read
+  # LibreWPF, LibreWinForms and ProGPU are restored from OpenAvalon's packages in this organization.
+  packages: read
   # dorny/test-reporter publishes the TRX results as annotations; fork PRs get a read-only token and the step is
   # continue-on-error, so this costs nothing there.
   checks: write
@@ -54,6 +56,9 @@ concurrency:
 
 env:
   NUGET_CACHE_PATH: ~/.nuget/packages
+  # NuGet consumes this conventional variable without writing the ephemeral token into NuGet.config,
+  # the package cache key, or the workspace archive.
+  NuGetPackageSourceCredentials_lextudio-github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
 
 jobs:
   plan:
@@ -104,16 +109,6 @@ jobs:
         with:
           global-json-file: global.json
           architecture: ${{ matrix.dotnet_architecture }}
-      # The repository pins LibreWPF preview.65 for local development, where the developer-local feed
-      # ../openavalon/artifacts/local-feed supplies it; the runner has no such folder.
-      - name: Skip the developer-local LibreWPF feed
-        shell: pwsh
-        run: |
-          [xml]$config = Get-Content NuGet.config
-          $source = @($config.configuration.packageSources.add | Where-Object key -eq 'librewpf-local')
-          $mapping = @($config.configuration.packageSourceMapping.packageSource | Where-Object key -eq 'librewpf-local')
-          foreach ($node in $source + $mapping) { [void]$node.ParentNode.RemoveChild($node) }
-          $config.Save((Resolve-Path NuGet.config))
       - id: nuget-key
         name: Compute the package cache key
         shell: pwsh
@@ -253,14 +248,6 @@ jobs:
         with:
           global-json-file: global.json
           architecture: ${{ needs.plan.outputs.in_lane_architecture }}
-      - name: Skip the developer-local LibreWPF feed
-        shell: pwsh
-        run: |
-          [xml]$config = Get-Content NuGet.config
-          $source = @($config.configuration.packageSources.add | Where-Object key -eq 'librewpf-local')
-          $mapping = @($config.configuration.packageSourceMapping.packageSource | Where-Object key -eq 'librewpf-local')
-          foreach ($node in $source + $mapping) { [void]$node.ParentNode.RemoveChild($node) }
-          $config.Save((Resolve-Path NuGet.config))
       - id: nuget-key
         name: Compute the package cache key
         shell: pwsh
