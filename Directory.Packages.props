@@ -105,8 +105,10 @@
          'NuGet.Commands, Version=7.6.0.0...'" - see SharpDevelop.csproj's reference. -->
     <PackageVersion Include="NuGet.Commands" Version="7.6.0" />
     <PackageVersion Include="NuGet.Protocol" Version="7.6.0" />
-    <PackageVersion Include="ProGPU.System.Drawing.Common" Version="0.1.0-preview.65" />
-    <PackageVersion Include="ProGPU.WinUI" Version="0.1.0-preview.65" />
+    <PackageVersion Include="ProGPU.System.Drawing.Common" Version="0.1.0-preview.69" />
+    <PackageVersion Include="ProGPU.WinUI" Version="0.1.0-preview.69" />
+    <!-- Outside the OpenAvalon preview.69 native closure; retained at their compatible public
+         versions until that closure publishes matching designer/Xaml packages. -->
     <PackageVersion Include="ProGPU.WinUI.Designer" Version="0.1.0-preview.65" />
     <PackageVersion Include="ProGPU.WinUI.Themes.Fluent" Version="0.1.0-preview.65" />
     <PackageVersion Include="ProGPU.Xaml" Version="0.1.0-preview.65" />

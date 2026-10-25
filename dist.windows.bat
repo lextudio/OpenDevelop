@@ -71,6 +71,11 @@ shift
 goto parse
 
 :run
+rem Synchronize the authenticated GitHub Packages closure into this checkout before restore. The
+rem helper reads gh's credential in memory only; it never writes a token to NuGet.config or output.
+"%PWSH%" -NoProfile -File "%REPO_ROOT%sync-openavalon-feed.ps1"
+if errorlevel 1 exit /b %ERRORLEVEL%
+
 rem -File (not -Command) so the exit code of dist.ps1 reaches the caller unchanged; its smoke-test
 rem failure path exits 1 and CI/callers must see that.
 "%PWSH%" -NoProfile -File "%REPO_ROOT%dist.ps1"%ARGS%

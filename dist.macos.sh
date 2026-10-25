@@ -109,6 +109,10 @@ if [[ -z "${SDKROOT:-}" ]] && command -v cc >/dev/null 2>&1 && ! _probe_cc_link 
   fi
 fi
 
+# Synchronize the authenticated GitHub Packages closure into this checkout before restore. The
+# helper reads gh's credential in memory only; it never writes a token to NuGet.config or output.
+"${pwsh_bin}" -NoProfile -File "${repo_root}/sync-openavalon-feed.ps1"
+
 # macOS's default bash (3.2) treats "${arr[@]}" on an EMPTY array as an unbound-variable
 # error under `set -u` - guard explicitly instead of relying on `${arr[@]:-}`-style
 # workarounds that read oddly for an array (same trick as rebuild-all.sh).

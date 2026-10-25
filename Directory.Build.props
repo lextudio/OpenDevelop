@@ -17,16 +17,11 @@
       is what a new SDK is being taken for, and delete the line once the two versions coincide
       again.
     -->
-    <ProGpuWpfLibreWinFormsPackageVersion>0.1.0-preview.65</ProGpuWpfLibreWinFormsPackageVersion>
+    <ProGpuWpfLibreWinFormsPackageVersion>0.1.0-preview.69</ProGpuWpfLibreWinFormsPackageVersion>
     <ProGpuWpfUseCanonicalLibreWinForms>true</ProGpuWpfUseCanonicalLibreWinForms>
 
-    <!--
-      The published LibreWPF.Sdk 0.1.0-preview.65 package's Sdk/LibreWPF.Sdk.Version.props pins
-      ProGpuPackageVersion to 0.1.0-preview.63, while its own LibreWPF.ProGPU 0.1.0-preview.65
-      dependency requires ProGPU.* >= 0.1.0-preview.65, so restore fails with NU1605. Override it
-      here (Directory.Build.props is imported after the SDK props). Delete once the SDK is fixed.
-    -->
-    <ProGpuPackageVersion>0.1.0-preview.65</ProGpuPackageVersion>
+    <!-- Keep the SDK's ProGPU closure explicit at the same published version. -->
+    <ProGpuPackageVersion>0.1.0-preview.69</ProGpuPackageVersion>
 
     <!--
       Do NOT try to set ProGpuWpfUseCurrentRuntimeIdentifier here - it has no effect, and the
