@@ -47,7 +47,7 @@
   ],
   "buildLast": [
     {
-      "project": "src/Main/SharpDevelop/SharpDevelop.csproj",
+      "project": "src/AddIns/Misc/Terminal/Project/Terminal.csproj",
       "args": [
         "--runtime",
         "{rid}",
@@ -55,12 +55,9 @@
       ]
     },
     {
-      "project": "src/AddIns/Misc/Terminal/Project/Terminal.csproj",
-      "args": [
-        "--runtime",
-        "{rid}",
-        "-p:AppendRuntimeIdentifierToOutputPath=false"
-      ]
+      "project": "src/Main/SharpDevelop/SharpDevelop.csproj",
+      "args": [],
+      "note": "RID-less last: the RID builds above delete the host's mutable package outputs (PresentationFramework, WindowsBase, ...) and the win-x64 transport copy does not put them back, so the host folder ends up holding only the app's own assemblies and the IDE dies at start-up with FileNotFoundException 11.0.0.0. A final RID-less build copies the complete payload. Remove once the SDK copies it for RID builds."
     }
   ],
   "entries": [
@@ -354,7 +351,7 @@
       "batch": 3,
       "lane": "integration-core",
       "kind": "xunit-exe",
-      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0-windows/OpenDevelop.IntegrationTests.dll",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "platforms": {
         "windows-x64": "observe"
       },

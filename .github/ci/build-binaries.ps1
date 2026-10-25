@@ -75,14 +75,19 @@ if ($List) {
 # properties, so record what it looks like at each step (library count, whether the PresentationFramework reference
 # entry is there, when it was written).
 $hostDeps = 'src/Main/SharpDevelop/bin/Debug/net10.0-windows/OpenDevelop.deps.json'
+$hostDir = Split-Path $hostDeps -Parent
 function Get-HostDepsState {
     if (-not (Test-Path $hostDeps)) { return 'absent' }
+    # The folder matters as much as the manifest: a host whose deps.json lists 166 libraries but whose folder holds only
+    # the app's own assemblies dies at start-up with FileNotFoundException, whichever build step emptied it.
+    $dlls = @(Get-ChildItem -LiteralPath $hostDir -Filter *.dll -File -ErrorAction SilentlyContinue).Count
+    $wpf = if (Test-Path (Join-Path $hostDir 'PresentationFramework.dll')) { 'present' } else { 'MISSING' }
     try {
         $json = Get-Content $hostDeps -Raw | ConvertFrom-Json
         $libraries = @($json.libraries.PSObject.Properties.Name)
         $hasReference = [bool]($libraries | Where-Object { $_ -like 'PresentationFramework/*' })
-        return "libs=$($libraries.Count) presentationFrameworkRef=$hasReference written=$((Get-Item $hostDeps).LastWriteTimeUtc.ToString('HH:mm:ss'))Z"
-    } catch { return "unreadable ($($_.Exception.Message))" }
+        return "libs=$($libraries.Count) presentationFrameworkRef=$hasReference folderDlls=$dlls presentationFramework=$wpf written=$((Get-Item $hostDeps).LastWriteTimeUtc.ToString('HH:mm:ss'))Z"
+    } catch { return "unreadable ($($_.Exception.Message)) folderDlls=$dlls presentationFramework=$wpf" }
 }
 
 $rows = @()

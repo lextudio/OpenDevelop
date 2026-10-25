@@ -242,8 +242,10 @@ jobs:
           $key = "nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config') }}"
           Write-Host "cache key: $key"
           "key=$key" | Add-Content -Path $env:GITHUB_OUTPUT
+      # Restore only: the build job owns this entry. This lane starts before that job saves it, so a miss here is normal
+      # and simply means an uncached restore - saving would spend four minutes compressing a duplicate.
       - name: Restore the NuGet package cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ${{ env.NUGET_CACHE_PATH }}
           key: ${{ steps.nuget-key.outputs.key }}
