@@ -1,8 +1,12 @@
-# Compiles, once, everything the enabled plan entries of one platform need.
+# Compiles everything the enabled plan entries need, once per platform (the 'build' job) or once per in-place lane
+# (a lane with 'buildsInLane', which has its own checkout and no build archive).
 #
-#   pwsh .github/ci/build-binaries.ps1 -Platform windows-x64 [-ThroughBatch 3] [-List]
+#   pwsh .github/ci/build-binaries.ps1 -Platform windows-x64 [-ThroughBatch 3] [-Lane unit] [-SkipHostBuilds] [-List]
 #
 # -List prints the build commands in order and exits, which is how to check a plan edit without building.
+# -Lane restricts the build to the entries of one lane; -ArchiveLanesOnly leaves out the entries of lanes that build in
+# place (they compile in their own job); -SkipHostBuilds leaves out both the 'buildFirst' and 'buildLast'
+# projects, which an in-place lane does not need: nothing in it builds an add-in against the host manifest or starts the IDE.
 #
 # The plan's 'buildFirst' projects (the host) are built first, then every distinct 'project' of an enabled entry (Debug,
 # with the entry's 'buildArgs'), then the 'buildLast' projects (the host once more, as the Terminal workflow builds it; see the plan).  Test jobs later run the compiled assemblies without
@@ -11,6 +15,9 @@
 param(
     [Parameter(Mandatory = $true)][string]$Platform,
     [int]$ThroughBatch = -1,
+    [string]$Lane = '',
+    [switch]$ArchiveLanesOnly,
+    [switch]$SkipHostBuilds,
     [switch]$List,
     [string]$PlanPath = (Join-Path $PSScriptRoot 'test-plan.json')
 )
@@ -19,10 +26,17 @@ $ErrorActionPreference = 'Stop'
 $plan = Get-Content $PlanPath -Raw | ConvertFrom-Json
 if ($ThroughBatch -lt 0) { $ThroughBatch = [int]$plan.throughBatch }
 
+# A lane with 'buildsInLane' compiles its own entries in its own job, so the archive build leaves them out.
+$inLaneNames = @($plan.lanes.PSObject.Properties |
+    Where-Object { $_.Value.PSObject.Properties['buildsInLane'] -and $_.Value.buildsInLane } |
+    ForEach-Object { $_.Name })
 $entries = @($plan.entries | Where-Object {
-    $_.batch -le $ThroughBatch -and $_.PSObject.Properties['project'] -and $_.platforms.PSObject.Properties[$Platform] -and $_.platforms.$Platform -in @('observe', 'required')
+    $_.batch -le $ThroughBatch -and $_.PSObject.Properties['project'] -and $_.platforms.PSObject.Properties[$Platform] -and $_.platforms.$Platform -in @('observe', 'required') -and (-not $Lane -or $_.lane -eq $Lane) -and (-not $ArchiveLanesOnly -or $_.lane -notin $inLaneNames)
 })
-if ($entries.Count -eq 0) { throw "No project to build for $Platform up to batch $ThroughBatch." }
+if ($entries.Count -eq 0) {
+    $scope = if ($Lane) { "lane '$Lane'" } elseif ($ArchiveLanesOnly) { 'the archive lanes' } else { 'any lane' }
+    throw "No project to build for $Platform in $scope up to batch $ThroughBatch."
+}
 
 # One build per distinct project.  Entries sharing a project must agree on its build arguments.
 $builds = @()
@@ -37,11 +51,11 @@ $builds = @($builds | Sort-Object { if ($_.Project -like '*OpenDevelop.Integrati
 
 # The host goes first (see 'buildFirst' in the plan): its build writes the manifest every add-in build trims against.
 $first = @()
-if ($plan.PSObject.Properties['buildFirst']) {
+if (-not $SkipHostBuilds -and $plan.PSObject.Properties['buildFirst']) {
     foreach ($item in @($plan.buildFirst)) { $first += [pscustomobject]@{ Project = $item.project; Args = [string[]]@(); First = $true } }
 }
 $last = @()
-if ($plan.PSObject.Properties['buildLast']) {
+if (-not $SkipHostBuilds -and $plan.PSObject.Properties['buildLast']) {
     $platformEntry = $plan.platforms.PSObject.Properties[$Platform]
     $rid = if ($platformEntry -and $platformEntry.Value.PSObject.Properties['rid']) { [string]$platformEntry.Value.rid } else { '' }
     foreach ($item in @($plan.buildLast)) {

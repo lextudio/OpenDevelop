@@ -2,38 +2,53 @@ name: CI
 
 # One workflow for the local test suites that .github/ci/test-plan.json has switched on.
 #
-#   plan   -> reads the plan and emits the two job matrices
-#   build  -> per platform, compiles everything the enabled entries need exactly once and uploads the workspace (and the NuGet cache)
-#   test   -> per (platform, lane), downloads that workspace and runs the lane's test assemblies; no restore, no compile
+#   plan       -> reads the plan and emits the job matrices (and the one lane that builds in place)
+#   build      -> per platform, compiles everything the enabled archive lanes need exactly once, uploads the workspace
+#   test       -> per (platform, lane) that consumes that archive, unpacks it and runs the lane's assemblies
+#   in-place   -> the one lane whose definition says 'buildsInLane': its own checkout, no archive, so it reports
+#                 early instead of waiting for the platform build
 #
 # Lanes run in parallel, each on its own fresh machine, so they cannot interfere through ports, config directories
 # or temp files; the entries inside a lane run one after another.  What runs is decided by the plan, not by this file:
-# enabling more tests is a reviewed edit of the plan (a new batch starts as 'observe').  The Terminal journeys and the
-# Profiler tests still have their own workflows and are listed in the plan as excluded until they are folded in.
+# enabling more tests is a reviewed edit of the plan (a new batch starts as 'observe').  The Profiler tests and the
+# Terminal journey are plan entries now; their own workflows are gone.
 on:
   push:
     branches: [master]
     paths-ignore:
       - 'doc/**'
       - '**/*.md'
+      - 'images/**'
+      - 'build/macos/**'
   pull_request:
     paths-ignore:
       - 'doc/**'
       - '**/*.md'
+      - 'images/**'
+      - 'build/macos/**'
   workflow_dispatch:
     inputs:
       through_batch:
         description: Run plan entries up to this batch (empty = the plan's throughBatch).
         required: false
         default: ''
+      diagnose:
+        description: Run the temporary IDE host diagnostics (build and test jobs).
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
-# A newer push supersedes an older run for the same PR or branch.
+# A newer pull request run supersedes an older one.  Master runs are not cancelled: a 40-minute run that is thrown away
+# by the next push never produced a result anyone could read.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NUGET_CACHE_PATH: ~/.nuget/packages
 
 jobs:
   plan:
@@ -42,6 +57,12 @@ jobs:
     outputs:
       build_matrix: ${{ steps.matrix.outputs.build_matrix }}
       lane_matrix: ${{ steps.matrix.outputs.lane_matrix }}
+      has_in_lane: ${{ steps.matrix.outputs.has_in_lane }}
+      in_lane_name: ${{ steps.matrix.outputs.in_lane_name }}
+      in_lane_platform: ${{ steps.matrix.outputs.in_lane_platform }}
+      in_lane_runner: ${{ steps.matrix.outputs.in_lane_runner }}
+      in_lane_architecture: ${{ steps.matrix.outputs.in_lane_architecture }}
+      in_lane_timeout: ${{ steps.matrix.outputs.in_lane_timeout }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -63,28 +84,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.build_matrix) }}
+    # The IDE lanes restore the same cache entry, so the key is computed once here and handed to them.
+    outputs:
+      nuget_cache_key: ${{ steps.nuget-key.outputs.key }}
     steps:
       - uses: actions/checkout@v4
         with:
           # The build stamps its version from git history (GitVersion).
           fetch-depth: 0
-      # Everything the enabled entries compile.  The ProjectReference closure of the integration test project reaches
-      # AvalonEdit, AvalonDock, cps, WPF Toolkit and vscode-wpf (with its nested WpfDesigner/wxsg); the debugger,
-      # coverage and XAML submodules are small and kept in case a build target uses them directly.  The AspNetCore
-      # add-in compiles four source files straight out of externals/monodevelop (a Compile Include, which a
-      # ProjectReference closure does not show), so that one is initialised too, shallow and without its own
-      # submodules; its sources stay out of the workspace archive.  monodevelop-nuget-extensions is not used.
       - name: Initialize the submodules the build needs
-        run: |
-          git submodule update --init src/Libraries/AvalonEdit src/Libraries/AvalonDock externals/wpftoolkit externals/sharpdbg externals/xamlstudio externals/altcover externals/vsmac-codecoverage
-          git submodule update --init --recursive externals/cps externals/vscode-wpf
-          git submodule update --init --depth 1 externals/monodevelop
+        shell: bash
+        run: bash .github/ci/init-submodules.sh
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
           architecture: ${{ matrix.dotnet_architecture }}
-      # The repository pins LibreWPF preview.65 for local development, where the developer-local
-      # feed ../openavalon/artifacts/local-feed supplies it; the runner has no such folder.
+      # The repository pins LibreWPF preview.65 for local development, where the developer-local feed
+      # ../openavalon/artifacts/local-feed supplies it; the runner has no such folder.
       - name: Skip the developer-local LibreWPF feed
         shell: pwsh
         run: |
@@ -93,6 +109,22 @@ jobs:
           $mapping = @($config.configuration.packageSourceMapping.packageSource | Where-Object key -eq 'librewpf-local')
           foreach ($node in $source + $mapping) { [void]$node.ParentNode.RemoveChild($node) }
           $config.Save((Resolve-Path NuGet.config))
+      - id: nuget-key
+        name: Compute the package cache key
+        shell: pwsh
+        run: |
+          $key = "nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config') }}"
+          Write-Host "cache key: $key"
+          "key=$key" | Add-Content -Path $env:GITHUB_OUTPUT
+      # The package folder is the same cache entry the IDE lanes restore: restoring it here is what makes the
+      # compile cheap, and saving it once per key keeps those lanes from re-resolving every package.
+      - name: Restore the NuGet package cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NUGET_CACHE_PATH }}
+          key: ${{ steps.nuget-key.outputs.key }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
       - name: Compile everything the enabled entries need, once
         shell: pwsh
         env:
@@ -100,11 +132,11 @@ jobs:
         run: |
           $through = -1
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
-          ./.github/ci/build-binaries.ps1 -Platform '${{ matrix.name }}' -ThroughBatch $through
-      # TEMPORARY, remove with the diagnose step in the test job: starts the host right after compiling, before it is
-      # archived, to tell a build-output problem from an archive/extract problem (the Terminal workflow's in-place host starts).
+          ./.github/ci/build-binaries.ps1 -Platform '${{ matrix.name }}' -ArchiveLanesOnly -ThroughBatch $through
+      # TEMPORARY: starts the host right after compiling, before it is archived, to tell a build-output problem from an
+      # archive/extract problem. Run it with the 'diagnose' input; remove it with the matching test-job step.
       - name: Diagnose the freshly built IDE host (before packing)
-        continue-on-error: true
+        if: inputs.diagnose
         shell: pwsh
         run: ./.github/ci/diagnose-host.ps1
       - name: Pack the workspace
@@ -115,19 +147,6 @@ jobs:
           name: workspace-${{ matrix.name }}
           path: ${{ runner.temp }}/archive/
           # The archive is compressed already; a second pass only costs time.
-          compression-level: 0
-          retention-days: 1
-          if-no-files-found: error
-      # The IDE host is not self-contained: at run time it resolves the LibreWPF assemblies from the global packages
-      # folder, so a lane that starts the IDE needs that folder too.  It is a separate artifact so the lanes that do
-      # not start the IDE (unit) do not download it.
-      - name: Pack the NuGet package cache
-        shell: pwsh
-        run: ./.github/ci/package-workspace.ps1 -Kind NuGetCache -Platform '${{ matrix.name }}' -Directory '${{ runner.temp }}/nuget-archive'
-      - uses: actions/upload-artifact@v4
-        with:
-          name: nuget-${{ matrix.name }}
-          path: ${{ runner.temp }}/nuget-archive/
           compression-level: 0
           retention-days: 1
           if-no-files-found: error
@@ -152,24 +171,22 @@ jobs:
       - name: Unpack the workspace built by the build job
         shell: pwsh
         run: ./.github/ci/package-workspace.ps1 -Extract -Directory '${{ runner.temp }}/archive'
-      - uses: actions/download-artifact@v4
-        if: matrix.needs_nuget_cache
-        with:
-          name: nuget-${{ matrix.platform }}
-          path: ${{ runner.temp }}/nuget-archive
-      - name: Unpack the NuGet package cache
-        if: matrix.needs_nuget_cache
-        shell: pwsh
-        run: ./.github/ci/package-workspace.ps1 -Extract -Kind NuGetCache -Directory '${{ runner.temp }}/nuget-archive'
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
           architecture: ${{ matrix.dotnet_architecture }}
-      # TEMPORARY, remove once the integration lane starts: the first integration runs died at IDE start-up with a
-      # FileNotFoundException for PresentationFramework 11.0.0.0 although the file is in the host folder; this prints
-      # what the .NET host actually probed (COREHOST_TRACE) for the direct launch and for the fixture's 'dotnet run'.
-      - name: Diagnose the IDE host start-up
+      # The IDE host is not self-contained: at run time it resolves the LibreWPF assemblies from the global packages
+      # folder, so a lane that starts the IDE needs that folder. Same key the build job saved, and a miss is a failure
+      # rather than a silently slower lane that later dies at start-up.
+      - name: Restore the NuGet package cache
         if: matrix.needs_nuget_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.NUGET_CACHE_PATH }}
+          key: ${{ needs.build.outputs.nuget_cache_key }}
+          fail-on-cache-miss: true
+      - name: Diagnose the IDE host start-up
+        if: matrix.needs_nuget_cache && inputs.diagnose
         shell: pwsh
         run: ./.github/ci/diagnose-host.ps1
       - name: Run the lane
@@ -187,6 +204,74 @@ jobs:
         if: always()
         with:
           name: logs-${{ matrix.lane }}-${{ matrix.platform }}
+          path: ${{ runner.temp }}/od-test-logs
+          if-no-files-found: ignore
+          retention-days: 3
+
+  # The lane whose plan definition says 'buildsInLane'. It has no archive and no dependency on the platform build, so
+  # its result arrives minutes into the run instead of behind the compile-and-pack job. It compiles only its own entries.
+  in-place:
+    name: ${{ needs.plan.outputs.in_lane_name }} (${{ needs.plan.outputs.in_lane_platform }}, in place)
+    needs: plan
+    if: needs.plan.outputs.has_in_lane == 'true'
+    runs-on: ${{ needs.plan.outputs.in_lane_runner }}
+    timeout-minutes: ${{ fromJSON(needs.plan.outputs.in_lane_timeout) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Initialize the submodules the build needs
+        shell: bash
+        run: bash .github/ci/init-submodules.sh
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          architecture: ${{ needs.plan.outputs.in_lane_architecture }}
+      - name: Skip the developer-local LibreWPF feed
+        shell: pwsh
+        run: |
+          [xml]$config = Get-Content NuGet.config
+          $source = @($config.configuration.packageSources.add | Where-Object key -eq 'librewpf-local')
+          $mapping = @($config.configuration.packageSourceMapping.packageSource | Where-Object key -eq 'librewpf-local')
+          foreach ($node in $source + $mapping) { [void]$node.ParentNode.RemoveChild($node) }
+          $config.Save((Resolve-Path NuGet.config))
+      - id: nuget-key
+        name: Compute the package cache key
+        shell: pwsh
+        run: |
+          $key = "nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config') }}"
+          Write-Host "cache key: $key"
+          "key=$key" | Add-Content -Path $env:GITHUB_OUTPUT
+      - name: Restore the NuGet package cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NUGET_CACHE_PATH }}
+          key: ${{ steps.nuget-key.outputs.key }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+      # No host builds: nothing in this lane builds an add-in against the host manifest or starts the IDE.
+      - name: Compile this lane's entries
+        shell: pwsh
+        env:
+          THROUGH_BATCH: ${{ inputs.through_batch }}
+        run: |
+          $through = -1
+          if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
+          ./.github/ci/build-binaries.ps1 -Platform '${{ needs.plan.outputs.in_lane_platform }}' -Lane '${{ needs.plan.outputs.in_lane_name }}' -SkipHostBuilds -ThroughBatch $through
+      - name: Run the lane
+        shell: pwsh
+        env:
+          THROUGH_BATCH: ${{ inputs.through_batch }}
+          OD_TEST_LOG_DIR: ${{ runner.temp }}/od-test-logs
+          OD_TEST_KEEP_ARTIFACTS: '1'
+        run: |
+          $through = -1
+          if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
+          ./.github/ci/run-test-plan.ps1 -Platform '${{ needs.plan.outputs.in_lane_platform }}' -Lane '${{ needs.plan.outputs.in_lane_name }}' -ThroughBatch $through
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: logs-${{ needs.plan.outputs.in_lane_name }}-in-place
           path: ${{ runner.temp }}/od-test-logs
           if-no-files-found: ignore
           retention-days: 3

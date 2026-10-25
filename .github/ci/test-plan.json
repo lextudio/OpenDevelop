@@ -13,10 +13,14 @@
     "'buildFirst' projects are built before everything else on every platform that builds: the host's build writes the host-assembly manifest that lets every add-in trim what the host already ships (without it each add-in carries ~550 MB of copy-local dependencies and AddIns reaches 13 GB); tests/OpenDevelop.IntegrationTests/TESTING.md says the same: build the application first.",
     "'buildArgs' are extra dotnet build arguments for the entry's 'project'; entries that share a project must agree on them.  The integration project is built with -p:BuildIntegrationFixtures=false because its fixture target builds every fixture inside one MSBuild process (Uno.Sdk 6.6.42 then clashes with the already resolved 6.5.31, MSB4240); a lane that needs a fixture lists that fixture's own csproj as an entry 'project' so it builds in its own process.",
     "A lane with 'needsNuGetCache' also downloads the build job's NuGet package cache: the IDE host resolves its LibreWPF assemblies from the global packages folder at run time, so a lane that starts the IDE (the integration lanes) needs it; the unit lane does not.",
-    "'buildLast' projects are built after everything else, with their own 'args' ('{rid}' is the platform's 'rid').  The host is built last with '--runtime <rid> -p:AppendRuntimeIdentifierToOutputPath=false', the recipe terminal-cross-platform.yml uses (it builds the Terminal add-in that way, which builds the host project it references as that RID into the same folder) and whose IDE does start on the Windows runner.  Measured on the runner without it: the host's OpenDevelop.deps.json is 166 libraries without a 'PresentationFramework/11.0.0.0' reference entry from the very first host build on, whatever is built afterwards in the default way (a macOS build has 193, with 28 'reference' entries for the LibreWPF assemblies), and the IDE dies at start-up with a FileNotFoundException for PresentationFramework 11.0.0.0.  The build summary records the host deps.json after every build, so the run shows what the RID-specific build changes."
+    "'buildLast' projects are built after everything else, with their own 'args' ('{rid}' is the platform's 'rid').  The host is built last with '--runtime <rid> -p:AppendRuntimeIdentifierToOutputPath=false', the recipe terminal-cross-platform.yml uses (it builds the Terminal add-in that way, which builds the host project it references as that RID into the same folder) and whose IDE does start on the Windows runner.  Measured on the runner without it: the host's OpenDevelop.deps.json is 166 libraries without a 'PresentationFramework/11.0.0.0' reference entry from the very first host build on, whatever is built afterwards in the default way (a macOS build has 193, with 28 'reference' entries for the LibreWPF assemblies), and the IDE dies at start-up with a FileNotFoundException for PresentationFramework 11.0.0.0.  The build summary records the host deps.json after every build, so the run shows what the RID-specific build changes.",
+    "A lane definition holds 'timeoutMinutes', optionally 'needsNuGetCache' (the IDE host resolves its LibreWPF assemblies from the global packages folder at run time) and optionally 'buildsInLane'.",
+    "Profiler and Terminal are entries here; their own workflows (profiler.yml, terminal-cross-platform.yml) were deleted when they were folded in. Only Windows x64 is enabled: the other platforms recorded in platformNotes come back as their own entries."
   ],
   "platformNotes": {
-    "macos-arm64": "Skipped for now: the Terminal journeys fail there on LibreWPF's Display text capability.  Add the platform back to 'platforms' and to entries to re-enable it."
+    "macos-arm64": "Skipped for now: the Terminal journeys fail there on LibreWPF's Display text capability, and profiler.yml's macOS matrix retired with that workflow. Add the platform back to 'platforms' and to entries to re-enable it.",
+    "windows-x64": "The only enabled platform. Profiler and Terminal were folded in from their own workflows; the Terminal lane builds the add-in as win-x64 in buildLast, the way its workflow did.",
+    "linux-x64": "Not enabled yet: profiler.yml ran the Profiler tests on ubuntu-latest and passed; it comes back as this platform's first entry when the platform is added."
   },
   "throughBatch": 3,
   "platforms": {
@@ -28,7 +32,8 @@
   },
   "lanes": {
     "unit": {
-      "timeoutMinutes": 20
+      "timeoutMinutes": 30,
+      "buildsInLane": true
     },
     "integration-core": {
       "timeoutMinutes": 45,
@@ -43,6 +48,14 @@
   "buildLast": [
     {
       "project": "src/Main/SharpDevelop/SharpDevelop.csproj",
+      "args": [
+        "--runtime",
+        "{rid}",
+        "-p:AppendRuntimeIdentifierToOutputPath=false"
+      ]
+    },
+    {
+      "project": "src/AddIns/Misc/Terminal/Project/Terminal.csproj",
       "args": [
         "--runtime",
         "{rid}",
@@ -326,25 +339,36 @@
     },
     {
       "id": "profiler-tests",
-      "batch": 0,
+      "batch": 3,
       "lane": "unit",
       "kind": "xunit-exe",
-      "target": "tests/OpenDevelop.Profiler.Tests",
+      "target": "tests/OpenDevelop.Profiler.Tests/bin/Debug/net10.0/OpenDevelop.Profiler.Tests.dll",
       "platforms": {
-        "windows-x64": "excluded"
+        "windows-x64": "observe"
       },
-      "reason": "Still runs in .github/workflows/profiler.yml; moves here when that workflow is folded in."
+      "project": "tests/OpenDevelop.Profiler.Tests/OpenDevelop.Profiler.Tests.csproj",
+      "note": "The data layer attaches to a real .NET process, so it needs no IDE host and shares the unit lane. Its cross-platform matrix (Linux and macOS) was retired with profiler.yml and comes back as platform entries."
     },
     {
       "id": "terminal-integration",
-      "batch": 0,
+      "batch": 3,
       "lane": "integration-core",
       "kind": "xunit-exe",
-      "target": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0-windows/OpenDevelop.IntegrationTests.dll",
       "platforms": {
-        "windows-x64": "excluded"
+        "windows-x64": "observe"
       },
-      "reason": "TerminalCrossPlatformTests still runs in .github/workflows/terminal-cross-platform.yml; moves here when that workflow is folded in."
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.TerminalCrossPlatformTests",
+        "-parallel",
+        "none"
+      ],
+      "note": "Windows x64 only: the Terminal add-in needs the platform RID build in buildLast, and the macOS journey failed on LibreWPF's Display text capability (see platformNotes).",
+      "buildArgs": [
+        "-p:BuildIntegrationFixtures=false"
+      ]
     }
   ]
 }
