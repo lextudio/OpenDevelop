@@ -338,33 +338,57 @@ and the caret line is non-zero and inside the document. The action exercises the
 
 SharpIDE's Eval window is an editor with C# highlighting and completion that evaluates in the
 current frame. OpenDevelop's equivalent is the **Debug Console** pad (`ConsolePadViewModel`):
-`WindowsDebugger.EvaluateAsync(code, "repl")` evaluates through the DAP `evaluate` request and
-`DebuggerDotCompletion` offers dot-completion from the Roslyn language service.
+`WindowsDebugger.EvaluateAsync(code, "repl")` evaluates through the DAP `evaluate` request.
 
 #### Gaps
 
-- The console never calls `ConsolePadCore.SetHighlighting`, so input is plain text.
-- Dot-completion needs a file to resolve context against; with an external or decompiled frame
-  (`FilePath` empty) it silently does nothing.
-- The console state is not observable from DevFlow.
+- The console never called `ConsolePadCore.SetHighlighting`, so input was plain text.
+- **Completion never worked.** `ConsolePadViewModel` (and `AutoCompleteTextBox`, the Watch pad and
+  breakpoint-condition editor) asked `DebuggerDotCompletion` for a binding from
+  `SD.LanguageService.GetLanguageByExtension(".cs").CreateCompletionBinding(...)`. On the C# binding
+  that method is a stub that always returns null (`CSharpLanguageBinding.cs`; completion for real
+  editors is driven by `RoslynCodeCompletionBinding`, registered separately), so no completion
+  window was ever shown, in any frame. An earlier revision of this note wrongly listed completion as
+  already present.
+- The console state was not observable from DevFlow.
 
 #### Design
 
 - Call `core.SetHighlighting("C#")` when the pad is created.
-- **Not implemented yet:** when the current frame has no file, resolve completion context against
-  the active document's project instead of returning (`SD.ParserService.ResolveContext` on the
-  solution's startup file). `ConsolePadViewModel.AbstractConsolePadTextEntered` still returns early
-  for a frame without `FilePath`, so dot-completion stays off in an opened external frame.
+- Completion goes through the language-service contract that `RoslynCodeCompletionBinding` uses
+  (`LanguageServiceRegistry`, `UpsertDocumentAsync`, `GetCompletionsAsync`), because these editors
+  hold no file of their own. `DebuggerDotCompletion.GetCompletionsAsync(file, line, expression)`
+  upserts a copy of the context frame's source file (the open editor's live text, else the file)
+  with `expression;` inserted at the start of the frame's line, so the frame's locals and the
+  enclosing type are in scope, asks for completions right after the expression, and always puts the
+  file's current text back (`finally`, re-read so an edit made meanwhile is not reverted). `ShowCompletionAsync` then shows the window with
+  `LanguageServiceCompletionItemList` unless the typed text changed meanwhile. The console, the
+  Watch/condition `AutoCompleteTextBox` and the DevFlow action share it. A statement spanning several
+  lines is entered at the frame's reported line, so context is best-effort there.
+- The context frame (`WindowsDebugger.GetCompletionContextFrameAsync`) is the current frame when it
+  has real source and is not external; otherwise the first caller with `!IsExternalCode` and a
+  `FilePath`, so completion keeps working after an external frame is opened. That frame's own
+  locals are not completable (they live in the decompiled code), but names of the user caller are.
 - `od.debug.console-state` reports the pad's `Text` and the name of the highlighting attached to the
   real editor; `od.debug.console-eval` runs a command through the console's evaluate path and
-  returns the console text, so a test reads state rather than pixels.
+  returns the console text; `od.debug.console-completions` returns the context frame and the
+  completion labels for an expression; `od.debug.console-type-dot` types an expression ending in `.`
+  into the console and reports whether the completion popup appeared, so a test reads state rather
+  than pixels.
 
 #### Tests
 
 `DebuggerFeatureIntegrationTests.DebugConsole_HighlightsAndEvaluates`: stop at the `answer`
 breakpoint, assert highlighting is attached, evaluate `answer + 1` through
 `od.debug.console-eval` (the same `AcceptCommand` path) and assert `43` is appended to the
-console.
+console. `ExternalFrame_ConsoleCompletionResolvesInTheNearestUserFrame` stops in the `Select` lambda,
+checks `numbers.` completes to a list containing `Length` in that frame, opens the `System.Linq`
+frame and checks the context is now the caller `Main` in `Program.cs` (a different line) and the
+same expression still completes to `Length`. It then types `numbers.` into the console through
+`od.debug.console-type-dot` (the code path typing `.` runs) and asserts the console editor shows a
+completion popup with a selected item; the console's editor is created by
+`SD.EditorControlService.CreateEditor`, i.e. the `CodeCompletionEditorAdapter` that implements
+`ShowCompletionWindow` (the base adapter returns null).
 
 #### Verification record
 

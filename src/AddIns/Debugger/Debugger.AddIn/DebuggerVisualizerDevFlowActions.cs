@@ -126,6 +126,37 @@ namespace Debugger.AddIn
 			return JsonSerializer.Serialize(new { success = true, text = vm.ConsoleText });
 		}
 
+		[DevFlowAction("od.debug.console-completions", Description = "Debug Console dot-completion for an expression (include the trailing '.'): which stack frame (file, line, method) it resolves in and the completion labels - the same path typing '.' takes")]
+		public static async System.Threading.Tasks.Task<string> ConsoleCompletions(string expression = "")
+		{
+			var vm = ICSharpCode.SharpDevelop.Gui.Pads.ConsolePad.ViewModel;
+			if (vm == null) {
+				new ICSharpCode.SharpDevelop.Gui.Pads.ConsolePad();
+				vm = ICSharpCode.SharpDevelop.Gui.Pads.ConsolePad.ViewModel;
+			}
+			var (frame, result) = await vm.GetCompletionsAsync(expression);
+			return JsonSerializer.Serialize(new {
+				hasContext = frame != null,
+				file = frame?.FilePath,
+				line = frame?.Line ?? 0,
+				frame = frame?.Name,
+				count = result?.Items.Count ?? 0,
+				labels = result?.Items.Select(i => i.InsertionText).Take(400).ToArray() ?? new string[0]
+			});
+		}
+
+		[DevFlowAction("od.debug.console-type-dot", Description = "Type an expression ending in '.' into the Debug Console and run the path typing '.' takes; report whether the console editor now shows a completion popup and its selected item (the popup is closed again)")]
+		public static async System.Threading.Tasks.Task<string> ConsoleTypeDot(string expression)
+		{
+			var vm = ICSharpCode.SharpDevelop.Gui.Pads.ConsolePad.ViewModel;
+			if (vm == null) {
+				new ICSharpCode.SharpDevelop.Gui.Pads.ConsolePad();
+				vm = ICSharpCode.SharpDevelop.Gui.Pads.ConsolePad.ViewModel;
+			}
+			var (shown, selected) = await vm.TypeDotForTestAsync(expression);
+			return JsonSerializer.Serialize(new { popupShown = shown, selected });
+		}
+
 		[DevFlowAction("od.debug.add-logpoint", Description = "Add a logpoint (a breakpoint that logs a message with {expr} interpolation and continues) at file:line")]
 		public static string AddLogpoint(string filePath, int line, string message)
 		{

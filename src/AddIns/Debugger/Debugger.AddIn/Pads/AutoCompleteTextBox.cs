@@ -127,9 +127,8 @@ namespace Debugger.AddIn.Pads.Controls
 					ContextTextLocation = new TextLocation(frame.Line, frame.Column);
 				}
 				if (ContextFileName == null) return;
-				var binding = DebuggerDotCompletion.PrepareDotCompletion(editor.Text.Substring(0, editor.CaretOffset), SD.ParserService.ResolveContext(ContextFileName, ContextTextLocation));
-				if (binding == null) return;
-				binding.HandleKeyPressed(editorAdapter, '.');
+				DebuggerDotCompletion.ShowCompletionAsync(editorAdapter, () => editor.Text.Substring(0, editor.CaretOffset),
+					ContextFileName, ContextTextLocation.Line).FireAndForget();
 			}
 		}
 		

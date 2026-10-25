@@ -683,6 +683,27 @@ namespace ICSharpCode.SharpDevelop.Services
 			return await CurrentSession.EvaluateAsync(expression, frameId, context).ConfigureAwait(false);
 		}
 
+		/// <summary>
+		/// The frame whose source file and position give the language service a context to resolve
+		/// completion in. The current frame when it has real source; otherwise (an opened external or
+		/// decompiled frame) the nearest user-code frame among its callers, so dot-completion in the
+		/// Eval console keeps working there. Null when the stack has no user-code frame.
+		/// </summary>
+		public static async Task<DapStackFrameInfo> GetCompletionContextFrameAsync()
+		{
+			var current = CurrentStackFrame;
+			if (current != null && !current.IsExternalCode && current.DecompiledSource == null && !string.IsNullOrEmpty(current.FilePath))
+				return current;
+
+			var session = CurrentSession;
+			var thread = CurrentThread;
+			if (session == null || thread == null || !session.IsPaused)
+				return null;
+			var frames = await session.GetStackFramesAsync(thread.Id).ConfigureAwait(true);
+			int start = current != null ? Math.Max(0, frames.ToList().FindIndex(f => f.Id == current.Id)) : 0;
+			return frames.Skip(start).FirstOrDefault(f => !f.IsExternalCode && !string.IsNullOrEmpty(f.FilePath));
+		}
+
 		/// <summary>Outcome of <see cref="OpenFrameAsync"/>.</summary>
 		public sealed class OpenFrameResult
 		{

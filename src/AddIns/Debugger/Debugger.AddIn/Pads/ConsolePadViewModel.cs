@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Linq;
 using System.Windows.Controls;
 using System.Windows.Input;
 
@@ -106,18 +107,56 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 			}
 		}
 
-		void AbstractConsolePadTextEntered(TextCompositionEventArgs e)
+		async void AbstractConsolePadTextEntered(TextCompositionEventArgs e)
 		{
 			if (e.Text != ".")
 				return;
-			var frame = WindowsDebugger.CurrentStackFrame;
-			if (frame == null || string.IsNullOrEmpty(frame.FilePath))
-				return;
-			var fileName = new FileName(frame.FilePath);
-			var textLocation = new TextLocation(frame.Line, frame.Column);
-			var binding = DebuggerDotCompletion.PrepareDotCompletion(core.Console.CommandText, SD.ParserService.ResolveContext(fileName, textLocation));
-			if (binding == null) return;
-			binding.HandleKeyPressed(core.Console.TextEditor, '.');
+			await ShowDotCompletionAsync().ConfigureAwait(true);
+		}
+
+		/// <summary>What typing '.' in the console does: complete the command text in the context frame.</summary>
+		async System.Threading.Tasks.Task ShowDotCompletionAsync()
+		{
+			try {
+				var frame = await WindowsDebugger.GetCompletionContextFrameAsync().ConfigureAwait(true);
+				if (frame == null)
+					return;
+				await DebuggerDotCompletion.ShowCompletionAsync(core.Console.TextEditor, () => core.Console.CommandText,
+					new FileName(frame.FilePath), frame.Line).ConfigureAwait(true);
+			} catch (Exception ex) {
+				// Reached from an async void handler: nothing above can observe a failure.
+				LoggingService.Warn("Debugger: dot-completion in the console failed", ex);
+			}
+		}
+
+		/// <summary>
+		/// Types <paramref name="expression"/> (ending in '.') into the console and runs the very path
+		/// typing '.' takes, then reports the completion popup the console editor now shows (and its selected item)
+		/// (DevFlow "od.debug.console-type-dot").
+		/// </summary>
+		internal async System.Threading.Tasks.Task<(bool Shown, string Selected)> TypeDotForTestAsync(string expression)
+		{
+			core.Console.CommandText = expression;
+			await ShowDotCompletionAsync().ConfigureAwait(true);
+			var window = core.Console.TextEditor.ActiveCompletionWindow;
+			string selected = window?.SelectedItem?.Text;
+			window?.Close();
+			return (window != null, selected);
+		}
+
+		/// <summary>
+		/// Completions for <paramref name="expression"/> in the context of
+		/// <see cref="WindowsDebugger.GetCompletionContextFrameAsync"/> (DevFlow
+		/// "od.debug.console-completions"): the frame used and the completion result, both null when
+		/// no frame with source is available.
+		/// </summary>
+		internal async System.Threading.Tasks.Task<(DapStackFrameInfo Frame, ICSharpCode.SharpDevelop.LanguageServices.CompletionResult Result)> GetCompletionsAsync(string expression)
+		{
+			var frame = await WindowsDebugger.GetCompletionContextFrameAsync().ConfigureAwait(true);
+			if (frame == null)
+				return (null, null);
+			var result = await DebuggerDotCompletion.GetCompletionsAsync(new FileName(frame.FilePath), frame.Line, expression).ConfigureAwait(true);
+			return (frame, result);
 		}
 
 		public ITextEditor TextEditor => core.TextEditor;

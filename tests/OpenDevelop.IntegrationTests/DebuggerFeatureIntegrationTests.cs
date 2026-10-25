@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Linq;
 using System.Text.Json;
 
 using Xunit;
@@ -194,6 +195,58 @@ public sealed class DebuggerFeatureIntegrationTests
             var caretText = opened.GetProperty("caretLineText").GetString()!;
             Assert.Contains("func(", caretText, StringComparison.Ordinal);
             Assert.True(caretLine > 1, opened.ToString());
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.debug.stop");
+        }
+    }
+
+    // doc/technotes/debugging.md, "Eval window": dot-completion keeps working once an external frame is open.
+    [Fact]
+    public async Task ExternalFrame_ConsoleCompletionResolvesInTheNearestUserFrame()
+    {
+        var program = ProgramPath;
+        var line = FindLine(program, "var twice = n * 2;");
+
+        await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+        await _app.InvokeAsync("od.open-file", program);
+        await _app.InvokeAsync("od.debug.clear-breakpoints");
+        await _app.InvokeAsync("od.debug.set-breakpoint", program, line);
+
+        try
+        {
+            var start = await _app.InvokeAsync("od.debug.start", _app.DebugTestProjectPath, true, 45);
+            Assert.True(start.GetProperty("stopped").GetBoolean(), start.ToString());
+
+            // A frame with real source is its own completion context, and `numbers.` (an int[] local of
+            // Main, captured by the lambda) completes to array members.
+            var own = await _app.InvokeAsync("od.debug.console-completions", "numbers.");
+            Assert.True(own.GetProperty("hasContext").GetBoolean(), own.ToString());
+            Assert.EndsWith("Program.cs", own.GetProperty("file").GetString());
+            Assert.Equal(line, own.GetProperty("line").GetInt32());
+            Assert.Contains("Length", own.GetProperty("labels").EnumerateArray().Select(l => l.GetString()), StringComparer.Ordinal);
+
+            // Open the sourceless System.Linq frame (what a double-click does): the context becomes
+            // the nearest user-code caller instead of nothing, and the same expression still completes.
+            var opened = await _app.InvokeAsync("od.debug.open-frame", "external");
+            Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+            var inherited = await _app.InvokeAsync("od.debug.console-completions", "numbers.");
+            Assert.True(inherited.GetProperty("hasContext").GetBoolean(), inherited.ToString());
+            Assert.EndsWith("Program.cs", inherited.GetProperty("file").GetString());
+            Assert.Contains("Main", inherited.GetProperty("frame").GetString());
+            Assert.NotEqual(line, inherited.GetProperty("line").GetInt32());
+            Assert.Contains("Length", inherited.GetProperty("labels").EnumerateArray().Select(l => l.GetString()), StringComparer.Ordinal);
+
+            // The real path: typing '.' into the console shows the completion popup with the items. The
+            // result labels above would pass even if the console editor showed nothing, so check it.
+            var typed = await _app.InvokeAsync("od.debug.console-type-dot", "numbers.");
+            Assert.True(typed.GetProperty("popupShown").GetBoolean(), typed.ToString());
+            Assert.False(string.IsNullOrEmpty(typed.GetProperty("selected").GetString()), typed.ToString());
+
+            // The source document the completion borrowed was put back: the editor text is unchanged.
+            var fileText = File.ReadAllText(program);
+            Assert.DoesNotContain("numbers.;", fileText);
         }
         finally
         {
