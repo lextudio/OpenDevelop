@@ -106,18 +106,27 @@ All ten `integration-core` entries fail in `OpenDevelopAppFixture.InitializeAsyn
 `dotnet OpenDevelop.dll` by hand on the runner reproduces it (the temporary `diagnose-host.ps1` step), so it is the host
 folder, not the test fixture or the lane.
 
-Ruled out by inspecting the uploaded workspace archive: the file is there (`PresentationFramework.dll`, assembly version
-11.0.0.0, same identity as on a developer machine); `OpenDevelop.runtimeconfig.json` matches a developer build; restoring the
-NuGet package cache in the test job changed nothing (the earlier theory that it was the missing piece was wrong).
+What was measured, and so ruled out:
 
-What does differ: the CI `OpenDevelop.deps.json` has 167 libraries against 193 on a developer machine, has no
-`PresentationFramework/11.0.0.0` reference entry, and was written about four minutes after `OpenDevelop.dll`. The cause that
-fits: many add-ins have a `ProjectReference` to `src/Main/SharpDevelop/SharpDevelop.csproj` (`Private=false`), and the integration
-project builds them with `ProGpuWpfUseCurrentRuntimeIdentifier=false;NoRestore=true`, so the host project is built a second
-time with those properties into the same folder and rewrites its `deps.json`. The Terminal workflow, which starts the IDE fine on
-Windows, builds the integration project with `BuildIntegrationRuntimeProjects=false` and never triggers that second build.
+* The file is there: `PresentationFramework.dll`, assembly identity 11.0.0.0, same as on a developer machine.
+* The NuGet package cache is not the missing piece: restoring it in the test job left the error unchanged.
+* The .NET host's own trace (`COREHOST_TRACE`) shows `PresentationFramework.dll` resolved from the host folder and present in
+  `TRUSTED_PLATFORM_ASSEMBLIES`. So the failure is not "not registered" and not "wrong path": the runtime has the path and
+  still fails to load the file.
+* Build order alone does not matter: the host's `OpenDevelop.deps.json` is 166 libraries without a `PresentationFramework/11.0.0.0`
+  entry from the very first host build on the runner, and stays that way whatever is built afterwards in the default way (the
+  build summary records it after every build). An earlier theory (add-ins that reference the host project rebuild it with other
+  properties and rewrite `deps.json`) was wrong.
 
-Attempted fix (not yet confirmed): the plan's `buildLast` builds the host once more after everything else, with its own
-properties; `build-binaries.ps1` prints the host `deps.json` state (library count, whether the `PresentationFramework`
-reference entry is there, write time) after every build, so the run itself shows which build changes it. If the lane starts,
-this section becomes a description of the cause; if it does not, the diagnostic step's trace output is the next thing to read.
+What does differ from a developer (macOS) build: 193 libraries with 28 `reference` entries for the LibreWPF assemblies
+(`PresentationCore`, `PresentationFramework`, `WindowsBase`, `System.Xaml`, ...); the Windows build registers them only inside the
+`LibreWPF.Transport` package entry. The Terminal workflow starts the IDE on Windows, with a differently built host (the integration
+project is built there with `BuildIntegrationRuntimeProjects=false`).
+
+Next, two things at once. The plan's `buildLast` now builds the host a last time with `--runtime win-x64
+-p:AppendRuntimeIdentifierToOutputPath=false`, the recipe the Terminal workflow's passing Windows lane gets by building the Terminal
+add-in that way (the add-in references the host project, so the host is built as that RID into the same folder); the build summary
+shows what that does to the host `deps.json`. And the `Diagnose the IDE host start-up` step (temporary) loads `WindowsBase`,
+`PresentationCore` and `PresentationFramework` by path with `dotnet fsi` (its own `WindowsBase` facade makes the type-load errors
+noisy; read the `LoadFrom` line first) and launches the host once more with `DOTNET_ReadyToRun=0`. Replace this section with the
+answer when it is known.

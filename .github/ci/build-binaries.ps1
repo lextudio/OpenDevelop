@@ -5,7 +5,7 @@
 # -List prints the build commands in order and exits, which is how to check a plan edit without building.
 #
 # The plan's 'buildFirst' projects (the host) are built first, then every distinct 'project' of an enabled entry (Debug,
-# with the entry's 'buildArgs'), then the 'buildLast' projects (the host again, see the plan).  Test jobs later run the compiled assemblies without
+# with the entry's 'buildArgs'), then the 'buildLast' projects (the host once more, as the Terminal workflow builds it; see the plan).  Test jobs later run the compiled assemblies without
 # restoring or building, so anything an entry runs must be produced here.  Per-project durations and the size of the
 # biggest output folders go to the job summary: they are what the packaging step and the lane budgets are judged on.
 param(
@@ -42,7 +42,13 @@ if ($plan.PSObject.Properties['buildFirst']) {
 }
 $last = @()
 if ($plan.PSObject.Properties['buildLast']) {
-    foreach ($item in @($plan.buildLast)) { $last += [pscustomobject]@{ Project = $item.project; Args = [string[]]@(); First = $false } }
+    $platformEntry = $plan.platforms.PSObject.Properties[$Platform]
+    $rid = if ($platformEntry -and $platformEntry.Value.PSObject.Properties['rid']) { [string]$platformEntry.Value.rid } else { '' }
+    foreach ($item in @($plan.buildLast)) {
+        [string[]]$itemArgs = if ($item.PSObject.Properties['args']) { @($item.args | ForEach-Object { $_ -replace '\{rid\}', $rid }) } else { @() }
+        if (-not $rid -and ($item.args -join ' ') -match '\{rid\}') { throw "buildLast uses {rid} but platform '$Platform' defines no 'rid'." }
+        $last += [pscustomobject]@{ Project = $item.project; Args = $itemArgs; First = $false }
+    }
 }
 $builds = @($first) + @($builds) + @($last)
 

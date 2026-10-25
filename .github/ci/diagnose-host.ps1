@@ -71,8 +71,47 @@ function Invoke-TracedLaunch([string]$name, [string[]]$arguments, [string]$worki
     Write-Host '::endgroup::'
 }
 
+# What does the runtime itself say when it is asked to load the assembly by path?  dotnet fsi (part of the SDK) runs on the
+# installed .NET 10 runtime, so the exception chain names a missing dependency, a bad image or a version problem if there is one.
+function Invoke-LoadProbe {
+    $script = Join-Path ([System.IO.Path]::GetTempPath()) 'load-probe.fsx'
+    $out = Join-Path ([System.IO.Path]::GetTempPath()) 'load-probe-out.txt'
+    $err = Join-Path ([System.IO.Path]::GetTempPath()) 'load-probe-err.txt'
+    Remove-Item $out, $err -ErrorAction SilentlyContinue
+    $hostFolder = $HostDirectory -replace '\\', '/'
+    $names = @('WindowsBase', 'PresentationCore', 'PresentationFramework')
+    $lines = @(
+        'open System', 'open System.IO', 'open System.Reflection', 'open System.Runtime.Loader',
+        'let show (e: exn) = (let mutable x = e in while not (isNull x) do (printfn "  %s: %s (HResult 0x%08X)" (x.GetType().FullName) x.Message x.HResult; x <- x.InnerException))',
+        "let hostFolder = @""$hostFolder""",
+        '// a name the default context cannot find is looked up in the host folder, the way a deps.json entry would',
+        'AssemblyLoadContext.Default.add_Resolving(fun _ name -> (let p = Path.Combine(hostFolder, name.Name + ".dll") in if File.Exists p then AssemblyLoadContext.Default.LoadFromAssemblyPath p else null))'
+    )
+    foreach ($name in $names) {
+        $lines += "printfn ""--- $name"""
+        $lines += "try (let a = Assembly.LoadFrom(Path.Combine(hostFolder, ""$name.dll"")) in printfn ""  LoadFrom ok: %s"" a.FullName) with e -> show e"
+        $lines += "try (let a = Assembly.Load(""$name, Version=11.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"") in (printfn ""  by name ok: %s"" a.Location; (try (a.GetTypes() |> ignore; printfn ""  all types load"") with :? ReflectionTypeLoadException as r -> (printfn ""  %d types failed to load, distinct reasons:"" (r.LoaderExceptions.Length); r.LoaderExceptions |> Array.map (fun x -> x.Message) |> Array.distinct |> Array.truncate 8 |> Array.iter (printfn ""    %s""))))) with e -> show e"
+    }
+    Set-Content -Path $script -Value $lines
+    Write-Host '::group::load probe (dotnet fsi: LoadFrom, by name with a host-folder resolver, GetTypes)'
+    $process = Start-Process -FilePath 'dotnet' -ArgumentList @('fsi', '--quiet', $script) -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+    # Bounded: the probe runs before the lane and must not be able to use up the job's time.
+    if (-not $process.WaitForExit(120000)) {
+        Write-Host 'dotnet fsi did not finish within 120 s; killing it.'
+        try { $process.Kill($true) } catch { Write-Host "Kill failed: $($_.Exception.Message)" }
+        $null = $process.WaitForExit(15000)
+    } else { $process.WaitForExit() }
+    foreach ($file in @($out, $err)) { if (Test-Path $file) { Get-Content $file -TotalCount 80 | ForEach-Object { Write-Host $_ } } }
+    Write-Host '::endgroup::'
+}
+try { Invoke-LoadProbe } catch { Write-Host "load probe failed to run: $($_.Exception.Message)" }
+
 $configDirectory = Join-Path ([System.IO.Path]::GetTempPath()) 'od-diagnose-config'
 Invoke-TracedLaunch 'direct' @((Join-Path $HostDirectory 'OpenDevelop.dll'), "-configdir:$configDirectory") $HostDirectory
+# Is the failure about a ReadyToRun (precompiled) image?  Same launch with precompiled code switched off.
+$env:DOTNET_ReadyToRun = '0'
+try { Invoke-TracedLaunch 'direct-no-r2r' @((Join-Path $HostDirectory 'OpenDevelop.dll'), "-configdir:$configDirectory") $HostDirectory }
+finally { Remove-Item env:DOTNET_ReadyToRun -ErrorAction SilentlyContinue }
 $projectPath = (Resolve-Path 'src/Main/SharpDevelop/SharpDevelop.csproj').Path
 Invoke-TracedLaunch 'dotnet-run' @('run', '--project', $projectPath, '-f', 'net10.0-windows', '--no-build', "-configdir:$configDirectory") (Split-Path $projectPath -Parent)
 exit 0
