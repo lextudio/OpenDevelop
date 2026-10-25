@@ -535,21 +535,90 @@ namespace Debugger.AddIn.Service.Dap
 				foreach (var node in items) {
 					var obj = node as JsonObject;
 					if (obj == null) continue;
-					JsonObject source = obj["source"] as JsonObject;
-					frames.Add(new DapStackFrameInfo {
-						Id = obj["id"] != null ? obj["id"].GetValue<int>() : 0,
-						ThreadId = threadId,
-						Name = obj["name"] != null ? obj["name"].GetValue<string>() : string.Empty,
-						FilePath = source?["path"] != null ? source["path"].GetValue<string>() : null,
-						Line = obj["line"] != null ? obj["line"].GetValue<int>() : 0,
-						Column = obj["column"] != null ? obj["column"].GetValue<int>() : 0,
-						EndLine = obj["endLine"] != null ? obj["endLine"].GetValue<int>() : 0,
-						EndColumn = obj["endColumn"] != null ? obj["endColumn"].GetValue<int>() : 0,
-						IsExternalCode = IsSubtleFrame(obj["presentationHint"])
-					});
+					frames.Add(ParseStackFrame(obj, threadId));
 				}
 			}
 			return frames;
+		}
+
+		/// <summary>
+		/// SharpDbg's custom <c>resolveStackFrame</c>: asks the adapter to produce symbols for an
+		/// external frame (decompiling its module) and returns the frame again with
+		/// <see cref="DapStackFrameInfo.DecompiledSource"/> when the code is only available decompiled.
+		/// Throws <see cref="InvalidOperationException"/> when the adapter answers with an error.
+		/// </summary>
+		public async Task<DapStackFrameInfo> ResolveStackFrameAsync(DapStackFrameInfo frame)
+		{
+			if (client == null)
+				return frame;
+			JsonObject response = await client.SendRequestAsync("resolveStackFrame", new JsonObject { ["stackFrameId"] = frame.Id }).ConfigureAwait(false);
+			// SendRequestAsync returns an error response instead of throwing (see EvaluateAsync).
+			bool success = response?["success"] == null || response["success"].GetValue<bool>();
+			if (!success) {
+				string message = response?["message"] != null ? response["message"].GetValue<string>() : "Could not resolve the stack frame.";
+				throw new InvalidOperationException(message);
+			}
+			JsonObject resolved = response?["body"]?["stackFrame"] as JsonObject;
+			return resolved != null ? ParseStackFrame(resolved, frame.ThreadId) : frame;
+		}
+
+		static DapStackFrameInfo ParseStackFrame(JsonObject obj, int threadId)
+		{
+			JsonObject source = obj["source"] as JsonObject;
+			var frame = new DapStackFrameInfo {
+				Id = obj["id"] != null ? obj["id"].GetValue<int>() : 0,
+				ThreadId = threadId,
+				Name = obj["name"] != null ? obj["name"].GetValue<string>() : string.Empty,
+				FilePath = source?["path"] != null ? source["path"].GetValue<string>() : null,
+				Line = obj["line"] != null ? obj["line"].GetValue<int>() : 0,
+				Column = obj["column"] != null ? obj["column"].GetValue<int>() : 0,
+				EndLine = obj["endLine"] != null ? obj["endLine"].GetValue<int>() : 0,
+				EndColumn = obj["endColumn"] != null ? obj["endColumn"].GetValue<int>() : 0,
+				IsExternalCode = IsSubtleFrame(obj["presentationHint"]),
+				IsResolved = !(obj["isResolved"] is JsonValue r && r.TryGetValue<bool>(out var resolvedValue) && !resolvedValue),
+				InstructionPointerReference = obj["instructionPointerReference"] is JsonValue ip && ip.TryGetValue<string>(out var ipText) ? ipText : null
+			};
+			ParseInstructionPointer(frame);
+			// The adapter attaches the info with Newtonsoft's default (PascalCase) member names, nested
+			// under a camelCase "decompiledSourceInfo"; read both spellings.
+			if (GetIgnoreCase(obj, "decompiledSourceInfo") is JsonObject info) {
+				frame.DecompiledSource = new DapDecompiledSourceInfo {
+					TypeFullName = (GetIgnoreCase(info, "typeFullName") as JsonValue)?.GetValue<string>(),
+					AssemblyPath = (GetIgnoreCase(GetIgnoreCase(info, "assembly") as JsonObject, "assemblyPath") as JsonValue)?.GetValue<string>()
+				};
+			}
+			return frame;
+		}
+
+		static JsonNode GetIgnoreCase(JsonObject obj, string name)
+		{
+			if (obj == null)
+				return null;
+			foreach (var pair in obj) {
+				if (string.Equals(pair.Key, name, StringComparison.OrdinalIgnoreCase))
+					return pair.Value;
+			}
+			return null;
+		}
+
+		// SharpDbg formats the reference as "0x" + <methodDef token> + "+0x" + <ilOffset>, but the token is
+		// an ICorDebugSharp mdMethodDef whose ToString() is "mdMethodDef { Rid = 702, ..., Value = 100663998, ... }",
+		// so the reference reads "0xmdMethodDef { ... Value = 100663998, ... }+0x4" (offset is decimal). Accept that
+		// and the plain "0x<decimal token>+0x<decimal offset>" shape, so a fixed adapter keeps working.
+		static readonly System.Text.RegularExpressions.Regex instructionPointerPattern = new System.Text.RegularExpressions.Regex(
+			@"^0x(?:mdMethodDef\s*\{.*?\bValue\s*=\s*(?<token>\d+).*?\}|(?<token>\d+))\+0x(?<offset>\d+)$",
+			System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.Singleline);
+
+		static void ParseInstructionPointer(DapStackFrameInfo frame)
+		{
+			string text = frame.InstructionPointerReference;
+			if (string.IsNullOrEmpty(text))
+				return;
+			var match = instructionPointerPattern.Match(text);
+			if (match.Success && int.TryParse(match.Groups["token"].Value, out int token) && int.TryParse(match.Groups["offset"].Value, out int offset)) {
+				frame.MethodToken = token;
+				frame.ILOffset = offset;
+			}
 		}
 
 		public async Task<IReadOnlyList<DapScopeInfo>> GetScopesAsync(int frameId)

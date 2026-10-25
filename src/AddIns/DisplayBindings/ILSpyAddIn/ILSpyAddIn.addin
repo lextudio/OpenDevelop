@@ -16,6 +16,10 @@
 		<Class id="ILSpy" class="ICSharpCode.ILSpyAddIn.NavigateToDecompiledEntityService"/>
 	</Path>
 	
+	<Path name="/SharpDevelop/Services/DecompiledSourceNavigator">
+		<Class id="ILSpy" class="ICSharpCode.ILSpyAddIn.DecompiledSourceNavigator"/>
+	</Path>
+
 	<Path name = "/SharpDevelop/Parser">
 		<Parser id    = "ILSpy"
 		        insertbefore="C#"

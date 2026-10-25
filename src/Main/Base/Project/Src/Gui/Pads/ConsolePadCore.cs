@@ -259,6 +259,8 @@ namespace ICSharpCode.SharpDevelop.Gui
 				this.console.SetHighlighting(language);
 		}
 
+		public string HighlightingName => this.console?.HighlightingName;
+
 		public bool WordWrap {
 			get { return this.console.editor.WordWrap; }
 			set { this.console.editor.WordWrap = value; }

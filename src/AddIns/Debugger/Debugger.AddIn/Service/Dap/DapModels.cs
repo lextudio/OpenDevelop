@@ -67,6 +67,29 @@ namespace Debugger.AddIn.Service.Dap
 		/// <summary>True when the frame is external (non-user) code — the adapter marks it with a
 		/// "subtle" presentation hint — so "Show External Code" can hide it by default.</summary>
 		public bool IsExternalCode { get; set; }
+
+		/// <summary>False for a frame the adapter returned without source because it has not yet
+		/// generated symbols for the module (see <c>resolveStackFrame</c>).</summary>
+		public bool IsResolved { get; set; } = true;
+
+		/// <summary>The adapter's "0x&lt;methodToken&gt;+0x&lt;ilOffset&gt;" reference (both numbers decimal).</summary>
+		public string InstructionPointerReference { get; set; }
+
+		/// <summary>Method token parsed from <see cref="InstructionPointerReference"/>; 0 if absent.</summary>
+		public int MethodToken { get; set; }
+
+		/// <summary>IL offset parsed from <see cref="InstructionPointerReference"/>; -1 if absent.</summary>
+		public int ILOffset { get; set; } = -1;
+
+		/// <summary>Set by <c>resolveStackFrame</c> when the frame's code can only be shown decompiled.</summary>
+		public DapDecompiledSourceInfo DecompiledSource { get; set; }
+	}
+
+	public sealed class DapDecompiledSourceInfo
+	{
+		public string AssemblyPath { get; set; }
+		/// <summary>Metadata type name; nested types are joined with '+'.</summary>
+		public string TypeFullName { get; set; }
 	}
 
 	public sealed class DapScopeInfo

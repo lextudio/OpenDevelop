@@ -251,6 +251,135 @@ The OpenDevelop target is a modern, cross-platform .NET SDK IDE, so the debugger
 backend should be Debug Adapter Protocol (DAP), with `sharpdbg` bundled by
 default in the same style as UnoDevelop.
 
+## External-frame decompilation and the Eval console (SharpIDE v0.1.32 parity)
+
+Two SharpIDE v0.1.32 features (2026-10-25) that OpenDevelop already has most of the groundwork
+for. This note records what exists, the small gap on each side, and the tests that pin them.
+The decompiler host is described in `ilspy.md`.
+
+### 1. Opening an external (decompiled) stack frame
+
+Goal: with "Show External Code" on, double-clicking a call-stack frame that has no source (a
+framework or NuGet frame without a PDB) opens the decompiled type in the ILSpy document tab and
+puts the caret on the statement the frame is executing, instead of doing nothing.
+
+#### What already exists
+
+- `SharpDbg` returns external frames from `stackTrace` unresolved (no `source`,
+  `presentationHint: subtle`, `isResolved: false`). The custom request `resolveStackFrame`
+  (`ResolveStackFrameRequest.cs`) generates a decompiled PDB for the module on demand and answers
+  with the frame again, now carrying `decompiledSourceInfo { typeFullName, assembly { assemblyPath,
+  mvid }, callingUserCodeAssemblyPath }`. `decompiledSourceInfo` is null when no user-code
+  assembly is on the physical caller chain.
+- `instructionPointerReference` on every frame is `"0x" + methodToken + "+0x" + ilOffset`
+  (`ManagedDebugger_RequestHandlers.cs`), but `methodToken` is an ICorDebugSharp `mdMethodDef`, so
+  the string actually reads `0xmdMethodDef { Rid = 702, Type = mdtMethodDef, Value = 100663998,
+  IsNil = False }+0x4` (offset decimal). That is an adapter formatting quirk; `DapSession` parses
+  both this and the plain `0x<token>+0x<offset>` shape. It is the only place the method token and IL
+  offset reach the client.
+- `resolveStackFrame` answers with the adapter's own virtual `source.path`
+  (`decompiled/<asm>/<mvid>/<asm>/<Type>.cs`) and line, **and** a PascalCase `DecompiledSourceInfo`
+  object nested under the camelCase `decompiledSourceInfo`; the client reads both spellings and must
+  test for `decompiledSourceInfo` before it trusts `source.path`.
+- `DapSession.GetStackFramesAsync` already reads `presentationHint` (`IsExternalCode`) and the
+  call-stack pad already hides external frames unless `ShowExternalCode` is set.
+- ILSpyAddIn decompiles a type with `ILSpyDecompilerService.DecompileType` and keeps
+  `DecompiledTypeResult.DebugSymbols` (`MethodDefToken` + IL-offset sequence points mapped to
+  lines of **our** decompiled text). `NavigateToDecompiledEntityService` opens/reuses the
+  `DecompiledViewContent` for an `ilspy://` virtual file.
+
+#### The gap
+
+`DapSession` never sends `resolveStackFrame`, ignores `decompiledSourceInfo` and
+`instructionPointerReference`, and `CallStackPadViewModel` double-click returns early for a frame
+without `FilePath`. Debugger.AddIn does not reference ILSpyAddIn, so it needs a seam.
+
+#### Design
+
+1. `DapStackFrameInfo` gains `IsResolved`, `InstructionPointerReference`, `MethodToken`,
+   `ILOffset` and `DecompiledSource` (`AssemblyPath`, `TypeFullName`).
+2. `DapSession.ResolveStackFrameAsync(frame)` sends `resolveStackFrame` and returns the refreshed
+   `DapStackFrameInfo`. An error response (`success: false`) is thrown as
+   `InvalidOperationException`; `WindowsDebugger.OpenFrameAsync` catches it, logs it, still makes the
+   frame the active one and reports `Resolved = false` with nothing opened.
+3. Seam in Base: `ICSharpCode.SharpDevelop.Debugging.IDecompiledSourceNavigator`
+   (`Task<bool> NavigateAsync(string assemblyPath, string typeFullName, int methodToken, int
+   ilOffset)`), built from the AddInTree path `/SharpDevelop/Services/DecompiledSourceNavigator`.
+   ILSpyAddIn registers the implementation.
+4. The ILSpy implementation takes the top-level type of `typeFullName` (text before the first
+   `+`; nested types live in their declaring type's document), opens the document through
+   `NavigateToDecompiledEntityService` and awaits its `DecompilationTask`. `DecompiledViewContent`
+   keeps the `DebugSymbols` of its own decompile (so the type is decompiled once), the navigator
+   finds the entry whose `MethodDefToken == methodToken` and the sequence point containing
+   `ilOffset`, and jumps there. (`SD.ParserService.Parse` does not return an
+   `ILSpyParseInformation` for these virtual files in the current host, so `ILSpySymbolSource`'s
+   route is not used.) When no
+   sequence point matches it falls back to the start of the method; when the method is missing it
+   leaves the caret at the type.
+5. `WindowsDebugger.OpenFrame(frame)` is the shared path for the double-click and the DevFlow
+   action: normal source → `JumpToCurrentLine`; no source and unresolved → resolve, then call the
+   navigator with the resolved frame's data. It never changes the current stack frame's
+   `FilePath` (there is no real file), only the active frame id, so Locals/Watch still evaluate in
+   that frame.
+
+The adapter's own line numbers for the decompiled PDB are **not** used: the adapter and OpenDevelop
+decompile with separate `DecompilerSettings`, so only the IL offset is portable between them.
+
+#### Tests
+
+`DebuggerFeatureIntegrationTests.ExternalFrame_OpensDecompiledSource` (fixture: the
+`System.Linq` `Select` lambda in `tests/fixtures/DebugTestApp/Program.cs`) stops inside the lambda,
+asks `od.debug.open-frame` for the first frame that has no file and asserts: the frame was
+resolved, an `ilspy://` document is the active document, its text contains the declaring type,
+and the caret line is non-zero and inside the document. The action exercises the same
+`WindowsDebugger.OpenFrame` the double-click calls, not the final seam alone.
+
+### 2. Eval window
+
+SharpIDE's Eval window is an editor with C# highlighting and completion that evaluates in the
+current frame. OpenDevelop's equivalent is the **Debug Console** pad (`ConsolePadViewModel`):
+`WindowsDebugger.EvaluateAsync(code, "repl")` evaluates through the DAP `evaluate` request and
+`DebuggerDotCompletion` offers dot-completion from the Roslyn language service.
+
+#### Gaps
+
+- The console never calls `ConsolePadCore.SetHighlighting`, so input is plain text.
+- Dot-completion needs a file to resolve context against; with an external or decompiled frame
+  (`FilePath` empty) it silently does nothing.
+- The console state is not observable from DevFlow.
+
+#### Design
+
+- Call `core.SetHighlighting("C#")` when the pad is created.
+- **Not implemented yet:** when the current frame has no file, resolve completion context against
+  the active document's project instead of returning (`SD.ParserService.ResolveContext` on the
+  solution's startup file). `ConsolePadViewModel.AbstractConsolePadTextEntered` still returns early
+  for a frame without `FilePath`, so dot-completion stays off in an opened external frame.
+- `od.debug.console-state` reports the pad's `Text` and the name of the highlighting attached to the
+  real editor; `od.debug.console-eval` runs a command through the console's evaluate path and
+  returns the console text, so a test reads state rather than pixels.
+
+#### Tests
+
+`DebuggerFeatureIntegrationTests.DebugConsole_HighlightsAndEvaluates`: stop at the `answer`
+breakpoint, assert highlighting is attached, evaluate `answer + 1` through
+`od.debug.console-eval` (the same `AcceptCommand` path) and assert `43` is appended to the
+console.
+
+#### Verification record
+
+2026-10-25 (OpenDevelop master `545fa3e205` plus the working tree of this change, Debug, macOS,
+SDK 10.0.200 from `/usr/local/share/dotnet` only): `ExternalFrame_OpensDecompiledSource` and
+`DebugConsole_HighlightsAndEvaluates` each pass when run alone
+(`-method OpenDevelop.IntegrationTests.DebuggerFeatureIntegrationTests.<name>`). The frame test lands
+on the `ArraySelectIterator.Fill` statement (line 4303 of the decompiled `System.Linq.Enumerable`).
+
+Caveat: both runs needed a local, uncommitted workaround for LibreWPF `0.1.0-preview.69`, whose
+`PortableTextLine` throws `PlatformNotSupportedException` for any `TextFormattingMode.Display` text
+(no shipped service implements `IPortableDisplayTextFormatting`; the earlier "declines to
+SimpleTextLine" behaviour is gone), which crashes the IDE at startup. The workaround forced `Ideal`
+through a coercing metadata override and was not kept.
+
 ## What SharpDevelop did
 
 SharpDevelop exposes debugging through `ICSharpCode.SharpDevelop.Debugging`.

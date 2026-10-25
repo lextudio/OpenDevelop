@@ -55,6 +55,7 @@ namespace ICSharpCode.ILSpyAddIn
 		readonly CancellationTokenSource cancellation = new CancellationTokenSource();
 		IReadOnlyDictionary<string, TextLocation> memberLocations = new Dictionary<string, TextLocation>();
 		IReadOnlyList<DecompiledReferenceSpan> references = Array.Empty<DecompiledReferenceSpan>();
+		IReadOnlyDictionary<string, DecompiledMethodDebugInfo> debugSymbols;
 
 		#region Constructor
 		public DecompiledViewContent(DecompiledTypeReference typeName, string memberKey)
@@ -116,6 +117,9 @@ namespace ICSharpCode.ILSpyAddIn
 		/// polling <c>Document.Text</c> (doc/technotes/ilspy.md "Unify C# document hosting").
 		/// </summary>
 		public System.Threading.Tasks.Task DecompilationTask { get; }
+
+		/// <summary>Method debug info (IL-offset sequence points) of the finished decompile; null until then or when it failed.</summary>
+		public IReadOnlyDictionary<string, DecompiledMethodDebugInfo> DebugSymbols { get { return debugSymbols; } }
 		#endregion
 		
 		#region Dispose
@@ -181,6 +185,7 @@ namespace ICSharpCode.ILSpyAddIn
 					cancellation.Token);
 				memberLocations = result.MemberLocations;
 				references = result.References;
+				debugSymbols = result.DebugSymbols;
 				OnDecompilationFinished(result.Output);
 			} catch (OperationCanceledException) {
 				// ignore cancellation

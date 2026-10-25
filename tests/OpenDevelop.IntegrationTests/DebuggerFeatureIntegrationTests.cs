@@ -161,6 +161,78 @@ public sealed class DebuggerFeatureIntegrationTests
         }
     }
 
+    // doc/technotes/debugging.md, "Opening an external (decompiled) stack frame".
+    [Fact]
+    public async Task ExternalFrame_OpensDecompiledSource()
+    {
+        var program = ProgramPath;
+        // Inside the System.Linq Select lambda: the frames below it are System.Linq code with no PDB.
+        var line = FindLine(program, "var twice = n * 2;");
+
+        await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+        await _app.InvokeAsync("od.open-file", program);
+        await _app.InvokeAsync("od.debug.clear-breakpoints");
+        await _app.InvokeAsync("od.debug.set-breakpoint", program, line);
+
+        try
+        {
+            var start = await _app.InvokeAsync("od.debug.start", _app.DebugTestProjectPath, true, 45);
+            Assert.True(start.GetProperty("stopped").GetBoolean(), start.ToString());
+            Assert.Equal(line, start.GetProperty("currentLine").GetInt32());
+
+            // The same path a double-click on the first sourceless call-stack frame takes.
+            var opened = await _app.InvokeAsync("od.debug.open-frame", "external");
+            Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+            Assert.True(opened.GetProperty("resolved").GetBoolean(), opened.ToString());
+            var document = opened.GetProperty("activeDocument").GetString()!;
+            Assert.True(document.StartsWith("ilspy:", StringComparison.OrdinalIgnoreCase), opened.ToString());
+            Assert.Contains("System.Linq", document, StringComparison.OrdinalIgnoreCase);
+            var caretLine = opened.GetProperty("caretLine").GetInt32();
+            Assert.InRange(caretLine, 1, opened.GetProperty("lineCount").GetInt32());
+            // IL offset -> sequence point -> caret: ArraySelectIterator.Fill invokes the selector, and the
+            // frame is paused inside that call. A missed token or offset match leaves the caret on line 1.
+            var caretText = opened.GetProperty("caretLineText").GetString()!;
+            Assert.Contains("func(", caretText, StringComparison.Ordinal);
+            Assert.True(caretLine > 1, opened.ToString());
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.debug.stop");
+        }
+    }
+
+    // doc/technotes/debugging.md, "Eval window".
+    [Fact]
+    public async Task DebugConsole_HighlightsAndEvaluates()
+    {
+        var program = ProgramPath;
+        var line = FindLine(program, "var message = ComputeGreeting(\"World\");");
+
+        await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+        await _app.InvokeAsync("od.open-file", program);
+        await _app.InvokeAsync("od.debug.clear-breakpoints");
+        await _app.InvokeAsync("od.debug.set-breakpoint", program, line);
+
+        try
+        {
+            var start = await _app.InvokeAsync("od.debug.start", _app.DebugTestProjectPath, true, 45);
+            Assert.True(start.GetProperty("stopped").GetBoolean(), start.ToString());
+
+            var before = await _app.InvokeAsync("od.debug.console-state");
+            Assert.True(before.GetProperty("hasHighlighting").GetBoolean(), before.ToString());
+            Assert.Equal("C#", before.GetProperty("highlightingName").GetString());
+
+            // Through the console's own AcceptCommand, i.e. the DAP "repl" evaluate path.
+            var evaluated = await _app.InvokeAsync("od.debug.console-eval", "answer + 1");
+            Assert.True(evaluated.GetProperty("success").GetBoolean(), evaluated.ToString());
+            Assert.Contains("43", evaluated.GetProperty("text").GetString());
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.debug.stop");
+        }
+    }
+
     [Fact]
     public async Task Attach_ToRunningProcess_StopsAtBreakpoint()
     {

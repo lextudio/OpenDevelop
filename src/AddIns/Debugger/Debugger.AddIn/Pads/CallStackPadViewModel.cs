@@ -77,17 +77,19 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 			e.Handled = true;
 		}
 
-		void listView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+		async void listView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
 		{
 			CallStackItem item = listView.SelectedItem as CallStackItem;
 			if (item == null || item.Frame == null)
 				return;
 
 			if (WindowsDebugger.CurrentSession != null && WindowsDebugger.CurrentSession.IsPaused) {
-				WindowsDebugger.CurrentStackFrame = item.Frame;
-				WindowsDebugger.CurrentSession.ActiveFrameId = item.Frame.Id;
-				WindowsDebugger.Instance.JumpToCurrentLine();
-				WindowsDebugger.RefreshPads();
+				try {
+					await WindowsDebugger.OpenFrameAsync(item.Frame).ConfigureAwait(true);
+				} catch (Exception ex) {
+					// async void: nothing above can observe a failure, so log it here.
+					LoggingService.Warn("Debugger: could not open stack frame " + item.Frame.Id, ex);
+				}
 			} else {
 				MessageService.ShowMessage("${res:MainWindow.Windows.Debug.CallStack.CannotSwitchWhileRunning}", "${res:MainWindow.Windows.Debug.CallStack.FunctionSwitch}");
 			}
@@ -121,6 +123,19 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 			}
 			listView.ItemsSource = items;
 			return items;
+		}
+
+		/// <summary>
+		/// Frames for the "od.debug.open-frame" DevFlow action: unlike the pad's list this includes
+		/// external frames whatever <see cref="ShowExternalCode"/> says.
+		/// </summary>
+		public static async Task<IReadOnlyList<DapStackFrameInfo>> GetAllFramesAsync()
+		{
+			var session = WindowsDebugger.CurrentSession;
+			var thread = WindowsDebugger.CurrentThread;
+			if (session == null || thread == null || !session.IsPaused)
+				return Array.Empty<DapStackFrameInfo>();
+			return await session.GetStackFramesAsync(thread.Id).ConfigureAwait(true);
 		}
 
 		/// <summary>Used by the DevFlow "od.debug.pad-snapshot" test action.</summary>

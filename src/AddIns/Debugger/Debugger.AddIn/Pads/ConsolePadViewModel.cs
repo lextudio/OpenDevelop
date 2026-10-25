@@ -58,7 +58,18 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 
 			core = new ConsolePadCore(() => "> ", AcceptCommand, AbstractConsolePadTextEntered, BuildToolBar);
 			Content = core.Content;
+			// The console doubles as the debugger's Eval window: C# input, evaluated in the active frame.
+			core.SetHighlighting("C#");
 		}
+
+		/// <summary>Name of the highlighting attached to the input editor (DevFlow "od.debug.console-state").</summary>
+		public string HighlightingName => core.HighlightingName;
+
+		/// <summary>The console's whole text (DevFlow "od.debug.console-state").</summary>
+		public string ConsoleText => core.Text;
+
+		/// <summary>Runs <paramref name="code"/> exactly as an entered command and returns when it has finished.</summary>
+		public System.Threading.Tasks.Task EvaluateForTestAsync(string code) => EvaluateAsync(code);
 
 		ToolBar BuildToolBar(ConsoleControl console)
 		{

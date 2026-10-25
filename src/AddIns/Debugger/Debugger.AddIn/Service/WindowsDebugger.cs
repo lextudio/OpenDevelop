@@ -683,6 +683,64 @@ namespace ICSharpCode.SharpDevelop.Services
 			return await CurrentSession.EvaluateAsync(expression, frameId, context).ConfigureAwait(false);
 		}
 
+		/// <summary>Outcome of <see cref="OpenFrameAsync"/>.</summary>
+		public sealed class OpenFrameResult
+		{
+			public DapStackFrameInfo Frame { get; set; }
+			/// <summary>True when the frame had no source and was resolved through the adapter.</summary>
+			public bool Resolved { get; set; }
+			/// <summary>The decompiled document that was opened (an ilspy:// name); null for a real source file.</summary>
+			public string DecompiledDocument { get; set; }
+		}
+
+		/// <summary>
+		/// Makes <paramref name="frame"/> the active frame and shows its code: the source file when
+		/// it has one, otherwise the decompiled type (the frame is resolved through the adapter and
+		/// opened by the <see cref="IDecompiledSourceNavigator"/>). Shared by the call-stack
+		/// double-click and the DevFlow test action. doc/technotes/debugging.md.
+		/// </summary>
+		public static async Task<OpenFrameResult> OpenFrameAsync(DapStackFrameInfo frame)
+		{
+			var result = new OpenFrameResult { Frame = frame };
+			var session = CurrentSession;
+			if (session == null || frame == null)
+				return result;
+
+			if (string.IsNullOrEmpty(frame.FilePath) && !frame.IsResolved) {
+				try {
+					frame = await session.ResolveStackFrameAsync(frame).ConfigureAwait(true);
+					result.Frame = frame;
+					result.Resolved = true;
+				} catch (Exception ex) {
+					// Still make the frame active (Locals/Watch can evaluate in it); there is just no code to show.
+					LoggingService.Warn("Debugger: could not resolve stack frame " + frame.Id, ex);
+				}
+			}
+
+			CurrentStackFrame = frame;
+			session.ActiveFrameId = frame.Id;
+
+			// A decompiled frame also carries the adapter's virtual "decompiled/..." path, so test for
+			// the decompiled source first.
+			if (frame.DecompiledSource == null) {
+				if (!string.IsNullOrEmpty(frame.FilePath))
+					Instance.JumpToCurrentLine();
+			} else {
+				var navigator = AddInTree.BuildItems<IDecompiledSourceNavigator>(IDecompiledSourceNavigator.AddInTreePath, null, false).FirstOrDefault();
+				if (navigator != null) {
+					try {
+						result.DecompiledDocument = await navigator.NavigateAsync(
+							frame.DecompiledSource.AssemblyPath, frame.DecompiledSource.TypeFullName,
+							frame.MethodToken, frame.ILOffset).ConfigureAwait(true);
+					} catch (Exception ex) {
+						LoggingService.Warn("Debugger: could not show decompiled code of " + frame.Name, ex);
+					}
+				}
+			}
+			RefreshPads();
+			return result;
+		}
+
 		public void JumpToCurrentLine()
 		{
 			if (CurrentStackFrame == null || string.IsNullOrEmpty(CurrentStackFrame.FilePath))

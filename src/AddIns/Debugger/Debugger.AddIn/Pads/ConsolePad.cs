@@ -43,6 +43,8 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 			}
 		}
 
+		internal static ConsolePadViewModel ViewModel => viewModel;
+
 		public override object Control => viewModel?.Content;
 
 		public override object InitiallyFocusedControl => viewModel?.Content;

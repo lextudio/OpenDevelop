@@ -259,6 +259,11 @@ namespace ICSharpCode.SharpDevelop.Gui
 			editor.SyntaxHighlighting = HighlightingManager.Instance.GetDefinition(language);
 		}
 
+		/// <summary>Name of the highlighting definition attached to the editor, or null when none.</summary>
+		public string HighlightingName {
+			get { return editor.SyntaxHighlighting != null ? editor.SyntaxHighlighting.Name : null; }
+		}
+
 		public void Append(string text)
 		{
 			editor.AppendText(text);
