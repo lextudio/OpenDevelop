@@ -54,6 +54,19 @@ foreach ($folder in @('AddIns', 'src/Main/SharpDevelop/bin', 'obj') + @($project
     $size = Get-Size-Megabytes $folder
     if ($null -ne $size) { $lines += "| $folder | $size |" }
 }
+# What the deployed add-ins are made of: the packaging budget depends on it (the archive carries all of AddIns).
+if (Test-Path 'AddIns') {
+    $lines += @('', '| AddIns subfolder (largest 15) | MB |', '|---|---|')
+    $folders = @(Get-ChildItem -Path 'AddIns' -Directory | ForEach-Object { Get-ChildItem -Path $_.FullName -Directory })
+    $sized = @($folders | ForEach-Object { [pscustomobject]@{ Path = $_.FullName.Substring((Get-Location).Path.Length + 1); MB = (Get-Size-Megabytes $_.FullName) } } |
+        Sort-Object MB -Descending | Select-Object -First 15)
+    foreach ($f in $sized) { $lines += "| $($f.Path) | $($f.MB) |" }
+    $byExtension = @(Get-ChildItem -Path 'AddIns' -Recurse -File -Force -ErrorAction SilentlyContinue | Group-Object { $_.Extension.ToLowerInvariant() } |
+        ForEach-Object { [pscustomobject]@{ Extension = $_.Name; MB = [int][math]::Round(($_.Group | Measure-Object -Property Length -Sum).Sum / 1MB) } } |
+        Sort-Object MB -Descending | Select-Object -First 8)
+    $lines += @('', '| AddIns by extension | MB |', '|---|---|')
+    foreach ($e in $byExtension) { $lines += "| $($e.Extension) | $($e.MB) |" }
+}
 $lines | ForEach-Object { Write-Host $_ }
 if ($env:GITHUB_STEP_SUMMARY) { $lines | Add-Content -Path $env:GITHUB_STEP_SUMMARY }
 

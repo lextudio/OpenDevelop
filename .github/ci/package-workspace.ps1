@@ -1,4 +1,5 @@
-# Packs the whole workspace (sources and every build output, without git metadata) into one archive that test jobs
+# Packs the whole workspace (sources and every build output, without git metadata and without externals/monodevelop,
+# whose sources are only needed to compile) into one archive that test jobs
 # unpack at the same absolute path.  The paths inside the build outputs are absolute on the build machine, so the
 # archive is only valid on a runner of the same OS with the same workspace location; the workflow guarantees that.
 #
@@ -48,7 +49,7 @@ try {
     [string[]]$compression = Get-Compression $name
 
     $watch = [System.Diagnostics.Stopwatch]::StartNew()
-    & tar -c @compression -f $output --exclude=.git --exclude=node_modules --exclude=.vs --exclude=.nuget .
+    & tar -c @compression -f $output --exclude=.git --exclude=node_modules --exclude=.vs --exclude=.nuget --exclude=externals/monodevelop .
     if ($LASTEXITCODE -ne 0) { throw "tar -c failed with exit code $LASTEXITCODE" }
     $watch.Stop()
     $megabytes = [int][math]::Round((Get-Item $output).Length / 1MB)
