@@ -218,6 +218,46 @@ Do not use `dotnet test` for integration tests: this repository's `TESTING.md` i
 not instructions from neighbouring workspaces. Legacy tests under `src/` are not maintained
 verification targets. Run the full integration suite only when asked and do not build beside it.
 
+## CI (GitHub Actions)
+
+One workflow, `.github/workflows/ci.yml`, driven by `.github/ci/test-plan.json`; the scripts that read it are in
+`.github/ci/`. `doc/technotes/ci-test-plan.md` explains the shape. Job names: `Plan`, `Build (<platform>)`,
+`<lane> (<platform>)`, and `<lane> (<platform>, in place)` for the one lane with `buildsInLane` (today `unit`).
+
+Spending runs:
+
+- **A push to `master` is the only automatic trigger** (plus PRs), so a diagnostic iteration does not need one: push a
+  topic branch (`git push origin HEAD:refs/heads/ci-probe`), dispatch against it
+  (`gh workflow run ci.yml --ref ci-probe -f diagnose=true`) and delete the branch afterwards. Never push to `master` and
+  also dispatch the same commit - that runs the same thing twice, which happened twice on 2026-10-25 and cost about 28
+  runner minutes.
+- **One hypothesis, one run.** Batch related edits, read the result, then act. Cancel a superseded run
+  (`gh run cancel <id>`) instead of letting it finish.
+- Read the lane's job summary table (`| Entry | Mode | Result | Seconds | Tests |`), not the console tail. `observe`
+  entries do not fail the job by themselves, but `run-test-plan.ps1` now fails an `xunit-exe` entry that reports no test
+  total or 0 tests, and fails a lane in which every entry failed - so a green lane does mean it ran something.
+- The temporary host diagnostics only run with the `diagnose` input; use it when the question is how the IDE host
+  starts, and remove the step once the host is fixed.
+
+Layout, so a change goes in the right place:
+
+- The build job compiles the archive lanes once and uploads the workspace (~2.5 GiB, 1-day retention). The in-place lane
+  checks out and compiles only its own entries, which is why its result arrives in ~9 minutes instead of behind the pack
+  step; `build-binaries.ps1 -Lane <lane> -SkipHostBuilds` is what it runs, and the build job skips that lane's projects
+  with `-ArchiveLanesOnly`.
+- The NuGet package folder is one `actions/cache` entry keyed by `Directory.Packages.props`, `global.json` and
+  `NuGet.config`; the build job computes it and the lanes restore that key. Never ship it as an artifact again - it was
+  3.3 GiB and eight minutes per lane.
+- `dotnet build` of `src/Main/SharpDevelop/SharpDevelop.csproj` must happen **once** per output folder: a second build
+  deletes the host's mutable package outputs (`_ProGpuWpfSdkClearMutablePackageOutputs`) and does not put them back, so
+  the folder ends up without `PresentationFramework.dll`. Measured on the runner: 193 DLLs present after the first build,
+  173 and missing after a rebuild.
+- Known open defect (2026-10-25): the IDE host still fails to start on the Windows runner with
+  `FileNotFoundException: PresentationFramework, Version=11.0.0.0`. The file is in the folder and loads by path, but the
+  deps manifest records it as a package-relative asset (`lib/net10.0/PresentationFramework.dll`) and the build produces no
+  `runtimeconfig.dev.json`, so the host's `TRUSTED_PLATFORM_ASSEMBLIES` has no `PresentationFramework` and a 10.x
+  `WindowsBase`. macOS is unaffected. Investigate probing paths or a deps `reference` layout before changing the lane.
+
 ## Designer rules
 
 For blank/missing/disconnected WinUI loads, read `od.output-text` (`WinUI Designer`) and
