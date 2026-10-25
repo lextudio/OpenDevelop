@@ -42,6 +42,7 @@ foreach ($group in @($enabled | Group-Object Platform, Lane | Sort-Object Name))
     $lanes += [ordered]@{
         platform = $platformName; lane = $laneName; runner = $platform.runner
         dotnet_architecture = $platform.dotnetArchitecture; timeout = [int]$lane.Value.timeoutMinutes
+        needs_nuget_cache = [bool]($lane.Value.PSObject.Properties['needsNuGetCache'] -and $lane.Value.needsNuGetCache)
         entries = $group.Count
     }
 }

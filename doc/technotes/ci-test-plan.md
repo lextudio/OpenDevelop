@@ -20,7 +20,10 @@ plan  ->  build (per platform)  ->  test (per platform x lane)
   the whole workspace (sources and all build outputs, no `.git`, no `node_modules`) and uploads it as one archive
   (zstd when the runner's `tar` supports it, gzip otherwise; the upload does not compress a second time). Refuses to pack
   a `NuGet.config` that holds a clear-text credential.
-* **test** (`run-test-plan.ps1`) unpacks the archive at the same absolute path and runs the lane's entries:
+* **test** (`run-test-plan.ps1`) unpacks the archive at the same absolute path (and, for a lane with `needsNuGetCache`, the
+  NuGet package cache: the IDE host is not self-contained, it resolves its LibreWPF assemblies from the global packages
+  folder at run time, which the first integration lane run showed as a start-up `FileNotFoundException` for
+  `PresentationFramework`) and runs the lane's entries:
   `xunit-exe` runs the compiled xUnit v3 assembly directly (`dotnet <dll> [args]`, so the integration classes are
   `-class <name> -parallel none`), `msbuild` runs the AddIn SDK assertion projects with `-t:Build`. Nothing is restored
   or built there, so the NuGet feeds are not touched and no credential is present in test jobs.
@@ -57,6 +60,16 @@ backends (need Visual Studio), and the heavy or environment-bound ones named in
 `tests/OpenDevelop.IntegrationTests/TESTING.md` (dotnetup SDK installs, runtime upgrade, performance gates, probes).
 `terminal-cross-platform.yml` and `profiler.yml` still run on their own and are listed in the plan as excluded; they move
 into lanes of this workflow next. macOS is skipped for now (see `platformNotes` in the plan).
+
+## The archives
+
+The first full run measured the raw workspace at about 14 GB (`AddIns` 12.2 GB: every add-in carries ~550 MB because the
+RID-less build copies the native libraries of every system, and `.pdb` files are 4.2 GB of it), packed to 5.3 GB, and the
+test jobs spent 4 to 6 minutes downloading and unpacking it. `package-workspace.ps1 -Platform windows-x64` therefore leaves
+out what Windows can never load: `.so`, `.dylib`, `.a`, `.lib`, the `runtimes/<linux|osx|android|ios|tvos|maccatalyst|browser>*`
+folders and the `.pdb` files under `AddIns/` (the fixtures' `.pdb` files stay, the debugger tests read them). The same
+exclusions apply to the NuGet cache archive (`nuget-<platform>`). The job summaries print the on-disk and archived sizes and
+the pack time; record the new numbers here once a run has produced them.
 
 ## The build
 

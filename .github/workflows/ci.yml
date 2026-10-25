@@ -3,7 +3,7 @@ name: CI
 # One workflow for the local test suites that .github/ci/test-plan.json has switched on.
 #
 #   plan   -> reads the plan and emits the two job matrices
-#   build  -> per platform, compiles everything the enabled entries need exactly once and uploads the workspace
+#   build  -> per platform, compiles everything the enabled entries need exactly once and uploads the workspace (and the NuGet cache)
 #   test   -> per (platform, lane), downloads that workspace and runs the lane's test assemblies; no restore, no compile
 #
 # Lanes run in parallel, each on its own fresh machine, so they cannot interfere through ports, config directories
@@ -103,12 +103,25 @@ jobs:
           ./.github/ci/build-binaries.ps1 -Platform '${{ matrix.name }}' -ThroughBatch $through
       - name: Pack the workspace
         shell: pwsh
-        run: ./.github/ci/package-workspace.ps1 -Directory '${{ runner.temp }}/archive'
+        run: ./.github/ci/package-workspace.ps1 -Platform '${{ matrix.name }}' -Directory '${{ runner.temp }}/archive'
       - uses: actions/upload-artifact@v4
         with:
           name: workspace-${{ matrix.name }}
           path: ${{ runner.temp }}/archive/
           # The archive is compressed already; a second pass only costs time.
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      # The IDE host is not self-contained: at run time it resolves the LibreWPF assemblies from the global packages
+      # folder, so a lane that starts the IDE needs that folder too.  It is a separate artifact so the lanes that do
+      # not start the IDE (unit) do not download it.
+      - name: Pack the NuGet package cache
+        shell: pwsh
+        run: ./.github/ci/package-workspace.ps1 -Kind NuGetCache -Platform '${{ matrix.name }}' -Directory '${{ runner.temp }}/nuget-archive'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nuget-${{ matrix.name }}
+          path: ${{ runner.temp }}/nuget-archive/
           compression-level: 0
           retention-days: 1
           if-no-files-found: error
@@ -133,6 +146,15 @@ jobs:
       - name: Unpack the workspace built by the build job
         shell: pwsh
         run: ./.github/ci/package-workspace.ps1 -Extract -Directory '${{ runner.temp }}/archive'
+      - uses: actions/download-artifact@v4
+        if: matrix.needs_nuget_cache
+        with:
+          name: nuget-${{ matrix.platform }}
+          path: ${{ runner.temp }}/nuget-archive
+      - name: Unpack the NuGet package cache
+        if: matrix.needs_nuget_cache
+        shell: pwsh
+        run: ./.github/ci/package-workspace.ps1 -Extract -Kind NuGetCache -Directory '${{ runner.temp }}/nuget-archive'
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json

@@ -11,7 +11,8 @@
     "kind: xunit-exe = dotnet <target> [args] (an xUnit v3 test assembly, run directly); msbuild = dotnet msbuild <target> -t:Build.",
     "'project' is built once in the build job (distinct projects only).  'measuredSeconds' is the last measured duration; keep it current when promoting a batch.",
     "'buildFirst' projects are built before everything else on every platform that builds: the host's build writes the host-assembly manifest that lets every add-in trim what the host already ships (without it each add-in carries ~550 MB of copy-local dependencies and AddIns reaches 13 GB); tests/OpenDevelop.IntegrationTests/TESTING.md says the same: build the application first.",
-    "'buildArgs' are extra dotnet build arguments for the entry's 'project'; entries that share a project must agree on them.  The integration project is built with -p:BuildIntegrationFixtures=false because its fixture target builds every fixture inside one MSBuild process (Uno.Sdk 6.6.42 then clashes with the already resolved 6.5.31, MSB4240); a lane that needs a fixture lists that fixture's own csproj as an entry 'project' so it builds in its own process."
+    "'buildArgs' are extra dotnet build arguments for the entry's 'project'; entries that share a project must agree on them.  The integration project is built with -p:BuildIntegrationFixtures=false because its fixture target builds every fixture inside one MSBuild process (Uno.Sdk 6.6.42 then clashes with the already resolved 6.5.31, MSB4240); a lane that needs a fixture lists that fixture's own csproj as an entry 'project' so it builds in its own process.",
+    "A lane with 'needsNuGetCache' also downloads the build job's NuGet package cache: the IDE host resolves its LibreWPF assemblies from the global packages folder at run time, so a lane that starts the IDE (the integration lanes) needs it; the unit lane does not."
   ],
   "platformNotes": {
     "macos-arm64": "Skipped for now: the Terminal journeys fail there on LibreWPF's Display text capability.  Add the platform back to 'platforms' and to entries to re-enable it."
@@ -28,7 +29,8 @@
       "timeoutMinutes": 20
     },
     "integration-core": {
-      "timeoutMinutes": 45
+      "timeoutMinutes": 45,
+      "needsNuGetCache": true
     }
   },
   "buildFirst": [
