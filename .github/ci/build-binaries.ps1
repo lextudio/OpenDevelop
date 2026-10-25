@@ -5,7 +5,7 @@
 # -List prints the build commands in order and exits, which is how to check a plan edit without building.
 #
 # The plan's 'buildFirst' projects (the host) are built first, then every distinct 'project' of an enabled entry (Debug,
-# with the entry's 'buildArgs').  Test jobs later run the compiled assemblies without
+# with the entry's 'buildArgs'), then the 'buildLast' projects (the host again, see the plan).  Test jobs later run the compiled assemblies without
 # restoring or building, so anything an entry runs must be produced here.  Per-project durations and the size of the
 # biggest output folders go to the job summary: they are what the packaging step and the lane budgets are judged on.
 param(
@@ -40,11 +40,29 @@ $first = @()
 if ($plan.PSObject.Properties['buildFirst']) {
     foreach ($item in @($plan.buildFirst)) { $first += [pscustomobject]@{ Project = $item.project; Args = [string[]]@(); First = $true } }
 }
-$builds = @($first) + @($builds)
+$last = @()
+if ($plan.PSObject.Properties['buildLast']) {
+    foreach ($item in @($plan.buildLast)) { $last += [pscustomobject]@{ Project = $item.project; Args = [string[]]@(); First = $false } }
+}
+$builds = @($first) + @($builds) + @($last)
 
 if ($List) {
     foreach ($build in $builds) { Write-Host "dotnet build $($build.Project) -c Debug $($build.Args -join ' ')".TrimEnd() }
     exit 0
+}
+
+# The host's OpenDevelop.deps.json after a build: other projects rebuild the host into the same folder with different
+# properties, so record what it looks like at each step (library count, whether the PresentationFramework reference
+# entry is there, when it was written).
+$hostDeps = 'src/Main/SharpDevelop/bin/Debug/net10.0-windows/OpenDevelop.deps.json'
+function Get-HostDepsState {
+    if (-not (Test-Path $hostDeps)) { return 'absent' }
+    try {
+        $json = Get-Content $hostDeps -Raw | ConvertFrom-Json
+        $libraries = @($json.libraries.PSObject.Properties.Name)
+        $hasReference = [bool]($libraries | Where-Object { $_ -like 'PresentationFramework/*' })
+        return "libs=$($libraries.Count) presentationFrameworkRef=$hasReference written=$((Get-Item $hostDeps).LastWriteTimeUtc.ToString('HH:mm:ss'))Z"
+    } catch { return "unreadable ($($_.Exception.Message))" }
 }
 
 $rows = @()
@@ -59,7 +77,9 @@ foreach ($build in $builds) {
     $watch.Stop()
     Write-Host '::endgroup::'
     $seconds = [int][math]::Round($watch.Elapsed.TotalSeconds)
-    $rows += [pscustomobject]@{ Project = $project; Seconds = $seconds; Outcome = $(if ($exit -eq 0) { 'passed' } else { 'failed' }) }
+    $depsState = Get-HostDepsState
+    Write-Host "host deps.json after '$project': $depsState"
+    $rows += [pscustomobject]@{ Project = $project; Seconds = $seconds; Outcome = $(if ($exit -eq 0) { 'passed' } else { 'failed' }); HostDeps = $depsState }
     if ($exit -ne 0) {
         $failed += $project
         Write-Host "::error title=build failed::$project exited with $exit after ${seconds}s."
@@ -74,8 +94,8 @@ function Get-Size-Megabytes([string]$path) {
     return [int][math]::Round($bytes / 1MB)
 }
 
-$lines = @("### Build on $Platform (through batch $ThroughBatch)", '', '| Project | Result | Seconds |', '|---|---|---|')
-foreach ($r in $rows) { $lines += "| $($r.Project) | $($r.Outcome) | $($r.Seconds) |" }
+$lines = @("### Build on $Platform (through batch $ThroughBatch)", '', '| Project | Result | Seconds | Host deps.json afterwards |', '|---|---|---|---|')
+foreach ($r in $rows) { $lines += "| $($r.Project) | $($r.Outcome) | $($r.Seconds) | $($r.HostDeps) |" }
 $lines += @('', '| Output folder | MB |', '|---|---|')
 foreach ($folder in (@('AddIns', 'src/Main/SharpDevelop/bin', 'obj') + @($builds | ForEach-Object { (Join-Path (Split-Path $_.Project -Parent) 'bin') -replace '\\', '/' }) | Select-Object -Unique)) {
     $size = Get-Size-Megabytes $folder

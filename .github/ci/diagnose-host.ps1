@@ -56,7 +56,11 @@ function Invoke-TracedLaunch([string]$name, [string[]]$arguments, [string]$worki
     Write-Host "::group::[$name] host trace lines about '$Assembly'"
     if (Test-Path $trace) {
         Write-Host "(trace has $((Get-Content $trace | Measure-Object -Line).Lines) lines)"
-        Select-String -Path $trace -Pattern $Assembly -SimpleMatch | Select-Object -First 40 | ForEach-Object { Write-Host $_.Line }
+        Select-String -Path $trace -Pattern $Assembly -SimpleMatch | Where-Object { $_.Line -notmatch 'resources' } | Select-Object -First 40 | ForEach-Object { Write-Host $_.Line }
+        Write-Host "--- trusted platform assemblies containing '$Assembly':"
+        Select-String -Path $trace -Pattern 'TRUSTED_PLATFORM_ASSEMBLIES' | Select-Object -First 1 | ForEach-Object { ($_.Line -split ';') | Where-Object { $_ -like "*$Assembly*" } | Select-Object -First 10 | ForEach-Object { Write-Host $_ } }
+        Write-Host '--- last 25 lines of the trace:'
+        Get-Content $trace -Tail 25 | ForEach-Object { Write-Host $_ }
     } else { Write-Host 'no trace file was written' }
     Write-Host '::endgroup::'
     Write-Host "::group::[$name] host trace: how the host was invoked and where it probes"

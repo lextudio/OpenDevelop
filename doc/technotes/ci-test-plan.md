@@ -102,11 +102,22 @@ summaries and belong in this section once known.
 
 All ten `integration-core` entries fail in `OpenDevelopAppFixture.InitializeAsync`: the IDE exits during start-up with
 `FileNotFoundException: Could not load file or assembly 'PresentationFramework, Version=11.0.0.0'`
-(`ProGpuWpfSdkPortableBootstrap.Initialize`, the module initializer the LibreWPF SDK compiles into each project). What was
-ruled out by inspecting the uploaded workspace archive: the file is in the host folder (`PresentationFramework.dll`,
-assembly version 11.0.0.0, same identity as on a developer machine); the host's `OpenDevelop.runtimeconfig.json` and
-`OpenDevelop.deps.json` match a developer build, except that the CI `deps.json` has 167 libraries against 193 and registers
-`PresentationFramework.dll` only as a plain runtime asset of the `LibreWPF.Transport` package; restoring the NuGet package
-cache in the test job did not change the error. What was ruled out the hard way: an earlier theory that the missing piece
-was the NuGet cache. The `Diagnose the IDE host start-up` step of `ci.yml` (temporary) runs the host by hand with
-`COREHOST_TRACE` and prints what the .NET host probed; replace this section with the answer when it is known.
+(`ProGpuWpfSdkPortableBootstrap.Initialize`, the module initializer the LibreWPF SDK compiles into each project). Launching
+`dotnet OpenDevelop.dll` by hand on the runner reproduces it (the temporary `diagnose-host.ps1` step), so it is the host
+folder, not the test fixture or the lane.
+
+Ruled out by inspecting the uploaded workspace archive: the file is there (`PresentationFramework.dll`, assembly version
+11.0.0.0, same identity as on a developer machine); `OpenDevelop.runtimeconfig.json` matches a developer build; restoring the
+NuGet package cache in the test job changed nothing (the earlier theory that it was the missing piece was wrong).
+
+What does differ: the CI `OpenDevelop.deps.json` has 167 libraries against 193 on a developer machine, has no
+`PresentationFramework/11.0.0.0` reference entry, and was written about four minutes after `OpenDevelop.dll`. The cause that
+fits: many add-ins have a `ProjectReference` to `src/Main/SharpDevelop/SharpDevelop.csproj` (`Private=false`), and the integration
+project builds them with `ProGpuWpfUseCurrentRuntimeIdentifier=false;NoRestore=true`, so the host project is built a second
+time with those properties into the same folder and rewrites its `deps.json`. The Terminal workflow, which starts the IDE fine on
+Windows, builds the integration project with `BuildIntegrationRuntimeProjects=false` and never triggers that second build.
+
+Attempted fix (not yet confirmed): the plan's `buildLast` builds the host once more after everything else, with its own
+properties; `build-binaries.ps1` prints the host `deps.json` state (library count, whether the `PresentationFramework`
+reference entry is there, write time) after every build, so the run itself shows which build changes it. If the lane starts,
+this section becomes a description of the cause; if it does not, the diagnostic step's trace output is the next thing to read.
