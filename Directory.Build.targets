@@ -1,4 +1,12 @@
 <Project>
+  <!-- LibreWPF.Sdk preview.69's WPF implicit-using set omits System.IO and System.Net.Http. This targets file is
+       imported after the SDK has initialized @(Using), so the generated global-usings file and
+       WPF's temporary markup project both receive the standard namespace. -->
+  <ItemGroup Condition="'$(ImplicitUsings)' == 'enable' Or '$(ImplicitUsings)' == 'true'">
+    <Using Remove="System.IO;System.Net.Http" />
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
+  </ItemGroup>
   <!-- OpenDevelop.Addin.Sdk owns the CopyLocal filter as well as trimming.  Keeping it in
        the SDK makes an out-of-tree addin follow the same shared-host deployment model. -->
 
