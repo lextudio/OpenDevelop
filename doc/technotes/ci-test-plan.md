@@ -97,3 +97,16 @@ only.
 Measured on the first runs (windows-2025): the integration project build takes about ten minutes and the four unit test
 projects about two more; the numbers for the archive (size, pack, upload, download, unpack) come from the next run's job
 summaries and belong in this section once known.
+
+## Open issue: the integration lane does not start the IDE on the runner
+
+All ten `integration-core` entries fail in `OpenDevelopAppFixture.InitializeAsync`: the IDE exits during start-up with
+`FileNotFoundException: Could not load file or assembly 'PresentationFramework, Version=11.0.0.0'`
+(`ProGpuWpfSdkPortableBootstrap.Initialize`, the module initializer the LibreWPF SDK compiles into each project). What was
+ruled out by inspecting the uploaded workspace archive: the file is in the host folder (`PresentationFramework.dll`,
+assembly version 11.0.0.0, same identity as on a developer machine); the host's `OpenDevelop.runtimeconfig.json` and
+`OpenDevelop.deps.json` match a developer build, except that the CI `deps.json` has 167 libraries against 193 and registers
+`PresentationFramework.dll` only as a plain runtime asset of the `LibreWPF.Transport` package; restoring the NuGet package
+cache in the test job did not change the error. What was ruled out the hard way: an earlier theory that the missing piece
+was the NuGet cache. The `Diagnose the IDE host start-up` step of `ci.yml` (temporary) runs the host by hand with
+`COREHOST_TRACE` and prints what the .NET host probed; replace this section with the answer when it is known.

@@ -159,11 +159,28 @@ jobs:
         with:
           global-json-file: global.json
           architecture: ${{ matrix.dotnet_architecture }}
+      # TEMPORARY, remove once the integration lane starts: the first integration runs died at IDE start-up with a
+      # FileNotFoundException for PresentationFramework 11.0.0.0 although the file is in the host folder; this prints
+      # what the .NET host actually probed (COREHOST_TRACE) for the direct launch and for the fixture's 'dotnet run'.
+      - name: Diagnose the IDE host start-up
+        if: matrix.needs_nuget_cache
+        shell: pwsh
+        run: ./.github/ci/diagnose-host.ps1
       - name: Run the lane
         shell: pwsh
         env:
           THROUGH_BATCH: ${{ inputs.through_batch }}
+          # The IDE start-up log of every test launch lands here; it is uploaded below.
+          OD_TEST_LOG_DIR: ${{ runner.temp }}/od-test-logs
+          OD_TEST_KEEP_ARTIFACTS: '1'
         run: |
           $through = -1
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
           ./.github/ci/run-test-plan.ps1 -Platform '${{ matrix.platform }}' -Lane '${{ matrix.lane }}' -ThroughBatch $through
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: logs-${{ matrix.lane }}-${{ matrix.platform }}
+          path: ${{ runner.temp }}/od-test-logs
+          if-no-files-found: ignore
+          retention-days: 3
