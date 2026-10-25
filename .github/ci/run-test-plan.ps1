@@ -52,6 +52,10 @@ function Get-TestTotal($entry, [string[]]$output) {
     return [int]$matches[$matches.Count - 1].Groups[1].Value
 }
 
+# xUnit v3 writes a TRX per assembly with '-trx <file>'; the workflow uploads the folder and renders it as a check.
+$resultsDirectory = if ($env:OD_TEST_RESULTS) { $env:OD_TEST_RESULTS } else { 'TestResults' }
+New-Item -ItemType Directory -Force -Path $resultsDirectory | Out-Null
+
 $selected = @($plan.entries | Where-Object {
     $_.batch -le $ThroughBatch -and $_.lane -eq $Lane -and (Get-Status $_ $Platform) -in @('observe', 'required')
 })
@@ -63,6 +67,7 @@ foreach ($entry in $selected) {
     $status = Get-Status $entry $Platform
     # Typed, because a function's one-element array result is unrolled to a string and would be splatted as characters.
     [string[]]$arguments = Get-Command-Arguments $entry
+    if ($entry.kind -eq 'xunit-exe') { $arguments += @('-trx', (Join-Path $resultsDirectory "$($entry.id).trx")) }
     $target = if ($entry.kind -eq 'xunit-exe') { $entry.target } else { $null }
     if ($target -and -not (Test-Path $target)) {
         # The build job should have produced it; say so plainly instead of letting dotnet print a vague error.

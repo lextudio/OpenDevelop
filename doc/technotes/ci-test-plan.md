@@ -21,7 +21,10 @@ plan  ->  build (per platform)  ->  test (per platform x lane)
   the whole workspace (sources and all build outputs, no `.git`, no `node_modules`) and uploads it as one archive
   (zstd when the runner's `tar` supports it, gzip otherwise; the upload does not compress a second time). Refuses to pack
   a `NuGet.config` that holds a clear-text credential.
-* **test** (`run-test-plan.ps1`) unpacks the archive at the same absolute path and runs the lane's entries: `xunit-exe`
+* **test** (`run-test-plan.ps1`) unpacks the archive at the same absolute path and runs the lane's entries, each `xunit-exe`
+  one also writing a TRX (`-trx <results>/<entry>.trx`, which is how xUnit v3 spells it; `--report-trx` is the Microsoft
+  Testing Platform option and is rejected). The workflow publishes those as a check (`dorny/test-reporter`, guarded by
+  `continue-on-error` so a fork PR's read-only token cannot fail a lane) and uploads them as an artifact: `xunit-exe`
   runs the compiled xUnit v3 assembly directly (`dotnet <dll> [args]`, so the integration classes are
   `-class <name> -parallel none`), `msbuild` runs the AddIn SDK assertion projects with `-t:Build`. Nothing is restored
   or built there, so the NuGet feeds are not touched and no credential is present in test jobs.

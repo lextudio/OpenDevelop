@@ -56,9 +56,10 @@
         "src/Main/SharpDevelop/bin/Debug/net10.0-windows",
         "--self-contained",
         "false",
-        "-p:ProGpuWpfUseCurrentRuntimeIdentifier=false"
+        "-p:ProGpuWpfUseCurrentRuntimeIdentifier=false",
+        "-p:OpenDevelopDistributionBuild=true"
       ],
-      "note": "Publish the host the way dist.ps1 does: RID-less, framework-dependent. The shipped Windows payload (v5.6.2) has 193 libraries and PresentationFramework.dll both at the app root and under runtimes/win-x64/lib/net10.0/, which is what lets the host resolve the LibreWPF payload by its runtime RID. A '--runtime win-x64' build prunes that tree and the IDE then dies at start-up with FileNotFoundException 11.0.0.0 (measured: 193 DLLs before, 178 after the integration build, no runtimes payload for PresentationFramework)."
+      "note": "Publish the host the way dist.ps1 does: RID-less, framework-dependent. The shipped Windows payload (v5.6.2) has 193 libraries and PresentationFramework.dll both at the app root and under runtimes/win-x64/lib/net10.0/, which is what lets the host resolve the LibreWPF payload by its runtime RID. A '--runtime win-x64' build prunes that tree and the IDE then dies at start-up with FileNotFoundException 11.0.0.0 (measured: 193 DLLs before, 178 after the integration build, no runtimes payload for PresentationFramework). Distribution mode is what dist.ps1 passes for the host publish; the shipped payload was built that way."
     }
   ],
   "entries": [
