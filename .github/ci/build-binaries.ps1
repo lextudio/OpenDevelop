@@ -23,6 +23,14 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# GitVersion's GitHub Actions integration appends every version variable to the runner's env command file, and a build
+# that compiles several projects in parallel runs several GitVersion processes against that one file. On 2026-10-25 that
+# failed a lane outright: "IOException: The process cannot access the file D:\a\_temp\_runner_file_commands\set_env_..."
+# from GitVersion.Agents.GitHubActions.WriteIntegration in UnitTesting.csproj. Nothing here reads GitVersion_BuildNumber,
+# so the integration is switched off for the build: with GITHUB_ACTIONS gone the CLI picks no build agent.
+$env:GITHUB_ACTIONS = $null
+
 $plan = Get-Content $PlanPath -Raw | ConvertFrom-Json
 if ($ThroughBatch -lt 0) { $ThroughBatch = [int]$plan.throughBatch }
 
@@ -61,13 +69,17 @@ if (-not $SkipHostBuilds -and $plan.PSObject.Properties['buildLast']) {
     foreach ($item in @($plan.buildLast)) {
         [string[]]$itemArgs = if ($item.PSObject.Properties['args']) { @($item.args | ForEach-Object { $_ -replace '\{rid\}', $rid }) } else { @() }
         if (-not $rid -and ($item.args -join ' ') -match '\{rid\}') { throw "buildLast uses {rid} but platform '$Platform' defines no 'rid'." }
-        $last += [pscustomobject]@{ Project = $item.project; Args = $itemArgs; First = $false }
+        $verb = if ($item.PSObject.Properties['verb']) { [string]$item.verb } else { 'build' }
+        $last += [pscustomobject]@{ Project = $item.project; Args = $itemArgs; First = $false; Verb = $verb }
     }
 }
 $builds = @($first) + @($builds) + @($last)
 
 if ($List) {
-    foreach ($build in $builds) { Write-Host "dotnet build $($build.Project) -c Debug $($build.Args -join ' ')".TrimEnd() }
+    foreach ($build in $builds) {
+        $verb = if ($build.PSObject.Properties['Verb'] -and $build.Verb) { $build.Verb } else { 'build' }
+        Write-Host "dotnet $verb $($build.Project) -c Debug $($build.Args -join ' ')".TrimEnd()
+    }
     exit 0
 }
 
@@ -95,9 +107,10 @@ $rows = @()
 $failed = @()
 foreach ($build in $builds) {
     $project = $build.Project
-    Write-Host "::group::build $project $($build.Args -join ' ')"
+    Write-Host "::group::$verb $project $($build.Args -join ' ')"
     $watch = [System.Diagnostics.Stopwatch]::StartNew()
-    [string[]]$arguments = @('build', $project, '-c', 'Debug') + $build.Args
+    $verb = if ($build.PSObject.Properties['Verb'] -and $build.Verb) { $build.Verb } else { 'build' }
+    [string[]]$arguments = @($verb, $project, '-c', 'Debug') + $build.Args
     & dotnet @arguments
     $exit = $LASTEXITCODE
     $watch.Stop()
