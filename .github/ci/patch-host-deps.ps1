@@ -33,6 +33,8 @@ $DepsPath = (Resolve-Path $DepsPath).Path
 
 $deps = Get-Content -LiteralPath $DepsPath -Raw | ConvertFrom-Json -AsHashtable
 if (-not $deps['targets']) { throw "$DepsPath has no 'targets'; not a host manifest." }
+if (-not $deps['libraries']) { $deps['libraries'] = [ordered]@{} }
+$libraries = $deps['libraries']
 
 # The payload is whatever the managed transport library declares as its runtime assets: that keeps the file list
 # version-independent instead of hardcoding assembly names here.
@@ -85,7 +87,13 @@ foreach ($targetName in $deps['targets'].Keys) {
 
     foreach ($fileName in $missing) {
         $path = Join-Path $HostDirectory $fileName
-        $assemblyName = [System.Reflection.AssemblyName]::GetAssemblyName($path)
+        # The payload also carries native images (PenImc_cor3.dll and friends). They are found through
+        # NATIVE_DLL_SEARCH_DIRECTORIES, not through a managed library entry, and reading them as assemblies throws.
+        $assemblyName = try { [System.Reflection.AssemblyName]::GetAssemblyName($path) } catch { $null }
+        if ($null -eq $assemblyName) {
+            Write-Verbose "patch-host-deps: '$fileName' is not a managed assembly; left to the native search paths."
+            continue
+        }
         $fileVersion = (Get-Item $path).VersionInfo.FileVersion
         $key = "$($assemblyName.Name)/$($assemblyName.Version)"
         $metadata = [ordered]@{ assemblyVersion = [string]$assemblyName.Version }
@@ -95,6 +103,12 @@ foreach ($targetName in $deps['targets'].Keys) {
         }
         elseif ($target[$key]['runtime'] -and -not $target[$key]['runtime'].ContainsKey($fileName)) {
             $target[$key]['runtime'][$fileName] = $metadata
+        }
+        # The host resolves a target entry only through its 'libraries' record; a 'reference' record is what makes the
+        # asset resolve app-base instead of looking for a package path. Without this half the entry above is ignored
+        # (measured: the entry alone still produced FileNotFoundException 11.0.0.0).
+        if (-not $libraries.ContainsKey($key)) {
+            $libraries[$key] = [ordered]@{ type = 'reference'; serviceable = $false; sha512 = '' }
         }
         $added.Add($fileName)
     }
