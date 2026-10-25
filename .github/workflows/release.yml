@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  packages: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  windows:
+    name: Package Windows
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          architecture: x64
+      - name: Build the unified Windows distribution
+        shell: cmd
+        run: dist.windows.bat
+      - name: Name the release asset
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/release | Out-Null
+          Move-Item OpenDevelop-win.zip "artifacts/release/OpenDevelop-${{ github.ref_name }}-windows.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: artifacts/release/*.zip
+          if-no-files-found: error
+
+  macos:
+    name: Package macOS ARM64
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          architecture: arm64
+      - name: Build the macOS ARM64 distribution
+        run: ./dist.macos.sh
+      - name: Name the release asset
+        run: |
+          mkdir -p artifacts/release
+          mv OpenDevelop-macos.dmg "artifacts/release/OpenDevelop-${GITHUB_REF_NAME}-macos-arm64.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-arm64
+          path: artifacts/release/*.dmg
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/release
+          merge-multiple: true
+      - name: Create the release from the verified assets
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME" artifacts/release/* \
+            --verify-tag --title "OpenDevelop $GITHUB_REF_NAME" --generate-notes
