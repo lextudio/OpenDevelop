@@ -119,6 +119,27 @@ Invoke-TracedLaunch 'direct' @((Join-Path $HostDirectory 'OpenDevelop.dll'), "-c
 $env:DOTNET_ReadyToRun = '0'
 try { Invoke-TracedLaunch 'direct-no-r2r' @((Join-Path $HostDirectory 'OpenDevelop.dll'), "-configdir:$configDirectory") $HostDirectory }
 finally { Remove-Item env:DOTNET_ReadyToRun -ErrorAction SilentlyContinue }
+# The deps manifest records the managed transport payload as a package-relative asset (lib/net10.0/PresentationFramework.dll)
+# while the file sits in the host folder, so the host can only resolve it through the package folder. A
+# runtimeconfig.dev.json is what names that folder; the build did not produce one here. Write one, launch, then remove it, so
+# this answers "is the payload reachable through probing paths" instead of guessing.
+$devConfig = Join-Path $HostDirectory 'OpenDevelop.runtimeconfig.dev.json'
+if (-not (Test-Path $devConfig)) {
+    $packages = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $HOME '.nuget/packages' }
+    $dev = @{ runtimeOptions = @{ additionalProbingPaths = @($packages) } } | ConvertTo-Json -Depth 4
+    Set-Content -Path $devConfig -Value $dev -Encoding utf8
+    Write-Host "wrote a probing-path dev config for the host: $packages"
+    try {
+        Invoke-TracedLaunch 'direct-with-probing' @((Join-Path $HostDirectory 'OpenDevelop.dll'), "-configdir:$configDirectory") $HostDirectory
+    }
+    finally {
+        Remove-Item $devConfig -ErrorAction SilentlyContinue
+        Write-Host 'removed the probing-path dev config again'
+    }
+} else {
+    Write-Host "host already has $devConfig"
+}
+
 $projectPath = (Resolve-Path 'src/Main/SharpDevelop/SharpDevelop.csproj').Path
 Invoke-TracedLaunch 'dotnet-run' @('run', '--project', $projectPath, '-f', 'net10.0-windows', '--no-build', "-configdir:$configDirectory") (Split-Path $projectPath -Parent)
 exit 0
