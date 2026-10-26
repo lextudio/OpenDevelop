@@ -114,7 +114,7 @@ jobs:
         name: Compute the package cache key
         shell: pwsh
         run: |
-          $key = "nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config') }}"
+          $key = "nuget-${{ matrix.name }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config') }}"
           Write-Host "cache key: $key"
           "key=$key" | Add-Content -Path $env:GITHUB_OUTPUT
       # The package folder is the same cache entry the IDE lanes restore: restoring it here is what makes the
@@ -187,12 +187,14 @@ jobs:
         if: matrix.needs_cliclick
         shell: bash
         run: brew install cliclick
+      # Keyed by the platform whose build job saved the entry, not by this runner: the Windows ARM64 lane runs the
+      # windows-x64 build ('buildFrom'), and a runner.arch key made it look for an ARM64 entry nobody saves.
       - id: nuget-key
         name: Compute the package cache key
         if: matrix.needs_nuget_cache
         shell: pwsh
         run: |
-          $key = "nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config') }}"
+          $key = "nuget-${{ matrix.build_platform }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config') }}"
           "key=$key" | Add-Content -Path $env:GITHUB_OUTPUT
       # The IDE host is not self-contained: at run time it resolves the LibreWPF assemblies from the global packages
       # folder, so a lane that starts the IDE needs that folder. Same key the build job saved, and a miss is a failure
@@ -274,7 +276,7 @@ jobs:
         name: Compute the package cache key
         shell: pwsh
         run: |
-          $key = "nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config') }}"
+          $key = "nuget-${{ needs.plan.outputs.in_lane_platform }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config') }}"
           Write-Host "cache key: $key"
           "key=$key" | Add-Content -Path $env:GITHUB_OUTPUT
       # Restore only: the build job owns this entry. This lane starts before that job saves it, so a miss here is normal
