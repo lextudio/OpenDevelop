@@ -1,6 +1,7 @@
 # Integrated terminal
 
-Status: working on macOS arm64, smoke-tested in CI on Windows x64 and native Windows ARM64, not yet on Linux
+Status: works on macOS arm64 (all 23 journeys pass locally) and is smoke-tested in CI on Windows x64 and native Windows ARM64
+on the unified RID-less payload; not yet on Linux, and the macOS journeys have not yet passed on a CI runner
 (issue #20, "Terminal Toolbox"), `src/AddIns/Misc/Terminal`. See "Prototype status" and "Verification by platform" below.
 
 Goal: parity with the VS Code integrated terminal for everyday use — several terminals, split, a
@@ -170,8 +171,8 @@ Pitfalls found (keep):
   unified Windows payload is built without a RID, where the natives keep `runtimes/win-<rid>/native/` and Porta.Pty looks
   for the host in a per-architecture folder beside each `conpty.dll`; without it Porta.Pty silently falls back to the
   in-box conhost. `Terminal.csproj` now stages `runtimes/win-x64/native/x64/OpenConsole.exe` and
-  `runtimes/win-arm64/native/arm64/OpenConsole.exe` for a RID-less build (checked on the build output only; whether the
-  RID-less layout starts the shell on Windows is verified by the CI journey, not yet). Every Terminal CI run that passed
+  `runtimes/win-arm64/native/arm64/OpenConsole.exe` for a RID-less build (the RID-less layout starts the
+  shell on Windows x64 and ARM64 in the CI journey; that the staged host is the one used is not asserted). Every Terminal CI run that passed
   on Windows used a RID build; see "Verification by platform".
 - The host shell must be rebuilt (`ICSharpCode.Core.Presentation` embeds the icons) before new icons
   resolve; the add-in alone is not enough. Use one SDK (Homebrew) for both builds.
@@ -300,36 +301,58 @@ the engine on its own.
 
 ## Verification by platform
 
-Evidence from the CI history (the Terminal-only workflow `terminal-cross-platform.yml`, since folded into `ci.yml`),
-not from local runs.
-
 | Platform | What ran | Result |
 |---|---|---|
-| Windows x64 | `TerminalCrossPlatformTests`, about 38 s: show the pad, detect shells, new terminal, `echo` rendered on screen, left/right split, vertical split nested to three panes, kill | passed on every run from 2026-10-23 18:06 UTC through `72419767b` (2026-10-24), including after the preview.69 SDK pin |
-| Windows ARM64 (native `windows-11-arm`, SDK reports RID `win-arm64`) | same journey | passed from `ea4a61318b` (LibGhostty ARM64 natives) through `72419767b` |
-| macOS arm64 | `TerminalPadTests` with `cliclick` | red on every run of that workflow; the cause was not extracted from the logs. Passes locally |
+| Windows x64 | `TerminalCrossPlatformTests` (about 40 s): show the pad, detect shells, new terminal, `echo` rendered on screen, left/right split, vertical split nested to three panes, kill | passed in the Terminal-only workflow from 2026-10-23 through `72419767b`, and again in `ci.yml` on the unified RID-less payload unpacked from the build archive (run `40273919025`, commit `b7da2c1fb`) |
+| Windows ARM64 (native `windows-11-arm`, RID `win-arm64`, process Arm64) | same journey | passed in the Terminal-only workflow from `ea4a61318b`, and in `ci.yml` on the payload built on x64 (same run) |
+| macOS arm64, local | all 23 `TerminalPadTests`, including real clicks, wheel and keyboard | pass with the fixed `ProGPU.Backend` and `PresentationCore` (see "macOS crashes" below), from the CI-published preview.69 packages; the real-input tests need an unlocked screen |
+| macOS arm64, CI | `terminal-macos-integration` (`TerminalPadTests` with `cliclick`) | **red on every run so far** (23 of 23 failed on 2026-10-26 before the fixes, 11 of 23 on 2026-10-24); not yet run with the republished packages |
 | Linux | none | paused in `a00a31a90e`, never verified |
 
-What this establishes: ConPTY start-up, Windows shell detection, the win-arm64 native chain and nested splits work on
-real runners. What it does not: the rest of the macOS journeys (selection, mouse reporting, find, links, drop, zoom,
-real input) have never run on Windows or Linux, and POSIX programs (`vim`, `less`) cannot be used there.
+What this establishes: ConPTY start-up, Windows shell detection, the win-arm64 native chain and nested splits work on real
+runners, and the Windows payload that serves both architectures starts the shell. What it does not: the rest of the
+macOS journeys (selection, mouse reporting, find, links, drop, zoom, real input) have never run on Windows or Linux, POSIX
+programs (`vim`, `less`) cannot be used there, and whether the out-of-band ConPTY (the `OpenConsole.exe` staged beside
+`conpty.dll`) rather than the in-box conhost is the one in use is not asserted by any test.
 
-Those Windows runs were in-place builds with a Terminal build for the native RID (`--runtime win-x64|win-arm64`).
-The current `ci.yml` builds Terminal RID-less on Windows and runs the journey from an unpacked workspace archive,
-and its Windows integration lane has not yet started the host (`FileNotFoundException: PresentationFramework`), so
-`terminal-integration` is `observe` and the Terminal evidence above predates the current pipeline.
+The real-input journeys (`ScrollsOnARealWheelEvent`, `TakesRealKeyboardInput`, `TakesRealPointerInput_ForSelectionAndLinks`,
+`ToolbarWorksWithRealClicks`, `OpensItsMenuOnARealRightClick`) post OS events, so a locked screen makes all of them fail
+with "input did not arrive" and no exception; check `CGSSessionScreenIsLocked` before reading anything into a red run.
+`TakesRealPointerInput_ForSelectionAndLinks` also depends on the OS counting a triple click and failed twice inside a full
+run while passing alone three times.
+
+### macOS crashes found on 2026-10-26 (both outside this add-in)
+
+Both ended the IDE process on macOS, and the add-in's own code was not at fault:
+
+- **Opening any `Popup` or `ContextMenu`** threw `The owned Cocoa popup identity changed` from
+  `ProGPU.Backend`'s `CocoaOwnedPopupSurface.Enter()`. After the owned panel is shown AppKit reports its `styleMask` as 0,
+  and `OwnedOperations.IsCurrent` required the creation-time `0x80`. Fixed in `lextudio/ProGPU` PR 1 (`dbba4a631`);
+  reported upstream as `wieslawsoltes/ProGPU#401`, where the same check is still present.
+- **Measuring a glyph the typeface lacks** (the `▾` on the shell arrow, the find bar's `▲ ▼ ✕`; Arial has no U+25BE) threw
+  `Portable text that requires native shaping needs a registered text formatting provider`: in Display mode the registered
+  provider is not a Display provider, so the line goes to `SimpleTextLine`, which declined the run with nothing to fall back
+  to. Fixed in `lextudio/LibreWPF` PR 1 (`184caccee`) by falling back to another system typeface for the missing characters.
+  Windows never hits it because Line Services does the composite-font fallback.
+
+Both fixes were verified together with the add-in unchanged. Characters as toolbar and find-bar button content therefore
+work, but they are the only text-shaped icons in the add-in; an icon from the VS 2026 library would not depend on font
+fallback at all.
 
 ## Phasing
 
 1. Spike: PTY + VT round trip. Done.
 2. Pad with toolbar, sessions, split, selection, mouse, settings, Project Browser switch-over, DevFlow
    actions and journeys. Done on macOS arm64.
-3. Windows x64 and native Windows ARM64: smoke journey passed in CI (see below). Still open: the not-built list above,
-   the macOS journeys on a CI runner, the Terminal journey on the current unified Windows payload, and Linux.
+3. Windows x64 and native Windows ARM64: smoke journey passed in CI on the unified payload; macOS: all 23 journeys pass
+   locally (see "Verification by platform"). Still open: the not-built list above, the macOS journeys on a CI runner,
+   asserting that the out-of-band ConPTY is the one in use, and Linux.
 
 ## Open questions
 
-- Windows RID-less layout: the unified payload is built without a RuntimeIdentifier. Both `OpenConsole.exe` hosts are now
-  staged beside their `conpty.dll`, but nothing has run that layout on Windows yet, and the location of `ghostty-vt.dll`
-  there (under `runtimes/win-<rid>/native/`) depends on LibGhostty.Net's native lookup, which was not checked.
+- Windows RID-less layout: the unified payload is built without a RuntimeIdentifier and both `OpenConsole.exe` hosts are
+  staged beside their `conpty.dll`. The smoke journey starts a shell from that layout on x64 and ARM64, so
+  `ghostty-vt.dll` under `runtimes/win-<rid>/native/` is found too. Still unknown: whether Porta.Pty uses that out-of-band
+  ConPTY or silently falls back to the in-box conhost (no test asserts it; a child `OpenConsole.exe` in the shell's
+  process tree would show it).
 - Frame rate of a full-screen redraw (`vim`, `top`): it has not been measured.
