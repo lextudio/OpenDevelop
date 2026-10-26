@@ -7,32 +7,10 @@
     <!-- The lextudio GitHub Packages build of 1.0.2 contains native assets for every supported Terminal RID. -->
     <LibGhosttyNetVersion>1.0.2</LibGhosttyNetVersion>
   </PropertyGroup>
-  <!-- Vendored UI libraries retain their upstream package policy. Avoid placing
-       configuration files inside their working trees/submodules.
-
-       MSBuildProjectDirectory is not reliably set when Directory.Packages.props is
-       evaluated during NuGet SDK resolution, so we fall back to MSBuildProjectFullPath
-       (always available) and normalize path separators for cross-platform comparison. -->
-  <PropertyGroup>
-    <!-- MSBuildProjectFullPath, per the note above: MSBuildProjectDirectory really is empty while
-         this file is evaluated during NuGet SDK resolution, and the condition below then failed to
-         match a vendored project - re-enabling central management for it, which breaks resolving
-         its Sdk="LibreWPF.Sdk" ("The NuGetSdkResolver did not resolve this SDK because there was no
-         version specified in the project or global.json", from the AvalonEdit submodule). That only
-         shows up once SDK resolution actually re-runs, e.g. after a forced restore, so an
-         incremental build kept working and hid it. -->
-    <_OpenDevelopEvaluatedProjectPath>$([MSBuild]::NormalizePath('$(MSBuildProjectFullPath)').Replace('\','/'))</_OpenDevelopEvaluatedProjectPath>
-  </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="AltCover" Version="9.0.102" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageVersion Include="DataGridExtensions" Version="2.9.1" />
-    <!-- ILSpy's decompiler and its non-UI service layer, taken from the published packages instead
-         of from the externals/ilspy submodule. The two OpenDevelop patches that used to force a
-         source build now live on this side of the boundary: see Dom/ITreeNodeModelOwner.cs
-         (SharpTreeNode.Model/GetModel) and Controls/TreeView/RangeCollapsingItemsSource.cs
-         (TreeFlattener's ranged-notification fix). ICSharpCode.ILSpyX also carries the
-         ICSharpCode.ILSpyX.TreeView types, which are not published as a package of their own. -->
     <!-- Published by the AvalonDock fork's workflow, like the AvalonEdit package below; both replaced a vendored
          submodule that carried its own provider pins. -->
     <PackageVersion Include="Dirkster.AvalonDock.Core" Version="5.0.1" />
@@ -44,6 +22,12 @@
          src/Libraries/AvalonEdit submodule, whose vendored global.json pinned its own LibreWPF.Sdk and had to be
          bumped with every provider release; the package carries that pin instead. -->
     <PackageVersion Include="ICSharpCode.AvalonEdit.LibreWPF" Version="6.3.1.120" />
+    <!-- ILSpy's decompiler and its non-UI service layer, taken from the published packages instead
+         of from the externals/ilspy submodule. The two OpenDevelop patches that used to force a
+         source build now live on this side of the boundary: see Dom/ITreeNodeModelOwner.cs
+         (SharpTreeNode.Model/GetModel) and Controls/TreeView/RangeCollapsingItemsSource.cs
+         (TreeFlattener's ranged-notification fix). ICSharpCode.ILSpyX also carries the
+         ICSharpCode.ILSpyX.TreeView types, which are not published as a package of their own. -->
     <PackageVersion Include="ICSharpCode.Decompiler" Version="11.0.0.9375" />
     <PackageVersion Include="ICSharpCode.ILSpyX" Version="11.0.0.9375" />
     <PackageVersion Include="GirCore.Gtk-4.0" Version="0.8.1" />
