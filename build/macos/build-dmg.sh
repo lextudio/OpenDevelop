@@ -45,7 +45,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cp -R "$app_path" "$stage_dir/"
+# ditto preserves hard links created while deduplicating the application bundle. `cp -R` expands
+# every linked runtime assembly back into a private copy and would discard the space reduction.
+ditto "$app_path" "$stage_dir/$app_name"
 ln -s /Applications "$stage_dir/Applications"
 
 has_background=0

@@ -107,6 +107,12 @@ populate_repo_payload() {
   # WorkflowDesigner and StrideGameStudio are independently versioned external addins.
   # Their repositories deploy them into a local installed IDE for their own tests; the
   # base distribution must not carry either stale manifest or implementation.
+  # Static archives are link-time inputs. CoreCLR and macOS's dynamic loader cannot load a
+  # .a file at runtime, so retaining the ProGPU SDK archives in every AddIn only bloats the
+  # bundle (notably the 34 MiB ICU archive replicated across the AddIns tree).
+  # The debugger's full-folder inclusion also contains a PE helper, while the profiler keeps
+  # Windows-only DIA readers in architecture folders. Exclude them before the full-folder
+  # includes so --delete-excluded removes stale copies during incremental macOS builds.
   rsync -a \
     --delete \
     --delete-excluded \
@@ -115,8 +121,13 @@ populate_repo_payload() {
     --exclude '**/runtimes/win*/***' \
     --exclude '**/runtimes/linux*/***' \
     --exclude '**/runtimes/unix*/***' \
+    --exclude '**/*.a' \
     --exclude 'LeXtudio.DevFlow.*' \
     --exclude 'CliclickSharp' \
+    --exclude 'Debugger/CliclickSharp.exe' \
+    --exclude 'Analysis/Profiler/x86/***' \
+    --exclude 'Analysis/Profiler/amd64/***' \
+    --exclude 'Analysis/Profiler/arm64/***' \
     --exclude 'DisplayBindings/WorkflowDesigner/***' \
     --exclude 'DisplayBindings/StrideGameStudio/***' \
     "${keep_args[@]}" \
@@ -208,5 +219,7 @@ trap 'rm -f "$host_exclude_file"' EXIT
 populate_repo_payload "$bundle_macos" "$host_exclude_file"
 rm -f "$host_exclude_file"
 trap - EXIT
+
+"$script_dir/deduplicate-runtime-files.sh" "$bundle_macos"
 
 echo "Bundle ready: $bundle_root"

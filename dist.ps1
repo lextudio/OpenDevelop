@@ -758,6 +758,10 @@ function Invoke-MacPayload {
     if ($childDepsPaths.Count -gt 0) {
         & $patchScript -DepsPath $childDepsPaths -NugetPackageRoot $nugetPackageRoot -Quiet
     }
+    # Dependency manifest patching can replace runtime DLLs inside child-host folders. Run the
+    # byte-identical-file pass afterwards so those copies do not undo the bundle's space saving.
+    & bash (Join-Path $repoRoot 'build/macos/deduplicate-runtime-files.sh') (Join-Path $repoRoot 'OpenDevelop.app/Contents/MacOS') | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "deduplicate-runtime-files.sh exited with code $LASTEXITCODE" }
 
     # Hot Reload is offered only when its addin finds the agent beside itself, so a missing agent
     # fails no build of its own - it just quietly disables the feature. Check for every one.
