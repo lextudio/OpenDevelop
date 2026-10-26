@@ -140,6 +140,14 @@ foreach ($build in $builds) {
     }
 }
 
+# The publish writes a manifest in which the managed LibreWPF payload is package-relative, which the Windows host cannot
+# resolve from the app base (on macOS the portable bootstrap preloads it instead). Register it app-local first - the
+# script detects that and writes nothing where the payload already resolves - so the validation below judges the payload
+# this job actually ships, not the intermediate manifest.
+if ($failed.Count -eq 0 -and $requiresHostPayloadValidation) {
+    & (Join-Path $PSScriptRoot 'patch-host-deps.ps1')
+}
+
 # Terminal's RID build can temporarily clear the mutable package payload.  The final host publish is
 # intentionally ordered after it to restore that payload, so validate only the completed build plan.
 if ($failed.Count -eq 0 -and $requiresHostPayloadValidation -and $Platform -like 'windows-*') {
