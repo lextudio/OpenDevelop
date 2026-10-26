@@ -23,9 +23,9 @@ payload.
 OpenDevelop consumes LibreWPF, LibreWinForms, ProGPU, AvalonEdit and AvalonDock
 as NuGet packages. Their exact versions and sources are pinned in
 `Directory.Packages.props` and constrained by `NuGet.config` package-source
-mappings. Packages retain their own LICENSE and NOTICE files; the release
-manifest records the exact resolved package versions and their declared license
-metadata.
+mappings. Distribution packaging copies package-contained LICENSE, COPYING,
+and NOTICE files into `THIRD-PARTY-NOTICES/NuGet/`, with a catalog generated
+from the exact resolved package graph.
 
 ## Microsoft components
 
@@ -38,8 +38,8 @@ are Microsoft packages.
 
 A releasable Windows ZIP or macOS application must include this file, the root
 `LICENSE`, the generated third-party package manifest, and all notices required
-by native assets copied into that payload. Distribution packaging validates
-their presence before an archive is created.
+by native assets copied into that payload. Distribution staging validates
+their presence before archiving, and the Windows ZIP is validated afterwards.
 
 The source-linked-submodule audit, including the exact files rather than only
 repository-level licenses, is maintained in `doc/technotes/licensing-audit.md`.

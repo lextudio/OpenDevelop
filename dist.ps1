@@ -142,10 +142,19 @@ function Write-DistributionLegalFiles {
     $missingAssets = @($assetsFiles | Where-Object { -not (Test-Path -LiteralPath $_) })
     if ($missingAssets.Count -gt 0) { throw "Cannot generate SPDX manifest; restore did not produce $($missingAssets -join ', ')" }
     try {
-        & $spdxScript -AssetsFile $assetsFiles -PackageRoot (Get-NuGetGlobalPackages) -OutputPath (Join-Path $Destination 'THIRD-PARTY.spdx.json')
+        & $spdxScript -AssetsFile $assetsFiles -PackageRoot (Get-NuGetGlobalPackages) -OutputPath (Join-Path $Destination 'THIRD-PARTY.spdx.json') -NoticeDirectory (Join-Path $destinationNotices 'NuGet')
     }
     catch {
         throw "SPDX manifest generation failed: $($_.Exception.Message)"
+    }
+}
+
+function Test-DistributionLegalFiles {
+    param([Parameter(Mandatory)][string]$Destination)
+
+    foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md', 'THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt', 'THIRD-PARTY-NOTICES/NuGet/NOTICE.md') {
+        $legalPath = Join-Path $Destination $legalFile
+        if (-not (Test-Path -LiteralPath $legalPath)) { throw "Distribution payload lacks required legal file: $legalPath" }
     }
 }
 
@@ -530,6 +539,7 @@ function Test-WindowsDistributionPayload {
 
     $app = Join-Path $PayloadRoot 'OpenDevelop.dll'
     if (-not (Test-Path -LiteralPath $app)) { throw "Distribution payload has no OpenDevelop.dll: $PayloadRoot" }
+    Test-DistributionLegalFiles -Destination $PayloadRoot
     # OpenDevelop.dll itself is AnyCPU and apphost-free: it is started as "dotnet exec OpenDevelop.dll".
     # The launcher (Build-Launchers) supplies the ONE file that is unavoidably architecture-specific -
     # the native apphost the user double-clicks - as two separate files, one per Windows
@@ -662,7 +672,7 @@ function Test-WindowsDistributionZip {
     try {
         $prefix = "OpenDevelop-win/"
         if (-not ($archive.Entries.FullName -contains "${prefix}OpenDevelop.dll")) { throw "ZIP lacks ${prefix}OpenDevelop.dll: $ZipPath" }
-        foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md', 'THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt') {
+        foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md', 'THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt', 'THIRD-PARTY-NOTICES/NuGet/NOTICE.md') {
             if (-not ($archive.Entries.FullName -contains "${prefix}$legalFile")) {
                 throw "ZIP lacks required legal file ${prefix}${legalFile}: $ZipPath"
             }
@@ -732,10 +742,7 @@ function Invoke-MacPayload {
     & bash (Join-Path $repoRoot 'build/macos/build-application-bundle.sh') | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "build-application-bundle.sh exited with code $LASTEXITCODE" }
     Write-DistributionLegalFiles -Destination (Join-Path $repoRoot 'OpenDevelop.app/Contents/MacOS')
-    foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md', 'THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt') {
-        $legalPath = Join-Path $repoRoot "OpenDevelop.app/Contents/MacOS/$legalFile"
-        if (-not (Test-Path -LiteralPath $legalPath)) { throw "macOS payload lacks required legal file: $legalPath" }
-    }
+    Test-DistributionLegalFiles -Destination (Join-Path $repoRoot 'OpenDevelop.app/Contents/MacOS')
 
     # Same as the Windows payload: out-of-process hosts resolve only from their own deps.json,
     # which declares some packages (System.Windows.Extensions, ...) only under runtimes/win.
@@ -769,6 +776,7 @@ function Invoke-MacSmoke {
 
 function Invoke-MacArchive {
     Write-Host '==> Building .dmg...'
+    Test-DistributionLegalFiles -Destination (Join-Path $repoRoot 'OpenDevelop.app/Contents/MacOS')
     Push-Location $repoRoot
     try {
         # Out-Host: this function's pipeline output is its return value ($artifact), so without it

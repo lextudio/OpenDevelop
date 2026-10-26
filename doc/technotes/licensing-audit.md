@@ -37,7 +37,8 @@ part of the runtime payload.
 The generated `THIRD-PARTY.spdx.json` inventories the resolved host and AddIn
 NuGet graphs. It records declared nuspec expressions where available and uses
 `NOASSERTION` where metadata is absent; it is an inventory, not a legal
-conclusion.
+conclusion. Package-contained LICENSE, COPYING, and NOTICE files are copied
+under `THIRD-PARTY-NOTICES/NuGet/`, with a per-package notice catalog.
 
 The distribution packaging step also copies the `LibGhostty.Net`
 `THIRD-PARTY-NOTICES` directory. It contains the Ghostty and Windows Terminal

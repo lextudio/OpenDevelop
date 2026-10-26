@@ -2,11 +2,13 @@
 param(
     [Parameter(Mandatory = $true)][string[]]$AssetsFile,
     [Parameter(Mandatory = $true)][string]$PackageRoot,
-    [Parameter(Mandatory = $true)][string]$OutputPath
+    [Parameter(Mandatory = $true)][string]$OutputPath,
+    [string]$NoticeDirectory
 )
 
 $ErrorActionPreference = 'Stop'
 $packages = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+$extractedLicenses = [ordered]@{}
 foreach ($assetPath in $AssetsFile) {
     $assets = Get-Content -LiteralPath $assetPath -Raw | ConvertFrom-Json
     foreach ($target in $assets.targets.PSObject.Properties.Value) {
@@ -24,7 +26,18 @@ function Get-LicenseExpression([string]$id, [string]$version) {
         [xml]$xml = Get-Content -LiteralPath $nuspec.FullName -Raw
         $license = $xml.SelectSingleNode("//*[local-name()='license']")
         if ($license -and $license.type -eq 'expression' -and $license.InnerText) { return $license.InnerText.Trim() }
-        if ($license -and $license.type -eq 'file') { return "LicenseRef-$($id -replace '[^A-Za-z0-9.-]', '-')" }
+        if ($license -and $license.type -eq 'file') {
+            $reference = "LicenseRef-$($id -replace '[^A-Za-z0-9.-]', '-')-$($version -replace '[^A-Za-z0-9.-]', '-')"
+            $licensePath = Join-Path $directory $license.InnerText.Trim()
+            if (Test-Path -LiteralPath $licensePath -PathType Leaf) {
+                $extractedLicenses[$reference] = [ordered]@{
+                    licenseId = $reference
+                    name = "$id $version package license"
+                    extractedText = Get-Content -LiteralPath $licensePath -Raw
+                }
+            }
+            return $reference
+        }
     }
     catch { }
     return 'NOASSERTION'
@@ -54,8 +67,38 @@ $document = [ordered]@{
     creationInfo = @{ created = [DateTime]::UtcNow.ToString('o'); creators = @('Tool: OpenDevelop build/export-spdx-sbom.ps1') }
     packages = @($spdxPackages)
 }
+if ($extractedLicenses.Count -gt 0) { $document.hasExtractedLicensingInfos = @($extractedLicenses.Values) }
 
 $directory = Split-Path -Parent $OutputPath
 New-Item -ItemType Directory -Force -Path $directory | Out-Null
 $document | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $OutputPath -Encoding utf8
 Write-Host "Wrote SPDX package manifest with $($spdxPackages.Count) packages: $OutputPath"
+
+if ($NoticeDirectory) {
+    New-Item -ItemType Directory -Force -Path $NoticeDirectory | Out-Null
+    $catalog = [Collections.Generic.List[string]]::new()
+    $catalog.Add('# NuGet package notices')
+    $catalog.Add('')
+    $catalog.Add('| Package | Declared license | Copyright |')
+    $catalog.Add('| --- | --- | --- |')
+    foreach ($entry in $packages | Sort-Object) {
+        $id, $version = $entry -split '/', 2
+        $directory = Join-Path (Join-Path $PackageRoot $id.ToLowerInvariant()) $version.ToLowerInvariant()
+        $license = Get-LicenseExpression $id $version
+        $copyright = ''
+        $nuspec = Get-ChildItem -LiteralPath $directory -Filter '*.nuspec' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($nuspec) {
+            [xml]$xml = Get-Content -LiteralPath $nuspec.FullName -Raw
+            $copyright = [string]$xml.SelectSingleNode("//*[local-name()='copyright']")?.InnerText
+        }
+        $catalog.Add("| $id $version | $license | $($copyright -replace '\|', '\\|') |")
+        $destination = Join-Path (Join-Path $NoticeDirectory $id) $version
+        foreach ($file in Get-ChildItem -LiteralPath $directory -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(LICENSE|COPYING|NOTICE)(\.|$)' }) {
+            $relative = $file.FullName.Substring($directory.Length).TrimStart([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+            $target = Join-Path $destination $relative
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+            Copy-Item -LiteralPath $file.FullName -Destination $target -Force
+        }
+    }
+    $catalog | Set-Content -LiteralPath (Join-Path $NoticeDirectory 'NOTICE.md') -Encoding utf8
+}
