@@ -94,6 +94,12 @@ entries are promoted. The five classes passed 46/46 in one local macOS ARM64 IDE
 runner launches one IDE per entry and measured 20, 40, 26, 19 and 31 seconds locally (about 136 seconds combined); hosted
 runner results are still needed.
 
+`integration-debugger` observes the debugger journey and feature classes on all three platforms, with DebugTestApp and
+AttachFixture prebuilt. `integration-coverage` observes the code-coverage journeys with both sample test projects built;
+their project references build CoverageLib. Both lanes initially permit all observed entries to fail without gating CI,
+so read their entry summaries and skipped counts. On macOS ARM64 the debugger classes passed 23 cases and skipped five
+architecture/runtime-specific cases; code coverage passed all three cases. Windows runner results remain unverified.
+
 ## Current plan (Windows x64)
 
 * Lane `unit`: `OpenDevelop.Base.Tests`, `OpenDevelop.VSEditorCompat.Tests`, `OpenDevelop.XamlDom.Tests.LibreWPF` and
@@ -104,7 +110,7 @@ runner results are still needed.
 * Lane `integration-core`: SolutionFolder, ProjectOptions, T4, TaskListPad, ProjectReload, Terminal and other observed
   integration entries. The Hot Reload journeys run in their own `integration-hot-reload` lane.
 
-Not planned yet: `AddInTests` (about 15 minutes, its own lane), the debugger and coverage classes, the Microsoft designer
+Not planned yet: `AddInTests` (about 15 minutes, its own lane), the Microsoft designer
 backends (need Visual Studio), and the heavy or environment-bound ones named in
 `tests/OpenDevelop.IntegrationTests/TESTING.md` (dotnetup SDK installs, runtime upgrade, performance gates, probes).
 The Profiler tests and the Terminal journey are plan entries now; `profiler.yml` and `terminal-cross-platform.yml` were

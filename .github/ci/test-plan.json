@@ -61,6 +61,18 @@
       "allowAllFailures": true,
       "note": "All entries start as observations, including an all-failed run; inspect the per-entry summary. The earlier Windows integration lane could not start its IDE host (PresentationFramework 11.0.0.0); see AGENTS.md. Remove this exception when promoting stable entries."
     },
+    "integration-debugger": {
+      "timeoutMinutes": 45,
+      "needsNuGetCache": true,
+      "allowAllFailures": true,
+      "note": "Debugger journeys begin as observations; inspect each entry before promotion."
+    },
+    "integration-coverage": {
+      "timeoutMinutes": 30,
+      "needsNuGetCache": true,
+      "allowAllFailures": true,
+      "note": "Coverage journeys begin as observations; inspect each entry before promotion."
+    },
     "integration-hot-reload": {
       "timeoutMinutes": 30,
       "needsNuGetCache": true,
@@ -515,6 +527,51 @@
       ],
       "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
       "note": "Captures a real process with a solution open and verifies that test data stays in the private configuration directory."
+    },
+    {
+      "id": "debugger-journeys",
+      "batch": 4,
+      "lane": "integration-debugger",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.DebuggerIntegrationTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "additionalProjects": [{ "project": "tests/fixtures/DebugTestApp/DebugTestApp.csproj" }],
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "note": "Includes native-host and per-architecture journeys; skips describe missing compatible runtimes or architectures."
+    },
+    {
+      "id": "debugger-feature-journeys",
+      "batch": 4,
+      "lane": "integration-debugger",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.DebuggerFeatureIntegrationTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "additionalProjects": [
+        { "project": "tests/fixtures/DebugTestApp/DebugTestApp.csproj" },
+        { "project": "tests/fixtures/AttachFixture/AttachFixture.csproj" }
+      ],
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "note": "Exercises breakpoint inspection, stepping, restart and attaching to an independently started process."
+    },
+    {
+      "id": "code-coverage-journeys",
+      "batch": 4,
+      "lane": "integration-coverage",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.CodeCoverageTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "additionalProjects": [
+        { "project": "tests/fixtures/SampleTestProject/SampleTestProject.csproj" },
+        { "project": "tests/fixtures/CoverageFixture/CoverageTests/CoverageTests.csproj" }
+      ],
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "note": "Exercises real test discovery, coverage collection and editor markers using prebuilt test fixtures."
     },
     {
       "id": "wpf-hot-reload-journeys",
