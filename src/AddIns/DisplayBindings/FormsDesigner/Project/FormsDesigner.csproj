@@ -94,7 +94,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" Private="False" />
+    <PackageReference Include="ICSharpCode.AvalonEdit.LibreWPF" />
     <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="False" />
     <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="False" />
     <!-- Designer.Remote / Designer.Presentation are not part of the app bin (SharpDevelop.csproj

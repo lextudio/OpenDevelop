@@ -54,7 +54,7 @@
 
   <ItemGroup>
     <!-- Existing legacy launcher-based addin references (untouched). -->
-    <ProjectReference Include="..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" Private="false" />
+    <PackageReference Include="ICSharpCode.AvalonEdit.LibreWPF" />
     <PackageReference Include="ICSharpCode.Decompiler" />
     <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
     <!-- ICSharpCode.SharpDevelop.ViewModels.ToolPaneModel/DockWorkspace (the pads structure we

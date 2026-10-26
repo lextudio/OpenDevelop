@@ -90,9 +90,6 @@
   </Folder>
   <Folder Name="/Libraries/">
     <Project Path="src/Libraries/AvalonDock/source/Components/AvalonDock/AvalonDock.csproj" />
-    <Project Path="src/Libraries/AvalonEdit/ICSharpCode.AvalonEdit/ICSharpCode.AvalonEdit.csproj">
-      <Platform Project="WithNRefactory" />
-    </Project>
     <Project Path="src/Libraries/cecil/Mono.Cecil.csproj">
       <BuildType Solution="Debug|*" Project="net_4_0_Debug" />
       <BuildType Solution="Release|*" Project="net_4_0_Release" />

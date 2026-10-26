@@ -1,6 +1,3 @@
-[submodule "src/Libraries/AvalonEdit"]
-	path = src/Libraries/AvalonEdit
-	url = https://github.com/lextudio/AvalonEdit.git
 [submodule "src/Libraries/AvalonDock"]
 	path = src/Libraries/AvalonDock
 	url = https://github.com/lextudio/AvalonDock.git

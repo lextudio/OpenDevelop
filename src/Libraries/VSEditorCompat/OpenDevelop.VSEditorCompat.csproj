@@ -30,6 +30,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" Private="false" />
+    <PackageReference Include="ICSharpCode.AvalonEdit.LibreWPF" />
   </ItemGroup>
 </Project>

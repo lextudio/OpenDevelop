@@ -14,7 +14,7 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" Private="false" />
+    <PackageReference Include="ICSharpCode.AvalonEdit.LibreWPF" />
     <!-- Private="false": OpenDevelop.VSEditorCompat (and its Microsoft.VisualStudio.Text.*
          contract packages) are provided by the SharpDevelop app project so there is exactly
          one loaded copy - the CodeEditor registers its AvalonTextBuffer into the document

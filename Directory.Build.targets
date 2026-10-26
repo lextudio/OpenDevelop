@@ -151,9 +151,8 @@
     <_OdProjectPathSlash>$([System.String]::Copy('$(MSBuildProjectFullPath)').Replace('\','/'))</_OdProjectPathSlash>
     <_OdVendoredProject>false</_OdVendoredProject>
     <_OdVendoredProject Condition="$(_OdProjectPathSlash.StartsWith('$(_OdRepoRootSlash)externals/'))">true</_OdVendoredProject>
-    <!-- src/Libraries/AvalonDock, src/Libraries/AvalonEdit and the samples deliberately opt out of
-         central package management (see Directory.Packages.props), where a versionless
-         PackageReference is an error (NU1015). None of them link GlobalAssemblyInfo.cs, so they
+    <!-- src/Libraries/AvalonDock and the samples deliberately opt out of central package management
+         (see Directory.Packages.props), where a versionless PackageReference is an error (NU1015). None of them link GlobalAssemblyInfo.cs, so they
          want neither GitVersion nor the generation below. Keeping both scoped to the SAME set is
          what guarantees every project that does link the file computes identical text for it. -->
     <_OdVersionedProject>true</_OdVersionedProject>

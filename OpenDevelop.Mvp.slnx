@@ -32,9 +32,6 @@
     <Project Path="src/Libraries/AvalonDock/source/Components/AvalonDock.Serializer.Xml/AvalonDock.Serializer.Xml.csproj" />
     <Project Path="src/Libraries/AvalonDock/source/Components/AvalonDock/AvalonDock.csproj" />
   </Folder>
-  <Folder Name="/src/Libraries/AvalonEdit/">
-    <Project Path="src/Libraries/AvalonEdit/ICSharpCode.AvalonEdit/ICSharpCode.AvalonEdit.csproj" />
-  </Folder>
   <Folder Name="/src/Main/">
     <Project Path="src/Main/Designer/Designer.Remote/Designer.Remote.csproj" />
     <Project Path="src/Main/Designer/Designer.Server/Designer.Server.csproj" />
