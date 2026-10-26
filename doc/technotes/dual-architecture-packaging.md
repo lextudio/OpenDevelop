@@ -235,6 +235,44 @@ a launched application:
   `./build.ps1 WpfHotReload.Agent` and confirm `0x014C`. This is the same trap
   [build-from-source.md](build-from-source.md) documents for every other project.
 
+## CI: the same contract, enforced instead of hoped for
+
+The packaging units decide what CI may build and how it must test. `dist.windows.bat` ships **one
+payload for x64 and ARM64** - `runtimes/`, the per-RID `win-x64`/`win-arm64` folders and both
+launchers - while `dist.macos.sh` ships **osx-arm64 only**. CI therefore builds per packaging unit,
+not per runner:
+
+- a platform may declare `"buildFrom": "<platform>"` in `.github/ci/test-plan.json`;
+  `windows-arm64` declares `buildFrom: windows-x64`, so `plan-matrix.ps1` emits **one** Windows
+  build and both Windows lanes unpack that archive (`matrix.build_platform`). macOS builds for
+  itself. Adding a platform that shares a payload means adding `buildFrom`, not a second build.
+- `package-workspace.ps1` follows the units: the Windows archive keeps **both** Windows RID trees
+  (a lane on either architecture exercises the same unified layout), the macOS archive drops the
+  Windows trees the macOS package never contains.
+
+Three checks make the contract a build failure rather than a run-time surprise. All three caught
+real defects on 2026-10-25:
+
+| Check | Where | Catches |
+|---|---|---|
+| `build/payload-architecture.ps1` | build job (`verify-bitness.ps1 -PayloadOnly`), and `dist.ps1` itself | an IL-only assembly built for one architecture; the exemption is any RID-named folder (`runtimes/`, `win-x64`, `RoslynHost/osx-arm64`, ...) plus non-ILOnly C++/CLI |
+| `build-binaries.ps1` RID guard | every planned build | a plan entry passing `--runtime`/`-r`/`-p:RuntimeIdentifier=`, which would write architecture-specific outputs under `bin/<tfm>/<rid>/` and break the one-payload model |
+| `verify-bitness.ps1` runner half | every lane, before the tests | a lane whose `dotnet --info` RID or process architecture is not the platform's (`win-arm64`, `osx-arm64`, ...), and a payload missing that RID's managed assets (Windows requires *both* trees) |
+
+A test that needs one specific architecture belongs on the lane that can run it: the WinUI Hot
+Reload `x86` case is an x64-lane test and must never be scheduled on ARM64.
+
+Failure signatures, and which check reports them:
+
+- **`The assembly architecture is not compatible with the current process architecture`** - an
+  IL-only assembly was built architecture-specific; the payload scan names the file.
+- **`FileNotFoundException: PresentationFramework, Version=11.0.0.0`** - not a bitness failure: the
+  payload is in the folder but the manifest does not let the host resolve it from the app base (see
+  `ci-test-plan.md`, "Register the LibreWPF payload in the host manifest").
+- **A lane green on the wrong architecture** - the verifier's runner half fails with
+  `This runner's .NET RID is 'osx-arm64', but platform 'windows-arm64' expects 'win-arm64'`; without
+  it the lane would silently test the host's architecture and report coverage it never had.
+
 ## What a real package looks like (verified 2026-09-22)
 
 A full `dist.windows.bat` run — all seven phases, 0 errors — produces `OpenDevelop-win.zip`
@@ -395,4 +433,6 @@ customizations on top of `dotnet/wpf`. Two of the four files that implement the 
 - [librewpf.md](librewpf.md) — the local feed, version tracks, and the traps around repacking.
 - [build-from-source.md](build-from-source.md) — why `./build.ps1` exists and what a bare
   `dotnet build` gets wrong.
+- [ci-test-plan.md](ci-test-plan.md) — the CI shape, the test plan file and the host manifest
+  workaround this document's checks enforce.
 - `openavalon/AGENTS.md` — the same rules stated for the producing repository.

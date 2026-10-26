@@ -57,6 +57,11 @@ Lanes are separate jobs on separate fresh machines, so they cannot interfere thr
 directories, temp files or a shared IDE instance. Inside a lane the entries run one after another; an integration entry
 starts its own IDE process.
 
+What a platform may build and how its lanes must run is the packaging contract, not a CI preference: one Windows payload
+serves x64 and ARM64, macOS ships osx-arm64 only. [`dual-architecture-packaging.md`](dual-architecture-packaging.md)
+states it, and its "CI: the same contract, enforced instead of hoped for" section maps it to the checks that live in this
+workflow (`buildFrom`, the archive rules per platform, the payload scan and the per-lane RID/architecture check).
+
 ## How an entry is enabled
 
 * `batch` orders the rollout; `throughBatch` is the highest batch that runs. `workflow_dispatch` can override it once
