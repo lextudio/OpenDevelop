@@ -28,6 +28,17 @@ function Get-XmlPropertyValue([string]$Path, [string]$PropertyName) {
     return $node.InnerText.Trim()
 }
 
+# The version a package is pinned to in Directory.Packages.props: a literal Version="x" or a $(Property)
+# that Get-XmlPropertyValue can resolve.
+function Get-CentralPackageVersion([string]$Path, [string]$PackageId) {
+    [xml]$xml = Get-Content -LiteralPath $Path -Raw
+    $node = $xml.SelectSingleNode("//*[local-name()='PackageVersion'][@Include='$PackageId']")
+    $version = if ($null -ne $node) { $node.GetAttribute('Version').Trim() } else { '' }
+    if ($version -match '^\$\((?<name>[^)]+)\)$') { $version = Get-XmlPropertyValue $Path $Matches['name'] }
+    if ([string]::IsNullOrWhiteSpace($version)) { throw "Could not find a Version for $PackageId in $Path." }
+    return $version
+}
+
 function Test-NuGetPackage([string]$Path, [string]$PackageId, [string]$Version) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
     try {
@@ -62,11 +73,20 @@ if ($sdkVersion -ne $libreWinFormsVersion -or $sdkVersion -ne $proGpuVersion) {
     throw "The OpenAvalon package closure requires one version, but this checkout requests LibreWPF.Sdk $sdkVersion, LibreWinForms $libreWinFormsVersion, and ProGPU $proGpuVersion. Update the package pins or extend this script with an explicit multi-version closure."
 }
 $libGhosttyVersion = Get-XmlPropertyValue (Join-Path $PSScriptRoot 'Directory.Packages.props') 'LibGhosttyNetVersion'
+# The AvalonEdit and AvalonDock forks, which used to be submodules here, publish to the same GitHub
+# Packages endpoint from their own workflows; their versions are the central pins.
+$forkPackages = @(
+    'ICSharpCode.AvalonEdit.LibreWPF',
+    'Dirkster.AvalonDock.Core', 'Dirkster.AvalonDock.LibreWPF', 'Dirkster.AvalonDock.Serializer.Xml',
+    # Themes.VS2013 depends on the VS theme package: synchronize the complete restore closure.
+    'Dirkster.AvalonDock.Themes.VS.LibreWPF', 'Dirkster.AvalonDock.Themes.VS2013.LibreWPF'
+) | ForEach-Object { [pscustomobject]@{ Id = $_; Version = Get-CentralPackageVersion (Join-Path $PSScriptRoot 'Directory.Packages.props') $_ } }
 $packages = @($openAvalonPackages | ForEach-Object { [pscustomobject]@{ Id = $_; Version = $sdkVersion } }) +
-    [pscustomobject]@{ Id = 'LibGhostty.Net'; Version = $libGhosttyVersion }
+    [pscustomobject]@{ Id = 'LibGhostty.Net'; Version = $libGhosttyVersion } +
+    $forkPackages
 
 Write-Host "OpenAvalon local feed: $FeedPath"
-Write-Host "OpenAvalon package version: $sdkVersion ($($openAvalonPackages.Count) packages); LibGhostty.Net $libGhosttyVersion"
+Write-Host "OpenAvalon package version: $sdkVersion ($($openAvalonPackages.Count) packages); LibGhostty.Net $libGhosttyVersion; $($forkPackages.Count) AvalonEdit/AvalonDock fork packages"
 if ($Plan) {
     $packages | ForEach-Object { Write-Host "  $($_.Id) $($_.Version)" }
     exit 0
