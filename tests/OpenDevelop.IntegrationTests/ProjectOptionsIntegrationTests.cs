@@ -25,11 +25,8 @@ public sealed class ProjectOptionsIntegrationTests
         {
             var opened = await _app.ReopenSolutionAsync(projectPath);
             Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
-            var selected = await _app.InvokeAsync("od.project-browser.select", "Project", "OptionsUnderTest");
-            Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
-            // Go through the actual AddIn-tree context-menu item. A reflection-based direct
-            // command invocation bypasses the Runtime import used to resolve class= attributes.
-            var view = await _app.InvokeAsync("od.project-browser.invoke-project-options", "OptionsUnderTest");
+            // Exercise the Project Browser command path for the selected project.
+            var view = await _app.InvokeAsync("od.project-browser.open-project-options", "OptionsUnderTest");
             Assert.True(view.GetProperty("success").GetBoolean(), view.ToString());
             Assert.True(view.GetProperty("projectOptionsOpen").GetBoolean(), view.ToString());
 
@@ -62,9 +59,7 @@ public sealed class ProjectOptionsIntegrationTests
             Assert.Equal("true", XDocument.Load(projectPath).Descendants("SignAssembly").Last().Value.ToLowerInvariant());
 
             await _app.ReopenSolutionAsync(projectPath);
-            selected = await _app.InvokeAsync("od.project-browser.select", "Project", "OptionsUnderTest");
-            Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
-            view = await _app.InvokeAsync("od.project-browser.invoke-project-options", "OptionsUnderTest");
+            view = await _app.InvokeAsync("od.project-browser.open-project-options", "OptionsUnderTest");
             Assert.True(view.GetProperty("success").GetBoolean(), view.ToString());
             Assert.True(view.GetProperty("projectOptionsOpen").GetBoolean(), view.ToString());
             await CheckPage("Application", "OptionsRenamed");

@@ -54,6 +54,11 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public void InitializeWorkbench()
 		{
+			// LibreWPF does not register the portable text formatter until its native-media
+			// services are initialized. Do this before creating any workbench control: otherwise
+			// the first TextBlock measured by the portable host can terminate the app with
+			// PlatformNotSupportedException about a missing native shaping provider.
+			ProGpuWpfNativeMediaServices.Initialize();
 			app = ExternalRunLoop && System.Windows.Application.Current is App current ? current : new App();
 			// WindowsFormsHost.EnableWindowsFormsInterop() removed - no WinForms interop in this MVP build.
 			ComponentDispatcher.ThreadIdle -= ComponentDispatcher_ThreadIdle; // ensure we don't register twice

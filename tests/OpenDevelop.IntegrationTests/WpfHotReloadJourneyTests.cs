@@ -207,10 +207,9 @@ public sealed class WpfHotReloadJourneyTests
 		var originalProject = await File.ReadAllTextAsync(projectFile);
 		try {
 			// The user's setup: a class library whose Debug options start an external program.
-			var selected = await _app.InvokeAsync("od.project-browser.select", "Project", "HotReloadClassLib");
-			Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
-			var options = await _app.InvokeAsync("od.project-browser.open-selected");
-			Assert.True(options.GetProperty("projectOptionsOpen").GetBoolean(), options.ToString());
+			var options = await _app.InvokeAsync("od.project-browser.open-project-options", "HotReloadClassLib");
+			Assert.True(options.TryGetProperty("success", out var optionsSuccess) && optionsSuccess.GetBoolean(), options.ToString());
+			Assert.True(options.TryGetProperty("projectOptionsOpen", out var projectOptionsOpen) && projectOptionsOpen.GetBoolean(), options.ToString());
 			var configured = await _app.InvokeAsync("od.project-options.configure-debug-host", hostExe, hostDirectory);
 			Assert.True(configured.GetProperty("success").GetBoolean(), configured.ToString());
 			Assert.True(configured.GetProperty("startable").GetBoolean(), configured.ToString());

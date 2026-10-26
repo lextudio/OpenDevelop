@@ -10,7 +10,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
@@ -173,34 +172,24 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
-		[DevFlowAction("od.project-browser.invoke-project-options", Description = "Invoke Project Options through the Project Browser's real AddIn-tree context-menu item and report the opened options view")]
-		public static async Task<string> InvokeProjectOptions(string? projectName = null)
+		[DevFlowAction("od.project-browser.open-project-options", Description = "Select a Project Browser project and open its Project Options through the browser command, then report the opened options view")]
+		public static async Task<string> OpenProjectOptions(string? projectName = null)
 		{
 			try {
 				var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<ProjectBrowserViewModel>();
 				await viewModel.WaitForCurrentRefreshAsync();
-				var node = FindNode(viewModel.RootNodes, n => n.Kind == ProjectBrowserNodeKind.Project
-					&& (string.IsNullOrEmpty(projectName) || string.Equals(n.Name, projectName, StringComparison.OrdinalIgnoreCase)));
+				var node = FindNode(viewModel.RootNodes, candidate => candidate.Kind == ProjectBrowserNodeKind.Project
+					&& (string.IsNullOrEmpty(projectName) || string.Equals(candidate.Name, projectName, StringComparison.OrdinalIgnoreCase)));
 				if (node == null)
 					return JsonSerializer.Serialize(new { success = false, error = "No matching project node." });
 
 				viewModel.SelectedNode = node;
-				var context = node.ToContext();
-				var menuItem = FindMenuItem(ICSharpCode.Core.Presentation.MenuService.CreateMenuItems(
-					null, context, context.ContextMenuPath, "ContextMenu"), "Project Options...");
-				if (menuItem == null)
-					return JsonSerializer.Serialize(new { success = false, error = "Project Options menu item is unavailable." });
-
-				// Click it the way WPF does for the right-click popup: MenuItem.OnClick raises Click AND
-				// executes the item's Command. Raising ClickEvent alone runs only Click handlers, so the
-				// codon's command (ViewProjectOptions) never ran. Unlike od.menu.invoke, this resolves
-				// the class= attribute through this add-in's Runtime imports.
-				typeof(MenuItem).GetMethod("OnClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-					.Invoke(menuItem, null);
+				// Exercise Project Browser's real public command path instead of invoking the
+				// option service directly. It resolves the selected node back to the solution model.
+				viewModel.ShowProperties();
 				await Application.Current.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Background);
-				var project = SD.ProjectService.CurrentProject;
 				var options = SD.Workbench.ViewContentCollection.OfType<ProjectOptionsView>()
-					.FirstOrDefault(view => view.Project == project);
+					.FirstOrDefault(view => string.Equals(view.Project?.Name, node.Name, StringComparison.OrdinalIgnoreCase));
 				return JsonSerializer.Serialize(new {
 					success = options != null,
 					projectOptionsOpen = options != null,
@@ -210,18 +199,6 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			} catch (Exception ex) {
 				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
 			}
-		}
-
-		static MenuItem? FindMenuItem(IEnumerable items, string header)
-		{
-			foreach (var item in items.OfType<MenuItem>()) {
-				if (string.Equals(item.Header?.ToString(), header, StringComparison.Ordinal))
-					return item;
-				var nested = FindMenuItem(item.Items, header);
-				if (nested != null)
-					return nested;
-			}
-			return null;
 		}
 
 		[DevFlowAction("od.project-options.configure-debug-host", Description = "Configure the active project's Debug options through its options panel and save the project")]

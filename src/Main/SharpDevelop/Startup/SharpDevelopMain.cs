@@ -22,6 +22,7 @@ using System.Configuration;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Windows.Media.ProGPU;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Gui;
@@ -257,6 +258,10 @@ namespace ICSharpCode.SharpDevelop.Startup
 		/// </summary>
 		static void RunWithSplash(StartupSettings startup, string[] fileList, WorkbenchSettings workbenchSettings)
 		{
+			// The splash is the first source-built WPF window in this startup path. Register
+			// LibreWPF's portable text formatter before constructing the App or splash so its
+			// first layout pass cannot hit the unregistered native-shaping fallback.
+			ProGpuWpfNativeMediaServices.Initialize();
 			var app = new App();
 			var splash = new SplashScreenForm();
 			WorkbenchStartup.ExternalRunLoop = true;
