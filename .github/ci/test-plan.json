@@ -69,11 +69,9 @@
         "-p:AppendRuntimeIdentifierToOutputPath=false"
       ],
       "platforms": [
-        "windows-x64",
-        "windows-arm64",
         "macos-arm64"
       ],
-      "note": "Build Terminal for the runner's native RID after the integration harness, staging its matching native assets."
+      "note": "macOS is a single-architecture payload (dist.macos.sh), so building the add-in for that RID is harmless and keeps its native staging identical to the previous lanes. On Windows the unified payload already carries runtimes/win-x64 and win-arm64, so a RID build is what used to strip the host folder - the build guard rejects it there."
     },
     {
       "project": "src/Main/SharpDevelop/SharpDevelop.csproj",
