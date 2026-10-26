@@ -30,6 +30,9 @@ public sealed class TerminalCrossPlatformTests(OpenDevelopAppFixture app)
 			Assert.True(screen.GetProperty("columns").GetInt32() > 20, screen.ToString());
 			Assert.True(screen.GetProperty("rows").GetInt32() > 0, screen.ToString());
 
+			if (OperatingSystem.IsWindows())
+				await AssertOutOfBandConPtyAsync();
+
 			var split = await app.InvokeAsync("od.terminal.split");
 			Assert.True(split.GetProperty("success").GetBoolean(), split.ToString());
 			Assert.Equal(first.GetProperty("group").GetInt32(), split.GetProperty("group").GetInt32());
@@ -48,6 +51,33 @@ public sealed class TerminalCrossPlatformTests(OpenDevelopAppFixture app)
 			await app.InvokeAsync("od.terminal.kill");
 			await app.InvokeAsync("od.terminal.kill");
 		}
+	}
+
+	/// <summary>
+	/// The terminal can run on the ConPTY host staged beside the add-in (OpenConsole.exe next to conpty.dll) or, when that is
+	/// missing, silently on the in-box conhost. Both render text, so the journey above cannot tell them apart; the running
+	/// host's own path can.
+	/// </summary>
+	static async Task AssertOutOfBandConPtyAsync()
+	{
+		const string script = "$o = Get-Process -Name OpenConsole,conhost -ErrorAction SilentlyContinue | ForEach-Object { \"$($_.ProcessName)=$($_.Path)\" }; $o -join '|'";
+		var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script])
+		{
+			RedirectStandardOutput = true,
+			UseShellExecute = false,
+			CreateNoWindow = true,
+		};
+		using var process = System.Diagnostics.Process.Start(psi)!;
+		var output = (await process.StandardOutput.ReadToEndAsync()).Trim();
+		await process.WaitForExitAsync();
+
+		var stagedHosts = output.Split('|', StringSplitOptions.RemoveEmptyEntries)
+			.Where(h => h.StartsWith("OpenConsole=", StringComparison.OrdinalIgnoreCase) &&
+				h.Contains(Path.Combine("AddIns", "Misc", "Terminal") + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+			.ToList();
+		Assert.True(stagedHosts.Count > 0,
+			"No OpenConsole.exe from the add-in's own folder is running, so the terminal is not on the out-of-band ConPTY " +
+			$"(or its host is not visible to this user). Console hosts seen: [{output}]");
 	}
 
 	async Task<JsonElement> WaitForTextAsync(string expected)
