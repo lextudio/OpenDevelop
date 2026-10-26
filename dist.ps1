@@ -119,13 +119,22 @@ function Write-DistributionLegalFiles {
     foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md') {
         Copy-Item -LiteralPath (Join-Path $repoRoot $legalFile) -Destination (Join-Path $Destination $legalFile) -Force
     }
+    $sourceNotices = Join-Path $Destination 'SOURCE-LICENSES'
+    if (Test-Path -LiteralPath $sourceNotices) { Remove-Item -LiteralPath $sourceNotices -Recurse -Force }
+    New-Item -ItemType Directory -Path $sourceNotices -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'legal/Apache-2.0.txt') -Destination (Join-Path $sourceNotices 'MonoDevelop.AspNetCore-Apache-2.0.txt') -Force
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'externals/vsmac-codecoverage/LICENSE') -Destination (Join-Path $sourceNotices 'VSMac-CodeCoverage-MIT.txt') -Force
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'externals/vscode-wpf/external/WpfDesigner/LICENSE') -Destination (Join-Path $sourceNotices 'WpfDesigner-MIT.txt') -Force
     [xml]$packageVersions = Get-Content -LiteralPath (Join-Path $repoRoot 'Directory.Packages.props') -Raw
     $ghosttyVersion = [string]$packageVersions.Project.PropertyGroup.LibGhosttyNetVersion
     $ghosttyNotices = Join-Path (Join-Path (Join-Path (Get-NuGetGlobalPackages) 'libghostty.net') $ghosttyVersion) 'THIRD-PARTY-NOTICES'
     if (-not (Test-Path -LiteralPath $ghosttyNotices)) {
         throw "LibGhostty.Net $ghosttyVersion lacks THIRD-PARTY-NOTICES. Restore the verified package before creating a distribution."
     }
-    Copy-Item -LiteralPath $ghosttyNotices -Destination (Join-Path $Destination 'THIRD-PARTY-NOTICES') -Recurse -Force
+    $destinationNotices = Join-Path $Destination 'THIRD-PARTY-NOTICES'
+    if (Test-Path -LiteralPath $destinationNotices) { Remove-Item -LiteralPath $destinationNotices -Recurse -Force }
+    New-Item -ItemType Directory -Path $destinationNotices -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $ghosttyNotices '*') -Destination $destinationNotices -Recurse -Force
     $assetsFiles = @((Join-Path $repoRoot 'src/Main/SharpDevelop/obj/project.assets.json')) + @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src/AddIns') -Recurse -File -Filter 'project.assets.json' | ForEach-Object FullName)
     $missingAssets = @($assetsFiles | Where-Object { -not (Test-Path -LiteralPath $_) })
     if ($missingAssets.Count -gt 0) { throw "Cannot generate SPDX manifest; restore did not produce $($missingAssets -join ', ')" }
@@ -646,7 +655,7 @@ function Test-WindowsDistributionZip {
     try {
         $prefix = "OpenDevelop-win/"
         if (-not ($archive.Entries.FullName -contains "${prefix}OpenDevelop.dll")) { throw "ZIP lacks ${prefix}OpenDevelop.dll: $ZipPath" }
-        foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md') {
+        foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md') {
             if (-not ($archive.Entries.FullName -contains "${prefix}$legalFile")) {
                 throw "ZIP lacks required legal file ${prefix}${legalFile}: $ZipPath"
             }
