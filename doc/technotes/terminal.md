@@ -1,6 +1,7 @@
 # Integrated terminal
 
-Status: working prototype (issue #20, "Terminal Toolbox"), `src/AddIns/Misc/Terminal`. See "Prototype status" below.
+Status: working on macOS arm64, smoke-tested in CI on Windows x64 and native Windows ARM64, not yet on Linux
+(issue #20, "Terminal Toolbox"), `src/AddIns/Misc/Terminal`. See "Prototype status" and "Verification by platform" below.
 
 Goal: parity with the VS Code integrated terminal for everyday use — several terminals, split, a
 shell picker — in OpenDevelop's classic toolbar-driven pad, and nothing beyond that. Not a goal: persistent sessions across restarts,
@@ -25,7 +26,7 @@ no side list; the toolbar's session dropdown is the only session switcher.
 
 ```text
 TerminalPad (AvalonDock tool pad, Bottom)
- ├─ Toolbar          [Session ▾] [New] [shell ▾] [Split ↔] [Split ↕] [Kill] [Clear] [Copy] [Paste] [Settings]
+ ├─ Toolbar          [Session ▾] [New] [shell ▾] [Split ↔] [Split ↕] [Kill] [Clear] [Find] [Copy] [Paste] [Settings]
  └─ Group            nested left/right or above/below panes (Grid + GridSplitters); one group per New, Split adds a pane
       └─ Pane        TerminalView + TerminalSession
            TerminalView      draws an immutable TerminalSnapshot, turns keys/mouse/wheel into PTY input
@@ -68,8 +69,9 @@ PTY, fed the bytes into a Ghostty terminal and read the grid back through the re
   characters, rendering speed.
 
 Known gaps in the package (1.0.2):
-- No `win-arm64` native assets (win-x64, linux-x64/arm64, osx-x64/arm64 only). OpenDevelop ships
-  `OpenDevelopARM64.exe`, so Windows ARM64 needs the managed fallback or an upstream build.
+- The upstream 1.0.2 had no `win-arm64` native assets. Resolved: the lextudio fork of `LibGhostty.Net` 1.0.2 (GitHub
+  Packages, `941c5a00e6`) carries win-x64, win-arm64 and osx-arm64 natives, so one version serves every RID and no
+  managed fallback is needed. Native Windows ARM64 passed in CI with it (see "Verification by platform").
 - Building without a RID on macOS fails (`MSB3030`: it copies `build/native/runtimes/x64/OpenConsole.exe`
   which is not in the package). Set a `RuntimeIdentifier`, or exclude the Windows assets, in the add-in
   project; check how our `dist.ps1` payloads handle per-RID native assets.
@@ -102,8 +104,7 @@ Project Browser "Open in Terminal" opens the integrated terminal in that folder 
 `ITerminalHost` (Base interface, registered by the add-in; external terminal app if the add-in is not
 loaded). DevFlow: `od.terminal.new|split|
 activate|send|key|mouse|wheel|click|scroll|select|copy|paste|shells|settings|text|list|kill`; host side
-`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (eighteen
-journeys, pass; run with the xUnit v3 runner from `tests/OpenDevelop.IntegrationTests/TESTING.md`).
+`od.project-browser.open-terminal`. Integration test: `TerminalPadTests` (23 tests, macOS; run with the xUnit v3 runner from `tests/OpenDevelop.IntegrationTests/TESTING.md`).
 
 Verified live (the journey above, plus the UI tree):
 - zsh/sh login shells start at the laid-out size; text, SGR colours, `$TERM`, `stty size`
@@ -140,7 +141,8 @@ Verified live (the journey above, plus the UI tree):
 Not verified / not done: actual pixels (no screenshot taken); the other journeys drive the view's handlers through DevFlow (`HandleKey`, `HandleLeftDown/Up`,
 `HandleWheel`, `ReportMouse`, `SelectRange`, `Paste`) while one journey each uses real left-button, right-button, wheel and keyboard input (see Testing); the options page UI and the entries inside the combo's drop-down
 (only their data is tested; the arrow, a shell menu entry and the combo are clicked for real), the draggable splitter between split panes (a `GridSplitter`, never
-dragged), the View menu shortcuts (commands are invoked through `od.menu.invoke`), vertical split, Windows (including its shell detection), Linux, win-arm64.
+dragged), the View menu shortcuts (commands are invoked through `od.menu.invoke`), Linux. Windows and win-arm64 are covered only by the
+small cross-platform journey, not by the macOS journeys above (see "Verification by platform").
 
 Pitfalls found (keep):
 - Start the PTY near its final size. The view has no size before its first layout; the fit maths gave
@@ -163,8 +165,10 @@ Pitfalls found (keep):
   `PseudoConsole`'s static constructor fail.
 - Porta.Pty's transitive staging target cannot distinguish LibGhostty.Net's `conpty.dll` from the
   official ConPTY package and derives a nonexistent `OpenConsole.exe` path. Terminal disables that
-  target and stages LibGhostty's matching win-x64 host in `x64/`, beside the deployed add-in assets.
-  LibGhostty still has no win-arm64 native assets.
+  target and stages LibGhostty's matching host in `x64/` or `arm64/`, beside the deployed add-in assets (win-arm64
+  assets now exist in the fork). The staging items in `Terminal.csproj` are conditioned on
+  `$(RuntimeIdentifier)` being `win-x64` or `win-arm64`: a RID-less Windows build stages neither, so ConPTY would not
+  start. Every Terminal CI run that passed on Windows used a RID build; see "Verification by platform".
 - The host shell must be rebuilt (`ICSharpCode.Core.Presentation` embeds the icons) before new icons
   resolve; the add-in alone is not enough. Use one SDK (Homebrew) for both builds.
 - xUnit's `Assert.DoesNotContain(string, string)` compares by culture: with ICU an ESC character is
@@ -283,22 +287,44 @@ not handled. Not checked on Windows.
 
 ## Testing
 
-Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, nineteen journeys, DevFlow
+Integration only (`tests/OpenDevelop.IntegrationTests/TerminalPadTests.cs`, 23 tests, DevFlow
 actions, plus one journey with real OS input): shells, size and alternate screen, keys, horizontal and vertical/nested split; wide text, scrollback,
 selection, wrapped copy, bracketed paste; View menu, Project Browser "Open in Terminal", shell list;
 mouse reporting, alternate-screen wheel, word and line selection; settings; cycling, renaming and the
 end of a shell; IDE theme colours; links; find; the shell's current directory; the right-click menu; dropped files; zoom; Send to Terminal; the macOS editing keys; the cursor; the font family; the bell; real input (`od.terminal.screen-point` gives a cell's screen position): click focus, drag, double and triple click selection, and Ctrl+click on a link with a real held Ctrl key (each gesture waits out the double-click interval, or the OS merges it into the previous click count). Toolbar: `TerminalPad_ToolbarWorksWithRealClicks` clicks the shell arrow, a shell in its menu and the terminal combo for real (`od.terminal.toolbar` gives their screen centres, including the menu entries'). A popup entry must be hovered before it is clicked: a click straight at an entry's `PointToScreen` centre landed on the main window beneath, because the popup is its own native window (measured with `CGWindowListCopyWindowInfo`: at the reported position) that only takes the click once the pointer has moved onto it. The arrow's first click now and then never reaches the button (no mouse-down is recorded), so the journey clicks it up to three times. A real right-button press and release (DevFlow `press`/`release` with `button: right`) opens the context menu, observed through `od.terminal.menu-state` because a popup is not in the UI tree (`TerminalPad_OpensItsMenuOnARealRightClick`). DevFlow has no wheel, so `TerminalPad_ScrollsOnARealWheelEvent` moves the pointer over a cell with DevFlow `move` and posts a real scroll-wheel event through Quartz Event Services (`MacWheel`). Real typing (`TerminalPad_TakesRealKeyboardInput`) first selects the ABC layout through the Text Input Sources API (`MacInputSource`), because an active Pinyin input method composes letters before the app sees them (`echo ` arrived as two Chinese characters); it restores the previous source afterwards, so it briefly changes the machine's input source, and a machine with neither ABC nor U.S. enabled fails it. The latest recorded macOS arm64 run passed; rerun the suite before treating a different worktree or payload as verified. There are no unit tests of
 the engine on its own.
 
+## Verification by platform
+
+Evidence from the CI history (the Terminal-only workflow `terminal-cross-platform.yml`, since folded into `ci.yml`),
+not from local runs.
+
+| Platform | What ran | Result |
+|---|---|---|
+| Windows x64 | `TerminalCrossPlatformTests`, about 38 s: show the pad, detect shells, new terminal, `echo` rendered on screen, left/right split, vertical split nested to three panes, kill | passed on every run from 2026-10-23 18:06 UTC through `72419767b` (2026-10-24), including after the preview.69 SDK pin |
+| Windows ARM64 (native `windows-11-arm`, SDK reports RID `win-arm64`) | same journey | passed from `ea4a61318b` (LibGhostty ARM64 natives) through `72419767b` |
+| macOS arm64 | `TerminalPadTests` with `cliclick` | red on every run of that workflow; the cause was not extracted from the logs. Passes locally |
+| Linux | none | paused in `a00a31a90e`, never verified |
+
+What this establishes: ConPTY start-up, Windows shell detection, the win-arm64 native chain and nested splits work on
+real runners. What it does not: the rest of the macOS journeys (selection, mouse reporting, find, links, drop, zoom,
+real input) have never run on Windows or Linux, and POSIX programs (`vim`, `less`) cannot be used there.
+
+Those Windows runs were in-place builds with a Terminal build for the native RID (`--runtime win-x64|win-arm64`).
+The current `ci.yml` builds Terminal RID-less on Windows and runs the journey from an unpacked workspace archive,
+and its Windows integration lane has not yet started the host (`FileNotFoundException: PresentationFramework`), so
+`terminal-integration` is `observe` and the Terminal evidence above predates the current pipeline.
+
 ## Phasing
 
 1. Spike: PTY + VT round trip. Done.
 2. Pad with toolbar, sessions, split, selection, mouse, settings, Project Browser switch-over, DevFlow
    actions and journeys. Done on macOS arm64.
-3. Still open: the not-built list above, then Windows validation (ConPTY packaging, ARM64 fallback)
-   and Linux.
+3. Windows x64 and native Windows ARM64: smoke journey passed in CI (see below). Still open: the not-built list above,
+   the macOS journeys on a CI runner, the Terminal journey on the current unified Windows payload, and Linux.
 
 ## Open questions
 
-- Windows ARM64: managed fallback vs. upstream native build.
+- Windows RID-less build: the unified Windows payload is built without a RuntimeIdentifier, which does not stage
+  `OpenConsole.exe` (see pitfalls); the staging needs to cover both architectures regardless of RID.
 - Frame rate of a full-screen redraw (`vim`, `top`): it has not been measured.
