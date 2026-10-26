@@ -454,6 +454,28 @@
       ],
       "measuredSeconds": 28,
       "note": "First batch-4 cross-platform integration entry. Opens an isolated Razor SDK project and asserts HTML, CSS, JavaScript and C# highlighting through the running IDE. Measured locally on macOS ARM64: 1 test in 28 seconds; keep observe until repeated runner results are stable."
+    },
+    {
+      "id": "wpf-designer-assembly-lock-integration",
+      "batch": 4,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "platforms": {
+        "macos-arm64": "observe"
+      },
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.WpfDesignerAssemblyLockTests",
+        "-parallel",
+        "none"
+      ],
+      "buildArgs": [
+        "-p:BuildIntegrationFixtures=false"
+      ],
+      "measuredSeconds": 47,
+      "note": "First batch-4 designer-host entry. Opens the LibreWPF designer, waits until its out-of-process host loads the project assembly, then rebuilds and rejects file-lock diagnostics. Measured locally on macOS ARM64: 1 test in 47 seconds; keep observe until repeated runner results are stable."
     }
   ]
 }
