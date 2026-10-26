@@ -15,6 +15,7 @@
     "A lane with 'needsNuGetCache' also downloads the build job's NuGet package cache: the IDE host resolves its LibreWPF assemblies from the global packages folder at run time, so a lane that starts the IDE (the integration lanes) needs it; the unit lane does not.",
     "'buildLast' projects are built after everything else, with their own 'args' ('{rid}' is the platform's 'rid').  The host is built last with '--runtime <rid> -p:AppendRuntimeIdentifierToOutputPath=false', the recipe terminal-cross-platform.yml uses (it builds the Terminal add-in that way, which builds the host project it references as that RID into the same folder) and whose IDE does start on the Windows runner.  Measured on the runner without it: the host's OpenDevelop.deps.json is 166 libraries without a 'PresentationFramework/11.0.0.0' reference entry from the very first host build on, whatever is built afterwards in the default way (a macOS build has 193, with 28 'reference' entries for the LibreWPF assemblies), and the IDE dies at start-up with a FileNotFoundException for PresentationFramework 11.0.0.0.  The build summary records the host deps.json after every build, so the run shows what the RID-specific build changes.",
     "A lane definition holds 'timeoutMinutes', optionally 'needsNuGetCache' (the IDE host resolves its LibreWPF assemblies from the global packages folder at run time) and optionally 'buildsInLane'.",
+    "'additionalProjects' declares fixture projects needed by an enabled entry; optional platforms refer to the build platform, so Windows ARM64 prerequisites belong to windows-x64 when it supplies the shared archive.",
     "Profiler and Terminal are entries here; their own workflows (profiler.yml, terminal-cross-platform.yml) were deleted when they were folded in. Windows ARM64 and macOS ARM64 start as observed Terminal journeys and are promoted after repeated green runs."
   ],
   "platformNotes": {
@@ -53,6 +54,12 @@
       "needsNuGetCache": true,
       "allowAllFailures": true,
       "note": "Kept green while every entry fails for one known host defect, so the lane's failures are warnings instead of a red master; remove 'allowAllFailures' and promote the entries when the host starts."
+    },
+    "integration-hot-reload": {
+      "timeoutMinutes": 30,
+      "needsNuGetCache": true,
+      "allowAllFailures": true,
+      "note": "The single Hot Reload entry starts in observe mode; do not fail the lane solely because that observed entry fails."
     }
   },
   "buildFirst": [
@@ -184,7 +191,7 @@
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
       ],
-      "reason": "Known-broken on this platform while the Windows IDE host cannot start (FileNotFoundException PresentationFramework 11.0.0.0: the payload is in the host folder but the portable bootstrap returns before preloading it on Windows and the deps manifest registers 167 libraries where the shipped payload has 193). Kept running so the failure stays visible as a warning; flip to 'required' when the LibreWPF SDK fix lands. See AGENTS.md."
+      "reason": "Observed on enabled platforms; inspect per-entry lane summaries before promoting to required."
     },
     {
       "id": "workbench-tests",
@@ -205,7 +212,7 @@
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
       ],
-      "reason": "Known-broken on this platform while the Windows IDE host cannot start (FileNotFoundException PresentationFramework 11.0.0.0: the payload is in the host folder but the portable bootstrap returns before preloading it on Windows and the deps manifest registers 167 libraries where the shipped payload has 193). Kept running so the failure stays visible as a warning; flip to 'required' when the LibreWPF SDK fix lands. See AGENTS.md."
+      "reason": "Observed on enabled platforms; inspect per-entry lane summaries before promoting to required."
     },
     {
       "id": "stop-after-first-failure-build-tests",
@@ -226,7 +233,7 @@
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
       ],
-      "reason": "Known-broken on this platform while the Windows IDE host cannot start (FileNotFoundException PresentationFramework 11.0.0.0: the payload is in the host folder but the portable bootstrap returns before preloading it on Windows and the deps manifest registers 167 libraries where the shipped payload has 193). Kept running so the failure stays visible as a warning; flip to 'required' when the LibreWPF SDK fix lands. See AGENTS.md."
+      "reason": "Observed on enabled platforms; inspect per-entry lane summaries before promoting to required."
     },
     {
       "id": "solution-folder-tests",
@@ -242,12 +249,14 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe"
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
       ],
-      "reason": "Known-broken on this platform while the Windows IDE host cannot start (FileNotFoundException PresentationFramework 11.0.0.0: the payload is in the host folder but the portable bootstrap returns before preloading it on Windows and the deps manifest registers 167 libraries where the shipped payload has 193). Kept running so the failure stays visible as a warning; flip to 'required' when the LibreWPF SDK fix lands. See AGENTS.md."
+      "reason": "Observed on enabled platforms; inspect per-entry lane summaries before promoting to required."
     },
     {
       "id": "project-options-tests",
@@ -263,12 +272,14 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe"
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
       ],
-      "reason": "Known-broken on this platform while the Windows IDE host cannot start (FileNotFoundException PresentationFramework 11.0.0.0: the payload is in the host folder but the portable bootstrap returns before preloading it on Windows and the deps manifest registers 167 libraries where the shipped payload has 193). Kept running so the failure stays visible as a warning; flip to 'required' when the LibreWPF SDK fix lands. See AGENTS.md."
+      "reason": "Observed on enabled platforms; inspect per-entry lane summaries before promoting to required."
     },
     {
       "id": "t4-tests",
@@ -284,12 +295,14 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe"
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
       ],
-      "reason": "Known-broken on this platform while the Windows IDE host cannot start (FileNotFoundException PresentationFramework 11.0.0.0: the payload is in the host folder but the portable bootstrap returns before preloading it on Windows and the deps manifest registers 167 libraries where the shipped payload has 193). Kept running so the failure stays visible as a warning; flip to 'required' when the LibreWPF SDK fix lands. See AGENTS.md."
+      "reason": "Observed on enabled platforms; inspect per-entry lane summaries before promoting to required."
     },
     {
       "id": "task-list-pad-tests",
@@ -305,12 +318,14 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe"
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
       ],
-      "reason": "Known-broken on this platform while the Windows IDE host cannot start (FileNotFoundException PresentationFramework 11.0.0.0: the payload is in the host folder but the portable bootstrap returns before preloading it on Windows and the deps manifest registers 167 libraries where the shipped payload has 193). Kept running so the failure stays visible as a warning; flip to 'required' when the LibreWPF SDK fix lands. See AGENTS.md."
+      "reason": "Observed on enabled platforms; inspect per-entry lane summaries before promoting to required."
     },
     {
       "id": "vseditor-view-tests",
@@ -331,7 +346,7 @@
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
       ],
-      "reason": "Known-broken on this platform while the Windows IDE host cannot start (FileNotFoundException PresentationFramework 11.0.0.0: the payload is in the host folder but the portable bootstrap returns before preloading it on Windows and the deps manifest registers 167 libraries where the shipped payload has 193). Kept running so the failure stays visible as a warning; flip to 'required' when the LibreWPF SDK fix lands. See AGENTS.md."
+      "reason": "Observed on enabled platforms; inspect per-entry lane summaries before promoting to required."
     },
     {
       "id": "one-process-build-tests",
@@ -352,7 +367,7 @@
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
       ],
-      "reason": "Known-broken on this platform while the Windows IDE host cannot start (FileNotFoundException PresentationFramework 11.0.0.0: the payload is in the host folder but the portable bootstrap returns before preloading it on Windows and the deps manifest registers 167 libraries where the shipped payload has 193). Kept running so the failure stays visible as a warning; flip to 'required' when the LibreWPF SDK fix lands. See AGENTS.md."
+      "reason": "Observed on enabled platforms; inspect per-entry lane summaries before promoting to required."
     },
     {
       "id": "project-reload-tests",
@@ -368,12 +383,14 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe"
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
       ],
-      "reason": "Known-broken on this platform while the Windows IDE host cannot start (FileNotFoundException PresentationFramework 11.0.0.0: the payload is in the host folder but the portable bootstrap returns before preloading it on Windows and the deps manifest registers 167 libraries where the shipped payload has 193). Kept running so the failure stays visible as a warning; flip to 'required' when the LibreWPF SDK fix lands. See AGENTS.md."
+      "reason": "Observed on enabled platforms; inspect per-entry lane summaries before promoting to required."
     },
     {
       "id": "profiler-tests",
@@ -454,6 +471,23 @@
       ],
       "measuredSeconds": 28,
       "note": "First batch-4 cross-platform integration entry. Opens an isolated Razor SDK project and asserts HTML, CSS, JavaScript and C# highlighting through the running IDE. Measured locally on macOS ARM64: 1 test in 28 seconds; keep observe until repeated runner results are stable."
+    },
+    {
+      "id": "wpf-hot-reload-journeys",
+      "batch": 4,
+      "lane": "integration-hot-reload",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.WpfHotReloadJourneyTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "additionalProjects": [
+        { "project": "tests/fixtures/WpfHotReloadFixture/WpfHotReloadFixture.csproj" },
+        { "project": "tests/fixtures/WpfHotReloadClassLibFixture/Host/HotReloadClassLibHost.csproj" },
+        { "project": "tests/fixtures/WpfHotReloadClassLibFixture.Microsoft/Host/HotReloadClassLibHost.csproj", "platforms": ["windows-x64"] }
+      ],
+      "platforms": { "windows-x64": "observe", "macos-arm64": "observe" },
+      "note": "Exercises real WPF application and class-library Hot Reload journeys; Microsoft WPF variants run only on Windows. macOS ARM64 locally passed four journeys with two Windows-only skips."
     },
     {
       "id": "wpf-designer-assembly-lock-integration",

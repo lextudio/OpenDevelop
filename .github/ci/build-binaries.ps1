@@ -54,6 +54,18 @@ foreach ($group in ($entries | Group-Object { $_.project })) {
     [string[]]$extra = if ($argumentSets[0]) { $argumentSets[0] -split ' ' } else { @() }
     $builds += [pscustomobject]@{ Project = $group.Name; Args = $extra; First = $false }
 }
+# A journey may need prebuilt applications in addition to its test assembly. Build each
+# prerequisite only when an enabled entry needs it on this build platform. Windows ARM64
+# consumes the windows-x64 build, so its prerequisites must also be declared for that build.
+foreach ($entry in $entries) {
+    if (-not $entry.PSObject.Properties['additionalProjects']) { continue }
+    foreach ($item in @($entry.additionalProjects)) {
+        if ($item.PSObject.Properties['platforms'] -and $Platform -notin @($item.platforms)) { continue }
+        if (@($builds | Where-Object { $_.Project -eq $item.project }).Count -eq 0) {
+            $builds += [pscustomobject]@{ Project = $item.project; Args = [string[]]@(); First = $false }
+        }
+    }
+}
 # The integration project's own Build deploys the add-ins, so it goes before the unit test projects, which then reuse its output.
 $builds = @($builds | Sort-Object { if ($_.Project -like '*OpenDevelop.IntegrationTests*') { 0 } else { 1 } }, { $_.Project })
 

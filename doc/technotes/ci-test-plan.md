@@ -74,6 +74,15 @@ workflow (`buildFrom`, the archive rules per platform, the payload scan and the 
   measured duration into `measuredSeconds`.
 * An entry names its `lane`, `kind`, `target` (the test assembly or project), `args`, and the `project` the build job
   compiles for it. A lane is defined once under `lanes` with its timeout.
+* `additionalProjects` names fixture projects that the entry needs built before the archive is created. Optional
+  `platforms` refer to the build platform: both Windows architectures consume the `windows-x64` archive. The WPF Hot
+  Reload lane builds the LibreWPF application and class-library host on both build platforms, plus the Microsoft WPF
+  class-library host on Windows. Its single entry starts as `observe` with `allowAllFailures`, so an observed failure
+  remains visible in the summary without failing the lane; remove that exception when the entry becomes required.
+
+The solution-folder, project-options, T4, Task List and project-reload journeys also run in observe mode on macOS ARM64
+and Windows ARM64. The existing Windows x64 entries remain observed. These are initial observations, not evidence of
+passing results on the runners.
 
 ## Current plan (Windows x64)
 
