@@ -55,6 +55,12 @@
       "allowAllFailures": true,
       "note": "Kept green while every entry fails for one known host defect, so the lane's failures are warnings instead of a red master; remove 'allowAllFailures' and promote the entries when the host starts."
     },
+    "integration-workbench": {
+      "timeoutMinutes": 45,
+      "needsNuGetCache": true,
+      "allowAllFailures": true,
+      "note": "All entries start as observations, including an all-failed run; inspect the per-entry summary. The earlier Windows integration lane could not start its IDE host (PresentationFramework 11.0.0.0); see AGENTS.md. Remove this exception when promoting stable entries."
+    },
     "integration-hot-reload": {
       "timeoutMinutes": 30,
       "needsNuGetCache": true,
@@ -175,7 +181,7 @@
     {
       "id": "devflow-tests",
       "batch": 3,
-      "lane": "integration-core",
+      "lane": "integration-workbench",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -186,7 +192,9 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe"
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
@@ -196,7 +204,7 @@
     {
       "id": "workbench-tests",
       "batch": 3,
-      "lane": "integration-core",
+      "lane": "integration-workbench",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -207,7 +215,9 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe"
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
@@ -217,7 +227,7 @@
     {
       "id": "stop-after-first-failure-build-tests",
       "batch": 3,
-      "lane": "integration-core",
+      "lane": "integration-workbench",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -228,7 +238,9 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe"
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
@@ -330,7 +342,7 @@
     {
       "id": "vseditor-view-tests",
       "batch": 3,
-      "lane": "integration-core",
+      "lane": "integration-workbench",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -341,7 +353,9 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe"
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
@@ -351,7 +365,7 @@
     {
       "id": "one-process-build-tests",
       "batch": 3,
-      "lane": "integration-core",
+      "lane": "integration-workbench",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -362,7 +376,9 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe"
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"

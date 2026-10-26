@@ -90,9 +90,8 @@ public sealed class WorkbenchTests
 
         // --- was: BuildSolution_OutputPadIsActuallyShownNotJustPopulated ---
         // Regression test for the Output pad being tab-docked behind an unrelated pane on its first
-        // show: this fixture wipes ~/Library/Application Support/.../layouts/ before every launch (see
-        // OpenDevelopAppFixture.DeleteStaleViewStateMemento), so the Output pad is never part of the
-        // persisted layout when this runs - exactly the "never shown before" scenario
+        // show: this fixture uses a new private configuration directory for each launch, so the Output
+        // pad is never part of a persisted layout - exactly the "never shown before" scenario
         // DockWorkspace.BeforeInsertAnchorable's ToolPaneModel.PreferredDockSide handling exists for.
         // Without that handling, AvalonDock's own AttachAnchorablesSource import falls back to
         // whatever pane hosts the active content (or the first pane it finds), so the Output pad ends
