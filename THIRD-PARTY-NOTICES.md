@@ -34,3 +34,6 @@ A releasable Windows ZIP or macOS application must include this file, the root
 `LICENSE`, the generated third-party package manifest, and all notices required
 by native assets copied into that payload. The CI release check validates their
 presence after packaging.
+
+The source-linked-submodule audit, including the exact files rather than only
+repository-level licenses, is maintained in `doc/technotes/licensing-audit.md`.
