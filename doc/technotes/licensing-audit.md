@@ -18,11 +18,16 @@ The audit must be repeated when a project adds or changes a `Compile`, `Page`,
 
 ## Not part of the released product without a separate traced use
 
-`altcover`, `cps`, `sharpdbg`, `wpftoolkit`, `xamlstudio`, and
+`altcover`, `cps`, `wpftoolkit`, `xamlstudio`, and
 `monodevelop-nuget-extensions` have repository-level licenses but no direct
 source-link in the application projects found by this audit. They may be build
 or test dependencies. A future payload copy, source link, or bundled binary
 must add a file-level entry above before release.
+
+`SharpDbg.Cli` is not source-linked, but `Debugger.AddIn.csproj` builds and
+copies its complete out-of-process adapter closure into the application
+payload. Its MIT license is therefore copied as
+`THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt`.
 
 `externals/vscode-wpf/sample` is used by integration tests only and is not
 part of the runtime payload.
@@ -42,6 +47,6 @@ absent.
 ## Release gate
 
 Every release payload must contain `LICENSE`, `THIRD-PARTY-NOTICES.md`,
-`THIRD-PARTY.spdx.json`, and the LibGhostty native notice files. The Windows
-ZIP validator checks all of them. The macOS application bundle receives the
-same files in `Contents/MacOS` before the DMG is created.
+`THIRD-PARTY.spdx.json`, the source-linked `SOURCE-LICENSES` texts, and all
+native or bundled-program notices. The Windows ZIP validator and macOS bundle
+step check all of them before an archive is created.

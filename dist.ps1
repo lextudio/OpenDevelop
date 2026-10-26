@@ -134,12 +134,19 @@ function Write-DistributionLegalFiles {
     $destinationNotices = Join-Path $Destination 'THIRD-PARTY-NOTICES'
     if (Test-Path -LiteralPath $destinationNotices) { Remove-Item -LiteralPath $destinationNotices -Recurse -Force }
     New-Item -ItemType Directory -Path $destinationNotices -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $ghosttyNotices '*') -Destination $destinationNotices -Recurse -Force
+    # LiteralPath intentionally is not used here: it would treat the asterisk as part of a
+    # filename and leave the native notices out of a release.
+    Get-ChildItem -LiteralPath $ghosttyNotices -Force | Copy-Item -Destination $destinationNotices -Recurse -Force
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'externals/sharpdbg/LICENSE.txt') -Destination (Join-Path $destinationNotices 'SharpDbg-LICENSE.txt') -Force
     $assetsFiles = @((Join-Path $repoRoot 'src/Main/SharpDevelop/obj/project.assets.json')) + @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src/AddIns') -Recurse -File -Filter 'project.assets.json' | ForEach-Object FullName)
     $missingAssets = @($assetsFiles | Where-Object { -not (Test-Path -LiteralPath $_) })
     if ($missingAssets.Count -gt 0) { throw "Cannot generate SPDX manifest; restore did not produce $($missingAssets -join ', ')" }
-    & $spdxScript -AssetsFile $assetsFiles -PackageRoot (Get-NuGetGlobalPackages) -OutputPath (Join-Path $Destination 'THIRD-PARTY.spdx.json')
-    if ($LASTEXITCODE -ne 0) { throw "SPDX manifest generation failed with code $LASTEXITCODE" }
+    try {
+        & $spdxScript -AssetsFile $assetsFiles -PackageRoot (Get-NuGetGlobalPackages) -OutputPath (Join-Path $Destination 'THIRD-PARTY.spdx.json')
+    }
+    catch {
+        throw "SPDX manifest generation failed: $($_.Exception.Message)"
+    }
 }
 
 function Assert-HostPublished {
@@ -655,7 +662,7 @@ function Test-WindowsDistributionZip {
     try {
         $prefix = "OpenDevelop-win/"
         if (-not ($archive.Entries.FullName -contains "${prefix}OpenDevelop.dll")) { throw "ZIP lacks ${prefix}OpenDevelop.dll: $ZipPath" }
-        foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md') {
+        foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md', 'THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt') {
             if (-not ($archive.Entries.FullName -contains "${prefix}$legalFile")) {
                 throw "ZIP lacks required legal file ${prefix}${legalFile}: $ZipPath"
             }
@@ -725,6 +732,10 @@ function Invoke-MacPayload {
     & bash (Join-Path $repoRoot 'build/macos/build-application-bundle.sh') | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "build-application-bundle.sh exited with code $LASTEXITCODE" }
     Write-DistributionLegalFiles -Destination (Join-Path $repoRoot 'OpenDevelop.app/Contents/MacOS')
+    foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md', 'THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt') {
+        $legalPath = Join-Path $repoRoot "OpenDevelop.app/Contents/MacOS/$legalFile"
+        if (-not (Test-Path -LiteralPath $legalPath)) { throw "macOS payload lacks required legal file: $legalPath" }
+    }
 
     # Same as the Windows payload: out-of-process hosts resolve only from their own deps.json,
     # which declares some packages (System.Windows.Extensions, ...) only under runtimes/win.

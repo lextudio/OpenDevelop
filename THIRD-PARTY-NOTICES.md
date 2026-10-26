@@ -12,6 +12,12 @@ The LibGhostty.Net package supplies their complete notices under
 `THIRD-PARTY-NOTICES/`; release packaging must preserve that directory beside
 the application payload.
 
+## Debugger
+
+The bundled `SharpDbg.Cli` debug adapter is MIT-licensed. Its license is
+included as `THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt` in every release
+payload.
+
 ## UI framework and editors
 
 OpenDevelop consumes LibreWPF, LibreWinForms, ProGPU, AvalonEdit and AvalonDock
@@ -32,8 +38,8 @@ are Microsoft packages.
 
 A releasable Windows ZIP or macOS application must include this file, the root
 `LICENSE`, the generated third-party package manifest, and all notices required
-by native assets copied into that payload. The CI release check validates their
-presence after packaging.
+by native assets copied into that payload. Distribution packaging validates
+their presence before an archive is created.
 
 The source-linked-submodule audit, including the exact files rather than only
 repository-level licenses, is maintained in `doc/technotes/licensing-audit.md`.
