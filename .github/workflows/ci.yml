@@ -55,6 +55,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
+  # The cache steps name this folder relatively (artifacts/nuget-packages): actions/cache hashes the path text into the
+  # entry's version, and the workspace is D:\a\... on the x64 runner but C:\a\... on the ARM64 one, so an absolute path
+  # made the ARM64 lane miss the entry the x64 build saved under the very same key.
   NUGET_CACHE_PATH: ${{ github.workspace }}/artifacts/nuget-packages
   NUGET_PACKAGES: ${{ github.workspace }}/artifacts/nuget-packages
   # NuGet consumes this conventional variable without writing the ephemeral token into NuGet.config,
@@ -122,7 +125,7 @@ jobs:
       - name: Restore the NuGet package cache
         uses: actions/cache@v4
         with:
-          path: ${{ env.NUGET_CACHE_PATH }}
+          path: artifacts/nuget-packages
           key: ${{ steps.nuget-key.outputs.key }}
       - name: Compile everything the enabled entries need, once
         shell: pwsh
@@ -203,7 +206,7 @@ jobs:
         if: matrix.needs_nuget_cache
         uses: actions/cache/restore@v4
         with:
-          path: ${{ env.NUGET_CACHE_PATH }}
+          path: artifacts/nuget-packages
           key: ${{ steps.nuget-key.outputs.key }}
           fail-on-cache-miss: true
       - name: Verify native Terminal package assets
@@ -284,7 +287,7 @@ jobs:
       - name: Restore the NuGet package cache
         uses: actions/cache/restore@v4
         with:
-          path: ${{ env.NUGET_CACHE_PATH }}
+          path: artifacts/nuget-packages
           key: ${{ steps.nuget-key.outputs.key }}
       # No host builds: nothing in this lane builds an add-in against the host manifest or starts the IDE.
       - name: Compile this lane's entries
