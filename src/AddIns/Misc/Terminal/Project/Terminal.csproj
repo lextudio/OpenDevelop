@@ -46,6 +46,21 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
+    <!-- The Windows distribution is one RID-less payload for x64 and ARM64. Without a RuntimeIdentifier the natives keep
+         their runtimes/win-<rid>/native/ folders, and Porta.Pty then looks for the host in a per-architecture folder
+         beside the matching conpty.dll, so each architecture gets only its own. -->
+    <None Include="$(PkgLibGhostty_Net)/runtimes/win-x64/native/OpenConsole.exe"
+          Condition="'$(RuntimeIdentifier)' == ''">
+      <Link>runtimes/win-x64/native/x64/OpenConsole.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Include="$(PkgLibGhostty_Net)/runtimes/win-arm64/native/OpenConsole.exe"
+          Condition="'$(RuntimeIdentifier)' == ''">
+      <Link>runtimes/win-arm64/native/arm64/OpenConsole.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />

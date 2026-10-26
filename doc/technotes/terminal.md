@@ -166,9 +166,13 @@ Pitfalls found (keep):
 - Porta.Pty's transitive staging target cannot distinguish LibGhostty.Net's `conpty.dll` from the
   official ConPTY package and derives a nonexistent `OpenConsole.exe` path. Terminal disables that
   target and stages LibGhostty's matching host in `x64/` or `arm64/`, beside the deployed add-in assets (win-arm64
-  assets now exist in the fork). The staging items in `Terminal.csproj` are conditioned on
-  `$(RuntimeIdentifier)` being `win-x64` or `win-arm64`: a RID-less Windows build stages neither, so ConPTY would not
-  start. Every Terminal CI run that passed on Windows used a RID build; see "Verification by platform".
+  assets now exist in the fork). A RID build puts `conpty.dll` in the add-in root and the host in `x64/` or `arm64/`. The
+  unified Windows payload is built without a RID, where the natives keep `runtimes/win-<rid>/native/` and Porta.Pty looks
+  for the host in a per-architecture folder beside each `conpty.dll`; without it Porta.Pty silently falls back to the
+  in-box conhost. `Terminal.csproj` now stages `runtimes/win-x64/native/x64/OpenConsole.exe` and
+  `runtimes/win-arm64/native/arm64/OpenConsole.exe` for a RID-less build (checked on the build output only; whether the
+  RID-less layout starts the shell on Windows is verified by the CI journey, not yet). Every Terminal CI run that passed
+  on Windows used a RID build; see "Verification by platform".
 - The host shell must be rebuilt (`ICSharpCode.Core.Presentation` embeds the icons) before new icons
   resolve; the add-in alone is not enough. Use one SDK (Homebrew) for both builds.
 - xUnit's `Assert.DoesNotContain(string, string)` compares by culture: with ICU an ESC character is
@@ -325,6 +329,7 @@ and its Windows integration lane has not yet started the host (`FileNotFoundExce
 
 ## Open questions
 
-- Windows RID-less build: the unified Windows payload is built without a RuntimeIdentifier, which does not stage
-  `OpenConsole.exe` (see pitfalls); the staging needs to cover both architectures regardless of RID.
+- Windows RID-less layout: the unified payload is built without a RuntimeIdentifier. Both `OpenConsole.exe` hosts are now
+  staged beside their `conpty.dll`, but nothing has run that layout on Windows yet, and the location of `ghostty-vt.dll`
+  there (under `runtimes/win-<rid>/native/`) depends on LibGhostty.Net's native lookup, which was not checked.
 - Frame rate of a full-screen redraw (`vim`, `top`): it has not been measured.
