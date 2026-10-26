@@ -23,7 +23,7 @@
     "windows-arm64": "Runs the native Windows ARM64 Terminal journey against the same unified Windows payload the x64 lane tests: dist.windows.bat ships one package with runtimes/ plus per-RID win-x64/win-arm64 folders and both launchers, so 'buildFrom': 'windows-x64' keeps a single compile for both lanes.",
     "linux-x64": "Not enabled yet: profiler.yml ran the Profiler tests on ubuntu-latest and passed; it comes back as this platform's first entry when the platform is added."
   },
-  "throughBatch": 3,
+  "throughBatch": 4,
   "platforms": {
     "windows-x64": {
       "runner": "windows-2025",
@@ -431,6 +431,29 @@
       ],
       "note": "Native Apple Silicon Terminal journey: POSIX terminal behavior and macOS key/pointer delivery.",
       "reason": "Observed while validating the all-platform LibGhostty.Net 1.0.2 package; promote after repeated green runs."
+    },
+    {
+      "id": "razor-highlighting-integration",
+      "batch": 4,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "platforms": {
+        "windows-x64": "observe",
+        "macos-arm64": "observe"
+      },
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.RazorHighlightingIntegrationTests",
+        "-parallel",
+        "none"
+      ],
+      "buildArgs": [
+        "-p:BuildIntegrationFixtures=false"
+      ],
+      "measuredSeconds": 28,
+      "note": "First batch-4 cross-platform integration entry. Opens an isolated Razor SDK project and asserts HTML, CSS, JavaScript and C# highlighting through the running IDE. Measured locally on macOS ARM64: 1 test in 28 seconds; keep observe until repeated runner results are stable."
     }
   ]
 }
