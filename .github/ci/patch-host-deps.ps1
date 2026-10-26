@@ -53,12 +53,15 @@ function Get-TransportPayload([hashtable]$target) {
     return $names
 }
 
-# A library entry resolves a file when its runtime asset is the bare file name or a runtimes/<rid>/... path whose file is
-# actually in the host directory. Package-relative lib/<tfm>/... paths do not: that is the broken shape.
+# A library entry resolves a file when its 'runtime' asset is the bare file name or a path whose file is actually in the
+# host directory; 'runtimeTargets' (per-RID) assets do not count. Package-relative lib/<tfm>/... paths do not: that is the broken shape.
 function Test-Resolvable([hashtable]$target, [string]$fileName) {
     foreach ($library in $target.Keys) {
         $entry = $target[$library]
-        foreach ($group in @('runtime', 'runtimeTargets')) {
+        # Only 'runtime' counts: this payload is one RID-less build, so the host never selects a 'runtimeTargets' asset
+        # (measured: runtimes/win-x64/lib/net10.0/PresentationFramework.dll was on disk and listed, yet the manifest
+        # still had no PresentationFramework entry the host could use, and the final payload check rejected it).
+        foreach ($group in @('runtime')) {
             if (-not $entry[$group]) { continue }
             foreach ($asset in $entry[$group].Keys) {
                 if (($asset -split '/')[-1] -ne $fileName) { continue }
