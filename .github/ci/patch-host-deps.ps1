@@ -77,6 +77,17 @@ $added = [System.Collections.Generic.List[string]]::new()
 foreach ($targetName in $deps['targets'].Keys) {
     $target = $deps['targets'][$targetName]
     $payload = Get-TransportPayload $target
+    # Say what the detection saw, so a "nothing to do" can be checked against the manifest instead of trusted: which
+    # libraries carry PresentationFramework.dll, with which asset path, and whether the transport payload names it.
+    $frameworkAssets = @(foreach ($library in $target.Keys) {
+        foreach ($group in @('runtime', 'runtimeTargets')) {
+            if (-not $target[$library][$group]) { continue }
+            foreach ($asset in $target[$library][$group].Keys) {
+                if (($asset -split '/')[-1] -eq 'PresentationFramework.dll') { "$library [$group] $asset" }
+            }
+        }
+    })
+    Write-Host "patch-host-deps: target '$targetName': transport payload $($payload.Count) file(s), names PresentationFramework.dll: $($payload -contains 'PresentationFramework.dll'); PresentationFramework.dll assets: $(if ($frameworkAssets.Count) { $frameworkAssets -join '; ' } else { 'none' })"
     if ($payload.Count -eq 0) { continue }
 
     $missing = @($payload | Sort-Object -Unique | Where-Object {
