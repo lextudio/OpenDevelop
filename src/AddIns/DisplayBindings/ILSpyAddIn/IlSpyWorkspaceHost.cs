@@ -54,6 +54,7 @@ namespace ICSharpCode.ILSpyAddIn
 		private static AnalyzerTreeViewModel analyzerPane;
 		private static DecompiledCodeViewContent decompiledCodeView;
 		private static bool initialized;
+		private static bool initializing;
 
 		/// <summary>
 		/// Whether <see cref="EnsureInitialized"/> has already run, WITHOUT triggering it as a side
@@ -207,7 +208,10 @@ namespace ICSharpCode.ILSpyAddIn
 		{
 			if (initialized)
 				return;
-			initialized = true;
+			if (initializing)
+				throw new InvalidOperationException("ILSpy initialization re-entered before its panes were ready.");
+			initializing = true;
+			try {
 
 			var exportProvider = App.Initialize();
 
@@ -355,6 +359,14 @@ namespace ICSharpCode.ILSpyAddIn
 				if (e.PropertyName is nameof(LanguageService.Language) or nameof(LanguageService.LanguageVersion))
 					lastDecompile = OnSelectionChangedAsync();
 			};
+				// Do not publish a usable host until every pane and its dependencies exist. A failed
+				// first launch previously left initialized=true with null panes, turning the original
+				// cause into unrelated NullReferenceExceptions from DevFlow and File > Open.
+				initialized = true;
+			}
+			finally {
+				initializing = false;
+			}
 		}
 
 		// Phase 1 of "decompiled code as a normal OpenDevelop document" (doc/technotes/ilspy.md
