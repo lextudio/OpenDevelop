@@ -1,11 +1,21 @@
 name: Release
 
+# Pushing a vMAJOR.MINOR.PATCH[-suffix] tag packages both distributions and leaves a DRAFT release for review. A draft is
+# never "latest", so the IDE's update check (api.github.com/.../releases/latest) is not triggered until someone has read the
+# notes and published it: `gh release edit <tag> --draft=false`, or the Publish button.
+#
+# Conventions carried over from the manual releases (v5.6.0 - v5.6.3): the title is the tag, the assets keep the fixed names
+# OpenDevelop-win.zip and OpenDevelop-macos.dmg (so releases/latest/download/<name> stays a stable link), and the notes
+# follow .github/release-notes.template.md. A tag with a suffix (v5.6.5-rc1) becomes a prerelease, which makes it a safe
+# dry run. Put the "Changes since" bullets in doc/releases/<tag>.md before tagging.
 on:
   push:
     tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
+  actions: read
+  # LibreWPF, LibreWinForms, AvalonEdit, AvalonDock and LibGhostty.Net come from this organization's packages.
   packages: read
 
 concurrency:
@@ -14,69 +24,134 @@ concurrency:
 
 env:
   GH_TOKEN: ${{ github.token }}
+  # Same convention as ci.yml: NuGet reads the token from here without writing it to NuGet.config.
+  NuGetPackageSourceCredentials_lextudio-github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
 
 jobs:
+  prepare:
+    name: Check the tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: The tag is a release version, on master, with a green CI run, and not released yet
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' is not vMAJOR.MINOR.PATCH[-suffix]."; exit 1
+          fi
+          git fetch --no-tags origin master
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::$GITHUB_REF_NAME ($GITHUB_SHA) is not on master. Release from master."; exit 1
+          fi
+          green=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&per_page=50" \
+            --jq '[.workflow_runs[] | select(.conclusion == "success")] | length')
+          if [[ "$green" -lt 1 ]]; then
+            echo "::error::No successful CI run exists for $GITHUB_SHA. Run ci.yml on this commit first (a push to master, or a dispatch)."; exit 1
+          fi
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "::error::A release for $GITHUB_REF_NAME already exists."; exit 1
+          fi
+          echo "$GITHUB_REF_NAME: on master, $green successful CI run(s), no release yet."
+
   windows:
     name: Package Windows
+    needs: prepare
     runs-on: windows-2025
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
+          # The build stamps its version from git history (GitVersion).
           fetch-depth: 0
+      - name: Initialize the submodules the build needs
+        shell: bash
+        run: bash .github/ci/init-submodules.sh
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
           architecture: x64
+      # One payload serves x64 and ARM64 (dist.ps1 builds both launchers and runs its own smoke phase). GitVersion's GitHub
+      # Actions integration races on the runner's env file when projects build in parallel (see build-binaries.ps1), so the
+      # variable that enables it is removed for the packaging.
       - name: Build the unified Windows distribution
         shell: cmd
-        run: dist.windows.bat
-      - name: Name the release asset
-        shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force artifacts/release | Out-Null
-          Move-Item OpenDevelop-win.zip "artifacts/release/OpenDevelop-${{ github.ref_name }}-windows.zip"
+          set "GITHUB_ACTIONS="
+          dist.windows.bat
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows
-          path: artifacts/release/*.zip
+          path: OpenDevelop-win.zip
           if-no-files-found: error
 
   macos:
     name: Package macOS ARM64
-    runs-on: macos-14
+    needs: prepare
+    # The same image ci.yml builds macOS on; dist.macos.sh probes for a linking toolchain and is sensitive to the SDK.
+    runs-on: macos-15
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Initialize the submodules the build needs
+        shell: bash
+        run: bash .github/ci/init-submodules.sh
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
           architecture: arm64
       - name: Build the macOS ARM64 distribution
-        run: ./dist.macos.sh
-      - name: Name the release asset
         run: |
-          mkdir -p artifacts/release
-          mv OpenDevelop-macos.dmg "artifacts/release/OpenDevelop-${GITHUB_REF_NAME}-macos-arm64.dmg"
+          unset GITHUB_ACTIONS
+          ./dist.macos.sh
       - uses: actions/upload-artifact@v4
         with:
           name: release-macos-arm64
-          path: artifacts/release/*.dmg
+          path: OpenDevelop-macos.dmg
           if-no-files-found: error
 
-  publish:
-    name: Publish GitHub Release
+  draft:
+    name: Draft the GitHub Release
     needs: [windows, macos]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: artifacts/release
           merge-multiple: true
-      - name: Create the release from the verified assets
+      - id: notes
+        name: Render the notes
+        shell: pwsh
+        run: ./.github/ci/release-notes.ps1 -Tag '${{ github.ref_name }}' -Output release-notes.md
+      - name: Create the draft and attach both assets
         shell: bash
         run: |
-          gh release create "$GITHUB_REF_NAME" artifacts/release/* \
-            --verify-tag --title "OpenDevelop $GITHUB_REF_NAME" --generate-notes
+          set -euo pipefail
+          ls -l artifacts/release
+          for asset in OpenDevelop-win.zip OpenDevelop-macos.dmg; do
+            [[ -f "artifacts/release/$asset" ]] || { echo "::error::$asset was not produced."; exit 1; }
+          done
+          flags=()
+          [[ "${{ steps.notes.outputs.prerelease }}" == "true" ]] && flags+=(--prerelease)
+          # A failure after this point leaves a recoverable draft, never a partial public release.
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "$GITHUB_REF_NAME" --notes-file release-notes.md "${flags[@]}"
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            artifacts/release/OpenDevelop-win.zip artifacts/release/OpenDevelop-macos.dmg
+          {
+            echo "### $GITHUB_REF_NAME drafted"
+            echo
+            echo "- Notes bullets came from: **${{ steps.notes.outputs.bullets }}** (previous version: ${{ steps.notes.outputs.previous }})"
+            echo "- Review it, then publish: \`gh release edit $GITHUB_REF_NAME --draft=false\`"
+            echo "- https://github.com/$GITHUB_REPOSITORY/releases"
+          } >> "$GITHUB_STEP_SUMMARY"

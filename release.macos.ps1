@@ -1,3 +1,5 @@
+# NOTE: releases are now published by .github/workflows/release.yml (push a v* tag). It names the release after the tag and keeps
+# the fixed asset names OpenDevelop-win.zip / OpenDevelop-macos.dmg, which this older script does not; use it only as a local fallback.
 # Produce and publish a macOS OpenDevelop release. The composable Addin SDK is
 # installed inside the application bundle; it is intentionally not pushed to NuGet.
 [CmdletBinding()]

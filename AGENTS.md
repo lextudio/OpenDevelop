@@ -272,6 +272,25 @@ Layout, so a change goes in the right place:
   `runtimeconfig.dev.json`, so the host's `TRUSTED_PLATFORM_ASSEMBLIES` has no `PresentationFramework` and a 10.x
   `WindowsBase`. macOS is unaffected. Investigate probing paths or a deps `reference` layout before changing the lane.
 
+### Releases
+
+`.github/workflows/release.yml` publishes; pushing a tag is the only trigger. It carries the conventions of the manual
+releases v5.6.0 - v5.6.3, so keep them: the title is the tag (`v5.6.4`, not `OpenDevelop v5.6.4`), the assets keep the
+**fixed names** `OpenDevelop-win.zip` and `OpenDevelop-macos.dmg` (a versioned name would break
+`releases/latest/download/<name>`), and the notes follow `.github/release-notes.template.md` (badge, "Changes since",
+Highlight, Known issues, Full Changelog).
+
+- The workflow checks the tag first: `vMAJOR.MINOR.PATCH[-suffix]`, on `master`, at least one successful `ci.yml` run for
+  that exact commit, and no release for it yet. Run CI on the commit before tagging it.
+- It leaves a **draft**. A draft is never `latest`, so the IDE's update check (`releases/latest`) stays quiet until the notes
+  are read and the draft is published (`gh release edit <tag> --draft=false`).
+- Write the "Changes since" bullets in `doc/releases/<tag>.md` *before* tagging. Without that file the script uses the
+  bullets GitHub generates, and without any it writes a TODO line (`.github/ci/release-notes.ps1`).
+- A tag with a suffix (`v5.6.5-rc1`) is drafted as a prerelease: use one to rehearse the whole pipeline.
+- Packaging needs what CI's build needs: the submodules (`init-submodules.sh`), the `lextudio-github` feed credential, and
+  `GITHUB_ACTIONS` removed (GitVersion races on the runner's env file). `dist.ps1` runs its own `smoke` phase on Windows.
+- `release.macos.ps1` is the older local flow with different names; it stays as a local fallback only.
+
 ## Designer rules
 
 For blank/missing/disconnected WinUI loads, read `od.output-text` (`WinUI Designer`) and
