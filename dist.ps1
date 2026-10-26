@@ -152,7 +152,7 @@ function Write-DistributionLegalFiles {
 function Test-DistributionLegalFiles {
     param([Parameter(Mandatory)][string]$Destination)
 
-    foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md', 'THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt', 'THIRD-PARTY-NOTICES/NuGet/NOTICE.md') {
+    foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md', 'THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt', 'THIRD-PARTY-NOTICES/NuGet/NOTICE.md', 'THIRD-PARTY-NOTICES/NuGet/SPDX-Zlib.txt') {
         $legalPath = Join-Path $Destination $legalFile
         if (-not (Test-Path -LiteralPath $legalPath)) { throw "Distribution payload lacks required legal file: $legalPath" }
     }

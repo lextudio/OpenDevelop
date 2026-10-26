@@ -77,6 +77,7 @@ Write-Host "Wrote SPDX package manifest with $($spdxPackages.Count) packages: $O
 if ($NoticeDirectory) {
     New-Item -ItemType Directory -Force -Path $NoticeDirectory | Out-Null
     $catalog = [Collections.Generic.List[string]]::new()
+    $declaredLicenses = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $catalog.Add('# NuGet package notices')
     $catalog.Add('')
     $catalog.Add('| Package | Declared license | Copyright |')
@@ -85,11 +86,13 @@ if ($NoticeDirectory) {
         $id, $version = $entry -split '/', 2
         $directory = Join-Path (Join-Path $PackageRoot $id.ToLowerInvariant()) $version.ToLowerInvariant()
         $license = Get-LicenseExpression $id $version
+        [void]$declaredLicenses.Add($license)
         $copyright = ''
         $nuspec = Get-ChildItem -LiteralPath $directory -Filter '*.nuspec' -File -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($nuspec) {
             [xml]$xml = Get-Content -LiteralPath $nuspec.FullName -Raw
             $copyright = [string]$xml.SelectSingleNode("//*[local-name()='copyright']")?.InnerText
+            if ([string]::IsNullOrWhiteSpace($copyright)) { $copyright = [string]$xml.SelectSingleNode("//*[local-name()='authors']")?.InnerText }
         }
         $catalog.Add("| $id $version | $license | $($copyright -replace '\|', '\\|') |")
         $destination = Join-Path (Join-Path $NoticeDirectory $id) $version
@@ -99,6 +102,11 @@ if ($NoticeDirectory) {
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
             Copy-Item -LiteralPath $file.FullName -Destination $target -Force
         }
+    }
+    # SPDX expressions identify standard terms, but a distributed native binary must carry the
+    # corresponding text as well. The package graph currently contains a Zlib-only package.
+    if ($declaredLicenses.Contains('Zlib')) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../legal/Zlib.txt') -Destination (Join-Path $NoticeDirectory 'SPDX-Zlib.txt') -Force
     }
     $catalog | Set-Content -LiteralPath (Join-Path $NoticeDirectory 'NOTICE.md') -Encoding utf8
 }
