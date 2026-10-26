@@ -136,6 +136,10 @@ jobs:
         if: matrix.name == 'windows-x64' || matrix.name == 'windows-arm64' || matrix.name == 'macos-arm64'
         shell: pwsh
         run: ./.github/ci/verify-terminal-assets.ps1 -Platform '${{ matrix.name }}'
+      # One Windows payload serves x64 and ARM64: fail here if any IL-only assembly was built for one architecture.
+      - name: Verify payload bitness
+        shell: pwsh
+        run: ./.github/ci/verify-bitness.ps1 -Platform '${{ matrix.name }}' -PayloadOnly
       # TEMPORARY: starts the host right after compiling, before it is archived, to tell a build-output problem from an
       # archive/extract problem. Run it with the 'diagnose' input; remove it with the matching test-job step.
       - name: Diagnose the freshly built IDE host (before packing)
@@ -174,7 +178,8 @@ jobs:
           sparse-checkout: .github/ci
       - uses: actions/download-artifact@v4
         with:
-          name: workspace-${{ matrix.platform }}
+          # The archive of the packaging unit this lane belongs to: Windows x64 and ARM64 share one build.
+          name: workspace-${{ matrix.build_platform }}
           path: ${{ runner.temp }}/archive
       - name: Unpack the workspace built by the build job
         shell: pwsh
@@ -208,6 +213,10 @@ jobs:
         if: matrix.needs_nuget_cache && (matrix.platform == 'windows-x64' || matrix.platform == 'windows-arm64' || matrix.platform == 'macos-arm64')
         shell: pwsh
         run: ./.github/ci/verify-terminal-assets.ps1 -Platform '${{ matrix.platform }}'
+      # The lane must run the architecture its platform promises, against the payload that carries those assets.
+      - name: Verify the lane's bitness
+        shell: pwsh
+        run: ./.github/ci/verify-bitness.ps1 -Platform '${{ matrix.platform }}'
       - name: Diagnose the IDE host start-up
         if: matrix.needs_nuget_cache && inputs.diagnose
         shell: pwsh

@@ -255,6 +255,13 @@ Layout, so a change goes in the right place:
 - A lane can declare `allowAllFailures` in its plan definition: every entry still reports (warnings, summary table) but an
   all-failed lane stays green. Only `integration-core` uses it, for the defect below; remove the flag when the fix lands
   instead of leaving it as a permanent escape hatch.
+- **Bitness.** The Windows distribution is one payload for x64 and ARM64 (`dist.windows.bat`: `runtimes/` plus per-RID
+  `win-x64`/`win-arm64` folders and both launchers), and macOS is osx-arm64 only (`dist.macos.sh`). CI follows that: a
+  platform may name `buildFrom` so both Windows lanes consume one build, planned builds may not pass `--runtime`
+  (`build-binaries.ps1` rejects it), `build/payload-architecture.ps1` fails an IL-only assembly built for one
+  architecture, and `.github/ci/verify-bitness.ps1` checks both directions per job - the payload is AnyCPU with the
+  expected RID trees, and the lane's `dotnet` RID and process architecture match its platform. Tests that need a
+  specific architecture (the WinUI Hot Reload x86 case) belong on the x64 lane, never on ARM64.
 - `.github/ci/patch-host-deps.ps1` adds the LibreWPF payload as app-local library entries when the host manifest cannot
   resolve it from the host directory (the shape the shipped Windows payload uses). It **detects first**: when every
   transport assembly already resolves - what a fixed SDK will produce - it writes nothing and says so, so it is safe to

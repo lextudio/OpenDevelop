@@ -34,7 +34,6 @@
 #
 # On macOS this is normally reached through ./dist.macos.sh, which only locates pwsh.
 #
-
 [CmdletBinding()]
 param(
     [switch]$SkipPublish,
@@ -66,6 +65,9 @@ param(
     # next payload phase fails on "Access to the path ...\CodeCoverage.dll is denied".
     [switch]$Kill
 )
+
+# Payload bitness validation is shared with the CI build job.
+. (Join-Path $PSScriptRoot 'build/payload-architecture.ps1')
 
 $ErrorActionPreference = 'Stop'
 
@@ -469,31 +471,6 @@ function Test-PackagedAppStartup {
 #   - mixed-mode C++/CLI assemblies (not ILOnly, e.g. DirectWriteForwarder.dll), architecture-
 #     specific by nature and selected through the patched deps.json.
 # A violation is almost always stale Debug output from a developer build - clean that project.
-function Test-WindowsPayloadAssemblyArchitecture {
-    param([Parameter(Mandatory)][string]$PayloadRoot)
-
-    $violations = foreach ($file in Get-ChildItem -LiteralPath $PayloadRoot -Recurse -File -Include '*.dll', '*.exe') {
-        $relative = $file.FullName.Substring($PayloadRoot.Length).TrimStart('\', '/')
-        if ($relative -match '(^|[\\/])(runtimes|win-x64|win-arm64|win-x86)[\\/]') { continue }
-        $stream = [System.IO.File]::OpenRead($file.FullName)
-        try {
-            $pe = [System.Reflection.PortableExecutable.PEReader]::new($stream)
-            $cor = $pe.PEHeaders.CorHeader
-            if ($null -eq $cor) { continue }
-            if (($cor.Flags -band [System.Reflection.PortableExecutable.CorFlags]::ILOnly) -eq 0) { continue }
-            $machine = $pe.PEHeaders.CoffHeader.Machine
-            $requires32Bit = ($cor.Flags -band [System.Reflection.PortableExecutable.CorFlags]::Requires32Bit) -ne 0 -and
-                ($cor.Flags -band [System.Reflection.PortableExecutable.CorFlags]::Prefers32Bit) -eq 0
-            if ($machine -ne [System.Reflection.PortableExecutable.Machine]::I386 -or $requires32Bit) {
-                "$relative ($machine$(if ($requires32Bit) { ', 32-bit required' }))"
-            }
-        } catch [System.BadImageFormatException] {
-        } finally { $stream.Dispose() }
-    }
-    if ($violations) {
-        throw "Distribution payload contains $(@($violations).Count) architecture-specific managed assemblies; it must be AnyCPU:`n  " + ($violations -join "`n  ")
-    }
-}
 
 function Get-ExpectedHotReloadFiles {
     # Relative to the directory holding OpenDevelop.dll. Each framework addin builds its agents and
@@ -543,7 +520,7 @@ function Test-WindowsDistributionPayload {
             }
         } finally { $stream.Dispose() }
     }
-    Test-WindowsPayloadAssemblyArchitecture -PayloadRoot $PayloadRoot
+    Test-PayloadAssemblyArchitecture -PayloadRoot $PayloadRoot
     foreach ($companionExtension in '.dll', '.deps.json', '.runtimeconfig.json') {
         $companionPath = Join-Path $PayloadRoot "OpenDevelop.Bootstrap$companionExtension"
         if (-not (Test-Path -LiteralPath $companionPath)) {

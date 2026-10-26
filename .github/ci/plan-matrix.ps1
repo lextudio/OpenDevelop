@@ -30,10 +30,24 @@ foreach ($entry in $plan.entries) {
 }
 if ($enabled.Count -eq 0) { throw "The plan enables nothing up to batch $ThroughBatch." }
 
-$build = @()
-foreach ($platformName in @($enabled | ForEach-Object { $_.Platform } | Sort-Object -Unique)) {
+# One build per *packaging* unit, not per runner. dist.windows.bat ships one Windows payload for x64 and ARM64
+# (runtimes/ plus per-RID win-x64/win-arm64 folders and both launchers), so both Windows lanes consume the same archive;
+# a platform names its provider with 'buildFrom' and the default is itself. macOS is a single osx-arm64 payload
+# (dist.macos.sh) and builds for itself.
+function Resolve-BuildPlatform([string]$platformName, [hashtable]$seen) {
+    if ($seen.ContainsKey($platformName)) { throw "buildFrom chain loops at '$platformName'." }
+    $seen[$platformName] = $true
     $platform = $plan.platforms.PSObject.Properties[$platformName]
     if ($null -eq $platform) { throw "Platform '$platformName' is used by an entry but not defined under 'platforms'." }
+    $from = if ($platform.Value.PSObject.Properties['buildFrom']) { [string]$platform.Value.buildFrom } else { $platformName }
+    if ($from -eq $platformName) { return $platformName }
+    return Resolve-BuildPlatform $from $seen
+}
+
+$build = @()
+foreach ($platformName in @($enabled | ForEach-Object { Resolve-BuildPlatform $_.Platform @{} } | Sort-Object -Unique)) {
+    $platform = $plan.platforms.PSObject.Properties[$platformName]
+    if ($null -eq $platform) { throw "Build platform '$platformName' is not defined under 'platforms'." }
     $build += [ordered]@{ name = $platformName; runner = $platform.Value.runner; dotnet_architecture = $platform.Value.dotnetArchitecture }
 }
 
@@ -46,7 +60,10 @@ foreach ($group in @($enabled | Group-Object Platform, Lane | Sort-Object Name))
     if ($null -eq $lane) { throw "Lane '$laneName' is used by an entry but not defined under 'lanes'." }
     $platform = $plan.platforms.PSObject.Properties[$platformName].Value
     $item = [ordered]@{
-        platform = $platformName; lane = $laneName; runner = $platform.runner
+        platform = $platformName; lane = $laneName
+        # The archive this lane unpacks: the packaging unit it belongs to (see Resolve-BuildPlatform).
+        build_platform = (Resolve-BuildPlatform $platformName @{})
+        runner = $platform.runner
         dotnet_architecture = $platform.dotnetArchitecture; timeout = [int]$lane.Value.timeoutMinutes
         needs_cliclick = [bool]($platform.PSObject.Properties['needsCliclick'] -and $platform.needsCliclick)
         needs_nuget_cache = [bool]($lane.Value.PSObject.Properties['needsNuGetCache'] -and $lane.Value.needsNuGetCache)

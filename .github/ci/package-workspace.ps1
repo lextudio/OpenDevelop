@@ -10,9 +10,11 @@
 # resolves the LibreWPF assemblies from there at run time, so a lane that starts the IDE needs it.  Both are only valid on
 # a runner of the same OS with the same workspace location and user profile; the workflow guarantees that.
 #
-# -Platform drops what the platform can never load: on windows-* the native libraries of the other systems (.so, .dylib,
-# .a, .lib and runtimes/<linux|osx|android|ios|tvos|maccatalyst|browser>*), and the .pdb files under AddIns/ (the
-# fixtures' own .pdb files stay: the debugger tests read them).  Other platforms exclude nothing yet.
+# -Platform follows the packaging model. windows-* keeps both Windows RID trees, because dist.windows.bat ships one
+# payload for x64 and ARM64, and drops the other systems' native libraries (.so, .dylib, .a, .lib and
+# runtimes/<linux|osx|android|ios|tvos|maccatalyst|browser>*) plus the .pdb files under AddIns/ (the fixtures' own .pdb
+# files stay: the debugger tests read them). macos-* ships osx-arm64 only (dist.macos.sh), so it also drops the Windows
+# RID trees and per-RID win-* folders.
 #
 # zstd is used when this machine's tar supports it (bsdtar on the runners does), gzip otherwise; -Extract finds
 # whichever file is there.  Packing refuses a NuGet.config that holds a clear-text credential.
@@ -72,9 +74,17 @@ try {
     # Including it here duplicates several GB into every workspace artifact and every test lane.
     if ($Kind -eq 'Workspace') { $exclusions += @('--exclude=.git', '--exclude=node_modules', '--exclude=.vs', '--exclude=.nuget', '--exclude=artifacts/nuget-packages', '--exclude=externals/monodevelop') }
     if ($Platform -like 'windows-*') {
+        # The Windows package is one payload for x64 and ARM64 (dist.windows.bat), so both win RID trees stay: a lane on
+        # either architecture exercises the same unified layout.
         $exclusions += @('--exclude=*.so', '--exclude=*.so.*', '--exclude=*.dylib', '--exclude=*.a', '--exclude=*.lib')
         foreach ($rid in @('linux', 'osx', 'android', 'ios', 'tvos', 'maccatalyst', 'browser')) { $exclusions += "--exclude=runtimes/$rid*" }
         if ($Kind -eq 'Workspace') { $exclusions += '--exclude=AddIns/*.pdb' }
+    }
+    elseif ($Platform -like 'macos-*') {
+        # dist.macos.sh ships an osx-arm64-only payload, so the Windows RID trees the shared build produced are never
+        # loaded here and only cost download time.
+        foreach ($rid in @('win', 'linux', 'android', 'ios', 'tvos', 'maccatalyst', 'browser')) { $exclusions += "--exclude=runtimes/$rid*" }
+        foreach ($folder in @('win-x64', 'win-arm64', 'win-x86')) { $exclusions += "--exclude=**/$folder/*" }
     }
 
     $before = Get-Size-Megabytes '.'

@@ -18,9 +18,9 @@
     "Profiler and Terminal are entries here; their own workflows (profiler.yml, terminal-cross-platform.yml) were deleted when they were folded in. Windows ARM64 and macOS ARM64 start as observed Terminal journeys and are promoted after repeated green runs."
   ],
   "platformNotes": {
-    "macos-arm64": "Runs the native Apple Silicon Terminal journey as observe first; the workflow provisions cliclick for real input delivery.",
+    "macos-arm64": "dist.macos.sh ships an osx-arm64-only payload, so this platform builds for itself and its archive drops the Windows RID trees the package never contains.",
     "windows-x64": "Runs the existing unit and observed integration coverage. The unit lane is required except for base-tests and xamldom-tests-microsoftwpf, which carry one known flaky case each.",
-    "windows-arm64": "Runs the native Windows ARM64 TerminalCrossPlatform journey as observe first, independently validating the win-arm64 native asset chain.",
+    "windows-arm64": "Runs the native Windows ARM64 Terminal journey against the same unified Windows payload the x64 lane tests: dist.windows.bat ships one package with runtimes/ plus per-RID win-x64/win-arm64 folders and both launchers, so 'buildFrom': 'windows-x64' keeps a single compile for both lanes.",
     "linux-x64": "Not enabled yet: profiler.yml ran the Profiler tests on ubuntu-latest and passed; it comes back as this platform's first entry when the platform is added."
   },
   "throughBatch": 3,
@@ -33,7 +33,8 @@
     "windows-arm64": {
       "runner": "windows-11-arm",
       "dotnetArchitecture": "arm64",
-      "rid": "win-arm64"
+      "rid": "win-arm64",
+      "buildFrom": "windows-x64"
     },
     "macos-arm64": {
       "runner": "macos-15",
@@ -62,16 +63,34 @@
   "buildLast": [
     {
       "project": "src/AddIns/Misc/Terminal/Project/Terminal.csproj",
-      "args": [ "--runtime", "{rid}", "-p:AppendRuntimeIdentifierToOutputPath=false" ],
-      "platforms": [ "windows-x64", "windows-arm64", "macos-arm64" ],
+      "args": [
+        "--runtime",
+        "{rid}",
+        "-p:AppendRuntimeIdentifierToOutputPath=false"
+      ],
+      "platforms": [
+        "windows-x64",
+        "windows-arm64",
+        "macos-arm64"
+      ],
       "note": "Build Terminal for the runner's native RID after the integration harness, staging its matching native assets."
     },
     {
       "project": "src/Main/SharpDevelop/SharpDevelop.csproj",
       "verb": "publish",
-      "args": [ "-o", "src/Main/SharpDevelop/bin/Debug/net10.0-windows", "--self-contained", "false", "-p:ProGpuWpfUseCurrentRuntimeIdentifier=false", "-p:OpenDevelopDistributionBuild=true" ],
+      "args": [
+        "-o",
+        "src/Main/SharpDevelop/bin/Debug/net10.0-windows",
+        "--self-contained",
+        "false",
+        "-p:ProGpuWpfUseCurrentRuntimeIdentifier=false",
+        "-p:OpenDevelopDistributionBuild=true"
+      ],
       "note": "Publish the Windows host after the RID-specific Terminal build restores its mutable payload outputs.",
-      "platforms": [ "windows-x64", "windows-arm64" ]
+      "platforms": [
+        "windows-x64",
+        "windows-arm64"
+      ]
     }
   ],
   "entries": [
@@ -399,10 +418,19 @@
       "lane": "integration-core",
       "kind": "xunit-exe",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
-      "platforms": { "macos-arm64": "observe" },
+      "platforms": {
+        "macos-arm64": "observe"
+      },
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
-      "args": [ "-class", "OpenDevelop.IntegrationTests.TerminalPadTests", "-parallel", "none" ],
-      "buildArgs": [ "-p:BuildIntegrationFixtures=false" ],
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.TerminalPadTests",
+        "-parallel",
+        "none"
+      ],
+      "buildArgs": [
+        "-p:BuildIntegrationFixtures=false"
+      ],
       "note": "Native Apple Silicon Terminal journey: POSIX terminal behavior and macOS key/pointer delivery.",
       "reason": "Observed while validating the all-platform LibGhostty.Net 1.0.2 package; promote after repeated green runs."
     }

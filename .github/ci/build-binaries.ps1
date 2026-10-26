@@ -112,6 +112,13 @@ foreach ($build in $builds) {
     Write-Host "::group::$verb $project $($build.Args -join ' ')"
     $watch = [System.Diagnostics.Stopwatch]::StartNew()
     $verb = if ($build.PSObject.Properties['Verb'] -and $build.Verb) { $build.Verb } else { 'build' }
+    # A RID here silently turns IL-only assemblies architecture-specific and writes them under bin/<tfm>/<rid>/; the one
+    # Windows payload has to stay AnyCPU with both RID trees (see .github/ci/verify-bitness.ps1).
+    foreach ($argument in $build.Args) {
+        if ($argument -in @('--runtime', '-r') -or $argument -match '^-p:RuntimeIdentifier=') {
+            throw "'$project' is built with '$argument'; a planned build must stay RID-less so the payload serves every architecture."
+        }
+    }
     [string[]]$arguments = @($verb, $project, '-c', 'Debug') + $build.Args
     & dotnet @arguments
     $exit = $LASTEXITCODE
