@@ -14,9 +14,10 @@ public sealed class ProjectOptionsIntegrationTests
     [Fact]
     public async Task CSharpProjectOptions_RepresentativeSettingOnEachPagePersists()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "opendevelop-options-" + Guid.NewGuid().ToString("N"));
+        // Exercise project and tab text containing characters that need native shaping.
+        var directory = Path.Combine(Path.GetTempPath(), "opendevelop-options-项目-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
-        var projectPath = Path.Combine(directory, "OptionsUnderTest.csproj");
+        var projectPath = Path.Combine(directory, "OptionsUnderTest项目.csproj");
         var marker = Path.Combine(directory, "prebuild-marker.txt");
         var preBuild = "echo option-event > \"" + marker + "\"";
         File.WriteAllText(projectPath, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Library</OutputType></PropertyGroup></Project>");
@@ -26,7 +27,7 @@ public sealed class ProjectOptionsIntegrationTests
             var opened = await _app.ReopenSolutionAsync(projectPath);
             Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
             // Exercise the Project Browser command path for the selected project.
-            var view = await _app.InvokeAsync("od.project-browser.open-project-options", "OptionsUnderTest");
+            var view = await _app.InvokeAsync("od.project-browser.open-project-options", "OptionsUnderTest项目");
             Assert.True(view.GetProperty("success").GetBoolean(), view.ToString());
             Assert.True(view.GetProperty("projectOptionsOpen").GetBoolean(), view.ToString());
 
@@ -59,7 +60,7 @@ public sealed class ProjectOptionsIntegrationTests
             Assert.Equal("true", XDocument.Load(projectPath).Descendants("SignAssembly").Last().Value.ToLowerInvariant());
 
             await _app.ReopenSolutionAsync(projectPath);
-            view = await _app.InvokeAsync("od.project-browser.open-project-options", "OptionsUnderTest");
+            view = await _app.InvokeAsync("od.project-browser.open-project-options", "OptionsUnderTest项目");
             Assert.True(view.GetProperty("success").GetBoolean(), view.ToString());
             Assert.True(view.GetProperty("projectOptionsOpen").GetBoolean(), view.ToString());
             await CheckPage("Application", "OptionsRenamed");

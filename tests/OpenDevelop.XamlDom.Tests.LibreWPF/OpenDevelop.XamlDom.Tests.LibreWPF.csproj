@@ -17,6 +17,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="../../src/Main/SharpDevelop/Startup/PortableTextCompatibility.cs" Link="PortableTextCompatibility.cs" />
     <Compile Include="..\OpenDevelop.XamlDom.Tests.Shared\**\*.cs" LinkBase="Shared" />
     <PackageReference Include="xunit.v3" />
     <ProjectReference Include="..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.XamlDom\Project\WpfDesign.XamlDom.csproj" />

@@ -58,7 +58,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// services are initialized. Do this before creating any workbench control: otherwise
 			// the first TextBlock measured by the portable host can terminate the app with
 			// PlatformNotSupportedException about a missing native shaping provider.
-			ProGpuWpfNativeMediaServices.Initialize();
+			ICSharpCode.SharpDevelop.Startup.PortableTextCompatibility.Initialize();
 			app = ExternalRunLoop && System.Windows.Application.Current is App current ? current : new App();
 			// WindowsFormsHost.EnableWindowsFormsInterop() removed - no WinForms interop in this MVP build.
 			ComponentDispatcher.ThreadIdle -= ComponentDispatcher_ThreadIdle; // ensure we don't register twice
