@@ -108,6 +108,16 @@ jobs:
         run: |
           unset GITHUB_ACTIONS
           ./dist.macos.sh
+      # dist.macos.sh verifies that the bundle renders its first workbench window.  Keep the
+      # release gate stronger: run the assembled .app itself, not project output, through the
+      # principal add-in/child-process paths before the DMG is allowed to leave this checkout.
+      - name: Verify packaged macOS application features
+        shell: bash
+        env:
+          # Keep the debugger breakpoint journey mandatory in the release checkout,
+          # including if GitHub upgrades its macOS image.
+          OD_BUNDLE_VERIFY_REQUIRE_DEBUGGER: '1'
+        run: build/macos/verify-application-bundle.sh OpenDevelop.app
       - uses: actions/upload-artifact@v4
         with:
           name: release-macos-arm64
