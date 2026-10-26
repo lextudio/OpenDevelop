@@ -23,9 +23,6 @@
          incremental build kept working and hid it. -->
     <_OpenDevelopEvaluatedProjectPath>$([MSBuild]::NormalizePath('$(MSBuildProjectFullPath)').Replace('\','/'))</_OpenDevelopEvaluatedProjectPath>
   </PropertyGroup>
-  <PropertyGroup Condition="$(_OpenDevelopEvaluatedProjectPath.Contains('/src/Libraries/AvalonDock'))">
-    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
-  </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="AltCover" Version="9.0.102" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
@@ -36,6 +33,13 @@
          (SharpTreeNode.Model/GetModel) and Controls/TreeView/RangeCollapsingItemsSource.cs
          (TreeFlattener's ranged-notification fix). ICSharpCode.ILSpyX also carries the
          ICSharpCode.ILSpyX.TreeView types, which are not published as a package of their own. -->
+    <!-- Published by the AvalonDock fork's workflow, like the AvalonEdit package below; both replaced a vendored
+         submodule that carried its own provider pins. -->
+    <PackageVersion Include="Dirkster.AvalonDock.Core" Version="5.0.1" />
+    <PackageVersion Include="Dirkster.AvalonDock.LibreWPF" Version="5.0.1" />
+    <PackageVersion Include="Dirkster.AvalonDock.Serializer.Xml" Version="5.0.1" />
+    <PackageVersion Include="Dirkster.AvalonDock.Themes.VS.LibreWPF" Version="5.0.1" />
+    <PackageVersion Include="Dirkster.AvalonDock.Themes.VS2013.LibreWPF" Version="5.0.1" />
     <!-- Published by the AvalonEdit fork's own workflow (nuget.pkg.github.com/lextudio). It replaced the
          src/Libraries/AvalonEdit submodule, whose vendored global.json pinned its own LibreWPF.Sdk and had to be
          bumped with every provider release; the package carries that pin instead. -->

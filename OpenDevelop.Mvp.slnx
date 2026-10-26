@@ -28,10 +28,6 @@
   </Folder>
     <Project Path="src/Libraries/ICSharpCode.TypeSystem.Abstractions/ICSharpCode.TypeSystem.Abstractions.csproj" />
   </Folder>
-  <Folder Name="/src/Libraries/AvalonDock/">
-    <Project Path="src/Libraries/AvalonDock/source/Components/AvalonDock.Serializer.Xml/AvalonDock.Serializer.Xml.csproj" />
-    <Project Path="src/Libraries/AvalonDock/source/Components/AvalonDock/AvalonDock.csproj" />
-  </Folder>
   <Folder Name="/src/Main/">
     <Project Path="src/Main/Designer/Designer.Remote/Designer.Remote.csproj" />
     <Project Path="src/Main/Designer/Designer.Server/Designer.Server.csproj" />

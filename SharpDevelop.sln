@@ -39,8 +39,6 @@ EndProject
 EndProject
 EndProject
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AvalonDock", "src\Libraries\AvalonDock\source\Components\AvalonDock\AvalonDock.csproj", "{2FF700C2-A38A-48BD-A637-8CAFD4FE6237}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ICSharpCode.Build.Tasks", "src\Libraries\ICSharpCode.Build.Tasks\Project\ICSharpCode.Build.Tasks.csproj", "{4139CCF6-FB49-4A9D-B2CF-331E9EA3198D}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ICSharpCode.TreeView", "src\Libraries\SharpTreeView\ICSharpCode.TreeView\ICSharpCode.TreeView.csproj", "{DDE2A481-8271-4EAC-A330-8FA6A38D13D1}"

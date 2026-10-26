@@ -76,10 +76,10 @@
          same ILSpy Controls/TreeView source) instead of being linked a second time here - see the
          ILSpyLinkedTreeViewControl removal below. -->
     <ProjectReference Include="..\..\..\Libraries\SharpTreeView\ICSharpCode.TreeView\ICSharpCode.TreeView.csproj" />
-    <ProjectReference Include="..\..\..\Libraries\AvalonDock\source\Components\AvalonDock.Core\AvalonDock.Core.csproj" />
-    <ProjectReference Include="..\..\..\Libraries\AvalonDock\source\Components\AvalonDock\AvalonDock.csproj" />
-    <ProjectReference Include="..\..\..\Libraries\AvalonDock\source\Components\AvalonDock.Serializer.Xml\AvalonDock.Serializer.Xml.csproj" />
-    <ProjectReference Include="..\..\..\Libraries\AvalonDock\source\Components\AvalonDock.Themes.VS2013\AvalonDock.Themes.VS2013.csproj" />
+    <PackageReference Include="Dirkster.AvalonDock.Core" />
+    <PackageReference Include="Dirkster.AvalonDock.LibreWPF" />
+    <PackageReference Include="Dirkster.AvalonDock.Serializer.Xml" />
+    <PackageReference Include="Dirkster.AvalonDock.Themes.VS2013.LibreWPF" />
   </ItemGroup>
 
   <ItemGroup>
