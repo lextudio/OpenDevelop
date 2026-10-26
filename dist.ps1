@@ -625,6 +625,11 @@ function Test-WindowsDistributionZip {
     try {
         $prefix = "OpenDevelop-win/"
         if (-not ($archive.Entries.FullName -contains "${prefix}OpenDevelop.dll")) { throw "ZIP lacks ${prefix}OpenDevelop.dll: $ZipPath" }
+        foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md') {
+            if (-not ($archive.Entries.FullName -contains "${prefix}$legalFile")) {
+                throw "ZIP lacks required legal file ${prefix}${legalFile}: $ZipPath"
+            }
+        }
         foreach ($launcherName in 'OpenDevelop.exe', 'OpenDevelopARM64.exe') {
             if (-not ($archive.Entries.FullName -contains "${prefix}${launcherName}")) {
                 throw "ZIP is missing the launcher ${launcherName}: $ZipPath"
@@ -689,6 +694,9 @@ function Invoke-MacPayload {
     # Out-Host for the same reason as Invoke-MacArchive: this function's output is its return value.
     & bash (Join-Path $repoRoot 'build/macos/build-application-bundle.sh') | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "build-application-bundle.sh exited with code $LASTEXITCODE" }
+    foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md') {
+        Copy-Item -LiteralPath (Join-Path $repoRoot $legalFile) -Destination (Join-Path $repoRoot "OpenDevelop.app/Contents/MacOS/$legalFile") -Force
+    }
 
     # Same as the Windows payload: out-of-process hosts resolve only from their own deps.json,
     # which declares some packages (System.Windows.Extensions, ...) only under runtimes/win.
@@ -795,6 +803,9 @@ function Invoke-WindowsPayload {
     # then loading *.addin from <root>/AddIns. The payload must therefore contain data/ and AddIns/
     # next to the executable so the walk resolves on the first step.
     Sync-WindowsDirectoryMirror -Source (Join-Path $repoRoot 'data') -Destination (Join-Path $payloadRoot 'data') -Description 'data into Windows payload'
+    foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md') {
+        Copy-Item -LiteralPath (Join-Path $repoRoot $legalFile) -Destination (Join-Path $payloadRoot $legalFile) -Force
+    }
     Write-DistributionStepElapsed $payloadStepStopwatch 'data mirror'
 
 
