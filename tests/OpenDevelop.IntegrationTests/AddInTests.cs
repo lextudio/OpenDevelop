@@ -39,11 +39,6 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
     const string TestPackageId = "OpenDevelop.TestPackage";
     readonly string _projectDir;
 
-    static readonly string IlSpySettingsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "ICSharpCode", "ILSpy.xml");
-    readonly string _ilSpySettingsBackup;
-
     readonly string _solutionDir;
     readonly string _solutionPath;
     readonly string _widgetPath;
@@ -77,12 +72,6 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         // every run (the same reasoning as GitAddInTests' per-test temp git repo).
         _projectDir = Path.Combine(Path.GetTempPath(), "NuGetAddInTests-" + Guid.NewGuid().ToString("N"));
         CopyDirectory(app.NuGetFixtureTemplatePath, _projectDir);
-        if (File.Exists(IlSpySettingsPath))
-        {
-            _ilSpySettingsBackup = Path.Combine(Path.GetTempPath(), "ILSpy.xml." + Guid.NewGuid().ToString("N"));
-            File.Copy(IlSpySettingsPath, _ilSpySettingsBackup);
-            File.Delete(IlSpySettingsPath);
-        }
         _solutionDir = Path.Combine(Path.GetTempPath(), "RoslynRefactoringTests-" + Guid.NewGuid().ToString("N"));
         CopyDirectoryOd(Path.GetDirectoryName(app.SolutionExplorerFixturePath)!, _solutionDir);
         _solutionPath = Path.Combine(_solutionDir, Path.GetFileName(app.SolutionExplorerFixturePath));
@@ -7719,11 +7708,6 @@ EndGlobal
     {
                 try { Directory.Delete(_repoDir, recursive: true); } catch { }
                 try { Directory.Delete(_projectDir, recursive: true); } catch { }
-                if (_ilSpySettingsBackup != null)
-                {
-                    try { File.Copy(_ilSpySettingsBackup, IlSpySettingsPath, overwrite: true); } catch { }
-                    try { File.Delete(_ilSpySettingsBackup); } catch { }
-                }
                 try { await _app.InvokeAsync("od.file.revert-all-dirty"); } catch { }
                 try { Directory.Delete(_solutionDir, recursive: true); } catch { }
                 try { Directory.Delete(_unoSampleDir, recursive: true); } catch { }

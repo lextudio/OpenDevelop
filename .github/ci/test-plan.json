@@ -473,6 +473,34 @@
       "note": "First batch-4 cross-platform integration entry. Opens an isolated Razor SDK project and asserts HTML, CSS, JavaScript and C# highlighting through the running IDE. Measured locally on macOS ARM64: 1 test in 28 seconds; keep observe until repeated runner results are stable."
     },
     {
+      "id": "integration-fixture-isolation",
+      "batch": 4,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.FixturePortTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "note": "Protects integration fixture port ownership and cleanup on initialization failure."
+    },
+    {
+      "id": "profiler-capture-isolation",
+      "batch": 4,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-method", "OpenDevelop.IntegrationTests.ProfilerIntegrationTests.CpuCapture_OpensAReportWhoseCallTreeNamesTheHotMethod", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "additionalProjects": [
+        { "project": "tests/fixtures/ProfilerFixture/ProfilerFixture.csproj" },
+        { "project": "tests/fixtures/DebugTestApp/DebugTestApp.csproj" }
+      ],
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "note": "Captures a real process with a solution open and verifies that test data stays in the private configuration directory."
+    },
+    {
       "id": "wpf-hot-reload-journeys",
       "batch": 4,
       "lane": "integration-hot-reload",

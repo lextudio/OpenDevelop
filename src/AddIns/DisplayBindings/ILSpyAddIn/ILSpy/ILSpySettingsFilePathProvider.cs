@@ -25,6 +25,12 @@ namespace ICSharpCode.ILSpy
 	{
 		public string GetSettingsFilePath()
 		{
+			// Integration runs use a private configuration directory. ILSpy has its own
+			// settings provider, so it must opt into the same isolation as the workbench.
+			var testSettings = Environment.GetEnvironmentVariable("OD_TEST_ILSPY_SETTINGS_FILE");
+			if (Environment.GetEnvironmentVariable("OD_TEST_MODE") == "1" && !String.IsNullOrWhiteSpace(testSettings))
+				return testSettings;
+
 			if (App.CommandLineArguments.ConfigFile != null)
 				return App.CommandLineArguments.ConfigFile;
 

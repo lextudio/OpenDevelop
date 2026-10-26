@@ -15,12 +15,16 @@ internal static class ProfilerWorkspace
 	public static ProfilingSessionStore OpenStore()
 	{
 		var solution = ProjectService.OpenSolution;
+		var testRoot = Environment.GetEnvironmentVariable("OD_TEST_MODE") == "1"
+			? Environment.GetEnvironmentVariable("OD_TEST_PROFILER_STORE") : null;
 		var root = ProfilerSettings.StoreFolder is { Length: > 0 } custom
 			? custom
+			: !string.IsNullOrWhiteSpace(testRoot)
+			? testRoot
 			: solution is null
 			? Path.Combine(PropertyService.ConfigDirectory.ToString(), "profiling")
 			: Path.Combine(solution.Directory.ToString(), ".od", "profiling");
-		if (solution is not null && string.IsNullOrEmpty(ProfilerSettings.StoreFolder))
+		if (solution is not null && string.IsNullOrEmpty(ProfilerSettings.StoreFolder) && string.IsNullOrWhiteSpace(testRoot))
 			MigrateLegacyStore(solution.Directory.ToString(), root);
 		return new ProfilingSessionStore(root);
 	}

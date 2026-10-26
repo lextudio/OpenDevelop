@@ -42,11 +42,21 @@ public sealed class ProfilerIntegrationTests : IAsyncDisposable
 	[Fact]
 	public async Task CpuCapture_OpensAReportWhoseCallTreeNamesTheHotMethod()
 	{
+		// This journey verifies the default store. Other tests deliberately set a custom store,
+		// so reset that setting rather than depending on their execution order.
+		var settings = await app.InvokeAsync("od.profiler.settings", 0, 0, "");
+		Assert.True(settings.GetProperty("success").GetBoolean(), settings.ToString());
+		Assert.True((await app.ReopenSolutionAsync(app.DebugTestProjectPath)).GetProperty("success").GetBoolean());
+		var solution = await app.InvokeAsync("od.solution-tree");
+		Assert.Contains(solution.GetProperty("projects").EnumerateArray(), project =>
+			project.GetProperty("name").GetString() == "DebugTestApp");
 		var fixture = await StartFixtureAsync("cpu", 60);
 
 		var capture = await app.InvokeAsync("od.profiler.capture-cpu", fixture.Id, 3);
 		Assert.True(capture.GetProperty("success").GetBoolean(), capture.ToString());
 		Assert.True(File.Exists(capture.GetProperty("path").GetString()));
+		Assert.StartsWith(Path.Combine(app.ConfigDirectory, "profiling") + Path.DirectorySeparatorChar,
+			capture.GetProperty("path").GetString(), OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
 		var report = await app.InvokeAsync("od.profiler.report");
 		Assert.Equal("cpu", report.GetProperty("kind").GetString());

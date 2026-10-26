@@ -95,13 +95,17 @@ internal static class CaptureCoordinator
 		if (launch is not null)
 		{
 			await using (launch)
-				return await CaptureCpuAsync(displayName, launch.Process, ownsProcess: true, duration, launch, mode);
+			{
+				try { return await CaptureCpuAsync(displayName, launch.Process, ownsProcess: true, duration, launch, mode); }
+				finally { TryKill(launch.Process); }
+			}
 		}
 
 		var info = startInfo();
 		info.UseShellExecute = false;
 		using var process = await Task.Run(() => ProcessTargets.StartAndWaitForDiagnostics(info, StartTimeout));
-		return await CaptureCpuAsync(displayName, process, ownsProcess: true, duration, mode: mode);
+		try { return await CaptureCpuAsync(displayName, process, ownsProcess: true, duration, mode: mode); }
+		finally { TryKill(process); }
 	}
 
 	/// <summary>

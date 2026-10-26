@@ -142,106 +142,42 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string XmlFixtureFilePath => LocateXmlFixtureFile();
 
     // The fixture is assembly-scoped, so one invocation owns exactly one app process. Keep the gate
-    // as cross-instance protection for custom runners or accidental future collection fixtures:
-    // StopApp kills by process name, so two fixture instances could otherwise kill each other.
+    // as cross-instance protection for custom runners or accidental future collection fixtures.
     static readonly SemaphoreSlim FixtureGate = new(1, 1);
     bool _gateHeld;
 
     public async ValueTask InitializeAsync()
     {
-        // Timeout rather than an unbounded wait: if a future xunit version ever defers the previous
-        // collection's fixture disposal past the next collection's construction, an unbounded wait
-        // would deadlock the whole run with no output. Falling through instead degrades to the old
-        // (racy) behavior, and says so in the app log so it is diagnosable rather than silent.
+        // Fail instead of sharing the port or fixture files with another active test instance.
         _gateHeld = await FixtureGate.WaitAsync(TimeSpan.FromSeconds(300));
-
-        CaptureFixtureBaseline();
-        StopApp();
-        SweepStaleConfigDirectories();
-        await WaitForPortFreeAsync(TimeSpan.FromSeconds(30));
-        DeleteStaleViewStateMemento();
-        await StartAsync();
-
         if (!_gateHeld)
-            AppendAppOutput("fixture", "WARNING: fixture gate not acquired within 300s - another "
-                + "OpenDevelopAppFixture may still own a live app; cross-fixture kills are possible.");
+            throw new TimeoutException("Another OpenDevelop integration fixture still owns the test gate.");
+
+        try {
+            await StartWithCleanupOnFailureAsync(async () => {
+                CaptureFixtureBaseline();
+                SweepAbandonedConfigDirectories(Path.Combine(Path.GetTempPath(), "od-integration-config"), DateTime.UtcNow,
+                    Process.GetProcessesByName("OpenDevelop").Length != 0 || Process.GetProcessesByName("SharpDevelop").Length != 0);
+                await WaitForPortFreeAsync(TimeSpan.FromSeconds(30));
+                await StartAsync();
+            });
+        } catch {
+            _gateHeld = false;
+            FixtureGate.Release();
+            throw;
+        }
     }
 
-    // Two separate persistence mechanisms restore previously-open documents on the next startup,
-    // both under the user's real ICSharpCode/SharpDevelop5 config directory (shared with the
-    // user's own interactive use of the app, not something this test run owns):
-    //  - WpfWorkbench's whole-session memento (LastViewStates.xml) - all views open at last exit.
-    //  - Per-project preferences (preferences/<project>.<hash>.xml, PropertyService-backed - see
-    //    AbstractProject's "openFiles" property) - each project remembers its own open-files list
-    //    and reopens (and, per observed behavior, ends up activating the *last* entry of) all of
-    //    them as soon as its solution/project loads, entirely independent of LastViewStates.xml.
-    // Neither restore is guaranteed to finish before this fixture's own explicit
-    // od.open-solution/od.open-file calls run, so a document left open from a *previous* test run
-    // (of this suite, or an earlier interactive session against the same sample project) can still
-    // be - or become - ActiveViewContent well after a test's own od.open-file call returned
-    // "opened: true", making tests that assert on "the currently active document" flaky depending
-    // on what was open the last time this exact project was loaded. Deleting both before each
-    // launch gives every test run a deterministic, empty-workbench starting point.
-    static void DeleteStaleViewStateMemento()
+    internal string ConfigDirectory => _configDirectory;
+
+    internal async Task StartWithCleanupOnFailureAsync(Func<Task> start)
     {
-        var configDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "ICSharpCode", "SharpDevelop5");
-
-        try
-        {
-            var lastViewStates = Path.Combine(configDir, "LastViewStates.xml");
-            if (File.Exists(lastViewStates))
-                File.Delete(lastViewStates);
-        }
-        catch
-        {
-            // Best-effort - a leftover memento only risks test flakiness, not a hard failure.
-        }
-
-        try
-        {
-            var preferencesDir = Path.Combine(configDir, "preferences");
-            if (Directory.Exists(preferencesDir))
-                Directory.Delete(preferencesDir, recursive: true);
-        }
-        catch
-        {
-            // Best-effort - same rationale as above.
-        }
-
-        // The hosted ILSpy addin restores its own assembly list and layout from ILSpy.xml at
-        // startup (ILSpySettingsFilePathProvider -> ~/.config/ICSharpCode/ILSpy.xml). Leftovers
-        // from the user's own interactive ILSpy usage (e.g. an assembly list pointing at a
-        // different checkout) would load stale assemblies into the tree, auto-select a dead node,
-        // and make the decompiled view / assembly tree UI assertions nondeterministic - same
-        // restore-timing rationale as LastViewStates.xml above.
-        try
-        {
-            var ilSpySettings = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "ICSharpCode", "ILSpy.xml");
-            if (File.Exists(ilSpySettings))
-                File.Delete(ilSpySettings);
-        }
-        catch
-        {
-            // Best-effort - same rationale as above.
-        }
-
-        // Per-user saved layout copies (layouts/*.xml under the SharpDevelop5 config dir) are
-        // written at every graceful app exit and restored over the AddIn templates on the next
-        // launch - a stale ILSpy layout from an earlier session would override the ILSpyAddIn's
-        // own Layouts/ILSpy.xml template and make dock-position assertions nondeterministic.
-        try
-        {
-            var layoutsDir = Path.Combine(configDir, "layouts");
-            if (Directory.Exists(layoutsDir))
-                Directory.Delete(layoutsDir, recursive: true);
-        }
-        catch
-        {
-            // Best-effort - same rationale as above.
+        try {
+            await start();
+        } catch {
+            StopApp();
+            await CleanUpRunArtifactsAsync();
+            throw;
         }
     }
 
@@ -249,8 +185,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     {
         StopApp();
         _http.Dispose();
-        // Before the gate is released: the next fixture may start writing into the same shared
-        // fixture folders the moment it is, and its captures must not be swept up with ours.
+        // Clean our private configuration before allowing another fixture to start.
         await CleanUpRunArtifactsAsync();
         if (_gateHeld)
         {
@@ -262,20 +197,12 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 
     #region Run artifact cleanup
 
-    // Everything a run leaves behind that nothing else will ever remove. The app under test is
-    // launched with a private -configdir, and the profiler tests capture real CPU, allocation and
-    // heap traces into it (a single run measured ~140 MB); the profiler tests also open solutions
-    // under tests/fixtures, so their captures land in <fixture>/.od/profiling inside the
-    // repository. Neither location is cleaned by the product (it only prunes down to its retained
-    // session count), so without this they accumulate for ever: 286 abandoned config directories
-    // and 821 MB had piled up in the temp folder before this existed.
-    //
-    // Set OD_TEST_KEEP_ARTIFACTS=1 to keep them, for example to open a failed run's capture.
+    // Only the private configuration directory belongs to this run. Profiling stores and other
+    // runs' directories may contain user data and are not safe to clean up here.
+    // Set OD_TEST_KEEP_ARTIFACTS=1 to retain this run's directory for diagnosis.
     const string KeepArtifactsVariable = "OD_TEST_KEEP_ARTIFACTS";
-
-    // A run that crashed or was killed never reaches DisposeAsync. Anything this old cannot belong
-    // to a run still in progress, so it is safe to remove even with other runs going concurrently.
-    static readonly TimeSpan StaleConfigAge = TimeSpan.FromDays(1);
+    const string OwnershipMarker = ".opendevelop-test-owner";
+    const string OwnershipVersion = "OpenDevelop integration fixture v1";
 
     static bool KeepArtifacts =>
         Environment.GetEnvironmentVariable(KeepArtifactsVariable) is { Length: > 0 } value && value != "0";
@@ -285,60 +212,39 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         if (KeepArtifacts)
             return;
         await TryDeleteDirectoryAsync(_configDirectory);
-        foreach (var store in EnumerateFixtureProfilingStores())
-        {
-            await TryDeleteDirectoryAsync(store);
-            // Only the folder this run created: leave .od alone if anything else is in it.
-            var parent = Path.GetDirectoryName(store);
-            try
-            {
-                if (parent is not null && Directory.Exists(parent) && !Directory.EnumerateFileSystemEntries(parent).Any())
-                    Directory.Delete(parent);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
-        }
     }
 
-    void SweepStaleConfigDirectories()
+    // A crashed runner can leave large traces behind. Only directories with our explicit marker,
+    // a GUID name, an old marker timestamp, and a dead owner are candidates. An orphaned IDE can
+    // outlive its runner, so while any IDE is running we leave every abandoned directory alone.
+    // Unmarked older runs and explicitly retained artifacts are never swept.
+    internal static void SweepAbandonedConfigDirectories(string root, DateTime nowUtc, bool ideRunning)
     {
-        if (KeepArtifacts)
+        if (ideRunning || !Directory.Exists(root))
             return;
-        var root = Path.Combine(Path.GetTempPath(), "od-integration-config");
-        if (!Directory.Exists(root))
-            return;
-        foreach (var directory in Directory.EnumerateDirectories(root))
-        {
-            if (string.Equals(directory, _configDirectory, StringComparison.OrdinalIgnoreCase))
-                continue;
-            try
-            {
-                if (DateTime.UtcNow - Directory.GetLastWriteTimeUtc(directory) > StaleConfigAge)
-                    Directory.Delete(directory, recursive: true);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // In use by something else: the next run tries again.
+        foreach (var path in Directory.EnumerateDirectories(root)) {
+            try {
+                if (!Guid.TryParseExact(Path.GetFileName(path), "N", out _)
+                    || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+                    continue;
+                var marker = Path.Combine(path, OwnershipMarker);
+                if (!File.Exists(marker) || nowUtc - File.GetLastWriteTimeUtc(marker) < TimeSpan.FromDays(1))
+                    continue;
+                var lines = File.ReadAllLines(marker);
+                if (lines.Length != 2 || lines[0] != OwnershipVersion || !int.TryParse(lines[1], out int pid) || pid <= 0)
+                    continue;
+                try {
+                    using var owner = Process.GetProcessById(pid);
+                    if (!owner.HasExited)
+                        continue;
+                } catch (ArgumentException) {
+                    // No process with this ID exists. A reused ID is conservatively kept above.
+                }
+                Directory.Delete(path, recursive: true);
+            } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or InvalidOperationException) {
+                // Unverifiable ownership or a file in use: preserve it for the next run.
             }
         }
-    }
-
-    // <fixture>/.od/profiling for every fixture that has one.
-    static IEnumerable<string> EnumerateFixtureProfilingStores()
-    {
-        var dir = AppContext.BaseDirectory;
-        while (dir is not null)
-        {
-            var fixtures = Path.Combine(dir, "tests", "fixtures");
-            if (Directory.Exists(fixtures))
-            {
-                return Directory.EnumerateDirectories(fixtures)
-                    .Select(fixture => Path.Combine(fixture, ".od", "profiling"))
-                    .Where(Directory.Exists)
-                    .ToList();
-            }
-            dir = Path.GetDirectoryName(dir);
-        }
-        return [];
     }
 
     // Best effort: the app was only just killed, and Windows can hold a trace open for a moment
@@ -470,6 +376,9 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     {
         _appStartedUtc = DateTime.UtcNow;
 		Directory.CreateDirectory(_configDirectory);
+        if (!KeepArtifacts)
+            await File.WriteAllLinesAsync(Path.Combine(_configDirectory, OwnershipMarker),
+                new[] { OwnershipVersion, Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture) });
         var installedApp = ResolveInstalledOpenDevelop();
         ProcessStartInfo psi;
         if (installedApp is null)
@@ -516,6 +425,8 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         // the user is doing on the machine (measured annoyance - the WPF window grabs activation on
         // every fixture launch otherwise).
         psi.Environment["OD_TEST_MODE"] = "1";
+        psi.Environment["OD_TEST_ILSPY_SETTINGS_FILE"] = Path.Combine(_configDirectory, "ILSpy.xml");
+        psi.Environment["OD_TEST_PROFILER_STORE"] = Path.Combine(_configDirectory, "profiling");
         // Integration assertions intentionally use the canonical English UI strings. Do not let
         // the developer machine's locale (or a translated UI under test) turn those assertions
         // into false product failures. This applies only to the OpenDevelop child process.
@@ -568,20 +479,6 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     void StopApp()
     {
         try { if (_app is { HasExited: false }) _app.Kill(entireProcessTree: true); } catch { }
-        try { foreach (var proc in Process.GetProcessesByName("SharpDevelop")) { try { proc.Kill(true); } catch { } } } catch { }
-        // On non-Windows the app exe is named "OpenDevelop" (the csproj AssemblyName), and a
-        // manually started instance (e.g. for ad-hoc DevFlow probing) would otherwise survive
-        // StopApp and keep holding the DevFlow port - making the next fixture launch bind a
-        // second app to a different process while tests talk to the stale one.
-        try { foreach (var proc in Process.GetProcessesByName("OpenDevelop")) { try { proc.Kill(true); } catch { } } } catch { }
-        try { foreach (var proc in Process.GetProcessesByName("SharpDbg.Cli")) { try { proc.Kill(true); } catch { } } } catch { }
-        try { foreach (var proc in Process.GetProcessesByName("DebugTestApp")) { try { proc.Kill(true); } catch { } } } catch { }
-        // The profiler tests profile programs the IDE starts on its own, so those never reach the
-        // test's own process list; a failed assertion would otherwise leave one spinning.
-        try {
-            foreach (var name in new[] { "ProfilerFixture", "ProfilerWebFixture", "ProfilerWpfFixture" })
-                foreach (var proc in Process.GetProcessesByName(name)) { try { proc.Kill(true); } catch { } }
-        } catch { }
         _app = null;
     }
 
@@ -700,24 +597,69 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
         {
-            // The process is OpenDevelop (was SharpDevelop in the ancestor project); match BOTH
-            // so a stale binary from an older checkout still gets detected.
-            if (Process.GetProcessesByName("OpenDevelop").Length == 0
-                && Process.GetProcessesByName("SharpDevelop").Length == 0
-                && !IsPortInUse(Port))
+            if (!IsPortInUse(Port))
                 return;
             await Task.Delay(500);
         }
+        throw new TimeoutException($"DevFlow port {Port} is already in use; refusing to connect to another process.");
     }
 
-    static bool IsPortInUse(int port)
+    internal static bool IsPortInUse(int port)
     {
+        // Windows exposes the real listener table, which excludes TIME_WAIT connections. macOS
+        // does not reliably provide that table, so it uses the bind probes below instead.
+        if (OperatingSystem.IsWindows())
+            return System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties()
+                .GetActiveTcpListeners().Any(endpoint => endpoint.Port == port);
+        if (IsLoopbackPortInUse(System.Net.IPAddress.Loopback, port))
+            return true;
+        return System.Net.Sockets.Socket.OSSupportsIPv6
+            && IsLoopbackPortInUse(System.Net.IPAddress.IPv6Loopback, port);
+    }
+
+    static bool IsLoopbackPortInUse(System.Net.IPAddress address, int port)
+    {
+        // BSD may allow a second SO_REUSEADDR bind over an active reusable listener. A real
+        // connection detects that listener first; no application request is sent on the socket.
+        using (var probe = new System.Net.Sockets.Socket(address.AddressFamily,
+            System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp)) {
+            try {
+                probe.Connect(address, port);
+                return true;
+            } catch (System.Net.Sockets.SocketException ex) when (ex.SocketErrorCode == System.Net.Sockets.SocketError.ConnectionRefused) {
+                // No listener accepted the connection; bind below also detects non-listening owners.
+            } catch (System.Net.Sockets.SocketException ex) when (address.Equals(System.Net.IPAddress.IPv6Loopback)
+                && ex.SocketErrorCode is System.Net.Sockets.SocketError.AddressNotAvailable
+                    or System.Net.Sockets.SocketError.AddressFamilyNotSupported
+                    or System.Net.Sockets.SocketError.NetworkUnreachable) {
+                return false;
+            } catch (System.Net.Sockets.SocketException) {
+                // A reset, timeout or other uncertain network state is not evidence that the
+                // port is safe to use. Fail closed instead of connecting to an unknown process.
+                return true;
+            }
+        }
+        var listener = new System.Net.Sockets.TcpListener(address, port);
         try
         {
-            return System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties()
-                .GetActiveTcpListeners().Any(ep => ep.Port == port);
+            listener.Server.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket,
+                System.Net.Sockets.SocketOptionName.ReuseAddress, true);
+            listener.Start();
+            return false;
         }
-        catch { return false; }
+        catch (System.Net.Sockets.SocketException ex) when (ex.SocketErrorCode == System.Net.Sockets.SocketError.AddressAlreadyInUse)
+        {
+            return true;
+        }
+        catch (System.Net.Sockets.SocketException ex) when (address.Equals(System.Net.IPAddress.IPv6Loopback)
+            && ex.SocketErrorCode is System.Net.Sockets.SocketError.AddressNotAvailable
+                or System.Net.Sockets.SocketError.AddressFamilyNotSupported
+                or System.Net.Sockets.SocketError.ProtocolNotSupported)
+        {
+            // IPv6 can be supported by the OS but disabled on the loopback interface.
+            return false;
+        }
+        finally { listener.Stop(); }
     }
 
 	// od.open-solution is never a no-op app-side: it unconditionally closes the current solution
