@@ -158,6 +158,8 @@ fi
 # win-x64/win-arm64 trees (one payload serves both dotnet hosts there), but macOS can load none of
 # them: skip them exactly as the AddIns sync below does. They were ~530 MB of the bundle, including
 # a Windows libSkiaSharp.pdb and LibreWPF.Transport's full per-RID managed payload.
+# ProGpu.Native.Sdk also brings static archives under runtimes/*/native/sdk. They are inputs for
+# native linkers, not CoreCLR/macOS-loader runtime assets, so no installed application needs them.
 rsync -a --delete \
   --exclude '/AddIns/***' \
   --exclude '/data/***' \
@@ -166,6 +168,7 @@ rsync -a --delete \
   --exclude '/runtimes/win*/***' \
   --exclude '/runtimes/linux*/***' \
   --exclude '/runtimes/unix*/***' \
+  --exclude '**/*.a' \
   "$src/" "$bundle_macos/"
 # --delete leaves excluded paths alone (and --delete-excluded would also wipe the payload roots
 # above), so remove trees an older bundle already carries.
@@ -219,6 +222,11 @@ trap 'rm -f "$host_exclude_file"' EXIT
 populate_repo_payload "$bundle_macos" "$host_exclude_file"
 rm -f "$host_exclude_file"
 trap - EXIT
+
+# A prior incremental bundle can retain an excluded file because the host rsync cannot use
+# --delete-excluded without deleting payload roots copied above. This final, bundle-scoped pass
+# also protects future copy paths: static archives are never runtime-loadable in a macOS .app.
+find "$bundle_macos" -type f -name '*.a' -delete
 
 "$script_dir/deduplicate-runtime-files.sh" "$bundle_macos"
 
