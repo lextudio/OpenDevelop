@@ -102,6 +102,19 @@ invoke od.open-solution "$solution" | jq -e --arg solution "$solution" '.success
 invoke od.build-solution | jq -e '.success == true and .result == "Success" and .errorCount == 0' >/dev/null \
   || fail 'solution fixture did not build cleanly'
 
+echo '==> Checking the packaged Roslyn child host and project workspace...'
+csharp_source="$repo_root/tests/fixtures/SolutionExplorerFixture/SampleApp/Program.cs"
+invoke od.open-file "$csharp_source" | jq -e '.opened == true' >/dev/null || fail 'C# fixture source did not open'
+for _ in $(seq 1 30); do
+  roslyn_status=$(invoke od.language-workspace.status "$csharp_source")
+  jq -e '.supported == true and .tracked == true and .metadataReferenceCount > 0' <<<"$roslyn_status" >/dev/null && break
+  sleep 2
+done
+jq -e '.supported == true and .tracked == true and .metadataReferenceCount > 0' <<<"$roslyn_status" >/dev/null \
+  || fail "Roslyn child host did not provide a project workspace: $roslyn_status"
+invoke od.roslyn-legacy-workspace.status | jq -e '.remoteHostMode == true and .workspaceCreated == false' >/dev/null \
+  || fail 'Roslyn fell back to the deprecated in-process workspace'
+
 echo '==> Checking terminal shell, output, and both split directions...'
 terminal=$(invoke od.terminal.new /bin/sh)
 printf '%s' "$terminal" | jq -e '.success == true and .pid > 0' >/dev/null || fail 'terminal shell did not start'
@@ -128,6 +141,16 @@ wpf_xaml="$repo_root/externals/vscode-wpf/sample/net6.0/MainWindow.xaml"
 [[ -f "$wpf_xaml" ]] || fail "linked WPF fixture source is missing: $wpf_xaml"
 invoke od.open-solution "$wpf_solution" | jq -e '.success == true' >/dev/null || fail 'WPF fixture solution did not open'
 invoke od.open-file "$wpf_xaml" | jq -e '.opened == true' >/dev/null || fail 'WPF fixture XAML did not open'
+invoke od.xaml.language-server "$wpf_xaml" | jq -e --arg workspace "$(dirname "$wpf_solution")" \
+  '.success == true and .key == "LibreWpf" and .server == "librewpf-xaml-ls.dll" and .workspace == $workspace' >/dev/null \
+  || fail 'XAML file was not routed to the packaged LibreWPF language server'
+for _ in $(seq 1 30); do
+  xaml_outline=$(invoke od.xaml-outline.status)
+  jq -e '.active == true and .rootChildCount > 0 and any(.outlineNames[]; startswith("Button [PrimaryButton]"))' <<<"$xaml_outline" >/dev/null && break
+  sleep 2
+done
+jq -e '.active == true and .rootChildCount > 0 and any(.outlineNames[]; startswith("Button [PrimaryButton]"))' <<<"$xaml_outline" >/dev/null \
+  || fail "LibreWPF XAML language server did not return the fixture outline: $xaml_outline"
 invoke od.wpf-designer.activate-design | jq -e '.success == true' >/dev/null || fail 'WPF design view did not activate'
 for _ in $(seq 1 30); do
   wpf_status=$(invoke od.wpf-designer.status)
