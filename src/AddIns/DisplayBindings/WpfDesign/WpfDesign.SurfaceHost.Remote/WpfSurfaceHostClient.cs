@@ -55,6 +55,11 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	}
 
 	public int RecoveryCount { get; private set; }
+	volatile bool recovering;
+	/// <summary>True from the host's exit until its replacement has reopened this document. The
+	/// replacement can already be alive in that window, but a request sent to it waits behind the
+	/// reopen, so a caller that must not block skips optional round-trips while this is set.</summary>
+	public bool IsRecovering => recovering;
 	public event EventHandler<DesignerSessionState>? Recovered;
 	/// <summary>Raised when this document cannot be reopened while sibling documents recover.</summary>
 	public event EventHandler<Exception>? RecoveryFailed;
@@ -512,7 +517,14 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	void OnConnectionExited(object? sender, EventArgs e)
 	{
 		if (!disposed && poolKey != null)
-			_ = RecoveryFor(poolKey).RecoverAllAsync(connection, false, CancellationToken.None);
+			_ = RecoverAsync(connection);
+	}
+
+	async Task RecoverAsync(Connection failed)
+	{
+		recovering = true;
+		try { await RecoveryFor(poolKey!).RecoverAllAsync(failed, false, CancellationToken.None).ConfigureAwait(false); }
+		finally { recovering = false; }
 	}
 
 	void OnRecoveryFailed(Exception exception) => RecoveryFailed?.Invoke(this, exception);
