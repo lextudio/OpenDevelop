@@ -33,6 +33,8 @@ $env:GITHUB_ACTIONS = $null
 
 $plan = Get-Content $PlanPath -Raw | ConvertFrom-Json
 if ($ThroughBatch -lt 0) { $ThroughBatch = [int]$plan.throughBatch }
+. (Join-Path $PSScriptRoot 'run-statuses.ps1')
+$runStatuses = Get-RunStatuses $plan
 
 # A build must include entries for every platform that consumes its archive, even if the entry
 # is not run on the build platform itself (e.g. an ARM64-only test built on Windows x64).
@@ -60,7 +62,7 @@ $inLaneNames = @($plan.lanes.PSObject.Properties |
 $entries = @($plan.entries | Where-Object {
     $entry = $_
     $enabledForConsumer = @($consumerPlatforms | Where-Object {
-        $entry.platforms.PSObject.Properties[$_] -and $entry.platforms.$_ -in @('observe', 'required')
+        $entry.platforms.PSObject.Properties[$_] -and $entry.platforms.$_ -in $runStatuses
     }).Count -gt 0
     $entry.batch -le $ThroughBatch -and $entry.PSObject.Properties['project'] -and $enabledForConsumer -and (-not $Lane -or $entry.lane -eq $Lane) -and (-not $ArchiveLanesOnly -or $entry.lane -notin $inLaneNames)
 })

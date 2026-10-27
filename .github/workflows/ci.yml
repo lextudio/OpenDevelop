@@ -37,6 +37,11 @@ on:
         required: false
         type: boolean
         default: false
+      full:
+        description: Also run the 'required' entries that the plan's "focus" mode skips.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -55,6 +60,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
+  # Read by .github/ci/run-statuses.ps1: with the plan in focus mode, 'true' runs the 'required' entries as well.
+  OD_CI_FULL: ${{ inputs.full && 'true' || 'false' }}
   # The cache steps name this folder relatively (artifacts/nuget-packages): actions/cache hashes the path text into the
   # entry's version, and the workspace is D:\a\... on the x64 runner but C:\a\... on the ARM64 one, so an absolute path
   # made the ARM64 lane miss the entry the x64 build saved under the very same key.

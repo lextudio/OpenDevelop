@@ -24,6 +24,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content $PlanPath -Raw | ConvertFrom-Json
 if ($ThroughBatch -lt 0) { $ThroughBatch = [int]$plan.throughBatch }
+. (Join-Path $PSScriptRoot 'run-statuses.ps1')
+$runStatuses = Get-RunStatuses $plan
 
 function Get-Status($entry, [string]$platform) {
     $property = $entry.platforms.PSObject.Properties[$platform]
@@ -145,7 +147,7 @@ $laneDefinition = $plan.lanes.PSObject.Properties[$Lane]
 $laneDefinition = if ($laneDefinition) { $laneDefinition.Value } else { $null }
 
 $selected = @($plan.entries | Where-Object {
-    $_.batch -le $ThroughBatch -and $_.lane -eq $Lane -and (Get-Status $_ $Platform) -in @('observe', 'required')
+    $_.batch -le $ThroughBatch -and $_.lane -eq $Lane -and (Get-Status $_ $Platform) -in $runStatuses
 })
 Write-Host "Platform=$Platform Lane=$Lane ThroughBatch=$ThroughBatch -> $($selected.Count) entries: $(($selected | ForEach-Object { $_.id }) -join ', ')"
 if ($selected.Count -eq 0) { throw "The plan enables nothing in lane '$Lane' for $Platform up to batch $ThroughBatch." }

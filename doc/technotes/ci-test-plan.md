@@ -220,11 +220,12 @@ have been, and a lane is split only for a real environment need or a timeout.
 * `unit` (Windows x64, in place) compiles and runs its own unit suites without the archive, so its result comes first.
 * `integration-stable` holds the entries that passed on every hosted run in which the IDE started: the five workbench
   classes, the stable core journeys (solution folder, project options, T4, Task List, project reload, the Windows Terminal
-  journey, Razor, the Windows new-project dialog, Add Reference, fixture isolation, Profiler journeys, the WPF designer
+  journey, Razor, the Windows new-project dialog, fixture isolation, Profiler journeys, the WPF designer
   assembly lock), code coverage, and the VSEditorCompat, XamlDom and Profiler suites on the ARM64 platforms. Its
   entries are `required` on all three platforms (each passed on the last two hosted runs that completed it there;
-  the results are recorded above) except `add-reference-journey` on Windows ARM64, which stays `observe` until its
-  dialog can get native focus there, and the lane has no `allowAllFailures`.
+  the results are recorded above), and the lane has no `allowAllFailures`. `add-reference-journey` is `required` on
+  macOS ARM64 and Windows x64 but `observe` on Windows ARM64 until its dialog can get native focus there, so it runs
+  in `integration-unstable` (see "Focus mode").
 * `integration-unstable` holds entries with known hosted failures or under investigation: the debugger classes (no
   breakpoint is hit on macOS), the macOS Terminal pad (pointer input), the macOS new-project dialog (the runner's SDK set),
   `base-tests-arm` (two hot-reload end-to-end cases fail on Windows ARM64) and WPF Hot Reload (timed out on macOS twice).
@@ -237,6 +238,19 @@ have been, and a lane is split only for a real environment need or a timeout.
 
 Merging the former nine archive lanes into these three changed no build input: `build-binaries.ps1 -List` produces the
 same 23 Windows x64 and 21 macOS ARM64 projects before and after.
+
+### Focus mode
+
+While many entries still fail, the plan's top-level `"focus": true` runs only the `observe` entries on each platform: a
+`required` one has already passed on the last two hosted runs that completed it, so rerunning it on every push mostly buys
+the 11-15 minutes of lane preparation again. `.github/ci/run-statuses.ps1` holds the rule, and `plan-matrix.ps1`,
+`build-binaries.ps1` and `run-test-plan.ps1` all use it, so a skipped entry is neither scheduled, built nor run. With it,
+`integration-stable` has no entry left and is not scheduled on any platform (6 integration jobs instead of 9), and the
+build lists shrink from 23 to 15 Windows x64 and from 21 to 14 macOS ARM64 lines. `add-reference-journey` moved to
+`integration-unstable` for that reason: it is `observe` on Windows ARM64 only and would otherwise keep that lane alive
+for one known failure. A promoted entry stops running too, so run full once before trusting master again
+(`gh workflow run ci.yml --ref <branch> -f full=true`), and set `"focus": false` to go back to full runs when the
+failures are under control. Focus mode does not gate anything: the `required` entries are not checked while it is on.
 
 ## Current plan (Windows x64)
 

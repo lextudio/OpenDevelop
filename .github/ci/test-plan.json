@@ -5,6 +5,7 @@
     "(platform, lane) pair that has an enabled entry as its own job ('test' jobs, in parallel, each on a fresh machine, so lanes cannot",
     "interfere through ports, config directories or temp files). Test assemblies are prebuilt; some integration journeys restore temporary fixture projects using the populated package cache.",
     "throughBatch: entries whose batch is greater than this are planned but not run.  workflow_dispatch can override it.",
+    "focus: true runs only the 'observe' entries on each platform (a 'required' one has passed twice in a row), which saves runner time while many entries still fail; a lane left with no entry is not scheduled.  workflow_dispatch with full=true runs everything once; set focus to false to return to full runs.",
     "Per platform an entry is 'observe' (runs; a failure is reported as a warning and does not fail the job), 'required' (a failure fails",
     "the job) or 'excluded' (does not run; 'reason' says why).  A platform missing from an entry is excluded.  A new batch starts as 'observe';",
     "promote it to 'required' after it has been green on that platform for several runs.",
@@ -25,6 +26,7 @@
     "linux-x64": "Not enabled yet: profiler.yml ran the Profiler tests on ubuntu-latest and passed; it comes back as this platform's first entry when the platform is added."
   },
   "throughBatch": 4,
+  "focus": true,
   "platforms": {
     "windows-x64": {
       "runner": "windows-2025",
@@ -53,14 +55,14 @@
       "timeoutMinutes": 55,
       "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
-      "note": "Entries that passed on every hosted run in which the IDE started (runs 40431285339 through 40461019311): workbench, the stable core journeys, code coverage and the ARM64 unit suites, sharing one preparation. Windows x64 measured about 28 minutes of tests plus ~15 minutes of preparation. Its entries are required on macOS ARM64 and Windows x64 after each passed on the last two hosted runs that completed it there; On Windows ARM64 every entry but add-reference-journey is required too, after passing on runs 40444468212, 40461019311 and 40470967407; add-reference-journey stays observe there because the dialog cannot get native focus."
+      "note": "Entries that passed on every hosted run in which the IDE started (runs 40431285339 through 40461019311): workbench, the stable core journeys, code coverage and the ARM64 unit suites, sharing one preparation. Windows x64 measured about 28 minutes of tests plus ~15 minutes of preparation. Its entries are required on macOS ARM64 and Windows x64 after each passed on the last two hosted runs that completed it there; on Windows ARM64 they are required too, after passing on runs 40444468212, 40461019311 and 40470967407. In focus mode the lane has no entry left and is not scheduled."
     },
     "integration-unstable": {
       "timeoutMinutes": 45,
       "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
       "allowAllFailures": true,
-      "note": "Entries with known hosted failures or under investigation: macOS debugger breakpoints, macOS Terminal pointer input, the macOS new-project dialog, Windows ARM64 hot-reload end-to-end cases in base-tests-arm, and WPF Hot Reload (timed out twice on macOS). Plan order runs Hot Reload last so a hang there does not hide the others."
+      "note": "Entries with known hosted failures or under investigation: macOS debugger breakpoints, macOS Terminal pointer input, the macOS new-project dialog, Windows ARM64 hot-reload end-to-end cases in base-tests-arm, WPF Hot Reload (timed out twice on macOS), and add-reference-journey, which is required on macOS ARM64 and Windows x64 but observe on Windows ARM64 (its dialog cannot get native focus there), so it does not keep integration-stable scheduled in focus mode. Plan order runs Hot Reload last so a hang there does not hide the others."
     },
     "integration-designer": {
       "timeoutMinutes": 80,
@@ -573,7 +575,7 @@
     {
       "id": "add-reference-journey",
       "batch": 4,
-      "lane": "integration-stable",
+      "lane": "integration-unstable",
       "measuredSeconds": 49,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",

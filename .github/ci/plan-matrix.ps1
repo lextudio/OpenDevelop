@@ -18,12 +18,14 @@ param(
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content $PlanPath -Raw | ConvertFrom-Json
 if ($ThroughBatch -lt 0) { $ThroughBatch = [int]$plan.throughBatch }
+. (Join-Path $PSScriptRoot 'run-statuses.ps1')
+$runStatuses = Get-RunStatuses $plan
 
 $enabled = @()
 foreach ($entry in $plan.entries) {
     if ($entry.batch -gt $ThroughBatch) { continue }
     foreach ($property in $entry.platforms.PSObject.Properties) {
-        if ($property.Value -in @('observe', 'required')) {
+        if ($property.Value -in $runStatuses) {
             $enabled += [pscustomobject]@{ Platform = $property.Name; Lane = [string]$entry.lane; Id = $entry.id }
         }
     }
@@ -44,8 +46,13 @@ function Resolve-BuildPlatform([string]$platformName, [hashtable]$seen) {
     return Resolve-BuildPlatform $from $seen
 }
 
+# Only archive lanes consume the build job; a platform whose entries all build in place (more likely in focus mode,
+# where 'required' entries drop out) would otherwise get a build job with nothing to compile.
+$inLaneNames = @($plan.lanes.PSObject.Properties |
+    Where-Object { $_.Value.PSObject.Properties['buildsInLane'] -and $_.Value.buildsInLane } |
+    ForEach-Object { $_.Name })
 $build = @()
-foreach ($platformName in @($enabled | ForEach-Object { Resolve-BuildPlatform $_.Platform @{} } | Sort-Object -Unique)) {
+foreach ($platformName in @($enabled | Where-Object { $_.Lane -notin $inLaneNames } | ForEach-Object { Resolve-BuildPlatform $_.Platform @{} } | Sort-Object -Unique)) {
     $platform = $plan.platforms.PSObject.Properties[$platformName]
     if ($null -eq $platform) { throw "Build platform '$platformName' is not defined under 'platforms'." }
     $build += [ordered]@{ name = $platformName; runner = $platform.Value.runner; dotnet_architecture = $platform.Value.dotnetArchitecture }
@@ -81,7 +88,7 @@ $buildJson = (@{ include = $build } | ConvertTo-Json -Compress -Depth 5)
 $laneJson = (@{ include = $lanes } | ConvertTo-Json -Compress -Depth 5)
 $single = if ($inLane.Count -eq 1) { $inLane[0] } else { $null }
 
-Write-Host "ThroughBatch=$ThroughBatch"
+Write-Host "ThroughBatch=$ThroughBatch RunStatuses=$($runStatuses -join ',')"
 Write-Host "build_matrix=$buildJson"
 Write-Host "lane_matrix=$laneJson"
 Write-Host "in_lane=$(if ($single) { "$($single.lane) ($($single.platform))" } else { 'none' })"

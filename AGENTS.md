@@ -254,7 +254,9 @@ Layout, so a change goes in the right place:
   173 and missing after a rebuild.
 - A lane can declare `allowAllFailures` in its plan definition: every entry still reports (warnings, summary table) but an
   all-failed lane stays green. Only `integration-unstable` uses it; `integration-stable` dropped it when its entries became
-  `required` (on all three platforms, but for `add-reference-journey` on Windows ARM64). Do not add it back as a permanent escape hatch. Lane jobs
+  `required` on all three platforms. Do not add it back as a permanent escape hatch. While many entries still fail, the
+  plan's `"focus": true` skips every `required` entry (`.github/ci/run-statuses.ps1`; dispatch with `full=true` for one
+  full run, set `"focus": false` to go back). Lane jobs
   are grouped by reliability to share the 11-15 minute archive preparation (see `doc/technotes/ci-test-plan.md`, "Lanes").
 - **Bitness.** The Windows distribution is one payload for x64 and ARM64 (`dist.windows.bat`: `runtimes/` plus per-RID
   `win-x64`/`win-arm64` folders and both launchers), and macOS is osx-arm64 only (`dist.macos.sh`). CI follows that: a
