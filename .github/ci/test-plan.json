@@ -53,8 +53,7 @@
       "timeoutMinutes": 55,
       "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
-      "allowAllFailures": true,
-      "note": "Entries that passed on every hosted run in which the IDE started (runs 40431285339, 40444468212): workbench, the stable core journeys, code coverage and the ARM64 unit suites, sharing one preparation. Windows x64 measured about 28 minutes of tests plus ~15 minutes of preparation. Promote entries here first; drop allowAllFailures once they stay green."
+      "note": "Entries that passed on every hosted run in which the IDE started (runs 40431285339 through 40461019311): workbench, the stable core journeys, code coverage and the ARM64 unit suites, sharing one preparation. Windows x64 measured about 28 minutes of tests plus ~15 minutes of preparation. Its entries are required on macOS ARM64 and Windows x64 after each passed on the last two hosted runs that completed it there; Windows ARM64 stays observe (add-reference-journey cannot get native focus there)."
     },
     "integration-unstable": {
       "timeoutMinutes": 45,
@@ -195,36 +194,40 @@
       "id": "vseditorcompat-tests-arm",
       "batch": 4,
       "lane": "integration-stable",
+      "measuredSeconds": 3,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.VSEditorCompat.Tests/OpenDevelop.VSEditorCompat.Tests.csproj",
       "target": "tests/OpenDevelop.VSEditorCompat.Tests/bin/Debug/net10.0-windows/OpenDevelop.VSEditorCompat.Tests.dll",
-      "platforms": { "windows-arm64": "observe", "macos-arm64": "observe" },
+      "platforms": { "windows-arm64": "observe", "macos-arm64": "required" },
       "note": "macOS ARM64: 141 passed."
     },
     {
       "id": "xamldom-tests-librewpf-arm",
       "batch": 4,
       "lane": "integration-stable",
+      "measuredSeconds": 3,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.XamlDom.Tests.LibreWPF/OpenDevelop.XamlDom.Tests.LibreWPF.csproj",
       "target": "tests/OpenDevelop.XamlDom.Tests.LibreWPF/bin/Debug/net10.0-windows/OpenDevelop.XamlDom.Tests.LibreWPF.dll",
-      "platforms": { "windows-arm64": "observe", "macos-arm64": "observe" },
+      "platforms": { "windows-arm64": "observe", "macos-arm64": "required" },
       "note": "macOS ARM64: 101 passed, including portable text compatibility."
     },
     {
       "id": "profiler-tests-arm",
       "batch": 4,
       "lane": "integration-stable",
+      "measuredSeconds": 70,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.Profiler.Tests/OpenDevelop.Profiler.Tests.csproj",
       "target": "tests/OpenDevelop.Profiler.Tests/bin/Debug/net10.0/OpenDevelop.Profiler.Tests.dll",
-      "platforms": { "windows-arm64": "observe", "macos-arm64": "observe" },
+      "platforms": { "windows-arm64": "observe", "macos-arm64": "required" },
       "note": "macOS ARM64: 143 passed, including real process captures."
     },
     {
       "id": "devflow-tests",
       "batch": 3,
       "lane": "integration-stable",
+      "measuredSeconds": 52,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -235,9 +238,9 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe",
+        "windows-x64": "required",
         "windows-arm64": "observe",
-        "macos-arm64": "observe"
+        "macos-arm64": "required"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
@@ -248,6 +251,7 @@
       "id": "workbench-tests",
       "batch": 3,
       "lane": "integration-stable",
+      "measuredSeconds": 314,
       "timeoutMinutes": 8,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
@@ -259,9 +263,9 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe",
+        "windows-x64": "required",
         "windows-arm64": "observe",
-        "macos-arm64": "observe"
+        "macos-arm64": "required"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
@@ -272,6 +276,7 @@
       "id": "stop-after-first-failure-build-tests",
       "batch": 3,
       "lane": "integration-stable",
+      "measuredSeconds": 77,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -282,9 +287,9 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe",
+        "windows-x64": "required",
         "windows-arm64": "observe",
-        "macos-arm64": "observe"
+        "macos-arm64": "required"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
@@ -295,6 +300,7 @@
       "id": "solution-folder-tests",
       "batch": 3,
       "lane": "integration-stable",
+      "measuredSeconds": 89,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -305,9 +311,9 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe",
+        "windows-x64": "required",
         "windows-arm64": "observe",
-        "macos-arm64": "observe"
+        "macos-arm64": "required"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
@@ -318,6 +324,7 @@
       "id": "project-options-tests",
       "batch": 3,
       "lane": "integration-stable",
+      "measuredSeconds": 57,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -328,9 +335,9 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe",
+        "windows-x64": "required",
         "windows-arm64": "observe",
-        "macos-arm64": "observe"
+        "macos-arm64": "required"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
@@ -341,6 +348,7 @@
       "id": "t4-tests",
       "batch": 3,
       "lane": "integration-stable",
+      "measuredSeconds": 64,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -351,9 +359,9 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe",
+        "windows-x64": "required",
         "windows-arm64": "observe",
-        "macos-arm64": "observe"
+        "macos-arm64": "required"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
@@ -364,6 +372,7 @@
       "id": "task-list-pad-tests",
       "batch": 3,
       "lane": "integration-stable",
+      "measuredSeconds": 118,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -374,9 +383,9 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe",
+        "windows-x64": "required",
         "windows-arm64": "observe",
-        "macos-arm64": "observe"
+        "macos-arm64": "required"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
@@ -387,6 +396,7 @@
       "id": "vseditor-view-tests",
       "batch": 3,
       "lane": "integration-stable",
+      "measuredSeconds": 60,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -397,9 +407,9 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe",
+        "windows-x64": "required",
         "windows-arm64": "observe",
-        "macos-arm64": "observe"
+        "macos-arm64": "required"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
@@ -410,6 +420,7 @@
       "id": "one-process-build-tests",
       "batch": 3,
       "lane": "integration-stable",
+      "measuredSeconds": 60,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -420,9 +431,9 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe",
+        "windows-x64": "required",
         "windows-arm64": "observe",
-        "macos-arm64": "observe"
+        "macos-arm64": "required"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
@@ -433,6 +444,7 @@
       "id": "project-reload-tests",
       "batch": 3,
       "lane": "integration-stable",
+      "measuredSeconds": 57,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -443,9 +455,9 @@
         "none"
       ],
       "platforms": {
-        "windows-x64": "observe",
+        "windows-x64": "required",
         "windows-arm64": "observe",
-        "macos-arm64": "observe"
+        "macos-arm64": "required"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
@@ -468,10 +480,11 @@
       "id": "terminal-integration",
       "batch": 3,
       "lane": "integration-stable",
+      "measuredSeconds": 43,
       "kind": "xunit-exe",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "platforms": {
-        "windows-x64": "observe",
+        "windows-x64": "required",
         "windows-arm64": "observe"
       },
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
@@ -516,8 +529,8 @@
       "kind": "xunit-exe",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "platforms": {
-        "windows-x64": "observe",
-        "macos-arm64": "observe"
+        "windows-x64": "required",
+        "macos-arm64": "required"
       },
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "args": [
@@ -548,42 +561,46 @@
       "id": "new-project-dialog-windows",
       "batch": 4,
       "lane": "integration-stable",
+      "measuredSeconds": 72,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-class", "OpenDevelop.IntegrationTests.NewProjectDialogIntegrationTests", "-method-", "OpenDevelop.IntegrationTests.NewProjectDialogIntegrationTests.NewSolutionDialog_StillCreatesAWorkingProject_WhenTheSelectedSdkIsUnusable", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
-      "platforms": { "windows-x64": "observe", "windows-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "observe" },
       "note": "Covers template dialogs and project creation. The SDK-selection theory is excluded on Windows because one data row installs an SDK over the network; schedule it separately with its own time budget."
     },
     {
       "id": "add-reference-journey",
       "batch": 4,
       "lane": "integration-stable",
+      "measuredSeconds": 49,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-class", "OpenDevelop.IntegrationTests.AddReferenceTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
-      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
-      "note": "Exercises the modal Add Reference dialog with native clicks and verifies project and assembly references. macOS ARM64 passed locally in 37 seconds; hosted results remain unverified."
+      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "required" },
+      "note": "Exercises the modal Add Reference dialog with native clicks and verifies project and assembly references. It passes on hosted macOS ARM64 and Windows x64; on Windows ARM64 the dialog never gets native focus (AddReferenceTests.cs:81), so it stays observe there."
     },
     {
       "id": "integration-fixture-isolation",
       "batch": 4,
       "lane": "integration-stable",
+      "measuredSeconds": 15,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-class", "OpenDevelop.IntegrationTests.FixturePortTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
-      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "required" },
       "note": "Protects integration fixture port ownership and cleanup on initialization failure."
     },
     {
       "id": "profiler-journeys",
       "batch": 4,
       "lane": "integration-stable",
+      "measuredSeconds": 378,
       "timeoutMinutes": 10,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
@@ -597,7 +614,7 @@
         { "project": "tests/fixtures/SampleTestProject/SampleTestProject.csproj" },
         { "project": "tests/fixtures/DebugTestApp/DebugTestApp.csproj" }
       ],
-      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "required" },
       "note": "Full profiler journeys, including capture isolation, web service, heap, launch and test-host profiling. macOS ARM64 locally passed 21 cases with the Windows WPF case skipped in 107 seconds."
     },
     {
@@ -719,6 +736,7 @@
       "id": "code-coverage-journeys",
       "batch": 4,
       "lane": "integration-stable",
+      "measuredSeconds": 86,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -728,7 +746,7 @@
         { "project": "tests/fixtures/SampleTestProject/SampleTestProject.csproj" },
         { "project": "tests/fixtures/CoverageFixture/CoverageTests/CoverageTests.csproj" }
       ],
-      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "required" },
       "note": "Exercises real test discovery, coverage collection and editor markers using prebuilt test fixtures."
     },
     {
@@ -756,7 +774,7 @@
       "kind": "xunit-exe",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "platforms": {
-        "macos-arm64": "observe"
+        "macos-arm64": "required"
       },
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "args": [

@@ -253,8 +253,8 @@ Layout, so a change goes in the right place:
   the folder ends up without `PresentationFramework.dll`. Measured on the runner: 193 DLLs present after the first build,
   173 and missing after a rebuild.
 - A lane can declare `allowAllFailures` in its plan definition: every entry still reports (warnings, summary table) but an
-  all-failed lane stays green. `integration-stable` and `integration-unstable` use it during observe-first rollout; drop
-  it from `integration-stable` once its entries stay green instead of leaving it as a permanent escape hatch. Lane jobs
+  all-failed lane stays green. Only `integration-unstable` uses it; `integration-stable` dropped it when its entries became
+  `required` on macOS ARM64 and Windows x64. Do not add it back as a permanent escape hatch. Lane jobs
   are grouped by reliability to share the 11-15 minute archive preparation (see `doc/technotes/ci-test-plan.md`, "Lanes").
 - **Bitness.** The Windows distribution is one payload for x64 and ARM64 (`dist.windows.bat`: `runtimes/` plus per-RID
   `win-x64`/`win-arm64` folders and both launchers), and macOS is osx-arm64 only (`dist.macos.sh`). CI follows that: a

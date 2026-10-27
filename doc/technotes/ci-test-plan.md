@@ -93,8 +93,9 @@ required per platform. Linux product tests remain out of scope for this rollout.
   classes, Hot Reload, MewUI and both GTK entries passed. Measured maxima against budgets: LibreWPF editing 1561 s (35
   min), debugger 472 s (10 min, the tightest), feature debugger 513 s (12), GTK 496 s (12), MewUI 427 s (10), workbench
   314 s (8), Profiler journeys 378 s (10); the slowest lane, Windows designer, took 59 of its 80 minutes.
-  Promotion: if the next run is green again, mark the `integration-stable` entries `required` on macOS ARM64 and Windows
-  x64 (keep `add-reference-journey` `observe` on Windows ARM64) and drop the lane's `allowAllFailures`.
+  Promotion followed in the next change, under the rule below: the `integration-stable` entries became `required` on
+  macOS ARM64 and Windows x64 (`add-reference-journey` stays `observe` on Windows ARM64) and the lane lost its
+  `allowAllFailures`; the push of that change is the confirming run, since a docs-only push triggers no CI.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.
@@ -183,9 +184,10 @@ workflow (`buildFrom`, the archive rules per platform, the payload scan and the 
 * Per platform a status is `observe` (runs; a failure is an annotation and a row in the job summary, the job stays
   green), `required` (a failure fails the job) or `excluded` (does not run, `reason` says why). A platform missing from an
   entry is excluded.
-* A new batch starts as `observe`. Promote it to `required` per platform after it has been green there for several runs
-  (read the per-entry tables in the job summaries: with `observe` a green run does not mean the tests passed), and put the
-  measured duration into `measuredSeconds`.
+* A new batch starts as `observe`. Promote an entry to `required` on a platform once the last two hosted runs that
+  completed it there both passed (read the per-entry tables in the job summaries: with `observe` a green run does not mean
+  the tests passed; a cancelled job does not count as a run), and put the measured duration into `measuredSeconds`. The
+  push that promotes it is the confirming run: if the entry fails there, set it back to `observe` instead of retrying.
 * An entry names its `lane`, `kind`, `target` (the test assembly or project), `args`, and the `project` the build job
   compiles for it. A lane is defined once under `lanes` with its timeout.
 * `additionalProjects` names fixture projects that the entry needs built before the archive is created. Optional
@@ -204,13 +206,15 @@ have been, and a lane is split only for a real environment need or a timeout.
 * `integration-stable` holds the entries that passed on every hosted run in which the IDE started: the five workbench
   classes, the stable core journeys (solution folder, project options, T4, Task List, project reload, the Windows Terminal
   journey, Razor, the Windows new-project dialog, Add Reference, fixture isolation, Profiler journeys, the WPF designer
-  assembly lock), code coverage, and the VSEditorCompat, XamlDom and Profiler suites on the ARM64 platforms. This is
-  where promotion starts; once its entries stay green, drop its `allowAllFailures` and mark them `required`.
+  assembly lock), code coverage, and the VSEditorCompat, XamlDom and Profiler suites on the ARM64 platforms. Its
+  entries are `required` on macOS ARM64 and Windows x64 (each passed on the last two hosted runs that completed it on that platform; the
+  results are recorded above) and the lane
+  has no `allowAllFailures`; Windows ARM64 stays `observe` until `add-reference-journey` can get native focus there.
 * `integration-unstable` holds entries with known hosted failures or under investigation: the debugger classes (no
   breakpoint is hit on macOS), the macOS Terminal pad (pointer input), the macOS new-project dialog (the runner's SDK set),
   `base-tests-arm` (two hot-reload end-to-end cases fail on Windows ARM64) and WPF Hot Reload (timed out on macOS twice).
   Entries run in plan order, and Hot Reload is last so a hang there cannot hide the others. Move an entry to
-  `integration-stable` once it has passed for several runs.
+  `integration-stable` under the same two-run rule.
 * `integration-designer` holds every designer journey (LibreWPF editing and property editors, LibreWinForms, MewUI and
   both GTK entries) and installs the GTK runtime (`needsGtk`, 3.5 minutes on Windows). Entries in a lane run one after
   another, so the LibreWPF journeys that edit `src/Samples` in place still never share the sample with a running test.
@@ -289,8 +293,8 @@ Two defects stopped the IDE during start-up on Windows, one after the other.
   `PortableTextCompatibility.Initialize` selected the portable media backend unconditionally. The message comes only from
   "no host registered and backend is Portable"; a registered host that fails to activate throws a different
   `InvalidOperationException`. Fixed in `980e1b6a7c` by leaving a non-portable backend alone; run 40444468212
-  confirmed it (the IDE starts on both Windows architectures). Remove `allowAllFailures` from a Windows lane once its
-  entries have been stable for several runs, as for any other promotion.
+  confirmed it (the IDE starts on both Windows architectures). Remove `allowAllFailures` from a lane once its
+  entries are promoted under the rule above.
 
 How the second one was found, for the next host-start problem: search the built host folder's DLL metadata for the API
 that changes the state (`SelectMediaBackend`, `ProGpuWpfNativeMediaServices`), decompile the SDK bootstrap actually
