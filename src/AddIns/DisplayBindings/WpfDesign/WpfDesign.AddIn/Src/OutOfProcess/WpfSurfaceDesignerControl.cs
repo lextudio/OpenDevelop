@@ -535,7 +535,9 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		void NotifySelectionChanged()
 		{
 			SelectionChanged?.Invoke(this, EventArgs.Empty);
-			if (state == null)
+			// A dead child cannot expand anything, and the blocking round-trip would hold the UI thread
+			// until its replacement answers; the selection itself is already resolved from the IDE's tree.
+			if (state == null || !client.IsAlive)
 				return;
 			try
 			{
