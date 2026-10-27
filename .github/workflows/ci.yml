@@ -203,6 +203,16 @@ jobs:
         if: matrix.needs_cliclick
         shell: bash
         run: brew install cliclick
+      # Attaching a debugger needs task_for_pid, which macOS authorizes through the
+      # system.privilege.taskport right. With nobody to answer that prompt on the runner,
+      # ICorDebug attach blocks forever; grant the right up front.
+      - name: Allow debugger attach on macOS
+        if: matrix.platform == 'macos-arm64'
+        shell: bash
+        run: |
+          sudo DevToolsSecurity -enable
+          sudo dseditgroup -o edit -a "$USER" -t user _developer
+          sudo security authorizationdb write system.privilege.taskport allow
       - name: Install GTK designer runtimes and metadata
         if: matrix.needs_gtk && matrix.platform == 'macos-arm64'
         shell: bash
