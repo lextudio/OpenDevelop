@@ -82,6 +82,19 @@ required per platform. Linux product tests remain out of scope for this rollout.
   `integration-librewpf-designer` (60 minutes) holds the two LibreWPF entries, and
   `integration-mewui-winforms-designer` (45 minutes) holds MewUI and LibreWinForms. Both were folded into
   `integration-designer` right after, when the archive lanes were merged by reliability (see "Lanes").
+* **First run with the merged lanes and entry budgets (`d84d34c4e7`, run 40461019311).** 13 jobs and 341 runner-minutes,
+  against 26 jobs and 590 runner-minutes (five of them cancelled at their lane timeout) on run 40444468212; the nine lane
+  jobs started together instead of queueing. Every job finished and no entry reached its budget. `integration-stable`
+  passed 19/19 entries on macOS ARM64 and 17/17 on Windows x64; on Windows ARM64 only `add-reference-journey` failed, for
+  the second run in a row, because the Add Reference dialog never gets native focus there
+  (`"nativeFocused":false,"foregrounded":false`, `AddReferenceTests.cs:81`) - a foreground limitation of that runner, the
+  counterpart of macOS's undelivered pointer input. The macOS entries that used to hang ended in minutes this time
+  (Hot Reload 139 s, GTK 56 s, MewUI 97 s, Terminal 94 s) with ordinary case failures. On Windows x64 the debugger
+  classes, Hot Reload, MewUI and both GTK entries passed. Measured maxima against budgets: LibreWPF editing 1561 s (35
+  min), debugger 472 s (10 min, the tightest), feature debugger 513 s (12), GTK 496 s (12), MewUI 427 s (10), workbench
+  314 s (8), Profiler journeys 378 s (10); the slowest lane, Windows designer, took 59 of its 80 minutes.
+  Promotion: if the next run is green again, mark the `integration-stable` entries `required` on macOS ARM64 and Windows
+  x64 (keep `add-reference-journey` `observe` on Windows ARM64) and drop the lane's `allowAllFailures`.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.
