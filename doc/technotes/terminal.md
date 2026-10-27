@@ -171,9 +171,9 @@ Pitfalls found (keep):
   unified Windows payload is built without a RID, where the natives keep `runtimes/win-<rid>/native/` and Porta.Pty looks
   for the host in a per-architecture folder beside each `conpty.dll`; without it Porta.Pty silently falls back to the
   in-box conhost. `Terminal.csproj` now stages `runtimes/win-x64/native/x64/OpenConsole.exe` and
-  `runtimes/win-arm64/native/arm64/OpenConsole.exe` for a RID-less build (the RID-less layout starts the
-  shell on Windows x64 and ARM64 in the CI journey; that the staged host is the one used is not asserted). Every Terminal CI run that passed
-  on Windows used a RID build; see "Verification by platform".
+  `runtimes/win-arm64/native/arm64/OpenConsole.exe` for a RID-less build. The CI journey starts a shell from that layout
+  on x64 and ARM64 and asserts that a staged `OpenConsole.exe` is the running host, so the fallback would now fail the
+  journey instead of going unnoticed; see "Verification by platform".
 - The host shell must be rebuilt (`ICSharpCode.Core.Presentation` embeds the icons) before new icons
   resolve; the add-in alone is not enough. Use one SDK (Homebrew) for both builds.
 - xUnit's `Assert.DoesNotContain(string, string)` compares by culture: with ICU an ESC character is
@@ -303,17 +303,19 @@ the engine on its own.
 
 | Platform | What ran | Result |
 |---|---|---|
-| Windows x64 | `TerminalCrossPlatformTests` (about 40 s): show the pad, detect shells, new terminal, `echo` rendered on screen, left/right split, vertical split nested to three panes, kill | passed in the Terminal-only workflow from 2026-10-23 through `72419767b`, and again in `ci.yml` on the unified RID-less payload unpacked from the build archive (run `40273919025`, commit `b7da2c1fb`) |
-| Windows ARM64 (native `windows-11-arm`, RID `win-arm64`, process Arm64) | same journey | passed in the Terminal-only workflow from `ea4a61318b`, and in `ci.yml` on the payload built on x64 (same run) |
+| Windows x64 | `TerminalCrossPlatformTests` (about 40 s): show the pad, detect shells, new terminal, `echo` rendered on screen, left/right split, vertical split nested to three panes, kill | passed in the Terminal-only workflow from 2026-10-23 through `72419767b`, and again in `ci.yml` on the unified RID-less payload unpacked from the build archive (runs `40273919025` and `40328842641`) |
+| Windows ARM64 (native `windows-11-arm`, RID `win-arm64`, process Arm64) | same journey | passed in the Terminal-only workflow from `ea4a61318b`, and in `ci.yml` on the payload built on x64 (same runs) |
 | macOS arm64, local | all 23 `TerminalPadTests`, including real clicks, wheel and keyboard | pass with the fixed `ProGPU.Backend` and `PresentationCore` (see "macOS crashes" below), from the CI-published preview.69 packages; the real-input tests need an unlocked screen |
-| macOS arm64, CI | `terminal-macos-integration` (`TerminalPadTests` with `cliclick`) | **red on every run so far** (23 of 23 failed on 2026-10-26 before the fixes, 11 of 23 on 2026-10-24); not yet run with the republished packages |
+| macOS arm64, CI | `terminal-macos-integration` (`TerminalPadTests` with `cliclick`) | **has never run a test.** The 2026-10-26 attempt died unpacking the workspace archive (`truncated gzip input` on `libprogpu_native_dawn.dylib`), and both reruns were cancelled after 15 minutes without a runner (`The job was not acquired by Runner of type hosted`; GitHub warns about macOS arm64 capacity). Earlier runs were red before the fixes: 23 of 23 failed on 2026-10-26, 11 of 23 on 2026-10-24 |
 | Linux | none | paused in `a00a31a90e`, never verified |
 
 What this establishes: ConPTY start-up, Windows shell detection, the win-arm64 native chain and nested splits work on real
-runners, and the Windows payload that serves both architectures starts the shell. What it does not: the rest of the
-macOS journeys (selection, mouse reporting, find, links, drop, zoom, real input) have never run on Windows or Linux, POSIX
-programs (`vim`, `less`) cannot be used there, and whether the out-of-band ConPTY (the `OpenConsole.exe` staged beside
-`conpty.dll`) rather than the in-box conhost is the one in use is not asserted by any test.
+runners, and the Windows payload that serves both architectures starts the shell. Since `c6bd809b08` the journey also
+asserts which console host is running: a Terminal whose `OpenConsole.exe` is missing still renders, because Porta.Pty falls
+back to the in-box conhost, so the journey lists the `OpenConsole` and `conhost` processes and requires one whose path is
+under `AddIns/Misc/Terminal`. It passed that way on both Windows lanes (run `40328842641`). What this does not establish:
+the rest of the macOS journeys (selection, mouse reporting, find, links, drop, zoom, real input) have never run on Windows
+or Linux, POSIX programs (`vim`, `less`) cannot be used there, and the Windows lanes never exercise the macOS-only paths.
 
 The real-input journeys (`ScrollsOnARealWheelEvent`, `TakesRealKeyboardInput`, `TakesRealPointerInput_ForSelectionAndLinks`,
 `ToolbarWorksWithRealClicks`, `OpensItsMenuOnARealRightClick`) post OS events, so a locked screen makes all of them fail
@@ -351,8 +353,8 @@ fallback at all.
 ## Open questions
 
 - Windows RID-less layout: the unified payload is built without a RuntimeIdentifier and both `OpenConsole.exe` hosts are
-  staged beside their `conpty.dll`. The smoke journey starts a shell from that layout on x64 and ARM64, so
-  `ghostty-vt.dll` under `runtimes/win-<rid>/native/` is found too. Still unknown: whether Porta.Pty uses that out-of-band
-  ConPTY or silently falls back to the in-box conhost (no test asserts it; a child `OpenConsole.exe` in the shell's
-  process tree would show it).
+  staged beside their `conpty.dll`. The smoke journey starts a shell from that layout on x64 and ARM64, finds
+  `ghostty-vt.dll` under `runtimes/win-<rid>/native/`, and (`c6bd809b08`) asserts that a staged `OpenConsole.exe` is the
+  running console host rather than the in-box conhost. It judges by process path, not by parent process, so it does not
+  depend on how ConPTY parents its host.
 - Frame rate of a full-screen redraw (`vim`, `top`): it has not been measured.
