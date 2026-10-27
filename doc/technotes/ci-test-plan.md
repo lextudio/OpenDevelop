@@ -96,6 +96,16 @@ required per platform. Linux product tests remain out of scope for this rollout.
   Promotion followed in the next change, under the rule below: the `integration-stable` entries became `required` on
   macOS ARM64 and Windows x64 (`add-reference-journey` stays `observe` on Windows ARM64) and the lane lost its
   `allowAllFailures`; the push of that change is the confirming run, since a docs-only push triggers no CI.
+* **First gated run (`aafaf5b745`, run 40470967407): the promotion held.** With `integration-stable` required on macOS
+  ARM64 (19 entries) and Windows x64 (17) and no `allowAllFailures`, both jobs passed, so those 36 entry/platform pairs now
+  gate `master`. Every other lane job passed as well; no entry in the two Windows designer jobs reached its budget (no
+  `timeout` row; LibreWPF editing took 1423 s and 1574 s of its 35 minutes). The run first
+  failed in `unit` on one `profiler-tests` case, `CaptureTests.Capture_CarriesTheRuntimeCountersAlignedWithTheSamples`
+  (`mode: Allocation`), whose last `gc-heap-size` point was 0 (`CaptureTests.cs:134`, `heap.Last > 0`); a re-run of that
+  job passed. Three local macOS captures of the same fixture showed every `gc-heap-size` payload with `Count=1` and a
+  positive mean, but none reproduced the zero, so the cause (an empty end-of-session interval included) is still open.
+  It is the only `required` entry that has failed so far; if it fails again, make the test print the whole counter
+  series before changing it.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.
