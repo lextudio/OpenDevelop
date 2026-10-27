@@ -81,6 +81,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: .github/ci
+      - name: Verify shared build selection
+        shell: pwsh
+        run: ./.github/ci/tests/build-selection.ps1
       - id: matrix
         shell: pwsh
         env:

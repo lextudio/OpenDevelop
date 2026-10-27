@@ -34,12 +34,35 @@ $env:GITHUB_ACTIONS = $null
 $plan = Get-Content $PlanPath -Raw | ConvertFrom-Json
 if ($ThroughBatch -lt 0) { $ThroughBatch = [int]$plan.throughBatch }
 
+# A build must include entries for every platform that consumes its archive, even if the entry
+# is not run on the build platform itself (e.g. an ARM64-only test built on Windows x64).
+function Resolve-BuildPlatform([string]$platformName, [hashtable]$seen) {
+    if ($seen.ContainsKey($platformName)) { throw "buildFrom chain loops at '$platformName'." }
+    $seen[$platformName] = $true
+    $platform = $plan.platforms.PSObject.Properties[$platformName]
+    if ($null -eq $platform) { throw "Platform '$platformName' is not defined under 'platforms'." }
+    $from = if ($platform.Value.PSObject.Properties['buildFrom']) { [string]$platform.Value.buildFrom } else { $platformName }
+    if ($from -eq $platformName) { return $platformName }
+    return Resolve-BuildPlatform $from $seen
+}
+$laneDefinition = if ($Lane) { $plan.lanes.PSObject.Properties[$Lane] } else { $null }
+$buildsInLane = $laneDefinition -and $laneDefinition.Value.PSObject.Properties['buildsInLane'] -and $laneDefinition.Value.buildsInLane
+$consumerPlatforms = if ($buildsInLane) { @($Platform) } else {
+    @($plan.platforms.PSObject.Properties | Where-Object {
+        $_.Name -eq $Platform -or (Resolve-BuildPlatform $_.Name @{}) -eq $Platform
+    } | ForEach-Object { $_.Name })
+}
+
 # A lane with 'buildsInLane' compiles its own entries in its own job, so the archive build leaves them out.
 $inLaneNames = @($plan.lanes.PSObject.Properties |
     Where-Object { $_.Value.PSObject.Properties['buildsInLane'] -and $_.Value.buildsInLane } |
     ForEach-Object { $_.Name })
 $entries = @($plan.entries | Where-Object {
-    $_.batch -le $ThroughBatch -and $_.PSObject.Properties['project'] -and $_.platforms.PSObject.Properties[$Platform] -and $_.platforms.$Platform -in @('observe', 'required') -and (-not $Lane -or $_.lane -eq $Lane) -and (-not $ArchiveLanesOnly -or $_.lane -notin $inLaneNames)
+    $entry = $_
+    $enabledForConsumer = @($consumerPlatforms | Where-Object {
+        $entry.platforms.PSObject.Properties[$_] -and $entry.platforms.$_ -in @('observe', 'required')
+    }).Count -gt 0
+    $entry.batch -le $ThroughBatch -and $entry.PSObject.Properties['project'] -and $enabledForConsumer -and (-not $Lane -or $entry.lane -eq $Lane) -and (-not $ArchiveLanesOnly -or $entry.lane -notin $inLaneNames)
 })
 if ($entries.Count -eq 0) {
     $scope = if ($Lane) { "lane '$Lane'" } elseif ($ArchiveLanesOnly) { 'the archive lanes' } else { 'any lane' }

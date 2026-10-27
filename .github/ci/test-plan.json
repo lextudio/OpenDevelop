@@ -49,6 +49,11 @@
       "timeoutMinutes": 30,
       "buildsInLane": true
     },
+    "unit-cross-platform": {
+      "timeoutMinutes": 30,
+      "needsNuGetCache": true,
+      "note": "New macOS and Windows ARM64 unit coverage begins as observations."
+    },
     "integration-core": {
       "timeoutMinutes": 45,
       "needsNuGetCache": true,
@@ -189,6 +194,46 @@
         "windows-x64": "observe"
       },
       "note": "Microsoft's XamlReader is loaded on its own STA thread with a 20-second deadline; on a cold runner the first cases can exceed it and report HANG. One case failed that way on 2026-10-25 while the other 96 passed."
+    },
+    {
+      "id": "base-tests-arm",
+      "batch": 4,
+      "lane": "unit-cross-platform",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.Base.Tests/OpenDevelop.Base.Tests.csproj",
+      "target": "tests/OpenDevelop.Base.Tests/bin/Debug/net10.0-windows/OpenDevelop.Base.Tests.dll",
+      "platforms": { "windows-arm64": "observe", "macos-arm64": "observe" },
+      "note": "macOS ARM64: 490 passed, 9 platform-specific skips."
+    },
+    {
+      "id": "vseditorcompat-tests-arm",
+      "batch": 4,
+      "lane": "unit-cross-platform",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.VSEditorCompat.Tests/OpenDevelop.VSEditorCompat.Tests.csproj",
+      "target": "tests/OpenDevelop.VSEditorCompat.Tests/bin/Debug/net10.0-windows/OpenDevelop.VSEditorCompat.Tests.dll",
+      "platforms": { "windows-arm64": "observe", "macos-arm64": "observe" },
+      "note": "macOS ARM64: 141 passed."
+    },
+    {
+      "id": "xamldom-tests-librewpf-arm",
+      "batch": 4,
+      "lane": "unit-cross-platform",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.XamlDom.Tests.LibreWPF/OpenDevelop.XamlDom.Tests.LibreWPF.csproj",
+      "target": "tests/OpenDevelop.XamlDom.Tests.LibreWPF/bin/Debug/net10.0-windows/OpenDevelop.XamlDom.Tests.LibreWPF.dll",
+      "platforms": { "windows-arm64": "observe", "macos-arm64": "observe" },
+      "note": "macOS ARM64: 101 passed, including portable text compatibility."
+    },
+    {
+      "id": "profiler-tests-arm",
+      "batch": 4,
+      "lane": "unit-cross-platform",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.Profiler.Tests/OpenDevelop.Profiler.Tests.csproj",
+      "target": "tests/OpenDevelop.Profiler.Tests/bin/Debug/net10.0/OpenDevelop.Profiler.Tests.dll",
+      "platforms": { "windows-arm64": "observe", "macos-arm64": "observe" },
+      "note": "macOS ARM64: 143 passed, including real process captures."
     },
     {
       "id": "devflow-tests",

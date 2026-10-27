@@ -1,7 +1,20 @@
 # CI test plan
 
-Goal: every test that runs locally also runs on GitHub Actions, switched on in small batches so a single run
-does not become slow all at once and a new test cannot turn the main line red by surprise.
+Goal: broaden GitHub Actions coverage of locally runnable tests on Windows x64, Windows ARM64 and macOS ARM64.
+Introduce substantial groups in observe mode, inspect their actual runner results, and promote stable entries to
+required per platform. Linux product tests remain out of scope for this rollout.
+
+## Rollout plan and progress (2026-10-26)
+
+* **Completed locally:** workbench, debugger and coverage integration lanes are configured as observations on all three
+  platforms. Their macOS ARM64 local results are recorded below; hosted runner results for the new configuration are
+  still needed. Their commits are local until pushed.
+* **In progress:** add Base, VSEditorCompat, LibreWPF XamlDom and Profiler unit suites on both ARM64 platforms. The
+  actual macOS CI runner script passed 875 cases and skipped nine; Windows ARM64 has not yet run. Review and commit
+  the change, then verify the Windows and macOS hosted results after an authorized push.
+* **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
+  stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
+  journeys; record exclusions and prerequisites before scheduling environment-dependent tests.
 
 ## Shape: compile once, test in parallel lanes
 
@@ -99,6 +112,12 @@ AttachFixture prebuilt. `integration-coverage` observes the code-coverage journe
 their project references build CoverageLib. Both lanes initially permit all observed entries to fail without gating CI,
 so read their entry summaries and skipped counts. On macOS ARM64 the debugger classes passed 23 cases and skipped five
 architecture/runtime-specific cases; code coverage passed all three cases. Windows runner results remain unverified.
+
+`unit-cross-platform` observes Base, VSEditorCompat, LibreWPF XamlDom and Profiler tests on macOS ARM64 and Windows
+ARM64; the existing Windows x64 unit lane is unchanged. The Windows x64 archive build includes projects needed solely by
+its ARM64 consumer. On macOS those suites passed 490/499 (9 skipped), 141/141, 101/101 and 143/143 respectively. The
+Windows ARM64 runner remains unverified. Each entry is observed individually, but a lane where all four fail is an
+error: a green lane must contain at least one passing entry. Inspect every entry before promotion.
 
 ## Current plan (Windows x64)
 
