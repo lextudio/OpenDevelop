@@ -131,7 +131,8 @@ public sealed class CaptureTests : IDisposable
         var counters = NettraceCounterReader.Read(path);
         var heap = counters.Single(c => c.Name == "gc-heap-size");
         Assert.True(heap.Values.Count >= 2, $"{heap.Values.Count} heap size points");
-        Assert.True(heap.Last > 0);
+        // A hosted run once saw the last point at 0 and a re-run passed; print the series if it recurs.
+        Assert.True(heap.Last > 0, "gc-heap-size (ms=value): " + string.Join(", ", heap.TimesMs.Zip(heap.Values, (t, v) => $"{t:F0}={v}")));
         Assert.Contains(counters, c => c.Name == "cpu-usage");
         Assert.Contains(counters, c => c.Name == "gen-0-gc-count");
         Assert.All(counters, c => Assert.Equal(c.TimesMs.Count, c.Values.Count));
