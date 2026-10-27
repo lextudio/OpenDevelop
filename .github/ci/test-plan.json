@@ -688,8 +688,8 @@
       "args": ["-class", "OpenDevelop.IntegrationTests.GtkDesignerTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "tests/fixtures/GtkDesignerFixture/GtkDesignerFixture.csproj" }],
-      "platforms": { "macos-arm64": "observe" },
-      "note": "Twelve GTK host, native preview, editing, recovery and libadwaita journeys passed locally on macOS ARM64 in 66 seconds. Windows requires architecture-specific GTK setup, not yet configured."
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "note": "Twelve GTK host, native preview, editing, recovery and libadwaita journeys passed locally on macOS ARM64 in 66 seconds. Windows runner results remain unverified."
     },
     {
       "id": "gtk-designer-nested-journey",
@@ -701,7 +701,7 @@
       "args": ["-class", "OpenDevelop.IntegrationTests.GtkDesignerIntegrationTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "tests/fixtures/GtkFixture/GtkFixture.csproj" }],
-      "platforms": { "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
       "note": "Nested GTK selection, property editing, insertion, undo and save passed locally on macOS ARM64 in 20 seconds."
     },
     {

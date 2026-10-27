@@ -36,12 +36,14 @@ required per platform. Linux product tests remain out of scope for this rollout.
   fixture and checking both mismatched-owner rejection and unknown-property diagnostics, all ten passed in 55 seconds. The build includes
   MewUIGen and the fixture to populate the package cache needed when each test restores its temporary copy. Hosted
   results remain outstanding.
-* **In local validation:** add 13 GTK designer journeys to a separate macOS ARM64 observation lane. The local runs
+* **In local validation:** add 13 GTK designer journeys to a separate observation lane on all three platforms. The macOS local runs
   passed all 12 native-rendering/editing cases in 68 seconds and the nested edit/save case in 19 seconds through the
   CI runner script. The lane
   installs Homebrew GTK 4 and libadwaita for the native runtime and GIR metadata; its fixture is built to prime NuGet.
-  Windows x64 and ARM64 require architecture-specific GTK runtime and metadata setup, which is not configured yet.
-  Hosted results and setup time remain unverified.
+  Windows x64 uses MSYS2 UCRT64; Windows ARM64 uses CLANGARM64, with GTK 4, libadwaita and GIR metadata. The lane
+  checks the GTK DLL architecture before launch. Hosted results and setup time remain unverified on all platforms.
+  [MSYS2's setup action](https://github.com/msys2/setup-msys2) supports both environments; its
+  [ARM64 libadwaita package](https://packages.msys2.org/packages/mingw-w64-clang-aarch64-libadwaita) depends on GTK 4.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.
