@@ -106,6 +106,9 @@ required per platform. Linux product tests remain out of scope for this rollout.
   positive mean, but none reproduced the zero, so the cause (an empty end-of-session interval included) is still open.
   It is the only `required` entry that has failed so far; if it fails again, make the test print the whole counter
   series before changing it.
+* **Windows ARM64 promoted next.** On Windows ARM64 the other 18 `integration-stable` entries passed on runs
+  40444468212, 40461019311 and 40470967407 (the first run had no IDE there), so they are `required` too;
+  `add-reference-journey` failed on all four runs and stays `observe`.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.
@@ -217,9 +220,9 @@ have been, and a lane is split only for a real environment need or a timeout.
   classes, the stable core journeys (solution folder, project options, T4, Task List, project reload, the Windows Terminal
   journey, Razor, the Windows new-project dialog, Add Reference, fixture isolation, Profiler journeys, the WPF designer
   assembly lock), code coverage, and the VSEditorCompat, XamlDom and Profiler suites on the ARM64 platforms. Its
-  entries are `required` on macOS ARM64 and Windows x64 (each passed on the last two hosted runs that completed it on that platform; the
-  results are recorded above) and the lane
-  has no `allowAllFailures`; Windows ARM64 stays `observe` until `add-reference-journey` can get native focus there.
+  entries are `required` on all three platforms (each passed on the last two hosted runs that completed it there;
+  the results are recorded above) except `add-reference-journey` on Windows ARM64, which stays `observe` until its
+  dialog can get native focus there, and the lane has no `allowAllFailures`.
 * `integration-unstable` holds entries with known hosted failures or under investigation: the debugger classes (no
   breakpoint is hit on macOS), the macOS Terminal pad (pointer input), the macOS new-project dialog (the runner's SDK set),
   `base-tests-arm` (two hot-reload end-to-end cases fail on Windows ARM64) and WPF Hot Reload (timed out on macOS twice).

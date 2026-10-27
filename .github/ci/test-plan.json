@@ -53,7 +53,7 @@
       "timeoutMinutes": 55,
       "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
-      "note": "Entries that passed on every hosted run in which the IDE started (runs 40431285339 through 40461019311): workbench, the stable core journeys, code coverage and the ARM64 unit suites, sharing one preparation. Windows x64 measured about 28 minutes of tests plus ~15 minutes of preparation. Its entries are required on macOS ARM64 and Windows x64 after each passed on the last two hosted runs that completed it there; Windows ARM64 stays observe (add-reference-journey cannot get native focus there)."
+      "note": "Entries that passed on every hosted run in which the IDE started (runs 40431285339 through 40461019311): workbench, the stable core journeys, code coverage and the ARM64 unit suites, sharing one preparation. Windows x64 measured about 28 minutes of tests plus ~15 minutes of preparation. Its entries are required on macOS ARM64 and Windows x64 after each passed on the last two hosted runs that completed it there; On Windows ARM64 every entry but add-reference-journey is required too, after passing on runs 40444468212, 40461019311 and 40470967407; add-reference-journey stays observe there because the dialog cannot get native focus."
     },
     "integration-unstable": {
       "timeoutMinutes": 45,
@@ -198,7 +198,7 @@
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.VSEditorCompat.Tests/OpenDevelop.VSEditorCompat.Tests.csproj",
       "target": "tests/OpenDevelop.VSEditorCompat.Tests/bin/Debug/net10.0-windows/OpenDevelop.VSEditorCompat.Tests.dll",
-      "platforms": { "windows-arm64": "observe", "macos-arm64": "required" },
+      "platforms": { "windows-arm64": "required", "macos-arm64": "required" },
       "note": "macOS ARM64: 141 passed."
     },
     {
@@ -209,7 +209,7 @@
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.XamlDom.Tests.LibreWPF/OpenDevelop.XamlDom.Tests.LibreWPF.csproj",
       "target": "tests/OpenDevelop.XamlDom.Tests.LibreWPF/bin/Debug/net10.0-windows/OpenDevelop.XamlDom.Tests.LibreWPF.dll",
-      "platforms": { "windows-arm64": "observe", "macos-arm64": "required" },
+      "platforms": { "windows-arm64": "required", "macos-arm64": "required" },
       "note": "macOS ARM64: 101 passed, including portable text compatibility."
     },
     {
@@ -220,7 +220,7 @@
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.Profiler.Tests/OpenDevelop.Profiler.Tests.csproj",
       "target": "tests/OpenDevelop.Profiler.Tests/bin/Debug/net10.0/OpenDevelop.Profiler.Tests.dll",
-      "platforms": { "windows-arm64": "observe", "macos-arm64": "required" },
+      "platforms": { "windows-arm64": "required", "macos-arm64": "required" },
       "note": "macOS ARM64: 143 passed, including real process captures."
     },
     {
@@ -239,7 +239,7 @@
       ],
       "platforms": {
         "windows-x64": "required",
-        "windows-arm64": "observe",
+        "windows-arm64": "required",
         "macos-arm64": "required"
       },
       "buildArgs": [
@@ -264,7 +264,7 @@
       ],
       "platforms": {
         "windows-x64": "required",
-        "windows-arm64": "observe",
+        "windows-arm64": "required",
         "macos-arm64": "required"
       },
       "buildArgs": [
@@ -288,7 +288,7 @@
       ],
       "platforms": {
         "windows-x64": "required",
-        "windows-arm64": "observe",
+        "windows-arm64": "required",
         "macos-arm64": "required"
       },
       "buildArgs": [
@@ -312,7 +312,7 @@
       ],
       "platforms": {
         "windows-x64": "required",
-        "windows-arm64": "observe",
+        "windows-arm64": "required",
         "macos-arm64": "required"
       },
       "buildArgs": [
@@ -336,7 +336,7 @@
       ],
       "platforms": {
         "windows-x64": "required",
-        "windows-arm64": "observe",
+        "windows-arm64": "required",
         "macos-arm64": "required"
       },
       "buildArgs": [
@@ -360,7 +360,7 @@
       ],
       "platforms": {
         "windows-x64": "required",
-        "windows-arm64": "observe",
+        "windows-arm64": "required",
         "macos-arm64": "required"
       },
       "buildArgs": [
@@ -384,7 +384,7 @@
       ],
       "platforms": {
         "windows-x64": "required",
-        "windows-arm64": "observe",
+        "windows-arm64": "required",
         "macos-arm64": "required"
       },
       "buildArgs": [
@@ -408,7 +408,7 @@
       ],
       "platforms": {
         "windows-x64": "required",
-        "windows-arm64": "observe",
+        "windows-arm64": "required",
         "macos-arm64": "required"
       },
       "buildArgs": [
@@ -432,7 +432,7 @@
       ],
       "platforms": {
         "windows-x64": "required",
-        "windows-arm64": "observe",
+        "windows-arm64": "required",
         "macos-arm64": "required"
       },
       "buildArgs": [
@@ -456,7 +456,7 @@
       ],
       "platforms": {
         "windows-x64": "required",
-        "windows-arm64": "observe",
+        "windows-arm64": "required",
         "macos-arm64": "required"
       },
       "buildArgs": [
@@ -485,7 +485,7 @@
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "platforms": {
         "windows-x64": "required",
-        "windows-arm64": "observe"
+        "windows-arm64": "required"
       },
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "args": [
@@ -567,7 +567,7 @@
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-class", "OpenDevelop.IntegrationTests.NewProjectDialogIntegrationTests", "-method-", "OpenDevelop.IntegrationTests.NewProjectDialogIntegrationTests.NewSolutionDialog_StillCreatesAWorkingProject_WhenTheSelectedSdkIsUnusable", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
-      "platforms": { "windows-x64": "required", "windows-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "required" },
       "note": "Covers template dialogs and project creation. The SDK-selection theory is excluded on Windows because one data row installs an SDK over the network; schedule it separately with its own time budget."
     },
     {
@@ -593,7 +593,7 @@
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-class", "OpenDevelop.IntegrationTests.FixturePortTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
-      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "required" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required" },
       "note": "Protects integration fixture port ownership and cleanup on initialization failure."
     },
     {
@@ -614,7 +614,7 @@
         { "project": "tests/fixtures/SampleTestProject/SampleTestProject.csproj" },
         { "project": "tests/fixtures/DebugTestApp/DebugTestApp.csproj" }
       ],
-      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "required" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required" },
       "note": "Full profiler journeys, including capture isolation, web service, heap, launch and test-host profiling. macOS ARM64 locally passed 21 cases with the Windows WPF case skipped in 107 seconds."
     },
     {
@@ -746,7 +746,7 @@
         { "project": "tests/fixtures/SampleTestProject/SampleTestProject.csproj" },
         { "project": "tests/fixtures/CoverageFixture/CoverageTests/CoverageTests.csproj" }
       ],
-      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "required" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required" },
       "note": "Exercises real test discovery, coverage collection and editor markers using prebuilt test fixtures."
     },
     {
