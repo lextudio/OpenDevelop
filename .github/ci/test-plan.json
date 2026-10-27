@@ -3,7 +3,7 @@
     "Which local tests run on GitHub Actions, and in which order they are turned on.  Enabling more is a reviewed edit of this file.",
     "The single workflow .github/workflows/ci.yml compiles once per platform ('build' job), uploads the workspace, then runs every",
     "(platform, lane) pair that has an enabled entry as its own job ('test' jobs, in parallel, each on a fresh machine, so lanes cannot",
-    "interfere through ports, config directories or temp files).  Test jobs never restore or compile: they run the built test assemblies.",
+    "interfere through ports, config directories or temp files). Test assemblies are prebuilt; some integration journeys restore temporary fixture projects using the populated package cache.",
     "throughBatch: entries whose batch is greater than this are planned but not run.  workflow_dispatch can override it.",
     "Per platform an entry is 'observe' (runs; a failure is reported as a warning and does not fail the job), 'required' (a failure fails",
     "the job) or 'excluded' (does not run; 'reason' says why).  A platform missing from an entry is excluded.  A new batch starts as 'observe';",
@@ -14,7 +14,7 @@
     "'buildArgs' are extra dotnet build arguments for the entry's 'project'; entries that share a project must agree on them.  The integration project is built with -p:BuildIntegrationFixtures=false because its fixture target builds every fixture inside one MSBuild process (Uno.Sdk 6.6.42 then clashes with the already resolved 6.5.31, MSB4240); a lane that needs a fixture lists that fixture's own csproj as an entry 'project' so it builds in its own process.",
     "A lane with 'needsNuGetCache' also downloads the build job's NuGet package cache: the IDE host resolves its LibreWPF assemblies from the global packages folder at run time, so a lane that starts the IDE (the integration lanes) needs it; the unit lane does not.",
     "'buildLast' projects are built after everything else, with their own 'args' ('{rid}' is the platform's 'rid').  The host is built last with '--runtime <rid> -p:AppendRuntimeIdentifierToOutputPath=false', the recipe terminal-cross-platform.yml uses (it builds the Terminal add-in that way, which builds the host project it references as that RID into the same folder) and whose IDE does start on the Windows runner.  Measured on the runner without it: the host's OpenDevelop.deps.json is 166 libraries without a 'PresentationFramework/11.0.0.0' reference entry from the very first host build on, whatever is built afterwards in the default way (a macOS build has 193, with 28 'reference' entries for the LibreWPF assemblies), and the IDE dies at start-up with a FileNotFoundException for PresentationFramework 11.0.0.0.  The build summary records the host deps.json after every build, so the run shows what the RID-specific build changes.",
-    "A lane definition holds 'timeoutMinutes', optionally 'needsNuGetCache' (the IDE host resolves its LibreWPF assemblies from the global packages folder at run time) and optionally 'buildsInLane'.",
+    "A lane definition holds 'timeoutMinutes', optionally 'needsNuGetCache' (the IDE host resolves its LibreWPF assemblies from the global packages folder at run time), 'needsGtk' for native GTK dependencies, and 'buildsInLane'.",
     "'additionalProjects' declares fixture projects needed by an enabled entry; optional platforms refer to the build platform, so Windows ARM64 prerequisites belong to windows-x64 when it supplies the shared archive.",
     "Profiler and Terminal are entries here; their own workflows (profiler.yml, terminal-cross-platform.yml) were deleted when they were folded in. Windows ARM64 and macOS ARM64 start as observed Terminal journeys and are promoted after repeated green runs."
   ],
@@ -82,6 +82,12 @@
       "timeoutMinutes": 45,
       "needsNuGetCache": true,
       "note": "Designer journeys start as observations; inspect each entry before promotion."
+    },
+    "integration-gtk": {
+      "timeoutMinutes": 45,
+      "needsNuGetCache": true,
+      "needsGtk": true,
+      "note": "GTK designer journeys need the native GTK 4 and libadwaita runtimes and GIR metadata."
     },
     "integration-hot-reload": {
       "timeoutMinutes": 30,
@@ -671,6 +677,32 @@
       ],
       "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
       "note": "Ten MewUI designer journeys passed locally on macOS ARM64 in 55 seconds. Each case restores a temporary fixture; building the fixture primes the NuGet cache."
+    },
+    {
+      "id": "gtk-designer-journeys",
+      "batch": 4,
+      "lane": "integration-gtk",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.GtkDesignerTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "additionalProjects": [{ "project": "tests/fixtures/GtkDesignerFixture/GtkDesignerFixture.csproj" }],
+      "platforms": { "macos-arm64": "observe" },
+      "note": "Twelve GTK host, native preview, editing, recovery and libadwaita journeys passed locally on macOS ARM64 in 66 seconds. Windows requires architecture-specific GTK setup, not yet configured."
+    },
+    {
+      "id": "gtk-designer-nested-journey",
+      "batch": 4,
+      "lane": "integration-gtk",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.GtkDesignerIntegrationTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "additionalProjects": [{ "project": "tests/fixtures/GtkFixture/GtkFixture.csproj" }],
+      "platforms": { "macos-arm64": "observe" },
+      "note": "Nested GTK selection, property editing, insertion, undo and save passed locally on macOS ARM64 in 20 seconds."
     },
     {
       "id": "debugger-journeys",

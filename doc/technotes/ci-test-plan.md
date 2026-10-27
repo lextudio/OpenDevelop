@@ -31,11 +31,17 @@ required per platform. Linux product tests remain out of scope for this rollout.
 * **Committed locally:** add the Add Reference journey on all three platforms. A macOS run initially exposed a
   DevFlow mutation lock held during the modal dialog; opening the selected project's dialog by a posted action fixes the
   deadlock, and the complete reference-addition test passed locally in 37 seconds. Hosted results are pending.
-* **In local validation:** add ten MewUI designer journeys to `integration-designer` on all three platforms. The initial
+* **Committed locally:** add ten MewUI designer journeys to `integration-designer` on all three platforms. The initial
   macOS run found two outdated tests using a DockPanel attached property on a StackPanel child; after correcting the
   fixture and checking both mismatched-owner rejection and unknown-property diagnostics, all ten passed in 55 seconds. The build includes
   MewUIGen and the fixture to populate the package cache needed when each test restores its temporary copy. Hosted
   results remain outstanding.
+* **In local validation:** add 13 GTK designer journeys to a separate macOS ARM64 observation lane. The local runs
+  passed all 12 native-rendering/editing cases in 68 seconds and the nested edit/save case in 19 seconds through the
+  CI runner script. The lane
+  installs Homebrew GTK 4 and libadwaita for the native runtime and GIR metadata; its fixture is built to prime NuGet.
+  Windows x64 and ARM64 require architecture-specific GTK runtime and metadata setup, which is not configured yet.
+  Hosted results and setup time remain unverified.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.
@@ -64,7 +70,8 @@ plan  ->  build (per platform)  ->  test (per platform x lane)
   `continue-on-error` so a fork PR's read-only token cannot fail a lane) and uploads them as an artifact: `xunit-exe`
   runs the compiled xUnit v3 assembly directly (`dotnet <dll> [args]`, so the integration classes are
   `-class <name> -parallel none`), `msbuild` runs the AddIn SDK assertion projects with `-t:Build`. Nothing is restored
-  or built there, so the NuGet feeds are not touched and no credential is present in test jobs.
+  or built there by the runner. Some integration journeys restore temporary fixture projects using the populated package
+  cache; those restores can consult configured feeds. The workflow does not write credentials into the workspace archive.
 * **in-place** runs only for the lane whose definition says `"buildsInLane": true` (today `unit`). It has its own
   checkout and submodules, restores the same package cache entry, compiles only that lane's entries
   (`build-binaries.ps1 -Lane <lane> -SkipHostBuilds`, so neither the host nor the RID rebuild happens) and runs them. It
@@ -72,7 +79,9 @@ plan  ->  build (per platform)  ->  test (per platform x lane)
   behind the compile-and-pack job. The build job leaves that lane's projects out (`-ArchiveLanesOnly`), so nothing is
   compiled twice.
 
-The package folder is one `actions/cache` entry keyed by `Directory.Packages.props`, `global.json` and `NuGet.config`.
+The package folder is one `actions/cache` entry keyed by `Directory.Packages.props`, `global.json`, `NuGet.config`,
+the test plan, fixture projects and the requested batch. Plan, fixture or batch changes must use a fresh key because GitHub caches are immutable:
+the build may restore new fixture packages that are absent from an older cache entry.
 The build job restores and saves it and publishes the key; a lane with `needsNuGetCache` restores that exact key with
 `fail-on-cache-miss: true`, because the IDE host is not self-contained - it resolves its LibreWPF assemblies from the
 global packages folder at run time, which the first integration lane run showed as a start-up `FileNotFoundException`
