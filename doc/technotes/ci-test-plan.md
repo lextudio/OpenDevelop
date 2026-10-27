@@ -28,9 +28,14 @@ required per platform. Linux product tests remain out of scope for this rollout.
   are observed; an all-failed lane still fails. These tests temporarily edit files under `src/Samples` and restore their
   original contents in cleanup. Run them serially in an isolated checkout or archive, not alongside other tests using
   those samples; interruption can leave a sample modified.
-* **In local validation:** add the Add Reference journey on all three platforms. A macOS run initially exposed a
+* **Committed locally:** add the Add Reference journey on all three platforms. A macOS run initially exposed a
   DevFlow mutation lock held during the modal dialog; opening the selected project's dialog by a posted action fixes the
   deadlock, and the complete reference-addition test passed locally in 37 seconds. Hosted results are pending.
+* **In local validation:** add ten MewUI designer journeys to `integration-designer` on all three platforms. The initial
+  macOS run found two outdated tests using a DockPanel attached property on a StackPanel child; after correcting the
+  fixture and checking both mismatched-owner rejection and unknown-property diagnostics, all ten passed in 55 seconds. The build includes
+  MewUIGen and the fixture to populate the package cache needed when each test restores its temporary copy. Hosted
+  results remain outstanding.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.

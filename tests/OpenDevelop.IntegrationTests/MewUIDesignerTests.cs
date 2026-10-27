@@ -297,7 +297,7 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		// The Properties pad binds each row by descriptor name. An authored Owner.Property
 		// attribute must still commit rather than be parsed as a property path and dropped.
 		var source = await File.ReadAllTextAsync(designerPath);
-		var attached = source.Replace("<Label Name=\"statusText\" Text=\"Ready\"/>", "<Label Name=\"statusText\" DockPanel.Dock=\"Top\" Text=\"Ready\"/>", StringComparison.Ordinal);
+		var attached = WithDockPanel(source).Replace("<Label Name=\"statusText\" Text=\"Ready\"/>", "<Label Name=\"statusText\" DockPanel.Dock=\"Top\" Text=\"Ready\"/>", StringComparison.Ordinal);
 		Assert.NotEqual(source, attached);
 		await File.WriteAllTextAsync(designerPath, attached);
 		var openedProject = await app.ReopenSolutionAsync(projectPath);
@@ -320,6 +320,7 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 	public async Task MewUIDesigner_RendersRealMewUIControlsWithLayoutBounds()
 	{
 		Assert.SkipUnless(OperatingSystem.IsMacOS() || OperatingSystem.IsWindows(), "The MewUI host only wires up the macOS and Windows render backends so far.");
+		await File.WriteAllTextAsync(designerPath, WithDockPanel(await File.ReadAllTextAsync(designerPath)));
 		var openedProject = await app.ReopenSolutionAsync(projectPath);
 		Assert.True(openedProject.GetProperty("success").GetBoolean(), openedProject.ToString());
 		var opened = await app.InvokeAsync("od.open-file", designerPath);
@@ -344,18 +345,28 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var diagnostics = status.GetProperty("diagnostics").EnumerateArray().Select(d => d.GetString()).ToArray();
 		Assert.DoesNotContain(diagnostics, d => d!.Contains("render failed") || d.Contains("Unknown MewUI control"));
 
-		// Attached properties are static Owner.SetX(Element, value) methods in MewUI, not instance
-		// properties: a known one applies silently, an unknown one is named in a diagnostic.
-		Assert.True((await app.InvokeAsync("od.mewui-designer.select", "heading")).GetProperty("success").GetBoolean());
+		// Attached placement belongs to an immediate parent of the matching type.
+		Assert.True((await app.InvokeAsync("od.mewui-designer.select", "statusText")).GetProperty("success").GetBoolean());
 		var docked = await app.InvokeAsync("od.mewui-designer.set-property", "DockPanel.Dock", "Top");
 		Assert.True(docked.GetProperty("success").GetBoolean(), docked.ToString());
-		var bogus = await app.InvokeAsync("od.mewui-designer.set-property", "Grid.Bogus", "1");
+		var mismatch = await Assert.ThrowsAsync<InvalidOperationException>(() => app.InvokeAsync("od.mewui-designer.set-property", "Grid.Bogus", "1"));
+		Assert.Contains("MewUI property mutation was rejected", mismatch.Message, StringComparison.Ordinal);
+		var bogus = await app.InvokeAsync("od.mewui-designer.set-property", "DockPanel.Bogus", "1");
 		Assert.True(bogus.GetProperty("success").GetBoolean(), bogus.ToString());
 		status = await app.InvokeAsync("od.mewui-designer.status");
 		diagnostics = status.GetProperty("diagnostics").EnumerateArray().Select(d => d.GetString()).ToArray();
 		Assert.DoesNotContain(diagnostics, d => d!.Contains("DockPanel.Dock"));
-		Assert.Contains(diagnostics, d => d!.Contains("Grid.Bogus"));
+		Assert.Contains(diagnostics, d => d!.Contains("DockPanel.Bogus"));
 		Assert.True(status.GetProperty("hasNativeFrame").GetBoolean(), status.ToString());
+	}
+
+	static string WithDockPanel(string source)
+	{
+		const string original = "<StackPanel Name=\"statusBar\">\n      <Label Name=\"statusText\" Text=\"Ready\"/>\n    </StackPanel>";
+		const string replacement = "<DockPanel Name=\"statusBar\">\n      <Label Name=\"statusText\" Text=\"Ready\"/>\n    </DockPanel>";
+		var normalized = source.Replace("\r\n", "\n", StringComparison.Ordinal);
+		Assert.Contains(original, normalized, StringComparison.Ordinal);
+		return normalized.Replace(original, replacement, StringComparison.Ordinal);
 	}
 
 	[Fact]
