@@ -78,10 +78,15 @@
       "allowAllFailures": true,
       "note": "Coverage journeys begin as observations; inspect each entry before promotion."
     },
-    "integration-designer": {
+    "integration-librewpf-designer": {
+      "timeoutMinutes": 60,
+      "needsNuGetCache": true,
+      "note": "LibreWPF designer journeys; they edit src/Samples/LibreWpfSample and must run serially. On run 40444468212 the Windows job spent ~15 minutes preparing and 24-28 minutes in the 30 editing journeys, so it shares no lane with other designers."
+    },
+    "integration-mewui-winforms-designer": {
       "timeoutMinutes": 45,
       "needsNuGetCache": true,
-      "note": "Designer journeys start as observations; inspect each entry before promotion."
+      "note": "MewUI and LibreWinForms designer journeys; inspect each entry before promotion."
     },
     "integration-gtk": {
       "timeoutMinutes": 45,
@@ -626,7 +631,7 @@
     {
       "id": "librewpf-designer-editing",
       "batch": 4,
-      "lane": "integration-designer",
+      "lane": "integration-librewpf-designer",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -639,7 +644,7 @@
     {
       "id": "librewinforms-designer-editor",
       "batch": 4,
-      "lane": "integration-designer",
+      "lane": "integration-mewui-winforms-designer",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -652,7 +657,7 @@
     {
       "id": "librewpf-designer-property-editors",
       "batch": 4,
-      "lane": "integration-designer",
+      "lane": "integration-librewpf-designer",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -665,7 +670,7 @@
     {
       "id": "mewui-designer-journeys",
       "batch": 4,
-      "lane": "integration-designer",
+      "lane": "integration-mewui-winforms-designer",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",

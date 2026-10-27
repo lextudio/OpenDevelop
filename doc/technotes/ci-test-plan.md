@@ -20,10 +20,11 @@ required per platform. Linux product tests remain out of scope for this rollout.
 * **Committed locally:** run the whole Profiler integration class on all three platforms instead of
   only its isolation case. On macOS ARM64 it passed 21 journeys and skipped its Windows-only WPF journey in 107 seconds.
   Its web, test, profiler and Windows WPF fixtures must be built into the shared archives. Hosted results are pending.
-* **Committed locally:** the `integration-designer` lane observes 30 LibreWPF editing journeys and the LibreWinForms
+* **Committed locally:** the designer lanes observe 30 LibreWPF editing journeys and the LibreWinForms
   image-list journey on all three platforms, plus the LibreWPF property-editor journey on macOS. The two latter cases
   passed locally as part of a three-case class with one Windows-only skip in 45 seconds. The 30-case LibreWPF suite
-  passed locally on macOS ARM64 in 217 seconds. Windows hosted execution has not yet been validated. The property-editor
+  passed locally on macOS ARM64 in 217 seconds. On Windows they ran on run 40444468212 (29/30 on x64, about 28
+  minutes on ARM64), slow enough to need their own lane. The property-editor
   method selects Microsoft WPF on Windows, so it is not enabled there until its host is available. Individual failures
   are observed; an all-failed lane still fails. These tests temporarily edit files under `src/Samples` and restore their
   original contents in cleanup. Run them serially in an isolated checkout or archive, not alongside other tests using
@@ -31,7 +32,7 @@ required per platform. Linux product tests remain out of scope for this rollout.
 * **Committed locally:** add the Add Reference journey on all three platforms. A macOS run initially exposed a
   DevFlow mutation lock held during the modal dialog; opening the selected project's dialog by a posted action fixes the
   deadlock, and the complete reference-addition test passed locally in 37 seconds. Hosted results are pending.
-* **Committed locally:** add ten MewUI designer journeys to `integration-designer` on all three platforms. The initial
+* **Committed locally:** add ten MewUI designer journeys on all three platforms (now in `integration-mewui-winforms-designer`). The initial
   macOS run found two outdated tests using a DockPanel attached property on a StackPanel child; after correcting the
   fixture and checking both mismatched-owner rejection and unknown-property diagnostics, all ten passed in 55 seconds. The build includes
   MewUIGen and the fixture to populate the package cache needed when each test restores its temporary copy. Hosted
@@ -44,6 +45,42 @@ required per platform. Linux product tests remain out of scope for this rollout.
   checks the GTK DLL architecture before launch. Hosted results and setup time remain unverified on all platforms.
   [MSYS2's setup action](https://github.com/msys2/setup-msys2) supports both environments; its
   [ARM64 libadwaita package](https://packages.msys2.org/packages/mingw-w64-clang-aarch64-libadwaita) depends on GTK 4.
+* **First hosted run (master `69bd9a4a50`, run 40429072140) failed before any new lane ran.** Both Build jobs stopped in
+  `verify-terminal-assets.ps1`: the approved LibGhostty.Net 1.0.2 sha512 was stale, because the lextudio GitHub Packages
+  payload changed (it, the local cache and the local feed agree; nuget.org's same-version package differs, and
+  `NuGet.config` source mapping keeps LibGhostty.Net off nuget.org). It surfaced only now because the plan edit changed the
+  NuGet cache key and the old cache held the previous package. Re-record the approved hash whenever the fork republishes
+  1.0.2. The same run showed the four `PortableTextCompatibilityTests` cases failing on Windows with "The calling thread
+  must be STA" (xUnit v3 theories run on the MTA pool); the test body now runs on an STA thread on Windows. Both fixes are
+  in `757a9803fe`.
+* **Second hosted run (`757a9803fe`, run 40431285339) is the first with every new lane.** Two Build/setup failures were
+  transient and passed on re-run: GitVersion's `Global\gitversion...` named mutex on macOS (first time in ~14 macOS
+  builds) and `setup-dotnet` crashing with 0xC0000005 on Windows ARM64. Results by platform:
+  * **Windows (x64 and ARM64): every integration entry failed in ~10 s**, because the IDE exited during start-up with
+    `PlatformNotSupportedException: Portable media requires a registered portable window host`. The cause was
+    `PortableTextCompatibility.Initialize` (from `f087230955`) selecting LibreWPF's portable media backend
+    unconditionally; on Windows the SDK bootstrap keeps Windows MIL and registers no portable window host. Fixed in
+    `980e1b6a7c`; Windows results are still to be read. The lanes looked green only because of `allowAllFailures`.
+  * **macOS ARM64: most entries pass, and a failed entry is usually one or two cases out of many** (an entry fails if any
+    case fails; LibreWPF editing lost 1 of 30). Remaining cases: real pointer input not delivered on the hosted runner
+    (Terminal pad 3, MewUI and GTK drag-drop, LibreWPF Ctrl-click, one debugger case); the new-project dialog (3,
+    `KeyNotFoundException: 'net10.0'`, the runner's SDK set differs); 17 debugger cases where debugging starts but no
+    breakpoint is hit; and two designer property round trips. `vseditorcompat-tests-arm` passed 141/141 but exited 1:
+    34 `[UIFact]` dispatchers each made `WeakEventTable` wait 300 ms at exit, past the xUnit v3 runner's 11 s limit;
+    fixed in `a57cd78dd7` with the WPF compat switch.
+  * Windows ARM64 `base-tests-arm`: two hot-reload end-to-end cases fail (WinUI ARM64 and WPF); they pass on x64.
+  * Entries that passed on macOS in this run (candidates once repeated): all five workbench classes, solution folder,
+    project options, T4, Task List, project reload, Razor, Add Reference, fixture isolation, Profiler journeys, WPF
+    designer assembly lock, code coverage, GTK nested edit, LibreWinForms editor, and the Base, XamlDom and Profiler units.
+* **Third hosted run (`980e1b6a7c`, run 40444468212): Windows integration runs for real.** Windows x64 passed all five
+  workbench classes and 11/11 `integration-core` entries; Windows ARM64 passed the workbench and 9/10 core entries;
+  code coverage passed everywhere; the debugger classes passed 14/14 twice on Windows x64 and lost one case each on
+  Windows ARM64. `vseditorcompat-tests-arm` now exits in a second. Five jobs hit their timeout (shown as cancelled):
+  both Windows designer jobs (still running correct but slow journeys), and macOS core, GTK and hot reload (macOS hot
+  reload for the second run in a row; macOS core took about 7 minutes of tests in the previous run, so something hung;
+  cancelled jobs keep no log). The breakpoint failures are macOS only. `integration-designer` was therefore split:
+  `integration-librewpf-designer` (60 minutes) holds the two LibreWPF entries, and
+  `integration-mewui-winforms-designer` (45 minutes) holds MewUI and LibreWinForms.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.
@@ -211,36 +248,25 @@ Measured on the first runs (windows-2025): the integration project build takes a
 projects about two more; the numbers for the archive (size, pack, upload, download, unpack) come from the next run's job
 summaries and belong in this section once known.
 
-## Open issue: the integration lane does not start the IDE on the runner
+## The IDE did not start on the Windows runner
 
-An earlier Windows run had all ten then-existing `integration-core` entries fail in `OpenDevelopAppFixture.InitializeAsync`:
-the IDE exited during start-up with
-`FileNotFoundException: Could not load file or assembly 'PresentationFramework, Version=11.0.0.0'`
-(`ProGpuWpfSdkPortableBootstrap.Initialize`, the module initializer the LibreWPF SDK compiles into each project). Launching
-`dotnet OpenDevelop.dll` by hand on the runner reproduces it (the temporary `diagnose-host.ps1` step), so it is the host
-folder, not the test fixture or the lane.
+Two defects stopped the IDE during start-up on Windows, one after the other.
 
-What was measured, and so ruled out:
+* `FileNotFoundException: Could not load file or assembly 'PresentationFramework, Version=11.0.0.0'`. The file was in the
+  host folder, but the Windows `deps.json` registered the LibreWPF assemblies only inside the `LibreWPF.Transport` package
+  entry. `.github/ci/patch-host-deps.ps1` now adds app-local entries for them (24 assemblies in run 40431285339), and the
+  host gets past assembly loading. Delete that script once an SDK produces the entries itself and it reports "nothing to do".
+* `PlatformNotSupportedException: Portable media requires a registered portable window host; Windows MIL window creation
+  is not permitted`, from `Window.Show`. The SDK bootstrap compiled into `OpenDevelop.dll` (`ManagedPortable` renderer
+  mode) registers the portable window host only off Windows and leaves Windows on Windows MIL, but
+  `PortableTextCompatibility.Initialize` selected the portable media backend unconditionally. The message comes only from
+  "no host registered and backend is Portable"; a registered host that fails to activate throws a different
+  `InvalidOperationException`. Fixed in `980e1b6a7c` by leaving a non-portable backend alone; run 40444468212
+  confirmed it (the IDE starts on both Windows architectures). Remove `allowAllFailures` from a Windows lane once its
+  entries have been stable for several runs, as for any other promotion.
 
-* The file is there: `PresentationFramework.dll`, assembly identity 11.0.0.0, same as on a developer machine.
-* The NuGet package cache is not the missing piece: restoring it in the test job left the error unchanged.
-* The .NET host's own trace (`COREHOST_TRACE`) shows `PresentationFramework.dll` resolved from the host folder and present in
-  `TRUSTED_PLATFORM_ASSEMBLIES`. So the failure is not "not registered" and not "wrong path": the runtime has the path and
-  still fails to load the file.
-* Build order alone does not matter: the host's `OpenDevelop.deps.json` is 166 libraries without a `PresentationFramework/11.0.0.0`
-  entry from the very first host build on the runner, and stays that way whatever is built afterwards in the default way (the
-  build summary records it after every build). An earlier theory (add-ins that reference the host project rebuild it with other
-  properties and rewrite `deps.json`) was wrong.
-
-What does differ from a developer (macOS) build: 193 libraries with 28 `reference` entries for the LibreWPF assemblies
-(`PresentationCore`, `PresentationFramework`, `WindowsBase`, `System.Xaml`, ...); the Windows build registers them only inside the
-`LibreWPF.Transport` package entry. The Terminal workflow starts the IDE on Windows, with a differently built host (the integration
-project is built there with `BuildIntegrationRuntimeProjects=false`).
-
-Next, two things at once. The plan's `buildLast` now builds the host a last time with `--runtime win-x64
--p:AppendRuntimeIdentifierToOutputPath=false`, the recipe the Terminal workflow's passing Windows lane gets by building the Terminal
-add-in that way (the add-in references the host project, so the host is built as that RID into the same folder); the build summary
-shows what that does to the host `deps.json`. And the `Diagnose the IDE host start-up` step (temporary) loads `WindowsBase`,
-`PresentationCore` and `PresentationFramework` by path with `dotnet fsi` (its own `WindowsBase` facade makes the type-load errors
-noisy; read the `LoadFrom` line first) and launches the host once more with `DOTNET_ReadyToRun=0`. Replace this section with the
-answer when it is known.
+How the second one was found, for the next host-start problem: search the built host folder's DLL metadata for the API
+that changes the state (`SelectMediaBackend`, `ProGpuWpfNativeMediaServices`), decompile the SDK bootstrap actually
+compiled into `OpenDevelop.dll` with `ilspycmd`, and compare with the LibreWPF package versions in use rather than with the
+`../openavalon` working tree. The `diagnose-host.ps1` step runs only for a `workflow_dispatch` with `diagnose`, and it
+inspects assembly resolution (`COREHOST_TRACE`, trusted platform assemblies), not media or windowing state.
