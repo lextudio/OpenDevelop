@@ -17,6 +17,14 @@ internal static class PortableTextCompatibility
             if (initialized)
                 return;
 
+            // Only the portable media backend uses the portable formatter. On Windows the SDK
+            // bootstrap keeps Windows MIL and registers no portable window host, so selecting
+            // portable media here would make every Window.Show throw PlatformNotSupportedException.
+            if (PortableWpfRuntime.ConfiguredMediaBackend != PortableWpfMediaBackend.Portable) {
+                initialized = true;
+                return;
+            }
+
             ProGpuWpfNativeMediaServices.Initialize();
             if (!PortableWpfServiceRegistry.TryGetTextFormatting(out var formatter)
                 || formatter is not IPortableDisplayTextFormatting) {
