@@ -253,8 +253,9 @@ Layout, so a change goes in the right place:
   the folder ends up without `PresentationFramework.dll`. Measured on the runner: 193 DLLs present after the first build,
   173 and missing after a rebuild.
 - A lane can declare `allowAllFailures` in its plan definition: every entry still reports (warnings, summary table) but an
-  all-failed lane stays green. Only `integration-core` uses it, for the defect below; remove the flag when the fix lands
-  instead of leaving it as a permanent escape hatch.
+  all-failed lane stays green. `integration-stable` and `integration-unstable` use it during observe-first rollout; drop
+  it from `integration-stable` once its entries stay green instead of leaving it as a permanent escape hatch. Lane jobs
+  are grouped by reliability to share the 11-15 minute archive preparation (see `doc/technotes/ci-test-plan.md`, "Lanes").
 - **Bitness.** The Windows distribution is one payload for x64 and ARM64 (`dist.windows.bat`: `runtimes/` plus per-RID
   `win-x64`/`win-arm64` folders and both launchers), and macOS is osx-arm64 only (`dist.macos.sh`). CI follows that: a
   platform may name `buildFrom` so both Windows lanes consume one build, planned builds may not pass `--runtime`
@@ -266,11 +267,12 @@ Layout, so a change goes in the right place:
   resolve it from the host directory (the shape the shipped Windows payload uses). It **detects first**: when every
   transport assembly already resolves - what a fixed SDK will produce - it writes nothing and says so, so it is safe to
   leave in place across LibreWPF upgrades. Delete it once a CI run reports "nothing to do" for the SDK in use.
-- Known open defect (2026-10-25): the IDE host still fails to start on the Windows runner with
-  `FileNotFoundException: PresentationFramework, Version=11.0.0.0`. The file is in the folder and loads by path, but the
-  deps manifest records it as a package-relative asset (`lib/net10.0/PresentationFramework.dll`) and the build produces no
-  `runtimeconfig.dev.json`, so the host's `TRUSTED_PLATFORM_ASSEMBLIES` has no `PresentationFramework` and a 10.x
-  `WindowsBase`. macOS is unaffected. Investigate probing paths or a deps `reference` layout before changing the lane.
+- The IDE host starts on the Windows runners since run 40444468212. It had failed twice over: first with
+  `FileNotFoundException: PresentationFramework, Version=11.0.0.0` (handled by `patch-host-deps.ps1`), then with
+  `PlatformNotSupportedException: Portable media requires a registered portable window host`, because
+  `PortableTextCompatibility` selected LibreWPF's portable media backend on Windows, where the SDK bootstrap keeps Windows
+  MIL and registers no portable window host (fixed in `980e1b6a7c`). Startup code must not select the portable backend
+  unless it is already configured.
 
 ### Releases
 

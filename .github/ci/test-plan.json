@@ -49,56 +49,26 @@
       "timeoutMinutes": 30,
       "buildsInLane": true
     },
-    "unit-cross-platform": {
-      "timeoutMinutes": 30,
-      "needsNuGetCache": true,
-      "note": "New macOS and Windows ARM64 unit coverage begins as observations."
-    },
-    "integration-core": {
-      "timeoutMinutes": 45,
+    "integration-stable": {
+      "timeoutMinutes": 55,
+      "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
       "allowAllFailures": true,
-      "note": "Kept green while every entry fails for one known host defect, so the lane's failures are warnings instead of a red master; remove 'allowAllFailures' and promote the entries when the host starts."
+      "note": "Entries that passed on every hosted run in which the IDE started (runs 40431285339, 40444468212): workbench, the stable core journeys, code coverage and the ARM64 unit suites, sharing one preparation. Windows x64 measured about 28 minutes of tests plus ~15 minutes of preparation. Promote entries here first; drop allowAllFailures once they stay green."
     },
-    "integration-workbench": {
+    "integration-unstable": {
       "timeoutMinutes": 45,
+      "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
       "allowAllFailures": true,
-      "note": "All entries start as observations, including an all-failed run; inspect the per-entry summary. The earlier Windows integration lane could not start its IDE host (PresentationFramework 11.0.0.0); see AGENTS.md. Remove this exception when promoting stable entries."
+      "note": "Entries with known hosted failures or under investigation: macOS debugger breakpoints, macOS Terminal pointer input, the macOS new-project dialog, Windows ARM64 hot-reload end-to-end cases in base-tests-arm, and WPF Hot Reload (timed out twice on macOS). Plan order runs Hot Reload last so a hang there does not hide the others."
     },
-    "integration-debugger": {
-      "timeoutMinutes": 45,
-      "needsNuGetCache": true,
-      "allowAllFailures": true,
-      "note": "Debugger journeys begin as observations; inspect each entry before promotion."
-    },
-    "integration-coverage": {
-      "timeoutMinutes": 30,
-      "needsNuGetCache": true,
-      "allowAllFailures": true,
-      "note": "Coverage journeys begin as observations; inspect each entry before promotion."
-    },
-    "integration-librewpf-designer": {
-      "timeoutMinutes": 60,
-      "needsNuGetCache": true,
-      "note": "LibreWPF designer journeys; they edit src/Samples/LibreWpfSample and must run serially. On run 40444468212 the Windows job spent ~15 minutes preparing and 24-28 minutes in the 30 editing journeys, so it shares no lane with other designers."
-    },
-    "integration-mewui-winforms-designer": {
-      "timeoutMinutes": 45,
-      "needsNuGetCache": true,
-      "note": "MewUI and LibreWinForms designer journeys; inspect each entry before promotion."
-    },
-    "integration-gtk": {
-      "timeoutMinutes": 45,
+    "integration-designer": {
+      "timeoutMinutes": 80,
+      "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
       "needsGtk": true,
-      "note": "GTK designer journeys need the native GTK 4 and libadwaita runtimes and GIR metadata."
-    },
-    "integration-hot-reload": {
-      "timeoutMinutes": 30,
-      "needsNuGetCache": true,
-      "allowAllFailures": true,
-      "note": "The single Hot Reload entry starts in observe mode; do not fail the lane solely because that observed entry fails."
+      "note": "All designer journeys (LibreWPF, LibreWinForms, MewUI, GTK) in one job. Entries in a lane run serially, so the LibreWPF journeys that edit src/Samples still never share the sample with a concurrent test. Windows: ~15 minutes preparation, 3.5 minutes GTK install, 24-28 minutes of LibreWPF editing."
     }
   },
   "buildFirst": [
@@ -214,7 +184,7 @@
     {
       "id": "base-tests-arm",
       "batch": 4,
-      "lane": "unit-cross-platform",
+      "lane": "integration-unstable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.Base.Tests/OpenDevelop.Base.Tests.csproj",
       "target": "tests/OpenDevelop.Base.Tests/bin/Debug/net10.0-windows/OpenDevelop.Base.Tests.dll",
@@ -224,7 +194,7 @@
     {
       "id": "vseditorcompat-tests-arm",
       "batch": 4,
-      "lane": "unit-cross-platform",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.VSEditorCompat.Tests/OpenDevelop.VSEditorCompat.Tests.csproj",
       "target": "tests/OpenDevelop.VSEditorCompat.Tests/bin/Debug/net10.0-windows/OpenDevelop.VSEditorCompat.Tests.dll",
@@ -234,7 +204,7 @@
     {
       "id": "xamldom-tests-librewpf-arm",
       "batch": 4,
-      "lane": "unit-cross-platform",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.XamlDom.Tests.LibreWPF/OpenDevelop.XamlDom.Tests.LibreWPF.csproj",
       "target": "tests/OpenDevelop.XamlDom.Tests.LibreWPF/bin/Debug/net10.0-windows/OpenDevelop.XamlDom.Tests.LibreWPF.dll",
@@ -244,7 +214,7 @@
     {
       "id": "profiler-tests-arm",
       "batch": 4,
-      "lane": "unit-cross-platform",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.Profiler.Tests/OpenDevelop.Profiler.Tests.csproj",
       "target": "tests/OpenDevelop.Profiler.Tests/bin/Debug/net10.0/OpenDevelop.Profiler.Tests.dll",
@@ -254,7 +224,7 @@
     {
       "id": "devflow-tests",
       "batch": 3,
-      "lane": "integration-workbench",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -277,7 +247,8 @@
     {
       "id": "workbench-tests",
       "batch": 3,
-      "lane": "integration-workbench",
+      "lane": "integration-stable",
+      "timeoutMinutes": 8,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -300,7 +271,7 @@
     {
       "id": "stop-after-first-failure-build-tests",
       "batch": 3,
-      "lane": "integration-workbench",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -323,7 +294,7 @@
     {
       "id": "solution-folder-tests",
       "batch": 3,
-      "lane": "integration-core",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -346,7 +317,7 @@
     {
       "id": "project-options-tests",
       "batch": 3,
-      "lane": "integration-core",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -369,7 +340,7 @@
     {
       "id": "t4-tests",
       "batch": 3,
-      "lane": "integration-core",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -392,7 +363,7 @@
     {
       "id": "task-list-pad-tests",
       "batch": 3,
-      "lane": "integration-core",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -415,7 +386,7 @@
     {
       "id": "vseditor-view-tests",
       "batch": 3,
-      "lane": "integration-workbench",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -438,7 +409,7 @@
     {
       "id": "one-process-build-tests",
       "batch": 3,
-      "lane": "integration-workbench",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -461,7 +432,7 @@
     {
       "id": "project-reload-tests",
       "batch": 3,
-      "lane": "integration-core",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -496,7 +467,7 @@
     {
       "id": "terminal-integration",
       "batch": 3,
-      "lane": "integration-core",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "platforms": {
@@ -519,7 +490,7 @@
     {
       "id": "terminal-macos-integration",
       "batch": 3,
-      "lane": "integration-core",
+      "lane": "integration-unstable",
       "kind": "xunit-exe",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "platforms": {
@@ -541,7 +512,7 @@
     {
       "id": "razor-highlighting-integration",
       "batch": 4,
-      "lane": "integration-core",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "platforms": {
@@ -564,7 +535,7 @@
     {
       "id": "new-project-dialog-macos",
       "batch": 4,
-      "lane": "integration-core",
+      "lane": "integration-unstable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -576,7 +547,7 @@
     {
       "id": "new-project-dialog-windows",
       "batch": 4,
-      "lane": "integration-core",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -588,7 +559,7 @@
     {
       "id": "add-reference-journey",
       "batch": 4,
-      "lane": "integration-core",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -600,7 +571,7 @@
     {
       "id": "integration-fixture-isolation",
       "batch": 4,
-      "lane": "integration-core",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -612,7 +583,8 @@
     {
       "id": "profiler-journeys",
       "batch": 4,
-      "lane": "integration-core",
+      "lane": "integration-stable",
+      "timeoutMinutes": 10,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -631,7 +603,8 @@
     {
       "id": "librewpf-designer-editing",
       "batch": 4,
-      "lane": "integration-librewpf-designer",
+      "lane": "integration-designer",
+      "timeoutMinutes": 35,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -644,7 +617,7 @@
     {
       "id": "librewinforms-designer-editor",
       "batch": 4,
-      "lane": "integration-mewui-winforms-designer",
+      "lane": "integration-designer",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -657,7 +630,7 @@
     {
       "id": "librewpf-designer-property-editors",
       "batch": 4,
-      "lane": "integration-librewpf-designer",
+      "lane": "integration-designer",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -670,7 +643,8 @@
     {
       "id": "mewui-designer-journeys",
       "batch": 4,
-      "lane": "integration-mewui-winforms-designer",
+      "lane": "integration-designer",
+      "timeoutMinutes": 10,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -686,7 +660,8 @@
     {
       "id": "gtk-designer-journeys",
       "batch": 4,
-      "lane": "integration-gtk",
+      "lane": "integration-designer",
+      "timeoutMinutes": 12,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -699,7 +674,7 @@
     {
       "id": "gtk-designer-nested-journey",
       "batch": 4,
-      "lane": "integration-gtk",
+      "lane": "integration-designer",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -712,7 +687,8 @@
     {
       "id": "debugger-journeys",
       "batch": 4,
-      "lane": "integration-debugger",
+      "lane": "integration-unstable",
+      "timeoutMinutes": 10,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -725,7 +701,8 @@
     {
       "id": "debugger-feature-journeys",
       "batch": 4,
-      "lane": "integration-debugger",
+      "lane": "integration-unstable",
+      "timeoutMinutes": 12,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -741,7 +718,7 @@
     {
       "id": "code-coverage-journeys",
       "batch": 4,
-      "lane": "integration-coverage",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -757,7 +734,8 @@
     {
       "id": "wpf-hot-reload-journeys",
       "batch": 4,
-      "lane": "integration-hot-reload",
+      "lane": "integration-unstable",
+      "timeoutMinutes": 8,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
@@ -774,7 +752,7 @@
     {
       "id": "wpf-designer-assembly-lock-integration",
       "batch": 4,
-      "lane": "integration-core",
+      "lane": "integration-stable",
       "kind": "xunit-exe",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "platforms": {

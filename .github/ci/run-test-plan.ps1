@@ -52,9 +52,70 @@ function Get-TestTotal($entry, [string[]]$output) {
     return [int]$matches[$matches.Count - 1].Groups[1].Value
 }
 
+# An entry's budget: its own timeoutMinutes, else the lane's entryTimeoutMinutes, else none (0).
+function Get-EntryTimeoutSeconds($entry, $laneDefinition) {
+    if ($entry.PSObject.Properties['timeoutMinutes']) { return [int]([double]$entry.timeoutMinutes * 60) }
+    if ($laneDefinition -and $laneDefinition.PSObject.Properties['entryTimeoutMinutes']) { return [int]([double]$laneDefinition.entryTimeoutMinutes * 60) }
+    return 0
+}
+
+# Prints complete lines appended to a log file since the last call; keeps a trailing partial line for the next call.
+function Read-NewLines($state, [System.Collections.Generic.List[string]]$lines, [switch]$Final) {
+    $state.Text += $state.Reader.ReadToEnd()
+    $parts = $state.Text -split "`r?`n"
+    $complete = if ($Final) { $parts.Count } else { $parts.Count - 1 }
+    for ($i = 0; $i -lt $complete; $i++) {
+        if ($Final -and $i -eq $parts.Count - 1 -and $parts[$i] -eq '') { break }
+        Write-Host $parts[$i]
+        $lines.Add($parts[$i])
+    }
+    $state.Text = if ($Final) { '' } else { $parts[$parts.Count - 1] }
+}
+
+# Runs 'dotnet <arguments>' printing its output as it arrives and, past the budget, kills the whole process tree (the
+# fixture's IDE included). '& dotnet' printed nothing until exit, so a hang ended in a lane timeout that cancelled the job
+# and lost every result; this way a hung entry costs only its budget and the next entry still runs. .NET copies the two
+# streams to files itself (no PowerShell callback runs off the pipeline thread), and this loop tails them.
+function Invoke-Entry([string[]]$arguments, [int]$timeoutSeconds, [string]$logBase) {
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new('dotnet')
+    foreach ($argument in $arguments) { $startInfo.ArgumentList.Add($argument) }
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $process = [System.Diagnostics.Process]::Start($startInfo)
+    $sinks = @(); $copies = @(); $states = @()
+    foreach ($pair in @(@($process.StandardOutput, "$logBase.out.log"), @($process.StandardError, "$logBase.err.log"))) {
+        $sink = [System.IO.FileStream]::new($pair[1], 'Create', 'Write', 'ReadWrite')
+        $sinks += $sink
+        $copies += $pair[0].BaseStream.CopyToAsync($sink)
+        $states += [pscustomobject]@{ Reader = [System.IO.StreamReader]::new([System.IO.FileStream]::new($pair[1], 'Open', 'Read', 'ReadWrite')); Text = '' }
+    }
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $deadline = if ($timeoutSeconds -gt 0) { [DateTime]::UtcNow.AddSeconds($timeoutSeconds) } else { [DateTime]::MaxValue }
+    $timedOut = $false
+    while (-not $process.WaitForExit(2000)) {
+        foreach ($sink in $sinks) { $sink.Flush() }
+        foreach ($state in $states) { Read-NewLines $state $lines }
+        if ([DateTime]::UtcNow -gt $deadline) {
+            $timedOut = $true
+            Write-Host "::warning::Budget of ${timeoutSeconds}s exceeded; killing the process tree."
+            try { $process.Kill($true) } catch { Write-Host "Kill failed: $($_.Exception.Message)" }
+            $null = $process.WaitForExit(30000)
+            break
+        }
+    }
+    $null = [System.Threading.Tasks.Task]::WaitAll([System.Threading.Tasks.Task[]]$copies, 30000)
+    foreach ($sink in $sinks) { $sink.Flush(); $sink.Dispose() }
+    foreach ($state in $states) { Read-NewLines $state $lines -Final; $state.Reader.Dispose() }
+    $exitCode = if ($timedOut -or -not $process.HasExited) { -1 } else { $process.ExitCode }
+    return [pscustomobject]@{ ExitCode = $exitCode; TimedOut = $timedOut; Output = $lines.ToArray() }
+}
+
 # xUnit v3 writes a TRX per assembly with '-trx <file>'; the workflow uploads the folder and renders it as a check.
 $resultsDirectory = if ($env:OD_TEST_RESULTS) { $env:OD_TEST_RESULTS } else { 'TestResults' }
 New-Item -ItemType Directory -Force -Path $resultsDirectory | Out-Null
+$laneDefinition = $plan.lanes.PSObject.Properties[$Lane]
+$laneDefinition = if ($laneDefinition) { $laneDefinition.Value } else { $null }
 
 $selected = @($plan.entries | Where-Object {
     $_.batch -le $ThroughBatch -and $_.lane -eq $Lane -and (Get-Status $_ $Platform) -in @('observe', 'required')
@@ -75,19 +136,27 @@ foreach ($entry in $selected) {
         $results += [pscustomobject]@{ Id = $entry.id; Status = $status; Outcome = 'failed'; Seconds = 0; Tests = 0; Planned = $entry.measuredSeconds; Note = 'assembly missing' }
         continue
     }
-    Write-Host "::group::$($entry.id) [$status] dotnet $($arguments -join ' ')"
+    $timeoutSeconds = Get-EntryTimeoutSeconds $entry $laneDefinition
+    $budget = if ($timeoutSeconds -gt 0) { " (budget ${timeoutSeconds}s)" } else { '' }
+    Write-Host "::group::$($entry.id) [$status]$budget dotnet $($arguments -join ' ')"
     $watch = [System.Diagnostics.Stopwatch]::StartNew()
-    $output = & dotnet @arguments 2>&1
-    $exit = $LASTEXITCODE
+    $run = Invoke-Entry $arguments $timeoutSeconds (Join-Path $resultsDirectory $entry.id)
+    $exit = $run.ExitCode
+    $output = $run.Output
     $watch.Stop()
-    $output | Out-Host
     Write-Host '::endgroup::'
 
     $seconds = [int][math]::Round($watch.Elapsed.TotalSeconds)
     $tests = Get-TestTotal $entry $output
     $note = ''
     $outcome = if ($exit -eq 0) { 'passed' } else { 'failed' }
-    if ($exit -eq 0 -and $entry.kind -eq 'xunit-exe' -and $tests -le 0) {
+    if ($run.TimedOut) {
+        $outcome = 'timeout'
+        $note = "killed after ${timeoutSeconds}s"
+        $level = if ($status -eq 'required') { 'error' } else { 'warning' }
+        Write-Host "::$($level) title=$($entry.id) (${status})::exceeded its ${timeoutSeconds}s budget and was killed; its output up to then is above and in $($entry.id).out.log."
+    }
+    elseif ($exit -eq 0 -and $entry.kind -eq 'xunit-exe' -and $tests -le 0) {
         $outcome = 'failed'
         $note = if ($tests -lt 0) { 'no test total' } else { '0 tests' }
         $level = if ($status -eq 'required') { 'error' } else { 'warning' }
@@ -109,7 +178,7 @@ foreach ($r in $results) { $lines += "| $($r.Id) | $($r.Status) | $($r.Outcome) 
 $lines | ForEach-Object { Write-Host $_ }
 if ($env:GITHUB_STEP_SUMMARY) { $lines | Add-Content -Path $env:GITHUB_STEP_SUMMARY }
 
-$requiredFailures = @($results | Where-Object { $_.Status -eq 'required' -and $_.Outcome -eq 'failed' })
+$requiredFailures = @($results | Where-Object { $_.Status -eq 'required' -and $_.Outcome -ne 'passed' })
 if ($requiredFailures.Count -gt 0) {
     Write-Host "Required entries failed: $(($requiredFailures | ForEach-Object { $_.Id }) -join ', ')"
     exit 1

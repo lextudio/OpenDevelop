@@ -32,7 +32,7 @@ required per platform. Linux product tests remain out of scope for this rollout.
 * **Committed locally:** add the Add Reference journey on all three platforms. A macOS run initially exposed a
   DevFlow mutation lock held during the modal dialog; opening the selected project's dialog by a posted action fixes the
   deadlock, and the complete reference-addition test passed locally in 37 seconds. Hosted results are pending.
-* **Committed locally:** add ten MewUI designer journeys on all three platforms (now in `integration-mewui-winforms-designer`). The initial
+* **Committed locally:** add ten MewUI designer journeys on all three platforms (now in `integration-designer`). The initial
   macOS run found two outdated tests using a DockPanel attached property on a StackPanel child; after correcting the
   fixture and checking both mismatched-owner rejection and unknown-property diagnostics, all ten passed in 55 seconds. The build includes
   MewUIGen and the fixture to populate the package cache needed when each test restores its temporary copy. Hosted
@@ -80,7 +80,8 @@ required per platform. Linux product tests remain out of scope for this rollout.
   reload for the second run in a row; macOS core took about 7 minutes of tests in the previous run, so something hung;
   cancelled jobs keep no log). The breakpoint failures are macOS only. `integration-designer` was therefore split:
   `integration-librewpf-designer` (60 minutes) holds the two LibreWPF entries, and
-  `integration-mewui-winforms-designer` (45 minutes) holds MewUI and LibreWinForms.
+  `integration-mewui-winforms-designer` (45 minutes) holds MewUI and LibreWinForms. Both were folded into
+  `integration-designer` right after, when the archive lanes were merged by reliability (see "Lanes").
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.
@@ -137,6 +138,16 @@ for `PresentationFramework`. A miss fails the lane instead of letting the IDE di
   must be checked before promotion;
 * an entry whose test assembly was never produced - the build step is named in the error.
 
+Every entry also has a time budget: its own `timeoutMinutes`, else its lane's `entryTimeoutMinutes` (5 minutes in the
+integration lanes). Past it, `run-test-plan.ps1` kills the entry's process tree (the IDE the fixture started included),
+records `timeout` and runs the next entry; a `required` entry that times out fails the job. The output is printed as it
+arrives and kept as `<entry>.out.log`/`.err.log` with the TRX files. Before this, output appeared only when the process
+exited and nothing stopped a hung entry, so a hang ran into the lane timeout, which cancels the job and loses every
+result of it (cancelled jobs keep no log). Budgets come from measured durations: the default covers every entry that
+took under about three minutes, and longer ones carry their own (`workbench-tests` 8, `profiler-journeys` 10, debugger
+classes 10 and 12, WPF Hot Reload 8, LibreWPF editing 35, MewUI 10, GTK journeys 12). The lane `timeoutMinutes` is only
+the safety net: the slowest preparation (about 21 minutes) plus the lane's measured tests plus one budget.
+
 `observe` means an individual failure does not fail the job; a lane with `allowAllFailures` can also stay green when no
 entry passes.
 
@@ -163,33 +174,34 @@ workflow (`buildFrom`, the archive rules per platform, the payload scan and the 
   compiles for it. A lane is defined once under `lanes` with its timeout.
 * `additionalProjects` names fixture projects that the entry needs built before the archive is created. Optional
   `platforms` refer to the build platform: both Windows architectures consume the `windows-x64` archive. The WPF Hot
-  Reload lane builds the LibreWPF application and class-library host on both build platforms, plus the Microsoft WPF
-  class-library host on Windows. Its single entry starts as `observe` with `allowAllFailures`, so an observed failure
-  remains visible in the summary without failing the lane; remove that exception when the entry becomes required.
+  Reload entry builds the LibreWPF application and class-library host on both build platforms, plus the Microsoft WPF
+  class-library host on Windows.
 
-The solution-folder, project-options, T4, Task List and project-reload journeys also run in observe mode on macOS ARM64
-and Windows ARM64. The existing Windows x64 entries remain observed. These are initial observations, not evidence of
-passing results on the runners.
+## Lanes
 
-`integration-workbench` runs DevFlow, workbench, editor-view, stop-after-failure and one-process-build journeys on all
-three platforms as observations. It runs separately from the other integration entries to avoid extending their serial
-lane. In line with observe-first rollout, it allows even an all-failed run; read the entry summaries rather than treating
-the green job as a pass. Windows previously had the host-start defect described below; remove this exception once stable
-entries are promoted. The five classes passed 46/46 in one local macOS ARM64 IDE session in about 111 seconds. The CI
-runner launches one IDE per entry and measured 20, 40, 26, 19 and 31 seconds locally (about 136 seconds combined); hosted
-runner results are still needed.
+Preparing a lane job costs more than most entries: downloading and unpacking the workspace archive and restoring the
+NuGet cache took 11-15 minutes on Windows (up to 21) and 3-12 minutes on macOS on run 40444468212, against 1-2 minutes of
+tests for code coverage and the ARM64 unit suites. So entries share as few jobs as possible, grouped by how reliable they
+have been, and a lane is split only for a real environment need or a timeout.
 
-`integration-debugger` observes the debugger journey and feature classes on all three platforms, with DebugTestApp and
-AttachFixture prebuilt. `integration-coverage` observes the code-coverage journeys with both sample test projects built;
-their project references build CoverageLib. Both lanes initially permit all observed entries to fail without gating CI,
-so read their entry summaries and skipped counts. On macOS ARM64 the debugger classes passed 23 cases and skipped five
-architecture/runtime-specific cases; code coverage passed all three cases. Windows runner results remain unverified.
+* `unit` (Windows x64, in place) compiles and runs its own unit suites without the archive, so its result comes first.
+* `integration-stable` holds the entries that passed on every hosted run in which the IDE started: the five workbench
+  classes, the stable core journeys (solution folder, project options, T4, Task List, project reload, the Windows Terminal
+  journey, Razor, the Windows new-project dialog, Add Reference, fixture isolation, Profiler journeys, the WPF designer
+  assembly lock), code coverage, and the VSEditorCompat, XamlDom and Profiler suites on the ARM64 platforms. This is
+  where promotion starts; once its entries stay green, drop its `allowAllFailures` and mark them `required`.
+* `integration-unstable` holds entries with known hosted failures or under investigation: the debugger classes (no
+  breakpoint is hit on macOS), the macOS Terminal pad (pointer input), the macOS new-project dialog (the runner's SDK set),
+  `base-tests-arm` (two hot-reload end-to-end cases fail on Windows ARM64) and WPF Hot Reload (timed out on macOS twice).
+  Entries run in plan order, and Hot Reload is last so a hang there cannot hide the others. Move an entry to
+  `integration-stable` once it has passed for several runs.
+* `integration-designer` holds every designer journey (LibreWPF editing and property editors, LibreWinForms, MewUI and
+  both GTK entries) and installs the GTK runtime (`needsGtk`, 3.5 minutes on Windows). Entries in a lane run one after
+  another, so the LibreWPF journeys that edit `src/Samples` in place still never share the sample with a running test.
+  On Windows the 30 LibreWPF editing journeys alone took 24-28 minutes (budget 35 minutes).
 
-`unit-cross-platform` observes Base, VSEditorCompat, LibreWPF XamlDom and Profiler tests on macOS ARM64 and Windows
-ARM64; the existing Windows x64 unit lane is unchanged. The Windows x64 archive build includes projects needed solely by
-its ARM64 consumer. On macOS those suites passed 490/499 (9 skipped), 141/141, 101/101 and 143/143 respectively. The
-Windows ARM64 runner remains unverified. Each entry is observed individually, but a lane where all four fail is an
-error: a green lane must contain at least one passing entry. Inspect every entry before promotion.
+Merging the former nine archive lanes into these three changed no build input: `build-binaries.ps1 -List` produces the
+same 23 Windows x64 and 21 macOS ARM64 projects before and after.
 
 ## Current plan (Windows x64)
 
@@ -197,16 +209,15 @@ error: a green lane must contain at least one passing entry. Inspect every entry
   `.MicrosoftWPF`, and the two `OpenDevelop.AddinSdk*.proj` builds (run with `dotnet msbuild -t:Build` as
   `doc/technotes/addin-sdk.md` says; `dotnet build` of the same file fails because its restore changes what the asserted
   targets see). They need no IDE process.
-* Lane `integration-workbench`: DevFlow, Workbench, StopAfterFirstFailureBuild, VSEditorView and OneProcessBuild.
-* Lane `integration-core`: SolutionFolder, ProjectOptions, T4, TaskListPad, ProjectReload, Terminal and other observed
-  integration entries. The Hot Reload journeys run in their own `integration-hot-reload` lane.
+* Lanes `integration-stable`, `integration-unstable` and `integration-designer`: the integration entries, grouped as
+  described under "Lanes".
 
 Not planned yet: `AddInTests` (about 15 minutes, its own lane), the Microsoft designer
 backends (need Visual Studio), and the heavy or environment-bound ones named in
 `tests/OpenDevelop.IntegrationTests/TESTING.md` (dotnetup SDK installs, runtime upgrade, performance gates, probes).
 The Profiler tests and the Terminal journey are plan entries now; `profiler.yml` and `terminal-cross-platform.yml` were
 deleted with that fold. The Profiler shares the `unit` lane (its data layer attaches to a real process and needs no IDE
-host), and the Terminal journey joins `integration-core` and gets its `win-x64` add-in from `buildLast`, the way its own
+host), and the Terminal journey runs in the integration lanes and gets its `win-x64` add-in from `buildLast`, the way its own
 workflow built it. Windows x64, Windows ARM64 and macOS ARM64 have observed integration entries; Linux remains disabled.
 The `platformNotes` in the plan record each decision.
 
