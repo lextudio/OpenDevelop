@@ -62,7 +62,7 @@
       "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
       "allowAllFailures": true,
-      "note": "Entries with known hosted failures or under investigation: macOS debugger breakpoints, macOS Terminal pointer input, the macOS new-project dialog, Windows ARM64 hot-reload end-to-end cases in base-tests-arm, WPF Hot Reload (timed out twice on macOS), and add-reference-journey, which is required on macOS ARM64 and Windows x64 but observe on Windows ARM64 (its dialog cannot get native focus there), so it does not keep integration-stable scheduled in focus mode. Plan order runs Hot Reload last so a hang there does not hide the others."
+      "note": "Entries with known hosted failures or under investigation: macOS Terminal pointer input, the macOS new-project dialog, Windows ARM64 hot-reload end-to-end cases in base-tests-arm, the Windows ARM64 debugger journeys, and add-reference-journey, which is required on macOS ARM64 and Windows x64 but observe on Windows ARM64 (its dialog cannot get native focus there), so it runs in integration-unstable rather than keeping integration-stable scheduled in focus mode. Plan order runs Hot Reload last so a hang there does not hide the others."
     },
     "integration-designer": {
       "timeoutMinutes": 80,
@@ -186,10 +186,11 @@
       "id": "base-tests-arm",
       "batch": 4,
       "lane": "integration-unstable",
+      "measuredSeconds": 36,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.Base.Tests/OpenDevelop.Base.Tests.csproj",
       "target": "tests/OpenDevelop.Base.Tests/bin/Debug/net10.0-windows/OpenDevelop.Base.Tests.dll",
-      "platforms": { "windows-arm64": "observe", "macos-arm64": "observe" },
+      "platforms": { "windows-arm64": "observe", "macos-arm64": "required" },
       "note": "macOS ARM64: 490 passed, 9 platform-specific skips."
     },
     {
@@ -637,13 +638,14 @@
       "id": "librewinforms-designer-editor",
       "batch": 4,
       "lane": "integration-designer",
+      "measuredSeconds": 41,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-method", "OpenDevelop.IntegrationTests.DesignerEditorJourneyTests.WinFormsDesigner_ImageListEditorWritesSourceAndResxAsOneUndoableTransaction_LibreWinForms", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "src/Samples/LibreWinFormsSample/LibreWinFormsSample.csproj" }],
-      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required" },
       "note": "Exercises LibreWinForms image-list editing and undo."
     },
     {
@@ -694,19 +696,21 @@
       "id": "gtk-designer-nested-journey",
       "batch": 4,
       "lane": "integration-designer",
+      "measuredSeconds": 27,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-class", "OpenDevelop.IntegrationTests.GtkDesignerIntegrationTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "tests/fixtures/GtkFixture/GtkFixture.csproj" }],
-      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required" },
       "note": "Nested GTK selection, property editing, insertion, undo and save passed locally on macOS ARM64 in 20 seconds."
     },
     {
       "id": "debugger-journeys",
       "batch": 4,
       "lane": "integration-unstable",
+      "measuredSeconds": 80,
       "timeoutMinutes": 10,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
@@ -714,13 +718,14 @@
       "args": ["-class", "OpenDevelop.IntegrationTests.DebuggerIntegrationTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "tests/fixtures/DebugTestApp/DebugTestApp.csproj" }],
-      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "required" },
       "note": "Includes native-host and per-architecture journeys; skips describe missing compatible runtimes or architectures."
     },
     {
       "id": "debugger-feature-journeys",
       "batch": 4,
       "lane": "integration-unstable",
+      "measuredSeconds": 77,
       "timeoutMinutes": 12,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
@@ -731,8 +736,8 @@
         { "project": "tests/fixtures/DebugTestApp/DebugTestApp.csproj" },
         { "project": "tests/fixtures/AttachFixture/AttachFixture.csproj" }
       ],
-      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "observe" },
-      "note": "Exercises breakpoint inspection, stepping, restart and attaching to an independently started process."
+      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "required" },
+      "note": "Exercises breakpoint inspection, stepping, restart and attaching to an independently started process. On the hosted macOS runner every attach hung in ICorDebug.DebugActiveProcess until ci.yml granted system.privilege.taskport (a24f882e56); with it, both debugger entries passed runs 40582707365 and 40595645276."
     },
     {
       "id": "code-coverage-journeys",
@@ -755,6 +760,7 @@
       "id": "wpf-hot-reload-journeys",
       "batch": 4,
       "lane": "integration-unstable",
+      "measuredSeconds": 95,
       "timeoutMinutes": 8,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
@@ -766,7 +772,7 @@
         { "project": "tests/fixtures/WpfHotReloadClassLibFixture/Host/HotReloadClassLibHost.csproj" },
         { "project": "tests/fixtures/WpfHotReloadClassLibFixture.Microsoft/Host/HotReloadClassLibHost.csproj", "platforms": ["windows-x64"] }
       ],
-      "platforms": { "windows-x64": "required", "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "macos-arm64": "required" },
       "note": "Exercises real WPF application and class-library Hot Reload journeys; Microsoft WPF variants run only on Windows. macOS ARM64 locally passed four journeys with two Windows-only skips."
     },
     {

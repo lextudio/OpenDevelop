@@ -118,6 +118,12 @@ required per platform. Linux product tests remain out of scope for this rollout.
   40524161593, the two runs that completed the designer lane. On Windows ARM64, `librewinforms-designer-editor` and
   `gtk-designer-nested-journey` passed those same two. Those 11 pairs are `required`.
   In focus mode this leaves Windows x64 with only `librewpf-designer-editing` and no in-place unit job.
+* **macOS debugger unblocked and promoted (2026-10-27).** Every debugger attach on the hosted macOS runner hung inside
+  `ICorDebug.DebugActiveProcess`: macOS authorizes `task_for_pid` through `system.privilege.taskport`, and on the runner
+  nobody answers that prompt (a developer Mac caches it, so it never reproduced locally). `ci.yml` now enables developer
+  tools and allows that right in the macOS lane (`a24f882e56`). Runs 40582707365 and 40595645276 then passed
+  `debugger-journeys`, `debugger-feature-journeys`, `wpf-hot-reload-journeys`, `base-tests-arm`,
+  `librewinforms-designer-editor` and `gtk-designer-nested-journey` on macOS ARM64, so those 6 pairs are `required`.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.
@@ -233,9 +239,10 @@ have been, and a lane is split only for a real environment need or a timeout.
   the results are recorded above), and the lane has no `allowAllFailures`. `add-reference-journey` is `required` on
   macOS ARM64 and Windows x64 but `observe` on Windows ARM64 until its dialog can get native focus there, so it runs
   in `integration-unstable` (see "Focus mode").
-* `integration-unstable` holds entries with known hosted failures or under investigation: the debugger classes (no
-  breakpoint is hit on macOS), the macOS Terminal pad (pointer input), the macOS new-project dialog (the runner's SDK set),
-  `base-tests-arm` (two hot-reload end-to-end cases fail on Windows ARM64) and WPF Hot Reload (timed out on macOS twice).
+* `integration-unstable` holds entries with known hosted failures or under investigation: the macOS Terminal pad (pointer
+  input), the macOS new-project dialog (the runner's SDK set), `base-tests-arm` (two hot-reload end-to-end cases fail on
+  Windows ARM64) and the debugger classes on Windows ARM64 (one case each). The debugger classes and WPF Hot Reload are
+  `required` on macOS ARM64 and Windows x64.
   Entries run in plan order, and Hot Reload is last so a hang there cannot hide the others. Move an entry to
   `integration-stable` under the same two-run rule.
 * `integration-designer` holds every designer journey (LibreWPF editing and property editors, LibreWinForms, MewUI and
@@ -253,7 +260,8 @@ While many entries still fail, the plan's top-level `"focus": true` runs only th
 the 11-15 minutes of lane preparation again. `.github/ci/run-statuses.ps1` holds the rule, and `plan-matrix.ps1`,
 `build-binaries.ps1` and `run-test-plan.ps1` all use it, so a skipped entry is neither scheduled, built nor run. With it,
 `integration-stable` has no entry left and is not scheduled on any platform (6 integration jobs instead of 9), and the
-build lists shrink from 23 to 15 Windows x64 and from 21 to 14 macOS ARM64 lines. `add-reference-journey` moved to
+build lists shrank from 23 to 15 Windows x64 and from 21 to 14 macOS ARM64 lines when focus mode was introduced
+(each later promotion shrinks them further). `add-reference-journey` moved to
 `integration-unstable` for that reason: it is `observe` on Windows ARM64 only and would otherwise keep that lane alive
 for one known failure. A promoted entry stops running too, so run full once before trusting master again
 (`gh workflow run ci.yml --ref <branch> -f full=true`), and set `"focus": false` to go back to full runs when the
