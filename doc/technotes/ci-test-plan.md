@@ -12,14 +12,22 @@ required per platform. Linux product tests remain out of scope for this rollout.
 * **Committed locally:** Base, VSEditorCompat, LibreWPF XamlDom and Profiler unit suites are configured on both ARM64
   platforms. The actual macOS CI runner script passed 875 cases and skipped nine; Windows ARM64 has not yet run. Verify
   both hosted runners after an authorized push.
-* **Next expansion, in local validation:** the new-project dialog journeys pass locally on macOS ARM64 (7 passed,
+* **Committed locally:** the new-project dialog journeys pass locally on macOS ARM64 (7 passed,
   one Windows-only SDK download skipped; 57 seconds). Enable the complete class on macOS and its five non-SDK-install
   methods on both Windows architectures as observations. The Windows SDK-selection theory needs a separate lane and
   time budget because one data row installs a real SDK from the network; its two non-network rows are excluded with it
   until the theory can be split without weakening coverage. Hosted runner results remain outstanding.
-* **Next expansion, in local validation:** run the whole Profiler integration class on all three platforms instead of
+* **Committed locally:** run the whole Profiler integration class on all three platforms instead of
   only its isolation case. On macOS ARM64 it passed 21 journeys and skipped its Windows-only WPF journey in 107 seconds.
   Its web, test, profiler and Windows WPF fixtures must be built into the shared archives. Hosted results are pending.
+* **In local validation:** the `integration-designer` lane observes 30 LibreWPF editing journeys and the LibreWinForms
+  image-list journey on all three platforms, plus the LibreWPF property-editor journey on macOS. The two latter cases
+  passed locally as part of a three-case class with one Windows-only skip in 45 seconds. The 30-case LibreWPF suite
+  passed locally on macOS ARM64 in 217 seconds. Windows hosted execution has not yet been validated. The property-editor
+  method selects Microsoft WPF on Windows, so it is not enabled there until its host is available. Individual failures
+  are observed; an all-failed lane still fails. These tests temporarily edit files under `src/Samples` and restore their
+  original contents in cleanup. Run them serially in an isolated checkout or archive, not alongside other tests using
+  those samples; interruption can leave a sample modified.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.

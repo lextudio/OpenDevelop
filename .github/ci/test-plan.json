@@ -78,6 +78,11 @@
       "allowAllFailures": true,
       "note": "Coverage journeys begin as observations; inspect each entry before promotion."
     },
+    "integration-designer": {
+      "timeoutMinutes": 45,
+      "needsNuGetCache": true,
+      "note": "Designer journeys start as observations; inspect each entry before promotion."
+    },
     "integration-hot-reload": {
       "timeoutMinutes": 30,
       "needsNuGetCache": true,
@@ -599,6 +604,45 @@
       ],
       "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
       "note": "Full profiler journeys, including capture isolation, web service, heap, launch and test-host profiling. macOS ARM64 locally passed 21 cases with the Windows WPF case skipped in 107 seconds."
+    },
+    {
+      "id": "librewpf-designer-editing",
+      "batch": 4,
+      "lane": "integration-designer",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.WpfStripEditingLibreWpfTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "additionalProjects": [{ "project": "src/Samples/LibreWpfSample/sample.csproj" }],
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "note": "30 LibreWPF designer editing journeys passed locally on macOS ARM64 in 217 seconds; hosted results are pending."
+    },
+    {
+      "id": "librewinforms-designer-editor",
+      "batch": 4,
+      "lane": "integration-designer",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-method", "OpenDevelop.IntegrationTests.DesignerEditorJourneyTests.WinFormsDesigner_ImageListEditorWritesSourceAndResxAsOneUndoableTransaction_LibreWinForms", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "additionalProjects": [{ "project": "src/Samples/LibreWinFormsSample/LibreWinFormsSample.csproj" }],
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "note": "Exercises LibreWinForms image-list editing and undo."
+    },
+    {
+      "id": "librewpf-designer-property-editors",
+      "batch": 4,
+      "lane": "integration-designer",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-method", "OpenDevelop.IntegrationTests.DesignerEditorJourneyTests.WpfDesigner_TransformResourceBrushAndHandleEditsRoundTrip", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "additionalProjects": [{ "project": "src/Samples/LibreWpfSample/sample.csproj" }],
+      "platforms": { "macos-arm64": "observe" },
+      "note": "Uses the LibreWPF sample on macOS; the same method selects the Microsoft WPF backend on Windows and is not enabled there without its host."
     },
     {
       "id": "debugger-journeys",
