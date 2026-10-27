@@ -25,6 +25,15 @@
     <ProjectReference Include="..\..\src\Libraries\VSEditorCompat\OpenDevelop.VSEditorCompat.csproj" />
   </ItemGroup>
 
+  <!-- Each [UIFact] runs on its own STA dispatcher that Xunit.StaFact never shuts down, and each
+       one leaves a thread-static WeakEventTable listening for ProcessExit. At exit every table
+       Invokes onto its idle dispatcher with a 300 ms timeout, so 34 UI tests delayed exit by
+       ~10.3 s; the xUnit v3 console runner forces exit with code 1 after 11 s, which a slower CI
+       runner crossed. WPF's compat switch skips that Invoke and purges on the exiting thread. -->
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="Switch.MS.Internal.DoNotInvokeInWeakEventTableShutdownListener" Value="true" />
+  </ItemGroup>
+
   <Target Name="RemoveDesktopRuntimeFramework" AfterTargets="ProcessFrameworkReferences" BeforeTargets="FixupRuntimeFrameworkVersions">
     <ItemGroup>
       <RuntimeFramework Remove="@(RuntimeFramework)" Condition="'%(RuntimeFramework.Identity)' == 'Microsoft.WindowsDesktop.App'" />
