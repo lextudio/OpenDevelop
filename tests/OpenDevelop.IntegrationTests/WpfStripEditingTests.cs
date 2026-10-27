@@ -842,6 +842,12 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
         } finally { await app.InvokeAsync("od.close-active-view"); await OpenDevelopAppFixture.WriteAllTextWithRetryAsync(xamlPath, original); }
     }
 
+    /// <summary>The designer's diagnostics minus the software fallback frame warning: a GPU-less runner reports that on
+    /// every render, and it says how the frame was drawn, not that the XAML failed to parse or materialise.</summary>
+    static IEnumerable<JsonElement> DocumentDiagnostics(JsonElement status)
+        => status.GetProperty("diagnostics").EnumerateArray()
+            .Where(d => !(d.GetProperty("Message").GetString() ?? "").Contains("software fallback frame", StringComparison.Ordinal));
+
     [Fact]
     public async Task SnapshotSelection_RemainsResponsiveWhileTheWpfHostRecovers()
     {
@@ -1179,7 +1185,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
             // `designerLoaded` only proves transport acceptance. The canvas must also have no
             // parser/materialisation diagnostics, otherwise the visible design surface can show
             // an error while the edit below still appears to succeed.
-            Assert.Empty(status.GetProperty("diagnostics").EnumerateArray());
+            Assert.Empty(DocumentDiagnostics(status));
 
             JsonElement selected = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
@@ -1247,7 +1253,7 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 status = await app.InvokeAsync("od.wpf-designer.status");
                 return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean()
-                    && status.GetProperty("diagnostics").GetArrayLength() == 0;
+                    && !DocumentDiagnostics(status).Any();
             }, TimeSpan.FromSeconds(90)), status.ToString());
             JsonElement selected = default;
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
