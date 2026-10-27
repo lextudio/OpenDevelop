@@ -9,9 +9,17 @@ required per platform. Linux product tests remain out of scope for this rollout.
 * **Completed locally:** workbench, debugger and coverage integration lanes are configured as observations on all three
   platforms. Their macOS ARM64 local results are recorded below; hosted runner results for the new configuration are
   still needed. Their commits are local until pushed.
-* **In progress:** add Base, VSEditorCompat, LibreWPF XamlDom and Profiler unit suites on both ARM64 platforms. The
-  actual macOS CI runner script passed 875 cases and skipped nine; Windows ARM64 has not yet run. Review and commit
-  the change, then verify the Windows and macOS hosted results after an authorized push.
+* **Committed locally:** Base, VSEditorCompat, LibreWPF XamlDom and Profiler unit suites are configured on both ARM64
+  platforms. The actual macOS CI runner script passed 875 cases and skipped nine; Windows ARM64 has not yet run. Verify
+  both hosted runners after an authorized push.
+* **Next expansion, in local validation:** the new-project dialog journeys pass locally on macOS ARM64 (7 passed,
+  one Windows-only SDK download skipped; 57 seconds). Enable the complete class on macOS and its five non-SDK-install
+  methods on both Windows architectures as observations. The Windows SDK-selection theory needs a separate lane and
+  time budget because one data row installs a real SDK from the network; its two non-network rows are excluded with it
+  until the theory can be split without weakening coverage. Hosted runner results remain outstanding.
+* **Next expansion, in local validation:** run the whole Profiler integration class on all three platforms instead of
+  only its isolation case. On macOS ARM64 it passed 21 journeys and skipped its Windows-only WPF journey in 107 seconds.
+  Its web, test, profiler and Windows WPF fixtures must be built into the shared archives. Hosted results are pending.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.

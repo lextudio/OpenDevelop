@@ -546,6 +546,30 @@
       "note": "First batch-4 cross-platform integration entry. Opens an isolated Razor SDK project and asserts HTML, CSS, JavaScript and C# highlighting through the running IDE. Measured locally on macOS ARM64: 1 test in 28 seconds; keep observe until repeated runner results are stable."
     },
     {
+      "id": "new-project-dialog-macos",
+      "batch": 4,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.NewProjectDialogIntegrationTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "platforms": { "macos-arm64": "observe" },
+      "note": "macOS ARM64: 7 passed and the Windows-only SDK download case skipped in 57 seconds."
+    },
+    {
+      "id": "new-project-dialog-windows",
+      "batch": 4,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.NewProjectDialogIntegrationTests", "-method-", "OpenDevelop.IntegrationTests.NewProjectDialogIntegrationTests.NewSolutionDialog_StillCreatesAWorkingProject_WhenTheSelectedSdkIsUnusable", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe" },
+      "note": "Covers template dialogs and project creation. The SDK-selection theory is excluded on Windows because one data row installs an SDK over the network; schedule it separately with its own time budget."
+    },
+    {
       "id": "integration-fixture-isolation",
       "batch": 4,
       "lane": "integration-core",
@@ -558,20 +582,23 @@
       "note": "Protects integration fixture port ownership and cleanup on initialization failure."
     },
     {
-      "id": "profiler-capture-isolation",
+      "id": "profiler-journeys",
       "batch": 4,
       "lane": "integration-core",
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
-      "args": ["-method", "OpenDevelop.IntegrationTests.ProfilerIntegrationTests.CpuCapture_OpensAReportWhoseCallTreeNamesTheHotMethod", "-parallel", "none"],
+      "args": ["-class", "OpenDevelop.IntegrationTests.ProfilerIntegrationTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [
         { "project": "tests/fixtures/ProfilerFixture/ProfilerFixture.csproj" },
+        { "project": "tests/fixtures/ProfilerWebFixture/ProfilerWebFixture.csproj" },
+        { "project": "tests/fixtures/ProfilerWpfFixture/ProfilerWpfFixture.csproj", "platforms": ["windows-x64"] },
+        { "project": "tests/fixtures/SampleTestProject/SampleTestProject.csproj" },
         { "project": "tests/fixtures/DebugTestApp/DebugTestApp.csproj" }
       ],
       "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
-      "note": "Captures a real process with a solution open and verifies that test data stays in the private configuration directory."
+      "note": "Full profiler journeys, including capture isolation, web service, heap, launch and test-host profiling. macOS ARM64 locally passed 21 cases with the Windows WPF case skipped in 107 seconds."
     },
     {
       "id": "debugger-journeys",
