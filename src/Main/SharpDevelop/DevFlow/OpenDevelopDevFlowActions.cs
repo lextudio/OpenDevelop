@@ -2891,20 +2891,35 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				}
 			}
 			
-			int stopSequence = GetIntProperty(debugger, "CurrentStopSequence");
-			var stopTask = waitForStop ? WaitForStopAsync(debugger, timeoutSeconds, stopSequence) : Task.FromResult(true);
-			Task startTask = InvokeTaskAsync(debugger, "StartProjectAsync", projectPath);
-			if (startTask != null) {
-				await startTask;
-			} else {
-				var project = ResolveProject(projectPath);
-				if (project == null) {
-					return JsonSerializer.Serialize(new { started = false, error = "No project to debug." });
+			// A start that never stops says nothing about why; the Debug output (adapter errors and its
+			// "still waiting for the runtime" notice with the adapter log tail) usually does.
+			var debugOutput = new System.Collections.Concurrent.ConcurrentQueue<string>();
+			Action<string> collectDebugOutput = debugOutput.Enqueue;
+			BaseDebuggerService.DebugMessagePrinted += collectDebugOutput;
+			bool stopped;
+			try {
+				int stopSequence = GetIntProperty(debugger, "CurrentStopSequence");
+				var stopTask = waitForStop ? WaitForStopAsync(debugger, timeoutSeconds, stopSequence) : Task.FromResult(true);
+				Task startTask = InvokeTaskAsync(debugger, "StartProjectAsync", projectPath);
+				if (startTask != null) {
+					await startTask;
+				} else {
+					var project = ResolveProject(projectPath);
+					if (project == null) {
+						return JsonSerializer.Serialize(new { started = false, error = "No project to debug." });
+					}
+					project.Start(true);
 				}
-				project.Start(true);
+
+				stopped = waitForStop && await stopTask;
+			} finally {
+				BaseDebuggerService.DebugMessagePrinted -= collectDebugOutput;
 			}
-			
-			bool stopped = waitForStop && await stopTask;
+			string debugOutputTail = null;
+			if (waitForStop && !stopped) {
+				string text = string.Concat(debugOutput);
+				debugOutputTail = text.Length > 4000 ? text.Substring(text.Length - 4000) : text;
+			}
 			return JsonSerializer.Serialize(new {
 				started = debugger.IsDebugging || stopped,
 				stopped,
@@ -2912,10 +2927,11 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				isProcessRunning = debugger.IsProcessRunning,
 				threadId = GetIntProperty(debugger, "CurrentThreadId"),
 				currentFile = GetStringProperty(debugger, "CurrentFile"),
-				currentLine = GetIntProperty(debugger, "CurrentLine")
+				currentLine = GetIntProperty(debugger, "CurrentLine"),
+				debugOutputTail
 			});
 		}
-		
+
 		/// <summary>
 		/// Runs the very command object a keyboard gesture is bound to, so a test can cover the
 		/// real Run/Stop journey - build-before-run, Hot Reload adapter selection and debugger
