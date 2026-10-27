@@ -140,7 +140,10 @@ for `PresentationFramework`. A miss fails the lane instead of letting the IDE di
 
 Every entry also has a time budget: its own `timeoutMinutes`, else its lane's `entryTimeoutMinutes` (5 minutes in the
 integration lanes). Past it, `run-test-plan.ps1` kills the entry's process tree (the IDE the fixture started included),
-records `timeout` and runs the next entry; a `required` entry that times out fails the job. The output is printed as it
+records `timeout` and runs the next entry; a `required` entry that times out fails the job. Just before the kill it saves a
+full-screen `<entry>.timeout.png` (`screencapture -x` on macOS, the virtual screen through System.Drawing on Windows), since
+a hang is often a modal error dialog only the screen shows; a failed capture is reported (for example macOS's "could not
+create image from display" without Screen Recording permission) and never changes the outcome. The output is printed as it
 arrives and kept as `<entry>.out.log`/`.err.log` with the TRX files. Before this, output appeared only when the process
 exited and nothing stopped a hung entry, so a hang ran into the lane timeout, which cancels the job and loses every
 result of it (cancelled jobs keep no log). Budgets come from measured durations: the default covers every entry that

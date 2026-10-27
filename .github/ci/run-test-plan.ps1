@@ -72,6 +72,32 @@ function Read-NewLines($state, [System.Collections.Generic.List[string]]$lines, 
     $state.Text = if ($Final) { '' } else { $parts[$parts.Count - 1] }
 }
 
+# A hung entry is often a modal error dialog the IDE raised, which only the screen shows; capture it before the kill.
+# Best effort: a failed capture is reported and never changes the entry's outcome.
+function Save-Screenshot([string]$path) {
+    try {
+        if ($IsMacOS) {
+            $captureOutput = & screencapture -x $path 2>&1
+            if ($LASTEXITCODE -ne 0 -or $captureOutput) { Write-Host "screencapture exit ${LASTEXITCODE}: $captureOutput" }
+        }
+        elseif ($IsWindows) {
+            Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+            $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+            $bitmap = [System.Drawing.Bitmap]::new($bounds.Width, $bounds.Height)
+            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+            try {
+                $graphics.CopyFromScreen($bounds.Left, $bounds.Top, 0, 0, $bitmap.Size)
+                $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+            }
+            finally { $graphics.Dispose(); $bitmap.Dispose() }
+        }
+        else { return }
+        if (Test-Path $path) { Write-Host "Saved a screenshot of the hung entry: $path ($((Get-Item $path).Length) bytes)" }
+        else { Write-Host "::warning::The screenshot was not written: $path" }
+    }
+    catch { Write-Host "::warning::Could not capture the screen: $($_.Exception.Message)" }
+}
+
 # Runs 'dotnet <arguments>' printing its output as it arrives and, past the budget, kills the whole process tree (the
 # fixture's IDE included). '& dotnet' printed nothing until exit, so a hang ended in a lane timeout that cancelled the job
 # and lost every result; this way a hung entry costs only its budget and the next entry still runs. .NET copies the two
@@ -99,6 +125,7 @@ function Invoke-Entry([string[]]$arguments, [int]$timeoutSeconds, [string]$logBa
         if ([DateTime]::UtcNow -gt $deadline) {
             $timedOut = $true
             Write-Host "::warning::Budget of ${timeoutSeconds}s exceeded; killing the process tree."
+            Save-Screenshot "$logBase.timeout.png"
             try { $process.Kill($true) } catch { Write-Host "Kill failed: $($_.Exception.Message)" }
             $null = $process.WaitForExit(30000)
             break
