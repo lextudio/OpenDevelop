@@ -575,6 +575,18 @@
       "note": "Covers template dialogs and project creation. The SDK-selection theory is excluded on Windows because one data row installs an SDK over the network; schedule it separately with its own time budget."
     },
     {
+      "id": "add-reference-journey",
+      "batch": 4,
+      "lane": "integration-core",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.AddReferenceTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "note": "Exercises the modal Add Reference dialog with native clicks and verifies project and assembly references. macOS ARM64 passed locally in 37 seconds; hosted results remain unverified."
+    },
+    {
       "id": "integration-fixture-isolation",
       "batch": 4,
       "lane": "integration-core",

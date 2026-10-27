@@ -115,6 +115,29 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.project-browser.open-add-reference-dialog", Description = "Open the Add Reference dialog for a named Project Browser project")]
+		public static async Task<string> OpenAddReferenceDialog(string projectName)
+		{
+			try {
+				var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<ProjectBrowserViewModel>();
+				await viewModel.WaitForCurrentRefreshAsync();
+				var node = FindNode(viewModel.RootNodes, candidate => candidate.Kind == ProjectBrowserNodeKind.Project
+					&& string.Equals(candidate.Name, projectName, StringComparison.OrdinalIgnoreCase));
+				if (node == null)
+					return JsonSerializer.Serialize(new { started = false, error = "No Project node named '" + projectName + "'." });
+				viewModel.SelectedNode = node;
+				var context = node.ToContext();
+				var controller = ServiceSingleton.GetRequiredService<IProjectBrowserController>();
+				// A modal ShowDialog can run synchronously. Return before entering its nested loop so
+				// subsequent DevFlow actions can drive or close the dialog.
+				Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.Background,
+					new Action(() => controller.AddReference(context)));
+				return JsonSerializer.Serialize(new { started = true, projectName = node.Name });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { started = false, error = ex.ToString() });
+			}
+		}
+
 		[DevFlowAction("od.project-browser.set-startup-project", Description = "Make a solution project the startup project through the Project Browser controller command - the same path the Set as Startup Project context-menu entry takes (its command class is internal and not parameterless, so od.menu.invoke cannot instantiate it)")]
 		public static async Task<string> SetStartupProject(string name)
 		{

@@ -20,7 +20,7 @@ required per platform. Linux product tests remain out of scope for this rollout.
 * **Committed locally:** run the whole Profiler integration class on all three platforms instead of
   only its isolation case. On macOS ARM64 it passed 21 journeys and skipped its Windows-only WPF journey in 107 seconds.
   Its web, test, profiler and Windows WPF fixtures must be built into the shared archives. Hosted results are pending.
-* **In local validation:** the `integration-designer` lane observes 30 LibreWPF editing journeys and the LibreWinForms
+* **Committed locally:** the `integration-designer` lane observes 30 LibreWPF editing journeys and the LibreWinForms
   image-list journey on all three platforms, plus the LibreWPF property-editor journey on macOS. The two latter cases
   passed locally as part of a three-case class with one Windows-only skip in 45 seconds. The 30-case LibreWPF suite
   passed locally on macOS ARM64 in 217 seconds. Windows hosted execution has not yet been validated. The property-editor
@@ -28,6 +28,9 @@ required per platform. Linux product tests remain out of scope for this rollout.
   are observed; an all-failed lane still fails. These tests temporarily edit files under `src/Samples` and restore their
   original contents in cleanup. Run them serially in an isolated checkout or archive, not alongside other tests using
   those samples; interruption can leave a sample modified.
+* **In local validation:** add the Add Reference journey on all three platforms. A macOS run initially exposed a
+  DevFlow mutation lock held during the modal dialog; opening the selected project's dialog by a posted action fixes the
+  deadlock, and the complete reference-addition test passed locally in 37 seconds. Hosted results are pending.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.

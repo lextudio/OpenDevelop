@@ -80,8 +80,9 @@ public sealed class AddReferenceTests : IAsyncDisposable
             : activated.GetProperty("nativeFocused").GetBoolean();
         Assert.True(readyForNativeTap, activated.ToString());
 
-        // The dialog is modal: the command only returns once it closes, so drive it meanwhile.
-        var command = _app.InvokeAsync("od.menu.invoke", "ICSharpCode.SharpDevelop.Commands.AddReferenceProjectBrowserCommand");
+        // The action posts the modal command and returns, leaving DevFlow available to drive it.
+        var command = await _app.InvokeAsync("od.project-browser.open-add-reference-dialog", "App");
+        Assert.True(command.GetProperty("started").GetBoolean(), command.ToString());
         var dialog = await WaitForDialogAsync();
 
         // Lib is not referenced yet, so it is offered; tick it.
@@ -93,8 +94,7 @@ public sealed class AddReferenceTests : IAsyncDisposable
         Assert.True(queued.GetProperty("success").GetBoolean(), queued.ToString());
         await _app.TapAsync(FindId(dialog, "Button", "Browse..."));
         await _app.TapAsync(FindId(dialog, "Button", "Add"));
-        var result = await command;
-        Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
+        await WaitForDialogToCloseAsync();
 
         var projectReference = Assert.Single(XDocument.Load(_appProject).Descendants("ProjectReference"));
         Assert.Equal("../Lib/Lib.csproj", ((string?)projectReference.Attribute("Include"))?.Replace('\\', '/'));
@@ -121,6 +121,20 @@ public sealed class AddReferenceTests : IAsyncDisposable
             await Task.Delay(250);
         }
         throw new TimeoutException("The Add Reference dialog did not open.");
+    }
+
+    async Task WaitForDialogToCloseAsync()
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(20);
+        while (DateTime.UtcNow < deadline)
+        {
+            var tree = await _app.GetUITreeAsync();
+            if (!tree.GetProperty("elements").EnumerateArray().Any(window =>
+                    window.TryGetProperty("type", out var type) && type.GetString() == "AddReferenceWindow"))
+                return;
+            await Task.Delay(250);
+        }
+        throw new TimeoutException("The Add Reference dialog did not close.");
     }
 
     // The tap returns once the OS click has been posted, before the app has necessarily processed
