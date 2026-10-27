@@ -96,6 +96,7 @@ namespace Debugger.AddIn.Service.Dap
 
 		string launchTarget;
 		static readonly TimeSpan RuntimeLoadNoticeDelay = TimeSpan.FromSeconds(30);
+		static readonly string TestLogDirectory = Environment.GetEnvironmentVariable("OD_TEST_LOG_DIR");
 		const int AdapterLogTailLines = 30;
 
 		public bool IsRunning { get { return adapterProcess != null && !adapterProcess.HasExited; } }
@@ -932,7 +933,7 @@ namespace Debugger.AddIn.Service.Dap
 			debuggeeProcess = null;
 			// A session that never surfaced its adapter log leaves nothing behind; one that did keeps
 			// the file, because that log is the only post-mortem left of a session that went quiet.
-			if (!adapterLogReported && !string.IsNullOrEmpty(adapterLogPath)) {
+			if (!adapterLogReported && string.IsNullOrEmpty(TestLogDirectory) && !string.IsNullOrEmpty(adapterLogPath)) {
 				try {
 					File.Delete(adapterLogPath);
 				} catch (IOException) {
@@ -970,7 +971,10 @@ namespace Debugger.AddIn.Service.Dap
 		static string CreateAdapterLogPath()
 		{
 			try {
-				string directory = Path.Combine(Path.GetTempPath(), "OpenDevelop-DebugAdapter");
+				// Test runs name a log directory that CI uploads; keep the adapter logs there.
+				string directory = string.IsNullOrEmpty(TestLogDirectory)
+					? Path.Combine(Path.GetTempPath(), "OpenDevelop-DebugAdapter")
+					: TestLogDirectory;
 				Directory.CreateDirectory(directory);
 				// CleanupSession only runs when the session is disposed, and a hard kill of the IDE
 				// (which is how a test run ends) skips it. Sweep the stale ones so a crash cannot
