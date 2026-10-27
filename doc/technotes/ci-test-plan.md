@@ -108,7 +108,9 @@ required per platform. Linux product tests remain out of scope for this rollout.
   series before changing it.
 * **Windows ARM64 promoted next.** On Windows ARM64 the other 18 `integration-stable` entries passed on runs
   40444468212, 40461019311 and 40470967407 (the first run had no IDE there), so they are `required` too;
-  `add-reference-journey` failed on all four runs and stays `observe`.
+  `add-reference-journey` failed on all four runs and stays `observe`. The confirming run (`8e11e823c1`, run
+  40482781106) passed all 13 jobs, so 54 entry/platform pairs now gate the workflow. `profiler-tests` passed there,
+  so the new `gc-heap-size` series message has not been seen yet.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.
