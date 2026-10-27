@@ -15,6 +15,23 @@ public sealed class PortableTextCompatibilityTests
     [InlineData("Display", "项目选项")]
     public void TextBlock_MeasuresWithoutDroppingText(string mode, string text)
     {
+        // WPF elements require an STA thread on Windows; xUnit v3 runs theories on the MTA pool.
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try { Measure(mode, text); }
+            catch (Exception ex) { failure = ex; }
+        });
+        if (OperatingSystem.IsWindows())
+            thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        if (failure != null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
+    static void Measure(string mode, string text)
+    {
         PortableTextCompatibility.Initialize();
         var block = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap };
         TextOptions.SetTextFormattingMode(block, Enum.Parse<TextFormattingMode>(mode));

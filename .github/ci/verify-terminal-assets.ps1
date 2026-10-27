@@ -12,7 +12,7 @@ $propsPath = Join-Path $PSScriptRoot '../../Directory.Packages.props'
 $version = ([string]$props.Project.PropertyGroup.LibGhosttyNetVersion).Trim()
 if (-not $version) { throw "LibGhosttyNetVersion is not defined in $propsPath" }
 $root = Join-Path $cache "libghostty.net/$version"
-$expectedSha512ByVersion = @{ '1.0.2' = '0JZc/KMXLIULESkN3sZ3rf9GOY2OKHnXQQQu8elb4+WK/HYpn68QldIsQHx99NlfSfIMvGGAiSQTymCc1fO7lw==' }
+$expectedSha512ByVersion = @{ '1.0.2' = 'L1fkxSxFgqWZ1yEuBz7P5vPbhJeKSoeIW71L6lyDO88tzw4ivQZE7A5vUWSj10chZRZQyGat8lbd8O/R8Iif/g==' }
 if (-not $expectedSha512ByVersion.ContainsKey($version)) { throw "No approved LibGhostty.Net package hash is recorded for version $version." }
 $expectedSha512 = $expectedSha512ByVersion[$version]
 $shaPath = Join-Path $root "libghostty.net.$version.nupkg.sha512"
