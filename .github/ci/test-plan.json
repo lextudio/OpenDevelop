@@ -21,7 +21,7 @@
   ],
   "platformNotes": {
     "macos-arm64": "dist.macos.sh ships an osx-arm64-only payload, so this platform builds for itself and its archive drops the Windows RID trees the package never contains.",
-    "windows-x64": "Runs the existing unit and observed integration coverage. The unit lane is required except for base-tests and xamldom-tests-microsoftwpf, which carry one known flaky case each.",
+    "windows-x64": "Runs the existing unit and observed integration coverage. Every unit entry is required (base-tests and xamldom-tests-microsoftwpf were promoted on 2026-10-27), so focus mode schedules no in-place unit job here.",
     "windows-arm64": "Runs the native Windows ARM64 Terminal journey against the same unified Windows payload the x64 lane tests: dist.windows.bat ships one package with runtimes/ plus per-RID win-x64/win-arm64 folders and both launchers, so 'buildFrom': 'windows-x64' keeps a single compile for both lanes.",
     "linux-x64": "Not enabled yet: profiler.yml ran the Profiler tests on ubuntu-latest and passed; it comes back as this platform's first entry when the platform is added."
   },
@@ -118,7 +118,7 @@
       "target": "tests/OpenDevelop.Base.Tests/bin/Debug/net10.0-windows/OpenDevelop.Base.Tests.dll",
       "measuredSeconds": null,
       "platforms": {
-        "windows-x64": "observe"
+        "windows-x64": "required"
       },
       "note": "499 tests (9 skipped) when measured on macOS arm64. On the Windows runner one WinUI Hot Reload case (x86 probe) intermittently reports hr=0x80070490 because the probe can run before the live application applies the change; x64 and ARM64 pass."
     },
@@ -178,7 +178,7 @@
       "target": "tests/OpenDevelop.XamlDom.Tests.MicrosoftWPF/bin/Debug/net10.0-windows/OpenDevelop.XamlDom.Tests.MicrosoftWPF.dll",
       "measuredSeconds": null,
       "platforms": {
-        "windows-x64": "observe"
+        "windows-x64": "required"
       },
       "note": "Microsoft's XamlReader is loaded on its own STA thread with a 20-second deadline; on a cold runner the first cases can exceed it and report HANG. One case failed that way on 2026-10-25 while the other 96 passed."
     },
@@ -643,7 +643,7 @@
       "args": ["-method", "OpenDevelop.IntegrationTests.DesignerEditorJourneyTests.WinFormsDesigner_ImageListEditorWritesSourceAndResxAsOneUndoableTransaction_LibreWinForms", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "src/Samples/LibreWinFormsSample/LibreWinFormsSample.csproj" }],
-      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "observe" },
       "note": "Exercises LibreWinForms image-list editing and undo."
     },
     {
@@ -673,7 +673,7 @@
         { "project": "src/Tools/MewUIGen/MewUIGen.csproj" },
         { "project": "tests/fixtures/MewUIFixture/MewUIFixture.csproj" }
       ],
-      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "observe" },
       "note": "Ten MewUI designer journeys passed locally on macOS ARM64 in 55 seconds. Each case restores a temporary fixture; building the fixture primes the NuGet cache."
     },
     {
@@ -687,8 +687,8 @@
       "args": ["-class", "OpenDevelop.IntegrationTests.GtkDesignerTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "tests/fixtures/GtkDesignerFixture/GtkDesignerFixture.csproj" }],
-      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
-      "note": "Twelve GTK host, native preview, editing, recovery and libadwaita journeys passed locally on macOS ARM64 in 66 seconds. Windows runner results remain unverified."
+      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "note": "Twelve GTK host, native preview, editing, recovery and libadwaita journeys passed locally on macOS ARM64 in 66 seconds. Hosted Windows x64 passed all twelve on runs 40495471973 and 40524161593; Windows ARM64 fails the toolbox drag onto the native surface."
     },
     {
       "id": "gtk-designer-nested-journey",
@@ -700,7 +700,7 @@
       "args": ["-class", "OpenDevelop.IntegrationTests.GtkDesignerIntegrationTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "tests/fixtures/GtkFixture/GtkFixture.csproj" }],
-      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "observe" },
       "note": "Nested GTK selection, property editing, insertion, undo and save passed locally on macOS ARM64 in 20 seconds."
     },
     {
@@ -714,7 +714,7 @@
       "args": ["-class", "OpenDevelop.IntegrationTests.DebuggerIntegrationTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "tests/fixtures/DebugTestApp/DebugTestApp.csproj" }],
-      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "observe" },
       "note": "Includes native-host and per-architecture journeys; skips describe missing compatible runtimes or architectures."
     },
     {
@@ -731,7 +731,7 @@
         { "project": "tests/fixtures/DebugTestApp/DebugTestApp.csproj" },
         { "project": "tests/fixtures/AttachFixture/AttachFixture.csproj" }
       ],
-      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "observe" },
       "note": "Exercises breakpoint inspection, stepping, restart and attaching to an independently started process."
     },
     {
@@ -766,7 +766,7 @@
         { "project": "tests/fixtures/WpfHotReloadClassLibFixture/Host/HotReloadClassLibHost.csproj" },
         { "project": "tests/fixtures/WpfHotReloadClassLibFixture.Microsoft/Host/HotReloadClassLibHost.csproj", "platforms": ["windows-x64"] }
       ],
-      "platforms": { "windows-x64": "observe", "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "macos-arm64": "observe" },
       "note": "Exercises real WPF application and class-library Hot Reload journeys; Microsoft WPF variants run only on Windows. macOS ARM64 locally passed four journeys with two Windows-only skips."
     },
     {

@@ -111,6 +111,13 @@ required per platform. Linux product tests remain out of scope for this rollout.
   `add-reference-journey` failed on all four runs and stays `observe`. The confirming run (`8e11e823c1`, run
   40482781106) passed all 13 jobs, so 54 entry/platform pairs now gate the workflow. `profiler-tests` passed there,
   so the new `gc-heap-size` series message has not been seen yet.
+* **Windows observe entries promoted (2026-10-27).** On Windows x64, `base-tests` and `xamldom-tests-microsoftwpf`
+  passed runs 40495471973, 40501928801 and 40514802977; `debugger-journeys`, `debugger-feature-journeys` and
+  `wpf-hot-reload-journeys` passed those three and 40524161593; `librewinforms-designer-editor`,
+  `mewui-designer-journeys`, `gtk-designer-journeys` and `gtk-designer-nested-journey` passed 40495471973 and
+  40524161593, the two runs that completed the designer lane. On Windows ARM64, `librewinforms-designer-editor` and
+  `gtk-designer-nested-journey` passed those same two. Those 11 pairs are `required`.
+  In focus mode this leaves Windows x64 with only `librewpf-designer-editing` and no in-place unit job.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.
