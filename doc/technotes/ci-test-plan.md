@@ -130,7 +130,8 @@ required per platform. Linux product tests remain out of scope for this rollout.
   warning), `librewpf-designer-editing` passed all 30 cases on Windows x64 and ARM64 in runs 40595645276 and 40606824351,
   so both pairs are `required`. `cc569fd5a8` installs SDK templates only from the runtime-matching `templates/` folder (the
   macOS image keeps .NET 8, 9 and 10 side by side, and an older pack won); `new-project-dialog-macos` then passed in run
-  40606824351 and needs one more run before promotion.
+  40606824351 and, after passing 40615707034 too, is `required` on macOS ARM64,
+  its only platform, so it moved to `integration-stable`.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.
@@ -240,16 +241,18 @@ have been, and a lane is split only for a real environment need or a timeout.
 * `unit` (Windows x64, in place) compiles and runs its own unit suites without the archive, so its result comes first.
 * `integration-stable` holds the entries that passed on every hosted run in which the IDE started: the five workbench
   classes, the stable core journeys (solution folder, project options, T4, Task List, project reload, the Windows Terminal
-  journey, Razor, the Windows new-project dialog, fixture isolation, Profiler journeys, the WPF designer
+  journey, Razor, the Windows and macOS new-project dialogs, fixture isolation, Profiler journeys, the WPF designer
   assembly lock), code coverage, and the VSEditorCompat, XamlDom and Profiler suites on the ARM64 platforms. Its
   entries are `required` on all three platforms (each passed on the last two hosted runs that completed it there;
-  the results are recorded above), and the lane has no `allowAllFailures`. `add-reference-journey` is `required` on
+  the results are recorded above), and the lane has no `allowAllFailures`. `new-project-dialog-macos` joined later: it
+  failed on the hosted runner until `cc569fd5a8` and moved here after two green runs. `add-reference-journey` is `required` on
   macOS ARM64 and Windows x64 but `observe` on Windows ARM64 until its dialog can get native focus there, so it runs
   in `integration-unstable` (see "Focus mode").
 * `integration-unstable` holds entries with known hosted failures or under investigation: the macOS Terminal pad (pointer
-  input), the macOS new-project dialog (the runner's SDK set), `base-tests-arm` (two hot-reload end-to-end cases fail on
-  Windows ARM64) and the debugger classes on Windows ARM64 (one case each). The debugger classes and WPF Hot Reload are
-  `required` on macOS ARM64 and Windows x64.
+  input), `base-tests-arm` (two hot-reload end-to-end cases fail on
+  Windows ARM64) and the debugger classes on Windows ARM64 (one case each). Some of its entries are `required` on the
+  platforms where they pass, and stay here for the platforms where they do not: the debugger classes and WPF Hot Reload on
+  macOS ARM64 and Windows x64.
   Entries run in plan order, and Hot Reload is last so a hang there cannot hide the others. Move an entry to
   `integration-stable` under the same two-run rule.
 * `integration-designer` holds every designer journey (LibreWPF editing and property editors, LibreWinForms, MewUI and

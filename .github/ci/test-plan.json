@@ -55,14 +55,14 @@
       "timeoutMinutes": 55,
       "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
-      "note": "Entries that passed on every hosted run in which the IDE started (runs 40431285339 through 40461019311): workbench, the stable core journeys, code coverage and the ARM64 unit suites, sharing one preparation. Windows x64 measured about 28 minutes of tests plus ~15 minutes of preparation. Its entries are required on macOS ARM64 and Windows x64 after each passed on the last two hosted runs that completed it there; on Windows ARM64 they are required too, after passing on runs 40444468212, 40461019311 and 40470967407. In focus mode the lane has no entry left and is not scheduled."
+      "note": "Entries that passed on every hosted run in which the IDE started (runs 40431285339 through 40461019311): workbench, the stable core journeys, code coverage and the ARM64 unit suites, sharing one preparation. Windows x64 measured about 28 minutes of tests plus ~15 minutes of preparation. Its entries are required on macOS ARM64 and Windows x64 after each passed on the last two hosted runs that completed it there; on Windows ARM64 they are required too, after passing on runs 40444468212, 40461019311 and 40470967407. In focus mode the lane has no entry left and is not scheduled. new-project-dialog-macos joined later: it failed on the hosted runner until cc569fd5a8 and moved here after passing runs 40606824351 and 40615707034."
     },
     "integration-unstable": {
       "timeoutMinutes": 45,
       "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
       "allowAllFailures": true,
-      "note": "Entries with known hosted failures or under investigation: macOS Terminal pointer input, the macOS new-project dialog, Windows ARM64 hot-reload end-to-end cases in base-tests-arm, the Windows ARM64 debugger journeys, and add-reference-journey, which is required on macOS ARM64 and Windows x64 but observe on Windows ARM64 (its dialog cannot get native focus there), so it runs in integration-unstable rather than keeping integration-stable scheduled in focus mode. Plan order runs Hot Reload last so a hang there does not hide the others."
+      "note": "Entries with known hosted failures or under investigation: macOS Terminal pointer input, Windows ARM64 hot-reload end-to-end cases in base-tests-arm, the Windows ARM64 debugger journeys, and add-reference-journey, which is required on macOS ARM64 and Windows x64 but observe on Windows ARM64 (its dialog cannot get native focus there), so it runs in integration-unstable rather than keeping integration-stable scheduled in focus mode. Plan order runs Hot Reload last so a hang there does not hide the others."
     },
     "integration-designer": {
       "timeoutMinutes": 80,
@@ -551,14 +551,15 @@
     {
       "id": "new-project-dialog-macos",
       "batch": 4,
-      "lane": "integration-unstable",
+      "lane": "integration-stable",
+      "measuredSeconds": 35,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-class", "OpenDevelop.IntegrationTests.NewProjectDialogIntegrationTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
-      "platforms": { "macos-arm64": "observe" },
-      "note": "macOS ARM64: 7 passed and the Windows-only SDK download case skipped in 57 seconds."
+      "platforms": { "macos-arm64": "required" },
+      "note": "macOS ARM64: 7 passed and the Windows-only SDK download case skipped. On the hosted runner it failed until cc569fd5a8 (templates from the runtime-matching SDK folder only), then passed runs 40606824351 and 40615707034."
     },
     {
       "id": "new-project-dialog-windows",
