@@ -101,16 +101,14 @@
   </Target>
 
   <!-- WinUI Hot Reload: the agent (which also builds its native TAP for x86/x64/ARM64 through
-       Visual Studio's MSBuild) and the fixture application, once per architecture this machine can
-       run - ARM64 Windows runs all three, x64 Windows runs x64 and x86. Windows only: WinUI does
-       not run anywhere else, and WinUIHotReloadEndToEndTests skips there. -->
-  <PropertyGroup>
-    <_HostIsArm64>$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().Equals('Arm64'))</_HostIsArm64>
-  </PropertyGroup>
+       Visual Studio's MSBuild) and the fixture application for x64, x86 and ARM64. The test skips
+       an architecture this machine cannot run, but ARM64 is built on x64 too: CI builds once on
+       Windows x64 and the Windows ARM64 lane tests that output. Windows only: WinUI does not run
+       anywhere else, and WinUIHotReloadEndToEndTests skips there. -->
   <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
     <_WinUIHotReloadFixtureArch Include="x64" Rid="win-x64" />
     <_WinUIHotReloadFixtureArch Include="x86" Rid="win-x86" />
-    <_WinUIHotReloadFixtureArch Include="ARM64" Rid="win-arm64" Condition="'$(_HostIsArm64)' == 'true'" />
+    <_WinUIHotReloadFixtureArch Include="ARM64" Rid="win-arm64" />
   </ItemGroup>
   <Target Name="BuildWinUIHotReloadForTests" BeforeTargets="Build" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
     <MSBuild Projects="$(MSBuildThisFileDirectory)../../src/Main/HotReload/WinUIHotReload.Agent/WinUIHotReload.Agent.csproj"

@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -37,6 +38,14 @@ public sealed class WpfHotReloadEndToEndTests
 		// the part of the project launch path here.
 		var adapter = new WpfApplicationHotReloadAdapter();
 		var startInfo = new ProcessStartInfo(fixture) { UseShellExecute = false };
+		// The fixture's apphost has the architecture of the machine that built it, and CI builds once on
+		// Windows x64 for both Windows lanes; an ARM64 runner has no x64 runtime for that apphost. The
+		// fixture assembly itself is portable, so run it with this test's own dotnet host there.
+		if (OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.Arm64
+			&& Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "dotnet") {
+			startInfo.Arguments = "\"" + Path.ChangeExtension(fixture, ".dll") + "\"";
+			startInfo.FileName = Environment.ProcessPath!;
+		}
 		var session = await adapter.StartAsync(
 			new HotReloadLaunchContext(project: null, withDebugger: false), startInfo, CancellationToken.None);
 		await using (session) {
