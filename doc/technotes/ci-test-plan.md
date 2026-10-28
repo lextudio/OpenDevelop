@@ -53,18 +53,28 @@ slot in `.github/ci/verify-bitness.ps1`, but `test-plan.json` has no platform de
 creates `OpenDevelop-win.zip` and `OpenDevelop-macos.dmg`; `dist.ps1` currently routes every non-Windows host through
 the macOS bundle/DMG path. Adding Linux therefore requires a Linux-specific distribution branch, not a matrix flag.
 
+**Progress (2026-10-28):** the first shared prerequisites now recognize both `linux-x64` and `linux-arm64`:
+the Terminal package verifier asserts the two native `.so` files for each RID and, on every enabled native build,
+verifies the complete five-RID GitHub Packages `LibGhostty.Net` closure (Windows x64/ARM64, macOS ARM64, and both Linux RIDs). The bitness
+verifier is usable before Linux is enabled in the plan and rejects the other Linux architecture from a release payload.
+The later packager must pass its exact target RID into the AddIn SDK before that SDK prunes the opposite Linux architecture;
+an OS-family-only pruning rule is deliberately insufficient. This is not yet an enabled platform or a release asset:
+`dist.ps1` still needs its independent Linux ZIP assembly and a native smoke run before either architecture can claim CI coverage.
+
 ### Release format decision
 
-Start with framework-dependent, architecture-specific archives:
-`OpenDevelop-linux-x64.tar.gz` and `OpenDevelop-linux-arm64.tar.gz`. Each contains the host, `AddIns/`, `data/`,
+Start with framework-dependent, architecture-specific ZIP archives:
+`OpenDevelop-linux-x64.zip` and `OpenDevelop-linux-arm64.zip`. Each contains the host, `AddIns/`, `data/`,
 legal files and a small `OpenDevelop` launcher. This matches the current Windows/macOS choice to rely on an installed
 .NET runtime, is transparent to inspect, and gives us stable GitHub Release assets before committing to a desktop-store
 integration. The launcher should fail early with actionable prerequisites (the required .NET runtime, display/session
 requirements, and any native libraries that LibreWPF reports missing).
 
-Do not make AppImage, Flatpak, Snap, a `.deb`, or an `.rpm` the first release artifact. Each introduces a different
-runtime/sandbox/desktop-integration ownership model. After the tarball has repeatable smoke and integration evidence,
-choose one installer format as a separate product/distribution project; it must not silently replace the tarball.
+Use ZIP deliberately to match ProjectRover's portable-release convention and to keep extraction tooling uniform for
+users and automation. Do not make AppImage, Flatpak, Snap, a `.deb`, or an `.rpm` the first release artifact. Each
+introduces a different runtime/sandbox/desktop-integration ownership model. After the ZIP has repeatable smoke and
+integration evidence, choose one installer format as a separate product/distribution project; it must not silently
+replace the ZIP.
 
 ### Phases and gates
 
@@ -91,7 +101,7 @@ choose one installer format as a separate product/distribution project; it must 
    after GTK installation and native frame rendering are independently proven.
 5. **Promote and release.** Promote proven entries from `observe` to `required` per architecture; run a full selected
    Linux matrix plus packaged-payload verification. Then add a matrix-driven `Package Linux` job to `release.yml`,
-   upload both `OpenDevelop-linux-x64.tar.gz` and `OpenDevelop-linux-arm64.tar.gz`, make `draft` require the enabled
+   upload both `OpenDevelop-linux-x64.zip` and `OpenDevelop-linux-arm64.zip`, make `draft` require the enabled
    Linux jobs, verify each checksum/contents, and include both assets in release notes. A tag must not publish either
    Linux asset until its matching native gate is green. If ARM64 infrastructure is not yet available, do not create a
    misleading ARM64 asset: record it as a release prerequisite and keep the x64 asset's scope explicit.
@@ -392,8 +402,10 @@ add-in carries ~550 MB because the RID-less build copies the native libraries of
 of it), packed to 5.3 GB, and the test jobs spent 4 to 6 minutes downloading and unpacking it. `package-workspace.ps1 -Platform windows-x64` therefore leaves
 out what Windows can never load: `.so`, `.dylib`, `.a`, `.lib`, the `runtimes/<linux|osx|android|ios|tvos|maccatalyst|browser>*`
 folders and the `.pdb` files under `AddIns/` (the fixtures' `.pdb` files stay, the debugger tests read them). The same
-exclusions apply to the NuGet cache archive (`nuget-<platform>`). The job summaries print the on-disk and archived sizes and
-the pack time; record the new numbers here once a run has produced them.
+exclusions apply to the NuGet cache archive (`nuget-<platform>`). The Linux branch keeps only the matching `linux-x64`
+or `linux-arm64` RID tree, so an archive cannot accidentally give an ARM64 runner x64 native dependencies. The job
+summaries print the on-disk and archived sizes and the pack time; record the new numbers here once a run has produced
+them.
 
 ## The build
 

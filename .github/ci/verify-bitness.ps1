@@ -15,7 +15,7 @@
 #   * a lane runs the architecture its platform promises, and the payload carries that architecture's assets. A lane
 #     that quietly falls back to the host's architecture would test x64 twice and report coverage it does not have.
 param(
-    [Parameter(Mandatory)][ValidateSet('windows-x64', 'windows-arm64', 'macos-arm64', 'linux-x64')][string]$Platform,
+    [Parameter(Mandatory)][ValidateSet('windows-x64', 'windows-arm64', 'macos-arm64', 'linux-x64', 'linux-arm64')][string]$Platform,
     [string]$PayloadRoot,
     [switch]$PayloadOnly,
     [switch]$RunnerOnly
@@ -25,9 +25,21 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $plan = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'test-plan.json') -Raw | ConvertFrom-Json
 $platformEntry = $plan.platforms.PSObject.Properties[$Platform]
-if ($null -eq $platformEntry) { throw "Platform '$Platform' is not defined in test-plan.json." }
-$expectedRid = [string]$platformEntry.Value.rid
+# The two Linux values are intentionally usable before the test plan enables Linux jobs: the
+# distribution packager and its focused payload checks need to prove their contract first. Once
+# a platform is enabled, its plan RID remains the source of truth and is checked against this map.
+$expectedRid = switch ($Platform) {
+    'linux-x64' { 'linux-x64' }
+    'linux-arm64' { 'linux-arm64' }
+    default {
+        if ($null -eq $platformEntry) { throw "Platform '$Platform' is not defined in test-plan.json." }
+        [string]$platformEntry.Value.rid
+    }
+}
 if (-not $expectedRid) { throw "Platform '$Platform' has no 'rid'; the bitness checks need one." }
+if ($null -ne $platformEntry -and [string]$platformEntry.Value.rid -ne $expectedRid) {
+    throw "Platform '$Platform' declares RID '$($platformEntry.Value.rid)', but the bitness contract expects '$expectedRid'."
+}
 
 $expectedArchitecture = switch -Regex ($expectedRid) {
     'arm64$' { 'Arm64'; break }
@@ -66,6 +78,24 @@ if (-not $RunnerOnly) {
             }
         }
         Write-Host "verify-bitness: macOS payload carries the app-base LibreWPF payload."
+    }
+    elseif ($Platform -like 'linux-*') {
+        # Linux releases are one native RID per archive.  The portable bootstrap must load the
+        # LibreWPF managed runtime from the app base, while terminal/native dependencies resolve
+        # from the matching Linux RID tree; retaining another architecture here would make an
+        # apparently-native lane capable of exercising the wrong payload.
+        foreach ($name in 'PresentationFramework.dll', 'WindowsBase.dll') {
+            if (-not (Test-Path (Join-Path $PayloadRoot $name))) {
+                throw "The Linux payload is missing '$name' beside OpenDevelop.dll; the portable bootstrap cannot preload it."
+            }
+        }
+        $otherRid = if ($expectedRid -eq 'linux-x64') { 'linux-arm64' } else { 'linux-x64' }
+        foreach ($runtimesDir in Get-ChildItem -LiteralPath $PayloadRoot -Recurse -Directory -Filter runtimes -ErrorAction SilentlyContinue) {
+            if (Test-Path -LiteralPath (Join-Path $runtimesDir.FullName $otherRid)) {
+                throw "The Linux payload retains foreign native assets at $($runtimesDir.FullName)/$otherRid. Linux release archives must be architecture-specific."
+            }
+        }
+        Write-Host "verify-bitness: Linux payload carries app-base LibreWPF and only its $expectedRid native trees."
     }
 }
 

@@ -14,7 +14,8 @@
 # payload for x64 and ARM64, and drops the other systems' native libraries (.so, .dylib, .a, .lib and
 # runtimes/<linux|osx|android|ios|tvos|maccatalyst|browser>*) plus the .pdb files under AddIns/ (the fixtures' own .pdb
 # files stay: the debugger tests read them). macos-* ships osx-arm64 only (dist.macos.sh), so it also drops the Windows
-# RID trees and per-RID win-* folders.
+# RID trees and per-RID win-* folders. Linux archives are architecture-specific too: they retain only their matching
+# linux-* runtime tree rather than making a Linux x64 archive accidentally validate ARM64 assets.
 #
 # zstd is used when this machine's tar supports it (bsdtar on the runners does), gzip otherwise; -Extract finds
 # whichever file is there.  Packing refuses a NuGet.config that holds a clear-text credential.
@@ -85,6 +86,14 @@ try {
         # loaded here and only cost download time.
         foreach ($rid in @('win', 'linux', 'android', 'ios', 'tvos', 'maccatalyst', 'browser')) { $exclusions += "--exclude=runtimes/$rid*" }
         foreach ($folder in @('win-x64', 'win-arm64', 'win-x86')) { $exclusions += "--exclude=**/$folder/*" }
+    }
+    elseif ($Platform -like 'linux-*') {
+        $targetRid = if ($Platform -eq 'linux-x64') { 'linux-x64' } else { 'linux-arm64' }
+        $foreignRid = if ($targetRid -eq 'linux-x64') { 'linux-arm64' } else { 'linux-x64' }
+        # Do not exclude unix*: it is a valid NuGet RID fallback for Linux native dependencies.
+        foreach ($rid in @('win', 'osx', 'android', 'ios', 'tvos', 'maccatalyst', 'browser')) { $exclusions += "--exclude=runtimes/$rid*" }
+        $exclusions += "--exclude=runtimes/$foreignRid*"
+        foreach ($folder in @('win-x64', 'win-arm64', 'win-x86', 'osx-arm64', 'osx-x64', $foreignRid)) { $exclusions += "--exclude=**/$folder/*" }
     }
 
     $before = Get-Size-Megabytes '.'
