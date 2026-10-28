@@ -42,6 +42,10 @@ on:
         required: false
         type: boolean
         default: false
+      platforms:
+        description: Run only these platforms, comma separated (for example windows-x64,windows-arm64; empty = all). Use it when a platform's runners are unavailable, because the lanes wait for the whole build matrix.
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -98,10 +102,11 @@ jobs:
         shell: pwsh
         env:
           THROUGH_BATCH: ${{ inputs.through_batch }}
+          PLATFORMS: ${{ inputs.platforms }}
         run: |
           $through = -1
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
-          ./.github/ci/plan-matrix.ps1 -ThroughBatch $through
+          ./.github/ci/plan-matrix.ps1 -ThroughBatch $through -Platforms $env:PLATFORMS
 
   build:
     name: Build (${{ matrix.name }})

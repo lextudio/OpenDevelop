@@ -70,6 +70,16 @@ try {
         if ('solo' -in $buildNames) { throw 'A platform with only in-place entries must get no build job.' }
         if ($plannerOutput -notmatch 'in_lane=unit \(solo\)') { throw 'Focus mode must keep the observe in-place entry.' }
         if (-not ('windows-x64' -in $buildNames -and 'macos-arm64' -in $buildNames)) { throw 'Focus mode dropped a build that observe entries need.' }
+        # -Platforms limits the run to the named platforms (a dispatch input), so an unavailable platform cannot hold the
+        # others back, and rejects a name the plan does not define.
+        $macOnly = (& pwsh -NoProfile -File $planner -PlanPath $focusPlanPath -Platforms 'macos-arm64') -join "`n"
+        if ($LASTEXITCODE -ne 0) { throw 'Planning for one platform failed.' }
+        $macMatrix = [regex]::Match($macOnly, 'build_matrix=(\{.*\})').Groups[1].Value | ConvertFrom-Json
+        $macLanes = [regex]::Match($macOnly, 'lane_matrix=(\{.*\})').Groups[1].Value | ConvertFrom-Json
+        if (@($macMatrix.include | ForEach-Object { $_.name }) -join ',' -ne 'macos-arm64') { throw '-Platforms macos-arm64 must plan only the macOS build.' }
+        if (@($macLanes.include | Where-Object { $_.platform -ne 'macos-arm64' }).Count -gt 0) { throw '-Platforms macos-arm64 must plan only macOS lanes.' }
+        & pwsh -NoProfile -File $planner -PlanPath $focusPlanPath -Platforms 'no-such-platform' *> $null
+        if ($LASTEXITCODE -eq 0) { throw '-Platforms must reject a platform the plan does not define.' }
         $env:OD_CI_FULL = 'true'
         $full = & pwsh -NoProfile -File $builder -Platform windows-x64 -ArchiveLanesOnly -List -PlanPath $focusPlanPath
         if ($LASTEXITCODE -ne 0 -or -not ($full | Where-Object { $_ -like '*transitive.csproj*' })) {
