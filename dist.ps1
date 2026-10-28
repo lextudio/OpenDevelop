@@ -461,7 +461,16 @@ function Test-PackagedAppStartup {
     }
     if ($ArgumentList.Count -gt 0) { $startArgs.ArgumentList = $ArgumentList }
     if ($WorkingDirectory) { $startArgs.WorkingDirectory = $WorkingDirectory }
-    $proc = Start-Process @startArgs
+    # ContentRendered is the only readiness event that proves the workbench itself, rather than
+    # merely the process, reached the display. Enable its terse stdout marker only for this smoke
+    # launch so ordinary GUI sessions do not gain a console-side protocol.
+    $previousStartupMarker = $env:OPENDEVELOP_STARTUP_MARKER
+    try {
+        $env:OPENDEVELOP_STARTUP_MARKER = '1'
+        $proc = Start-Process @startArgs
+    } finally {
+        $env:OPENDEVELOP_STARTUP_MARKER = $previousStartupMarker
+    }
 
     $ready = $false
     for ($i = 0; $i -lt 45; $i++) {
@@ -491,6 +500,15 @@ function Test-PackagedAppStartup {
         Write-Host "dist.ps1: packaged app $reason" -ForegroundColor Red
         foreach ($log in $outLog, $errLog) {
             if (Test-Path $log) { Get-Content $log -TotalCount 160 | Write-Host }
+        }
+        # The package intentionally has no .config, so its default logger writes an immediately
+        # flushed startup trace here. stdout can be empty when the WPF splash catches an exception
+        # and shuts down cleanly; include this file before failing so a native CI runner preserves
+        # the actual cause instead of only reporting exit code 0.
+        $applicationLog = Join-Path ([System.IO.Path]::GetTempPath()) 'OpenDevelop.log'
+        if (Test-Path -LiteralPath $applicationLog) {
+            Write-Host "dist.ps1: packaged application log ($applicationLog):"
+            Get-Content -LiteralPath $applicationLog -TotalCount 240 | Write-Host
         }
         Remove-Item -Force $outLog, $errLog -ErrorAction SilentlyContinue
         exit 1

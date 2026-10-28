@@ -267,6 +267,13 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			onFirstRender = (sender, e) => {
 				SD.Workbench.MainWindow.ContentRendered -= onFirstRender;
 				PerfTimeline.Mark(PerfTimeline.Startup, "main-window-rendered");
+				// Distribution smoke tests need a process-boundary readiness signal: remaining
+				// alive only proves that the CLR started, not that LibreWPF produced a workbench
+				// frame. Keep the console protocol opt-in so normal GUI sessions stay silent.
+				if (Environment.GetEnvironmentVariable("OPENDEVELOP_STARTUP_MARKER") == "1") {
+					Console.Out.WriteLine("startup/main-window-rendered");
+					Console.Out.Flush();
+				}
 			};
 			SD.Workbench.MainWindow.ContentRendered += onFirstRender;
 			if (ExternalRunLoop) {

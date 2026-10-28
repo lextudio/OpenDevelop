@@ -93,6 +93,12 @@ scope defect: SPDX attribution copies under `THIRD-PARTY-NOTICES` retain NuGet `
 were incorrectly classified as loadable foreign native assets. The audit now excludes that text-only notice subtree
 while continuing to reject an opposite-RID tree anywhere in the deployed payload itself.
 
+The follow-up native run reached the ZIP startup smoke on both RIDs. That smoke now opts into a
+`startup/main-window-rendered` stdout marker emitted from the workbench's first `ContentRendered` event, rather than
+mistaking process liveness for a rendered application. If startup still exits, the smoke prints the packaged app's
+immediately-flushed `OpenDevelop.log`; this is required diagnostic evidence for a splash-path failure that otherwise
+returns status 0 with empty stdout/stderr.
+
 ### Release format decision
 
 Start with framework-dependent, architecture-specific ZIP archives:
