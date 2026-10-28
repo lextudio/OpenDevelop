@@ -386,17 +386,36 @@ jobs:
           Get-TopWindows | Where-Object { $_.Process -ne 'explorer' -and $_.Class -notin 'Shell_TrayWnd', 'Shell_SecondaryTrayWnd', 'Progman', 'WorkerW' } |
             ForEach-Object { "minimising $($_.Process) '$($_.Title)' [$($_.Class)]"; [void][Native.Desk]::ShowWindow($_.Handle, 6) }
 
-          # windows-11-arm keeps starting wsl.exe while the tests run, each time in a new Windows
-          # Terminal window that becomes the foreground window over TestApp (the failures named it:
-          # WindowsTerminal, title 'C:\Windows\system32\wsl.exe'). A watchdog for the rest of the job
-          # stops it and records what started it; the runner cleans the watchdog up with the job. The log
-          # lands in the uploaded test-log directory.
+          # windows-11-arm's WSL app runs `wsl.exe --update --confirm --prompt-before-exit` from
+          # backgroundTaskHost every 30 s, each time in a new Windows Terminal window that becomes the
+          # foreground window over the app under test (the failures named it: WindowsTerminal, title
+          # 'C:\Windows\system32\wsl.exe'). A watchdog for the rest of the job stops exactly that
+          # command and its window, and records what started it; the runner cleans it up with the job.
+          # Its log lands in the uploaded test-log directory. Other wsl.exe processes are left alone:
+          # the images' provisioning agent probes WSL with a windowless `wsl -u root -e ls`, which an
+          # earlier version of this watchdog stopped as well (provjobd.exe in the log).
+          # The retries come from the update never finishing: --prompt-before-exit leaves it waiting for
+          # a key, and stopping it counts as a failed update. Finish the update here, before the tests,
+          # so the background task has nothing left to do; the watchdog stays as the safety net and its
+          # log shows whether it still had to step in.
+          if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            $update = Start-Process wsl.exe -ArgumentList '--update', '--web-download' -WindowStyle Hidden -PassThru
+            if ($update.WaitForExit(300000)) {
+              "wsl --update finished with exit code $($update.ExitCode) after $([int]$sw.Elapsed.TotalSeconds) s"
+            } else {
+              "wsl --update did not finish within 300 s; stopping it"
+              Stop-Process -Id $update.Id -Force -ErrorAction SilentlyContinue
+            }
+            wsl.exe --version 2>&1 | Out-String
+          }
+
           $watchdog = Join-Path $env:RUNNER_TEMP 'desktop-watchdog.ps1'
           $watchdogLog = Join-Path $env:RUNNER_TEMP 'od-test-logs/desktop-watchdog.log'
           Set-Content -Path $watchdog -Value @'
           param([string]$Log)
           while ($true) {
-            foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name = 'wsl.exe' OR Name = 'wslhost.exe'" -ErrorAction SilentlyContinue)) {
+            foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name = 'wsl.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*--update*' })) {
               $parent = Get-CimInstance Win32_Process -Filter "ProcessId = $($p.ParentProcessId)" -ErrorAction SilentlyContinue
               Add-Content $Log "$(Get-Date -Format HH:mm:ss.fff) stopping $($p.Name) ($($p.ProcessId)) '$($p.CommandLine)' started by $($parent.Name) ($($p.ParentProcessId)) '$($parent.CommandLine)'"
               Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
