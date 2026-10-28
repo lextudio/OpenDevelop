@@ -65,7 +65,8 @@ smoke evidence is required before either architecture can claim CI coverage.
 The first native evidence is supplied by the separate observational `Linux package smoke` workflow: it runs
 `dist.linux.sh` inside Xvfb on `ubuntu-24.04` and `ubuntu-24.04-arm`, verifies the matching ZIP exists, and retains it
 as a short-lived artifact. It is intentionally outside the required CI and release workflows until both architectures
-have repeatable green package/startup results.
+have repeatable green package/startup results. The CI invocation skips the developer-only local-feed synchronizer and
+restores directly from GitHub Packages with the workflow's short-lived package credential.
 
 ### Release format decision
 

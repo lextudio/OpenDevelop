@@ -37,6 +37,9 @@
 [CmdletBinding()]
 param(
     [switch]$SkipPublish,
+    # CI restores the same packages directly from GitHub Packages using its ephemeral token. The
+    # local-feed synchronizer intentionally uses an interactive gh credential and must not run there.
+    [switch]$SkipFeedSync,
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
 
@@ -1266,7 +1269,7 @@ function Invoke-DistributionPipeline {
 
     # Direct dist.ps1 callers need the same isolated, tokenless local feed as the platform wrappers.
     $env:NUGET_PACKAGES = Join-Path $repoRoot 'artifacts/nuget-packages'
-    & (Join-Path $repoRoot 'sync-openavalon-feed.ps1')
+    if (-not $SkipFeedSync) { & (Join-Path $repoRoot 'sync-openavalon-feed.ps1') }
 
     if ($Kill) {
         Write-Host '==> Stopping OpenDevelop and lingering build servers / design hosts...'
