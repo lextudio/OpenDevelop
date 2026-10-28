@@ -213,6 +213,19 @@ jobs:
           sudo DevToolsSecurity -enable
           sudo dseditgroup -o edit -a "$USER" -t user _developer
           sudo security authorizationdb write system.privilege.taskport allow
+      # Pointer journeys bring the IDE to the foreground (od.activate) before real input. Windows
+      # refuses SetForegroundWindow from a background process while the foreground lock timeout
+      # is non-zero; the ARM64 runner reported foregrounded=false every time. Clear the timeout
+      # for this session only, as interactive test machines usually have it.
+      - name: Allow foreground switches for pointer journeys
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Add-Type -Namespace OD -Name User32 -MemberDefinition '[DllImport("user32.dll", SetLastError = true)] public static extern bool SystemParametersInfo(uint action, uint param, System.IntPtr value, uint flags);'
+          # SPI_SETFOREGROUNDLOCKTIMEOUT = 0x2001, SPIF_SENDCHANGE = 2
+          if (-not [OD.User32]::SystemParametersInfo(0x2001, 0, [IntPtr]::Zero, 2)) {
+            Write-Warning "SystemParametersInfo failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+          }
       - name: Install GTK designer runtimes and metadata
         if: matrix.needs_gtk && matrix.platform == 'macos-arm64'
         shell: bash
