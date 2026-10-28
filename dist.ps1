@@ -801,12 +801,51 @@ function Invoke-MacArchive {
     return (Join-Path $repoRoot 'OpenDevelop-macos.dmg')
 }
 
+function Test-LinuxDistributionPayload {
+    param([Parameter(Mandatory)][string]$PayloadRoot)
+
+    $app = Join-Path $PayloadRoot 'OpenDevelop.dll'
+    if (-not (Test-Path -LiteralPath $app)) { throw "Linux distribution payload has no OpenDevelop.dll: $PayloadRoot" }
+    Test-DistributionLegalFiles -Destination $PayloadRoot
+
+    $addIns = Join-Path $PayloadRoot 'AddIns'
+    if (-not (Test-Path -LiteralPath $addIns)) { throw "Linux distribution payload has no AddIns directory: $PayloadRoot" }
+    if (@(Get-ChildItem -LiteralPath $addIns -Recurse -File -Filter '*.addin').Count -eq 0) {
+        throw "Linux distribution payload has no addin manifests: $addIns"
+    }
+
+    # Linux supports the portable LibreWPF design host. The genuine Microsoft WPF host targets the
+    # Windows Desktop Runtime and therefore cannot run on Linux; making its absence explicit
+    # prevents a later staging change from silently advertising a backend the payload cannot use.
+    $portableWpfHost = Join-Path $addIns 'DisplayBindings/WpfDesign/Host/WpfDesign.SurfaceHost.dll'
+    if (-not (Test-Path -LiteralPath $portableWpfHost)) {
+        throw "Linux distribution payload is missing the LibreWPF design host: $portableWpfHost"
+    }
+    $microsoftWpfHost = Join-Path $addIns 'DisplayBindings/WpfDesign/MicrosoftHost/MicrosoftWpfDesign.SurfaceHost.dll'
+    if (Test-Path -LiteralPath $microsoftWpfHost) {
+        throw "Linux distribution payload includes the Windows-only Microsoft WPF design host: $microsoftWpfHost"
+    }
+
+    # The regular Package Management addin is portable. Its legacy Cmdlets closure is loaded only
+    # for Windows PowerShell 2 and brings Microsoft System.Drawing.Common, which is incompatible
+    # with LibreWinForms' ProGPU fork. It is intentionally excluded from Linux distributions.
+    $packageManagement = Join-Path $addIns 'Misc/PackageManagement/PackageManagement.dll'
+    if (-not (Test-Path -LiteralPath $packageManagement)) {
+        throw "Linux distribution payload is missing the Package Management addin: $packageManagement"
+    }
+    $legacyCmdlets = Join-Path $addIns 'Misc/PackageManagement/PackageManagement.Cmdlets.dll'
+    if (Test-Path -LiteralPath $legacyCmdlets) {
+        throw "Linux distribution payload includes Windows PowerShell 2 Cmdlets: $legacyCmdlets"
+    }
+}
+
 function Invoke-LinuxPayload {
     Assert-HostPublished
     $env:DIST_CONFIG = $config; $env:DIST_LINUX_RID = $linuxRid
     & bash (Join-Path $repoRoot 'build/linux/build-application-payload.sh') | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "build-application-payload.sh exited with code $LASTEXITCODE" }
     Write-DistributionLegalFiles -Destination $payloadRoot
+    Test-LinuxDistributionPayload -PayloadRoot $payloadRoot
     & (Join-Path $repoRoot '.github/ci/verify-bitness.ps1') -Platform $linuxRid -PayloadRoot $payloadRoot -PayloadOnly
     return $payloadRoot
 }
@@ -1159,6 +1198,21 @@ function Invoke-AddInsPhase {
     $distributionSolution = Join-Path $repoRoot ".opendevelop-distribution-$([guid]::NewGuid().ToString('N')).slnx"
     $solutionText = Get-Content -LiteralPath $sln -Raw
     $solutionText = [regex]::Replace($solutionText, '(?m)^\s*<Project Path="tests/OpenDevelop\.(?:IntegrationTests|Base\.Tests)/OpenDevelop\.[^"]+\.csproj" />\s*\r?\n', '')
+    if ($distributionPlatform -eq 'linux') {
+        # These projects are deliberate Windows-only closures: the Microsoft WPF designer host
+        # requires the Windows Desktop Runtime, and the legacy PowerShell 2 Cmdlets pull the
+        # incompatible Microsoft System.Drawing.Common implementation. The portable LibreWPF
+        # designer and regular Package Management addin remain in the Linux payload.
+        foreach ($projectPath in @(
+            'src/AddIns/DisplayBindings/WpfDesign/MicrosoftHost/Core/MicrosoftWpfDesign.Core.csproj',
+            'src/AddIns/DisplayBindings/WpfDesign/MicrosoftHost/XamlDom/MicrosoftWpfDesign.XamlDom.csproj',
+            'src/AddIns/DisplayBindings/WpfDesign/MicrosoftHost/Engine/MicrosoftWpfDesign.Engine.csproj',
+            'src/AddIns/DisplayBindings/WpfDesign/MicrosoftHost/SurfaceHost/MicrosoftWpfDesign.SurfaceHost.csproj',
+            'src/AddIns/Misc/PackageManagement/Cmdlets/Project/PackageManagement.Cmdlets.csproj'
+        )) {
+            $solutionText = [regex]::Replace($solutionText, '(?m)^\s*<Project Path="' + [regex]::Escape($projectPath) + '" />\s*\r?\n', '')
+        }
+    }
     Set-Content -LiteralPath $distributionSolution -Value $solutionText -NoNewline
 
     # Copy-local filtering only needs filename+extension matching, not a writable clone of the

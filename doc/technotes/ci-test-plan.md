@@ -68,13 +68,20 @@ as a short-lived artifact. It is intentionally outside the required CI and relea
 have repeatable green package/startup results. The CI invocation skips the developer-only local-feed synchronizer and
 restores directly from GitHub Packages with the workflow's short-lived package credential.
 
-**Current validation blocker and fix (2026-10-28):** both native runners reached restore and failed identically before
-any Linux-specific compilation: GitHub Packages returned `401 Unauthorized` for `LibreWPF.Sdk` and `ProGPU.WinUI`.
-The package access grant and `packages: read` permission already exist; the fault was the source key
-`lextudio-github`. NuGet derives its credential environment-variable name from that key, while the dash is not a
-portable environment-variable character on Linux/macOS, so the Linux cold restore silently ignored the injected
-credential. Rename the source and its Actions credential to `lextudio_github`; this retains the short-lived
-`GITHUB_TOKEN` only in the workflow environment and lets the next native run test the actual build and startup paths.
+**Current validation blocker and fix (2026-10-28):** run
+[40735321391](https://github.com/lextudio/OpenDevelop/actions/runs/40735321391) proved the GitHub Packages credential
+fix on both native runners: restore passed after the source key and its Actions credential were renamed from
+`lextudio-github` to `lextudio_github`. NuGet derives the credential environment-variable name from that key, and the
+dash was not portable to Linux/macOS process environments, so the former cold restore silently ignored the short-lived
+workflow credential. No package authorization change is required.
+
+The same run then exposed two shared, Windows-only compilation closures rather than an architecture-specific Terminal
+or IDE failure: the Microsoft WPF designer host targets the Windows Desktop Runtime, and the legacy Package Management
+Cmdlets are only loaded for Windows PowerShell 2 while bringing Microsoft `System.Drawing.Common`, which conflicts with
+LibreWinForms' ProGPU implementation. Linux distribution builds now exclude those five top-level projects, keep the
+LibreWPF design host and ordinary Package Management addin, and assert exactly that payload boundary before ZIP creation.
+The next native x64 and ARM64 run must prove that the filtered build, packaged startup and ZIP checks complete; only then
+should these lanes be considered ready for broader product coverage.
 
 ### Release format decision
 
