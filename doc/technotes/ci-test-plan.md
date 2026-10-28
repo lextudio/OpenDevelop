@@ -68,6 +68,16 @@ as a short-lived artifact. It is intentionally outside the required CI and relea
 have repeatable green package/startup results. The CI invocation skips the developer-only local-feed synchronizer and
 restores directly from GitHub Packages with the workflow's short-lived package credential.
 
+**Current validation blocker (2026-10-28):** both native runners reached restore and failed identically before any
+Linux-specific compilation: GitHub Packages returned `401 Unauthorized` for the `openavalon`-linked
+`LibreWPF.Sdk` and `ProGPU.WinUI` packages. The job has `packages: read`, and its short-lived credential is present,
+so this is package-side Actions access, not a missing runner dependency or an ARM64 difference. Grant the
+`lextudio/OpenDevelop` repository read access under **Manage Actions access** for the required `openavalon` NuGet
+packages (or apply the equivalent inherited package policy). The existing `LibGhostty.Net` grant covers only that
+package. Do not rerun the two-runner workflow until this package-side authorization is in place; then the same
+workflow will provide the next build and startup evidence without any long-lived token or token written to the
+repository.
+
 ### Release format decision
 
 Start with framework-dependent, architecture-specific ZIP archives:
