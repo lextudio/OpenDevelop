@@ -88,13 +88,15 @@ $nugetGlobalPackages = $null
 
 # The Addin SDK's OpenDevelopPruneAddinDeploymentAssets target drops runtimes/win*, linux* and
 # unix* only for the 'osx' family; on Windows those win* assets are exactly what the payload needs.
-$ridFamily = if ($IsWindows) { 'win' } else { 'osx' }
+$distributionPlatform = if ($IsWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } elseif ($IsLinux) { 'linux' } else { throw "dist.ps1: unsupported host OS." }
+$linuxRid = if ($distributionPlatform -eq 'linux') { switch ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture) { ([System.Runtime.InteropServices.Architecture]::X64) { 'linux-x64' } ([System.Runtime.InteropServices.Architecture]::Arm64) { 'linux-arm64' } default { throw "dist.ps1: Linux distributions require a native x64 or ARM64 host." } } } else { $null }
+$ridFamily = switch ($distributionPlatform) { 'windows' { 'win' } 'macos' { 'osx' } 'linux' { 'linux' } }
 
 # ONE platform-neutral payload/zip: the app is AnyCPU and apphost-free, and every architecture's
 # native/runtime assets live under runtimes/<rid>/ in the same tree. Script-scoped because the
 # payload / smoke / zip phases are separately runnable and all three refer to them.
-$payloadRoot = Join-Path $repoRoot 'OpenDevelop-win'
-$zipPath = Join-Path $repoRoot 'OpenDevelop-win.zip'
+$payloadRoot = switch ($distributionPlatform) { 'windows' { Join-Path $repoRoot 'OpenDevelop-win' } 'linux' { Join-Path $repoRoot "OpenDevelop-$linuxRid" } default { $null } }
+$zipPath = switch ($distributionPlatform) { 'windows' { Join-Path $repoRoot 'OpenDevelop-win.zip' } 'linux' { Join-Path $repoRoot "OpenDevelop-$linuxRid.zip" } default { $null } }
 $publishDir = Join-Path $repoRoot "src/Main/SharpDevelop/bin/$Configuration/$tfm/publish"
 $depsJson = Join-Path $publishDir 'OpenDevelop.deps.json'
 
@@ -796,6 +798,22 @@ function Invoke-MacArchive {
     return (Join-Path $repoRoot 'OpenDevelop-macos.dmg')
 }
 
+function Invoke-LinuxPayload {
+    Assert-HostPublished
+    $env:DIST_CONFIG = $config; $env:DIST_LINUX_RID = $linuxRid
+    & bash (Join-Path $repoRoot 'build/linux/build-application-payload.sh') | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "build-application-payload.sh exited with code $LASTEXITCODE" }
+    Write-DistributionLegalFiles -Destination $payloadRoot
+    & (Join-Path $repoRoot '.github/ci/verify-bitness.ps1') -Platform $linuxRid -PayloadRoot $payloadRoot -PayloadOnly
+    return $payloadRoot
+}
+function Invoke-LinuxSmoke { Test-PackagedAppStartup -FilePath $dotnet -ArgumentList @((Join-Path $payloadRoot 'OpenDevelop.dll')) -WorkingDirectory $payloadRoot }
+function Invoke-LinuxArchive {
+    Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+    Push-Location $repoRoot; try { & zip -q -r $zipPath (Split-Path -Leaf $payloadRoot) } finally { Pop-Location }
+    if ($LASTEXITCODE -ne 0) { throw "zip exited with code $LASTEXITCODE" }; return $zipPath
+}
+
 function Invoke-WindowsPayload {
     <#
       Assembles OpenDevelop-win/ from artifacts that ALREADY exist on disk: the host publish
@@ -1164,6 +1182,7 @@ function Invoke-AddInsPhase {
         $addInProperties = @(
             '-p:OpenDevelopDistributionBuild=true',
             "-p:OpenDevelopDistributionRidFamily=$ridFamily",
+            "-p:OpenDevelopDistributionRuntimeIdentifier=$linuxRid",
             "-p:OpenDevelopHostPublishManifest=$hostPublishManifest",
             '-p:ProGpuWpfCopyPackageRuntimeAssets=false',
             '-p:ProGpuWpfUseCurrentRuntimeIdentifier=false',
@@ -1264,16 +1283,16 @@ function Invoke-DistributionPipeline {
             'host'           { Invoke-HostPhase }
             'addins'         { Invoke-AddInsPhase }
             'designer-hosts' { Invoke-DesignerHostsPhase }
-            'payload'        { $artifact = if ($IsWindows) { Invoke-WindowsPayload } else { Invoke-MacPayload } }
-            'smoke'          { if ($IsWindows) { Invoke-WindowsSmoke } else { Invoke-MacSmoke } }
-            'zip'            { $artifact = if ($IsWindows) { Invoke-WindowsArchive } else { Invoke-MacArchive } }
+            'payload'        { $artifact = if ($IsWindows) { Invoke-WindowsPayload } elseif ($IsMacOS) { Invoke-MacPayload } else { Invoke-LinuxPayload } }
+            'smoke'          { if ($IsWindows) { Invoke-WindowsSmoke } elseif ($IsMacOS) { Invoke-MacSmoke } else { Invoke-LinuxSmoke } }
+            'zip'            { $artifact = if ($IsWindows) { Invoke-WindowsArchive } elseif ($IsMacOS) { Invoke-MacArchive } else { Invoke-LinuxArchive } }
         }
         $phaseStopwatch.Stop()
         Write-Host ("==> Phase '{0}' completed in {1:N1}s" -f $name, $phaseStopwatch.Elapsed.TotalSeconds)
     }
 
     if (-not $artifact) {
-        $artifact = if ($IsWindows) { $payloadRoot } else { Join-Path $repoRoot 'OpenDevelop.app' }
+        $artifact = if ($IsMacOS) { Join-Path $repoRoot 'OpenDevelop.app' } else { $payloadRoot }
     }
     return $artifact
 }

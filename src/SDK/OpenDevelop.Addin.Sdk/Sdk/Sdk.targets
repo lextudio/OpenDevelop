@@ -189,9 +189,15 @@
                                        Condition="'$(OpenDevelopDistributionRidFamily)' == 'osx'" />
       <_OpenDevelopForeignRuntimeAsset Include="$(OutputPath)**/runtimes/osx*/**/*;$(OutputPath)**/runtimes/linux*/**/*;$(OutputPath)**/runtimes/unix*/**/*"
                                        Condition="'$(OpenDevelopDistributionRidFamily)' == 'win'" />
+      <_OpenDevelopForeignRuntimeAsset Include="$(OutputPath)**/runtimes/win*/**/*;$(OutputPath)**/runtimes/osx*/**/*;$(OutputPath)**/runtimes/linux-arm64/**/*"
+                                       Condition="'$(OpenDevelopDistributionRuntimeIdentifier)' == 'linux-x64'" />
+      <_OpenDevelopForeignRuntimeAsset Include="$(OutputPath)**/runtimes/win*/**/*;$(OutputPath)**/runtimes/osx*/**/*;$(OutputPath)**/runtimes/linux-x64/**/*"
+                                       Condition="'$(OpenDevelopDistributionRuntimeIdentifier)' == 'linux-arm64'" />
       <_OpenDevelopForeignRuntimeDirectory Include="@(_OpenDevelopForeignRuntimeAsset->'%(RootDir)%(Directory)')" />
       <_OpenDevelopForeignNativeAsset Include="$(OutputPath)**/*.dylib;$(OutputPath)**/*.so"
                                        Condition="'$(OpenDevelopDistributionRidFamily)' == 'win'" />
+      <_OpenDevelopForeignNativeAsset Include="$(OutputPath)**/*.dylib"
+                                       Condition="'$(OpenDevelopDistributionRidFamily)' == 'linux'" />
     </ItemGroup>
     <RemoveDuplicates Inputs="@(_OpenDevelopForeignRuntimeDirectory)">
       <Output TaskParameter="Filtered" ItemName="_OpenDevelopForeignRuntimeDirectoryToRemove" />

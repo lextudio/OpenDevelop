@@ -57,9 +57,10 @@ the macOS bundle/DMG path. Adding Linux therefore requires a Linux-specific dist
 the Terminal package verifier asserts the two native `.so` files for each RID and, on every enabled native build,
 verifies the complete five-RID GitHub Packages `LibGhostty.Net` closure (Windows x64/ARM64, macOS ARM64, and both Linux RIDs). The bitness
 verifier is usable before Linux is enabled in the plan and rejects the other Linux architecture from a release payload.
-The later packager must pass its exact target RID into the AddIn SDK before that SDK prunes the opposite Linux architecture;
-an OS-family-only pruning rule is deliberately insufficient. This is not yet an enabled platform or a release asset:
-`dist.ps1` still needs its independent Linux ZIP assembly and a native smoke run before either architecture can claim CI coverage.
+The packager now passes its exact target RID into the AddIn SDK before it prunes the opposite Linux architecture;
+an OS-family-only pruning rule remains insufficient. `dist.linux.sh` selects the native host architecture, stages an
+independent payload and emits its matching ZIP. Linux is still not an enabled platform or a release asset: native-runner
+smoke evidence is required before either architecture can claim CI coverage.
 
 ### Release format decision
 
