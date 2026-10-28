@@ -89,8 +89,15 @@ namespace ICSharpCode.SharpDevelop.Gui
 		/// Clamps the given bounds to the primary screen's work area (single-monitor only in this MVP build).
 		/// </summary>
 		public static Rect Validate(Rect bounds)
+			=> Validate(bounds, SystemParameters.WorkArea);
+
+		/// <summary>
+		/// <see cref="Validate(Rect)"/> against an explicit work area. Reading <see cref="SystemParameters.WorkArea"/>
+		/// initialises the windowing platform, which GLFW only allows on the main thread (on macOS it blocks any other
+		/// thread forever), so the clamping itself is kept free of it and can be exercised from any thread.
+		/// </summary>
+		public static Rect Validate(Rect bounds, Rect workArea)
 		{
-			Rect workArea = SystemParameters.WorkArea;
 			if (double.IsNaN(bounds.Left) || double.IsInfinity(bounds.Left)
 				|| double.IsNaN(bounds.Top) || double.IsInfinity(bounds.Top)
 				|| double.IsNaN(bounds.Width) || double.IsInfinity(bounds.Width)
@@ -100,7 +107,16 @@ namespace ICSharpCode.SharpDevelop.Gui
 			}
 			if (bounds.Right > workArea.Left && bounds.Left < workArea.Right
 				&& bounds.Bottom > workArea.Top && bounds.Top < workArea.Bottom) {
-				return bounds;
+				// Fit the bounds into the work area: shrink what is larger than it, then slide the rest inside.
+				// Leaving an overhanging window as it is lets some desktops reshape the native window behind the
+				// framework's back (macOS moves a titled window below the menu bar and shrinks it to the visible
+				// frame), after which the window's reported position and size no longer match what is on screen
+				// and anything computed from them, such as an automation click point, is off.
+				double width = Math.Min(bounds.Width, workArea.Width);
+				double height = Math.Min(bounds.Height, workArea.Height);
+				double left = Math.Max(workArea.Left, Math.Min(bounds.Left, workArea.Right - width));
+				double top = Math.Max(workArea.Top, Math.Min(bounds.Top, workArea.Bottom - height));
+				return new Rect(left, top, width, height);
 			}
 			// center on the primary screen's work area
 			return new Rect(
