@@ -132,6 +132,16 @@ required per platform. Linux product tests remain out of scope for this rollout.
   macOS image keeps .NET 8, 9 and 10 side by side, and an older pack won); `new-project-dialog-macos` then passed in run
   40606824351 and, after passing 40615707034 too, is `required` on macOS ARM64,
   its only platform, so it moved to `integration-stable`.
+* **Windows ARM64 unblocked and promoted (2026-10-28).** The windows-11-arm image logs in to the first-logon privacy
+  page (screenshot in the uploaded logs), so every pointer journey saw no foreground window; the "Prepare the Windows
+  desktop" step ported from AvalonDock (`32fd2eda79`, `357e9326bb`) clears it and keeps `wsl.exe` windows away. The lane
+  runs the x64 build's output, whose PDBs name `D:\a\...`: `e2dc739e95` maps that path onto the ARM64 workspace, and
+  `1966db2a72` builds the ARM64 WinUI Hot Reload fixture on x64 and runs the WPF one through dotnet. After that every
+  ARM64 integration entry passed run 40656190581; runs 40662664664 and 40671568295, the last two completed, then passed
+  `base-tests-arm`, `add-reference-journey`, `debugger-feature-journeys` and `gtk-designer-journeys` on Windows ARM64, so
+  those four are `required` there. `debugger-journeys` and `mewui-designer-journeys` each failed once in 40662664664 (a
+  stop racing the adapter's stdin, fixed by `c7497292df`; an items-editor save, now logged in full by `82ba0c62ce`) and
+  stay `observe` for one more green run. The first three promoted entries stay in `integration-unstable` (see "Lanes").
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.
@@ -246,13 +256,12 @@ have been, and a lane is split only for a real environment need or a timeout.
   entries are `required` on all three platforms (each passed on the last two hosted runs that completed it there;
   the results are recorded above), and the lane has no `allowAllFailures`. `new-project-dialog-macos` joined later: it
   failed on the hosted runner until `cc569fd5a8` and moved here after two green runs. `add-reference-journey` is `required` on
-  macOS ARM64 and Windows x64 but `observe` on Windows ARM64 until its dialog can get native focus there, so it runs
-  in `integration-unstable` (see "Focus mode").
+  all three platforms since 2026-10-28 but still runs in `integration-unstable` (see below and "Focus mode").
 * `integration-unstable` holds entries with known hosted failures or under investigation: the macOS Terminal pad (pointer
-  input), `base-tests-arm` (two hot-reload end-to-end cases fail on
-  Windows ARM64) and the debugger classes on Windows ARM64 (one case each). Some of its entries are `required` on the
-  platforms where they pass, and stay here for the platforms where they do not: the debugger classes and WPF Hot Reload on
-  macOS ARM64 and Windows x64.
+  input) and `debugger-journeys` on Windows ARM64. Some of its entries are `required` where they pass: the debugger
+  classes and WPF Hot Reload on macOS ARM64 and Windows x64, and `base-tests-arm`, `add-reference-journey` and
+  `debugger-feature-journeys` on every platform. Those last three would belong in `integration-stable` under the rule below,
+  but stay until a full run has re-measured that lane (55-minute timeout) with them added.
   Entries run in plan order, and Hot Reload is last so a hang there cannot hide the others. Move an entry to
   `integration-stable` under the same two-run rule.
 * `integration-designer` holds every designer journey (LibreWPF editing and property editors, LibreWinForms, MewUI and
@@ -272,8 +281,9 @@ the 11-15 minutes of lane preparation again. `.github/ci/run-statuses.ps1` holds
 `integration-stable` has no entry left and is not scheduled on any platform (6 integration jobs instead of 9), and the
 build lists shrank from 23 to 15 Windows x64 and from 21 to 14 macOS ARM64 lines when focus mode was introduced
 (each later promotion shrinks them further). `add-reference-journey` moved to
-`integration-unstable` for that reason: it is `observe` on Windows ARM64 only and would otherwise keep that lane alive
-for one known failure. A promoted entry stops running too, so run full once before trusting master again
+`integration-unstable` for that reason while it was `observe` on Windows ARM64 only (it would otherwise have kept
+`integration-stable` alive for one known failure); it is `required` everywhere now and stays in `integration-unstable`
+for the reason given under "Lanes". A promoted entry stops running too, so run full once before trusting master again
 (`gh workflow run ci.yml --ref <branch> -f full=true`), and set `"focus": false` to go back to full runs when the
 failures are under control. Focus mode does not gate anything: the `required` entries are not checked while it is on.
 

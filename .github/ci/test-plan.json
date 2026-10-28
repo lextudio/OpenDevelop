@@ -62,7 +62,7 @@
       "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
       "allowAllFailures": true,
-      "note": "Entries with known hosted failures or under investigation: macOS Terminal pointer input, Windows ARM64 hot-reload end-to-end cases in base-tests-arm, the Windows ARM64 debugger journeys, and add-reference-journey, which is required on macOS ARM64 and Windows x64 but observe on Windows ARM64 (its dialog cannot get native focus there), so it runs in integration-unstable rather than keeping integration-stable scheduled in focus mode. Plan order runs Hot Reload last so a hang there does not hide the others."
+      "note": "Entries with known hosted failures or under investigation: macOS Terminal pointer input and debugger-journeys on Windows ARM64 (one flaky stop, fixed in c7497292df, awaiting a second green run). base-tests-arm, add-reference-journey and debugger-feature-journeys are required on every platform since 2026-10-28 but stay here for now: moving them into integration-stable would lengthen a lane with a 55-minute timeout that nobody has re-measured, and a full run is not due yet. Plan order runs Hot Reload last so a hang there does not hide the others."
     },
     "integration-designer": {
       "timeoutMinutes": 80,
@@ -186,12 +186,12 @@
       "id": "base-tests-arm",
       "batch": 4,
       "lane": "integration-unstable",
-      "measuredSeconds": 36,
+      "measuredSeconds": 50,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.Base.Tests/OpenDevelop.Base.Tests.csproj",
       "target": "tests/OpenDevelop.Base.Tests/bin/Debug/net10.0-windows/OpenDevelop.Base.Tests.dll",
-      "platforms": { "windows-arm64": "observe", "macos-arm64": "required" },
-      "note": "macOS ARM64: 490 passed, 9 platform-specific skips."
+      "platforms": { "windows-arm64": "required", "macos-arm64": "required" },
+      "note": "macOS ARM64: 490 passed, 9 platform-specific skips. Windows ARM64: the two Hot Reload end-to-end cases failed until 1966db2a72 (the WinUI ARM64 fixture is built on x64 and the WPF fixture runs through dotnet there); 499 tests passed in runs 40662664664 and 40671568295."
     },
     {
       "id": "vseditorcompat-tests-arm",
@@ -578,14 +578,14 @@
       "id": "add-reference-journey",
       "batch": 4,
       "lane": "integration-unstable",
-      "measuredSeconds": 49,
+      "measuredSeconds": 79,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-class", "OpenDevelop.IntegrationTests.AddReferenceTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
-      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "required" },
-      "note": "Exercises the modal Add Reference dialog with native clicks and verifies project and assembly references. It passes on hosted macOS ARM64 and Windows x64; on Windows ARM64 the dialog never gets native focus (AddReferenceTests.cs:81), so it stays observe there."
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required" },
+      "note": "Exercises the modal Add Reference dialog with native clicks and verifies project and assembly references. It passes on hosted macOS ARM64 and Windows x64; on Windows ARM64 the dialog never got native focus because the image sits on the first-logon privacy page; the Prepare the Windows desktop step (32fd2eda79) clears it, and it then passed runs 40662664664 and 40671568295 there."
     },
     {
       "id": "integration-fixture-isolation",
@@ -684,6 +684,7 @@
       "id": "gtk-designer-journeys",
       "batch": 4,
       "lane": "integration-designer",
+      "measuredSeconds": 530,
       "timeoutMinutes": 12,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
@@ -691,8 +692,8 @@
       "args": ["-class", "OpenDevelop.IntegrationTests.GtkDesignerTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "tests/fixtures/GtkDesignerFixture/GtkDesignerFixture.csproj" }],
-      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "observe" },
-      "note": "Twelve GTK host, native preview, editing, recovery and libadwaita journeys passed locally on macOS ARM64 in 66 seconds. Hosted Windows x64 passed all twelve on runs 40495471973 and 40524161593; Windows ARM64 fails the toolbox drag onto the native surface."
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "observe" },
+      "note": "Twelve GTK host, native preview, editing, recovery and libadwaita journeys passed locally on macOS ARM64 in 66 seconds. Hosted Windows x64 passed all twelve on runs 40495471973 and 40524161593; Windows ARM64 failed the toolbox drag onto the native surface until the desktop preparation step (32fd2eda79), then passed all twelve in runs 40662664664 and 40671568295. Hosted macOS still fails the toolbox drag and the real pads case."
     },
     {
       "id": "gtk-designer-nested-journey",
@@ -727,7 +728,7 @@
       "id": "debugger-feature-journeys",
       "batch": 4,
       "lane": "integration-unstable",
-      "measuredSeconds": 77,
+      "measuredSeconds": 309,
       "timeoutMinutes": 12,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
@@ -738,8 +739,8 @@
         { "project": "tests/fixtures/DebugTestApp/DebugTestApp.csproj" },
         { "project": "tests/fixtures/AttachFixture/AttachFixture.csproj" }
       ],
-      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "required" },
-      "note": "Exercises breakpoint inspection, stepping, restart and attaching to an independently started process. On the hosted macOS runner every attach hung in ICorDebug.DebugActiveProcess until ci.yml granted system.privilege.taskport (a24f882e56); with it, both debugger entries passed runs 40582707365 and 40595645276."
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required" },
+      "note": "Exercises breakpoint inspection, stepping, restart and attaching to an independently started process. On the hosted macOS runner every attach hung in ICorDebug.DebugActiveProcess until ci.yml granted system.privilege.taskport (a24f882e56); with it, both debugger entries passed runs 40582707365 and 40595645276. On Windows ARM64 one case failed until e2dc739e95 mapped the x64 build job's source paths onto the ARM64 workspace; it then passed runs 40662664664 and 40671568295."
     },
     {
       "id": "code-coverage-journeys",
