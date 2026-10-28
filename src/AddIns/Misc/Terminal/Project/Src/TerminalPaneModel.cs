@@ -16,6 +16,7 @@ namespace OpenDevelop.Terminal
 		public TerminalGroup Group { get; init; }
 		/// <summary>A name the user gave this terminal; null shows the shell's own title.</summary>
 		public string CustomName { get; set; }
+		public string SessionKey { get; init; }
 	}
 
 	enum TerminalSplitOrientation
@@ -175,11 +176,11 @@ namespace OpenDevelop.Terminal
 			ActivateIndex(((current + delta) % panes.Count + panes.Count) % panes.Count);
 		}
 
-		public Task<TerminalPane> NewSessionAsync(string shell = null, string workingDirectory = null)
+		public Task<TerminalPane> NewSessionAsync(string shell = null, string workingDirectory = null, IReadOnlyList<string> arguments = null, IReadOnlyDictionary<string, string> environment = null, string title = null, string sessionKey = null)
 		{
 			var group = new TerminalGroup();
 			groups.Add(group);
-			return StartPaneAsync(group, shell, EstimateColumns(1), EstimateRows(), workingDirectory);
+			return StartPaneAsync(group, shell, EstimateColumns(1), EstimateRows(), workingDirectory, null, TerminalSplitOrientation.Horizontal, arguments, environment, title, sessionKey);
 		}
 
 		public Task<TerminalPane> SplitActiveAsync(TerminalSplitOrientation orientation = TerminalSplitOrientation.Horizontal)
@@ -200,21 +201,21 @@ namespace OpenDevelop.Terminal
 		int EstimateSplitRows(TerminalSplitOrientation orientation)
 			=> activePane?.View is { IsLaidOut: true } v ? orientation == TerminalSplitOrientation.Vertical ? Math.Max(1, v.RowsFit / 2) : v.RowsFit : 24;
 
-		async Task<TerminalPane> StartPaneAsync(TerminalGroup group, string shell, int columns, int rows, string workingDirectory = null, TerminalPane splitFrom = null, TerminalSplitOrientation orientation = TerminalSplitOrientation.Horizontal)
+		async Task<TerminalPane> StartPaneAsync(TerminalGroup group, string shell, int columns, int rows, string workingDirectory = null, TerminalPane splitFrom = null, TerminalSplitOrientation orientation = TerminalSplitOrientation.Horizontal, IReadOnlyList<string> arguments = null, IReadOnlyDictionary<string, string> environment = null, string title = null, string sessionKey = null)
 		{
 			string cwd = !string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory) ? workingDirectory : SD.ProjectService?.CurrentSolution?.Directory?.ToString();
 			if (string.IsNullOrEmpty(cwd) || !Directory.Exists(cwd))
 				cwd = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 			TerminalSession session;
 			try {
-				session = await TerminalSession.StartAsync(shell ?? TerminalSession.DefaultShell(), cwd, columns, rows, TerminalTheme.Current()).ConfigureAwait(true);
+				session = await TerminalSession.StartAsync(shell ?? TerminalSession.DefaultShell(), cwd, columns, rows, TerminalTheme.Current(), arguments, environment).ConfigureAwait(true);
 			} catch {
 				if (group.Panes.Count == 0)
 					groups.Remove(group);
 				throw;
 			}
 			var view = new TerminalView();
-			var pane = new TerminalPane { Session = session, View = view, Group = group };
+			var pane = new TerminalPane { Session = session, View = view, Group = group, CustomName = title, SessionKey = sessionKey };
 			view.Session = session;
 			view.GotKeyboardFocus += (_, _) => SetActive(pane);
 			view.Updated += RaiseChangedIfLabelsChanged;
@@ -299,6 +300,17 @@ namespace OpenDevelop.Terminal
 				return;
 			SetActive(pane);
 			pane.View.Focus();
+		}
+
+		/// <summary>Activates an existing IDE-owned session by its stable, non-display identity.</summary>
+		public bool ActivateSession(string key)
+		{
+			var pane = Panes.FirstOrDefault(p => !p.Session.HasExited && string.Equals(p.SessionKey, key, StringComparison.Ordinal));
+			if (pane == null)
+				return false;
+			SetActive(pane);
+			pane.View.Focus();
+			return true;
 		}
 
 		public void KillActive() => KillPane(activePane);

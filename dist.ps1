@@ -826,9 +826,10 @@ function Test-LinuxDistributionPayload {
         throw "Linux distribution payload includes the Windows-only Microsoft WPF design host: $microsoftWpfHost"
     }
 
-    # The regular Package Management addin is portable. Its legacy Cmdlets closure is loaded only
-    # for Windows PowerShell 2 and brings Microsoft System.Drawing.Common, which is incompatible
-    # with LibreWinForms' ProGPU fork. It is intentionally excluded from Linux distributions.
+    # The regular Package Management addin is portable. Its legacy embedded-PowerShell Cmdlets
+    # closure brings Microsoft System.Drawing.Common, which is incompatible with LibreWinForms'
+    # ProGPU fork. The supported Linux console is a pwsh session hosted by Terminal, so this old
+    # assembly is intentionally excluded from Linux distributions.
     $packageManagement = Join-Path $addIns 'Misc/PackageManagement/PackageManagement.dll'
     if (-not (Test-Path -LiteralPath $packageManagement)) {
         throw "Linux distribution payload is missing the Package Management addin: $packageManagement"
@@ -1200,9 +1201,10 @@ function Invoke-AddInsPhase {
     $solutionText = [regex]::Replace($solutionText, '(?m)^\s*<Project Path="tests/OpenDevelop\.(?:IntegrationTests|Base\.Tests)/OpenDevelop\.[^"]+\.csproj" />\s*\r?\n', '')
     if ($distributionPlatform -eq 'linux') {
         # These projects are deliberate Windows-only closures: the Microsoft WPF designer host
-        # requires the Windows Desktop Runtime, and the legacy PowerShell 2 Cmdlets pull the
-        # incompatible Microsoft System.Drawing.Common implementation. The portable LibreWPF
-        # designer and regular Package Management addin remain in the Linux payload.
+        # requires the Windows Desktop Runtime, and the legacy embedded-PowerShell Cmdlets pull
+        # the incompatible Microsoft System.Drawing.Common implementation. The portable LibreWPF
+        # designer, regular Package Management addin and Terminal-hosted pwsh console remain in
+        # the Linux payload.
         foreach ($projectPath in @(
             'src/AddIns/DisplayBindings/WpfDesign/MicrosoftHost/Core/MicrosoftWpfDesign.Core.csproj',
             'src/AddIns/DisplayBindings/WpfDesign/MicrosoftHost/XamlDom/MicrosoftWpfDesign.XamlDom.csproj',

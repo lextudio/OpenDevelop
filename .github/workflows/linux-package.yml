@@ -58,6 +58,10 @@ jobs:
           unset GITHUB_ACTIONS
           xvfb-run -a bash dist.linux.sh --skip-feed-sync
           test -f "OpenDevelop-${{ matrix.rid }}.zip"
+          payload="OpenDevelop-${{ matrix.rid }}"
+          module="$payload/AddIns/Misc/PackageManagement/Scripts/OpenDevelop.PackageManagement.ps1"
+          test -f "$module"
+          pwsh -NoProfile -Command ". '$module'; foreach (\$name in 'Get-Package','Install-Package','Update-Package','Uninstall-Package') { Get-Command \$name -ErrorAction Stop | Out-Null }"
       - uses: actions/upload-artifact@v4
         with:
           name: linux-package-${{ matrix.rid }}

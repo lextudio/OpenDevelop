@@ -3,6 +3,35 @@
 Follow-up to `nuget.md` and `nuget-manager.md`: closes the three gaps that doc/opendevelop-sync.md's
 `AddIns/Misc/PackageManagement` entry had flagged as still needing parity work.
 
+## Current Package Manager Console direction (2026-10-28)
+
+The Package Manager Console is a **PowerShell 7 (`pwsh`) session hosted by the integrated Terminal**.
+The Terminal add-in owns the PTY, ANSI/VT rendering, input, cancellation and session lifecycle; PackageManagement
+owns the package-specific startup script and passes the selected project through
+`OPENDEVELOP_PACKAGE_PROJECT`. This avoids embedding PowerShell and its native closure inside the IDE process while
+retaining an ordinary interactive shell on Windows, macOS and Linux.
+
+`OpenDevelop.PackageManagement.ps1` supplies the supported package verbs: `Get-Package`, `Install-Package`,
+`Update-Package` and `Uninstall-Package`. They invoke the .NET CLI against the selected project, so restore and
+NuGet configuration keep their normal cross-platform semantics. Users may still run ordinary `pwsh`/`dotnet` commands
+in the same session. The Package Manager Console AddInTree pad is now a launcher for that terminal session rather than
+an AvalonEdit-based console surface.
+
+This is intentionally not an equivalence claim for arbitrary legacy NuGet `install.ps1`/`uninstall.ps1` scripts or a
+full Visual Studio cmdlet object pipeline. Those require an explicit future IDE bridge and security model. The original
+`PackageManagement.Cmdlets` project is a legacy compatibility closure, not Windows PowerShell 2: its misleading
+`IsPowerShell2Installed` predicate was previously hard-wired to true for an embedded PowerShell 7 host. Do not use that
+name as a platform-support signal.
+
+The Terminal boundary is the base-layer `ITerminalHost.OpenTerminalAsync(TerminalLaunchRequest)` contract. It carries
+the executable, arguments, working directory, title, stable session key and explicit environment without making PackageManagement depend on
+Terminal's libghostty or PTY implementation. Add-ins needing an IDE-aware shell should use the same contract rather
+than embed their own terminal emulator.
+
+The Package Manager Console derives its session key from the selected project's absolute path (with a separate
+no-project key). The visible title can therefore stay concise while Terminal reuses only the session that has the
+same project working directory and `OPENDEVELOP_PACKAGE_PROJECT`; projects with equal file names never share state.
+
 ## 1. Transitive dependency resolution / version-conflict detection
 
 `NuGetPackageDependencyPreviewService` (pre-existing) only shows the *direct* dependency group of

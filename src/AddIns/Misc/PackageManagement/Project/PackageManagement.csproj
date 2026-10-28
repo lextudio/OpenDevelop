@@ -51,6 +51,7 @@
     <None Include="PackageManagement.addin" CopyToOutputDirectory="Always" />
     <None Include="..\RequiredLibraries\LICENSE.txt" Link="NuGet-LICENSE.txt" CopyToOutputDirectory="Always" />
     <None Include="Scripts\Package.Format.ps1xml" CopyToOutputDirectory="Always" />
+    <None Include="Scripts\OpenDevelop.PackageManagement.ps1" CopyToOutputDirectory="Always" />
     <Resource Include="Resources\**\*" />
   </ItemGroup>
 

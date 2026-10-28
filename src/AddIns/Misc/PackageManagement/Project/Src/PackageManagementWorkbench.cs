@@ -45,7 +45,20 @@ namespace ICSharpCode.PackageManagement
 		public void ShowConsolePad()
 		{
 			PadDescriptor pad = GetConsolePad();
-			pad.BringPadToFront();
+			// PadDescriptor caches PadContent. Launch on every show so switching projects (or
+			// reopening a console the user closed) requests the correctly keyed pwsh session.
+			OpenConsoleAsync().FireAndForget();
+			// OpenConsoleAsync brings the real Terminal pad forward. Do not raise this legacy
+			// shim afterwards, or its placeholder control would obscure the pwsh session.
+		}
+
+		async System.Threading.Tasks.Task OpenConsoleAsync()
+		{
+			try {
+				await PackageManagementConsolePad.OpenConsoleAsync();
+			} catch (Exception ex) {
+				SD.MessageService.ShowError("Package Manager Console could not start pwsh: " + ex.Message);
+			}
 		}
 		
 		public bool InvokeRequired {

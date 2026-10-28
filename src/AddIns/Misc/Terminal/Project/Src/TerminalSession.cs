@@ -87,7 +87,7 @@ namespace OpenDevelop.Terminal
 		public event Action Changed;
 
 		/// <param name="colors">Taken by the caller on the UI thread (theme resources are not readable here).</param>
-		public static async Task<TerminalSession> StartAsync(string shell, string workingDirectory, int columns, int rows, TerminalColors colors)
+		public static async Task<TerminalSession> StartAsync(string shell, string workingDirectory, int columns, int rows, TerminalColors colors, IReadOnlyList<string> arguments = null, IReadOnlyDictionary<string, string> additionalEnvironment = null)
 		{
 			var native = new G(FindNativeLibrary());
 			var environment = new Dictionary<string, string>();
@@ -96,6 +96,10 @@ namespace OpenDevelop.Terminal
 			environment["TERM"] = "xterm-256color";
 			environment["COLORTERM"] = "truecolor";
 			environment["TERM_PROGRAM"] = "OpenDevelop";
+			if (additionalEnvironment != null) {
+				foreach (var pair in additionalEnvironment)
+					environment[pair.Key] = pair.Value;
+			}
 			if (!OperatingSystem.IsWindows() && !environment.ContainsKey("LANG"))
 				environment["LANG"] = "en_US.UTF-8";
 
@@ -105,7 +109,7 @@ namespace OpenDevelop.Terminal
 				Rows = rows,
 				Cwd = workingDirectory,
 				App = shell,
-				CommandLine = OperatingSystem.IsWindows() ? Array.Empty<string>() : new[] { "-l" },
+				CommandLine = arguments?.ToArray() ?? (OperatingSystem.IsWindows() ? Array.Empty<string>() : new[] { "-l" }),
 				Environment = environment,
 			};
 			IPtyConnection pty;

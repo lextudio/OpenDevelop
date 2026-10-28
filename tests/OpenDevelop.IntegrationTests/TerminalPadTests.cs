@@ -17,6 +17,37 @@ public sealed class TerminalPadTests
 	public TerminalPadTests(OpenDevelopAppFixture app) => this.app = app;
 
 	[Fact]
+	public async Task TerminalHost_LaunchesExplicitArgumentsEnvironmentAndTitle()
+	{
+		var launch = await app.InvokeAsync("od.terminal.launch", "/bin/sh", "[\"-c\",\"printf '%s ' \\\"$OPENDEVELOP_PACKAGE_PROJECT\\\"; pwd; exec sleep 2\"]", "OPENDEVELOP_PACKAGE_PROJECT", "package-project-marker", "Package Manager Console", "/tmp");
+		Assert.True(launch.GetProperty("success").GetBoolean(), launch.ToString());
+		Assert.Equal("sh", launch.GetProperty("shell").GetString());
+		var text = await WaitForAsync("package-project-marker");
+		Assert.Contains("Package Manager Console", (await app.InvokeAsync("od.terminal.list")).GetProperty("labels").EnumerateArray().Select(label => label.GetString()), StringComparer.Ordinal);
+		Assert.Contains("/tmp", text.GetProperty("text").GetString(), StringComparison.Ordinal);
+
+		var sameKey = await app.InvokeAsync("od.terminal.launch", "/bin/sh", "[\"-c\",\"exec sleep 60\"]", "", "", "keyed", "/tmp", "package-project:/tmp/a.csproj");
+		var reused = await app.InvokeAsync("od.terminal.launch", "/bin/sh", "[\"-c\",\"exec sleep 60\"]", "", "", "keyed", "/tmp", "package-project:/tmp/a.csproj");
+		var distinct = await app.InvokeAsync("od.terminal.launch", "/bin/sh", "[\"-c\",\"exec sleep 60\"]", "", "", "keyed", "/tmp", "package-project:/tmp/b.csproj");
+		Assert.Equal(sameKey.GetProperty("pid").GetInt32(), reused.GetProperty("pid").GetInt32());
+		Assert.NotEqual(sameKey.GetProperty("pid").GetInt32(), distinct.GetProperty("pid").GetInt32());
+	}
+
+	[Fact]
+	public async Task PackageManagerConsole_LaunchesPwshAndLoadsPackageCommands()
+	{
+		var opened = await app.InvokeAsync("od.nuget.open-package-manager-console");
+		Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+
+		var text = await WaitForAsync("OpenDevelop Package Manager Console (pwsh)");
+		Assert.Contains((await app.InvokeAsync("od.terminal.list")).GetProperty("labels").EnumerateArray().Select(label => label.GetString()), label => label!.StartsWith("Package Manager Console", StringComparison.Ordinal));
+
+		await SendAsync("(Get-Command Install-Package).ScriptBlock.File\r");
+		var commands = await WaitForAsync("OpenDevelop.PackageManagement.ps1");
+		Assert.Contains("OpenDevelop.PackageManagement.ps1", commands.GetProperty("text").GetString(), StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public async Task TerminalPad_RunsShells_TracksSize_AndHandlesFullScreenPrograms()
 	{
 		await ShowPadAsync();

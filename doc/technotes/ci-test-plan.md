@@ -75,13 +75,18 @@ fix on both native runners: restore passed after the source key and its Actions 
 dash was not portable to Linux/macOS process environments, so the former cold restore silently ignored the short-lived
 workflow credential. No package authorization change is required.
 
-The same run then exposed two shared, Windows-only compilation closures rather than an architecture-specific Terminal
-or IDE failure: the Microsoft WPF designer host targets the Windows Desktop Runtime, and the legacy Package Management
-Cmdlets are only loaded for Windows PowerShell 2 while bringing Microsoft `System.Drawing.Common`, which conflicts with
-LibreWinForms' ProGPU implementation. Linux distribution builds now exclude those five top-level projects, keep the
-LibreWPF design host and ordinary Package Management addin, and assert exactly that payload boundary before ZIP creation.
-The next native x64 and ARM64 run must prove that the filtered build, packaged startup and ZIP checks complete; only then
-should these lanes be considered ready for broader product coverage.
+The same run then exposed two shared compilation closures rather than an architecture-specific Terminal or IDE failure:
+the Microsoft WPF designer host targets the Windows Desktop Runtime, while `PackageManagement.Cmdlets` brings Microsoft
+`System.Drawing.Common`, which conflicts with LibreWinForms' ProGPU implementation. The latter is **not** a Windows
+PowerShell 2 feature: its old detection name was misleading and the application had used it with embedded PowerShell 7.
+The Package Manager Console is being migrated to a `pwsh` session hosted by the cross-platform Terminal, so Linux must
+exercise that session rather than claim the old embedded Cmdlets assembly works. Linux distribution builds currently
+exclude the Microsoft WPF designer closure and the legacy Cmdlets project, retain the LibreWPF design host and ordinary
+Package Management addin, and must verify the new terminal-backed package console before ZIP creation can be promoted.
+The Linux packaging job verifies the deployed script and its exported package functions from the ZIP payload. The
+cross-platform integration suite separately exercises the actual Package Manager Console entry point through Terminal,
+including its interactive banner, dot-sourced functions, and project-keyed session behavior; it is the authority for
+the host/PTY journey rather than the packaging shell check.
 
 ### Release format decision
 

@@ -117,8 +117,28 @@ namespace OpenDevelop.Terminal
 				TerminalPad.SkipInitialSession = false;
 			}
 			var pad = TerminalPaneModel.Instance;
-			if (pad != null)
-				await pad.NewSessionAsync(null, workingDirectory);
+			if (pad == null)
+				throw new InvalidOperationException("The Terminal pad could not be created.");
+			await pad.NewSessionAsync(null, workingDirectory);
+		}
+
+		public async Task OpenTerminalAsync(TerminalLaunchRequest request)
+		{
+			ArgumentNullException.ThrowIfNull(request);
+			if (string.IsNullOrWhiteSpace(request.Executable))
+				throw new ArgumentException("A terminal launch request requires an executable.", nameof(request));
+			TerminalPad.SkipInitialSession = TerminalPaneModel.Instance == null;
+			try {
+				SD.Workbench.GetPad(typeof(TerminalPad))?.BringPadToFront();
+			} finally {
+				TerminalPad.SkipInitialSession = false;
+			}
+			var pad = TerminalPaneModel.Instance;
+			if (pad == null)
+				throw new InvalidOperationException("The Terminal pad could not be created.");
+			if (!string.IsNullOrWhiteSpace(request.SessionKey) && pad.ActivateSession(request.SessionKey))
+				return;
+			await pad.NewSessionAsync(request.Executable, request.WorkingDirectory, request.Arguments, request.Environment, request.Title, request.SessionKey);
 		}
 	}
 

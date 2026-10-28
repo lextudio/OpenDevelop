@@ -7,9 +7,11 @@
 using System;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using System.Windows.Threading;
 
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.PackageManagement.Scripting;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
 using NuGet;
@@ -20,6 +22,17 @@ namespace ICSharpCode.PackageManagement
 	public static class PackageManagementDevFlowActions
 	{
 		static ManagePackagesView currentView;
+
+		[DevFlowAction("od.nuget.open-package-manager-console", Description = "Launch the real Package Manager Console entry point, which starts pwsh in the integrated Terminal and loads the package command script")]
+		public static async Task<string> OpenPackageManagerConsoleAsync()
+		{
+			try {
+				await PackageManagementConsolePad.OpenConsoleAsync();
+				return JsonSerializer.Serialize(new { success = true });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+			}
+		}
 
 		[DevFlowAction("od.nuget.set-local-feed", Description = "Add (and activate) a local folder as the only NuGet package source, so package search/install doesn't need network access")]
 		public static string SetLocalFeed(string path)

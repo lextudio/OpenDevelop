@@ -17,41 +17,90 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
+using ICSharpCode.SharpDevelop.Gui;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Windows.Controls;
 
 namespace ICSharpCode.PackageManagement.Scripting
 {
 	/// <summary>
-	/// Legacy AddInTree <c>&lt;Pad&gt;</c> shim (doc/technotes/ilspy.md "Legacy Pad migration",
-	/// 2026-08-09) - the real implementation is now <see cref="PackageManagementConsolePadViewModel"/>.
-	/// Constructed once with a plain <c>new</c> and cached in a static field (the AddIn's
-	/// assembly is never scanned by <c>OpenDevelopMefHost</c>), then registered with the real
-	/// docking host via <c>IPaneModelHost.Add</c>. Must stay a real, constructible
-	/// <see cref="AbstractPadContent"/> for the same
-	/// <c>PadDescriptor.BringPadToFront()</c>/<c>CreatePad()</c> reason as every other shim in
-	/// this migration - and because <c>PackageManagementWorkbench</c> still reaches the pad
-	/// through <c>GetPad(typeof(PackageManagementConsolePad)).PadContent</c>.
+	/// AddInTree shim that opens the Package Manager Console as a real pwsh session in the
+	/// integrated Terminal. The old AvalonEdit/embedded-runspace console is deliberately not used:
+	/// Terminal owns the PTY, rendering and lifecycle while this add-in supplies package commands.
 	/// </summary>
 	public class PackageManagementConsolePad : AbstractPadContent
 	{
-		static PackageManagementConsolePadViewModel viewModel;
+		static readonly object launchSync = new object();
+		static readonly Dictionary<string, System.Threading.Tasks.Task> pendingLaunches = new Dictionary<string, System.Threading.Tasks.Task>();
+		readonly TextBlock message = new TextBlock { Text = "Opening Package Manager Console in Terminal..." };
 
 		public PackageManagementConsolePad()
 		{
-			if (viewModel == null) {
-				viewModel = new PackageManagementConsolePadViewModel();
-				(SD.Services.GetService(typeof(IPaneModelHost)) as IPaneModelHost)?.Add(viewModel);
+			// This AddInTree pad is also reachable directly from View > Pads. It must start
+			// the terminal on first realization; later project changes come through the
+			// workbench path and reuse or create the keyed session there.
+			OpenTerminalAsync().FireAndForget();
+		}
+
+		async System.Threading.Tasks.Task OpenTerminalAsync()
+		{
+			try {
+				await OpenConsoleAsync();
+			} catch (Exception ex) {
+				message.Text = "Package Manager Console could not start pwsh: " + ex.Message;
 			}
 		}
 
-		public override object Control => viewModel?.Content;
-
-		public override void Dispose()
+		public static System.Threading.Tasks.Task OpenConsoleAsync()
 		{
-			viewModel?.Dispose();
+			var project = (SD.ProjectService?.CurrentProject ?? SD.ProjectService?.CurrentSolution?.Projects.FirstOrDefault())?.FileName?.ToString();
+			var sessionKey = "package-management:" + (string.IsNullOrWhiteSpace(project) ? "<no-project>" : Path.GetFullPath(project));
+			lock (launchSync) {
+				if (pendingLaunches.TryGetValue(sessionKey, out var pending) && !pending.IsCompleted)
+					return pending;
+				return pendingLaunches[sessionKey] = OpenConsoleCoreAsync(project, sessionKey);
+			}
 		}
+
+		static async System.Threading.Tasks.Task OpenConsoleCoreAsync(string project, string sessionKey)
+		{
+			var terminal = SD.Services.GetService(typeof(ITerminalHost)) as ITerminalHost;
+			if (terminal == null)
+				throw new InvalidOperationException("The integrated Terminal add-in is unavailable.");
+			var script = Path.Combine(Path.GetDirectoryName(typeof(PackageManagementConsolePad).Assembly.Location), "Scripts", "OpenDevelop.PackageManagement.ps1");
+			if (!File.Exists(script))
+				throw new FileNotFoundException("Package Manager Console startup script is missing.", script);
+			var environment = new Dictionary<string, string>();
+			if (!string.IsNullOrWhiteSpace(project))
+				environment["OPENDEVELOP_PACKAGE_PROJECT"] = project;
+			await terminal.OpenTerminalAsync(new TerminalLaunchRequest {
+					Executable = FindPwsh(),
+					// -File runs in a child script scope, which would discard the package functions
+					// before the interactive prompt appears. Dot-source them in the pwsh global
+					// command scope instead.
+					Arguments = new[] { "-NoLogo", "-NoExit", "-Command", ". '" + script.Replace("'", "''") + "'" },
+					WorkingDirectory = string.IsNullOrWhiteSpace(project) ? SD.ProjectService?.CurrentSolution?.Directory?.ToString() : Path.GetDirectoryName(project),
+					// The terminal host reuses a live named session. Include the selected project in
+					// that identity so switching projects never reactivates a session with stale cwd
+					// or OPENDEVELOP_PACKAGE_PROJECT.
+					Title = string.IsNullOrWhiteSpace(project) ? "Package Manager Console" : "Package Manager Console — " + Path.GetFileNameWithoutExtension(project),
+					SessionKey = sessionKey,
+					Environment = environment,
+			});
+		}
+
+		static string FindPwsh()
+		{
+			var candidates = OperatingSystem.IsWindows()
+				? new[] { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PowerShell", "7", "pwsh.exe"), "pwsh.exe" }
+				: new[] { "/opt/homebrew/bin/pwsh", "/usr/local/bin/pwsh", "/usr/bin/pwsh", "pwsh" };
+			return candidates.FirstOrDefault(File.Exists) ?? candidates.Last();
+		}
+
+		public override object Control => message;
 	}
 }

@@ -31,6 +31,23 @@ namespace OpenDevelop.Terminal
 			}
 		}
 
+		[DevFlowAction("od.terminal.launch", Description = "Start a terminal through ITerminalHost with an executable, JSON argument array, one environment key/value and a custom title; returns the active session")]
+		public static async Task<string> Launch(string executable, string argumentsJson = "[]", string environmentKey = "", string environmentValue = "", string title = "", string workingDirectory = "", string sessionKey = "")
+		{
+			var host = SD.Services.GetService(typeof(ICSharpCode.SharpDevelop.Gui.ITerminalHost)) as ICSharpCode.SharpDevelop.Gui.ITerminalHost;
+			if (host == null)
+				return JsonSerializer.Serialize(new { success = false, error = "Terminal host is unavailable" });
+			try {
+				var arguments = JsonSerializer.Deserialize<string[]>(argumentsJson) ?? Array.Empty<string>();
+				var environment = string.IsNullOrEmpty(environmentKey) ? new Dictionary<string, string>() : new Dictionary<string, string> { [environmentKey] = environmentValue };
+				await host.OpenTerminalAsync(new ICSharpCode.SharpDevelop.Gui.TerminalLaunchRequest { Executable = executable, Arguments = arguments, Environment = environment, Title = title, WorkingDirectory = workingDirectory, SessionKey = sessionKey });
+				var pad = Pad();
+				return pad?.ActivePane == null ? JsonSerializer.Serialize(new { success = false, error = "Terminal pad did not expose the launched session" }) : Describe(pad, pad.ActivePane);
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = "Could not launch terminal: " + ex.Message });
+			}
+		}
+
 		[DevFlowAction("od.terminal.shells", Description = "The shells the New Terminal drop-down offers (full paths) and the default one; a non-empty makeDefault (a path from that list) first stores it as the default shell")]
 		public static string Shells(string makeDefault = "")
 		{
