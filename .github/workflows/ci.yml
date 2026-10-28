@@ -449,7 +449,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/od-test-logs"
           log_file="$RUNNER_TEMP/od-test-logs/macos-tcc.log"
-          sudo log show --last 3h --style compact --predicate 'subsystem == "com.apple.TCC" AND (eventMessage CONTAINS "kTCCServicePostEvent" OR eventMessage CONTAINS "kTCCServiceAccessibility" OR eventMessage CONTAINS "kTCCServiceListenEvent")' > "$log_file" 2>&1 || true
+          sudo log show --last 3h --info --debug --style compact --predicate 'subsystem == "com.apple.TCC" AND (eventMessage CONTAINS "kTCCServicePostEvent" OR eventMessage CONTAINS "kTCCServiceAccessibility" OR eventMessage CONTAINS "kTCCServiceListenEvent")' > "$log_file" 2>&1 || true
           echo "TCC input decisions logged: $(wc -l < "$log_file")"
           grep -iE "den(y|ied)|cliclick|dotnet|OpenDevelop|pwsh" "$log_file" | cut -c1-320 | sort | uniq -c | sort -rn | head -40
       - name: Publish the test results as a check
