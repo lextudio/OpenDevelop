@@ -274,11 +274,16 @@ namespace Debugger.AddIn.Service.Dap
 			// its AvailableWaitHandle has been used (it never is here); otherwise letting the GC
 			// collect it is both correct and the documented way out of exactly this race.
 			// Disposing flushes the writer, which throws once the adapter has exited and its stdin
-			// pipe is already closed - a normal way for a session to end, not a Stop failure.
+			// pipe is already closed - a normal way for a session to end, not a Stop failure. It also
+			// throws InvalidOperationException ("The stream is currently in use by a previous operation
+			// on the stream") when a request is still being written as the session ends: Dispose does not
+			// hold writeLock, and that write is dropped anyway. Seen on the slower Windows ARM64 runner as
+			// od.debug.stop failing in ClassLibrary_NativeStartProgramLoadingRuntimeLate.
 			try {
 				writer.Dispose();
 			} catch (ObjectDisposedException) {
 			} catch (IOException) {
+			} catch (InvalidOperationException) {
 			}
 			reader.Dispose();
 			cancellationTokenSource.Dispose();
