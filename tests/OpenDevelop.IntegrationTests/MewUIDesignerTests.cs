@@ -520,7 +520,10 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 
 		var saved = await app.InvokeAsync("od.file.save", designerPath); Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
 		var mxaml = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
-		Assert.Matches("<ListBox Name=\"statusList\">\\s*<Item>Working</Item>\\s*<Item>Ready</Item>\\s*</ListBox>", mxaml);
+		// Assert.Matches truncates the value; keep the whole saved file in the message, so a failure on a slow
+		// runner shows whether the edit was missing from the file or written in another shape.
+		Assert.True(System.Text.RegularExpressions.Regex.IsMatch(mxaml, "<ListBox Name=\"statusList\">\\s*<Item>Working</Item>\\s*<Item>Ready</Item>\\s*</ListBox>"),
+			"The saved file does not hold the edited statusList (save " + saved + "):\n" + mxaml);
 		var undone = await app.InvokeAsync("od.mewui-designer.undo"); Assert.True(undone.GetProperty("canRedo").GetBoolean(), undone.ToString());
 		var afterUndo = await app.InvokeAsync("od.mewui-designer.properties.edit-items", "$items", "cancel");
 		Assert.Empty(afterUndo.GetProperty("before").EnumerateArray());
