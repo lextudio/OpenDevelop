@@ -267,10 +267,30 @@ namespace ICSharpCode.SharpDevelop.Templates
             if (!Directory.Exists(templatesRoot))
                 return Array.Empty<string>();
 
-            // One folder per SDK feature band; take them all rather than trying to match the
-            // running SDK's version string, whose format has changed between releases.
-            return Directory.EnumerateDirectories(templatesRoot)
+            // One folder per installed runtime (8.0.20, 9.0.9, 10.0.4, ...). Installing every one
+            // lets an older pack win for the same template identity: on GitHub's macOS image, which
+            // keeps .NET 8, 9 and 10 side by side, Console App then targeted net8.0 and Blazor had no
+            // net10.0 choice. Take the newest folder of this process's own major version, preferring
+            // a release over a preview, and fall back to every folder when none matches.
+            var folders = Directory.EnumerateDirectories(templatesRoot).ToArray();
+            var current = folders
+                .Select(d => (Path: d, Version: ParseTemplateFolderVersion(Path.GetFileName(d))))
+                .Where(f => f.Version.Version?.Major == Environment.Version.Major)
+                .OrderBy(f => f.Version.IsRelease)
+                .ThenBy(f => f.Version.Version)
+                .Select(f => f.Path)
+                .LastOrDefault();
+            return (current is null ? folders : new[] { current })
                 .SelectMany(d => Directory.EnumerateFiles(d, "*.nupkg"));
+        }
+
+        /// <summary>Parses a template folder name such as <c>10.0.4</c> or <c>10.0.0-rc.2.25502.107</c>.</summary>
+        static (Version? Version, bool IsRelease) ParseTemplateFolderVersion(string name)
+        {
+            var dash = name.IndexOf('-');
+            return Version.TryParse(dash < 0 ? name : name.Substring(0, dash), out var version)
+                ? (version, dash < 0)
+                : (null, false);
         }
 
         /// <summary>
