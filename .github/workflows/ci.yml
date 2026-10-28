@@ -213,19 +213,96 @@ jobs:
           sudo DevToolsSecurity -enable
           sudo dseditgroup -o edit -a "$USER" -t user _developer
           sudo security authorizationdb write system.privilege.taskport allow
-      # Pointer journeys bring the IDE to the foreground (od.activate) before real input. Windows
-      # refuses SetForegroundWindow from a background process while the foreground lock timeout
-      # is non-zero; the ARM64 runner reported foregrounded=false every time. Clear the timeout
-      # for this session only, as interactive test machines usually have it.
-      - name: Allow foreground switches for pointer journeys
+      # Ported from lextudio/AvalonDock (branch opendevelop, .github/workflows/ci-librewpf.yml). The pointer
+      # journeys click the real desktop, so it has to look like one. windows-11-arm logs in to the Windows
+      # first-logon privacy page ("Choose privacy settings for your device"), a full-screen window above
+      # everything: od.activate could never make the IDE the foreground window (foregrounded=false) and
+      # every real click landed on that page. The step dismisses it and the Start menu it leaves open,
+      # minimises leftover windows (the agent console), keeps full-window dragging on, and saves
+      # desktop screenshots into the uploaded test-log directory.
+      - name: Prepare the Windows desktop
         if: runner.os == 'Windows'
+        # Best effort: a failure here must not turn a required lane red; the tests then show what is left.
+        continue-on-error: true
         shell: pwsh
         run: |
-          Add-Type -Namespace OD -Name User32 -MemberDefinition '[DllImport("user32.dll", SetLastError = true)] public static extern bool SystemParametersInfo(uint action, uint param, System.IntPtr value, uint flags);'
-          # SPI_SETFOREGROUNDLOCKTIMEOUT = 0x2001, SPIF_SENDCHANGE = 2
-          if (-not [OD.User32]::SystemParametersInfo(0x2001, 0, [IntPtr]::Zero, 2)) {
-            Write-Warning "SystemParametersInfo failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+          Add-Type -Namespace Native -Name Desk -MemberDefinition @'
+          public delegate bool EnumProc(System.IntPtr hwnd, System.IntPtr lParam);
+          [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+          [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc proc, System.IntPtr lParam);
+          [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool IsWindowVisible(System.IntPtr hwnd);
+          [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool GetWindowRect(System.IntPtr hwnd, out RECT r);
+          [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(System.IntPtr hwnd, out uint pid);
+          [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] public static extern int GetClassName(System.IntPtr hwnd, System.Text.StringBuilder s, int n);
+          [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] public static extern int GetWindowText(System.IntPtr hwnd, System.Text.StringBuilder s, int n);
+          [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr hwnd, int cmd);
+          [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern uint GetDpiForSystem();
+          [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern int GetSystemMetrics(int i);
+          [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)] public static extern bool SystemParametersInfo(uint action, uint param, ref int value, uint winIni);
+          [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)] public static extern bool SystemParametersInfo(uint action, uint param, System.IntPtr value, uint winIni);
+          '@
+          function Get-TopWindows {
+            $list = New-Object System.Collections.Generic.List[object]
+            [void][Native.Desk]::EnumWindows({ param($h, $l)
+              if ([Native.Desk]::IsWindowVisible($h)) {
+                $r = New-Object Native.Desk+RECT; [void][Native.Desk]::GetWindowRect($h, [ref]$r)
+                if (($r.R - $r.L) -gt 0 -and ($r.B - $r.T) -gt 0) {
+                  $c = New-Object System.Text.StringBuilder 256; [void][Native.Desk]::GetClassName($h, $c, 256)
+                  $t = New-Object System.Text.StringBuilder 256; [void][Native.Desk]::GetWindowText($h, $t, 256)
+                  $procId = [uint32]0; [void][Native.Desk]::GetWindowThreadProcessId($h, [ref]$procId)
+                  $name = (Get-Process -Id $procId -ErrorAction SilentlyContinue).ProcessName
+                  $list.Add([pscustomobject]@{ Handle = $h; Process = $name; Pid = $procId; Class = "$c"; Title = "$t"; Rect = "$($r.L),$($r.T) $($r.R - $r.L)x$($r.B - $r.T)" })
+                }
+              }
+              $true }, [IntPtr]::Zero)
+            $list
           }
+          function Save-Desktop([string]$name) {
+            Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+            [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+            New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/od-test-logs" | Out-Null
+            $bmp.Save("$env:RUNNER_TEMP/od-test-logs/$name.png")
+          }
+
+          "system DPI = $([Native.Desk]::GetDpiForSystem()) (96 = 100%), screen = $([Native.Desk]::GetSystemMetrics(0)) x $([Native.Desk]::GetSystemMetrics(1)), arch = $env:PROCESSOR_ARCHITECTURE, session = $((Get-Process -Id $PID).SessionId)"
+          "== visible top-level windows before"
+          Get-TopWindows | Format-Table Process, Pid, Class, Title, Rect -AutoSize | Out-String -Width 220
+          Save-Desktop 'desktop-as-provisioned'
+
+          # First-logon/privacy UI. The page is hosted by these processes; stop them and keep the
+          # experience from being offered again.
+          New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OOBE' -Force | Out-Null
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OOBE' -Name DisablePrivacyExperience -Value 1 -Type DWord
+          foreach ($name in 'WWAHost', 'CloudExperienceHostBroker', 'UserOOBEBroker', 'OOBENetworkConnectionFlow', 'msoobe') {
+            Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object { "stopping $($_.ProcessName) ($($_.Id))"; Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+          }
+          # Closing the first-logon page drops the session onto an open Start menu over the middle of
+          # the screen (it opened a few seconds later and was not in the window list). It is a shell
+          # surface that cannot be minimised; Esc closes it and is harmless when nothing is open.
+          Add-Type -AssemblyName System.Windows.Forms
+          for ($i = 0; $i -lt 3; $i++) {
+            Start-Sleep -Seconds 2
+            Get-TopWindows | Where-Object { $_.Process -in 'StartMenuExperienceHost', 'SearchHost', 'ShellExperienceHost' } |
+              ForEach-Object { "shell surface $($_.Process) '$($_.Title)' $($_.Rect)" }
+            [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+          }
+          # Whatever is still visible and is not the shell gets minimised (SW_MINIMIZE).
+          Get-TopWindows | Where-Object { $_.Process -ne 'explorer' -and $_.Class -notin 'Shell_TrayWnd', 'Shell_SecondaryTrayWnd', 'Progman', 'WorkerW' } |
+            ForEach-Object { "minimising $($_.Process) '$($_.Title)' [$($_.Class)]"; [void][Native.Desk]::ShowWindow($_.Handle, 6) }
+
+          $full = 0; [void][Native.Desk]::SystemParametersInfo(0x0026, 0, [ref]$full, 0)
+          $set = [Native.Desk]::SystemParametersInfo(0x0025, 1, [IntPtr]::Zero, 3)
+          $after = 0; [void][Native.Desk]::SystemParametersInfo(0x0026, 0, [ref]$after, 0)
+          "drag full windows: was=$full set=$set now=$after"
+
+          Start-Sleep -Seconds 1
+          "== visible top-level windows after"
+          Get-TopWindows | Format-Table Process, Pid, Class, Title, Rect -AutoSize | Out-String -Width 220
+          Save-Desktop 'desktop-before-tests'
+          exit 0
+
       - name: Install GTK designer runtimes and metadata
         if: matrix.needs_gtk && matrix.platform == 'macos-arm64'
         shell: bash
