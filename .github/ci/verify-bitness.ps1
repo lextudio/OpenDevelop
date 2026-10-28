@@ -90,7 +90,12 @@ if (-not $RunnerOnly) {
             }
         }
         $otherRid = if ($expectedRid -eq 'linux-x64') { 'linux-arm64' } else { 'linux-x64' }
-        foreach ($runtimesDir in Get-ChildItem -LiteralPath $PayloadRoot -Recurse -Directory -Filter runtimes -ErrorAction SilentlyContinue) {
+        # SPDX and notice generation preserves the NuGet package layout under THIRD-PARTY-NOTICES,
+        # including its runtimes directories. Those are text-only attribution copies, not loadable
+        # payload assets, so limiting this scan to the actual deployed tree avoids treating a notice
+        # for the other RID as a foreign native binary.
+        foreach ($runtimesDir in Get-ChildItem -LiteralPath $PayloadRoot -Recurse -Directory -Filter runtimes -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch '(^|[\\/])THIRD-PARTY-NOTICES([\\/]|$)' }) {
             if (Test-Path -LiteralPath (Join-Path $runtimesDir.FullName $otherRid)) {
                 throw "The Linux payload retains foreign native assets at $($runtimesDir.FullName)/$otherRid. Linux release archives must be architecture-specific."
             }

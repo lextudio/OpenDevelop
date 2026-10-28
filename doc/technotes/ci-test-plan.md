@@ -88,6 +88,11 @@ cross-platform integration suite separately exercises the actual Package Manager
 including its interactive banner, dot-sourced functions, and project-keyed session behavior; it is the authority for
 the host/PTY journey rather than the packaging shell check.
 
+The first native ZIP run (`808b3b3ec5`) reached the final payload audit on both architectures, but exposed a verifier
+scope defect: SPDX attribution copies under `THIRD-PARTY-NOTICES` retain NuGet `runtimes/linux-*` directory names and
+were incorrectly classified as loadable foreign native assets. The audit now excludes that text-only notice subtree
+while continuing to reject an opposite-RID tree anywhere in the deployed payload itself.
+
 ### Release format decision
 
 Start with framework-dependent, architecture-specific ZIP archives:
