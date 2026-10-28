@@ -438,6 +438,20 @@ jobs:
           $through = -1
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
           ./.github/ci/run-test-plan.ps1 -Platform '${{ matrix.platform }}' -Lane '${{ matrix.lane }}' -ThroughBatch $through
+      # Read-only, after the lane: the pointer journeys inject clicks through cliclick, started by the IDE under
+      # this job's process chain, so macOS decides input permission for that chain, not for the step shell the
+      # readiness report ran in. The unified log records each decision; keep the input-related ones in the
+      # uploaded test-log directory and print the denials and the clients that were asked.
+      - name: Report macOS input permission decisions
+        if: always() && matrix.platform == 'macos-arm64'
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/od-test-logs"
+          log_file="$RUNNER_TEMP/od-test-logs/macos-tcc.log"
+          sudo log show --last 3h --style compact --predicate 'subsystem == "com.apple.TCC" AND (eventMessage CONTAINS "kTCCServicePostEvent" OR eventMessage CONTAINS "kTCCServiceAccessibility" OR eventMessage CONTAINS "kTCCServiceListenEvent")' > "$log_file" 2>&1 || true
+          echo "TCC input decisions logged: $(wc -l < "$log_file")"
+          grep -iE "den(y|ied)|cliclick|dotnet|OpenDevelop|pwsh" "$log_file" | cut -c1-320 | sort | uniq -c | sort -rn | head -40
       - name: Publish the test results as a check
         if: always()
         continue-on-error: true
