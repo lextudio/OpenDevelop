@@ -2,7 +2,8 @@
 
 Goal: broaden GitHub Actions coverage of locally runnable tests on Windows x64, Windows ARM64 and macOS ARM64.
 Introduce substantial groups in observe mode, inspect their actual runner results, and promote stable entries to
-required per platform. Linux product tests remain out of scope for this rollout.
+required per platform. Linux product tests and release packaging are the next planned expansion; no Linux
+platform or release asset is enabled yet.
 
 ## Current status (2026-10-28, 14:12 UTC)
 
@@ -14,6 +15,7 @@ not individual test cases. They describe the complete plan, not what a focus-mod
 | Windows x64 | 32 | 0 | No test entries; its build can still supply Windows ARM64. |
 | Windows ARM64 | 25 | 2 | Only the two observed entries run. |
 | macOS ARM64 | 26 | 5 | Only the five observed entries run. |
+| Linux x64 | 0 | 0 | Not enabled; planned as a separate rollout below. |
 
 **Focus mode skips every required entry. A green focus run does not prove that required coverage passed.** Use
 `workflow_dispatch` with `full=true` to run both statuses before relying on the complete gate. Its `platforms` input
@@ -41,6 +43,56 @@ input and desktop diagnostics and change watchdog handling, but they need their 
   promotion. Run the full matrix, including required entries, before treating the current master as fully gated.
 * Continue adding missing runnable suites. `AddInTests`, Microsoft designer backends and environment-dependent SDK,
   runtime-upgrade and performance scenarios still need separate prerequisites and budgets.
+
+## Proposed Linux x64 release rollout (not enabled)
+
+Linux needs two independently verified deliverables: a CI lane that proves the portable application starts and its
+supported journeys work, and a distributable payload. The current matrix has a deliberately dormant `linux-x64`
+slot in `.github/ci/verify-bitness.ps1`, but `test-plan.json` has no platform definition. The release workflow only
+creates `OpenDevelop-win.zip` and `OpenDevelop-macos.dmg`; `dist.ps1` currently routes every non-Windows host through
+the macOS bundle/DMG path. Adding Linux therefore requires a Linux-specific distribution branch, not a matrix flag.
+
+### Release format decision
+
+Start with a **framework-dependent `OpenDevelop-linux-x64.tar.gz`** containing the host, `AddIns/`, `data/`, legal
+files and a small `OpenDevelop` launcher. This matches the current Windows/macOS choice to rely on an installed .NET
+runtime, is transparent to inspect, and gives us a stable GitHub Release asset before committing to a desktop-store
+integration. The launcher should fail early with actionable prerequisites (the required .NET runtime, display/session
+requirements, and any native libraries that LibreWPF reports missing).
+
+Do not make AppImage, Flatpak, Snap, a `.deb`, or an `.rpm` the first release artifact. Each introduces a different
+runtime/sandbox/desktop-integration ownership model. After the tarball has repeatable smoke and integration evidence,
+choose one installer format as a separate product/distribution project; it must not silently replace the tarball.
+
+### Phases and gates
+
+1. **Packaging spike, local only.** Add an explicit Linux branch to `dist.ps1` (or a narrow wrapper) with
+   `ridFamily=linux`, a Linux payload root, archive creation, runtime-asset pruning that keeps only `linux*`, and a
+   launch smoke script. Reuse the existing SPDX/notices generation and AddIn staging; do not copy macOS `.app`/DMG
+   assumptions. Record the exact native closure and the output of a clean `tar -tzf` audit.
+2. **CI build evidence.** Define `linux-x64` (`ubuntu-24.04`, x64, `linux-x64`) in the test plan and teach
+   `build-binaries.ps1`, `package-workspace.ps1`, terminal-asset verification, and bitness checks the Linux layout.
+   Begin with a build plus archive/payload integrity check. No existing Windows/macOS lane changes status in this step.
+3. **Observe-first product smoke.** Add a short, isolated Linux integration lane which unpacks the workspace, starts
+   the actual packaged payload under a deterministic display backend, verifies first-window readiness and a clean
+   shutdown, and uploads logs/core dumps/screenshots on failure. Add only platform-safe tests initially: base,
+   VSEditor compatibility, profiler data-layer and Terminal native-asset/launch checks. Do not mark any of them
+   required until two completed Ubuntu runs pass.
+4. **Capability probes before broad coverage.** Separately establish runner prerequisites for LibreWPF graphics,
+   GTK/GIR, terminal `libghostty`, debugger attach, D-Bus/portal behavior and pointer injection. Each unavailable
+   capability becomes an explicit excluded entry with its reason, not a skipped success. Add designer journeys only
+   after GTK installation and native frame rendering are independently proven.
+5. **Promote and release.** Promote proven Linux entries from `observe` to `required`; run a full selected Linux
+   matrix plus the packaged-payload verification. Then add a `Package Linux x64` job to `release.yml`, upload
+   `OpenDevelop-linux-x64.tar.gz`, make `draft` require it, verify its checksum/contents, and include the asset in
+   release notes. A tag must not publish a Linux asset until this gate is green.
+
+### Non-goals for the first release
+
+No Linux ARM64 build, container GUI workaround, AppImage/Flatpak/Snap packaging, or automatic system dependency
+installation. Those are useful follow-ups only after Linux x64 produces repeatable evidence. Linux's model-only
+MewUI preview remains an advertised capability limit; it must not block non-visual MXAML coverage or be reported as
+visual-designer parity.
 
 ## Rollout history (2026-10-26 to 2026-10-28)
 
