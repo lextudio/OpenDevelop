@@ -51,6 +51,20 @@ Outline and Properties pads and validates saved XML. Status automation exposes
 pool/session/document identities, recovery count and requested/rendered revisions, so these
 assertions do not depend on screenshots.
 
+## Runtime discovery and platform boundary (reviewed 2026-10-28)
+
+GTK is a system runtime, not an OpenDevelop payload. On Windows the launcher resolves
+`libgtk-4-1.dll` in this order: `GTK4_ROOT` (either its `bin` directory or its parent), `PATH`,
+then `MSYS2_ROOT`, `C:\\msys64`, and `C:\\tools\\msys64`. The automatic MSYS2 location is
+architecture-aware: ARM64 uses `clangarm64`; x64 considers `ucrt64`, `mingw64`, then `clang64`.
+An ARM64 host must not load an x64 GTK DLL.
+
+On macOS the host prepares loadable symlinks for Homebrew GTK/libadwaita libraries in its own
+directory because the ordinary `DYLD_LIBRARY_PATH` route is not reliable for this managed host.
+`GtkRuntimeLocator` is the implementation authority. Runtime discovery is covered separately
+from rendering: a missing GTK installation is an actionable installation diagnostic, while a
+loaded runtime is still required for native preview and geometry tests.
+
 ## Decision
 
 Build a new source-backed GTK 4 designer. Do not port Stetic as the runtime designer.

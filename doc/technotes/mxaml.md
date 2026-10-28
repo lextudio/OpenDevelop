@@ -2,9 +2,9 @@
 
 ## Status
 
-Approved direction (2026-08-23). Supersedes the "C# syntax tree is the authoritative
-document" decision for the DESIGNER layer only. The Aprillz.MewUI runtime stays C#-first:
-it gains no XAML reader, and generated applications never load XML at runtime.
+Implemented designer format (reviewed 2026-10-28). MXAML is authoritative for the
+designer and for the generated layout partial. The Aprillz.MewUI runtime stays C#-first:
+it gains no XML reader, and generated applications never load MXAML at runtime.
 
 ## Why
 
@@ -32,9 +32,9 @@ There is NO Designer.cs on disk — WPF-style generated-code separation:
 MainWindow.mxaml                MainWindow.cs (user-owned, never rewritten)
       │ designer edits                 ▲ never touched
       ▼                                │
-LeXtudio.MewUI.Xaml ──generate──► obj/…/MainWindow.MewUI.g.cs (auto-included in compilation;
-(MxamlDocument: parse/validate/          also refreshed by the designer right after each
- transform/canonical serialize)          flush so F5 works without an explicit build)
+LeXtudio.MewUI.Xaml ──generate──► obj/…/mewuigen/MainWindow.mxaml.g.cs
+(MxamlDocument: parse/validate/          auto-included by the project's `CoreCompile` target)
+ transform/canonical serialize)
 ```
 
 ## File format (.mxaml)
@@ -46,13 +46,13 @@ LeXtudio.MewUI.Xaml ──generate──► obj/…/MainWindow.MewUI.g.cs (auto-
   <StackPanel Name="rootPanel" Spacing="8">
     <Label Name="heading" Text="QuickNotes"/>
   </StackPanel>
-</MewUI>
+</Window>
 ```
 
 Rules:
 
 1. Root element `<Window>` with required `Class` attribute naming the partial class.
-2. Control elements named by their MewUI type; each carries a required `Name`.
+2. Control elements are named by their MewUI type; each carries a required `Name`.
 3. Attributes are properties; values are always STRINGS in the XML — the property registry
    decides how the generator emits them.
 4. Events are attributes matching a control event name; value = method identifier.
@@ -69,7 +69,10 @@ Rules:
 | Int32 | `ComboBox.SelectedIndex` | `.SelectedIndex = 2;` |
 | Enum | `StackPanel.Orientation` | `.Orientation = Orientation.Horizontal;` |
 
-Unknown properties on known types default to Unsupported (generator emits a comment).
+Unknown controls are retained for round-trip safety but are not code-generated. Unknown
+properties on a known control produce a warning and generate a comment; they are not silently
+treated as strings. This lets a hand-authored extension survive a designer open while making the
+unsupported part visible before build time.
 
 **MewUI 0.22.0 (2026-10-14).** The fixture (`tests/fixtures/MewUIFixture`) now pins Aprillz.MewUI.Core
 0.22.0, the designer host's version, and the registry targets it (writable public properties, checked
@@ -145,6 +148,6 @@ root attribute, and a Double one used the wrong attribute's value (`Width` took 
 
 | Phase | Scope |
 |---|---|
-| 1 ✅ | Library + generator + unit suite (13/13) |
-| 2 ⏳ | Host switches to MXAML payloads; MSBuild targets; fixture migration |
-| 3 | Hardlink dedup + shared-framework trim for new Host folders |
+| 1 ✅ | Library, generator and unit suite |
+| 2 ✅ | MXAML display binding, host payloads, fixture migration, generated layout partial |
+| 3 | Packaging/trim work is tracked with the addin packaging work; it is not a prerequisite for designer correctness |

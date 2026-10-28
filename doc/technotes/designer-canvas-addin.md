@@ -206,9 +206,10 @@ siblings, like GTK). `MewUIRenderer` in the host instantiates the real Aprillz.M
 for the MXAML tree and renders them offscreen; each node carries its arranged rect.
 
 - **Rendering**: an unshown `Window`, explicit `Measure`/`Arrange` (the frame path does not lay out),
-  then the internal `Window.RenderFrameToSurface` on an offscreen MewVG/Metal surface, and
-  `TryReadPixels` into a BGRA `DesignerRenderFrame.Data`. Every non-public member is bound by name
-  and a miss is reported as a diagnostic naming the member and the MewUI version.
+  then the internal `Window.RenderFrameToSurface` on an offscreen MewVG/Metal surface on macOS or
+  GDI surface on Windows, and `TryReadPixels` into a BGRA `DesignerRenderFrame.Data`. Every
+  non-public member is bound by name and a miss is reported as a diagnostic naming the member and
+  the MewUI version.
 - **Bounds** are `Element.Bounds`, which are **absolute** (root) coordinates, not parent-relative:
   measured, a Button inside a StackPanel with a 40px left margin reports X=40.
 - **Attributes**: public properties by reflection; `Owner.Prop` attached properties (`Grid.Row`,
@@ -218,7 +219,7 @@ for the MXAML tree and renders them offscreen; each node carries its arranged re
 - **Hit test** runs locally on the client from the pushed bounds (GTK too): it is called on the UI
   thread from a pointer press and must not block on an RPC. `design/hit-test` still exists.
 - A frame is cached by the document's canonical text.
-- **Only macOS** has a render backend wired up (`MEWUI_RENDER`, set on OSX in the host csproj).
+- **macOS and Windows** have render backends (`MEWUI_RENDER` is set for both in the host project).
   Elsewhere the host sends the tree without a frame plus an Info diagnostic saying so.
 
 ## Open questions

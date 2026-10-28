@@ -151,6 +151,17 @@ the XAML language services (`external/wxsg/`). See
 [`winui-designer.md`](winui-designer.md) for the externals layout and the local-feed packaging
 workflow that applies to `vscode-wpf` changes.
 
+### Selection during host recovery (2026-10-28)
+
+Selection is parent-side state and must remain responsive when the WPF child is dead or being
+reopened. `WpfSurfaceDesignerControl.NotifySelectionChanged()` raises the local
+`SelectionChanged` event first. It then makes the optional `design/select` round trip only while
+`WpfSurfaceHostClient.IsAlive` is true and `IsRecovering` is false. That RPC exists only to expand
+a collapsed `Expander` ancestor for preview; it is never allowed to turn a local outline/canvas
+selection into a UI-thread wait. `SnapshotSelection_RemainsResponsiveWhileTheWpfHostRecovers` in
+`WpfStripEditingTests` exercises the host-recovery state and is the regression guard for this
+boundary.
+
 The designer follows the same "split chrome" philosophy as the WinUI designer: the design
 surface renders inside the document tab, while Toolbox, Properties, and Outline are served
 through OpenDevelop's shell contracts (`IToolsHost.ToolsContent`,

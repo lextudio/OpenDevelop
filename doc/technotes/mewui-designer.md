@@ -5,7 +5,7 @@
 The designer's authoritative layout document is a dedicated XML dialect (.mxaml), replacing
 the previous C#-syntax-tree approach. The Aprillz.MewUI runtime stays C#-first: generated
 applications compile from a strict InitializeComponent partial that is GENERATED from the
-.mxaml at build time (via the MewUIGen tool) and never exists as an editable file.
+.mxaml by the project's build target (via the MewUIGen tool) and never exists as an editable file.
 
 Key properties of the format:
 - Root element `<Window>` carries `Class` (partial class name) and control attributes.
@@ -20,8 +20,8 @@ The engine lives in `LeXtudio.MewUI.Xaml` (dependency-free, System.Xml.Linq only
 [`mxaml.md`](mxaml.md) for the full specification.
 
 The workbench shell uses the common `Designer.Shell.DesignerSelectionController` for the MXAML
-outline, stable-name selection restoration and `MewUIPropertyAdapter` recreation. Roslyn/MXAML
-source generation and MewUI container semantics remain backend-owned.
+outline, stable-name selection restoration and `MewUIPropertyAdapter` recreation. MXAML source
+generation and MewUI container semantics remain backend-owned.
 Undo, Redo and Delete also pass through the common `DesignerCommandController`; MewUI retains the
 MXAML/RPC mutation implementation while the shell owns command gating and re-entrancy.
 
@@ -29,8 +29,8 @@ MXAML/RPC mutation implementation while the shell owns command gating and re-ent
 
 The MewUI designer now follows the shared DDP process architecture. The in-process AddIn owns only
 the OpenDevelop surface, Toolbox, Outline and Properties adapters. `MewUIDesigner.Host` exclusively
-owns the Roslyn-backed generated-code model, edit history and serialization; the main process no
-longer compiles or loads `MewUIDocumentEditor` or its Roslyn dependency for this designer. The
+owns the `MxamlDocument` model, edit history and serialization; the main process does not own an
+editable MewUI runtime tree. The
 integration test asserts the child process and performs property edits, insertion, undo/redo and
 save across the RPC boundary. The design view uses the same `DesignerCanvas` shell as WinForms,
 WPF, WinUI/Uno and GTK 4. Its declared toolbar capabilities are exactly Zoom, Fit and Gridlines;
@@ -39,7 +39,7 @@ editing and lifecycle commands do not appear as fake canvas buttons.
 Multiple MewUI windows now share one `MewUIDesigner.Host` process. `MewUIDesignerHostClient` is a
 per-document lease with its own `DocumentId`; the shared connection owns the child process and every
 mutation/flush/reorder RPC includes that `documentId`. The host stores a separate
-`DocumentSession` for each generated file, including Roslyn editor state, version, file name and
+`DocumentSession` for each MXAML file, including document state, version, file name and
 undo history, and `session/close` removes only the closed document. MainWindow and SettingsWindow
 therefore report the same host PID while source transforms and saves stay isolated.
 
@@ -51,10 +51,11 @@ owned by the parent-side broker.
 The shared process lifecycle is governed by
 [`designer-common.md`](designer-common.md#shared-host-lifecycle-design-2026-08-23). The common
 broker replaces the private static lease counter, retains an idle process for ten seconds,
-coordinates one replacement after failure, and reopens every live generated-code document from
-its latest parent snapshot. Explicit restart is pool-wide and restores sibling windows and unsaved
-Roslyn transformations instead of invalidating their clients. MewUI has no native pixel phase
-today, so asynchronous frames are dormant; its semantic WPF projection still obeys the same
+coordinates one replacement after failure, and reopens every live MXAML document from its latest
+parent snapshot. Explicit restart is pool-wide and restores sibling windows and unsaved MXAML
+transformations instead of invalidating their clients. On macOS and Windows `MewUIRenderer` renders
+real MewUI controls into an offscreen frame and reports arranged bounds; on Linux the host
+intentionally remains model-only and reports that there is no frame. Both forms obey the same
 version and recovery-generation checks.
 
 Recovery notifications are marshalled as a whole to the WPF dispatcher. In particular,
@@ -69,7 +70,10 @@ isolation, closing one document without affecting its sibling, forced shared-hos
 pool-wide explicit restart, unsaved generated-code preservation and independent saves. Status
 automation exposes the same lifecycle identity fields as GTK even when render revisions are zero.
 
-## Decision
+## Superseded C#-designer design
+
+The following C# / `.Designer.cs` design was the pre-MXAML proposal. It is retained only to make
+the reversal traceable; it is not an accepted input, migration path, or implementation contract.
 
 MewUI is a C#-first UI framework (`Aprillz.MewUI`), so its designer must not translate the
 document to XAML or treat a runtime object graph as the editable model. The C# syntax tree is the
@@ -204,7 +208,7 @@ selection controls, ranges, lists and Image. Unknown project controls are retain
 nested under a recognized control but are not synthesized from the toolbox until their metadata is
 known.
 
-## User experience
+## Current user experience
 
 The Design view contributes all three standard designer pads:
 
@@ -218,7 +222,7 @@ The Design view contributes all three standard designer pads:
 - Outline: the parsed source hierarchy; selecting a node synchronizes the Properties pad. It is
   also the Outline pad's content while the Source pane has focus, like the toolbox list above.
 - Properties: identity, text/content, layout, appearance and enabled-state properties; edits land
-  in C# source.
+  in MXAML and are checked by the MXAML property catalogue before they are accepted.
 
 The surface supports click selection and the workbench Undo, Redo and Delete commands. Parse errors
 are displayed without overwriting invalid source. Merely opening Design never reformats the file;
@@ -238,7 +242,7 @@ Debug builds expose:
 - `od.mewui-designer.zoom` / `fit` / `gridlines`
 - `od.mewui-designer.refresh` / `restart-host` / `show-source`
 
-`MewUIDesigner.Tests` covers fluent-tree parsing, property round-trip, insertion/deletion,
+`MewUIDesigner.Tests` covers MXAML parsing, property round-trip, insertion/deletion,
 undo/redo and invalid-source recovery. `tests/fixtures/MewUIFixture` is the real project fixture used
 for full-workbench integration. `MewUIDesignerTests` additionally proves that the live Tools pad
 hosts the MewUI catalogue, the live Outline pad hosts the parsed hierarchy, selection populates
@@ -250,7 +254,7 @@ same live host process. As with all xUnit v3 projects in
 this repository, execute tests with `dotnet run --project ... --`, not `dotnet test`.
 
 MewUI's Outline/Properties synchronization now goes through the shared
-`DesignerPadController`. Roslyn tree rebuilds, stable-id reselection, Outline commits and
+`DesignerPadController`. MXAML tree rebuilds, stable-id reselection, Outline commits and
 `MewUIPropertyAdapter` rebinding therefore follow the same shell contract as GTK 4, including the
 Outline notification re-entry guard. Toolbox-filter automation uses the common
 `DesignerDevFlowResults` JSON envelope; the cross-designer contract and lifecycle stress gate are

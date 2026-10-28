@@ -19,14 +19,14 @@ in the dedicated technotes:
 - [`wpf-designer.md`](wpf-designer.md) — the WPF designer, cut over to OOP on 2026-08-17/18;
 - [`winui-designer.md`](winui-designer.md) — the WinUI/Uno out-of-process host, the retired
   ProGPU in-process profile, and the native WinUI (Windows App SDK) planned adapter;
-- [`mewui-designer.md`](mewui-designer.md) — the C#-first/Roslyn-backed MewUI designer,
-  generated `.Designer.cs` convention, source transformations and safe preview projection;
+- [`mewui-designer.md`](mewui-designer.md) — the MXAML-backed MewUI designer, its generated
+  layout partial, source-model mutations and real-runtime preview boundary;
 - [`gtk-designer.md`](gtk-designer.md) — the GTK 4 GtkBuilder designer, GIR/catalogue model,
   native rendering boundary, macOS background-host behavior and Cambalache non-reuse policy;
 - [`xaml-services.md`](xaml-services.md) — the cross-designer roadmap, framework detection and
   the shared IDE-level contracts.
 
-## Product-experience parity matrix (reviewed 2026-10-20)
+## Product-experience parity matrix (reviewed 2026-10-28)
 
 This is the comparison users actually experience. It is deliberately **not** the much narrower
 `DesignerCanvasCapabilities` toolbar-flag list: a check mark below means that a user can complete
@@ -41,7 +41,7 @@ path unless the cell calls out ProGPU or Microsoft WinUI explicitly.
 | Crash recovery, stale-frame protection, selection/outline restoration | ✓ | ✓ | ✓; visual-state replay needs appbin fixture | ✓ | ✓ |
 | Click selection, drag move, resize and multi-selection | ✓; WPF batch layout mutation | ✓; native/source transaction | ✓ source-backed operations | ✓ basic shared-canvas path | ✓ basic shared-canvas path |
 | Marquee and full keyboard navigation | Limited: marquee and nudge are delivered; Tab rotation remains unverified here | ✓ marquee, nudge and Tab routing | Limited: no marquee; keyboard subset | Limited | Limited |
-| Zoom, fit, gridlines, show names and status | ✓ plus snapping | ✓ plus snap/grid preferences | ✓ supported Uno path | ✓ | Limited: zoom/fit/gridlines only |
+| Zoom, fit, gridlines, show names and status | ✓ plus snapping | ✓ plus snap/grid preferences | ✓ supported Uno path | ✓ | ✓ zoom/fit/gridlines; no snap preference |
 | Advanced layout editing | ✓ Grid rails/unit commands, margin/Canvas inset handles, align/order/wrap/unwrap | ✓ TableLayout tracks/units and layout transactions | ✓ Grid split/unit commands and Canvas insets; source-backed | Limited: shared move/resize only | Limited: shared move/resize only |
 | Properties: scalar values, reset, enums and read-only safety | ✓ broad native WPF types | ✓ broad CLR types | ✓ source-backed enum/Thickness/color/resource paths | ✓ supported scalar descriptors | ✓ supported scalar descriptors; fallback attributes |
 | Properties: nested/complex editors | ✓ Binding, brushes/gradient handles, transforms, resource references, text/image and selected collections | ✓ Images, ImageList, Type, string collections, TreeView/ListView slices | Limited: source-backed properties; not WPF/Forms-equivalent object editors | Limited: no comparable complex-editor set | Limited: no comparable complex-editor set |
@@ -49,8 +49,8 @@ path unless the cell calls out ProGPU or Microsoft WinUI explicitly.
 | Toolbox | ✓ built-in + metadata-only project controls, filters | ✓ built-in, components/tray, metadata-only project controls, filters | ✓ built-in source catalogues | ✓ GIR/catalogue | ✓ source-model catalogue |
 | Non-visual components / component tray | Limited: no Forms-style component tray | ✓ Timer/ToolTip/ImageList and other supported components | Limited: component-specific source path; retired ProGPU is not a current capability | N/A | N/A |
 | Collections and resources | ✓ safe XAML Items/Tab/Binding collections and resource pickers | ✓ strongest resource path: images, ImageList, .resx, Items, columns/nodes where source proof exists | Limited: source structural edits, not Forms resource workflow | Limited | Limited |
-| Events and code-behind | ✓ event binding and transactional WPF code-behind generation | Limited: designer event path varies by source/runtime; no equivalent verified workflow listed here | Limited: source editing, no WPF-style handler transaction | Limited: signal/source binding only | Limited: generated-code/source convention |
-| Context commands / structural editing | ✓ align/order/cut/copy/paste/duplicate/wrap/unwrap/style-template safe subset | ✓ framework-specific context and TableLayout commands | ✓ cut/copy/paste/duplicate/wrap/unwrap/Grid commands | ✓ common source/model commands | ✓ common source/model commands |
+| Events and code-behind | ✓ event binding and transactional WPF code-behind generation | Limited: designer event path varies by source/runtime; no equivalent verified workflow listed here | Limited: source editing, no WPF-style handler transaction | Limited: signal/source binding only | Limited: event attribute + conventional `.mxaml.cs` handler generation for catalogued delegates |
+| Context commands / structural editing | ✓ align/order/cut/copy/paste/duplicate/wrap/unwrap/style-template safe subset | ✓ framework-specific context and TableLayout commands | ✓ cut/copy/paste/duplicate/wrap/unwrap/Grid commands | ✓ common source/model commands | ✓ copy/paste/duplicate/order/wrap/unwrap; absolute bounds only for direct Canvas children |
 | Themes and visual states | ✓ project design themes | N/A | ✓ Uno theme/forced state replay; end-to-end state fixture pending | N/A | N/A |
 | Windows Microsoft-runtime confidence | ✓ real WPF gallery corpus; particular workflows still vary | **Verify** Forms journeys | ✓ WinUI gallery corpus 25/25; appbin visual-state replay still pending | N/A | N/A |
 
@@ -73,6 +73,22 @@ The practical parity backlog is consequently not “give every designer every to
    framework-specific flourishes; and
 3. make WinUI's Microsoft and Uno experiences converge where both runtimes can prove the same
    source-preserving operation.
+
+### Functional-gap audit (2026-10-28)
+
+This audit separates a delivered capability from a tested user journey. It is the current
+backlog for raising the designers' common floor; it is not a claim that the listed work is
+already in CI.
+
+| Priority | Gap | Evidence and intended closure |
+|---|---|---|
+| P0 confidence | WinForms on Microsoft Windows is still marked **Verify**. | Keep the existing LibreWinForms coverage, then add a real Microsoft-runtime open → edit → save → reopen journey before changing the matrix cell. |
+| P0 resilience | WPF selection must remain local while its host recovers. | Implemented and covered by `SnapshotSelection_RemainsResponsiveWhileTheWpfHostRecovers`; retain this as a required integration scenario because optional `design/select` must never stall selection. |
+| P1 portability | MewUI has real frames only on macOS and Windows; Linux is deliberately model-only. | Expose the no-frame state as an availability limitation, keep source-model actions testable there, and do not report visual-preview parity until a supported Linux MewUI renderer exists. |
+| P1 interaction | GTK and MewUI do not have general absolute positioning or resize. | GTK should continue to edit container semantics; MewUI may set bounds only for direct Canvas children. Add capability-specific gesture tests rather than enabling generic handles. |
+| P1 depth | GTK/MewUI property and collection editors are intentionally narrower than WPF/WinForms. | Expand only through catalogue-validated, lossless mutations with model and full-workbench coverage; do not expose a generic CLR object editor. |
+| P1 convergence | Microsoft WinUI and Uno share the shell but not all verified end-to-end visual-state paths. | Add the application-binary visual-state fixture before calling the two runtime experiences equivalent. |
+| P2 navigation | Keyboard/marquee coverage is uneven outside WinForms. | Establish the common canvas expectations per backend and promote only journeys that each backend can honestly support. |
 
 The protocol described here is a **target contract**. No implementation must be rewritten to
 match it in one step; each backend converges by extracting and renaming its existing RPC
@@ -633,7 +649,7 @@ out-of-process designers.
 as such - and by hard constraints:
 
 1. *Is the document declarative text the IDE can edit correctly without the runtime?* (XAML,
-   GtkBuilder `.ui`: yes. WinForms `InitializeComponent`, MewUI's C#: no - they are code only the
+   GtkBuilder `.ui` and MewUI `.mxaml`: yes. WinForms `InitializeComponent`: no - it is code only the
    target runtime's serializer produces.)
    - Yes → prefer the **host model**: the IDE edits the text; the child renders and reports the
      element tree, layout and property metadata. This is Visual Studio's XAML *surface
@@ -654,7 +670,7 @@ as such - and by hard constraints:
 | WPF | XAML | child | historical; (1) would allow host |
 | MAUI (out-of-tree) | XAML | child | (2): its editing model is GPL, the addin is MIT |
 | WinForms | generated code | child | (1) - Visual Studio's WinForms split |
-| MewUI | C# | child | (1) |
+| MewUI | `.mxaml` XML | child | (2): the child owns the catalogue-validated MXAML model and renderer |
 | GTK 4 | `.ui` XML | child | historical; (1) would allow host |
 
 **Obligations of a child-model backend** (each needs a test, because each is where it loses to the
@@ -1060,11 +1076,11 @@ test runner output, so relying only on the host-app build can otherwise execute 
 | Layer | Shared project | WinForms | WPF | WinUI/Uno | MewUI | GTK 4 |
 |---|---|---|---|---|---|---|
 | Protocol DTOs + process lifecycle | `src/Main/Designer/Designer.Remote/` | `FormsDesignerHostClient` | `WpfSurfaceHostClient` | `UnoDesignClient` | `MewUIDesignerHostClient` | `GtkDesignerHostClient` |
-| Geometry/rendering helpers | `src/Main/Designer/Designer.Presentation/` | used | used | used | n/a (semantic WPF projection) | native GTK PNG + Gir.Core bounds/hit-test |
+| Geometry/rendering helpers | `src/Main/Designer/Designer.Presentation/` | used | used | used | real MewUI BGRA frame/bounds on macOS and Windows; model-only elsewhere | native GTK PNG + Gir.Core bounds/hit-test |
 | Child-process bootstrap | `src/Main/Designer/Designer.Server/` (`DesignerChildHost`) | `DesignerChildHost.Run` | `DesignerChildHost.Run` + WPF main-thread dispatcher | own dispatcher pump | `DesignerChildHost.Run` | `DesignerChildHost.Run` |
-| Canvas shell | `DesignerCanvas.cs` | `RemoteFormsDesignerControl` | `WpfSurfaceDesignerControl` | `UnoDesignSurfaceControl` | shared-pad composition (outline/tools/properties) | shared-pad composition |
+| Canvas shell | `DesignerCanvas.cs` | `RemoteFormsDesignerControl` | `WpfSurfaceDesignerControl` | `UnoDesignSurfaceControl` | `MewUIDesignerViewContent` over `DesignSurface` | `GtkDesignerViewContent` over `DesignSurface` |
 | Toolbox pad engine | `SharedToolbox.cs` | `WpfToolbox` facade | `WpfToolbox` facade | `WinUIXamlToolbox` facade | in-addin catalogue | in-addin catalogue |
-| Child process | — | `FormsDesigner/Host/` | `WpfDesign.SurfaceHost/` | `WinUIXamlDesigner.UnoHost/` | `MewUIDesigner.Host/` (Roslyn transforms) | `GtkDesigner.Host/` (GtkBuilder XML transforms) |
+| Child process | — | `FormsDesigner/Host/` | `WpfDesign.SurfaceHost/` | `WinUIXamlDesigner.UnoHost/` | `MewUIDesigner.Host/` (MXAML transforms) | `GtkDesigner.Host/` (GtkBuilder XML transforms) |
 | DevFlow actions | — | `FormsDesignerDevFlowActions.cs` | `WpfDesignDevFlowActions.cs` | `WinUIXamlDesignerDevFlowActions.cs` | `MewUIDesignerDevFlowActions.cs` | `GtkDesignerDevFlowActions.cs` |
 
 ## The source-model designers: MewUI and GTK 4
@@ -1081,21 +1097,18 @@ everything else:
 
 **the authoritative document is not a runtime object graph.**
 
-- **MewUI**: a C#-first framework, so the document IS the C# syntax tree. The child process
-  performs Roslyn source transformations for every toolbox insertion / property edit / delete /
-  rename (strict WinForms-style InitializeComponent grammar: field creations, then property
-  assignments, then `parent.Children(...)` relationship calls, anchored by a `Content = root`
-  assignment). See [`mewui-designer.md`](mewui-designer.md) for the decision record.
+- **MewUI**: the designer document is MXAML. The child process validates and transforms the
+  `MxamlDocument` for every toolbox insertion, property/event edit, delete, rename and structural
+  operation; build-time generation emits the C# layout partial. See
+  [`mewui-designer.md`](mewui-designer.md) and [`mxaml.md`](mxaml.md).
 - **GTK 4**: the document is GtkBuilder XML (`.ui`). The child validates and transforms the
   XML tree directly (`<child>/<object>/<property>`), preserving whitespace-free canonical form.
 
 Consequences, all deliberate:
 
-1. **Rendering is an IDE-side WPF approximation**, not runtime pixels: the surface preview is
-   built from the parsed model (`StackPanel`-style proxies per node type). There is no ProGPU /
-   Uno runtime in the loop, so `hit-test` / `set-bounds` / events are **deterministic
-   NotSupported** on the client (same convention as the WPF designer's nudge) rather than
-   silently missing.
+1. **Rendering stays backend-specific.** GTK uses native GTK snapshots; MewUI uses real MewUI
+   offscreen frames and arranged bounds on macOS/Windows, and deliberately has no frame on Linux.
+   The parent uses a model snapshot for pads and recovery in every case.
 2. **Undo/redo lives in the child as whole-document snapshots**, matching the WPF backend's
    session-snapshot approach.
 3. **Container validation is enforced in the child** (a `<child>` under a leaf widget, or a
