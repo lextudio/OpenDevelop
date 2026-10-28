@@ -62,6 +62,11 @@ an OS-family-only pruning rule remains insufficient. `dist.linux.sh` selects the
 independent payload and emits its matching ZIP. Linux is still not an enabled platform or a release asset: native-runner
 smoke evidence is required before either architecture can claim CI coverage.
 
+The first native evidence is supplied by the separate observational `Linux package smoke` workflow: it runs
+`dist.linux.sh` inside Xvfb on `ubuntu-24.04` and `ubuntu-24.04-arm`, verifies the matching ZIP exists, and retains it
+as a short-lived artifact. It is intentionally outside the required CI and release workflows until both architectures
+have repeatable green package/startup results.
+
 ### Release format decision
 
 Start with framework-dependent, architecture-specific ZIP archives:
