@@ -291,7 +291,7 @@ Highlight, Known issues, Full Changelog).
 - Write the "Changes since" bullets in `doc/releases/<tag>.md` *before* tagging. Without that file the script uses the
   bullets GitHub generates, and without any it writes a TODO line (`.github/ci/release-notes.ps1`).
 - A tag with a suffix (`v5.6.5-rc1`) is drafted as a prerelease: use one to rehearse the whole pipeline.
-- Packaging needs what CI's build needs: the submodules (`init-submodules.sh`), the `lextudio-github` feed credential, and
+- Packaging needs what CI's build needs: the submodules (`init-submodules.sh`), the `lextudio_github` feed credential, and
   `GITHUB_ACTIONS` removed (GitVersion races on the runner's env file). `dist.ps1` runs its own `smoke` phase on Windows.
 - `release.macos.ps1` is the older local flow with different names; it stays as a local fallback only.
 

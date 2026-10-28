@@ -73,7 +73,7 @@ env:
   NUGET_PACKAGES: ${{ github.workspace }}/artifacts/nuget-packages
   # NuGet consumes this conventional variable without writing the ephemeral token into NuGet.config,
   # the package cache key, or the workspace archive.
-  NuGetPackageSourceCredentials_lextudio-github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
+  NuGetPackageSourceCredentials_lextudio_github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
 
 jobs:
   plan:

@@ -25,7 +25,7 @@ concurrency:
 env:
   GH_TOKEN: ${{ github.token }}
   # Same convention as ci.yml: NuGet reads the token from here without writing it to NuGet.config.
-  NuGetPackageSourceCredentials_lextudio-github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
+  NuGetPackageSourceCredentials_lextudio_github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
 
 jobs:
   prepare:

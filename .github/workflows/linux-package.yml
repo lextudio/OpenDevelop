@@ -19,7 +19,7 @@ env:
   # sync-openavalon-feed.ps1 reads this only through gh; it is never written into NuGet.config
   # or the workspace/artifact payload.
   GH_TOKEN: ${{ github.token }}
-  NuGetPackageSourceCredentials_lextudio-github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
+  NuGetPackageSourceCredentials_lextudio_github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
 
 jobs:
   package:
