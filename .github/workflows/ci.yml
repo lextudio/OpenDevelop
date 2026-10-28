@@ -213,6 +213,24 @@ jobs:
           sudo DevToolsSecurity -enable
           sudo dseditgroup -o edit -a "$USER" -t user _developer
           sudo security authorizationdb write system.privilege.taskport allow
+      # The ARM64 lane runs the output of the Windows x64 build job. Its PDBs carry that runner's workspace
+      # path (D:\a\<repo>\<repo>), while this runner's workspace is C:\a\<repo>\<repo>. The debugger reports
+      # the PDB path, so the IDE could not open the stop location (log: "Can't load file Program.cs under
+      # D:\a\...") and the console completion found no file to analyse. Make the build job's path resolve to
+      # this workspace: map the missing D: drive, or junction D:\a when the drive exists without it.
+      - name: Map the build job's workspace path
+        if: matrix.platform == 'windows-arm64'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $workspaceDrive = Split-Path $env:GITHUB_WORKSPACE -Qualifier
+          $built = 'D:' + $env:GITHUB_WORKSPACE.Substring($workspaceDrive.Length)
+          "workspace = $env:GITHUB_WORKSPACE, build job's path = $built, D: exists = $(Test-Path 'D:\')"
+          if ($workspaceDrive -ne 'D:' -and -not (Test-Path $built)) {
+            if (-not (Test-Path 'D:\')) { subst D: "$workspaceDrive\" }
+            elseif (-not (Test-Path 'D:\a')) { New-Item -ItemType Junction -Path 'D:\a' -Target "$workspaceDrive\a" | Out-Null }
+          }
+          if (Test-Path $built) { "$built resolves" } else { Write-Warning "$built does not resolve; debugger source paths from the build job will not open" }
       # Ported from lextudio/AvalonDock (branch opendevelop, .github/workflows/ci-librewpf.yml). The pointer
       # journeys click the real desktop, so it has to look like one. windows-11-arm logs in to the Windows
       # first-logon privacy page ("Choose privacy settings for your device"), a full-screen window above
