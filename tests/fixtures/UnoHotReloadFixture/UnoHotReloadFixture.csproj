@@ -12,6 +12,6 @@
     <UnoFeatures>SkiaRenderer;</UnoFeatures>
   </PropertyGroup>
   <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-    <PackageReference Include="LeXtudio.DevFlow.Agent.Uno" Version="0.2.2" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Uno" Version="0.3.1" />
   </ItemGroup>
 </Project>

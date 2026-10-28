@@ -81,12 +81,19 @@ $forkPackages = @(
     # Themes.VS2013 depends on the VS theme package: synchronize the complete restore closure.
     'Dirkster.AvalonDock.Themes.VS.LibreWPF', 'Dirkster.AvalonDock.Themes.VS2013.LibreWPF'
 ) | ForEach-Object { [pscustomobject]@{ Id = $_; Version = Get-CentralPackageVersion (Join-Path $PSScriptRoot 'Directory.Packages.props') $_ } }
+# DevFlow, the in-process automation agent (and CliclickSharp, the pointer helper it ships), is published to the same
+# endpoint, and the GitHub build of 0.3.1 is not the nuget.org one: it ships a native CliclickSharp.arm64.exe next to the
+# x64 one, different build targets and a different Agent.Core.dll (9.9 MB against 7.7 MB). It is copied into the local
+# feed like the rest, so it gets the same verification and refresh path, and consumed from there.
+$devFlowPackages = @(
+    'LeXtudio.DevFlow.Agent.Core', 'LeXtudio.DevFlow.Agent.LibreWpf'
+) | ForEach-Object { [pscustomobject]@{ Id = $_; Version = Get-CentralPackageVersion (Join-Path $PSScriptRoot 'Directory.Packages.props') $_ } }
 $packages = @($openAvalonPackages | ForEach-Object { [pscustomobject]@{ Id = $_; Version = $sdkVersion } }) +
     [pscustomobject]@{ Id = 'LibGhostty.Net'; Version = $libGhosttyVersion } +
-    $forkPackages
+    $forkPackages + $devFlowPackages
 
 Write-Host "OpenAvalon local feed: $FeedPath"
-Write-Host "OpenAvalon package version: $sdkVersion ($($openAvalonPackages.Count) packages); LibGhostty.Net $libGhosttyVersion; $($forkPackages.Count) AvalonEdit/AvalonDock fork packages"
+Write-Host "OpenAvalon package version: $sdkVersion ($($openAvalonPackages.Count) packages); LibGhostty.Net $libGhosttyVersion; $($forkPackages.Count) AvalonEdit/AvalonDock fork packages; $($devFlowPackages.Count) DevFlow packages"
 if ($Plan) {
     $packages | ForEach-Object { Write-Host "  $($_.Id) $($_.Version)" }
     exit 0
@@ -178,6 +185,15 @@ try {
             }
             if (-not (Test-NuGetPackage $temporary $packageId $packageVersion)) { throw "Downloaded file is not the expected NuGet package: $fileName." }
             Move-Item -LiteralPath $temporary -Destination $destination -Force
+            # NuGet reuses a version it has already extracted without asking its source again, so a package restored
+            # earlier (DevFlow came from nuget.org) or republished under the same version would keep its old contents.
+            # NuGet.config makes this checkout's artifacts/nuget-packages the global packages folder: drop the extracted
+            # copy so the next restore extracts the file just copied.
+            $extracted = Join-Path $PSScriptRoot "artifacts/nuget-packages/$id/$version"
+            if (Test-Path -LiteralPath $extracted) {
+                Remove-Item -LiteralPath $extracted -Recurse -Force
+                Write-Host "Cleared the extracted copy of $packageId $packageVersion"
+            }
             [IO.File]::WriteAllText("$destination.verified", "$packageId`n$packageVersion`n", [Text.UTF8Encoding]::new($false))
             Write-Host "Synced: $fileName"
         } finally {
