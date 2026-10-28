@@ -218,7 +218,8 @@ jobs:
       # first-logon privacy page ("Choose privacy settings for your device"), a full-screen window above
       # everything: od.activate could never make the IDE the foreground window (foregrounded=false) and
       # every real click landed on that page. The step dismisses it and the Start menu it leaves open,
-      # minimises leftover windows (the agent console), keeps full-window dragging on, and saves
+      # minimises leftover windows (the agent console), starts a watchdog that keeps the wsl.exe terminal
+      # windows the image keeps opening out of the foreground, keeps full-window dragging on, and saves
       # desktop screenshots into the uploaded test-log directory.
       - name: Prepare the Windows desktop
         if: runner.os == 'Windows'
@@ -291,6 +292,32 @@ jobs:
           # Whatever is still visible and is not the shell gets minimised (SW_MINIMIZE).
           Get-TopWindows | Where-Object { $_.Process -ne 'explorer' -and $_.Class -notin 'Shell_TrayWnd', 'Shell_SecondaryTrayWnd', 'Progman', 'WorkerW' } |
             ForEach-Object { "minimising $($_.Process) '$($_.Title)' [$($_.Class)]"; [void][Native.Desk]::ShowWindow($_.Handle, 6) }
+
+          # windows-11-arm keeps starting wsl.exe while the tests run, each time in a new Windows
+          # Terminal window that becomes the foreground window over TestApp (the failures named it:
+          # WindowsTerminal, title 'C:\Windows\system32\wsl.exe'). A watchdog for the rest of the job
+          # stops it and records what started it; the runner cleans the watchdog up with the job. The log
+          # lands in the uploaded test-log directory.
+          $watchdog = Join-Path $env:RUNNER_TEMP 'desktop-watchdog.ps1'
+          $watchdogLog = Join-Path $env:RUNNER_TEMP 'od-test-logs/desktop-watchdog.log'
+          Set-Content -Path $watchdog -Value @'
+          param([string]$Log)
+          while ($true) {
+            foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name = 'wsl.exe' OR Name = 'wslhost.exe'" -ErrorAction SilentlyContinue)) {
+              $parent = Get-CimInstance Win32_Process -Filter "ProcessId = $($p.ParentProcessId)" -ErrorAction SilentlyContinue
+              Add-Content $Log "$(Get-Date -Format HH:mm:ss.fff) stopping $($p.Name) ($($p.ProcessId)) '$($p.CommandLine)' started by $($parent.Name) ($($p.ParentProcessId)) '$($parent.CommandLine)'"
+              Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+            }
+            foreach ($t in @(Get-Process -Name WindowsTerminal -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like '*wsl*' })) {
+              Add-Content $Log "$(Get-Date -Format HH:mm:ss.fff) closing WindowsTerminal ($($t.Id)) '$($t.MainWindowTitle)'"
+              Stop-Process -Id $t.Id -Force -ErrorAction SilentlyContinue
+            }
+            Start-Sleep -Milliseconds 500
+          }
+          '@
+          Start-Process pwsh -WindowStyle Hidden -ArgumentList '-NoProfile', '-File', $watchdog, '-Log', $watchdogLog
+          Start-Sleep -Seconds 2
+          if (Test-Path $watchdogLog) { Get-Content $watchdogLog }
 
           $full = 0; [void][Native.Desk]::SystemParametersInfo(0x0026, 0, [ref]$full, 0)
           $set = [Native.Desk]::SystemParametersInfo(0x0025, 1, [IntPtr]::Zero, 3)
