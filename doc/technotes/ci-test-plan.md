@@ -117,13 +117,20 @@ required per platform. Linux product tests remain out of scope for this rollout.
   `mewui-designer-journeys`, `gtk-designer-journeys` and `gtk-designer-nested-journey` passed 40495471973 and
   40524161593, the two runs that completed the designer lane. On Windows ARM64, `librewinforms-designer-editor` and
   `gtk-designer-nested-journey` passed those same two. Those 11 pairs are `required`.
-  In focus mode this leaves Windows x64 with only `librewpf-designer-editing` and no in-place unit job.
+  At that point focus mode left Windows x64 with only `librewpf-designer-editing` and no in-place unit job (that entry
+  was promoted later the same day, below).
 * **macOS debugger unblocked and promoted (2026-10-27).** Every debugger attach on the hosted macOS runner hung inside
   `ICorDebug.DebugActiveProcess`: macOS authorizes `task_for_pid` through `system.privilege.taskport`, and on the runner
   nobody answers that prompt (a developer Mac caches it, so it never reproduced locally). `ci.yml` now enables developer
   tools and allows that right in the macOS lane (`a24f882e56`). Runs 40582707365 and 40595645276 then passed
   `debugger-journeys`, `debugger-feature-journeys`, `wpf-hot-reload-journeys`, `base-tests-arm`,
   `librewinforms-designer-editor` and `gtk-designer-nested-journey` on macOS ARM64, so those 6 pairs are `required`.
+* **LibreWPF editing promoted on Windows; macOS templates fixed (2026-10-27).** After `8357403143`/`11191d5759` (selection no
+  longer waits on a dead or reopening WPF child) and `ee763d3e7f` (the binding tests ignore the GPU-less software fallback
+  warning), `librewpf-designer-editing` passed all 30 cases on Windows x64 and ARM64 in runs 40595645276 and 40606824351,
+  so both pairs are `required`. `cc569fd5a8` installs SDK templates only from the runtime-matching `templates/` folder (the
+  macOS image keeps .NET 8, 9 and 10 side by side, and an older pack won); `new-project-dialog-macos` then passed in run
+  40606824351 and needs one more run before promotion.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.
@@ -282,7 +289,8 @@ backends (need Visual Studio), and the heavy or environment-bound ones named in
 The Profiler tests and the Terminal journey are plan entries now; `profiler.yml` and `terminal-cross-platform.yml` were
 deleted with that fold. The Profiler shares the `unit` lane (its data layer attaches to a real process and needs no IDE
 host), and the Terminal journey runs in the integration lanes and gets its `win-x64` add-in from `buildLast`, the way its own
-workflow built it. Windows x64, Windows ARM64 and macOS ARM64 have observed integration entries; Linux remains disabled.
+workflow built it. Windows ARM64 and macOS ARM64 still have observed integration entries (Windows x64 has none left);
+Linux remains disabled.
 The `platformNotes` in the plan record each decision.
 
 ## The archives
