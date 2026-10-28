@@ -266,6 +266,23 @@ jobs:
           cat "$log"
           grep -q DOWN "$log" && echo "RESULT: the click reached the probe window" || echo "RESULT: NO mouse-down reached the probe window"
           kill "$probe" 2>/dev/null || true
+      # The click probe above shows an OS-level click does reach a Cocoa window on this VM, so the failing pointer
+      # journeys miss for a reason specific to the IDE window. The VM display is 1024x768 with a menu bar and a Dock,
+      # and the IDE window is 1024x768 placed at (10,10): macOS moves and shrinks a titled window to fit under the menu
+      # bar, while the geometry WPF reports (and the click points derived from it) stays 1024x768 at (10,10). Sample the
+      # real window-server geometry during the lane, with a screenshot every 30 seconds, so the failing drags can be
+      # compared with it. Read-only; the loop ends with the job.
+      - name: Sample the macOS desktop during the lane
+        if: matrix.platform == 'macos-arm64'
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/od-test-logs"
+          swiftc -o "$RUNNER_TEMP/window-list" "$GITHUB_WORKSPACE/.github/ci/macos-window-list.swift"
+          nohup bash -c 'n=0; while true; do { echo "== $(date +%H:%M:%S)"; "$0"; } >> "$1"; if [ $((n % 3)) -eq 0 ]; then screencapture -x "$2/macos-$(date +%H%M%S).png"; fi; n=$((n + 1)); sleep 10; done' "$RUNNER_TEMP/window-list" "$RUNNER_TEMP/od-test-logs/macos-windows.log" "$RUNNER_TEMP/od-test-logs" > /dev/null 2>&1 &
+          disown
+          sleep 2
+          cat "$RUNNER_TEMP/od-test-logs/macos-windows.log"
       # The ARM64 lane runs the output of the Windows x64 build job. Its PDBs carry that runner's workspace
       # path (D:\a\<repo>\<repo>), while this runner's workspace is C:\a\<repo>\<repo>. The debugger reports
       # the PDB path, so the IDE could not open the stop location (log: "Can't load file Program.cs under
