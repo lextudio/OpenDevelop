@@ -221,7 +221,13 @@ public sealed class DebuggerFeatureIntegrationTests
 
             // A frame with real source is its own completion context, and `numbers.` (an int[] local of
             // Main, captured by the lambda) completes to array members.
-            var own = await _app.InvokeAsync("od.debug.console-completions", "numbers.");
+            // The labels come from the language service, which may still be loading the project when the
+            // breakpoint is hit on a slow machine; the frame resolves immediately, the members a little later.
+            JsonElement own = default;
+            await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                own = await _app.InvokeAsync("od.debug.console-completions", "numbers.");
+                return own.GetProperty("labels").GetArrayLength() > 0;
+            }, TimeSpan.FromSeconds(30));
             Assert.True(own.GetProperty("hasContext").GetBoolean(), own.ToString());
             Assert.EndsWith("Program.cs", own.GetProperty("file").GetString());
             Assert.Equal(line, own.GetProperty("line").GetInt32());

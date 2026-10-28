@@ -682,7 +682,12 @@ public sealed class DebuggerIntegrationTests
             var modules = await _app.InvokeAsync("od.debug.modules");
             Assert.NotEmpty(modules.EnumerateArray());
 
-            var output = await _app.InvokeAsync("od.debug.output");
+            // The Output pad is shown by the debug layout switch, which completes asynchronously.
+            JsonElement output = default;
+            await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                output = await _app.InvokeAsync("od.debug.output");
+                return output.GetProperty("isOutputVisible").GetBoolean();
+            }, TimeSpan.FromSeconds(30));
             Assert.NotEmpty(output.GetProperty("text").GetString()!);
             Assert.Equal("Debug", output.GetProperty("selectedCategory").GetString());
             Assert.True(output.GetProperty("isOutputVisible").GetBoolean());
