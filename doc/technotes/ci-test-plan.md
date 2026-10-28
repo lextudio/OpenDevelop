@@ -4,47 +4,55 @@ Goal: broaden GitHub Actions coverage of locally runnable tests on Windows x64, 
 Introduce substantial groups in observe mode, inspect their actual runner results, and promote stable entries to
 required per platform. Linux product tests remain out of scope for this rollout.
 
-## Rollout plan and progress (2026-10-26)
+## Current status (2026-10-28, 14:12 UTC)
 
-* **Completed locally:** workbench, debugger and coverage integration lanes are configured as observations on all three
-  platforms. Their macOS ARM64 local results are recorded below; hosted runner results for the new configuration are
-  still needed. Their commits are local until pushed.
-* **Committed locally:** Base, VSEditorCompat, LibreWPF XamlDom and Profiler unit suites are configured on both ARM64
-  platforms. The actual macOS CI runner script passed 875 cases and skipped nine; Windows ARM64 has not yet run. Verify
-  both hosted runners after an authorized push.
-* **Committed locally:** the new-project dialog journeys pass locally on macOS ARM64 (7 passed,
-  one Windows-only SDK download skipped; 57 seconds). Enable the complete class on macOS and its five non-SDK-install
-  methods on both Windows architectures as observations. The Windows SDK-selection theory needs a separate lane and
-  time budget because one data row installs a real SDK from the network; its two non-network rows are excluded with it
-  until the theory can be split without weakening coverage. Hosted runner results remain outstanding.
-* **Committed locally:** run the whole Profiler integration class on all three platforms instead of
-  only its isolation case. On macOS ARM64 it passed 21 journeys and skipped its Windows-only WPF journey in 107 seconds.
-  Its web, test, profiler and Windows WPF fixtures must be built into the shared archives. Hosted results are pending.
-* **Committed locally:** the designer lanes observe 30 LibreWPF editing journeys and the LibreWinForms
-  image-list journey on all three platforms, plus the LibreWPF property-editor journey on macOS. The two latter cases
-  passed locally as part of a three-case class with one Windows-only skip in 45 seconds. The 30-case LibreWPF suite
-  passed locally on macOS ARM64 in 217 seconds. On Windows they ran on run 40444468212 (29/30 on x64, about 28
-  minutes on ARM64), slow enough to need their own lane. The property-editor
-  method selects Microsoft WPF on Windows, so it is not enabled there until its host is available. Individual failures
-  are observed; an all-failed lane still fails. These tests temporarily edit files under `src/Samples` and restore their
-  original contents in cleanup. Run them serially in an isolated checkout or archive, not alongside other tests using
-  those samples; interruption can leave a sample modified.
-* **Committed locally:** add the Add Reference journey on all three platforms. A macOS run initially exposed a
-  DevFlow mutation lock held during the modal dialog; opening the selected project's dialog by a posted action fixes the
-  deadlock, and the complete reference-addition test passed locally in 37 seconds. Hosted results are pending.
-* **Committed locally:** add ten MewUI designer journeys on all three platforms (now in `integration-designer`). The initial
-  macOS run found two outdated tests using a DockPanel attached property on a StackPanel child; after correcting the
-  fixture and checking both mismatched-owner rejection and unknown-property diagnostics, all ten passed in 55 seconds. The build includes
-  MewUIGen and the fixture to populate the package cache needed when each test restores its temporary copy. Hosted
-  results remain outstanding.
-* **In local validation:** add 13 GTK designer journeys to a separate observation lane on all three platforms. The macOS local runs
-  passed all 12 native-rendering/editing cases in 68 seconds and the nested edit/save case in 19 seconds through the
-  CI runner script. The lane
-  installs Homebrew GTK 4 and libadwaita for the native runtime and GIR metadata; its fixture is built to prime NuGet.
-  Windows x64 uses MSYS2 UCRT64; Windows ARM64 uses CLANGARM64, with GTK 4, libadwaita and GIR metadata. The lane
-  checks the GTK DLL architecture before launch. Hosted results and setup time remain unverified on all platforms.
-  [MSYS2's setup action](https://github.com/msys2/setup-msys2) supports both environments; its
-  [ARM64 libadwaita package](https://packages.msys2.org/packages/mingw-w64-clang-aarch64-libadwaita) depends on GTK 4.
+The checked-in plan uses batch 4 and `focus: true`. The numbers below count enabled **entry/platform pairs**,
+not individual test cases. They describe the complete plan, not what a focus-mode run actually executes:
+
+| Platform | Required | Observe | Default focus run |
+| --- | ---: | ---: | --- |
+| Windows x64 | 32 | 0 | No test entries; its build can still supply Windows ARM64. |
+| Windows ARM64 | 25 | 2 | Only the two observed entries run. |
+| macOS ARM64 | 26 | 5 | Only the five observed entries run. |
+
+**Focus mode skips every required entry. A green focus run does not prove that required coverage passed.** Use
+`workflow_dispatch` with `full=true` to run both statuses before relying on the complete gate. Its `platforms` input
+can select a comma-separated subset; an ARM64-only Windows run still builds the shared Windows x64 archive. A full run
+also needs all relevant platforms selected to validate the whole matrix. The plan is the source of truth for individual
+entries and per-platform statuses; counts above do not imply distinct tests, since a class can contain many cases.
+
+Latest checked state: the push run for `f405f23b06` ([40702681819](https://github.com/lextudio/OpenDevelop/actions/runs/40702681819))
+was cancelled, so it did not validate that commit. The manual Windows ARM64 focus run for its parent `ddd19ef9ec`
+([40701241603](https://github.com/lextudio/OpenDevelop/actions/runs/40701241603)) was in progress at the timestamp above:
+Plan and the Windows x64 build had passed; the ARM64 integration jobs had not finished. It does not cover the later
+WSL-watchdog change or establish a full-matrix result. Recheck the run before using its conclusion.
+
+The latest completed, non-cancelled run in that sequence, [40680604340](https://github.com/lextudio/OpenDevelop/actions/runs/40680604340)
+for `182bbc4fa6`, failed in the macOS and Windows ARM64 designer jobs. On macOS, four observed designer entries failed
+and the all-failed guard made the lane red; on Windows ARM64, the one scheduled MewUI entry failed. Later commits add
+input and desktop diagnostics and change watchdog handling, but they need their own hosted confirmation.
+
+### Priorities
+
+* Inspect current hosted run summaries, screenshots, desktop/input diagnostics and per-entry TRX; do not infer that an
+  observed entry passed from a green job. On macOS investigate pointer delivery and designer interaction failures. On
+  Windows ARM64 verify the WSL watchdog, foreground handling, debugger stop and MewUI editing against fresh results.
+* Promote an observed entry only after the last two completed hosted runs for that platform pass it; then verify the
+  promotion. Run the full matrix, including required entries, before treating the current master as fully gated.
+* Continue adding missing runnable suites. `AddInTests`, Microsoft designer backends and environment-dependent SDK,
+  runtime-upgrade and performance scenarios still need separate prerequisites and budgets.
+
+## Rollout history (2026-10-26 to 2026-10-28)
+
+The following entries describe results at the time of each run, not the current status of a lane or commit.
+The workbench, debugger, coverage, ARM64 unit, new-project, profiler, reference, LibreWPF, LibreWinForms, MewUI and GTK
+journeys were initially added as observations and subsequently measured on hosted runners. Designer journeys temporarily
+modify `src/Samples` and restore the original files in cleanup; run them serially in an isolated checkout or archive,
+because interruption can leave a sample modified. GTK needs native runtime and GIR metadata: Homebrew GTK 4 and
+libadwaita on macOS, MSYS2 UCRT64 on Windows x64 and CLANGARM64 on Windows ARM64. The Windows setup checks both DLL
+architectures and metadata before launch. The Windows SDK-selection theory is excluded from the new-project entry because
+one row installs an SDK over the network; its other rows need a separately budgeted path.
+
 * **First hosted run (master `69bd9a4a50`, run 40429072140) failed before any new lane ran.** Both Build jobs stopped in
   `verify-terminal-assets.ps1`: the approved LibGhostty.Net 1.0.2 sha512 was stale, because the lextudio GitHub Packages
   payload changed (it, the local cache and the local feed agree; nuget.org's same-version package differs, and
@@ -142,6 +150,12 @@ required per platform. Linux product tests remain out of scope for this rollout.
   those four are `required` there. `debugger-journeys` and `mewui-designer-journeys` each failed once in 40662664664 (a
   stop racing the adapter's stdin, fixed by `c7497292df`; an items-editor save, now logged in full by `82ba0c62ce`) and
   stay `observe` for one more green run. The first three promoted entries stay in `integration-unstable` (see "Lanes").
+* **Desktop diagnostics and targeted runs (2026-10-28).** macOS lanes report input readiness and TCC decisions, probe
+  native click delivery and sample window geometry (`0ee0b96365`, `4db0e6098a`, `9f9947628b`, `2d89e992ab`).
+  `ddd19ef9ec` adds the `platforms` dispatch input, so an unavailable platform no longer holds up other selected jobs.
+  `f405f23b06` narrows the Windows watchdog to WSL update processes and attempts the ARM64 update once before starting
+  it; this is intended to stop update windows taking focus without killing unrelated WSL probes, but its push run was
+  cancelled and the change still needs hosted verification.
 * **Next:** inspect per-entry results and durations across multiple hosted runs, fix failures by platform, and promote
   stable entries to required. Continue expanding the remaining runnable suites, prioritizing high-value integration
   journeys; record exclusions and prerequisites before scheduling environment-dependent tests.
@@ -156,15 +170,16 @@ plan  ->  build (per platform)  ->  test (per platform x lane)
       \->  in-place (the one lane with "buildsInLane": own checkout, own compile, no archive)
 ```
 
-* **plan** (`plan-matrix.ps1`) reads the plan and emits the two job matrices. A platform gets a build job when any
-  entry is enabled on it; a (platform, lane) pair gets a test job when it has an enabled entry. Enabling more tests,
-  or a new lane, never edits the workflow.
+* **plan** (`plan-matrix.ps1`) reads the plan and emits the two job matrices. A packaging platform gets a build job when
+  an enabled archive lane needs it; a (platform, lane) pair gets a test job when it has an enabled entry. Focus and
+  platform filters apply before the matrices are created. Entries can normally be enabled in the plan; new system
+  prerequisites can require workflow changes.
 * **build** (`build-binaries.ps1`, `package-workspace.ps1`) is the only job that restores and compiles. It builds every
   distinct `project` of an enabled entry, prints per-project durations and output sizes in the job summary, then packs
   the whole workspace (sources and all build outputs, no `.git`, no `node_modules`) and uploads it as one archive
   (zstd when the runner's `tar` supports it, gzip otherwise; the upload does not compress a second time). Refuses to pack
   a `NuGet.config` that holds a clear-text credential.
-* **test** (`run-test-plan.ps1`) unpacks the archive at the same absolute path and runs the lane's entries, each `xunit-exe`
+* **test** (`run-test-plan.ps1`) unpacks the archive and runs the lane's entries, each `xunit-exe`
   one also writing a TRX (`-trx <results>/<entry>.trx`, which is how xUnit v3 spells it; `--report-trx` is the Microsoft
   Testing Platform option and is rejected). The workflow publishes those as a check (`dorny/test-reporter`, guarded by
   `continue-on-error` so a fork PR's read-only token cannot fail a lane) and uploads them as an artifact: `xunit-exe`
@@ -172,6 +187,7 @@ plan  ->  build (per platform)  ->  test (per platform x lane)
   `-class <name> -parallel none`), `msbuild` runs the AddIn SDK assertion projects with `-t:Build`. Nothing is restored
   or built there by the runner. Some integration journeys restore temporary fixture projects using the populated package
   cache; those restores can consult configured feeds. The workflow does not write credentials into the workspace archive.
+  Windows ARM64 maps the original x64 build workspace path to its own checkout for paths embedded in build outputs and PDBs.
 * **in-place** runs only for the lane whose definition says `"buildsInLane": true` (today `unit`). It has its own
   checkout and submodules, restores the same package cache entry, compiles only that lane's entries
   (`build-binaries.ps1 -Lane <lane> -SkipHostBuilds`, so neither the host nor the RID rebuild happens) and runs them. It
@@ -253,7 +269,7 @@ have been, and a lane is split only for a real environment need or a timeout.
   classes, the stable core journeys (solution folder, project options, T4, Task List, project reload, the Windows Terminal
   journey, Razor, the Windows and macOS new-project dialogs, fixture isolation, Profiler journeys, the WPF designer
   assembly lock), code coverage, and the VSEditorCompat, XamlDom and Profiler suites on the ARM64 platforms. Its
-  entries are `required` on all three platforms (each passed on the last two hosted runs that completed it there;
+  entries are `required` on the platforms where each is enabled (each passed on the last two hosted runs that completed it there;
   the results are recorded above), and the lane has no `allowAllFailures`. `new-project-dialog-macos` joined later: it
   failed on the hosted runner until `cc569fd5a8` and moved here after two green runs. `add-reference-journey` is `required` on
   all three platforms since 2026-10-28 but still runs in `integration-unstable` (see below and "Focus mode").
@@ -267,7 +283,8 @@ have been, and a lane is split only for a real environment need or a timeout.
 * `integration-designer` holds every designer journey (LibreWPF editing and property editors, LibreWinForms, MewUI and
   both GTK entries) and installs the GTK runtime (`needsGtk`, 3.5 minutes on Windows). Entries in a lane run one after
   another, so the LibreWPF journeys that edit `src/Samples` in place still never share the sample with a running test.
-  On Windows the 30 LibreWPF editing journeys alone took 24-28 minutes (budget 35 minutes).
+  On Windows the 30 LibreWPF editing journeys alone took 24-28 minutes (budget 35 minutes). The setup uses Homebrew on
+  macOS and architecture-specific MSYS2 environments on Windows, verifying the Windows DLLs and GIR metadata.
 
 Merging the former nine archive lanes into these three changed no build input: `build-binaries.ps1 -List` produces the
 same 23 Windows x64 and 21 macOS ARM64 projects before and after.
@@ -290,7 +307,7 @@ failures are under control. Focus mode does not gate anything: the `required` en
 ## Current plan (Windows x64)
 
 * Lane `unit`: `OpenDevelop.Base.Tests`, `OpenDevelop.VSEditorCompat.Tests`, `OpenDevelop.XamlDom.Tests.LibreWPF` and
-  `.MicrosoftWPF`, and the two `OpenDevelop.AddinSdk*.proj` builds (run with `dotnet msbuild -t:Build` as
+  `.MicrosoftWPF`, `OpenDevelop.Profiler.Tests`, and the two `OpenDevelop.AddinSdk*.proj` builds (run with `dotnet msbuild -t:Build` as
   `doc/technotes/addin-sdk.md` says; `dotnet build` of the same file fails because its restore changes what the asserted
   targets see). They need no IDE process.
 * Lanes `integration-stable`, `integration-unstable` and `integration-designer`: the integration entries, grouped as
@@ -333,12 +350,11 @@ distinct `project` of an enabled entry with that entry's `buildArgs`.
   `.csproj` as an entry `project`, which builds in a process of its own.
 * `build-binaries.ps1 -List` prints these commands without running them; use it to check a plan edit.
 
-The job initialises the submodules the build reaches: AvalonEdit, AvalonDock, cps, WPF Toolkit, vscode-wpf (with its
+The job initialises the submodules the build reaches: cps, WPF Toolkit, vscode-wpf (with its
 nested WpfDesigner and wxsg), the small debugger, coverage and XAML ones, and `externals/monodevelop` shallow, because
 the AspNetCore add-in compiles four files straight out of it (a `Compile Include`, which a `ProjectReference` closure does
-not show). The monodevelop sources stay out of the workspace archive. The build uses the repository's own LibreWPF pins
-(preview.65 from nuget.org once the developer-local feed is removed); the preview.69 trial lives in the Terminal workflow
-only.
+not show). The monodevelop sources stay out of the workspace archive. The build uses the repository's LibreWPF SDK pin (`0.1.0-preview.69` in `global.json`) and the configured package
+source mappings. AvalonEdit and AvalonDock are consumed as packages rather than initialized as submodules here.
 
 Measured on the first runs (windows-2025): the integration project build takes about ten minutes and the four unit test
 projects about two more; the numbers for the archive (size, pack, upload, download, unpack) come from the next run's job
