@@ -170,7 +170,15 @@ mechanical rename, by the time anyone went back to check. Unified in this pass:
   `Visible="false"` metadata - e.g. Uno.Resizetizer-generated sources) ported into the shared
   version rather than lost. `UnoProjectService.GetProjectDisplayItems(string projectPath)` (a raw
   MSBuild-XML scan for projects with no live `IProject` yet) has no OpenDevelop equivalent and
-  stays UnoDevelop-only.
+  stays UnoDevelop-only. Addins extend this without shell changes through
+  `IProjectFileNestingProvider`: they declare the extra file types they own and return a
+  display-relative parent path for each child. Registration through
+  `ProjectFileNestingProviderRegistry` raises a change event so an already-open Projects pad
+  refreshes. The GTK designer is the first consumer (`.ui`, `.ui.cs`, `.css` under its behavior
+  class); a provider can scope itself to selected project files and is removed when its AddIn unloads.
+  Explicit `DependentUpon` remains authoritative. When two providers claim a fallback, their
+  `Priority` is consulted first (highest wins) and AddIn registration order is the stable tie-breaker;
+  addins should normally scope their rules rather than compete for a generic extension.
 - **CPS tree provider** (`SharpDevelopProjectTreeProvider`/`UnoDevelopProjectTreeProvider`) - the
   SDK-style-project dependency branch OpenDevelop had added (reading evaluated MSBuild items via
   `MSBuildBasedProject.GetEvaluatedProjectItems()`) is now in both, and it's a **live** branch on

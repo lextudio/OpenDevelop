@@ -11,5 +11,6 @@
   </Path>
   <Path name="/SharpDevelop/Autostart">
     <Class id="ICSharpCode.GtkDesigner.RegisterDevFlowActionsCommand" class="ICSharpCode.GtkDesigner.RegisterDevFlowActionsCommand" />
+    <Class id="ICSharpCode.GtkDesigner.RegisterGtkProjectFileNestingCommand" class="ICSharpCode.GtkDesigner.RegisterGtkProjectFileNestingCommand" />
   </Path>
 </AddIn>

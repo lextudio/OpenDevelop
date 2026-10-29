@@ -36,10 +36,12 @@ namespace ICSharpCode.SharpDevelop.Services
 			}
 
 			var projectDirectory = Path.GetDirectoryName(project.FileName?.ToString());
+			var projectFile = project.FileName.ToString();
+			var nestingProviders = GetNestingProviders(projectFile);
 			var items = project.Items.CreateSnapshot()
 				.OfType<FileProjectItem>()
 				.Where(item => !IsReferenceItemName(item.ItemType.ItemName))
-				.Where(item => IsSupportedProjectItemPath(item.FileName.ToString()))
+				.Where(item => IsSupportedProjectItemPath(projectFile, item.FileName.ToString(), nestingProviders))
 				// Real MSBuild evaluation legitimately declares some generated sources as ordinary
 				// Compile items with no Visible="false" metadata at all (e.g. Uno.Resizetizer's
 				// obj/**/unoresizetizer/*.g.cs) - a real Solution Explorer hides anything physically
@@ -64,7 +66,7 @@ namespace ICSharpCode.SharpDevelop.Services
 				.Select(group => group.First())
 				.OrderBy(item => item.DisplayPath, StringComparer.OrdinalIgnoreCase)
 				.ToArray();
-			return ApplyFileNesting(items);
+			return ApplyFileNesting(items, projectFile, nestingProviders);
 		}
 
 		private static bool IsExcludedProjectPath(string path, string projectDirectory)
@@ -81,17 +83,18 @@ namespace ICSharpCode.SharpDevelop.Services
 		{
 			var projectDirectory = project.Directory.ToString();
 			var projectFile = project.FileName.ToString();
+			var nestingProviders = GetNestingProviders(projectFile);
 
 			var items = project.GetEvaluatedProjectItems()
 				.Where(item => IsDisplayItemName(item.ItemType))
-				.Select(item => CreateEvaluatedDisplayItem(projectDirectory, projectFile, item))
+				.Select(item => CreateEvaluatedDisplayItem(projectDirectory, projectFile, item, nestingProviders))
 				.Where(item => item != null)
 				.Cast<ProjectDisplayItem>()
 				.GroupBy(item => item.PhysicalPath, StringComparer.OrdinalIgnoreCase)
 				.Select(group => group.First())
 				.OrderBy(item => item.DisplayPath, StringComparer.OrdinalIgnoreCase)
 				.ToArray();
-			return ApplyFileNesting(items);
+			return ApplyFileNesting(items, projectFile, nestingProviders);
 		}
 
 		// CPS also applies conventional nesting when the SDK does not emit an explicit
@@ -99,14 +102,15 @@ namespace ICSharpCode.SharpDevelop.Services
 		// MainWindow.xaml.cs with no DirectMetadata at all; VS still nests it under the
 		// matching MainWindow.xaml. Preserve explicit MSBuild metadata, then apply the
 		// same high-value conventions only when the parent really exists in the project.
-		private static IReadOnlyList<ProjectDisplayItem> ApplyFileNesting(ProjectDisplayItem[] items)
+		private static IReadOnlyList<ProjectDisplayItem> ApplyFileNesting(ProjectDisplayItem[] items, string projectFile, IReadOnlyList<IProjectFileNestingProvider> nestingProviders)
 		{
 			var displayPaths = new HashSet<string>(items.Select(item => item.DisplayPath), StringComparer.OrdinalIgnoreCase);
 			return items.Select(item => {
 				if (!string.IsNullOrWhiteSpace(item.DependentUpon))
 					return item;
 				var parentPath = GetConventionParentPath(item.DisplayPath)
-					?? GetResourceParentPath(item.DisplayPath, displayPaths);
+					?? GetResourceParentPath(item.DisplayPath, displayPaths)
+					?? GetAddinParentPath(nestingProviders, projectFile, item.DisplayPath, displayPaths);
 				if (parentPath is null || !displayPaths.Contains(parentPath))
 					return item;
 				return item with { DependentUpon = parentPath.Split('\\', '/').Last() };
@@ -122,6 +126,20 @@ namespace ICSharpCode.SharpDevelop.Services
 				return displayPath.Substring(0, displayPath.Length - ".Designer.cs".Length) + ".cs";
 			if (displayPath.EndsWith(".Designer.vb", StringComparison.OrdinalIgnoreCase))
 				return displayPath.Substring(0, displayPath.Length - ".Designer.vb".Length) + ".vb";
+			return null;
+		}
+
+		private static string? GetAddinParentPath(IReadOnlyList<IProjectFileNestingProvider> providers, string projectFile, string displayPath, IReadOnlySet<string> displayPaths)
+		{
+			foreach (var provider in providers) {
+				try {
+					var parent = provider.GetParentDisplayPath(projectFile, displayPath, displayPaths);
+					if (!string.IsNullOrWhiteSpace(parent))
+						return parent;
+				} catch (Exception ex) {
+					ICSharpCode.Core.LoggingService.Warn("Project file nesting provider failed: " + ex);
+				}
+			}
 			return null;
 		}
 
@@ -149,11 +167,11 @@ namespace ICSharpCode.SharpDevelop.Services
 				.ToArray();
 		}
 		
-		private static ProjectDisplayItem? CreateEvaluatedDisplayItem(string projectDirectory, string projectFile, EvaluatedProjectItem item)
+		private static ProjectDisplayItem? CreateEvaluatedDisplayItem(string projectDirectory, string projectFile, EvaluatedProjectItem item, IReadOnlyList<IProjectFileNestingProvider> nestingProviders)
 		{
 			var physicalPath = ResolvePhysicalPath(projectDirectory, item.EvaluatedInclude);
 			if (string.IsNullOrWhiteSpace(physicalPath)
-			    || !IsSupportedProjectItemPath(physicalPath)
+			    || !IsSupportedProjectItemPath(projectFile, physicalPath, nestingProviders)
 			    || string.Equals(Path.GetFullPath(physicalPath), Path.GetFullPath(projectFile), StringComparison.OrdinalIgnoreCase)) {
 				return null;
 			}
@@ -203,14 +221,42 @@ namespace ICSharpCode.SharpDevelop.Services
 			".json", ".md", ".txt", ".resx", ".xml"
 		};
 
-		private static bool IsSupportedProjectItemPath(string path)
+		private static bool IsSupportedProjectItemPath(string projectFile, string path, IReadOnlyList<IProjectFileNestingProvider> nestingProviders)
 		{
 			var extension = Path.GetExtension(path);
 			foreach (var supported in SupportedExtensions) {
 				if (string.Equals(extension, supported, StringComparison.OrdinalIgnoreCase))
 					return true;
 			}
+			foreach (var provider in nestingProviders) {
+				try {
+					if (AppliesToProject(provider, projectFile) && provider.IsSupportedProjectItem(projectFile, path))
+						return true;
+				} catch (Exception ex) {
+					ICSharpCode.Core.LoggingService.Warn("Project file nesting provider failed: " + ex);
+				}
+			}
 			return false;
+		}
+
+		/// <summary>Resolved once per item list, not once per item: the registry allocates and sorts on
+		/// every call, so a per-item lookup costs a solution-wide project one set of allocations per
+		/// file it displays.</summary>
+		private static IProjectFileNestingProvider[] GetNestingProviders(string projectFile)
+		{
+			return ProjectFileNestingProviderRegistry.GetProviders()
+				.Where(provider => AppliesToProject(provider, projectFile))
+				.ToArray();
+		}
+
+		private static bool AppliesToProject(IProjectFileNestingProvider provider, string projectFile)
+		{
+			try {
+				return provider.AppliesToProject(projectFile);
+			} catch (Exception ex) {
+				ICSharpCode.Core.LoggingService.Warn("Project file nesting provider failed: " + ex);
+				return false;
+			}
 		}
 
 		private static string NormalizeDisplayPath(string path)

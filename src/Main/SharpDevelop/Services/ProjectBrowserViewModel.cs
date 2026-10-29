@@ -74,6 +74,7 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         SD.ProjectService.ProjectItemAdded += ProjectServiceChanged;
         SD.ProjectService.ProjectItemRemoved += ProjectServiceChanged;
         ProjectTargetFrameworkService.ActiveTargetFrameworkChanged += ProjectTargetFrameworkChanged;
+		ProjectFileNestingProviderRegistry.Changed += ProjectFileNestingProviderChanged;
         if (overlayService != null) {
             overlayService.Invalidated += ProjectBrowserOverlayInvalidated;
         }
@@ -209,6 +210,7 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         SD.ProjectService.ProjectItemAdded -= ProjectServiceChanged;
         SD.ProjectService.ProjectItemRemoved -= ProjectServiceChanged;
         ProjectTargetFrameworkService.ActiveTargetFrameworkChanged -= ProjectTargetFrameworkChanged;
+		ProjectFileNestingProviderRegistry.Changed -= ProjectFileNestingProviderChanged;
         if (overlayService != null) {
             overlayService.Invalidated -= ProjectBrowserOverlayInvalidated;
         }
@@ -218,6 +220,11 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
     {
         RefreshSolutionTree();
     }
+
+	private void ProjectFileNestingProviderChanged(object? sender, EventArgs e)
+	{
+		RefreshSolutionTree();
+	}
 
     void IProjectBrowserHost.RefreshSolutionTree()
     {
