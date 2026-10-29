@@ -768,7 +768,11 @@ without reopening the document.
   repair/restoration and `od.gtk-designer.toolbox.filter` integration coverage;
 - the shared Tools-pad search field is visibly mounted and survives multi-window switching;
 - Grid/Paned/Stack/page adapters;
-- keyboard navigation, delete, copy/paste and multi-select where semantically valid;
+- keyboard navigation, delete, copy/paste and multi-select where semantically valid. Covered by
+  `GtkDesignerNavigationTests`: a rubber band from the title strip selects the crossed widgets and
+  leaves the keyboard on the canvas, then one native Tab rotates the primary selection. Not covered:
+  Shift+Tab and a second native Tab (posted, but no KeyDown reached the canvas; cause unknown), and
+  arrow nudge, which does not exist because GTK owns layout;
 - signals/Roslyn handler creation;
 - external file conflict handling and coordinated save.
 

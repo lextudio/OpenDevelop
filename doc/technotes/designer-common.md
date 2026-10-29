@@ -40,7 +40,7 @@ path unless the cell calls out ProGPU or Microsoft WinUI explicitly.
 | Open, render, diagnostics, Design/Source switching | ✓ OOP host; source-positioned diagnostics | ✓ OOP host | ✓ OOP Uno host; Microsoft gallery corpus also verified | ✓ shared host | ✓ shared source-model host |
 | Crash recovery, stale-frame protection, selection/outline restoration | ✓ | ✓ | ✓; appbin VisualState replay is covered | ✓ | ✓ |
 | Click selection, drag move, resize and multi-selection | ✓; WPF batch layout mutation | ✓; native/source transaction | ✓ source-backed operations | ✓ basic shared-canvas path | ✓ basic shared-canvas path |
-| Marquee and full keyboard navigation | Limited: marquee and nudge are delivered; Tab rotation remains unverified here | ✓ marquee, nudge and Tab routing | Limited: no marquee; keyboard subset | Limited | Limited |
+| Marquee and full keyboard navigation | Limited: marquee and nudge are delivered; Tab rotation remains unverified here | ✓ marquee, nudge and Tab routing | Limited: no marquee; keyboard subset | Limited: rubber band and one native Tab are journey-covered (`GtkDesignerNavigationTests`); no arrow nudge, because GTK owns layout; Shift+Tab and repeated native Tab are not covered end to end | Limited |
 | Zoom, fit, gridlines, show names and status | ✓ plus snapping | ✓ plus snap/grid preferences | ✓ supported Uno path | ✓ | ✓ zoom/fit/gridlines; no snap preference |
 | Advanced layout editing | ✓ Grid rails/unit commands, margin/Canvas inset handles, align/order/wrap/unwrap | ✓ TableLayout tracks/units and layout transactions | ✓ Grid split/unit commands and Canvas insets; source-backed | Limited: shared move/resize only | Limited: shared move/resize only |
 | Properties: scalar values, reset, enums and read-only safety | ✓ broad native WPF types | ✓ broad CLR types | ✓ source-backed enum/Thickness/color/resource paths | ✓ supported scalar descriptors | ✓ supported scalar descriptors; fallback attributes |
@@ -88,7 +88,7 @@ already in CI.
 | P1 interaction | GTK and MewUI do not have general absolute positioning or resize. | GTK should continue to edit container semantics; MewUI may set bounds only for direct Canvas children. Add capability-specific gesture tests rather than enabling generic handles. |
 | P1 depth | GTK/MewUI property and collection editors are intentionally narrower than WPF/WinForms. | Expand only through catalogue-validated, lossless mutations with model and full-workbench coverage; do not expose a generic CLR object editor. |
 | P1 convergence | Microsoft WinUI and Uno share the shell but retain separate runtime-specific visual-state acceptance corpora. | The Uno host now covers appbin child recovery with a forced state; retain the Microsoft Gallery corpus as the native-runtime acceptance gate. |
-| P2 navigation | Keyboard/marquee coverage is uneven outside WinForms. | Establish the common canvas expectations per backend and promote only journeys that each backend can honestly support. |
+| P2 navigation | Keyboard/marquee coverage is uneven outside WinForms. GTK: the only rubber-band start is the host-composed title strip, because the window's child box fills the frame; a second native Tab in one run never reached the canvas (cause unknown). | Establish the common canvas expectations per backend and promote only journeys that each backend can honestly support. |
 
 The protocol described here is a **target contract**. No implementation must be rewritten to
 match it in one step; each backend converges by extracting and renaming its existing RPC
