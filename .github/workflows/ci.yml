@@ -548,6 +548,63 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
+  # Linux is packaged and started here, not run through the test plan: its test lanes are not enabled yet, but a broken
+  # payload or a window that never renders must turn this run red, and the release workflow only accepts a commit with a
+  # green run of this file. Each architecture builds on a native runner (there is no cross-architecture Linux payload),
+  # packages OpenDevelop-<rid>.zip, and starts the packaged app under Xvfb until its first workbench render.
+  package-linux:
+    name: Package Linux (${{ matrix.rid }})
+    # 'platforms' narrows a manual run (for example when a runner pool is unavailable); every other trigger runs it.
+    if: github.event_name != 'workflow_dispatch' || inputs.platforms == '' || contains(inputs.platforms, 'linux')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: linux-x64
+            runner: ubuntu-24.04
+            dotnet_architecture: x64
+          - rid: linux-arm64
+            runner: ubuntu-24.04-arm
+            dotnet_architecture: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Initialize build submodules
+        shell: bash
+        run: bash .github/ci/init-submodules.sh
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          architecture: ${{ matrix.dotnet_architecture }}
+      - name: Install Linux display and native runtime prerequisites
+        shell: bash
+        run: |
+          # The hosted runners have no GPU. wgpu-native needs a graphics backend to create the window
+          # surface: without a Vulkan loader and a software driver (Mesa's lavapipe) it has no
+          # instance at all and aborts with SIGABRT (status 134) at wgpuInstanceCreateSurface.
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0 libx11-xcb1 libxkbcommon0 libgl1 libvulkan1 mesa-vulkan-drivers
+      - name: Build and smoke-test the native Linux ZIP payload
+        shell: bash
+        run: |
+          # GitVersion's GitHub Actions integration races on the runner's env file when projects build in parallel.
+          unset GITHUB_ACTIONS
+          xvfb-run -a bash dist.linux.sh --skip-feed-sync
+          test -f "OpenDevelop-${{ matrix.rid }}.zip"
+          payload="OpenDevelop-${{ matrix.rid }}"
+          module="$payload/AddIns/Misc/PackageManagement/Scripts/OpenDevelop.PackageManagement.ps1"
+          test -f "$module"
+          pwsh -NoProfile -Command ". '$module'; foreach (\$name in 'Get-Package','Install-Package','Update-Package','Uninstall-Package') { Get-Command \$name -ErrorAction Stop | Out-Null }"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-package-${{ matrix.rid }}
+          path: OpenDevelop-${{ matrix.rid }}.zip
+          if-no-files-found: error
+          retention-days: 7
+
   # The lane whose plan definition says 'buildsInLane'. It has no archive and no dependency on the platform build, so
   # its result arrives minutes into the run instead of behind the compile-and-pack job. It compiles only its own entries.
   in-place:

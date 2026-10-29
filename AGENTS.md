@@ -280,7 +280,8 @@ Layout, so a change goes in the right place:
 
 `.github/workflows/release.yml` publishes; pushing a tag is the only trigger. It carries the conventions of the manual
 releases v5.6.0 - v5.6.3, so keep them: the title is the tag (`v5.6.4`, not `OpenDevelop v5.6.4`), the assets keep the
-**fixed names** `OpenDevelop-win.zip` and `OpenDevelop-macos.dmg` (a versioned name would break
+**fixed names** `OpenDevelop-win.zip`, `OpenDevelop-macos.dmg`, `OpenDevelop-linux-x64.zip` and
+`OpenDevelop-linux-arm64.zip` (a versioned name would break
 `releases/latest/download/<name>`), and the notes follow `.github/release-notes.template.md` (badge, "Changes since",
 Highlight, Known issues, Full Changelog).
 

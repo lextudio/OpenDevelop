@@ -1,13 +1,14 @@
 name: Release
 
-# Pushing a vMAJOR.MINOR.PATCH[-suffix] tag packages both distributions and leaves a DRAFT release for review. A draft is
+# Pushing a vMAJOR.MINOR.PATCH[-suffix] tag packages every distribution and leaves a DRAFT release for review. A draft is
 # never "latest", so the IDE's update check (api.github.com/.../releases/latest) is not triggered until someone has read the
 # notes and published it: `gh release edit <tag> --draft=false`, or the Publish button.
 #
 # Conventions carried over from the manual releases (v5.6.0 - v5.6.3): the title is the tag, the assets keep the fixed names
-# OpenDevelop-win.zip and OpenDevelop-macos.dmg (so releases/latest/download/<name> stays a stable link), and the notes
-# follow .github/release-notes.template.md. A tag with a suffix (v5.6.5-rc1) becomes a prerelease, which makes it a safe
-# dry run. Put the "Changes since" bullets in doc/releases/<tag>.md before tagging.
+# OpenDevelop-win.zip, OpenDevelop-macos.dmg, OpenDevelop-linux-x64.zip and OpenDevelop-linux-arm64.zip (so
+# releases/latest/download/<name> stays a stable link), and the notes follow .github/release-notes.template.md. A tag with a
+# suffix (v5.6.5-rc1) becomes a prerelease, which makes it a safe dry run. Put the "Changes since" bullets in
+# doc/releases/<tag>.md before tagging.
 on:
   push:
     tags: ['v*']
@@ -124,9 +125,56 @@ jobs:
           path: OpenDevelop-macos.dmg
           if-no-files-found: error
 
+  linux:
+    name: Package Linux (${{ matrix.rid }})
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: linux-x64
+            runner: ubuntu-24.04
+            dotnet_architecture: x64
+          - rid: linux-arm64
+            runner: ubuntu-24.04-arm
+            dotnet_architecture: arm64
+    # Each architecture is built on a native runner: there is no cross-architecture Linux payload. ci.yml runs the same
+    # steps on every master push, so a release that reaches this job has already seen them pass on this commit.
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Initialize the submodules the build needs
+        shell: bash
+        run: bash .github/ci/init-submodules.sh
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          architecture: ${{ matrix.dotnet_architecture }}
+      - name: Install Linux display and native runtime prerequisites
+        shell: bash
+        run: |
+          # No GPU on hosted runners: wgpu-native needs a software Vulkan driver (lavapipe) to create a surface.
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0 libx11-xcb1 libxkbcommon0 libgl1 libvulkan1 mesa-vulkan-drivers
+      # dist.linux.sh starts the packaged app and requires its first workbench render before it writes the ZIP.
+      - name: Build and smoke-test the native Linux ZIP payload
+        shell: bash
+        run: |
+          unset GITHUB_ACTIONS
+          xvfb-run -a bash dist.linux.sh --skip-feed-sync
+          test -f "OpenDevelop-${{ matrix.rid }}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.rid }}
+          path: OpenDevelop-${{ matrix.rid }}.zip
+          if-no-files-found: error
+
   draft:
     name: Draft the GitHub Release
-    needs: [windows, macos]
+    needs: [windows, macos, linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -143,12 +191,13 @@ jobs:
         name: Render the notes
         shell: pwsh
         run: ./.github/ci/release-notes.ps1 -Tag '${{ github.ref_name }}' -Output release-notes.md
-      - name: Create the draft and attach both assets
+      - name: Create the draft and attach every asset
         shell: bash
         run: |
           set -euo pipefail
           ls -l artifacts/release
-          for asset in OpenDevelop-win.zip OpenDevelop-macos.dmg; do
+          assets=(OpenDevelop-win.zip OpenDevelop-macos.dmg OpenDevelop-linux-x64.zip OpenDevelop-linux-arm64.zip)
+          for asset in "${assets[@]}"; do
             [[ -f "artifacts/release/$asset" ]] || { echo "::error::$asset was not produced."; exit 1; }
           done
           flags=()
@@ -156,8 +205,7 @@ jobs:
           # A failure after this point leaves a recoverable draft, never a partial public release.
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
             --title "$GITHUB_REF_NAME" --notes-file release-notes.md "${flags[@]}"
-          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-            artifacts/release/OpenDevelop-win.zip artifacts/release/OpenDevelop-macos.dmg
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" "${assets[@]/#/artifacts/release/}"
           {
             echo "### $GITHUB_REF_NAME drafted"
             echo

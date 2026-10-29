@@ -2,8 +2,9 @@
 
 Goal: broaden GitHub Actions coverage of locally runnable tests on Windows x64, Windows ARM64 and macOS ARM64.
 Introduce substantial groups in observe mode, inspect their actual runner results, and promote stable entries to
-required per platform. Linux product tests and release packaging are the next planned expansion; no Linux
-platform or release asset is enabled yet.
+required per platform. Linux is packaged and started on native x64 and ARM64 runners by the `package-linux` job of
+`ci.yml`, and `release.yml` attaches both Linux ZIPs; Linux test lanes are the next planned expansion and no Linux
+platform is enabled in the test plan yet.
 
 ## Current status (2026-10-28, 14:12 UTC)
 
@@ -15,8 +16,8 @@ not individual test cases. They describe the complete plan, not what a focus-mod
 | Windows x64 | 32 | 0 | No test entries; its build can still supply Windows ARM64. |
 | Windows ARM64 | 25 | 2 | Only the two observed entries run. |
 | macOS ARM64 | 26 | 5 | Only the five observed entries run. |
-| Linux x64 | 0 | 0 | Not enabled; planned as a separate rollout below. |
-| Linux ARM64 | 0 | 0 | Not enabled; planned as a separate rollout below. |
+| Linux x64 | 0 | 0 | No test entries; the `package-linux` job builds, audits and starts the packaged app. |
+| Linux ARM64 | 0 | 0 | No test entries; the `package-linux` job builds, audits and starts the packaged app. |
 
 **Focus mode skips every required entry. A green focus run does not prove that required coverage passed.** Use
 `workflow_dispatch` with `full=true` to run both statuses before relying on the complete gate. Its `platforms` input
@@ -45,13 +46,13 @@ input and desktop diagnostics and change watchdog handling, but they need their 
 * Continue adding missing runnable suites. `AddInTests`, Microsoft designer backends and environment-dependent SDK,
   runtime-upgrade and performance scenarios still need separate prerequisites and budgets.
 
-## Proposed Linux x64 + ARM64 release rollout (not enabled)
+## Linux x64 + ARM64 rollout (packaging in CI and release; test lanes not enabled)
 
 Linux needs two independently verified deliverables: a CI lane that proves the portable application starts and its
 supported journeys work, and a distributable payload. The current matrix has a deliberately dormant `linux-x64`
-slot in `.github/ci/verify-bitness.ps1`, but `test-plan.json` has no platform definition. The release workflow only
-creates `OpenDevelop-win.zip` and `OpenDevelop-macos.dmg`; `dist.ps1` currently routes every non-Windows host through
-the macOS bundle/DMG path. Adding Linux therefore requires a Linux-specific distribution branch, not a matrix flag.
+slot in `.github/ci/verify-bitness.ps1`, but `test-plan.json` has no platform definition. `dist.ps1` has a
+Linux-specific distribution branch (`dist.linux.sh`), not a matrix flag, and both `ci.yml` and `release.yml` now call it
+on native runners. Test lanes are the part still to be enabled.
 
 **Progress (2026-10-28):** the first shared prerequisites now recognize both `linux-x64` and `linux-arm64`:
 the Terminal package verifier asserts the two native `.so` files for each RID and, on every enabled native build,
@@ -62,11 +63,14 @@ an OS-family-only pruning rule remains insufficient. `dist.linux.sh` selects the
 independent payload and emits its matching ZIP. Linux is still not an enabled platform or a release asset: native-runner
 smoke evidence is required before either architecture can claim CI coverage.
 
-The first native evidence is supplied by the separate observational `Linux package smoke` workflow: it runs
-`dist.linux.sh` inside Xvfb on `ubuntu-24.04` and `ubuntu-24.04-arm`, verifies the matching ZIP exists, and retains it
-as a short-lived artifact. It is intentionally outside the required CI and release workflows until both architectures
-have repeatable green package/startup results. The CI invocation skips the developer-only local-feed synchronizer and
-restores directly from GitHub Packages with the workflow's short-lived package credential.
+The first native evidence came from a separate observational `Linux package smoke` workflow (since removed): it ran
+`dist.linux.sh` inside Xvfb on `ubuntu-24.04` and `ubuntu-24.04-arm`, verified the matching ZIP exists, and retained it
+as a short-lived artifact. Once both architectures were green (see below) those steps moved into the `package-linux` job
+of `ci.yml`, so a Linux packaging or startup failure turns the CI run red, and `release.yml` gates a tag on a green
+`ci.yml` run for the commit. `release.yml` also has a `linux` job (one native runner per architecture) whose
+`OpenDevelop-linux-x64.zip` and `OpenDevelop-linux-arm64.zip` the draft release attaches. The CI invocation skips the
+developer-only local-feed synchronizer and restores directly from GitHub Packages with the workflow's short-lived
+package credential.
 
 **Current validation blocker and fix (2026-10-28):** run
 [40735321391](https://github.com/lextudio/OpenDevelop/actions/runs/40735321391) proved the GitHub Packages credential
@@ -98,6 +102,46 @@ The follow-up native run reached the ZIP startup smoke on both RIDs. That smoke 
 mistaking process liveness for a rendered application. If startup still exits, the smoke prints the packaged app's
 immediately-flushed `OpenDevelop.log`; this is required diagnostic evidence for a splash-path failure that otherwise
 returns status 0 with empty stdout/stderr.
+
+**Startup failures behind the status-0 exit (2026-10-28):** reproducing the smoke locally under `xvfb-run` with
+Microsoft's stock .NET runtime, the same one `actions/setup-dotnet` installs, found four independent causes. They
+surfaced one after another, because each hid the next. Ubuntu's distro-built runtime is not a faithful reproduction: its
+RID graph and runtime identifier differ, and it got past the first cause.
+
+1. **GLFW was never loaded.** Silk.NET locates `libglfw.so.3` under `runtimes/<rid>/native` only by mapping the machine's
+   distro RID (`ubuntu.24.04-x64`, ...) to `linux-x64` through the runtime's RID graph. Stock runtimes carry no distro
+   RIDs, so the directory was never probed, no window could be created and the startup block shut the app down with
+   status 0 and no output. The payload now also keeps `libglfw.so.3` at the application root, where Silk.NET's
+   base-directory probe finds it.
+2. **The Win32 compatibility shims were missing.** `LibreWPF.Sdk` builds them on Linux as `<name>.dll.so` and
+   `lib<name>.dll.so`; the payload script copied the macOS names (`<name>.dll`) and silently skipped them. AvalonDock
+   calls `kernel32` from the docking manager's `Loaded` handler, so the main window never rendered. The script now copies
+   the Linux names and fails when one is absent, as the macOS bundle script already does.
+3. **Restore hit NU1301 without a package token.** The public `ProGPU.WinUI.Designer`, `ProGPU.Xaml` and
+   `ProGPU.WinUI.Themes.Fluent` preview.65 packages floor `ProGPU.Layout`, `ProGPU.Virtualization` and `ProGPU.WinRT` at
+   preview.65, which neither GitHub Packages nor the synchronized feed carries. Those transitive floors made NuGet probe
+   `lextudio_github`, which answers 401 without a credential. The three are pinned at preview.69 centrally and referenced
+   directly from the ProGPU design host, so they resolve from the local feed. This matters to local developers; CI
+   restores with its token.
+4. **The hosted runners have no graphics backend.** wgpu-native aborts with SIGABRT (status 134) at
+   `wgpuInstanceCreateSurface`: wgpu-core unwraps the surface from the first initialised backend instance, which is
+   absent when no backend started. The workflow installed `libgl1` but no Vulkan loader or driver. It now installs
+   `libvulkan1` and `mesa-vulkan-drivers` (Mesa's software Vulkan). Restricting wgpu to Vulkan with the drivers hidden
+   (`WGPU_BACKEND=vulkan VK_DRIVER_FILES=/nonexistent`) reproduces the identical panic and exit status locally.
+
+Run [40800159403](https://github.com/lextudio/OpenDevelop/actions/runs/40800159403) (the former `linux-package.yml`
+on `ci-probe-linux`) is the first green native Linux package build: both `linux-x64` and `linux-arm64` passed the payload audit,
+the startup smoke and the ZIP upload. The causes were diagnosed from the packaged app's own log and from a startup hook
+that prints first-chance exceptions (`DOTNET_STARTUP_HOOKS`), which is a quick way to see what the startup block
+swallows. Linux still has no test lanes: it is packaged and started in CI and release, not yet an enabled platform in
+the test plan.
+
+Known local-only trap, not seen on the runners: `dotnet publish` of the host can fail with `Could not find a part of the
+path .../publish/pt-BR/...`. MSBuild's `Copy` task keeps its directory cache with `StringComparer.OrdinalIgnoreCase`, so
+within one invocation it never creates both the app's lowercase `pt-br` satellite folder (from
+`data/resources/StringResources.pt-br.resx`) and the packages' `pt-BR` folders on a case-sensitive filesystem. Why the
+runners avoid it is not established. Pre-creating `publish/pt-BR` works around it. Renaming the resx files would also
+touch the language registry (`LanguageDefinition.xml`), so it is a separate localization change.
 
 ### Release format decision
 
