@@ -308,6 +308,15 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
         if (view == null)
             return null;
 
+        // When the designer tab itself is active, it owns the selected design object.  The
+        // fallback sibling scan below is for a source tab: it keeps the designer's selection
+        // visible while source text has keyboard focus.  Treating both cases alike selected the
+        // source tab's empty container whenever the designer was active.  Only an outline content
+        // host is a design surface; a document tab that merely implements IHasPropertyContainer
+        // (the EDM designer, settings) is never a stand-in for a design selection.
+        if (view is IOutlineContentHost && view is IHasPropertyContainer activeDesigner)
+            return activeDesigner;
+
         var views = view.WorkbenchWindow?.ViewContents;
         if (views != null && views.Count > 1)
         {
@@ -318,7 +327,7 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
             // designer container is document-owned regardless of tab/focus order.
             foreach (var candidate in views)
             {
-                if (!ReferenceEquals(candidate, view) && candidate is IHasPropertyContainer designerContainer)
+                if (!ReferenceEquals(candidate, view) && candidate is IOutlineContentHost && candidate is IHasPropertyContainer designerContainer)
                     return designerContainer;
             }
         }
