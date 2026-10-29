@@ -50,8 +50,11 @@ jobs:
       - name: Install Linux display and native runtime prerequisites
         shell: bash
         run: |
+          # The hosted runners have no GPU. wgpu-native needs a graphics backend to create the window
+          # surface: without a Vulkan loader and a software driver (Mesa's lavapipe) it has no
+          # instance at all and aborts with SIGABRT (status 134) at wgpuInstanceCreateSurface.
           sudo apt-get update
-          sudo apt-get install -y xvfb libgtk-3-0 libx11-xcb1 libxkbcommon0 libgl1
+          sudo apt-get install -y xvfb libgtk-3-0 libx11-xcb1 libxkbcommon0 libgl1 libvulkan1 mesa-vulkan-drivers
       - name: Build and smoke-test the native Linux ZIP payload
         shell: bash
         run: |
