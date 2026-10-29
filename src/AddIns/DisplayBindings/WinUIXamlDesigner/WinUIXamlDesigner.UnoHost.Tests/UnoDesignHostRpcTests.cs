@@ -606,6 +606,41 @@ public sealed class UnoDesignHostRpcTests
 	}
 
 	[Fact]
+	public async Task SharedHost_AppBinDocumentReplaysForcedVisualStateAfterTheChildExits()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		// Use this built test application as the designed app output.  It gives the launch the
+		// same --appbin shape as a real project (including a runtimeconfig/deps pair), rather than
+		// exercising recovery only with the host's fallback dependency context.
+		using var client = await UnoDesignClient.AcquireSharedAsync("", "", timeout.Token, HostDll(), AppContext.BaseDirectory);
+		var xaml = $"""
+		<Grid xmlns="{Ns}" xmlns:x="{XNs}" x:Name="root">
+		    <VisualStateManager.VisualStateGroups>
+		        <VisualStateGroup x:Name="PreviewStates">
+		            <VisualState x:Name="BluePreview" />
+		        </VisualStateGroup>
+		    </VisualStateManager.VisualStateGroups>
+		</Grid>
+		""";
+		var opened = await client.OpenAsync(Document(client, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+
+		var forced = await client.GoToStateAsync(opened.Version, "PreviewStates", "BluePreview", timeout.Token);
+		Assert.True(forced.Accepted, forced.Error);
+		Assert.Contains(forced.VisualStateGroups, group => group.Name == "PreviewStates" && group.CurrentState == "BluePreview");
+
+		DesignerSessionState? recovered = null;
+		client.Recovered += (_, state) => recovered = state;
+		var failedProcessId = client.ProcessId;
+		client.TerminateHost();
+		await WaitUntilAsync(() => client.RecoveryCount > 0 && client.IsAlive && client.ProcessId != failedProcessId && recovered != null, timeout.Token);
+
+		Assert.NotNull(recovered);
+		Assert.True(recovered!.Accepted, recovered.Error);
+		Assert.Contains(recovered.VisualStateGroups, group => group.Name == "PreviewStates" && group.CurrentState == "BluePreview");
+	}
+
+	[Fact]
 	public async Task SharedHost_RecoveryKeepsTheLastAcceptedSnapshotAfterARejectedUpdate()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));

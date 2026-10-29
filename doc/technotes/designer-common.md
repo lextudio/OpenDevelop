@@ -38,7 +38,7 @@ path unless the cell calls out ProGPU or Microsoft WinUI explicitly.
 | Design task | WPF | WinForms | WinUI / Uno | GTK 4 | MewUI |
 |---|---|---|---|---|---|
 | Open, render, diagnostics, Design/Source switching | ✓ OOP host; source-positioned diagnostics | ✓ OOP host | ✓ OOP Uno host; Microsoft gallery corpus also verified | ✓ shared host | ✓ shared source-model host |
-| Crash recovery, stale-frame protection, selection/outline restoration | ✓ | ✓ | ✓; visual-state replay needs appbin fixture | ✓ | ✓ |
+| Crash recovery, stale-frame protection, selection/outline restoration | ✓ | ✓ | ✓; appbin VisualState replay is covered | ✓ | ✓ |
 | Click selection, drag move, resize and multi-selection | ✓; WPF batch layout mutation | ✓; native/source transaction | ✓ source-backed operations | ✓ basic shared-canvas path | ✓ basic shared-canvas path |
 | Marquee and full keyboard navigation | Limited: marquee and nudge are delivered; Tab rotation remains unverified here | ✓ marquee, nudge and Tab routing | Limited: no marquee; keyboard subset | Limited | Limited |
 | Zoom, fit, gridlines, show names and status | ✓ plus snapping | ✓ plus snap/grid preferences | ✓ supported Uno path | ✓ | ✓ zoom/fit/gridlines; no snap preference |
@@ -51,8 +51,8 @@ path unless the cell calls out ProGPU or Microsoft WinUI explicitly.
 | Collections and resources | ✓ safe XAML Items/Tab/Binding collections and resource pickers | ✓ strongest resource path: images, ImageList, .resx, Items, columns/nodes where source proof exists | Limited: source structural edits, not Forms resource workflow | Limited | Limited |
 | Events and code-behind | ✓ event binding and transactional WPF code-behind generation | Limited: designer event path varies by source/runtime; no equivalent verified workflow listed here | Limited: source editing, no WPF-style handler transaction | Limited: signal/source binding only | Limited: event attribute + conventional `.mxaml.cs` handler generation for catalogued delegates |
 | Context commands / structural editing | ✓ align/order/cut/copy/paste/duplicate/wrap/unwrap/style-template safe subset | ✓ framework-specific context and TableLayout commands | ✓ cut/copy/paste/duplicate/wrap/unwrap/Grid commands | ✓ common source/model commands | ✓ copy/paste/duplicate/order/wrap/unwrap; absolute bounds only for direct Canvas children |
-| Themes and visual states | ✓ project design themes | N/A | ✓ Uno theme/forced state replay; end-to-end state fixture pending | N/A | N/A |
-| Windows Microsoft-runtime confidence | ✓ real WPF gallery corpus; particular workflows still vary | **Verify** Forms journeys | ✓ WinUI gallery corpus 25/25; appbin visual-state replay still pending | N/A | N/A |
+| Themes and visual states | ✓ project design themes | N/A | ✓ Uno theme/forced-state replay, including appbin child recovery | N/A | N/A |
+| Windows Microsoft-runtime confidence | ✓ real WPF gallery corpus; particular workflows still vary | **Verify** Forms journeys | ✓ WinUI gallery corpus 25/25; appbin VisualState recovery covered in the Uno host | N/A | N/A |
 
 ### Reading the matrix
 
@@ -87,7 +87,7 @@ already in CI.
 | P1 portability | MewUI has real frames only on macOS and Windows; Linux is deliberately model-only. | Expose the no-frame state as an availability limitation, keep source-model actions testable there, and do not report visual-preview parity until a supported Linux MewUI renderer exists. |
 | P1 interaction | GTK and MewUI do not have general absolute positioning or resize. | GTK should continue to edit container semantics; MewUI may set bounds only for direct Canvas children. Add capability-specific gesture tests rather than enabling generic handles. |
 | P1 depth | GTK/MewUI property and collection editors are intentionally narrower than WPF/WinForms. | Expand only through catalogue-validated, lossless mutations with model and full-workbench coverage; do not expose a generic CLR object editor. |
-| P1 convergence | Microsoft WinUI and Uno share the shell but not all verified end-to-end visual-state paths. | Add the application-binary visual-state fixture before calling the two runtime experiences equivalent. |
+| P1 convergence | Microsoft WinUI and Uno share the shell but retain separate runtime-specific visual-state acceptance corpora. | The Uno host now covers appbin child recovery with a forced state; retain the Microsoft Gallery corpus as the native-runtime acceptance gate. |
 | P2 navigation | Keyboard/marquee coverage is uneven outside WinForms. | Establish the common canvas expectations per backend and promote only journeys that each backend can honestly support. |
 
 The protocol described here is a **target contract**. No implementation must be rewritten to
