@@ -1707,6 +1707,12 @@ public class DesignSurface : DesignerCanvas
 		var position = e.GetPosition(this);
 		if (IsOverToolbar(position) || !IsDesignInteraction(e))
 			return;
+		// PreviewMouseLeftButtonDown is raised before PreviewMouseDown, and this handler marks the
+		// press handled, so PreviewMouseDown - where OnMouseDown would take focus - never runs for a
+		// design press. Without taking it here the canvas can be dragged and rubber-banded while the
+		// keyboard stays with whatever held it before (the Source half of a Design/Source split), so
+		// Delete, Tab and the arrow keys never reach the design.
+		Focus();
 		ctrlAtPress = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
 		if (spacePanning || middlePanning)
 		{

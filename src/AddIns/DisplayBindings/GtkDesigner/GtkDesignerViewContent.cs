@@ -119,6 +119,10 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		if (!editor.Reset(sourceText) || !editor.AddAt(offset, type)) return null;
 		return ToolboxSourceEdit.FromDifference(sourceText, editor.Text);
 	}
+	/// <summary>The shared canvas geometry (rendered frame, viewport, selection outline and
+	/// handle) in screen coordinates - the same probe the WPF designer publishes, so a synthetic
+	/// pointer gesture can start from the actual viewport background rather than a guessed point.</summary>
+	public ICSharpCode.SharpDevelop.Designer.Presentation.DesignerSurfaceGeometry SurfaceGeometry() => canvasController.SurfaceGeometry();
 	/// <summary>A rendered object's bounds in screen coordinates, through the canvas's viewport
 	/// (null when it has none, or nothing is rendered).</summary>
 	public Rect? ScreenBoundsOf(string id)
@@ -157,6 +161,9 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 
 	public string RootId => state.Tree?.Id == "$interface" ? state.Tree.Children.FirstOrDefault()?.Id ?? "" : state.Tree?.Id ?? "";
 	public bool CanvasFrameShown => canvas.FrameShown; public string CanvasDisplayDiagnostic => canvas.DisplayDiagnostic();
+	/// <summary>Whether the shared canvas - not the shell or a pad - owns keyboard focus, which is
+	/// what makes Delete/Tab/arrow keys reach it after a pointer gesture.</summary>
+	public bool CanvasHasKeyboardFocus => canvas.IsKeyboardFocusWithin;
 	public int ToolbarItemCount => canvas.VisibleToolbarItems.Count; public IReadOnlyList<string> ToolbarItems => canvas.VisibleToolbarItems; public string ToolbarCapabilities => canvas.Capabilities.ToString(); public double Zoom { get => canvas.ViewportScale; set => canvas.SetViewport(Math.Clamp(value, .25, 2), 0, 0); }
 	public bool Gridlines => canvas.Gridlines; public bool FitMeasured { get; private set; } public void FitDesign() => FitView(); public void ShowGridlines(bool show) { canvas.IsGridEnabled = show; canvas.SetGridlines(show); }
 	public bool HasNativeFrame => !string.IsNullOrEmpty(state.Render?.PngBase64); public int NativeFrameWidth => state.Render?.Width ?? 0; public int NativeFrameHeight => state.Render?.Height ?? 0; public int NativeBoundsCount => state.Tree == null ? 0 : Flatten(state.Tree).Count(n => n.Width > 0 && n.Height > 0);

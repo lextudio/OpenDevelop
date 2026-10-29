@@ -29,7 +29,8 @@ public static class GtkDesignerDevFlowActions
 			toolboxItemCount = view.ToolboxItemCount, toolboxDrag = SharedToolbox.Instance.DragDiagnostic, toolboxFilterText = view.ToolboxFilterText, toolboxHosted = view.IsToolboxHosted, toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true, toolboxSelectedItem = view.SelectedToolboxType, zoomComboSelectedIndex = view.ZoomComboSelectedIndex, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
 			toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines, previewTheme = view.PreviewTheme, canvasTheme = view.CanvasTheme,
 			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName,
-			propertyPadPropertyCount = grid?.Properties?.Count ?? 0, canUndo = view.EnableUndo, canRedo = view.EnableRedo, hostAlive = view.IsHostAlive, documentCanUndo = view.DocumentCanUndo, documentCanRedo = view.DocumentCanRedo, loadCount = view.LoadCount
+			propertyPadPropertyCount = grid?.Properties?.Count ?? 0, canUndo = view.EnableUndo, canRedo = view.EnableRedo, hostAlive = view.IsHostAlive, documentCanUndo = view.DocumentCanUndo, documentCanRedo = view.DocumentCanRedo, loadCount = view.LoadCount,
+			canvasHasKeyboardFocus = view.CanvasHasKeyboardFocus
 		});
 	}
 	/// <summary>Renders the live designer to a PNG. The GTK host's own render frame only carries the
@@ -100,6 +101,14 @@ public static class GtkDesignerDevFlowActions
 	public static string Select(string id) { var view = Activate(); var ok = view?.SelectById(id) == true; return JsonSerializer.Serialize(new { success = ok, selectedId = view?.SelectedId, propertyPadSelectedType = PropertyGrid?.SelectedObject?.GetType().FullName }); }
 	[DevFlowAction("od.gtk-designer.multi-select", Description = "Replace the GTK designer selection set; first id is primary")]
 	public static string MultiSelect(string ids) { var view = Activate(); var list = ids.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries); var ok = view?.SelectByIds(list) == true; return DesignerDevFlowResults.Selection(ok, view?.SelectedIds); }
+	[DevFlowAction("od.gtk-designer.surface-geometry", Description = "Report the shared design surface geometry (rendered native frame, selection outline, handle and the scroll viewport) in screen coordinates - the same probe od.wpf-designer.surface-geometry publishes, so a synthetic pointer gesture can start on real viewport background")]
+	public static string GetSurfaceGeometry()
+	{
+		var view = Activate();
+		return view == null ? JsonSerializer.Serialize(new { available = false })
+			: JsonSerializer.Serialize(DesignerSurfaceGeometryProbe.ToJson(view.SurfaceGeometry()));
+	}
+
 	[DevFlowAction("od.gtk-designer.bounds", Description = "Get GTK-native layout bounds for a GtkBuilder object")]
 	public static string Bounds(string id) { var view = Activate(); var node = view?.FindById(id); return JsonSerializer.Serialize(new { success = node?.Width > 0 && node.Height > 0, id, x = node?.X ?? 0, y = node?.Y ?? 0, width = node?.Width ?? 0, height = node?.Height ?? 0 }); }
 	[DevFlowAction("od.gtk-designer.hit-test", Description = "Select using the child GTK-native layout hit-test")]
