@@ -83,14 +83,13 @@ The same run then exposed two shared compilation closures rather than an archite
 the Microsoft WPF designer host targets the Windows Desktop Runtime, while `PackageManagement.Cmdlets` brings Microsoft
 `System.Drawing.Common`, which conflicts with LibreWinForms' ProGPU implementation. The latter is **not** a Windows
 PowerShell 2 feature: its old detection name was misleading and the application had used it with embedded PowerShell 7.
-The Package Manager Console is being migrated to a `pwsh` session hosted by the cross-platform Terminal, so Linux must
-exercise that session rather than claim the old embedded Cmdlets assembly works. Linux distribution builds currently
-exclude the Microsoft WPF designer closure and the legacy Cmdlets project, retain the LibreWPF design host and ordinary
-Package Management addin, and must verify the new terminal-backed package console before ZIP creation can be promoted.
-The Linux packaging job verifies the deployed script and its exported package functions from the ZIP payload. The
-cross-platform integration suite separately exercises the actual Package Manager Console entry point through Terminal,
-including its interactive banner, dot-sourced functions, and project-keyed session behavior; it is the authority for
-the host/PTY journey rather than the packaging shell check.
+The Package Manager Console now uses a `pwsh` session hosted by the cross-platform Terminal, so Linux must exercise that
+session rather than claim the old embedded Cmdlets assembly works. Linux distribution builds currently exclude the
+Microsoft WPF designer closure and the legacy Cmdlets project, retain the LibreWPF design host and ordinary Package
+Management addin, and the packaging job verifies the deployed script and its exported package functions in the packaged
+payload. The cross-platform integration suite separately exercises the actual Package Manager Console entry point
+through Terminal, including its interactive banner, dot-sourced functions, and project-keyed session behavior; it is
+the authority for the host/PTY journey rather than the packaging shell check.
 
 The first native ZIP run (`808b3b3ec5`) reached the final payload audit on both architectures, but exposed a verifier
 scope defect: SPDX attribution copies under `THIRD-PARTY-NOTICES` retain NuGet `runtimes/linux-*` directory names and
@@ -103,10 +102,13 @@ mistaking process liveness for a rendered application. If startup still exits, t
 immediately-flushed `OpenDevelop.log`; this is required diagnostic evidence for a splash-path failure that otherwise
 returns status 0 with empty stdout/stderr.
 
-**Startup failures behind the status-0 exit (2026-10-28):** reproducing the smoke locally under `xvfb-run` with
-Microsoft's stock .NET runtime, the same one `actions/setup-dotnet` installs, found four independent causes. They
-surfaced one after another, because each hid the next. Ubuntu's distro-built runtime is not a faithful reproduction: its
-RID graph and runtime identifier differ, and it got past the first cause.
+**Startup failures behind the status-0 exit (2026-10-28):** the push run for `2b867db82c`,
+[40776325996](https://github.com/lextudio/OpenDevelop/actions/runs/40776325996), is the failure this section explains.
+Both native RIDs built and passed the payload bitness checks, then the packaged app exited with status 0 before the
+first-render marker, and neither the redirected output nor the application log exposed a cause. Reproducing that smoke
+locally under `xvfb-run` with Microsoft's stock .NET runtime, the same one `actions/setup-dotnet` installs, found four
+independent causes. They surfaced one after another, because each hid the next. Ubuntu's distro-built runtime is not a
+faithful reproduction: its RID graph and runtime identifier differ, and it got past the first cause.
 
 1. **GLFW was never loaded.** Silk.NET locates `libglfw.so.3` under `runtimes/<rid>/native` only by mapping the machine's
    distro RID (`ubuntu.24.04-x64`, ...) to `linux-x64` through the runtime's RID graph. Stock runtimes carry no distro
