@@ -129,7 +129,7 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
-	static readonly HashSet<string> ContainerClasses = new(StringComparer.Ordinal) { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow", "GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "AdwClamp", "AdwPreferencesPage", "AdwPreferencesGroup" };
+	static readonly HashSet<string> ContainerClasses = new(StringComparer.Ordinal) { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow", "GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "AdwClamp", "AdwPreferencesPage", "AdwPreferencesGroup", "AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView" };
 
 	/// <summary>Adds a new <paramref name="className"/> child. A drop resolved by GtkDropPlanner
 	/// gives an insertion <paramref name="index"/> among the existing children (a box) or a
@@ -140,7 +140,10 @@ public sealed class GtkUiDocumentEditor
 		var parent = Find(parentId); if (parent == null || string.IsNullOrWhiteSpace(className)) return false;
 		// GtkBuilder <child> is only valid under container widgets; reject leaf parents instead
 		// of generating a document libgtk would refuse to load.
-		if ((string?)parent.Attribute("class") is { } cls && !ContainerClasses.Contains(cls)) return false;
+		if ((string?)parent.Attribute("class") is not { } cls || !ContainerClasses.Contains(cls)) return false;
+		if (cls == "AdwNavigationView" && className != "AdwNavigationPage") return false;
+		if (cls == "AdwNavigationSplitView" && className != "AdwNavigationPage") return false;
+		if (cls == "AdwNavigationPage" && parent.Elements().Any(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "child"))) return false;
 		className = className.Trim(); var baseName = className.StartsWith("Gtk", StringComparison.Ordinal) ? className[3..] : className;
 		baseName = char.ToLowerInvariant(baseName[0]) + baseName[1..];
 		var id = UniqueId(baseName);
@@ -157,6 +160,15 @@ public sealed class GtkUiDocumentEditor
 			created.Add(new XElement("layout",
 				new XElement("property", new XAttribute("name", "column"), column.ToString(System.Globalization.CultureInfo.InvariantCulture)),
 				new XElement("property", new XAttribute("name", "row"), row.ToString(System.Globalization.CultureInfo.InvariantCulture))));
+		}
+		if (cls == "AdwNavigationPage") {
+			parent.Add(new XElement("property", new XAttribute("name", "child"), created));
+			return Commit();
+		}
+		if (cls == "AdwNavigationSplitView") {
+			var existing = parent.Elements().Count(e => e.Name.LocalName == "child" && e.Elements().Any(IsObject));
+			if (existing >= 2) return false;
+			child.SetAttributeValue("type", existing == 0 ? "sidebar" : "content");
 		}
 		var siblings = parent.Elements().Where(e => e.Name.LocalName == "child" && e.Elements().Any(IsObject)).ToList();
 		if (index is { } at && at >= 0 && at < siblings.Count) siblings[at].AddBeforeSelf(child);

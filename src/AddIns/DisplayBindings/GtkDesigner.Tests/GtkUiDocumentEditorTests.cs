@@ -70,4 +70,22 @@ public sealed class GtkUiDocumentEditorTests
 		Assert.DoesNotContain("label1", editor.Text);
 		Assert.True(editor.Add("contentBox", "GtkLabel")); // container still accepts children
 	}
+
+	[Fact] public void NavigationContainers_UseTheirGtkBuilderChildShapes()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="AdwNavigationView" id="navigation"/><object class="AdwNavigationSplitView" id="split"/><object class="AdwNavigationPage" id="page"/></interface>"""), editor.Error);
+		Assert.False(editor.Add("navigation", "GtkLabel"));
+		Assert.True(editor.Add("navigation", "AdwNavigationPage"));
+		Assert.True(editor.Add("split", "AdwNavigationPage"));
+		Assert.True(editor.Add("split", "AdwNavigationPage"));
+		Assert.False(editor.Add("split", "AdwNavigationPage"));
+		Assert.True(editor.Add("page", "GtkBox"));
+		Assert.False(editor.Add("page", "GtkLabel"));
+		var doc = System.Xml.Linq.XDocument.Parse(editor.Text);
+		var split = doc.Descendants("object").Single(x => (string?)x.Attribute("id") == "split");
+		Assert.Equal(new[] { "sidebar", "content" }, split.Elements("child").Select(x => (string?)x.Attribute("type")));
+		var page = doc.Descendants("object").Single(x => (string?)x.Attribute("id") == "page");
+		Assert.Equal("GtkBox", (string?)page.Elements("property").Single(x => (string?)x.Attribute("name") == "child").Element("object")?.Attribute("class"));
+	}
 }

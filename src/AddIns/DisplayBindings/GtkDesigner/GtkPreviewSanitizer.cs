@@ -17,7 +17,7 @@ namespace ICSharpCode.GtkDesigner;
 public static class GtkPreviewSanitizer
 {
 	/// <summary>Returns the instantiable copy; each change it made is added to <paramref name="diagnostics"/>.</summary>
-	public static string Sanitize(string uiText, GirCatalog catalog, IList<string> diagnostics, Func<string?, string?>? layoutChildClass = null, Func<GirClass, string?>? unavailableReason = null, string? baseDirectory = null, string? previewDirectory = null)
+	public static string Sanitize(string uiText, GirCatalog catalog, IList<string> diagnostics, Func<string?, string?>? layoutChildClass = null, Func<GirClass, string?>? unavailableReason = null, string? baseDirectory = null, string? previewDirectory = null, GtkCustomWidgetPreview? customWidgets = null)
 	{
 		var document = XDocument.Parse(uiText);
 		// A composite template's class is the application's own GType, which the preview never
@@ -32,8 +32,21 @@ public static class GtkPreviewSanitizer
 		var ids =new HashSet<string>(document.Descendants().Where(e => e.Name.LocalName == "object").Select(e => (string?)e.Attribute("id")).Where(id => id != null)!, StringComparer.Ordinal);
 		foreach (var obj in document.Descendants().Where(e => e.Name.LocalName == "object").ToList()) {
 			var builderClass = (string?)obj.Attribute("class") ?? "";
+			var sourceClass = builderClass;
 			var id = (string?)obj.Attribute("id") ?? "(anonymous)";
 			var girClass = catalog.FindByTypeName(builderClass);
+			if (girClass is not { Abstract: false } && customWidgets?.TryGet(builderClass, out var substitution) == true) {
+				var previewClass = catalog.FindByTypeName(substitution.PreviewClass);
+				if (previewClass is { Abstract: false }) {
+					foreach (var property in obj.Elements().Where(e => e.Name.LocalName == "property").ToList()) {
+						var name = (string?)property.Attribute("name") ?? "";
+						if (substitution.PropertyMap.TryGetValue(name, out var mapped)) property.SetAttributeValue("name", mapped);
+					}
+					obj.SetAttributeValue("class", substitution.PreviewClass);
+					builderClass = substitution.PreviewClass; girClass = previewClass;
+					diagnostics.Add($"'{id}' is a {sourceClass} custom widget previewed as {substitution.PreviewClass}; its source type is unchanged.");
+				} else diagnostics.Add($"'{id}' custom-preview class '{substitution.PreviewClass}' is not a constructible GTK type; it is previewed as a placeholder.");
+			}
 			// Known to GIR but not loadable here (e.g. an Adw class without libadwaita): same stand-in.
 			var unavailable = girClass is { Abstract: false } ? unavailableReason?.Invoke(girClass) : null;
 			if (girClass is not { Abstract: false } || unavailable != null) {

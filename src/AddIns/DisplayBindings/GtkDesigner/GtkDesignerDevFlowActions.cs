@@ -27,7 +27,7 @@ public static class GtkDesignerDevFlowActions
 		return view == null ? JsonSerializer.Serialize(new { active = false }) : JsonSerializer.Serialize(new {
 			active = true, status = view.Status, loadError = view.LoadError, diagnostics = view.Diagnostics, hostLog = view.HostLog, rootId = view.RootId, elementCount = view.ElementCount, elementIds = view.ElementIds, selectedId = view.SelectedId, selectedIds = view.SelectedIds, hostProcessId = view.HostProcessId, hostPoolKey = view.HostPoolKey, hostSessionId = view.HostSessionId, hostDocumentId = view.HostDocumentId, activeHostLeases = view.ActiveHostLeases, hostRecoveryCount = view.HostRecoveryCount, requestedRenderRevision = view.RequestedRenderRevision, renderedRevision = view.RenderedRevision, renderPending = view.IsRenderPending, nativeRenderer = "in-process GSK/Cairo", nativeFrame = view.HasNativeFrame, nativeFrameFingerprint = view.NativeFrameFingerprint, nativeFrameWidth = view.NativeFrameWidth, nativeFrameHeight = view.NativeFrameHeight, nativeBoundsCount = view.NativeBoundsCount, canvasFrameShown = view.CanvasFrameShown, canvasDisplay = view.CanvasDisplayDiagnostic,
 			toolboxItemCount = view.ToolboxItemCount, toolboxDrag = SharedToolbox.Instance.DragDiagnostic, toolboxFilterText = view.ToolboxFilterText, toolboxHosted = view.IsToolboxHosted, toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true, toolboxSelectedItem = view.SelectedToolboxType, zoomComboSelectedIndex = view.ZoomComboSelectedIndex, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
-			toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines,
+			toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines, previewTheme = view.PreviewTheme, canvasTheme = view.CanvasTheme,
 			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName,
 			propertyPadPropertyCount = grid?.Properties?.Count ?? 0, canUndo = view.EnableUndo, canRedo = view.EnableRedo, hostAlive = view.IsHostAlive, documentCanUndo = view.DocumentCanUndo, documentCanRedo = view.DocumentCanRedo, loadCount = view.LoadCount
 		});
@@ -204,7 +204,7 @@ public static class GtkDesignerDevFlowActions
 	public static string Undo() { var view = Activate(); view?.Undo(); return Status(); }
 	[DevFlowAction("od.gtk-designer.redo", Description = "Redo a GTK designer source edit")]
 	public static string Redo() { var view = Activate(); view?.Redo(); return Status(); }
-	[DevFlowAction("od.gtk-designer.refresh", Description = "Reload the GTK design from its source")]
+	[DevFlowAction("od.gtk-designer.refresh", Description = "Redraw the current GTK design preview without changing source-model history")]
 	public static string Refresh() { var view = Activate(); view?.RefreshDesign(); return JsonSerializer.Serialize(new { success = view != null, hostProcessId = view?.HostProcessId ?? 0 }); }
 	[DevFlowAction("od.gtk-designer.restart-host", Description = "Restart the isolated GTK designer host")]
 	public static string RestartHost() { var view = Activate(); var oldPid = view?.HostProcessId ?? 0; view?.RestartDesignHost(); return DesignerDevFlowResults.HostRestart(view != null, oldPid, view?.HostProcessId ?? 0); }
@@ -216,6 +216,8 @@ public static class GtkDesignerDevFlowActions
 	public static string Zoom(double value) { var view = Activate(); if (view != null) view.Zoom = value; return JsonSerializer.Serialize(new { success = view != null, zoom = view?.Zoom ?? 0 }); }
 	[DevFlowAction("od.gtk-designer.fit", Description = "Fit the GTK design using the common canvas toolbar behavior")]
 	public static string Fit() { var view = Activate(); view?.FitDesign(); return JsonSerializer.Serialize(new { success = view != null, zoom = view?.Zoom ?? 0, measured = view?.FitMeasured ?? false }); }
+	[DevFlowAction("od.gtk-designer.theme", Description = "Set the GTK preview-only Light or Dark theme")]
+	public static string Theme(string theme) { var view = Activate(); if (view != null) view.SetPreviewTheme(theme); return JsonSerializer.Serialize(new { success = view != null, theme }); }
 	[DevFlowAction("od.gtk-designer.gridlines", Description = "Toggle GTK design-space gridlines")]
 	public static string Gridlines(bool enabled) { var view = Activate(); view?.ShowGridlines(enabled); return JsonSerializer.Serialize(new { success = view != null, gridlines = view?.Gridlines ?? false }); }
 

@@ -17,6 +17,7 @@
         <child>
           <object class="GtkButton" id="runButton">
             <property name="label">Run</property>
+	    <property name="css-classes">designer-accent</property>
           </object>
         </child>
       </object>

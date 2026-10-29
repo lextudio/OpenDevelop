@@ -473,6 +473,14 @@ Windows/
   MainWindow.cs      user-owned: partial class MainWindow { handler methods }
 ```
 
+Solution Explorer presents this as one behavior-class unit: `MainWindow.ui`,
+`MainWindow.ui.cs`, and a sibling `MainWindow.css` are nested below `MainWindow.cs` when those
+same-stem files exist. A `.css` is only claimed when a same-stem `.ui` sits beside it, and a `.vb`
+behavior class is matched exactly like `.cs`; this is a display convention, not a `DependentUpon`
+rewrite in the project file, so any other stylesheet remains a normal top-level project file. The GTK AddIn supplies this through
+the shared `IProjectFileNestingProvider` registration point, so other language AddIns can own
+their own file types and nesting conventions without adding them to the shell.
+
 `BuildUi` loads the `.ui` without its signals and connects each one through the object's
 Gir.Core event: `var @run = (Gtk.Button)builder.GetObject("run"); @run.OnClicked += (_, args) =>
 run_clicked(@run, args);`. The expression lambda adapts to `SignalHandler<T>`,
@@ -511,6 +519,14 @@ never changed, so nothing is lost:
 - a composite `<template class="X" parent="GtkWindow">` previews as an instance of its parent;
 - every change is a session diagnostic.
 
+**Project custom-widget previews.** A sibling `.gtkdesigner.json` may declare a data-only
+`customWidgets` map from an application GtkBuilder class to a constructible GTK `previewClass`,
+with an optional `propertyMap` for explicit property-name aliases. For example,
+`MyAppStarRating` can preview as `GtkProgressBar` with `stars` mapped to `fraction`. The host
+never loads the project's output assembly or native code: an absent, malformed, or non-GTK mapping
+falls back to the labelled placeholder. Changes to this declaration are watched like preview CSS
+and redraw the current document without reopening the source model or clearing undo history.
+
 **Composite templates.** `GtkUiDocumentEditor` treats a `<template>` root as its parent type (typed
 properties, children, layout), finds it by its class name, and refuses to rename it (the class is
 the user's C# type). No `BuildUi` companion is generated for template files: a Gir.Core
@@ -545,9 +561,51 @@ Covered by `GtkPreviewSanitizerTests`, `GirCatalogTests` and the integration tes
 `GtkDesigner_RelativeImageFile_PreviewsFromTheUiFolder` and
 `GtkDesigner_ExternalChangeOnDisk_ReloadsTheDesign`.
 
-Still open: application CSS and themes in the preview (a `.ui` does not reference its CSS; GTK's
-default theme is used), GResource bundles (`resource:///` paths are not compiled into the
-preview), and handler wiring for composite templates (Gir.Core `[Template]`).
+Application CSS is now loaded by an explicit local convention because a `.ui` does not reference
+its stylesheet: the host uses a sibling `MainWindow.css` first, then sibling `style.css`. It reads
+the file only for native layout/snapshotting and removes the provider from the shared display before
+another document can render, so projects cannot leak styles into one another. CSS read/parse errors
+remain preview diagnostics rather than making the `.ui` unopenable. The open designer watches those
+two CSS paths and, after write-event debouncing, reloads the preview automatically for creation,
+write, rename, or deletion; Refresh remains available as an explicit retry. The integration fixture
+changes and deletes the stylesheet, requiring the native-frame fingerprint to change without calling
+Refresh.
+
+CSS changes and the explicit Refresh command are preview-only `design/render` requests: they never
+re-open the GtkBuilder source model or clear its undo/redo history. External `.ui` changes remain a
+separate source-authority path through the opened-file reload, so a stale on-disk copy can never
+replace unsaved designer edits just because the user asks to redraw.
+
+The shared canvas Theme control now drives a preview-only GTK Light/Dark setting. The host applies
+that setting only while serially rendering the requesting document, restores the process-global GTK
+setting before releasing the render lock, and includes the selected theme in the frame cache key.
+It never writes theme state into the `.ui`. For window roots, the host-composed title bar, border
+and opaque canvas background use the same setting, so a dark GTK control tree is not framed by
+light-only chrome. The GTK integration journey switches Dark then Light and requires a new native
+frame for both transitions. The client retains this preview-only choice across shared-host restart
+or crash recovery and replays it after reopening its source snapshot, so a recovered Dark document
+does not silently return to Light.
+
+A window whose content paints nothing - an empty container, or an `AdwNavigationView` with no page
+yet - is a normal intermediate state right after a toolbox drop. The host composes the title bar,
+border and background around a `320x200` empty body instead of failing the render, so the canvas
+shows the window rather than a diagnostic; the libadwaita navigation journey opens exactly that
+document before adding its first page.
+
+GResource bundles are supported for preview. Put one or more `*.gresource.xml` manifests beside the
+opened `.ui`; the isolated host invokes `glib-compile-resources` with that directory as its source
+directory, registers each compiled bundle before constructing the GtkBuilder tree, and unregisters
+and removes its temporary bundle when the document's native preview is replaced or closed. That
+keeps GTK `resource:///…` CSS/URI references (and Builder `resource` properties) faithful without
+copying, modifying, or permanently registering project resources in the IDE process. A manifest that
+fails to compile - `glib-compile-resources` is not on PATH, say - is reported as a preview
+diagnostic and skipped, so the rest of the document still previews. The manifests and every file
+they reference are part of the native render key and are watched, so editing the image or the
+manifest redraws and rebuilds the resource registry without touching the `.ui`. The resource
+integration test opens a real `GtkImage` document using a sibling manifest and requires a native
+frame on the canvas.
+
+Still open: handler wiring for composite templates (Gir.Core `[Template]`).
 
 ### Dropping onto the Source half (2026-10-02)
 
@@ -767,9 +825,9 @@ that the first document's original host and selection remain usable.
 Native render failures are
 returned as session warning diagnostics instead of silently falling back.
 
-Still-open coverage gaps are OS-level automation of the pointer gestures (the native coordinate
-mapping and resulting mutation are covered) and GTK themes/CSS. (Behavior-file handler generation is covered as of
-2026-10-01: see "Signal handlers and the behavior class".) Those items in
+Still-open coverage gap: OS-level automation of pointer gestures (the native coordinate mapping
+and resulting mutation are covered). CSS is covered through the real host and fixture. (Behavior-file
+handler generation is covered as of 2026-10-01: see "Signal handlers and the behavior class".) Those items in
 the lists above are acceptance targets, not claims about the present implementation.
 
 Fixture matrix:

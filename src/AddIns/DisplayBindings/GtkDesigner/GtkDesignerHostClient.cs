@@ -9,7 +9,7 @@ using ICSharpCode.SharpDevelop.Designer.Remote;
 
 namespace ICSharpCode.GtkDesigner;
 
-sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDesignHostClient, IDesignHostEventBinding, IDesignHostHitTesting, IDesignHostPropertyReset
+sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDesignHostClient, IDesignHostEventBinding, IDesignHostHitTesting, IDesignHostPropertyReset, IDesignHostTheme
 {
 	static readonly SharedDesignerHostBroker<GtkDesignerHostConnection> broker = new(
 		connection => connection.IsAlive, StartConnectionAsync);
@@ -23,9 +23,11 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 
 	GtkDesignerHostConnection connection;
 	DesignerSessionState? recoveredState;
+	string previewTheme = "Light";
 	bool disposed;
 
 	public string PoolKey => "gtk4";
+	public string PreviewTheme => previewTheme;
 	public static int ActiveLeaseCount { get { lock (clientsGate) return clients.Count; } }
 	public int RecoveryCount { get; private set; }
 	public event EventHandler<DesignerSessionState>? Recovered;
@@ -89,6 +91,12 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 	public Task<GtkSignalWiringResult> SignalWiringAsync(string uiFileName, string? namespaceName, string className, CancellationToken token = default)
 		=> connection.InvokeAsync<GtkSignalWiringResult>("gtk/signal-wiring", new { sessionId = SessionId, documentId = DocumentId, uiFileName, namespaceName, className }, token);
 	public Task<DesignerSessionState> ResetPropertyAsync(long v, string id, string name, CancellationToken token = default) => TrackMutationAsync(connection.ResetPropertyAsync(DocumentId, v, id, name, token), token);
+	public async Task<DesignerSessionState> SetThemeAsync(long v, string theme, CancellationToken token = default)
+	{
+		var state = await TrackMutationAsync(Document.SetThemeAsync(v, theme, token), token).ConfigureAwait(false);
+		previewTheme = string.Equals(theme, "Dark", StringComparison.OrdinalIgnoreCase) ? "Dark" : "Light";
+		return state;
+	}
 	public Task<DesignerSessionState> RenameAsync(long v, string id, string name, CancellationToken token = default) => TrackMutationAsync(Document.RenameAsync(v, id, name, token), token);
 	public Task<DesignerSessionState> UndoAsync(long v, CancellationToken token = default) => TrackMutationAsync(connection.UndoAsync(DocumentId, v, token), token);
 	public Task<DesignerSessionState> RedoAsync(long v, CancellationToken token = default) => TrackMutationAsync(connection.RedoAsync(DocumentId, v, token), token);
@@ -128,6 +136,11 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 		RebindConnection(replacement);
 		replacement.HostExited += OnConnectionExited;
 		recoveredState = await Document.OpenAsync(RecoverySnapshot!, RecoveryViewport, token).ConfigureAwait(false);
+		// Theme is deliberately not in the GtkBuilder source snapshot. Reapply the document-local
+		// preview choice after a pooled host is replaced, otherwise a Dark preview silently returns
+		// to the new process's Light default.
+		if (!string.Equals(previewTheme, "Light", StringComparison.Ordinal))
+			recoveredState = await Document.SetThemeAsync(recoveredState.Version, previewTheme, token).ConfigureAwait(false);
 		RecoveryCount++;
 		Recovered?.Invoke(this, recoveredState);
 	}

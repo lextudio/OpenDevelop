@@ -6,7 +6,7 @@ namespace OpenDevelop.IntegrationTests;
 [Collection("30 Add-ins and specialized fixtures")]
 public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 {
-	readonly OpenDevelopAppFixture app; readonly string workDir; readonly string projectPath; readonly string uiPath; readonly string settingsUiPath;
+	readonly OpenDevelopAppFixture app; readonly string workDir; readonly string projectPath; readonly string uiPath; readonly string settingsUiPath; readonly string resourceUiPath;
 	public GtkDesignerTests(OpenDevelopAppFixture app)
 	{
 		this.app = app;
@@ -16,7 +16,7 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		// MSBuild given the /var path of the project resolves its items under /private/var, sees them as
 		// outside the project, and copies Windows/MainWindow.ui flat into bin/ - where the app cannot find it.
 		workDir = Path.Combine(RealPath(Path.GetTempPath()), "GtkDesignerTests-" + Guid.NewGuid().ToString("N"));
-		CopyDirectory(fixture, workDir); projectPath = Path.Combine(workDir, "GtkDesignerFixture.csproj"); uiPath = Path.Combine(workDir, "Windows", "MainWindow.ui"); settingsUiPath = Path.Combine(workDir, "Windows", "SettingsWindow.ui");
+		CopyDirectory(fixture, workDir); projectPath = Path.Combine(workDir, "GtkDesignerFixture.csproj"); uiPath = Path.Combine(workDir, "Windows", "MainWindow.ui"); settingsUiPath = Path.Combine(workDir, "Windows", "SettingsWindow.ui"); resourceUiPath = Path.Combine(workDir, "Windows", "ResourceWindow.ui");
 	}
 
 	public async ValueTask InitializeAsync()
@@ -44,9 +44,31 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_PreviewsGResourceUriFromSiblingManifest()
+	{
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", resourceUiPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("resourceWindow");
+		Assert.True(status.GetProperty("nativeFrame").GetBoolean(), "GTK resource document did not return a native frame: " + status);
+		status = await WaitForCanvasFrameAsync(status);
+		Assert.True(status.GetProperty("canvasFrameShown").GetBoolean(), status.GetProperty("canvasDisplay").GetString());
+		Assert.Equal(2, status.GetProperty("elementCount").GetInt32());
+		Assert.DoesNotContain(status.GetProperty("diagnostics").EnumerateArray(), item => (item.GetProperty("message").GetString() ?? "").Contains("resource", StringComparison.OrdinalIgnoreCase));
+		var image = await app.InvokeAsync("od.gtk-designer.select", "resourceImage"); Assert.True(image.GetProperty("success").GetBoolean(), image.ToString());
+	}
+
+	[Fact]
 	public async Task GtkDesigner_RealPadsPropertyEditToolboxHistoryAndSave()
 	{
 		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var browser = await WaitForProjectBrowserAsync();
+		Assert.True(browser.GetProperty("success").GetBoolean(), browser.ToString());
+		var behaviorNode = FindProjectBrowserNode(browser.GetProperty("project"), "MainWindow.cs");
+		Assert.True(behaviorNode.ValueKind != JsonValueKind.Undefined, browser.ToString());
+		var companions = behaviorNode.GetProperty("children").EnumerateArray().Select(child => child.GetProperty("name").GetString()).ToArray();
+		Assert.Contains("MainWindow.ui", companions);
+		Assert.Contains("MainWindow.ui.cs", companions);
+		Assert.Contains("MainWindow.css", companions);
 		var opened = await app.InvokeAsync("od.open-file", uiPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
 		var status = await WaitAsync();
 		Assert.True(status.GetProperty("active").GetBoolean(), status.ToString());
@@ -62,6 +84,50 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		await AssertNoRenderChildrenAsync(status.GetProperty("hostProcessId").GetInt32());
 		Assert.True(status.GetProperty("nativeFrameWidth").GetInt32() > 0 && status.GetProperty("nativeFrameHeight").GetInt32() > 0, status.ToString());
 		var originalFrame = status.GetProperty("nativeFrameFingerprint").GetString(); Assert.False(string.IsNullOrEmpty(originalFrame));
+		var darkTheme = await app.InvokeAsync("od.gtk-designer.theme", "Dark"); Assert.True(darkTheme.GetProperty("success").GetBoolean(), darkTheme.ToString());
+		status = await WaitForFrameChangeAsync(originalFrame);
+		var darkFrame = status.GetProperty("nativeFrameFingerprint").GetString(); Assert.NotEqual(originalFrame, darkFrame);
+		Assert.False(status.GetProperty("canUndo").GetBoolean(), "Preview theme switching must not create a source-model undo entry.");
+		var lightTheme = await app.InvokeAsync("od.gtk-designer.theme", "Light"); Assert.True(lightTheme.GetProperty("success").GetBoolean(), lightTheme.ToString());
+		status = await WaitForFrameChangeAsync(darkFrame);
+		Assert.NotEqual(darkFrame, status.GetProperty("nativeFrameFingerprint").GetString());
+		Assert.False(status.GetProperty("canUndo").GetBoolean(), "Restoring the preview theme must not create a source-model undo entry.");
+		// Application CSS is deliberately outside GtkBuilder. The preview host discovers the
+		// sibling stylesheet, reads it in the child process, and a filesystem update must re-render
+		// without changing the .ui document, reopening the designer, or requiring manual Refresh.
+		var cssPath = Path.Combine(workDir, "Windows", "MainWindow.css");
+		Assert.True(File.Exists(cssPath), "GTK fixture CSS was not copied beside its .ui document.");
+		await File.WriteAllTextAsync(cssPath, ".designer-accent { background: #dc2626; color: white; }", TestContext.Current.CancellationToken);
+		status = await WaitForFrameChangeAsync(originalFrame);
+		Assert.DoesNotContain(status.GetProperty("diagnostics").EnumerateArray(), item => (item.GetProperty("message").GetString() ?? "").Contains("preview CSS", StringComparison.OrdinalIgnoreCase));
+		var cssFrame = status.GetProperty("nativeFrameFingerprint").GetString(); Assert.NotEqual(originalFrame, cssFrame);
+		File.Delete(cssPath);
+		status = await WaitForFrameChangeAsync(cssFrame);
+		Assert.NotEqual(cssFrame, status.GetProperty("nativeFrameFingerprint").GetString());
+		// A project-wide style.css is the documented fallback when no same-stem stylesheet exists.
+		var noCssFrame = status.GetProperty("nativeFrameFingerprint").GetString();
+		var fallbackCssPath = Path.Combine(workDir, "Windows", "style.css");
+		await File.WriteAllTextAsync(fallbackCssPath, ".designer-accent { background: #2563eb; color: white; }", TestContext.Current.CancellationToken);
+		status = await WaitForFrameChangeAsync(noCssFrame);
+		var fallbackCssFrame = status.GetProperty("nativeFrameFingerprint").GetString();
+		Assert.NotEqual(noCssFrame, fallbackCssFrame);
+		File.Delete(fallbackCssPath);
+		status = await WaitForFrameChangeAsync(fallbackCssFrame);
+		Assert.NotEqual(fallbackCssFrame, status.GetProperty("nativeFrameFingerprint").GetString());
+		// Editors often save a stylesheet by moving a temporary file into place instead of writing
+		// the destination. Verify both legs of that Rename event: an incoming stylesheet is applied
+		// without reopening the .ui, and moving it away removes the provider again.
+		noCssFrame = status.GetProperty("nativeFrameFingerprint").GetString();
+		var incomingCssPath = Path.Combine(workDir, "Windows", "MainWindow.incoming.css");
+		await File.WriteAllTextAsync(incomingCssPath, ".designer-accent { background: #7c3aed; color: white; }", TestContext.Current.CancellationToken);
+		File.Move(incomingCssPath, cssPath);
+		status = await WaitForFrameChangeAsync(noCssFrame);
+		var renamedCssFrame = status.GetProperty("nativeFrameFingerprint").GetString();
+		Assert.NotEqual(noCssFrame, renamedCssFrame);
+		File.Move(cssPath, incomingCssPath);
+		status = await WaitForFrameChangeAsync(renamedCssFrame);
+		Assert.NotEqual(renamedCssFrame, status.GetProperty("nativeFrameFingerprint").GetString());
+		File.Delete(incomingCssPath);
 		Assert.Equal(status.GetProperty("elementCount").GetInt32(), status.GetProperty("nativeBoundsCount").GetInt32());
 		var runBounds = await app.InvokeAsync("od.gtk-designer.bounds", "runButton"); Assert.True(runBounds.GetProperty("success").GetBoolean(), runBounds.ToString());
 		var nativeHit = await app.InvokeAsync("od.gtk-designer.hit-test", runBounds.GetProperty("x").GetDouble() + runBounds.GetProperty("width").GetDouble() / 2, runBounds.GetProperty("y").GetDouble() + runBounds.GetProperty("height").GetDouble() / 2);
@@ -73,8 +139,8 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.True(status.GetProperty("toolboxItemCount").GetInt32() >= 15, status.ToString());
 		var filteredTools = await app.InvokeAsync("od.gtk-designer.toolbox.filter", "switch"); Assert.Equal(1, filteredTools.GetProperty("itemCount").GetInt32());
 		var allTools = await app.InvokeAsync("od.gtk-designer.toolbox.filter", ""); Assert.True(allTools.GetProperty("itemCount").GetInt32() >= 15, allTools.ToString());
-		Assert.Equal(4, status.GetProperty("toolbarItemCount").GetInt32());
-		Assert.Equal(new[] { "Zoom", "Fit", "Gridlines", "Show Names" }, status.GetProperty("toolbarItems").EnumerateArray().Select(x => x.GetString()).ToArray());
+		Assert.Equal(5, status.GetProperty("toolbarItemCount").GetInt32());
+		Assert.Equal(new[] { "Zoom", "Fit", "Gridlines", "Theme", "Show Names" }, status.GetProperty("toolbarItems").EnumerateArray().Select(x => x.GetString()).ToArray());
 		var zoomed = await app.InvokeAsync("od.gtk-designer.zoom", 1.5); Assert.Equal(1.5, zoomed.GetProperty("zoom").GetDouble());
 		var fitted = await app.InvokeAsync("od.gtk-designer.fit"); Assert.True(fitted.GetProperty("measured").GetBoolean(), fitted.ToString()); // The fit scale is the viewport divided by the frame, so it moves whenever the frame does -
 		// adding the host-composed title bar made it 630 tall instead of 600 and took the scale just
@@ -90,7 +156,8 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var gridOff = await app.InvokeAsync("od.gtk-designer.gridlines", false); Assert.False(gridOff.GetProperty("gridlines").GetBoolean());
 
 		var selected = await app.InvokeAsync("od.gtk-designer.select", "runButton"); Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
-		Assert.Contains("GtkPropertyAdapter", selected.GetProperty("propertyPadSelectedType").GetString());
+		status = await WaitForPropertyAdapterAsync();
+		Assert.Contains("GtkPropertyAdapter", status.GetProperty("propertyPadSelectedType").GetString());
 		var multi = await app.InvokeAsync("od.gtk-designer.multi-select", "runButton,heading"); Assert.True(multi.GetProperty("success").GetBoolean(), multi.ToString());
 		Assert.Equal(new[] { "runButton", "heading" }, multi.GetProperty("selectedIds").EnumerateArray().Select(item => item.GetString()).ToArray());
 		status = await app.InvokeAsync("od.gtk-designer.status"); Assert.Equal(2, status.GetProperty("selectedIds").GetArrayLength()); Assert.True(status.GetProperty("propertyPadPropertyCount").GetInt32() > 0, status.ToString());
@@ -101,15 +168,29 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		status = await WaitForFrameChangeAsync(originalFrame); Assert.NotEqual(originalFrame, status.GetProperty("nativeFrameFingerprint").GetString());
 		var signal = await app.InvokeAsync("od.gtk-designer.properties.event.bind", "clicked"); Assert.True(signal.GetProperty("success").GetBoolean(), signal.ToString());
 		var reordered = await app.InvokeAsync("od.gtk-designer.pointer-reorder", "runButton", "heading"); Assert.True(reordered.GetProperty("success").GetBoolean(), reordered.ToString());
+		var darkBeforeRestart = await app.InvokeAsync("od.gtk-designer.theme", "Dark"); Assert.True(darkBeforeRestart.GetProperty("success").GetBoolean(), darkBeforeRestart.ToString());
 		var restarted = await app.InvokeAsync("od.gtk-designer.restart-host");
 		Assert.True(restarted.GetProperty("success").GetBoolean(), restarted.ToString());
 		Assert.NotEqual(restarted.GetProperty("oldHostProcessId").GetInt32(), restarted.GetProperty("hostProcessId").GetInt32());
+		status = await app.InvokeAsync("od.gtk-designer.status"); Assert.Equal("Dark", status.GetProperty("previewTheme").GetString()); Assert.Equal("Dark", status.GetProperty("canvasTheme").GetString());
 		var refreshed = await app.InvokeAsync("od.gtk-designer.refresh"); Assert.True(refreshed.GetProperty("success").GetBoolean(), refreshed.ToString());
 
 		await app.InvokeAsync("od.gtk-designer.select", "contentBox");
 		var inserted = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkEntry"); Assert.True(inserted.GetProperty("success").GetBoolean(), inserted.ToString());
 		Assert.Equal("entry1", inserted.GetProperty("selectedId").GetString());
 		status = await app.InvokeAsync("od.gtk-designer.status"); Assert.True(status.GetProperty("canUndo").GetBoolean(), status.ToString()); Assert.False(status.GetProperty("canRedo").GetBoolean(), status.ToString());
+		// A CSS-only refresh must not reopen the source model and silently clear this history.
+		var historyFrame = status.GetProperty("nativeFrameFingerprint").GetString();
+		await File.WriteAllTextAsync(cssPath, ".designer-accent { background: #0f766e; color: white; }", TestContext.Current.CancellationToken);
+		status = await WaitForFrameChangeAsync(historyFrame);
+		Assert.True(status.GetProperty("canUndo").GetBoolean(), "A CSS preview refresh must preserve source-model undo history.");
+		File.Delete(cssPath);
+		status = await WaitForFrameChangeAsync(status.GetProperty("nativeFrameFingerprint").GetString());
+		Assert.True(status.GetProperty("canUndo").GetBoolean(), "Removing preview CSS must preserve source-model undo history.");
+		var refreshPreview = await app.InvokeAsync("od.gtk-designer.refresh");
+		Assert.True(refreshPreview.GetProperty("success").GetBoolean(), refreshPreview.ToString());
+		status = await app.InvokeAsync("od.gtk-designer.status");
+		Assert.True(status.GetProperty("canUndo").GetBoolean(), "Manual preview refresh must preserve source-model undo history.");
 		var undo = await app.InvokeAsync("od.gtk-designer.undo"); Assert.Equal(4, undo.GetProperty("elementCount").GetInt32());
 		Assert.True(undo.GetProperty("canRedo").GetBoolean());
 		var redo = await app.InvokeAsync("od.gtk-designer.redo"); Assert.Equal(5, redo.GetProperty("elementCount").GetInt32());
@@ -495,6 +576,8 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		// design must still open, say why, keep the object through edits and saves, and let the
 		// rest of the document be edited.
 		var customPath = Path.Combine(workDir, "Windows", "CustomWindow.ui");
+		var customPreviewPath = Path.Combine(workDir, "Windows", ".gtkdesigner.json");
+		await File.WriteAllTextAsync(customPreviewPath, """{"customWidgets":{"MyAppStarRating":{"previewClass":"GtkLabel","propertyMap":{"stars":"label"}}}}""", TestContext.Current.CancellationToken);
 		await File.WriteAllTextAsync(customPath, """
 			<?xml version="1.0" encoding="UTF-8"?>
 			<interface>
@@ -505,7 +588,7 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 			        <property name="orientation">vertical</property>
 			        <child>
 			          <object class="MyAppStarRating" id="rating">
-			            <property name="stars">4</property>
+			          <property name="stars">0.75</property>
 			          </object>
 			        </child>
 			        <child>
@@ -525,17 +608,26 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 			status = await app.InvokeAsync("od.gtk-designer.status");
 			return status.TryGetProperty("active", out var a) && a.GetBoolean() && status.GetProperty("elementIds").EnumerateArray().Any(e => e.GetString() == "rating");
 		}, TimeSpan.FromSeconds(30)), "the design with a custom widget did not open: " + status);
-		Assert.Contains("MyAppStarRating", status.GetProperty("diagnostics").ToString());
+		Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+		Assert.Contains("previewed as GtkLabel", status.GetProperty("diagnostics").ToString());
+		Assert.DoesNotContain("placeholder", status.GetProperty("diagnostics").ToString(), StringComparison.OrdinalIgnoreCase);
+		var labelFrame = status.GetProperty("nativeFrameFingerprint").GetString();
+		// A declaration is preview-only: changing its safe Gtk representation redraws the same
+		// source document on the existing host and preserves its generic custom properties.
+		await File.WriteAllTextAsync(customPreviewPath, """{"customWidgets":{"MyAppStarRating":{"previewClass":"GtkProgressBar","propertyMap":{"stars":"fraction"}}}}""", TestContext.Current.CancellationToken);
+		status = await WaitForFrameChangeAsync(labelFrame);
+		Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+		Assert.Contains("previewed as GtkProgressBar", status.GetProperty("diagnostics").ToString());
 
 		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "caption")).GetProperty("success").GetBoolean());
 		Assert.True((await app.InvokeAsync("od.gtk-designer.properties.edit", "Label", "Rated by you")).GetProperty("success").GetBoolean());
 		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "rating")).GetProperty("success").GetBoolean());
 		var rating = (await app.InvokeAsync("od.gtk-designer.properties.describe")).GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("name").GetString()!, i => i);
-		Assert.Equal("4", rating["Stars"].GetProperty("value").GetString());   // unknown to GIR, still editable text
+		Assert.Equal("0.75", rating["Stars"].GetProperty("value").GetString());   // source type remains generic and editable
 		Assert.True((await app.InvokeAsync("od.file.save", customPath)).GetProperty("success").GetBoolean());
 		var xml = await File.ReadAllTextAsync(customPath, TestContext.Current.CancellationToken);
 		Assert.Contains("<object class=\"MyAppStarRating\" id=\"rating\">", xml);
-		Assert.Contains("<property name=\"stars\">4</property>", xml);
+		Assert.Contains("<property name=\"stars\">0.75</property>", xml);
 		Assert.Contains("Rated by you", xml);
 		await app.InvokeAsync("od.close-active-view");
 	}
@@ -577,6 +669,39 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.Contains("Edited template", xml);
 		Assert.DoesNotContain("<object class=\"GtkWindow\"", xml);
 		await ValidateGtkBuilderAsync(templatePath);
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
+	public async Task GtkDesigner_LibadwaitaNavigation_UsesTypedPagesAndRenders()
+	{
+		var path = Path.Combine(workDir, "Windows", "NavigationWindow.ui");
+		await File.WriteAllTextAsync(path, """
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <requires lib="libadwaita" version="1.0" />
+			  <object class="AdwWindow" id="navigationWindow">
+			    <property name="content"><object class="AdwNavigationView" id="navigationView" /></property>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", path); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("navigationWindow"); Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "navigationView")).GetProperty("success").GetBoolean());
+		var page = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "AdwNavigationPage"); Assert.True(page.GetProperty("success").GetBoolean(), page.ToString());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkBox")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
+		var xml = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+		Assert.Contains("<child><object class=\"AdwNavigationPage\"", xml);
+		Assert.Contains("<property name=\"child\"><object class=\"GtkBox\"", xml);
+		// gtk4-builder-tool never loads libadwaita, so it rejects any Adw document outright
+		// ("Invalid object type 'AdwWindow'") and cannot validate this one. The saved file is
+		// checked the way the product does it instead: reopen it and require a native frame.
+		await app.InvokeAsync("od.close-active-view");
+		var reopened = await app.InvokeAsync("od.open-file", path); Assert.True(reopened.GetProperty("opened").GetBoolean(), reopened.ToString());
+		var saved = await WaitAsync("navigationWindow"); Assert.True(saved.GetProperty("nativeFrame").GetBoolean(), saved.ToString());
+		Assert.Equal(4, saved.GetProperty("elementCount").GetInt32());
 		await app.InvokeAsync("od.close-active-view");
 	}
 
@@ -753,6 +878,26 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		while (!(last.TryGetProperty("canvasFrameShown", out var shown) && shown.GetBoolean()) && DateTime.UtcNow < deadline) { await Task.Delay(100, TestContext.Current.CancellationToken); last = await app.InvokeAsync("od.gtk-designer.status"); }
 		return last;
 	}
+	async Task<JsonElement> WaitForPropertyAdapterAsync()
+	{
+		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5); JsonElement last = default;
+		while (DateTime.UtcNow < deadline) {
+			last = await app.InvokeAsync("od.gtk-designer.status");
+			if ((last.GetProperty("propertyPadSelectedType").GetString() ?? "").Contains("GtkPropertyAdapter", StringComparison.Ordinal)) return last;
+			await Task.Delay(50, TestContext.Current.CancellationToken);
+		}
+		return last;
+	}
+	async Task<JsonElement> WaitForProjectBrowserAsync()
+	{
+		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10); JsonElement last = default;
+		while (DateTime.UtcNow < deadline) {
+			last = await app.InvokeAsync("od.project-browser-state", "GtkDesignerFixture");
+			if (last.GetProperty("success").GetBoolean() && FindProjectBrowserNode(last.GetProperty("project"), "MainWindow.cs").ValueKind != JsonValueKind.Undefined) return last;
+			await Task.Delay(100, TestContext.Current.CancellationToken);
+		}
+		return last;
+	}
 	async Task<JsonElement> WaitForFrameChangeAsync(string? previous)
 	{
 		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20); JsonElement last = default;
@@ -776,6 +921,16 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 			var relative = Path.GetRelativePath(source, file); if (!IsBuildOutput(relative)) File.Copy(file, Path.Combine(destination, relative));
 		}
 	}
+	static JsonElement FindProjectBrowserNode(JsonElement node, string name)
+	{
+		if (string.Equals(node.GetProperty("name").GetString(), name, StringComparison.Ordinal)) return node;
+		foreach (var child in node.GetProperty("children").EnumerateArray()) {
+			var found = FindProjectBrowserNode(child, name);
+			if (found.ValueKind != JsonValueKind.Undefined) return found;
+		}
+		return default;
+	}
+
 	static async Task ValidateGtkBuilderAsync(string path)
 	{
 		var start = new System.Diagnostics.ProcessStartInfo(GtkBuilderTool()) { RedirectStandardError = true, RedirectStandardOutput = true, UseShellExecute = false };

@@ -9,6 +9,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
@@ -26,7 +27,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 {
 	public static readonly string[] ToolNames = { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkLabel", "GtkButton", "GtkEntry", "GtkPasswordEntry", "GtkCheckButton", "GtkSwitch", "GtkSpinButton", "GtkDropDown", "GtkListBox", "GtkListView", "GtkGridView", "GtkImage", "GtkPicture", "GtkProgressBar", "GtkSeparator" };
 	/// <summary>Libadwaita widgets, offered only for a document that declares &lt;requires lib="libadwaita"&gt;.</summary>
-	public static readonly string[] AdwToolNames = { "AdwHeaderBar", "AdwStatusPage", "AdwClamp", "AdwPreferencesPage", "AdwPreferencesGroup", "AdwActionRow", "AdwEntryRow", "AdwSwitchRow", "AdwButtonContent", "AdwAvatar", "AdwBanner", "AdwSpinner" };
+	public static readonly string[] AdwToolNames = { "AdwHeaderBar", "AdwStatusPage", "AdwClamp", "AdwPreferencesPage", "AdwPreferencesGroup", "AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView", "AdwActionRow", "AdwEntryRow", "AdwSwitchRow", "AdwButtonContent", "AdwAvatar", "AdwBanner", "AdwSpinner" };
 	bool documentRequiresAdw;
 	internal bool IsToolName(string? name) => name != null && ( ToolNames.Contains(name, StringComparer.Ordinal) || documentRequiresAdw && AdwToolNames.Contains(name, StringComparer.Ordinal));
 	/// <summary>The shared category for a GTK control ("Containers", "Inputs", ...), or the
@@ -72,6 +73,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	Dictionary<string, string> pathById = new(StringComparer.Ordinal);
 	GtkDesignerHostClient? host; DesignerSessionState state = new(); DesignerElementNode? selected; string loadedText = "";
 	CancellationTokenSource? renderCancellation; long requestedRenderRevision; long renderedRevision;
+	FileSystemWatcher? cssWatcher; string[] watchedCssPaths = Array.Empty<string>(); DispatcherTimer? cssRefreshTimer; bool disposed;
 
 	public GtkDesignerViewContent(OpenedFile file) : base(file)
 	{
@@ -163,6 +165,8 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	public string LoadError => HasLoadError && Control is ContentPresenter presenter && presenter.Content is TextBox error ? error.Text : "";
 	public string HostLog => host?.ChildLog ?? "";
 	public string HostSessionId => host?.SessionId ?? ""; public string HostDocumentId => host?.DocumentId ?? ""; public string HostPoolKey => host?.PoolKey ?? "gtk4"; public int ActiveHostLeases => GtkDesignerHostClient.ActiveLeaseCount; public int HostRecoveryCount => host?.RecoveryCount ?? 0;
+	public string PreviewTheme => host?.PreviewTheme ?? "Light";
+	public string CanvasTheme => canvas.ThemeState;
 	public long RequestedRenderRevision => requestedRenderRevision; public long RenderedRevision => renderedRevision; public bool IsRenderPending => requestedRenderRevision > renderedRevision;
 	public string Status => state.Accepted ? $"Ready: {ElementCount} GTK objects (host {host?.ProcessId}, native frame {(HasNativeFrame ? $"{NativeFrameWidth}x{NativeFrameHeight}" : "unavailable")})" : state.Error;
 	public bool IsHostAlive => host?.IsAlive == true; public bool DocumentCanUndo => state.CanUndo; public bool DocumentCanRedo => state.CanRedo; public bool EnableUndo => commands.CanExecute("Undo"); public bool EnableRedo => commands.CanExecute("Redo");
@@ -347,9 +351,79 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	bool RenameSelected(string newId) { if (selected == null || host == null || selected.Id.StartsWith("$", StringComparison.Ordinal)) return false; var oldId = selected.Id; return Mutate(() => host.RenameAsync(state.Version, oldId, newId).GetAwaiter().GetResult()) && SelectById(newId); }
 	void RequestRename() { if (selected == null || selected.Id.StartsWith("$", StringComparison.Ordinal)) return; var newId = MessageService.ShowInputBox("Rename", "Enter a new object id:", selected.Name ?? selected.Id)?.Trim(); if (!string.IsNullOrEmpty(newId) && !string.Equals(newId, selected.Id, StringComparison.Ordinal) && !RenameSelected(newId)) MessageService.ShowError(state.Error); }
 	public bool PointerReorder(string sourceId, string targetId) { if (state.Tree == null) return false; var source = FindById(sourceId); var target = FindById(targetId); return source != null && target != null && ReorderBetween(state.Tree, source, target); }
-	public void RefreshDesign() { if (host == null) return; var text = host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; state = host.UpdateAsync(Snapshot(text, state.Version + 1)).GetAwaiter().GetResult(); loadedText = text; Rebuild(); }
-	public void RestartDesignHost() { if (host == null) return; state = host.RestartPoolAsync().GetAwaiter().GetResult(); loadedText = host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; Rebuild(); }
-	public void TerminateDesignHost() { if (host == null) return; state = host.TerminateAndRecoverAsync().GetAwaiter().GetResult(); requestedRenderRevision = renderedRevision = state.Render?.Sequence ?? 0; Rebuild(); }
+	// External .ui edits arrive through LoadInternal. Refresh never takes a stale on-disk copy over
+	// unsaved designer edits; it only redraws the current source model and retains its history.
+	public void RefreshDesign() => RefreshPreview();
+	// A stylesheet affects only the native snapshot, never the GtkBuilder source model.
+	void RefreshPreview() { if (host == null) return; state = host.RenderAsync(state.Version).GetAwaiter().GetResult(); Rebuild(); }
+	public void SetPreviewTheme(string theme) { if (host == null) return; state = host.SetThemeAsync(state.Version, theme).GetAwaiter().GetResult(); canvas.SetTheme(theme); Rebuild(); }
+	void ConfigureCssWatcher(string uiPath)
+	{
+		var directory = Path.GetDirectoryName(uiPath);
+		if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory)) return;
+		// The same preview-only debounce also covers custom-widget declarations: neither CSS nor
+		// .gtkdesigner.json is source-model input, so both must redraw without resetting undo.
+		watchedCssPaths = new[] { Path.ChangeExtension(uiPath, ".css"), Path.Combine(directory, "style.css"), Path.Combine(directory, ".gtkdesigner.json") }
+			.Concat(ResourceFiles(directory))
+			.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+		cssWatcher?.Dispose();
+		try {
+			cssWatcher = new FileSystemWatcher(directory, "*") { NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size };
+			cssWatcher.Changed += CssChanged; cssWatcher.Created += CssChanged; cssWatcher.Deleted += CssChanged; cssWatcher.Renamed += CssRenamed;
+			cssWatcher.EnableRaisingEvents = true;
+		} catch (Exception ex) {
+			cssWatcher = null;
+			LoggingService.Warn("GTK designer: could not watch preview CSS: " + ex.Message);
+		}
+	}
+	/// <summary>The GResource manifests beside the document and the files they list. The preview
+	/// resolves <c>resource:///</c> when it builds the native tree, so an edited image or manifest
+	/// has to redraw too - neither is part of the GtkBuilder source model.</summary>
+	static IEnumerable<string> ResourceFiles(string directory)
+	{
+		string[] manifests;
+		try {
+			manifests = Directory.EnumerateFiles(directory, "*.gresource.xml", SearchOption.TopDirectoryOnly).OrderBy(path => path, StringComparer.Ordinal).ToArray();
+		} catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) {
+			return Array.Empty<string>();
+		}
+		var files = new List<string>(manifests);
+		foreach (var manifest in manifests) {
+			try {
+				var root = Path.GetDirectoryName(manifest)!;
+				foreach (var file in System.Xml.Linq.XDocument.Load(manifest).Descendants("file")) {
+					var name = file.Value.Trim();
+					if (name.Length > 0) files.Add(Path.GetFullPath(Path.Combine(root, name)));
+				}
+			} catch { /* an unreadable manifest is reported by the preview host when it loads it */ }
+		}
+		return files;
+	}
+	void CssChanged(object sender, FileSystemEventArgs e) { if (IsWatchedPreviewPath(e.FullPath)) ScheduleCssRefresh(); }
+	void CssRenamed(object sender, RenamedEventArgs e) { if (IsWatchedPreviewPath(e.FullPath) || IsWatchedPreviewPath(e.OldFullPath)) ScheduleCssRefresh(); }
+	/// <summary>A manifest created after the watcher started is still a preview input: the glob
+	/// matches it even though it was not in the list captured by <see cref="ConfigureCssWatcher"/>.</summary>
+	bool IsWatchedPreviewPath(string path) => path.EndsWith(".gresource.xml", StringComparison.OrdinalIgnoreCase)
+		|| watchedCssPaths.Contains(Path.GetFullPath(path), StringComparer.OrdinalIgnoreCase);
+	void ScheduleCssRefresh()
+	{
+		var dispatcher = Application.Current?.Dispatcher;
+		if (dispatcher == null) return;
+		_ = dispatcher.BeginInvoke(new Action(() => {
+			if (disposed) return;
+			cssRefreshTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(180) };
+			cssRefreshTimer.Tick -= CssRefreshTimerTick;
+			cssRefreshTimer.Tick += CssRefreshTimerTick;
+			cssRefreshTimer.Stop(); cssRefreshTimer.Start();
+		}));
+	}
+	void CssRefreshTimerTick(object? sender, EventArgs e)
+	{
+		cssRefreshTimer?.Stop();
+		if (!disposed && host?.IsAlive == true) RefreshPreview();
+	}
+	public void RestartDesignHost() { if (host == null) return; state = host.RestartPoolAsync().GetAwaiter().GetResult(); canvas.SetTheme(host.PreviewTheme); loadedText = host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; Rebuild(); }
+	public void TerminateDesignHost() { if (host == null) return; state = host.TerminateAndRecoverAsync().GetAwaiter().GetResult(); canvas.SetTheme(host.PreviewTheme); requestedRenderRevision = renderedRevision = state.Render?.Sequence ?? 0; Rebuild(); }
 	public void ShowSource() { var window = WorkbenchWindow; if (window == null) return; for (var i = 0; i < window.ViewContents.Count; i++) if (!ReferenceEquals(window.ViewContents[i], this)) { window.SwitchView(i); return; } }
 	bool Mutate(Func<DesignerSessionState> action) { state = action(); if (state.Accepted) { PrimaryFile?.MakeDirty(); QueueRender(); } Rebuild(); commands.Invalidate(); return state.Accepted; }
 	void QueueRender()
@@ -408,10 +482,10 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	void Select(DesignerElementNode? node, bool toggle = false) => selection.Select(node == null ? Array.Empty<DesignerElementNode>() : new[] { node }, toggle ? DesignerSelectionOperation.Toggle : DesignerSelectionOperation.Replace);
 	void ConfigureCanvas()
 	{
-		// Only what the GTK designer does: GTK owns layout, so no resize handles, design sizes,
-		// themes or visual states.
+		// GTK owns layout, so no resize handles, design sizes or visual states. Theme is applied
+		// only while its native frame is rendered and is restored before another pooled document.
 		canvas.Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit | DesignerCanvasCapabilities.Gridlines
-			| DesignerCanvasCapabilities.ShowNames | DesignerCanvasCapabilities.StatusBar;
+			| DesignerCanvasCapabilities.Theme | DesignerCanvasCapabilities.ShowNames | DesignerCanvasCapabilities.StatusBar;
 		canvas.ResizeHandlesEnabled = false;
 		canvas.SetContextCommands(new[] { ("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete"),
 			("-", ""), ("Order/Move First", "move-first"), ("Order/Move Earlier", "move-earlier"), ("Order/Move Later", "move-later"), ("Order/Move Last", "move-last"),
@@ -427,6 +501,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		};
 		canvasController.ClearsSelectionOnEmptyClick = true;
 		canvasController.SelectionChanged += (_, ids) => { if (!ids.SequenceEqual(selection.SelectedIds)) pads.CommitSelection(ids); };
+		canvas.DesignThemeRequested += (_, theme) => SetPreviewTheme(theme);
 		canvasController.ElementPicked += (_, id) => { if (!selection.SelectedIds.Contains(id)) SelectById(id); };
 		canvasController.ElementDragCommitted += (_, drag) => CommitCanvasDrag(drag);
 		canvasController.ElementGroupDragCommitted += (_, _) => canvasController.RestoreSelection(selection.SelectedIds);
@@ -539,13 +614,13 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	// editor loads, and switching back reloads it here. Re-opening the host document for text it
 	// produced itself reset the host's undo/redo history (session/open -> Editor.Reset) - so undo
 	// stopped working after merely clicking into the XML. Only a real source change re-opens.
-	protected override void LoadInternal(OpenedFile file, Stream stream) { LoadCount++; using var reader = new StreamReader(stream, leaveOpen: true); var text = reader.ReadToEnd(); var requiresAdw = System.Text.RegularExpressions.Regex.IsMatch(text, @"<requires\s+lib\s*=\s*""libadwaita"""); if (requiresAdw != documentRequiresAdw) { documentRequiresAdw = requiresAdw; RefreshToolbox(); } if (host != null && host.IsAlive && state.Accepted && string.Equals(text, loadedText, StringComparison.Ordinal)) return; loadedText = text; if (host == null) { host = GtkDesignerHostClient.CreateAsync().GetAwaiter().GetResult(); host.Recovered += HostRecovered; } state = host.OpenAsync(Snapshot(loadedText, 1)).GetAwaiter().GetResult(); requestedRenderRevision = renderedRevision = state.Render?.Sequence ?? 0; Rebuild();
+	protected override void LoadInternal(OpenedFile file, Stream stream) { LoadCount++; using var reader = new StreamReader(stream, leaveOpen: true); var text = reader.ReadToEnd(); ConfigureCssWatcher(file.FileName.ToString()); var requiresAdw = System.Text.RegularExpressions.Regex.IsMatch(text, @"<requires\s+lib\s*=\s*""libadwaita"""); if (requiresAdw != documentRequiresAdw) { documentRequiresAdw = requiresAdw; RefreshToolbox(); } if (host != null && host.IsAlive && state.Accepted && string.Equals(text, loadedText, StringComparison.Ordinal)) return; loadedText = text; if (host == null) { host = GtkDesignerHostClient.CreateAsync().GetAwaiter().GetResult(); host.Recovered += HostRecovered; } state = host.OpenAsync(Snapshot(loadedText, 1)).GetAwaiter().GetResult(); canvas.SetTheme(host.PreviewTheme); requestedRenderRevision = renderedRevision = state.Render?.Sequence ?? 0; Rebuild();
 		OutputChannel.Write("GtkDesigner", "Host started for " + System.IO.Path.GetFileName(file.FileName.ToString())); }
 	protected override void SaveInternal(OpenedFile file, Stream stream) { // The host can be down here: a restart moves focus into the source pane, and that view switch saves this view first.
 		var text = host == null ? loadedText : host.CurrentTextOrRecovery(state.Version, loadedText); using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false), leaveOpen: true); writer.Write(text); writer.Flush(); loadedText = text;
 		// Signals may have changed since the companion was last written (removed, renamed, added
 		// in the XML editor); WriteCompanion only touches the file when its content differs.
 		if (host?.IsAlive == true) UpdateCodeBehind(null); }
-	void HostRecovered(object? sender, DesignerSessionState recovered) { Application.Current.Dispatcher.BeginInvoke(new Action(() => { OutputChannel.Write("GtkDesigner", "Host recovered"); state = recovered; requestedRenderRevision = renderedRevision = recovered.Render?.Sequence ?? 0; Rebuild(); })); }
-	public override void Dispose() { OutputChannel.Write("GtkDesigner", "Designer view disposed"); renderCancellation?.Cancel(); renderCancellation?.Dispose(); pads.Dispose(); properties.Clear(); if (host != null) host.Recovered -= HostRecovered; host?.Dispose(); base.Dispose(); }
+	void HostRecovered(object? sender, DesignerSessionState recovered) { Application.Current.Dispatcher.BeginInvoke(new Action(() => { OutputChannel.Write("GtkDesigner", "Host recovered"); state = recovered; canvas.SetTheme(host?.PreviewTheme ?? "Light"); requestedRenderRevision = renderedRevision = recovered.Render?.Sequence ?? 0; Rebuild(); })); }
+	public override void Dispose() { disposed = true; OutputChannel.Write("GtkDesigner", "Designer view disposed"); cssRefreshTimer?.Stop(); cssWatcher?.Dispose(); renderCancellation?.Cancel(); renderCancellation?.Dispose(); pads.Dispose(); properties.Clear(); if (host != null) host.Recovered -= HostRecovered; host?.Dispose(); base.Dispose(); }
 }

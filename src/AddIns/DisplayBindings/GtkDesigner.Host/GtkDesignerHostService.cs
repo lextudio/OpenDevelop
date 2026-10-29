@@ -68,6 +68,18 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		session.Version++; return State(session, false);
 	}
 
+	[JsonRpcMethod("design/theme")]
+	public DesignerSessionState SetTheme(string sessionId, string documentId, long baseVersion, string theme)
+	{
+		EnsureSession(sessionId);
+		var session = Get(documentId); EnsureVersion(session, baseVersion);
+		if (!string.Equals(theme, "Light", StringComparison.OrdinalIgnoreCase) && !string.Equals(theme, "Dark", StringComparison.OrdinalIgnoreCase))
+			throw new ArgumentException("GTK preview theme must be Light or Dark.", nameof(theme));
+		session.Theme = string.Equals(theme, "Dark", StringComparison.OrdinalIgnoreCase) ? "Dark" : "Light";
+		session.Version++;
+		return State(session, true);
+	}
+
 	/// <summary>The companion wiring source and typed handler signatures for the document's
 	/// &lt;signal&gt; entries (see <see cref="GtkSignalWiring"/>). Needs the GIR catalogue.</summary>
 	[JsonRpcMethod("gtk/signal-wiring")]
@@ -232,7 +244,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		var result = new DesignerSessionState { SessionId = sessionId, DocumentId = session.DocumentId, Version = session.Version, Accepted = string.IsNullOrEmpty(session.Editor.Error), Error = session.Editor.Error, RootType = tree.Type, ComponentCount = Count(tree), Tree = tree, Render = render, CanUndo = session.Editor.CanUndo, CanRedo = session.Editor.CanRedo };
 		if (!string.IsNullOrEmpty(GtkPropertyMetadata.Diagnostic)) result.Diagnostics.Add(new DesignerDiagnostic { Severity = "Info", Message = GtkPropertyMetadata.Diagnostic });
 		if (GtkAdwaita.Requires(session.Editor.Text) && GtkAdwaita.Diagnostic.Length > 0) result.Diagnostics.Add(new DesignerDiagnostic { Severity = "Warning", Message = GtkAdwaita.Diagnostic });
-		foreach (var message in session.PreviewDiagnostics.Distinct()) result.Diagnostics.Add(new DesignerDiagnostic { Severity = "Warning", Message = message });
+		foreach (var message in session.PreviewDiagnostics.Concat(session.ResourceDiagnostics).Distinct()) result.Diagnostics.Add(new DesignerDiagnostic { Severity = "Warning", Message = message });
 		if (!string.IsNullOrEmpty(session.RenderDiagnostic)) result.Diagnostics.Add(new DesignerDiagnostic { Severity = "Warning", Message = session.RenderDiagnostic });
 		return result;
 	}
@@ -246,9 +258,10 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		document.Descendants().Where(e => e.Name.LocalName == "signal").Remove();
 		var xml = document.ToString(SaveOptions.DisableFormatting);
 		var diagnostics = new List<string>();
+		var customWidgets = GtkCustomWidgetPreview.Load(session.FileName, diagnostics);
 		if (GtkPropertyMetadata.Catalog is { } catalog)
 			xml = GtkPreviewSanitizer.Sanitize(xml, catalog, diagnostics, GtkPropertyMetadata.LayoutChildClass, UnavailableReason(session),
-				string.IsNullOrEmpty(session.FileName) ? null : Path.GetDirectoryName(session.FileName), PreviewDirectory);
+				string.IsNullOrEmpty(session.FileName) ? null : Path.GetDirectoryName(session.FileName), PreviewDirectory, customWidgets);
 		session.PreviewDiagnostics = diagnostics;
 		return xml;
 	}
@@ -290,14 +303,45 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		if (string.IsNullOrEmpty(rootId) || rootId.StartsWith("$", StringComparison.Ordinal)) return null;
 		try {
 			var xml = PreviewXml(session);
-			var renderKey = rootId + ":" + Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(xml)));
+			var css = ProjectCss(session);
+			var resources = GtkProjectResources.Fingerprint(session.FileName);
+			var renderKey = rootId + ":" + session.Theme + ":" + Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(xml + "\n/* OpenDevelop CSS */\n" + css.Text + "\n/* OpenDevelop resources */\n" + resources)));
 			if (session.CachedRenderKey == renderKey && session.CachedRender != null)
 				return new DesignerRenderFrame { Sequence = session.Version, Width = session.CachedRender.Width, Height = session.CachedRender.Height, PngBase64 = session.CachedRender.PngBase64 };
-			var bytes = NativeGtkRenderer.Render(session, xml, rootId, out var width, out var height);
+			byte[] bytes;
+			int width, height;
+			try {
+				bytes = NativeGtkRenderer.Render(session, xml, rootId, css.Path, session.Theme, resources, out width, out height);
+			} finally {
+				// The display belongs to the shared GTK host. CSS is needed for native layout and the
+				// snapshot only; retaining it afterwards would leak one document's theme into another.
+				session.DisposeCss();
+			}
 			var frame = new DesignerRenderFrame { Sequence = session.Version, Width = width, Height = height, PngBase64 = Convert.ToBase64String(bytes) };
 			session.CachedRenderKey = renderKey; session.CachedRender = frame;
 			return frame;
 		} catch (Exception ex) { session.RenderDiagnostic = ex.Message; return null; }
+	}
+	/// <summary>
+	/// GtkBuilder does not name its application's CSS, so a design document needs a deterministic,
+	/// local convention. A sibling <c>MainWindow.css</c> wins; otherwise a sibling
+	/// <c>style.css</c> is used. The file is never copied or rewritten: the isolated host reads it
+	/// at render time, which keeps a source-editor CSS save followed by Refresh deterministic.
+	/// </summary>
+	static (string? Path, string Text) ProjectCss(DocumentSession session)
+	{
+		if (string.IsNullOrWhiteSpace(session.FileName)) return (null, "");
+		var directory = Path.GetDirectoryName(session.FileName);
+		if (string.IsNullOrWhiteSpace(directory)) return (null, "");
+		var stem = Path.GetFileNameWithoutExtension(session.FileName);
+		foreach (var candidate in new[] { Path.Combine(directory, stem + ".css"), Path.Combine(directory, "style.css") }.Distinct(StringComparer.OrdinalIgnoreCase)) {
+			try {
+				if (File.Exists(candidate)) return (candidate, File.ReadAllText(candidate));
+			} catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) {
+				session.PreviewDiagnostics.Add("Could not read GTK preview CSS '" + candidate + "': " + ex.Message);
+			}
+		}
+		return (null, "");
 	}
 	/// <summary>Height of the title bar the host draws above a window's content, mirroring the WinForms
 	/// host's PortableFormTitleBarHeight. A GtkWindow's own title bar belongs to the window manager and
@@ -305,6 +349,12 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	/// then owns the conversion between the frame it reports (surface) and its own client coordinates:
 	/// HitTest subtracts this, Node and DropNode add it back.</summary>
 	const int WindowTitleBarHeight = 30;
+
+	/// <summary>Body size given to a window preview whose content paints nothing. Measuring such a
+	/// window yields zero, and a frame that is all title bar reads as a broken preview rather than
+	/// an empty design.</summary>
+	const int EmptyWindowWidth = 320;
+	const int EmptyWindowHeight = 200;
 
 	/// <summary>How far the client content sits below the top of the reported frame. Zero for a root
 	/// that is not a window, which is then reported exactly as it is.</summary>
@@ -317,120 +367,159 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		static readonly object Gate = new();
 		static Gsk.CairoRenderer? renderer;
 
-		public static byte[] Render(DocumentSession session, string xml, string rootId, out int width, out int height)
+		public static byte[] Render(DocumentSession session, string xml, string rootId, string? cssPath, string theme, string resourceKey, out int width, out int height)
 		{
 			lock (Gate) {
-				if (session.NativeVersion != session.Version || session.NativeRootId != rootId) session.LoadNative(xml, rootId);
-				var root = session.NativeRoot ?? throw new InvalidOperationException($"GTK object '{rootId}' is not a widget.");
-				root.Measure(Gtk.Orientation.Horizontal, -1, out _, out var naturalWidth, out _, out _);
-				width = Math.Max(1, naturalWidth);
-				root.Measure(Gtk.Orientation.Vertical, width, out _, out var naturalHeight, out _, out _);
-				height = Math.Max(1, naturalHeight);
-				if (root is Gtk.Window window) {
-					window.GetDefaultSize(out var defaultWidth, out var defaultHeight);
-					width = Math.Max(width, defaultWidth); height = Math.Max(height, defaultHeight);
-				}
-				root.SetSizeRequest(width, height);
-				root.Realize();
-				root.Allocate(width, height, -1, null);
-				if (!root.GetMapped()) {
-					if (root is Gtk.Window nativeWindow) nativeWindow.SetOpacity(0);
-					root.SetVisible(true);
-				}
-				root.QueueDraw();
-				DrainMainContext();
-				var paintTarget = root is Gtk.Window mappedWindow ? mappedWindow.GetChild() ?? root : root;
-				// Which object is being rendered, and what the realized widget for it is, decides the frame size:
-				// a child has no default size of its own and falls back to its natural size. Traced only when
-				// asked for, because a designer that reports a diagnostic per render surfaces it to the user.
-				if (Environment.GetEnvironmentVariable("OD_GTK_DUMP_TREE") == "1")
-					session.RenderDiagnostic = "render root=" + rootId
-						+ " class=" + (session.NativeRoot?.GetType().Name ?? "?")
-						+ " size=" + session.NativeRoot?.GetWidth() + "x" + session.NativeRoot?.GetHeight()
-						+ " v" + session.Version + "\n"
-						+ DescribeWidgetTree(paintTarget, 0)
-						+ session.RenderDiagnostic;
-				// ToNode, not FreeToNode: gtk_snapshot_free_to_node frees the GtkSnapshot, but its
-				// managed wrapper keeps a toggle reference, and releasing that later (from the GC)
-				// touched freed memory - a native 0xC0000005 in ToggleRegistration.RemoveToggleRef.
-				// ToNode leaves the snapshot alive and the wrapper disposes it normally.
-				// WidgetPaintable is the supported GTK4 route for snapshotting a widget at a chosen size, and
-				// it is what every non-window root uses - but for a window's content it produces an empty node
-				// here, so the frame comes back blank. SnapshotChild is the only route that yields pixels at
-				// all, and its node is the one the content last drew.
-				Gsk.RenderNode? content;
-				using (var snapshot = Gtk.Snapshot.New()) {
-					if (!ReferenceEquals(paintTarget, root)) root.SnapshotChild(paintTarget, snapshot);
-					else {
-						using var paintable = Gtk.WidgetPaintable.New(paintTarget);
-						paintable.Snapshot(snapshot, width, height);
-					}
-					content = snapshot.ToNode();
-				}
-				if (content == null) throw new InvalidOperationException("GTK produced an empty render node.");
-				// A window is previewed with a title bar the host composes itself, because the real one
-				// belongs to the window manager. The content moves down by exactly WindowTitleBarHeight
-				// inside the frame and the frame is that much taller, which is why every coordinate the
-				// host reports or accepts is converted - see WindowTitleBarOffset.
-				var titleBar = root is Gtk.Window ? WindowTitleBarHeight : 0;
-				Gsk.RenderNode? node;
-				using (var frame = Gtk.Snapshot.New()) {
-					// The window is opaque. A bare GtkBox draws no background, so without this the
-					// canvas's own dotted backdrop shows through the whole design and the preview reads
-					// as floating controls rather than a window. WinForms gets this for free from the
-					// form's BackColor; here it has to be painted, over the full frame - title bar and
-					// content alike - and bounded by a border so the window has an edge.
-					var whole = new Graphene.Rect();
-					whole.Init(0, 0, width, height + titleBar);
-					frame.AppendColor(CaptionColor(1.0, 1.0, 1.0), whole);
-					foreach (var edge in new (float X, float Y, float W, float H)[] { (0, 0, width, 1), (0, height + titleBar - 1, width, 1), (0, 0, 1, height + titleBar), (width - 1, 0, 1, height + titleBar) }) {
-						var border = new Graphene.Rect();
-						border.Init(edge.Item1, edge.Item2, edge.Item3, edge.Item4);
-						frame.AppendColor(CaptionColor(0.60, 0.60, 0.60), border);
-					}
-					if (titleBar > 0) {
-						var band = new Graphene.Rect(); band.Init(1, 1, width - 2, titleBar - 1);
-						frame.AppendColor(CaptionColor(0.94, 0.94, 0.94), band);
-						var separator = new Graphene.Rect(); separator.Init(0, titleBar - 1, width, 1);
-						frame.AppendColor(CaptionColor(0.70, 0.70, 0.70), separator);
-						using var layout = Pango.Layout.New(root.GetPangoContext());
-						layout.SetText(root is Gtk.Window titled ? titled.GetTitle() ?? "" : "", -1);
-						using var font = Pango.FontDescription.FromString("Sans 11");
-						layout.SetFontDescription(font);
-						frame.Save();
-						var textOffset = new Graphene.Point();
-						textOffset.Init(8, 7);
-						frame.Translate(textOffset);
-						frame.AppendLayout(layout, CaptionColor(0.15, 0.15, 0.15));
-						frame.Restore();
-					}
-					frame.Save();
-					var shift = new Graphene.Point(); shift.Init(0, titleBar);
-					frame.Translate(shift);
-					frame.AppendNode(content);
-					frame.Restore();
-					node = frame.ToNode();
-				}
-				if (node == null) throw new InvalidOperationException("GTK produced an empty render node.");
-				renderer ??= CreateRenderer();
-				// The viewport has to be explicit. A node's bounds are the extent of what it drew, not the
-				// allocation it drew into: a background-less Box with a label and a button reports 806x62 at
-				// (-3, 2.66) - the two rows plus the button's shadow - for content allocated 800x600, and a
-				// null viewport renders exactly those bounds. Clip to the allocation instead.
-				var viewport = new Graphene.Rect();
-				viewport.Init(0, 0, width, height + (root is Gtk.Window ? WindowTitleBarHeight : 0));
-				using var texture = renderer.RenderTexture(node, viewport);
-				// Whatever GTK produced is what the canvas has to lay out, so report the texture's size and
-				// not the size that was requested. A frame that claims more pixels than it carries is what
-				// turned a too-small render into a stretched, distorted surface.
-				width = Math.Max(1, texture.Width);
-				height = Math.Max(1, texture.Height);
-				node.Unref();
-				var pngPath = Path.Combine(Path.GetTempPath(), "OpenDevelop-GtkPreview-" + Guid.NewGuid().ToString("N") + ".png");
+				dynamic settings = Gtk.Settings.GetDefault();
+				var previousTheme = settings.GtkApplicationPreferDarkTheme;
+				settings.GtkApplicationPreferDarkTheme = string.Equals(theme, "Dark", StringComparison.OrdinalIgnoreCase);
 				try {
-					if (!texture.SaveToPng(pngPath)) throw new InvalidOperationException("GTK could not encode the preview texture.");
-					return File.ReadAllBytes(pngPath);
-				} finally { try { File.Delete(pngPath); } catch { } }
+					if (session.NativeVersion != session.Version || session.NativeRootId != rootId || session.NativeResourceKey != resourceKey) session.LoadNative(xml, rootId, resourceKey);
+					var root = session.NativeRoot ?? throw new InvalidOperationException($"GTK object '{rootId}' is not a widget.");
+					ApplyCss(session, root, cssPath);
+					root.Measure(Gtk.Orientation.Horizontal, -1, out _, out var naturalWidth, out _, out _);
+					width = Math.Max(1, naturalWidth);
+					root.Measure(Gtk.Orientation.Vertical, width, out _, out var naturalHeight, out _, out _);
+					height = Math.Max(1, naturalHeight);
+					if (root is Gtk.Window window) {
+						window.GetDefaultSize(out var defaultWidth, out var defaultHeight);
+						width = Math.Max(width, defaultWidth); height = Math.Max(height, defaultHeight);
+					}
+					root.SetSizeRequest(width, height);
+					root.Realize();
+					root.Allocate(width, height, -1, null);
+					if (!root.GetMapped()) {
+						if (root is Gtk.Window nativeWindow) nativeWindow.SetOpacity(0);
+						root.SetVisible(true);
+					}
+					root.QueueDraw();
+					DrainMainContext();
+					var paintTarget = root is Gtk.Window mappedWindow ? mappedWindow.GetChild() ?? root : root;
+					// Which object is being rendered, and what the realized widget for it is, decides the frame size:
+					// a child has no default size of its own and falls back to its natural size. Traced only when
+					// asked for, because a designer that reports a diagnostic per render surfaces it to the user.
+					if (Environment.GetEnvironmentVariable("OD_GTK_DUMP_TREE") == "1")
+						session.RenderDiagnostic = "render root=" + rootId
+							+ " class=" + (session.NativeRoot?.GetType().Name ?? "?")
+							+ " size=" + session.NativeRoot?.GetWidth() + "x" + session.NativeRoot?.GetHeight()
+							+ " v" + session.Version + "\n"
+							+ DescribeWidgetTree(paintTarget, 0)
+							+ session.RenderDiagnostic;
+					// ToNode, not FreeToNode: gtk_snapshot_free_to_node frees the GtkSnapshot, but its
+					// managed wrapper keeps a toggle reference, and releasing that later (from the GC)
+					// touched freed memory - a native 0xC0000005 in ToggleRegistration.RemoveToggleRef.
+					// ToNode leaves the snapshot alive and the wrapper disposes it normally.
+					// WidgetPaintable is the supported GTK4 route for snapshotting a widget at a chosen size, and
+					// it is what every non-window root uses - but for a window's content it produces an empty node
+					// here, so the frame comes back blank. SnapshotChild is the only route that yields pixels at
+					// all, and its node is the one the content last drew.
+					Gsk.RenderNode? content;
+					using (var snapshot = Gtk.Snapshot.New()) {
+						if (!ReferenceEquals(paintTarget, root)) root.SnapshotChild(paintTarget, snapshot);
+						else {
+							using var paintable = Gtk.WidgetPaintable.New(paintTarget);
+							paintable.Snapshot(snapshot, width, height);
+						}
+						content = snapshot.ToNode();
+					}
+						// A container whose content paints nothing - an empty box, or an AdwNavigationView
+					// with no page yet - yields no node. That is the state right after a widget is
+					// dropped from the toolbox, so a window previews its chrome around an empty body at
+					// a usable size instead of failing the render and leaving the canvas blank. Any
+					// other empty root is a document that cannot be previewed at all and stays an error.
+					if (content == null) {
+						if (root is not Gtk.Window) throw new InvalidOperationException("GTK produced an empty render node.");
+						width = Math.Max(width, EmptyWindowWidth);
+						height = Math.Max(height, EmptyWindowHeight);
+					}
+					// A window is previewed with a title bar the host composes itself, because the real one
+					// belongs to the window manager. The content moves down by exactly WindowTitleBarHeight
+					// inside the frame and the frame is that much taller, which is why every coordinate the
+					// host reports or accepts is converted - see WindowTitleBarOffset.
+					var titleBar = root is Gtk.Window ? WindowTitleBarHeight : 0;
+					var darkChrome = string.Equals(theme, "Dark", StringComparison.OrdinalIgnoreCase);
+					Gsk.RenderNode? node;
+					using (var frame = Gtk.Snapshot.New()) {
+						// The window is opaque. A bare GtkBox draws no background, so without this the
+						// canvas's own dotted backdrop shows through the whole design and the preview reads
+						// as floating controls rather than a window. WinForms gets this for free from the
+						// form's BackColor; here it has to be painted, over the full frame - title bar and
+						// content alike - and bounded by a border so the window has an edge.
+						var whole = new Graphene.Rect();
+						whole.Init(0, 0, width, height + titleBar);
+						frame.AppendColor(darkChrome ? CaptionColor(0.12, 0.12, 0.12) : CaptionColor(1.0, 1.0, 1.0), whole);
+						foreach (var edge in new (float X, float Y, float W, float H)[] { (0, 0, width, 1), (0, height + titleBar - 1, width, 1), (0, 0, 1, height + titleBar), (width - 1, 0, 1, height + titleBar) }) {
+							var border = new Graphene.Rect();
+							border.Init(edge.Item1, edge.Item2, edge.Item3, edge.Item4);
+							frame.AppendColor(darkChrome ? CaptionColor(0.35, 0.35, 0.35) : CaptionColor(0.60, 0.60, 0.60), border);
+						}
+						if (titleBar > 0) {
+							var band = new Graphene.Rect(); band.Init(1, 1, width - 2, titleBar - 1);
+							frame.AppendColor(darkChrome ? CaptionColor(0.18, 0.18, 0.18) : CaptionColor(0.94, 0.94, 0.94), band);
+							var separator = new Graphene.Rect(); separator.Init(0, titleBar - 1, width, 1);
+							frame.AppendColor(darkChrome ? CaptionColor(0.40, 0.40, 0.40) : CaptionColor(0.70, 0.70, 0.70), separator);
+							using var layout = Pango.Layout.New(root.GetPangoContext());
+							layout.SetText(root is Gtk.Window titled ? titled.GetTitle() ?? "" : "", -1);
+							using var font = Pango.FontDescription.FromString("Sans 11");
+							layout.SetFontDescription(font);
+							frame.Save();
+							var textOffset = new Graphene.Point();
+							textOffset.Init(8, 7);
+							frame.Translate(textOffset);
+							frame.AppendLayout(layout, darkChrome ? CaptionColor(0.92, 0.92, 0.92) : CaptionColor(0.15, 0.15, 0.15));
+							frame.Restore();
+						}
+						frame.Save();
+						var shift = new Graphene.Point(); shift.Init(0, titleBar);
+						frame.Translate(shift);
+						if (content != null) frame.AppendNode(content);
+						frame.Restore();
+						node = frame.ToNode();
+					}
+					if (node == null) throw new InvalidOperationException("GTK produced an empty render node.");
+					renderer ??= CreateRenderer();
+					// The viewport has to be explicit. A node's bounds are the extent of what it drew, not the
+					// allocation it drew into: a background-less Box with a label and a button reports 806x62 at
+					// (-3, 2.66) - the two rows plus the button's shadow - for content allocated 800x600, and a
+					// null viewport renders exactly those bounds. Clip to the allocation instead.
+					var viewport = new Graphene.Rect();
+					viewport.Init(0, 0, width, height + (root is Gtk.Window ? WindowTitleBarHeight : 0));
+					using var texture = renderer.RenderTexture(node, viewport);
+					// Whatever GTK produced is what the canvas has to lay out, so report the texture's size and
+					// not the size that was requested. A frame that claims more pixels than it carries is what
+					// turned a too-small render into a stretched, distorted surface.
+					width = Math.Max(1, texture.Width);
+					height = Math.Max(1, texture.Height);
+					node.Unref();
+					var pngPath = Path.Combine(Path.GetTempPath(), "OpenDevelop-GtkPreview-" + Guid.NewGuid().ToString("N") + ".png");
+					try {
+						if (!texture.SaveToPng(pngPath)) throw new InvalidOperationException("GTK could not encode the preview texture.");
+						return File.ReadAllBytes(pngPath);
+					} finally { try { File.Delete(pngPath); } catch { } }
+				} finally {
+					settings.GtkApplicationPreferDarkTheme = previousTheme;
+				}
+			}
+		}
+
+		static void ApplyCss(DocumentSession session, Gtk.Widget root, string? cssPath)
+		{
+			session.DisposeCss();
+			if (string.IsNullOrEmpty(cssPath)) return;
+			try {
+				// Gir.Core exposes these GTK 4 APIs, but its generated priority enum has changed
+				// names across releases. The native value is GTK_STYLE_PROVIDER_PRIORITY_APPLICATION.
+				dynamic provider = Gtk.CssProvider.New();
+				provider.LoadFromPath(cssPath);
+				// A provider added to one widget's StyleContext does not cascade into descendants.
+				// Attach it to the display for this render instead; DisposeCss removes it before a
+				// different pooled document can be painted.
+				dynamic display = root.GetDisplay();
+				Gtk.StyleContext.AddProviderForDisplay(display, provider, 600);
+				session.CssProvider = provider;
+				session.CssDisplay = display;
+			} catch (Exception ex) {
+				session.PreviewDiagnostics.Add("GTK preview CSS '" + cssPath + "' was ignored: " + ex.GetBaseException().Message);
 			}
 		}
 
@@ -591,13 +680,23 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		public DesignerRenderFrame? CachedRender;
 		public Gtk.Builder? NativeBuilder;
 		public Gtk.Widget? NativeRoot;
+		public GtkProjectResources? Resources;
+		/// <summary>Diagnostics from the sibling GResource manifests. Replaced on every native load so
+		/// a fixed manifest stops reporting the old failure.</summary>
+		public List<string> ResourceDiagnostics = new();
+		public string NativeResourceKey = "";
+		public IDisposable? CssProvider;
+		public object? CssDisplay;
 		public string NativeRootId = "";
 		public long NativeVersion = -1;
 		public string FileName = "";
 		public long Version;
-		public void LoadNative(string xml, string rootId)
+		public string Theme = "Light";
+		public void LoadNative(string xml, string rootId, string resourceKey)
 		{
 			DisposeNative();
+			NativeResourceKey = resourceKey;
+			Resources = GtkProjectResources.Load(FileName, ResourceDiagnostics);
 			NativeBuilder = BuildFrom(xml);
 			NativeRoot = NativeBuilder.GetObject(rootId) as Gtk.Widget;
 			NativeRootId = rootId;
@@ -605,12 +704,30 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		}
 		public void DisposeNative()
 		{
+			DisposeCss();
 			if (NativeRoot is Gtk.Window window) { window.SetVisible(false); window.Destroy(); }
 			else if (NativeRoot != null) { NativeRoot.SetVisible(false); NativeRoot.Unrealize(); }
 			NativeRoot = null;
 			NativeBuilder?.Dispose();
 			NativeBuilder = null;
+			Resources?.Dispose();
+			Resources = null;
+			ResourceDiagnostics.Clear();
+			NativeResourceKey = "";
 			NativeVersion = -1;
+		}
+		public void DisposeCss()
+		{
+			try {
+				if (CssDisplay != null && CssProvider != null) {
+					dynamic display = CssDisplay;
+					dynamic provider = CssProvider;
+					Gtk.StyleContext.RemoveProviderForDisplay(display, provider);
+				}
+			} catch { }
+			try { CssProvider?.Dispose(); } catch { }
+			CssProvider = null;
+			CssDisplay = null;
 		}
 	}
 }

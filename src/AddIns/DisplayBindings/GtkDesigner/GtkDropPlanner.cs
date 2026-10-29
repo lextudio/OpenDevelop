@@ -26,10 +26,14 @@ public sealed record GtkDropPlan(string ContainerId, int? Index, (int Column, in
 /// </summary>
 public static class GtkDropPlanner
 {
-	/// <summary>Builder classes that take dropped children.</summary>
+	/// <summary>Builder classes that take dropped children. Libadwaita's navigation widgets are
+	/// containers with a fixed child shape - an AdwNavigationView takes pages, an AdwNavigationPage
+	/// takes one child - and the drop target has to be found on them for a page or its content to be
+	/// added at all; the source editor rejects a child the class does not accept.</summary>
 	public static readonly HashSet<string> Containers = new(StringComparer.Ordinal) {
 		"GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow",
-		"GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "AdwClamp", "AdwPreferencesPage", "AdwPreferencesGroup"
+		"GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "AdwClamp", "AdwPreferencesPage", "AdwPreferencesGroup",
+		"AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView"
 	};
 
 	const double LineThickness = 2;

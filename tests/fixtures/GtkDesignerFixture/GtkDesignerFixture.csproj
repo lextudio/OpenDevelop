@@ -8,6 +8,9 @@
   <ItemGroup>
     <None Update="Windows/MainWindow.ui" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Windows/SettingsWindow.ui" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Windows/ResourceWindow.ui" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Windows/Resources.gresource.xml" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Windows/fixture-mark.svg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="GirCore.Gtk-4.0" Version="0.8.1" />

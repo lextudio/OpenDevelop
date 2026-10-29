@@ -19,6 +19,23 @@ public sealed class GtkPreviewSanitizerTests
 	static XElement Object(XDocument doc, string id) => doc.Descendants().Single(e => e.Name.LocalName == "object" && (string?)e.Attribute("id") == id);
 
 	[Fact]
+	public void CustomWidgetPreview_MapsToADeclaredGtkClass_AndAliasesProperties()
+	{
+		var directory = Path.Combine(Path.GetTempPath(), "GtkDesignerPreview-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		try {
+			File.WriteAllText(Path.Combine(directory, ".gtkdesigner.json"), """{"customWidgets":{"MyAppStarRating":{"previewClass":"GtkProgressBar","propertyMap":{"stars":"fraction"}}}}""");
+			var diagnostics = new List<string>();
+			var preview = GtkCustomWidgetPreview.Load(Path.Combine(directory, "MainWindow.ui"), diagnostics);
+			var xml = GtkPreviewSanitizer.Sanitize("""<interface><requires lib="gtk" version="4.0"/><object class="GtkWindow" id="w"><child><object class="MyAppStarRating" id="rating"><property name="stars">0.75</property></object></child></object></interface>""", GirCatalogTests.LoadedCatalog(), diagnostics, customWidgets: preview);
+			var rating = Object(XDocument.Parse(xml), "rating");
+			Assert.Equal("GtkProgressBar", (string?)rating.Attribute("class"));
+			Assert.Equal("0.75", rating.Elements("property").Single(p => (string?)p.Attribute("name") == "fraction").Value);
+			Assert.Contains(diagnostics, message => message.Contains("previewed as GtkProgressBar", StringComparison.Ordinal));
+		} finally { Directory.Delete(directory, true); }
+	}
+
+	[Fact]
 	public void CustomWidget_BecomesALabelledPlaceholder_ThatKeepsItsId()
 	{
 		var (doc, diagnostics) = Sanitize("""
