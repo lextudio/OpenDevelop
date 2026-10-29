@@ -16,7 +16,24 @@ mkdir -p "$payload/Sdks/OpenDevelop.Addin.Sdk/Sdk" "$payload/SdkResolvers/OpenDe
 rsync -a "$root/src/SDK/OpenDevelop.Addin.Sdk/Sdk/" "$payload/Sdks/OpenDevelop.Addin.Sdk/Sdk/"
 rsync -a --include '*.dll' --exclude '*' "$resolver/" "$payload/SdkResolvers/OpenDevelop.Addin.SdkResolver/"
 printf '<SdkResolver><Path>OpenDevelop.Addin.SdkResolver.dll</Path></SdkResolver>\n' > "$payload/SdkResolvers/OpenDevelop.Addin.SdkResolver/OpenDevelop.Addin.SdkResolver.xml"
-for name in kernel32 user32 gdi32 dwmapi uxtheme shell32 gdiplus comdlg32 PresentationNative_cor3; do [[ -f "$base/$name.dll" ]] && cp -p "$base/$name.dll" "$payload/$name.dll"; done
+# LibreWPF.Sdk compiles its Win32-compatibility shim on Linux and writes it to TargetDir (not to the
+# framework-dependent PublishDir) as <name>.dll.so and lib<name>.dll.so, the file names the runtime
+# probes for a P/Invoke of "<name>.dll". AvalonDock calls kernel32 directly, so without them the
+# docking manager's Loaded handler throws DllNotFoundException and the main window never renders.
+for name in kernel32 user32 gdi32 dwmapi uxtheme shell32 gdiplus comdlg32 PresentationNative_cor3; do
+  for shim in "$name.dll.so" "lib$name.dll.so"; do
+    [[ -f "$base/$shim" ]] || { echo "required LibreWPF shim not found: $base/$shim" >&2; exit 1; }
+    cp -p "$base/$shim" "$payload/$shim"
+  done
+done
+# Silk.NET finds GLFW under runtimes/<rid>/native only by mapping the machine's distro RID
+# (ubuntu.24.04-x64, ...) to linux-x64 through the runtime's RID graph. Stock Microsoft runtimes
+# carry no distro RIDs, so on them it never probes runtimes/linux-x64/native, GLFW fails to load,
+# no window can be created and the app exits 0 without output. Its application-base probe still
+# works, so keep the small GLFW library there as well.
+glfw="$payload/runtimes/$rid/native/libglfw.so.3"
+[[ -f "$glfw" ]] || { echo "GLFW native library is missing: $glfw" >&2; exit 1; }
+cp -p "$glfw" "$payload/libglfw.so.3"
 cat > "$payload/OpenDevelop" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail

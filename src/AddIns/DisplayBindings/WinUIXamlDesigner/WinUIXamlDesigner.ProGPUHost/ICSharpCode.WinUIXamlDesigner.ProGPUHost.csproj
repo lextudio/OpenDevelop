@@ -21,6 +21,11 @@
     <!-- Same App.xaml -> self-contained dictionary engine the out-of-process hosts use. -->
     <Compile Include="..\WinUIXamlDesigner.UnoDesignHost\AppResourceBuilder.cs" Link="AppResourceBuilder.cs" />
     <PackageReference Include="ProGPU.WinUI" />
+    <!-- The public preview.65 designer packages floor these at preview.65, which no feed carries. Direct
+         references resolve them from the synchronized local feed instead of probing GitHub Packages. -->
+    <PackageReference Include="ProGPU.Layout" />
+    <PackageReference Include="ProGPU.Virtualization" />
+    <PackageReference Include="ProGPU.WinRT" />
     <!-- Packed locally from the same wieslawsoltes/ProGPU commit that produced the published
          preview.47 feed (bab4dbef); upstream marks these packable but never published them. -->
     <PackageReference Include="ProGPU.WinUI.Designer" />
