@@ -169,6 +169,69 @@ function Assert-HostPublished {
     if (-not (Test-Path $publishDir)) {
         throw "dist.ps1: host publish output not found at $publishDir. Run './dist.ps1 -Phase host' first (or omit -Phase to run everything)."
     }
+    Assert-HostAddinAssemblyMatch -HostPublish $publishDir -AddInRoot (Join-Path $repoRoot 'AddIns')
+}
+
+function Get-AssemblyReferenceVersion {
+    <#
+      The version an assembly was compiled against for a given assembly name, read from its own
+      metadata. Returns $null when the assembly does not reference it (or cannot be read).
+    #>
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Name)
+
+    $stream = [IO.File]::OpenRead($Path)
+    $pe = $null
+    try {
+        $pe = [System.Reflection.PortableExecutable.PEReader]::new($stream)
+        if (-not $pe.HasMetadata) { return $null }
+        $reader = [System.Reflection.Metadata.PEReaderExtensions]::GetMetadataReader($pe)
+        foreach ($handle in $reader.AssemblyReferences) {
+            $reference = $reader.GetAssemblyReference($handle)
+            if ([string]::Equals($reader.GetString($reference.Name), $Name, [StringComparison]::OrdinalIgnoreCase)) {
+                return $reference.Version
+            }
+        }
+        return $null
+    } catch {
+        return $null
+    } finally {
+        if ($pe) { $pe.Dispose() }
+        $stream.Dispose()
+    }
+}
+
+function Assert-HostAddinAssemblyMatch {
+    <#
+      Fails when an add-in under AddIns\ was compiled against a NEWER ICSharpCode.SharpDevelop than
+      the host publish being assembled. `-Phase payload` reuses whatever publish is on disk, so
+      building add-ins from a newer commit and packaging them with an older host produces an app
+      that dies at startup in CoreStartup.RunInitialization with TypeLoadException - an add-in
+      calling an interface the older host does not define (e.g.
+      IProjectFileNestingProvider from the GTK designer's file-nesting command).
+
+      Only "add-in newer than host" is refused: a host that is newer than an add-in is the normal
+      incremental case after `-Phase host`, and is what running the phases in order gives you.
+    #>
+    param([Parameter(Mandatory)][string]$HostPublish, [Parameter(Mandatory)][string]$AddInRoot)
+
+    $hostAssembly = Join-Path $HostPublish 'ICSharpCode.SharpDevelop.dll'
+    if (-not (Test-Path -LiteralPath $hostAssembly) -or -not (Test-Path -LiteralPath $AddInRoot)) { return }
+    $hostVersion = [System.Reflection.AssemblyName]::GetAssemblyName($hostAssembly).Version
+
+    $newer = [System.Collections.Generic.List[object]]::new()
+    foreach ($assemblyFile in Get-ChildItem -LiteralPath $AddInRoot -Recurse -Filter '*.dll' -File) {
+        $referenced = Get-AssemblyReferenceVersion -Path $assemblyFile.FullName -Name 'ICSharpCode.SharpDevelop'
+        if ($null -ne $referenced -and $referenced -gt $hostVersion) {
+            $newer.Add([pscustomobject]@{ Path = $assemblyFile.FullName; Version = $referenced })
+        }
+    }
+    if ($newer.Count -eq 0) { return }
+
+    $details = ($newer | Select-Object -First 5 | ForEach-Object { "  $($_.Path) was built against $($_.Version)" }) -join [Environment]::NewLine
+    throw ("dist.ps1: $($newer.Count) add-in(s) under $AddInRoot were built against a newer ICSharpCode.SharpDevelop " +
+        "than the host publish ($hostVersion):`n$details`n" +
+        "Rebuild both sides from one commit - './dist.ps1 -From host' (host, addins, payload, ...) instead of '-Phase payload' - " +
+        "or the app will fail at startup with TypeLoadException in an add-in command.")
 }
 
 function New-TempDir {
