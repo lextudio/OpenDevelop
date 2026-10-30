@@ -22,12 +22,14 @@ if [[ -z "${pwsh_bin}" ]]; then
 fi
 
 args=()
+skip_feed_sync=0
 for a in "$@"; do
   case "${a}" in
     # Explicit map: PowerShell does NOT bind "-skip-publish" to "-SkipPublish" (dashes
     # must go), and --debug is a PowerShell COMMON parameter name, so the ps1 exposes
     # -Configuration instead. Unrecognized flags fall through to PS's strict binding.
     --skip-publish) args+=("-SkipPublish") ;;
+    --skip-feed-sync) args+=("-SkipFeedSync"); skip_feed_sync=1 ;;
     --debug)        args+=("-Configuration" "Debug") ;;
     --*)            args+=("-${a#--}") ;;
     *)              args+=("${a}") ;;
@@ -111,8 +113,12 @@ fi
 
 # Synchronize the authenticated GitHub Packages closure into this checkout before restore. The
 # helper reads gh's credential in memory only; it never writes a token to NuGet.config or output.
+# A CI run has no gh credential it can read that feed with, so it passes --skip-feed-sync and
+# restores the same closure from GitHub Packages with the token NuGet.config already gets.
 export NUGET_PACKAGES="${repo_root}/artifacts/nuget-packages"
-"${pwsh_bin}" -NoProfile -File "${repo_root}/sync-openavalon-feed.ps1"
+if [[ "${skip_feed_sync:-0}" -eq 0 ]]; then
+  "${pwsh_bin}" -NoProfile -File "${repo_root}/sync-openavalon-feed.ps1"
+fi
 
 # macOS's default bash (3.2) treats "${arr[@]}" on an EMPTY array as an unbound-variable
 # error under `set -u` - guard explicitly instead of relying on `${arr[@]:-}`-style

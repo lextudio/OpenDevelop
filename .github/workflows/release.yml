@@ -81,7 +81,9 @@ jobs:
         shell: cmd
         run: |
           set "GITHUB_ACTIONS="
-          dist.windows.bat
+          rem No gh credential can read the lextudio feed with this ephemeral token; NuGet restores
+          rem the same closure from GitHub Packages with the credential the job env provides.
+          dist.windows.bat --skip-feed-sync
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows
@@ -108,7 +110,9 @@ jobs:
       - name: Build the macOS ARM64 distribution
         run: |
           unset GITHUB_ACTIONS
-          ./dist.macos.sh
+          # No gh credential can read the lextudio feed with this ephemeral token; NuGet restores
+          # the same closure from GitHub Packages with the credential the job env provides.
+          ./dist.macos.sh --skip-feed-sync
       # dist.macos.sh verifies that the bundle renders its first workbench window.  Keep the
       # release gate stronger: run the assembled .app itself, not project output, through the
       # principal add-in/child-process paths before the DMG is allowed to leave this checkout.

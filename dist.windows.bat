@@ -55,11 +55,15 @@ rem single leading dash and left to PowerShell's own strict parameter binding to
 rem Quote every forwarded token separately: the old space-concatenated command line split values
 rem such as a future path-valued parameter.
 set "ARGS="
+set "SKIP_FEED_SYNC="
 :parse
 if "%~1"=="" goto run
 set "ARG=%~1"
 if /i "%ARG%"=="--skip-publish" (
     set "ARGS=%ARGS% "-SkipPublish""
+) else if /i "%ARG%"=="--skip-feed-sync" (
+    set "ARGS=%ARGS% "-SkipFeedSync""
+    set "SKIP_FEED_SYNC=1"
 ) else if /i "%ARG%"=="--debug" (
     set "ARGS=%ARGS% "-Configuration" "Debug""
 ) else if "%ARG:~0,2%"=="--" (
@@ -75,8 +79,12 @@ rem Keep same-version fork packages out of the user-wide NuGet cache.
 set "NUGET_PACKAGES=%REPO_ROOT%artifacts\nuget-packages"
 rem Synchronize the authenticated GitHub Packages closure into this checkout before restore. The
 rem helper reads gh's credential in memory only; it never writes a token to NuGet.config or output.
-"%PWSH%" -NoProfile -File "%REPO_ROOT%sync-openavalon-feed.ps1"
-if errorlevel 1 exit /b %ERRORLEVEL%
+rem A CI run has no gh credential it can read that feed with, so it passes --skip-feed-sync and
+rem restores the same closure from GitHub Packages with the token NuGet.config already gets.
+if not defined SKIP_FEED_SYNC (
+    "%PWSH%" -NoProfile -File "%REPO_ROOT%sync-openavalon-feed.ps1"
+    if errorlevel 1 exit /b %ERRORLEVEL%
+)
 
 rem -File (not -Command) so the exit code of dist.ps1 reaches the caller unchanged; its smoke-test
 rem failure path exits 1 and CI/callers must see that.
