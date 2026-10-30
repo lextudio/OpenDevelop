@@ -812,8 +812,12 @@ function Test-WindowsDistributionZip {
         }
         $forbidden = $archive.Entries.FullName | Where-Object {
             $name = $_.ToLowerInvariant()
+            # Same scope correction as the staged payload: a runtimes directory under
+            # THIRD-PARTY-NOTICES is an attribution copy of a package layout, not a foreign binary.
+            $isNotice = $name -match '(^|/)third-party-notices/'
             $name.EndsWith('.pdb') -or $name.EndsWith('.dylib') -or $name.EndsWith('.so') -or
-            $name -match '/ref/' -or $name -match '/runtimes/(linux|unix|osx)'
+            $name -match '/ref/' -or
+            (-not $isNotice -and $name -match '/runtimes/(linux|unix|osx)')
         }
         if ($forbidden) { throw "ZIP contains build-only or foreign assets:$([Environment]::NewLine)$(($forbidden | Select-Object -First 12) -join [Environment]::NewLine)" }
     } finally { $archive.Dispose() }
