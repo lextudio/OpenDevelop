@@ -11,7 +11,11 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- The linked upstream designer sources declare their own usings and rely on
+         "Path" meaning System.Windows.Shapes.Path; an implicit "global using System.IO" makes it
+         ambiguous (CS0104) in CanvasPositionHandle/PathContextMenuExtension/PathHandlerExtension.
+         This project's own sources already list what they use. -->
+    <ImplicitUsings>disable</ImplicitUsings>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <NoWarn>$(NoWarn);CS1572;CS1573;CS1591</NoWarn>
   </PropertyGroup>

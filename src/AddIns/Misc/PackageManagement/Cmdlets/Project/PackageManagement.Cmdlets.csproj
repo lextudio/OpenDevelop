@@ -16,6 +16,10 @@
       <HintPath>..\..\RequiredLibraries\NuGet.Core.dll</HintPath>
     </Reference>
     <PackageReference Include="Microsoft.PowerShell.SDK" VersionOverride="7.6.4" />
+    <!-- Microsoft.PowerShell.SDK brings Microsoft's System.Drawing.Common, which the compiler then
+         prefers over the ProGPU build LibreWinForms draws with; LWFDRAW001 rejects that mix. Promote
+         it to a direct reference with no assets so the ProGPU assembly is the selected one. -->
+    <PackageReference Include="System.Drawing.Common" VersionOverride="10.0.5" ExcludeAssets="compile;runtime" PrivateAssets="all" />
     <!-- Microsoft.PowerShell.SDK 7.6.x pulls System.Data.SqlClient 4.9.1 transitively, which is
          patched (no NU1903) - so the previous explicit 4.8.6 pin is no longer needed. -->
   </ItemGroup>
