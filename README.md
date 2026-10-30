@@ -6,7 +6,7 @@
 
 OpenDevelop started from the classic SharpDevelop code base, but it has since been extensively re-engineered for modern .NET. It brings together technologies and ideas from SharpDevelop, MonoDevelop and Visual Studio for Mac, ILSpy, XAML Studio, Roslyn, and the Visual Studio Editor platform, while building new infrastructure of its own.
 
-OpenDevelop runs on .NET 10 through [LibreWPF](https://github.com/wieslawsoltes/WPF), bringing a WPF-based development environment to Windows, macOS, and Linux.
+OpenDevelop runs on .NET 10 through [LibreWPF](https://github.com/wieslawsoltes/WPF), bringing a WPF-based development environment to Windows, macOS, and Linux. On Linux, [LINUX.md](LINUX.md) lists the runtime and native library prerequisites.
 
 ![WPF designer](images/wpf-designer.png)
 
