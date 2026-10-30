@@ -171,6 +171,8 @@ public sealed class GtkUiDocumentEditor
 			child.SetAttributeValue("type", existing == 0 ? "sidebar" : "content");
 		}
 		var siblings = parent.Elements().Where(e => e.Name.LocalName == "child" && e.Elements().Any(IsObject)).ToList();
+		// A GtkPaned has a start and an end child and GTK discards a third with a warning.
+		if (cls == "GtkPaned" && siblings.Count >= GtkDropPlanner.PanedCapacity) { Error = "A GtkPaned holds only a start and an end child."; return false; }
 		if (index is { } at && at >= 0 && at < siblings.Count) siblings[at].AddBeforeSelf(child);
 		else parent.Add(child);
 		return Commit();

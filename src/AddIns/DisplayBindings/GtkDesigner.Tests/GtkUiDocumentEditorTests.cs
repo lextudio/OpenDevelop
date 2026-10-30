@@ -71,6 +71,17 @@ public sealed class GtkUiDocumentEditorTests
 		Assert.True(editor.Add("contentBox", "GtkLabel")); // container still accepts children
 	}
 
+	[Fact] public void Paned_TakesAStartAndAnEndChildAndRejectsAThird()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkWindow" id="w"><child><object class="GtkPaned" id="paned"/></child></object></interface>"""), editor.Error);
+		Assert.True(editor.Add("paned", "GtkLabel"), editor.Error);
+		Assert.True(editor.Add("paned", "GtkButton", index: 1), editor.Error);
+		Assert.False(editor.Add("paned", "GtkLabel"));
+		Assert.Contains("start and an end", editor.Error);
+		Assert.Equal(2, editor.Text.Split("<child>").Length - 1 - 1); // the window's own <child> is not the paned's
+	}
+
 	[Fact] public void NavigationContainers_UseTheirGtkBuilderChildShapes()
 	{
 		var editor = new GtkUiDocumentEditor();

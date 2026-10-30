@@ -1,3 +1,4 @@
+using System.Linq;
 using ICSharpCode.GtkDesigner;
 using Xunit;
 
@@ -106,4 +107,38 @@ public sealed class GtkDropPlannerTests
 		Assert.Equal("2", added.Layout!["column"]);
 		Assert.Equal("3", added.Layout!["row"]);
 	}
+
+	// A horizontal paned in a 300x100 window: one 100-wide child at the start.
+	static GtkDropNode Paned(int children, string? orientation = null) => new("window", "GtkWindow", 0, 0, 300, 100, new[] {
+		new GtkDropNode("paned", "GtkPaned", 0, 0, 300, 100, Enumerable.Range(0, children)
+			.Select(i => new GtkDropNode("c" + i, "GtkLabel", i * 150, 0, 100, 100, Array.Empty<GtkDropNode>())).ToList(), Orientation: orientation)
+	});
+
+	[Fact]
+	public void Paned_EmptyTakesTheStartSlot()
+	{
+		var plan = GtkDropPlanner.Plan(Paned(0), 150, 50)!;
+		Assert.Equal("paned", plan.ContainerId);
+		Assert.Equal(0, plan.Index);
+	}
+
+	[Theory]
+	[InlineData(20, 0)]   // before the start child's middle: becomes the start child
+	[InlineData(200, 1)]  // after it: becomes the end child
+	public void Paned_OneChild_SlotFollowsTheAxis(double x, int expected)
+		=> Assert.Equal(expected, GtkDropPlanner.Plan(Paned(1), x, 50)!.Index);
+
+	[Fact]
+	public void Paned_Vertical_UsesTheYAxis()
+	{
+		var vertical = new GtkDropNode("window", "GtkWindow", 0, 0, 100, 300, new[] {
+			new GtkDropNode("paned", "GtkPaned", 0, 0, 100, 300, new[] { new GtkDropNode("a", "GtkLabel", 0, 0, 100, 100, Array.Empty<GtkDropNode>()) }, Orientation: "vertical")
+		});
+		Assert.Equal(0, GtkDropPlanner.Plan(vertical, 50, 20)!.Index);
+		Assert.Equal(1, GtkDropPlanner.Plan(vertical, 50, 200)!.Index);
+	}
+
+	[Fact]
+	public void Paned_Full_IsNotADropTarget()
+		=> Assert.Equal("window", GtkDropPlanner.Plan(Paned(2), 50, 50)!.ContainerId);
 }

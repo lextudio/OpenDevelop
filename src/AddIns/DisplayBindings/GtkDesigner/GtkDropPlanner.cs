@@ -48,6 +48,7 @@ public static class GtkDropPlanner
 		switch (container.ClassName) {
 			case "GtkBox": return PlanBox(container, x, y);
 			case "GtkGrid": return PlanGrid(container, x, y);
+			case "GtkPaned": return PlanPaned(container, x, y);
 			default: return new GtkDropPlan(container.Id, null, null, indicator);
 		}
 	}
@@ -59,7 +60,28 @@ public static class GtkDropPlanner
 			var deeper = DeepestContainer(child, x, y);
 			if (deeper != null) return deeper;
 		}
-		return Containers.Contains(node.ClassName) ? node : null;
+		return Containers.Contains(node.ClassName) && !IsFull(node) ? node : null;
+	}
+
+	/// <summary>A GtkPaned holds exactly two children (start, then end); GTK warns and discards a
+	/// third, so a full one is not a drop target and the drop lands in the container around it.</summary>
+	public const int PanedCapacity = 2;
+	static bool IsFull(GtkDropNode node) => node.ClassName == "GtkPaned" && node.Children.Count >= PanedCapacity;
+
+	/// <summary>The slot a drop fills: in a GtkBuilder document the first <c>&lt;child&gt;</c> of a
+	/// paned is its start child and the second its end child, so the index is 0 when the point lies
+	/// before the existing child's middle along the paned's axis (default horizontal) and 1 after it.</summary>
+	static GtkDropPlan PlanPaned(GtkDropNode paned, double x, double y)
+	{
+		var vertical = string.Equals(paned.Orientation, "vertical", StringComparison.OrdinalIgnoreCase);
+		var existing = paned.Children.FirstOrDefault(c => c.Width > 0 && c.Height > 0);
+		if (existing == null) return new GtkDropPlan(paned.Id, 0, null, (paned.X, paned.Y, paned.Width, paned.Height));
+		var before = vertical ? y < existing.Y + existing.Height / 2 : x < existing.X + existing.Width / 2;
+		var edge = before ? (vertical ? existing.Y : existing.X) : (vertical ? existing.Y + existing.Height : existing.X + existing.Width);
+		var line = vertical
+			? (paned.X, edge - LineThickness / 2, paned.Width, LineThickness)
+			: (edge - LineThickness / 2, paned.Y, LineThickness, paned.Height);
+		return new GtkDropPlan(paned.Id, before ? 0 : 1, null, line);
 	}
 
 	/// <summary>Index = how many children lie before the point along the box's axis (GtkBox's
