@@ -193,6 +193,18 @@ restore -> host -> addins -> designer-hosts (Windows only) -> payload -> smoke -
   phase fails with an access-denied that now explains itself.
 - Phases that consume earlier artifacts fail with an actionable message
   (*"Run './dist.ps1 -Phase host' first"*) instead of assembling around a missing host.
+- **The payload must carry nothing the app writes at run time.** The app's first launch writes
+  `SdkResolvers/Microsoft.Build.NuGetSdkResolver/Microsoft.Build.NuGetSdkResolver.xml` into its own
+  directory, naming that machine's SDK by absolute path, so it is only correct where it was written.
+  Copying is not the only way it gets in: the `smoke` phase launches the *packaged* app, which
+  writes a fresh one just before the archive is created. So every archive phase strips that one
+  resolver first (`RemoveRuntimeWrittenSdkResolverManifest`) - before the `.zip` and the `.dmg`,
+  after smoke - and the Windows zip is then checked for it. The copy steps exclude it as well, and
+  the packaged `OpenDevelop.Addin.SdkResolver` is a product file that is still shipped. v5.6.3
+  shipped the CI runner's `C:\Program Files\dotnet\sdk\10.0.401` manifest and every SDK-style
+  project load elsewhere failed with *"Could not load SDK Resolver. A manifest file exists, but the
+  path to the SDK Resolver DLL file could not be found"* (issue #21); the macOS `.dmg` of the same
+  release carried this machine's `10.0.302` path for the same reason.
 - Every completed phase prints its elapsed time. Use a full run's per-phase timings to choose
   further optimizations rather than comparing only noisy end-to-end durations.
 

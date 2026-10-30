@@ -171,8 +171,11 @@ rsync -a --delete \
   --exclude '**/*.a' \
   "$src/" "$bundle_macos/"
 # --delete leaves excluded paths alone (and --delete-excluded would also wipe the payload roots
-# above), so remove trees an older bundle already carries.
-rm -rf "$bundle_macos"/runtimes/win* "$bundle_macos"/runtimes/linux* "$bundle_macos"/runtimes/unix*
+# above), so remove trees an older bundle already carries. That includes the NuGet SDK-resolver
+# manifest the app writes into its own SdkResolvers folder when the bundle is launched: it names
+# this machine's SDK by absolute path, so a rebuilt bundle must not keep it (issue #21).
+rm -rf "$bundle_macos"/runtimes/win* "$bundle_macos"/runtimes/linux* "$bundle_macos"/runtimes/unix* \
+       "$bundle_macos/SdkResolvers/Microsoft.Build.NuGetSdkResolver"
 
 # Make the Addin SDK part of the installed IDE rather than a separately published
 # NuGet package. The resolver is built as part of SharpDevelop's project graph.

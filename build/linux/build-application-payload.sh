@@ -5,7 +5,11 @@ case "$rid" in linux-x64) other=linux-arm64;; linux-arm64) other=linux-x64;; *) 
 base="$root/src/Main/SharpDevelop/bin/$config/net10.0-windows"; src="$base/publish"; payload="$root/OpenDevelop-$rid"
 [[ -d "$src" && -d "$root/AddIns" ]] || { echo 'host publish or AddIns output is missing' >&2; exit 1; }
 rm -rf "$payload"; mkdir -p "$payload"
-rsync -a --exclude '/AddIns/***' --exclude '/data/***' --exclude '/runtimes/win*/***' --exclude '/runtimes/osx*/***' --exclude "/runtimes/$other/***" --exclude '**/*.a' "$src/" "$payload/"
+# Microsoft.Build.NuGetSdkResolver is written into the host publish folder by the app's own first
+# launch, naming that machine's SDK by absolute path; copied into the payload, every SDK-style
+# project load fails on any other machine with "A manifest file exists, but the path to the SDK
+# Resolver DLL file could not be found" (issue #21). The app rewrites it from the local SDK.
+rsync -a --exclude '/AddIns/***' --exclude '/data/***' --exclude '/SdkResolvers/Microsoft.Build.NuGetSdkResolver/***' --exclude '/runtimes/win*/***' --exclude '/runtimes/osx*/***' --exclude "/runtimes/$other/***" --exclude '**/*.a' "$src/" "$payload/"
 rsync -a "$root/data/" "$payload/data/"
 rsync -a --exclude '**/*.pdb' --exclude '**/ref/***' --exclude '**/runtimes/win*/***' --exclude '**/runtimes/osx*/***' --exclude "**/runtimes/$other/***" --exclude '**/*.dylib' --exclude '**/*.a' "$root/AddIns/" "$payload/AddIns/"
 # The SDK/resolver are product files: add-ins created by an installed IDE resolve them from the
@@ -16,6 +20,8 @@ mkdir -p "$payload/Sdks/OpenDevelop.Addin.Sdk/Sdk" "$payload/SdkResolvers/OpenDe
 rsync -a "$root/src/SDK/OpenDevelop.Addin.Sdk/Sdk/" "$payload/Sdks/OpenDevelop.Addin.Sdk/Sdk/"
 rsync -a --include '*.dll' --exclude '*' "$resolver/" "$payload/SdkResolvers/OpenDevelop.Addin.SdkResolver/"
 printf '<SdkResolver><Path>OpenDevelop.Addin.SdkResolver.dll</Path></SdkResolver>\n' > "$payload/SdkResolvers/OpenDevelop.Addin.SdkResolver/OpenDevelop.Addin.SdkResolver.xml"
+# Whatever the mirror could not exclude (an older payload layout) must not survive either.
+rm -rf "$payload/SdkResolvers/Microsoft.Build.NuGetSdkResolver"
 # LibreWPF.Sdk compiles its Win32-compatibility shim on Linux and writes it to TargetDir (not to the
 # framework-dependent PublishDir) as <name>.dll.so and lib<name>.dll.so, the file names the runtime
 # probes for a P/Invoke of "<name>.dll". AvalonDock calls kernel32 directly, so without them the

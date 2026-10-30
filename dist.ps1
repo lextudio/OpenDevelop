@@ -712,6 +712,13 @@ function Test-WindowsDistributionZip {
             }
         }
         if (-not ($archive.Entries.FullName | Where-Object { $_ -like "${prefix}AddIns/*.addin" })) { throw "ZIP lacks addin manifests: $ZipPath" }
+        # The smoke run launches the packaged app, which writes this manifest with this machine's SDK
+        # path. The archive phase removes it again; if it is back, a release would break every
+        # SDK-style project on another machine (issue #21).
+        $runtimeManifest = "${prefix}SdkResolvers/Microsoft.Build.NuGetSdkResolver/Microsoft.Build.NuGetSdkResolver.xml"
+        if ($archive.Entries.FullName -contains $runtimeManifest) {
+            throw "ZIP carries a runtime-written SDK resolver manifest ($runtimeManifest): its absolute SDK path only exists on the machine that built it. $ZipPath"
+        }
         # Mirror the designer-host checks in Test-WindowsDistributionPayload - they must survive the
         # staging/zip round-trip, not just be present in the staged payload dir.
         $expected = @(
@@ -758,6 +765,21 @@ function Test-WindowsDistributionZip {
 # Platform packaging
 # ---------------------------------------------------------------------------------------------
 
+function RemoveRuntimeWrittenSdkResolverManifest {
+    <#
+      The app writes SdkResolvers/Microsoft.Build.NuGetSdkResolver/*.xml into its own directory on
+      startup, naming the SDK of that machine by absolute path. Packaging copies a publish folder
+      that may already carry one, and the smoke phase then launches the packaged app, which writes
+      a fresh one - so the archive phase must strip it again or every release ships the build
+      machine's SDK path and every SDK-style project load fails elsewhere with "A manifest file
+      exists, but the path to the SDK Resolver DLL file could not be found" (issue #21). The
+      installed app rewrites the manifest from the local SDK on first launch.
+    #>
+    param([Parameter(Mandatory)][string]$PayloadRoot)
+    $stale = Join-Path $PayloadRoot 'SdkResolvers/Microsoft.Build.NuGetSdkResolver'
+    if (Test-Path -LiteralPath $stale) { Remove-Item -LiteralPath $stale -Recurse -Force }
+}
+
 function Invoke-MacPayload {
     Write-Host "==> Building framework-dependent .app bundle ($config)..."
     $env:DIST_CONFIG = $config
@@ -803,6 +825,7 @@ function Invoke-MacSmoke {
 
 function Invoke-MacArchive {
     Write-Host '==> Building .dmg...'
+    RemoveRuntimeWrittenSdkResolverManifest -PayloadRoot (Join-Path $repoRoot 'OpenDevelop.app/Contents/MacOS')
     Test-DistributionLegalFiles -Destination (Join-Path $repoRoot 'OpenDevelop.app/Contents/MacOS')
     Push-Location $repoRoot
     try {
@@ -870,6 +893,7 @@ function Invoke-LinuxPayload {
 }
 function Invoke-LinuxSmoke { Test-PackagedAppStartup -FilePath $dotnet -ArgumentList @((Join-Path $payloadRoot 'OpenDevelop.dll')) -WorkingDirectory $payloadRoot }
 function Invoke-LinuxArchive {
+    RemoveRuntimeWrittenSdkResolverManifest -PayloadRoot $payloadRoot
     Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
     Push-Location $repoRoot; try { & zip -q -r $zipPath (Split-Path -Leaf $payloadRoot) } finally { Pop-Location }
     if ($LASTEXITCODE -ne 0) { throw "zip exited with code $LASTEXITCODE" }; return $zipPath
@@ -890,9 +914,23 @@ function Invoke-WindowsPayload {
     # host publish closure. data/ and AddIns/ have different authoritative sources and are synced
     # below, so exclude them here instead of purging/recreating thousands of unchanged files.
     $payloadStepStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    # The app writes SdkResolvers\Microsoft.Build.NuGetSdkResolver\*.xml at startup, naming the SDK of
+    # whatever machine it ran on by absolute path. A publish folder that has been launched once -
+    # which a build machine's does - therefore carries a manifest that is wrong everywhere else, and
+    # shipping it makes every SDK-style project load fail with "A manifest file exists, but the path
+    # to the SDK Resolver DLL file could not be found". v5.6.3 shipped exactly that (the CI runner's
+    # C:\Program Files\dotnet\sdk\10.0.401). Only that resolver is dropped: the app rewrites it from the
+    # local SDK on first launch, while SdkResolvers/ may legitimately carry packaged resolvers such as
+    # OpenDevelop.Addin.SdkResolver, which the macOS bundle and Linux payload both ship.
+    $staleResolvers = Join-Path $payloadRoot 'SdkResolvers/Microsoft.Build.NuGetSdkResolver'
+    if (Test-Path -LiteralPath $staleResolvers) { Remove-Item -LiteralPath $staleResolvers -Recurse -Force }
     Sync-WindowsDirectoryMirror -Source $publishDir -Destination $payloadRoot -Description 'host publish into Windows payload' `
-        -ExcludeDirectories @('AddIns', 'data') `
+        -ExcludeDirectories @('AddIns', 'data', 'Microsoft.Build.NuGetSdkResolver') `
         -ExcludeFiles @('OpenDevelop.exe', 'OpenDevelopARM64.exe', 'OpenDevelop.Bootstrap.dll', 'OpenDevelop.Bootstrap.deps.json', 'OpenDevelop.Bootstrap.runtimeconfig.json')
+    if (Test-Path -LiteralPath $staleResolvers) {
+        throw "dist.ps1: the Windows payload still carries $staleResolvers after the host mirror. " +
+              "The app writes that manifest at runtime, naming one machine's SDK by absolute path, so shipping it breaks every SDK-style project on any other machine (issue #21)."
+    }
     Write-DistributionStepElapsed $payloadStepStopwatch 'host mirror'
 
     # `dotnet publish` may preserve symbol/reference files from a Debug (and occasionally a
@@ -1134,6 +1172,7 @@ function Invoke-WindowsArchive {
     }
 
     Write-Host '==> Building .zip...'
+    RemoveRuntimeWrittenSdkResolverManifest -PayloadRoot $payloadRoot
     Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [System.IO.Compression.ZipFile]::CreateFromDirectory(

@@ -94,6 +94,10 @@ namespace ICSharpCode.SharpDevelop.Project
 					$"No installed .NET SDK matches this process's architecture ({RuntimeInformation.ProcessArchitecture}). " +
 					"SDK-style project loading (open/evaluate) will fail for every project until a matching-architecture " +
 					".NET SDK 10 (or newer) is installed - see the setup instructions.");
+				// Whatever manifest is on disk was written for a different SDK and must not outlive this
+				// decision: leaving it turns "no usable SDK" into a project-load failure that blames a
+				// missing DLL path in a folder the user never created.
+				RemoveStaleNuGetSdkResolverManifest(Path.GetDirectoryName(typeof(MSBuildInternals).Assembly.Location));
 				return;
 			}
 
@@ -203,6 +207,9 @@ namespace ICSharpCode.SharpDevelop.Project
 			string resolverAssembly = Path.Combine(latestSdk, resolverName + ".dll");
 			if (!File.Exists(resolverAssembly)) {
 				LoggingService.Warn($"{resolverName}.dll not found in {latestSdk}; NuGet-based MSBuild Sdks will not resolve.");
+				// An older manifest still names some other SDK's copy, which MSBuild reports as a
+				// missing DLL rather than as the SDK problem it is.
+				RemoveStaleNuGetSdkResolverManifest(binDir);
 				return;
 			}
 
@@ -223,6 +230,37 @@ namespace ICSharpCode.SharpDevelop.Project
 				LoggingService.Warn($"Could not update the {resolverName} manifest at {manifestPath}.", ex);
 			} catch (UnauthorizedAccessException ex) {
 				LoggingService.Warn($"Could not update the {resolverName} manifest at {manifestPath}.", ex);
+			}
+		}
+
+		/// <summary>
+		/// Deletes this app's NuGet SDK-resolver manifest when the DLL it names no longer exists.
+		///
+		/// A manifest names an absolute path inside one SDK installation, so it only describes the
+		/// machine that wrote it. A released payload that shipped one built on a different machine -
+		/// or a payload whose SDK was later uninstalled - makes MSBuild fail every SDK-style project
+		/// load with "Could not load SDK Resolver. A manifest file exists, but the path to the SDK
+		/// Resolver DLL file could not be found", naming a path the user never created. With no
+		/// manifest MSBuild simply has no extra resolver, NuGet-based Sdk resolution fails as an
+		/// ordinary unresolved SDK, and the SDK-availability report says what is really missing.
+		/// </summary>
+		public static void RemoveStaleNuGetSdkResolverManifest(string binDir)
+		{
+			if (string.IsNullOrEmpty(binDir))
+				return;
+			const string resolverName = "Microsoft.Build.NuGetSdkResolver";
+			string manifestPath = Path.Combine(binDir, "SdkResolvers", resolverName, resolverName + ".xml");
+			if (!File.Exists(manifestPath))
+				return;
+			try {
+				string declared = System.Xml.Linq.XDocument.Load(manifestPath)
+					.Root?.Element("Path")?.Value?.Trim();
+				if (!string.IsNullOrEmpty(declared) && System.IO.Path.IsPathRooted(declared) && File.Exists(declared))
+					return;
+				File.Delete(manifestPath);
+				LoggingService.Info($"Removed the stale {resolverName} manifest at {manifestPath} (it named '{declared}', which does not exist).");
+			} catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is System.Xml.XmlException) {
+				LoggingService.Warn($"Could not remove the stale {resolverName} manifest at {manifestPath}.", ex);
 			}
 		}
 		
