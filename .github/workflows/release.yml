@@ -50,7 +50,14 @@ jobs:
           green=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&per_page=50" \
             --jq '[.workflow_runs[] | select(.conclusion == "success")] | length')
           if [[ "$green" -lt 1 ]]; then
-            echo "::error::No successful CI run exists for $GITHUB_SHA. Run ci.yml on this commit first (a push to master, or a dispatch)."; exit 1
+            # Escape hatch for a release whose CI is red only for infrastructure reasons (hosted
+            # macOS runners that never arrive and time out as "cancelled"). Set the repository
+            # variable for one release, then delete it, so the gate stays on by default.
+            if [[ "${{ vars.RELEASE_SKIP_CI_GATE }}" == "true" ]]; then
+              echo "::warning::No successful CI run exists for $GITHUB_SHA; continuing because RELEASE_SKIP_CI_GATE is true."
+            else
+              echo "::error::No successful CI run exists for $GITHUB_SHA. Run ci.yml on this commit first (a push to master, or a dispatch)."; exit 1
+            fi
           fi
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             echo "::error::A release for $GITHUB_REF_NAME already exists."; exit 1
