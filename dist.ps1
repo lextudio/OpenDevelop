@@ -740,9 +740,14 @@ function Test-WindowsDistributionPayload {
     # needlessly architecture/OS-agnostic rather than deployable.
     $forbidden = Get-ChildItem -LiteralPath $PayloadRoot -Recurse -File | Where-Object {
         $relative = $_.FullName.Substring($PayloadRoot.Length).Replace('\', '/').ToLowerInvariant()
+        # SPDX and notice generation preserves the NuGet package layout under THIRD-PARTY-NOTICES,
+        # including its runtimes directories; those are text-only attribution copies, so a notice for
+        # another OS is not a foreign native asset. Same scope correction the Linux payload audit
+        # already carries. Binaries under the notices tree are still rejected.
+        $isNotice = $relative -match '(^|/)third-party-notices/'
         $_.Extension -in '.pdb', '.dylib', '.so' -or
         $relative -match '/ref/' -or
-        $relative -match '/runtimes/(linux|unix|osx)'
+        (-not $isNotice -and $relative -match '/runtimes/(linux|unix|osx)')
     }
     if ($forbidden) {
         $sample = ($forbidden | Select-Object -First 12 -ExpandProperty FullName) -join [Environment]::NewLine
