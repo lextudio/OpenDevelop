@@ -170,6 +170,12 @@ if [[ "${OD_BUNDLE_VERIFY_REQUIRE_DEBUGGER:-0}" == 1 || "$darwin_major" -lt 27 ]
   debug_source="$repo_root/tests/fixtures/DebugTestApp/Program.cs"
   debug_line=$(awk '/var message = ComputeGreeting\("World"\);/ { print NR; exit }' "$debug_source")
   [[ -n "$debug_line" ]] || fail 'debug fixture breakpoint source line was not found'
+  # The check starts the fixture binary, not the project, so a release checkout that never built
+  # the test tree has nothing to run ("DebugTestApp does not exist and cannot be started").
+  if [[ ! -x "$repo_root/tests/fixtures/DebugTestApp/bin/Debug/net10.0/DebugTestApp" ]]; then
+    echo '==> Building the debug fixture the check launches...'
+    dotnet build "$debug_project" -c Debug -v q -nologo || fail 'the debug fixture did not build'
+  fi
   invoke od.open-solution "$debug_solution" | jq -e '.success == true' >/dev/null || fail 'debug fixture solution did not open'
   invoke od.debug.clear-breakpoints >/dev/null
   invoke od.debug.set-breakpoint "$debug_source" "$debug_line" | jq -e --argjson line "$debug_line" '.success == true and (.lines | index($line)) != null' >/dev/null \

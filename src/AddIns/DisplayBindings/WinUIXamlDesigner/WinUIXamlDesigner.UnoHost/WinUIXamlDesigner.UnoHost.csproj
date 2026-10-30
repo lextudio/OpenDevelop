@@ -24,8 +24,13 @@
     <ItemGroup>
       <HostOutput Include="$(TargetDir)**" />
     </ItemGroup>
+    <!-- Same reason as the Microsoft host: resolve the ".." segments before the Copy task sees
+         the path, or a deep CI checkout trips the Windows path-length limit (MSB3021). -->
+    <PropertyGroup>
+      <_HostDeployRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\UnoHost'))</_HostDeployRoot>
+    </PropertyGroup>
     <Copy SourceFiles="@(HostOutput)" SkipUnchangedFiles="true"
-          DestinationFiles="@(HostOutput->'$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\UnoHost\%(RecursiveDir)%(Filename)%(Extension)')" />
+          DestinationFiles="@(HostOutput->'$(_HostDeployRoot)\%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
 
   <ItemGroup>

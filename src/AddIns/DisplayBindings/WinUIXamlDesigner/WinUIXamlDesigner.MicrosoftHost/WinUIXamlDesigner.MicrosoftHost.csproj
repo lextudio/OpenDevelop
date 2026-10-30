@@ -94,7 +94,13 @@
          the one matching the running process (and falls back to the flat <CLR major>\ layout an
          older deployment used). This host is a real unpackaged WinUI 3 app, so it cannot be
          RID-agnostic. -->
+    <!-- The unnormalized ".." segments made the destination 260+ characters on a CI checkout
+         ("The specified path ... is too long", MSB3021) even though the real path is short; the
+         Copy task checks the string it is given, not the resolved path. -->
+    <PropertyGroup>
+      <_HostDeployRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\MicrosoftHost'))</_HostDeployRoot>
+    </PropertyGroup>
     <Copy SourceFiles="@(HostOutput)" SkipUnchangedFiles="true"
-          DestinationFiles="@(HostOutput->'$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\MicrosoftHost\$(HostRuntimeDirectory)\$(RuntimeIdentifier)\%(RecursiveDir)%(Filename)%(Extension)')" />
+          DestinationFiles="@(HostOutput->'$(_HostDeployRoot)\$(HostRuntimeDirectory)\$(RuntimeIdentifier)\%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
 </Project>
