@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <!-- One fixture, one RID per debugger journey: the release check passes -p:RuntimeIdentifier=<rid>
+       -p:SelfContained=true so the produced apphost and runtime are the requested bitness (the
+       hosted runners have only the runner's own .NET runtime installed, so a framework-dependent
+       x86 or arm64 target could not start there). -->
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+</Project>

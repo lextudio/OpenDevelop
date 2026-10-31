@@ -96,12 +96,21 @@ jobs:
           rem No gh credential can read the lextudio feed with this ephemeral token; NuGet restores
           rem the same closure from GitHub Packages with the credential the job env provides.
           dist.windows.bat --skip-feed-sync
+      # The packaged payload is what users get, and its per-RID assets exist only so a project built
+      # for another bitness can be designed and debugged. Prove that on the artifact itself rather
+      # than on a development tree: the x64 runner debugs x64 and x86, the ARM64 runner debugs
+      # arm64, x64 and x86 through Windows' emulation. A pruned runtime pack or debugger shim turns
+      # this step red instead of reaching users.
+      - name: Verify the packaged payload by bitness
+        shell: pwsh
+        run: |
+          $targets = if ($env:RUNNER_ARCH -eq 'ARM64') { @('win-arm64', 'win-x64', 'win-x86') } else { @('win-x64', 'win-x86') }
+          ./build/windows/verify-packaged-app.ps1 -PayloadRoot OpenDevelop-win -Targets $targets
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows
           path: OpenDevelop-win.7z
           if-no-files-found: error
-
   macos:
     name: Package macOS ARM64
     needs: prepare
