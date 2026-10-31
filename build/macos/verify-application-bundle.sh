@@ -18,8 +18,36 @@ config_dir=$(mktemp -d "${TMPDIR:-/tmp}/opendevelop-bundle-verify.XXXXXX")
 lease_id="bundle-verify-$(uuidgen)"
 app_pid=''
 
+# A failed request says only that the endpoint stopped answering, which is exactly what a crashed
+# application looks like from here. Print what the process and its own log say before leaving, so a
+# red release names the cause instead of "curl: (52) Empty reply from server".
+dump_diagnostics() {
+  local status report log
+  status=$(curl --silent --max-time 2 "${base_url:-http://127.0.0.1:$port}/api/v1/agent/status" 2>/dev/null || true)
+  echo '--- macOS bundle verification diagnostics -----------------------' >&2
+  echo "agent status: ${status:-<no answer>}" >&2
+  if [[ -n "${app_pid:-}" ]] && kill -0 "$app_pid" 2>/dev/null; then
+    echo "app process: alive (pid $app_pid)" >&2
+  else
+    echo "app process: not running" >&2
+  fi
+  for log in "${TMPDIR:-/tmp}/OpenDevelop.log" "$HOME/Library/Logs/OpenDevelop/OpenDevelop.log"; do
+    if [[ -f "$log" ]]; then
+      echo "--- $log (last 80 lines) ---" >&2
+      tail -n 80 "$log" >&2 || true
+    fi
+  done
+  report=$(ls -t "$HOME/Library/Logs/DiagnosticReports"/*OpenDevelop* 2>/dev/null | head -1 || true)
+  if [[ -n "$report" ]]; then
+    echo "--- newest crash report: $report ---" >&2
+    head -n 40 "$report" >&2 || true
+  fi
+  echo '-----------------------------------------------------------------' >&2
+}
+
 fail() {
   echo "::error::macOS bundle verification: $*" >&2
+  dump_diagnostics
   exit 1
 }
 
