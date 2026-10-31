@@ -69,6 +69,7 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.Contains("MainWindow.ui", companions);
 		Assert.Contains("MainWindow.ui.cs", companions);
 		Assert.Contains("MainWindow.css", companions);
+		var sized = await app.InvokeAsync("od.window.maximize"); Assert.True(sized.GetProperty("success").GetBoolean(), sized.ToString());
 		var opened = await app.InvokeAsync("od.open-file", uiPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
 		var status = await WaitAsync();
 		Assert.True(status.GetProperty("active").GetBoolean(), status.ToString());
@@ -210,6 +211,12 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var pasted = await app.InvokeAsync("od.gtk-designer.clipboard", "paste"); Assert.True(pasted.GetProperty("success").GetBoolean(), pasted.ToString());
 		Assert.Equal(6, pasted.GetProperty("elementCount").GetInt32()); Assert.Equal(new[] { "runButton1" }, pasted.GetProperty("selectedIds").EnumerateArray().Select(item => item.GetString()).ToArray());
 		var undoPaste = await app.InvokeAsync("od.gtk-designer.undo"); Assert.Equal(5, undoPaste.GetProperty("elementCount").GetInt32());
+		// Align sets halign on the selection as one undo step; an invalid command does nothing.
+		await app.InvokeAsync("od.gtk-designer.select", "runButton");
+		var aligned = await app.InvokeAsync("od.gtk-designer.clipboard", "align-h-center"); Assert.True(aligned.GetProperty("success").GetBoolean(), aligned.ToString());
+		Assert.False((await app.InvokeAsync("od.gtk-designer.clipboard", "align-h-bogus")).GetProperty("success").GetBoolean());
+		var alignedStatus = await app.InvokeAsync("od.gtk-designer.status"); Assert.True(alignedStatus.GetProperty("canUndo").GetBoolean());
+		var undoAlign = await app.InvokeAsync("od.gtk-designer.undo"); Assert.Equal(5, undoAlign.GetProperty("elementCount").GetInt32());
 		// Move First/Last keep the element selected; the first child cannot move earlier.
 		await app.InvokeAsync("od.gtk-designer.select", "heading");
 		var movedFirst = await app.InvokeAsync("od.gtk-designer.clipboard", "move-first"); Assert.True(movedFirst.GetProperty("success").GetBoolean(), movedFirst.ToString());
@@ -423,6 +430,22 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.True((await app.InvokeAsync("od.gtk-designer.properties.reset", "LayoutColumn")).GetProperty("success").GetBoolean());
 		Assert.True((await app.InvokeAsync("od.file.save", gridPath)).GetProperty("success").GetBoolean());
 		Assert.DoesNotMatch(@"id=""second"">((?!</object>)[\s\S])*name=""column""", (await File.ReadAllTextAsync(gridPath, TestContext.Current.CancellationToken)).Replace("\r", ""));
+
+		// Grid context commands: span, insert and delete row each edit the document as one undo step.
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "first")).GetProperty("success").GetBoolean());
+		var countBefore = (await app.InvokeAsync("od.gtk-designer.status")).GetProperty("elementCount").GetInt32();
+		Assert.True((await app.InvokeAsync("od.gtk-designer.clipboard", "span-column-more")).GetProperty("success").GetBoolean());
+		Assert.False((await app.InvokeAsync("od.gtk-designer.clipboard", "span-row-less")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.file.save", gridPath)).GetProperty("success").GetBoolean());
+		Assert.Matches(@"id=""first"">[\s\S]*?name=""column-span"">2</property>", (await File.ReadAllTextAsync(gridPath, TestContext.Current.CancellationToken)).Replace("\r", ""));
+		await app.InvokeAsync("od.gtk-designer.undo");
+		Assert.True((await app.InvokeAsync("od.gtk-designer.clipboard", "grid-insert-row")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.file.save", gridPath)).GetProperty("success").GetBoolean());
+		Assert.Matches(@"id=""first"">[\s\S]*?name=""row"">1</property>", (await File.ReadAllTextAsync(gridPath, TestContext.Current.CancellationToken)).Replace("\r", ""));
+		var deleted = await app.InvokeAsync("od.gtk-designer.clipboard", "grid-delete-row"); Assert.True(deleted.GetProperty("success").GetBoolean(), deleted.ToString());
+		Assert.True(deleted.GetProperty("elementCount").GetInt32() < countBefore, deleted.ToString());
+		await app.InvokeAsync("od.gtk-designer.undo");
+		Assert.Equal(countBefore, (await app.InvokeAsync("od.gtk-designer.status")).GetProperty("elementCount").GetInt32());
 		await app.InvokeAsync("od.close-active-view");
 	}
 

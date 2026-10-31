@@ -185,7 +185,7 @@ public static class GtkDesignerDevFlowActions
 	}
 	[DevFlowAction("od.gtk-designer.delete", Description = "Delete the selected GTK object")]
 	public static string Delete() { var view = Activate(); return JsonSerializer.Serialize(new { success = view?.DeleteSelected() == true, elementCount = view?.ElementCount ?? 0 }); }
-	[DevFlowAction("od.gtk-designer.clipboard", Description = "Run the design surface's cut|copy|paste|duplicate|move-first|move-earlier|move-later|move-last|unwrap|wrap-<GtkClass> command on the selection, as its context menu does")]
+	[DevFlowAction("od.gtk-designer.clipboard", Description = "Run the design surface's cut|copy|paste|duplicate|move-first|move-earlier|move-later|move-last|unwrap|paste-here|align-<h|v>-<fill|start|center|end>|span-<column|row>-<more|less>|grid-insert-row|grid-insert-column|grid-delete-row|grid-delete-column|wrap-<GtkClass> command on the selection, as its context menu does")]
 	public static string Clipboard(string command)
 	{
 		var view = Activate();
@@ -196,6 +196,11 @@ public static class GtkDesignerDevFlowActions
 			"duplicate" => view.DuplicateSelection(),
 			"move-first" or "move-earlier" or "move-later" or "move-last" => view.MoveSelected(command),
 			"unwrap" => view.UnwrapSelected(),
+			"paste-here" => view.PasteHere(),
+			_ when command.StartsWith("align-", StringComparison.Ordinal) => view.AlignSelected(command),
+			_ when command.StartsWith("span-", StringComparison.Ordinal) => view.SpanSelected(command),
+			"grid-insert-row" or "grid-insert-column" => view.InsertGridTrack(command),
+			"grid-delete-row" or "grid-delete-column" => view.DeleteGridTrack(command),
 			_ when command.StartsWith("wrap-", StringComparison.Ordinal) => view.WrapSelected(command.Substring("wrap-".Length)),
 			_ => false
 		};

@@ -667,6 +667,27 @@ box or stack), so these are moves, not z-order "Bring to Front". A move that can
 Earlier on the first child) is disabled and sends nothing; a host refusal shows its reason instead of
 escaping.
 
+### Align and Grid commands (2026-10-31)
+
+Paste Here pastes the clipboard into the container under the context-menu point, using the same point-to-container
+plan as a toolbox drop; in a box the snippets go after the child that precedes the planned position, elsewhere
+they are appended (a grid cell is not honoured: the paste contract has no cell argument). MewUI has no
+point-to-container planner yet, so it does not offer Paste Here.
+
+The context menu also offers Align → Horizontal/Vertical: Fill, Start, Center, End, which sets the
+GtkWidget `halign`/`valign` property of every selected object (the GTK counterpart of the WPF
+designer's Align commands; absolute alignment to a sibling edge does not exist in these
+containers). For a single selected child of a `GtkGrid`, Grid → Column/Row span +1/-1 edits
+`layout:column-span`/`layout:row-span` (never below 1; the decrease is disabled at 1), and
+Grid → Insert row above / Insert column left shifts the child and every later-placed sibling by
+one and stretches any child spanning the new line, like the WPF Grid commands. Align goes through `design/set-property-many` (`GtkUiDocumentEditor.Batch`: every selected object in one
+undo step, all-or-nothing); span goes through the existing property path (`design/set-property`); the insert is its own contract,
+`design/insert-grid-track` -> `GtkUiDocumentEditor.InsertGridTrack`, one undo step; Grid -> Delete row / Delete column
+(`design/delete-grid-track` -> `DeleteGridTrack`) removes the selected child's line, deleting the children wholly
+inside it, shrinking spanners and shifting later children back, also one undo step
+(`GtkUiDocumentEditorGridTrackTests`). The main GTK journey exercises Align, and the grid journey span, insert row and
+delete row, through `od.gtk-designer.clipboard`; neither has been run against a GTK runtime outside CI.
+
 ### Wrap (2026-10-14)
 
 Wrap → GtkBox / GtkFrame (the WPF and WinUI designers' Wrap) puts the selected sibling objects into a

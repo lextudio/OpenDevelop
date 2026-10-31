@@ -272,11 +272,15 @@ public sealed class GtkUiDocumentEditor
 			// An id-less object is pasted but has no identity to select.
 			if ((string?)child.Elements().First(IsObject).Attribute("id") is { } createdId) created.Add(createdId);
 		}
-		var anchor = afterId == null ? null : Find(afterId)?.Parent;
+		var anchor = afterId == null || afterId == PasteFirst ? null : Find(afterId)?.Parent;
 		if (anchor?.Name.LocalName == "child" && anchor.Parent == target) anchor.AddAfterSelf(parsed);
+		else if (afterId == PasteFirst && target.Elements().FirstOrDefault(e => e.Name.LocalName == "child") is { } first) first.AddBeforeSelf(parsed);
 		else target.Add(parsed);
 		return Commit();
 	}
+
+	/// <summary>Pass as <c>afterId</c> to <see cref="Paste"/> to insert before the container's first child.</summary>
+	public const string PasteFirst = "$first";
 
 	/// <summary>Wraps sibling objects in a new <paramref name="className"/> placed where the first
 	/// of them (in document order) was, keeping their order - the WPF/WinUI designers' Wrap. All ids
@@ -386,6 +390,74 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
+	/// <summary>Opens an empty row above (or column left of) a GtkGrid child: the child and every sibling placed at or
+	/// after that line shift by one, and a sibling spanning the line grows by one. One undo step.</summary>
+	public bool InsertGridTrack(string id, bool row)
+	{
+		if (Find(id) is not { Parent: { Name.LocalName: "child", Parent: { } grid } } child || (string?)grid.Attribute("class") != "GtkGrid")
+			return false;
+		var position = row ? "row" : "column";
+		var span = position + "-span";
+		int Read(XElement obj, string name, int fallback)
+		{
+			var value = obj.Elements().FirstOrDefault(e => e.Name.LocalName == "layout")?.Elements()
+				.FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), name));
+			return value != null && int.TryParse(value.Value, out var n) ? n : fallback;
+		}
+		void Write(XElement obj, string name, int value)
+		{
+			var text = value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+			var layout = obj.Elements().FirstOrDefault(e => e.Name.LocalName == "layout");
+			if (layout == null) { layout = new XElement("layout"); obj.Add(layout); }
+			var property = layout.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), name));
+			if (property == null) layout.Add(new XElement("property", new XAttribute("name", name), text));
+			else property.Value = text;
+		}
+		var line = Read(child, position, 0);
+		var siblings = grid.Elements().Where(e => e.Name.LocalName == "child").SelectMany(e => e.Elements().Where(IsObject)).ToList();
+		foreach (var sibling in siblings) {
+			var start = Read(sibling, position, 0);
+			var length = Read(sibling, span, 1);
+			if (start >= line) Write(sibling, position, start + 1);
+			else if (start + length > line) Write(sibling, span, length + 1);
+		}
+		return Commit();
+	}
+
+	/// <summary>Deletes the grid row (or column) the given GtkGrid child sits in, as one undo step: children lying wholly
+	/// inside it are removed with it, a child spanning it shrinks by one, and later children shift back by one.</summary>
+	public bool DeleteGridTrack(string id, bool row)
+	{
+		if (Find(id) is not { Parent: { Name.LocalName: "child", Parent: { } grid } } child || (string?)grid.Attribute("class") != "GtkGrid")
+			return false;
+		var position = row ? "row" : "column";
+		var span = position + "-span";
+		int Read(XElement obj, string name, int fallback)
+		{
+			var value = obj.Elements().FirstOrDefault(e => e.Name.LocalName == "layout")?.Elements()
+				.FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), name));
+			return value != null && int.TryParse(value.Value, out var n) ? n : fallback;
+		}
+		void Write(XElement obj, string name, int value)
+		{
+			var layout = obj.Elements().First(e => e.Name.LocalName == "layout");
+			var property = layout.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), name));
+			var text = value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+			if (property == null) layout.Add(new XElement("property", new XAttribute("name", name), text));
+			else property.Value = text;
+		}
+		var line = Read(child, position, 0);
+		foreach (var holder in grid.Elements().Where(e => e.Name.LocalName == "child" && e.Elements().Any(IsObject)).ToList()) {
+			var sibling = holder.Elements().First(IsObject);
+			var start = Read(sibling, position, 0);
+			var length = Read(sibling, span, 1);
+			if (start == line && length == 1) holder.Remove();
+			else if (start > line) Write(sibling, position, start - 1);
+			else if (start <= line && line < start + length) Write(sibling, span, length - 1);
+		}
+		return Commit();
+	}
+
 	public bool SetSignal(string id, string signalName, string handlerName)
 	{
 		var element = Find(id);
@@ -420,6 +492,28 @@ public sealed class GtkUiDocumentEditor
 	public bool Undo() => Move(undo, redo);
 	public bool Redo() => Move(redo, undo);
 	bool Move(List<string> from, List<string> to) { if (from.Count == 0) return false; to.Add(Text); Text = from[^1]; from.RemoveAt(from.Count - 1); return Parse(); }
+	/// <summary>Runs several edits as one undo step: when they all succeed the history entries they added collapse into
+	/// the first; when one fails or throws the document, undo and redo history are restored (a throw is rethrown).</summary>
+	public bool Batch(Func<bool> edits)
+	{
+		var mark = undo.Count;
+		var start = Text;
+		var redoBefore = redo.ToList();
+		void Rollback()
+		{
+			if (undo.Count > mark) undo.RemoveRange(mark, undo.Count - mark);
+			redo.Clear(); redo.AddRange(redoBefore);
+			Text = start;
+			Parse();
+		}
+		bool succeeded;
+		try { succeeded = edits(); }
+		catch { Rollback(); throw; }
+		if (!succeeded) { Rollback(); return false; }
+		if (undo.Count > mark + 1) undo.RemoveRange(mark + 1, undo.Count - mark - 1);
+		return true;
+	}
+
 	bool Commit() { undo.Add(Text); redo.Clear(); Text = Serialize(); return Parse(); }
 	string Serialize() { using var writer = new Utf8StringWriter(); document.Save(writer, SaveOptions.DisableFormatting); return writer.ToString(); }
 	XElement? Find(string id) => document.Descendants().FirstOrDefault(IsObjectWithId(id));

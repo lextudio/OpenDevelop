@@ -68,6 +68,24 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		session.Version++; return State(session, false);
 	}
 
+	/// <summary>Sets one property on several elements as one transaction (one undo step), each value validated like a single edit.</summary>
+	[JsonRpcMethod("design/set-property-many")]
+	public DesignerSessionState SetPropertyMany(string sessionId, string documentId, long baseVersion, string[] elementIds, string propertyName, string value)
+	{
+		EnsureSession(sessionId);
+		var session = Get(documentId); EnsureVersion(session, baseVersion);
+		if (elementIds == null || elementIds.Length == 0 || propertyName.StartsWith(GtkPropertyMetadata.LayoutPrefix, StringComparison.Ordinal) || propertyName == "$id")
+			throw new InvalidOperationException("GTK multi-property mutation was rejected: element ids and a plain property are required.");
+		var ok = session.Editor.Batch(() => elementIds.All(id => {
+			var (node, parentClass) = Locate(session.Editor, id);
+			var normalized = GtkPropertyMetadata.Validate(node, propertyName, value, parentClass);
+			return session.Editor.SetProperty(id, propertyName, normalized,
+				translatable: node != null && GtkPropertyMetadata.IsTranslatable(node.ClassName, propertyName));
+		}));
+		if (!ok) throw new InvalidOperationException("GTK multi-property mutation was rejected.");
+		session.Version++; return State(session, false);
+	}
+
 	[JsonRpcMethod("design/theme")]
 	public DesignerSessionState SetTheme(string sessionId, string documentId, long baseVersion, string theme)
 	{
@@ -191,6 +209,28 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
 		if (!session.Editor.Unwrap(elementId))
 			throw new InvalidOperationException("GTK unwrap was rejected: a placed container whose children are all <child> objects is required, and a single-child parent takes one.");
+		session.Version++;
+		return State(session, false);
+	}
+
+	/// <summary>Deletes the grid row or column the element sits in as one transaction.</summary>
+	[JsonRpcMethod("design/delete-grid-track")]
+	public DesignerSessionState DeleteGridTrack(string sessionId, string documentId, long baseVersion, string elementId, bool row)
+	{
+		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
+		if (!session.Editor.DeleteGridTrack(elementId, row))
+			throw new InvalidOperationException("GTK grid delete was rejected: a placed child of a GtkGrid is required.");
+		session.Version++;
+		return State(session, false);
+	}
+
+	/// <summary>Opens an empty grid row or column at the element's position as one transaction.</summary>
+	[JsonRpcMethod("design/insert-grid-track")]
+	public DesignerSessionState InsertGridTrack(string sessionId, string documentId, long baseVersion, string elementId, bool row)
+	{
+		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
+		if (!session.Editor.InsertGridTrack(elementId, row))
+			throw new InvalidOperationException("GTK grid insert was rejected: a placed child of a GtkGrid is required.");
 		session.Version++;
 		return State(session, false);
 	}

@@ -227,6 +227,18 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		return target != null && Paste(target, ClipboardSnippets(), null);
 	}
 
+	/// <summary>Pastes the clipboard into the container under the context-menu point, at the insertion position that
+	/// point plans for it (the same resolution as a toolbox drop); a box gets the position, other containers append.</summary>
+	public bool PasteHere()
+	{
+		if (canvas.ContextMenuDesignPoint is not { } point || state.Tree == null || ClipboardSnippets() is not { Length: > 0 } snippets) return false;
+		if (PlanDropAt(point.X, point.Y) is not { } plan) return false;
+		var container = Flatten(state.Tree).FirstOrDefault(node => node.Id == plan.ContainerId);
+		var after = plan.Index is int index && container != null && index <= container.Children.Count
+			? (index > 0 ? container.Children[index - 1].Id : container.Children.Count > 0 ? GtkUiDocumentEditor.PasteFirst : null) : null;
+		return Paste(plan.ContainerId, snippets, after);
+	}
+
 	/// <summary>Copies the selection and pastes it right after itself in the same container,
 	/// without touching the clipboard.</summary>
 	public bool DuplicateSelection()
@@ -274,6 +286,71 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			if (!Mutate(() => host.UnwrapElementAsync(state.Version, id).GetAwaiter().GetResult())) return false;
 		} catch (Exception ex) { diagnostic.Text = ex.GetBaseException().Message; return false; }
 		return ids.Length > 0 && SelectByIds(ids);
+	}
+
+	/// <summary>Sets halign or valign on every selected object (GtkWidget alignment nicks) as one undo step.</summary>
+	public bool AlignSelected(string command)
+	{
+		var parts = command.Split('-');
+		if (parts.Length != 3 || parts[0] != "align" || parts[1] is not ("h" or "v") || parts[2] is not ("fill" or "start" or "center" or "end")) return false;
+		if (host == null || selection.SelectedIds.Count == 0) return false;
+		var name = parts[1] == "h" ? "halign" : "valign";
+		var ids = selection.SelectedIds.ToArray();
+		try {
+			if (!Mutate(() => host.SetPropertyManyAsync(state.Version, ids, name, parts[2]).GetAwaiter().GetResult())) return false;
+		} catch (Exception ex) { diagnostic.Text = ex.GetBaseException().Message; return false; }
+		return SelectByIds(ids);
+	}
+
+	/// <summary>The selected element and its parent when the parent is a GtkGrid.</summary>
+	(DesignerElementNode Node, DesignerElementNode Grid)? SelectedGridChild()
+	{
+		if (selection.SelectedIds.Count != 1 || state.Tree == null) return null;
+		var id = selection.SelectedIds[0];
+		var grid = Flatten(state.Tree).FirstOrDefault(node => node.Type == "GtkGrid" && node.Children.Any(child => child.Id == id));
+		return grid == null ? null : (grid.Children.First(child => child.Id == id), grid);
+	}
+
+	/// <summary>Grows or shrinks the selected grid child's column-span/row-span by one cell (never below 1).</summary>
+	public bool SpanSelected(string command)
+	{
+		if (host == null || SelectedGridChild() is not { } cell) return false;
+		var (property, delta) = command switch {
+			"span-column-more" => ("layout:column-span", 1), "span-column-less" => ("layout:column-span", -1),
+			"span-row-more" => ("layout:row-span", 1), "span-row-less" => ("layout:row-span", -1),
+			_ => ("", 0)
+		};
+		if (delta == 0) return false;
+		var current = int.TryParse(Value(cell.Node, property, "1"), out var v) ? v : 1;
+		var next = Math.Max(1, current + delta);
+		if (next == current) return false;
+		var id = cell.Node.Id;
+		return SetProperty(id, property, next.ToString(System.Globalization.CultureInfo.InvariantCulture)) && SelectById(id);
+	}
+
+	/// <summary>Opens an empty row above (or column left of) the selected grid child as one transaction
+	/// (see GtkUiDocumentEditor.InsertGridTrack).</summary>
+	public bool InsertGridTrack(string command)
+	{
+		if (host == null || SelectedGridChild() is not { } cell || command is not ("grid-insert-row" or "grid-insert-column")) return false;
+		var id = cell.Node.Id;
+		var row = command == "grid-insert-row";
+		try {
+			if (!Mutate(() => host.InsertGridTrackAsync(state.Version, id, row).GetAwaiter().GetResult())) return false;
+		} catch (Exception ex) { diagnostic.Text = ex.GetBaseException().Message; return false; }
+		return SelectById(id);
+	}
+
+	/// <summary>Deletes the row (or column) of the selected grid child, with the children wholly inside it, as one transaction.</summary>
+	public bool DeleteGridTrack(string command)
+	{
+		if (host == null || SelectedGridChild() is not { } cell || command is not ("grid-delete-row" or "grid-delete-column")) return false;
+		var id = cell.Node.Id;
+		var row = command == "grid-delete-row";
+		try {
+			if (!Mutate(() => host.DeleteGridTrackAsync(state.Version, id, row).GetAwaiter().GetResult())) return false;
+		} catch (Exception ex) { diagnostic.Text = ex.GetBaseException().Message; return false; }
+		return true;
 	}
 
 	/// <summary>The single selected element's position among its parent's children, or null.</summary>
@@ -494,11 +571,20 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		canvas.Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit | DesignerCanvasCapabilities.Gridlines
 			| DesignerCanvasCapabilities.Theme | DesignerCanvasCapabilities.ShowNames | DesignerCanvasCapabilities.StatusBar;
 		canvas.ResizeHandlesEnabled = false;
-		canvas.SetContextCommands(new[] { ("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete"),
+		canvas.SetContextCommands(new[] { ("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Paste Here", "paste-here"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete"),
 			("-", ""), ("Order/Move First", "move-first"), ("Order/Move Earlier", "move-earlier"), ("Order/Move Later", "move-later"), ("Order/Move Last", "move-last"),
+			("-", ""), ("Align/Horizontal: Fill", "align-h-fill"), ("Align/Horizontal: Start", "align-h-start"), ("Align/Horizontal: Center", "align-h-center"), ("Align/Horizontal: End", "align-h-end"),
+			("Align/Vertical: Fill", "align-v-fill"), ("Align/Vertical: Start", "align-v-start"), ("Align/Vertical: Center", "align-v-center"), ("Align/Vertical: End", "align-v-end"),
+			("-", ""), ("Grid/Column span +1", "span-column-more"), ("Grid/Column span -1", "span-column-less"), ("Grid/Row span +1", "span-row-more"), ("Grid/Row span -1", "span-row-less"),
+			("Grid/Insert row above", "grid-insert-row"), ("Grid/Insert column left", "grid-insert-column"),
+			("Grid/Delete row", "grid-delete-row"), ("Grid/Delete column", "grid-delete-column"),
 			("-", ""), ("Wrap/GtkBox", "wrap-GtkBox"), ("Wrap/GtkFrame", "wrap-GtkFrame") , ("Unwrap", "unwrap") });
 		canvas.ContextCommandCanExecute = command => command switch {
+			"grid-insert-row" or "grid-insert-column" or "grid-delete-row" or "grid-delete-column" => host?.IsAlive == true && SelectedGridChild() != null,
+			var span when span.StartsWith("span-", StringComparison.Ordinal) => host?.IsAlive == true && SelectedGridChild() is { } cell
+				&& (!span.EndsWith("less", StringComparison.Ordinal) || int.TryParse(Value(cell.Node, span.Contains("column") ? "layout:column-span" : "layout:row-span", "1"), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var currentSpan) && currentSpan > 1),
 			"paste" => host?.IsAlive == true && ClipboardSnippets().Length > 0,
+			"paste-here" => host?.IsAlive == true && canvas.ContextMenuDesignPoint != null && ClipboardSnippets().Length > 0,
 			"move-first" or "move-earlier" => host?.IsAlive == true && SiblingPosition() is { Index: > 0 },
 			"move-later" or "move-last" => host?.IsAlive == true && SiblingPosition() is { } position && position.Index < position.Count - 1,
 			"wrap-GtkFrame" => host?.IsAlive == true && selection.SelectedIds.Count == 1 && SharesOneParent(),
@@ -518,10 +604,15 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 				case "copy": CopySelection(); break;
 				case "cut": if (CopySelection()) DeleteSelected(); break;
 				case "paste": PasteIntoSelection(); break;
+				case "paste-here": PasteHere(); break;
 				case "duplicate": DuplicateSelection(); break;
 				case "move-first" or "move-earlier" or "move-later" or "move-last": MoveSelected(command.Command); break;
 				case var wrap when wrap.StartsWith("wrap-", StringComparison.Ordinal): WrapSelected(wrap.Substring("wrap-".Length)); break;
 				case "unwrap": UnwrapSelected(); break;
+				case var span when span.StartsWith("span-", StringComparison.Ordinal): SpanSelected(span); break;
+				case "grid-insert-row" or "grid-insert-column": InsertGridTrack(command.Command); break;
+				case "grid-delete-row" or "grid-delete-column": DeleteGridTrack(command.Command); break;
+				case var align when align.StartsWith("align-", StringComparison.Ordinal): AlignSelected(align); break;
 			}
 		};
 		canvas.RenameRequested += (_, _) => RequestRename();

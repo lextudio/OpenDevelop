@@ -1340,6 +1340,19 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.window.maximize", Description = "Maximize the main workbench window so viewport-dependent designer assertions such as Fit scale get the largest area the display offers, whatever the runner's default window size")]
+		public static string MaximizeMainWindow()
+		{
+			return System.Windows.Application.Current.Dispatcher.Invoke(() => {
+				var window = System.Windows.Application.Current.MainWindow;
+				if (window == null)
+					return JsonSerializer.Serialize(new { success = false, error = "No main window" });
+				window.WindowState = System.Windows.WindowState.Maximized;
+				window.UpdateLayout();
+				return JsonSerializer.Serialize(new { success = true, width = window.ActualWidth, height = window.ActualHeight });
+			});
+		}
+
 		[DevFlowAction("od.active-view", Description = "Inspect the active view content - used to confirm AvalonEdit rendered an opened file")]
 		public static string GetActiveView()
 		{
