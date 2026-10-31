@@ -159,21 +159,56 @@ namespace ICSharpCode.SharpDevelop.Project
 			// this whole code path exists to fix.
 			string binDir = Path.GetDirectoryName(typeof(MSBuildInternals).Assembly.Location);
 			if (!string.IsNullOrEmpty(binDir)) {
-				foreach (string dependency in new[] {
-					"NuGet.Common.dll",
-					"NuGet.Configuration.dll",
-					"NuGet.Frameworks.dll",
-					"NuGet.Packaging.dll",
-					"NuGet.ProjectModel.dll",
-					"NuGet.Protocol.dll",
-					"NuGet.Versioning.dll"
-				}) {
-					string source = Path.Combine(latestSdk, dependency);
-					string destination = Path.Combine(binDir, dependency);
-					if (!File.Exists(destination) && File.Exists(source))
-						File.Copy(source, destination);
+				// A packaged payload can be extracted somewhere the user cannot write (Program Files,
+				// /usr/lib, a read-only image), and none of the writes below are required for it to
+				// work: the payload already ships the NuGet.* closure and the manifest is a cache
+				// that MSBuild simply does not have. Probe once, and on a read-only directory leave
+				// the SDK-resolver story to the installed SDK instead of throwing out of the
+				// startup path - File.Copy and File.WriteAllText both throw there.
+				if (!IsDirectoryWritable(binDir)) {
+					LoggingService.Info($"The application directory is read-only ({binDir}); using the installed .NET SDK's own resolver closure.");
+				} else {
+					foreach (string dependency in new[] {
+						"NuGet.Common.dll",
+						"NuGet.Configuration.dll",
+						"NuGet.Frameworks.dll",
+						"NuGet.Packaging.dll",
+						"NuGet.ProjectModel.dll",
+						"NuGet.Protocol.dll",
+						"NuGet.Versioning.dll"
+					}) {
+						string source = Path.Combine(latestSdk, dependency);
+						string destination = Path.Combine(binDir, dependency);
+						try {
+							if (!File.Exists(destination) && File.Exists(source))
+								File.Copy(source, destination);
+						} catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) {
+							// A locked or racing file must not fail startup; the packaged payload
+							// normally already carries every one of these.
+							LoggingService.Warn($"Could not deploy {dependency} beside the application: {ex.Message}");
+						}
+					}
+					PointNuGetSdkResolverManifestAtSdk(latestSdk, binDir);
 				}
-				PointNuGetSdkResolverManifestAtSdk(latestSdk, binDir);
+			}
+		}
+
+		/// <summary>
+		/// Whether files can be created in <paramref name="directory"/>. Probing with a real file is
+		/// the only check that also covers ACLs, read-only mounts and a full disk on Windows, where
+		/// the attribute and the permission live in different places.
+		/// </summary>
+		public static bool IsDirectoryWritable(string directory)
+		{
+			if (string.IsNullOrEmpty(directory))
+				return false;
+			string probe = Path.Combine(directory, ".opendevelop-write-probe-" + Guid.NewGuid().ToString("N"));
+			try {
+				using (new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose)) {
+					return true;
+				}
+			} catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) {
+				return false;
 			}
 		}
 

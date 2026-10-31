@@ -75,6 +75,32 @@ public sealed class NuGetSdkResolverManifestTests : IDisposable
 		Assert.True(File.Exists(ManifestPath));
 	}
 
+	[Fact]
+	public void DetectsAWritableApplicationDirectory()
+	{
+		Assert.True(MSBuildInternals.IsDirectoryWritable(root));
+	}
+
+	[Fact]
+	public void DetectsAReadOnlyApplicationDirectory()
+	{
+		Assert.SkipUnless(!OperatingSystem.IsWindows(), "chmod-based read-only test is Unix-only.");
+		if (OperatingSystem.IsWindows())
+			return;
+		string directory = Path.Combine(root, "readonly");
+		Directory.CreateDirectory(directory);
+		var original = File.GetUnixFileMode(directory);
+		File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+		try {
+			// A packaged payload extracted under Program Files or /usr/lib lands here: the startup
+			// path must treat it as "use the installed SDK's resolver" rather than throw.
+			Assert.False(MSBuildInternals.IsDirectoryWritable(directory));
+			Assert.Empty(Directory.GetFiles(directory));
+		} finally {
+			File.SetUnixFileMode(directory, original);
+		}
+	}
+
 	public void Dispose()
 	{
 		try { Directory.Delete(root, true); } catch { }
