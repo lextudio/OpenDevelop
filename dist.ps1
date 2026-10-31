@@ -847,7 +847,8 @@ function Test-WindowsDistributionArchive {
         $name.EndsWith('.pdb') -or $name.EndsWith('.dylib') -or $name.EndsWith('.so') -or
         $name.EndsWith('.lib') -or $name.EndsWith('.exp') -or
         $name -match '/ref/' -or
-        $name -match '/runtimes/win-x86/' -or
+        # Same scope as the staged-payload rule: only the payload root's own 32-bit tree.
+        $name -match '^opendevelop-win/runtimes/win-x86/' -or
         (-not $isNotice -and $name -match '/runtimes/(linux|unix|osx)')
     }
     if ($forbidden) { throw "Archive contains build-only or foreign assets:$([Environment]::NewLine)$(($forbidden | Select-Object -First 12) -join [Environment]::NewLine)" }
