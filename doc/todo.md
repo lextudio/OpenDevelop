@@ -139,11 +139,13 @@ Rules learned the hard way, do not undo:
 
 ## 4. Housekeeping
 
-- The CI workflow itself is `disabled_manually` on GitHub, so no `ci.yml` run exists for any commit
-  after `baa694e9` and the "green CI required" gate can never be satisfied. Re-enable it (`gh workflow
-  enable ci.yml`) and get one green run before the real `v5.7.1`.
-- Delete the repository variable `RELEASE_SKIP_CI_GATE` after the rehearsal tags are done (it is
-  currently `true`, which bypasses the "green CI required" gate).
+- **`v5.7.1` was published on 2026-10-31** (run `41235448599`, all four platforms green, notes from
+  `doc/releases/v5.7.1.md`). The CI gate was bypassed on purpose at the user's request, so
+  `RELEASE_SKIP_CI_GATE=true` is still set; delete it once the CI lane below is green.
+- CI is enabled again, but its last master run (`41217636006`) is red: `integration-designer
+  (windows-arm64)` failed in "Run the lane" after 61 minutes - longer than the lane's 55-minute
+  timeout, so it looks like a hung entry rather than a failing assertion. Fix or quarantine that
+  entry before turning the release gate back on.
 - Only one draft release should exist; delete older beta drafts and their tags.
 - Release notes: the file must be named `doc/releases/<tag>.md`; the beta.17 tag has no matching
   file (it points at the apphost commit), so that draft falls back to GitHub-generated bullets.
