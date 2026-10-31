@@ -109,4 +109,52 @@ public sealed class WinUIXamlArrangeTests
 		Assert.Null(editor.FindElement("Card")!.Attribute("Style"));
 		Assert.Equal(2, editor.Document!.Root!.Elements().First().Elements().Count());
 	}
+
+	[Fact]
+	public void CreateBasedOnStyleDerivesFromTheCurrentStaticResourceInOneUndoStep()
+	{
+		const string page = """
+			<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+			  <StackPanel x:Name="Panel">
+			    <Button x:Name="Plain"/><Button x:Name="Styled" Style="{StaticResource Accent}"/><Button x:Name="Inline" Style="{ThemeResource Other}"/>
+			  </StackPanel>
+			</Page>
+			""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(page, out var error), error);
+		Assert.Null(editor.CreateBasedOnStyle(editor.FindElement("Plain")!));
+		Assert.Null(editor.CreateBasedOnStyle(editor.FindElement("Inline")!));
+		Assert.False(editor.CanUndo);
+
+		Assert.Equal("AccentBased1", editor.CreateBasedOnStyle(editor.FindElement("Styled")!));
+		var style = Assert.Single(editor.Document!.Root!.Element(XName.Get("Page.Resources", "http://schemas.microsoft.com/winfx/2006/xaml/presentation"))!.Elements());
+		Assert.Equal("{StaticResource Accent}", (string?)style.Attribute("BasedOn"));
+		Assert.Equal("Button", (string?)style.Attribute("TargetType"));
+		Assert.Equal("{StaticResource AccentBased1}", (string?)editor.FindElement("Styled")!.Attribute("Style"));
+
+		editor.Undo();
+		Assert.Equal("{StaticResource Accent}", (string?)editor.FindElement("Styled")!.Attribute("Style"));
+	}
+
+	[Fact]
+	public void TryMutateGroupsSeveralAttributeEditsIntoOneUndoStep()
+	{
+		const string page = """
+			<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+			  <StackPanel x:Name="Panel"><Button x:Name="A"/><Button x:Name="B"/></StackPanel>
+			</Page>
+			""";
+		var editor = new WinUIXamlDocumentEditor();
+		Assert.True(editor.Reset(page, out var error), error);
+		Assert.True(editor.TryMutate(() => {
+			editor.FindElement("A")!.SetAttributeValue("HorizontalAlignment", "Center");
+			editor.FindElement("B")!.SetAttributeValue("HorizontalAlignment", "Center");
+			return true;
+		}));
+		Assert.Equal("Center", (string?)editor.FindElement("B")!.Attribute("HorizontalAlignment"));
+		editor.Undo();
+		Assert.Null(editor.FindElement("A")!.Attribute("HorizontalAlignment"));
+		Assert.Null(editor.FindElement("B")!.Attribute("HorizontalAlignment"));
+		Assert.False(editor.CanUndo);
+	}
 }

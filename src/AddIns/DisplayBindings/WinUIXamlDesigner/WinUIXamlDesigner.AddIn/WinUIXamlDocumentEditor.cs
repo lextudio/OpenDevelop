@@ -425,7 +425,7 @@ sealed class WinUIXamlDocumentEditor
 		return wrapper;
 	}
 
-	static readonly HashSet<string> UnwrappablePanels = new(StringComparer.Ordinal) { "Grid", "StackPanel", "Canvas", "RelativePanel" };
+	static readonly HashSet<string> UnwrappablePanels = new(StringComparer.Ordinal) { "Grid", "StackPanel", "Canvas", "RelativePanel", "Viewbox" };
 
 	/// <summary>The inverse of <see cref="WrapInContainer"/>: replaces a non-root Grid, StackPanel,
 	/// Canvas, RelativePanel or Border with its child elements, in one undo step. Layout attached to
@@ -596,6 +596,50 @@ sealed class WinUIXamlDocumentEditor
 		// A ResourceDictionary child holds the entries when present (merged dictionaries).
 		var container = resources.Elements().FirstOrDefault(e => e.Name.LocalName == "ResourceDictionary") ?? resources;
 		container.Add(new XElement(root.GetDefaultNamespace() + "Style", new XAttribute(keyName, key), new XAttribute("TargetType", targetType)));
+		element.SetAttributeValue("Style", "{StaticResource " + key + "}");
+		CommitChange();
+		return key;
+	}
+
+	/// <summary>"Create Based On Current": for an element whose Style is <c>{StaticResource Key}</c>, adds a new keyed
+	/// Style with <c>BasedOn</c> pointing at that key (same TargetType as the element) to the root resources and points
+	/// the element at it, in one undo step. Returns the new key, or null when the element has no such Style.</summary>
+	public string CreateBasedOnStyle(XElement element)
+	{
+		if (element == null)
+			throw new ArgumentNullException(nameof(element));
+		if (element.Document != Document)
+			throw new ArgumentException("An element from this document is required.", nameof(element));
+		var root = Document.Root;
+		var current = (string)element.Attribute("Style");
+		const string prefixText = "{StaticResource ";
+		if (element == root || element.Parent == null || current == null
+			|| !current.StartsWith(prefixText, StringComparison.Ordinal) || !current.EndsWith("}", StringComparison.Ordinal))
+			return null;
+		var baseKey = current.Substring(prefixText.Length, current.Length - prefixText.Length - 1).Trim();
+		if (baseKey.Length == 0)
+			return null;
+		var keyName = NameDirective.Namespace + "Key";
+		var taken = new HashSet<string>(Document.Descendants().Select(e => (string)e.Attribute(keyName)).Where(k => k != null), StringComparer.Ordinal);
+		var index = 1;
+		while (taken.Contains(baseKey + "Based" + index))
+			index++;
+		var key = baseKey + "Based" + index;
+		var prefix = element.GetPrefixOfNamespace(element.Name.Namespace);
+		var targetType = string.IsNullOrEmpty(prefix) || element.Name.Namespace == root.GetDefaultNamespace()
+			? element.Name.LocalName : prefix + ":" + element.Name.LocalName;
+
+		BeginChange();
+		var resourcesName = root.Name.Namespace + (root.Name.LocalName + ".Resources");
+		var resources = root.Element(resourcesName);
+		if (resources == null)
+		{
+			resources = new XElement(resourcesName);
+			root.AddFirst(resources);
+		}
+		var container = resources.Elements().FirstOrDefault(e => e.Name.LocalName == "ResourceDictionary") ?? resources;
+		container.Add(new XElement(root.GetDefaultNamespace() + "Style", new XAttribute(keyName, key), new XAttribute("TargetType", targetType),
+			new XAttribute("BasedOn", "{StaticResource " + baseKey + "}")));
 		element.SetAttributeValue("Style", "{StaticResource " + key + "}");
 		CommitChange();
 		return key;

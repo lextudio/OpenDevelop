@@ -77,14 +77,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		// (Fixed/Star/Auto) for the track under the pointer. Runtimes with the context-menu capability
 		// (Uno, ProGPU) show this list; the unit commands need measured tracks, so they stay disabled
 		// on ProGPU (see HasMeasuredGridTracks).
-		previewHost.SetContextCommands(new[] {
-			("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete"), ("-", ""),
-			("Bring to Front", "bring-to-front"), ("Bring Forward", "bring-forward"), ("Send Backward", "send-backward"), ("Send to Back", "send-to-back"), ("-", ""),
-			("Wrap in Grid", "wrap-grid"), ("Wrap in StackPanel", "wrap-stackpanel"), ("Unwrap", "unwrap"), ("-", ""),
-			("Edit Style/Create Empty", "create-empty-style"), ("-", ""),
-			("Grid Row/Fixed", "grid-row-Pixel"), ("Grid Row/Star", "grid-row-Star"), ("Grid Row/Auto", "grid-row-Auto"),
-			("Grid Column/Fixed", "grid-column-Pixel"), ("Grid Column/Star", "grid-column-Star"), ("Grid Column/Auto", "grid-column-Auto")
-		}, command => ParseGridUnitCommand(command) is { } unit
+		previewHost.SetContextCommands(WinUIXamlContextCommands.Menu, command => ParseGridUnitCommand(command) is { } unit
 			? GridTrackAtContextPoint(unit.IsRow) is { } track && track.Unit != unit.Unit
 			: null);
 		previewHost.NudgeRequested += OnNudgeRequestedOnSurface;
@@ -1045,13 +1038,21 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 				break;
 			case "wrap-grid":
 			case "wrap-stackpanel":
-				WrapSelected(args.Name, args.Command == "wrap-grid" ? "Grid" : "StackPanel");
+			case "wrap-canvas":
+			case "wrap-viewbox":
+				WrapSelected(args.Name, WinUIXamlContextCommands.WrapContainer(args.Command));
 				break;
 			case "unwrap":
 				UnwrapElement(editor.FindElement(args.Name));
 				break;
 			case "create-empty-style":
 				CreateEmptyStyle(editor.FindElement(args.Name));
+				break;
+			case "create-based-on-style":
+				CreateBasedOnStyle(editor.FindElement(args.Name));
+				break;
+			case var set when set.StartsWith("set:", StringComparison.Ordinal):
+				SetAlignment(args.Name, set);
 				break;
 			default:
 				if (ParseGridUnitCommand(args.Command) is { } unit)
@@ -1222,6 +1223,47 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			return;
 		ApplyDocumentChange();
 		SelectElement((string)wrapper.Attribute(WinUIXamlDocumentEditor.NameDirective));
+	}
+
+	/// <summary>Handles "set:HorizontalAlignment:Left" style commands for every element of the multi-selection that
+	/// contains <paramref name="name"/> (else just that element); one document change, so one undo step.</summary>
+	void SetAlignment(string name, string command)
+	{
+		if (WinUIXamlContextCommands.Alignment(command) is not { } alignment)
+			return;
+		var (property, value) = alignment;
+		var multi = MultiSelectedNames;
+		var names = multi.Count > 1 && multi.Contains(name) ? multi.ToArray() : new[] { name };
+		var elements = names.Select(editor.FindElement).Where(element => element != null).ToArray();
+		if (elements.Length == 0)
+			return;
+		editor.TryMutate(() => {
+			foreach (var element in elements)
+				element.SetAttributeValue(property, value);
+			return true;
+		});
+		if (names.Length == 1)
+		{
+			ApplyDocumentChange(xaml => previewHost.TrySetProperty(name, property, value, xaml));
+			SelectElement(name);
+			return;
+		}
+		// A full reload drops the surface selection: restore the whole multi-selection (surface, pads and outline).
+		ApplyDocumentChange();
+		MultiSelect(names);
+	}
+
+	void CreateBasedOnStyle(XElement element)
+	{
+		var key = element == null ? null : editor.CreateBasedOnStyle(element);
+		if (key == null)
+		{
+			status.Text = "Create Based On Current Style needs a non-root element whose Style is a {StaticResource}";
+			return;
+		}
+		ApplyDocumentChange();
+		SelectSourceElement(element, path: null);
+		status.Text = "Created Style " + key;
 	}
 
 	void CreateEmptyStyle(XElement element)
