@@ -3,6 +3,9 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- A debuggee's bitness is the bitness of the process the debugger starts. With a dll it is
+         always the runner's own dotnet; the journeys need the per-RID apphost instead. -->
+    <UseAppHost>true</UseAppHost>
   </PropertyGroup>
   <!-- One fixture, one RID per debugger journey: the release check passes
        -p:RuntimeIdentifier=<rid> -p:SelfContained=false, which produces an apphost of that
