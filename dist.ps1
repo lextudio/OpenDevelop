@@ -755,7 +755,9 @@ function Test-WindowsDistributionPayload {
         $isNotice = $relative -match '(^|/)third-party-notices/'
         $_.Extension -in '.pdb', '.dylib', '.so', '.lib', '.exp' -or
         $relative -match '/ref/' -or
-        $relative -match '/runtimes/win-x86/' -or
+        # Only the host mirror's own 32-bit tree is dead weight: the one inside an add-in is what
+        # the debugger and designers load when the user works on a 32-bit application.
+        $relative -match '^/runtimes/win-x86/' -or
         (-not $isNotice -and $relative -match '/runtimes/(linux|unix|osx)')
     }
     if ($forbidden) {

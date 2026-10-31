@@ -13,9 +13,10 @@ rm -rf "$payload"; mkdir -p "$payload"
 # and every addin folder carries its own copy (51 files, 172 MB raw, 78 MB of the released ZIP). .lib/.exp
 # are link-time inputs of ProGPU.Native.Sdk; deps.json lists them, but CoreCLR never loads one,
 # which is why the macOS bundle already deletes their .a equivalents. linux-arm is the 32-bit tree
-# this payload cannot launch. The patterns without a '/' match a file name at any depth, so they
-# also cover the copies inside AddIns/ and inside each out-of-process child host.
-rsync -a --exclude '/AddIns/***' --exclude '/data/***' --exclude '/SdkResolvers/Microsoft.Build.NuGetSdkResolver/***' --exclude '/runtimes/win*/***' --exclude '/runtimes/osx*/***' --exclude "/runtimes/$other/***" --exclude '/runtimes/linux-arm/***' --exclude 'CliclickSharp*' --exclude '*.lib' --exclude '*.exp' --exclude '*.a' "$src/" "$payload/"
+# this payload cannot launch. .pdb files are build-time only; the host publish carries them at its
+# root and the archive audit rejects them. The patterns without a '/' match a file name at any
+# depth, so they also cover the copies inside AddIns/ and inside each out-of-process child host.
+rsync -a --exclude '/AddIns/***' --exclude '/data/***' --exclude '/SdkResolvers/Microsoft.Build.NuGetSdkResolver/***' --exclude '/runtimes/win*/***' --exclude '/runtimes/osx*/***' --exclude "/runtimes/$other/***" --exclude '/runtimes/linux-arm/***' --exclude 'CliclickSharp*' --exclude '*.lib' --exclude '*.exp' --exclude '*.pdb' --exclude '*.a' "$src/" "$payload/"
 rsync -a "$root/data/" "$payload/data/"
 rsync -a --exclude '*.pdb' --exclude '**/ref/***' --exclude '**/runtimes/win*/***' --exclude '**/runtimes/osx*/***' --exclude "**/runtimes/$other/***" --exclude '**/runtimes/linux-arm/***' --exclude 'CliclickSharp*' --exclude '*.lib' --exclude '*.exp' --exclude '*.dylib' --exclude '*.a' "$root/AddIns/" "$payload/AddIns/"
 # The SDK/resolver are product files: add-ins created by an installed IDE resolve them from the
