@@ -1083,6 +1083,15 @@ function Share-ManagedPayloadAssets {
     #>
     param([Parameter(Mandatory)][string]$PayloadRoot, [Parameter(Mandatory)][string]$RootDepsName)
 
+    # Off by default: the packaged designer host cannot yet resolve a shared assembly
+    # ('ICSharpCode.Designer.Remote' was not found with the probing path in place), so a payload
+    # that uses this must prove the designer journeys first. The mechanism stays here, behind an
+    # explicit opt-in, until that resolution is fixed and verified.
+    if ($env:OD_SHARE_MANAGED_CLOSURE -ne '1') {
+        Write-Host '    shared closure: disabled (set OD_SHARE_MANAGED_CLOSURE=1 to enable)'
+        return @()
+    }
+
     $rootDepsPath = Join-Path $PayloadRoot $RootDepsName
     $copies = [System.Collections.Generic.List[object]]::new()
     foreach ($deps in Get-ChildItem -LiteralPath $PayloadRoot -Recurse -File -Filter '*.deps.json') {
