@@ -1124,6 +1124,33 @@ function Share-ManagedPayloadAssets {
     }
     $copies = @($copies | Where-Object { -not $ambiguous.Contains($_.Path) })
 
+    # The same library identity can resolve to different bytes in different hosts - one host ships
+    # the implementation of an assembly, another ships the reference assembly of the same package -
+    # and the store path is the identity, so it can hold only one of them. The copy that loses is
+    # then loaded where the other is required: the packaged WPF designer died with
+    # "Could not load file or assembly 'ICSharpCode.Designer.Remote, Version=5.7.1.0'" even though
+    # every probe path existed and the identity count was unchanged, because the first host seen
+    # (directory enumeration order, which MSBuild's parallel AddIn builds do not stabilise) had
+    # put its copy in the store for both identities. An identity that resolves to more than one
+    # content hash is therefore never shared: every host keeps its own copy, which is always right.
+    $hashesByIdentity = @{}
+    foreach ($copy in $copies) {
+        if (-not $hashesByIdentity.ContainsKey($copy.StoreRelative)) {
+            $hashesByIdentity[$copy.StoreRelative] = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        }
+        [void]$hashesByIdentity[$copy.StoreRelative].Add($copy.Hash)
+    }
+    $conflictingIdentities = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($identity in $hashesByIdentity.Keys) {
+        if ($hashesByIdentity[$identity].Count -gt 1) {
+            [void]$conflictingIdentities.Add($identity)
+        }
+    }
+    if ($conflictingIdentities.Count -gt 0) {
+        $copies = @($copies | Where-Object { -not $conflictingIdentities.Contains($_.StoreRelative) })
+        Write-Host ("    shared closure: keeping {0} file(s) whose library identity has more than one content across hosts" -f $conflictingIdentities.Count)
+    }
+
     # path -> every library identity that resolves to it, computed once (scanning the copy list
     # inside the loop would be quadratic over a payload with thousands of assets).
     $identitiesByPath = @{}

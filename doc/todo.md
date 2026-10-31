@@ -89,10 +89,19 @@ fix is what made beta.16 green on Windows) and `DesignerHostLaunchSpec` passes
 beta.17 (Windows) is red again on exactly this: the packaged `WpfDesign.SurfaceHost` child died with
 `Could not load file or assembly 'ICSharpCode.Designer.Remote, Version=5.7.1.0'`, while beta.16's
 Windows job passed and both builds report the same store (`331 probe paths in 89.2 MB, 272.0 MB of
-host copies removed`). The failing host's deps.json declares that file under **two** identities in
-one directory (`ICSharpCode.Designer.Remote/1.0.0` and `ICSharpCode.Designer.Remote.Reference/5.7.0.0`);
-`WpfDesign.SurfaceHost.deps.json` in the local bundle has the same pair, so the per-identity store
-entries exist. Treat it as non-deterministic until the next Windows run names which entry is missing.
+host copies removed`). Cause: the store path is the library identity, and one identity can resolve to
+**two** contents across hosts (`ICSharpCode.Designer.Remote/1.0.0` vs
+`ICSharpCode.Designer.Remote.Reference/5.7.0.0`; the local bundle's `WpfDesign.SurfaceHost.deps.json`
+declares both for the same file). Whichever host the `Get-ChildItem -Recurse` enumeration saw first
+put its bytes in the store, and the other host's copy was deleted because its bytes were duplicated
+elsewhere. MSBuild's parallel AddIn builds do not stabilise that directory order, so the same tree
+passes or fails per build.
+
+Fixed: an identity that resolves to more than one content hash is never shared - every host keeps its
+own copy - and the payload build says how many it kept. `build/windows/test-share-managed-payload.ps1`
+pins both rules against a synthetic payload (it slices the real function out of `dist.ps1`), and the
+release workflow's Windows job runs it before packaging: on the pre-fix function it reports
+`conflicting identity lost per-host copies: A,B,C,D`.
 
 Rules learned the hard way, do not undo:
 - A `.lib`/`.exp` deleted from the payload must also be stripped from every `*.deps.json`

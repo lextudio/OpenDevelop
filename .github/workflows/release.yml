@@ -86,6 +86,13 @@ jobs:
         with:
           global-json-file: global.json
           architecture: x64
+      # The sharing rules decide which host copies are deleted, and a mistake there only surfaces as
+      # a packaged designer child that cannot load an assembly - after the whole payload build. This
+      # synthetic payload pins both rules (no store entry for an identity with two contents, a store
+      # entry for an identical one) in seconds.
+      - name: Test the payload sharing rules
+        shell: pwsh
+        run: ./build/windows/test-share-managed-payload.ps1
       # One payload serves x64 and ARM64 (dist.ps1 builds both launchers and runs its own smoke phase). GitVersion's GitHub
       # Actions integration races on the runner's env file when projects build in parallel (see build-binaries.ps1), so the
       # variable that enables it is removed for the packaging.
