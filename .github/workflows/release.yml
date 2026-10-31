@@ -112,7 +112,11 @@ jobs:
               'x64' { "$env:ProgramFiles\dotnet\x64" }
             }
             & "$env:RUNNER_TEMP/dotnet-install.ps1" -Runtime dotnet -Channel 10.0 -Architecture $architecture -InstallDir $installDir -NoPath
-            if ($LASTEXITCODE -ne 0) { throw "the $architecture runtime did not install" }
+            # $LASTEXITCODE is not set by a PowerShell script, only by a native command, so check
+            # what the install actually produced.
+            if (-not (Get-ChildItem -Path (Join-Path $installDir 'shared/Microsoft.NETCore.App') -Directory -ErrorAction SilentlyContinue)) {
+              throw "the $architecture runtime did not install into $installDir"
+            }
             if ($architecture -eq 'x86') { "DOTNET_ROOT_X86=$installDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }
             if ($architecture -eq 'x64') { "DOTNET_ROOT_X64=$installDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }
           }
