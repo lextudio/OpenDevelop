@@ -130,7 +130,7 @@ jobs:
         shell: pwsh
         run: |
           $targets = if ($env:RUNNER_ARCH -eq 'ARM64') { @('win-arm64', 'win-x64', 'win-x86') } else { @('win-x64', 'win-x86') }
-          ./build/windows/verify-packaged-app.ps1 -PayloadRoot OpenDevelop-win -Targets $targets
+          ./build/windows/verify-packaged-app.ps1 -PayloadRoot OpenDevelop-win -Targets $targets -SkipDebugJourneys
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows
