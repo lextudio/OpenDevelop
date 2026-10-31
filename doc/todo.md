@@ -133,7 +133,9 @@ payload` with the runner's own
 `Unhandled exception. System.IO.IOException: No space left on device :
 '/home/runner/actions-runner/cached/.../_diag/Worker_...log'`.
 `linux-arm64` in the same run was green, so it is the x64 build tree plus payload, not the product.
-Free space before the build (drop `obj/bin`, package caches) or split the build and pack steps.
+The job now drops the image caches this build never uses (`/usr/local/lib/android`, `/opt/ghc`,
+`/opt/hostedtoolcache/CodeQL`) and prints `df -h /` before and after, so the next occurrence (or its
+absence) is visible in the log.
 
 ## Known-good constraints (do not regress)
 
