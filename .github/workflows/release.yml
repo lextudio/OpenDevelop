@@ -91,10 +91,6 @@ jobs:
       # variable that enables it is removed for the packaging.
       - name: Build the unified Windows distribution
         shell: cmd
-        env:
-          # The packaging collapses the designer hosts' duplicated managed closure into
-          # shared/managed. Verified by the bitness step below, which starts a real designer host.
-          OD_SHARE_MANAGED_CLOSURE: '1'
         run: |
           set "GITHUB_ACTIONS="
           rem No gh credential can read the lextudio feed with this ephemeral token; NuGet restores
