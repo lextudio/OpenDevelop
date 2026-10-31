@@ -63,6 +63,26 @@ Verified on macOS 2026-10-31: rebuilt Release bundle (`dist.ps1 -From host`), th
 (the pre-fix local run reproduced the exception; a local run that hit it did not always die, which is
 why removing the code path matters more than the catch). `OpenDevelop.Base.Tests`: 509 total, 0 failed.
 
+beta.18 confirms both fixes on the two platforms that had them: Windows passes the packaged designer
+journey under the shared closure (the identity-conflict fix), and linux-x64 no longer dies on disk.
+macOS still fails, but differently and no longer at NuGet: the app now survives startup, opens the
+solution and starts the build, then disappears ~1.6 s later, between
+`perf: solution-open/roslyn-snapshots-built` and `roslyn-projects-pushed` — i.e. while the first
+Roslyn project push starts as the build child is still restoring. There is no managed
+unhandled-exception line, no "Leaving RunApplication()", and no crash report at the old check. Locally
+the same input (fixture `obj/` deleted, SDK 10.0.403, seven runs) never reproduces it; the app is
+faster, so the window is smaller.
+
+What the diagnostics now collect for the next occurrence (they run on any `fail`, including a lease
+request that cannot reach the agent, which previously exited with a bare curl status):
+- process/zombie state, leftover `dotnet` children, the app log tail;
+- every `.ips` or `JetsamEvent` report written since the launch (ReportCrash is asynchronous, so the
+  check waits 3 s and looks in both DiagnosticReports folders);
+- whether a CLR triage dump exists (`DOTNET_DbgEnableMiniDump`, type 4) — its presence means the
+  runtime aborted, its absence means something killed the process or it shut down;
+- `log show` for OpenDevelop over the last 5 minutes, which carries the kill decision and any native
+  death.
+
 ## 2. Bitness journeys do not test bitness yet
 
 `od.debug.start` starts `<name>.dll`, so the debuggee was always the runner's own `dotnet`; the RID

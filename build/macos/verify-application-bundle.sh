@@ -22,7 +22,7 @@ app_pid=''
 # application looks like from here. Print what the process and its own log say before leaving, so a
 # red release names the cause instead of "curl: (52) Empty reply from server".
 dump_diagnostics() {
-  local status report log
+  local status report log dir dump
   status=$(curl --silent --max-time 2 "${base_url:-http://127.0.0.1:$port}/api/v1/agent/status" 2>/dev/null || true)
   echo '--- macOS bundle verification diagnostics -----------------------' >&2
   echo "agent status: ${status:-<no answer>}" >&2
@@ -33,6 +33,7 @@ dump_diagnostics() {
   else
     echo "app process: not running (pid ${app_pid:-<unknown>})" >&2
     echo "remaining OpenDevelop processes: $(pgrep -fl "${app_path}/Contents/MacOS/OpenDevelop" 2>/dev/null | tr '\n' ' ' || true)" >&2
+    echo "leftover dotnet children: $(pgrep -fl 'dotnet' 2>/dev/null | tr '\n' ' ' || true)" >&2
   fi
   for log in "${TMPDIR:-/tmp}/OpenDevelop.log" "$HOME/Library/Logs/OpenDevelop/OpenDevelop.log"; do
     if [[ -f "$log" ]]; then
@@ -40,15 +41,42 @@ dump_diagnostics() {
       tail -n 80 "$log" >&2 || true
     fi
   done
-  # A process that vanishes without a managed "Unhandled ... exception" line was either killed by
-  # the kernel (jetsam, which writes a JetsamEvent report under the same folder) or crashed
-  # natively; the newest report of either kind names which.
-  report=$(ls -t "$HOME/Library/Logs/DiagnosticReports"/*OpenDevelop* "$HOME/Library/Logs/DiagnosticReports"/JetsamEvent* 2>/dev/null | head -1 || true)
+  # ReportCrash writes asynchronously, so a rushed check reports "no crash report" for a process
+  # that did crash. Give it a moment, then look at every report created since this launch - the
+  # name is not necessarily an OpenDevelop one (JetsamEvent names the killer, not the victim).
+  sleep 3
+  report=''
+  for dir in "$HOME/Library/Logs/DiagnosticReports" "/Library/Logs/DiagnosticReports"; do
+    [[ -d "$dir" ]] || continue
+    while IFS= read -r -d '' dump; do
+      if [[ -z "$report" || "$dump" -nt "$report" ]]; then
+        report=$dump
+      fi
+    done < <(find "$dir" -maxdepth 1 \( -name '*.ips' -o -name 'JetsamEvent*' \) \
+               -newer "${launch_marker:-/dev/null}" -print0 2>/dev/null)
+    if [[ -n "$report" ]]; then break; fi
+  done
   if [[ -n "$report" ]]; then
-    echo "--- newest crash report: $report ---" >&2
-    head -n 40 "$report" >&2 || true
+    echo "--- crash report written since launch: $report ---" >&2
+    head -n 60 "$report" >&2 || true
   else
-    echo "--- no OpenDevelop crash or JetsamEvent report ---" >&2
+    echo '--- no crash or JetsamEvent report was written for this launch ---' >&2
+  fi
+  # A CLR fatal error leaves a triage dump; its absence means the runtime did not abort, i.e. the
+  # process was killed from outside or exited through Application.Shutdown.
+  local dumps=0
+  for dump in "${TMPDIR:-/tmp}"/opendevelop-verify-crash-*.dmp; do
+    [[ -f "$dump" ]] || continue
+    dumps=$((dumps + 1))
+    echo "--- CLR crash dump: $dump ($(du -h "$dump" 2>/dev/null | cut -f1)) ---" >&2
+  done
+  [[ "$dumps" -gt 0 ]] || echo '--- no CLR crash dump (the runtime did not abort) ---' >&2
+  # The unified log carries the CLR's own fatal message and the kernel's reason for a kill.
+  if command -v log >/dev/null 2>&1; then
+    echo '--- unified log, OpenDevelop, last 5 minutes ---' >&2
+    log show --last 5m --style compact \
+      --predicate 'process == "OpenDevelop" OR eventMessage CONTAINS "OpenDevelop"' 2>/dev/null \
+      | tail -n 40 >&2 || true
   fi
   echo '-----------------------------------------------------------------' >&2
 }
@@ -74,6 +102,7 @@ cleanup() {
     done
   fi
   rm -rf -- "$config_dir"
+  if [[ -n "${launch_marker:-}" ]]; then rm -f -- "$launch_marker"; fi
 }
 trap cleanup EXIT
 
@@ -85,11 +114,16 @@ command -v jq >/dev/null || fail 'jq is required'
 base_url="http://127.0.0.1:$port"
 
 claim_lease() {
-  curl --fail --silent --show-error --max-time 10 \
-    -X POST "$base_url/api/v1/agent/lease" \
-    -H 'Content-Type: application/json' \
-    --data "$(jq -nc --arg id "$lease_id" '{action:"claim", leaseId:$id, holderKind:"release-bundle-check", label:"macOS release bundle verification", force:true}')" \
-    | jq -e '.allowed == true' >/dev/null
+  local lease
+  # A lease request that cannot reach the agent is the first sign the application is gone; route it
+  # through fail() so that becomes a dump of the process/log rather than a bare curl exit code.
+  if ! lease=$(curl --fail --silent --show-error --max-time 10 \
+      -X POST "$base_url/api/v1/agent/lease" \
+      -H 'Content-Type: application/json' \
+      --data "$(jq -nc --arg id "$lease_id" '{action:"claim", leaseId:$id, holderKind:"release-bundle-check", label:"macOS release bundle verification", force:true}')"); then
+    fail 'could not claim a DevFlow lease (the application may have exited)'
+  fi
+  jq -e '.allowed == true' <<<"$lease" >/dev/null || fail "the DevFlow agent refused the lease: $lease"
 }
 
 # Prints the parsed inner JSON returned by a DevFlow action.  Claim immediately
@@ -111,7 +145,15 @@ invoke() {
 }
 
 echo '==> Starting the packaged OpenDevelop app with DevFlow enabled...'
-DEVFLOW_ENABLE=1 DEVFLOW_AGENT_PORT="$port" open -n "$app_path" --args "-devflow:$port" "-configdir:$config_dir"
+# A CLR fatal error (unhandled exception outside our handlers, FailFast, stack overflow) writes a
+# small triage dump; its presence or absence in a failure tells "the runtime aborted" apart from
+# "something else killed the process", which no log line can.
+crash_dump_pattern="${TMPDIR:-/tmp}/opendevelop-verify-crash-%p.dmp"
+launch_marker=$(mktemp "${TMPDIR:-/tmp}/opendevelop-verify-launch.XXXXXX")
+touch "$launch_marker"
+DEVFLOW_ENABLE=1 DEVFLOW_AGENT_PORT="$port" \
+  DOTNET_DbgEnableMiniDump=1 DOTNET_DbgMiniDumpType=4 DOTNET_DbgMiniDumpName="$crash_dump_pattern" \
+  open -n "$app_path" --args "-devflow:$port" "-configdir:$config_dir"
 agent_started=0
 for _ in $(seq 1 45); do
   if status=$(curl --silent --show-error --fail --max-time 2 "$base_url/api/v1/agent/status" 2>/dev/null) \
