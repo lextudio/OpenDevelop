@@ -150,7 +150,16 @@ try {
         # than a self-contained copy.
         & dotnet build $fixture -c Debug -p:RuntimeIdentifier=$rid -p:SelfContained=false -v q --nologo
         if ($LASTEXITCODE -ne 0) { Fail "the $rid fixture did not build" }
-        Assert-PeMatches (Join-Path $repoRoot "tests/fixtures/BitnessFixture/bin/Debug/net10.0/$rid/BitnessFixture.exe") $rid
+        # The IDE finds a debuggee from the project's own properties, so it looks in
+        # bin/Debug/net10.0 while -p:RuntimeIdentifier moved the output one level down. Copy the
+        # RID build into place (bytes unchanged, so the debuggee is still that architecture) after
+        # clearing anything a previous journey left there.
+        $outputDirectory = Join-Path $repoRoot 'tests/fixtures/BitnessFixture/bin/Debug/net10.0'
+        $ridDirectory = Join-Path $outputDirectory $rid
+        Assert-PeMatches (Join-Path $ridDirectory 'BitnessFixture.exe') $rid
+        Get-ChildItem -LiteralPath $outputDirectory -File -ErrorAction SilentlyContinue | Remove-Item -Force
+        Copy-Item -Path (Join-Path $ridDirectory '*') -Destination $outputDirectory -Recurse -Force
+        Assert-PeMatches (Join-Path $outputDirectory 'BitnessFixture.exe') $rid
 
         $null = Invoke-DevFlow 'od.debug.clear-breakpoints'
         $breakpoint = Invoke-DevFlow 'od.debug.set-breakpoint' @($breakpointSource, $debugLine)
