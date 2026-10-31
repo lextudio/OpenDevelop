@@ -49,9 +49,19 @@ namespace ICSharpCode.AddInManager2
 
 		public override void Execute(object parameter)
 		{
-			if (AddInManagerServices.Settings.AutoSearchForUpdates) {
+			if (!AddInManagerServices.Settings.AutoSearchForUpdates) {
+				return;
+			}
+			// The lookup is an optional convenience that starts on its own during every startup,
+			// so it must never be able to take the session down: a faulted read task is reported
+			// in the AddIn Manager views, and anything thrown synchronously here is logged and
+			// dropped. (The legacy NuGet engine can throw out of a static constructor on Unix;
+			// PackageRepositories keeps remote sources away from it for that reason.)
+			try {
 				updateNotifier = new UpdateNotifier();
 				updateNotifier.StartUpdateLookup();
+			} catch (Exception ex) {
+				ICSharpCode.Core.LoggingService.Warn("Could not start the add-in update lookup: " + ex.Message);
 			}
 		}
 	}

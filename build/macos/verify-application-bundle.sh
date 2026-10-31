@@ -27,9 +27,12 @@ dump_diagnostics() {
   echo '--- macOS bundle verification diagnostics -----------------------' >&2
   echo "agent status: ${status:-<no answer>}" >&2
   if [[ -n "${app_pid:-}" ]] && kill -0 "$app_pid" 2>/dev/null; then
-    echo "app process: alive (pid $app_pid)" >&2
+    # A zombie still answers kill -0: it was reaped by the system but nothing has collected it, which
+    # is a different failure from a live-but-unresponsive application.
+    echo "app process: alive (pid $app_pid): $(ps -o stat=,etime=,command= -p "$app_pid" 2>/dev/null || true)" >&2
   else
-    echo "app process: not running" >&2
+    echo "app process: not running (pid ${app_pid:-<unknown>})" >&2
+    echo "remaining OpenDevelop processes: $(pgrep -fl "${app_path}/Contents/MacOS/OpenDevelop" 2>/dev/null | tr '\n' ' ' || true)" >&2
   fi
   for log in "${TMPDIR:-/tmp}/OpenDevelop.log" "$HOME/Library/Logs/OpenDevelop/OpenDevelop.log"; do
     if [[ -f "$log" ]]; then
@@ -37,10 +40,15 @@ dump_diagnostics() {
       tail -n 80 "$log" >&2 || true
     fi
   done
-  report=$(ls -t "$HOME/Library/Logs/DiagnosticReports"/*OpenDevelop* 2>/dev/null | head -1 || true)
+  # A process that vanishes without a managed "Unhandled ... exception" line was either killed by
+  # the kernel (jetsam, which writes a JetsamEvent report under the same folder) or crashed
+  # natively; the newest report of either kind names which.
+  report=$(ls -t "$HOME/Library/Logs/DiagnosticReports"/*OpenDevelop* "$HOME/Library/Logs/DiagnosticReports"/JetsamEvent* 2>/dev/null | head -1 || true)
   if [[ -n "$report" ]]; then
     echo "--- newest crash report: $report ---" >&2
     head -n 40 "$report" >&2 || true
+  else
+    echo "--- no OpenDevelop crash or JetsamEvent report ---" >&2
   fi
   echo '-----------------------------------------------------------------' >&2
 }

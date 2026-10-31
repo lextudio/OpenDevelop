@@ -42,6 +42,47 @@ namespace ICSharpCode.AddInManager2.Model
 		public const string DefaultRepositoryName = "SharpDevelop AddIn Repository";
 		public const string DefaultRepositorySource = "https://www.myget.org/F/sharpdevelop/";
 
+		/// <summary>
+		/// Whether the legacy NuGet.Core HTTP engine can be used in this process.
+		///
+		/// It cannot on Unix. Reaching that engine's HTTP client initialises NuGet.ProxyCache,
+		/// whose static constructor builds a NuGet.Settings that synchronises on a randomly named
+		/// "Global\..." mutex; System.Threading.Mutex rejects a name containing a path separator,
+		/// and the generated name contains '/' in roughly half of all processes. The constructor
+		/// then throws from the AddIn Manager's background update lookup and can take the whole
+		/// application down (observed in the packaged macOS release verification). See
+		/// <see cref="UnavailableRemotePackageRepository"/>.
+		/// </summary>
+		static bool LegacyHttpRepositorySupported {
+			get { return OperatingSystem.IsWindows(); }
+		}
+
+		static readonly HashSet<string> reportedUnavailableSources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+		static bool IsRemoteSource(string source)
+		{
+			return !string.IsNullOrEmpty(source)
+				&& (source.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+					|| source.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
+		}
+
+		IPackageRepository CreateRepository(PackageSource packageSource)
+		{
+			string source = packageSource?.Source;
+			if (!LegacyHttpRepositorySupported && IsRemoteSource(source)) {
+				lock (reportedUnavailableSources) {
+					if (reportedUnavailableSources.Add(source)) {
+						LoggingService.Info(
+							"Add-in source '" + source + "' is remote. The legacy NuGet HTTP engine cannot run on"
+							+ " this platform (its settings lock uses a Windows named mutex), so the source is"
+							+ " reported as having no packages instead of crashing the application.");
+					}
+				}
+				return new UnavailableRemotePackageRepository(source);
+			}
+			return PackageRepositoryFactory.Default.CreateRepository(source);
+		}
+
 		public PackageRepositories(IAddInManagerEvents events, IAddInManagerSettings settings)
 		{
 			_events = events;
@@ -94,7 +135,7 @@ namespace ICSharpCode.AddInManager2.Model
 			IPackageRepository resultRepository = null;
 			if (packageSource != null)
 			{
-				resultRepository = PackageRepositoryFactory.Default.CreateRepository(packageSource.Source);
+				resultRepository = CreateRepository(packageSource);
 			}
 			else
 			{
@@ -169,7 +210,7 @@ namespace ICSharpCode.AddInManager2.Model
 		private void UpdateCurrentRepository()
 		{
 			_registeredPackageRepositories =
-				_registeredPackageSources.Select(packageSource => PackageRepositoryFactory.Default.CreateRepository(packageSource.Source));
+				_registeredPackageSources.Select(packageSource => CreateRepository(packageSource));
 			if (_registeredPackageRepositories.Any())
 			{
 				_aggregatedRepository = new AggregateRepository(_registeredPackageRepositories);
