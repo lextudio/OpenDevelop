@@ -997,6 +997,159 @@ function Test-LinuxDistributionPayload {
     }
 }
 
+# ---------------------------------------------------------------------------------------------
+# Shared managed closure for the out-of-process hosts
+# ---------------------------------------------------------------------------------------------
+
+function Test-IsDesignerHostDeps {
+    <#
+      Only a directory Designer.Remote starts as its own application is eligible, because only that
+      launch passes --additionalprobingpath (DesignerHostLaunchSpec). A deps.json alone does not
+      qualify: an in-process add-in's manifest describes a directory loaded into THIS process,
+      whose probing path is fixed at start-up, and deleting files there breaks the add-in.
+    #>
+    param([Parameter(Mandatory)][string]$DepsPath, [Parameter(Mandatory)][string]$PayloadRoot)
+    $directory = Split-Path -Parent $DepsPath
+    $relative = $directory.Substring($PayloadRoot.Length).Replace('\', '/')
+    if (-not ($relative -match '/MicrosoftHost(/|$)' -or $relative -match '/Host$')) { return $false }
+    $runtimeConfig = $DepsPath.Substring(0, $DepsPath.Length - '.deps.json'.Length) + '.runtimeconfig.json'
+    return Test-Path -LiteralPath $runtimeConfig
+}
+
+function Get-ManagedDepsAsset {
+    param([Parameter(Mandatory)][string]$DepsPath)
+    $manifest = Get-Content -LiteralPath $DepsPath -Raw | ConvertFrom-Json -AsHashtable
+    if ($manifest -isnot [hashtable] -or -not $manifest['targets']) { return }
+    foreach ($librarySet in $manifest['targets'].Values) {
+        if ($librarySet -isnot [hashtable]) { continue }
+        foreach ($library in $librarySet.Keys) {
+            $body = $librarySet[$library]
+            if ($body -isnot [hashtable]) { continue }
+            foreach ($section in 'runtime', 'resources') {
+                $assets = $body[$section]
+                if ($assets -isnot [hashtable]) { continue }
+                foreach ($asset in $assets.Keys) {
+                    [pscustomobject]@{ Library = $library; Asset = $asset }
+                }
+            }
+        }
+    }
+}
+
+function Resolve-ManagedAssetPath {
+    <#
+      hostpolicy resolves a deps asset to <app base>/<asset>, and to the file name copied flat
+      beside the host when the package layout is not preserved. Satellite resources keep their
+      culture folder, so <culture>/<file> is the third shape a payload can hold.
+    #>
+    param([Parameter(Mandatory)][string]$Directory, [Parameter(Mandatory)][string]$Asset)
+    $candidates = @(
+        (Join-Path $Directory $Asset),
+        (Join-Path $Directory (Split-Path -Leaf $Asset))
+    )
+    $parts = $Asset -split '[\\/]'
+    if ($parts.Count -ge 2) {
+        $candidates += (Join-Path $Directory (Join-Path $parts[-2] $parts[-1]))
+    }
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+    return $null
+}
+
+function Share-ManagedPayloadAssets {
+    <#
+      Every out-of-process host is its own application with its own deps.json, so the build gives
+      it a private copy of the whole shared dependency closure: 1535 MB of the v5.7.0 Windows
+      payload was byte-identical copies, and 272 MB of it belongs to files this step can move.
+
+      Windows only: a ZIP and a 7z have no hardlink entry, so the tar.xz payload's Linux copy is
+      already free (build/linux/deduplicate-runtime-files.sh collapses it into shared
+      inodes). Sharing there would only add store copies.
+
+      hostpolicy falls back to an additional probing path for a deps asset that is missing from
+      the app base, expecting <library>/<version>/<asset path as written in deps>. Libraries that
+      more than one host carries move there once and the other copies go away; the launch spec
+      passes the path to the child (absolute - a relative one resolves against the child's
+      working directory, which nothing controls).
+
+      The payload root keeps its own flat closure on purpose: it is started by the user's command
+      line ('dotnet OpenDevelop.dll'), which cannot know an absolute probing path.
+    #>
+    param([Parameter(Mandatory)][string]$PayloadRoot, [Parameter(Mandatory)][string]$RootDepsName)
+
+    $rootDepsPath = Join-Path $PayloadRoot $RootDepsName
+    $copies = [System.Collections.Generic.List[object]]::new()
+    foreach ($deps in Get-ChildItem -LiteralPath $PayloadRoot -Recurse -File -Filter '*.deps.json') {
+        if ($deps.FullName -eq $rootDepsPath) { continue }
+        if (-not (Test-IsDesignerHostDeps -DepsPath $deps.FullName -PayloadRoot $PayloadRoot)) { continue }
+        foreach ($asset in Get-ManagedDepsAsset -DepsPath $deps.FullName) {
+            $path = Resolve-ManagedAssetPath -Directory $deps.DirectoryName -Asset $asset.Asset
+            if ($null -eq $path) { continue }
+            $copies.Add([pscustomobject]@{
+                StoreRelative = ($asset.Library + '/' + $asset.Asset).Replace('\', '/')
+                Path          = $path
+                Hash          = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+            })
+        }
+    }
+
+    $storeRoot = Join-Path $PayloadRoot 'shared/managed'
+    $sharedIdentities = [System.Collections.Generic.List[string]]::new()
+    $sharedLibraries = 0
+    $storedBytes = 0L
+    $removedBytes = 0L
+    foreach ($hashGroup in ($copies | Group-Object Hash)) {
+        $paths = $hashGroup.Group | Group-Object Path
+        if ($paths.Count -lt 2) { continue }
+        # The same bytes can be declared under several library identities (one assembly at two
+        # versions, or a package asset and a flat copy), and every one of them needs its own
+        # probe path once the files are gone.
+        $source = $paths[0].Group[0].Path
+        foreach ($identity in ($hashGroup.Group.StoreRelative | Sort-Object -Unique)) {
+            $target = Join-Path $storeRoot $identity
+            $sharedIdentities.Add($identity)
+            if (Test-Path -LiteralPath $target -PathType Leaf) { continue }
+            New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+            Copy-Item -LiteralPath $source -Destination $target
+            $storedBytes += (Get-Item -LiteralPath $target).Length
+            $sharedLibraries++
+        }
+        foreach ($path in $paths) {
+            $removedBytes += (Get-Item -LiteralPath $path.Group[0].Path).Length
+            Remove-Item -LiteralPath $path.Group[0].Path -Force
+        }
+    }
+    if ($sharedLibraries -gt 0) {
+        Write-Host ("    shared closure: {0} probe paths in {1:N1} MB, {2:N1} MB of host copies removed" -f $sharedLibraries, ($storedBytes / 1MB), ($removedBytes / 1MB))
+    }
+    return @($sharedIdentities)
+}
+
+function Test-SharedManagedPayload {
+    <#
+      Static proof for what sharing removed: every probe path it created must exist, because the
+      per-host copy is gone and hostpolicy will look here. Declared assets that no host ever
+      carried are not this check's business - the payload has always had those (a WinForms host's
+      deps names WPF assemblies it does not ship) and they are not resolvable either way.
+    #>
+    param([Parameter(Mandatory)][string]$PayloadRoot, [string[]]$SharedIdentities = @())
+
+    $storeRoot = Join-Path $PayloadRoot 'shared/managed'
+    $missing = [System.Collections.Generic.List[string]]::new()
+    foreach ($identity in $SharedIdentities) {
+        $probePath = Join-Path $storeRoot $identity
+        if (-not (Test-Path -LiteralPath $probePath -PathType Leaf)) {
+            $missing.Add($identity)
+        }
+    }
+    if ($missing.Count -gt 0) {
+        throw "Shared closure is missing probe paths the hosts now depend on:$([Environment]::NewLine)$(($missing | Select-Object -First 10) -join [Environment]::NewLine)"
+    }
+}
+
 function Invoke-LinuxPayload {
     Assert-HostPublished
     $env:DIST_CONFIG = $config; $env:DIST_LINUX_RID = $linuxRid
@@ -1324,6 +1477,8 @@ function Invoke-WindowsPayload {
 
     $appPath = Join-Path $payloadRoot 'OpenDevelop.dll'
     if (-not (Test-Path $appPath)) { throw "dist.ps1: packaged app not found: $appPath" }
+    $sharedIdentities = Share-ManagedPayloadAssets -PayloadRoot $payloadRoot -RootDepsName 'OpenDevelop.deps.json'
+    Test-SharedManagedPayload -PayloadRoot $payloadRoot -SharedIdentities $sharedIdentities
     Test-WindowsDistributionPayload -PayloadRoot $payloadRoot
     Write-DistributionStepElapsed $payloadStepStopwatch 'payload validation'
     Write-Host "Payload ready: $payloadRoot"

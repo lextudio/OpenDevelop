@@ -254,6 +254,15 @@ must be deleted or restore just reuses the previously extracted copy; the script
   above. `dist.ps1` validates the payload (addin manifests present, per-RID designer hosts present,
   no PDBs/`ref/`/foreign platform runtimes/link-time `.lib` inputs) before archiving, then lists the
   archive and repeats those checks on its entries.
+  - Out-of-process designer hosts are separate applications, so each one used to carry a private
+    copy of the whole shared dependency closure (1535 MB of the v5.7.0 payload). The payload phase
+    now copies the byte-identical ones into `shared/managed/<library>/<version>/<asset>` once and
+    deletes the per-host copies; `DesignerHostLaunchSpec` passes `--additionalprobingpath` with that
+    directory to every child, and hostpolicy falls back to it for a deps asset missing from the app
+    base. The payload root keeps its own flat closure: it is started by the user's command line
+    (`dotnet OpenDevelop.dll`), which cannot know an absolute probing path. 7-Zip has no hardlink
+    entry, which is why Windows needs this and Linux does not - `tar` records the Linux duplicates
+    as name-only hardlink entries instead.
 - **Linux:** `dist.linux.sh` (Release) → `OpenDevelop-linux-<rid>.tar.xz`. The duplicate files the
   payload carries are hardlinked first, so tar stores each repeat as a name-only entry, and xz
   compresses the rest. Both formats exist because the same dependency closure sits in the

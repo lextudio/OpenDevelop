@@ -51,6 +51,42 @@ public sealed class DesignerRemoteContractsTests
 	}
 
 	[Fact]
+	public void HostLaunchSpec_PassesTheSharedProbingPathToTheChild()
+	{
+		var directory = Directory.CreateTempSubdirectory("OpenDevelop-DesignerProbing-");
+		try {
+			var runtimeConfig = Path.Combine(directory.FullName, "app.runtimeconfig.json");
+			var deps = Path.Combine(directory.FullName, "app.deps.json");
+			var store = Path.Combine(directory.FullName, "shared", "managed");
+			Directory.CreateDirectory(store);
+			File.WriteAllText(runtimeConfig, "{}");
+			File.WriteAllText(deps, "{}");
+
+			var spec = new DesignerHostLaunchSpec {
+				RuntimeConfigPath = runtimeConfig,
+				DepsFilePath = deps,
+				SharedProbingPath = store
+			};
+
+			// --additionalprobingpath must be an exec option, before the entry assembly's own
+			// arguments: the child resolves its deps against it, and hostpolicy only reads
+			// absolute paths here (a relative one is resolved against the child's working
+			// directory, which the designer never controls).
+			var command = spec.BuildCommandLine("C:\\host.dll", 1234, "token");
+			Assert.Contains($"exec --additionalprobingpath \"{store}\" --runtimeconfig", command);
+
+			spec = new DesignerHostLaunchSpec {
+				RuntimeConfigPath = runtimeConfig,
+				DepsFilePath = deps,
+				SharedProbingPath = ""
+			};
+			Assert.DoesNotContain("--additionalprobingpath", spec.BuildCommandLine("C:\\host.dll", 1, "token"));
+		} finally {
+			directory.Delete(recursive: true);
+		}
+	}
+
+	[Fact]
 	public void DocumentRegistry_OnlyOpenPathCreatesAndEveryLookupValidatesSession()
 	{
 		var registry = new DesignerDocumentRegistry<object>();
