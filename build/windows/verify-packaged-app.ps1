@@ -24,7 +24,6 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-Set-StrictMode -Version Latest
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $payload = (Resolve-Path $PayloadRoot).Path
@@ -116,7 +115,9 @@ try {
         Start-Sleep -Seconds 2
     }
     if (-not ($designerStatus.hostAlive -and $designerStatus.designerLoaded -and $designerStatus.hasRenderFrame)) {
-        Fail "the packaged WPF designer did not load a rendered frame: $($designerStatus | ConvertTo-Json -Compress)"
+        # Print the whole status: the field set is the add-in's, and it is what says whether the
+        # host never started, started but did not load, or loaded without rendering.
+        Fail "the packaged WPF designer did not load a rendered frame: $($designerStatus | ConvertTo-Json -Depth 5 -Compress)"
     }
 
     # The shared-closure change removed each host's private copy of the managed closure and hands
