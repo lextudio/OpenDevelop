@@ -147,7 +147,6 @@ Rules learned the hard way, do not undo:
   `gh release edit v5.7.1 --draft=false`.
 
 ## 5. Linux x64 runner ran out of disk (beta.17)
-
 `Package Linux (linux-x64)` (run `41184771107`) died inside `Build and smoke-test the native Linux
 payload` with the runner's own
 `Unhandled exception. System.IO.IOException: No space left on device :
@@ -156,6 +155,21 @@ payload` with the runner's own
 The job now drops the image caches this build never uses (`/usr/local/lib/android`, `/opt/ghc`,
 `/opt/hostedtoolcache/CodeQL`) and prints `df -h /` before and after, so the next occurrence (or its
 absence) is visible in the log.
+
+## 6. Linux had no packaged-artifact verification (closed)
+
+Windows and macOS each verify the packaged artifact with DevFlow journeys
+(`build/windows/verify-packaged-app.ps1`, `build/macos/verify-application-bundle.sh`). Linux had
+only `dist.ps1`'s `smoke` phase - start `dotnet OpenDevelop.dll` under Xvfb, wait for
+`startup/main-window-rendered`, kill - so a pruned `runtimes/` tree, a missing deps entry or a child
+host that cannot start reached users, and no CI platform runs Linux at all (`test-plan.json` has
+windows-x64, windows-arm64, macos-arm64 only).
+
+`build/linux/verify-application-payload.sh` now runs the macOS journeys against the payload
+directory (solution build, Roslyn child host and workspace, terminal plus both splits, ILSpy,
+LibreWPF designer frame; the debugger journey behind `OD_VERIFY_REQUIRE_DEBUGGER=1`), and the
+release workflow's Linux jobs run it under `xvfb-run` after the build. Verified locally against a
+payload directory end to end; the first real check is the next release run.
 
 ## Known-good constraints (do not regress)
 

@@ -238,6 +238,13 @@ jobs:
           unset GITHUB_ACTIONS
           xvfb-run -a bash dist.linux.sh --skip-feed-sync
           test -f "OpenDevelop-${{ matrix.rid }}.tar.xz"
+      # The smoke phase inside dist only proves the payload starts and paints one frame. Windows and
+      # macOS have had a journey check on the packaged artifact for a while; Linux had none, so a
+      # pruned runtime tree, a missing deps entry or a child host that cannot start reached users.
+      # Same journeys as the macOS bundle check, against the payload directory itself.
+      - name: Verify the packaged Linux payload
+        shell: bash
+        run: xvfb-run -a ./build/linux/verify-application-payload.sh "OpenDevelop-${{ matrix.rid }}"
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.rid }}
