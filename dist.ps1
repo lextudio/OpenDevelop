@@ -1124,6 +1124,18 @@ function Share-ManagedPayloadAssets {
     }
     $copies = @($copies | Where-Object { -not $ambiguous.Contains($_.Path) })
 
+    # path -> every library identity that resolves to it, computed once (scanning the copy list
+    # inside the loop would be quadratic over a payload with thousands of assets).
+    $identitiesByPath = @{}
+    foreach ($copy in $copies) {
+        if (-not $identitiesByPath.ContainsKey($copy.Path)) {
+            $identitiesByPath[$copy.Path] = [System.Collections.Generic.List[string]]::new()
+        }
+        if (-not $identitiesByPath[$copy.Path].Contains($copy.StoreRelative)) {
+            $identitiesByPath[$copy.Path].Add($copy.StoreRelative)
+        }
+    }
+
     $storeRoot = Join-Path $PayloadRoot 'shared/managed'
     $sharedIdentities = [System.Collections.Generic.List[string]]::new()
     $sharedLibraries = 0
@@ -1135,19 +1147,23 @@ function Share-ManagedPayloadAssets {
         # The same bytes can be declared under several library identities (one assembly at two
         # versions, or a package asset and a flat copy), and every one of them needs its own
         # probe path once the files are gone.
-        $source = $paths[0].Group[0].Path
-        foreach ($identity in ($hashGroup.Group.StoreRelative | Sort-Object -Unique)) {
-            $target = Join-Path $storeRoot $identity
-            $sharedIdentities.Add($identity)
-            if (Test-Path -LiteralPath $target -PathType Leaf) { continue }
-            New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
-            Copy-Item -LiteralPath $source -Destination $target
-            $storedBytes += (Get-Item -LiteralPath $target).Length
-            $sharedLibraries++
-        }
         foreach ($path in $paths) {
-            $removedBytes += (Get-Item -LiteralPath $path.Group[0].Path).Length
-            Remove-Item -LiteralPath $path.Group[0].Path -Force
+            $file = $path.Group[0].Path
+            # Every identity that maps to this file needs its own probe path: one host can declare
+            # the same assembly under two library ids (implementation and reference), and another
+            # host only one of them. Building the store from the identities of the hash group left
+            # an identity without a file once the copies were gone.
+            foreach ($identity in ($identitiesByPath[$file] | Sort-Object -Unique)) {
+                $target = Join-Path $storeRoot $identity
+                if (-not $sharedIdentities.Contains($identity)) { $sharedIdentities.Add($identity) }
+                if (Test-Path -LiteralPath $target -PathType Leaf) { continue }
+                New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+                Copy-Item -LiteralPath $file -Destination $target
+                $storedBytes += (Get-Item -LiteralPath $target).Length
+                $sharedLibraries++
+            }
+            $removedBytes += (Get-Item -LiteralPath $file).Length
+            Remove-Item -LiteralPath $file -Force
         }
     }
     if ($sharedLibraries -gt 0) {
