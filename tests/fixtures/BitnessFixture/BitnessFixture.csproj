@@ -4,10 +4,11 @@
     <TargetFramework>net10.0</TargetFramework>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
-  <!-- One fixture, one RID per debugger journey: the release check passes -p:RuntimeIdentifier=<rid>
-       -p:SelfContained=true so the produced apphost and runtime are the requested bitness (the
-       hosted runners have only the runner's own .NET runtime installed, so a framework-dependent
-       x86 or arm64 target could not start there). -->
+  <!-- One fixture, one RID per debugger journey: the release check passes
+       -p:RuntimeIdentifier=<rid> -p:SelfContained=false, which produces an apphost of that
+       architecture and still resolves the runtime the way the product does (we ship the app, the
+       user installs the .NET runtime). The check installs the target architecture's runtime on the
+       runner rather than bundling one here. -->
   <ItemGroup>
     <Compile Include="Program.cs" />
   </ItemGroup>

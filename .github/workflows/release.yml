@@ -96,6 +96,27 @@ jobs:
           rem No gh credential can read the lextudio feed with this ephemeral token; NuGet restores
           rem the same closure from GitHub Packages with the credential the job env provides.
           dist.windows.bat --skip-feed-sync
+      # The bitness journeys debug a framework-dependent fixture built for another architecture, so
+      # the runner needs that architecture's runtime - the same thing a user who debugs an x86 (or,
+      # on ARM64, an x64) application has installed. Nothing is bundled into the artifact: the
+      # product still requires the user's .NET 10 runtime. dotnet-install does not register the
+      # install for the apphost, so point it there explicitly.
+      - name: Install the runtimes the bitness journeys debug
+        shell: pwsh
+        run: |
+          $architectures = if ($env:RUNNER_ARCH -eq 'ARM64') { @('x64', 'x86') } else { @('x86') }
+          Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile "$env:RUNNER_TEMP/dotnet-install.ps1"
+          foreach ($architecture in $architectures) {
+            $installDir = switch ($architecture) {
+              'x86' { "${env:ProgramFiles(x86)}\dotnet" }
+              'x64' { "$env:ProgramFiles\dotnet\x64" }
+            }
+            & "$env:RUNNER_TEMP/dotnet-install.ps1" -Runtime dotnet -Channel 10.0 -Architecture $architecture -InstallDir $installDir -NoPath
+            if ($LASTEXITCODE -ne 0) { throw "the $architecture runtime did not install" }
+            if ($architecture -eq 'x86') { "DOTNET_ROOT_X86=$installDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }
+            if ($architecture -eq 'x64') { "DOTNET_ROOT_X64=$installDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }
+          }
+          dotnet --list-runtimes
       # The packaged payload is what users get, and its per-RID assets exist only so a project built
       # for another bitness can be designed and debugged. Prove that on the artifact itself rather
       # than on a development tree: the x64 runner debugs x64 and x86, the ARM64 runner debugs

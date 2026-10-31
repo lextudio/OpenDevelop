@@ -4,9 +4,11 @@
 # start the released launcher, then run the journeys that the payload's per-RID assets exist for.
 #
 # The bitness journeys are the reason the payload keeps add-in `runtimes/<rid>` trees at all. Each
-# one builds a fixture for one RID, starts it under the packaged debugger and requires the session
-# to stop at a breakpoint - so a missing (or wrongly pruned) `dbgshim.dll`, mixed-mode runtime or
-# runtime pack turns the release red instead of reaching users.
+# one builds a framework-dependent fixture for one RID, starts it under the packaged debugger and
+# requires the session to stop at a breakpoint - so a missing (or wrongly pruned) `dbgshim.dll` or
+# mixed-mode runtime turns the release red instead of reaching users. The runner needs the target
+# architecture's .NET runtime installed; the workflow does that, mirroring a user who debugs an
+# x86 application from an x64 install.
 #
 # Usage:
 #   ./build/windows/verify-packaged-app.ps1 -PayloadRoot OpenDevelop-win -Targets win-x64,win-x86
@@ -141,7 +143,11 @@ try {
         $shim = Join-Path $payload "AddIns/Debugger/runtimes/$rid/native/dbgshim.dll"
         if (-not (Test-Path -LiteralPath $shim)) { Fail "the payload has no $rid debugger shim: $shim" }
 
-        & dotnet build $fixture -c Debug -p:RuntimeIdentifier=$rid -p:SelfContained=true -v q --nologo
+        # Framework-dependent, like the product: we do not ship a runtime, and a user who debugs an
+        # x86 application has the x86 .NET runtime installed beside the x64 one. The workflow
+        # installs exactly those runtimes, so this journey tests the resolution users get rather
+        # than a self-contained copy.
+        & dotnet build $fixture -c Debug -p:RuntimeIdentifier=$rid -p:SelfContained=false -v q --nologo
         if ($LASTEXITCODE -ne 0) { Fail "the $rid fixture did not build" }
         Assert-PeMatches (Join-Path $repoRoot "tests/fixtures/BitnessFixture/bin/Debug/net10.0/$rid/BitnessFixture.exe") $rid
 
