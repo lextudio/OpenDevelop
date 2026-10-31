@@ -15,6 +15,23 @@ sealed class MewUIDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("session/open")] public DesignerSessionState Open(DesignerDocumentRequest request) => Load(request.Snapshot, create: true); [JsonRpcMethod("session/update")] public DesignerSessionState Update(DesignerDocumentRequest request) => Load(request.Snapshot, create: false);
 	DesignerSessionState Load(DesignerDocumentSnapshot snapshot, bool create) { EnsureSession(snapshot.SessionId); var session = create ? GetOrCreate(snapshot.DocumentId) : Get(snapshot.DocumentId); session.Version = snapshot.Version; var file = snapshot.Files.FirstOrDefault(f => f.Kind == "Designer") ?? snapshot.Files.FirstOrDefault(); session.FileName = file?.FileName ?? snapshot.DesignerFileName; session.Document.Reset(file?.Text ?? ""); session.UndoDepth = session.RedoDepth = 0; return State(session); }
 	[JsonRpcMethod("design/set-property")] public DesignerSessionState SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); var ok = propertyName == "$name" ? session.Document.Rename(elementId, value) : session.Document.SetProperty(elementId, propertyName, value); if (!ok) throw new InvalidOperationException("MewUI property mutation was rejected."); Mutated(session); return State(session); }
+	/// <summary>Sets one property on several elements as one undo step (all-or-nothing).</summary>
+	[JsonRpcMethod("design/set-property-many")]
+	public DesignerSessionState SetPropertyMany(string sessionId, string documentId, long baseVersion, string[] elementIds, string propertyName, string value)
+	{
+		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
+		if (elementIds == null || elementIds.Length == 0 || propertyName == "$name" || !session.Document.SetPropertyMany(elementIds, propertyName, value))
+			throw new InvalidOperationException("MewUI multi-property mutation was rejected.");
+		Mutated(session); return State(session);
+	}
+	/// <summary>Sets one Grid track (Rows/Columns entry) to Auto, Star or Pixel as one undo step.</summary>
+	[JsonRpcMethod("design/set-grid-track-unit")]
+	public DesignerSessionState SetGridTrackUnit(string sessionId, string documentId, long baseVersion, string gridId, bool row, int index, string unit)
+	{
+		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
+		if (!session.Document.SetGridTrackUnit(gridId, row, index, unit)) throw new InvalidOperationException("MewUI grid track edit was rejected: a Grid, a valid track index and Auto/Star/Pixel are required.");
+		Mutated(session); return State(session);
+	}
 	[JsonRpcMethod("design/set-event")] public DesignerSessionState SetEvent(string sessionId, string documentId, long baseVersion, string elementId, string eventName, string handlerName) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Document.SetEvent(elementId, eventName, string.IsNullOrWhiteSpace(handlerName) ? null : handlerName)) throw new InvalidOperationException("MewUI event mutation was rejected."); Mutated(session); return State(session); }
 	[JsonRpcMethod("design/add-element")] public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Document.Add(parentId, string.IsNullOrEmpty(item.TypeName) ? item.Name : item.TypeName)) throw new InvalidOperationException("MewUI element insertion was rejected."); Mutated(session); return State(session); }
 	[JsonRpcMethod("design/delete-elements")] public DesignerSessionState DeleteElements(string sessionId, string documentId, long baseVersion, string[] elementIds) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); foreach (var id in elementIds) if (!session.Document.Remove(id)) throw new InvalidOperationException("MewUI element deletion was rejected: " + id); Mutated(session); return State(session); }

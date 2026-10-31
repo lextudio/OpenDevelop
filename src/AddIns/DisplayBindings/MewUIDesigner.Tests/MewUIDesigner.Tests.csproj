@@ -9,5 +9,6 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
     <Compile Include="..\MewUIDesigner\MewUIDocumentEditor.cs" Link="MewUIDocumentEditor.cs" />
     <Compile Include="..\MewUIDesigner\MewUICodeBehindHandlers.cs" Link="MewUICodeBehindHandlers.cs" />
+    <Compile Include="..\MewUIDesigner\MewUIContextCommands.cs" Link="MewUIContextCommands.cs" />
   </ItemGroup>
 </Project>

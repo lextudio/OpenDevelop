@@ -471,6 +471,41 @@ public sealed class MxamlDocument
 		});
 	}
 
+	/// <summary>Sets one track of a Grid's <c>Rows</c> or <c>Columns</c> to Auto, Star ("*") or Pixel (keeps an existing pixel
+	/// size, else 100), padding missing tracks with "*" (a Grid without the attribute has one star track). One undo step.</summary>
+	public bool SetGridTrackUnit(string gridName, bool row, int index, string unit)
+	{
+		var grid = Find(gridName);
+		if (grid == null || grid.Type != "Grid" || index < 0 || index > 255 || unit is not ("Auto" or "Star" or "Pixel")) return false;
+		var property = row ? "Rows" : "Columns";
+		var tokens = (grid.FindAttribute(property)?.Value ?? "*").Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+		if (MewUIControlCatalog.ParseGridLengths(string.Join(",", tokens)) is null) return false;
+		while (tokens.Count <= index) tokens.Add("*");
+		var existingPixels = double.TryParse(tokens[index], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _);
+		tokens[index] = unit switch { "Auto" => "Auto", "Star" => "*", _ => existingPixels ? tokens[index] : "100" };
+		return SetProperty(gridName, property, string.Join(",", tokens));
+	}
+
+	/// <summary>Sets one (non-event, non-Name) property on several elements as one undo step; all-or-nothing.</summary>
+	public bool SetPropertyMany(IReadOnlyList<string> names, string property, string value)
+	{
+		if (names == null || names.Count == 0 || property is "Name") return false;
+		var objects = new List<MxamlObject>();
+		foreach (var name in names) {
+			var obj = Find(name);
+			if (obj == null || (MewUIControlCatalog.AttachedOwner(property) is { } owner && FindParent(name)?.Type != owner)
+				|| obj.FindAttribute(property) is { IsEvent: true }) return false;
+			objects.Add(obj);
+		}
+		return Commit(() => {
+			foreach (var obj in objects) {
+				if (obj.FindAttribute(property) is { } existing) existing.Value = value;
+				else obj.Attributes.Add(new MxamlAttribute { Name = property, Value = value });
+			}
+			return true;
+		});
+	}
+
 	/// <summary>Replaces a ComboBox/ListBox's string items (its <c>&lt;Item&gt;</c> children) in one
 	/// undo step; an empty list removes them.</summary>
 	public bool SetItems(string name, IReadOnlyList<string> items)

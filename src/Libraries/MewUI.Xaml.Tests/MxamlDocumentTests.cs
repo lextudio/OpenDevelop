@@ -38,6 +38,45 @@ public sealed class MxamlDocumentTests
 	}
 
 	[Fact]
+	public void SetGridTrackUnit_RewritesOneTrackAsOneUndoStep()
+	{
+		const string grid = """
+<?xml version="1.0" encoding="utf-8"?>
+<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow" Title="T">
+  <Grid Name="layout" Rows="Auto,*,100">
+    <Label Name="a" Text="A" Grid.Row="2"/>
+  </Grid>
+</Window>
+""";
+		var doc = MxamlDocument.Parse(grid); Assert.False(doc.HasErrors);
+		Assert.True(doc.SetGridTrackUnit("layout", row: true, 2, "Star"));
+		Assert.Equal("Auto,*,*", doc.Find("layout")!.FindAttribute("Rows")!.Value);
+		Assert.True(doc.SetGridTrackUnit("layout", row: false, 1, "Auto"));
+		Assert.Equal("*,Auto", doc.Find("layout")!.FindAttribute("Columns")!.Value);
+		Assert.True(doc.SetGridTrackUnit("layout", row: true, 0, "Pixel"));
+		Assert.Equal("100,*,*", doc.Find("layout")!.FindAttribute("Rows")!.Value);
+		Assert.False(doc.SetGridTrackUnit("a", row: true, 0, "Star"));
+		Assert.False(doc.SetGridTrackUnit("layout", row: true, 0, "Bogus"));
+		Assert.True(doc.Undo()); Assert.Equal("Auto,*,*", doc.Find("layout")!.FindAttribute("Rows")!.Value);
+	}
+
+	[Fact]
+	public void SetPropertyMany_IsOneUndoStepAndAllOrNothing()
+	{
+		var doc = NewDoc();
+		var before = doc.ToXaml();
+		Assert.True(doc.SetPropertyMany(new[] { "heading", "newButton" }, "HorizontalAlignment", "Center"));
+		Assert.Equal("Center", doc.Find("newButton")!.FindAttribute("HorizontalAlignment")!.Value);
+		Assert.True(doc.Undo());
+		Assert.Equal(before, doc.ToXaml());
+		Assert.False(doc.Undo());
+
+		Assert.False(doc.SetPropertyMany(new[] { "heading", "missing" }, "HorizontalAlignment", "Center"));
+		Assert.Null(doc.Find("heading")!.FindAttribute("HorizontalAlignment"));
+		Assert.False(doc.Undo());
+	}
+
+	[Fact]
 	public void SetProperty_NumericProperty_EmitsNumericLiteral()
 	{
 		var doc = NewDoc();
