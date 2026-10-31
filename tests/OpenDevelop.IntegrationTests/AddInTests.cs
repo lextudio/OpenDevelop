@@ -7706,6 +7706,7 @@ EndGlobal
 
     public async ValueTask DisposeAsync()
     {
+                await _app.HideIlSpyPanesAsync();
                 try { Directory.Delete(_repoDir, recursive: true); } catch { }
                 try { Directory.Delete(_projectDir, recursive: true); } catch { }
                 try { await _app.InvokeAsync("od.file.revert-all-dirty"); } catch { }

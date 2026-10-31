@@ -790,6 +790,13 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 		}
 	}
 
+	/// <summary>Hides the hosted ILSpy panes a test opened. They are dock panes, not legacy pads, and on a shared
+	/// instance they keep squeezing the document area for every later test. Never initializes ILSpy itself.</summary>
+	public async Task HideIlSpyPanesAsync()
+	{
+		try { await InvokeAsync("od.ilspy.hide-all-panes"); } catch (Exception) { }
+	}
+
 	public async Task<JsonElement> InvokeAsync(string action, params object[] args)
 	{
 		var sw = Stopwatch.StartNew();

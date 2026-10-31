@@ -27,10 +27,10 @@ public sealed class PerformanceGateTests : IAsyncDisposable
         _slnx = Path.Combine(_dir, Path.GetFileName(app.SlnxFixturePath));
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
+        await _app.HideIlSpyPanesAsync();
         try { Directory.Delete(_dir, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
-        return ValueTask.CompletedTask;
     }
 
     [Fact]

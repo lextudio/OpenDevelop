@@ -244,7 +244,23 @@ jobs:
       # Same journeys as the macOS bundle check, against the payload directory itself.
       - name: Verify the packaged Linux payload
         shell: bash
+        env:
+          # Same as macOS: the breakpoint journey is mandatory in the release checkout.
+          OD_VERIFY_REQUIRE_DEBUGGER: '1'
         run: xvfb-run -a ./build/linux/verify-application-payload.sh "OpenDevelop-${{ matrix.rid }}"
+      # The check above runs the directory dist left behind. Users get the tar.xz, so unpack that exact file
+      # elsewhere and run the same journeys on it; this catches what archiving loses (modes, symlinks, paths).
+      - name: Verify the shipped Linux archive after extraction
+        shell: bash
+        env:
+          OD_VERIFY_REQUIRE_DEBUGGER: '1'
+        run: |
+          extract="$RUNNER_TEMP/archive-check"
+          rm -rf "$extract"; mkdir -p "$extract"
+          tar -xJf "OpenDevelop-${{ matrix.rid }}.tar.xz" -C "$extract"
+          payload=$(find "$extract" -maxdepth 2 -name OpenDevelop.dll -printf '%h\n' -quit)
+          test -n "$payload" || { echo '::error::OpenDevelop.dll not found in the extracted archive'; exit 1; }
+          xvfb-run -a ./build/linux/verify-application-payload.sh "$payload"
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.rid }}

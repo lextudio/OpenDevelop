@@ -172,6 +172,18 @@ namespace ICSharpCode.ILSpyAddIn
 			});
 		}
 
+		[DevFlowAction("od.ilspy.hide-all-panes", Description = "Hide the hosted Assemblies, Search and Analyze panes in one call - the per-test cleanup for the shared app instance. A no-op that does not initialize ILSpy when it has not been initialized yet")]
+		public static string HideAllPanes()
+		{
+			if (!IlSpyWorkspaceHost.IsInitialized)
+				return JsonSerializer.Serialize(new { initialized = false, hidden = 0 });
+			var hidden = 0;
+			foreach (var title in new[] { "Assemblies", "Search", "Analyze" })
+				if (JsonSerializer.Deserialize<JsonElement>(HidePane(title)).GetProperty("found").GetBoolean())
+					hidden++;
+			return JsonSerializer.Serialize(new { initialized = true, hidden });
+		}
+
 		[DevFlowAction("od.ilspy.activate-decompiled-document", Description = "Re-activate the decompiled-code document tab. Activating a tool pane (od.ilspy.show-pane) makes that pane the dock's ActiveContent and leaves the workbench with no active document, so a test that inspected a pad uses this to restore state for whatever runs next against the same shared app instance")]
 		public static string ActivateDecompiledDocument()
 		{
