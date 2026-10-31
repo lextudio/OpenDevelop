@@ -217,6 +217,15 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 					throw new InvalidOperationException(
 						$"The designer host process exited before connecting (exit code {exitCode})." +
 						(string.IsNullOrEmpty(childLog) ? "" : $" Child log:{Environment.NewLine}{childLog}"), ex);
+				// A child that is still running but never connects used to surface as a bare
+				// TimeoutException, with the one thing that explains it - the child's own output -
+				// discarded. A packaged payload that cannot resolve an assembly, or one whose host
+				// stalls, both look exactly like this from outside.
+				if (ex is TimeoutException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested)) {
+					throw new InvalidOperationException(
+						"The designer host did not complete its handshake before the timeout." +
+						(string.IsNullOrEmpty(childLog) ? "" : $" Child log:{Environment.NewLine}{childLog}"), ex);
+				}
 				throw;
 			}
 		}
