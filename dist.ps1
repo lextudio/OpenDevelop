@@ -1108,6 +1108,22 @@ function Share-ManagedPayloadAssets {
         }
     }
 
+    # One physical file name can be declared by several library identities in one directory - the
+    # same assembly shipped as an implementation (Version=5.7.1.0) and, under a different library
+    # id, as a reference assembly (Version=5.7.0.0). Sharing one of them deletes the other copy's
+    # bytes and leaves whatever survived, which is how the packaged WPF designer ended up loading a
+    # reference assembly and failing with "could not load ICSharpCode.Designer.Remote". A name that
+    # resolves to more than one content hash in the same directory is never shared.
+    $ambiguous = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($byDirectory in ($copies | Group-Object { Split-Path -Parent $_.Path })) {
+        foreach ($byName in ($byDirectory.Group | Group-Object { Split-Path -Leaf $_.Path })) {
+            if (@($byName.Group.Hash | Sort-Object -Unique).Count -gt 1) {
+                [void]$ambiguous.Add($byName.Group[0].Path)
+            }
+        }
+    }
+    $copies = @($copies | Where-Object { -not $ambiguous.Contains($_.Path) })
+
     $storeRoot = Join-Path $PayloadRoot 'shared/managed'
     $sharedIdentities = [System.Collections.Generic.List[string]]::new()
     $sharedLibraries = 0
