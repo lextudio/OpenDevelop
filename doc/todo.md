@@ -19,7 +19,7 @@ run passed the packaged designer check in beta.16).
 
 ## 1. macOS bundle verification dies during `od.build-solution` (blocks a four-platform draft)
 
-Status: root-caused and fixed in the working tree; one green release run still to record.
+Status: NuGet crash fixed and confirmed; a second, unexplained intermittent macOS exit remains open.
 
 Symptom: `curl: (52) Empty reply from server`, then `agent status: <no answer>`, `app process: not
 running`. Intermittent — beta.3, beta.6 and beta.15 passed; beta.16 and beta.17 failed at the first
@@ -62,6 +62,11 @@ Verified on macOS 2026-10-31: rebuilt Release bundle (`dist.ps1 -From host`), th
 "source is remote ... reported as having no packages" line and contains no `NuGet.ProxyCache` frame
 (the pre-fix local run reproduced the exception; a local run that hit it did not always die, which is
 why removing the code path matters more than the catch). `OpenDevelop.Base.Tests`: 509 total, 0 failed.
+
+beta.19 (run `41216636654`, commit `78a8f0f7`) is green on all four platforms and made draft
+`v5.7.1-beta.19` (win 232.5 MB, macos 245.9 MB, linux-x64 110.8 MB, linux-arm64 107.0 MB). The macOS
+bundle verification passed in 79 s, so the silent exit did not recur there and is still unexplained;
+the diagnostics below are what will name it if it does.
 
 beta.18 confirms both fixes on the two platforms that had them: Windows passes the packaged designer
 journey under the shared closure (the identity-conflict fix), and linux-x64 no longer dies on disk.
@@ -169,7 +174,9 @@ windows-x64, windows-arm64, macos-arm64 only).
 directory (solution build, Roslyn child host and workspace, terminal plus both splits, ILSpy,
 LibreWPF designer frame; the debugger journey behind `OD_VERIFY_REQUIRE_DEBUGGER=1`), and the
 release workflow's Linux jobs run it under `xvfb-run` after the build. Verified locally against a
-payload directory end to end; the first real check is the next release run.
+payload directory end to end; the first real check is the next release run. beta.19 (run `41216636654`) ran it under `xvfb-run` on
+both linux-x64 and linux-arm64 and both passed: solution build, Roslyn child host, terminal splits,
+ILSpy and the LibreWPF designer frame now hold on a packaged Linux payload.
 
 ## Known-good constraints (do not regress)
 
