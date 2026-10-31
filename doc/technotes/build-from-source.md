@@ -166,7 +166,7 @@ without stealing focus) - see [devflow.md](devflow.md) and
 payload. It runs as ordered phases:
 
 ```
-restore -> host -> addins -> designer-hosts (Windows only) -> payload -> smoke -> zip
+restore -> host -> addins -> designer-hosts (Windows only) -> payload -> smoke -> archive
 ```
 
 ```bash
@@ -174,11 +174,11 @@ restore -> host -> addins -> designer-hosts (Windows only) -> payload -> smoke -
 ./dist.ps1 -Configuration Debug        # package a Debug build for local testing
 ./dist.ps1 -Phase payload              # re-assemble OpenDevelop-win from what is already built
 ./dist.ps1 -Phase payload,smoke        # ...and verify it actually starts
-./dist.ps1 -From payload               # payload, smoke and zip
+./dist.ps1 -From payload               # payload, smoke and archive
 ./dist.ps1 -Phase addins,payload       # rebuild all AddIns, then re-assemble
 ./dist.ps1 -Phase host                 # just the host publish
 ./dist.windows.bat --phase payload     # the .bat wrapper forwards flags too
-./dist.windows.bat --from payload      # payload, smoke, then zip
+./dist.windows.bat --from payload      # payload, smoke, then the .7z
 ./dist.windows.bat --debug             # Debug configuration
 ./dist.windows.bat -AddInMaxCpuCount 4 # native PowerShell parameter; increase only after validation
 ./dist.macos.sh --skip-publish         # macOS equivalent
@@ -198,8 +198,8 @@ restore -> host -> addins -> designer-hosts (Windows only) -> payload -> smoke -
   directory, naming that machine's SDK by absolute path, so it is only correct where it was written.
   Copying is not the only way it gets in: the `smoke` phase launches the *packaged* app, which
   writes a fresh one just before the archive is created. So every archive phase strips that one
-  resolver first (`RemoveRuntimeWrittenSdkResolverManifest`) - before the `.zip` and the `.dmg`,
-  after smoke - and the Windows zip is then checked for it. The copy steps exclude it as well, and
+  resolver first (`RemoveRuntimeWrittenSdkResolverManifest`) - before the `.7z`, the `.tar.xz` and
+  the `.dmg`, after smoke - and each archive is then checked for it. The copy steps exclude it as well, and
   the packaged `OpenDevelop.Addin.SdkResolver` is a product file that is still shipped. v5.6.3
   shipped the CI runner's `C:\Program Files\dotnet\sdk\10.0.401` manifest and every SDK-style
   project load elsewhere failed with *"Could not load SDK Resolver. A manifest file exists, but the
@@ -250,9 +250,15 @@ must be deleted or restore just reuses the previously extracted copy; the script
 
 ## Release (brief)
 
-- **Windows:** `dist.windows.bat` (Release) → `OpenDevelop-win.zip`, built from the phase pipeline
+- **Windows:** `dist.windows.bat` (Release) → `OpenDevelop-win.7z`, built from the phase pipeline
   above. `dist.ps1` validates the payload (addin manifests present, per-RID designer hosts present,
-  no PDBs/`ref/`/foreign platform runtimes) before zipping.
+  no PDBs/`ref/`/foreign platform runtimes/link-time `.lib` inputs) before archiving, then lists the
+  archive and repeats those checks on its entries.
+- **Linux:** `dist.linux.sh` (Release) → `OpenDevelop-linux-<rid>.tar.xz`. The duplicate files the
+  payload carries are hardlinked first, so tar stores each repeat as a name-only entry, and xz
+  compresses the rest. Both formats exist because the same dependency closure sits in the
+  application root and in every out-of-process child host; a ZIP stored 63-64% of each payload more
+  than once.
 - **macOS:** `release.macos.ps1` / `release.macos.sh --version <v>` cuts a draft GitHub release,
   uploads the DMG, then publishes the draft. The Addin SDK ships inside the bundle rather than on
   NuGet.org - see [addin-sdk.md](addin-sdk.md).

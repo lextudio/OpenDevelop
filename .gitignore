@@ -47,6 +47,7 @@ tests/fixtures/CoverageFixture/CoverageTests/CodeCoverage/coverage.xml
 
 # keep the macOS and Windows packaging assets tracked
 /build/*
+!/build/linux/
 !/build/macos/
 !/build/windows/
 !/build/patch-librewinforms-deps.ps1
@@ -58,5 +59,7 @@ tests/fixtures/SampleTestProject/CodeCoverage/
 /tests/OpenDevelop.IntegrationTests/TestResults/
 /OpenDevelop-win*/
 *.zip
+*.7z
+*.tar.xz
 tests/fixtures/CoverageFixture/CoverageTests/CodeCoverage/
 tmp/

@@ -280,8 +280,8 @@ Layout, so a change goes in the right place:
 
 `.github/workflows/release.yml` publishes; pushing a tag is the only trigger. It carries the conventions of the manual
 releases v5.6.0 - v5.6.3, so keep them: the title is the tag (`v5.6.4`, not `OpenDevelop v5.6.4`), the assets keep the
-**fixed names** `OpenDevelop-win.zip`, `OpenDevelop-macos.dmg`, `OpenDevelop-linux-x64.zip` and
-`OpenDevelop-linux-arm64.zip` (a versioned name would break
+**fixed names** `OpenDevelop-win.7z`, `OpenDevelop-macos.dmg`, `OpenDevelop-linux-x64.tar.xz` and
+`OpenDevelop-linux-arm64.tar.xz` (a versioned name would break
 `releases/latest/download/<name>`), and the notes follow `.github/release-notes.template.md` (badge, "Changes since",
 Highlight, Known issues, Full Changelog).
 
@@ -294,6 +294,10 @@ Highlight, Known issues, Full Changelog).
 - A tag with a suffix (`v5.6.5-rc1`) is drafted as a prerelease: use one to rehearse the whole pipeline.
 - Packaging needs what CI's build needs: the submodules (`init-submodules.sh`), the `lextudio_github` feed credential, and
   `GITHUB_ACTIONS` removed (GitVersion races on the runner's env file). `dist.ps1` runs its own `smoke` phase on Windows.
+- Windows ships a solid `.7z` and Linux a `.tar.xz`, not a ZIP: both payloads repeat one dependency closure at the
+  application root and in each out-of-process child host, and a ZIP stored that repetition in full (63-64% of its
+  bytes). Windows 11 extracts `.7z` natively; older Windows needs 7-Zip, which `dist.ps1` already requires to build it.
+  Do not "restore compatibility" by also attaching a ZIP - it would roughly double every download.
 - `release.macos.ps1` is the older local flow with different names; it stays as a local fallback only.
 
 ## Designer rules

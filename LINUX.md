@@ -1,16 +1,18 @@
 Launching OpenDevelop on Linux
 ==============================
 
-Linux support is new: the ZIP is built and smoke-tested on x64 and ARM64 runners, but it is the
+Linux support is new: the tar.xz is built and smoke-tested on x64 and ARM64 runners, but it is the
 least exercised platform. If something below does not match your distribution, please open an
 issue at https://github.com/lextudio/OpenDevelop/issues.
 
-Extract the ZIP and run one of,
+Extract the archive and run one of,
 
 ``` sh
-./OpenDevelop
-dotnet OpenDevelop.dll
+tar -xf OpenDevelop-linux-x64.tar.xz
+./OpenDevelop-linux-x64/OpenDevelop
 ```
+
+or, from inside the extracted directory, `dotnet OpenDevelop.dll`.
 
 `OpenDevelop` is a small shell wrapper around `dotnet OpenDevelop.dll`, so both forms need a .NET
 runtime the program can find. The rest of this page lists what usually goes wrong first.
@@ -61,7 +63,7 @@ The window and the docking layout need X11, xkbcommon, GLFW and OpenGL:
 sudo apt-get install -y libx11-xcb1 libxkbcommon0 libgl1
 ```
 
-`libglfw.so.3` is shipped inside the ZIP (`runtimes/linux-x64/native/` and next to `OpenDevelop`)
+`libglfw.so.3` is shipped inside the archive (`runtimes/linux-x64/native/` and next to `OpenDevelop`)
 because Silk.NET looks for it there. If GLFW still cannot be loaded, the error names the file it
 tried; check with,
 

@@ -3,7 +3,7 @@
 Goal: broaden GitHub Actions coverage of locally runnable tests on Windows x64, Windows ARM64 and macOS ARM64.
 Introduce substantial groups in observe mode, inspect their actual runner results, and promote stable entries to
 required per platform. Linux is packaged and started on native x64 and ARM64 runners by the `package-linux` job of
-`ci.yml`, and `release.yml` attaches both Linux ZIPs; Linux test lanes are the next planned expansion and no Linux
+`ci.yml`, and `release.yml` attaches both Linux `tar.xz` archives; Linux test lanes are the next planned expansion and no Linux
 platform is enabled in the test plan yet.
 
 ## Current status (2026-10-28, 14:12 UTC)
@@ -68,7 +68,7 @@ The first native evidence came from a separate observational `Linux package smok
 as a short-lived artifact. Once both architectures were green (see below) those steps moved into the `package-linux` job
 of `ci.yml`, so a Linux packaging or startup failure turns the CI run red, and `release.yml` gates a tag on a green
 `ci.yml` run for the commit. `release.yml` also has a `linux` job (one native runner per architecture) whose
-`OpenDevelop-linux-x64.zip` and `OpenDevelop-linux-arm64.zip` the draft release attaches. The CI invocation skips the
+`OpenDevelop-linux-x64.tar.xz` and `OpenDevelop-linux-arm64.tar.xz` the draft release attaches. The CI invocation skips the
 developer-only local-feed synchronizer and restores directly from GitHub Packages with the workflow's short-lived
 package credential.
 
@@ -159,6 +159,14 @@ users and automation. Do not make AppImage, Flatpak, Snap, a `.deb`, or an `.rpm
 introduces a different runtime/sandbox/desktop-integration ownership model. After the ZIP has repeatable smoke and
 integration evidence, choose one installer format as a separate product/distribution project; it must not silently
 replace the ZIP.
+
+**Superseded (2026-10-30):** the first shipped Linux archives are `tar.xz`, and Windows moved from `.zip` to a solid
+`.7z`. The ZIP kept the format "uniform", but it also stored the payload's duplicate dependency closures in full: the
+same assembly or native library sits in the application root and in every out-of-process child host, and 64% of the
+Linux payload (63% of the Windows one) was duplicate bytes - 498 MB of ZIP for 504 MB of unique Linux content, 828 MB
+for 908 MB on Windows. The payload is now hardlinked before `tar` (a repeat becomes a name-only hardlink entry) and
+compressed with `xz -9e`; Windows uses 7-Zip's solid LZMA2 block for the same reason. The no-installer constraint and
+the reasoning against AppImage/Flatpak/Snap/deb/rpm are unchanged - only the container format moved.
 
 ### Phases and gates
 

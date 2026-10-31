@@ -1,16 +1,20 @@
 #!/usr/bin/env pwsh
 #
 # dist.ps1 — build a framework-dependent OpenDevelop distribution for local testing.
-# Mirrors the CI steps in .github/workflows/package.yml. Replaces the former dist.macos.ps1 and
-# dist.windows.ps1, which were ~85% identical and drifted apart every time one side was touched.
+# Mirrors the CI steps in .github/workflows/ci.yml and release.yml. Replaces the former dist.macos.ps1
+# and dist.windows.ps1, which were ~85% identical and drifted apart every time one side was touched.
 #
 # The whole publish/patch/AddIn-build pipeline is platform-neutral and lives here once. Only the
-# final packaging stage differs, and it is isolated in Invoke-MacPackaging / Invoke-WindowsPackaging
-# at the bottom:
+# final packaging stage differs, and it is isolated in Invoke-*Payload / Invoke-*Archive:
 #
-#   macOS   -> OpenDevelop.app bundle, then OpenDevelop-macos.dmg
-#   Windows -> one OpenDevelop-win-<rid>/ payload directory and OpenDevelop-windows-<rid>.zip PER
-#              RuntimeIdentifier (see -RuntimeIdentifiers below)
+#   macOS   -> OpenDevelop.app bundle, then a compressed OpenDevelop-macos.dmg
+#   Windows -> one platform-neutral OpenDevelop-win payload directory (both launchers, both RID
+#              trees), then a solid OpenDevelop-win.7z
+#   Linux   -> one native OpenDevelop-<rid> payload directory, then OpenDevelop-<rid>.tar.xz
+#
+# Windows and Linux are not ZIPed on purpose: the same dependency closure sits in the application
+# root and in every out-of-process child host, and a ZIP stores each copy in full (63% of both
+# payloads was duplicate bytes). A solid 7z block and tar's hardlink entries pay for a copy once.
 #
 # Note the app runs on LibreWPF (portable WPF) on Windows too — SharpDevelop.csproj strips the
 # Microsoft.WindowsDesktop.App runtime framework on EVERY platform — which is why the LibreWinForms
@@ -95,11 +99,15 @@ $distributionPlatform = if ($IsWindows) { 'windows' } elseif ($IsMacOS) { 'macos
 $linuxRid = if ($distributionPlatform -eq 'linux') { switch ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture) { ([System.Runtime.InteropServices.Architecture]::X64) { 'linux-x64' } ([System.Runtime.InteropServices.Architecture]::Arm64) { 'linux-arm64' } default { throw "dist.ps1: Linux distributions require a native x64 or ARM64 host." } } } else { $null }
 $ridFamily = switch ($distributionPlatform) { 'windows' { 'win' } 'macos' { 'osx' } 'linux' { 'linux' } }
 
-# ONE platform-neutral payload/zip: the app is AnyCPU and apphost-free, and every architecture's
+# ONE platform-neutral payload: the app is AnyCPU and apphost-free, and every architecture's
 # native/runtime assets live under runtimes/<rid>/ in the same tree. Script-scoped because the
-# payload / smoke / zip phases are separately runnable and all three refer to them.
+# payload / smoke / archive phases are separately runnable and all three refer to them.
 $payloadRoot = switch ($distributionPlatform) { 'windows' { Join-Path $repoRoot 'OpenDevelop-win' } 'linux' { Join-Path $repoRoot "OpenDevelop-$linuxRid" } default { $null } }
-$zipPath = switch ($distributionPlatform) { 'windows' { Join-Path $repoRoot 'OpenDevelop-win.zip' } 'linux' { Join-Path $repoRoot "OpenDevelop-$linuxRid.zip" } default { $null } }
+# Windows ships a solid 7z and Linux a tar.xz, not a ZIP: the same dependency closure sits at the
+# application root and inside each out-of-process child host, and a ZIP stores every copy in full
+# (measured on v5.7.0: 2443 MB of payload, 908 MB of unique content, 828 MB of ZIP). A solid LZMA
+# stream - and tar's hardlink entries, for the Linux payload - pay for a duplicate once.
+$archivePath = switch ($distributionPlatform) { 'windows' { Join-Path $repoRoot 'OpenDevelop-win.7z' } 'linux' { Join-Path $repoRoot "OpenDevelop-$linuxRid.tar.xz" } default { $null } }
 $publishDir = Join-Path $repoRoot "src/Main/SharpDevelop/bin/$Configuration/$tfm/publish"
 $depsJson = Join-Path $publishDir 'OpenDevelop.deps.json'
 
@@ -503,7 +511,7 @@ function Test-PackagedAppStartup {
       CHILD "dotnet exec OpenDevelop.dll" and waits on it, so $FilePath's own window (if any) is
       not where the real WPF window/file locks live. Pass -KillProcessTree in that case so cleanup
       (below) reaches the child too - otherwise it becomes an orphan still holding the payload's
-      files open, which corrupts the same .zip step this function's own file-lock comment is about.
+      files open, which corrupts the archive step this function's own file-lock comment is about.
     #>
     param(
         [Parameter(Mandatory)][string]$FilePath,
@@ -578,7 +586,7 @@ function Test-PackagedAppStartup {
     }
 
     # Ask the message loop to shut down before forcing the process, so the app releases its file
-    # locks; on Windows a still-locked payload can otherwise be captured half-written by the .zip.
+    # locks; on Windows a still-locked payload can otherwise be captured half-written by the archive.
     try { $proc.CloseMainWindow() | Out-Null } catch {}
     Start-Sleep -Seconds 2
     if (-not $proc.HasExited) {
@@ -736,7 +744,7 @@ function Test-WindowsDistributionPayload {
     }
 
     # PDBs, reference assemblies and foreign native assets are build-time artifacts. Their
-    # presence means either an SDK target or the staging copy regressed, and makes the final ZIP
+    # presence means either an SDK target or the staging copy regressed, and makes the final archive
     # needlessly architecture/OS-agnostic rather than deployable.
     $forbidden = Get-ChildItem -LiteralPath $PayloadRoot -Recurse -File | Where-Object {
         $relative = $_.FullName.Substring($PayloadRoot.Length).Replace('\', '/').ToLowerInvariant()
@@ -745,8 +753,9 @@ function Test-WindowsDistributionPayload {
         # another OS is not a foreign native asset. Same scope correction the Linux payload audit
         # already carries. Binaries under the notices tree are still rejected.
         $isNotice = $relative -match '(^|/)third-party-notices/'
-        $_.Extension -in '.pdb', '.dylib', '.so' -or
+        $_.Extension -in '.pdb', '.dylib', '.so', '.lib', '.exp' -or
         $relative -match '/ref/' -or
+        $relative -match '/runtimes/win-x86/' -or
         (-not $isNotice -and $relative -match '/runtimes/(linux|unix|osx)')
     }
     if ($forbidden) {
@@ -755,72 +764,91 @@ function Test-WindowsDistributionPayload {
     }
 }
 
-function Test-WindowsDistributionZip {
-    param([Parameter(Mandatory)][string]$ZipPath)
+function Get-SevenZipPath {
+    # The Windows images have 7-Zip installed outside PATH; prefer that over a PATH hit so a
+    # different 7z on the machine cannot change the archive.
+    foreach ($root in $env:ProgramFiles, ${env:ProgramFiles(x86)}) {
+        if (-not $root) { continue }
+        $candidate = Join-Path $root '7-Zip\7z.exe'
+        if (Test-Path -LiteralPath $candidate) { return $candidate }
+    }
+    $command = Get-Command 7z -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+    throw 'dist.ps1: 7-Zip is required to build OpenDevelop-win.7z, and no 7z.exe was found in Program Files or PATH.'
+}
 
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
-    try {
-        $prefix = "OpenDevelop-win/"
-        if (-not ($archive.Entries.FullName -contains "${prefix}OpenDevelop.dll")) { throw "ZIP lacks ${prefix}OpenDevelop.dll: $ZipPath" }
-        foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md', 'THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt', 'THIRD-PARTY-NOTICES/NuGet/NOTICE.md', 'THIRD-PARTY-NOTICES/NuGet/SPDX-Zlib.txt') {
-            if (-not ($archive.Entries.FullName -contains "${prefix}$legalFile")) {
-                throw "ZIP lacks required legal file ${prefix}${legalFile}: $ZipPath"
-            }
+function Get-ArchiveEntries {
+    param([Parameter(Mandatory)][string]$ArchivePath)
+    $listing = & (Get-SevenZipPath) l -slt -ba $ArchivePath
+    if ($LASTEXITCODE -ne 0) { throw "7-Zip could not list $ArchivePath" }
+    return @($listing | Where-Object { $_ -like 'Path = *' } | ForEach-Object { $_.Substring('Path = '.Length).Trim().Replace('\', '/') })
+}
+
+function Test-WindowsDistributionArchive {
+    param([Parameter(Mandatory)][string]$ArchivePath)
+
+    $entries = Get-ArchiveEntries -ArchivePath $ArchivePath
+    $prefix = 'OpenDevelop-win/'
+    if (-not ($entries -contains "${prefix}OpenDevelop.dll")) { throw "Archive lacks ${prefix}OpenDevelop.dll: $ArchivePath" }
+    foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md', 'THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt', 'THIRD-PARTY-NOTICES/NuGet/NOTICE.md', 'THIRD-PARTY-NOTICES/NuGet/SPDX-Zlib.txt') {
+        if (-not ($entries -contains "${prefix}$legalFile")) {
+            throw "Archive lacks required legal file ${prefix}${legalFile}: $ArchivePath"
         }
-        foreach ($launcherName in 'OpenDevelop.exe', 'OpenDevelopARM64.exe') {
-            if (-not ($archive.Entries.FullName -contains "${prefix}${launcherName}")) {
-                throw "ZIP is missing the launcher ${launcherName}: $ZipPath"
-            }
+    }
+    foreach ($launcherName in 'OpenDevelop.exe', 'OpenDevelopARM64.exe') {
+        if (-not ($entries -contains "${prefix}${launcherName}")) {
+            throw "Archive is missing the launcher ${launcherName}: $ArchivePath"
         }
-        foreach ($companionExtension in '.dll', '.deps.json', '.runtimeconfig.json') {
-            $companionPath = "${prefix}OpenDevelop.Bootstrap$companionExtension"
-            if (-not ($archive.Entries.FullName -contains $companionPath)) {
-                throw "ZIP is missing the launcher's companion file ${companionPath}: $ZipPath"
-            }
+    }
+    foreach ($companionExtension in '.dll', '.deps.json', '.runtimeconfig.json') {
+        $companionPath = "${prefix}OpenDevelop.Bootstrap$companionExtension"
+        if (-not ($entries -contains $companionPath)) {
+            throw "Archive is missing the launcher's companion file ${companionPath}: $ArchivePath"
         }
-        if (-not ($archive.Entries.FullName | Where-Object { $_ -like "${prefix}AddIns/*.addin" })) { throw "ZIP lacks addin manifests: $ZipPath" }
-        # The smoke run launches the packaged app, which writes this manifest with this machine's SDK
-        # path. The archive phase removes it again; if it is back, a release would break every
-        # SDK-style project on another machine (issue #21).
-        $runtimeManifest = "${prefix}SdkResolvers/Microsoft.Build.NuGetSdkResolver/Microsoft.Build.NuGetSdkResolver.xml"
-        if ($archive.Entries.FullName -contains $runtimeManifest) {
-            throw "ZIP carries a runtime-written SDK resolver manifest ($runtimeManifest): its absolute SDK path only exists on the machine that built it. $ZipPath"
+    }
+    if (-not ($entries | Where-Object { $_ -like "${prefix}AddIns/*.addin" })) { throw "Archive lacks addin manifests: $ArchivePath" }
+    # The smoke run launches the packaged app, which writes this manifest with this machine's SDK
+    # path. The archive phase removes it again; if it is back, a release would break every
+    # SDK-style project on another machine (issue #21).
+    $runtimeManifest = "${prefix}SdkResolvers/Microsoft.Build.NuGetSdkResolver/Microsoft.Build.NuGetSdkResolver.xml"
+    if ($entries -contains $runtimeManifest) {
+        throw "Archive carries a runtime-written SDK resolver manifest ($runtimeManifest): its absolute SDK path only exists on the machine that built it. $ArchivePath"
+    }
+    # Mirror the designer-host checks in Test-WindowsDistributionPayload - they must survive the
+    # staging/archive round-trip, not just be present in the staged payload dir.
+    $expected = @(
+        "${prefix}AddIns/DisplayBindings/WpfDesign/Host/WpfDesign.SurfaceHost.dll",
+        "${prefix}AddIns/DisplayBindings/WpfDesign/MicrosoftHost/MicrosoftWpfDesign.SurfaceHost.dll",
+        "${prefix}AddIns/DisplayBindings/FormsDesigner/MicrosoftHost/MicrosoftFormsDesigner.Host.dll"
+    )
+    foreach ($tfmDir in 'net9.0', 'net10.0') {
+        foreach ($rid in 'win-x64', 'win-arm64') {
+            $expected += "${prefix}AddIns/DisplayBindings/WinUIXamlDesigner/MicrosoftHost/$tfmDir/$rid/WinUIXamlDesigner.MicrosoftHost.dll"
         }
-        # Mirror the designer-host checks in Test-WindowsDistributionPayload - they must survive the
-        # staging/zip round-trip, not just be present in the staged payload dir.
-        $expected = @(
-            "${prefix}AddIns/DisplayBindings/WpfDesign/Host/WpfDesign.SurfaceHost.dll",
-            "${prefix}AddIns/DisplayBindings/WpfDesign/MicrosoftHost/MicrosoftWpfDesign.SurfaceHost.dll",
-            "${prefix}AddIns/DisplayBindings/FormsDesigner/MicrosoftHost/MicrosoftFormsDesigner.Host.dll"
-        )
-        foreach ($tfmDir in 'net9.0', 'net10.0') {
-            foreach ($rid in 'win-x64', 'win-arm64') {
-                $expected += "${prefix}AddIns/DisplayBindings/WinUIXamlDesigner/MicrosoftHost/$tfmDir/$rid/WinUIXamlDesigner.MicrosoftHost.dll"
-            }
+    }
+    foreach ($path in $expected) {
+        if (-not ($entries -contains $path)) {
+            throw "Archive is missing a designer host: $path ($ArchivePath)"
         }
-        foreach ($path in $expected) {
-            if (-not ($archive.Entries.FullName -contains $path)) {
-                throw "ZIP is missing a designer host: $path ($ZipPath)"
-            }
+    }
+    foreach ($hotReloadFile in Get-ExpectedHotReloadFiles) {
+        $path = $prefix + $hotReloadFile.Replace('\', '/')
+        if (-not ($entries -contains $path)) {
+            throw "Archive is missing a Hot Reload agent file: $path ($ArchivePath)"
         }
-        foreach ($hotReloadFile in Get-ExpectedHotReloadFiles) {
-            $path = $prefix + $hotReloadFile.Replace('\', '/')
-            if (-not ($archive.Entries.FullName -contains $path)) {
-                throw "ZIP is missing a Hot Reload agent file: $path ($ZipPath)"
-            }
-        }
-        $forbidden = $archive.Entries.FullName | Where-Object {
-            $name = $_.ToLowerInvariant()
-            # Same scope correction as the staged payload: a runtimes directory under
-            # THIRD-PARTY-NOTICES is an attribution copy of a package layout, not a foreign binary.
-            $isNotice = $name -match '(^|/)third-party-notices/'
-            $name.EndsWith('.pdb') -or $name.EndsWith('.dylib') -or $name.EndsWith('.so') -or
-            $name -match '/ref/' -or
-            (-not $isNotice -and $name -match '/runtimes/(linux|unix|osx)')
-        }
-        if ($forbidden) { throw "ZIP contains build-only or foreign assets:$([Environment]::NewLine)$(($forbidden | Select-Object -First 12) -join [Environment]::NewLine)" }
-    } finally { $archive.Dispose() }
+    }
+    $forbidden = $entries | Where-Object {
+        $name = $_.ToLowerInvariant()
+        # Same scope correction as the staged payload: a runtimes directory under
+        # THIRD-PARTY-NOTICES is an attribution copy of a package layout, not a foreign binary.
+        $isNotice = $name -match '(^|/)third-party-notices/'
+        $name.EndsWith('.pdb') -or $name.EndsWith('.dylib') -or $name.EndsWith('.so') -or
+        $name.EndsWith('.lib') -or $name.EndsWith('.exp') -or
+        $name -match '/ref/' -or
+        $name -match '/runtimes/win-x86/' -or
+        (-not $isNotice -and $name -match '/runtimes/(linux|unix|osx)')
+    }
+    if ($forbidden) { throw "Archive contains build-only or foreign assets:$([Environment]::NewLine)$(($forbidden | Select-Object -First 12) -join [Environment]::NewLine)" }
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -951,6 +979,22 @@ function Test-LinuxDistributionPayload {
     if (Test-Path -LiteralPath $legacyCmdlets) {
         throw "Linux distribution payload includes Windows PowerShell 2 Cmdlets: $legacyCmdlets"
     }
+
+    # Link-time inputs and the macOS input helper are not runtime assets. The macOS bundle already
+    # deletes them; on Linux the AddIn build copied CliclickSharp into every addin folder and the
+    # publish root (51 files, 172 MB raw) before this check existed.
+    $unshippable = Get-ChildItem -LiteralPath $PayloadRoot -Recurse -File | Where-Object {
+        $_.Extension -in '.lib', '.exp' -or $_.Name -like 'CliclickSharp*'
+    }
+    if ($unshippable) {
+        throw "Linux distribution payload contains link-time or macOS-only assets:$([Environment]::NewLine)$(($unshippable | Select-Object -First 8 -ExpandProperty FullName) -join [Environment]::NewLine)"
+    }
+    # 32-bit ARM is none of the two supported Linux architectures; the RID-less publish still
+    # carries its native tree and it must not reach either archive.
+    $wrongArm = Get-ChildItem -LiteralPath $PayloadRoot -Recurse -Directory -Filter 'linux-arm' -ErrorAction SilentlyContinue
+    if ($wrongArm) {
+        throw "Linux distribution payload contains 32-bit ARM native assets: $($wrongArm[0].FullName)"
+    }
 }
 
 function Invoke-LinuxPayload {
@@ -964,11 +1008,61 @@ function Invoke-LinuxPayload {
     return $payloadRoot
 }
 function Invoke-LinuxSmoke { Test-PackagedAppStartup -FilePath $dotnet -ArgumentList @((Join-Path $payloadRoot 'OpenDevelop.dll')) -WorkingDirectory $payloadRoot }
+
+function Test-LinuxDistributionArchive {
+    param([Parameter(Mandatory)][string]$ArchivePath)
+
+    $entries = @(& tar -tf $ArchivePath)
+    if ($LASTEXITCODE -ne 0) { throw "tar could not list the Linux archive: $ArchivePath" }
+    $prefix = (Split-Path -Leaf $payloadRoot) + '/'
+    if (-not ($entries -contains "${prefix}OpenDevelop.dll")) {
+        throw "Linux archive lacks ${prefix}OpenDevelop.dll: $ArchivePath"
+    }
+    if (-not ($entries | Where-Object { $_ -like "${prefix}AddIns/*.addin" })) {
+        throw "Linux archive lacks addin manifests: $ArchivePath"
+    }
+    # The smoke phase launches the packaged app, which writes this manifest with this machine's SDK
+    # path; the archive phase removes it again. If it is back, every SDK-style project on another
+    # machine fails to load (issue #21).
+    $runtimeManifest = "${prefix}SdkResolvers/Microsoft.Build.NuGetSdkResolver/Microsoft.Build.NuGetSdkResolver.xml"
+    if ($entries -contains $runtimeManifest) {
+        throw "Linux archive carries a runtime-written SDK resolver manifest ($runtimeManifest): its absolute SDK path only exists on the machine that built it. $ArchivePath"
+    }
+    # The same rules the staged payload is validated against, re-checked on the archive: tar would
+    # happily carry a stale copy that a later payload phase re-introduced.
+    $forbidden = $entries | Where-Object {
+        $_.EndsWith('.pdb') -or $_.EndsWith('.lib') -or $_.EndsWith('.exp') -or
+        $_ -match '(^|/)CliclickSharp' -or
+        $_ -match '/runtimes/linux-arm/'
+    }
+    if ($forbidden) {
+        throw "Linux archive contains build-only or foreign assets:$([Environment]::NewLine)$(($forbidden | Select-Object -First 8) -join [Environment]::NewLine)"
+    }
+}
+
 function Invoke-LinuxArchive {
+    Write-Host '==> Building .tar.xz...'
     RemoveRuntimeWrittenSdkResolverManifest -PayloadRoot $payloadRoot
-    Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
-    Push-Location $repoRoot; try { & zip -q -r $zipPath (Split-Path -Leaf $payloadRoot) } finally { Pop-Location }
-    if ($LASTEXITCODE -ne 0) { throw "zip exited with code $LASTEXITCODE" }; return $zipPath
+    Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue
+
+    # Byte-identical files - one dependency closure copied into the app base and into every child
+    # host - are hardlinked first: tar records a hardlink as a name-only entry, so the duplicate
+    # costs a few bytes instead of its full size. A ZIP cannot express that, which is why a payload
+    # of 1360 MB (504 MB once duplicates are collapsed) produced a 498 MB archive.
+    & bash (Join-Path $repoRoot 'build/linux/deduplicate-runtime-files.sh') $payloadRoot | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "deduplicate-runtime-files.sh exited with code $LASTEXITCODE" }
+
+    Push-Location $repoRoot
+    try {
+        # xz -9e (LZMA2) measured 26% smaller than `zip -9` on this payload's assemblies.
+        & bash (Join-Path $repoRoot 'build/linux/build-application-archive.sh') (Split-Path -Leaf $payloadRoot) $archivePath | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "build-application-archive.sh exited with code $LASTEXITCODE" }
+    }
+    finally {
+        Pop-Location
+    }
+    Test-LinuxDistributionArchive -ArchivePath $archivePath
+    return $archivePath
 }
 
 function Invoke-WindowsPayload {
@@ -1028,10 +1122,13 @@ function Invoke-WindowsPayload {
 
     # A RID-less publish carries EVERY platform's native tree (linux/osx/unix) as well as Windows.
     # The other platforms are dead weight in the Windows package, so drop everything except the
-    # Windows RIDs (win, win-x64, win-x86, win-arm64) before validating/zipping.
+    # RIDs this payload can actually launch: the launchers are x64 and ARM64 only, and both RIDs'
+    # native trees are required because one payload serves both. win-x86 comes from the RID-less
+    # publish and no 32-bit process is ever started from this tree.
+    $keptWindowsRids = @('win', 'win-x64', 'win-arm64')
     foreach ($runtimesDir in Get-ChildItem -LiteralPath $payloadRoot -Recurse -Directory -Filter 'runtimes' -ErrorAction SilentlyContinue) {
         foreach ($ridDir in Get-ChildItem -LiteralPath $runtimesDir.FullName -Directory -ErrorAction SilentlyContinue) {
-            if ($ridDir.Name -eq 'win' -or $ridDir.Name -like 'win-*') { continue }
+            if ($keptWindowsRids -contains $ridDir.Name) { continue }
             Remove-Item -LiteralPath $ridDir.FullName -Recurse -Force
         }
     }
@@ -1198,6 +1295,19 @@ function Invoke-WindowsPayload {
     Write-Host "    AddIns: copied $copiedAddInCount, unchanged $unchangedAddInCount, stale removed $removedAddInCount"
     Write-DistributionStepElapsed $payloadStepStopwatch 'AddIn synchronization'
 
+    # Link-time inputs are not runtime assets. ProGPU.Native.Sdk carries a .lib beside every native
+    # DLL and the RID-less publish repeats that whole sdk/ tree in the app base and in both
+    # out-of-process designer hosts: 580 MB of this payload. CoreCLR never loads a .lib (the macOS
+    # bundle already deletes the equivalent .a files, which its own deps.json still lists), so they
+    # only ever reach a release by accident.
+    $linkTimeInputs = @(Get-ChildItem -LiteralPath $payloadRoot -Recurse -File | Where-Object { $_.Extension -in '.lib', '.exp' })
+    if ($linkTimeInputs.Count -gt 0) {
+        Remove-Item -LiteralPath $linkTimeInputs.FullName -Force
+        $removedLinkTimeBytes = ($linkTimeInputs | Measure-Object -Property Length -Sum).Sum
+        Write-Host ("    link-time inputs: removed {0} files, {1:N1} MB" -f $linkTimeInputs.Count, ($removedLinkTimeBytes / 1MB))
+    }
+    Write-DistributionStepElapsed $payloadStepStopwatch 'link-time input pruning'
+
     # Out-of-process AddIns have their own deps.json and their own application base directory.
     # Patch every staged dependency manifest, not only OpenDevelop.deps.json, so the Forms/WPF
     # designer hosts and language-service children also select the matching x64/ARM64 mixed-mode
@@ -1240,20 +1350,42 @@ function Invoke-WindowsSmoke {
 
 function Invoke-WindowsArchive {
     if (-not (Test-Path $payloadRoot)) {
-        throw "dist.ps1: no payload to zip at $payloadRoot. Run './dist.ps1 -Phase payload' first."
+        throw "dist.ps1: no payload to archive at $payloadRoot. Run './dist.ps1 -Phase payload' first."
     }
 
-    Write-Host '==> Building .zip...'
+    Write-Host '==> Building .7z...'
     RemoveRuntimeWrittenSdkResolverManifest -PayloadRoot $payloadRoot
-    Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    [System.IO.Compression.ZipFile]::CreateFromDirectory(
-        $payloadRoot, $zipPath,
-        [System.IO.Compression.CompressionLevel]::Optimal,
-        $true)
-    Test-WindowsDistributionZip -ZipPath $zipPath
+    Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue
 
-    return $zipPath
+    # 7-Zip has no hardlink entries, so the saving comes from one solid LZMA2 block: files are
+    # ordered by name, which puts the copies of one assembly or native library - the application
+    # root and every out-of-process child host each carry it - next to each other, so the repeat
+    # costs a few bytes instead of its full size. The dictionary stays at 256 MB because adjacency,
+    # not window size, is what makes the repeat cheap, and a bigger one only raises the memory a
+    # user needs in order to extract the archive.
+    $sevenZip = Get-SevenZipPath
+    $listDirectory = New-TempDir
+    $listPath = Join-Path $listDirectory 'payload-files.txt'
+    Get-ChildItem -LiteralPath $payloadRoot -Recurse -File |
+        Sort-Object Name, FullName |
+        ForEach-Object { $_.FullName.Substring($repoRoot.Length).TrimStart('\', '/') } |
+        Set-Content -LiteralPath $listPath -Encoding utf8NoBOM
+    try {
+        Push-Location $repoRoot
+        try {
+            & $sevenZip a -t7z -mx=9 -mmt=on -ms=on -md=256m -bso0 -bsp0 $archivePath "@$listPath"
+            if ($LASTEXITCODE -ne 0) { throw "7-Zip exited with code $LASTEXITCODE while creating $archivePath" }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $listDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Test-WindowsDistributionArchive -ArchivePath $archivePath
+
+    return $archivePath
 }
 
 function Invoke-RestorePhase {
@@ -1418,8 +1550,8 @@ function Invoke-DesignerHostsPhase {
 
 function Get-DistributionPhases {
     # Canonical order. "designer-hosts" needs Visual Studio's MSBuild and is Windows-only.
-    if ($IsWindows) { return @('restore', 'host', 'addins', 'designer-hosts', 'payload', 'smoke', 'zip') }
-    return @('restore', 'host', 'addins', 'payload', 'smoke', 'zip')
+    if ($IsWindows) { return @('restore', 'host', 'addins', 'designer-hosts', 'payload', 'smoke', 'archive') }
+    return @('restore', 'host', 'addins', 'payload', 'smoke', 'archive')
 }
 
 function Resolve-SelectedPhases {
@@ -1473,7 +1605,7 @@ function Invoke-DistributionPipeline {
             'designer-hosts' { Invoke-DesignerHostsPhase }
             'payload'        { $artifact = if ($IsWindows) { Invoke-WindowsPayload } elseif ($IsMacOS) { Invoke-MacPayload } else { Invoke-LinuxPayload } }
             'smoke'          { if ($IsWindows) { Invoke-WindowsSmoke } elseif ($IsMacOS) { Invoke-MacSmoke } else { Invoke-LinuxSmoke } }
-            'zip'            { $artifact = if ($IsWindows) { Invoke-WindowsArchive } elseif ($IsMacOS) { Invoke-MacArchive } else { Invoke-LinuxArchive } }
+            'archive'        { $artifact = if ($IsWindows) { Invoke-WindowsArchive } elseif ($IsMacOS) { Invoke-MacArchive } else { Invoke-LinuxArchive } }
         }
         $phaseStopwatch.Stop()
         Write-Host ("==> Phase '{0}' completed in {1:N1}s" -f $name, $phaseStopwatch.Elapsed.TotalSeconds)
@@ -1493,7 +1625,7 @@ if ($ListPhases) {
     Write-Host '  ./dist.ps1                        # everything (unchanged default)'
     Write-Host '  ./dist.ps1 -Phase payload         # re-assemble OpenDevelop-win from what is already built'
     Write-Host '  ./dist.ps1 -Phase payload,smoke   # ...and verify it starts'
-    Write-Host '  ./dist.ps1 -From payload          # payload, smoke and zip'
+    Write-Host '  ./dist.ps1 -From payload          # payload, smoke and archive'
     Write-Host '  ./dist.ps1 -Phase addins,payload  # rebuild AddIns, then re-assemble'
     Write-Host ''
     Write-Host 'To patch a published payload after changing ONE project:'

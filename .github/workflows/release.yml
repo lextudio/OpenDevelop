@@ -5,10 +5,15 @@ name: Release
 # notes and published it: `gh release edit <tag> --draft=false`, or the Publish button.
 #
 # Conventions carried over from the manual releases (v5.6.0 - v5.6.3): the title is the tag, the assets keep the fixed names
-# OpenDevelop-win.zip, OpenDevelop-macos.dmg, OpenDevelop-linux-x64.zip and OpenDevelop-linux-arm64.zip (so
+# OpenDevelop-win.7z, OpenDevelop-macos.dmg, OpenDevelop-linux-x64.tar.xz and OpenDevelop-linux-arm64.tar.xz (so
 # releases/latest/download/<name> stays a stable link), and the notes follow .github/release-notes.template.md. A tag with a
 # suffix (v5.6.5-rc1) becomes a prerelease, which makes it a safe dry run. Put the "Changes since" bullets in
 # doc/releases/<tag>.md before tagging.
+#
+# The Windows 7z and the Linux tar.xz replace the ZIPs those releases shipped. Both payloads carry the same dependency
+# closure at the application root and inside every out-of-process child host, so a ZIP stored 63% of its bytes more
+# than once (measured: 2443 MB of payload, 908 MB of unique content, 828 MB of ZIP). A solid 7z block, and tar's hardlink entries after
+# the payload's duplicate files are hardlinked, pay for a duplicate once.
 on:
   push:
     tags: ['v*']
@@ -94,7 +99,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows
-          path: OpenDevelop-win.zip
+          path: OpenDevelop-win.7z
           if-no-files-found: error
 
   macos:
@@ -170,17 +175,17 @@ jobs:
           # No GPU on hosted runners: wgpu-native needs a software Vulkan driver (lavapipe) to create a surface.
           sudo apt-get update
           sudo apt-get install -y xvfb libgtk-3-0 libx11-xcb1 libxkbcommon0 libgl1 libvulkan1 mesa-vulkan-drivers
-      # dist.linux.sh starts the packaged app and requires its first workbench render before it writes the ZIP.
-      - name: Build and smoke-test the native Linux ZIP payload
+      # dist.linux.sh starts the packaged app and requires its first workbench render before it writes the tar.xz.
+      - name: Build and smoke-test the native Linux payload
         shell: bash
         run: |
           unset GITHUB_ACTIONS
           xvfb-run -a bash dist.linux.sh --skip-feed-sync
-          test -f "OpenDevelop-${{ matrix.rid }}.zip"
+          test -f "OpenDevelop-${{ matrix.rid }}.tar.xz"
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.rid }}
-          path: OpenDevelop-${{ matrix.rid }}.zip
+          path: OpenDevelop-${{ matrix.rid }}.tar.xz
           if-no-files-found: error
 
   draft:
@@ -207,7 +212,7 @@ jobs:
         run: |
           set -euo pipefail
           ls -l artifacts/release
-          assets=(OpenDevelop-win.zip OpenDevelop-macos.dmg OpenDevelop-linux-x64.zip OpenDevelop-linux-arm64.zip)
+          assets=(OpenDevelop-win.7z OpenDevelop-macos.dmg OpenDevelop-linux-x64.tar.xz OpenDevelop-linux-arm64.tar.xz)
           for asset in "${assets[@]}"; do
             [[ -f "artifacts/release/$asset" ]] || { echo "::error::$asset was not produced."; exit 1; }
           done

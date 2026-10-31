@@ -587,13 +587,13 @@ jobs:
           # instance at all and aborts with SIGABRT (status 134) at wgpuInstanceCreateSurface.
           sudo apt-get update
           sudo apt-get install -y xvfb libgtk-3-0 libx11-xcb1 libxkbcommon0 libgl1 libvulkan1 mesa-vulkan-drivers
-      - name: Build and smoke-test the native Linux ZIP payload
+      - name: Build and smoke-test the native Linux payload
         shell: bash
         run: |
           # GitVersion's GitHub Actions integration races on the runner's env file when projects build in parallel.
           unset GITHUB_ACTIONS
           xvfb-run -a bash dist.linux.sh --skip-feed-sync
-          test -f "OpenDevelop-${{ matrix.rid }}.zip"
+          test -f "OpenDevelop-${{ matrix.rid }}.tar.xz"
           payload="OpenDevelop-${{ matrix.rid }}"
           module="$payload/AddIns/Misc/PackageManagement/Scripts/OpenDevelop.PackageManagement.ps1"
           test -f "$module"
@@ -601,7 +601,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: linux-package-${{ matrix.rid }}
-          path: OpenDevelop-${{ matrix.rid }}.zip
+          path: OpenDevelop-${{ matrix.rid }}.tar.xz
           if-no-files-found: error
           retention-days: 7
 

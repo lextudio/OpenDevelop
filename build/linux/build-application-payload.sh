@@ -9,9 +9,15 @@ rm -rf "$payload"; mkdir -p "$payload"
 # launch, naming that machine's SDK by absolute path; copied into the payload, every SDK-style
 # project load fails on any other machine with "A manifest file exists, but the path to the SDK
 # Resolver DLL file could not be found" (issue #21). The app rewrites it from the local SDK.
-rsync -a --exclude '/AddIns/***' --exclude '/data/***' --exclude '/SdkResolvers/Microsoft.Build.NuGetSdkResolver/***' --exclude '/runtimes/win*/***' --exclude '/runtimes/osx*/***' --exclude "/runtimes/$other/***" --exclude '**/*.a' "$src/" "$payload/"
+# CliclickSharp is the macOS input helper the DevFlow agent ships: the RID-less publish carries it
+# and every addin folder carries its own copy (51 files, 172 MB raw, 78 MB of the released ZIP). .lib/.exp
+# are link-time inputs of ProGPU.Native.Sdk; deps.json lists them, but CoreCLR never loads one,
+# which is why the macOS bundle already deletes their .a equivalents. linux-arm is the 32-bit tree
+# this payload cannot launch. The patterns without a '/' match a file name at any depth, so they
+# also cover the copies inside AddIns/ and inside each out-of-process child host.
+rsync -a --exclude '/AddIns/***' --exclude '/data/***' --exclude '/SdkResolvers/Microsoft.Build.NuGetSdkResolver/***' --exclude '/runtimes/win*/***' --exclude '/runtimes/osx*/***' --exclude "/runtimes/$other/***" --exclude '/runtimes/linux-arm/***' --exclude 'CliclickSharp*' --exclude '*.lib' --exclude '*.exp' --exclude '*.a' "$src/" "$payload/"
 rsync -a "$root/data/" "$payload/data/"
-rsync -a --exclude '**/*.pdb' --exclude '**/ref/***' --exclude '**/runtimes/win*/***' --exclude '**/runtimes/osx*/***' --exclude "**/runtimes/$other/***" --exclude '**/*.dylib' --exclude '**/*.a' "$root/AddIns/" "$payload/AddIns/"
+rsync -a --exclude '*.pdb' --exclude '**/ref/***' --exclude '**/runtimes/win*/***' --exclude '**/runtimes/osx*/***' --exclude "**/runtimes/$other/***" --exclude '**/runtimes/linux-arm/***' --exclude 'CliclickSharp*' --exclude '*.lib' --exclude '*.exp' --exclude '*.dylib' --exclude '*.a' "$root/AddIns/" "$payload/AddIns/"
 # The SDK/resolver are product files: add-ins created by an installed IDE resolve them from the
 # application root, not from the source checkout. Match the macOS bundle layout.
 resolver="$root/src/SDK/OpenDevelop.Addin.SdkResolver/bin/$config/net10.0"
