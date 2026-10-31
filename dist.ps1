@@ -1153,12 +1153,46 @@ function Test-SharedManagedPayload {
     }
 }
 
+function Remove-LinkTimeDepsAssets {
+    param([Parameter(Mandatory)][string]$PayloadRoot)
+# Deleting the files is not enough: hostpolicy validates every asset a deps manifest names and
+# refuses to start when one is missing. A designer host died with "an assembly specified in
+# WpfDesign.SurfaceHost.deps.json was not found: progpu_native_compression.lib", because the
+# package declares its link-time inputs as native assets. Nothing loads them at run time, so
+# remove the entries from every manifest as well.
+$strippedManifests = 0
+foreach ($manifestFile in Get-ChildItem -LiteralPath $payloadRoot -Recurse -File -Filter '*.deps.json') {
+    $manifest = Get-Content -LiteralPath $manifestFile.FullName -Raw | ConvertFrom-Json -AsHashtable
+    if ($manifest -isnot [hashtable] -or -not $manifest['targets']) { continue }
+    $changed = $false
+    foreach ($librarySet in $manifest['targets'].Values) {
+        if ($librarySet -isnot [hashtable]) { continue }
+        foreach ($library in $librarySet.Values) {
+            if ($library -isnot [hashtable]) { continue }
+            foreach ($section in 'runtime', 'native', 'runtimeTargets') {
+                $assets = $library[$section]
+                if ($assets -isnot [hashtable]) { continue }
+                foreach ($asset in @($assets.Keys)) {
+                    if ($asset -match '\.(lib|exp)$') { $assets.Remove($asset); $changed = $true }
+                }
+            }
+        }
+    }
+    if ($changed) {
+        $manifest | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $manifestFile.FullName -Encoding utf8NoBOM
+        $strippedManifests++
+    }
+}
+if ($strippedManifests -gt 0) { Write-Host "    link-time inputs: stripped from $strippedManifests dependency manifests" }
+}
+
 function Invoke-LinuxPayload {
     Assert-HostPublished
     $env:DIST_CONFIG = $config; $env:DIST_LINUX_RID = $linuxRid
     & bash (Join-Path $repoRoot 'build/linux/build-application-payload.sh') | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "build-application-payload.sh exited with code $LASTEXITCODE" }
     Write-DistributionLegalFiles -Destination $payloadRoot
+    Remove-LinkTimeDepsAssets -PayloadRoot $payloadRoot
     Test-LinuxDistributionPayload -PayloadRoot $payloadRoot
     & (Join-Path $repoRoot '.github/ci/verify-bitness.ps1') -Platform $linuxRid -PayloadRoot $payloadRoot -PayloadOnly
     return $payloadRoot
@@ -1462,6 +1496,8 @@ function Invoke-WindowsPayload {
         $removedLinkTimeBytes = ($linkTimeInputs | Measure-Object -Property Length -Sum).Sum
         Write-Host ("    link-time inputs: removed {0} files, {1:N1} MB" -f $linkTimeInputs.Count, ($removedLinkTimeBytes / 1MB))
     }
+
+    Remove-LinkTimeDepsAssets -PayloadRoot $payloadRoot
     Write-DistributionStepElapsed $payloadStepStopwatch 'link-time input pruning'
 
     # Out-of-process AddIns have their own deps.json and their own application base directory.
