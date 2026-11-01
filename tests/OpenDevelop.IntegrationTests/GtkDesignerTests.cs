@@ -1561,6 +1561,64 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_ColumnSorters_MakeAColumnSortableAndRender()
+	{
+		// A column's header sorts the view through its sorter, which only works if the model chain holds a sort model driven by the
+		// column view's own sorter. "Sort Column > Enable" gives the column a string sorter and adds that sort model in one undo step.
+		var path = Path.Combine(workDir, "Windows", "ColumnSortWindow.ui");
+		await File.WriteAllTextAsync(path, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <object class="GtkWindow" id="columnSortWindow">
+			    <property name="default-width">400</property>
+			    <property name="default-height">300</property>
+			    <child><object class="GtkBox" id="box"><property name="orientation">vertical</property></object></child>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", path); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("columnSortWindow"); Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "box")).GetProperty("success").GetBoolean());
+		Assert.Equal("columnView1", (await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkColumnView")).GetProperty("selectedId").GetString());
+
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "column1")).GetProperty("success").GetBoolean());
+		Assert.False((await app.InvokeAsync("od.gtk-designer.column-sortable")).GetProperty("sortable").GetBoolean());
+		var enabled = await app.InvokeAsync("od.gtk-designer.column-sortable.set", true);
+		Assert.True(enabled.GetProperty("success").GetBoolean(), enabled.ToString());
+		Assert.True(enabled.GetProperty("sortable").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "columnView1")).GetProperty("success").GetBoolean());
+		Assert.Equal(new[] { "GtkSingleSelection", "GtkSortListModel", "GtkStringList" }, (await app.InvokeAsync("od.gtk-designer.model-chain")).GetProperty("chain").EnumerateArray().Select(c => c.GetString()));
+
+		// One undo takes back the sorter and the sort model together; the document keeps rendering.
+		var undone = await app.InvokeAsync("od.gtk-designer.undo");
+		Assert.True(undone.GetProperty("nativeFrame").GetBoolean(), undone.ToString());
+		Assert.Equal(new[] { "GtkSingleSelection", "GtkStringList" }, (await app.InvokeAsync("od.gtk-designer.model-chain")).GetProperty("chain").EnumerateArray().Select(c => c.GetString()));
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "column1")).GetProperty("success").GetBoolean());
+		Assert.False((await app.InvokeAsync("od.gtk-designer.column-sortable")).GetProperty("sortable").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.column-sortable.set", true)).GetProperty("success").GetBoolean());
+
+		// A second column is sortable without a second sort model; something that is not a column is refused with its reason.
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "columnView1")).GetProperty("success").GetBoolean());
+		Assert.Equal("column2", (await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkColumnViewColumn")).GetProperty("selectedId").GetString());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.column-sortable.set", true)).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "box")).GetProperty("success").GetBoolean());
+		var refused = await app.InvokeAsync("od.gtk-designer.column-sortable.set", true);
+		Assert.False(refused.GetProperty("success").GetBoolean(), refused.ToString());
+
+		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
+		var xml = (await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken)).Replace("\r", "");
+		Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(xml, "<object class=\"GtkStringSorter\"").Count);
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(xml, "<object class=\"GtkSortListModel\""));
+		Assert.Contains("<lookup name=\"sorter\">columnView1</lookup>", xml);
+		var rendered = await app.InvokeAsync("od.gtk-designer.status");
+		Assert.True(rendered.GetProperty("nativeFrame").GetBoolean(), rendered.ToString());
+		Assert.Empty(rendered.GetProperty("diagnostics").EnumerateArray());
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
 	public async Task GtkDesigner_LibadwaitaToolbarView_PlacesContentAndBars()
 	{
 		// AdwToolbarView's GtkBuildable form is <child type="top|bottom"> for bars and a single

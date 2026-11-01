@@ -105,6 +105,10 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 		=> connection.InvokeAsync<List<string>?>("gtk/model-chain", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
 	public Task<DesignerSessionState> SetModelWrapperAsync(long v, string elementId, string kind, bool add, CancellationToken token = default)
 		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("gtk/set-model-wrapper", new { sessionId = SessionId, documentId = DocumentId, baseVersion = v, elementId, kind, add }, token), token);
+	public Task<bool?> ColumnSortableAsync(string elementId, CancellationToken token = default)
+		=> connection.InvokeAsync<bool?>("gtk/column-sortable", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
+	public Task<DesignerSessionState> SetColumnSortableAsync(long v, string elementId, bool sortable, CancellationToken token = default)
+		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("gtk/set-column-sortable", new { sessionId = SessionId, documentId = DocumentId, baseVersion = v, elementId, sortable }, token), token);
 	public Task<List<DesignerMenuNode>?> MenuItemsAsync(string elementId, CancellationToken token = default)
 		=> connection.InvokeAsync<List<DesignerMenuNode>?>("gtk/menu-items", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
 	public Task<DesignerSessionState> SetMenuItemsAsync(long v, string elementId, List<DesignerMenuNode> items, CancellationToken token = default)

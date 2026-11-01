@@ -187,6 +187,27 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		return State(session, false);
 	}
 
+	/// <summary>Whether a GtkColumnViewColumn has a sorter; null when the object is not a column of a column view.</summary>
+	[JsonRpcMethod("gtk/column-sortable")]
+	public bool? ColumnSortable(string sessionId, string documentId, string elementId)
+	{
+		EnsureSession(sessionId);
+		return Get(documentId).Editor.GetColumnSortable(elementId);
+	}
+
+	/// <summary>Makes a column sortable or not as one undo step (adding the view's sort model when it needs one).</summary>
+	[JsonRpcMethod("gtk/set-column-sortable")]
+	public DesignerSessionState SetColumnSortable(string sessionId, string documentId, long baseVersion, string elementId, bool sortable)
+	{
+		EnsureSession(sessionId);
+		var session = Get(documentId);
+		EnsureVersion(session, baseVersion);
+		if (!session.Editor.SetColumnSortable(elementId, sortable))
+			throw new InvalidOperationException("The column change was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
+		session.Version++;
+		return State(session, false);
+	}
+
 	/// <summary>The selected object's menu entries: items, sections and submenus (a &lt;menu&gt; in its menu-model property).</summary>
 	[JsonRpcMethod("gtk/menu-items")]
 	public List<DesignerMenuNode>? MenuItems(string sessionId, string documentId, string elementId)

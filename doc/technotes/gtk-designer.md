@@ -868,6 +868,17 @@ sanitiser keeps them instead of reporting a missing id. Covered by the `ModelWra
 `ExpressionProperties_AreKeptAsTheyEmbedTheirValue` and `GtkDesigner_ListViewModel_SortAndFilterModelsRenderAndSurviveUndo`
 (a list view and a column view, rendered by the real host with no diagnostics).
 
+The **Sort Column** submenu (Enable / Disable) of a `GtkColumnViewColumn` makes its header sort the view
+(`gtk/column-sortable` / `gtk/set-column-sortable`; `od.gtk-designer.column-sortable(.set)`). Enable gives the column a
+`GtkStringSorter` on the item's string and makes sure the view's model chain has a sort model driven by the column view's own
+sorter - it adds one, as in "Model > Add Sorting", when the model is inline and has none - all as one undo step; a second
+column reuses the same sort model. Disable removes only that column's sorter and leaves the sort model, which other columns
+may use. The sorter is generated for string lists: when the inline chain ends in any other model class (a `GListStore`) the
+item type is unknown and the column is refused ("set the column's sorter and its expression in the source"); a model
+reference cannot be inspected, so the sorter is added and the model is assumed to be wired where it is defined. An object that
+is not a column of a column view is refused. Covered by the `ColumnSort_*` unit tests and
+`GtkDesigner_ColumnSorters_MakeAColumnSortableAndRender` (rendered by the real host with no diagnostics).
+
 The cell template of an inline `GtkBuilderListItemFactory` is editable: the surface's context menu
 offers **Edit List Item Template...**, which opens the factory `bytes` in a monospace editor and
 writes it back as one undo step (`gtk/factory-template` / `gtk/set-factory-template`); text that
@@ -1027,9 +1038,9 @@ Product features:
 - custom project widget execution in the sandboxed host (only the data-only
   `.gtkdesigner.json` preview mapping exists);
 - `app.` menu actions and action state/parameters (`win.` actions get stubs and registration; see "Menus");
-- list/model depth: selection, sort and filter models are editable; `Gio.ListStore` (code-filled; a builder cannot
-  add items to it), `GtkSignalListItemFactory`, column sorters on `GtkColumnViewColumn` and factories beyond the inline
-  `GtkBuilderListItemFactory` template editor are not;
+- list/model depth: selection, sort and filter models and string column sorters are editable; `Gio.ListStore`
+  (code-filled; a builder cannot add items to it), `GtkSignalListItemFactory`, sorters for non-string items and factories
+  beyond the inline `GtkBuilderListItemFactory` template editor are not;
 - composite templates: a template class outside the project cannot be wired.
 
 Coverage (tests, not product behaviour):

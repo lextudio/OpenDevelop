@@ -214,6 +214,10 @@ public static class GtkDesignerDevFlowActions
 	public static string GetFactoryTemplate() { var view = Activate(); var template = view?.FactoryTemplate(); return JsonSerializer.Serialize(new { success = template != null, template }); }
 	[DevFlowAction("od.gtk-designer.factory-template.set", Description = "Replace the selected list/grid/column view's factory template as one undo step; invalid XML is refused")]
 	public static string SetFactoryTemplate(string template) { var view = Activate(); var ok = view?.SetFactoryTemplate(template) == true; return JsonSerializer.Serialize(new { success = ok, template = view?.FactoryTemplate() }); }
+	[DevFlowAction("od.gtk-designer.column-sortable", Description = "Whether the selected GtkColumnViewColumn has a sorter (null when it is not a column of a column view)")]
+	public static string GetColumnSortable() { var view = Activate(); return JsonSerializer.Serialize(new { success = view != null, sortable = view?.ColumnSortable() }); }
+	[DevFlowAction("od.gtk-designer.column-sortable.set", Description = "Make the selected GtkColumnViewColumn sortable (a string sorter, plus a sort model driven by the view's sorter when needed) or not, as one undo step; a refusal returns success=false and shows under the canvas")]
+	public static string SetColumnSortable(bool sortable) { var view = Activate(); var ok = view?.SetColumnSortable(sortable) == true; return JsonSerializer.Serialize(new { success = ok, sortable = view?.ColumnSortable() }); }
 	[DevFlowAction("od.gtk-designer.model-chain", Description = "Read the selected list/grid/column view's model chain, outermost first (selection, sort, filter, data)")]
 	public static string GetModelChain() { var view = Activate(); var chain = view?.ModelChain(); return JsonSerializer.Serialize(new { success = view != null, chain }); }
 	[DevFlowAction("od.gtk-designer.model-wrapper.set", Description = "Add (add=true) or remove the selected list/grid/column view's 'sort' or 'filter' model as one undo step; a refusal returns success=false and shows under the canvas")]

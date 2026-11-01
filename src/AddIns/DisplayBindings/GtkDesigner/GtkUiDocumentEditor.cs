@@ -549,6 +549,57 @@ public sealed class GtkUiDocumentEditor
 		_ => null
 	};
 
+	/// <summary>The column view that owns a <c>GtkColumnViewColumn</c> object, or null.</summary>
+	XElement? ColumnViewOf(XElement column)
+		=> (string?)column.Attribute("class") == "GtkColumnViewColumn" && column.Parent is { Name.LocalName: "child" } wrapper
+			&& wrapper.Parent is { } view && (string?)view.Attribute("class") == "GtkColumnView" ? view : null;
+
+	/// <summary>The sort-column command a context-menu entry stands for: <c>column-sortable-on</c> is true, <c>column-sortable-off</c>
+	/// is false; null for any other command.</summary>
+	public static bool? ColumnSortCommand(string command) => command switch {
+		"column-sortable-on" => true,
+		"column-sortable-off" => false,
+		_ => null
+	};
+
+	/// <summary>Whether a <c>GtkColumnViewColumn</c> has a sorter (its header then sorts the view); null when the object is not a
+	/// column of a column view.</summary>
+	public bool? GetColumnSortable(string id)
+		=> Find(id) is { } column && ColumnViewOf(column) != null
+			? column.Elements().Any(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "sorter"))
+			: null;
+
+	/// <summary>Makes a column sortable or not, as one undo step. Sortable gives the column a <c>GtkStringSorter</c> on the item's
+	/// string and makes sure the view's model chain has a sort model driven by the column view's own sorter (it adds one with
+	/// <see cref="AddModelWrapper"/> when the model is inline and has none; a model reference is assumed to be wired where it is
+	/// defined). The sorter is generated for string lists: when the inline chain ends in another model class the item type is
+	/// unknown and the column is refused, to set its sorter in the source. Not sortable removes the column's sorter and leaves the
+	/// sort model, which other columns may use. Refused for an object that is not a column of a column view.</summary>
+	public bool SetColumnSortable(string id, bool sortable)
+	{
+		var column = Find(id);
+		if (column == null || ColumnViewOf(column) is not { } view) { Refusal = "Only a GtkColumnViewColumn of a GtkColumnView can be sortable."; return false; }
+		var existing = column.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "sorter"));
+		if (!sortable) {
+			if (existing == null) return true;
+			existing.Remove();
+			return Commit();
+		}
+		if (existing != null) return true;
+		var chain = GetModelChain((string?)view.Attribute("id") ?? "");
+		if (chain != null && chain[^1] != "GtkStringList") {
+			Refusal = $"The view's items are {chain[^1]}, not strings: set the column's sorter and its expression in the source.";
+			return false;
+		}
+		var needsSortModel = chain != null && !chain.Contains("GtkSortListModel");
+		var viewId = (string?)view.Attribute("id") ?? "";
+		return Batch(() => {
+			column.Add(new XElement("property", new XAttribute("name", "sorter"),
+				new XElement("object", new XAttribute("class", "GtkStringSorter"), new XAttribute("id", UniqueId("stringSorter")), StringExpression("expression"))));
+			return Commit() && (!needsSortModel || AddModelWrapper(viewId, Sorting));
+		});
+	}
+
 	/// <summary>The classes of a list, grid or column view's model chain, outermost first (for example
 	/// <c>GtkSingleSelection, GtkSortListModel, GtkFilterListModel, GtkStringList</c>); it stops at the first model that is
 	/// not an inline object or not a wrapper. Null when the object is not a list view or has no model.</summary>

@@ -652,6 +652,83 @@ public sealed class GtkUiDocumentEditorTests
 	}
 
 	[Fact]
+	public void ColumnSort_MakingAColumnSortableAddsASorterAndTheViewsSortModelInOneUndoStep()
+	{
+		var editor = ViewEditor("GtkColumnView");
+		var view = editor.LastCreatedId!;
+		Assert.Equal(false, editor.GetColumnSortable("column1"));
+		Assert.Equal(new[] { "GtkSingleSelection", "GtkStringList" }, editor.GetModelChain(view));
+		Assert.True(editor.SetColumnSortable("column1", true), editor.Error);
+		Assert.Equal(true, editor.GetColumnSortable("column1"));
+		Assert.Equal(new[] { "GtkSingleSelection", "GtkSortListModel", "GtkStringList" }, editor.GetModelChain(view));
+		Assert.Matches("<object class=\"GtkColumnViewColumn\" id=\"column1\">[\\s\\S]*?<property name=\"sorter\">\\s*<object class=\"GtkStringSorter\" id=\"stringSorter1\">\\s*<property name=\"expression\">\\s*<lookup type=\"GtkStringObject\" name=\"string\"", editor.Text);
+		Assert.Matches("<binding name=\"sorter\">\\s*<lookup name=\"sorter\">" + view + "</lookup>", editor.Text);
+		Assert.True(editor.Undo());
+		Assert.Equal(false, editor.GetColumnSortable("column1"));
+		Assert.Equal(new[] { "GtkSingleSelection", "GtkStringList" }, editor.GetModelChain(view));
+		Assert.DoesNotContain("GtkStringSorter", editor.Text);
+	}
+
+	[Fact]
+	public void ColumnSort_AnExistingSortModelIsKeptAndEachColumnGetsItsOwnSorter()
+	{
+		var editor = ViewEditor("GtkColumnView");
+		var view = editor.LastCreatedId!;
+		Assert.True(editor.AddModelWrapper(view, GtkUiDocumentEditor.Sorting), editor.Error);
+		Assert.True(editor.Add(view, "GtkColumnViewColumn"), editor.Error);
+		var second = editor.LastCreatedId!;
+		Assert.True(editor.SetColumnSortable("column1", true), editor.Error);
+		Assert.True(editor.SetColumnSortable(second, true), editor.Error);
+		Assert.Equal(new[] { "GtkSingleSelection", "GtkSortListModel", "GtkStringList" }, editor.GetModelChain(view));
+		Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(editor.Text, "<object class=\"GtkStringSorter\"").Count);
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(editor.Text, "<object class=\"GtkSortListModel\""));
+		// Making a sortable column sortable again is not an edit.
+		var before = editor.Text;
+		Assert.True(editor.SetColumnSortable("column1", true), editor.Error);
+		Assert.Equal(before, editor.Text);
+		// Disabling removes only the column's sorter and leaves the sort model (the other column still uses it).
+		Assert.True(editor.SetColumnSortable("column1", false), editor.Error);
+		Assert.Equal(false, editor.GetColumnSortable("column1"));
+		Assert.Equal(true, editor.GetColumnSortable(second));
+		Assert.Equal(new[] { "GtkSingleSelection", "GtkSortListModel", "GtkStringList" }, editor.GetModelChain(view));
+		Assert.True(editor.SetColumnSortable("column1", false), editor.Error); // already not sortable: nothing to do
+	}
+
+	[Fact]
+	public void ColumnSort_NeedsStringItemsOrAModelItCannotSeeAndAColumnOfAColumnView()
+	{
+		var editor = new GtkUiDocumentEditor();
+		// An inline model that is not a string list: the item type is unknown, so no string sorter is invented.
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkWindow" id="w"><child><object class="GtkColumnView" id="view"><property name="model"><object class="GtkSingleSelection" id="pick"><property name="model"><object class="GListStore" id="store"/></property></object></property><child><object class="GtkColumnViewColumn" id="col"/></child></object></child></object></interface>"""), editor.Error);
+		var before = editor.Text;
+		Assert.False(editor.SetColumnSortable("col", true));
+		Assert.Contains("not strings", editor.Refusal);
+		Assert.Equal(before, editor.Text);
+		Assert.Equal(false, editor.GetColumnSortable("col"));
+		// A model reference cannot be inspected or wrapped: the sorter is added and the model is assumed to be wired where it is defined.
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkSortListModel" id="shared"/><object class="GtkWindow" id="w"><child><object class="GtkColumnView" id="view"><property name="model">shared</property><child><object class="GtkColumnViewColumn" id="col"/></child></object></child></object></interface>"""), editor.Error);
+		Assert.True(editor.SetColumnSortable("col", true), editor.Error);
+		Assert.Equal(true, editor.GetColumnSortable("col"));
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(editor.Text, "<object class=\"GtkSortListModel\""));
+		// Anything that is not a column of a column view is refused.
+		Assert.False(editor.SetColumnSortable("w", true));
+		Assert.Contains("Only a GtkColumnViewColumn", editor.Refusal);
+		Assert.Null(editor.GetColumnSortable("w"));
+		Assert.Null(editor.GetColumnSortable("nothing"));
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkWindow" id="w"><child><object class="GtkListView" id="list"/></child></object></interface>"""), editor.Error);
+		Assert.Null(editor.GetColumnSortable("list"));
+	}
+
+	[Fact]
+	public void ColumnSort_MenuCommandsMapToTheirDirection()
+	{
+		Assert.Equal(true, GtkUiDocumentEditor.ColumnSortCommand("column-sortable-on"));
+		Assert.Equal(false, GtkUiDocumentEditor.ColumnSortCommand("column-sortable-off"));
+		Assert.Null(GtkUiDocumentEditor.ColumnSortCommand("model-add-sort"));
+		Assert.Null(GtkUiDocumentEditor.ColumnSortCommand("column-sortable"));
+	}
+
+	[Fact]
 	public void FactoryTemplate_RoundTripsAndRejectsInvalidXml()
 	{
 		var editor = new GtkUiDocumentEditor();
