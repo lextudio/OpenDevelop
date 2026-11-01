@@ -238,7 +238,21 @@ public sealed class GtkUiDocumentEditor
 				new XElement("property", new XAttribute("name", "child"), created));
 			child.Add(page);
 		}
-		var siblings = parent.Elements().Where(e => e.Name.LocalName == "child" && e.Elements().Any(IsObject)).ToList();
+		// A GtkNotebook page is followed by its <child type="tab"> label, so the pages are the
+		// children that are not tabs; a new page gets a label of its own, which is an ordinary
+		// object the Properties pad edits.
+		var isNotebook = cls == "GtkNotebook";
+		var siblings = parent.Elements().Where(e => e.Name.LocalName == "child" && e.Elements().Any(IsObject)
+			&& !(isNotebook && (string?)e.Attribute("type") == "tab")).ToList();
+		if (isNotebook) {
+			var tabId = UniqueId("tab");
+			var tab = new XElement("child", new XAttribute("type", "tab"),
+				new XElement("object", new XAttribute("class", "GtkLabel"), new XAttribute("id", tabId),
+					new XElement("property", new XAttribute("name", "label"), new XAttribute("translatable", "yes"), "Page " + (siblings.Count + 1))));
+			if (index is { } slot && slot >= 0 && slot < siblings.Count) { siblings[slot].AddBeforeSelf(child); siblings[slot].AddBeforeSelf(tab); }
+			else { parent.Add(child); parent.Add(tab); }
+			return Commit();
+		}
 		// A GtkPaned has a start and an end child and GTK discards a third with a warning.
 		if (cls == "GtkPaned" && siblings.Count >= GtkDropPlanner.PanedCapacity) { Refusal = "A GtkPaned holds only a start and an end child."; return false; }
 		// A GtkColumnView's <child> elements are its columns, not widgets.
@@ -261,7 +275,10 @@ public sealed class GtkUiDocumentEditor
 		if (point == null) return false;
 		// The planner counts every child element; Add counts only the <child> elements that hold an
 		// object (not <property>, <layout>, <style>, ...).
-		var index = point.Container.Children.Take(point.ChildIndex).Count(c => c.Name == "child" && c.Children.Any(o => o.Name is "object" or "template"));
+		// A notebook's tab labels are not pages: Add indexes pages only (see the notebook branch there).
+		var notebook = point.Container.Attribute("class") == "GtkNotebook";
+		var index = point.Container.Children.Take(point.ChildIndex).Count(c => c.Name == "child" && c.Children.Any(o => o.Name is "object" or "template")
+			&& !(notebook && c.Attribute("type") == "tab"));
 		// A header bar's slot is start/end/title, not a position: a point in its markup packs at the start.
 		if ((string?)point.Container.Attribute("class") is "GtkHeaderBar" or "AdwHeaderBar") return Add(point.Container.Attribute("id")!, className);
 		return Add(point.Container.Attribute("id")!, className, index);
@@ -285,6 +302,10 @@ public sealed class GtkUiDocumentEditor
 	{
 		var element = Find(id); if (element == null || Roots.Any(r => r.Id == id)) return false;
 		var child = element.Parent; if (child?.Name.LocalName != "child") return false;
+		// A notebook page takes its tab label with it; a label alone can go (GTK shows "Page N").
+		if (child.Parent is { } owner && (string?)owner.Attribute("class") == "GtkNotebook" && (string?)child.Attribute("type") != "tab"
+			&& TabAfter(child) is { } tab)
+			tab.Remove();
 		child.Remove(); return Commit();
 	}
 
@@ -656,15 +677,30 @@ public sealed class GtkUiDocumentEditor
 			.ToDictionary(g => g.Key, g => (string?)g.Last().Attribute("handler") ?? "", StringComparer.Ordinal);
 	}
 
+	/// <summary>The <c>&lt;child type="tab"&gt;</c> label right after a notebook page. Whitespace between
+	/// elements is preserved in the document, so this looks at the next element, not the next node.</summary>
+	static XElement? TabAfter(XElement page)
+		=> page.ElementsAfterSelf().FirstOrDefault() is { } next && next.Name.LocalName == "child" && (string?)next.Attribute("type") == "tab" ? next : null;
+
 	public bool Reorder(string id, int delta)
 	{
 		var element = Find(id); var wrapper = element?.Parent; var parent = wrapper?.Parent;
 		if (wrapper?.Name.LocalName != "child" || parent == null || delta == 0) return false;
-		var siblings = parent.Elements().Where(e => e.Name.LocalName == "child" && e.Elements().Any(IsObject)).ToList();
+		// A notebook page travels with the <child type="tab"> label that follows it, so a move counts
+		// pages only; a tab label has no position of its own.
+		var notebook = (string?)parent.Attribute("class") == "GtkNotebook";
+		if (notebook && (string?)wrapper.Attribute("type") == "tab") return false;
+		var siblings = parent.Elements().Where(e => e.Name.LocalName == "child" && e.Elements().Any(IsObject)
+			&& !(notebook && (string?)e.Attribute("type") == "tab")).ToList();
 		var oldIndex = siblings.IndexOf(wrapper); var newIndex = Math.Clamp(oldIndex + delta, 0, siblings.Count - 1);
 		if (oldIndex < 0 || newIndex == oldIndex) return false;
-		wrapper.Remove();
-		if (newIndex >= siblings.Count - 1) parent.Add(wrapper); else siblings[newIndex].AddBeforeSelf(wrapper);
+		var moving = new List<XElement> { wrapper };
+		if (notebook && TabAfter(wrapper) is { } tab) moving.Add(tab);
+		moving.ForEach(e => e.Remove());
+		if (newIndex >= siblings.Count - 1) parent.Add(moving);
+		// Moving down lands after the page that was at newIndex (and after that page's tab); moving up lands before it.
+		else if (delta > 0) ((notebook ? TabAfter(siblings[newIndex]) : null) ?? siblings[newIndex]).AddAfterSelf(moving);
+		else siblings[newIndex].AddBeforeSelf(moving);
 		return Commit();
 	}
 

@@ -224,6 +224,144 @@ public sealed class GtkUiDocumentEditorTests
 	}
 
 	[Fact]
+	public void Notebook_PageGetsATabLabelAndTakesItAlongWhenRemoved()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkNotebook" id="book"/></interface>"""), editor.Error);
+		Assert.True(editor.Add("book", "GtkBox"), editor.Error);
+		var first = editor.LastCreatedId!;
+		Assert.True(editor.Add("book", "GtkBox"), editor.Error);
+		var second = editor.LastCreatedId!;
+		// A page inserted at index 1 lands between the two, directly followed by its own tab.
+		Assert.True(editor.Add("book", "GtkGrid", index: 1), editor.Error);
+		var middle = editor.LastCreatedId!;
+		Assert.Equal(3, editor.Text.Split("<child type=\"tab\">").Length - 1);
+		var text = editor.Text;
+		Assert.True(text.IndexOf($"id=\"{first}\"") < text.IndexOf("id=\"tab1\"") && text.IndexOf("id=\"tab1\"") < text.IndexOf($"id=\"{middle}\""));
+		Assert.True(text.IndexOf($"id=\"{middle}\"") < text.IndexOf($"id=\"{second}\""));
+		Assert.Contains("Page 3", text);
+		Assert.True(editor.Remove(middle), editor.Error);
+		Assert.Equal(2, editor.Text.Split("<child type=\"tab\">").Length - 1);
+		Assert.DoesNotContain($"id=\"{middle}\"", editor.Text);
+		// A tab label can be removed alone; its page stays.
+		Assert.True(editor.Remove("tab1"), editor.Error);
+		Assert.Contains($"id=\"{first}\"", editor.Text);
+	}
+
+	[Fact]
+	public void Notebook_ReorderMovesAPageTogetherWithItsTab()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkNotebook" id="book"/></interface>"""), editor.Error);
+		Assert.True(editor.Add("book", "GtkBox"), editor.Error);
+		var first = editor.LastCreatedId!;
+		Assert.True(editor.Add("book", "GtkGrid"), editor.Error);
+		var second = editor.LastCreatedId!;
+		static int At(string text, string id) => text.IndexOf($"id=\"{id}\"", StringComparison.Ordinal);
+		Assert.True(editor.Reorder(first, 1), editor.Error);
+		var text = editor.Text;
+		// second, its tab2, first, its tab1: each tab still directly follows its own page.
+		Assert.True(At(text, second) < At(text, "tab2") && At(text, "tab2") < At(text, first) && At(text, first) < At(text, "tab1"));
+		Assert.False(editor.Reorder("tab1", -1));
+		Assert.True(editor.Reorder(first, -1), editor.Error);
+		text = editor.Text;
+		Assert.True(At(text, first) < At(text, "tab1") && At(text, "tab1") < At(text, second) && At(text, second) < At(text, "tab2"));
+	}
+
+	[Fact]
+	public void Notebook_IndentedDocumentKeepsEachTabWithItsPageAcrossRemoveAndReorder()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""
+			<interface>
+			  <requires lib="gtk" version="4.0"/>
+			  <object class="GtkNotebook" id="book">
+			    <child>
+			      <object class="GtkBox" id="p1"/>
+			    </child>
+			    <child type="tab">
+			      <object class="GtkLabel" id="t1"/>
+			    </child>
+			    <child>
+			      <object class="GtkBox" id="p2"/>
+			    </child>
+			    <child type="tab">
+			      <object class="GtkLabel" id="t2"/>
+			    </child>
+			    <child>
+			      <object class="GtkBox" id="p3"/>
+			    </child>
+			    <child type="tab">
+			      <object class="GtkLabel" id="t3"/>
+			    </child>
+			  </object>
+			</interface>
+			"""), editor.Error);
+		static int At(string text, string id) => text.IndexOf($"id=\"{id}\"", StringComparison.Ordinal);
+		static bool Order(string text, params string[] ids) => ids.Zip(ids.Skip(1), (a, b) => At(text, a) < At(text, b)).All(x => x);
+		// One step down among three pages moves p1 past p2 and p2's tab, not back to where it was.
+		Assert.True(editor.Reorder("p1", 1), editor.Error);
+		Assert.True(Order(editor.Text, "p2", "t2", "p1", "t1", "p3", "t3"), editor.Text);
+		Assert.True(editor.Reorder("p3", -1), editor.Error);
+		Assert.True(Order(editor.Text, "p2", "t2", "p3", "t3", "p1", "t1"), editor.Text);
+		// Removing a page removes the tab that follows it, even with indentation between them.
+		Assert.True(editor.Remove("p3"), editor.Error);
+		Assert.DoesNotContain("id=\"t3\"", editor.Text);
+		Assert.True(Order(editor.Text, "p2", "t2", "p1", "t1"), editor.Text);
+	}
+
+	[Fact]
+	public void Reorder_OneStepDownAmongThreeChildrenActuallyMoves()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkBox" id="box"><child><object class="GtkButton" id="a"/></child><child><object class="GtkButton" id="b"/></child><child><object class="GtkButton" id="c"/></child></object></interface>"""), editor.Error);
+		Assert.True(editor.Reorder("a", 1), editor.Error);
+		Assert.Equal(new[] { "b", "a", "c" }, editor.Roots[0].Children.Select(child => child.Id));
+		Assert.True(editor.Reorder("a", 1), editor.Error);
+		Assert.Equal(new[] { "b", "c", "a" }, editor.Roots[0].Children.Select(child => child.Id));
+		Assert.True(editor.Reorder("a", -2), editor.Error);
+		Assert.Equal(new[] { "a", "b", "c" }, editor.Roots[0].Children.Select(child => child.Id));
+	}
+
+	[Fact]
+	public void Notebook_SourceDropIndexesPagesNotTabs()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""
+			<interface>
+			  <requires lib="gtk" version="4.0"/>
+			  <object class="GtkNotebook" id="book">
+			    <child>
+			      <object class="GtkButton" id="p1"/>
+			    </child>
+			    <child type="tab">
+			      <object class="GtkLabel" id="t1"/>
+			    </child>
+			    <child>
+			      <object class="GtkButton" id="p2"/>
+			    </child>
+			    <child type="tab">
+			      <object class="GtkLabel" id="t2"/>
+			    </child>
+			    <child>
+			      <object class="GtkButton" id="p3"/>
+			    </child>
+			    <child type="tab">
+			      <object class="GtkLabel" id="t3"/>
+			    </child>
+			  </object>
+			</interface>
+			"""), editor.Error);
+		// A drop on the second page's markup goes after that page and its tab, before p3. Counting every
+		// preceding <child> (tabs included) would give index 4, past the three pages: the end instead.
+		Assert.True(editor.AddAt(editor.Text.IndexOf("id=\"p2\"", StringComparison.Ordinal), "GtkLabel"), editor.Error);
+		var text = editor.Text;
+		var created = editor.LastCreatedId!;
+		static int At(string text, string id) => text.IndexOf($"id=\"{id}\"", StringComparison.Ordinal);
+		Assert.True(At(text, "t2") < At(text, created) && At(text, created) < At(text, "tab1") && At(text, "tab1") < At(text, "p3"), text);
+	}
+
+	[Fact]
 	public void FactoryTemplate_RoundTripsAndRejectsInvalidXml()
 	{
 		var editor = new GtkUiDocumentEditor();

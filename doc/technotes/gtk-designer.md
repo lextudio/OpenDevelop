@@ -773,10 +773,13 @@ GTK 4 has no generic container mutation API. Every drop is resolved through `chi
 - `GtkStack`: a drop adds a `GtkStackPage` with a generated name and title holding the new widget
   (implemented 2026-11-01). The selection is the new content widget, not the page wrapper - the
   user asked for a button, and the page has no layout of its own; the page stays selectable by its
-  `pageN` id. `GtkNotebook` needs no meta object: GtkBuilder's bare `<child>` is its page, and GTK
-  supplies the default "Page N" tab label. Named notebook tabs and action widgets are not edited
-  by the designer. Covered by `GtkUiDocumentEditorTests.Stack_Add_WritesANamedTitledPage` /
-  `Notebook_Add_WritesAPlainPageChild` and the journey
+  `pageN` id. `GtkNotebook` needs no meta object: GtkBuilder's bare `<child>` is its page. A new page is
+  written together with its tab label, `<child type="tab"><object class="GtkLabel" id="tabN">`, right
+  after it (GtkBuilder pairs a tab with the page before it); the label is an ordinary object whose
+  text the Properties pad edits, deleting the page deletes its tab, and a tab can be deleted alone
+  (GTK then shows "Page N"). Insertion and reorder indexes count pages, not tabs, and a reorder moves a page together with its tab. Notebook action widgets are not
+  edited by the designer. Covered by `GtkUiDocumentEditorTests.Stack_Add_WritesANamedTitledPage` /
+  `Notebook_Add_WritesAPlainPageChild`, `Notebook_PageGetsATabLabelAndTakesItAlongWhenRemoved` and the journey
   `GtkDesigner_StackPages_UseGtkStackPageObjects_AndTheNotebookUsesAPlainChild`, which saves and
   validates both documents with `gtk4-builder-tool`;
 - `AdwToolbarView`: top/bottom bar slots and the single content property (implemented 2026-11-01);
@@ -933,8 +936,8 @@ Status 2026-11-01: not implemented except where marked.
   the project's assembly and native code are never loaded;
 - Libadwaita catalogue and named-child policies: the catalogue, toolbox category, navigation
   page shapes and AdwToolbarView's top/bottom/content slots are implemented; other named-child
-  policies (`GtkHeaderBar` start/end/title is implemented; `GtkNotebook` tab/action widgets and
-  `AdwTabView` pages are not);
+  policies (`GtkHeaderBar` start/end/title and `GtkNotebook` tab labels are implemented;
+  `GtkNotebook` action widgets and `AdwTabView` pages are not);
 - menus, actions, list models (an inline `GtkStringList`'s items are editable), factories and
   expressions: top-level menu items are editable (see "Menus"); `Gio.Action` implementations, menu
   sections/submenus and expressions are not;
@@ -950,8 +953,7 @@ roughly in intended priority order.
 
 Product features:
 
-- `GtkNotebook` tab labels (`<child type="tab">`) and action widgets, and `AdwTabView`/`AdwTabBar`
-  pages;
+- `GtkNotebook` action widgets and `AdwTabView`/`AdwTabBar` pages;
 - translation and resource tooling: extract `translatable` strings, edit `.po` files and run a
   translation workflow (GResource preview already works);
 - Blueprint (`.blp`) import and editor integration;

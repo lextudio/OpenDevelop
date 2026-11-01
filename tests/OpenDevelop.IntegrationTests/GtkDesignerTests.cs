@@ -528,9 +528,15 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.True((await app.InvokeAsync("od.file.save", notebookPath)).GetProperty("success").GetBoolean());
 		var notebookText = (await File.ReadAllTextAsync(notebookPath, TestContext.Current.CancellationToken)).Replace("\r", "");
 		var notebook = System.Xml.Linq.XDocument.Parse(notebookText).Descendants("object").Single(x => (string?)x.Attribute("id") == "notebook");
-		var notebookChild = notebook.Elements("child").Single();
+		// A page is a bare <child>; it is followed by its own editable <child type="tab"> label.
+		var notebookChildren = notebook.Elements("child").ToList();
+		Assert.Equal(2, notebookChildren.Count);
+		var notebookChild = notebookChildren[0];
 		Assert.Equal("GtkButton", (string?)notebookChild.Element("object")?.Attribute("class"));
 		Assert.Equal("button1", (string?)notebookChild.Element("object")?.Attribute("id"));
+		Assert.Null((string?)notebookChild.Attribute("type"));
+		Assert.Equal("tab", (string?)notebookChildren[1].Attribute("type"));
+		Assert.Equal("GtkLabel", (string?)notebookChildren[1].Element("object")?.Attribute("class"));
 		Assert.DoesNotContain("GtkNotebookPage", notebookText);
 		await ValidateGtkBuilderAsync(notebookPath);
 		await app.InvokeAsync("od.close-active-view");
