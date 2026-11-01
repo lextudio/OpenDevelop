@@ -445,7 +445,7 @@ namespace OpenDevelop.Terminal
 			});
 		}
 
-		[DevFlowAction("od.terminal.list", Description = "List terminal sessions (index, pid, shell, title, active)")]
+		[DevFlowAction("od.terminal.list", Description = "List terminal sessions (index, group, pid, shell, name, title, columns, rows, exited, active)")]
 		public static string List()
 		{
 			var pad = Pad();
@@ -453,7 +453,7 @@ namespace OpenDevelop.Terminal
 				return JsonSerializer.Serialize(new { success = false, error = "Terminal pad is not available" });
 			return JsonSerializer.Serialize(new {
 				success = true,
-				sessions = pad.Panes.Select((p, i) => new { index = i, group = pad.GroupIndexOf(p), pid = p.Session.Pid, shell = p.Session.ShellName, title = p.Session.Title, columns = p.Session.Columns, rows = p.Session.Rows, exited = p.Session.HasExited, active = p == pad.ActivePane }).ToArray(),
+				sessions = pad.Panes.Select((p, i) => new { index = i, group = pad.GroupIndexOf(p), pid = p.Session.Pid, shell = p.Session.ShellName, name = TerminalPaneModel.Name(p), title = p.Session.Title, columns = p.Session.Columns, rows = p.Session.Rows, exited = p.Session.HasExited, active = p == pad.ActivePane }).ToArray(),
 				labels = pad.Labels(),
 			});
 		}

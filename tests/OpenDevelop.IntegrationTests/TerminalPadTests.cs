@@ -23,7 +23,9 @@ public sealed class TerminalPadTests
 		Assert.True(launch.GetProperty("success").GetBoolean(), launch.ToString());
 		Assert.Equal("sh", launch.GetProperty("shell").GetString());
 		var text = await WaitForAsync("package-project-marker");
-		Assert.Contains("Package Manager Console", (await app.InvokeAsync("od.terminal.list")).GetProperty("labels").EnumerateArray().Select(label => label.GetString()), StringComparer.Ordinal);
+		// The tab label is numbered ("1: Package Manager Console"); the session title is the name
+		// the launcher set.
+		Assert.Contains("Package Manager Console", (await app.InvokeAsync("od.terminal.list")).GetProperty("sessions").EnumerateArray().Select(s => s.GetProperty("name").GetString()), StringComparer.Ordinal);
 		Assert.Contains("/tmp", text.GetProperty("text").GetString(), StringComparison.Ordinal);
 
 		var sameKey = await app.InvokeAsync("od.terminal.launch", "/bin/sh", "[\"-c\",\"exec sleep 60\"]", "", "", "keyed", "/tmp", "package-project:/tmp/a.csproj");
@@ -40,11 +42,12 @@ public sealed class TerminalPadTests
 		Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
 
 		var text = await WaitForAsync("OpenDevelop Package Manager Console (pwsh)");
-		Assert.Contains((await app.InvokeAsync("od.terminal.list")).GetProperty("labels").EnumerateArray().Select(label => label.GetString()), label => label!.StartsWith("Package Manager Console", StringComparison.Ordinal));
+		Assert.Contains((await app.InvokeAsync("od.terminal.list")).GetProperty("sessions").EnumerateArray().Select(s => s.GetProperty("name").GetString()), name => name!.StartsWith("Package Manager Console", StringComparison.Ordinal));
 
 		await SendAsync("(Get-Command Install-Package).ScriptBlock.File\r");
-		var commands = await WaitForAsync("OpenDevelop.PackageManagement.ps1");
-		Assert.Contains("OpenDevelop.PackageManagement.ps1", commands.GetProperty("text").GetString(), StringComparison.Ordinal);
+		// The path wraps at the terminal width; match it with the screen's line breaks removed.
+		var commands = await WaitForJoinedTextAsync("OpenDevelop.PackageManagement.ps1");
+		Assert.Contains("OpenDevelop.PackageManagement.ps1", string.Concat(Lines(commands)), StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -1378,6 +1381,22 @@ public sealed class TerminalPadTests
 			await Task.Delay(100);
 		}
 		Assert.Fail($"The terminal never showed '{expected}'.\n{last}");
+		return last;
+	}
+
+	/// <summary>Waits for text that may wrap across the terminal's lines (a long path), so the
+	/// screen is joined without its line breaks before matching.</summary>
+	async Task<JsonElement> WaitForJoinedTextAsync(string expected)
+	{
+		JsonElement last = default;
+		for (var attempt = 0; attempt < 50; attempt++)
+		{
+			last = await app.InvokeAsync("od.terminal.text");
+			if (last.TryGetProperty("text", out _) && string.Concat(Lines(last)).Contains(expected, StringComparison.Ordinal))
+				return last;
+			await Task.Delay(100);
+		}
+		Assert.Fail($"The terminal never showed '{expected}' (joined).\n{last}");
 		return last;
 	}
 }

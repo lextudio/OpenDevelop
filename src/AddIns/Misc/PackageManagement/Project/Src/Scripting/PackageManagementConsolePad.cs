@@ -97,7 +97,13 @@ namespace ICSharpCode.PackageManagement.Scripting
 		{
 			var candidates = OperatingSystem.IsWindows()
 				? new[] { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PowerShell", "7", "pwsh.exe"), "pwsh.exe" }
-				: new[] { "/opt/homebrew/bin/pwsh", "/usr/local/bin/pwsh", "/usr/bin/pwsh", "pwsh" };
+				: new[] {
+					// Homebrew and the Microsoft PowerShell 7 installer put pwsh in different places;
+					// neither is guaranteed to be on the IDE's PATH.
+					"/opt/homebrew/bin/pwsh", "/usr/local/bin/pwsh", "/usr/bin/pwsh",
+					"/usr/local/microsoft/powershell/7/pwsh", "/opt/microsoft/powershell/7/pwsh",
+					"pwsh"
+				};
 			return candidates.FirstOrDefault(File.Exists) ?? candidates.Last();
 		}
 
