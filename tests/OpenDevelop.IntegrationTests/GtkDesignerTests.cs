@@ -1360,7 +1360,8 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.Equal(new[] { "Save", "Open", "Close" }, status.GetProperty("rows").EnumerateArray().Select(r => r.GetProperty("source").GetString()));
 		// The grid itself lists what the model says, with the translator's columns.
 		Assert.Equal(3, status.GetProperty("listedRows").GetInt32());
-		Assert.Equal(new[] { "State", "Source", "Translation", "Fuzzy", "Comment", "Notes" }, status.GetProperty("columns").EnumerateArray().Select(c => c.GetString()));
+		// The fixture's Save entry has a msgctxt, so the Context column is shown.
+		Assert.Equal(new[] { "State", "Context", "Source", "Translation", "Fuzzy", "Comment", "Notes" }, status.GetProperty("columns").EnumerateArray().Select(c => c.GetString()));
 
 		var filtered = await app.InvokeAsync("od.translator.filter", "NeedsWork");
 		Assert.True(filtered.GetProperty("success").GetBoolean(), filtered.ToString());
@@ -1383,6 +1384,45 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var after = await app.InvokeAsync("od.translator.status");
 		Assert.Equal(3, after.GetProperty("translated").GetInt32());
 		Assert.False(after.GetProperty("dirty").GetBoolean());
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
+	public async Task GtkDesigner_TranslatorView_TranslatesACultureResxAgainstItsNeutralFile()
+	{
+		// A culture resource file (Form1.fr.resx) opens with the same translator, against Form1.resx: rows keyed by resource
+		// name, no Fuzzy column, typed and non-string resources left out, and the culture file's own XML kept on save.
+		var folder = Path.Combine(workDir, "Resources");
+		Directory.CreateDirectory(folder);
+		const string header = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<root>\n  <resheader name=\"resmimetype\">\n    <value>text/microsoft-resx</value>\n  </resheader>\n  <resheader name=\"version\">\n    <value>2.0</value>\n  </resheader>\n  <resheader name=\"reader\">\n    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>\n  </resheader>\n  <resheader name=\"writer\">\n    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>\n  </resheader>\n";
+		await File.WriteAllTextAsync(Path.Combine(folder, "Form1.resx"), header
+			+ "  <data name=\"saveButton.Text\" xml:space=\"preserve\">\n    <value>Save</value>\n    <comment>Shown on the save button</comment>\n  </data>\n"
+			+ "  <data name=\"openButton.Text\" xml:space=\"preserve\">\n    <value>Open</value>\n  </data>\n"
+			+ "  <data name=\"saveButton.Location\" type=\"System.Drawing.Point, System.Drawing\">\n    <value>13, 13</value>\n  </data>\n</root>\n", TestContext.Current.CancellationToken);
+		var culturePath = Path.Combine(folder, "Form1.fr.resx");
+		await File.WriteAllTextAsync(culturePath, header
+			+ "  <data name=\"saveButton.Text\" xml:space=\"preserve\">\n    <value>Enregistrer</value>\n  </data>\n"
+			+ "  <data name=\"saveButton.Location\" type=\"System.Drawing.Point, System.Drawing\">\n    <value>20, 13</value>\n  </data>\n</root>\n", TestContext.Current.CancellationToken);
+		var opened = await app.InvokeAsync("od.open-file", culturePath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+
+		var status = await app.InvokeAsync("od.translator.status");
+		Assert.True(status.GetProperty("active").GetBoolean(), status.ToString());
+		Assert.Equal(2, status.GetProperty("total").GetInt32()); // the Point is not a string resource
+		Assert.Equal(1, status.GetProperty("translated").GetInt32());
+		Assert.Equal(1, status.GetProperty("untranslated").GetInt32());
+		Assert.Equal(new[] { "State", "Name", "Source", "Translation", "Comment", "Notes" }, status.GetProperty("columns").EnumerateArray().Select(c => c.GetString()));
+		Assert.Equal(new[] { "saveButton.Text", "openButton.Text" }, status.GetProperty("rows").EnumerateArray().Select(r => r.GetProperty("context").GetString()));
+
+		Assert.True((await app.InvokeAsync("od.translator.set-translation", "Open", "Ouvrir")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.file.save", culturePath)).GetProperty("success").GetBoolean());
+		var saved = await File.ReadAllTextAsync(culturePath, TestContext.Current.CancellationToken);
+		var strings = System.Xml.Linq.XDocument.Parse(saved).Root!.Elements("data").Where(d => d.Attribute("type") == null)
+			.ToDictionary(d => (string)d.Attribute("name")!, d => (string)d.Element("value")!);
+		Assert.Equal("Ouvrir", strings["openButton.Text"]);
+		Assert.Equal("Enregistrer", strings["saveButton.Text"]);
+		Assert.Contains("<value>20, 13</value>", saved);       // the culture file's own Point survives
+		Assert.Contains("resmimetype", saved);                  // and its headers
+		Assert.Equal(2, (await app.InvokeAsync("od.translator.status")).GetProperty("translated").GetInt32());
 		await app.InvokeAsync("od.close-active-view");
 	}
 

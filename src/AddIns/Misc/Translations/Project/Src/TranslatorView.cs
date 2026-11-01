@@ -18,6 +18,8 @@ public sealed class TranslatorView : Grid
 	readonly DataGrid grid = new DataGrid { AutoGenerateColumns = false, CanUserAddRows = false, CanUserDeleteRows = false, SelectionUnit = DataGridSelectionUnit.FullRow, HeadersVisibility = DataGridHeadersVisibility.Column, GridLinesVisibility = DataGridGridLinesVisibility.Horizontal };
 	readonly ComboBox filter = new ComboBox { MinWidth = 140, Margin = new Thickness(0, 0, 8, 0) };
 	readonly TextBox search = new TextBox { MinWidth = 220 };
+	readonly DataGridTextColumn contextColumn = new DataGridTextColumn { Header = "Context", Binding = new Binding(nameof(TranslatorRow.Context)) { Mode = BindingMode.OneWay }, IsReadOnly = true, Width = new DataGridLength(0.7, DataGridLengthUnitType.Star) };
+	readonly DataGridCheckBoxColumn fuzzyColumn = new DataGridCheckBoxColumn { Header = "Fuzzy", Binding = new Binding(nameof(TranslatorRow.IsFuzzy)) { Mode = BindingMode.TwoWay }, Width = 56 };
 	readonly TextBlock summary = new TextBlock { Margin = new Thickness(8, 4, 8, 4) };
 
 	public TranslatorView(TranslatorModel model)
@@ -39,19 +41,20 @@ public sealed class TranslatorView : Grid
 		Children.Add(bar);
 
 		grid.Columns.Add(new DataGridTextColumn { Header = "State", Binding = new Binding(nameof(TranslatorRow.State)) { Mode = BindingMode.OneWay }, IsReadOnly = true, Width = 90 });
+		grid.Columns.Add(contextColumn);
 		grid.Columns.Add(new DataGridTemplateColumn { Header = "Source", IsReadOnly = true, Width = new DataGridLength(1, DataGridLengthUnitType.Star), CellTemplate = WrappedText(nameof(TranslatorRow.Source)) });
 		grid.Columns.Add(new DataGridTemplateColumn {
 			Header = "Translation", Width = new DataGridLength(1.4, DataGridLengthUnitType.Star),
 			CellTemplate = WrappedText(nameof(TranslatorRow.Translation)), CellEditingTemplate = EditingText(nameof(TranslatorRow.Translation))
 		});
-		grid.Columns.Add(new DataGridCheckBoxColumn { Header = "Fuzzy", Binding = new Binding(nameof(TranslatorRow.IsFuzzy)) { Mode = BindingMode.TwoWay }, Width = 56 });
+		grid.Columns.Add(fuzzyColumn);
 		grid.Columns.Add(new DataGridTemplateColumn {
 			Header = "Comment", Width = new DataGridLength(0.8, DataGridLengthUnitType.Star),
 			CellTemplate = WrappedText(nameof(TranslatorRow.TranslatorComment)), CellEditingTemplate = EditingText(nameof(TranslatorRow.TranslatorComment))
 		});
 		grid.Columns.Add(new DataGridTemplateColumn { Header = "Notes", IsReadOnly = true, Width = new DataGridLength(0.8, DataGridLengthUnitType.Star), CellTemplate = Notes() });
 		// A plural or obsolete entry is listed for completeness, but its forms and its fate are the source view's to edit.
-		grid.BeginningEdit += (_, e) => { if (e.Row.Item is TranslatorRow { IsReadOnly: true } && e.Column.Header as string != "Fuzzy") e.Cancel = true; };
+		grid.BeginningEdit += (_, e) => { if (e.Row.Item is TranslatorRow { IsReadOnly: true } && !ReferenceEquals(e.Column, fuzzyColumn)) e.Cancel = true; };
 		SetRow(grid, 1);
 		Children.Add(grid);
 
@@ -62,9 +65,9 @@ public sealed class TranslatorView : Grid
 		Refresh();
 	}
 
-	/// <summary>How many rows the grid lists, and its column headers (what a test reads to prove the view shows the model).</summary>
+	/// <summary>How many rows the grid lists, and the headers of its visible columns (what a test reads to prove the view shows the model).</summary>
 	public int ListedRowCount => grid.Items.Count;
-	public IReadOnlyList<string> ColumnHeaders => grid.Columns.Select(c => c.Header as string ?? "").ToList();
+	public IReadOnlyList<string> ColumnHeaders => grid.Columns.Where(c => c.Visibility == Visibility.Visible).Select(c => c.Header as string ?? "").ToList();
 
 	TranslationFilter SelectedFilter => filter.SelectedItem is ComboBoxItem { Tag: TranslationFilter selected } ? selected : TranslationFilter.All;
 
@@ -78,6 +81,11 @@ public sealed class TranslatorView : Grid
 	public void Refresh()
 	{
 		grid.CommitEdit(DataGridEditingUnit.Row, true);
+		// The columns follow the file format: a resource file has no fuzzy state and calls its context a Name, and
+		// a catalogue with no context at all has nothing to show in that column.
+		fuzzyColumn.Visibility = model.SupportsFuzzy ? Visibility.Visible : Visibility.Collapsed;
+		contextColumn.Header = model.ContextHeader;
+		contextColumn.Visibility = model.HasContexts ? Visibility.Visible : Visibility.Collapsed;
 		grid.ItemsSource = model.VisibleRows;
 		var language = model.Language.Length == 0 ? "" : model.Language + ": ";
 		summary.Text = $"{language}{model.TranslatedCount} of {model.Total} translated ({model.PercentComplete:0}%), {model.FuzzyCount} fuzzy, {model.UntranslatedCount} untranslated"

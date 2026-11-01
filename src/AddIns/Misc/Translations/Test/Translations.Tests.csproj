@@ -14,5 +14,6 @@
     <Compile Include="..\Project\Src\TranslatableStringSource.cs" Link="TranslatableStringSource.cs" />
     <Compile Include="..\Project\Src\TranslationProject.cs" Link="TranslationProject.cs" />
     <Compile Include="..\Project\Src\TranslatorModel.cs" Link="TranslatorModel.cs" />
+    <Compile Include="..\Project\Src\TranslationFormats.cs" Link="TranslationFormats.cs" />
   </ItemGroup>
 </Project>

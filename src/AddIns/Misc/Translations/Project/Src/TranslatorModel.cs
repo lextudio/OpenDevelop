@@ -61,7 +61,7 @@ public sealed class TranslatorRow : INotifyPropertyChanged
 		get => Entry.IsFuzzy;
 		set
 		{
-			if (IsReadOnly || value == Entry.IsFuzzy) return;
+			if (IsReadOnly || !owner.SupportsFuzzy || value == Entry.IsFuzzy) return;
 			if (value) Entry.Flags.Add("fuzzy"); else Entry.Flags.RemoveAll(f => f == "fuzzy");
 			Notify(nameof(IsFuzzy), nameof(State));
 			owner.MarkChanged();
@@ -99,9 +99,23 @@ public sealed class TranslatorRow : INotifyPropertyChanged
 /// </summary>
 public sealed class TranslatorModel
 {
+	ITranslationFormat format;
 	string originalText = "";
 	PoCatalog catalog = new PoCatalog();
 	List<TranslatorRow> rows = new List<TranslatorRow>();
+
+	public TranslatorModel() : this(new PoFormat()) { }
+	public TranslatorModel(ITranslationFormat format) { this.format = format; }
+
+	/// <summary>Switches the format before a <see cref="Load"/>, e.g. to read a neutral resource file again.</summary>
+	public void SetFormat(ITranslationFormat newFormat) { format = newFormat; }
+
+	/// <summary>Whether the file format has a fuzzy state (gettext does; a resource file does not).</summary>
+	public bool SupportsFuzzy => format.SupportsFuzzy;
+	/// <summary>What the context column is called: "Context" for gettext, "Name" for a resource key.</summary>
+	public string ContextHeader => format.ContextHeader;
+	/// <summary>Whether any entry has a context to show.</summary>
+	public bool HasContexts => rows.Any(r => r.Context.Length > 0);
 
 	/// <summary>Raised after any edit; the view content marks the file dirty from it.</summary>
 	public event EventHandler? Changed;
@@ -115,7 +129,7 @@ public sealed class TranslatorModel
 	public void Load(string text)
 	{
 		originalText = text ?? "";
-		catalog = PoCatalog.Parse(originalText);
+		catalog = format.Parse(originalText);
 		rows = catalog.Entries.Select(entry => new TranslatorRow(this, entry)).ToList();
 		IsDirty = false;
 		Reloaded?.Invoke(this, EventArgs.Empty);
@@ -124,7 +138,7 @@ public sealed class TranslatorModel
 	internal void MarkChanged() { IsDirty = true; Changed?.Invoke(this, EventArgs.Empty); }
 
 	/// <summary>The text to save: the loaded text while nothing was edited, otherwise the rewritten catalogue.</summary>
-	public string ToText() => IsDirty ? catalog.Write() : originalText;
+	public string ToText() => IsDirty ? format.Write(catalog, originalText) : originalText;
 
 	/// <summary>Records that <see cref="ToText"/>'s result was written, so it is the new baseline.</summary>
 	public void MarkSaved() { originalText = ToText(); IsDirty = false; }
