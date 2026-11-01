@@ -124,6 +124,10 @@
   <Folder Name="/src/AddIns/Misc/RegExpTk/">
     <Project Path="src/AddIns/Misc/RegExpTk/Project/RegExpTk.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/Misc/Translations/">
+    <Project Path="src/AddIns/Misc/Translations/Project/Translations.csproj" />
+    <Project Path="src/AddIns/Misc/Translations/Test/Translations.Tests.csproj" />
+  </Folder>
   <Folder Name="/src/AddIns/Misc/Terminal/">
     <Project Path="src/AddIns/Misc/Terminal/Project/Terminal.csproj" />
   </Folder>

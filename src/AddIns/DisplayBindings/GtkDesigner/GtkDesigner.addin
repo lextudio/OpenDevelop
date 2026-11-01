@@ -1,6 +1,6 @@
 <AddIn name="GTK 4 Designer" author="LeXtudio" description="Source-backed GtkBuilder designer for GTK 4." addInManagerHidden="preinstalled">
-  <Manifest><Identity name="ICSharpCode.GtkDesigner" /><Dependency addin="ICSharpCode.DesignerCanvas" requirePreload="true" /></Manifest>
-  <Runtime><Import assembly="$ICSharpCode.DesignerCanvas/ICSharpCode.DesignerCanvas.dll" /><Import assembly=":ICSharpCode.Designer.Presentation" /><Import assembly="ICSharpCode.GtkDesigner.dll" /></Runtime>
+  <Manifest><Identity name="ICSharpCode.GtkDesigner" /><Dependency addin="ICSharpCode.DesignerCanvas" requirePreload="true" /><Dependency addin="ICSharpCode.Translations" requirePreload="true" /></Manifest>
+  <Runtime><Import assembly="$ICSharpCode.DesignerCanvas/ICSharpCode.DesignerCanvas.dll" /><Import assembly="$ICSharpCode.Translations/ICSharpCode.Translations.dll" /><Import assembly=":ICSharpCode.Designer.Presentation" /><Import assembly="ICSharpCode.GtkDesigner.dll" /></Runtime>
   <Path name="/SharpDevelop/Workbench/DisplayBindings">
     <DisplayBinding id="GtkDesigner" type="Secondary" class="ICSharpCode.GtkDesigner.GtkDesignerDisplayBinding" fileNamePattern="\.ui$" />
   </Path>
@@ -12,5 +12,6 @@
   <Path name="/SharpDevelop/Autostart">
     <Class id="ICSharpCode.GtkDesigner.RegisterDevFlowActionsCommand" class="ICSharpCode.GtkDesigner.RegisterDevFlowActionsCommand" />
     <Class id="ICSharpCode.GtkDesigner.RegisterGtkProjectFileNestingCommand" class="ICSharpCode.GtkDesigner.RegisterGtkProjectFileNestingCommand" />
+    <Class id="ICSharpCode.GtkDesigner.RegisterGtkTranslationSourceCommand" class="ICSharpCode.GtkDesigner.RegisterGtkTranslationSourceCommand" />
   </Path>
 </AddIn>

@@ -16,5 +16,8 @@
     <Compile Include="..\GtkDesigner\GtkCustomWidgetPreview.cs" Link="GtkCustomWidgetPreview.cs" />
     <Compile Include="..\..\..\Main\Designer\Designer.Shell\XmlToolboxDropPlanner.cs" Link="XmlToolboxDropPlanner.cs" />
     <Compile Include="..\..\..\Main\Designer\Designer.Remote\DesignerMenuOutline.cs" Link="DesignerMenuOutline.cs" />
+    <Compile Include="..\..\Misc\Translations\Project\Src\PoCatalog.cs" Link="PoCatalog.cs" />
+    <Compile Include="..\..\Misc\Translations\Project\Src\TranslatableStringSource.cs" Link="TranslatableStringSource.cs" />
+    <Compile Include="..\GtkDesigner\GtkTranslations.cs" Link="GtkTranslations.cs" />
   </ItemGroup>
 </Project>

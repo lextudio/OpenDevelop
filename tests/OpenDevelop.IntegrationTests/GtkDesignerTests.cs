@@ -1304,6 +1304,42 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_UpdateTranslations_WritesThePotFromUiFilesAndMergesPoFiles()
+	{
+		// The translation workflow is the Translations addin's; the GTK designer registers its .ui source with it.
+		// Update Translations (od.translations.update) must therefore pick up a .ui's translatable strings,
+		// write po/<project>.pot with file:line references, and carry an existing .po's translation over.
+		var path = Path.Combine(workDir, "Windows", "TranslateWindow.ui");
+		await File.WriteAllTextAsync(path, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <object class="GtkWindow" id="translateWindow">
+			    <child><object class="GtkLabel" id="zebra"><property name="label" translatable="yes" comments="A road sign">Zebra crossing</property></object></child>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var poDirectory = Path.Combine(workDir, "po");
+		Directory.CreateDirectory(poDirectory);
+		await File.WriteAllTextAsync(Path.Combine(poDirectory, "fr.po"), "msgid \"\"\nmsgstr \"\"\n\"Language: fr\\n\"\n\nmsgid \"Zebra crossing\"\nmsgstr \"Passage piéton\"\n", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+
+		var update = await app.InvokeAsync("od.translations.update", projectPath);
+		Assert.True(update.GetProperty("success").GetBoolean(), update.ToString());
+		Assert.True(update.GetProperty("stringCount").GetInt32() >= 1, update.ToString());
+		var pot = await File.ReadAllTextAsync(update.GetProperty("potPath").GetString()!, TestContext.Current.CancellationToken);
+		Assert.Contains("msgid \"Zebra crossing\"", pot);
+		Assert.Contains("#. A road sign", pot);
+		Assert.Contains("Windows/TranslateWindow.ui:", pot);
+		Assert.Contains("Passage piéton", await File.ReadAllTextAsync(Path.Combine(poDirectory, "fr.po"), TestContext.Current.CancellationToken));
+		Assert.Contains("#: Windows/TranslateWindow.ui:", await File.ReadAllTextAsync(Path.Combine(poDirectory, "fr.po"), TestContext.Current.CancellationToken));
+		// A second run changes nothing.
+		var again = await app.InvokeAsync("od.translations.update", projectPath);
+		Assert.False(again.GetProperty("potWritten").GetBoolean(), again.ToString());
+		Assert.Equal(0, again.GetProperty("updatedCatalogs").GetArrayLength());
+	}
+
+	[Fact]
 	public async Task GtkDesigner_LibadwaitaToolbarView_PlacesContentAndBars()
 	{
 		// AdwToolbarView's GtkBuildable form is <child type="top|bottom"> for bars and a single

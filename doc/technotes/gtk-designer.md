@@ -973,8 +973,10 @@ Status 2026-11-01: not implemented except where marked.
 - menus, actions, list models (an inline `GtkStringList`'s items are editable), factories and
   expressions: menu items, sections and submenus are editable (see "Menus"); `win.` actions get stubs and registration
   (`app.` actions and expressions are not);
-- translation and resource tooling: GResource preview is implemented; no string extraction,
-  `.po` editing or translation workflow;
+- translation and resource tooling: GResource preview is implemented. Extraction of `translatable` strings
+  (a `GtkTranslatableSource`) feeds the shared Translations addin, which writes `po/<project>.pot` and
+  merges every `po/*.po` (see `translations.md`); the translator view, `.po` language service and `.mo`
+  compilation are not implemented;
 - explicit GTK 3/Stetic migration assistant: not implemented;
 - optional Blueprint import/editor integration: not implemented.
 
@@ -986,8 +988,8 @@ roughly in intended priority order.
 Product features:
 
 - creating `GtkNotebook` action widgets from the designer (existing ones are preserved);
-- translation and resource tooling: extract `translatable` strings, edit `.po` files and run a
-  translation workflow (GResource preview already works);
+- translation tooling beyond extraction and merge: the translator view, the `.po` language service and `.mo`
+  compilation, which belong to the Translations addin (`translations.md`), not to this one;
 - Blueprint (`.blp`) import and editor integration;
 - an explicit GTK 3/Stetic migration assistant (the migration section describes the manual steps;
   no tool exists);

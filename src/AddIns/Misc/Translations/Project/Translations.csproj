@@ -1,0 +1,31 @@
+<Project Sdk="LibreWPF.Sdk">
+  <PropertyGroup>
+    <!-- The sources annotate nullability with '?'; the annotation context makes that legal without
+         turning the warning context on. -->
+    <Nullable>annotations</Nullable>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>ICSharpCode.Translations</RootNamespace>
+    <AssemblyName>ICSharpCode.Translations</AssemblyName>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <OutputPath>..\..\..\..\..\AddIns\Misc\Translations\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" />
+    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Translations.addin">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

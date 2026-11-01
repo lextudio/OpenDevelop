@@ -1,0 +1,10 @@
+<AddIn name="Translations" author="LeXtudio" description="gettext translation workflow shared by the designers: extract translatable strings into a .pot template and merge it into each .po." addInManagerHidden="preinstalled">
+  <Manifest><Identity name="ICSharpCode.Translations" /></Manifest>
+  <Runtime><Import assembly="ICSharpCode.Translations.dll" /></Runtime>
+  <Path name="/SharpDevelop/Autostart">
+    <Class id="ICSharpCode.Translations.RegisterDevFlowActionsCommand" class="ICSharpCode.Translations.RegisterDevFlowActionsCommand" />
+  </Path>
+  <Path name="/SharpDevelop/Workbench/Tools">
+    <MenuItem id="UpdateTranslations" label="Update Translations" class="ICSharpCode.Translations.UpdateTranslationsCommand" />
+  </Path>
+</AddIn>
