@@ -450,10 +450,84 @@ public sealed class GtkUiDocumentEditor
 		if (className == "GtkStringList") return element;
 		var modelProperty = element.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "model"));
 		if (modelProperty != null) {
+			// The model may sit behind wrappers (a selection model, a sort or filter model, a slice): follow their
+			// own `model` properties down to the string list.
 			var model = modelProperty.Elements().FirstOrDefault(IsObject);
+			while (model != null && (string?)model.Attribute("class") is { } modelClass && ModelWrappers.Contains(modelClass))
+				model = ModelOf(model);
 			return model != null && (string?)model.Attribute("class") == "GtkStringList" ? model : null;
 		}
 		return className == "GtkDropDown" ? element : null;
+	}
+
+	/// <summary>List-model classes that wrap another model through their own <c>model</c> property.</summary>
+	static readonly HashSet<string> ModelWrappers = new(StringComparer.Ordinal) {
+		"GtkNoSelection", "GtkSingleSelection", "GtkMultiSelection", "GtkSortListModel", "GtkFilterListModel",
+		"GtkSliceListModel", "GtkSelectionFilterModel", "GtkFlattenListModel", "GtkMapListModel"
+	};
+
+	/// <summary>The selection models a list, grid or column view can use, in the order the Selection menu lists them.</summary>
+	public static readonly string[] SelectionModels = { "GtkNoSelection", "GtkSingleSelection", "GtkMultiSelection" };
+	static readonly HashSet<string> ListViewClasses = new(StringComparer.Ordinal) { "GtkListView", "GtkGridView", "GtkColumnView" };
+	/// <summary>Properties only <c>GtkSingleSelection</c> has; they go when it becomes another selection model.</summary>
+	static readonly string[] SingleSelectionProperties = { "autoselect", "can-unselect", "selected" };
+
+	static XElement? ModelProperty(XElement element)
+		=> element.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "model"));
+
+	static XElement? ModelOf(XElement element) => ModelProperty(element)?.Elements().FirstOrDefault(IsObject);
+
+	/// <summary>The selection model a list, grid or column view is currently set to, or null: a view with no model, a
+	/// model reference, or a model that is not a selection model (e.g. a bare string list, which GTK rejects).</summary>
+	public string? GetSelectionModel(string id)
+	{
+		var element = Find(id);
+		if (element == null || !ListViewClasses.Contains((string?)element.Attribute("class") ?? "")) return null;
+		return SelectionModelObject(element) is { } model ? (string?)model.Attribute("class") : null;
+	}
+
+	/// <summary>The selection model object of a list view: the inline <c>model</c> object, or the object a text reference
+	/// names, when it is a selection model; otherwise null.</summary>
+	XElement? SelectionModelObject(XElement view)
+	{
+		var property = ModelProperty(view);
+		if (property == null) return null;
+		var model = property.Elements().FirstOrDefault(IsObject);
+		if (model == null && property.Value.Trim() is { Length: > 0 } reference) model = Find(reference);
+		return model != null && SelectionModels.Contains((string?)model.Attribute("class") ?? "") ? model : null;
+	}
+
+	/// <summary>Makes the view's selection model <paramref name="selectionClass"/> (<c>GtkNoSelection</c>,
+	/// <c>GtkSingleSelection</c> or <c>GtkMultiSelection</c>), as one undo step. The inner model and any wrappers are kept;
+	/// the single-selection-only properties go when it stops being single. A view whose model is not a selection model
+	/// (a bare <c>GtkStringList</c> from an older document, or a model reference) gets one wrapped around it. Refused
+	/// for an unknown class, an object that is not a list/grid/column view, or a view with no model at all.</summary>
+	public bool SetSelectionModel(string id, string selectionClass)
+	{
+		var element = Find(id);
+		if (!SelectionModels.Contains(selectionClass)) { Refusal = $"{selectionClass} is not a selection model (GtkNoSelection, GtkSingleSelection or GtkMultiSelection)."; return false; }
+		if (element == null || !ListViewClasses.Contains((string?)element.Attribute("class") ?? "")) { Refusal = "Only a GtkListView, GtkGridView or GtkColumnView has a selection model."; return false; }
+		var property = ModelProperty(element);
+		if (property == null) { Refusal = "The view has no model to select from."; return false; }
+		// An inline selection model, or a reference to one defined elsewhere (the class of the shared object changes).
+		if (SelectionModelObject(element) is { } selection) {
+			if ((string?)selection.Attribute("class") == selectionClass) return true;
+			selection.SetAttributeValue("class", selectionClass);
+			if (selectionClass != "GtkSingleSelection")
+				selection.Elements().Where(e => e.Name.LocalName == "property" && SingleSelectionProperties.Any(n => SameName((string?)e.Attribute("name"), n))).ToList().ForEach(e => e.Remove());
+			return Commit();
+		}
+		var current = ModelOf(element);
+		// Wrap whatever the property holds: an object, or a reference to one.
+		var wrapper = new XElement("object", new XAttribute("class", selectionClass), new XAttribute("id", UniqueId("selection")));
+		var inner = new XElement("property", new XAttribute("name", "model"));
+		if (current != null) { current.Remove(); inner.Add(current); }
+		else if (property.Value.Trim().Length > 0) inner.Add(property.Value.Trim());
+		else { Refusal = "The view has no model to select from."; return false; }
+		wrapper.Add(inner);
+		property.RemoveNodes();
+		property.Add(wrapper);
+		return Commit();
 	}
 
 	/// <summary>The class whose items the Items row edits for <paramref name="id"/>, or null.</summary>
@@ -794,16 +868,20 @@ public sealed class GtkUiDocumentEditor
 		   && IdReferenceProperties.Contains((string?)e.Attribute("name") ?? "");
 	string UniqueId(string prefix) { for (var i = 1; ; i++) if (Find(prefix + i) == null) return prefix + i; }
 
-	/// <summary>The starter model for a list/grid/column view: an inline string list whose items
-	/// the Properties pad can edit.</summary>
+	/// <summary>The starter model for a list/grid/column view: a <c>GtkSingleSelection</c> around an inline string list
+	/// whose items the Properties pad can edit. The wrapper is required: GtkListView, GtkGridView and GtkColumnView
+	/// take a <c>GtkSelectionModel</c>, and a bare <c>GtkStringList</c> is not one.</summary>
 	XElement ListModelProperty()
 	{
+		var selectionId = UniqueId("selection");
 		var modelId = UniqueId("listModel");
 		return new XElement("property", new XAttribute("name", "model"),
-			new XElement("object", new XAttribute("class", "GtkStringList"), new XAttribute("id", modelId),
-				new XElement("items",
-					new XElement("item", new XAttribute("translatable", "yes"), "Item 1"),
-					new XElement("item", new XAttribute("translatable", "yes"), "Item 2"))));
+			new XElement("object", new XAttribute("class", "GtkSingleSelection"), new XAttribute("id", selectionId),
+				new XElement("property", new XAttribute("name", "model"),
+					new XElement("object", new XAttribute("class", "GtkStringList"), new XAttribute("id", modelId),
+						new XElement("items",
+							new XElement("item", new XAttribute("translatable", "yes"), "Item 1"),
+							new XElement("item", new XAttribute("translatable", "yes"), "Item 2"))))));
 	}
 
 	/// <summary>A GtkBuilderListItemFactory whose cell is a label bound to the item's string, so a

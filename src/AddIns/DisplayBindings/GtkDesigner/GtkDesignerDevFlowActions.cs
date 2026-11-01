@@ -214,6 +214,10 @@ public static class GtkDesignerDevFlowActions
 	public static string GetFactoryTemplate() { var view = Activate(); var template = view?.FactoryTemplate(); return JsonSerializer.Serialize(new { success = template != null, template }); }
 	[DevFlowAction("od.gtk-designer.factory-template.set", Description = "Replace the selected list/grid/column view's factory template as one undo step; invalid XML is refused")]
 	public static string SetFactoryTemplate(string template) { var view = Activate(); var ok = view?.SetFactoryTemplate(template) == true; return JsonSerializer.Serialize(new { success = ok, template = view?.FactoryTemplate() }); }
+	[DevFlowAction("od.gtk-designer.selection-model", Description = "Read the selected list/grid/column view's selection model class (GtkNoSelection, GtkSingleSelection or GtkMultiSelection), or null")]
+	public static string GetSelectionModel() { var view = Activate(); var model = view?.SelectionModel(); return JsonSerializer.Serialize(new { success = view != null, selectionModel = model }); }
+	[DevFlowAction("od.gtk-designer.selection-model.set", Description = "Set the selected list/grid/column view's selection model (one undo step); a model that is not a selection model is wrapped")]
+	public static string SetSelectionModel(string selectionClass) { var view = Activate(); var ok = view?.SetSelectionModel(selectionClass) == true; return JsonSerializer.Serialize(new { success = ok, selectionModel = view?.SelectionModel() }); }
 	[DevFlowAction("od.gtk-designer.menu-items", Description = "Read the selected popover/menu button's top-level menu items as the shared item/section/submenu tree")]
 	public static string GetMenuItems() { var view = Activate(); var items = view?.MenuItems(); return JsonSerializer.Serialize(new { success = items != null, items }); }
 	[DevFlowAction("od.gtk-designer.menu-items.set", Description = "Replace the selected popover/menu button's menu from the shared outline (one undo step): 'label=action' items, '[section] label' and '[submenu] label' with their entries indented two spaces below; ';' or a newline separates lines")]

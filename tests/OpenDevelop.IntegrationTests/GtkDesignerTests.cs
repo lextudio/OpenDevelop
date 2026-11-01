@@ -841,9 +841,29 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var invalid = await Assert.ThrowsAsync<InvalidOperationException>(() => app.InvokeAsync("od.gtk-designer.factory-template.set", "<not xml"));
 		Assert.Contains("not valid XML", invalid.Message);
 
+		// The starter model is a GtkSingleSelection (the view's property is a GtkSelectionModel) around the string list; the
+		// selection model can be changed (the "Extra" item added above went through the wrapper), and undo restores it.
+		var single = await app.InvokeAsync("od.gtk-designer.selection-model");
+		Assert.Equal("GtkSingleSelection", single.GetProperty("selectionModel").GetString());
+		var multiple = await app.InvokeAsync("od.gtk-designer.selection-model.set", "GtkMultiSelection");
+		Assert.True(multiple.GetProperty("success").GetBoolean(), multiple.ToString());
+		Assert.Equal("GtkMultiSelection", multiple.GetProperty("selectionModel").GetString());
+		// A refusal is reported under the canvas, like the other edits', not thrown out of the handler.
+		var badSelection = await app.InvokeAsync("od.gtk-designer.selection-model.set", "GtkSortListModel");
+		Assert.False(badSelection.GetProperty("success").GetBoolean(), badSelection.ToString());
+		Assert.Contains("not a selection model", (await app.InvokeAsync("od.gtk-designer.status")).GetProperty("diagnosticText").GetString()); // the reason, not a stale refusal
+		Assert.True((await app.InvokeAsync("od.gtk-designer.undo")).GetProperty("nativeFrame").GetBoolean());
+		Assert.Equal("GtkSingleSelection", (await app.InvokeAsync("od.gtk-designer.selection-model")).GetProperty("selectionModel").GetString());
+		// Re-picking the current class is not an edit: one undo still goes back to Single.
+		Assert.True((await app.InvokeAsync("od.gtk-designer.selection-model.set", "GtkMultiSelection")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.selection-model.set", "GtkMultiSelection")).GetProperty("success").GetBoolean());
+		await app.InvokeAsync("od.gtk-designer.undo");
+		Assert.Equal("GtkSingleSelection", (await app.InvokeAsync("od.gtk-designer.selection-model")).GetProperty("selectionModel").GetString());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.selection-model.set", "GtkMultiSelection")).GetProperty("success").GetBoolean());
+
 		Assert.True((await app.InvokeAsync("od.file.save", uiPath)).GetProperty("success").GetBoolean());
 		var xml = await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken);
-		Assert.Matches("<object class=\"GtkListView\" id=\"listView1\">\\s*<property name=\"model\">\\s*<object class=\"GtkStringList\" id=\"listModel1\">[\\s\\S]*?<item translatable=\"yes\">Extra</item>", xml);
+		Assert.Matches("<object class=\"GtkListView\" id=\"listView1\">\\s*<property name=\"model\">\\s*<object class=\"GtkMultiSelection\" id=\"selection1\">\\s*<property name=\"model\">\\s*<object class=\"GtkStringList\" id=\"listModel1\">[\\s\\S]*?<item translatable=\"yes\">Extra</item>", xml);
 		Assert.Contains("<object class=\"GtkBuilderListItemFactory\">", xml);
 		Assert.Contains("<property name=\"bytes\">&lt;interface&gt;", xml);
 		Assert.Contains("GtkButton", xml);

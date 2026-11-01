@@ -507,6 +507,17 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	/// <summary>The selected list/grid/column view's inline factory template, or null.</summary>
 	public string? FactoryTemplate() { if (host == null || selected == null) return null; return host.FactoryTemplateAsync(selected.Id).GetAwaiter().GetResult(); }
 	/// <summary>Replaces the selected view's factory template as one undo step.</summary>
+	/// <summary>The selected list, grid or column view's selection model class, or null.</summary>
+	public string? SelectionModel() { if (host == null || selected == null) return null; return host.SelectionModelAsync(selected.Id).GetAwaiter().GetResult(); }
+	/// <summary>Sets the selected view's selection model (None, Single or Multiple) as one undo step.</summary>
+	public bool SetSelectionModel(string selectionClass)
+	{
+		if (host == null || selected == null) return false;
+		if (SelectionModel() == selectionClass) return true;
+		// A refusal (no model to select from, ...) arrives as an exception; report its reason under the canvas, as the other edits do.
+		try { return Mutate(() => host.SetSelectionModelAsync(state.Version, selected.Id, selectionClass).GetAwaiter().GetResult()); }
+		catch (Exception ex) { diagnostic.Text = ex.GetBaseException().Message; return false; }
+	}
 	public bool SetFactoryTemplate(string template) { if (host == null || selected == null) return false; return Mutate(() => host.SetFactoryTemplateAsync(state.Version, selected.Id, template).GetAwaiter().GetResult()); }
 
 	/// <summary>Keeps X.cs and X.ui.cs in step with the .ui's signals (see GtkCodeBehind): with
@@ -752,7 +763,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			("-", ""), ("Grid/Column span +1", "span-column-more"), ("Grid/Column span -1", "span-column-less"), ("Grid/Row span +1", "span-row-more"), ("Grid/Row span -1", "span-row-less"),
 			("Grid/Insert row above", "grid-insert-row"), ("Grid/Insert column left", "grid-insert-column"),
 			("Grid/Delete row", "grid-delete-row"), ("Grid/Delete column", "grid-delete-column"),
-			("-", ""), ("Edit List Item Template...", "edit-factory-template"), ("Edit Menu...", "edit-menu"), ("-", ""), ("Wrap/GtkBox", "wrap-GtkBox"), ("Wrap/GtkFrame", "wrap-GtkFrame") , ("Unwrap", "unwrap") });
+			("-", ""), ("Edit List Item Template...", "edit-factory-template"), ("Selection/None", "selection-GtkNoSelection"), ("Selection/Single", "selection-GtkSingleSelection"), ("Selection/Multiple", "selection-GtkMultiSelection"), ("Edit Menu...", "edit-menu"), ("-", ""), ("Wrap/GtkBox", "wrap-GtkBox"), ("Wrap/GtkFrame", "wrap-GtkFrame") , ("Unwrap", "unwrap") });
 		canvas.ContextCommandCanExecute = command => command switch {
 			"grid-insert-row" or "grid-insert-column" or "grid-delete-row" or "grid-delete-column" => host?.IsAlive == true && SelectedGridChild() != null,
 			var span when span.StartsWith("span-", StringComparison.Ordinal) => host?.IsAlive == true && SelectedGridChild() is { } cell
@@ -763,6 +774,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			"move-later" or "move-last" => host?.IsAlive == true && SiblingPosition() is { } position && position.Index < position.Count - 1,
 			"edit-factory-template" => host?.IsAlive == true && selected != null && Flatten(selected).Any(node => node.Type == "GtkBuilderListItemFactory"),
 			"edit-menu" => host?.IsAlive == true && selected?.Type is "GtkPopoverMenu" or "GtkMenuButton",
+			var selection when selection.StartsWith("selection-", StringComparison.Ordinal) => host?.IsAlive == true && selected?.Type is "GtkListView" or "GtkGridView" or "GtkColumnView",
 			"wrap-GtkFrame" => host?.IsAlive == true && selection.SelectedIds.Count == 1 && SharesOneParent(),
 			"unwrap" => host?.IsAlive == true && selection.SelectedIds.Count == 1 && state.Tree != null && Flatten(state.Tree).FirstOrDefault(node => node.Id == selection.SelectedIds[0]) is { Children.Count: > 0 } && SharesOneParent(),
 			"wrap-GtkBox" => host?.IsAlive == true && selection.SelectedIds.Count > 0 && SharesOneParent(),
@@ -787,6 +799,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 				case "unwrap": UnwrapSelected(); break;
 				case "edit-factory-template": EditFactoryTemplate(); break;
 				case "edit-menu": EditMenu(); break;
+				case var selection when selection.StartsWith("selection-", StringComparison.Ordinal): SetSelectionModel(selection.Substring("selection-".Length)); break;
 				case var span when span.StartsWith("span-", StringComparison.Ordinal): SpanSelected(span); break;
 				case "grid-insert-row" or "grid-insert-column": InsertGridTrack(command.Command); break;
 				case "grid-delete-row" or "grid-delete-column": DeleteGridTrack(command.Command); break;

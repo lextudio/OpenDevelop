@@ -822,18 +822,36 @@ the list removes `<items>`.
 
 The same row now edits any **inline `GtkStringList`** the selected object holds in its `model`
 property - `GtkListView`, `GtkGridView`, `GtkColumnView` and a `GtkDropDown` with an explicit inline
-model - and a `GtkStringList` selected as its own object. The row's category is the model class
+model - and a `GtkStringList` selected as its own object. The list may sit behind wrappers: the editor
+follows the `model` property of a `GtkNoSelection`, `GtkSingleSelection`, `GtkMultiSelection`,
+`GtkSortListModel`, `GtkFilterListModel`, `GtkSliceListModel`, `GtkSelectionFilterModel`,
+`GtkFlattenListModel` or `GtkMapListModel` down to the string list (a wrapper around any other model,
+such as a `GListStore`, has no Items row). The row's category is the model class
 (`GtkStringList`) instead of `GtkDropDown` when the model is nested. A model **reference** (a
 `model` property whose value is an id) and a non-string-list model show no Items row, because the
 model is a separate object or not a string list; factories, column definitions and other model
 classes are still edited in the source.
 
-A list/grid/column view inserted from the toolbox starts usable: it gets an inline `GtkStringList`
-(`listModelN`, two translatable items) and a `GtkBuilderListItemFactory` whose `bytes` hold a
+A list/grid/column view inserted from the toolbox starts usable: it gets a `GtkSingleSelection`
+(`selectionN`) around an inline `GtkStringList` (`listModelN`, two translatable items) - `GtkListView`,
+`GtkGridView` and `GtkColumnView` take a `GtkSelectionModel`, which a bare string list is not, so an unwrapped
+list would be rejected by GTK - and a `GtkBuilderListItemFactory` whose `bytes` hold a
 `GtkListItem` template with a label bound to the item's `string`, so the dropped control renders and
 the Items row has real data. A `GtkColumnView` also gets one `GtkColumnViewColumn` titled
 "Column N" with the same factory. The factory template and further columns are edited in the source;
 the toolbox insert only provides the starter shape.
+
+The **Selection** submenu of a list, grid or column view's context menu (None / Single / Multiple) sets the
+selection model (`gtk/selection-model` / `gtk/set-selection-model`; `od.gtk-designer.selection-model(.set)`
+for tests) as one undo step: the class changes in place, the inner model and any sort or filter wrappers
+stay, and the single-selection-only properties (`autoselect`, `can-unselect`, `selected`) go when it stops
+being single. A reference to a selection model defined elsewhere is that selection model (its class changes and
+nothing is nested), and picking the class a view already has is not an edit. A view whose model is not a
+selection model - a bare `GtkStringList` from an older document, or a reference to some other model - gets a
+selection model wrapped around it, which repairs such a document. A view with no model, an unknown class and an
+object that is not a list view are refused, each with its own reason, shown under the canvas.
+Covered by `Items_AreEditableThroughSelectionSortAndFilterWrappers`, `SelectionModel_SwitchesClass...`,
+`SelectionModel_WrapsABareListOrAReference...` and `GtkDesigner_ToolboxListViews_StartWithAModelAndFactory`.
 
 The cell template of an inline `GtkBuilderListItemFactory` is editable: the surface's context menu
 offers **Edit List Item Template...**, which opens the factory `bytes` in a monospace editor and
@@ -994,9 +1012,9 @@ Product features:
 - custom project widget execution in the sandboxed host (only the data-only
   `.gtkdesigner.json` preview mapping exists);
 - `app.` menu actions and action state/parameters (`win.` actions get stubs and registration; see "Menus");
-- list/model depth: non-string-list models (`Gio.ListStore`, `GtkSelectionModel`, sort/filter
-  models), `GtkSignalListItemFactory`, column sorters, and factories beyond the inline
-  `GtkBuilderListItemFactory` template editor;
+- list/model depth: selection models are editable; `Gio.ListStore` (code-filled; a builder cannot add items to
+  it), sort and filter models, `GtkSignalListItemFactory`, column sorters and factories beyond the inline
+  `GtkBuilderListItemFactory` template editor are not;
 - composite templates: a template class outside the project cannot be wired.
 
 Coverage (tests, not product behaviour):

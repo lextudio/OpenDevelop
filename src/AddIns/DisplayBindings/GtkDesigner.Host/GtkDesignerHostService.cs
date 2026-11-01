@@ -145,6 +145,27 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		return State(session, false);
 	}
 
+	/// <summary>The selection model (<c>GtkNoSelection</c>, <c>GtkSingleSelection</c>, <c>GtkMultiSelection</c>) of the selected list, grid or column view, or null.</summary>
+	[JsonRpcMethod("gtk/selection-model")]
+	public string? SelectionModel(string sessionId, string documentId, string elementId)
+	{
+		EnsureSession(sessionId);
+		return Get(documentId).Editor.GetSelectionModel(elementId);
+	}
+
+	/// <summary>Changes the view's selection model as one undo step, wrapping a model that is not one.</summary>
+	[JsonRpcMethod("gtk/set-selection-model")]
+	public DesignerSessionState SetSelectionModel(string sessionId, string documentId, long baseVersion, string elementId, string selectionClass)
+	{
+		EnsureSession(sessionId);
+		var session = Get(documentId);
+		EnsureVersion(session, baseVersion);
+		if (!session.Editor.SetSelectionModel(elementId, selectionClass))
+			throw new InvalidOperationException("The selection model was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
+		session.Version++;
+		return State(session, false);
+	}
+
 	/// <summary>The selected object's menu entries: items, sections and submenus (a &lt;menu&gt; in its menu-model property).</summary>
 	[JsonRpcMethod("gtk/menu-items")]
 	public List<DesignerMenuNode>? MenuItems(string sessionId, string documentId, string elementId)

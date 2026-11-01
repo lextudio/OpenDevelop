@@ -97,6 +97,10 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 		=> connection.InvokeAsync<string?>("gtk/factory-template", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
 	public Task<DesignerSessionState> SetFactoryTemplateAsync(long v, string elementId, string template, CancellationToken token = default)
 		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("gtk/set-factory-template", new { sessionId = SessionId, documentId = DocumentId, baseVersion = v, elementId, template }, token), token);
+	public Task<string?> SelectionModelAsync(string elementId, CancellationToken token = default)
+		=> connection.InvokeAsync<string?>("gtk/selection-model", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
+	public Task<DesignerSessionState> SetSelectionModelAsync(long v, string elementId, string selectionClass, CancellationToken token = default)
+		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("gtk/set-selection-model", new { sessionId = SessionId, documentId = DocumentId, baseVersion = v, elementId, selectionClass }, token), token);
 	public Task<List<DesignerMenuNode>?> MenuItemsAsync(string elementId, CancellationToken token = default)
 		=> connection.InvokeAsync<List<DesignerMenuNode>?>("gtk/menu-items", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
 	public Task<DesignerSessionState> SetMenuItemsAsync(long v, string elementId, List<DesignerMenuNode> items, CancellationToken token = default)

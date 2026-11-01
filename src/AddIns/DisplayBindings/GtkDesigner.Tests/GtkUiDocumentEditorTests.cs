@@ -153,6 +153,9 @@ public sealed class GtkUiDocumentEditorTests
 		var list = editor.Roots[0].Children[0].Children[0];
 		Assert.Equal("GtkListView", list.ClassName);
 		Assert.Equal(new[] { "Item 1", "Item 2" }, editor.GetItems(list.Id));
+		// GtkListView takes a GtkSelectionModel, so the starter list sits inside a GtkSingleSelection.
+		Assert.Matches("<object class=\"GtkListView\"[^>]*>\\s*<property name=\"model\">\\s*<object class=\"GtkSingleSelection\" id=\"selection1\">\\s*<property name=\"model\">\\s*<object class=\"GtkStringList\" id=\"listModel1\">", editor.Text);
+		Assert.Equal("GtkSingleSelection", editor.GetSelectionModel(list.Id));
 		Assert.Contains("GtkBuilderListItemFactory", editor.Text);
 		Assert.Contains("<property name=\"bytes\">&lt;interface&gt;", editor.Text);
 
@@ -447,6 +450,85 @@ public sealed class GtkUiDocumentEditorTests
 		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><requires lib="libadwaita" version="1.0"/><object class="GtkBox" id="root"><child><object class="AdwTabBar" id="bar"><property name="view">tabs</property></object></child><child><object class="AdwTabView" id="tabs"/></child></object></interface>"""), editor.Error);
 		Assert.True(editor.Rename("tabs", "documents"), editor.Error);
 		Assert.Contains("<property name=\"view\">documents</property>", editor.Text);
+	}
+
+	const string WrappedListDocument = """<interface><requires lib="gtk" version="4.0"/><object class="GtkWindow" id="w"><child><object class="GtkListView" id="view"><property name="model"><object class="GtkSortListModel" id="sorted"><property name="model"><object class="GtkFilterListModel" id="filtered"><property name="model"><object class="GtkMultiSelection" id="picks"><property name="model"><object class="GtkStringList" id="strings"><items><item>One</item><item>Two</item></items></object></property></object></property></object></property></object></property></object></child></object></interface>""";
+
+	[Fact]
+	public void Items_AreEditableThroughSelectionSortAndFilterWrappers()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset(WrappedListDocument), editor.Error);
+		Assert.Equal("GtkStringList", editor.ItemsModelClass("view"));
+		Assert.Equal(new[] { "One", "Two" }, editor.GetItems("view"));
+		Assert.True(editor.SetItems("view", new[] { (0, "Uno"), (1, "Dos"), (-1, "Tres") }), editor.Error);
+		Assert.Equal(new[] { "Uno", "Dos", "Tres" }, editor.GetItems("view"));
+		Assert.Contains("<object class=\"GtkSortListModel\" id=\"sorted\">", editor.Text); // the wrappers are untouched
+		// A wrapper around a model that is not a string list has no Items row.
+		Assert.True(editor.Reset(WrappedListDocument.Replace("GtkStringList", "GListStore")), editor.Error);
+		Assert.Null(editor.GetItems("view"));
+	}
+
+	[Fact]
+	public void SelectionModel_SwitchesClassKeepsTheModelAndDropsSingleOnlyProperties()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkWindow" id="w"><child><object class="GtkGridView" id="view"><property name="model"><object class="GtkSingleSelection" id="pick"><property name="autoselect">false</property><property name="can-unselect">true</property><property name="selected">1</property><property name="model"><object class="GtkStringList" id="strings"><items><item>One</item></items></object></property></object></property></object></child></object></interface>"""), editor.Error);
+		Assert.Equal("GtkSingleSelection", editor.GetSelectionModel("view"));
+		Assert.True(editor.SetSelectionModel("view", "GtkMultiSelection"), editor.Error);
+		Assert.Equal("GtkMultiSelection", editor.GetSelectionModel("view"));
+		Assert.DoesNotContain("autoselect", editor.Text);
+		Assert.DoesNotContain("can-unselect", editor.Text);
+		Assert.DoesNotContain("\"selected\"", editor.Text);
+		Assert.Equal(new[] { "One" }, editor.GetItems("view"));
+		Assert.True(editor.SetSelectionModel("view", "GtkNoSelection"), editor.Error);
+		Assert.Equal("GtkNoSelection", editor.GetSelectionModel("view"));
+		Assert.True(editor.SetSelectionModel("view", "GtkSingleSelection"), editor.Error);
+		Assert.Equal("GtkSingleSelection", editor.GetSelectionModel("view"));
+		Assert.True(editor.Undo());
+		Assert.Equal("GtkNoSelection", editor.GetSelectionModel("view"));
+		// Asking for what is already there changes nothing, not even the undo history.
+		var before = editor.Text;
+		Assert.True(editor.SetSelectionModel("view", "GtkNoSelection"), editor.Error);
+		Assert.Equal(before, editor.Text);
+	}
+
+	[Fact]
+	public void SelectionModel_WrapsABareListOrAReferenceAndRefusesWhatItCannot()
+	{
+		var editor = new GtkUiDocumentEditor();
+		// An older document: the view holds a bare GtkStringList, which GTK rejects for a GtkSelectionModel property.
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkWindow" id="w"><child><object class="GtkListView" id="view"><property name="model"><object class="GtkStringList" id="strings"><items><item>One</item></items></object></property></object></child></object></interface>"""), editor.Error);
+		Assert.Null(editor.GetSelectionModel("view"));
+		Assert.True(editor.SetSelectionModel("view", "GtkMultiSelection"), editor.Error);
+		Assert.Equal("GtkMultiSelection", editor.GetSelectionModel("view"));
+		Assert.Equal(new[] { "One" }, editor.GetItems("view"));
+		Assert.Matches("<object class=\"GtkMultiSelection\" id=\"selection1\">\\s*<property name=\"model\">\\s*<object class=\"GtkStringList\" id=\"strings\">", editor.Text);
+		Assert.True(editor.Undo());
+		Assert.Null(editor.GetSelectionModel("view"));
+
+		// A reference to a model defined elsewhere is wrapped too, keeping the reference.
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkStringList" id="shared"/><object class="GtkWindow" id="w"><child><object class="GtkColumnView" id="view"><property name="model">shared</property></object></child></object></interface>"""), editor.Error);
+		Assert.True(editor.SetSelectionModel("view", "GtkSingleSelection"), editor.Error);
+		Assert.Matches("<object class=\"GtkSingleSelection\" id=\"selection1\">\\s*<property name=\"model\">shared</property>", editor.Text);
+
+		// A reference to an existing selection model is that selection model: its class changes, and nothing is nested.
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkSingleSelection" id="picks"><property name="model"><object class="GtkStringList" id="strings"/></property></object><object class="GtkWindow" id="w"><child><object class="GtkListView" id="view"><property name="model">picks</property></object></child></object></interface>"""), editor.Error);
+		Assert.Equal("GtkSingleSelection", editor.GetSelectionModel("view"));
+		Assert.True(editor.SetSelectionModel("view", "GtkMultiSelection"), editor.Error);
+		Assert.Equal("GtkMultiSelection", editor.GetSelectionModel("view"));
+		Assert.Contains("<object class=\"GtkMultiSelection\" id=\"picks\">", editor.Text);
+		Assert.DoesNotContain("selection1", editor.Text);
+
+		// No model to select from, an unknown class, and an object that is not a list view are refused, each with its own reason.
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkWindow" id="w"><child><object class="GtkListView" id="empty"/></child></object></interface>"""), editor.Error);
+		Assert.False(editor.SetSelectionModel("empty", "GtkSingleSelection"));
+		Assert.Contains("no model", editor.Refusal);
+		Assert.False(editor.SetSelectionModel("empty", "GtkSortListModel"));
+		Assert.Contains("not a selection model", editor.Refusal);
+		Assert.False(editor.SetSelectionModel("w", "GtkSingleSelection"));
+		Assert.Contains("Only a GtkListView", editor.Refusal);
+		Assert.Null(editor.GetSelectionModel("w"));
 	}
 
 	[Fact]
