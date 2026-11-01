@@ -187,6 +187,17 @@ The migration now starts at the feature boundary:
 - CSharpBinding and VBBinding own `.cs` and `.vb` registrations respectively.
 - FSharpBinding and XamlBinding own their LSP-backed extension registrations; the registry resolver
   selects the workspace-root-specific LSP service lazily.
+- Completion for a language that is only an `ILanguageService` (external LSP servers, `.po`, `.ui`) is
+  one base class, `LanguageServiceCodeCompletionBinding`: a language states which typed characters may open
+  the window (`IsTriggerCharacter`) and the service decides what the caret means. The request is asynchronous,
+  cancels the editor's previous one and opens the window only if document, file and caret are unchanged
+  (`LspCodeCompletionBinding`, `PoCodeCompletionBinding` and `GtkUiCodeCompletionBinding` are subclasses).
+- A service that keeps per-document state implements the optional `ILanguageServiceDocumentLifecycle`
+  (`CloseDocumentAsync(fileName)`). `LanguageServiceRegistry` subscribes once to the workbench's
+  `DocumentClosedMessageEventArgs` and relays it to the service registered for that file
+  (`NotifyDocumentClosed`; failures are logged, never thrown). The LSP service answers with
+  `textDocument/didClose` and drops its cached diagnostics; the `.po` and `.ui` services drop the text.
+  Roslyn-backed services do not implement it (their workspace has its own project lifecycle).
 - One backend-agnostic semantic colorizer resolves `ILanguageService` through the registry for both
   Roslyn and LSP; the UI maps token vocabulary to theme colors without selecting a backend.
 - Roslyn and LSP completion bindings resolve `ILanguageService` through the registry.

@@ -10,8 +10,15 @@ namespace OpenDevelop.Base.Tests;
 /// <see cref="NotSupportedException"/> so an accidental dependency on unconfigured behavior fails
 /// loudly instead of silently returning an empty/null default.
 /// </summary>
-sealed class FakeLanguageService : ILanguageService
+sealed class FakeLanguageService : ILanguageService, ILanguageServiceDocumentLifecycle
 {
+	public List<string> ClosedFiles { get; } = new();
+	public Task CloseDocumentAsync(string fileName)
+	{
+		ClosedFiles.Add(fileName);
+		return Task.CompletedTask;
+	}
+
         /// <inheritdoc/>
         public WorkspaceDocumentInfo? GetWorkspaceDocumentInfo(DocumentId documentId) => null;
 

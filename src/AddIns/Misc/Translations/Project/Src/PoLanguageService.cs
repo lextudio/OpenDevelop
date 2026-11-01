@@ -15,7 +15,7 @@ namespace ICSharpCode.Translations;
 /// converts offsets and lines to the contracts' positions and spans, holds the open documents, and resolves a
 /// <c>#:</c> reference to the file it names (relative to the project folder, which is the parent of the <c>po</c> folder).
 /// </summary>
-public sealed class PoLanguageService : ILanguageService
+public sealed class PoLanguageService : ILanguageService, ILanguageServiceDocumentLifecycle
 {
 	readonly ConcurrentDictionary<DocumentId, string> documents = new();
 	long revision;
@@ -48,6 +48,14 @@ public sealed class PoLanguageService : ILanguageService
 		if (start > end) (start, end) = (end, start);
 		documents[documentId] = text.Substring(0, start) + change.NewText + text.Substring(Math.Min(end, text.Length));
 		Interlocked.Increment(ref revision);
+	}
+
+	/// <summary>The registry relays the IDE's document-closed message here, so a closed file's text is not kept.</summary>
+	public Task CloseDocumentAsync(string fileName)
+	{
+		foreach (var id in documents.Keys.Where(key => string.Equals(key.FileName, fileName, StringComparison.OrdinalIgnoreCase)).ToList())
+			documents.TryRemove(id, out _);
+		return Task.CompletedTask;
 	}
 
 	bool TryGet(DocumentId documentId, out string text) => documents.TryGetValue(documentId, out text!);

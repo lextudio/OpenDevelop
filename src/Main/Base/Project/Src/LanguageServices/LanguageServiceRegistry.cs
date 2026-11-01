@@ -2,6 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
+using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
+using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.SharpDevelop.LanguageServices
 {
@@ -19,6 +23,31 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         {
             _fallbackService = fallbackService ?? throw new ArgumentNullException(nameof(fallbackService));
             _servicesByExtension = new Dictionary<string, RegistrationEntry>(StringComparer.OrdinalIgnoreCase);
+            // The registry is the one place that knows which service owns a file, so it alone relays
+            // "the editor closed this file" instead of every service watching the workbench itself.
+            MessageBus<DocumentClosedMessageEventArgs>.Subscribers += OnDocumentClosed;
+        }
+
+        void OnDocumentClosed(object sender, DocumentClosedMessageEventArgs e) => NotifyDocumentClosed(e.FileName);
+
+        /// <summary>Tells the service registered for <paramref name="fileName"/> that the file was closed, when it
+        /// implements <see cref="ILanguageServiceDocumentLifecycle"/>. Never throws: a service failing to
+        /// forget a document must not break closing the editor.</summary>
+        public void NotifyDocumentClosed(string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName) || string.IsNullOrEmpty(Path.GetExtension(fileName)))
+                return;
+            try
+            {
+                if (TryGetService(fileName, out var service) && service is ILanguageServiceDocumentLifecycle lifecycle)
+                    lifecycle.CloseDocumentAsync(fileName).ContinueWith(
+                        t => LoggingService.Warn("Closing " + fileName + " in its language service failed: " + t.Exception?.GetBaseException().Message),
+                        TaskContinuationOptions.OnlyOnFaulted);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Warn("Closing " + fileName + " in its language service failed: " + ex.Message);
+            }
         }
 
         public ILanguageService FallbackService => _fallbackService;

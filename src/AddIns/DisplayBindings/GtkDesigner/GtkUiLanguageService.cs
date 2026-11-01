@@ -23,17 +23,10 @@ namespace ICSharpCode.GtkDesigner;
 /// therefore know GTK and libadwaita, not just XML. The document is plain text: a template or an
 /// embedded resource works the same way.
 /// </summary>
-public sealed class GtkUiLanguageService : ILanguageService
+public sealed class GtkUiLanguageService : ILanguageService, ILanguageServiceDocumentLifecycle
 {
-	/// <summary>The contract has no "document closed" call, so the cache is bounded instead: past this many
-	/// documents the least recently upserted one is dropped. A dropped document reads as
-	/// <see cref="DocumentReadiness.Unknown"/> until its owner upserts it again.</summary>
-	const int MaxDocuments = 64;
-
 	readonly ConcurrentDictionary<DocumentId, string> documents = new();
-	readonly ConcurrentDictionary<DocumentId, long> lastUpserted = new();
 	long revision;
-	long upsertCounter;
 
 	/// <summary>Element children per parent element, from GTK's own <c>gtk4builder.rng</c>.</summary>
 	static readonly Dictionary<string, string[]> ElementChildren = new(StringComparer.Ordinal) {
@@ -167,9 +160,6 @@ public sealed class GtkUiLanguageService : ILanguageService
 		cancellationToken.ThrowIfCancellationRequested();
 		var changed = !documents.TryGetValue(documentId, out var existing) || !string.Equals(existing, text, StringComparison.Ordinal);
 		documents[documentId] = text ?? "";
-		lastUpserted[documentId] = Interlocked.Increment(ref upsertCounter);
-		if (documents.Count > MaxDocuments)
-			EvictOldest(documentId);
 		if (changed)
 			Interlocked.Increment(ref revision);
 		// A .ui document is now in the workspace, so the first completion or hover will want the
@@ -179,15 +169,12 @@ public sealed class GtkUiLanguageService : ILanguageService
 		return Task.CompletedTask;
 	}
 
-	void EvictOldest(DocumentId keep)
+	/// <summary>The registry relays the IDE's document-closed message here, so a closed file's text is not kept.</summary>
+	public Task CloseDocumentAsync(string fileName)
 	{
-		while (documents.Count > MaxDocuments) {
-			var oldest = lastUpserted.Where(entry => !entry.Key.Equals(keep)).OrderBy(entry => entry.Value).Select(entry => (DocumentId?)entry.Key).FirstOrDefault();
-			if (oldest is not { } victim)
-				return;
-			documents.TryRemove(victim, out _);
-			lastUpserted.TryRemove(victim, out _);
-		}
+		foreach (var id in documents.Keys.Where(key => string.Equals(key.FileName, fileName, StringComparison.OrdinalIgnoreCase)).ToList())
+			documents.TryRemove(id, out _);
+		return Task.CompletedTask;
 	}
 
 	public void OnTextChanged(DocumentId documentId, TextChange change)
@@ -198,8 +185,7 @@ public sealed class GtkUiLanguageService : ILanguageService
 		var end = OffsetOf(text, change.Span.End);
 		if (start > end)
 			(start, end) = (end, start);
-		// TryUpdate, not an assignment: a document evicted since the read above must stay gone, not come back
-		// without a lastUpserted entry (it could then never be elected for eviction again).
+		// TryUpdate, not an assignment: a document closed since the read above must stay gone.
 		if (documents.TryUpdate(documentId, text.Substring(0, start) + change.NewText + text.Substring(Math.Min(end, text.Length)), text))
 			Interlocked.Increment(ref revision);
 	}

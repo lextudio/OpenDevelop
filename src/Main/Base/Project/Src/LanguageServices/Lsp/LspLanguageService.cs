@@ -23,7 +23,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
     /// <c>TextDocumentContentChangeEvent</c> ranges — simpler, and matches how
     /// <see cref="MainPage"/> already re-syncs the whole buffer before every feature call.
     /// </summary>
-    public sealed class LspLanguageService : ILanguageService, IAsyncDisposable
+    public sealed class LspLanguageService : ILanguageService, ILanguageServiceDocumentLifecycle, IAsyncDisposable
     {
         const string UnknownDiagnosticId = "LSP";
 		static readonly string[] SupportedSemanticTokenTypes = {
@@ -142,6 +142,30 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                 await _rpc!.NotifyWithParameterObjectAsync("textDocument/didOpen", new
                 {
                     textDocument = new { uri, languageId = _spec.LanguageId, version = open.Version, text }
+                });
+            }
+            finally
+            {
+                _documentGate.Release();
+            }
+        }
+
+        /// <summary>textDocument/didClose for the file, so the server drops its copy and the cached diagnostics do not
+        /// outlive the editor. Does nothing when the file was never opened or the server is not running.</summary>
+        public async Task CloseDocumentAsync(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName) || _unavailable || _rpc is null)
+                return;
+            await _documentGate.WaitAsync();
+            try
+            {
+                var uri = ToUri(fileName);
+                _diagnosticsByUri.TryRemove(uri, out _);
+                if (_rpc is null || !_openDocuments.Remove(uri))
+                    return;
+                await _rpc.NotifyWithParameterObjectAsync("textDocument/didClose", new
+                {
+                    textDocument = new { uri }
                 });
             }
             finally

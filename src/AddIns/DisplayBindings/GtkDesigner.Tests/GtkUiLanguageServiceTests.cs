@@ -291,15 +291,17 @@ public sealed class GtkUiLanguageServiceTests
 	}
 
 	[Fact]
-	public void TheDocumentCacheIsBounded_AndKeepsTheMostRecentlyUpsertedDocuments()
+	public void CloseDocument_ForgetsEveryDocumentOfThatFile_AndNoOther()
 	{
 		var service = new GtkUiLanguageService();
-		for (var index = 0; index < 80; index++)
-			service.UpsertDocumentAsync(new DocumentId("/tmp/doc" + index + ".ui"), "<interface/>", CancellationToken.None).GetAwaiter().GetResult();
-		Assert.Equal(DocumentReadiness.Unknown, service.GetDocumentReadiness(new DocumentId("/tmp/doc0.ui")));
-		Assert.Equal(DocumentReadiness.Ready, service.GetDocumentReadiness(new DocumentId("/tmp/doc79.ui")));
-		Assert.Equal(DocumentReadiness.Ready, service.GetDocumentReadiness(new DocumentId("/tmp/doc16.ui")));
-		Assert.Equal(DocumentReadiness.Unknown, service.GetDocumentReadiness(new DocumentId("/tmp/doc15.ui")));
+		var open = new DocumentId("/tmp/open.ui");
+		var closed = new DocumentId("/tmp/closed.ui");
+		service.UpsertDocumentAsync(open, "<interface/>", CancellationToken.None).GetAwaiter().GetResult();
+		service.UpsertDocumentAsync(closed, "<interface/>", CancellationToken.None).GetAwaiter().GetResult();
+		service.CloseDocumentAsync("/tmp/closed.ui").GetAwaiter().GetResult();
+		Assert.Equal(DocumentReadiness.Unknown, service.GetDocumentReadiness(closed));
+		Assert.Equal(DocumentReadiness.Ready, service.GetDocumentReadiness(open));
+		service.CloseDocumentAsync("/tmp/never-seen.ui").GetAwaiter().GetResult();   // not an error
 	}
 
 	static int OffsetOf(string text, TextPosition position)
