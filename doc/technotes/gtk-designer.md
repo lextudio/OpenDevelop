@@ -925,11 +925,50 @@ Status 2026-11-01: not implemented except where marked.
   page shapes and AdwToolbarView's top/bottom/content slots are implemented; other named-child
   policies (`GtkHeaderBar` start/end/title, `GtkNotebook` tab/action widgets, `AdwTabView` pages)
   are not;
-- menus, actions, list models (an inline `GtkStringList`'s items are editable), factories and expressions: top-level menu items are editable (see "Menus"); `Gio.Action` implementations, menu sections/submenus and expressions are not;
+- menus, actions, list models (an inline `GtkStringList`'s items are editable), factories and
+  expressions: top-level menu items are editable (see "Menus"); `Gio.Action` implementations, menu
+  sections/submenus and expressions are not;
 - translation and resource tooling: GResource preview is implemented; no string extraction,
   `.po` editing or translation workflow;
 - explicit GTK 3/Stetic migration assistant: not implemented;
 - optional Blueprint import/editor integration: not implemented.
+
+### Remaining work (2026-11-01)
+
+The status markers above say what is implemented; this is the consolidated list of what is not,
+roughly in intended priority order.
+
+Product features:
+
+- `GtkHeaderBar` named children (`<child type="start|end|title">`), the GTK counterpart of
+  `AdwToolbarView`'s slots;
+- `GtkNotebook` tab labels (`<child type="tab">`) and action widgets, and `AdwTabView`/`AdwTabBar`
+  pages;
+- translation and resource tooling: extract `translatable` strings, edit `.po` files and run a
+  translation workflow (GResource preview already works);
+- Blueprint (`.blp`) import and editor integration;
+- an explicit GTK 3/Stetic migration assistant (the migration section describes the manual steps;
+  no tool exists);
+- custom project widget execution in the sandboxed host (only the data-only
+  `.gtkdesigner.json` preview mapping exists);
+- `Gio.Action` implementations for menu actions: the designer edits the menu model, the actions
+  stay in application code;
+- menu sections and submenus in the menu editor (a menu that uses them is refused as source-only);
+- list/model depth: non-string-list models (`Gio.ListStore`, `GtkSelectionModel`, sort/filter
+  models), `GtkSignalListItemFactory`, column sorters, and factories beyond the inline
+  `GtkBuilderListItemFactory` template editor;
+- composite templates: clearing an Events-pad event does not remove the generated C# subscription,
+  and a template class outside the project cannot be wired.
+
+Coverage (tests, not product behaviour):
+
+- OS-level automation of pointer gestures (the coordinate mapping and resulting mutation are
+  covered; there is no system-level pointer journey);
+- a converted GTK 3/Stetic sample in the fixture matrix.
+
+Not planned by design:
+
+- arrow-key nudge: GTK owns layout, so there is no absolute position to change.
 
 ## Test strategy
 
