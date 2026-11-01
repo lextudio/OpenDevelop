@@ -849,10 +849,12 @@ and `[submenu] label` lines holding their entries indented two spaces below), re
 undo step (`gtk/menu-items` / `gtk/set-menu-items`; `od.gtk-designer.menu-items(.set)` for tests).
 The wire and editor model is the framework-neutral `DesignerMenuNode` tree (kind, label, action,
 children, source index), so another designer whose menu is data can reuse the model and the text form.
-An entry keeps its other attributes (icons, hints) when its source index and kind match; an empty
+A parsed line is matched to the existing entry it stands for - same kind, label and action first,
+wherever it now sits, then the entry at its own position when only its text changed - and keeps that
+entry's other attributes (icons, hints); an unchanged menu is a no-op that records no undo step. An empty
 action removes the attribute; an unknown kind, a repeated or out-of-range source index, or an item
-holding children is refused. Parse errors (an entry indented below an item, or deeper than its parent
-allows) are shown instead of silently flattening the structure.
+holding children is refused. Parse errors (an entry indented below an item, deeper than its parent allows, or by an odd number
+of spaces) are shown instead of silently flattening the structure.
 The action names refer to `Gio.Action`s the application registers in code; the designer edits the
 menu model, not the action implementations.
 
