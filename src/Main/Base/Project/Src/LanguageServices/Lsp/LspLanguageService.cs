@@ -38,7 +38,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
         readonly SemaphoreSlim _startGate = new(1, 1);
         readonly SemaphoreSlim _documentGate = new(1, 1);
         readonly Dictionary<string, OpenDocument> _openDocuments = new(StringComparer.OrdinalIgnoreCase);
-        readonly Dictionary<string, IReadOnlyList<LanguageDiagnostic>> _diagnosticsByUri =
+        // Written on StreamJsonRpc's dispatch thread (publishDiagnostics) and read from the editor/DevFlow threads
+        // (GetDiagnosticsAsync), so it must be a concurrent map; the stored arrays are never mutated.
+        readonly System.Collections.Concurrent.ConcurrentDictionary<string, IReadOnlyList<LanguageDiagnostic>> _diagnosticsByUri =
             new(StringComparer.OrdinalIgnoreCase);
 
         // Last computed code-action list per document (externals/OpenDevelop/doc/technotes/language-services.md §8), keyed by
@@ -636,7 +638,11 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                 var formatter = new SystemTextJsonFormatter();
                 var handler = new HeaderDelimitedMessageHandler(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, formatter);
                 var rpc = new JsonRpc(handler);
-                rpc.AddLocalRpcMethod("textDocument/publishDiagnostics", new Action<JsonElement>(OnPublishDiagnostics));
+                // Notifications whose params are an object (publishDiagnostics, logMessage) must be bound as ONE object: with the
+                // default named-parameter binding a handler taking a single JsonElement is never invoked, and every pushed
+                // diagnostic was silently dropped (measured with a standalone StreamJsonRpc 2.25 client against a server that
+                // publishes diagnostics: 0 handler calls without UseSingleObjectParameterDeserialization, 1 with it).
+                AddObjectNotification(rpc, "textDocument/publishDiagnostics", new Action<JsonElement>(OnPublishDiagnostics));
                 // The TypeScript 7 (Go) language server asks the client to register its
                 // configuration-change watcher (client/registerCapability) right after
                 // 'initialized'. StreamJsonRpc would otherwise answer "method not found",
@@ -644,7 +650,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                 // literal null result. Accepting the registration is harmless for the servers
                 // that never ask (wpf-xaml-ls, fsautocomplete, pylsp).
                 rpc.AddLocalRpcMethod("client/registerCapability", new Func<JsonElement, object?>(_ => null));
-                rpc.AddLocalRpcMethod("window/logMessage", new Action<JsonElement>(OnServerLogMessage));
+                AddObjectNotification(rpc, "window/logMessage", new Action<JsonElement>(OnServerLogMessage));
                 rpc.Disconnected += OnRpcDisconnected;
                 rpc.StartListening();
 
@@ -738,6 +744,11 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                 _startGate.Release();
             }
         }
+
+        /// <summary>Registers a notification handler that receives the whole <c>params</c> object as its single argument.</summary>
+        static void AddObjectNotification(JsonRpc rpc, string method, Action<JsonElement> handler)
+            => rpc.AddLocalRpcMethod(handler.Method, handler.Target,
+                new JsonRpcMethodAttribute(method) { UseSingleObjectParameterDeserialization = true });
 
         void OnServerLogMessage(JsonElement parameters)
         {
