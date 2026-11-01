@@ -275,6 +275,33 @@ public sealed class GtkUiLanguageServiceTests
 		Assert.Contains(">greeting<", renamed);
 	}
 
+	[Fact]
+	public void Rename_ToAnIdAnotherObjectOwns_IsRefused()
+	{
+		var text = """
+			<interface>
+			  <object class="GtkWindow" id="win"><property name="child">label1</property></object>
+			  <object class="GtkLabel" id="label1"/>
+			  <object class="GtkLabel" id="label2"/>
+			</interface>
+			""";
+		var service = Service(text);
+		var offset = text.IndexOf("label1</property>", StringComparison.Ordinal) + 2;
+		Assert.Empty(service.RenameSymbolAsync(id, offset, "label2", CancellationToken.None).GetAwaiter().GetResult());
+	}
+
+	[Fact]
+	public void TheDocumentCacheIsBounded_AndKeepsTheMostRecentlyUpsertedDocuments()
+	{
+		var service = new GtkUiLanguageService();
+		for (var index = 0; index < 80; index++)
+			service.UpsertDocumentAsync(new DocumentId("/tmp/doc" + index + ".ui"), "<interface/>", CancellationToken.None).GetAwaiter().GetResult();
+		Assert.Equal(DocumentReadiness.Unknown, service.GetDocumentReadiness(new DocumentId("/tmp/doc0.ui")));
+		Assert.Equal(DocumentReadiness.Ready, service.GetDocumentReadiness(new DocumentId("/tmp/doc79.ui")));
+		Assert.Equal(DocumentReadiness.Ready, service.GetDocumentReadiness(new DocumentId("/tmp/doc16.ui")));
+		Assert.Equal(DocumentReadiness.Unknown, service.GetDocumentReadiness(new DocumentId("/tmp/doc15.ui")));
+	}
+
 	static int OffsetOf(string text, TextPosition position)
 	{
 		var line = 1;

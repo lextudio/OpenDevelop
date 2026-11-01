@@ -15,7 +15,12 @@ public static class GtkGirCatalog
 		new(Load, LazyThreadSafetyMode.ExecutionAndPublication);
 
 	/// <summary>Starts loading off the caller's path; the GIR set is ~20 MB of XML.</summary>
-	public static void Preload() => ThreadPool.QueueUserWorkItem(_ => _ = catalog.Value);
+	public static void Preload()
+	{
+		if (!catalog.IsValueCreated && Interlocked.Exchange(ref preloadQueued, 1) == 0)
+			ThreadPool.QueueUserWorkItem(_ => _ = catalog.Value);
+	}
+	static int preloadQueued;
 
 	public static GirCatalog? Catalog => catalog.Value.Catalog;
 	public static string Diagnostic => catalog.Value.Diagnostic;
