@@ -767,8 +767,9 @@ GTK 4 has no generic container mutation API. Every drop is resolved through `chi
   `Notebook_Add_WritesAPlainPageChild` and the journey
   `GtkDesigner_StackPages_UseGtkStackPageObjects_AndTheNotebookUsesAPlainChild`, which saves and
   validates both documents with `gtk4-builder-tool`;
-- list/model/factory widgets: not implemented (Phase 4). `GtkListView`/`GtkGridView` are toolbox
-  leaves; a model, factory or expression is edited by hand in the source, not through the designer.
+- list/model/factory widgets: an inline `GtkStringList` model's items are editable from the
+  list/grid/column view (2026-11-01, see "List-model items"); factories, column definitions,
+  non-string-list models and expressions are edited by hand in the source, not through the designer.
 
 A refusal is reported through `GtkUiDocumentEditor.Refusal`, not `Error`: the document is still
 valid, so it stays accepted and a refused drop cannot stop the next render. `design/add-element`
@@ -778,7 +779,7 @@ This adapter layer is the most important new GTK 4-specific code; `GtkDropPlanne
 `GtkUiDocumentEditorTests` cover it table-driven and independent of the native preview host, and
 each container shape also has an end-to-end journey that saves and validates the document.
 
-### Drop-down items (2026-10-14)
+### List-model items (2026-11-01)
 
 A `GtkDropDown` that holds its strings in its own `<items><item>…</item></items>` (the GtkBuilder
 shorthand that creates its `GtkStringList` model) shows an **Items** row in the Properties pad. Its "…"
@@ -786,8 +787,15 @@ button opens the same shared list dialog as WPF's and WinForms' Items rows (`Col
 and the host commits the result through `design/set-items` in one undo step
 (`GtkUiDocumentEditor.SetItems`). A kept item keeps its `translatable`/`context`/`comments` attributes
 with the new text; a new item is written `translatable="yes"` like other user-visible strings; clearing
-the list removes `<items>`. A drop-down whose strings come from an explicit `model` property shows no
-Items row, since that model is a separate object.
+the list removes `<items>`.
+
+The same row now edits any **inline `GtkStringList`** the selected object holds in its `model`
+property - `GtkListView`, `GtkGridView`, `GtkColumnView` and a `GtkDropDown` with an explicit inline
+model - and a `GtkStringList` selected as its own object. The row's category is the model class
+(`GtkStringList`) instead of `GtkDropDown` when the model is nested. A model **reference** (a
+`model` property whose value is an id) and a non-string-list model show no Items row, because the
+model is a separate object or not a string list; factories, column definitions and other model
+classes are still edited in the source.
 
 ## Migration from Stetic and GTK 3 UI
 
@@ -874,7 +882,7 @@ Status 2026-11-01: not implemented except where marked.
   the project's assembly and native code are never loaded;
 - Libadwaita catalogue and named-child policies: the catalogue, toolbox category and navigation
   page shapes are implemented; general named-child/page editing is not;
-- menus, actions, list models, factories and expressions: not implemented;
+- menus, actions, list models (an inline `GtkStringList`'s items are editable), factories and expressions: not implemented;
 - translation and resource tooling: GResource preview is implemented; no string extraction,
   `.po` editing or translation workflow;
 - explicit GTK 3/Stetic migration assistant: not implemented;

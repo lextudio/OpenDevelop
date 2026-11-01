@@ -620,7 +620,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	{
 		if (session.Editor.GetItems(node.Id) is not { } items) yield break;
 		yield return new DesignerPropertyInfo {
-			Name = "$items", DisplayName = "Items", Category = "GtkDropDown", Kind = "Collection", EditorKind = "ItemsCollection",
+			Name = "$items", DisplayName = "Items", Category = session.Editor.ItemsModelClass(node.Id) ?? "GtkDropDown", Kind = "Collection", EditorKind = "ItemsCollection",
 			IsReadOnly = true, Value = "(" + items.Count + (items.Count == 1 ? " item)" : " items)"),
 			CollectionItems = items.ToList(), ShouldSerialize = items.Count > 0
 		};

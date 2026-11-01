@@ -79,6 +79,7 @@ public sealed class GtkUiDocumentEditorClipboardTests
 		Assert.False(editor.Paste("contentBox", new[] { "<child><template class=\"X\" parent=\"GtkBox\" /></child>" }, out _));
 		Assert.False(editor.CanUndo);
 	}
+
 }
 
 public sealed class GtkUiDocumentEditorWrapTests
@@ -175,6 +176,7 @@ public sealed class GtkUiDocumentEditorUnwrapTests
 		Assert.False(editor.Unwrap("grid"));
 		Assert.False(editor.CanUndo);
 	}
+
 }
 
 public sealed class GtkUiDocumentEditorItemsTests
@@ -188,6 +190,8 @@ public sealed class GtkUiDocumentEditorItemsTests
       <child><object class="GtkDropDown" id="size"><items><item translatable="yes" context="size">Small</item><item>Large</item></items></object></child>
       <child><object class="GtkDropDown" id="empty"/></child>
       <child><object class="GtkDropDown" id="modelled"><property name="model"><object class="GtkStringList" id="list"/></property></object></child>
+      <child><object class="GtkListView" id="view"><property name="model"><object class="GtkStringList" id="viewModel"><items><item translatable="yes">Alpha</item><item>Beta</item></items></object></property></object></child>
+      <child><object class="GtkListView" id="referenced"><property name="model">list</property></object></child>
       <child><object class="GtkButton" id="ok"/></child>
     </object></child>
   </object>
@@ -200,7 +204,10 @@ public sealed class GtkUiDocumentEditorItemsTests
 		Assert.True(editor.Reset(Source), editor.Error);
 		Assert.Equal(new[] { "Small", "Large" }, editor.GetItems("size"));
 		Assert.Empty(editor.GetItems("empty")!);
-		Assert.Null(editor.GetItems("modelled"));
+		// An inline GtkStringList model is editable even when empty; a model reference is not.
+		Assert.Empty(editor.GetItems("modelled")!);
+		Assert.Equal(new[] { "Alpha", "Beta" }, editor.GetItems("view"));
+		Assert.Null(editor.GetItems("referenced"));
 		Assert.Null(editor.GetItems("ok"));
 	}
 
@@ -222,14 +229,30 @@ public sealed class GtkUiDocumentEditorItemsTests
 		Assert.DoesNotContain("<object class=\"GtkDropDown\" id=\"empty\"><items", editor.Text);
 	}
 
-	[Fact] public void RefusesModelledDropDownsAndBadSourceIndexes()
+	[Fact] public void RefusesModelReferencesAndBadSourceIndexes()
 	{
 		var editor = new GtkUiDocumentEditor();
 		Assert.True(editor.Reset(Source), editor.Error);
-		Assert.False(editor.SetItems("modelled", new[] { (-1, "x") }));
+		Assert.False(editor.SetItems("referenced", new[] { (-1, "x") }));
 		Assert.False(editor.SetItems("ok", new[] { (-1, "x") }));
 		Assert.False(editor.SetItems("size", new[] { (5, "x") }));
 		Assert.False(editor.SetItems("size", new[] { (0, "a"), (0, "b") }));
 		Assert.False(editor.CanUndo);
+	}
+
+	[Fact] public void EditsAListViewsInlineStringListModel()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset(Source), editor.Error);
+		Assert.True(editor.SetItems("view", new[] { (1, "Beta"), (0, "Alfa"), (-1, "Gamma") }), editor.Error);
+		Assert.Equal(new[] { "Beta", "Alfa", "Gamma" }, editor.GetItems("view"));
+		Assert.Contains("<object class=\"GtkStringList\" id=\"viewModel\"><items>", editor.Text);
+		Assert.Contains("<item translatable=\"yes\">Alfa</item>", editor.Text);
+		Assert.True(editor.Undo());
+		Assert.Equal(new[] { "Alpha", "Beta" }, editor.GetItems("view"));
+
+		// The empty inline model on the drop-down becomes editable the same way.
+		Assert.True(editor.SetItems("modelled", new[] { (-1, "One") }), editor.Error);
+		Assert.Equal(new[] { "One" }, editor.GetItems("modelled"));
 	}
 }

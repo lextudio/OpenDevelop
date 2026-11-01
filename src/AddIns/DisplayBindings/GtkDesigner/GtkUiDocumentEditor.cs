@@ -351,27 +351,52 @@ public sealed class GtkUiDocumentEditor
 	/// <summary>A GtkDropDown's strings, held in its own <c>&lt;items&gt;&lt;item&gt;</c> list (the
 	/// GtkBuilder shorthand that creates its GtkStringList model), or null when the object is not a
 	/// GtkDropDown or takes its strings from an explicit <c>model</c> property instead.</summary>
+	/// <summary>The element whose &lt;items&gt; the Items row edits: a GtkStringList itself, an
+	/// inline GtkStringList held by a widget's <c>model</c> property, or a GtkDropDown's own
+	/// GtkBuilder <c>&lt;items&gt;</c> shorthand. A model reference (a property whose value is an
+	/// id) or another model class is not editable from the widget.</summary>
+	static XElement? ItemsHolder(XElement element)
+	{
+		var className = (string?)element.Attribute("class");
+		if (className == "GtkStringList") return element;
+		var modelProperty = element.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "model"));
+		if (modelProperty != null) {
+			var model = modelProperty.Elements().FirstOrDefault(IsObject);
+			return model != null && (string?)model.Attribute("class") == "GtkStringList" ? model : null;
+		}
+		return className == "GtkDropDown" ? element : null;
+	}
+
+	/// <summary>The class whose items the Items row edits for <paramref name="id"/>, or null.</summary>
+	public string? ItemsModelClass(string id)
+	{
+		var element = Find(id);
+		return element == null ? null : (string?)ItemsHolder(element)?.Attribute("class");
+	}
+
 	public IReadOnlyList<string>? GetItems(string id)
 	{
 		var element = Find(id);
-		if (element == null || (string?)element.Attribute("class") != "GtkDropDown"
-			|| element.Elements().Any(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "model")))
-			return null;
-		return element.Elements().Where(e => e.Name.LocalName == "items").SelectMany(i => i.Elements())
+		var holder = element == null ? null : ItemsHolder(element);
+		if (holder == null) return null;
+		return holder.Elements().Where(e => e.Name.LocalName == "items").SelectMany(i => i.Elements())
 			.Where(e => e.Name.LocalName == "item").Select(e => e.Value).ToList();
 	}
 
-	/// <summary>Replaces a GtkDropDown's <c>&lt;items&gt;</c> with <paramref name="items"/>, in order,
-	/// as one undo step. An entry with a SourceIndex keeps that item element's attributes
+	/// <summary>Replaces the items holder's <c>&lt;items&gt;</c> with <paramref name="items"/>, in
+	/// order, as one undo step. An entry with a SourceIndex keeps that item element's attributes
 	/// (translatable, context, comments) with the new text; a new entry is <c>translatable="yes"</c>
 	/// like other user-visible strings; an empty list removes <c>&lt;items&gt;</c>.</summary>
 	public bool SetItems(string id, IReadOnlyList<(int SourceIndex, string Text)> items)
 	{
-		if (GetItems(id) is not { } current) return false;
-		var element = Find(id)!;
+		var element = Find(id);
+		var holder = element == null ? null : ItemsHolder(element);
+		if (holder == null) return false;
+		var current = holder.Elements().Where(e => e.Name.LocalName == "items").SelectMany(i => i.Elements())
+			.Where(e => e.Name.LocalName == "item").Select(e => e.Value).ToList();
 		var sources = items.Where(item => item.SourceIndex >= 0).Select(item => item.SourceIndex).ToList();
 		if (sources.Any(index => index >= current.Count) || sources.Distinct().Count() != sources.Count) return false;
-		var oldItems = element.Elements().Where(e => e.Name.LocalName == "items").SelectMany(i => i.Elements())
+		var oldItems = holder.Elements().Where(e => e.Name.LocalName == "items").SelectMany(i => i.Elements())
 			.Where(e => e.Name.LocalName == "item").ToList();
 		var rebuilt = items.Select(item => {
 			var copy = item.SourceIndex >= 0 ? new XElement(oldItems[item.SourceIndex]) : new XElement("item", new XAttribute("translatable", "yes"));
@@ -379,9 +404,9 @@ public sealed class GtkUiDocumentEditor
 			return copy;
 		}).ToList();
 		if (rebuilt.Select(e => e.ToString()).SequenceEqual(oldItems.Select(e => e.ToString()))) return true;
-		var lists = element.Elements().Where(e => e.Name.LocalName == "items").ToList();
+		var lists = holder.Elements().Where(e => e.Name.LocalName == "items").ToList();
 		if (rebuilt.Count == 0) lists.ForEach(list => list.Remove());
-		else if (lists.Count == 0) element.Add(new XElement("items", rebuilt));
+		else if (lists.Count == 0) holder.Add(new XElement("items", rebuilt));
 		else {
 			lists.Skip(1).ToList().ForEach(list => list.Remove());
 			lists[0].ReplaceNodes(rebuilt);

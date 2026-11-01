@@ -750,6 +750,53 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_ListViewModel_EditsItsStringItems()
+	{
+		// A list/grid/column view gets its strings from an inline GtkStringList model, so the
+		// Properties pad edits that model's <items> from the view - there is no list-view property
+		// to edit. A model reference (a property holding an id) is not editable this way.
+		var path = Path.Combine(workDir, "Windows", "ListViewWindow.ui");
+		await File.WriteAllTextAsync(path, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <object class="GtkWindow" id="listWindow">
+			    <property name="default-width">320</property>
+			    <property name="default-height">200</property>
+			    <child>
+			      <object class="GtkListView" id="listView">
+			        <property name="model">
+			          <object class="GtkStringList" id="listModel">
+			            <items><item translatable="yes">One</item><item>Two</item></items>
+			          </object>
+			        </property>
+			      </object>
+			    </child>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", path); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("listWindow"); Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+		Assert.Contains("listView", status.GetProperty("elementIds").EnumerateArray().Select(id => id.GetString()));
+		Assert.Contains("listModel", status.GetProperty("elementIds").EnumerateArray().Select(id => id.GetString()));
+
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "listView")).GetProperty("success").GetBoolean());
+		var items = (await app.InvokeAsync("od.gtk-designer.properties.describe")).GetProperty("items").EnumerateArray()
+			.FirstOrDefault(item => item.GetProperty("name").GetString() == "$items");
+		Assert.Equal("GtkStringList", items.GetProperty("category").GetString());
+		var edited = await app.InvokeAsync("od.gtk-designer.properties.edit-items", "$items", "add:-1:Three");
+		Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+		Assert.Equal(new[] { "One", "Two", "Three" }, edited.GetProperty("after").EnumerateArray().Select(item => item.GetString()));
+
+		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
+		var xml = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+		Assert.Matches("<object class=\"GtkStringList\" id=\"listModel\">\\s*<items>\\s*<item translatable=\"yes\">One</item>\\s*<item>Two</item>\\s*<item translatable=\"yes\">Three</item>\\s*</items>", xml);
+		await ValidateGtkBuilderAsync(path);
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
 	public async Task GtkDesigner_SourceView_SharesTheDesignerToolbox_AndPlacesDroppedItems()
 	{
 		// A .ui shown Design and Source side by side has one toolbox. With the Source half focused the
