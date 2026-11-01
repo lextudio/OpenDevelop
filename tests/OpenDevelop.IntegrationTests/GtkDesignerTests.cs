@@ -927,6 +927,17 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.Contains("Edited template", xml);
 		Assert.DoesNotContain("<object class=\"GtkWindow\"", xml);
 		await ValidateGtkBuilderAsync(templatePath);
+
+		// A template must not carry <signal>: Gir.Core sets no managed BuilderScope, so GTK
+		// resolves the handler as a native symbol and aborts the app. The designer refuses before
+		// writing the entry and points at the [Gtk.Connect] + event-subscription pattern.
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "TemplateWindow")).GetProperty("success").GetBoolean());
+		var refused = await app.InvokeAsync("od.gtk-designer.signal.set", "close-request", "TemplateWindow_close_request");
+		Assert.False(refused.GetProperty("success").GetBoolean(), refused.ToString());
+		Assert.True((await app.InvokeAsync("od.file.save", templatePath)).GetProperty("success").GetBoolean());
+		var afterSignal = await File.ReadAllTextAsync(templatePath, TestContext.Current.CancellationToken);
+		Assert.DoesNotContain("<signal", afterSignal);
+		Assert.Contains("Edited template", afterSignal);
 		await app.InvokeAsync("od.close-active-view");
 	}
 

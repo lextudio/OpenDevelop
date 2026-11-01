@@ -533,6 +533,20 @@ properties, children, layout), finds it by its class name, and refuses to rename
 the user's C# type). No `BuildUi` companion is generated for template files: a Gir.Core
 `[Template]` class instantiates its own UI.
 
+A template cannot carry a `<signal>` entry. Gir.Core 0.8.1 installs the template bytes and calls
+GTK's `gtk_widget_init_template`, which connects each signal through
+`gtk_builder_connect_signals`; the Gir.Core source generator sets no managed `BuilderScope` or
+connect function, so the handler is looked up as a native symbol and GTK aborts the process
+("No function named ..."). The supported pattern is a `[Gtk.Connect("runButton")]` field plus an
+event subscription in the class's `Initialize()` partial method
+(`_runButton.OnClicked += OnRun;`), with the handler method beside it. The designer therefore shows
+that instruction instead of writing a signal (see `UpdateCodeBehind`), and
+`GtkDesigner_CompositeTemplate_OpensRendersAndEdits` covers opening, editing and previewing a
+template without signals. Automatically generating the `[Gtk.Connect]` field and event
+subscription is the remaining work; it needs a real `[Template]` fixture (resource + class) to
+qualify, and would also have to teach the Events pad to read the subscription from C# instead of
+the `.ui`.
+
 **Objects held by properties** (`<property name="content"><object .../>`, common in GTK 4 and
 libadwaita) are tree children - in the outline, selectable, measured - not text values.
 
@@ -606,7 +620,9 @@ manifest redraws and rebuilds the resource registry without touching the `.ui`. 
 integration test opens a real `GtkImage` document using a sibling manifest and requires a native
 frame on the canvas.
 
-Still open: handler wiring for composite templates (Gir.Core `[Template]`).
+Still open: automatic handler wiring for composite templates. Gir.Core 0.8.1 cannot connect a
+template's `<signal>` (see "Composite templates"), so the designer currently points the user at the
+`[Gtk.Connect]` + event-subscription pattern instead of generating it.
 
 ### Dropping onto the Source half (2026-10-02)
 

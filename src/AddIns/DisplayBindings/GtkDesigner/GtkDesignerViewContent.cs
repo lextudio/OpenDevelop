@@ -393,7 +393,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		return true;
 	}
 	bool DeleteSelectedCore() { if (selection.SelectedIds.Count == 0 || host == null) return false; var ids = selection.SelectedIds.ToArray(); return Mutate(() => host.DeleteElementsAsync(state.Version, ids).GetAwaiter().GetResult()); }
-	public bool SetSelectedSignal(string signal, string handler) { if (selected == null || host == null) return false; var id = selected.Id; return Mutate(() => host.SetEventAsync(state.Version, id, signal, handler).GetAwaiter().GetResult()) && SelectById(id); }
+	public bool SetSelectedSignal(string signal, string handler) { if (selected == null) return false; var id = selected.Id; return SetEvent(id, signal, handler) && SelectById(id); }
 	GtkPropertyAdapter Adapter(DesignerElementNode node) => new(node, (name, value) => SetProperty(node.Id, name, value), (name, value) => SetEvent(node.Id, name, value), name => ResetProperty(node.Id, name),
 		items => host != null && Mutate(() => host.SetItemsAsync(state.Version, node.Id, items).GetAwaiter().GetResult()) && selection.Find(node.Id) != null);
 	/// <summary>Removes a property so GTK's default applies (design/reset-property).</summary>
@@ -401,10 +401,21 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	bool SetEvent(string id, string signal, string handler)
 	{
 		if (host == null) return false;
+		// A composite template must not carry <signal>: GTK's template builder resolves the
+		// handler as a native symbol and aborts the app, because Gir.Core sets no managed
+		// BuilderScope (see doc/technotes/gtk-designer.md, "Composite templates"). Refuse before
+		// the host writes the entry, and name the pattern that does work.
+		if (IsCompositeTemplate) {
+			diagnostic.Text = $"Composite template: GTK cannot resolve a <signal> handler here. Add a [Gtk.Connect(\"{id}\")] field for '{id}' and subscribe its event in the template class's Initialize() partial method.";
+			return false;
+		}
 		var accepted = Mutate(() => host.SetEventAsync(state.Version, id, signal, handler).GetAwaiter().GetResult());
 		if (accepted && !string.IsNullOrEmpty(handler)) UpdateCodeBehind(handler);
 		return accepted;
 	}
+
+	/// <summary>Whether the open document is a Gir.Core composite template (a &lt;template&gt; root).</summary>
+	bool IsCompositeTemplate => System.Text.RegularExpressions.Regex.IsMatch(loadedText, @"<template\b");
 
 	/// <summary>Keeps X.cs and X.ui.cs in step with the .ui's signals (see GtkCodeBehind): with
 	/// <paramref name="newHandler"/>, ensures the behavior class has that method and opens it there.</summary>
@@ -413,8 +424,9 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		var uiPath = PrimaryFileName?.ToString();
 		if (host == null || string.IsNullOrEmpty(uiPath)) return;
 		// A composite template is instantiated by its own C# class (Gir.Core [Template]); a BuildUi
-		// companion would build a second, detached copy. Leave its wiring to that class.
-		if (System.Text.RegularExpressions.Regex.IsMatch(loadedText, @"<template\b")) {
+		// companion would build a second, detached copy. SetEvent refuses new signals for a
+		// template; this guard covers a template that already carries one (hand-edited).
+		if (IsCompositeTemplate) {
 			if (newHandler != null) diagnostic.Text = "Composite template: connect this signal in the template's C# class; the designer only generates BuildUi for object-root .ui files.";
 			return;
 		}
