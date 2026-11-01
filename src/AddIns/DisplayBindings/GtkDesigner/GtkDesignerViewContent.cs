@@ -190,7 +190,11 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	/// passes its design point so the host places it by the container's child policy (GtkDropPlanner),
 	/// a toolbox click passes (-1, -1) to append.</summary>
 	bool AddTo(string parentId, string type, double x, double y) { if (host == null || state.Tree == null) return false; var before = Flatten(state.Tree).Select(n => n.Id).ToHashSet(StringComparer.Ordinal); if (!Mutate(() => host.AddElementAsync(state.Version, parentId, new DesignerToolboxItemInfo { Name = type, TypeName = type }, "", x, y,
-			ToDropTarget(GtkDropPlanner.Plan(ToDropNode(state.Tree), x, y))).GetAwaiter().GetResult())) return false; var added = state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => !before.Contains(n.Id)); if (added != null) Select(added); return added != null; }
+			ToDropTarget(GtkDropPlanner.Plan(ToDropNode(state.Tree), x, y))).GetAwaiter().GetResult())) return false;
+		// The new objects in document order, deepest last: a GtkStack drop writes a GtkStackPage
+		// wrapper and then the widget as its child, and the widget is what the user just asked for,
+		// so select the last one (the page stays reachable through its parent).
+		var added = state.Tree == null ? null : Flatten(state.Tree).Where(n => !before.Contains(n.Id)).LastOrDefault(); if (added != null) Select(added); return added != null; }
 	public bool DeleteSelected() => commands.Execute("Delete");
 
 	// The designer's own copy, kept beside the system clipboard so a multi-object copy round-trips

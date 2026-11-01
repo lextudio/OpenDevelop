@@ -144,7 +144,8 @@ sealed class GtkDesignerHostService : IDesignerChildService
 			&& GtkDropPlanner.Plan(DropNode(session, first), x, y) is { } plan && plan.ContainerId == parentId) {
 			index = plan.Index; cell = plan.Cell;
 		}
-		if (!session.Editor.Add(parentId, string.IsNullOrEmpty(item.TypeName) ? item.Name : item.TypeName, index, cell)) throw new InvalidOperationException("GTK element insertion was rejected.");
+		if (!session.Editor.Add(parentId, string.IsNullOrEmpty(item.TypeName) ? item.Name : item.TypeName, index, cell))
+			throw new InvalidOperationException("GTK element insertion was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
 		session.Version++; return State(session, false);
 	}
 

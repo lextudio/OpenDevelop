@@ -451,6 +451,240 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_StackPages_UseGtkStackPageObjects_AndTheNotebookUsesAPlainChild()
+	{
+		// A GTK 4 stack page is an explicit GtkStackPage object holding the widget as its "child"
+		// property: GtkStack's GtkBuilder form takes no child properties, so a bare <child> would be
+		// an unnamed, untitled page. GtkNotebook is the opposite: its bare <child> IS the page and GTK
+		// supplies the "Page N" tab. A drop must write each container's own shape, and the designer
+		// must select the widget the user asked for rather than the GtkStackPage wrapper.
+		var stackPath = Path.Combine(workDir, "Windows", "StackWindow.ui");
+		await File.WriteAllTextAsync(stackPath, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <object class="GtkWindow" id="stackWindow">
+			    <property name="default-width">400</property>
+			    <property name="default-height">300</property>
+			    <child>
+			      <object class="GtkStack" id="stack" />
+			    </child>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", stackPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("stackWindow"); Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "stack")).GetProperty("success").GetBoolean());
+		var first = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkButton");
+		Assert.True(first.GetProperty("success").GetBoolean(), first.ToString());
+		Assert.Equal("button1", first.GetProperty("selectedId").GetString());
+		var firstBounds = await app.InvokeAsync("od.gtk-designer.bounds", "button1");
+		// The insert response carries the previous layout pass's bounds; the native render that
+		// measures the new page arrives asynchronously.
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			firstBounds = await app.InvokeAsync("od.gtk-designer.bounds", "button1");
+			return firstBounds.GetProperty("success").GetBoolean() && firstBounds.GetProperty("width").GetDouble() > 0 && firstBounds.GetProperty("height").GetDouble() > 0;
+		}, TimeSpan.FromSeconds(10)), "the stack page content was not rendered: " + firstBounds);
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "stack")).GetProperty("success").GetBoolean());
+		var second = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkLabel");
+		Assert.True(second.GetProperty("success").GetBoolean(), second.ToString());
+		Assert.Equal("label1", second.GetProperty("selectedId").GetString());
+		Assert.True((await app.InvokeAsync("od.file.save", stackPath)).GetProperty("success").GetBoolean());
+		var stackText = (await File.ReadAllTextAsync(stackPath, TestContext.Current.CancellationToken)).Replace("\r", "");
+		var stackXml = System.Xml.Linq.XDocument.Parse(stackText);
+		var stack = stackXml.Descendants("object").Single(x => (string?)x.Attribute("id") == "stack");
+		var pages = stack.Elements("child").Select(c => c.Element("object")!).ToList();
+		Assert.Equal(new[] { "GtkStackPage", "GtkStackPage" }, pages.Select(p => (string?)p.Attribute("class")));
+		Assert.Equal(new[] { "page1", "page2" }, pages.Select(p => (string?)p.Attribute("id")));
+		Assert.Equal(new[] { "page1", "page2" }, pages.Select(p => p.Elements("property").Single(x => (string?)x.Attribute("name") == "name").Value));
+		Assert.Equal(new[] { "Page 1", "Page 2" }, pages.Select(p => p.Elements("property").Single(x => (string?)x.Attribute("name") == "title").Value));
+		Assert.All(pages, p => Assert.Equal("yes", (string?)p.Elements("property").Single(x => (string?)x.Attribute("name") == "title").Attribute("translatable")));
+		Assert.Equal(new[] { "button1", "label1" }, pages.Select(p => (string?)p.Elements("property").Single(x => (string?)x.Attribute("name") == "child").Element("object")?.Attribute("id")));
+		await ValidateGtkBuilderAsync(stackPath);
+		await app.InvokeAsync("od.close-active-view");
+
+		var notebookPath = Path.Combine(workDir, "Windows", "NotebookWindow.ui");
+		await File.WriteAllTextAsync(notebookPath, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <object class="GtkWindow" id="notebookWindow">
+			    <property name="default-width">400</property>
+			    <property name="default-height">300</property>
+			    <child>
+			      <object class="GtkNotebook" id="notebook" />
+			    </child>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var openedNotebook = await app.InvokeAsync("od.open-file", notebookPath); Assert.True(openedNotebook.GetProperty("opened").GetBoolean(), openedNotebook.ToString());
+		var notebookStatus = await WaitAsync("notebookWindow"); Assert.True(notebookStatus.GetProperty("nativeFrame").GetBoolean(), notebookStatus.ToString());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "notebook")).GetProperty("success").GetBoolean());
+		var page = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkButton");
+		Assert.True(page.GetProperty("success").GetBoolean(), page.ToString());
+		Assert.Equal("button1", page.GetProperty("selectedId").GetString());
+		Assert.True((await app.InvokeAsync("od.file.save", notebookPath)).GetProperty("success").GetBoolean());
+		var notebookText = (await File.ReadAllTextAsync(notebookPath, TestContext.Current.CancellationToken)).Replace("\r", "");
+		var notebook = System.Xml.Linq.XDocument.Parse(notebookText).Descendants("object").Single(x => (string?)x.Attribute("id") == "notebook");
+		var notebookChild = notebook.Elements("child").Single();
+		Assert.Equal("GtkButton", (string?)notebookChild.Element("object")?.Attribute("class"));
+		Assert.Equal("button1", (string?)notebookChild.Element("object")?.Attribute("id"));
+		Assert.DoesNotContain("GtkNotebookPage", notebookText);
+		await ValidateGtkBuilderAsync(notebookPath);
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
+	public async Task GtkDesigner_SingleChildContainers_AreNotDropTargets_AndRefuseASecondChild()
+	{
+		// GtkFrame (like GtkScrolledWindow, a window and AdwClamp) takes exactly one child. GtkBuilder
+		// accepts a second <child> but GTK keeps only one, so the document the designer writes would
+		// not match what GTK shows: a full one is not a drop target and an insertion is refused.
+		var framePath = Path.Combine(workDir, "Windows", "FrameWindow.ui");
+		await File.WriteAllTextAsync(framePath, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <object class="GtkWindow" id="frameWindow">
+			    <property name="default-width">400</property>
+			    <property name="default-height">200</property>
+			    <child>
+			      <object class="GtkFrame" id="frame">
+			        <child>
+			          <object class="GtkLabel" id="only">
+			            <property name="label">Only</property>
+			          </object>
+			        </child>
+			      </object>
+			    </child>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", framePath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("frameWindow"); Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+		var count = status.GetProperty("elementCount").GetInt32();
+
+		var child = await app.InvokeAsync("od.gtk-designer.bounds", "only");
+		Assert.True(child.GetProperty("success").GetBoolean(), child.ToString());
+		var x = child.GetProperty("x").GetDouble() + child.GetProperty("width").GetDouble() / 2;
+		var y = child.GetProperty("y").GetDouble() + child.GetProperty("height").GetDouble() / 2;
+		var plan = await app.InvokeAsync("od.gtk-designer.drop-plan", x, y);
+		Assert.False(plan.GetProperty("success").GetBoolean(), "the full frame must not be a drop target: " + plan);
+		var dropped = await app.InvokeAsync("od.gtk-designer.toolbox.drop-at", "GtkButton", x, y);
+		Assert.False(dropped.GetProperty("success").GetBoolean(), dropped.ToString());
+
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "frame")).GetProperty("success").GetBoolean());
+		var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkButton"));
+		Assert.True(refused.Message.Contains("A GtkFrame holds a single child."), refused.Message);
+		status = await app.InvokeAsync("od.gtk-designer.status");
+		Assert.Equal(count, status.GetProperty("elementCount").GetInt32());
+		Assert.True((await app.InvokeAsync("od.file.save", framePath)).GetProperty("success").GetBoolean());
+		var frame = System.Xml.Linq.XDocument.Parse((await File.ReadAllTextAsync(framePath, TestContext.Current.CancellationToken)).Replace("\r", "")).Descendants("object").Single(o => (string?)o.Attribute("id") == "frame");
+		Assert.Single(frame.Elements("child"));
+		await ValidateGtkBuilderAsync(framePath);
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
+	public async Task GtkDesigner_PanedJourney_PlacesChildrenInTheStartAndEndSlots()
+	{
+		// GtkPaned is a container with two named slots. A drop plans them from GTK's measured bounds
+		// (index 0 = start, 1 = end), the host writes the child in that order, and once both are filled
+		// the paned is skipped so a third drop lands in the box around it.
+		var path = Path.Combine(workDir, "Windows", "PanedWindow.ui");
+		await File.WriteAllTextAsync(path, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <object class="GtkWindow" id="panedWindow">
+			    <property name="default-width">400</property>
+			    <property name="default-height">200</property>
+			    <child>
+			      <object class="GtkBox" id="box">
+			        <property name="orientation">vertical</property>
+			        <child>
+			          <object class="GtkPaned" id="paned">
+			            <property name="hexpand">True</property>
+			            <property name="vexpand">True</property>
+			            <child>
+			              <object class="GtkLabel" id="left">
+			                <property name="label">Left</property>
+			              </object>
+			            </child>
+			          </object>
+			        </child>
+			      </object>
+			    </child>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", path); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("panedWindow"); Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+
+		async Task<(double X, double Y, double Width, double Height)> Bounds(string id)
+		{
+			var b = await app.InvokeAsync("od.gtk-designer.bounds", id); Assert.True(b.GetProperty("success").GetBoolean(), id + ": " + b);
+			return (b.GetProperty("x").GetDouble(), b.GetProperty("y").GetDouble(), b.GetProperty("width").GetDouble(), b.GetProperty("height").GetDouble());
+		}
+		var paned = await Bounds("paned");
+		Assert.True(paned.Width > 100 && paned.Height > 50, "the paned was not laid out: " + paned);
+
+		// After the start child's middle: the drop becomes the end child, to the right of it.
+		var endX = paned.X + paned.Width * 0.8; var endY = paned.Y + paned.Height / 2;
+		var endPlan = await app.InvokeAsync("od.gtk-designer.drop-plan", endX, endY);
+		Assert.True(endPlan.GetProperty("success").GetBoolean(), endPlan.ToString());
+		Assert.Equal("paned", endPlan.GetProperty("containerId").GetString());
+		Assert.Equal(1, endPlan.GetProperty("index").GetInt32());
+		var endDrop = await app.InvokeAsync("od.gtk-designer.toolbox.drop-at", "GtkButton", endX, endY);
+		Assert.True(endDrop.GetProperty("success").GetBoolean(), endDrop.ToString());
+		Assert.Equal("button1", endDrop.GetProperty("selectedId").GetString());
+		// GTK puts the second child after the first one's natural width (the paned's default
+		// position), so the new end child starts at the start child's right edge.
+		JsonElement endBounds = default, startNow = default;
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			endBounds = await app.InvokeAsync("od.gtk-designer.bounds", "button1");
+			startNow = await app.InvokeAsync("od.gtk-designer.bounds", "left");
+			return endBounds.GetProperty("success").GetBoolean() && startNow.GetProperty("success").GetBoolean()
+				&& endBounds.GetProperty("x").GetDouble() >= startNow.GetProperty("x").GetDouble() + startNow.GetProperty("width").GetDouble();
+		}, TimeSpan.FromSeconds(10)), "the dropped button did not become the paned's end child: " + endBounds + " start=" + startNow);
+
+		// A full paned is skipped: the next drop lands in the box, below the paned.
+		var belowX = paned.X + paned.Width * 0.8; var belowY = paned.Y + paned.Height * 0.8;
+		var boxPlan = await app.InvokeAsync("od.gtk-designer.drop-plan", belowX, belowY);
+		Assert.True(boxPlan.GetProperty("success").GetBoolean(), boxPlan.ToString());
+		Assert.Equal("box", boxPlan.GetProperty("containerId").GetString());
+		Assert.Equal(1, boxPlan.GetProperty("index").GetInt32());
+		var boxDrop = await app.InvokeAsync("od.gtk-designer.toolbox.drop-at", "GtkButton", belowX, belowY);
+		Assert.True(boxDrop.GetProperty("success").GetBoolean(), boxDrop.ToString());
+		Assert.Equal("button2", boxDrop.GetProperty("selectedId").GetString());
+		JsonElement belowBounds = default, panedNow = default;
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			belowBounds = await app.InvokeAsync("od.gtk-designer.bounds", "button2");
+			panedNow = await app.InvokeAsync("od.gtk-designer.bounds", "paned");
+			return belowBounds.GetProperty("success").GetBoolean() && panedNow.GetProperty("success").GetBoolean()
+				&& belowBounds.GetProperty("y").GetDouble() >= panedNow.GetProperty("y").GetDouble() + panedNow.GetProperty("height").GetDouble();
+		}, TimeSpan.FromSeconds(10)), "the third drop is not below the paned in the box: " + belowBounds + " paned=" + panedNow);
+
+		// An insertion addressed at the full paned is refused with its own reason.
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "paned")).GetProperty("success").GetBoolean());
+		var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkButton"));
+		Assert.True(refused.Message.Contains("A GtkPaned holds only a start and an end child."), refused.Message);
+
+		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
+		var xml = System.Xml.Linq.XDocument.Parse((await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken)).Replace("\r", ""));
+		var panedXml = xml.Descendants("object").Single(o => (string?)o.Attribute("id") == "paned");
+		Assert.Equal(new[] { "left", "button1" }, panedXml.Elements("child").Select(c => (string?)c.Element("object")?.Attribute("id")));
+		var boxXml = xml.Descendants("object").Single(o => (string?)o.Attribute("id") == "box");
+		Assert.Equal(new[] { "paned", "button2" }, boxXml.Elements("child").Select(c => (string?)c.Element("object")?.Attribute("id")));
+		await ValidateGtkBuilderAsync(path);
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
 	public async Task GtkDesigner_MalformedSourceEdit_IsReported_AndTheDesignerRecovers()
 	{
 		// Editing the XML pane into an invalid document must not lose the design or crash the host:

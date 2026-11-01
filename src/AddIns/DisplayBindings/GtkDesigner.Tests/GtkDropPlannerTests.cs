@@ -140,5 +140,40 @@ public sealed class GtkDropPlannerTests
 
 	[Fact]
 	public void Paned_Full_IsNotADropTarget()
-		=> Assert.Equal("window", GtkDropPlanner.Plan(Paned(2), 50, 50)!.ContainerId);
+	{
+		// A full paned under a full one-child window leaves nowhere to drop at all.
+		Assert.Null(GtkDropPlanner.Plan(Paned(2), 50, 50));
+		var boxed = new GtkDropNode("window", "GtkWindow", 0, 0, 300, 200, new[] {
+			new GtkDropNode("box", "GtkBox", 0, 0, 300, 200, new[] {
+				new GtkDropNode("paned", "GtkPaned", 0, 0, 300, 200, new[] {
+					new GtkDropNode("a", "GtkLabel", 0, 0, 140, 200, Array.Empty<GtkDropNode>()),
+					new GtkDropNode("b", "GtkLabel", 160, 0, 140, 200, Array.Empty<GtkDropNode>()),
+				})
+			}, Orientation: "vertical")
+		});
+		Assert.Equal("box", GtkDropPlanner.Plan(boxed, 50, 100)!.ContainerId);
+	}
+
+	// A window > box > frame > label: the frame holds its one child, so the drop resolves to the box.
+	static GtkDropNode SingleChild(int children) => new("window", "GtkWindow", 0, 0, 300, 300, new[] {
+		new GtkDropNode("box", "GtkBox", 0, 0, 300, 300, new[] {
+			new GtkDropNode("frame", "GtkFrame", 0, 0, 300, 200, Enumerable.Range(0, children)
+				.Select(i => new GtkDropNode("c" + i, "GtkLabel", 10, 10, 100, 30, Array.Empty<GtkDropNode>())).ToList())
+		}, Orientation: "vertical")
+	});
+
+	[Fact]
+	public void SingleChild_Empty_IsADropTarget()
+		=> Assert.Equal("frame", GtkDropPlanner.Plan(SingleChild(0), 150, 25)!.ContainerId);
+
+	[Fact]
+	public void SingleChild_Full_IsNotADropTarget()
+		=> Assert.Equal("box", GtkDropPlanner.Plan(SingleChild(1), 150, 25)!.ContainerId);
+
+	[Fact]
+	public void SingleChild_IsFullOnlyAtItsOneChild()
+	{
+		Assert.Contains("GtkFrame", GtkDropPlanner.SingleChildClasses);
+		Assert.DoesNotContain("GtkBox", GtkDropPlanner.SingleChildClasses);
+	}
 }

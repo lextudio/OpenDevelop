@@ -38,6 +38,13 @@ public static class GtkDropPlanner
 
 	const double LineThickness = 2;
 
+	/// <summary>Builder classes that hold exactly one child in GtkBuilder: a second
+	/// <c>&lt;child&gt;</c> is not a document GTK would load. Also used by the editor to refuse
+	/// the insertion and by Unwrap to reject several children moved into such a parent.</summary>
+	public static readonly HashSet<string> SingleChildClasses = new(StringComparer.Ordinal) {
+		"GtkFrame", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow", "AdwClamp"
+	};
+
 	/// <summary>The plan for a drop at (<paramref name="x"/>, <paramref name="y"/>): the deepest
 	/// container under the point (or its nearest containing ancestor), or null when there is none.</summary>
 	public static GtkDropPlan? Plan(GtkDropNode root, double x, double y)
@@ -63,10 +70,13 @@ public static class GtkDropPlanner
 		return Containers.Contains(node.ClassName) && !IsFull(node) ? node : null;
 	}
 
-	/// <summary>A GtkPaned holds exactly two children (start, then end); GTK warns and discards a
-	/// third, so a full one is not a drop target and the drop lands in the container around it.</summary>
+	/// <summary>A GtkPaned holds exactly two children (start, then end) and the classes in
+	/// <see cref="SingleChildClasses"/> hold one; GTK warns and discards an extra child, so a full
+	/// container is not a drop target and the drop lands in the container around it.</summary>
 	public const int PanedCapacity = 2;
-	static bool IsFull(GtkDropNode node) => node.ClassName == "GtkPaned" && node.Children.Count >= PanedCapacity;
+	static bool IsFull(GtkDropNode node) => node.ClassName == "GtkPaned"
+		? node.Children.Count >= PanedCapacity
+		: SingleChildClasses.Contains(node.ClassName) && node.Children.Count >= 1;
 
 	/// <summary>The slot a drop fills: in a GtkBuilder document the first <c>&lt;child&gt;</c> of a
 	/// paned is its start child and the second its end child, so the index is 0 when the point lies

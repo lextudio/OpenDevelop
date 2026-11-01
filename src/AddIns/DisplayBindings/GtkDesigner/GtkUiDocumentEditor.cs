@@ -19,6 +19,10 @@ public sealed class GtkUiDocumentEditor
 	XDocument document = new();
 	public string Text { get; private set; } = "";
 	public string Error { get; private set; } = "";
+	/// <summary>Why the last <see cref="Add"/> was refused. Separate from <see cref="Error"/>,
+	/// which is the parse error: a refused insertion leaves the document valid, so it must not make
+	/// the session look unaccepted (that would stop every later render).</summary>
+	public string Refusal { get; private set; } = "";
 	public IReadOnlyList<GtkUiNode> Roots { get; private set; } = Array.Empty<GtkUiNode>();
 	public bool CanUndo => undo.Count != 0;
 	public bool CanRedo => redo.Count != 0;
@@ -137,6 +141,7 @@ public sealed class GtkUiDocumentEditor
 	/// the first free row).</summary>
 	public bool Add(string parentId, string className, int? index = null, (int Column, int Row)? cell = null)
 	{
+		Refusal = "";
 		var parent = Find(parentId); if (parent == null || string.IsNullOrWhiteSpace(className)) return false;
 		// GtkBuilder <child> is only valid under container widgets; reject leaf parents instead
 		// of generating a document libgtk would refuse to load.
@@ -170,9 +175,25 @@ public sealed class GtkUiDocumentEditor
 			if (existing >= 2) return false;
 			child.SetAttributeValue("type", existing == 0 ? "sidebar" : "content");
 		}
+		// A GtkStack page is a GtkStackPage meta object holding the widget as its child property.
+		// GtkStack's GtkBuildable form takes no child properties, so a bare <child> would add an
+		// unnamed, untitled page; the designer always writes a named, titled page instead.
+		if (cls == "GtkStack" && className != "GtkStackPage") {
+			var pageId = UniqueId("page");
+			var number = pageId["page".Length..];
+			child.RemoveNodes();
+			var page = new XElement("object", new XAttribute("class", "GtkStackPage"), new XAttribute("id", pageId),
+				new XElement("property", new XAttribute("name", "name"), pageId),
+				new XElement("property", new XAttribute("name", "title"), new XAttribute("translatable", "yes"), "Page " + number),
+				new XElement("property", new XAttribute("name", "child"), created));
+			child.Add(page);
+		}
 		var siblings = parent.Elements().Where(e => e.Name.LocalName == "child" && e.Elements().Any(IsObject)).ToList();
 		// A GtkPaned has a start and an end child and GTK discards a third with a warning.
-		if (cls == "GtkPaned" && siblings.Count >= GtkDropPlanner.PanedCapacity) { Error = "A GtkPaned holds only a start and an end child."; return false; }
+		if (cls == "GtkPaned" && siblings.Count >= GtkDropPlanner.PanedCapacity) { Refusal = "A GtkPaned holds only a start and an end child."; return false; }
+		// GtkFrame, GtkScrolledWindow, a window and AdwClamp take one child; GtkBuilder would keep
+		// only the last one, so refuse instead of writing a document GTK will not load as designed.
+		if (GtkDropPlanner.SingleChildClasses.Contains(cls) && siblings.Count >= 1) { Refusal = $"A {cls} holds a single child."; return false; }
 		if (index is { } at && at >= 0 && at < siblings.Count) siblings[at].AddBeforeSelf(child);
 		else parent.Add(child);
 		return Commit();
@@ -320,7 +341,7 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
-	static readonly HashSet<string> SingleChildClasses = new(StringComparer.Ordinal) { "GtkFrame", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow", "AdwClamp" };
+	static readonly HashSet<string> SingleChildClasses = GtkDropPlanner.SingleChildClasses;
 
 	/// <summary>Replaces a placed container with its &lt;child&gt; objects at its position (the
 	/// WPF/WinUI designers' Unwrap). Refused for a root, a container holding objects other than

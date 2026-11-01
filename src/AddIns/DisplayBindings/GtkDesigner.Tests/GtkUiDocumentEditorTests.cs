@@ -78,7 +78,8 @@ public sealed class GtkUiDocumentEditorTests
 		Assert.True(editor.Add("paned", "GtkLabel"), editor.Error);
 		Assert.True(editor.Add("paned", "GtkButton", index: 1), editor.Error);
 		Assert.False(editor.Add("paned", "GtkLabel"));
-		Assert.Contains("start and an end", editor.Error);
+		Assert.Contains("start and an end", editor.Refusal);
+		Assert.Equal("", editor.Error); // a refusal is not a parse error: the document stays accepted
 		Assert.Equal(2, editor.Text.Split("<child>").Length - 1 - 1); // the window's own <child> is not the paned's
 	}
 
@@ -98,5 +99,45 @@ public sealed class GtkUiDocumentEditorTests
 		Assert.Equal(new[] { "sidebar", "content" }, split.Elements("child").Select(x => (string?)x.Attribute("type")));
 		var page = doc.Descendants("object").Single(x => (string?)x.Attribute("id") == "page");
 		Assert.Equal("GtkBox", (string?)page.Elements("property").Single(x => (string?)x.Attribute("name") == "child").Element("object")?.Attribute("class"));
+	}
+
+	[Fact]
+	public void SingleChildContainers_RejectASecondChild()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkFrame" id="frame"><child><object class="GtkLabel" id="only"/></child></object></interface>"""), editor.Error);
+		Assert.False(editor.Add("frame", "GtkButton"));
+		Assert.Contains("single child", editor.Refusal);
+		Assert.Equal("", editor.Error); // a refusal is not a parse error: the document stays accepted
+		Assert.DoesNotContain("button1", editor.Text);
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkFrame" id="frame"/></interface>"""), editor.Error);
+		Assert.True(editor.Add("frame", "GtkButton"), editor.Error);
+	}
+
+	[Fact]
+	public void Stack_Add_WritesANamedTitledPage()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkStack" id="stack"/></interface>"""), editor.Error);
+		Assert.True(editor.Add("stack", "GtkButton"), editor.Error);
+		var page = editor.Roots[0].Children[0];
+		Assert.Equal("page1", page.Id);
+		Assert.Equal("GtkStackPage", page.ClassName);
+		Assert.Equal("page1", page.Properties["name"]);
+		Assert.Equal("GtkButton", page.Children[0].ClassName);
+		Assert.Contains("<object class=\"GtkStackPage\" id=\"page1\">", editor.Text);
+		Assert.Contains("<property name=\"title\" translatable=\"yes\">Page 1</property>", editor.Text);
+		Assert.True(editor.Add("stack", "GtkLabel"), editor.Error);
+		Assert.Equal(new[] { "page1", "page2" }, editor.Roots[0].Children.Select(c => c.Id));
+	}
+
+	[Fact]
+	public void Notebook_Add_WritesAPlainPageChild()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkNotebook" id="notebook"/></interface>"""), editor.Error);
+		Assert.True(editor.Add("notebook", "GtkButton"), editor.Error);
+		Assert.Equal("GtkButton", editor.Roots[0].Children[0].ClassName);
+		Assert.DoesNotContain("GtkNotebookPage", editor.Text);
 	}
 }

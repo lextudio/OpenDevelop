@@ -71,8 +71,9 @@ Build a new source-backed GTK 4 designer. Do not port Stetic as the runtime desi
 
 The authoritative format is one standard GtkBuilder `.ui` file per independently designable
 window/widget. OpenDevelop owns selection and pads; the isolated GTK 4 host owns parsing, source
-edits, undo/redo and serialization, and will also own native construction/rendering as that layer
-is added.
+edits, undo/redo, serialization and native construction/rendering. The same `GtkUiDocumentEditor`
+source is compiled into the IDE for the Source half and for drops onto `.ui` text; it is not a
+second document authority.
 
 MonoDevelop's GTK 2 designer remains valuable as a requirements catalogue and for a few
 toolkit-independent algorithms, but its live widget model, wrappers, property editors, code
@@ -622,15 +623,19 @@ designer-common.md, "One stable toolbox in the Design/Source split".
 ### Drop placement (2026-10-01)
 
 `GtkDropPlanner.cs` (pure; linked into the IDE, host and tests) resolves a toolbox drop by the
-receiving container's child policy: the deepest container under the point; a `GtkBox` gets an
-insertion index along its orientation (horizontal by default) and an insertion line midway in
-that gap; a `GtkGrid` gets the cell under the point from its tracks' measured extents (past the
-last column/row = the next one; an occupied cell moves down to the first free row) and a
-cell highlight; anything else appends and highlights the container. The IDE draws the indicator
+receiving container's child policy: the deepest container under the point that can still take a
+child - a full `GtkPaned` and a full single-child widget (`GtkFrame`, `GtkScrolledWindow`,
+`GtkWindow`, `GtkApplicationWindow`, `AdwClamp`) are skipped, so the drop lands in the container
+around them. A `GtkBox` gets an insertion index along its orientation (horizontal by default) and
+an insertion line midway in that gap; a `GtkGrid` gets the cell under the point from its tracks'
+measured extents (past the last column/row = the next one; an occupied cell moves down to the
+first free row) and a cell highlight; a `GtkPaned` gets its start/end slot, and a `GtkStack`
+appends a page; anything else appends and highlights the container. The IDE draws the indicator
 in the canvas's extension layer during drag-over; on drop the host re-plans from GTK's own
 measured bounds and `GtkUiDocumentEditor.Add` inserts at that index or writes that `<layout>`
 cell. `GtkDropPlannerTests` covers the geometry; the grid integration test drops into a planned
-cell and checks GTK's measured placement.
+cell and checks GTK's measured placement, and the paned journey does the same for the start/end
+slot.
 
 Properties come from GIR plus overrides. The grid distinguishes normal, construct-only, layout,
 object-reference, translatable and CSS-related values. Reset removes the XML property so GTK's
@@ -671,8 +676,8 @@ escaping.
 
 Paste Here pastes the clipboard into the container under the context-menu point, using the same point-to-container
 plan as a toolbox drop; in a box the snippets go after the child that precedes the planned position, elsewhere
-they are appended (a grid cell is not honoured: the paste contract has no cell argument). MewUI has no
-point-to-container planner yet, so it does not offer Paste Here.
+they are appended (a grid cell is not honoured: the paste contract has no cell argument). MewUI
+appends Paste Here into the container under the point as well, with no insertion-position plan.
 
 The context menu also offers Align → Horizontal/Vertical: Fill, Start, Center, End, which sets the
 GtkWidget `halign`/`valign` property of every selected object (the GTK counterpart of the WPF
@@ -709,15 +714,39 @@ property-held child (no `<child>` slot to move), and several children into a sin
 
 GTK 4 has no generic container mutation API. Every drop is resolved through `childPolicy`:
 
-- `GtkBox`: ordered child insertion;
-- `GtkGrid`: child plus `<layout>` row/column/span;
-- single-child widgets: replace/wrap decision;
-- `GtkPaned`: start/end named slot;
-- `GtkStack`, `GtkNotebook` and similar widgets: explicit page/meta object;
-- list/model/factory widgets: edit their model/factory objects, not fake visual children.
+- `GtkBox`: ordered child insertion (implemented);
+- `GtkGrid`: child plus `<layout>` row/column/span (implemented);
+- single-child widgets: a second child is refused with a precise error and a full one is not a
+  drop target (implemented 2026-11-01). `design/add-element` forwards the editor's reason
+  ("A GtkFrame holds a single child."), so the toolbox click and a canvas drop both report why
+  nothing was inserted instead of the generic rejection text. `GtkDropPlannerTests`
+  (`SingleChild_*`) and `GtkUiDocumentEditorTests.SingleChildContainers_RejectASecondChild` cover
+  the policy; `GtkDesigner_SingleChildContainers_AreNotDropTargets_AndRefuseASecondChild` is the
+  journey;
+- `GtkPaned`: start/end named slot, and a third child is refused (implemented 2026-10-30). A full
+  paned is skipped by the planner, so the drop goes to the container around it;
+  `GtkDesigner_PanedJourney_PlacesChildrenInTheStartAndEndSlots` drops into the end slot (the new
+  child starts at the start child's right edge, GTK's default position) and then proves the third
+  drop lands in the box below the paned;
+- `GtkStack`: a drop adds a `GtkStackPage` with a generated name and title holding the new widget
+  (implemented 2026-11-01). The selection is the new content widget, not the page wrapper - the
+  user asked for a button, and the page has no layout of its own; the page stays selectable by its
+  `pageN` id. `GtkNotebook` needs no meta object: GtkBuilder's bare `<child>` is its page, and GTK
+  supplies the default "Page N" tab label. Named notebook tabs and action widgets are not edited
+  by the designer. Covered by `GtkUiDocumentEditorTests.Stack_Add_WritesANamedTitledPage` /
+  `Notebook_Add_WritesAPlainPageChild` and the journey
+  `GtkDesigner_StackPages_UseGtkStackPageObjects_AndTheNotebookUsesAPlainChild`, which saves and
+  validates both documents with `gtk4-builder-tool`;
+- list/model/factory widgets: not implemented (Phase 4). `GtkListView`/`GtkGridView` are toolbox
+  leaves; a model, factory or expression is edited by hand in the source, not through the designer.
 
-This adapter layer is the most important new GTK 4-specific code and should have table-driven
-tests independent of the native preview host.
+A refusal is reported through `GtkUiDocumentEditor.Refusal`, not `Error`: the document is still
+valid, so it stays accepted and a refused drop cannot stop the next render. `design/add-element`
+forwards that reason to the IDE.
+
+This adapter layer is the most important new GTK 4-specific code; `GtkDropPlannerTests` and
+`GtkUiDocumentEditorTests` cover it table-driven and independent of the native preview host, and
+each container shape also has an end-to-end journey that saves and validates the document.
 
 ### Drop-down items (2026-10-14)
 
@@ -784,27 +813,37 @@ without reopening the document.
 
 ### Phase 3 — production interaction
 
-- real toolbox drag/drop and reorder;
+Status 2026-11-01: implemented except where marked.
+
+- real toolbox drag/drop and reorder (implemented);
 - common Toolbox catalogue filtering (control or category, case-insensitive), including selection
-  repair/restoration and `od.gtk-designer.toolbox.filter` integration coverage;
-- the shared Tools-pad search field is visibly mounted and survives multi-window switching;
-- Grid/Paned/Stack/page adapters;
+  repair/restoration and `od.gtk-designer.toolbox.filter` integration coverage (implemented);
+- the shared Tools-pad search field is visibly mounted and survives multi-window switching
+  (implemented; the mounting is asserted, multi-window switching is covered by the shared pad
+  contract rather than a GTK-specific journey);
+- Grid/Paned/Stack/page adapters (implemented 2026-11-01; see "Drag/drop");
 - keyboard navigation, delete, copy/paste and multi-select where semantically valid. Covered by
   `GtkDesignerNavigationTests`: a rubber band from the title strip selects the crossed widgets and
   leaves the keyboard on the canvas, then one native Tab rotates the primary selection. Not covered:
   Shift+Tab and a second native Tab (posted, but no KeyDown reached the canvas; cause unknown), and
   arrow nudge, which does not exist because GTK owns layout;
-- signals/Roslyn handler creation;
-- external file conflict handling and coordinated save.
+- signals/Roslyn handler creation (implemented);
+- external file conflict handling and coordinated save (implemented).
 
 ### Phase 4 — ecosystem depth
 
-- custom project widgets in the sandboxed host;
-- Libadwaita catalogue and named-child policies;
-- menus, actions, list models, factories and expressions;
-- translation and resource tooling;
-- explicit GTK 3/Stetic migration assistant;
-- optional Blueprint import/editor integration.
+Status 2026-11-01: not implemented except where marked.
+
+- custom project widgets in the sandboxed host: not implemented as execution. A data-only
+  `.gtkdesigner.json` mapping can preview a project class as a GTK class (see "Robust preview");
+  the project's assembly and native code are never loaded;
+- Libadwaita catalogue and named-child policies: the catalogue, toolbox category and navigation
+  page shapes are implemented; general named-child/page editing is not;
+- menus, actions, list models, factories and expressions: not implemented;
+- translation and resource tooling: GResource preview is implemented; no string extraction,
+  `.po` editing or translation workflow;
+- explicit GTK 3/Stetic migration assistant: not implemented;
+- optional Blueprint import/editor integration: not implemented.
 
 ## Test strategy
 
@@ -852,20 +891,21 @@ returned as session warning diagnostics instead of silently falling back.
 
 Still-open coverage gap: OS-level automation of pointer gestures (the native coordinate mapping
 and resulting mutation are covered). CSS is covered through the real host and fixture. (Behavior-file
-handler generation is covered as of 2026-10-01: see "Signal handlers and the behavior class".) Those items in
-the lists above are acceptance targets, not claims about the present implementation.
+handler generation is covered as of 2026-10-01: see "Signal handlers and the behavior class".) The
+delivery plan above carries status markers; anything it does not mark implemented is a target, not
+a claim about the present implementation.
 
 Fixture matrix:
 
 - plain Gtk.Window/Gtk.ApplicationWindow;
 - Box and Grid layout properties;
-- Paned/Stack/page objects;
+- Paned and GtkStack pages (each journey writes its own small document);
 - signals and translatable strings;
 - CSS and embedded resources;
-- Gir.Core composite template once supported;
+- Gir.Core composite template (implemented 2026-10-01);
 - Libadwaita project;
 - custom widget success/failure;
-- converted GTK 3/Stetic sample.
+- converted GTK 3/Stetic sample (not yet written).
 
 An integration test that calls internal edit actions without asserting the actual active Tools and
 Properties pad contents is insufficient. Pad ownership, realized item counts, selected object
