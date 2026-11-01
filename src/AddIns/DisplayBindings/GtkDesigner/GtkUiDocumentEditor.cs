@@ -136,7 +136,7 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
-	static readonly HashSet<string> ContainerClasses = new(StringComparer.Ordinal) { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow", "GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "AdwClamp", "AdwPreferencesPage", "AdwPreferencesGroup", "AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView" };
+	static readonly HashSet<string> ContainerClasses = new(StringComparer.Ordinal) { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow", "GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "GtkColumnView", "AdwClamp", "AdwPreferencesPage", "AdwPreferencesGroup", "AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView" };
 
 	/// <summary>Adds a new <paramref name="className"/> child. A drop resolved by GtkDropPlanner
 	/// gives an insertion <paramref name="index"/> among the existing children (a box) or a
@@ -152,7 +152,10 @@ public sealed class GtkUiDocumentEditor
 		if (cls == "AdwNavigationView" && className != "AdwNavigationPage") return false;
 		if (cls == "AdwNavigationSplitView" && className != "AdwNavigationPage") return false;
 		if (cls == "AdwNavigationPage" && parent.Elements().Any(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "child"))) return false;
-		className = className.Trim(); var baseName = className.StartsWith("Gtk", StringComparison.Ordinal) ? className[3..] : className;
+		className = className.Trim();
+		// A column is not a widget: its id reads columnN, not columnViewColumnN.
+		var baseName = className == "GtkColumnViewColumn" ? "column"
+			: className.StartsWith("Gtk", StringComparison.Ordinal) ? className[3..] : className;
 		baseName = char.ToLowerInvariant(baseName[0]) + baseName[1..];
 		var id = UniqueId(baseName);
 		LastCreatedId = id;
@@ -184,6 +187,10 @@ public sealed class GtkUiDocumentEditor
 				new XElement("object", new XAttribute("class", "GtkColumnViewColumn"), new XAttribute("id", columnId),
 					new XElement("property", new XAttribute("name", "title"), new XAttribute("translatable", "yes"), "Column " + columnNumber),
 					ListFactoryProperty())));
+		} else if (className == "GtkColumnViewColumn") {
+			var columnNumber = id["column".Length..];
+			created.Add(new XElement("property", new XAttribute("name", "title"), new XAttribute("translatable", "yes"), "Column " + columnNumber));
+			created.Add(ListFactoryProperty());
 		}
 		if (cls == "AdwNavigationPage") {
 			parent.Add(new XElement("property", new XAttribute("name", "child"), created));
@@ -210,6 +217,8 @@ public sealed class GtkUiDocumentEditor
 		var siblings = parent.Elements().Where(e => e.Name.LocalName == "child" && e.Elements().Any(IsObject)).ToList();
 		// A GtkPaned has a start and an end child and GTK discards a third with a warning.
 		if (cls == "GtkPaned" && siblings.Count >= GtkDropPlanner.PanedCapacity) { Refusal = "A GtkPaned holds only a start and an end child."; return false; }
+		// A GtkColumnView's <child> elements are its columns, not widgets.
+		if (cls == "GtkColumnView" && className != "GtkColumnViewColumn") { Refusal = "A GtkColumnView holds columns; add a GtkColumnViewColumn."; return false; }
 		// GtkFrame, GtkScrolledWindow, a window and AdwClamp take one child; GtkBuilder would keep
 		// only the last one, so refuse instead of writing a document GTK will not load as designed.
 		if (GtkDropPlanner.SingleChildClasses.Contains(cls) && siblings.Count >= 1) { Refusal = $"A {cls} holds a single child."; return false; }

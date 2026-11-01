@@ -160,4 +160,19 @@ public sealed class GtkUiDocumentEditorTests
 		Assert.Equal("Column 1", column.Properties["title"]);
 		Assert.Contains("<object class=\"GtkBuilderListItemFactory\">", editor.Text);
 	}
+
+	[Fact]
+	public void ColumnViews_TakeColumnsAndRefuseWidgets()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkColumnView" id="columns"/></interface>"""), editor.Error);
+		Assert.False(editor.Add("columns", "GtkButton"));
+		Assert.Contains("holds columns", editor.Refusal);
+		Assert.True(editor.Add("columns", "GtkColumnViewColumn"), editor.Error);
+		Assert.Equal("column1", editor.Roots[0].Children[0].Id);
+		Assert.Equal("Column 1", editor.Roots[0].Children[0].Properties["title"]);
+		Assert.Contains("<object class=\"GtkBuilderListItemFactory\">", editor.Text);
+		Assert.True(editor.Add("columns", "GtkColumnViewColumn", index: 0), editor.Error);
+		Assert.Equal(new[] { "column2", "column1" }, editor.Roots[0].Children.Select(child => child.Id));
+	}
 }

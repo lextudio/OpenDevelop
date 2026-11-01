@@ -805,6 +805,12 @@ the Items row has real data. A `GtkColumnView` also gets one `GtkColumnViewColum
 "Column N" with the same factory. The factory template and further columns are edited in the source;
 the toolbox insert only provides the starter shape.
 
+`GtkColumnViewColumn` is itself a toolbox item: with a column view selected it appends a column
+titled "Column N" with the label factory (at the planned index when dropped), and a widget dropped
+on the column view is refused ("A GtkColumnView holds columns; add a GtkColumnViewColumn.").
+Delete and the Order commands work on the column objects, and the column's
+`title`/`resizable`/`expand`/`fixed-width` are GIR-typed Properties-pad values.
+
 ## Migration from Stetic and GTK 3 UI
 
 Migration is an explicit tool, not an implicit designer load path:

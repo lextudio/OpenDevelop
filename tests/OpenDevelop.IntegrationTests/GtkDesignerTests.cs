@@ -808,20 +808,29 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var list = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkListView");
 		Assert.True(list.GetProperty("success").GetBoolean(), list.ToString());
 		Assert.Equal("listView1", list.GetProperty("selectedId").GetString());
-		var columns = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkColumnView");
-		Assert.True(columns.GetProperty("success").GetBoolean(), columns.ToString());
-		Assert.Equal("columnView1", columns.GetProperty("selectedId").GetString());
-
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "listView1")).GetProperty("success").GetBoolean());
 		var edited = await app.InvokeAsync("od.gtk-designer.properties.edit-items", "$items", "add:-1:Extra");
 		Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
 
+		var columns = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkColumnView");
+		Assert.True(columns.GetProperty("success").GetBoolean(), columns.ToString());
+		Assert.Equal("columnView1", columns.GetProperty("selectedId").GetString());
+		// A column view takes columns, not widgets; a further column can be added and deleted.
+		var column = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkColumnViewColumn");
+		Assert.True(column.GetProperty("success").GetBoolean(), column.ToString());
+		Assert.Equal("column2", column.GetProperty("selectedId").GetString());
+		var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkButton"));
+		Assert.Contains("holds columns", refused.Message);
+		Assert.True((await app.InvokeAsync("od.gtk-designer.delete")).GetProperty("success").GetBoolean());
+
 		Assert.True((await app.InvokeAsync("od.file.save", uiPath)).GetProperty("success").GetBoolean());
 		var xml = await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken);
-		Assert.Matches("<object class=\"GtkListView\" id=\"listView1\">\\s*<property name=\"model\">\\s*<object class=\"GtkStringList\" id=\"listModel1\">", xml);
+		Assert.Matches("<object class=\"GtkListView\" id=\"listView1\">\\s*<property name=\"model\">\\s*<object class=\"GtkStringList\" id=\"listModel1\">[\\s\\S]*?<item translatable=\"yes\">Extra</item>", xml);
 		Assert.Contains("<object class=\"GtkBuilderListItemFactory\">", xml);
 		Assert.Contains("<property name=\"bytes\">&lt;interface&gt;", xml);
 		Assert.Matches("<object class=\"GtkColumnView\" id=\"columnView1\">\\s*<property name=\"model\">[\\s\\S]*?<child>\\s*<object class=\"GtkColumnViewColumn\" id=\"column1\">", xml);
 		Assert.Contains("<property name=\"title\" translatable=\"yes\">Column 1</property>", xml);
+		Assert.DoesNotContain("id=\"column2\"", xml);
 		await ValidateGtkBuilderAsync(uiPath);
 		await app.InvokeAsync("od.close-active-view");
 	}
@@ -1162,7 +1171,7 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	/// <summary>The GTK 4 toolbox size (GtkDesignerViewContent.ToolNames).</summary>
-	const int GtkToolCount = 21;
+	const int GtkToolCount = 22;
 
 	[Fact]
 	public async Task GtkDesigner_DragToolboxItemOntoNativeDesignSurface_InsertsAndPersistsControl()
