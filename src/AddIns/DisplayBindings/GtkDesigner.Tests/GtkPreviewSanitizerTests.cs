@@ -19,6 +19,37 @@ public sealed class GtkPreviewSanitizerTests
 	static XElement Object(XDocument doc, string id) => doc.Descendants().Single(e => e.Name.LocalName == "object" && (string?)e.Attribute("id") == id);
 
 	[Fact]
+	public void RuntimeClass_IsBuiltAsItself_AndPropertiesTheHostDoesNotKnowAreDropped()
+	{
+		var diagnostics = new List<string>();
+		var runtime = new GtkRuntimeClasses(name => name == "MyAppStars", (name, property) => property is "stars" or "label");
+		var xml = GtkPreviewSanitizer.Sanitize("""<interface><requires lib="gtk" version="4.0"/><object class="GtkBox" id="box"><child><object class="MyAppStars" id="rating"><property name="stars">3</property><property name="no_such">1</property></object></child><child><object class="MyOtherStars" id="other"/></child></object></interface>""", GirCatalogTests.LoadedCatalog(), diagnostics, runtimeClasses: runtime);
+		var doc = XDocument.Parse(xml);
+		var rating = Object(doc, "rating");
+		Assert.Equal("MyAppStars", (string?)rating.Attribute("class"));
+		Assert.Equal(new[] { "stars" }, rating.Elements("property").Select(p => (string?)p.Attribute("name")).ToArray());
+		Assert.Contains(diagnostics, d => d.Contains("no property 'no_such'"));
+		Assert.Contains(diagnostics, d => d.Contains("'rating' is a MyAppStars custom widget created from the project's assembly"));
+		Assert.Equal("GtkLabel", (string?)Object(doc, "other").Attribute("class"));   // unregistered: still a placeholder
+	}
+
+	[Fact]
+	public void CustomWidgetPreview_ReadsDeclaredAssemblies_RelativeToTheDeclaration()
+	{
+		var directory = Path.Combine(Path.GetTempPath(), "GtkDesignerAssemblies-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		try {
+			File.WriteAllText(Path.Combine(directory, "Widgets.dll"), "");
+			File.WriteAllText(Path.Combine(directory, ".gtkdesigner.json"), """{"assemblies":["Widgets.dll","Missing.dll","notes.txt",7]}""");
+			var diagnostics = new List<string>();
+			var preview = GtkCustomWidgetPreview.Load(Path.Combine(directory, "MainWindow.ui"), diagnostics);
+			Assert.Equal(new[] { Path.Combine(directory, "Widgets.dll") }, preview.Assemblies);
+			Assert.Contains(diagnostics, d => d.Contains("Missing.dll") && d.Contains("does not exist"));
+			Assert.Equal(2, diagnostics.Count(d => d.Contains("is not a .dll path")));
+		} finally { Directory.Delete(directory, true); }
+	}
+
+	[Fact]
 	public void CustomWidgetPreview_MapsToADeclaredGtkClass_AndAliasesProperties()
 	{
 		var directory = Path.Combine(Path.GetTempPath(), "GtkDesignerPreview-" + Guid.NewGuid().ToString("N"));

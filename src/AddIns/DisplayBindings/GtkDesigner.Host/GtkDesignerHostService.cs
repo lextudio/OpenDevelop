@@ -484,9 +484,11 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		var xml = document.ToString(SaveOptions.DisableFormatting);
 		var diagnostics = new List<string>();
 		var customWidgets = GtkCustomWidgetPreview.Load(session.FileName, diagnostics);
+		GtkCustomWidgetLoader.Ensure(customWidgets.Assemblies, diagnostics);
+		var runtimeClasses = new GtkRuntimeClasses(GtkCustomWidgetLoader.IsRegistered, GtkParamRanges.HasProperty);
 		if (GtkPropertyMetadata.Catalog is { } catalog)
 			xml = GtkPreviewSanitizer.Sanitize(xml, catalog, diagnostics, GtkPropertyMetadata.LayoutChildClass, UnavailableReason(session),
-				string.IsNullOrEmpty(session.FileName) ? null : Path.GetDirectoryName(session.FileName), PreviewDirectory, customWidgets);
+				string.IsNullOrEmpty(session.FileName) ? null : Path.GetDirectoryName(session.FileName), PreviewDirectory, customWidgets, runtimeClasses);
 		session.PreviewDiagnostics = diagnostics;
 		return xml;
 	}

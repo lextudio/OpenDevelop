@@ -1112,6 +1112,55 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_DeclaredProjectAssembly_BuildsTheCustomWidgetAsItself()
+	{
+		// A .gtkdesigner.json "assemblies" entry lets the disposable design host - not the IDE - load the
+		// project's output and register its GObject subclasses, so the widget previews as itself. The
+		// same document without the declaration falls back to the labelled placeholder.
+		await ValidateFixtureBuildAsync(projectPath);
+		var assembly = Directory.EnumerateFiles(Path.Combine(workDir, "bin"), "GtkDesignerFixture.dll", SearchOption.AllDirectories).First();
+		var starsPath = Path.Combine(workDir, "Windows", "StarsWindow.ui");
+		var declarationPath = Path.Combine(workDir, "Windows", ".gtkdesigner.json");
+		await File.WriteAllTextAsync(starsPath, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <object class="GtkWindow" id="starsWindow">
+			    <child>
+			      <object class="GtkBox" id="box">
+			        <child>
+			          <object class="FixtureStars" id="stars">
+			            <property name="no-such-property">1</property>
+			          </object>
+			        </child>
+			      </object>
+			    </child>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", starsPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		JsonElement status = default;
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			status = await app.InvokeAsync("od.gtk-designer.status");
+			return status.TryGetProperty("active", out var a) && a.GetBoolean() && status.GetProperty("elementIds").EnumerateArray().Any(e => e.GetString() == "stars");
+		}, TimeSpan.FromSeconds(30)), "the design with an undeclared custom widget did not open: " + status);
+		Assert.Contains("not a GTK type the designer can instantiate", status.GetProperty("diagnostics").ToString());
+		var placeholderFrame = status.GetProperty("nativeFrameFingerprint").GetString();
+
+		await File.WriteAllTextAsync(declarationPath, "{\"assemblies\":[\"" + Path.GetRelativePath(Path.GetDirectoryName(declarationPath)!, assembly).Replace("\\", "/") + "\"]}", TestContext.Current.CancellationToken);
+		status = await WaitForFrameChangeAsync(placeholderFrame);
+		Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+		var diagnostics = status.GetProperty("diagnostics").ToString();
+		// ToString() escapes apostrophes (\u0027), so the assertions avoid them.
+		Assert.Contains("FixtureStars custom widget created from the project", diagnostics);
+		Assert.Contains("no-such-property", diagnostics);
+		Assert.Contains("has no property", diagnostics);
+		Assert.DoesNotContain("not a GTK type the designer can instantiate", diagnostics);
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
 	public async Task GtkDesigner_CompositeTemplate_OpensRendersAndEdits()
 	{
 		// Gir.Core [Template] classes define their UI as <template class="X" parent="GtkWindow">.

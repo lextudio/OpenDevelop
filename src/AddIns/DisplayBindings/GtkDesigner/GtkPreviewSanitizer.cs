@@ -17,7 +17,7 @@ namespace ICSharpCode.GtkDesigner;
 public static class GtkPreviewSanitizer
 {
 	/// <summary>Returns the instantiable copy; each change it made is added to <paramref name="diagnostics"/>.</summary>
-	public static string Sanitize(string uiText, GirCatalog catalog, IList<string> diagnostics, Func<string?, string?>? layoutChildClass = null, Func<GirClass, string?>? unavailableReason = null, string? baseDirectory = null, string? previewDirectory = null, GtkCustomWidgetPreview? customWidgets = null)
+	public static string Sanitize(string uiText, GirCatalog catalog, IList<string> diagnostics, Func<string?, string?>? layoutChildClass = null, Func<GirClass, string?>? unavailableReason = null, string? baseDirectory = null, string? previewDirectory = null, GtkCustomWidgetPreview? customWidgets = null, GtkRuntimeClasses? runtimeClasses = null)
 	{
 		var document = XDocument.Parse(uiText);
 		// A composite template's class is the application's own GType, which the preview never
@@ -35,6 +35,18 @@ public static class GtkPreviewSanitizer
 			var sourceClass = builderClass;
 			var id = (string?)obj.Attribute("id") ?? "(anonymous)";
 			var girClass = catalog.FindByTypeName(builderClass);
+			// A GObject subclass the design host registered from the project's own assembly: it is built as
+			// itself. GIR knows nothing of its properties, so the host is asked instead.
+			if (girClass == null && runtimeClasses?.IsRegistered(builderClass) == true) {
+				foreach (var property in obj.Elements().Where(e => e.Name.LocalName == "property").ToList()) {
+					var name = (string?)property.Attribute("name") ?? "";
+					if (runtimeClasses.HasProperty(builderClass, name.Replace('_', '-'))) continue;
+					property.Remove();
+					diagnostics.Add($"'{id}' ({builderClass}) has no property '{name}'; it is not previewed.");
+				}
+				diagnostics.Add($"'{id}' is a {builderClass} custom widget created from the project's assembly in the design host.");
+				continue;
+			}
 			if (girClass is not { Abstract: false } && customWidgets?.TryGet(builderClass, out var substitution) == true) {
 				var previewClass = catalog.FindByTypeName(substitution.PreviewClass);
 				if (previewClass is { Abstract: false }) {
@@ -152,4 +164,16 @@ public static class GtkPreviewSanitizer
 		if (hasChildren) obj.AddFirst(new XElement("property", new XAttribute("name", "orientation"), "vertical"));
 		else obj.AddFirst(new XElement("property", new XAttribute("name", "label"), "‹" + builderClass + "›"));
 	}
+}
+
+/// <summary>The GObject classes a design host registered from project assemblies, as the sanitizer sees
+/// them: whether a class name is one of them and whether it has a property. The host owns the answers
+/// (it asks GObject); this type only carries them so the sanitizer stays pure.</summary>
+public sealed class GtkRuntimeClasses
+{
+	readonly Func<string, bool> isRegistered;
+	readonly Func<string, string, bool> hasProperty;
+	public GtkRuntimeClasses(Func<string, bool> isRegistered, Func<string, string, bool> hasProperty) { this.isRegistered = isRegistered; this.hasProperty = hasProperty; }
+	public bool IsRegistered(string className) => isRegistered(className);
+	public bool HasProperty(string className, string property) => hasProperty(className, property);
 }

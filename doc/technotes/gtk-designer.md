@@ -223,7 +223,8 @@ separate capabilities; Libadwaita is not silently assumed for a GTK-only project
 
 Never load a user's output assembly, native library or custom widget into OpenDevelop. Custom
 widgets are resolved and instantiated only by the disposable preview host, with timeouts and a
-safe placeholder fallback.
+safe placeholder fallback; the host loads a project assembly only when the project's
+`.gtkdesigner.json` declares it (see "Custom widget execution").
 
 ## File convention
 
@@ -528,6 +529,33 @@ with an optional `propertyMap` for explicit property-name aliases. For example,
 never loads the project's output assembly or native code: an absent, malformed, or non-GTK mapping
 falls back to the labelled placeholder. Changes to this declaration are watched like preview CSS
 and redraw the current document without reopening the source model or clearing undo history.
+
+### Custom widget execution (2026-11-01)
+
+A `.gtkdesigner.json` may also declare `"assemblies": ["../bin/Debug/net10.0/MyApp.dll"]` (paths relative
+to the file; only existing `.dll` files count). That is the user's explicit opt-in to run project code
+in the design host - the disposable child process; the IDE never loads it.
+
+`GtkCustomWidgetLoader` (design host) loads each declared assembly once into its own
+`AssemblyLoadContext`. Dependencies come from the assembly's `deps.json`, except anything the host
+already has (Gir.Core above all), so a widget derives from the very `Gtk.Widget` the host renders
+with. Every non-abstract `Gtk.Widget` subclass with a declared static `GetGType()` is registered by
+calling it - that is how Gir.Core registers a `[GObject.Subclass<T>]` type - and its GType name is
+recorded. Loading runs on a worker with a 15 s limit.
+
+`GtkPreviewSanitizer` then builds a registered class as itself (it takes precedence over a
+`customWidgets` mapping) instead of a placeholder. GIR knows nothing of its properties, so the host
+asks GObject (`g_object_class_find_property`) and drops, with a diagnostic, any property the class does not
+have. Values are not validated: a value GtkBuilder cannot parse fails that render, which the
+designer reports as a render diagnostic, not as a crash of the IDE.
+
+Limits, stated plainly: a GType cannot be unregistered, so a rebuilt assembly is not reloaded -
+the designer reports that the file changed and the preview needs a reopened designer (a new
+host); native libraries a widget needs are not resolved from its `deps.json`; a hung or crashing
+widget affects only the host. `GtkDesigner_DeclaredProjectAssembly_BuildsTheCustomWidgetAsItself`
+builds the fixture (which has a `FixtureStars` subclass), opens a document using it without and
+then with the declaration, and asserts placeholder, then the real widget, then the dropped
+property.
 
 **Composite templates.** `GtkUiDocumentEditor` treats a `<template>` root as its parent type (typed
 properties, children, layout), finds it by its class name, and refuses to rename it (the class is
@@ -1041,9 +1069,9 @@ Status 2026-11-01: implemented except where marked.
 
 Status 2026-11-01: not implemented except where marked.
 
-- custom project widgets in the sandboxed host: not implemented as execution. A data-only
-  `.gtkdesigner.json` mapping can preview a project class as a GTK class (see "Robust preview");
-  the project's assembly and native code are never loaded;
+- custom project widgets in the sandboxed host: implemented for declared assemblies (see "Custom widget
+  execution"); a data-only `.gtkdesigner.json` mapping can still preview a class as a GTK class;
+  the IDE itself never loads project code;
 - Libadwaita catalogue and named-child policies: the catalogue, toolbox category, navigation
   page shapes and AdwToolbarView's top/bottom/content slots are implemented; other named-child
   policies (`GtkHeaderBar` start/end/title and `GtkNotebook` tab labels are implemented;
@@ -1069,8 +1097,8 @@ Product features:
 - creating `GtkNotebook` action widgets from the designer (existing ones are preserved);
 - an explicit GTK 3/Stetic migration assistant (the migration section describes the manual steps;
   no tool exists);
-- custom project widget execution in the sandboxed host (only the data-only
-  `.gtkdesigner.json` preview mapping exists);
+- custom widget execution: a rebuilt assembly needs a reopened designer, and a widget's native
+  libraries are not resolved;
 - `app.` menu actions and action state/parameters (`win.` actions get stubs and registration; see "Menus");
 - list/model depth: selection, sort and filter models, string column sorters, the signal factory and a declared
   `GListStore` (its items are filled by code; a builder cannot add them) are editable; sorters and filters for

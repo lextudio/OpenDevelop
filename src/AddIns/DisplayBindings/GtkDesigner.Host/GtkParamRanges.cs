@@ -23,6 +23,7 @@ static unsafe class GtkParamRanges
 		public delegate* unmanaged<nuint, nint> ClassRef;
 		public delegate* unmanaged<nint, byte*, nint> FindProperty;
 		public delegate* unmanaged<nuint, nint> TypeName;
+		public delegate* unmanaged<byte*, nuint> TypeFromName;
 	}
 
 	static Natives? LoadNatives()
@@ -34,6 +35,7 @@ static unsafe class GtkParamRanges
 			ClassRef = (delegate* unmanaged<nuint, nint>)NativeLibrary.GetExport(library, "g_type_class_ref"),
 			FindProperty = (delegate* unmanaged<nint, byte*, nint>)NativeLibrary.GetExport(library, "g_object_class_find_property"),
 			TypeName = (delegate* unmanaged<nuint, nint>)NativeLibrary.GetExport(library, "g_type_name"),
+			TypeFromName = (delegate* unmanaged<byte*, nuint>)NativeLibrary.GetExport(library, "g_type_from_name"),
 		};
 	}
 
@@ -64,6 +66,24 @@ static unsafe class GtkParamRanges
 			};
 		} catch (Exception) {
 			return null;   // a range is a refinement; never let it break the property list
+		}
+	}
+
+	/// <summary>Whether the registered GType named <paramref name="gtypeName"/> (as GtkBuilder spells a class) has
+	/// <paramref name="property"/>. False when the type or the native library is unavailable.</summary>
+	public static bool HasProperty(string gtypeName, string property)
+	{
+		try {
+			if (natives.Value is not { } n) return false;
+			nuint gtype; var typeBytes = System.Text.Encoding.UTF8.GetBytes(gtypeName + "\0");
+			fixed (byte* p = typeBytes) gtype = n.TypeFromName(p);
+			if (gtype == 0) return false;
+			var klass = n.ClassRef(gtype);
+			if (klass == 0) return false;
+			var bytes = System.Text.Encoding.UTF8.GetBytes(property + "\0");
+			fixed (byte* p = bytes) return n.FindProperty(klass, p) != 0;
+		} catch (Exception) {
+			return false;
 		}
 	}
 
