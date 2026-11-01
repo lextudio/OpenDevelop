@@ -22,7 +22,12 @@ application.OnActivate += (sender, _) =>
     runButton.OnClicked += (_, _) => runButton.Label = "Running";
     if (smokeTest)
     {
-        Console.WriteLine("GTK fixture smoke test passed: MainWindow.ui loaded and signals wired.");
+        // A composite template builds its own UI from the embedded resource and wires children
+        // through [Gtk.Connect]; Initialize() must have run for the label to say "Wired".
+        var template = GtkDesignerFixture.TemplatePanel.NewWithProperties([]);
+        if (template.RunButton.Label != "Wired")
+            throw new InvalidOperationException("TemplatePanel did not build its embedded template.");
+        Console.WriteLine("GTK fixture smoke test passed: MainWindow.ui loaded and signals wired; TemplatePanel built.");
         application.Quit();
         return;
     }

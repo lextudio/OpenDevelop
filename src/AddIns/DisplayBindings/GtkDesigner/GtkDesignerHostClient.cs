@@ -90,6 +90,9 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 	/// <summary>The companion wiring source and handler signatures for this document's signals.</summary>
 	public Task<GtkSignalWiringResult> SignalWiringAsync(string uiFileName, string? namespaceName, string className, CancellationToken token = default)
 		=> connection.InvokeAsync<GtkSignalWiringResult>("gtk/signal-wiring", new { sessionId = SessionId, documentId = DocumentId, uiFileName, namespaceName, className }, token);
+	/// <summary>Resolves one signal without writing a &lt;signal&gt; entry (a composite template).</summary>
+	public Task<GtkSignalHandlerInfo> SignalInfoAsync(string objectId, string objectClass, string signal, string handler, CancellationToken token = default)
+		=> connection.InvokeAsync<GtkSignalHandlerInfo>("gtk/signal-info", new { sessionId = SessionId, documentId = DocumentId, objectId, objectClass, signal, handler }, token);
 	public Task<DesignerSessionState> ResetPropertyAsync(long v, string id, string name, CancellationToken token = default) => TrackMutationAsync(connection.ResetPropertyAsync(DocumentId, v, id, name, token), token);
 	public async Task<DesignerSessionState> SetThemeAsync(long v, string theme, CancellationToken token = default)
 	{

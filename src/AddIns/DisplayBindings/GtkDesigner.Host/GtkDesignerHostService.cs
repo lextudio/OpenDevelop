@@ -113,6 +113,17 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		};
 	}
 
+	/// <summary>Resolves one signal for a document that must not carry a &lt;signal&gt; entry (a
+	/// composite template), with the same GIR rules as <see cref="SignalWiring"/>.</summary>
+	[JsonRpcMethod("gtk/signal-info")]
+	public GtkSignalHandlerInfo SignalInfo(string sessionId, string documentId, string objectId, string objectClass, string signal, string handler)
+	{
+		EnsureSession(sessionId);
+		Get(documentId);
+		var catalog = GtkPropertyMetadata.Catalog ?? throw new InvalidOperationException(GtkPropertyMetadata.Diagnostic);
+		return GtkSignalHandlerInfo.From(GtkSignalWiring.Describe(objectId, objectClass, signal, handler, catalog));
+	}
+
 	/// <summary>Removes the property so GTK's own default applies - the GIR catalogue is the
 	/// defaults model IDesignHostPropertyReset asks for; no default value is ever written.</summary>
 	[JsonRpcMethod("design/reset-property")]

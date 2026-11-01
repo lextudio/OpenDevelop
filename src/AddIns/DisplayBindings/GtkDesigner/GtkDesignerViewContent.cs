@@ -403,19 +403,67 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		if (host == null) return false;
 		// A composite template must not carry <signal>: GTK's template builder resolves the
 		// handler as a native symbol and aborts the app, because Gir.Core sets no managed
-		// BuilderScope (see doc/technotes/gtk-designer.md, "Composite templates"). Refuse before
-		// the host writes the entry, and name the pattern that does work.
-		if (IsCompositeTemplate) {
-			diagnostic.Text = $"Composite template: GTK cannot resolve a <signal> handler here. Add a [Gtk.Connect(\"{id}\")] field for '{id}' and subscribe its event in the template class's Initialize() partial method.";
-			return false;
-		}
+		// BuilderScope. Wire the template class instead ([Gtk.Connect] + an event subscription).
+		if (IsCompositeTemplate) return SetTemplateEvent(id, signal, handler);
 		var accepted = Mutate(() => host.SetEventAsync(state.Version, id, signal, handler).GetAwaiter().GetResult());
 		if (accepted && !string.IsNullOrEmpty(handler)) UpdateCodeBehind(handler);
 		return accepted;
 	}
 
+	/// <summary>Wires one signal of a composite template in its C# class (see
+	/// <see cref="GtkCodeBehind.WireTemplateSignal"/>) and opens the generated handler.</summary>
+	bool SetTemplateEvent(string id, string signal, string handler)
+	{
+		// Clearing is a C# edit the designer does not make: the subscription is user-owned code.
+		if (string.IsNullOrEmpty(handler)) return true;
+		var uiPath = PrimaryFileName?.ToString();
+		var className = TemplateClassName();
+		var node = FindById(id);
+		if (string.IsNullOrEmpty(uiPath) || className == null || node == null) {
+			diagnostic.Text = "Composite template: select an object in a document with a <template class=\"...\"> root.";
+			return false;
+		}
+		var info = host!.SignalInfoAsync(id, node.Type, signal, handler).GetAwaiter().GetResult();
+		if (!info.Supported) {
+			diagnostic.Text = $"Signal '{signal}' is not connected by the designer: {info.Reason}.";
+			return false;
+		}
+		if (GtkCodeBehind.WireTemplateSignal(uiPath, className, id, node.Type, info.EventName, handler, info.Signature, info.DefaultBody) is not { } written) {
+			diagnostic.Text = $"Composite template: no C# class named {className} was found to wire '{signal}'. Add a [Gtk.Connect(\"{id}\")] field and subscribe its event in Initialize().";
+			return false;
+		}
+		MergeTemplateSignals();
+		Rebuild();
+		var view = SD.FileService.OpenFile(ICSharpCode.Core.FileName.Create(written.Path));
+		(view?.GetService(typeof(ICSharpCode.SharpDevelop.Editor.ITextEditor)) as ICSharpCode.SharpDevelop.Editor.ITextEditor)?.JumpTo(written.Line, 1);
+		return true;
+	}
+
 	/// <summary>Whether the open document is a Gir.Core composite template (a &lt;template&gt; root).</summary>
 	bool IsCompositeTemplate => System.Text.RegularExpressions.Regex.IsMatch(loadedText, @"<template\b");
+
+	/// <summary>The class name a composite template declares, or null.</summary>
+	string? TemplateClassName()
+	{
+		var match = System.Text.RegularExpressions.Regex.Match(loadedText, @"<template\b[^>]*\bclass=""(?<name>[^""]+)""");
+		return match.Success ? match.Groups["name"].Value : null;
+	}
+
+	/// <summary>A template document has no &lt;signal&gt; entries, so the Events pad reads the wired
+	/// handlers back from the template class and merges them into the snapshot it shows.</summary>
+	void MergeTemplateSignals()
+	{
+		if (!IsCompositeTemplate || state.Tree == null) return;
+		var uiPath = PrimaryFileName?.ToString();
+		var className = TemplateClassName();
+		if (string.IsNullOrEmpty(uiPath) || className == null) return;
+		var signals = GtkCodeBehind.TemplateSignals(uiPath, className);
+		if (signals.Count == 0) return;
+		foreach (var node in Flatten(state.Tree))
+			foreach (var e in node.Events)
+				if (signals.TryGetValue((node.Id, "On" + GtkSignalWiring.Pascal(e.Name)), out var wired))
+					e.Handler = wired;
+	}
 
 	/// <summary>Keeps X.cs and X.ui.cs in step with the .ui's signals (see GtkCodeBehind): with
 	/// <paramref name="newHandler"/>, ensures the behavior class has that method and opens it there.</summary>
@@ -543,6 +591,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	void Rebuild()
 	{
 		diagnostic.Text = HasNativeFrame ? Status : Status + " - no native frame: the GTK 4 runtime could not render this interface.";
+		MergeTemplateSignals();
 		pads.UpdateRoots(state.Tree == null ? null : state.Tree.Id == "$interface" ? state.Tree.Children : new[] { state.Tree });
 		canvasController.ApplySnapshot(CanvasSnapshot());
 		canvasController.RestoreSelection(selection.SelectedIds);

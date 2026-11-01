@@ -4,11 +4,14 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <None Update="Windows/MainWindow.ui" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Windows/SettingsWindow.ui" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Windows/ResourceWindow.ui" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Windows/TemplatePanel.ui" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Windows/TemplatePanel.ui" />
     <None Update="Windows/Resources.gresource.xml" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Windows/fixture-mark.svg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

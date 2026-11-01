@@ -942,6 +942,36 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_CompositeTemplate_WiresSignalsInTheTemplateClass()
+	{
+		// A Gir.Core template must not carry <signal>: GTK resolves the handler as a native symbol
+		// and aborts the app (Gir.Core sets no managed BuilderScope). The designer wires the
+		// template's own class instead - [Gtk.Connect] field + handler method + event subscription
+		// in Initialize() - and the generated code has to compile with the fixture.
+		var templatePath = Path.Combine(workDir, "Windows", "TemplatePanel.ui");
+		var classPath = Path.Combine(workDir, "TemplatePanel.cs");
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", templatePath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("TemplatePanel"); Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+		Assert.Contains("runButton", status.GetProperty("elementIds").EnumerateArray().Select(id => id.GetString()));
+
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "runButton")).GetProperty("success").GetBoolean());
+		var wired = await app.InvokeAsync("od.gtk-designer.signal.set", "clicked", "runButton_clicked");
+		Assert.True(wired.GetProperty("success").GetBoolean(), wired.ToString());
+
+		var source = await File.ReadAllTextAsync(classPath, TestContext.Current.CancellationToken);
+		Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(source, "Gtk\\.Connect\\(\"runButton\"\\)").Count);
+		Assert.Contains("void runButton_clicked(Gtk.Button sender, System.EventArgs args)", source);
+		Assert.Contains("_runButton.OnClicked += (_, args) => runButton_clicked(_runButton, args);", source);
+
+		Assert.True((await app.InvokeAsync("od.file.save", templatePath)).GetProperty("success").GetBoolean());
+		Assert.DoesNotContain("<signal", await File.ReadAllTextAsync(templatePath, TestContext.Current.CancellationToken));
+		// The generated method and subscription must compile; the fixture also runs the template.
+		await ValidateFixtureBuildAsync(projectPath);
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
 	public async Task GtkDesigner_LibadwaitaNavigation_UsesTypedPagesAndRenders()
 	{
 		var path = Path.Combine(workDir, "Windows", "NavigationWindow.ui");

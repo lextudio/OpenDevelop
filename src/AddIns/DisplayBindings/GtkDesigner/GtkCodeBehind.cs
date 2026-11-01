@@ -106,6 +106,162 @@ static class GtkCodeBehind
 		ApplyText(path, source);
 	}
 
+	/// <summary>
+	/// Wires one signal of a composite template in the template's own class, because a template
+	/// must not carry a &lt;signal&gt; entry: GTK's template builder resolves the handler as a native
+	/// symbol and aborts (Gir.Core sets no managed BuilderScope). Adds, when missing:
+	/// <c>[Gtk.Connect("id")] private Gtk.X _id;</c>, the handler method, and
+	/// <c>_id.OnEvent += (_, args) =&gt; handler(_id, args);</c> in the class's <c>Initialize()</c>.
+	/// Returns the 1-based line of the handler method, or null when the class file is not found.
+	/// </summary>
+	public static (string Path, int Line)? WireTemplateSignal(string uiPath, string className, string objectId, string objectType,
+		string eventName, string handler, string signature, string defaultBody)
+	{
+		var codePath = TemplateClassFile(uiPath, className);
+		if (codePath == null) return null;
+		var source = ReadText(codePath);
+		if (source == null) return null;
+		var root = CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot();
+		var classDecl = FindClass(root, className);
+		if (classDecl == null) return null;
+		if (!classDecl.Modifiers.Any(SyntaxKind.PartialKeyword)) {
+			source = source.Insert(classDecl.Keyword.SpanStart, "partial ");
+			root = CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot();
+			classDecl = FindClass(root, className);
+			if (classDecl == null) return null;
+		}
+
+		var newline = source.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+		var classIndent = IndentOf(source, classDecl.SpanStart);
+		var unit = source.Contains("\n\t", StringComparison.Ordinal) || classIndent.Contains('\t') ? "\t" : "    ";
+		var memberIndent = classIndent + unit;
+		var type = "global::" + objectType;
+		var edits = new List<(int Position, string Text)>();
+
+		var connectField = classDecl.Members.OfType<FieldDeclarationSyntax>().FirstOrDefault(field =>
+			field.AttributeLists.SelectMany(list => list.Attributes).Any(attribute =>
+				attribute.Name.ToString().EndsWith("Connect", StringComparison.Ordinal)
+				&& attribute.ArgumentList?.Arguments.FirstOrDefault()?.Expression is LiteralExpressionSyntax literal
+				&& literal.Token.ValueText == objectId));
+		// Reuse the field the class already declares for this object, whatever it is called.
+		var local = connectField?.Declaration.Variables.FirstOrDefault()?.Identifier.Text ?? TemplateLocal(objectId);
+		if (connectField == null) {
+			var field = $"{newline}{memberIndent}[global::Gtk.Connect(\"{objectId}\")]{newline}{memberIndent}private {type} {local};{newline}";
+			edits.Add((classDecl.OpenBraceToken.Span.End, field));
+		}
+
+		var hasHandler = classDecl.Members.OfType<MethodDeclarationSyntax>().Any(method => method.Identifier.Text == handler);
+		if (!hasHandler) {
+			var text = new StringBuilder();
+			if (classDecl.Members.Count > 0) text.Append(newline);
+			text.Append(memberIndent).Append(signature).Append(newline)
+				.Append(memberIndent).Append('{').Append(newline);
+			if (defaultBody.Length > 0) text.Append(memberIndent).Append(unit).Append(defaultBody).Append(newline);
+			text.Append(memberIndent).Append('}').Append(newline);
+			edits.Add((ClassCloseInsertPosition(source, classDecl), text.ToString()));
+		}
+
+		var subscription = $"{memberIndent}{unit}{local}.{eventName} += (_, args) => {handler}({local}, args);{newline}";
+		var initialize = classDecl.Members.OfType<MethodDeclarationSyntax>().FirstOrDefault(method => method.Identifier.Text == "Initialize");
+		if (initialize?.Body != null) {
+			// The event may already have another subscriber (the user's own); only skip when this
+			// handler is the one already wired.
+			if (!initialize.Body.ToString().Contains($"=> {handler}({local}", StringComparison.Ordinal))
+				edits.Add((LineStartOf(source, initialize.Body.CloseBraceToken.SpanStart), subscription));
+		} else {
+			var text = new StringBuilder();
+			if (classDecl.Members.Count > 0) text.Append(newline);
+			text.Append(memberIndent).Append("partial void Initialize()").Append(newline)
+				.Append(memberIndent).Append('{').Append(newline)
+				.Append(subscription)
+				.Append(memberIndent).Append('}').Append(newline);
+			edits.Add((ClassCloseInsertPosition(source, classDecl), text.ToString()));
+		}
+
+		foreach (var edit in edits.OrderByDescending(e => e.Position))
+			source = source.Insert(edit.Position, edit.Text);
+		ApplyText(codePath, source);
+		var signatureAt = source.IndexOf(signature, StringComparison.Ordinal);
+		return signatureAt < 0 ? null : (codePath, source.Substring(0, signatureAt).Count(c => c == '\n') + 1);
+	}
+
+	/// <summary>The template class's wired signals: (object id, Gir.Core event name) -&gt; handler.
+	/// Read back from the class because a template document has no &lt;signal&gt; entries to read.</summary>
+	public static IReadOnlyDictionary<(string ObjectId, string EventName), string> TemplateSignals(string uiPath, string className)
+	{
+		var result = new Dictionary<(string, string), string>();
+		var codePath = TemplateClassFile(uiPath, className);
+		if (codePath == null) return result;
+		var source = ReadText(codePath);
+		if (source == null) return result;
+
+		var locals = new Dictionary<string, string>(StringComparer.Ordinal);
+		var connect = new System.Text.RegularExpressions.Regex(
+			@"\[(?:global::)?Gtk\.Connect\(\s*""(?<id>[^""]+)""\s*\)\]\s*(?:\r?\n\s*)*[^;\r\n]*?\b(?<local>[A-Za-z_@][A-Za-z0-9_]*)\s*;");
+		foreach (System.Text.RegularExpressions.Match match in connect.Matches(source)) {
+			var local = match.Groups["local"].Value;
+			if (local.StartsWith("@", StringComparison.Ordinal)) local = local.Substring(1);
+			locals[local] = match.Groups["id"].Value;
+		}
+
+		var subscribe = new System.Text.RegularExpressions.Regex(
+			@"(?<local>[A-Za-z_@][A-Za-z0-9_]*)\.(?<event>On[A-Za-z0-9_]+)\s*\+=\s*\([^)]*\)\s*=>\s*(?<handler>[A-Za-z_@][A-Za-z0-9_]*)\s*\(");
+		foreach (System.Text.RegularExpressions.Match match in subscribe.Matches(source)) {
+			var local = match.Groups["local"].Value;
+			if (local.StartsWith("@", StringComparison.Ordinal)) local = local.Substring(1);
+			if (locals.TryGetValue(local, out var id))
+				result[(id, match.Groups["event"].Value)] = match.Groups["handler"].Value;
+		}
+		return result;
+	}
+
+	/// <summary>The class file for a template: a sibling X.cs first, then any project file declaring
+	/// <c>class X</c> (the template's C# class is often beside the project, not the .ui).</summary>
+	static string? TemplateClassFile(string uiPath, string className)
+	{
+		var sibling = BehaviorPath(uiPath);
+		if (File.Exists(sibling) || IsOpen(sibling)) {
+			var text = ReadText(sibling);
+			if (text != null && text.Contains("class " + className, StringComparison.Ordinal)) return sibling;
+		}
+		try {
+			var project = SD.ProjectService.FindProjectContainingFile(FileName.Create(uiPath));
+			var directory = project?.Directory?.ToString();
+			if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory)) return null;
+			foreach (var file in Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories)) {
+				var relative = file.Substring(directory.Length).TrimStart(Path.DirectorySeparatorChar, '/');
+				if (relative.StartsWith("bin" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+					|| relative.StartsWith("obj" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;
+				var text = ReadText(file);
+				if (text != null && text.Contains("class " + className, StringComparison.Ordinal)) return file;
+			}
+		} catch (Exception ex) {
+			LoggingService.Warn("GTK designer: could not locate the template class " + className + ": " + ex.Message);
+		}
+		return null;
+	}
+
+	/// <summary>"runButton" -&gt; "_runButton"; never starts with a digit.</summary>
+	static string TemplateLocal(string objectId)
+	{
+		var name = new string(objectId.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
+		if (name.Length == 0 || char.IsDigit(name[0])) name = "_" + name;
+		return "_" + name;
+	}
+
+	static int ClassCloseInsertPosition(string source, ClassDeclarationSyntax classDecl)
+	{
+		var close = classDecl.CloseBraceToken.SpanStart;
+		var lineStart = source.LastIndexOf('\n', Math.Max(0, close - 1)) + 1;
+		return source.Substring(lineStart, close - lineStart).Trim().Length == 0 ? lineStart : close;
+	}
+
+	static int LineStartOf(string source, int position)
+	{
+		var lineStart = source.LastIndexOf('\n', Math.Max(0, position - 1)) + 1;
+		return source.Substring(lineStart, position - lineStart).Trim().Length == 0 ? lineStart : position;
+	}
+
 	static ClassDeclarationSyntax? FindClass(CompilationUnitSyntax root, string className)
 		=> root.DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault(c => c.Identifier.Text == className)
 			?? root.DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault();

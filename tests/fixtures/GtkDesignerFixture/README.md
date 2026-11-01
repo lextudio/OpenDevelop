@@ -20,3 +20,10 @@ The launch profile includes the standard Apple Silicon and Intel Homebrew librar
 plain `dotnet run` can resolve GirCore's native GTK dependency on macOS.
 Clicking **Run** changes its label to **Running**, which provides a minimal runtime smoke test that
 the GtkBuilder object lookup and signal wiring both work.
+
+`Windows/TemplatePanel.ui` is a Gir.Core composite template (an embedded resource) and
+`TemplatePanel.cs` is its `[Template]` class. It uses `[Gtk.Connect]` plus an event subscription in
+`Initialize()` rather than a `<signal>` entry, because GTK's template builder resolves handler names
+as native symbols and aborts the process. The smoke test instantiates it and requires the connected
+button to have been initialized; the designer's template-signal journey wires that button and then
+builds this fixture to prove the generated code compiles.

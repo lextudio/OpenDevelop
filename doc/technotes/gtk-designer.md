@@ -539,13 +539,27 @@ GTK's `gtk_widget_init_template`, which connects each signal through
 connect function, so the handler is looked up as a native symbol and GTK aborts the process
 ("No function named ..."). The supported pattern is a `[Gtk.Connect("runButton")]` field plus an
 event subscription in the class's `Initialize()` partial method
-(`_runButton.OnClicked += OnRun;`), with the handler method beside it. The designer therefore shows
-that instruction instead of writing a signal (see `UpdateCodeBehind`), and
+(`_runButton.OnClicked += OnRun;`), with the handler method beside it.
+
+Setting an event on a template node therefore never writes `<signal>`; it edits the template class
+through `GtkCodeBehind.WireTemplateSignal`: the `[Gtk.Connect("id")]` field is added when missing,
+the handler method is added with the GIR-typed signature, and the subscription is inserted into
+`Initialize()` (created when absent), then the handler is opened. The class is located by the
+template's `class` attribute - a sibling `X.cs` first, then a project file declaring `class X` -
+and is made partial when it is not. The signal itself is resolved by the host (`gtk/signal-info`,
+the same GIR rules as `gtk/signal-wiring`), so an unsupported signal is refused with its reason.
+Because the document has no `<signal>`, the Events pad reads the wired handlers back from the
+class (`GtkCodeBehind.TemplateSignals`) and merges them into the snapshot it shows.
+
 `GtkDesigner_CompositeTemplate_OpensRendersAndEdits` covers opening, editing and previewing a
-template without signals. Automatically generating the `[Gtk.Connect]` field and event
-subscription is the remaining work; it needs a real `[Template]` fixture (resource + class) to
-qualify, and would also have to teach the Events pad to read the subscription from C# instead of
-the `.ui`.
+template without signals; `GtkDesigner_CompositeTemplate_WiresSignalsInTheTemplateClass` wires the
+fixture's `TemplatePanel` button, checks the generated field/method/subscription, saves without a
+`<signal>`, and builds the fixture to prove the generated code compiles. The fixture's
+`TemplatePanel` is a real Gir.Core `[Template]` class with an embedded resource, exercised by the
+fixture smoke test.
+
+Remaining limitations: clearing an event from the pad does not remove the C# subscription (it is
+user-owned code), and a template whose class is outside the project cannot be wired.
 
 **Objects held by properties** (`<property name="content"><object .../>`, common in GTK 4 and
 libadwaita) are tree children - in the outline, selectable, measured - not text values.
@@ -620,9 +634,9 @@ manifest redraws and rebuilds the resource registry without touching the `.ui`. 
 integration test opens a real `GtkImage` document using a sibling manifest and requires a native
 frame on the canvas.
 
-Still open: automatic handler wiring for composite templates. Gir.Core 0.8.1 cannot connect a
-template's `<signal>` (see "Composite templates"), so the designer currently points the user at the
-`[Gtk.Connect]` + event-subscription pattern instead of generating it.
+Still open: clearing an event from a template's Events pad does not remove the C# subscription (the
+subscription is user-owned code), and a template class outside the project cannot be wired. See
+"Composite templates" for the implemented pattern.
 
 ### Dropping onto the Source half (2026-10-02)
 

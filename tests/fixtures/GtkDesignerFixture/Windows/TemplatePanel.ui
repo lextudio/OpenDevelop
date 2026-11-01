@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0" />
+  <template class="TemplatePanel" parent="GtkWindow">
+    <property name="title">Template panel</property>
+    <property name="default-width">320</property>
+    <property name="default-height">120</property>
+    <child>
+      <object class="GtkButton" id="runButton">
+        <property name="label">Run</property>
+      </object>
+    </child>
+  </template>
+</interface>

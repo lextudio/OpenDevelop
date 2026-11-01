@@ -30,13 +30,14 @@ public sealed class GtkSignalHandlerInfo
 	public string ObjectId { get; set; } = "";
 	public string Signal { get; set; } = "";
 	public string Handler { get; set; } = "";
+	public string EventName { get; set; } = "";
 	public string Signature { get; set; } = "";
 	public string DefaultBody { get; set; } = "";
 	public bool Supported { get; set; }
 	public string Reason { get; set; } = "";
 
 	public static GtkSignalHandlerInfo From(GtkSignalHandler h) => new() {
-		ObjectId = h.ObjectId, Signal = h.Signal, Handler = h.Handler, Signature = h.Signature,
+		ObjectId = h.ObjectId, Signal = h.Signal, Handler = h.Handler, EventName = h.EventName, Signature = h.Signature,
 		DefaultBody = h.DefaultBody, Supported = h.Supported, Reason = h.Reason
 	};
 }
@@ -69,6 +70,11 @@ public static class GtkSignalWiring
 		}
 		return result;
 	}
+
+	/// <summary>Resolves one signal for a document that cannot carry a &lt;signal&gt; entry (a
+	/// composite template): same rules as <see cref="Handlers"/>, without the XML attributes.</summary>
+	public static GtkSignalHandler Describe(string objectId, string builderClass, string signalName, string handler, GirCatalog catalog)
+		=> Resolve(objectId, builderClass, signalName, handler, new XElement("signal"), catalog);
 
 	static GtkSignalHandler Resolve(string? id, string builderClass, string signalName, string handler, XElement signal, GirCatalog catalog)
 	{
