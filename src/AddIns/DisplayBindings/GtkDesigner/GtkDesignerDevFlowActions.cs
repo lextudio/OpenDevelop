@@ -214,6 +214,10 @@ public static class GtkDesignerDevFlowActions
 	public static string GetFactoryTemplate() { var view = Activate(); var template = view?.FactoryTemplate(); return JsonSerializer.Serialize(new { success = template != null, template }); }
 	[DevFlowAction("od.gtk-designer.factory-template.set", Description = "Replace the selected list/grid/column view's factory template as one undo step; invalid XML is refused")]
 	public static string SetFactoryTemplate(string template) { var view = Activate(); var ok = view?.SetFactoryTemplate(template) == true; return JsonSerializer.Serialize(new { success = ok, template = view?.FactoryTemplate() }); }
+	[DevFlowAction("od.gtk-designer.model-chain", Description = "Read the selected list/grid/column view's model chain, outermost first (selection, sort, filter, data)")]
+	public static string GetModelChain() { var view = Activate(); var chain = view?.ModelChain(); return JsonSerializer.Serialize(new { success = view != null, chain }); }
+	[DevFlowAction("od.gtk-designer.model-wrapper.set", Description = "Add (add=true) or remove the selected list/grid/column view's 'sort' or 'filter' model as one undo step; a refusal returns success=false and shows under the canvas")]
+	public static string SetModelWrapper(string kind, bool add) { var view = Activate(); var ok = view?.SetModelWrapper(kind, add) == true; return JsonSerializer.Serialize(new { success = ok, chain = view?.ModelChain() }); }
 	[DevFlowAction("od.gtk-designer.selection-model", Description = "Read the selected list/grid/column view's selection model class (GtkNoSelection, GtkSingleSelection or GtkMultiSelection), or null")]
 	public static string GetSelectionModel() { var view = Activate(); var model = view?.SelectionModel(); return JsonSerializer.Serialize(new { success = view != null, selectionModel = model }); }
 	[DevFlowAction("od.gtk-designer.selection-model.set", Description = "Set the selected list/grid/column view's selection model (one undo step); a model that is not a selection model is wrapped")]

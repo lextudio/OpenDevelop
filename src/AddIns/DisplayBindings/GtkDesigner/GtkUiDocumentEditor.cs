@@ -530,6 +530,123 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
+	public const string Sorting = "sort";
+	public const string Filtering = "filter";
+
+	/// <summary>A string-list row's expression: the item's <c>string</c> (the item is a <c>GtkStringObject</c>).</summary>
+	static XElement StringExpression(string propertyName)
+		=> new("property", new XAttribute("name", propertyName),
+			new XElement("lookup", new XAttribute("type", "GtkStringObject"), new XAttribute("name", "string")));
+
+	/// <summary>The sort or filter change a Model submenu command stands for: <c>model-add-sort</c>, <c>model-remove-sort</c>,
+	/// <c>model-add-filter</c> and <c>model-remove-filter</c> map to (<see cref="Sorting"/> or <see cref="Filtering"/>, add or remove);
+	/// null for any other command.</summary>
+	public static (string Kind, bool Add)? ModelCommand(string command) => command switch {
+		"model-add-sort" => (Sorting, true),
+		"model-remove-sort" => (Sorting, false),
+		"model-add-filter" => (Filtering, true),
+		"model-remove-filter" => (Filtering, false),
+		_ => null
+	};
+
+	/// <summary>The classes of a list, grid or column view's model chain, outermost first (for example
+	/// <c>GtkSingleSelection, GtkSortListModel, GtkFilterListModel, GtkStringList</c>); it stops at the first model that is
+	/// not an inline object or not a wrapper. Null when the object is not a list view or has no model.</summary>
+	public IReadOnlyList<string>? GetModelChain(string id)
+	{
+		var element = Find(id);
+		if (element == null || !ListViewClasses.Contains((string?)element.Attribute("class") ?? "")) return null;
+		var chain = new List<string>();
+		for (var model = ModelOf(element); model != null; model = ModelWrappers.Contains((string?)model.Attribute("class") ?? "") ? ModelOf(model) : null)
+			chain.Add((string?)model.Attribute("class") ?? "");
+		return chain.Count == 0 ? null : chain;
+	}
+
+	/// <summary>The property that holds the model a sort or filter wrapper goes around, and that model: below the view's
+	/// selection model (if any), so the chain reads selection, sort, filter, data. <paramref name="below"/> names the
+	/// wrapper classes to step over first (the sort model, when a filter is being added beneath it).</summary>
+	(XElement Holder, XElement? Model) WrapPoint(XElement view, params string[] below)
+	{
+		var holder = ModelProperty(view)!;
+		var model = holder.Elements().FirstOrDefault(IsObject);
+		while (model != null && (string?)model.Attribute("class") is { } name && (SelectionModels.Contains(name) || below.Contains(name))) {
+			// A wrapper with no model of its own has nothing to wrap; look, never add a property to it.
+			if (ModelProperty(model) is not { } next) return (holder, null);
+			holder = next;
+			model = holder.Elements().FirstOrDefault(IsObject);
+		}
+		return (holder, model);
+	}
+
+	/// <summary>Puts a <c>GtkSortListModel</c> (<paramref name="kind"/> <see cref="Sorting"/>) or a <c>GtkFilterListModel</c>
+	/// (<see cref="Filtering"/>) into the view's model chain as one undo step: selection, sort, filter, data - the filter
+	/// narrows the data and the sort orders what is left. A sort model gets a <c>GtkStringSorter</c> on the item's string (a
+	/// <c>GtkColumnView</c>'s gets the view's own sorter, so its column headers drive it), a filter model a
+	/// <c>GtkStringFilter</c> on the item's string (its <c>search</c> is set by code). Refused when the view has no inline
+	/// model to wrap, or the chain already has one of that kind.</summary>
+	public bool AddModelWrapper(string id, string kind)
+	{
+		var view = Find(id);
+		if (kind != Sorting && kind != Filtering) { Refusal = $"'{kind}' is not a model wrapper (sort or filter)."; return false; }
+		if (view == null || !ListViewClasses.Contains((string?)view.Attribute("class") ?? "")) { Refusal = "Only a GtkListView, GtkGridView or GtkColumnView has a model chain."; return false; }
+		var chain = GetModelChain(id);
+		if (chain == null) { Refusal = "The view has no inline model to sort or filter (a model reference is edited where it is defined)."; return false; }
+		var className = kind == Sorting ? "GtkSortListModel" : "GtkFilterListModel";
+		if (chain.Contains(className)) { Refusal = $"The view's model already has a {className}."; return false; }
+		var (holder, model) = kind == Sorting ? WrapPoint(view) : WrapPoint(view, "GtkSortListModel");
+		if (model == null) { Refusal = "The view has no model to wrap."; return false; }
+		var wrapper = new XElement("object", new XAttribute("class", className), new XAttribute("id", UniqueId(kind == Sorting ? "sortModel" : "filterModel")));
+		var inner = new XElement("property", new XAttribute("name", "model"));
+		model.Remove();
+		inner.Add(model);
+		wrapper.Add(inner);
+		if (kind == Filtering) {
+			var filter = new XElement("object", new XAttribute("class", "GtkStringFilter"), new XAttribute("id", UniqueId("stringFilter")),
+				StringExpression("expression"), new XElement("property", new XAttribute("name", "ignore-case"), "true"));
+			wrapper.Add(new XElement("property", new XAttribute("name", "filter"), filter));
+		} else if ((string?)view.Attribute("class") == "GtkColumnView") {
+			// The column headers' sorter drives the model: <binding name="sorter"><lookup name="sorter">columnView</lookup>.
+			wrapper.Add(new XElement("binding", new XAttribute("name", "sorter"), new XElement("lookup", new XAttribute("name", "sorter"), id)));
+		} else {
+			wrapper.Add(new XElement("property", new XAttribute("name", "sorter"),
+				new XElement("object", new XAttribute("class", "GtkStringSorter"), new XAttribute("id", UniqueId("stringSorter")), StringExpression("expression"))));
+		}
+		holder.RemoveNodes();
+		holder.Add(wrapper);
+		return Commit();
+	}
+
+	/// <summary>Takes the sort (or filter) model out of the view's chain, leaving what it wrapped where it was, as one undo
+	/// step. Refused when the chain has none.</summary>
+	public bool RemoveModelWrapper(string id, string kind)
+	{
+		var view = Find(id);
+		if (kind != Sorting && kind != Filtering) { Refusal = $"'{kind}' is not a model wrapper (sort or filter)."; return false; }
+		if (view == null || !ListViewClasses.Contains((string?)view.Attribute("class") ?? "")) { Refusal = "Only a GtkListView, GtkGridView or GtkColumnView has a model chain."; return false; }
+		var className = kind == Sorting ? "GtkSortListModel" : "GtkFilterListModel";
+		var holder = ModelProperty(view);
+		var model = holder?.Elements().FirstOrDefault(IsObject);
+		while (holder != null && model != null) {
+			if ((string?)model.Attribute("class") == className) {
+				var innerProperty = ModelProperty(model);
+				var inner = innerProperty?.Elements().FirstOrDefault(IsObject);
+				var reference = innerProperty?.Nodes().OfType<XText>().Select(t => t.Value.Trim()).FirstOrDefault(t => t.Length > 0);
+				// A wrapper with nothing inside leaves nothing to put back: the property goes, not an empty one.
+				if (inner == null && reference == null) holder.Remove();
+				else {
+					holder.RemoveNodes();
+					if (inner != null) holder.Add(new XElement(inner)); else holder.Add(reference!);
+				}
+				return Commit();
+			}
+			if (!ModelWrappers.Contains((string?)model.Attribute("class") ?? "")) break;
+			holder = ModelProperty(model);
+			model = holder?.Elements().FirstOrDefault(IsObject);
+		}
+		Refusal = $"The view's model has no {className} to remove.";
+		return false;
+	}
+
 	/// <summary>The class whose items the Items row edits for <paramref name="id"/>, or null.</summary>
 	public string? ItemsModelClass(string id)
 	{

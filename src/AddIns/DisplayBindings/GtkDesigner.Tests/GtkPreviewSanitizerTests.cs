@@ -36,6 +36,18 @@ public sealed class GtkPreviewSanitizerTests
 	}
 
 	[Fact]
+	public void ExpressionProperties_AreKeptAsTheyEmbedTheirValue()
+	{
+		// The designer writes sorter and filter expressions as <lookup> elements; they are not ids to resolve.
+		var (doc, diagnostics) = Sanitize("""<interface><requires lib="gtk" version="4.0"/><object class="GtkStringFilter" id="filter"><property name="expression"><lookup type="GtkStringObject" name="string"/></property></object><object class="GtkWindow" id="w"/></interface>""");
+		Assert.Empty(diagnostics);
+		Assert.Single(Object(doc, "filter").Elements("property"), p => (string?)p.Attribute("name") == "expression");
+		// A reference-kind property that really is an unresolved id is still dropped.
+		var (_, unresolved) = Sanitize("""<interface><requires lib="gtk" version="4.0"/><object class="GtkStringFilter" id="filter"><property name="expression">nowhere</property></object><object class="GtkWindow" id="w"/></interface>""");
+		Assert.Contains(unresolved, message => message.Contains("refers to 'nowhere'", StringComparison.Ordinal));
+	}
+
+	[Fact]
 	public void CustomWidget_BecomesALabelledPlaceholder_ThatKeepsItsId()
 	{
 		var (doc, diagnostics) = Sanitize("""

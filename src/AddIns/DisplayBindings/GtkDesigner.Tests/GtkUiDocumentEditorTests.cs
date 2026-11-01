@@ -531,6 +531,126 @@ public sealed class GtkUiDocumentEditorTests
 		Assert.Null(editor.GetSelectionModel("w"));
 	}
 
+	static GtkUiDocumentEditor ViewEditor(string viewClass)
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkWindow" id="w"><child><object class="GtkBox" id="box"/></child></object></interface>"""), editor.Error);
+		Assert.True(editor.Add("box", viewClass), editor.Error);
+		return editor;
+	}
+
+	[Fact]
+	public void ModelWrappers_FilterSitsAboveTheDataAndSortAboveTheFilterWhateverTheOrder()
+	{
+		foreach (var sortFirst in new[] { true, false }) {
+			var editor = ViewEditor("GtkListView");
+			var view = editor.LastCreatedId!;
+			Assert.Equal(new[] { "GtkSingleSelection", "GtkStringList" }, editor.GetModelChain(view));
+			Assert.True(editor.AddModelWrapper(view, sortFirst ? GtkUiDocumentEditor.Sorting : GtkUiDocumentEditor.Filtering), editor.Error);
+			Assert.True(editor.AddModelWrapper(view, sortFirst ? GtkUiDocumentEditor.Filtering : GtkUiDocumentEditor.Sorting), editor.Error);
+			Assert.Equal(new[] { "GtkSingleSelection", "GtkSortListModel", "GtkFilterListModel", "GtkStringList" }, editor.GetModelChain(view));
+			// The Items row still reaches the strings through all of it.
+			Assert.Equal(new[] { "Item 1", "Item 2" }, editor.GetItems(view));
+			Assert.Matches("<object class=\"GtkSortListModel\" id=\"sortModel1\">[\\s\\S]*?<property name=\"sorter\">\\s*<object class=\"GtkStringSorter\" id=\"stringSorter1\">\\s*<property name=\"expression\">\\s*<lookup type=\"GtkStringObject\" name=\"string\"", editor.Text);
+			Assert.Matches("<object class=\"GtkFilterListModel\" id=\"filterModel1\">[\\s\\S]*?<property name=\"filter\">\\s*<object class=\"GtkStringFilter\" id=\"stringFilter1\">[\\s\\S]*?<property name=\"ignore-case\">true</property>", editor.Text);
+		}
+	}
+
+	[Fact]
+	public void ModelWrappers_AColumnViewsSortModelIsDrivenByItsColumnHeaders()
+	{
+		var editor = ViewEditor("GtkColumnView");
+		var view = editor.LastCreatedId!;
+		Assert.True(editor.AddModelWrapper(view, GtkUiDocumentEditor.Sorting), editor.Error);
+		Assert.Equal(new[] { "GtkSingleSelection", "GtkSortListModel", "GtkStringList" }, editor.GetModelChain(view));
+		Assert.Matches("<object class=\"GtkSortListModel\"[^>]*>[\\s\\S]*?<binding name=\"sorter\">\\s*<lookup name=\"sorter\">" + view + "</lookup>", editor.Text);
+		Assert.DoesNotContain("GtkStringSorter", editor.Text);
+	}
+
+	[Fact]
+	public void ModelWrappers_AddRefuseDuplicatesAndWhatCannotBeWrapped()
+	{
+		var editor = ViewEditor("GtkGridView");
+		var view = editor.LastCreatedId!;
+		Assert.True(editor.AddModelWrapper(view, GtkUiDocumentEditor.Filtering), editor.Error);
+		Assert.False(editor.AddModelWrapper(view, GtkUiDocumentEditor.Filtering));
+		Assert.Contains("already has a GtkFilterListModel", editor.Refusal);
+		Assert.False(editor.AddModelWrapper(view, "slice"));
+		Assert.Contains("not a model wrapper", editor.Refusal);
+		Assert.False(editor.AddModelWrapper("box", GtkUiDocumentEditor.Sorting));
+		Assert.Contains("Only a GtkListView", editor.Refusal);
+
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkStringList" id="shared"/><object class="GtkWindow" id="w"><child><object class="GtkListView" id="byReference"><property name="model">shared</property></object></child><child><object class="GtkListView" id="empty"/></child></object></interface>"""), editor.Error);
+		Assert.False(editor.AddModelWrapper("byReference", GtkUiDocumentEditor.Sorting));
+		Assert.Contains("no inline model", editor.Refusal);
+		Assert.False(editor.AddModelWrapper("empty", GtkUiDocumentEditor.Sorting));
+		Assert.Contains("no inline model", editor.Refusal);
+		Assert.Null(editor.GetModelChain("empty"));
+		// A selection model around a reference: the reference is not wrapped through the selection model either.
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkStringList" id="shared"/><object class="GtkWindow" id="w"><child><object class="GtkListView" id="view"><property name="model"><object class="GtkSingleSelection" id="pick"><property name="model">shared</property></object></property></object></child></object></interface>"""), editor.Error);
+		Assert.False(editor.AddModelWrapper("view", GtkUiDocumentEditor.Sorting));
+		Assert.Contains("no model to wrap", editor.Refusal);
+
+		// A selection model with no model of its own: refused, and the refusal must not leave an empty property behind
+		// for the next edit to serialise.
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkWindow" id="w"><child><object class="GtkListView" id="view"><property name="model"><object class="GtkSingleSelection" id="pick"/></property></object></child></object></interface>"""), editor.Error);
+		Assert.False(editor.AddModelWrapper("view", GtkUiDocumentEditor.Filtering));
+		Assert.Contains("no model to wrap", editor.Refusal);
+		Assert.True(editor.SetSelectionModel("view", "GtkMultiSelection"), editor.Error); // any edit serialises the tree
+		Assert.DoesNotContain("<property name=\"model\"", editor.Text.Substring(editor.Text.IndexOf("id=\"pick\"", StringComparison.Ordinal)));
+	}
+
+	[Fact]
+	public void ModelWrappers_MenuCommandsMapToTheirKindAndDirection()
+	{
+		Assert.Equal((GtkUiDocumentEditor.Sorting, true), GtkUiDocumentEditor.ModelCommand("model-add-sort"));
+		Assert.Equal((GtkUiDocumentEditor.Sorting, false), GtkUiDocumentEditor.ModelCommand("model-remove-sort"));
+		Assert.Equal((GtkUiDocumentEditor.Filtering, true), GtkUiDocumentEditor.ModelCommand("model-add-filter"));
+		Assert.Equal((GtkUiDocumentEditor.Filtering, false), GtkUiDocumentEditor.ModelCommand("model-remove-filter"));
+		Assert.Null(GtkUiDocumentEditor.ModelCommand("model-add-slice"));
+		Assert.Null(GtkUiDocumentEditor.ModelCommand("selection-GtkNoSelection"));
+	}
+
+	[Fact]
+	public void ModelWrappers_ABareListIsWrappedDirectly()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkWindow" id="w"><child><object class="GtkListView" id="view"><property name="model"><object class="GtkStringList" id="strings"><items><item>One</item></items></object></property></object></child></object></interface>"""), editor.Error);
+		Assert.True(editor.AddModelWrapper("view", GtkUiDocumentEditor.Sorting), editor.Error);
+		Assert.Equal(new[] { "GtkSortListModel", "GtkStringList" }, editor.GetModelChain("view"));
+	}
+
+	[Fact]
+	public void ModelWrappers_RemoveLeavesWhatTheyWrappedAndRefusesAMissingOne()
+	{
+		var editor = ViewEditor("GtkListView");
+		var view = editor.LastCreatedId!;
+		Assert.True(editor.AddModelWrapper(view, GtkUiDocumentEditor.Filtering), editor.Error);
+		Assert.True(editor.AddModelWrapper(view, GtkUiDocumentEditor.Sorting), editor.Error);
+		Assert.True(editor.RemoveModelWrapper(view, GtkUiDocumentEditor.Sorting), editor.Error);
+		Assert.Equal(new[] { "GtkSingleSelection", "GtkFilterListModel", "GtkStringList" }, editor.GetModelChain(view));
+		Assert.DoesNotContain("GtkStringSorter", editor.Text);
+		Assert.False(editor.RemoveModelWrapper(view, GtkUiDocumentEditor.Sorting));
+		Assert.Contains("no GtkSortListModel to remove", editor.Refusal);
+		Assert.True(editor.RemoveModelWrapper(view, GtkUiDocumentEditor.Filtering), editor.Error);
+		Assert.Equal(new[] { "GtkSingleSelection", "GtkStringList" }, editor.GetModelChain(view));
+		Assert.Equal(new[] { "Item 1", "Item 2" }, editor.GetItems(view));
+		Assert.True(editor.Undo());
+		Assert.Equal(new[] { "GtkSingleSelection", "GtkFilterListModel", "GtkStringList" }, editor.GetModelChain(view));
+
+		// A wrapper with nothing inside takes its property with it, not leaving an empty model property on the view.
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkWindow" id="w"><child><object class="GtkListView" id="hollow"><property name="model"><object class="GtkSortListModel" id="s"><property name="model"/></object></property></object></child><child><object class="GtkListView" id="bare"><property name="model"><object class="GtkSortListModel" id="t"/></property></object></child></object></interface>"""), editor.Error);
+		Assert.True(editor.RemoveModelWrapper("hollow", GtkUiDocumentEditor.Sorting), editor.Error);
+		Assert.True(editor.RemoveModelWrapper("bare", GtkUiDocumentEditor.Sorting), editor.Error);
+		Assert.DoesNotContain("<property name=\"model\"", editor.Text);
+		Assert.DoesNotContain("GtkSortListModel", editor.Text);
+
+		// A wrapper around a reference gives the reference back to the property that held the wrapper.
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkStringList" id="shared"/><object class="GtkWindow" id="w"><child><object class="GtkListView" id="byRef"><property name="model"><object class="GtkSortListModel" id="sorted"><property name="model">shared</property></object></property></object></child></object></interface>"""), editor.Error);
+		Assert.True(editor.RemoveModelWrapper("byRef", GtkUiDocumentEditor.Sorting), editor.Error);
+		Assert.Matches("<object class=\"GtkListView\" id=\"byRef\">\\s*<property name=\"model\">shared</property>", editor.Text);
+	}
+
 	[Fact]
 	public void FactoryTemplate_RoundTripsAndRejectsInvalidXml()
 	{

@@ -77,8 +77,10 @@ public static class GtkPreviewSanitizer
 	{
 		var name = (string?)property.Attribute("name") ?? "";
 		// <property name="content"><object .../></property> embeds its value; the object itself is
-		// sanitised in its own right, and its text is not an id to resolve.
-		if (property.Elements().Any(e => e.Name.LocalName is "object" or "template")) return;
+		// sanitised in its own right, and its text is not an id to resolve. An expression property
+		// (<property name="expression"><lookup .../></property>) embeds its value the same way: GtkBuilder
+		// builds the expression from the element, so there is no id to look for.
+		if (property.Elements().Any(e => e.Name.LocalName is "object" or "template" or "lookup" or "constant" or "closure")) return;
 		var info = catalog.FindProperty(ownerClass, name);
 		if (info == null) {
 			property.Remove();

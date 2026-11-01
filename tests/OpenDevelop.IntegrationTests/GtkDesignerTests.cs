@@ -1502,6 +1502,65 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_ListViewModel_SortAndFilterModelsRenderAndSurviveUndo()
+	{
+		// A list view's chain reads selection, sort, filter, data. The wrappers are written through the Model submenu's path
+		// (SetModelWrapper); GTK itself must accept what is written - the sorter bound to a column view's own sorter, a string
+		// sorter and a string filter on the item's string - so the real host still produces a native frame with no diagnostics.
+		var path = Path.Combine(workDir, "Windows", "SortFilterWindow.ui");
+		await File.WriteAllTextAsync(path, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <object class="GtkWindow" id="sortWindow">
+			    <property name="default-width">400</property>
+			    <property name="default-height">300</property>
+			    <child><object class="GtkBox" id="box"><property name="orientation">vertical</property></object></child>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", path); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("sortWindow"); Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+
+		foreach (var (viewClass, viewId) in new[] { ("GtkListView", "listView1"), ("GtkColumnView", "columnView1") }) {
+			Assert.True((await app.InvokeAsync("od.gtk-designer.select", "box")).GetProperty("success").GetBoolean());
+			Assert.Equal(viewId, (await app.InvokeAsync("od.gtk-designer.toolbox.insert", viewClass)).GetProperty("selectedId").GetString());
+			Assert.True((await app.InvokeAsync("od.gtk-designer.select", viewId)).GetProperty("success").GetBoolean());
+			Assert.Equal(new[] { "GtkSingleSelection", "GtkStringList" }, (await app.InvokeAsync("od.gtk-designer.model-chain")).GetProperty("chain").EnumerateArray().Select(c => c.GetString()));
+			var sorted = await app.InvokeAsync("od.gtk-designer.model-wrapper.set", "sort", true);
+			Assert.True(sorted.GetProperty("success").GetBoolean(), sorted.ToString());
+			var filtered = await app.InvokeAsync("od.gtk-designer.model-wrapper.set", "filter", true);
+			Assert.True(filtered.GetProperty("success").GetBoolean(), filtered.ToString());
+			Assert.Equal(new[] { "GtkSingleSelection", "GtkSortListModel", "GtkFilterListModel", "GtkStringList" }, filtered.GetProperty("chain").EnumerateArray().Select(c => c.GetString()));
+			// A second sort model is refused, with its reason under the canvas.
+			var again = await app.InvokeAsync("od.gtk-designer.model-wrapper.set", "sort", true);
+			Assert.False(again.GetProperty("success").GetBoolean(), again.ToString());
+			Assert.Contains("already has a GtkSortListModel", (await app.InvokeAsync("od.gtk-designer.status")).GetProperty("diagnosticText").GetString());
+		}
+		// Undo takes the last wrapper (the column view's filter) out again; the document keeps rendering. Put it back.
+		var undone = await app.InvokeAsync("od.gtk-designer.undo");
+		Assert.True(undone.GetProperty("nativeFrame").GetBoolean(), undone.ToString());
+		Assert.Equal(new[] { "GtkSingleSelection", "GtkSortListModel", "GtkStringList" }, (await app.InvokeAsync("od.gtk-designer.model-chain")).GetProperty("chain").EnumerateArray().Select(c => c.GetString()));
+		Assert.True((await app.InvokeAsync("od.gtk-designer.model-wrapper.set", "filter", true)).GetProperty("success").GetBoolean());
+		// Removing the list view's sort model leaves its filter and data (and its string sorter goes with it).
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "listView1")).GetProperty("success").GetBoolean());
+		var removed = await app.InvokeAsync("od.gtk-designer.model-wrapper.set", "sort", false);
+		Assert.True(removed.GetProperty("success").GetBoolean(), removed.ToString());
+		Assert.Equal(new[] { "GtkSingleSelection", "GtkFilterListModel", "GtkStringList" }, removed.GetProperty("chain").EnumerateArray().Select(c => c.GetString()));
+
+		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
+		var xml = (await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken)).Replace("\r", "");
+		Assert.DoesNotContain("GtkStringSorter", xml);
+		Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(xml, "<object class=\"GtkStringFilter\"").Count);
+		Assert.Contains("<lookup name=\"sorter\">columnView1</lookup>", xml); // the column view's sorter binding
+		var rendered = await app.InvokeAsync("od.gtk-designer.status");
+		Assert.True(rendered.GetProperty("nativeFrame").GetBoolean(), rendered.ToString());
+		Assert.Empty(rendered.GetProperty("diagnostics").EnumerateArray());
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
 	public async Task GtkDesigner_LibadwaitaToolbarView_PlacesContentAndBars()
 	{
 		// AdwToolbarView's GtkBuildable form is <child type="top|bottom"> for bars and a single

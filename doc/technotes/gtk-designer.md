@@ -853,6 +853,21 @@ object that is not a list view are refused, each with its own reason, shown unde
 Covered by `Items_AreEditableThroughSelectionSortAndFilterWrappers`, `SelectionModel_SwitchesClass...`,
 `SelectionModel_WrapsABareListOrAReference...` and `GtkDesigner_ToolboxListViews_StartWithAModelAndFactory`.
 
+The **Model** submenu (Add / Remove Sorting, Add / Remove Filtering) puts a sort or filter model into the chain
+(`gtk/model-chain` / `gtk/set-model-wrapper`; `od.gtk-designer.model-chain` and `model-wrapper.set` for tests). A chain
+reads selection, sort, filter, data - the filter narrows the data and the sort orders what is left - whichever is added
+first. A **filter** is a `GtkFilterListModel` with a `GtkStringFilter` on the item's `string` (`<lookup
+type="GtkStringObject" name="string"/>`, `ignore-case` on; its `search` text is set by code or a binding). A **sort** is a
+`GtkSortListModel`: in a list or grid view it carries a `GtkStringSorter` on the same expression, and in a `GtkColumnView`
+its `sorter` is `<binding name="sorter"><lookup name="sorter">columnView1</lookup></binding>`, the view's own sorter,
+so the column headers will drive it. Remove takes the wrapper out and leaves what it wrapped (a reference included) in
+its place. Both are refused, with the reason shown under the canvas, when the chain already has one of that kind, when
+the view has no inline model (a model reference is edited where it is defined) or when the object is not a list view.
+Expression properties (`<property name="expression"><lookup .../></property>`) embed their value, so the preview
+sanitiser keeps them instead of reporting a missing id. Covered by the `ModelWrappers_*` unit tests,
+`ExpressionProperties_AreKeptAsTheyEmbedTheirValue` and `GtkDesigner_ListViewModel_SortAndFilterModelsRenderAndSurviveUndo`
+(a list view and a column view, rendered by the real host with no diagnostics).
+
 The cell template of an inline `GtkBuilderListItemFactory` is editable: the surface's context menu
 offers **Edit List Item Template...**, which opens the factory `bytes` in a monospace editor and
 writes it back as one undo step (`gtk/factory-template` / `gtk/set-factory-template`); text that
@@ -1012,8 +1027,8 @@ Product features:
 - custom project widget execution in the sandboxed host (only the data-only
   `.gtkdesigner.json` preview mapping exists);
 - `app.` menu actions and action state/parameters (`win.` actions get stubs and registration; see "Menus");
-- list/model depth: selection models are editable; `Gio.ListStore` (code-filled; a builder cannot add items to
-  it), sort and filter models, `GtkSignalListItemFactory`, column sorters and factories beyond the inline
+- list/model depth: selection, sort and filter models are editable; `Gio.ListStore` (code-filled; a builder cannot
+  add items to it), `GtkSignalListItemFactory`, column sorters on `GtkColumnViewColumn` and factories beyond the inline
   `GtkBuilderListItemFactory` template editor are not;
 - composite templates: a template class outside the project cannot be wired.
 

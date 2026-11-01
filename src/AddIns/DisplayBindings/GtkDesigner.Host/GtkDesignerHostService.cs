@@ -166,6 +166,27 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		return State(session, false);
 	}
 
+	/// <summary>The class chain of the selected list, grid or column view's model (selection, sort, filter, data), or null.</summary>
+	[JsonRpcMethod("gtk/model-chain")]
+	public List<string>? ModelChain(string sessionId, string documentId, string elementId)
+	{
+		EnsureSession(sessionId);
+		return Get(documentId).Editor.GetModelChain(elementId)?.ToList();
+	}
+
+	/// <summary>Adds (or removes) the view's sort or filter model as one undo step.</summary>
+	[JsonRpcMethod("gtk/set-model-wrapper")]
+	public DesignerSessionState SetModelWrapper(string sessionId, string documentId, long baseVersion, string elementId, string kind, bool add)
+	{
+		EnsureSession(sessionId);
+		var session = Get(documentId);
+		EnsureVersion(session, baseVersion);
+		if (!(add ? session.Editor.AddModelWrapper(elementId, kind) : session.Editor.RemoveModelWrapper(elementId, kind)))
+			throw new InvalidOperationException("The model change was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
+		session.Version++;
+		return State(session, false);
+	}
+
 	/// <summary>The selected object's menu entries: items, sections and submenus (a &lt;menu&gt; in its menu-model property).</summary>
 	[JsonRpcMethod("gtk/menu-items")]
 	public List<DesignerMenuNode>? MenuItems(string sessionId, string documentId, string elementId)
