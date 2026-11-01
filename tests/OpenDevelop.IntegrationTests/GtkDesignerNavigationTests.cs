@@ -93,11 +93,12 @@ public sealed class GtkDesignerNavigationTests : IAsyncDisposable
 			"The rubber-band press must leave the keyboard on the design canvas, or Delete/Tab/arrows keep going to the split's Source half: " + marquee);
 
 		// Tab rotates the primary selection through the snapshot without touching the document, on a
-		// native keystroke the canvas receives because the rubber band focused it. A second native Tab
-		// in the same run was posted (ok:true) but never produced a KeyDown on the canvas, with or
-		// without re-activating the window; the cause is not established, so only one press is asserted.
-		// Shift+Tab cannot be sent (the helper holds one key at a time); the backwards direction and the
-		// wrap-around are covered only at the logic level by DesignerFocusNavigatorTests.
+		// native keystroke the canvas receives because the rubber band focused it. The expected next
+		// element is taken from the status's own document order, so this checks the navigator's exact
+		// forward step instead of merely "something else got selected". Shift+Tab (a native chord)
+		// must walk the same order backwards, and a second forward Tab must leave that pair again:
+		// three presses in one run also proves the key-up is delivered, so the next press is not
+		// swallowed as a repeat.
 		Assert.True((await app.KeyDownAsync("tab")).GetProperty("ok").GetBoolean());
 		Assert.True((await app.KeyUpAsync("tab")).GetProperty("ok").GetBoolean());
 		var rotated = await WaitForSingleSelectionAsync(primary);
@@ -105,8 +106,22 @@ public sealed class GtkDesignerNavigationTests : IAsyncDisposable
 			"Tab must reduce the multi-selection to a single primary element: " + rotated);
 		Assert.True(primary != rotated.GetProperty("selectedId").GetString(),
 			"Tab must move the primary selection past '" + primary + "': " + rotated);
-		Assert.Equal(elementCount, rotated.GetProperty("elementCount").GetInt32());
-		Assert.False(rotated.GetProperty("canUndo").GetBoolean(), "Tab rotation must not create undo history: " + rotated);
+		var order = marquee.GetProperty("elementIds").EnumerateArray().Select(id => id.GetString() ?? "").ToArray();
+		var expectedNext = order[(Array.IndexOf(order, primary) + 1) % order.Length];
+		Assert.Equal(expectedNext, rotated.GetProperty("selectedId").GetString());
+
+		Assert.True((await app.KeyDownAsync("shift,tab")).GetProperty("ok").GetBoolean());
+		Assert.True((await app.KeyUpAsync("shift,tab")).GetProperty("ok").GetBoolean());
+		var back = await WaitForSingleSelectionAsync(rotated.GetProperty("selectedId").GetString()!);
+		Assert.Equal(primary, back.GetProperty("selectedId").GetString());
+		Assert.Equal(1, back.GetProperty("selectedIds").GetArrayLength());
+
+		Assert.True((await app.KeyDownAsync("tab")).GetProperty("ok").GetBoolean());
+		Assert.True((await app.KeyUpAsync("tab")).GetProperty("ok").GetBoolean());
+		var again = await WaitForSingleSelectionAsync(back.GetProperty("selectedId").GetString()!);
+		Assert.Equal(expectedNext, again.GetProperty("selectedId").GetString());
+		Assert.Equal(elementCount, again.GetProperty("elementCount").GetInt32());
+		Assert.False(again.GetProperty("canUndo").GetBoolean(), "Tab rotation must not create undo history: " + again);
 	}
 
 	static (double X, double Y, double Width, double Height) RectOf(JsonElement geometry, string name)

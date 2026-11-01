@@ -824,9 +824,14 @@ Status 2026-11-01: implemented except where marked.
 - Grid/Paned/Stack/page adapters (implemented 2026-11-01; see "Drag/drop");
 - keyboard navigation, delete, copy/paste and multi-select where semantically valid. Covered by
   `GtkDesignerNavigationTests`: a rubber band from the title strip selects the crossed widgets and
-  leaves the keyboard on the canvas, then one native Tab rotates the primary selection. Not covered:
-  Shift+Tab and a second native Tab (posted, but no KeyDown reached the canvas; cause unknown), and
-  arrow nudge, which does not exist because GTK owns layout;
+  leaves the keyboard on the canvas; a native Tab rotates the primary selection to the next element
+  in the status's own document order, Shift+Tab walks it back, and a further Tab leaves that pair
+  again. Three presses in one run also prove each key-up is delivered, so a press is not swallowed
+  as a repeat. (The macOS DevFlow agent now posts keys with `CGEventPostToPid`; the session-tap
+  route it used before is frontmost-routed and dropped presses, and a lost key-up left the key down.
+  See devflow.md, "Held keys and chords".) The backwards direction and wrap-around are also covered
+  at the logic level by `DesignerFocusNavigatorTests`. Arrow nudge does not exist because GTK owns
+  layout;
 - signals/Roslyn handler creation (implemented);
 - external file conflict handling and coordinated save (implemented).
 

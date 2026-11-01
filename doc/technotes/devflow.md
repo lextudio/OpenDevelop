@@ -157,6 +157,24 @@ Content-Type: application/json
 
 Works even where OS accessibility cannot reach the target (WPF-on-macOS LibreWPF apps).
 
+### Held keys and chords
+
+`POST /api/v1/ui/actions/keydown` and `/keyup` take `{ "key": "tab" }` and press/release a real
+OS-level key, so a modifier can be held across pointer actions or several frames. A comma-separated
+key is a chord: `{ "key": "shift,tab" }` posts shift down, then tab 20 ms later (and releases in the
+same order). On macOS the agents post an ordinary key straight to their own process with
+`CGEventPostToPid`; the session-tap route (`CGEventPost`, which CliclickSharp uses) routes by the
+frontmost application, so a press issued just after automation activated the window could be
+delivered to another app. A lost key-up then left the key logically down, and later presses of the
+same key were treated as repeats and never reached the app - a second `tab` looked like "nothing
+happened" while another key still arrived. Modifiers keep the session-tap route because native mouse
+events read their flags from the session's global modifier state, so a held Ctrl still reaches a
+Ctrl-click. The in-process path is deterministic and needs no extra Accessibility permission; it
+also keeps a 10-minute timer that releases a key whose `keyup` never arrived. Other platforms keep
+the CliclickSharp holder path. The fix lives in `wpf-labs`
+(`LeXtudio.DevFlow.Agent.Core/MacOSKeyInput.cs`), so it reaches consumers with the next agent
+package; until that is published, a local build can patch the agent package in the OpenAvalon feed.
+
 ## Build / test actions
 
 These are the primary actions used for automated build→test→verify workflows:

@@ -133,7 +133,17 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
 			Exception? clickFailure = null;
 			var ctrlReleasedBeforeMouseUp = false;
 			try {
+				await app.InvokeAsync("od.pointer-events", true);
 				Assert.True((await app.PressPointerAsync(secondX, secondY, ensureForeground: true)).GetProperty("ok").GetBoolean());
+				// The canvas snapshots the modifiers when the press is processed, so the press must
+				// have reached WPF before Ctrl is released. The key helper now posts the up from the
+				// app process (no helper process latency), so releasing immediately can overtake the
+				// queued press and turn this into a plain click.
+				JsonElement downEvents = default;
+				Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+					downEvents = await app.InvokeAsync("od.pointer-events", false);
+					return downEvents.GetProperty("events").GetArrayLength() > 0;
+				}, TimeSpan.FromSeconds(2), initialDelayMs: 20, maxDelayMs: 100), downEvents.ToString());
 				var released = await app.KeyUpAsync("ctrl");
 				ctrlReleasedBeforeMouseUp = true;
 				Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
