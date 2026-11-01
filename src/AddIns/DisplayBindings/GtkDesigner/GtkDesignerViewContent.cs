@@ -27,7 +27,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 {
 	public static readonly string[] ToolNames = { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkLabel", "GtkButton", "GtkEntry", "GtkPasswordEntry", "GtkCheckButton", "GtkSwitch", "GtkSpinButton", "GtkDropDown", "GtkListBox", "GtkListView", "GtkGridView", "GtkColumnView", "GtkColumnViewColumn", "GtkImage", "GtkPicture", "GtkProgressBar", "GtkSeparator" };
 	/// <summary>Libadwaita widgets, offered only for a document that declares &lt;requires lib="libadwaita"&gt;.</summary>
-	public static readonly string[] AdwToolNames = { "AdwHeaderBar", "AdwStatusPage", "AdwClamp", "AdwPreferencesPage", "AdwPreferencesGroup", "AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView", "AdwActionRow", "AdwEntryRow", "AdwSwitchRow", "AdwButtonContent", "AdwAvatar", "AdwBanner", "AdwSpinner" };
+	public static readonly string[] AdwToolNames = { "AdwHeaderBar", "AdwToolbarView", "AdwStatusPage", "AdwClamp", "AdwPreferencesPage", "AdwPreferencesGroup", "AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView", "AdwActionRow", "AdwEntryRow", "AdwSwitchRow", "AdwButtonContent", "AdwAvatar", "AdwBanner", "AdwSpinner" };
 	bool documentRequiresAdw;
 	internal bool IsToolName(string? name) => name != null && ( ToolNames.Contains(name, StringComparer.Ordinal) || documentRequiresAdw && AdwToolNames.Contains(name, StringComparer.Ordinal));
 	/// <summary>The shared category for a GTK control ("Containers", "Inputs", ...), or the

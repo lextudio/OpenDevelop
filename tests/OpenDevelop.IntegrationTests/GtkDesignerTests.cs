@@ -1158,6 +1158,67 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_LibadwaitaToolbarView_PlacesContentAndBars()
+	{
+		// AdwToolbarView's GtkBuildable form is <child type="top|bottom"> for bars and a single
+		// content property; a drop plans the top third as a top bar, the bottom third as a bottom
+		// bar and the middle as the content.
+		var path = Path.Combine(workDir, "Windows", "ToolbarWindow.ui");
+		await File.WriteAllTextAsync(path, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <requires lib="libadwaita" version="1.0" />
+			  <object class="AdwWindow" id="toolbarWindow">
+			    <property name="default-width">400</property>
+			    <property name="default-height">300</property>
+			    <property name="content"><object class="AdwToolbarView" id="toolbar" /></property>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", path); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("toolbarWindow"); Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+
+		// A toolbox click on the empty toolbar view fills its single content slot.
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "toolbar")).GetProperty("success").GetBoolean());
+		var body = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkLabel");
+		Assert.True(body.GetProperty("success").GetBoolean(), body.ToString());
+		Assert.Equal("label1", body.GetProperty("selectedId").GetString());
+
+		// A canvas drop in the top third becomes a top bar.
+		var bounds = await app.InvokeAsync("od.gtk-designer.bounds", "toolbar");
+		Assert.True(bounds.GetProperty("success").GetBoolean(), bounds.ToString());
+		var x = bounds.GetProperty("x").GetDouble() + bounds.GetProperty("width").GetDouble() / 2;
+		var y = bounds.GetProperty("y").GetDouble() + bounds.GetProperty("height").GetDouble() * 0.1;
+		var plan = await app.InvokeAsync("od.gtk-designer.drop-plan", x, y);
+		Assert.Equal("toolbar", plan.GetProperty("containerId").GetString());
+		Assert.Equal(0, plan.GetProperty("index").GetInt32());
+		var bar = await app.InvokeAsync("od.gtk-designer.toolbox.drop-at", "GtkButton", x, y);
+		Assert.True(bar.GetProperty("success").GetBoolean(), bar.ToString());
+		Assert.Equal("button1", bar.GetProperty("selectedId").GetString());
+
+		// Only one content widget: a second middle drop is refused (a toolbox click would add a
+		// top bar instead, which is the documented fallback once the content slot is filled).
+		var middleY = bounds.GetProperty("y").GetDouble() + bounds.GetProperty("height").GetDouble() * 0.5;
+		var middlePlan = await app.InvokeAsync("od.gtk-designer.drop-plan", x, middleY);
+		Assert.Equal(2, middlePlan.GetProperty("index").GetInt32());
+		var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => app.InvokeAsync("od.gtk-designer.toolbox.drop-at", "GtkLabel", x, middleY));
+		Assert.Contains("one content widget", refused.Message);
+
+		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
+		var xml = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+		Assert.Matches("<property name=\"content\">\\s*<object class=\"GtkLabel\" id=\"label1\">", xml);
+		Assert.Matches("<child type=\"top\">\\s*<object class=\"GtkButton\" id=\"button1\">", xml);
+		// gtk4-builder-tool never loads libadwaita, so reopen and require a native frame instead.
+		await app.InvokeAsync("od.close-active-view");
+		var reopened = await app.InvokeAsync("od.open-file", path); Assert.True(reopened.GetProperty("opened").GetBoolean(), reopened.ToString());
+		var saved = await WaitAsync("toolbarWindow"); Assert.True(saved.GetProperty("nativeFrame").GetBoolean(), saved.ToString());
+		Assert.Equal(4, saved.GetProperty("elementCount").GetInt32());
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
 	public async Task GtkDesigner_Libadwaita_IsUsedOnlyWhenTheDocumentRequiresIt()
 	{
 		// Libadwaita is a separate capability: a document that declares <requires lib="libadwaita">

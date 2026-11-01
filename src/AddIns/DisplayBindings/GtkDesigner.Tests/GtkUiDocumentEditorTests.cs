@@ -177,6 +177,21 @@ public sealed class GtkUiDocumentEditorTests
 	}
 
 	[Fact]
+	public void ToolbarView_PlacesTopBottomBarsAndOneContent()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="AdwToolbarView" id="toolbar"/></interface>"""), editor.Error);
+		Assert.True(editor.Add("toolbar", "GtkLabel", index: 2), editor.Error);
+		Assert.Contains("<property name=\"content\">", editor.Text);
+		Assert.True(editor.Add("toolbar", "GtkButton", index: 0), editor.Error);
+		Assert.Contains("<child type=\"top\">", editor.Text);
+		Assert.True(editor.Add("toolbar", "GtkButton", index: 1), editor.Error);
+		Assert.Contains("<child type=\"bottom\">", editor.Text);
+		Assert.False(editor.Add("toolbar", "GtkLabel", index: 2));
+		Assert.Contains("one content widget", editor.Refusal);
+	}
+
+	[Fact]
 	public void FactoryTemplate_RoundTripsAndRejectsInvalidXml()
 	{
 		var editor = new GtkUiDocumentEditor();

@@ -139,6 +139,15 @@ public sealed class GtkDropPlannerTests
 	}
 
 	[Fact]
+	public void ToolbarView_UsesTopContentAndBottomThirds()
+	{
+		var view = new GtkDropNode("toolbar", "AdwToolbarView", 0, 0, 300, 300, Array.Empty<GtkDropNode>());
+		Assert.Equal(0, GtkDropPlanner.Plan(view, 150, 30)!.Index);
+		Assert.Equal(2, GtkDropPlanner.Plan(view, 150, 150)!.Index);
+		Assert.Equal(1, GtkDropPlanner.Plan(view, 150, 270)!.Index);
+	}
+
+	[Fact]
 	public void Paned_Full_IsNotADropTarget()
 	{
 		// A full paned under a full one-child window leaves nowhere to drop at all.

@@ -561,6 +561,12 @@ fixture smoke test.
 Remaining limitations: clearing an event from the pad does not remove the C# subscription (it is
 user-owned code), and a template whose class is outside the project cannot be wired.
 
+`AdwToolbarView` uses its GtkBuildable slots: a drop in the top third becomes a
+`<child type="top">` bar, the bottom third a `<child type="bottom">` bar, and the middle fills the
+single `content` property (a second middle drop is refused); a toolbox click fills the content when
+it is empty and otherwise appends a top bar. The planner reports the slot as its index (0 top,
+1 bottom, 2 content), so the canvas indicator shows the third that will receive the drop.
+
 **Objects held by properties** (`<property name="content"><object .../>`, common in GTK 4 and
 libadwaita) are tree children - in the outline, selectable, measured - not text values.
 
@@ -767,6 +773,7 @@ GTK 4 has no generic container mutation API. Every drop is resolved through `chi
   `Notebook_Add_WritesAPlainPageChild` and the journey
   `GtkDesigner_StackPages_UseGtkStackPageObjects_AndTheNotebookUsesAPlainChild`, which saves and
   validates both documents with `gtk4-builder-tool`;
+- `AdwToolbarView`: top/bottom bar slots and the single content property (implemented 2026-11-01);
 - list/model/factory widgets: `GtkListView`, `GtkGridView` and `GtkColumnView` are toolbox items
   that start with an inline `GtkStringList` model and a label factory, and the Items row edits that
   model (2026-11-01, see "List-model items"); the inline factory's cell template and further
@@ -914,8 +921,10 @@ Status 2026-11-01: not implemented except where marked.
 - custom project widgets in the sandboxed host: not implemented as execution. A data-only
   `.gtkdesigner.json` mapping can preview a project class as a GTK class (see "Robust preview");
   the project's assembly and native code are never loaded;
-- Libadwaita catalogue and named-child policies: the catalogue, toolbox category and navigation
-  page shapes are implemented; general named-child/page editing is not;
+- Libadwaita catalogue and named-child policies: the catalogue, toolbox category, navigation
+  page shapes and AdwToolbarView's top/bottom/content slots are implemented; other named-child
+  policies (`GtkHeaderBar` start/end/title, `GtkNotebook` tab/action widgets, `AdwTabView` pages)
+  are not;
 - menus, actions, list models (an inline `GtkStringList`'s items are editable), factories and expressions: top-level menu items are editable (see "Menus"); `Gio.Action` implementations, menu sections/submenus and expressions are not;
 - translation and resource tooling: GResource preview is implemented; no string extraction,
   `.po` editing or translation workflow;

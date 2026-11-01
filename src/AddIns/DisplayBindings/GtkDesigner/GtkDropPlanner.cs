@@ -32,7 +32,7 @@ public static class GtkDropPlanner
 	/// added at all; the source editor rejects a child the class does not accept.</summary>
 	public static readonly HashSet<string> Containers = new(StringComparer.Ordinal) {
 		"GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow",
-		"GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "GtkColumnView", "AdwClamp", "AdwPreferencesPage", "AdwPreferencesGroup",
+		"GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "GtkColumnView", "AdwClamp", "AdwToolbarView", "AdwPreferencesPage", "AdwPreferencesGroup",
 		"AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView"
 	};
 
@@ -56,6 +56,7 @@ public static class GtkDropPlanner
 			case "GtkBox": return PlanBox(container, x, y);
 			case "GtkGrid": return PlanGrid(container, x, y);
 			case "GtkPaned": return PlanPaned(container, x, y);
+			case "AdwToolbarView": return PlanToolbarView(container, y);
 			default: return new GtkDropPlan(container.Id, null, null, indicator);
 		}
 	}
@@ -92,6 +93,16 @@ public static class GtkDropPlanner
 			? (paned.X, edge - LineThickness / 2, paned.Width, LineThickness)
 			: (edge - LineThickness / 2, paned.Y, LineThickness, paned.Height);
 		return new GtkDropPlan(paned.Id, before ? 0 : 1, null, line);
+	}
+
+	/// <summary>An AdwToolbarView's top third is a top bar, its bottom third a bottom bar, and the
+	/// middle its single content widget (index 2).</summary>
+	static GtkDropPlan PlanToolbarView(GtkDropNode view, double y)
+	{
+		var third = Math.Max(1, view.Height / 3);
+		var index = y < view.Y + third ? 0 : y > view.Y + view.Height - third ? 1 : 2;
+		var top = index == 0 ? view.Y : index == 1 ? view.Y + view.Height - third : view.Y + third;
+		return new GtkDropPlan(view.Id, index, null, (view.X, top, view.Width, third));
 	}
 
 	/// <summary>Index = how many children lie before the point along the box's axis (GtkBox's

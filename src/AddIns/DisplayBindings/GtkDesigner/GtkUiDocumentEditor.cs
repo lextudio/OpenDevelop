@@ -136,7 +136,7 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
-	static readonly HashSet<string> ContainerClasses = new(StringComparer.Ordinal) { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow", "GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "GtkColumnView", "AdwClamp", "AdwPreferencesPage", "AdwPreferencesGroup", "AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView" };
+	static readonly HashSet<string> ContainerClasses = new(StringComparer.Ordinal) { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow", "GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "GtkColumnView", "AdwClamp", "AdwToolbarView", "AdwPreferencesPage", "AdwPreferencesGroup", "AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView" };
 
 	/// <summary>Adds a new <paramref name="className"/> child. A drop resolved by GtkDropPlanner
 	/// gives an insertion <paramref name="index"/> among the existing children (a box) or a
@@ -191,6 +191,18 @@ public sealed class GtkUiDocumentEditor
 			var columnNumber = id["column".Length..];
 			created.Add(new XElement("property", new XAttribute("name", "title"), new XAttribute("translatable", "yes"), "Column " + columnNumber));
 			created.Add(ListFactoryProperty());
+		}
+		if (cls == "AdwToolbarView") {
+			var hasContent = parent.Elements().Any(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "content"));
+			var slot = index ?? (hasContent ? 0 : 2);
+			if (slot == 2) {
+				if (hasContent) { Refusal = "An AdwToolbarView holds one content widget; drop on its top or bottom third for a bar."; return false; }
+				parent.Add(new XElement("property", new XAttribute("name", "content"), created));
+				return Commit();
+			}
+			child.SetAttributeValue("type", slot == 0 ? "top" : "bottom");
+			parent.Add(child);
+			return Commit();
 		}
 		if (cls == "AdwNavigationPage") {
 			parent.Add(new XElement("property", new XAttribute("name", "child"), created));
