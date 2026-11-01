@@ -32,7 +32,7 @@ public static class GtkDropPlanner
 	/// added at all; the source editor rejects a child the class does not accept.</summary>
 	public static readonly HashSet<string> Containers = new(StringComparer.Ordinal) {
 		"GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow",
-		"GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "GtkColumnView", "AdwClamp", "AdwToolbarView", "AdwPreferencesPage", "AdwPreferencesGroup",
+		"GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "GtkColumnView", "AdwClamp", "AdwToolbarView", "GtkHeaderBar", "AdwHeaderBar", "AdwPreferencesPage", "AdwPreferencesGroup",
 		"AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView"
 	};
 
@@ -57,6 +57,8 @@ public static class GtkDropPlanner
 			case "GtkGrid": return PlanGrid(container, x, y);
 			case "GtkPaned": return PlanPaned(container, x, y);
 			case "AdwToolbarView": return PlanToolbarView(container, y);
+			case "GtkHeaderBar":
+			case "AdwHeaderBar": return PlanHeaderBar(container, x);
 			default: return new GtkDropPlan(container.Id, null, null, indicator);
 		}
 	}
@@ -103,6 +105,17 @@ public static class GtkDropPlanner
 		var index = y < view.Y + third ? 0 : y > view.Y + view.Height - third ? 1 : 2;
 		var top = index == 0 ? view.Y : index == 1 ? view.Y + view.Height - third : view.Y + third;
 		return new GtkDropPlan(view.Id, index, null, (view.X, top, view.Width, third));
+	}
+
+	/// <summary>A header bar's left third packs at the start, its right third at the end and the
+	/// middle is its single title widget (index 2), the same slot-index convention as an
+	/// AdwToolbarView. The indicator is the third that will receive the drop.</summary>
+	static GtkDropPlan PlanHeaderBar(GtkDropNode bar, double x)
+	{
+		var third = Math.Max(1, bar.Width / 3);
+		var index = x < bar.X + third ? 0 : x > bar.X + bar.Width - third ? 1 : 2;
+		var left = index == 0 ? bar.X : index == 1 ? bar.X + bar.Width - third : bar.X + third;
+		return new GtkDropPlan(bar.Id, index, null, (left, bar.Y, third, bar.Height));
 	}
 
 	/// <summary>Index = how many children lie before the point along the box's axis (GtkBox's

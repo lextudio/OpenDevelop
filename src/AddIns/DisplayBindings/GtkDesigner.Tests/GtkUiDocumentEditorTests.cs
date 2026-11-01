@@ -191,6 +191,38 @@ public sealed class GtkUiDocumentEditorTests
 		Assert.Contains("one content widget", editor.Refusal);
 	}
 
+	[Theory]
+	[InlineData("GtkHeaderBar")]
+	[InlineData("AdwHeaderBar")]
+	public void HeaderBar_PacksAtStartAndEndAndHoldsOneTitle(string headerBar)
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset($"""<interface><requires lib="gtk" version="4.0"/><object class="{headerBar}" id="bar"/></interface>"""), editor.Error);
+		Assert.True(editor.Add("bar", "GtkButton", index: 0), editor.Error);
+		Assert.Contains("<child type=\"start\">", editor.Text);
+		Assert.True(editor.Add("bar", "GtkButton", index: 1), editor.Error);
+		Assert.Contains("<child type=\"end\">", editor.Text);
+		Assert.True(editor.Add("bar", "GtkLabel", index: 2), editor.Error);
+		Assert.Contains("<child type=\"title\">", editor.Text);
+		Assert.False(editor.Add("bar", "GtkLabel", index: 2));
+		Assert.Contains("one title widget", editor.Refusal);
+		// A toolbox click (no slot) packs at the start.
+		Assert.True(editor.Add("bar", "GtkButton"), editor.Error);
+		Assert.Equal(2, editor.Text.Split("<child type=\"start\">").Length - 1);
+	}
+
+	[Fact]
+	public void HeaderBar_SourceDropPacksAtTheStartInsteadOfReadingTheChildCountAsASlot()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkHeaderBar" id="bar"><child type="end"><object class="GtkButton" id="a"/></child><child type="end"><object class="GtkButton" id="b"/></child></object></interface>"""), editor.Error);
+		// A drop after two existing children is child index 2, which the slot convention would read as
+		// the title; a point in the markup has no slot, so it packs at the start instead.
+		Assert.True(editor.AddAt(editor.Text.IndexOf("</object></interface>", StringComparison.Ordinal), "GtkLabel"), editor.Error);
+		Assert.Contains("<child type=\"start\">", editor.Text);
+		Assert.DoesNotContain("<child type=\"title\">", editor.Text);
+	}
+
 	[Fact]
 	public void FactoryTemplate_RoundTripsAndRejectsInvalidXml()
 	{

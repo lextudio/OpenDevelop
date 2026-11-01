@@ -1193,6 +1193,36 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_HeaderBar_PacksInsertedControlsAtTheStart()
+	{
+		// A header bar's children are packed with <child type="start|end|title">; a toolbox click
+		// (no drop point) packs at the start, and the saved document must still load in GTK.
+		var path = Path.Combine(workDir, "Windows", "HeaderBarWindow.ui");
+		await File.WriteAllTextAsync(path, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <object class="GtkWindow" id="headerWindow">
+			    <property name="default-width">400</property>
+			    <property name="default-height">200</property>
+			    <property name="titlebar"><object class="GtkHeaderBar" id="headerBar" /></property>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", path); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("headerWindow"); Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "headerBar")).GetProperty("success").GetBoolean());
+		var inserted = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkButton");
+		Assert.True(inserted.GetProperty("success").GetBoolean(), inserted.ToString());
+		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
+		var xml = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+		Assert.Contains("<child type=\"start\">", xml);
+		await ValidateGtkBuilderAsync(path);
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
 	public async Task GtkDesigner_LibadwaitaToolbarView_PlacesContentAndBars()
 	{
 		// AdwToolbarView's GtkBuildable form is <child type="top|bottom"> for bars and a single

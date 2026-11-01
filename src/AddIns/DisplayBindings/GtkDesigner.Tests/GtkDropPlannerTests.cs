@@ -138,6 +138,19 @@ public sealed class GtkDropPlannerTests
 		Assert.Equal(1, GtkDropPlanner.Plan(vertical, 50, 200)!.Index);
 	}
 
+	[Theory]
+	[InlineData("GtkHeaderBar")]
+	[InlineData("AdwHeaderBar")]
+	public void HeaderBar_UsesStartTitleAndEndThirds(string className)
+	{
+		var bar = new GtkDropNode("bar", className, 0, 0, 300, 40, Array.Empty<GtkDropNode>());
+		Assert.Equal(0, GtkDropPlanner.Plan(bar, 20, 10)!.Index);
+		Assert.Equal(2, GtkDropPlanner.Plan(bar, 150, 10)!.Index);
+		var end = GtkDropPlanner.Plan(bar, 280, 10)!;
+		Assert.Equal(1, end.Index);
+		Assert.Equal((200d, 0d, 100d, 40d), end.Indicator);
+	}
+
 	[Fact]
 	public void ToolbarView_UsesTopContentAndBottomThirds()
 	{

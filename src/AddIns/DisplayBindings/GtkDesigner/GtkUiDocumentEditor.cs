@@ -136,7 +136,7 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
-	static readonly HashSet<string> ContainerClasses = new(StringComparer.Ordinal) { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow", "GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "GtkColumnView", "AdwClamp", "AdwToolbarView", "AdwPreferencesPage", "AdwPreferencesGroup", "AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView" };
+	static readonly HashSet<string> ContainerClasses = new(StringComparer.Ordinal) { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow", "GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "GtkColumnView", "AdwClamp", "AdwToolbarView", "GtkHeaderBar", "AdwHeaderBar", "AdwPreferencesPage", "AdwPreferencesGroup", "AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView" };
 
 	/// <summary>Adds a new <paramref name="className"/> child. A drop resolved by GtkDropPlanner
 	/// gives an insertion <paramref name="index"/> among the existing children (a box) or a
@@ -204,6 +204,18 @@ public sealed class GtkUiDocumentEditor
 			parent.Add(child);
 			return Commit();
 		}
+		// A header bar packs at the start or end and holds one title widget: GtkBuildable's
+		// <child type="start|end|title">. The slot is the planner's index (0 start, 1 end, 2 title).
+		if (cls is "GtkHeaderBar" or "AdwHeaderBar") {
+			var slot = index is >= 0 and <= 2 ? index.Value : 0;
+			if (slot == 2 && parent.Elements().Any(e => e.Name.LocalName == "child" && (string?)e.Attribute("type") == "title" && e.Elements().Any(IsObject))) {
+				Refusal = $"A {cls} holds one title widget; drop on its left or right third to pack at the start or end.";
+				return false;
+			}
+			child.SetAttributeValue("type", slot == 0 ? "start" : slot == 1 ? "end" : "title");
+			parent.Add(child);
+			return Commit();
+		}
 		if (cls == "AdwNavigationPage") {
 			parent.Add(new XElement("property", new XAttribute("name", "child"), created));
 			return Commit();
@@ -250,6 +262,8 @@ public sealed class GtkUiDocumentEditor
 		// The planner counts every child element; Add counts only the <child> elements that hold an
 		// object (not <property>, <layout>, <style>, ...).
 		var index = point.Container.Children.Take(point.ChildIndex).Count(c => c.Name == "child" && c.Children.Any(o => o.Name is "object" or "template"));
+		// A header bar's slot is start/end/title, not a position: a point in its markup packs at the start.
+		if ((string?)point.Container.Attribute("class") is "GtkHeaderBar" or "AdwHeaderBar") return Add(point.Container.Attribute("id")!, className);
 		return Add(point.Container.Attribute("id")!, className, index);
 	}
 
