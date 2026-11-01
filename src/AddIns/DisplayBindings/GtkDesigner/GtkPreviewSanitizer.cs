@@ -94,6 +94,13 @@ public static class GtkPreviewSanitizer
 			}
 			return;
 		}
+		// A GType-valued item-type (GListStore) is looked up by name when the builder parses it, and an application type the
+		// preview process never registered makes GtkBuilder reject the whole document: preview the store as holding GObjects.
+		if (name == "item-type" && !IsKnownGType(property.Value.Trim(), catalog)) {
+			diagnostics.Add($"'{id}'.item-type '{property.Value.Trim()}' is an application type the preview cannot load; the list store is previewed with GObject items.");
+			property.Value = "GObject";
+			return;
+		}
 		if (info.Kind == GirValueKind.Path || info.Kind == GirValueKind.String && name is "file" or "filename")
 			property.Value = PreviewPath(property.Value.Trim(), baseDirectory, previewDirectory);
 		if (!GirCatalog.TryNormalizeValue(info, property.Value, out _, out var error)) {
@@ -101,6 +108,14 @@ public static class GtkPreviewSanitizer
 			diagnostics.Add($"'{id}'.{name}: {error} It is not previewed.");
 		}
 	}
+
+	static readonly HashSet<string> FundamentalTypes = new(StringComparer.Ordinal) {
+		"GObject", "gchararray", "gboolean", "gint", "guint", "glong", "gulong", "gint64", "guint64", "gfloat", "gdouble", "GVariant"
+	};
+
+	/// <summary>Whether a GType name is one the preview's GTK knows: a fundamental type or a class in the GIR data. An empty
+	/// name is the property's default (GObject).</summary>
+	static bool IsKnownGType(string name, GirCatalog catalog) => name.Length == 0 || FundamentalTypes.Contains(name) || catalog.FindByTypeName(name) != null;
 
 	/// <summary>
 	/// A file reference as the preview's GtkBuilder can load it. GtkBuilder only turns a file into an

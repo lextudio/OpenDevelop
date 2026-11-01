@@ -113,6 +113,14 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 		=> connection.InvokeAsync<string?>("gtk/factory-class", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
 	public Task<DesignerSessionState> SetFactoryClassAsync(long v, string elementId, string factoryClass, CancellationToken token = default)
 		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("gtk/set-factory-class", new { sessionId = SessionId, documentId = DocumentId, baseVersion = v, elementId, factoryClass }, token), token);
+	public Task<string?> ModelDataAsync(string elementId, CancellationToken token = default)
+		=> connection.InvokeAsync<string?>("gtk/model-data", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
+	public Task<DesignerSessionState> SetModelDataAsync(long v, string elementId, string modelClass, CancellationToken token = default)
+		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("gtk/set-model-data", new { sessionId = SessionId, documentId = DocumentId, baseVersion = v, elementId, modelClass }, token), token);
+	public Task<string?> ItemTypeAsync(string elementId, CancellationToken token = default)
+		=> connection.InvokeAsync<string?>("gtk/item-type", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
+	public Task<DesignerSessionState> SetItemTypeAsync(long v, string elementId, string typeName, CancellationToken token = default)
+		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("gtk/set-item-type", new { sessionId = SessionId, documentId = DocumentId, baseVersion = v, elementId, typeName }, token), token);
 	public Task<List<DesignerMenuNode>?> MenuItemsAsync(string elementId, CancellationToken token = default)
 		=> connection.InvokeAsync<List<DesignerMenuNode>?>("gtk/menu-items", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
 	public Task<DesignerSessionState> SetMenuItemsAsync(long v, string elementId, List<DesignerMenuNode> items, CancellationToken token = default)

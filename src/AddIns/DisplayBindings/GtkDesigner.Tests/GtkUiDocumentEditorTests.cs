@@ -792,6 +792,115 @@ public sealed class GtkUiDocumentEditorTests
 	}
 
 	[Fact]
+	public void ListStore_TheDataModelSwitchesKeepingItsIdAndTheWrappersAround()
+	{
+		var editor = ViewEditor("GtkListView");
+		var view = editor.LastCreatedId!;
+		Assert.Equal("GtkStringList", editor.GetModelData(view));
+		Assert.True(editor.AddModelWrapper(view, GtkUiDocumentEditor.Filtering), editor.Error);
+		Assert.True(editor.AddModelWrapper(view, GtkUiDocumentEditor.Sorting), editor.Error);
+		Assert.True(editor.SetModelData(view, GtkUiDocumentEditor.ListStoreModel), editor.Error);
+		Assert.Equal(new[] { "GtkSingleSelection", "GtkSortListModel", "GtkFilterListModel", "GListStore" }, editor.GetModelChain(view));
+		Assert.Equal("GListStore", editor.GetModelData(view));
+		Assert.Matches("<object class=\"GListStore\" id=\"listModel1\">\\s*<property name=\"item-type\">GtkStringObject</property>", editor.Text); // the id is kept
+		Assert.DoesNotContain("<item", editor.Text.Replace("<items>", ""));
+		Assert.Null(editor.GetItems(view)); // a store has no Items row: the code fills it
+		Assert.True(editor.Undo());
+		Assert.Equal(new[] { "Item 1", "Item 2" }, editor.GetItems(view));
+		Assert.True(editor.Redo());
+		Assert.True(editor.SetModelData(view, GtkUiDocumentEditor.StringListModel), editor.Error);
+		Assert.Equal(new[] { "GtkSingleSelection", "GtkSortListModel", "GtkFilterListModel", "GtkStringList" }, editor.GetModelChain(view));
+		Assert.Equal(new[] { "Item 1", "Item 2" }, editor.GetItems(view));
+		Assert.Contains("id=\"listModel1\"", editor.Text);
+		var before = editor.Text;
+		Assert.True(editor.SetModelData(view, GtkUiDocumentEditor.StringListModel), editor.Error); // already: not an edit
+		Assert.Equal(before, editor.Text);
+	}
+
+	[Fact]
+	public void ListStore_ItemTypeIsSetFromTheStoreOrItsViewAndValidated()
+	{
+		var editor = ViewEditor("GtkListView");
+		var view = editor.LastCreatedId!;
+		Assert.Null(editor.GetItemType(view)); // a string list is not a store
+		Assert.False(editor.SetItemType(view, "MyApp_Item"));
+		Assert.Contains("no GListStore", editor.Refusal);
+		Assert.True(editor.SetModelData(view, GtkUiDocumentEditor.ListStoreModel), editor.Error);
+		Assert.Equal("GtkStringObject", editor.GetItemType(view));
+		Assert.True(editor.SetItemType(view, "MyApp_Item"), editor.Error);
+		Assert.Equal("MyApp_Item", editor.GetItemType("listModel1")); // read from the store itself too
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(editor.Text, "name=\"item-type\""));
+		Assert.True(editor.SetItemType("listModel1", "Other_Type"), editor.Error); // and set through it
+		Assert.Equal("Other_Type", editor.GetItemType(view));
+		Assert.False(editor.SetItemType(view, "not a type"));
+		Assert.Contains("not a GType name", editor.Refusal);
+		Assert.Equal("Other_Type", editor.GetItemType(view));
+		Assert.True(editor.SetItemType(view, ""), editor.Error); // empty: the default, GObject
+		Assert.Equal("", editor.GetItemType(view));
+		Assert.DoesNotContain("item-type", editor.Text);
+		var before = editor.Text;
+		Assert.True(editor.SetItemType(view, ""), editor.Error);
+		Assert.Equal(before, editor.Text);
+	}
+
+	[Fact]
+	public void ListStore_StringSortersAndFiltersNeedStringItems()
+	{
+		var editor = ViewEditor("GtkListView");
+		var view = editor.LastCreatedId!;
+		Assert.True(editor.SetModelData(view, GtkUiDocumentEditor.ListStoreModel), editor.Error);
+		// A store of GtkStringObject items reads like a string list.
+		Assert.True(editor.AddModelWrapper(view, GtkUiDocumentEditor.Filtering), editor.Error);
+		Assert.True(editor.RemoveModelWrapper(view, GtkUiDocumentEditor.Filtering), editor.Error);
+		// Items of an application type: no string expression is invented.
+		Assert.True(editor.SetItemType(view, "MyApp_Item"), editor.Error);
+		Assert.False(editor.AddModelWrapper(view, GtkUiDocumentEditor.Sorting));
+		Assert.Contains("not strings", editor.Refusal);
+		Assert.False(editor.AddModelWrapper(view, GtkUiDocumentEditor.Filtering));
+
+		var columns = ViewEditor("GtkColumnView");
+		var columnView = columns.LastCreatedId!;
+		Assert.True(columns.SetModelData(columnView, GtkUiDocumentEditor.ListStoreModel), columns.Error);
+		Assert.True(columns.SetItemType(columnView, "MyApp_Item"), columns.Error);
+		Assert.False(columns.SetColumnSortable("column1", true));
+		Assert.Contains("not strings", columns.Refusal);
+		Assert.False(columns.AddModelWrapper(columnView, GtkUiDocumentEditor.Filtering));
+		// The column view's own sort model reads nothing, so it can still be added.
+		Assert.True(columns.AddModelWrapper(columnView, GtkUiDocumentEditor.Sorting), columns.Error);
+		Assert.True(columns.SetItemType(columnView, "GtkStringObject"), columns.Error);
+		Assert.True(columns.SetColumnSortable("column1", true), columns.Error);
+	}
+
+	[Fact]
+	public void ListStore_RefusesWhatItCannotSwitch()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkStringList" id="shared"/><object class="GtkWindow" id="w"><child><object class="GtkListView" id="byReference"><property name="model">shared</property></object></child><child><object class="GtkListView" id="empty"/></child><child><object class="GtkListView" id="odd"><property name="model"><object class="GtkSingleSelection" id="pick"><property name="model"><object class="GtkSliceListModel" id="slice"/></property></object></property></object></child></object></interface>"""), editor.Error);
+		var before = editor.Text;
+		Assert.False(editor.SetModelData("byReference", GtkUiDocumentEditor.ListStoreModel));
+		Assert.Contains("no inline model", editor.Refusal);
+		Assert.False(editor.SetModelData("empty", GtkUiDocumentEditor.ListStoreModel));
+		Assert.False(editor.SetModelData("w", GtkUiDocumentEditor.ListStoreModel));
+		Assert.Contains("Only a GtkListView", editor.Refusal);
+		Assert.False(editor.SetModelData("byReference", "GtkSortListModel"));
+		Assert.Contains("not a data model", editor.Refusal);
+		Assert.Equal(before, editor.Text);
+		Assert.Null(editor.GetModelData("byReference"));
+		Assert.Null(editor.GetModelData("w"));
+		// A wrapper with no model of its own ends the chain: its innermost model is the wrapper itself... which is not a data model.
+		Assert.Null(editor.GetModelData("odd"));
+	}
+
+	[Fact]
+	public void ListStore_MenuCommandsMapToTheirClass()
+	{
+		Assert.Equal("GtkStringList", GtkUiDocumentEditor.ModelDataCommand("model-data-GtkStringList"));
+		Assert.Equal("GListStore", GtkUiDocumentEditor.ModelDataCommand("model-data-GListStore"));
+		Assert.Null(GtkUiDocumentEditor.ModelDataCommand("model-data-GtkSortListModel"));
+		Assert.Null(GtkUiDocumentEditor.ModelDataCommand("model-add-sort"));
+	}
+
+	[Fact]
 	public void FactoryTemplate_RoundTripsAndRejectsInvalidXml()
 	{
 		var editor = new GtkUiDocumentEditor();

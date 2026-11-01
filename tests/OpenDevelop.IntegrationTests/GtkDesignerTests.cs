@@ -1684,6 +1684,68 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_ListStore_DeclaresTheModelAndItsItemTypeAndStillPreviews()
+	{
+		// A GListStore is filled by code (GtkBuilder cannot add items to it), so the designer declares it and its item-type. The
+		// item type is an application type the preview process never registered; GtkBuilder would reject the whole document for
+		// an unknown GType name, so the preview copy must use GObject while the saved source keeps the real name.
+		var path = Path.Combine(workDir, "Windows", "ListStoreWindow.ui");
+		await File.WriteAllTextAsync(path, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <object class="GtkWindow" id="storeWindow">
+			    <property name="default-width">400</property>
+			    <property name="default-height">300</property>
+			    <child><object class="GtkBox" id="box"><property name="orientation">vertical</property></object></child>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", path); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("storeWindow"); Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "box")).GetProperty("success").GetBoolean());
+		Assert.Equal("listView1", (await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkListView")).GetProperty("selectedId").GetString());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "listView1")).GetProperty("success").GetBoolean());
+		Assert.Equal("GtkStringList", (await app.InvokeAsync("od.gtk-designer.model-data")).GetProperty("modelData").GetString());
+		Assert.Equal(JsonValueKind.Null, (await app.InvokeAsync("od.gtk-designer.item-type")).GetProperty("itemType").ValueKind);
+
+		var store = await app.InvokeAsync("od.gtk-designer.model-data.set", "GListStore");
+		Assert.True(store.GetProperty("success").GetBoolean(), store.ToString());
+		Assert.Equal("GListStore", store.GetProperty("modelData").GetString());
+		Assert.Equal("GtkStringObject", (await app.InvokeAsync("od.gtk-designer.item-type")).GetProperty("itemType").GetString());
+		Assert.Equal(new[] { "GtkSingleSelection", "GListStore" }, (await app.InvokeAsync("od.gtk-designer.model-chain")).GetProperty("chain").EnumerateArray().Select(c => c.GetString()));
+		var known = await app.InvokeAsync("od.gtk-designer.status");
+		Assert.True(known.GetProperty("nativeFrame").GetBoolean(), known.ToString());
+		Assert.Empty(known.GetProperty("diagnostics").EnumerateArray());
+
+		// An application item type: previewed as GObject (with a note), saved as written.
+		var typed = await app.InvokeAsync("od.gtk-designer.item-type.set", "MyApp_Item");
+		Assert.True(typed.GetProperty("success").GetBoolean(), typed.ToString());
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			var rendered = await app.InvokeAsync("od.gtk-designer.status");
+			return !rendered.GetProperty("renderPending").GetBoolean() && rendered.GetProperty("nativeFrame").GetBoolean()
+				&& rendered.GetProperty("diagnostics").EnumerateArray().Any(d => d.GetString()!.Contains("application type the preview cannot load", StringComparison.Ordinal));
+		}, TimeSpan.FromSeconds(10)), (await app.InvokeAsync("od.gtk-designer.status")).ToString());
+		// A string sorter would read the item's string, so on these items it is refused, with its reason under the canvas.
+		Assert.False((await app.InvokeAsync("od.gtk-designer.model-wrapper.set", "sort", true)).GetProperty("success").GetBoolean());
+		Assert.Contains("not strings", (await app.InvokeAsync("od.gtk-designer.status")).GetProperty("diagnosticText").GetString());
+		Assert.False((await app.InvokeAsync("od.gtk-designer.item-type.set", "not a type")).GetProperty("success").GetBoolean());
+
+		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
+		var xml = (await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken)).Replace("\r", "");
+		Assert.Matches("<object class=\"GListStore\" id=\"listModel1\">\\s*<property name=\"item-type\">MyApp_Item</property>", xml);
+		Assert.DoesNotContain("GtkStringList", xml);
+
+		// Back to a string list: the store goes, the starter items return, the id is kept.
+		var list = await app.InvokeAsync("od.gtk-designer.model-data.set", "GtkStringList");
+		Assert.True(list.GetProperty("success").GetBoolean(), list.ToString());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.undo")).GetProperty("nativeFrame").GetBoolean());
+		Assert.Equal("GListStore", (await app.InvokeAsync("od.gtk-designer.model-data")).GetProperty("modelData").GetString());
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
 	public async Task GtkDesigner_LibadwaitaToolbarView_PlacesContentAndBars()
 	{
 		// AdwToolbarView's GtkBuildable form is <child type="top|bottom"> for bars and a single

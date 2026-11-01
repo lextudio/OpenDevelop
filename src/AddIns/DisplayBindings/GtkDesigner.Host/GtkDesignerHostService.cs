@@ -229,6 +229,48 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		return State(session, false);
 	}
 
+	/// <summary>The class of the selected list view's innermost inline data model (GtkStringList, GListStore, ...), or null.</summary>
+	[JsonRpcMethod("gtk/model-data")]
+	public string? ModelData(string sessionId, string documentId, string elementId)
+	{
+		EnsureSession(sessionId);
+		return Get(documentId).Editor.GetModelData(elementId);
+	}
+
+	/// <summary>Switches the list view's inline data model between GtkStringList and GListStore as one undo step.</summary>
+	[JsonRpcMethod("gtk/set-model-data")]
+	public DesignerSessionState SetModelData(string sessionId, string documentId, long baseVersion, string elementId, string modelClass)
+	{
+		EnsureSession(sessionId);
+		var session = Get(documentId);
+		EnsureVersion(session, baseVersion);
+		if (!session.Editor.SetModelData(elementId, modelClass))
+			throw new InvalidOperationException("The model change was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
+		session.Version++;
+		return State(session, false);
+	}
+
+	/// <summary>The item-type of a GListStore (the object itself, or the one a list view's chain ends in): "" when unset, null when there is no store.</summary>
+	[JsonRpcMethod("gtk/item-type")]
+	public string? ItemType(string sessionId, string documentId, string elementId)
+	{
+		EnsureSession(sessionId);
+		return Get(documentId).Editor.GetItemType(elementId);
+	}
+
+	/// <summary>Sets a list store's item-type (a GType name; empty removes it) as one undo step.</summary>
+	[JsonRpcMethod("gtk/set-item-type")]
+	public DesignerSessionState SetItemType(string sessionId, string documentId, long baseVersion, string elementId, string typeName)
+	{
+		EnsureSession(sessionId);
+		var session = Get(documentId);
+		EnsureVersion(session, baseVersion);
+		if (!session.Editor.SetItemType(elementId, typeName))
+			throw new InvalidOperationException("The item type was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
+		session.Version++;
+		return State(session, false);
+	}
+
 	/// <summary>The selected object's menu entries: items, sections and submenus (a &lt;menu&gt; in its menu-model property).</summary>
 	[JsonRpcMethod("gtk/menu-items")]
 	public List<DesignerMenuNode>? MenuItems(string sessionId, string documentId, string elementId)

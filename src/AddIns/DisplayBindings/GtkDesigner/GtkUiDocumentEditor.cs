@@ -604,6 +604,107 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
+	public const string StringListModel = "GtkStringList";
+	public const string ListStoreModel = "GListStore";
+
+	/// <summary>The data model class a Model data submenu command stands for: <c>model-data-GtkStringList</c> and
+	/// <c>model-data-GListStore</c> map to their class; null for any other command.</summary>
+	public static string? ModelDataCommand(string command) => command switch {
+		"model-data-" + StringListModel => StringListModel,
+		"model-data-" + ListStoreModel => ListStoreModel,
+		_ => null
+	};
+
+	/// <summary>The innermost model of a list view's inline chain (below any selection, sort, filter or other wrapper) and the
+	/// property that holds it; null when the chain ends in a reference, or there is no model.</summary>
+	(XElement Holder, XElement Model)? InnermostModel(XElement view)
+	{
+		var holder = ModelProperty(view);
+		var model = holder?.Elements().FirstOrDefault(IsObject);
+		while (holder != null && model != null && ModelWrappers.Contains((string?)model.Attribute("class") ?? "")) {
+			holder = ModelProperty(model);
+			model = holder?.Elements().FirstOrDefault(IsObject);
+		}
+		return holder != null && model != null ? (holder, model) : null;
+	}
+
+	/// <summary>The class of the list view's innermost inline data model (<c>GtkStringList</c>, <c>GListStore</c> or another), or null.</summary>
+	public string? GetModelData(string id)
+		=> Find(id) is { } view && ListViewClasses.Contains((string?)view.Attribute("class") ?? "") && InnermostModel(view) is { } inner ? (string?)inner.Model.Attribute("class") : null;
+
+	/// <summary>Whether the list view's items are strings: a <c>GtkStringList</c>, or a <c>GListStore</c> whose item type is
+	/// <c>GtkStringObject</c> (the type the starter cell and the generated sorters and filters read). A model reference is
+	/// not known to be anything else, so it counts as strings; no model at all does not.</summary>
+	bool ItemsAreStrings(XElement view)
+	{
+		var property = ModelProperty(view);
+		if (property == null) return false;
+		if (property.Elements().FirstOrDefault(IsObject) == null) return true; // a reference: assumed
+		if (InnermostModel(view) is not { } inner) return true;              // a chain ending in a reference
+		return (string?)inner.Model.Attribute("class") switch {
+			StringListModel => true,
+			ListStoreModel => (ItemTypeOf(inner.Model) ?? "GObject") == "GtkStringObject",
+			_ => false
+		};
+	}
+
+	static string? ItemTypeOf(XElement store)
+		=> store.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "item-type"))?.Value.Trim();
+
+	/// <summary>Switches the list view's innermost inline data model between a <c>GtkStringList</c> (strings in the document) and a
+	/// <c>GListStore</c> (filled by code: GtkBuilder cannot add items to a store, so only its <c>item-type</c> is declared), as one
+	/// undo step. The new model keeps the old one's id, so references to it stay valid; a store starts as <c>GtkStringObject</c>
+	/// items, which the starter cell, sorters and filters read, and a string list starts with two items. Going to a store drops
+	/// the string items (undo restores them). Refused for an unknown class, an object that is not a list view, or a view
+	/// with no inline model (a reference is switched where it is defined); the class already in use is a no-op.</summary>
+	public bool SetModelData(string id, string modelClass)
+	{
+		if (modelClass != StringListModel && modelClass != ListStoreModel) { Refusal = $"{modelClass} is not a data model the designer switches to (GtkStringList or GListStore)."; return false; }
+		var view = Find(id);
+		if (view == null || !ListViewClasses.Contains((string?)view.Attribute("class") ?? "")) { Refusal = "Only a GtkListView, GtkGridView or GtkColumnView has a data model."; return false; }
+		if (InnermostModel(view) is not { } inner) { Refusal = "The view has no inline model to switch (a model reference is edited where it is defined)."; return false; }
+		if ((string?)inner.Model.Attribute("class") == modelClass) return true;
+		var modelId = (string?)inner.Model.Attribute("id") ?? UniqueId(modelClass == ListStoreModel ? "listStore" : "listModel");
+		XElement replacement;
+		if (modelClass == ListStoreModel)
+			replacement = new XElement("object", new XAttribute("class", ListStoreModel), new XAttribute("id", modelId),
+				new XElement("property", new XAttribute("name", "item-type"), "GtkStringObject"));
+		else
+			replacement = new XElement("object", new XAttribute("class", StringListModel), new XAttribute("id", modelId),
+				new XElement("items", new XElement("item", new XAttribute("translatable", "yes"), "Item 1"), new XElement("item", new XAttribute("translatable", "yes"), "Item 2")));
+		inner.Holder.RemoveNodes();
+		inner.Holder.Add(replacement);
+		return Commit();
+	}
+
+	/// <summary>The <c>GListStore</c> a list view's chain ends in, or the object itself when it is a store.</summary>
+	XElement? ListStoreOf(XElement element)
+	{
+		if ((string?)element.Attribute("class") == ListStoreModel) return element;
+		return ListViewClasses.Contains((string?)element.Attribute("class") ?? "") && InnermostModel(element) is { } inner
+			&& (string?)inner.Model.Attribute("class") == ListStoreModel ? inner.Model : null;
+	}
+
+	/// <summary>The <c>item-type</c> of a <c>GListStore</c> (selected as itself, or reached from its list view): a GType name, "" when
+	/// it is not set (GObject, the default), null when there is no store.</summary>
+	public string? GetItemType(string id)
+		=> Find(id) is { } element && ListStoreOf(element) is { } store ? ItemTypeOf(store) ?? "" : null;
+
+	/// <summary>Sets a list store's <c>item-type</c> to a GType name (a type the application registers before the UI is built,
+	/// or one of GTK's, such as <c>GtkStringObject</c>), as one undo step; an empty name removes it (GObject). Refused for a name
+	/// that is not a GType identifier, or when there is no store.</summary>
+	public bool SetItemType(string id, string typeName)
+	{
+		typeName = (typeName ?? "").Trim();
+		if (typeName.Length > 0 && !IsIdentifier(typeName)) { Refusal = $"'{typeName}' is not a GType name (letters, digits and underscores)."; return false; }
+		if (Find(id) is not { } element || ListStoreOf(element) is not { } store) { Refusal = "There is no GListStore to set an item type on."; return false; }
+		var property = store.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "item-type"));
+		if ((property?.Value.Trim() ?? "") == typeName) return true;
+		property?.Remove();
+		if (typeName.Length > 0) store.AddFirst(new XElement("property", new XAttribute("name", "item-type"), typeName));
+		return Commit();
+	}
+
 	/// <summary>The column view that owns a <c>GtkColumnViewColumn</c> object, or null.</summary>
 	XElement? ColumnViewOf(XElement column)
 		=> (string?)column.Attribute("class") == "GtkColumnViewColumn" && column.Parent is { Name.LocalName: "child" } wrapper
@@ -642,8 +743,8 @@ public sealed class GtkUiDocumentEditor
 		}
 		if (existing != null) return true;
 		var chain = GetModelChain((string?)view.Attribute("id") ?? "");
-		if (chain != null && chain[^1] != "GtkStringList") {
-			Refusal = $"The view's items are {chain[^1]}, not strings: set the column's sorter and its expression in the source.";
+		if (!ItemsAreStrings(view)) {
+			Refusal = $"The view's items are {(chain == null ? "unknown" : chain[^1])}, not strings: set the column's sorter and its expression in the source.";
 			return false;
 		}
 		var needsSortModel = chain != null && !chain.Contains("GtkSortListModel");
@@ -699,6 +800,11 @@ public sealed class GtkUiDocumentEditor
 		if (chain == null) { Refusal = "The view has no inline model to sort or filter (a model reference is edited where it is defined)."; return false; }
 		var className = kind == Sorting ? "GtkSortListModel" : "GtkFilterListModel";
 		if (chain.Contains(className)) { Refusal = $"The view's model already has a {className}."; return false; }
+		// A string sorter or filter reads the item's string; a column view's sort model is driven by its own sorter and reads nothing.
+		if (!ItemsAreStrings(view) && !(kind == Sorting && (string?)view.Attribute("class") == "GtkColumnView")) {
+			Refusal = "The view's items are not strings: add the sort or filter model with its expression in the source.";
+			return false;
+		}
 		var (holder, model) = kind == Sorting ? WrapPoint(view) : WrapPoint(view, "GtkSortListModel");
 		if (model == null) { Refusal = "The view has no model to wrap."; return false; }
 		var wrapper = new XElement("object", new XAttribute("class", className), new XAttribute("id", UniqueId(kind == Sorting ? "sortModel" : "filterModel")));

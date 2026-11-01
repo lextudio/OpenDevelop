@@ -799,9 +799,9 @@ GTK 4 has no generic container mutation API. Every drop is resolved through `chi
 - list/model/factory widgets: `GtkListView`, `GtkGridView` and `GtkColumnView` are toolbox items
   that start with an inline `GtkStringList` model and a label factory, and the Items row edits that
   model (2026-11-01, see "List-model items"); the inline factory's cell template and further
-  columns are editable in the designer, while other factory classes, `Gio.ListStore` models and
-  expressions are edited by hand in the source (selection, sort and filter models, column sorters and the
-  signal factory are covered below).
+  columns are editable in the designer, while other factory classes and expressions are edited by
+  hand in the source (selection, sort and filter models, column sorters, the signal factory and `GListStore` models
+  are covered below).
 
 A refusal is reported through `GtkUiDocumentEditor.Refusal`, not `Error`: the document is still
 valid, so it stays accepted and a refused drop cannot stop the next render. `design/add-element`
@@ -893,6 +893,24 @@ and the companion loses the connections; the methods stay, because they are the 
 is not replaced; an unknown class and an object that has no factory are refused; choosing the class already in use
 is not an edit. Covered by the `Factory_*` unit tests and
 `GtkDesigner_SignalListItemFactory_GeneratesSetupAndBindHandlers`.
+
+The **Model** submenu also switches the innermost inline data model between a `GtkStringList` and a **`GListStore`**
+(Data: String List / Data: List Store; `gtk/model-data` / `gtk/set-model-data`; `od.gtk-designer.model-data(.set)`) and
+sets the store's `item-type` (Item Type..., an input box; `gtk/item-type` / `gtk/set-item-type`;
+`od.gtk-designer.item-type(.set)`), each as one undo step. GtkBuilder cannot add items to a store, so the designer only
+declares it - the code that owns the items fills it - and a store starts with `item-type` `GtkStringObject`, the type the
+starter cell, sorters and filters read. The new model keeps the old one's id, so references to it stay valid, and the
+selection, sort and filter wrappers around it stay; going to a store drops the string items (undo restores them), going
+back starts the two starter items. The `item-type` is a GType name (letters, digits, underscores; an empty name removes
+it, which means `GObject`); the Item Type command works on the store itself or on the view whose chain ends in it. The
+string sorter, string filter and column sorter read the item's string, so they are refused, with the reason under the
+canvas, when the items are not strings (an inline `GListStore` whose `item-type` is not `GtkStringObject`; a column
+view's sort model, driven by its own sorter, is still allowed); a model reference is assumed to hold strings. The
+preview cannot register an application's item type, and GtkBuilder rejects the whole document for an unknown GType name,
+so the preview sanitiser previews such a store with `GObject` items and says so in the diagnostics, while the saved
+source keeps the real name. Refused: a class other than the two, an object that is not a list view, a view with no inline
+model (a reference is switched where it is defined). Covered by the `ListStore_*` unit tests, the
+`ListStoreItemType_*` sanitiser tests and `GtkDesigner_ListStore_DeclaresTheModelAndItsItemTypeAndStillPreviews`.
 
 The cell template of an inline `GtkBuilderListItemFactory` is editable: the surface's context menu
 offers **Edit List Item Template...**, which opens the factory `bytes` in a monospace editor and
@@ -1053,9 +1071,9 @@ Product features:
 - custom project widget execution in the sandboxed host (only the data-only
   `.gtkdesigner.json` preview mapping exists);
 - `app.` menu actions and action state/parameters (`win.` actions get stubs and registration; see "Menus");
-- list/model depth: selection, sort and filter models, string column sorters and the signal factory are editable;
-  `Gio.ListStore` (code-filled; a builder cannot add items to it), sorters for non-string items and factories beyond
-  the builder-template and signal classes are not;
+- list/model depth: selection, sort and filter models, string column sorters, the signal factory and a declared
+  `GListStore` (its items are filled by code; a builder cannot add them) are editable; sorters and filters for
+  non-string items and factories beyond the builder-template and signal classes are not;
 - composite templates: a template class outside the project cannot be wired.
 
 Coverage (tests, not product behaviour):

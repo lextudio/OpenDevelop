@@ -222,6 +222,14 @@ public static class GtkDesignerDevFlowActions
 	public static string GetColumnSortable() { var view = Activate(); return JsonSerializer.Serialize(new { success = view != null, sortable = view?.ColumnSortable() }); }
 	[DevFlowAction("od.gtk-designer.column-sortable.set", Description = "Make the selected GtkColumnViewColumn sortable (a string sorter, plus a sort model driven by the view's sorter when needed) or not, as one undo step; a refusal returns success=false and shows under the canvas")]
 	public static string SetColumnSortable(bool sortable) { var view = Activate(); var ok = view?.SetColumnSortable(sortable) == true; return JsonSerializer.Serialize(new { success = ok, sortable = view?.ColumnSortable() }); }
+	[DevFlowAction("od.gtk-designer.model-data", Description = "The class of the selected list view's innermost inline data model (GtkStringList, GListStore, ...), or null")]
+	public static string GetModelData() { var view = Activate(); return JsonSerializer.Serialize(new { success = view != null, modelData = view?.ModelData() }); }
+	[DevFlowAction("od.gtk-designer.model-data.set", Description = "Switch the selected list view's inline data model to GtkStringList or GListStore as one undo step (the string items are dropped when going to a store); a refusal returns success=false and shows under the canvas")]
+	public static string SetModelData(string modelClass) { var view = Activate(); var ok = view?.SetModelData(modelClass) == true; return JsonSerializer.Serialize(new { success = ok, modelData = view?.ModelData() }); }
+	[DevFlowAction("od.gtk-designer.item-type", Description = "The item-type of the selected GListStore (or of the store a selected list view ends in): empty when unset, null when there is no store")]
+	public static string GetItemType() { var view = Activate(); return JsonSerializer.Serialize(new { success = view != null, itemType = view?.ItemType() }); }
+	[DevFlowAction("od.gtk-designer.item-type.set", Description = "Set the selected GListStore's item-type to a GType name (empty removes it) as one undo step; a refusal returns success=false and shows under the canvas")]
+	public static string SetItemType(string typeName) { var view = Activate(); var ok = view?.SetItemType(typeName) == true; return JsonSerializer.Serialize(new { success = ok, itemType = view?.ItemType() }); }
 	[DevFlowAction("od.gtk-designer.model-chain", Description = "Read the selected list/grid/column view's model chain, outermost first (selection, sort, filter, data)")]
 	public static string GetModelChain() { var view = Activate(); var chain = view?.ModelChain(); return JsonSerializer.Serialize(new { success = view != null, chain }); }
 	[DevFlowAction("od.gtk-designer.model-wrapper.set", Description = "Add (add=true) or remove the selected list/grid/column view's 'sort' or 'filter' model as one undo step; a refusal returns success=false and shows under the canvas")]

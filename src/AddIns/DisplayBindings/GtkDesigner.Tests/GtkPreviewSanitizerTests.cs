@@ -47,6 +47,26 @@ public sealed class GtkPreviewSanitizerTests
 		Assert.Contains(unresolved, message => message.Contains("refers to 'nowhere'", StringComparison.Ordinal));
 	}
 
+	[Theory]
+	[InlineData("GtkStringObject")]
+	[InlineData("GObject")]
+	[InlineData("gchararray")]
+	public void ListStoreItemType_AKnownTypeIsKept(string type)
+	{
+		var (doc, diagnostics) = Sanitize($"""<interface><requires lib="gtk" version="4.0"/><object class="GListStore" id="store"><property name="item-type">{type}</property></object><object class="GtkWindow" id="w"/></interface>""");
+		Assert.Empty(diagnostics);
+		Assert.Equal(type, Object(doc, "store").Elements("property").Single(p => (string?)p.Attribute("name") == "item-type").Value);
+	}
+
+	[Fact]
+	public void ListStoreItemType_AnApplicationTypeIsPreviewedAsGObject()
+	{
+		// An unregistered GType name makes GtkBuilder reject the whole document, so the preview copy uses GObject.
+		var (doc, diagnostics) = Sanitize("""<interface><requires lib="gtk" version="4.0"/><object class="GListStore" id="store"><property name="item-type">MyApp_Item</property></object><object class="GtkWindow" id="w"/></interface>""");
+		Assert.Equal("GObject", Object(doc, "store").Elements("property").Single(p => (string?)p.Attribute("name") == "item-type").Value);
+		Assert.Contains(diagnostics, message => message.Contains("'store'.item-type 'MyApp_Item' is an application type", StringComparison.Ordinal));
+	}
+
 	[Fact]
 	public void CustomWidget_BecomesALabelledPlaceholder_ThatKeepsItsId()
 	{
