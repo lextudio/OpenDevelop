@@ -365,6 +365,66 @@ public sealed class GtkUiDocumentEditorTests
 	}
 
 	[Fact]
+	public void Notebook_ActionWidgetsAreNotPagesAndDuplicateLandsAfterThePagesTab()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""
+			<interface>
+			  <requires lib="gtk" version="4.0"/>
+			  <object class="GtkNotebook" id="book">
+			    <child type="action-start">
+			      <object class="GtkButton" id="start"/>
+			    </child>
+			    <child>
+			      <object class="GtkButton" id="p1"/>
+			    </child>
+			    <child type="tab">
+			      <object class="GtkLabel" id="t1"/>
+			    </child>
+			    <child>
+			      <object class="GtkButton" id="p2"/>
+			    </child>
+			    <child type="tab">
+			      <object class="GtkLabel" id="t2"/>
+			    </child>
+			    <child type="action-end">
+			      <object class="GtkButton" id="end"/>
+			    </child>
+			  </object>
+			</interface>
+			"""), editor.Error);
+		static int At(string text, string id) => text.IndexOf($"id=\"{id}\"", StringComparison.Ordinal);
+		// Action widgets are neither paged nor reordered, and do not shift page indexes.
+		Assert.False(editor.Reorder("start", 1));
+		Assert.False(editor.Reorder("end", -1));
+		Assert.True(editor.Reorder("p1", 1), editor.Error);
+		Assert.True(At(editor.Text, "p2") < At(editor.Text, "t2") && At(editor.Text, "t2") < At(editor.Text, "p1") && At(editor.Text, "p1") < At(editor.Text, "t1"), editor.Text);
+		Assert.True(editor.Add("book", "GtkLabel", index: 1), editor.Error);
+		var inserted = editor.LastCreatedId!;
+		Assert.True(At(editor.Text, "t2") < At(editor.Text, inserted) && At(editor.Text, inserted) < At(editor.Text, "p1"), editor.Text);
+		// A source-text drop on p2 counts pages only: after p2 and its tab, not shifted by the action widget.
+		var beforeDrop = editor.Text;
+		Assert.True(editor.AddAt(editor.Text.IndexOf("id=\"p2\"", StringComparison.Ordinal), "GtkSwitch"), editor.Error);
+		var dropped = editor.LastCreatedId!;
+		Assert.True(At(editor.Text, "p2") < At(editor.Text, "t2") && At(editor.Text, "t2") < At(editor.Text, dropped) && At(editor.Text, dropped) < At(editor.Text, "p1"), editor.Text);
+		Assert.True(editor.Undo());
+		Assert.Equal(beforeDrop, editor.Text);
+		// Removing a page takes its tab, never an action widget; an action widget itself can be deleted.
+		Assert.True(editor.Remove("p2"), editor.Error);
+		Assert.DoesNotContain("id=\"t2\"", editor.Text);
+		Assert.Contains("id=\"start\"", editor.Text);
+		Assert.Contains("id=\"end\"", editor.Text);
+		Assert.True(editor.Remove("end"), editor.Error);
+		Assert.DoesNotContain("id=\"end\"", editor.Text);
+		Assert.Contains("id=\"t1\"", editor.Text);
+		Assert.True(editor.Undo()); Assert.True(editor.Undo());
+		// Duplicating page p2 puts the copy after p2's tab, so p2 keeps its own label.
+		var snippets = editor.CopySnippets(new[] { "p2" })!;
+		Assert.True(editor.Paste("book", snippets, out var created, afterId: "p2"), editor.Error);
+		Assert.True(At(editor.Text, "p2") < At(editor.Text, "t2") && At(editor.Text, "t2") < At(editor.Text, created[0]), editor.Text);
+	}
+
+	[Fact]
 	public void FactoryTemplate_RoundTripsAndRejectsInvalidXml()
 	{
 		var editor = new GtkUiDocumentEditor();

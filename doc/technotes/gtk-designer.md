@@ -777,8 +777,10 @@ GTK 4 has no generic container mutation API. Every drop is resolved through `chi
   written together with its tab label, `<child type="tab"><object class="GtkLabel" id="tabN">`, right
   after it (GtkBuilder pairs a tab with the page before it); the label is an ordinary object whose
   text the Properties pad edits, deleting the page deletes its tab, and a tab can be deleted alone
-  (GTK then shows "Page N"). Insertion and reorder indexes count pages, not tabs, and a reorder moves a page together with its tab. Notebook action widgets are not
-  edited by the designer. Covered by `GtkUiDocumentEditorTests.Stack_Add_WritesANamedTitledPage` /
+  (GTK then shows "Page N"). Insertion and reorder indexes count pages, not tabs, and a reorder moves a page together with its tab. A page is a bare `<child>`: a
+  `type="action-start|action-end"` action widget is kept as written but is not a page (it is not
+  counted, reordered or given a tab), and a duplicate or paste after a page lands after that page's
+  tab so the original keeps its label. Creating action widgets is still done in the source. Covered by `GtkUiDocumentEditorTests.Stack_Add_WritesANamedTitledPage` /
   `Notebook_Add_WritesAPlainPageChild`, `Notebook_PageGetsATabLabelAndTakesItAlongWhenRemoved` and the journey
   `GtkDesigner_StackPages_UseGtkStackPageObjects_AndTheNotebookUsesAPlainChild`, which saves and
   validates both documents with `gtk4-builder-tool`;
