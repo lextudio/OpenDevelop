@@ -147,7 +147,8 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		// adding the host-composed title bar made it 630 tall instead of 600 and took the scale just
 		// under a hard .25. Assert what fit means (a sensible scale that shows the design), not a bound
 		// that the frame height can push it past.
-		Assert.InRange(fitted.GetProperty("zoom").GetDouble(), .1, 2);
+		var fitZoom = fitted.GetProperty("zoom").GetDouble();
+		Assert.True(fitZoom is >= .1 and <= 2, $"Fit zoom {fitZoom} is outside 0.1..2; maximize reported {sized}; fit reported {fitted}");
 		// The shared DesignerCanvas toolbar's Fit button/action bypasses the Zoom combo entirely -
 		// without syncing the combo back, it kept showing the last manually-picked percentage while
 		// the canvas visibly rendered at Fit scale (observed live: combo stuck on "100%").
