@@ -1,4 +1,7 @@
+using System;
+using System.Linq;
 using ICSharpCode.GtkDesigner;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using Xunit;
 
 public sealed class GtkUiDocumentEditorTests
@@ -378,21 +381,115 @@ public sealed class GtkUiDocumentEditorTests
 		Assert.Contains("GtkLabel", editor.GetFactoryTemplate(id));
 	}
 
+	static DesignerMenuNode Item(int source, string label, string action = "") => new() { SourceIndex = source, Label = label, Action = action };
+	static DesignerMenuNode Container(string kind, int source, string label, params DesignerMenuNode[] children)
+		=> new() { SourceIndex = source, Kind = kind, Label = label, Children = children.ToList() };
+
+	const string MenuDocument = """<interface><requires lib="gtk" version="4.0"/><object class="GtkPopoverMenu" id="popover"><property name="menu-model"><menu>MENU</menu></property></object></interface>""";
+
 	[Fact]
-	public void MenuItems_EditTopLevelItemsAndRefuseSections()
+	public void MenuItems_EditTopLevelItems()
 	{
 		var editor = new GtkUiDocumentEditor();
-		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkPopoverMenu" id="popover"><property name="menu-model"><menu><item><attribute name="label">New</attribute><attribute name="action">app.new</attribute></item></menu></property></object></interface>"""), editor.Error);
-		Assert.Equal(new[] { ("New", "app.new") }, editor.GetMenuItems("popover"));
-		Assert.True(editor.SetMenuItems("popover", new[] { (0, "Newer", "app.newer"), (-1, "Open", "app.open") }), editor.Error);
-		Assert.Equal(new[] { ("Newer", "app.newer"), ("Open", "app.open") }, editor.GetMenuItems("popover"));
+		Assert.True(editor.Reset(MenuDocument.Replace("MENU", """<item><attribute name="label">New</attribute><attribute name="action">app.new</attribute></item>""")), editor.Error);
+		Assert.Equal("New = app.new", DesignerMenuOutline.Format(editor.GetMenuItems("popover")!));
+		Assert.True(editor.SetMenuItems("popover", new[] { Item(0, "Newer", "app.newer"), Item(-1, "Open", "app.open") }), editor.Error);
+		Assert.Equal("Newer = app.newer\nOpen = app.open", DesignerMenuOutline.Format(editor.GetMenuItems("popover")!));
 		Assert.Contains("<attribute name=\"label\">Open</attribute>", editor.Text);
 		Assert.True(editor.Undo());
-		Assert.Equal(new[] { ("New", "app.new") }, editor.GetMenuItems("popover"));
+		Assert.Equal("New = app.new", DesignerMenuOutline.Format(editor.GetMenuItems("popover")!));
+	}
 
-		// A sectioned menu is source-only: rewriting it here would drop the section structure.
-		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkPopoverMenu" id="popover"><property name="menu-model"><menu><section><item><attribute name="label">New</attribute></item></section></menu></property></object></interface>"""), editor.Error);
-		Assert.Null(editor.GetMenuItems("popover"));
-		Assert.False(editor.SetMenuItems("popover", new[] { (-1, "Open", "") }));
+	[Fact]
+	public void MenuItems_ReadAndRewriteSectionsAndSubmenusKeepingUnmodelledAttributes()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset(MenuDocument.Replace("MENU", """
+			<section>
+			  <item><attribute name="label">New</attribute><attribute name="action">app.new</attribute><attribute name="icon">document-new</attribute></item>
+			</section>
+			<submenu>
+			  <attribute name="label">Recent</attribute>
+			  <item><attribute name="label">A</attribute><attribute name="action">app.a</attribute></item>
+			</submenu>
+			""")), editor.Error);
+		var outline = DesignerMenuOutline.Format(editor.GetMenuItems("popover")!);
+		Assert.Equal("[section]\n  New = app.new\n[submenu] Recent\n  A = app.a", outline);
+
+		// Round-trip through the shared text form: the item keeps its icon, a new nested submenu is added.
+		var edited = DesignerMenuOutline.Parse(outline + "\n  [submenu] More\n    B = app.b", editor.GetMenuItems("popover")!, out var error);
+		Assert.NotNull(edited); Assert.Null(error);
+		Assert.True(editor.SetMenuItems("popover", edited!), editor.Error);
+		Assert.Contains("document-new", editor.Text);
+		Assert.Equal("[section]\n  New = app.new\n[submenu] Recent\n  A = app.a\n  [submenu] More\n    B = app.b", DesignerMenuOutline.Format(editor.GetMenuItems("popover")!));
+		Assert.True(editor.Undo());
+		Assert.Equal(outline, DesignerMenuOutline.Format(editor.GetMenuItems("popover")!));
+
+		// A new section around existing children is built from the tree, not by editing in place.
+		Assert.True(editor.SetMenuItems("popover", new[] { Container("section", -1, "File", Item(-1, "Quit", "app.quit")) }), editor.Error);
+		Assert.Equal("[section] File\n  Quit = app.quit", DesignerMenuOutline.Format(editor.GetMenuItems("popover")!));
+	}
+
+	[Fact]
+	public void MenuItems_SaveWithoutEditsIsANoOpAndAnInsertedLineKeepsLaterEntriesAttributes()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset(MenuDocument.Replace("MENU", """
+			<section>
+			  <attribute name="label">File</attribute>
+			  <item><attribute name="label">New</attribute><attribute name="action">app.new</attribute><attribute name="icon">document-new</attribute></item>
+			</section>
+			<submenu>
+			  <attribute name="label">Recent</attribute>
+			  <attribute name="icon">folder</attribute>
+			  <item><attribute name="label">A</attribute><attribute name="action">app.a</attribute></item>
+			</submenu>
+			""")), editor.Error);
+		var before = editor.Text;
+		var current = editor.GetMenuItems("popover")!;
+		var same = DesignerMenuOutline.Parse(DesignerMenuOutline.Format(current), current, out var error);
+		Assert.Null(error);
+		Assert.True(editor.SetMenuItems("popover", same!), editor.Error);
+		Assert.Equal(before, editor.Text);
+		Assert.False(editor.Undo()); // nothing was recorded
+
+		// A line inserted above everything shifts positions, but entries are matched by content first,
+		// so the section's item and the submenu keep their icons.
+		var text = "[section] Top\n  Fresh = app.fresh\n" + DesignerMenuOutline.Format(current);
+		var edited = DesignerMenuOutline.Parse(text, current, out error);
+		Assert.Null(error);
+		Assert.True(editor.SetMenuItems("popover", edited!), editor.Error);
+		Assert.Contains("document-new", editor.Text);
+		Assert.Contains("<attribute name=\"icon\">folder</attribute>", editor.Text);
+		Assert.Equal(text, DesignerMenuOutline.Format(editor.GetMenuItems("popover")!));
+	}
+
+	[Fact]
+	public void MenuItems_RefuseUnknownKindsRepeatedSourcesAndItemsWithChildren()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset(MenuDocument.Replace("MENU", """<item><attribute name="label">New</attribute></item><item><attribute name="label">Open</attribute></item>""")), editor.Error);
+		Assert.False(editor.SetMenuItems("popover", new[] { new DesignerMenuNode { Kind = "link", Label = "x" } }));
+		Assert.False(editor.SetMenuItems("popover", new[] { Item(0, "A"), Item(0, "B") }));
+		Assert.False(editor.SetMenuItems("popover", new[] { Item(5, "A") }));
+		var holder = Item(-1, "Item");
+		holder.Children.Add(Item(-1, "Nested"));
+		Assert.False(editor.SetMenuItems("popover", new[] { holder }));
+	}
+
+	[Fact]
+	public void MenuOutline_ParsesDepthAndRejectsIndentedItemChildren()
+	{
+		var tree = DesignerMenuOutline.Parse("[section] S\n\tA = a\n  B\nC = c", Array.Empty<DesignerMenuNode>(), out var error);
+		Assert.Null(error);
+		Assert.Equal(new[] { "section", "item" }, tree!.Select(n => n.Kind));
+		Assert.Equal(new[] { "A", "B" }, tree![0].Children.Select(n => n.Label));
+		Assert.Null(DesignerMenuOutline.Parse("A = a\n  B = b", Array.Empty<DesignerMenuNode>(), out error));
+		Assert.Contains("only a section or submenu", error);
+		Assert.Null(DesignerMenuOutline.Parse("[section] S\n      Deep = d", Array.Empty<DesignerMenuNode>(), out error));
+		Assert.Contains("indented deeper", error);
+		// One space is not a level: it must not silently flatten a child into a sibling.
+		Assert.Null(DesignerMenuOutline.Parse("[section] S\n Child = c", Array.Empty<DesignerMenuNode>(), out error));
+		Assert.Contains("odd number of spaces", error);
 	}
 }

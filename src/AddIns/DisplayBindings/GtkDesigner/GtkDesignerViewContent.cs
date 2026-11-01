@@ -483,9 +483,9 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	}
 
 	/// <summary>The selected popover/menu button's top-level menu items, or null.</summary>
-	public IReadOnlyList<GtkMenuItemInfo>? MenuItems() { if (host == null || selected == null) return null; return host.MenuItemsAsync(selected.Id).GetAwaiter().GetResult(); }
+	public IReadOnlyList<DesignerMenuNode>? MenuItems() { if (host == null || selected == null) return null; return host.MenuItemsAsync(selected.Id).GetAwaiter().GetResult(); }
 	/// <summary>Replaces the selected popover/menu button's top-level menu items as one undo step.</summary>
-	public bool SetMenuItems(IReadOnlyList<GtkMenuItemInfo> items) { if (host == null || selected == null) return false; return Mutate(() => host.SetMenuItemsAsync(state.Version, selected.Id, items.ToList()).GetAwaiter().GetResult()); }
+	public bool SetMenuItems(IReadOnlyList<DesignerMenuNode> items) { if (host == null || selected == null) return false; return Mutate(() => host.SetMenuItemsAsync(state.Version, selected.Id, items.ToList()).GetAwaiter().GetResult()); }
 
 	/// <summary>The selected list/grid/column view's inline factory template, or null.</summary>
 	public string? FactoryTemplate() { if (host == null || selected == null) return null; return host.FactoryTemplateAsync(selected.Id).GetAwaiter().GetResult(); }
@@ -548,7 +548,8 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		if (accepted && text.Text != template && !SetFactoryTemplate(text.Text)) MessageService.ShowError(state.Error);
 	}
 
-	/// <summary>Edits the selected popover's top-level menu items, one "label = action" per line.</summary>
+	/// <summary>Edits the selected popover's menu as the shared indented outline: one entry per line,
+	/// <c>[section]</c>/<c>[submenu]</c> lines holding the entries indented below them.</summary>
 	void EditMenu()
 	{
 		if (selected == null || MenuItems() is not { } items) return;
@@ -557,7 +558,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = Application.Current?.MainWindow
 		};
 		var text = new TextBox {
-			Text = string.Join(Environment.NewLine, items.Select(item => item.Action.Length == 0 ? item.Label : item.Label + " = " + item.Action)),
+			Text = DesignerMenuOutline.Format(items),
 			AcceptsReturn = true, FontFamily = new FontFamily("Menlo, Consolas, monospace"),
 			HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto
 		};
@@ -571,21 +572,8 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		var accepted = false; ok.Click += (_, _) => { accepted = true; window.Close(); };
 		window.ShowDialog();
 		if (!accepted) return;
-		var edited = ParseMenuLines(text.Text, items.Count);
+		if (DesignerMenuOutline.Parse(text.Text, items, out var error) is not { } edited) { MessageService.ShowError(error); return; }
 		if (!SetMenuItems(edited)) MessageService.ShowError(state.Error);
-	}
-
-	static List<GtkMenuItemInfo> ParseMenuLines(string text, int existing)
-	{
-		var result = new List<GtkMenuItemInfo>();
-		foreach (var line in (text ?? "").Replace("\r", "").Split('\n')) {
-			if (string.IsNullOrWhiteSpace(line)) continue;
-			var at = line.IndexOf('=');
-			var label = (at < 0 ? line : line[..at]).Trim();
-			var action = at < 0 ? "" : line[(at + 1)..].Trim();
-			result.Add(new GtkMenuItemInfo { SourceIndex = result.Count < existing ? result.Count : -1, Label = label, Action = action });
-		}
-		return result;
 	}
 
 	void RequestRename() { if (selected == null || selected.Id.StartsWith("$", StringComparison.Ordinal)) return; var newId = MessageService.ShowInputBox("Rename", "Enter a new object id:", selected.Name ?? selected.Id)?.Trim(); if (!string.IsNullOrEmpty(newId) && !string.Equals(newId, selected.Id, StringComparison.Ordinal) && !RenameSelected(newId)) MessageService.ShowError(state.Error); }

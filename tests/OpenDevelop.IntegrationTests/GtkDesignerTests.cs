@@ -905,6 +905,18 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		await ValidateGtkBuilderAsync(path);
 		Assert.True((await app.InvokeAsync("od.gtk-designer.undo")).GetProperty("canRedo").GetBoolean());
 		Assert.Equal(2, (await app.InvokeAsync("od.gtk-designer.menu-items")).GetProperty("items").GetArrayLength());
+
+		// Sections and submenus go through the same shared outline and stay a valid GtkBuilder menu.
+		var nested = await app.InvokeAsync("od.gtk-designer.menu-items.set", "[section] File;  New=app.new;  Open=app.open;[submenu] Recent;  A=app.a");
+		Assert.True(nested.GetProperty("success").GetBoolean(), nested.ToString());
+		var tree = nested.GetProperty("items").EnumerateArray().ToList();
+		Assert.Equal(new[] { "section", "submenu" }, tree.Select(item => item.GetProperty("kind").GetString()));
+		Assert.Equal(2, tree[0].GetProperty("children").GetArrayLength());
+		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
+		xml = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+		Assert.Contains("<section>", xml);
+		Assert.Contains("<submenu>", xml);
+		await ValidateGtkBuilderAsync(path);
 		await app.InvokeAsync("od.close-active-view");
 	}
 

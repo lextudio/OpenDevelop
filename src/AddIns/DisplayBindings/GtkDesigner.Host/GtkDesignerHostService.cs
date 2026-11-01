@@ -145,23 +145,22 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		return State(session, false);
 	}
 
-	/// <summary>The selected object's top-level menu items (a &lt;menu&gt; in its menu-model property).</summary>
+	/// <summary>The selected object's menu entries: items, sections and submenus (a &lt;menu&gt; in its menu-model property).</summary>
 	[JsonRpcMethod("gtk/menu-items")]
-	public List<GtkMenuItemInfo>? MenuItems(string sessionId, string documentId, string elementId)
+	public List<DesignerMenuNode>? MenuItems(string sessionId, string documentId, string elementId)
 	{
 		EnsureSession(sessionId);
-		var items = Get(documentId).Editor.GetMenuItems(elementId);
-		return items?.Select((item, index) => new GtkMenuItemInfo { SourceIndex = index, Label = item.Label, Action = item.Action }).ToList();
+		return Get(documentId).Editor.GetMenuItems(elementId)?.ToList();
 	}
 
-	/// <summary>Replaces the top-level menu items as one undo step.</summary>
+	/// <summary>Replaces the menu entries as one undo step.</summary>
 	[JsonRpcMethod("gtk/set-menu-items")]
-	public DesignerSessionState SetMenuItems(string sessionId, string documentId, long baseVersion, string elementId, List<GtkMenuItemInfo> items)
+	public DesignerSessionState SetMenuItems(string sessionId, string documentId, long baseVersion, string elementId, List<DesignerMenuNode> items)
 	{
 		EnsureSession(sessionId);
 		var session = Get(documentId);
 		EnsureVersion(session, baseVersion);
-		if (!session.Editor.SetMenuItems(elementId, items.Select(item => (item.SourceIndex, item.Label, item.Action)).ToList()))
+		if (!session.Editor.SetMenuItems(elementId, items))
 			throw new InvalidOperationException("The menu items were rejected.");
 		session.Version++;
 		return State(session, false);

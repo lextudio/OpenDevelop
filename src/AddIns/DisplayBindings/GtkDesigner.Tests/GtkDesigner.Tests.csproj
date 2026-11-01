@@ -15,5 +15,6 @@
     <Compile Include="..\GtkDesigner\GtkPreviewSanitizer.cs" Link="GtkPreviewSanitizer.cs" />
     <Compile Include="..\GtkDesigner\GtkCustomWidgetPreview.cs" Link="GtkCustomWidgetPreview.cs" />
     <Compile Include="..\..\..\Main\Designer\Designer.Shell\XmlToolboxDropPlanner.cs" Link="XmlToolboxDropPlanner.cs" />
+    <Compile Include="..\..\..\Main\Designer\Designer.Remote\DesignerMenuOutline.cs" Link="DesignerMenuOutline.cs" />
   </ItemGroup>
 </Project>

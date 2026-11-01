@@ -843,11 +843,16 @@ Delete and the Order commands work on the column objects, and the column's
 
 GtkBuilder parses a menu as `<menu>` tags (not a `Gio.Menu` object) in a `menu-model` property. With
 a `GtkPopoverMenu` (or `GtkMenuButton`) selected, the surface's context menu offers **Edit Menu...**:
-one `label = action` per line, rewritten as
+the shared `DesignerMenuOutline` text (`Designer.Remote`: one `label = action` per line, `[section] label`
+and `[submenu] label` lines holding their entries indented two spaces below), rewritten as
 `<item><attribute name="label">…</attribute><attribute name="action">…</attribute></item>` in one
 undo step (`gtk/menu-items` / `gtk/set-menu-items`; `od.gtk-designer.menu-items(.set)` for tests).
-A kept item keeps its other attributes; an empty action removes the attribute. A menu with
-`<section>` or `<submenu>` is source-only, because rewriting the top level would drop the structure.
+The wire and editor model is the framework-neutral `DesignerMenuNode` tree (kind, label, action,
+children, source index), so another designer whose menu is data can reuse the model and the text form.
+An entry keeps its other attributes (icons, hints) when its source index and kind match; an empty
+action removes the attribute; an unknown kind, a repeated or out-of-range source index, or an item
+holding children is refused. Parse errors (an entry indented below an item, or deeper than its parent
+allows) are shown instead of silently flattening the structure.
 The action names refer to `Gio.Action`s the application registers in code; the designer edits the
 menu model, not the action implementations.
 
@@ -939,8 +944,8 @@ Status 2026-11-01: not implemented except where marked.
   policies (`GtkHeaderBar` start/end/title and `GtkNotebook` tab labels are implemented;
   `GtkNotebook` action widgets and `AdwTabView` pages are not);
 - menus, actions, list models (an inline `GtkStringList`'s items are editable), factories and
-  expressions: top-level menu items are editable (see "Menus"); `Gio.Action` implementations, menu
-  sections/submenus and expressions are not;
+  expressions: menu items, sections and submenus are editable (see "Menus"); `Gio.Action`
+  implementations and expressions are not;
 - translation and resource tooling: GResource preview is implemented; no string extraction,
   `.po` editing or translation workflow;
 - explicit GTK 3/Stetic migration assistant: not implemented;
@@ -963,7 +968,6 @@ Product features:
   `.gtkdesigner.json` preview mapping exists);
 - `Gio.Action` implementations for menu actions: the designer edits the menu model, the actions
   stay in application code;
-- menu sections and submenus in the menu editor (a menu that uses them is refused as source-only);
 - list/model depth: non-string-list models (`Gio.ListStore`, `GtkSelectionModel`, sort/filter
   models), `GtkSignalListItemFactory`, column sorters, and factories beyond the inline
   `GtkBuilderListItemFactory` template editor;

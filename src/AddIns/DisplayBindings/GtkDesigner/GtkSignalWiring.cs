@@ -26,14 +26,6 @@ public sealed class GtkSignalWiringResult
 	public List<GtkSignalHandlerInfo> Handlers { get; set; } = new();
 }
 
-/// <summary>One top-level menu item on the wire (design host -&gt; IDE).</summary>
-public sealed class GtkMenuItemInfo
-{
-	[JsonPropertyName("sourceIndex")] public int SourceIndex { get; set; } = -1;
-	[JsonPropertyName("label")] public string Label { get; set; } = "";
-	[JsonPropertyName("action")] public string Action { get; set; } = "";
-}
-
 public sealed class GtkSignalHandlerInfo
 {
 	public string ObjectId { get; set; } = "";

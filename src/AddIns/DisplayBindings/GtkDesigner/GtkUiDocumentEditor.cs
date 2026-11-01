@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 
 namespace ICSharpCode.GtkDesigner;
 
@@ -517,35 +518,66 @@ public sealed class GtkUiDocumentEditor
 		=> element.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "menu-model"))
 			?.Elements().FirstOrDefault(e => e.Name.LocalName == "menu");
 
-	/// <summary>The top-level menu items as (label, action). Null when the object has no menu or
-	/// the menu uses sections/submenus, which this editor does not rewrite.</summary>
-	public IReadOnlyList<(string Label, string Action)>? GetMenuItems(string id)
-	{
-		var menu = Find(id) is { } element ? MenuElement(element) : null;
-		if (menu == null || menu.Elements().Any(e => e.Name.LocalName is "section" or "submenu")) return null;
-		return menu.Elements().Where(e => e.Name.LocalName == "item")
-			.Select(item => (MenuAttribute(item, "label"), MenuAttribute(item, "action"))).ToList();
-	}
+	/// <summary>The menu as a tree of items, sections and submenus (the shared designer menu model);
+	/// each entry's <c>SourceIndex</c> is its index among its parent's entries. Null when the object
+	/// has no menu.</summary>
+	public IReadOnlyList<DesignerMenuNode>? GetMenuItems(string id)
+		=> Find(id) is { } element && MenuElement(element) is { } menu ? ReadMenuEntries(menu) : null;
 
-	/// <summary>Replaces the top-level menu items as one undo step. An entry with a SourceIndex
-	/// keeps that item's other attributes; an empty action removes the action attribute.</summary>
-	public bool SetMenuItems(string id, IReadOnlyList<(int SourceIndex, string Label, string Action)> items)
+	static List<DesignerMenuNode> ReadMenuEntries(XElement container)
+		=> MenuEntries(container).Select((entry, index) => {
+			var node = new DesignerMenuNode { SourceIndex = index, Kind = entry.Name.LocalName, Label = MenuAttribute(entry, "label") };
+			if (node.IsContainer) node.Children = ReadMenuEntries(entry);
+			else node.Action = MenuAttribute(entry, "action");
+			return node;
+		}).ToList();
+
+	static List<XElement> MenuEntries(XElement container)
+		=> container.Elements().Where(e => DesignerMenuNode.IsKnownKind(e.Name.LocalName)).ToList();
+
+	/// <summary>Replaces the menu's entries as one undo step. An entry with a SourceIndex of the same
+	/// kind keeps that entry's other attributes and unmodelled children; an empty action removes the
+	/// action attribute. False for an unknown kind, an out-of-range or repeated source index, or an
+	/// item that holds children.</summary>
+	public bool SetMenuItems(string id, IReadOnlyList<DesignerMenuNode> items)
 	{
 		var menu = Find(id) is { } element ? MenuElement(element) : null;
-		if (menu == null || menu.Elements().Any(e => e.Name.LocalName is "section" or "submenu")) return false;
-		var old = menu.Elements().Where(e => e.Name.LocalName == "item").ToList();
-		var sources = items.Where(item => item.SourceIndex >= 0).Select(item => item.SourceIndex).ToList();
-		if (sources.Any(index => index >= old.Count) || sources.Distinct().Count() != sources.Count) return false;
-		var rebuilt = items.Select(item => {
-			var copy = item.SourceIndex >= 0 ? new XElement(old[item.SourceIndex]) : new XElement("item");
-			SetMenuAttribute(copy, "label", item.Label);
-			SetMenuAttribute(copy, "action", item.Action);
-			return copy;
-		}).ToList();
-		if (rebuilt.Select(e => e.ToString()).SequenceEqual(old.Select(e => e.ToString()))) return true;
-		old.ForEach(item => item.Remove());
+		if (menu == null) return false;
+		var old = MenuEntries(menu);
+		var rebuilt = RebuildMenuEntries(items, old);
+		if (rebuilt == null) return false;
+		// Compared as a model, not as text: the document keeps whitespace between elements, so a rebuilt
+		// section never serialises equal to its original even when nothing changed.
+		if (SameMenu(items, ReadMenuEntries(menu))) return true;
+		old.ForEach(entry => entry.Remove());
 		menu.Add(rebuilt);
 		return Commit();
+	}
+
+	static bool SameMenu(IReadOnlyList<DesignerMenuNode> edited, IReadOnlyList<DesignerMenuNode> current)
+		=> edited.Count == current.Count && edited.Select((node, index) => node.SourceIndex == index && node.Kind == current[index].Kind
+			&& node.Label == current[index].Label && (node.IsContainer ? SameMenu(node.Children, current[index].Children) : node.Action == current[index].Action)).All(same => same);
+
+	static List<XElement>? RebuildMenuEntries(IReadOnlyList<DesignerMenuNode> nodes, IReadOnlyList<XElement> old)
+	{
+		var sources = nodes.Where(node => node.SourceIndex >= 0).Select(node => node.SourceIndex).ToList();
+		if (sources.Any(index => index >= old.Count) || sources.Distinct().Count() != sources.Count) return null;
+		var result = new List<XElement>();
+		foreach (var node in nodes) {
+			if (!DesignerMenuNode.IsKnownKind(node.Kind) || (!node.IsContainer && node.Children.Count > 0)) return null;
+			var source = node.SourceIndex >= 0 && old[node.SourceIndex].Name.LocalName == node.Kind ? old[node.SourceIndex] : null;
+			var copy = source != null ? new XElement(source) : new XElement(node.Kind);
+			SetMenuAttribute(copy, "label", node.Label);
+			if (node.IsContainer) {
+				var oldChildren = MenuEntries(copy);
+				var children = RebuildMenuEntries(node.Children, oldChildren);
+				if (children == null) return null;
+				oldChildren.ForEach(entry => entry.Remove());
+				copy.Add(children);
+			} else SetMenuAttribute(copy, "action", node.Action);
+			result.Add(copy);
+		}
+		return result;
 	}
 
 	static string MenuAttribute(XElement item, string name)
