@@ -15,5 +15,6 @@
     <Compile Include="..\Project\Src\TranslationProject.cs" Link="TranslationProject.cs" />
     <Compile Include="..\Project\Src\TranslatorModel.cs" Link="TranslatorModel.cs" />
     <Compile Include="..\Project\Src\TranslationFormats.cs" Link="TranslationFormats.cs" />
+    <Compile Include="..\Project\Src\PoAnalyzer.cs" Link="PoAnalyzer.cs" />
   </ItemGroup>
 </Project>

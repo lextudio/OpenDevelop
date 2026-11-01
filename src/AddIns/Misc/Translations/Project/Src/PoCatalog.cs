@@ -29,6 +29,14 @@ namespace ICSharpCode.Translations
 		/// <summary>A translation whose source string is gone (<c>#~</c>); kept in case it comes back.</summary>
 		public bool Obsolete { get; set; }
 
+		/// <summary>Where the entry was read from, 1-based: its first line (comments included), and the lines of its
+		/// <c>#,</c> flags, <c>msgid</c> and <c>msgstr</c>/<c>msgstr[0]</c>; 0 when it has none or was not parsed from text.
+		/// The language service reports its problems against these.</summary>
+		public int Line { get; set; }
+		public int FlagsLine { get; set; }
+		public int MsgIdLine { get; set; }
+		public int MsgStrLine { get; set; }
+
 		public bool IsTranslated => MsgIdPlural == null ? MsgStr.Length > 0 : PluralStrings.Any(s => s.Length > 0);
 		public bool IsFuzzy => Flags.Contains("fuzzy");
 		public string Key => (Context ?? "\u0001") + "\u0004" + MsgId;
@@ -61,7 +69,9 @@ namespace ICSharpCode.Translations
 				else catalog.Entries.Add(entry);
 				entry = null; section = "";
 			}
+			var lineNumber = 0;
 			foreach (var raw in text.Replace("\r", "").Split('\n')) {
+				lineNumber++;
 				var line = raw.Trim();
 				if (line.Length == 0) { Flush(); continue; }
 				var obsolete = false;
@@ -69,10 +79,10 @@ namespace ICSharpCode.Translations
 				if (line.StartsWith("#", StringComparison.Ordinal)) {
 					// A comment after a msgstr belongs to the next entry.
 					if (entry != null && section is "msgstr" or "plural") Flush();
-					entry ??= new PoEntry { Obsolete = obsolete };
+					entry ??= new PoEntry { Obsolete = obsolete, Line = lineNumber };
 					if (line.StartsWith("#.", StringComparison.Ordinal)) entry.ExtractedComments.Add(line.Substring(2).Trim());
 					else if (line.StartsWith("#:", StringComparison.Ordinal)) entry.References.AddRange(line.Substring(2).Split(' ', StringSplitOptions.RemoveEmptyEntries));
-					else if (line.StartsWith("#,", StringComparison.Ordinal)) entry.Flags.AddRange(line.Substring(2).Split(',').Select(f => f.Trim()).Where(f => f.Length > 0));
+					else if (line.StartsWith("#,", StringComparison.Ordinal) && SetFlagsLine(entry, lineNumber)) entry.Flags.AddRange(line.Substring(2).Split(',').Select(f => f.Trim()).Where(f => f.Length > 0));
 					else if (!line.StartsWith("#|", StringComparison.Ordinal)) entry.TranslatorComments.Add(line.Substring(1).TrimStart());
 					continue;
 				}
@@ -87,16 +97,17 @@ namespace ICSharpCode.Translations
 				if (keyword == "msgctxt" || (keyword == "msgid" && entry != null && section is "msgstr" or "plural")) {
 					if (section is "msgstr" or "plural") Flush();
 				}
-				entry ??= new PoEntry { Obsolete = obsolete };
+				entry ??= new PoEntry { Obsolete = obsolete, Line = lineNumber };
 				if (obsolete) entry.Obsolete = true;
 				switch (keyword) {
 					case "msgctxt": entry.Context = value; section = "msgctxt"; break;
-					case "msgid": entry.MsgId = value; section = "msgid"; break;
+					case "msgid": entry.MsgId = value; entry.MsgIdLine = lineNumber; section = "msgid"; break;
 					case "msgid_plural": entry.MsgIdPlural = value; section = "msgid_plural"; break;
-					case "msgstr": entry.MsgStr = value; section = "msgstr"; break;
+					case "msgstr": entry.MsgStr = value; entry.MsgStrLine = lineNumber; section = "msgstr"; break;
 					default:
 						if (keyword.StartsWith("msgstr[", StringComparison.Ordinal) && int.TryParse(keyword.Substring(7).TrimEnd(']'), out var index)) {
 							pluralIndex = index;
+							if (entry.MsgStrLine == 0) entry.MsgStrLine = lineNumber;
 							while (entry.PluralStrings.Count <= index) entry.PluralStrings.Add("");
 							entry.PluralStrings[index] = value; section = "plural";
 						}
@@ -106,6 +117,8 @@ namespace ICSharpCode.Translations
 			Flush();
 			return catalog;
 		}
+
+		static bool SetFlagsLine(PoEntry entry, int lineNumber) { if (entry.FlagsLine == 0) entry.FlagsLine = lineNumber; return true; }
 
 		static void Append(PoEntry entry, string section, int pluralIndex, string value)
 		{

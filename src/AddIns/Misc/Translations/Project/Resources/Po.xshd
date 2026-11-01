@@ -1,0 +1,35 @@
+<SyntaxDefinition name="Po" extensions=".po;.pot" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+	<Color name="Comment" foreground="Green" exampleText="# translator comment" />
+	<Color name="Note" foreground="DarkCyan" exampleText="#. note from the source" />
+	<Color name="Reference" foreground="Gray" exampleText="#: Windows/Main.ui:12" />
+	<Color name="Flag" foreground="DarkMagenta" exampleText="#, fuzzy" />
+	<Color name="Obsolete" foreground="Gray" exampleText="#~ msgid &quot;Gone&quot;" />
+	<Color name="Keyword" foreground="Blue" fontWeight="bold" exampleText="msgid &quot;text&quot;" />
+	<Color name="String" foreground="Brown" exampleText="&quot;text&quot;" />
+	<Color name="Escape" foreground="Red" exampleText="\n" />
+	<Color name="Placeholder" foreground="DarkOrange" exampleText="%s %1$d" />
+
+	<RuleSet>
+		<Span color="Reference"><Begin>^\s*\#:</Begin></Span>
+		<Span color="Flag"><Begin>^\s*\#,</Begin></Span>
+		<Span color="Note"><Begin>^\s*\#\.</Begin></Span>
+		<Span color="Obsolete"><Begin>^\s*\#~</Begin></Span>
+		<Span color="Comment"><Begin>\#</Begin></Span>
+		<Span color="String" ruleSet="StringContent">
+			<Begin>"</Begin>
+			<End>"</End>
+		</Span>
+		<Keywords color="Keyword">
+			<Word>msgctxt</Word>
+			<Word>msgid</Word>
+			<Word>msgid_plural</Word>
+			<Word>msgstr</Word>
+		</Keywords>
+		<Rule color="Keyword">msgstr\[\d+\]</Rule>
+	</RuleSet>
+
+	<RuleSet name="StringContent">
+		<Rule color="Escape">\\.</Rule>
+		<Rule color="Placeholder">%(\d+\$)?[-+\#0']*(\*|\d+)?(\.(\*|\d+))?(hh|h|ll|l|L|q|j|z|t)?[diouxXeEfFgGaAcspn]</Rule>
+	</RuleSet>
+</SyntaxDefinition>

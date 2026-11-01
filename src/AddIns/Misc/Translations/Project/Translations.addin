@@ -3,6 +3,15 @@
   <Runtime><Import assembly="ICSharpCode.Translations.dll" /></Runtime>
   <Path name="/SharpDevelop/Autostart">
     <Class id="ICSharpCode.Translations.RegisterDevFlowActionsCommand" class="ICSharpCode.Translations.RegisterDevFlowActionsCommand" />
+    <Class id="ICSharpCode.Translations.PoLanguageService" class="ICSharpCode.Translations.RegisterPoLanguageServiceCommand" />
+  </Path>
+  <Path name="/SharpDevelop/ViewContent/AvalonEdit/SyntaxModes">
+    <SyntaxMode id="Po.SyntaxMode" name="Po" extensions=".po;.pot" resource="ICSharpCode.Translations.Resources.Po.xshd" />
+  </Path>
+  <!-- gettext catalogues have their own in-process language service (problems, hover, completion, outline, references),
+       registered for ".po" on the language-service registry; the binding opens its completion in the editor. -->
+  <Path name="/SharpDevelop/ViewContent/TextEditor/CodeCompletion">
+    <CodeCompletionBinding id="Po" extensions=".po" class="ICSharpCode.Translations.PoCodeCompletionBinding" />
   </Path>
   <Path name="/SharpDevelop/Workbench/DisplayBindings">
     <DisplayBinding id="Translator" type="Secondary" class="ICSharpCode.Translations.TranslatorDisplayBinding" fileNamePattern="\.(po|resx)$" />

@@ -14,10 +14,11 @@ says which of its files carry translatable text.
 | Tools > Update Translations, `od.translations.update` (DevFlow) | `Project/Src/TranslationsService.cs`, `TranslationsDevFlowActions.cs` | implemented |
 | `TranslatorModel` / `TranslatorRow`: the rows, filters, search and progress of one `.po` text; edits mark it dirty, untouched text is written back verbatim | `Project/Src/TranslatorModel.cs` | implemented |
 | Translator view: the Design view of a `.po` or a culture `.resx` (state, name/context, source, translation, fuzzy, comment, notes columns; All / Needs work / Untranslated / Fuzzy / Translated / Obsolete filters; search; progress line) | `Project/Src/TranslatorView.cs`, `TranslatorViewContent.cs` | implemented |
-| Source-view language service for `.po` (placeholder mismatch, fuzzy, missing plural forms) | - | not implemented |
+| `PoAnalyzer`: the problems, hover, completion, `#:` references and outline of a `.po` text, as pure functions | `Project/Src/PoAnalyzer.cs` | implemented |
+| `PoLanguageService` (`ILanguageService` for ".po") with its registration, completion binding and syntax highlighting | `Project/Src/PoLanguageService.cs`, `PoLanguageServiceRegistration.cs`, `Resources/Po.xshd` | implemented |
 | `ITranslationFormat`: how a file maps to entries and back (`PoFormat`, `ResxFormat`) | `Project/Src/TranslationFormats.cs` | implemented |
 | `.resx` adapter: `X.resx` is the source, `X.<culture>.resx` the translations, keyed by resource name rather than by msgid | `Project/Src/TranslationFormats.cs` (`ResxFormat`) | implemented for editing a culture file; Update Translations does not generate culture files |
-| Compiling `.po` to `.mo` (`msgfmt`) | - | not implemented |
+| Compiling `.po` to `.mo` (`msgfmt`) | - | not planned: it is a build step of the project that ships the catalogues, not editor behaviour |
 
 ## Rules
 
@@ -44,6 +45,35 @@ comment and `#:` references). Rules:
   the progress line counts translated, fuzzy and untranslated entries.
 - Saving writes the file back verbatim until a row is edited; after that the catalogue is rewritten in gettext's layout.
   Editing the source view and switching back reloads the rows from the file.
+
+## Source-view language service
+
+A `.po` file's text editor gets an in-process language service (the same registry the `.ui` and C# services use), with
+Po syntax highlighting. `PoAnalyzer` answers; `PoLanguageService` converts to the editor's contracts.
+
+| Id | Severity | Meaning |
+|---|---|---|
+| PO1001 | error | msgstr placeholders (`%s`, `%d`, `%1$s`...) do not match the source's. A translation may reorder placeholders only by numbering them; a plural form may leave one out but not add or change one. Checked when the source has placeholders, or when the entry is flagged `c-format`; skipped for `no-c-format`. |
+| PO1002 | warning | the markup tags (`<b>`...) differ from the source's |
+| PO1003 | warning | msgid and msgstr do not both begin, or both end, with a line break (what `msgfmt -c` rejects) |
+| PO1004 | info | the entry is fuzzy, so it is not used until confirmed; its text is not checked until then |
+| PO1005 | error | a plural entry has a different number of `msgstr[n]` forms than the header's `nplurals` |
+| PO1006 | warning | a translated plural entry but no `Plural-Forms` in the header |
+| PO1007 | error | duplicate message definition (same context and msgid) |
+| PO1008 | warning | no header entry, no `Content-Type` charset, or a charset other than UTF-8 (the translator view saves UTF-8) |
+
+Obsolete (`#~`) entries and untranslated ones are not reported: the Translator view lists what is still to do. Problems
+are reported on the offending line (the msgstr, the flag line for fuzzy, the msgid for duplicates).
+
+Hover on a message shows its source (and plural), context, translation with its state, the extracted note, the `#:` sources
+and its placeholders. Completion offers the flags after `#,` (`fuzzy`, `c-format`, `no-c-format`, ...), the source text
+inside an open `msgstr "`, and the keywords that may start the line (after `msgctxt` only `msgid`; after `msgid`,
+`msgid_plural` or `msgstr`; after `msgid_plural`, `msgstr[0]`/`msgstr[1]`; at a new entry, `msgid` or `msgctxt`). Go to
+definition on a `#:` reference opens `file:line`, looked up in the project folder (the parent of the `po` folder) and then
+beside the `.po`. The outline lists the header and one node per live message, kind-tagged translated, fuzzy or
+untranslated.
+
+The completion binding is a copy of the GTK addin's for `.ui`; if more addins need one, that is the code to move to Base.
 
 ### Culture `.resx` files
 
@@ -80,6 +110,8 @@ model) and
 `GtkDesigner_UpdateTranslations_WritesThePotFromUiFilesAndMergesPoFiles` runs `od.translations.update` against the
 real host, so the addin discovery, the source registration and the merge are exercised together;
 `GtkDesigner_TranslatorView_EditsAPoFileAndSavesIt` opens a `.po`, reads the grid's rows and columns
-(`od.translator.status`), filters, edits through the DevFlow actions and checks the saved file, and
+(`od.translator.status`), filters, edits through the DevFlow actions and checks the saved file;
+`GtkDesigner_PoFilesGetALanguageService` drives the generic language-service actions (`od.diagnostics`, `od.quick-info`,
+`od.completions`, `od.document-outline`, `od.go-to-definition`) against a `.po`, the path the editor itself uses; and
 `GtkDesigner_TranslatorView_TranslatesACultureResxAgainstItsNeutralFile` does the same for `Form1.fr.resx` against `Form1.resx`. (Both live in the GTK
 designer's journey class because it owns the fixture project; they exercise this addin.)

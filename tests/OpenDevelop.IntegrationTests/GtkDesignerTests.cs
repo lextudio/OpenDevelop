@@ -1426,6 +1426,61 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		await app.InvokeAsync("od.close-active-view");
 	}
 
+	static (int Line, int Column) PoLineColumn(string text, int offset)
+	{
+		var line = 1 + text.Take(offset).Count(c => c == '\n');
+		return (line, offset - (offset == 0 ? 0 : text.LastIndexOf('\n', offset - 1) + 1) + 1);
+	}
+
+	[Fact]
+	public async Task GtkDesigner_PoFilesGetALanguageService()
+	{
+		// The Translations addin registers an in-process language service for ".po". These are the generic language-service
+		// actions - the path the editor's squiggles, completion, hover, outline and go to definition use - so no view is needed.
+		var poPath = Path.Combine(workDir, "po", "service.po");
+		Directory.CreateDirectory(Path.GetDirectoryName(poPath)!);
+		var text = "msgid \"\"\nmsgstr \"\"\n\"Language: fr\\n\"\n\"Content-Type: text/plain; charset=UTF-8\\n\"\n\"Plural-Forms: nplurals=2; plural=(n > 1);\\n\"\n\n"
+			+ "#: Windows/MainWindow.ui:3\nmsgid \"%s has %d files\"\nmsgstr \"%s a des fichiers\"\n\n"
+			+ "#, fuzzy\nmsgid \"Open\"\nmsgstr \"Ouvre\"\n\n"
+			+ "msgid \"Close\"\nmsgstr \"\"\n";
+		await File.WriteAllTextAsync(poPath, text, TestContext.Current.CancellationToken);
+
+		var diagnostics = await app.InvokeAsync("od.diagnostics", poPath);
+		var found = diagnostics.GetProperty("diagnostics").EnumerateArray().Select(d => (Id: d.GetProperty("id").GetString(), Line: d.GetProperty("startLine").GetInt32())).ToArray();
+		Assert.Contains(found, d => d.Id == "PO1001" && d.Line == 9); // the msgstr with the missing %d
+		Assert.Contains(found, d => d.Id == "PO1004" && d.Line == 11); // the fuzzy flag line
+		Assert.DoesNotContain(found, d => d.Id == "PO1008");
+
+		var hoverAt = text.IndexOf("msgid \"Open\"", StringComparison.Ordinal) + 3;
+		var (hoverLine, hoverColumn) = PoLineColumn(text, hoverAt);
+		var info = await app.InvokeAsync("od.quick-info", poPath, hoverLine, hoverColumn);
+		Assert.True(info.GetProperty("found").GetBoolean(), info.ToString());
+		Assert.Contains("Translation (Fuzzy): Ouvre", info.GetProperty("text").GetString());
+
+		var outline = await app.InvokeAsync("od.document-outline", poPath);
+		Assert.Equal(new[] { "Header", "%s has %d files", "Open", "Close" }, outline.GetProperty("nodes").EnumerateArray().Select(n => n.GetProperty("name").GetString()));
+
+		// Go to definition on a #: reference opens the .ui at that line.
+		var referenceAt = text.IndexOf("Windows/MainWindow.ui:3", StringComparison.Ordinal) + 4;
+		var (referenceLine, referenceColumn) = PoLineColumn(text, referenceAt);
+		var definition = await app.InvokeAsync("od.go-to-definition", poPath, referenceLine, referenceColumn);
+		Assert.Equal(1, definition.GetProperty("count").GetInt32());
+		var target = definition.GetProperty("targets")[0];
+		Assert.Equal(Path.GetFullPath(uiPath), Path.GetFullPath(target.GetProperty("filePath").GetString()!));
+		Assert.Equal(3, target.GetProperty("line").GetInt32());
+
+		// Completion: flags after "#,", and the keywords that may follow a msgid.
+		var completionPath = Path.Combine(workDir, "po", "completion.po");
+		var completionText = "msgid \"x\"\nmsgstr \"y\"\n\n#, fu\nmsgid \"z\"\nm";
+		await File.WriteAllTextAsync(completionPath, completionText, TestContext.Current.CancellationToken);
+		var (flagLine, flagColumn) = PoLineColumn(completionText, completionText.IndexOf("#, fu", StringComparison.Ordinal) + 5);
+		var flags = await app.InvokeAsync("od.completions", completionPath, flagLine, flagColumn);
+		Assert.Contains(flags.GetProperty("items").EnumerateArray(), item => item.GetProperty("displayText").GetString() == "fuzzy");
+		var (keywordLine, keywordColumn) = PoLineColumn(completionText, completionText.Length);
+		var keywords = await app.InvokeAsync("od.completions", completionPath, keywordLine, keywordColumn);
+		Assert.Equal(new[] { "msgid_plural", "msgstr" }, keywords.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("displayText").GetString()));
+	}
+
 	[Fact]
 	public async Task GtkDesigner_LibadwaitaToolbarView_PlacesContentAndBars()
 	{
