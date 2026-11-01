@@ -124,6 +124,27 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		return GtkSignalHandlerInfo.From(GtkSignalWiring.Describe(objectId, objectClass, signal, handler, catalog));
 	}
 
+	/// <summary>The &lt;bytes&gt; template of the selected object's inline GtkBuilderListItemFactory.</summary>
+	[JsonRpcMethod("gtk/factory-template")]
+	public string? FactoryTemplate(string sessionId, string documentId, string elementId)
+	{
+		EnsureSession(sessionId);
+		return Get(documentId).Editor.GetFactoryTemplate(elementId);
+	}
+
+	/// <summary>Replaces the factory template as one undo step; invalid XML is refused.</summary>
+	[JsonRpcMethod("gtk/set-factory-template")]
+	public DesignerSessionState SetFactoryTemplate(string sessionId, string documentId, long baseVersion, string elementId, string template)
+	{
+		EnsureSession(sessionId);
+		var session = Get(documentId);
+		EnsureVersion(session, baseVersion);
+		if (!session.Editor.SetFactoryTemplate(elementId, template))
+			throw new InvalidOperationException("The factory template was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
+		session.Version++;
+		return State(session, false);
+	}
+
 	/// <summary>Removes the property so GTK's own default applies - the GIR catalogue is the
 	/// defaults model IDesignHostPropertyReset asks for; no default value is ever written.</summary>
 	[JsonRpcMethod("design/reset-property")]

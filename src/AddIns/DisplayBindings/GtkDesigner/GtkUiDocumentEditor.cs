@@ -22,7 +22,7 @@ public sealed class GtkUiDocumentEditor
 	/// <summary>The widget id the last successful <see cref="Add"/> created (not a page/model
 	/// wrapper around it), so the host can select what the user asked for.</summary>
 	public string? LastCreatedId { get; private set; }
-	/// <summary>Why the last <see cref="Add"/> was refused. Separate from <see cref="Error"/>,
+	/// <summary>Why the last edit (an <see cref="Add"/>, a factory template) was refused. Separate from <see cref="Error"/>,
 	/// which is the parse error: a refused insertion leaves the document valid, so it must not make
 	/// the session look unaccepted (that would stop every later render).</summary>
 	public string Refusal { get; private set; } = "";
@@ -440,6 +440,37 @@ public sealed class GtkUiDocumentEditor
 			lists[0].ReplaceNodes(rebuilt);
 		}
 		return Commit();
+	}
+
+	/// <summary>The &lt;bytes&gt; template of the object's GtkBuilderListItemFactory (the cell
+	/// markup a list/grid/column view builds for each item), or null when it has no such factory.</summary>
+	public string? GetFactoryTemplate(string id)
+		=> FactoryElement(id)?.Elements()
+			.FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "bytes"))?.Value;
+
+	/// <summary>Replaces the factory template as one undo step. The text must parse as XML, because
+	/// GtkBuilder hands it straight to a nested builder.</summary>
+	public bool SetFactoryTemplate(string id, string template)
+	{
+		var factory = FactoryElement(id);
+		if (factory == null || string.IsNullOrWhiteSpace(template)) return false;
+		try { XDocument.Parse(template); }
+		catch (XmlException ex) { Refusal = "The factory template is not valid XML: " + ex.Message; return false; }
+		var property = factory.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "bytes"));
+		if (property != null) {
+			if (property.Value == template) return true;
+			property.Value = template;
+		} else factory.Add(new XElement("property", new XAttribute("name", "bytes"), template));
+		return Commit();
+	}
+
+	/// <summary>The inline GtkBuilderListItemFactory held by the object's <c>factory</c> property.</summary>
+	XElement? FactoryElement(string id)
+	{
+		var element = Find(id);
+		var property = element?.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "factory"));
+		var factory = property?.Elements().FirstOrDefault(IsObject);
+		return factory != null && (string?)factory.Attribute("class") == "GtkBuilderListItemFactory" ? factory : null;
 	}
 
 	public bool Unwrap(string id)

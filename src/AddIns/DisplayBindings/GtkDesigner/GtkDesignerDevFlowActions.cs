@@ -210,6 +210,10 @@ public static class GtkDesignerDevFlowActions
 	public static string SetSignal(string signalName, string handlerName) { var view = Activate(); return JsonSerializer.Serialize(new { success = view?.SetSelectedSignal(signalName, handlerName) == true, selectedId = view?.SelectedId }); }
 	[DevFlowAction("od.gtk-designer.properties.event.bind", Description = "Bind a GTK signal through the selected Properties-pad adapter")]
 	public static string BindEvent(string eventName) { var view = Activate(); var selected = PropertyGrid?.SelectedObject; var exists = selected != null && TypeDescriptor.GetEvents(selected).Find(eventName, false) != null; if (exists && selected is IEventBindingHost host) host.BindEvent(eventName); return JsonSerializer.Serialize(new { success = exists && selected is IEventBindingHost, eventName, selectedId = view?.SelectedId }); }
+	[DevFlowAction("od.gtk-designer.factory-template", Description = "Read the selected list/grid/column view's GtkBuilderListItemFactory bytes (the cell template)")]
+	public static string GetFactoryTemplate() { var view = Activate(); var template = view?.FactoryTemplate(); return JsonSerializer.Serialize(new { success = template != null, template }); }
+	[DevFlowAction("od.gtk-designer.factory-template.set", Description = "Replace the selected list/grid/column view's factory template as one undo step; invalid XML is refused")]
+	public static string SetFactoryTemplate(string template) { var view = Activate(); var ok = view?.SetFactoryTemplate(template) == true; return JsonSerializer.Serialize(new { success = ok, template = view?.FactoryTemplate() }); }
 	[DevFlowAction("od.gtk-designer.reorder", Description = "Move the selected GTK child within its parent")]
 	public static string Reorder(int delta) { var view = Activate(); return JsonSerializer.Serialize(new { success = view?.ReorderSelected(delta) == true, selectedId = view?.SelectedId }); }
 	[DevFlowAction("od.gtk-designer.pointer-reorder", Description = "Exercise the native-bounds pointer reorder mapping between sibling objects")]

@@ -468,6 +468,11 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 					e.Handler = wired;
 	}
 
+	/// <summary>The selected list/grid/column view's inline factory template, or null.</summary>
+	public string? FactoryTemplate() { if (host == null || selected == null) return null; return host.FactoryTemplateAsync(selected.Id).GetAwaiter().GetResult(); }
+	/// <summary>Replaces the selected view's factory template as one undo step.</summary>
+	public bool SetFactoryTemplate(string template) { if (host == null || selected == null) return false; return Mutate(() => host.SetFactoryTemplateAsync(state.Version, selected.Id, template).GetAwaiter().GetResult()); }
+
 	/// <summary>Keeps X.cs and X.ui.cs in step with the .ui's signals (see GtkCodeBehind): with
 	/// <paramref name="newHandler"/>, ensures the behavior class has that method and opens it there.</summary>
 	void UpdateCodeBehind(string? newHandler)
@@ -500,6 +505,30 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	}
 	public bool ReorderSelected(int delta) { if (selected == null || host == null) return false; var id = selected.Id; return Mutate(() => host.ReorderAsync(state.Version, id, delta).GetAwaiter().GetResult()) && SelectById(id); }
 	bool RenameSelected(string newId) { if (selected == null || host == null || selected.Id.StartsWith("$", StringComparison.Ordinal)) return false; var oldId = selected.Id; return Mutate(() => host.RenameAsync(state.Version, oldId, newId).GetAwaiter().GetResult()) && SelectById(newId); }
+	/// <summary>Edits the selected list/grid/column view's cell template (the factory bytes).</summary>
+	void EditFactoryTemplate()
+	{
+		if (selected == null || FactoryTemplate() is not { } template) return;
+		var window = new Window {
+			Title = "List item template", Width = 760, Height = 520,
+			WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = Application.Current?.MainWindow
+		};
+		var text = new TextBox {
+			Text = template, AcceptsReturn = true, AcceptsTab = true, FontFamily = new FontFamily("Menlo, Consolas, monospace"),
+			HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, TextWrapping = TextWrapping.NoWrap
+		};
+		var ok = new Button { Content = "OK", IsDefault = true, MinWidth = 80, Margin = new Thickness(0, 6, 6, 0) };
+		var cancel = new Button { Content = "Cancel", IsCancel = true, MinWidth = 80, Margin = new Thickness(0, 6, 0, 0) };
+		var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+		buttons.Children.Add(ok); buttons.Children.Add(cancel);
+		var panel = new DockPanel { Margin = new Thickness(8) };
+		DockPanel.SetDock(buttons, Dock.Bottom); panel.Children.Add(buttons); panel.Children.Add(text);
+		window.Content = panel;
+		var accepted = false; ok.Click += (_, _) => { accepted = true; window.Close(); };
+		window.ShowDialog();
+		if (accepted && text.Text != template && !SetFactoryTemplate(text.Text)) MessageService.ShowError(state.Error);
+	}
+
 	void RequestRename() { if (selected == null || selected.Id.StartsWith("$", StringComparison.Ordinal)) return; var newId = MessageService.ShowInputBox("Rename", "Enter a new object id:", selected.Name ?? selected.Id)?.Trim(); if (!string.IsNullOrEmpty(newId) && !string.Equals(newId, selected.Id, StringComparison.Ordinal) && !RenameSelected(newId)) MessageService.ShowError(state.Error); }
 	public bool PointerReorder(string sourceId, string targetId) { if (state.Tree == null) return false; var source = FindById(sourceId); var target = FindById(targetId); return source != null && target != null && ReorderBetween(state.Tree, source, target); }
 	// External .ui edits arrive through LoadInternal. Refresh never takes a stale on-disk copy over
@@ -646,7 +675,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			("-", ""), ("Grid/Column span +1", "span-column-more"), ("Grid/Column span -1", "span-column-less"), ("Grid/Row span +1", "span-row-more"), ("Grid/Row span -1", "span-row-less"),
 			("Grid/Insert row above", "grid-insert-row"), ("Grid/Insert column left", "grid-insert-column"),
 			("Grid/Delete row", "grid-delete-row"), ("Grid/Delete column", "grid-delete-column"),
-			("-", ""), ("Wrap/GtkBox", "wrap-GtkBox"), ("Wrap/GtkFrame", "wrap-GtkFrame") , ("Unwrap", "unwrap") });
+			("-", ""), ("Edit List Item Template...", "edit-factory-template"), ("-", ""), ("Wrap/GtkBox", "wrap-GtkBox"), ("Wrap/GtkFrame", "wrap-GtkFrame") , ("Unwrap", "unwrap") });
 		canvas.ContextCommandCanExecute = command => command switch {
 			"grid-insert-row" or "grid-insert-column" or "grid-delete-row" or "grid-delete-column" => host?.IsAlive == true && SelectedGridChild() != null,
 			var span when span.StartsWith("span-", StringComparison.Ordinal) => host?.IsAlive == true && SelectedGridChild() is { } cell
@@ -655,6 +684,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			"paste-here" => host?.IsAlive == true && canvas.ContextMenuDesignPoint != null && ClipboardSnippets().Length > 0,
 			"move-first" or "move-earlier" => host?.IsAlive == true && SiblingPosition() is { Index: > 0 },
 			"move-later" or "move-last" => host?.IsAlive == true && SiblingPosition() is { } position && position.Index < position.Count - 1,
+			"edit-factory-template" => host?.IsAlive == true && selected != null && Flatten(selected).Any(node => node.Type == "GtkBuilderListItemFactory"),
 			"wrap-GtkFrame" => host?.IsAlive == true && selection.SelectedIds.Count == 1 && SharesOneParent(),
 			"unwrap" => host?.IsAlive == true && selection.SelectedIds.Count == 1 && state.Tree != null && Flatten(state.Tree).FirstOrDefault(node => node.Id == selection.SelectedIds[0]) is { Children.Count: > 0 } && SharesOneParent(),
 			"wrap-GtkBox" => host?.IsAlive == true && selection.SelectedIds.Count > 0 && SharesOneParent(),
@@ -677,6 +707,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 				case "move-first" or "move-earlier" or "move-later" or "move-last": MoveSelected(command.Command); break;
 				case var wrap when wrap.StartsWith("wrap-", StringComparison.Ordinal): WrapSelected(wrap.Substring("wrap-".Length)); break;
 				case "unwrap": UnwrapSelected(); break;
+				case "edit-factory-template": EditFactoryTemplate(); break;
 				case var span when span.StartsWith("span-", StringComparison.Ordinal): SpanSelected(span); break;
 				case "grid-insert-row" or "grid-insert-column": InsertGridTrack(command.Command); break;
 				case "grid-delete-row" or "grid-delete-column": DeleteGridTrack(command.Command); break;

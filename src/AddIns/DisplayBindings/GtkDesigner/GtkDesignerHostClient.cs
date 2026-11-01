@@ -93,6 +93,10 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 	/// <summary>Resolves one signal without writing a &lt;signal&gt; entry (a composite template).</summary>
 	public Task<GtkSignalHandlerInfo> SignalInfoAsync(string objectId, string objectClass, string signal, string handler, CancellationToken token = default)
 		=> connection.InvokeAsync<GtkSignalHandlerInfo>("gtk/signal-info", new { sessionId = SessionId, documentId = DocumentId, objectId, objectClass, signal, handler }, token);
+	public Task<string?> FactoryTemplateAsync(string elementId, CancellationToken token = default)
+		=> connection.InvokeAsync<string?>("gtk/factory-template", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
+	public Task<DesignerSessionState> SetFactoryTemplateAsync(long v, string elementId, string template, CancellationToken token = default)
+		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("gtk/set-factory-template", new { sessionId = SessionId, documentId = DocumentId, baseVersion = v, elementId, template }, token), token);
 	public Task<DesignerSessionState> ResetPropertyAsync(long v, string id, string name, CancellationToken token = default) => TrackMutationAsync(connection.ResetPropertyAsync(DocumentId, v, id, name, token), token);
 	public async Task<DesignerSessionState> SetThemeAsync(long v, string theme, CancellationToken token = default)
 	{

@@ -769,8 +769,9 @@ GTK 4 has no generic container mutation API. Every drop is resolved through `chi
   validates both documents with `gtk4-builder-tool`;
 - list/model/factory widgets: `GtkListView`, `GtkGridView` and `GtkColumnView` are toolbox items
   that start with an inline `GtkStringList` model and a label factory, and the Items row edits that
-  model (2026-11-01, see "List-model items"); the factory template, further columns,
-  non-string-list models and expressions are edited by hand in the source.
+  model (2026-11-01, see "List-model items"); the inline factory's cell template and further
+  columns are editable in the designer, while other factory classes, non-string-list models and
+  expressions are edited by hand in the source.
 
 A refusal is reported through `GtkUiDocumentEditor.Refusal`, not `Error`: the document is still
 valid, so it stays accepted and a refused drop cannot stop the next render. `design/add-element`
@@ -804,6 +805,13 @@ A list/grid/column view inserted from the toolbox starts usable: it gets an inli
 the Items row has real data. A `GtkColumnView` also gets one `GtkColumnViewColumn` titled
 "Column N" with the same factory. The factory template and further columns are edited in the source;
 the toolbox insert only provides the starter shape.
+
+The cell template of an inline `GtkBuilderListItemFactory` is editable: the surface's context menu
+offers **Edit List Item Template...**, which opens the factory `bytes` in a monospace editor and
+writes it back as one undo step (`gtk/factory-template` / `gtk/set-factory-template`); text that
+does not parse as XML is refused and the old template stays. `od.gtk-designer.factory-template` and
+`.set` expose the same path for tests. Other factory classes (`GtkSignalListItemFactory`) and
+column sorters are still source-only.
 
 `GtkColumnViewColumn` is itself a toolbox item: with a column view selected it appends a column
 titled "Column N" with the label factory (at the planned index when dropped), and a widget dropped

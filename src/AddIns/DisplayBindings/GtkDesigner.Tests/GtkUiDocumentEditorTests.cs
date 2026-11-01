@@ -175,4 +175,21 @@ public sealed class GtkUiDocumentEditorTests
 		Assert.True(editor.Add("columns", "GtkColumnViewColumn", index: 0), editor.Error);
 		Assert.Equal(new[] { "column2", "column1" }, editor.Roots[0].Children.Select(child => child.Id));
 	}
+
+	[Fact]
+	public void FactoryTemplate_RoundTripsAndRejectsInvalidXml()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkWindow" id="w"><child><object class="GtkBox" id="box"/></child></object></interface>"""), editor.Error);
+		Assert.True(editor.Add("box", "GtkListView"), editor.Error);
+		var id = editor.LastCreatedId!;
+		var template = editor.GetFactoryTemplate(id);
+		Assert.Contains("GtkListItem", template);
+		Assert.True(editor.SetFactoryTemplate(id, template!.Replace("GtkLabel", "GtkButton")), editor.Error);
+		Assert.Contains("GtkButton", editor.GetFactoryTemplate(id));
+		Assert.False(editor.SetFactoryTemplate(id, "<not xml"));
+		Assert.Contains("not valid XML", editor.Refusal);
+		Assert.True(editor.Undo());
+		Assert.Contains("GtkLabel", editor.GetFactoryTemplate(id));
+	}
 }

@@ -823,11 +823,24 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.Contains("holds columns", refused.Message);
 		Assert.True((await app.InvokeAsync("od.gtk-designer.delete")).GetProperty("success").GetBoolean());
 
+		// The cell template is editable as XML; invalid XML is refused and keeps the old template.
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "listView1")).GetProperty("success").GetBoolean());
+		var factory = await app.InvokeAsync("od.gtk-designer.factory-template");
+		Assert.True(factory.GetProperty("success").GetBoolean(), factory.ToString());
+		var template = factory.GetProperty("template").GetString()!;
+		Assert.Contains("GtkListItem", template);
+		var updated = await app.InvokeAsync("od.gtk-designer.factory-template.set", template.Replace("GtkLabel", "GtkButton"));
+		Assert.True(updated.GetProperty("success").GetBoolean(), updated.ToString());
+		Assert.Contains("GtkButton", updated.GetProperty("template").GetString());
+		var invalid = await Assert.ThrowsAsync<InvalidOperationException>(() => app.InvokeAsync("od.gtk-designer.factory-template.set", "<not xml"));
+		Assert.Contains("not valid XML", invalid.Message);
+
 		Assert.True((await app.InvokeAsync("od.file.save", uiPath)).GetProperty("success").GetBoolean());
 		var xml = await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken);
 		Assert.Matches("<object class=\"GtkListView\" id=\"listView1\">\\s*<property name=\"model\">\\s*<object class=\"GtkStringList\" id=\"listModel1\">[\\s\\S]*?<item translatable=\"yes\">Extra</item>", xml);
 		Assert.Contains("<object class=\"GtkBuilderListItemFactory\">", xml);
 		Assert.Contains("<property name=\"bytes\">&lt;interface&gt;", xml);
+		Assert.Contains("GtkButton", xml);
 		Assert.Matches("<object class=\"GtkColumnView\" id=\"columnView1\">\\s*<property name=\"model\">[\\s\\S]*?<child>\\s*<object class=\"GtkColumnViewColumn\" id=\"column1\">", xml);
 		Assert.Contains("<property name=\"title\" translatable=\"yes\">Column 1</property>", xml);
 		Assert.DoesNotContain("id=\"column2\"", xml);
