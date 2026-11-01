@@ -137,7 +137,7 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
-	static readonly HashSet<string> ContainerClasses = new(StringComparer.Ordinal) { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow", "GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "GtkColumnView", "AdwClamp", "AdwToolbarView", "GtkHeaderBar", "AdwHeaderBar", "AdwPreferencesPage", "AdwPreferencesGroup", "AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView" };
+	static readonly HashSet<string> ContainerClasses = new(StringComparer.Ordinal) { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow", "GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "GtkColumnView", "AdwClamp", "AdwToolbarView", "GtkHeaderBar", "AdwHeaderBar", "AdwTabView", "AdwPreferencesPage", "AdwPreferencesGroup", "AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView" };
 
 	/// <summary>Adds a new <paramref name="className"/> child. A drop resolved by GtkDropPlanner
 	/// gives an insertion <paramref name="index"/> among the existing children (a box) or a
@@ -238,6 +238,16 @@ public sealed class GtkUiDocumentEditor
 				new XElement("property", new XAttribute("name", "title"), new XAttribute("translatable", "yes"), "Page " + number),
 				new XElement("property", new XAttribute("name", "child"), created));
 			child.Add(page);
+		}
+		// An AdwTabView page is an AdwTabPage object holding the widget as its child property: the
+		// view's builder form adds a page object, not a bare widget (the same shape as a GtkStackPage).
+		if (cls == "AdwTabView" && className != "AdwTabPage") {
+			var pageId = UniqueId("page");
+			var number = pageId["page".Length..];
+			child.RemoveNodes();
+			child.Add(new XElement("object", new XAttribute("class", "AdwTabPage"), new XAttribute("id", pageId),
+				new XElement("property", new XAttribute("name", "title"), new XAttribute("translatable", "yes"), "Page " + number),
+				new XElement("property", new XAttribute("name", "child"), created)));
 		}
 		// A GtkNotebook page is a bare <child> followed by its <child type="tab"> label (a tab label or
 		// an action widget is not a page); a new page gets a label of its own, which is an ordinary
@@ -778,7 +788,7 @@ public sealed class GtkUiDocumentEditor
 	// display text that may coincidentally equal one). Extend as new referencing properties are
 	// supported by the designer.
 	static readonly HashSet<string> IdReferenceProperties = new(StringComparer.Ordinal)
-		{ "member-name", "target", "menu-model", "widget", "popover", "action-widget", "mnemonic-widget" };
+		{ "member-name", "target", "menu-model", "widget", "popover", "action-widget", "mnemonic-widget", "view" };
 	static bool IsIdReference(XElement e)
 		=> e.Name.LocalName == "property"
 		   && IdReferenceProperties.Contains((string?)e.Attribute("name") ?? "");

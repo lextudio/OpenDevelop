@@ -32,7 +32,7 @@ public static class GtkDropPlanner
 	/// added at all; the source editor rejects a child the class does not accept.</summary>
 	public static readonly HashSet<string> Containers = new(StringComparer.Ordinal) {
 		"GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow",
-		"GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "GtkColumnView", "AdwClamp", "AdwToolbarView", "GtkHeaderBar", "AdwHeaderBar", "AdwPreferencesPage", "AdwPreferencesGroup",
+		"GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "GtkColumnView", "AdwClamp", "AdwToolbarView", "GtkHeaderBar", "AdwHeaderBar", "AdwTabView", "AdwPreferencesPage", "AdwPreferencesGroup",
 		"AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView"
 	};
 

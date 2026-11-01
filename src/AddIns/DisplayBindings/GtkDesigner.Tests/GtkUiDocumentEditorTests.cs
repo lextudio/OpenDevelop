@@ -425,6 +425,31 @@ public sealed class GtkUiDocumentEditorTests
 	}
 
 	[Fact]
+	public void TabView_Add_WritesAnAdwTabPageHoldingTheWidget()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><requires lib="libadwaita" version="1.0"/><object class="AdwTabView" id="tabs"/></interface>"""), editor.Error);
+		Assert.True(editor.Add("tabs", "GtkLabel"), editor.Error);
+		Assert.Equal("label1", editor.LastCreatedId); // the widget the user asked for, not the page wrapper
+		Assert.True(editor.Add("tabs", "GtkButton"), editor.Error);
+		var doc = System.Xml.Linq.XDocument.Parse(editor.Text);
+		var pages = doc.Descendants("object").Where(o => (string?)o.Attribute("class") == "AdwTabPage").ToList();
+		Assert.Equal(new[] { "page1", "page2" }, pages.Select(p => (string?)p.Attribute("id")));
+		Assert.Equal(new[] { "Page 1", "Page 2" }, pages.Select(p => p.Elements("property").Single(x => (string?)x.Attribute("name") == "title").Value));
+		Assert.Equal(new[] { "GtkLabel", "GtkButton" }, pages.Select(p => (string?)p.Elements("property").Single(x => (string?)x.Attribute("name") == "child").Element("object")!.Attribute("class")));
+		Assert.Contains("label1", editor.Roots[0].Children.Select(c => c.Id).Concat(editor.Roots[0].Children.SelectMany(c => c.Children.Select(g => g.Id))));
+	}
+
+	[Fact]
+	public void TabBar_ViewReferenceFollowsARename()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><requires lib="libadwaita" version="1.0"/><object class="GtkBox" id="root"><child><object class="AdwTabBar" id="bar"><property name="view">tabs</property></object></child><child><object class="AdwTabView" id="tabs"/></child></object></interface>"""), editor.Error);
+		Assert.True(editor.Rename("tabs", "documents"), editor.Error);
+		Assert.Contains("<property name=\"view\">documents</property>", editor.Text);
+	}
+
+	[Fact]
 	public void FactoryTemplate_RoundTripsAndRejectsInvalidXml()
 	{
 		var editor = new GtkUiDocumentEditor();

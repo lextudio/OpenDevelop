@@ -785,6 +785,13 @@ GTK 4 has no generic container mutation API. Every drop is resolved through `chi
   `GtkDesigner_StackPages_UseGtkStackPageObjects_AndTheNotebookUsesAPlainChild`, which saves and
   validates both documents with `gtk4-builder-tool`;
 - `AdwToolbarView`: top/bottom bar slots and the single content property (implemented 2026-11-01);
+- `AdwTabView`: a drop adds an `AdwTabPage` object (generated `pageN` id and a translatable
+  `Page N` title) holding the widget as its `child` property, the same shape as a `GtkStackPage`; the
+  selection is the widget, not the page wrapper. `AdwTabView` and `AdwTabBar` are in the Libadwaita
+  toolbox; an `AdwTabBar`'s `view` property is an object reference, so renaming the view follows it.
+  Covered by `TabView_Add_WritesAnAdwTabPageHoldingTheWidget` and
+  `GtkDesigner_LibadwaitaTabView_UsesTabPagesAndRenders` (reopens the saved document and requires a
+  native frame, since `gtk4-builder-tool` never loads libadwaita);
 - `GtkHeaderBar` / `AdwHeaderBar`: a drop's left third packs `<child type="start">`, the right third
   `<child type="end">` and the middle the single `<child type="title">` (a second title is refused),
   using the same slot-index convention as `AdwToolbarView` (0, 1, 2); a toolbox click packs at the
@@ -946,7 +953,7 @@ Status 2026-11-01: not implemented except where marked.
 - Libadwaita catalogue and named-child policies: the catalogue, toolbox category, navigation
   page shapes and AdwToolbarView's top/bottom/content slots are implemented; other named-child
   policies (`GtkHeaderBar` start/end/title and `GtkNotebook` tab labels are implemented;
-  `GtkNotebook` action widgets and `AdwTabView` pages are not);
+  `AdwTabView` pages are implemented; creating `GtkNotebook` action widgets is not);
 - menus, actions, list models (an inline `GtkStringList`'s items are editable), factories and
   expressions: menu items, sections and submenus are editable (see "Menus"); `Gio.Action`
   implementations and expressions are not;
@@ -962,7 +969,7 @@ roughly in intended priority order.
 
 Product features:
 
-- `GtkNotebook` action widgets and `AdwTabView`/`AdwTabBar` pages;
+- creating `GtkNotebook` action widgets from the designer (existing ones are preserved);
 - translation and resource tooling: extract `translatable` strings, edit `.po` files and run a
   translation workflow (GResource preview already works);
 - Blueprint (`.blp`) import and editor integration;

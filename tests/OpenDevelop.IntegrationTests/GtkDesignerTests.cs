@@ -1241,6 +1241,39 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_LibadwaitaTabView_UsesTabPagesAndRenders()
+	{
+		// An AdwTabView page is an AdwTabPage object holding the widget as its child property, like a
+		// GtkStackPage; a drop writes the page, selects the widget the user asked for, and the saved
+		// document still renders natively (gtk4-builder-tool never loads libadwaita, so the proof is a frame).
+		var path = Path.Combine(workDir, "Windows", "TabViewWindow.ui");
+		await File.WriteAllTextAsync(path, """
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <requires lib="libadwaita" version="1.0" />
+			  <object class="AdwWindow" id="tabWindow">
+			    <property name="content"><object class="AdwTabView" id="tabView" /></property>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", path); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("tabWindow"); Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "tabView")).GetProperty("success").GetBoolean());
+		var inserted = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkLabel"); Assert.True(inserted.GetProperty("success").GetBoolean(), inserted.ToString());
+		Assert.Equal("label1", inserted.GetProperty("selectedId").GetString());
+		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
+		var xml = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+		Assert.Contains("<object class=\"AdwTabPage\"", xml);
+		Assert.Contains("<property name=\"child\"><object class=\"GtkLabel\"", xml);
+		await app.InvokeAsync("od.close-active-view");
+		var reopened = await app.InvokeAsync("od.open-file", path); Assert.True(reopened.GetProperty("opened").GetBoolean(), reopened.ToString());
+		var saved = await WaitAsync("tabWindow"); Assert.True(saved.GetProperty("nativeFrame").GetBoolean(), saved.ToString());
+		Assert.Contains("label1", saved.GetProperty("elementIds").EnumerateArray().Select(id => id.GetString()));
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
 	public async Task GtkDesigner_LibadwaitaToolbarView_PlacesContentAndBars()
 	{
 		// AdwToolbarView's GtkBuildable form is <child type="top|bottom"> for bars and a single
