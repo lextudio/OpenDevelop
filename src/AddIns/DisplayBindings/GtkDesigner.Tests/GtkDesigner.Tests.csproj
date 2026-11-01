@@ -8,8 +8,14 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="xunit.v3" />
+    <!-- The .ui language service is pure (contracts + GIR XML + the text parser), so it is tested
+         here without a host; the IDE only adds the registry and completion-binding plumbing. -->
+    <ProjectReference Include="..\..\..\Main\LanguageServices\LanguageServices.Contracts\LanguageServices.Contracts.csproj" />
     <Compile Include="..\GtkDesigner\GtkUiDocumentEditor.cs" Link="GtkUiDocumentEditor.cs" />
     <Compile Include="..\GtkDesigner\GirCatalog.cs" Link="GirCatalog.cs" />
+    <Compile Include="..\GtkDesigner\GtkGirCatalog.cs" Link="GtkGirCatalog.cs" />
+    <Compile Include="..\GtkDesigner\GtkUiText.cs" Link="GtkUiText.cs" />
+    <Compile Include="..\GtkDesigner\GtkUiLanguageService.cs" Link="GtkUiLanguageService.cs" />
     <Compile Include="..\GtkDesigner\GtkSignalWiring.cs" Link="GtkSignalWiring.cs" />
     <Compile Include="..\GtkDesigner\GtkDropPlanner.cs" Link="GtkDropPlanner.cs" />
     <Compile Include="..\GtkDesigner\GtkPreviewSanitizer.cs" Link="GtkPreviewSanitizer.cs" />

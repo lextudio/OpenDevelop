@@ -989,6 +989,55 @@ under the canvas that `AddMenuActions` is gone, so the call site is not left to 
 `GtkDesigner_MenuItems_EditThePopoverMenu` builds the fixture to prove the generated code compiles
 against Gir.Core, removes the last action and undoes it.
 
+### Language service for .ui files (2026-11-01)
+
+No dedicated GtkBuilder language server exists. GNOME Builder and the VS Code XML extension both run
+a generic XML server (LemMinX) against GTK's `gtk4builder.rng`, which checks element nesting only:
+`class=` and `property name=` are free text to RELAX NG, libadwaita is outside the schema, and no
+server knows the project's own widget mappings. Blueprint's official server speaks `.blp`, not
+`.ui`.
+
+OpenDevelop therefore registers an in-process `ILanguageService` for `.ui`
+(`GtkUiLanguageService`, through `RegisterGtkBuilderLanguageServiceCommand` in the GTK addin's
+Autostart), not an external LSP. It answers from state the IDE already holds:
+
+- classes, properties, signals, enumerations and their documentation from the installed GIR,
+  through the same `GtkGirCatalog` the design host's Properties pad uses - one catalogue and one
+  "not installed" diagnostic for both;
+- the parsed document with exact character offsets (`GtkUiDocument`): the XDocument-based editor
+  model cannot report offsets, so the language service has its own forgiving scanner, which keeps
+  a half-typed tag as an incomplete element instead of failing;
+- the element/attribute grammar from GTK's `gtk4builder.rng`, and GtkBuildable child slots from
+  GTK's own `*_buildable_add_child` implementations (`GtkHeaderBar` start/end/title, `GtkNotebook`
+  tab/action-start/action-end, `GtkOverlay` overlay, windows' titlebar, `GtkFrame` label,
+  `AdwToolbarView` top/bottom).
+
+Implemented:
+
+- completion: `class=` (GTK and libadwaita classes), `property name=` (the writable properties of
+  the enclosing class, with type and default), `signal name=`, `child type=`, element names while a
+  tag name is being typed and attribute names inside a tag; enum/flags members, `True`/`False`,
+  object ids for reference properties, `requires lib=`, menu attribute names and constant types.
+  The insertion text is only the part after the already-typed head, so a hyphenated name such as
+  `default-width` completes from `default-wid` without duplicating `default-`;
+- hover: class (lineage, namespace, description), property (type, default, declaring type,
+  description), signal, child slot, id, and the target of an id reference;
+- diagnostics: XML well-formedness at the offending offset, unknown class/property/signal, an
+  invalid enum or flags value, duplicate ids, a reference to a missing id, a single-child container
+  or `GtkPaned` with too many children, a non-column child of `GtkColumnView`, an unknown child
+  slot, a missing `<requires>`, and libadwaita classes without a libadwaita requirement. Without a
+  GIR only the structural checks run, plus one informational diagnostic saying so;
+- outline: the object tree (id or class, nested through child/property wrappers) for the navigation
+  bar and the Document Outline pad;
+- id navigation and rename: go to definition, find references, symbol name, and rename across the
+  document; a new id is validated as an XML NCName first.
+
+Not implemented: `handler=` navigation and rename against the C# handler (it needs the Roslyn
+workspace and a project context the service is not given), formatting, semantic tokens and code
+actions. The Error list has no generic non-C#/VB path either: `GetDiagnosticsAsync` answers the
+service's callers (and the `od.diagnostics` action), while the designer's own host diagnostics stay
+the ones shown in its surface.
+
 ## Migration from Stetic and GTK 3 UI
 
 Migration is an explicit tool, not an implicit designer load path:
@@ -1085,7 +1134,10 @@ Status 2026-11-01: not implemented except where marked.
   `translations.md`); `.mo` compilation is a build step, not editor behaviour;
 - explicit GTK 3/Stetic migration assistant: not implemented;
 - Blueprint: highlighting, the compiler's language server, Compile and Convert commands are in the Blueprint addin
-  (`blueprint.md`; they need `blueprint-compiler` installed).
+  (`blueprint.md`; they need `blueprint-compiler` installed);
+- editor language service: in-process and GIR-driven for completion, hover, diagnostics, outline
+  and id navigation/rename (implemented 2026-11-01; see "Language service for .ui files");
+  `handler=` navigation/rename, code actions and formatting are not.
 
 ### Remaining work (2026-11-01)
 
@@ -1103,7 +1155,9 @@ Product features:
 - list/model depth: selection, sort and filter models, string column sorters, the signal factory and a declared
   `GListStore` (its items are filled by code; a builder cannot add them) are editable; sorters and filters for
   non-string items and factories beyond the builder-template and signal classes are not;
-- composite templates: a template class outside the project cannot be wired.
+- composite templates: a template class outside the project cannot be wired;
+- language service depth: `handler=` navigation/rename through Roslyn, code actions (add
+  `<requires>`, wrap in a container) and formatting; the service is read-only otherwise.
 
 Coverage (tests, not product behaviour):
 
@@ -1124,7 +1178,10 @@ Unit tests:
 - every child-policy insertion/removal/reorder transformation;
 - stable identity, rename/reference updates and unsupported-node preservation;
 - undo/redo and concurrent/external edit conflict behavior;
-- Stetic/GTK 3 migration diagnostics.
+- Stetic/GTK 3 migration diagnostics;
+- the `.ui` language service (`GtkUiLanguageServiceTests`): span-preserving parse of half-typed
+  tags, GIR-backed class/property/signal/enum completion and insertion text, the diagnostics
+  rules, outline, id navigation/rename, and text-change application.
 
 Host contract tests:
 
@@ -1142,7 +1199,10 @@ OpenDevelop integration tests:
 - add/rename a signal handler and compile the fixture;
 - edit two independent windows without cross-document state leakage;
 - wait for repeated stable layout samples before asserting bounds;
-- use semantic DevFlow state and native layout data; do not use OS screenshots.
+- use semantic DevFlow state and native layout data; do not use OS screenshots;
+- drive the `.ui` language service through the generic `od.parser.status`, `od.completions`,
+  `od.diagnostics`, `od.quick-info`, `od.document-outline`, `od.go-to-definition` and
+  `od.rename-symbol` actions (the same path the editor uses), without opening the designer.
 
 Current executable coverage is split between `GtkDesignerTests` (the primary fixture and complete
 pad/toolbar/lifecycle contract) and `GtkDesignerIntegrationTests` (a larger two-toplevel, deeply

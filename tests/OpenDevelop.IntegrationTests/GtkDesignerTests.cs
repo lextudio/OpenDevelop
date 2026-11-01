@@ -2048,6 +2048,90 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		await ValidateGtkBuilderAsync(uiPath);
 	}
 
+	[Fact]
+	public async Task GtkDesigner_UiFilesGetAGtkBuilderLanguageService()
+	{
+		// GtkBuilder has no dedicated language server, so the addin registers an in-process one
+		// driven by the installed GIR. These are the generic language-service actions, which is the
+		// same path the editor's completion, hover and navigation use - no designer needed.
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var path = Path.Combine(workDir, "Windows", "LanguageWindow.ui");
+		var text = """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0"/>
+			  <object class="GtkWindow" id="languageWindow">
+			    <property name="titlebar">noSuchObject</property>
+			    <property name="child">greeting</property>
+			    <property name="nonsense">1</property>
+			    <signal name="nonsense" handler="on_nonsense"/>
+			  </object>
+			  <object class="GtkLabel" id="greeting">
+			    <property name="label">Hello</property>
+			  </object>
+			</interface>
+			""";
+		await File.WriteAllTextAsync(path, text, TestContext.Current.CancellationToken);
+
+		var status = await app.InvokeAsync("od.parser.status", path);
+		Assert.True(status.GetProperty("hasDocument").GetBoolean(), status.ToString());
+
+		var diagnostics = await app.InvokeAsync("od.diagnostics", path);
+		var ids = diagnostics.GetProperty("diagnostics").EnumerateArray().Select(d => d.GetProperty("id").GetString()).ToArray();
+		Assert.Contains("GTK1014", ids);
+		Assert.Contains("GTK1016", ids);
+		Assert.Contains("GTK1017", ids);
+
+		// Completion inside class="GtkLabel" filters the GIR classes by the typed prefix.
+		var classAt = text.IndexOf("class=\"GtkLabel\"", StringComparison.Ordinal) + "class=\"Gtk".Length;
+		var (classLine, classColumn) = LineColumn(text, classAt);
+		var completions = await app.InvokeAsync("od.completions", path, classLine, classColumn);
+		Assert.Contains(completions.GetProperty("items").EnumerateArray(), item => item.GetProperty("displayText").GetString() == "GtkButton");
+
+		var info = await app.InvokeAsync("od.quick-info", path, classLine, classColumn);
+		Assert.True(info.GetProperty("found").GetBoolean(), info.ToString());
+		Assert.Contains("GtkLabel", info.GetProperty("text").GetString());
+
+		var outline = await app.InvokeAsync("od.document-outline", path);
+		var names = outline.GetProperty("nodes").EnumerateArray().Select(n => n.GetProperty("name").GetString()).ToArray();
+		Assert.Contains("languageWindow", names);
+		Assert.Contains("greeting", names);
+
+		// Go to definition on the child reference resolves to the label's id declaration.
+		var referenceAt = text.IndexOf(">greeting<", StringComparison.Ordinal) + 1;
+		var (referenceLine, referenceColumn) = LineColumn(text, referenceAt);
+		var definition = await app.InvokeAsync("od.go-to-definition", path, referenceLine, referenceColumn);
+		Assert.Equal(1, definition.GetProperty("count").GetInt32());
+		var target = definition.GetProperty("targets")[0];
+		Assert.Equal(path, target.GetProperty("filePath").GetString());
+		var declarationAt = text.IndexOf("id=\"greeting\"", StringComparison.Ordinal) + 4;
+		var (declarationLine, declarationColumn) = LineColumn(text, declarationAt);
+		Assert.Equal(declarationLine, target.GetProperty("line").GetInt32());
+		Assert.Equal(declarationColumn, target.GetProperty("column").GetInt32());
+
+		// Rename rewrites the declaration and the reference.
+		var renamed = await app.InvokeAsync("od.rename-symbol", path, referenceLine, referenceColumn, "salutation");
+		Assert.True(renamed.GetProperty("success").GetBoolean(), renamed.ToString());
+		Assert.Equal("greeting", renamed.GetProperty("oldName").GetString());
+		var after = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+		Assert.Contains("id=\"salutation\"", after);
+		Assert.Contains(">salutation<", after);
+		Assert.DoesNotContain("greeting", after);
+	}
+
+	static (int Line, int Column) LineColumn(string text, int offset)
+	{
+		var line = 1;
+		var lineStart = 0;
+		for (var index = 0; index < offset; index++) {
+			if (text[index] == '\n') {
+				line++;
+				lineStart = index + 1;
+			}
+		}
+		return (line, offset - lineStart + 1);
+	}
+
 	async Task<(double X, double Y)> StableCenterAsync(string action, string name)
 	{
 		(double X, double Y)? previous = null;

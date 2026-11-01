@@ -13,5 +13,12 @@
     <Class id="ICSharpCode.GtkDesigner.RegisterDevFlowActionsCommand" class="ICSharpCode.GtkDesigner.RegisterDevFlowActionsCommand" />
     <Class id="ICSharpCode.GtkDesigner.RegisterGtkProjectFileNestingCommand" class="ICSharpCode.GtkDesigner.RegisterGtkProjectFileNestingCommand" />
     <Class id="ICSharpCode.GtkDesigner.RegisterGtkTranslationSourceCommand" class="ICSharpCode.GtkDesigner.RegisterGtkTranslationSourceCommand" />
+    <Class id="ICSharpCode.GtkDesigner.GtkBuilderLanguageService" class="ICSharpCode.GtkDesigner.RegisterGtkBuilderLanguageServiceCommand" />
+  </Path>
+  <!-- GtkBuilder completion comes from the addin's own in-process language service (GIR-driven:
+       there is no dedicated GtkBuilder language server; generic XML servers only know the RELAX NG
+       grammar). -->
+  <Path name="/SharpDevelop/ViewContent/TextEditor/CodeCompletion">
+    <CodeCompletionBinding id="GtkUi" extensions=".ui" class="ICSharpCode.GtkDesigner.GtkUiCodeCompletionBinding" />
   </Path>
 </AddIn>
