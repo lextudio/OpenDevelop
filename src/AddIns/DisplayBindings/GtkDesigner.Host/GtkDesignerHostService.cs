@@ -157,7 +157,12 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		}
 		if (!session.Editor.Add(parentId, string.IsNullOrEmpty(item.TypeName) ? item.Name : item.TypeName, index, cell))
 			throw new InvalidOperationException("GTK element insertion was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
-		session.Version++; return State(session, false);
+		session.Version++;
+		// The created widget, not a page/model wrapper around it: a Stack drop writes a
+		// GtkStackPage and a list view a model/factory, and the user asked for the widget.
+		var state = State(session, false);
+		state.CreatedElementId = session.Editor.LastCreatedId;
+		return state;
 	}
 
 	[JsonRpcMethod("design/delete-elements")]

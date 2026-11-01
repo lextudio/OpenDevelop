@@ -25,7 +25,7 @@ namespace ICSharpCode.GtkDesigner;
 
 public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErrors, IOutlineContentHost, IToolsHost, IHasPropertyContainer, IUndoHandler, IFilterableToolbox, IToolboxSourceDropHandler
 {
-	public static readonly string[] ToolNames = { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkLabel", "GtkButton", "GtkEntry", "GtkPasswordEntry", "GtkCheckButton", "GtkSwitch", "GtkSpinButton", "GtkDropDown", "GtkListBox", "GtkListView", "GtkGridView", "GtkImage", "GtkPicture", "GtkProgressBar", "GtkSeparator" };
+	public static readonly string[] ToolNames = { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkLabel", "GtkButton", "GtkEntry", "GtkPasswordEntry", "GtkCheckButton", "GtkSwitch", "GtkSpinButton", "GtkDropDown", "GtkListBox", "GtkListView", "GtkGridView", "GtkColumnView", "GtkImage", "GtkPicture", "GtkProgressBar", "GtkSeparator" };
 	/// <summary>Libadwaita widgets, offered only for a document that declares &lt;requires lib="libadwaita"&gt;.</summary>
 	public static readonly string[] AdwToolNames = { "AdwHeaderBar", "AdwStatusPage", "AdwClamp", "AdwPreferencesPage", "AdwPreferencesGroup", "AdwPreferencesWindow", "AdwNavigationView", "AdwNavigationPage", "AdwNavigationSplitView", "AdwActionRow", "AdwEntryRow", "AdwSwitchRow", "AdwButtonContent", "AdwAvatar", "AdwBanner", "AdwSpinner" };
 	bool documentRequiresAdw;
@@ -191,10 +191,13 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	/// a toolbox click passes (-1, -1) to append.</summary>
 	bool AddTo(string parentId, string type, double x, double y) { if (host == null || state.Tree == null) return false; var before = Flatten(state.Tree).Select(n => n.Id).ToHashSet(StringComparer.Ordinal); if (!Mutate(() => host.AddElementAsync(state.Version, parentId, new DesignerToolboxItemInfo { Name = type, TypeName = type }, "", x, y,
 			ToDropTarget(GtkDropPlanner.Plan(ToDropNode(state.Tree), x, y))).GetAwaiter().GetResult())) return false;
-		// The new objects in document order, deepest last: a GtkStack drop writes a GtkStackPage
-		// wrapper and then the widget as its child, and the widget is what the user just asked for,
-		// so select the last one (the page stays reachable through its parent).
-		var added = state.Tree == null ? null : Flatten(state.Tree).Where(n => !before.Contains(n.Id)).LastOrDefault(); if (added != null) Select(added); return added != null; }
+		// The host reports the widget it created; a GtkStack drop writes a GtkStackPage and a list
+		// view a model/factory around it, and the widget is what the user just asked for. Fall back
+		// to the newest object when the host does not report one.
+		var added = state.Tree == null ? null
+			: state.CreatedElementId is { } createdId ? Flatten(state.Tree).FirstOrDefault(n => n.Id == createdId)
+			: Flatten(state.Tree).Where(n => !before.Contains(n.Id)).LastOrDefault();
+		if (added != null) Select(added); return added != null; }
 	public bool DeleteSelected() => commands.Execute("Delete");
 
 	// The designer's own copy, kept beside the system clipboard so a multi-object copy round-trips

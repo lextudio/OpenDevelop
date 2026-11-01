@@ -19,6 +19,9 @@ public sealed class GtkUiDocumentEditor
 	XDocument document = new();
 	public string Text { get; private set; } = "";
 	public string Error { get; private set; } = "";
+	/// <summary>The widget id the last successful <see cref="Add"/> created (not a page/model
+	/// wrapper around it), so the host can select what the user asked for.</summary>
+	public string? LastCreatedId { get; private set; }
 	/// <summary>Why the last <see cref="Add"/> was refused. Separate from <see cref="Error"/>,
 	/// which is the parse error: a refused insertion leaves the document valid, so it must not make
 	/// the session look unaccepted (that would stop every later render).</summary>
@@ -141,7 +144,7 @@ public sealed class GtkUiDocumentEditor
 	/// the first free row).</summary>
 	public bool Add(string parentId, string className, int? index = null, (int Column, int Row)? cell = null)
 	{
-		Refusal = "";
+		Refusal = ""; LastCreatedId = null;
 		var parent = Find(parentId); if (parent == null || string.IsNullOrWhiteSpace(className)) return false;
 		// GtkBuilder <child> is only valid under container widgets; reject leaf parents instead
 		// of generating a document libgtk would refuse to load.
@@ -152,6 +155,7 @@ public sealed class GtkUiDocumentEditor
 		className = className.Trim(); var baseName = className.StartsWith("Gtk", StringComparison.Ordinal) ? className[3..] : className;
 		baseName = char.ToLowerInvariant(baseName[0]) + baseName[1..];
 		var id = UniqueId(baseName);
+		LastCreatedId = id;
 		var child = new XElement("child", new XElement("object", new XAttribute("class", className), new XAttribute("id", id)));
 		var created = child.Element("object")!;
 		// Starter text is user-visible, so it is translatable from the start (the Properties pad
@@ -165,6 +169,21 @@ public sealed class GtkUiDocumentEditor
 			created.Add(new XElement("layout",
 				new XElement("property", new XAttribute("name", "column"), column.ToString(System.Globalization.CultureInfo.InvariantCulture)),
 				new XElement("property", new XAttribute("name", "row"), row.ToString(System.Globalization.CultureInfo.InvariantCulture))));
+		}
+		// A list/grid/column view without a model and factory renders nothing. A toolbox insert
+		// starts with a working inline string list and a label factory, so the control is usable
+		// and its Items row edits real data; the source can still replace either by hand.
+		if (className is "GtkListView" or "GtkGridView") {
+			created.Add(ListModelProperty());
+			created.Add(ListFactoryProperty());
+		} else if (className == "GtkColumnView") {
+			created.Add(ListModelProperty());
+			var columnId = UniqueId("column");
+			var columnNumber = columnId["column".Length..];
+			created.Add(new XElement("child",
+				new XElement("object", new XAttribute("class", "GtkColumnViewColumn"), new XAttribute("id", columnId),
+					new XElement("property", new XAttribute("name", "title"), new XAttribute("translatable", "yes"), "Column " + columnNumber),
+					ListFactoryProperty())));
 		}
 		if (cls == "AdwNavigationPage") {
 			parent.Add(new XElement("property", new XAttribute("name", "child"), created));
@@ -575,6 +594,26 @@ public sealed class GtkUiDocumentEditor
 		=> e.Name.LocalName == "property"
 		   && IdReferenceProperties.Contains((string?)e.Attribute("name") ?? "");
 	string UniqueId(string prefix) { for (var i = 1; ; i++) if (Find(prefix + i) == null) return prefix + i; }
+
+	/// <summary>The starter model for a list/grid/column view: an inline string list whose items
+	/// the Properties pad can edit.</summary>
+	XElement ListModelProperty()
+	{
+		var modelId = UniqueId("listModel");
+		return new XElement("property", new XAttribute("name", "model"),
+			new XElement("object", new XAttribute("class", "GtkStringList"), new XAttribute("id", modelId),
+				new XElement("items",
+					new XElement("item", new XAttribute("translatable", "yes"), "Item 1"),
+					new XElement("item", new XAttribute("translatable", "yes"), "Item 2"))));
+	}
+
+	/// <summary>A GtkBuilderListItemFactory whose cell is a label bound to the item's string, so a
+	/// starter list view shows its rows without any C# code.</summary>
+	static XElement ListFactoryProperty() => new("property", new XAttribute("name", "factory"),
+		new XElement("object", new XAttribute("class", "GtkBuilderListItemFactory"),
+			new XElement("property", new XAttribute("name", "bytes"), ListItemFactoryTemplate)));
+
+	const string ListItemFactoryTemplate = "<interface><template class=\"GtkListItem\"><property name=\"child\"><object class=\"GtkLabel\"><binding name=\"label\"><lookup name=\"string\" type=\"GtkStringObject\"><lookup name=\"item\">GtkListItem</lookup></lookup></binding></object></property></template></interface>";
 	static bool IsIdentifier(string value) => !string.IsNullOrWhiteSpace(value) && (char.IsLetter(value[0]) || value[0] == '_') && value.Skip(1).All(c => char.IsLetterOrDigit(c) || c == '_');
 	sealed class Utf8StringWriter : StringWriter { public override System.Text.Encoding Encoding => new System.Text.UTF8Encoding(false); }
 }

@@ -140,4 +140,24 @@ public sealed class GtkUiDocumentEditorTests
 		Assert.Equal("GtkButton", editor.Roots[0].Children[0].ClassName);
 		Assert.DoesNotContain("GtkNotebookPage", editor.Text);
 	}
+
+	[Fact]
+	public void ListViews_GetAStarterModelAndFactory()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkWindow" id="w"><child><object class="GtkBox" id="box"/></child></object></interface>"""), editor.Error);
+		Assert.True(editor.Add("box", "GtkListView"), editor.Error);
+		var list = editor.Roots[0].Children[0].Children[0];
+		Assert.Equal("GtkListView", list.ClassName);
+		Assert.Equal(new[] { "Item 1", "Item 2" }, editor.GetItems(list.Id));
+		Assert.Contains("GtkBuilderListItemFactory", editor.Text);
+		Assert.Contains("<property name=\"bytes\">&lt;interface&gt;", editor.Text);
+
+		Assert.True(editor.Add("box", "GtkColumnView"), editor.Error);
+		var columnView = editor.Roots[0].Children[0].Children[1];
+		Assert.Equal("GtkColumnView", columnView.ClassName);
+		var column = columnView.Children.Single(child => child.ClassName == "GtkColumnViewColumn");
+		Assert.Equal("Column 1", column.Properties["title"]);
+		Assert.Contains("<object class=\"GtkBuilderListItemFactory\">", editor.Text);
+	}
 }

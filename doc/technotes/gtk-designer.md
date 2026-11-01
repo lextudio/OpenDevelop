@@ -767,9 +767,10 @@ GTK 4 has no generic container mutation API. Every drop is resolved through `chi
   `Notebook_Add_WritesAPlainPageChild` and the journey
   `GtkDesigner_StackPages_UseGtkStackPageObjects_AndTheNotebookUsesAPlainChild`, which saves and
   validates both documents with `gtk4-builder-tool`;
-- list/model/factory widgets: an inline `GtkStringList` model's items are editable from the
-  list/grid/column view (2026-11-01, see "List-model items"); factories, column definitions,
-  non-string-list models and expressions are edited by hand in the source, not through the designer.
+- list/model/factory widgets: `GtkListView`, `GtkGridView` and `GtkColumnView` are toolbox items
+  that start with an inline `GtkStringList` model and a label factory, and the Items row edits that
+  model (2026-11-01, see "List-model items"); the factory template, further columns,
+  non-string-list models and expressions are edited by hand in the source.
 
 A refusal is reported through `GtkUiDocumentEditor.Refusal`, not `Error`: the document is still
 valid, so it stays accepted and a refused drop cannot stop the next render. `design/add-element`
@@ -796,6 +797,13 @@ model - and a `GtkStringList` selected as its own object. The row's category is 
 `model` property whose value is an id) and a non-string-list model show no Items row, because the
 model is a separate object or not a string list; factories, column definitions and other model
 classes are still edited in the source.
+
+A list/grid/column view inserted from the toolbox starts usable: it gets an inline `GtkStringList`
+(`listModelN`, two translatable items) and a `GtkBuilderListItemFactory` whose `bytes` hold a
+`GtkListItem` template with a label bound to the item's `string`, so the dropped control renders and
+the Items row has real data. A `GtkColumnView` also gets one `GtkColumnViewColumn` titled
+"Column N" with the same factory. The factory template and further columns are edited in the source;
+the toolbox insert only provides the starter shape.
 
 ## Migration from Stetic and GTK 3 UI
 

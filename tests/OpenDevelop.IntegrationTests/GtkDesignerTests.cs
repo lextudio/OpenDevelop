@@ -797,6 +797,36 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_ToolboxListViews_StartWithAModelAndFactory()
+	{
+		// A list/grid/column view dropped from the toolbox starts with an inline string list and a
+		// label factory, so it renders and its Items row edits real data instead of an empty shell.
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", uiPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		await WaitAsync("mainWindow");
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "contentBox")).GetProperty("success").GetBoolean());
+		var list = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkListView");
+		Assert.True(list.GetProperty("success").GetBoolean(), list.ToString());
+		Assert.Equal("listView1", list.GetProperty("selectedId").GetString());
+		var columns = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkColumnView");
+		Assert.True(columns.GetProperty("success").GetBoolean(), columns.ToString());
+		Assert.Equal("columnView1", columns.GetProperty("selectedId").GetString());
+
+		var edited = await app.InvokeAsync("od.gtk-designer.properties.edit-items", "$items", "add:-1:Extra");
+		Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+
+		Assert.True((await app.InvokeAsync("od.file.save", uiPath)).GetProperty("success").GetBoolean());
+		var xml = await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken);
+		Assert.Matches("<object class=\"GtkListView\" id=\"listView1\">\\s*<property name=\"model\">\\s*<object class=\"GtkStringList\" id=\"listModel1\">", xml);
+		Assert.Contains("<object class=\"GtkBuilderListItemFactory\">", xml);
+		Assert.Contains("<property name=\"bytes\">&lt;interface&gt;", xml);
+		Assert.Matches("<object class=\"GtkColumnView\" id=\"columnView1\">\\s*<property name=\"model\">[\\s\\S]*?<child>\\s*<object class=\"GtkColumnViewColumn\" id=\"column1\">", xml);
+		Assert.Contains("<property name=\"title\" translatable=\"yes\">Column 1</property>", xml);
+		await ValidateGtkBuilderAsync(uiPath);
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
 	public async Task GtkDesigner_SourceView_SharesTheDesignerToolbox_AndPlacesDroppedItems()
 	{
 		// A .ui shown Design and Source side by side has one toolbox. With the Source half focused the
@@ -1132,7 +1162,7 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	/// <summary>The GTK 4 toolbox size (GtkDesignerViewContent.ToolNames).</summary>
-	const int GtkToolCount = 20;
+	const int GtkToolCount = 21;
 
 	[Fact]
 	public async Task GtkDesigner_DragToolboxItemOntoNativeDesignSurface_InsertsAndPersistsControl()
