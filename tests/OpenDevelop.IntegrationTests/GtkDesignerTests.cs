@@ -1340,6 +1340,53 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_TranslatorView_EditsAPoFileAndSavesIt()
+	{
+		// A .po file opens with the Translations addin's translator as its Design view. Typing a translation, confirming a
+		// fuzzy one and saving must write the catalogue back; an untouched file is written back verbatim.
+		var poPath = Path.Combine(workDir, "po", "fr.po");
+		Directory.CreateDirectory(Path.GetDirectoryName(poPath)!);
+		const string original = "# Demo\nmsgid \"\"\nmsgstr \"\"\n\"Language: fr\\n\"\n\n#: Windows/Main.ui:12\nmsgctxt \"button\"\nmsgid \"Save\"\nmsgstr \"Enregistrer\"\n\n#: Windows/Main.ui:20\nmsgid \"Open\"\nmsgstr \"\"\n\n#, fuzzy\nmsgid \"Close\"\nmsgstr \"Ferme\"\n";
+		await File.WriteAllTextAsync(poPath, original, TestContext.Current.CancellationToken);
+		var opened = await app.InvokeAsync("od.open-file", poPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+
+		var status = await app.InvokeAsync("od.translator.status");
+		Assert.True(status.GetProperty("active").GetBoolean(), status.ToString());
+		Assert.Equal("fr", status.GetProperty("language").GetString());
+		Assert.Equal(3, status.GetProperty("total").GetInt32());
+		Assert.Equal(1, status.GetProperty("translated").GetInt32());
+		Assert.Equal(1, status.GetProperty("fuzzy").GetInt32());
+		Assert.Equal(1, status.GetProperty("untranslated").GetInt32());
+		Assert.Equal(new[] { "Save", "Open", "Close" }, status.GetProperty("rows").EnumerateArray().Select(r => r.GetProperty("source").GetString()));
+		// The grid itself lists what the model says, with the translator's columns.
+		Assert.Equal(3, status.GetProperty("listedRows").GetInt32());
+		Assert.Equal(new[] { "State", "Source", "Translation", "Fuzzy", "Comment", "Notes" }, status.GetProperty("columns").EnumerateArray().Select(c => c.GetString()));
+
+		var filtered = await app.InvokeAsync("od.translator.filter", "NeedsWork");
+		Assert.True(filtered.GetProperty("success").GetBoolean(), filtered.ToString());
+		var needsWork = await app.InvokeAsync("od.translator.status");
+		Assert.Equal(new[] { "Open", "Close" }, needsWork.GetProperty("rows").EnumerateArray().Select(r => r.GetProperty("source").GetString()));
+		Assert.Equal(2, needsWork.GetProperty("listedRows").GetInt32());
+
+		Assert.True((await app.InvokeAsync("od.translator.set-translation", "Open", "Ouvrir")).GetProperty("success").GetBoolean());
+		var confirmed = await app.InvokeAsync("od.translator.set-translation", "Close", "Fermer");
+		Assert.Equal("Translated", confirmed.GetProperty("state").GetString()); // typing confirms the fuzzy entry
+		Assert.True(confirmed.GetProperty("dirty").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.file.save", poPath)).GetProperty("success").GetBoolean());
+
+		var saved = await File.ReadAllTextAsync(poPath, TestContext.Current.CancellationToken);
+		Assert.Contains("msgstr \"Ouvrir\"", saved);
+		Assert.Contains("msgstr \"Fermer\"", saved);
+		Assert.DoesNotContain("fuzzy", saved);
+		Assert.Contains("msgctxt \"button\"", saved);
+		Assert.Contains("msgstr \"Enregistrer\"", saved);
+		var after = await app.InvokeAsync("od.translator.status");
+		Assert.Equal(3, after.GetProperty("translated").GetInt32());
+		Assert.False(after.GetProperty("dirty").GetBoolean());
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
 	public async Task GtkDesigner_LibadwaitaToolbarView_PlacesContentAndBars()
 	{
 		// AdwToolbarView's GtkBuildable form is <child type="top|bottom"> for bars and a single

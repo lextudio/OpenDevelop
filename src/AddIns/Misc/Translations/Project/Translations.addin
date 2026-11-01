@@ -4,6 +4,9 @@
   <Path name="/SharpDevelop/Autostart">
     <Class id="ICSharpCode.Translations.RegisterDevFlowActionsCommand" class="ICSharpCode.Translations.RegisterDevFlowActionsCommand" />
   </Path>
+  <Path name="/SharpDevelop/Workbench/DisplayBindings">
+    <DisplayBinding id="Translator" type="Secondary" class="ICSharpCode.Translations.TranslatorDisplayBinding" fileNamePattern="\.po$" />
+  </Path>
   <Path name="/SharpDevelop/Workbench/Tools">
     <MenuItem id="UpdateTranslations" label="Update Translations" class="ICSharpCode.Translations.UpdateTranslationsCommand" />
   </Path>
