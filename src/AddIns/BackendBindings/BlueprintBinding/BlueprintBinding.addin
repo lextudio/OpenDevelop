@@ -1,0 +1,42 @@
+<AddIn name        = "Blueprint Binding"
+       author      = "LeXtudio"
+       copyright   = "prj:///doc/copyright.txt"
+       description = "Blueprint (.blp) syntax highlighting, the blueprint-compiler language server, and Compile / Convert commands (see doc/technotes/blueprint.md)"
+       addInManagerHidden = "preinstalled">
+
+	<Manifest>
+		<Identity name = "ICSharpCode.BlueprintBinding"/>
+	</Manifest>
+
+	<Runtime>
+		<Import assembly = "BlueprintBinding.dll"/>
+		<Import assembly = ":ICSharpCode.SharpDevelop"/>
+	</Runtime>
+
+	<!-- The lexer makes .blp open with highlighting; completion, hover, diagnostics, formatting, outline and go to
+	     definition come from `blueprint-compiler lsp`, registered below when the compiler is installed. -->
+	<Path name = "/SharpDevelop/ViewContent/AvalonEdit/SyntaxModes">
+		<SyntaxMode id="Blueprint.SyntaxMode" name="Blueprint" extensions=".blp" resource="BlueprintBinding.Resources.Blueprint.xshd"/>
+	</Path>
+
+	<Path name="/SharpDevelop/Autostart">
+		<Class id="BlueprintLanguageService" class="BlueprintBinding.RegisterBlueprintLanguageServiceCommand"/>
+		<Class id="BlueprintDevFlowActions" class="BlueprintBinding.RegisterDevFlowActionsCommand"/>
+	</Path>
+
+	<Path name="/SharpDevelop/ViewContent/TextEditor/CodeCompletion">
+		<CodeCompletionBinding id="Blueprint-LSP" extensions=".blp" class="ICSharpCode.SharpDevelop.LanguageServices.Lsp.LspCodeCompletionBinding"/>
+	</Path>
+
+	<Path name="/SharpDevelop/ViewContent/TextEditor/Extensions">
+		<TextEditorExtension
+			id="BlueprintOutline"
+			class="ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceOutlineExtension"
+			extensions=".blp" />
+	</Path>
+
+	<Path name="/SharpDevelop/Workbench/Tools">
+		<MenuItem id="BlueprintCompile" label="Compile Blueprint" class="BlueprintBinding.CompileBlueprintCommand"/>
+		<MenuItem id="BlueprintDecompile" label="Convert .ui to Blueprint" class="BlueprintBinding.DecompileToBlueprintCommand"/>
+	</Path>
+</AddIn>

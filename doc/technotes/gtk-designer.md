@@ -297,9 +297,10 @@ Before committing an edit, validate the new document with the internal schema/me
 The preview host then performs authoritative GtkBuilder validation. `gtk4-builder-tool validate`
 is also used in build/integration tests when installed.
 
-Blueprint may be accepted later as an import/source-editor format, but it is experimental and
-compiles to GtkBuilder XML. The first designer must author `.ui` XML directly; maintaining two
-lossless authoring backends would double the hardest part of the project.
+Blueprint is supported as a separate source format, not as a second authoring backend: the Blueprint addin
+(`blueprint.md`) highlights `.blp`, serves it with `blueprint-compiler lsp` and compiles or converts it by running the real
+compiler. The designer itself authors `.ui` XML directly; maintaining two lossless authoring backends would double the hardest
+part of the project, and a `.ui` generated from a `.blp` is edited in the `.blp`.
 
 ## Process architecture
 
@@ -1055,7 +1056,8 @@ Status 2026-11-01: not implemented except where marked.
   merges every `po/*.po`, its translator view edits them and its language service checks them (see
   `translations.md`); `.mo` compilation is a build step, not editor behaviour;
 - explicit GTK 3/Stetic migration assistant: not implemented;
-- optional Blueprint import/editor integration: not implemented.
+- Blueprint: highlighting, the compiler's language server, Compile and Convert commands are in the Blueprint addin
+  (`blueprint.md`; they need `blueprint-compiler` installed).
 
 ### Remaining work (2026-11-01)
 
@@ -1065,7 +1067,6 @@ roughly in intended priority order.
 Product features:
 
 - creating `GtkNotebook` action widgets from the designer (existing ones are preserved);
-- Blueprint (`.blp`) import and editor integration;
 - an explicit GTK 3/Stetic migration assistant (the migration section describes the manual steps;
   no tool exists);
 - custom project widget execution in the sandboxed host (only the data-only

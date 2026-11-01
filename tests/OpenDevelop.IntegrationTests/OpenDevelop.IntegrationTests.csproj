@@ -109,6 +109,9 @@
          language-service test fails with "no language service for file" instead of exercising
          anything, for the same undeployed-addin reason as FSharpBinding above. -->
     <_LanguageAddinProject Include="../../src/AddIns/BackendBindings/VBBinding/Project/VBBinding.vbproj" />
+    <!-- BlueprintBinding deploys to AddIns/BackendBindings/BlueprintBinding/: without it, a .blp has no language service, no highlighting and
+         no Compile/Convert actions (od.blueprint.*), for the same undeployed-addin reason as the others here. -->
+    <_LanguageAddinProject Include="../../src/AddIns/BackendBindings/BlueprintBinding/BlueprintBinding.csproj" />
   </ItemGroup>
   <Target Name="BuildLanguageAddinsForIntegrationTests" BeforeTargets="Build"
           Condition="'$(BuildIntegrationRuntimeProjects)' == 'true'"

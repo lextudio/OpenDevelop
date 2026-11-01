@@ -1,0 +1,61 @@
+<SyntaxDefinition name="Blueprint" extensions=".blp" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+	<Color name="Comment" foreground="Green" exampleText="// comment" />
+	<Color name="String" foreground="Brown" exampleText="&quot;text&quot;" />
+	<Color name="Escape" foreground="Red" exampleText="\n" />
+	<Color name="Keyword" foreground="Blue" fontWeight="bold" exampleText="template $MainWindow : Gtk.Window" />
+	<Color name="Number" foreground="DarkCyan" exampleText="400" />
+	<Color name="Type" foreground="Teal" exampleText="Gtk.Button" />
+	<Color name="Callback" foreground="DarkMagenta" exampleText="clicked =&gt; $on_clicked();" />
+	<Color name="Translate" foreground="DarkOrange" exampleText="_(&quot;text&quot;)" />
+
+	<RuleSet>
+		<Span color="Comment"><Begin>//</Begin></Span>
+		<Span color="Comment" multiline="true"><Begin>/\*</Begin><End>\*/</End></Span>
+		<Span color="String" ruleSet="StringContent">
+			<Begin>"</Begin>
+			<End>"</End>
+		</Span>
+		<Keywords color="Keyword">
+			<Word>using</Word>
+			<Word>template</Word>
+			<Word>menu</Word>
+			<Word>section</Word>
+			<Word>submenu</Word>
+			<Word>item</Word>
+			<Word>bind</Word>
+			<Word>bidirectional</Word>
+			<Word>sync-create</Word>
+			<Word>inverted</Word>
+			<Word>no-sync-create</Word>
+			<Word>after</Word>
+			<Word>swapped</Word>
+			<Word>true</Word>
+			<Word>false</Word>
+			<Word>null</Word>
+			<Word>typeof</Word>
+			<Word>styles</Word>
+			<Word>layout</Word>
+			<Word>accessibility</Word>
+			<Word>items</Word>
+			<Word>responses</Word>
+			<Word>filters</Word>
+			<Word>mime-types</Word>
+			<Word>patterns</Word>
+			<Word>suffixes</Word>
+			<Word>extern</Word>
+			<Word>init</Word>
+			<Word>enum</Word>
+			<Word>flags</Word>
+			<Word>sizegroup</Word>
+			<Word>widgets</Word>
+		</Keywords>
+		<Rule color="Translate">\b_\(</Rule>
+		<Rule color="Callback">\$[A-Za-z_][A-Za-z0-9_]*</Rule>
+		<Rule color="Type">\b[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)+\b</Rule>
+		<Rule color="Number">\b-?(0[xX][0-9a-fA-F]+|[0-9]+(\.[0-9]+)?)\b</Rule>
+	</RuleSet>
+
+	<RuleSet name="StringContent">
+		<Rule color="Escape">\\.</Rule>
+	</RuleSet>
+</SyntaxDefinition>

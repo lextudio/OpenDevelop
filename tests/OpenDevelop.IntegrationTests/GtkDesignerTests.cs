@@ -1746,6 +1746,55 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_BlueprintFiles_CompileDecompileAndGetTheCompilersLanguageServer()
+	{
+		// Blueprint (.blp) is served by GNOME's own blueprint-compiler: the addin registers `blueprint-compiler lsp` for ".blp" and
+		// offers compile and decompile actions. Needs the compiler (brew install blueprint-compiler); skipped without it.
+		var located = await app.InvokeAsync("od.blueprint.status");
+		Assert.SkipWhen(located.GetProperty("compiler").ValueKind == JsonValueKind.Null, "blueprint-compiler is not installed");
+
+		var blueprint = Path.Combine(workDir, "Windows", "BlpWindow.blp");
+		await File.WriteAllTextAsync(blueprint, "using Gtk 4.0;\n\ntemplate $BlpWindow : Gtk.ApplicationWindow {\n  title: _(\"Demo\");\n  Gtk.Button run {\n    label: _(\"Run\");\n    clicked => $on_run_clicked();\n  }\n}\n", TestContext.Current.CancellationToken);
+		var compiled = await app.InvokeAsync("od.blueprint.compile", blueprint);
+		Assert.True(compiled.GetProperty("success").GetBoolean(), compiled.ToString());
+		var ui = compiled.GetProperty("output").GetString()!;
+		Assert.Equal(Path.ChangeExtension(blueprint, ".ui"), ui);
+		var xml = await File.ReadAllTextAsync(ui, TestContext.Current.CancellationToken);
+		Assert.Contains("<template class=\"BlpWindow\" parent=\"GtkApplicationWindow\">", xml);
+		Assert.Contains("<signal name=\"clicked\" handler=\"on_run_clicked\"/>", xml);
+
+		// Problems come back with positions; nothing is written for a file that does not compile.
+		var broken = Path.Combine(workDir, "Windows", "BlpBroken.blp");
+		var brokenText = "using Gtk 4.0;\n\nGtk.Window {\n  title: \"x\"\n  nonsense: 3;\n  Gtk.Foo bar {}\n}\n";
+		await File.WriteAllTextAsync(broken, brokenText, TestContext.Current.CancellationToken);
+		var failed = await app.InvokeAsync("od.blueprint.compile", broken);
+		Assert.False(failed.GetProperty("success").GetBoolean());
+		Assert.Equal(new[] { 5, 5, 6 }, failed.GetProperty("diagnostics").EnumerateArray().Select(d => d.GetProperty("line").GetInt32()));
+		Assert.False(File.Exists(Path.ChangeExtension(broken, ".ui")));
+
+		// The language server: the same problems through the generic language-service actions the editor uses.
+		var diagnostics = Array.Empty<JsonElement>();
+		var last = "";
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			var reply = await app.InvokeAsync("od.diagnostics", broken);
+			last = reply.ToString();
+			diagnostics = reply.GetProperty("diagnostics").EnumerateArray().ToArray();
+			return diagnostics.Length >= 3;
+		}, TimeSpan.FromSeconds(30)), "the Blueprint language server reported " + diagnostics.Length + " diagnostics: " + last);
+		Assert.Contains(diagnostics, d => d.GetProperty("message").GetString()!.Contains("does not have a property called nonsense", StringComparison.Ordinal) && d.GetProperty("startLine").GetInt32() == 5);
+		var outline = await app.InvokeAsync("od.document-outline", blueprint);
+		Assert.NotEmpty(outline.GetProperty("nodes").EnumerateArray());
+
+		// Convert a .ui to Blueprint; an existing .blp is kept unless overwrite is asked for.
+		var converted = await app.InvokeAsync("od.blueprint.decompile", ui, Path.Combine(workDir, "Windows", "BlpFromUi.blp"));
+		Assert.True(converted.GetProperty("success").GetBoolean(), converted.ToString());
+		Assert.StartsWith("using Gtk 4.0;", await File.ReadAllTextAsync(converted.GetProperty("output").GetString()!, TestContext.Current.CancellationToken));
+		var again = await app.InvokeAsync("od.blueprint.decompile", ui, Path.Combine(workDir, "Windows", "BlpFromUi.blp"));
+		Assert.False(again.GetProperty("success").GetBoolean());
+		Assert.Contains("already exists", again.GetProperty("failure").GetString());
+	}
+
+	[Fact]
 	public async Task GtkDesigner_LibadwaitaToolbarView_PlacesContentAndBars()
 	{
 		// AdwToolbarView's GtkBuildable form is <child type="top|bottom"> for bars and a single

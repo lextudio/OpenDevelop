@@ -1,0 +1,27 @@
+<Project Sdk="LibreWPF.Sdk">
+  <PropertyGroup>
+    <!-- The sources annotate nullability with '?'; the annotation context makes that legal without turning the warning context on. -->
+    <Nullable>annotations</Nullable>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>BlueprintBinding</RootNamespace>
+    <AssemblyName>BlueprintBinding</AssemblyName>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <UseWPF>true</UseWPF>
+    <OutputPath>..\..\..\..\AddIns\BackendBindings\BlueprintBinding\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\Blueprint.xshd" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="BlueprintBinding.addin" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" />
+  </ItemGroup>
+</Project>
