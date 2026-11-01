@@ -175,6 +175,14 @@ the CliclickSharp holder path. The fix lives in `wpf-labs`
 (`LeXtudio.DevFlow.Agent.Core/MacOSKeyInput.cs`), so it reaches consumers with the next agent
 package; until that is published, a local build can patch the agent package in the OpenAvalon feed.
 
+The agent also exposes the application's keyboard input source: `GET /api/v1/ui/input-source`
+returns `{ ok, current }`, and `POST /api/v1/ui/input-source` with `{ "id": "..." }` selects one on
+the application dispatcher. Real key events are composed by the active input method, so a driver
+that types must select a plain layout first (a Pinyin source turns `echo ` into Chinese characters).
+The selection has to run in the application: the same call from a test host only changes the source
+of whichever app is frontmost, and macOS restores a per-application remembered source on activation.
+Other platforms answer 501.
+
 ## Build / test actions
 
 These are the primary actions used for automated build→test→verify workflows:

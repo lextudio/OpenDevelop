@@ -1245,16 +1245,39 @@ public sealed class TerminalPadTests
 		// source when it is activated, which would bring a Pinyin source back mid-typing. A machine with neither ABC nor U.S. enabled
 		// fails here rather than skips.
 		await app.InvokeAsync("od.activate");
-		using var layout = MacInputSource.Select(MacInputSource.Abc) ?? MacInputSource.Select(MacInputSource.Us);
-		Assert.NotNull(layout);
-		var selected = MacInputSource.Current();
+		// Select the input source inside the IDE process: TISSelectInputSource from the test
+		// process only changes the source of whichever app is frontmost at that moment, and macOS
+		// restores a per-app remembered source on activation, so a Pinyin source could still
+		// compose these keys into Chinese characters (echo -> 恶臭).
+		await app.InvokeAsync("od.activate");
+		var selected = await SelectPlainInputSourceAsync();
+		// Before typing, the system must really be on the expected plain English layout: a Pinyin
+		// source composes the keys before the app sees them, and the test would type Chinese.
+		var system = MacInputSource.Current();
+		Assert.True(system == selected, $"The system input source is '{system}', expected the plain English layout '{selected}'. Select the default English input source before running this test.");
 		foreach (var key in new[] { "e", "c", "h", "o", "space", "q", "z", "return" })
 		{
 			Assert.True((await app.KeyDownAsync(key, ensureForeground: false)).GetProperty("ok").GetBoolean());
 			await app.KeyUpAsync(key);
-			Assert.Equal(selected, MacInputSource.Current()); // nothing switched the input source while typing
+			// Neither the IDE's source nor the system's may change while typing.
+			Assert.Equal(selected, (await app.GetInputSourceAsync()).GetProperty("current").GetString());
+			Assert.Equal(selected, MacInputSource.Current());
 		}
 		await WaitForLineAsync("qz");
+	}
+
+	/// <summary>A plain layout for typing: the first enabled one of ABC and U.S., selected in the
+	/// IDE process (DevFlow /api/v1/ui/input-source). Fails when the machine has neither (a test
+	/// that types cannot run).</summary>
+	async Task<string> SelectPlainInputSourceAsync()
+	{
+		foreach (var id in new[] { "com.apple.keylayout.ABC", "com.apple.keylayout.US" }) {
+			var selected = await app.SelectInputSourceAsync(id);
+			if (selected.GetProperty("ok").GetBoolean())
+				return selected.GetProperty("current").GetString()!;
+		}
+		Assert.Fail("Neither the ABC nor the U.S. keyboard layout is enabled: " + await app.GetInputSourceAsync());
+		return "";
 	}
 
 	async Task WaitForMouseTrackingAsync(bool expected)

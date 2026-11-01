@@ -975,6 +975,34 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     /// <summary>Releases a key previously held by <see cref="KeyDownAsync"/>.</summary>
     public Task<JsonElement> KeyUpAsync(string key) => PostKeyActionAsync("keyup", key);
 
+    /// <summary>The application's current keyboard input source id (DevFlow
+    /// /api/v1/ui/input-source): a Pinyin/IME source composes real keys into its characters, so a
+    /// typing test must be on a plain layout.</summary>
+    public async Task<JsonElement> GetInputSourceAsync()
+    {
+        using var resp = await _http.GetAsync($"{BaseUrl}/api/v1/ui/input-source");
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            throw new InvalidOperationException($"ui/input-source failed ({(int)resp.StatusCode}): {err}\n{DescribeAppFailureContext()}\nRecent app output:\n{GetRecentAppOutput()}");
+        }
+        return await resp.Content.ReadFromJsonAsync<JsonElement>();
+    }
+
+    /// <summary>Selects an input source in the application process; returns { ok, current, error }.</summary>
+    public async Task<JsonElement> SelectInputSourceAsync(string id)
+    {
+        var body = JsonSerializer.Serialize(new { id });
+        using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+        using var resp = await _http.PostAsync($"{BaseUrl}/api/v1/ui/input-source", content);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            throw new InvalidOperationException($"ui/input-source failed ({(int)resp.StatusCode}): {err}\n{DescribeAppFailureContext()}\nRecent app output:\n{GetRecentAppOutput()}");
+        }
+        return await resp.Content.ReadFromJsonAsync<JsonElement>();
+    }
+
     /// <summary>Delivers the move/release half of a decomposed native drag with evenly-spaced
     /// points. Callers deliberately keep the press, geometry lookup, retry policy and post-drag
     /// assertions local to their designer-specific test.</summary>
