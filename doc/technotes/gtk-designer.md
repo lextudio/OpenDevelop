@@ -799,8 +799,9 @@ GTK 4 has no generic container mutation API. Every drop is resolved through `chi
 - list/model/factory widgets: `GtkListView`, `GtkGridView` and `GtkColumnView` are toolbox items
   that start with an inline `GtkStringList` model and a label factory, and the Items row edits that
   model (2026-11-01, see "List-model items"); the inline factory's cell template and further
-  columns are editable in the designer, while other factory classes, non-string-list models and
-  expressions are edited by hand in the source.
+  columns are editable in the designer, while other factory classes, `Gio.ListStore` models and
+  expressions are edited by hand in the source (selection, sort and filter models, column sorters and the
+  signal factory are covered below).
 
 A refusal is reported through `GtkUiDocumentEditor.Refusal`, not `Error`: the document is still
 valid, so it stays accepted and a refused drop cannot stop the next render. `design/add-element`
@@ -879,12 +880,26 @@ reference cannot be inspected, so the sorter is added and the model is assumed t
 is not a column of a column view is refused. Covered by the `ColumnSort_*` unit tests and
 `GtkDesigner_ColumnSorters_MakeAColumnSortableAndRender` (rendered by the real host with no diagnostics).
 
+The **List Item Factory** submenu (Builder Template / Signals (code)) of a list view, grid view or column switches
+its factory between a `GtkBuilderListItemFactory` and a `GtkSignalListItemFactory`
+(`gtk/factory-class` / `gtk/set-factory-class`; `od.gtk-designer.factory-class(.set)`), as one undo step. The signal
+factory is `GtkSignalListItemFactory id="signalFactoryN"` with `setup` and `bind` signals whose handlers are
+`signalFactoryN_setup` and `signalFactoryN_bind`; it is an ordinary object, so its other signals (`unbind`, `teardown`) are
+added in its Events pad, and the ordinary signal wiring does the rest: typed method stubs in the behavior class
+(`void signalFactory1_setup(Gtk.SignalListItemFactory sender, Gtk.SignalListItemFactory.SetupSignalArgs args)`) and
+connections in the companion, which compile against Gir.Core. Switching back restores the starter template factory
+and the companion loses the connections; the methods stay, because they are the user's code. A `GtkColumnView` refuses
+("select a column"), since its factories are its columns'; a factory that is a reference to an object defined elsewhere
+is not replaced; an unknown class and an object that has no factory are refused; choosing the class already in use
+is not an edit. Covered by the `Factory_*` unit tests and
+`GtkDesigner_SignalListItemFactory_GeneratesSetupAndBindHandlers`.
+
 The cell template of an inline `GtkBuilderListItemFactory` is editable: the surface's context menu
 offers **Edit List Item Template...**, which opens the factory `bytes` in a monospace editor and
 writes it back as one undo step (`gtk/factory-template` / `gtk/set-factory-template`); text that
 does not parse as XML is refused and the old template stays. `od.gtk-designer.factory-template` and
-`.set` expose the same path for tests. Other factory classes (`GtkSignalListItemFactory`) and
-column sorters are still source-only.
+`.set` expose the same path for tests. Factory classes other than the two below are still
+source-only.
 
 `GtkColumnViewColumn` is itself a toolbox item: with a column view selected it appends a column
 titled "Column N" with the label factory (at the planned index when dropped), and a widget dropped
@@ -1038,9 +1053,9 @@ Product features:
 - custom project widget execution in the sandboxed host (only the data-only
   `.gtkdesigner.json` preview mapping exists);
 - `app.` menu actions and action state/parameters (`win.` actions get stubs and registration; see "Menus");
-- list/model depth: selection, sort and filter models and string column sorters are editable; `Gio.ListStore`
-  (code-filled; a builder cannot add items to it), `GtkSignalListItemFactory`, sorters for non-string items and factories
-  beyond the inline `GtkBuilderListItemFactory` template editor are not;
+- list/model depth: selection, sort and filter models, string column sorters and the signal factory are editable;
+  `Gio.ListStore` (code-filled; a builder cannot add items to it), sorters for non-string items and factories beyond
+  the builder-template and signal classes are not;
 - composite templates: a template class outside the project cannot be wired.
 
 Coverage (tests, not product behaviour):

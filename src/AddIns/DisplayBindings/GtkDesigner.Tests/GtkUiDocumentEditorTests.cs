@@ -729,6 +729,69 @@ public sealed class GtkUiDocumentEditorTests
 	}
 
 	[Fact]
+	public void Factory_ASignalFactoryReplacesTheTemplateAndSwitchingBackDropsItsSignals()
+	{
+		var editor = ViewEditor("GtkListView");
+		var view = editor.LastCreatedId!;
+		Assert.Equal(GtkUiDocumentEditor.BuilderFactory, editor.GetFactoryClass(view));
+		Assert.True(editor.SetFactoryClass(view, GtkUiDocumentEditor.SignalFactory), editor.Error);
+		Assert.Equal(GtkUiDocumentEditor.SignalFactory, editor.GetFactoryClass(view));
+		Assert.Matches("<property name=\"factory\">\\s*<object class=\"GtkSignalListItemFactory\" id=\"signalFactory1\">\\s*<signal name=\"setup\" handler=\"signalFactory1_setup\" />\\s*<signal name=\"bind\" handler=\"signalFactory1_bind\" />", editor.Text);
+		Assert.DoesNotContain("GtkBuilderListItemFactory", editor.Text);
+		// The factory object is in the tree, so its own events are editable in the Properties pad.
+		Assert.Contains(editor.Roots[0].Children[0].Children[0].Children, node => node.ClassName == "GtkSignalListItemFactory" && node.Id == "signalFactory1");
+		Assert.True(editor.Undo());
+		Assert.Equal(GtkUiDocumentEditor.BuilderFactory, editor.GetFactoryClass(view));
+		Assert.True(editor.Redo());
+		Assert.True(editor.SetFactoryClass(view, GtkUiDocumentEditor.BuilderFactory), editor.Error);
+		Assert.Equal(GtkUiDocumentEditor.BuilderFactory, editor.GetFactoryClass(view));
+		Assert.DoesNotContain("signalFactory1", editor.Text);
+		Assert.Contains("<property name=\"bytes\">&lt;interface&gt;", editor.Text);
+		// Choosing the class it already has is not an edit.
+		var before = editor.Text;
+		Assert.True(editor.SetFactoryClass(view, GtkUiDocumentEditor.BuilderFactory), editor.Error);
+		Assert.Equal(before, editor.Text);
+	}
+
+	[Fact]
+	public void Factory_AColumnHasItsOwnAndTheColumnViewRefusesAndWhatCannotBeSwitchedIsRefused()
+	{
+		var editor = ViewEditor("GtkColumnView");
+		var view = editor.LastCreatedId!;
+		Assert.Equal(GtkUiDocumentEditor.BuilderFactory, editor.GetFactoryClass("column1"));
+		Assert.Null(editor.GetFactoryClass(view)); // the column view has no factory of its own
+		Assert.False(editor.SetFactoryClass(view, GtkUiDocumentEditor.SignalFactory));
+		Assert.Contains("select a column", editor.Refusal);
+		Assert.True(editor.SetFactoryClass("column1", GtkUiDocumentEditor.SignalFactory), editor.Error);
+		Assert.Equal(GtkUiDocumentEditor.SignalFactory, editor.GetFactoryClass("column1"));
+		Assert.False(editor.SetFactoryClass("column1", "GtkListItemFactory"));
+		Assert.Contains("is not a list-item factory the designer switches to", editor.Refusal);
+		Assert.False(editor.SetFactoryClass("w", GtkUiDocumentEditor.SignalFactory));
+		Assert.Contains("Only a GtkListView", editor.Refusal);
+		Assert.Null(editor.GetFactoryClass("nothing"));
+
+		// A factory that is a reference to an object defined elsewhere is not replaced; a missing factory is created.
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkSignalListItemFactory" id="shared"/><object class="GtkWindow" id="w"><child><object class="GtkListView" id="byReference"><property name="factory">shared</property></object></child><child><object class="GtkGridView" id="bare"/></child></object></interface>"""), editor.Error);
+		var before = editor.Text;
+		Assert.False(editor.SetFactoryClass("byReference", GtkUiDocumentEditor.BuilderFactory));
+		Assert.Contains("reference", editor.Refusal);
+		Assert.Equal(before, editor.Text);
+		Assert.Null(editor.GetFactoryClass("byReference"));
+		Assert.True(editor.SetFactoryClass("bare", GtkUiDocumentEditor.SignalFactory), editor.Error);
+		Assert.Equal(GtkUiDocumentEditor.SignalFactory, editor.GetFactoryClass("bare"));
+		Assert.Matches("<object class=\"GtkSignalListItemFactory\" id=\"signalFactory1\">", editor.Text);
+	}
+
+	[Fact]
+	public void Factory_MenuCommandsMapToTheirClass()
+	{
+		Assert.Equal("GtkBuilderListItemFactory", GtkUiDocumentEditor.FactoryCommand("factory-GtkBuilderListItemFactory"));
+		Assert.Equal("GtkSignalListItemFactory", GtkUiDocumentEditor.FactoryCommand("factory-GtkSignalListItemFactory"));
+		Assert.Null(GtkUiDocumentEditor.FactoryCommand("factory-GtkListItemFactory"));
+		Assert.Null(GtkUiDocumentEditor.FactoryCommand("edit-factory-template"));
+	}
+
+	[Fact]
 	public void FactoryTemplate_RoundTripsAndRejectsInvalidXml()
 	{
 		var editor = new GtkUiDocumentEditor();

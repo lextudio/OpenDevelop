@@ -549,6 +549,61 @@ public sealed class GtkUiDocumentEditor
 		_ => null
 	};
 
+	/// <summary>The classes that hold a list-item <c>factory</c>: a list view, a grid view and a column view's column.</summary>
+	static readonly HashSet<string> FactoryOwners = new(StringComparer.Ordinal) { "GtkListView", "GtkGridView", "GtkColumnViewColumn" };
+	public const string BuilderFactory = "GtkBuilderListItemFactory";
+	public const string SignalFactory = "GtkSignalListItemFactory";
+
+	/// <summary>The factory class a Factory submenu command stands for: <c>factory-GtkBuilderListItemFactory</c> and
+	/// <c>factory-GtkSignalListItemFactory</c> map to their class; null for any other command.</summary>
+	public static string? FactoryCommand(string command) => command switch {
+		"factory-" + BuilderFactory => BuilderFactory,
+		"factory-" + SignalFactory => SignalFactory,
+		_ => null
+	};
+
+	static XElement? FactoryProperty(XElement owner)
+		=> owner.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "factory"));
+
+	/// <summary>The class of the inline factory object of a list view, grid view or column, or null (none, a reference, or not such an object).</summary>
+	public string? GetFactoryClass(string id)
+	{
+		var owner = Find(id);
+		if (owner == null || !FactoryOwners.Contains((string?)owner.Attribute("class") ?? "")) return null;
+		return FactoryProperty(owner)?.Elements().FirstOrDefault(IsObject) is { } factory ? (string?)factory.Attribute("class") : null;
+	}
+
+	/// <summary>Switches the object's list-item factory between a <c>GtkBuilderListItemFactory</c> (the XML cell template) and a
+	/// <c>GtkSignalListItemFactory</c> (cells built in code from its <c>setup</c> and <c>bind</c> signals), as one undo step. The
+	/// signal factory gets <c>setup</c> and <c>bind</c> handlers named <c>&lt;factoryId&gt;_setup</c> / <c>_bind</c>, which the signal
+	/// wiring turns into method stubs and connections. Switching back drops the factory's signals from the document, not the
+	/// methods from the user's class. Refused for an unknown class, an object that has no factory (a column view's factories
+	/// are its columns'), or a factory that is a reference to an object defined elsewhere; choosing the current class is a no-op.</summary>
+	public bool SetFactoryClass(string id, string factoryClass)
+	{
+		if (factoryClass != BuilderFactory && factoryClass != SignalFactory) { Refusal = $"{factoryClass} is not a list-item factory the designer switches to (GtkBuilderListItemFactory or GtkSignalListItemFactory)."; return false; }
+		var owner = Find(id);
+		var ownerClass = owner == null ? "" : (string?)owner.Attribute("class") ?? "";
+		if (ownerClass == "GtkColumnView") { Refusal = "A GtkColumnView's factories belong to its columns: select a column."; return false; }
+		if (owner == null || !FactoryOwners.Contains(ownerClass)) { Refusal = "Only a GtkListView, GtkGridView or GtkColumnViewColumn has a list-item factory."; return false; }
+		var property = FactoryProperty(owner);
+		var current = property?.Elements().FirstOrDefault(IsObject);
+		if (current != null && (string?)current.Attribute("class") == factoryClass) return true;
+		if (property != null && current == null && property.Value.Trim().Length > 0) { Refusal = "The factory is a reference to an object defined elsewhere; switch it there."; return false; }
+		XElement factory;
+		if (factoryClass == BuilderFactory) factory = ListFactoryProperty().Elements().First();
+		else {
+			var factoryId = UniqueId("signalFactory");
+			factory = new XElement("object", new XAttribute("class", SignalFactory), new XAttribute("id", factoryId),
+				new XElement("signal", new XAttribute("name", "setup"), new XAttribute("handler", factoryId + "_setup")),
+				new XElement("signal", new XAttribute("name", "bind"), new XAttribute("handler", factoryId + "_bind")));
+		}
+		if (property == null) { property = new XElement("property", new XAttribute("name", "factory")); owner.Add(property); }
+		property.RemoveNodes();
+		property.Add(factory);
+		return Commit();
+	}
+
 	/// <summary>The column view that owns a <c>GtkColumnViewColumn</c> object, or null.</summary>
 	XElement? ColumnViewOf(XElement column)
 		=> (string?)column.Attribute("class") == "GtkColumnViewColumn" && column.Parent is { Name.LocalName: "child" } wrapper

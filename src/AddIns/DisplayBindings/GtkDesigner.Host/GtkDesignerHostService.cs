@@ -208,6 +208,27 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		return State(session, false);
 	}
 
+	/// <summary>The class of the inline list-item factory of the selected list view, grid view or column, or null.</summary>
+	[JsonRpcMethod("gtk/factory-class")]
+	public string? FactoryClass(string sessionId, string documentId, string elementId)
+	{
+		EnsureSession(sessionId);
+		return Get(documentId).Editor.GetFactoryClass(elementId);
+	}
+
+	/// <summary>Switches the list-item factory between the builder-template and signal classes as one undo step.</summary>
+	[JsonRpcMethod("gtk/set-factory-class")]
+	public DesignerSessionState SetFactoryClass(string sessionId, string documentId, long baseVersion, string elementId, string factoryClass)
+	{
+		EnsureSession(sessionId);
+		var session = Get(documentId);
+		EnsureVersion(session, baseVersion);
+		if (!session.Editor.SetFactoryClass(elementId, factoryClass))
+			throw new InvalidOperationException("The factory change was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
+		session.Version++;
+		return State(session, false);
+	}
+
 	/// <summary>The selected object's menu entries: items, sections and submenus (a &lt;menu&gt; in its menu-model property).</summary>
 	[JsonRpcMethod("gtk/menu-items")]
 	public List<DesignerMenuNode>? MenuItems(string sessionId, string documentId, string elementId)

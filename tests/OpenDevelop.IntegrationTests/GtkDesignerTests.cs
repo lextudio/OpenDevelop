@@ -1619,6 +1619,71 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_SignalListItemFactory_GeneratesSetupAndBindHandlers()
+	{
+		// A GtkSignalListItemFactory builds its cells in code from its setup and bind signals. Switching a list view to it
+		// writes the object with both signals, and the ordinary signal wiring generates the typed method stubs in the behavior
+		// class and the connections in the companion - which must compile against Gir.Core.
+		var path = Path.Combine(workDir, "Windows", "FactoryWindow.ui");
+		await File.WriteAllTextAsync(path, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <object class="GtkWindow" id="factoryWindow">
+			    <property name="default-width">400</property>
+			    <property name="default-height">300</property>
+			    <child><object class="GtkBox" id="box"><property name="orientation">vertical</property></object></child>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", path); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("factoryWindow"); Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "box")).GetProperty("success").GetBoolean());
+		Assert.Equal("listView1", (await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkListView")).GetProperty("selectedId").GetString());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "listView1")).GetProperty("success").GetBoolean());
+		Assert.Equal("GtkBuilderListItemFactory", (await app.InvokeAsync("od.gtk-designer.factory-class")).GetProperty("factoryClass").GetString());
+
+		var signals = await app.InvokeAsync("od.gtk-designer.factory-class.set", "GtkSignalListItemFactory");
+		Assert.True(signals.GetProperty("success").GetBoolean(), signals.ToString());
+		Assert.Equal("GtkSignalListItemFactory", signals.GetProperty("factoryClass").GetString());
+		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
+		var xml = (await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken)).Replace("\r", "");
+		Assert.Contains("<object class=\"GtkSignalListItemFactory\" id=\"signalFactory1\">", xml);
+		Assert.Contains("<signal name=\"setup\" handler=\"signalFactory1_setup\" />", xml);
+		Assert.DoesNotContain("GtkBuilderListItemFactory", xml);
+		var behavior = await File.ReadAllTextAsync(Path.ChangeExtension(path, ".cs"), TestContext.Current.CancellationToken);
+		Assert.Contains("void signalFactory1_setup(Gtk.SignalListItemFactory sender, Gtk.SignalListItemFactory.SetupSignalArgs args)", behavior);
+		Assert.Contains("void signalFactory1_bind(Gtk.SignalListItemFactory sender, Gtk.SignalListItemFactory.BindSignalArgs args)", behavior);
+		var companion = await File.ReadAllTextAsync(path + ".cs", TestContext.Current.CancellationToken);
+		Assert.Contains("@signalFactory1.OnSetup += (_, args) => signalFactory1_setup(@signalFactory1, args);", companion);
+		Assert.Contains("@signalFactory1.OnBind += (_, args) => signalFactory1_bind(@signalFactory1, args);", companion);
+		await ValidateFixtureBuildAsync(projectPath); // the stubs and connections compile against Gir.Core
+
+		// Switching back restores the template factory and takes the connections out of the companion; the user's methods stay.
+		var builder = await app.InvokeAsync("od.gtk-designer.factory-class.set", "GtkBuilderListItemFactory");
+		Assert.True(builder.GetProperty("success").GetBoolean(), builder.ToString());
+		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
+		xml = (await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken)).Replace("\r", "");
+		Assert.Contains("<object class=\"GtkBuilderListItemFactory\">", xml);
+		Assert.DoesNotContain("signalFactory1", xml);
+		Assert.DoesNotContain("signalFactory1", await File.ReadAllTextAsync(path + ".cs", TestContext.Current.CancellationToken));
+		Assert.Contains("void signalFactory1_setup(", await File.ReadAllTextAsync(Path.ChangeExtension(path, ".cs"), TestContext.Current.CancellationToken));
+
+		// A column view takes its factories per column; the view itself refuses, with its reason.
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "box")).GetProperty("success").GetBoolean());
+		Assert.Equal("columnView1", (await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkColumnView")).GetProperty("selectedId").GetString());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "columnView1")).GetProperty("success").GetBoolean());
+		// Let the pending render finish first: a render rebuilds the diagnostic text, which would replace the refusal's reason.
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => !(await app.InvokeAsync("od.gtk-designer.status")).GetProperty("renderPending").GetBoolean(), TimeSpan.FromSeconds(10)));
+		Assert.False((await app.InvokeAsync("od.gtk-designer.factory-class.set", "GtkSignalListItemFactory")).GetProperty("success").GetBoolean());
+		Assert.Contains("select a column", (await app.InvokeAsync("od.gtk-designer.status")).GetProperty("diagnosticText").GetString());
+		var rendered = await app.InvokeAsync("od.gtk-designer.status");
+		Assert.True(rendered.GetProperty("nativeFrame").GetBoolean(), rendered.ToString());
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
 	public async Task GtkDesigner_LibadwaitaToolbarView_PlacesContentAndBars()
 	{
 		// AdwToolbarView's GtkBuildable form is <child type="top|bottom"> for bars and a single

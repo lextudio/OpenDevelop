@@ -537,6 +537,20 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		try { return Mutate(() => host.SetColumnSortableAsync(state.Version, selected.Id, sortable).GetAwaiter().GetResult()); }
 		catch (Exception ex) { diagnostic.Text = ex.GetBaseException().Message; return false; }
 	}
+	/// <summary>The class of the selected list view, grid view or column's inline factory, or null.</summary>
+	public string? FactoryClass() { if (host == null || selected == null) return null; return host.FactoryClassAsync(selected.Id).GetAwaiter().GetResult(); }
+	/// <summary>Switches the selected object's list-item factory between the builder-template and signal classes as one undo step; a
+	/// refusal is shown under the canvas. A signal factory's handler stubs and connections are generated like any signal's.</summary>
+	public bool SetFactoryClass(string factoryClass)
+	{
+		if (host == null || selected == null) return false;
+		if (FactoryClass() == factoryClass) return true;
+		try {
+			if (!Mutate(() => host.SetFactoryClassAsync(state.Version, selected.Id, factoryClass).GetAwaiter().GetResult())) return false;
+		} catch (Exception ex) { diagnostic.Text = ex.GetBaseException().Message; return false; }
+		UpdateCodeBehind(null, force: factoryClass == GtkUiDocumentEditor.SignalFactory);
+		return true;
+	}
 	public bool SetFactoryTemplate(string template) { if (host == null || selected == null) return false; return Mutate(() => host.SetFactoryTemplateAsync(state.Version, selected.Id, template).GetAwaiter().GetResult()); }
 
 	/// <summary>Keeps X.cs and X.ui.cs in step with the .ui's signals (see GtkCodeBehind): with
@@ -782,7 +796,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			("-", ""), ("Grid/Column span +1", "span-column-more"), ("Grid/Column span -1", "span-column-less"), ("Grid/Row span +1", "span-row-more"), ("Grid/Row span -1", "span-row-less"),
 			("Grid/Insert row above", "grid-insert-row"), ("Grid/Insert column left", "grid-insert-column"),
 			("Grid/Delete row", "grid-delete-row"), ("Grid/Delete column", "grid-delete-column"),
-			("-", ""), ("Edit List Item Template...", "edit-factory-template"), ("Sort Column/Enable", "column-sortable-on"), ("Sort Column/Disable", "column-sortable-off"), ("Model/Add Sorting", "model-add-sort"), ("Model/Remove Sorting", "model-remove-sort"), ("Model/Add Filtering", "model-add-filter"), ("Model/Remove Filtering", "model-remove-filter"), ("Selection/None", "selection-GtkNoSelection"), ("Selection/Single", "selection-GtkSingleSelection"), ("Selection/Multiple", "selection-GtkMultiSelection"), ("Edit Menu...", "edit-menu"), ("-", ""), ("Wrap/GtkBox", "wrap-GtkBox"), ("Wrap/GtkFrame", "wrap-GtkFrame") , ("Unwrap", "unwrap") });
+			("-", ""), ("Edit List Item Template...", "edit-factory-template"), ("List Item Factory/Builder Template", "factory-GtkBuilderListItemFactory"), ("List Item Factory/Signals (code)", "factory-GtkSignalListItemFactory"), ("Sort Column/Enable", "column-sortable-on"), ("Sort Column/Disable", "column-sortable-off"), ("Model/Add Sorting", "model-add-sort"), ("Model/Remove Sorting", "model-remove-sort"), ("Model/Add Filtering", "model-add-filter"), ("Model/Remove Filtering", "model-remove-filter"), ("Selection/None", "selection-GtkNoSelection"), ("Selection/Single", "selection-GtkSingleSelection"), ("Selection/Multiple", "selection-GtkMultiSelection"), ("Edit Menu...", "edit-menu"), ("-", ""), ("Wrap/GtkBox", "wrap-GtkBox"), ("Wrap/GtkFrame", "wrap-GtkFrame") , ("Unwrap", "unwrap") });
 		canvas.ContextCommandCanExecute = command => command switch {
 			"grid-insert-row" or "grid-insert-column" or "grid-delete-row" or "grid-delete-column" => host?.IsAlive == true && SelectedGridChild() != null,
 			var span when span.StartsWith("span-", StringComparison.Ordinal) => host?.IsAlive == true && SelectedGridChild() is { } cell
@@ -793,6 +807,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			"move-later" or "move-last" => host?.IsAlive == true && SiblingPosition() is { } position && position.Index < position.Count - 1,
 			"edit-factory-template" => host?.IsAlive == true && selected != null && Flatten(selected).Any(node => node.Type == "GtkBuilderListItemFactory"),
 			"edit-menu" => host?.IsAlive == true && selected?.Type is "GtkPopoverMenu" or "GtkMenuButton",
+			var factory when GtkUiDocumentEditor.FactoryCommand(factory) != null => host?.IsAlive == true && selected?.Type is "GtkListView" or "GtkGridView" or "GtkColumnViewColumn",
 			var column when GtkUiDocumentEditor.ColumnSortCommand(column) != null => host?.IsAlive == true && selected?.Type == "GtkColumnViewColumn",
 			var model when GtkUiDocumentEditor.ModelCommand(model) != null => host?.IsAlive == true && selected?.Type is "GtkListView" or "GtkGridView" or "GtkColumnView",
 			var selection when selection.StartsWith("selection-", StringComparison.Ordinal) => host?.IsAlive == true && selected?.Type is "GtkListView" or "GtkGridView" or "GtkColumnView",
@@ -820,6 +835,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 				case "unwrap": UnwrapSelected(); break;
 				case "edit-factory-template": EditFactoryTemplate(); break;
 				case "edit-menu": EditMenu(); break;
+				case var factory when GtkUiDocumentEditor.FactoryCommand(factory) is { } factoryClass: SetFactoryClass(factoryClass); break;
 				case var column when GtkUiDocumentEditor.ColumnSortCommand(column) is { } sortable: SetColumnSortable(sortable); break;
 				case var model when GtkUiDocumentEditor.ModelCommand(model) is { } change: SetModelWrapper(change.Kind, change.Add); break;
 				case var selection when selection.StartsWith("selection-", StringComparison.Ordinal): SetSelectionModel(selection.Substring("selection-".Length)); break;
