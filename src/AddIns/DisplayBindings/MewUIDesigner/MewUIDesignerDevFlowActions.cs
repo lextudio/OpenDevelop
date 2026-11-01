@@ -76,7 +76,7 @@ public static class MewUIDesignerDevFlowActions
 			? JsonSerializer.Serialize(new { success = true, selectedName = view.SelectedName, before = result.Before, after = result.After, committed = result.Committed })
 			: DesignerDevFlowResults.Failure(result.Error ?? "Items edit failed");
 	}
-	[DevFlowAction("od.mewui-designer.clipboard", Description = "Run the design surface's cut|copy|paste|duplicate|move-first|move-earlier|move-later|move-last|unwrap|wrap-<Container> command on the selection, as its context menu does")]
+	[DevFlowAction("od.mewui-designer.clipboard", Description = "Run the design surface's cut|copy|paste|paste-here|duplicate|move-first|move-earlier|move-later|move-last|unwrap|wrap-<Container> command on the selection, as its context menu does")]
 	public static string Clipboard(string command)
 	{
 		var view = Activate();
@@ -84,6 +84,7 @@ public static class MewUIDesignerDevFlowActions
 			"copy" => view.CopySelection(),
 			"cut" => view.CopySelection() && view.DeleteSelected(),
 			"paste" => view.PasteIntoSelection(),
+			"paste-here" => view.PasteHere(),
 			"duplicate" => view.DuplicateSelection(),
 			"move-first" or "move-earlier" or "move-later" or "move-last" => view.MoveSelected(command),
 			"unwrap" => view.UnwrapSelected(),

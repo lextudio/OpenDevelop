@@ -152,6 +152,15 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		return target != null && Paste(target, ClipboardSnippets(), null);
 	}
 
+	/// <summary>Pastes into the container under the context-menu point: the smallest element containing it, or its nearest
+	/// container (the host's paste rule), appended after the existing children. Needs the point, so it is not available from the keyboard.</summary>
+	public bool PasteHere()
+	{
+		if (canvas.ContextMenuDesignPoint is not { } point || state.Tree == null || ClipboardSnippets() is not { Length: > 0 } snippets) return false;
+		var over = NodeAt(state.Tree, new Point(point.X, point.Y));
+		return Paste(over?.Id ?? state.Tree.Children.FirstOrDefault()?.Id ?? state.Tree.Id, snippets, null);
+	}
+
 	/// <summary>Copies the selection and pastes it right after itself in the same container,
 	/// without touching the clipboard; refused when the selection spans containers.</summary>
 	public bool DuplicateSelection()
@@ -337,12 +346,13 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	{
 		canvas.Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit | DesignerCanvasCapabilities.Gridlines | DesignerCanvasCapabilities.ShowNames;
 		canvas.ResizeHandlesEnabled = false;
-		canvas.SetContextCommands(new[] { ("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete"),
+		canvas.SetContextCommands(new[] { ("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Paste Here", "paste-here"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete"),
 			("-", ""), ("Order/Move First", "move-first"), ("Order/Move Earlier", "move-earlier"), ("Order/Move Later", "move-later"), ("Order/Move Last", "move-last"), ("-", "") }
 			.Concat(MewUIContextCommands.LayoutMenu)
 			.Concat(new[] { ("-", ""), ("Wrap/StackPanel", "wrap-StackPanel"), ("Wrap/Grid", "wrap-Grid"), ("Wrap/Border", "wrap-Border"), ("Unwrap", "unwrap") }));
 		canvas.ContextCommandCanExecute = command => command switch {
 			"paste" => host?.IsAlive == true && ClipboardSnippets().Length > 0,
+			"paste-here" => host?.IsAlive == true && canvas.ContextMenuDesignPoint != null && ClipboardSnippets().Length > 0,
 			var track when MewUIContextCommands.GridTrack(track) != null => host?.IsAlive == true && SelectedGridChild() is { } gridCell && MewUIContextCommands.IsNamedId(gridCell.Grid.Id),
 			var set when MewUIContextCommands.Alignment(set) != null => host?.IsAlive == true && selection.SelectedIds.Count > 0 && selection.SelectedIds.All(MewUIContextCommands.IsNamedId),
 			"move-first" or "move-earlier" => host?.IsAlive == true && SiblingPosition() is { Index: > 0 },
@@ -363,6 +373,7 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 				case "copy": CopySelection(); break;
 				case "cut": if (CopySelection()) DeleteSelected(); break;
 				case "paste": PasteIntoSelection(); break;
+				case "paste-here": PasteHere(); break;
 				case "duplicate": DuplicateSelection(); break;
 				case "move-first" or "move-earlier" or "move-later" or "move-last": MoveSelected(command.Command); break;
 				case var wrap when wrap.StartsWith("wrap-", StringComparison.Ordinal): WrapSelected(wrap.Substring("wrap-".Length)); break;
