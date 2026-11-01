@@ -322,8 +322,7 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 
 	/// <summary>Replaces a ListBox/ComboBox/ListView's plain items or a TabControl's page headers (<c>design/set-items</c>).</summary>
 	public Task<DesignerSessionState> SetItemsAsync(long baseVersion, string elementId, IReadOnlyList<DesignerCollectionItemEdit> items, CancellationToken cancellationToken = default)
-		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-items",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, items }, cancellationToken), cancellationToken);
+		=> TrackMutationAsync(Document.SetItemsAsync(baseVersion, elementId, items, cancellationToken), cancellationToken);
 
 	public Task<DesignerSessionState> SetGridViewColumnsAsync(long baseVersion, string elementId, IReadOnlyList<DesignerCollectionItemEdit> items, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-grid-view-columns",
@@ -342,13 +341,11 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 
 	/// <summary>Wraps sibling elements in a new Canvas/Grid/Viewbox (<c>design/wrap-elements</c>).</summary>
 	public Task<DesignerSessionState> WrapElementsAsync(long baseVersion, IReadOnlyList<string> elementIds, string containerType, CancellationToken cancellationToken = default)
-		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/wrap-elements",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds, containerType }, cancellationToken), cancellationToken);
+		=> TrackMutationAsync(Document.WrapElementsAsync(baseVersion, elementIds, containerType, cancellationToken), cancellationToken);
 
 	/// <summary>Removes a Grid/Canvas, keeping its children in place (<c>design/unwrap-element</c>).</summary>
 	public Task<DesignerSessionState> UnwrapElementAsync(long baseVersion, string elementId, CancellationToken cancellationToken = default)
-		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/unwrap-element",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken), cancellationToken);
+		=> TrackMutationAsync(Document.UnwrapElementAsync(baseVersion, elementId, cancellationToken), cancellationToken);
 
 	/// <summary>Moves an element to the front/back or one step forward/backward in its parent's
 	/// collection (<c>design/set-z-order</c>) - the designer context menu's Order commands.</summary>
@@ -375,11 +372,11 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 
 	/// <summary>Serializes elements to XAML snippets for the clipboard (read-only).</summary>
 	public Task<DesignerCopyResult> CopyElementsAsync(long baseVersion, string[] elementIds, CancellationToken cancellationToken = default)
-		=> HostConnection.InvokeAsync<DesignerCopyResult>("design/copy-elements", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds }, cancellationToken);
+		=> Document.CopyElementsAsync(baseVersion, elementIds, cancellationToken);
 
 	/// <summary>Pastes XAML snippets into the target or its nearest accepting ancestor.</summary>
 	public Task<DesignerSessionState> PasteElementsAsync(long baseVersion, string targetId, string[] snippets, CancellationToken cancellationToken = default)
-		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/paste-elements", new { sessionId = SessionId, documentId = DocumentId, baseVersion, targetId, snippets }, cancellationToken), cancellationToken);
+		=> TrackMutationAsync(Document.PasteElementsAsync(baseVersion, targetId, snippets, null, cancellationToken), cancellationToken);
 
 	/// <summary>Pastes snippets into one exact Canvas, anchoring their bounds at its local pointer coordinate.</summary>
 	public Task<DesignerSessionState> PasteElementsAtAsync(long baseVersion, string canvasId, string[] snippets, double x, double y, CancellationToken cancellationToken = default)

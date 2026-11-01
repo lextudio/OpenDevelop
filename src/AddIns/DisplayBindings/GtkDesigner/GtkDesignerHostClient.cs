@@ -125,7 +125,7 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 		=> connection.InvokeAsync<List<DesignerMenuNode>?>("gtk/menu-items", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
 	public Task<DesignerSessionState> SetMenuItemsAsync(long v, string elementId, List<DesignerMenuNode> items, CancellationToken token = default)
 		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("gtk/set-menu-items", new { sessionId = SessionId, documentId = DocumentId, baseVersion = v, elementId, items }, token), token);
-	public Task<DesignerSessionState> ResetPropertyAsync(long v, string id, string name, CancellationToken token = default) => TrackMutationAsync(connection.ResetPropertyAsync(DocumentId, v, id, name, token), token);
+	public Task<DesignerSessionState> ResetPropertyAsync(long v, string id, string name, CancellationToken token = default) => TrackMutationAsync(Document.ResetPropertyAsync(v, id, name, token), token);
 	public async Task<DesignerSessionState> SetThemeAsync(long v, string theme, CancellationToken token = default)
 	{
 		var state = await TrackMutationAsync(Document.SetThemeAsync(v, theme, token), token).ConfigureAwait(false);
@@ -133,18 +133,18 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 		return state;
 	}
 	public Task<DesignerSessionState> RenameAsync(long v, string id, string name, CancellationToken token = default) => TrackMutationAsync(Document.RenameAsync(v, id, name, token), token);
-	public Task<DesignerSessionState> UndoAsync(long v, CancellationToken token = default) => TrackMutationAsync(connection.UndoAsync(DocumentId, v, token), token);
-	public Task<DesignerSessionState> RedoAsync(long v, CancellationToken token = default) => TrackMutationAsync(connection.RedoAsync(DocumentId, v, token), token);
+	public Task<DesignerSessionState> UndoAsync(long v, CancellationToken token = default) => TrackMutationAsync(Document.UndoAsync(v, token), token);
+	public Task<DesignerSessionState> RedoAsync(long v, CancellationToken token = default) => TrackMutationAsync(Document.RedoAsync(v, token), token);
 	public Task<DesignerSessionState> SetEventAsync(long v, string id, string e, string h, CancellationToken t = default) => TrackMutationAsync(Document.SetEventAsync(v, id, e, h, t), t);
-	public Task<DesignerSessionState> ReorderAsync(long v, string id, int delta, CancellationToken t = default) => TrackMutationAsync(connection.ReorderAsync(DocumentId, v, id, delta, t), t);
-	public Task<DesignerCopyResult> CopyElementsAsync(long v, string[] ids, CancellationToken t = default) => connection.CopyElementsAsync(DocumentId, v, ids, t);
-	public Task<DesignerSessionState> SetPropertyManyAsync(long v, string[] ids, string name, string value, CancellationToken t = default) => TrackMutationAsync(connection.SetPropertyManyAsync(DocumentId, v, ids, name, value, t), t);
+	public Task<DesignerSessionState> ReorderAsync(long v, string id, int delta, CancellationToken t = default) => TrackMutationAsync(Document.ReorderAsync(v, id, delta, t), t);
+	public Task<DesignerCopyResult> CopyElementsAsync(long v, string[] ids, CancellationToken t = default) => Document.CopyElementsAsync(v, ids, t);
+	public Task<DesignerSessionState> SetPropertyManyAsync(long v, string[] ids, string name, string value, CancellationToken t = default) => TrackMutationAsync(Document.SetPropertyManyAsync(v, ids, name, value, t), t);
 	public Task<DesignerSessionState> DeleteGridTrackAsync(long v, string id, bool row, CancellationToken t = default) => TrackMutationAsync(connection.DeleteGridTrackAsync(DocumentId, v, id, row, t), t);
 	public Task<DesignerSessionState> InsertGridTrackAsync(long v, string id, bool row, CancellationToken t = default) => TrackMutationAsync(connection.InsertGridTrackAsync(DocumentId, v, id, row, t), t);
-	public Task<DesignerSessionState> UnwrapElementAsync(long v, string id, CancellationToken t = default) => TrackMutationAsync(connection.UnwrapElementAsync(DocumentId, v, id, t), t);
-	public Task<DesignerSessionState> SetItemsAsync(long v, string id, IReadOnlyList<DesignerCollectionItemEdit> items, CancellationToken t = default) => TrackMutationAsync(connection.SetItemsAsync(DocumentId, v, id, items, t), t);
-	public Task<DesignerSessionState> WrapElementsAsync(long v, string[] ids, string containerType, CancellationToken t = default) => TrackMutationAsync(connection.WrapElementsAsync(DocumentId, v, ids, containerType, t), t);
-	public Task<DesignerSessionState> PasteElementsAsync(long v, string targetId, string[] snippets, string? afterId = null, CancellationToken t = default) => TrackMutationAsync(connection.PasteElementsAsync(DocumentId, v, targetId, snippets, afterId, t), t);
+	public Task<DesignerSessionState> UnwrapElementAsync(long v, string id, CancellationToken t = default) => TrackMutationAsync(Document.UnwrapElementAsync(v, id, t), t);
+	public Task<DesignerSessionState> SetItemsAsync(long v, string id, IReadOnlyList<DesignerCollectionItemEdit> items, CancellationToken t = default) => TrackMutationAsync(Document.SetItemsAsync(v, id, items, t), t);
+	public Task<DesignerSessionState> WrapElementsAsync(long v, string[] ids, string containerType, CancellationToken t = default) => TrackMutationAsync(Document.WrapElementsAsync(v, ids, containerType, t), t);
+	public Task<DesignerSessionState> PasteElementsAsync(long v, string targetId, string[] snippets, string? afterId = null, CancellationToken t = default) => TrackMutationAsync(Document.PasteElementsAsync(v, targetId, snippets, afterId, t), t);
 	public Task<DesignerHitTestResult> HitTestAsync(long v, double x, double y, CancellationToken t = default) => Document.HitTestAsync(v, x, y, t);
 	public Task<DesignerSessionState> RenderAsync(long version, CancellationToken token = default) => connection.RenderAsync(DocumentId, version, token);
 
@@ -245,18 +245,8 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 				startInfo.Environment["LSBackgroundOnly"] = "1";
 			}
 		}
-		public Task<DesignerSessionState> UndoAsync(string documentId, long v, CancellationToken token) => InvokeAsync<DesignerSessionState>("design/undo", new { sessionId = SessionId, documentId, baseVersion = v }, token);
-		public Task<DesignerSessionState> RedoAsync(string documentId, long v, CancellationToken token) => InvokeAsync<DesignerSessionState>("design/redo", new { sessionId = SessionId, documentId, baseVersion = v }, token);
-		public Task<DesignerSessionState> ReorderAsync(string documentId, long v, string id, int delta, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/reorder", new { sessionId = SessionId, documentId, baseVersion = v, elementId = id, delta }, t);
-		public Task<DesignerSessionState> ResetPropertyAsync(string documentId, long v, string id, string name, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/reset-property", new { sessionId = SessionId, documentId, baseVersion = v, elementId = id, propertyName = name }, t);
 		public Task<DesignerSessionState> RenderAsync(string documentId, long version, CancellationToken token) => InvokeAsync<DesignerSessionState>("design/render", new { sessionId = SessionId, documentId, baseVersion = version }, token);
-		public Task<DesignerSessionState> SetItemsAsync(string documentId, long v, string id, IReadOnlyList<DesignerCollectionItemEdit> items, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/set-items", new { sessionId = SessionId, documentId, baseVersion = v, elementId = id, items }, t);
-		public Task<DesignerSessionState> SetPropertyManyAsync(string documentId, long v, string[] ids, string name, string value, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/set-property-many", new { sessionId = SessionId, documentId, baseVersion = v, elementIds = ids, propertyName = name, value }, t);
 		public Task<DesignerSessionState> DeleteGridTrackAsync(string documentId, long v, string id, bool row, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/delete-grid-track", new { sessionId = SessionId, documentId, baseVersion = v, elementId = id, row }, t);
 		public Task<DesignerSessionState> InsertGridTrackAsync(string documentId, long v, string id, bool row, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/insert-grid-track", new { sessionId = SessionId, documentId, baseVersion = v, elementId = id, row }, t);
-		public Task<DesignerSessionState> UnwrapElementAsync(string documentId, long v, string id, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/unwrap-element", new { sessionId = SessionId, documentId, baseVersion = v, elementId = id }, t);
-		public Task<DesignerSessionState> WrapElementsAsync(string documentId, long v, string[] ids, string containerType, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/wrap-elements", new { sessionId = SessionId, documentId, baseVersion = v, elementIds = ids, containerType }, t);
-		public Task<DesignerCopyResult> CopyElementsAsync(string documentId, long v, string[] ids, CancellationToken t) => InvokeAsync<DesignerCopyResult>("design/copy-elements", new { sessionId = SessionId, documentId, baseVersion = v, elementIds = ids }, t);
-		public Task<DesignerSessionState> PasteElementsAsync(string documentId, long v, string targetId, string[] snippets, string? afterId, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/paste-elements", new { sessionId = SessionId, documentId, baseVersion = v, targetId, snippets, afterId }, t);
 	}
 }

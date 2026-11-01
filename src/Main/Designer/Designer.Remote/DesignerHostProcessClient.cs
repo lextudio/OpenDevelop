@@ -238,7 +238,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <param name="terminateHostOnTimeout">False for a call whose timeout says nothing about the host's
 		/// health - closing a session on a host that is still busy opening the next document - so that a late
 		/// answer does not take the other sessions of a shared host down with it.</param>
-		public Task<T> InvokeAsync<T>(string method, object arguments, CancellationToken cancellationToken, TimeSpan? timeout = null, bool terminateHostOnTimeout = true)
+		public virtual Task<T> InvokeAsync<T>(string method, object arguments, CancellationToken cancellationToken, TimeSpan? timeout = null, bool terminateHostOnTimeout = true)
 		{
 			if (!IsAlive)
 				throw new IOException("The designer host is not running.");

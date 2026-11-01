@@ -2,6 +2,7 @@
 // but share the session/document identity envelope and the stable editing protocol here.
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -68,6 +69,46 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 
 		public Task<DesignerSessionState> RenameAsync(long baseVersion, string elementId, string newName, CancellationToken cancellationToken = default)
 			=> connection.InvokeAsync<DesignerSessionState>("design/rename", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, newName }, cancellationToken);
+
+		// The verbs below have one wire shape in every source-model designer that offers them (WPF, GTK, MewUI),
+		// so they live here once instead of as a one-line copy per designer's own connection class.
+
+		public Task<DesignerSessionState> UndoAsync(long baseVersion, CancellationToken cancellationToken = default)
+			=> connection.InvokeAsync<DesignerSessionState>("design/undo", new { sessionId = SessionId, documentId = DocumentId, baseVersion }, cancellationToken);
+
+		public Task<DesignerSessionState> RedoAsync(long baseVersion, CancellationToken cancellationToken = default)
+			=> connection.InvokeAsync<DesignerSessionState>("design/redo", new { sessionId = SessionId, documentId = DocumentId, baseVersion }, cancellationToken);
+
+		/// <summary>Moves an element among its siblings by <paramref name="delta"/> positions.</summary>
+		public Task<DesignerSessionState> ReorderAsync(long baseVersion, string elementId, int delta, CancellationToken cancellationToken = default)
+			=> connection.InvokeAsync<DesignerSessionState>("design/reorder", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, delta }, cancellationToken);
+
+		/// <summary>Sets one property on several elements as one undo step.</summary>
+		public Task<DesignerSessionState> SetPropertyManyAsync(long baseVersion, IReadOnlyList<string> elementIds, string propertyName, string value, CancellationToken cancellationToken = default)
+			=> connection.InvokeAsync<DesignerSessionState>("design/set-property-many", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds, propertyName, value }, cancellationToken);
+
+		/// <summary>Replaces an element's plain items (ComboBox/ListBox/...) from the shared list editor.</summary>
+		public Task<DesignerSessionState> SetItemsAsync(long baseVersion, string elementId, IReadOnlyList<DesignerCollectionItemEdit> items, CancellationToken cancellationToken = default)
+			=> connection.InvokeAsync<DesignerSessionState>("design/set-items", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, items }, cancellationToken);
+
+		/// <summary>Wraps sibling elements in a new container; the wrapper is <c>CreatedElementId</c> of the state.</summary>
+		public Task<DesignerSessionState> WrapElementsAsync(long baseVersion, IReadOnlyList<string> elementIds, string containerType, CancellationToken cancellationToken = default)
+			=> connection.InvokeAsync<DesignerSessionState>("design/wrap-elements", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds, containerType }, cancellationToken);
+
+		/// <summary>Replaces a container with its children in place.</summary>
+		public Task<DesignerSessionState> UnwrapElementAsync(long baseVersion, string elementId, CancellationToken cancellationToken = default)
+			=> connection.InvokeAsync<DesignerSessionState>("design/unwrap-element", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken);
+
+		/// <summary>Serializes elements to source snippets for the clipboard (read-only).</summary>
+		public Task<DesignerCopyResult> CopyElementsAsync(long baseVersion, IReadOnlyList<string> elementIds, CancellationToken cancellationToken = default)
+			=> connection.InvokeAsync<DesignerCopyResult>("design/copy-elements", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds }, cancellationToken);
+
+		/// <summary>Pastes snippets into the target or its nearest accepting ancestor, after <paramref name="afterId"/>
+		/// when given. A host that predates <c>afterId</c> must keep working, so the argument is sent only when set.</summary>
+		public Task<DesignerSessionState> PasteElementsAsync(long baseVersion, string targetId, IReadOnlyList<string> snippets, string? afterId = null, CancellationToken cancellationToken = default)
+			=> afterId == null
+				? connection.InvokeAsync<DesignerSessionState>("design/paste-elements", new { sessionId = SessionId, documentId = DocumentId, baseVersion, targetId, snippets }, cancellationToken)
+				: connection.InvokeAsync<DesignerSessionState>("design/paste-elements", new { sessionId = SessionId, documentId = DocumentId, baseVersion, targetId, snippets, afterId }, cancellationToken);
 
 		public Task<DesignerSessionState> SetThemeAsync(long baseVersion, string theme, CancellationToken cancellationToken = default)
 			=> connection.InvokeAsync<DesignerSessionState>("design/theme", new { sessionId = SessionId, documentId = DocumentId, baseVersion, theme }, cancellationToken);

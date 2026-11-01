@@ -296,6 +296,15 @@ than a backend base class: WinForms rounding and event semantics, and Uno's XAML
 open/update payload remain runtime-specific adapter responsibilities. Uno can adopt each stable
 operation independently as its wire shapes converge.
 
+Shared verbs (2026-11-01): the verbs that have one wire shape in every source-model designer that offers
+them now live in `DesignerDocumentRpcClient` too - `design/undo`, `redo`, `reorder`, `set-property-many`,
+`set-items`, `wrap-elements`, `unwrap-element`, `copy-elements` and `paste-elements` (`afterId` is sent only when
+set, so a host that predates it keeps working). WPF, GTK and MewUI use them through `Document.*` and no longer
+keep a one-line copy in their own connection class; `DesignerDocumentRpcClientTests` pins every verb's name and
+exact argument names. Deliberately not shared because the shapes differ: WinForms `set-items` (carries
+`propertyName`), `set-z-order` (WinForms `bringToFront` vs WPF `placement`), `hit-test` (WinForms rounds), and
+`set-grid-track-unit` (WPF `elementId`/`isRow` vs MewUI `gridId`/`row`) - converge the hosts first, then move them.
+
 `DesignerDocumentHostClient` now supplies the surrounding parent-side lease state for those
 three adapters: document identity, process status, host-exit forwarding and ping/close lifecycle.
 This leaves each adapter with only its pool compatibility key, release policy and runtime-specific
