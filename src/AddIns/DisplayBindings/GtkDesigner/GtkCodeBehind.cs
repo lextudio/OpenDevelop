@@ -185,6 +185,76 @@ static class GtkCodeBehind
 		return signatureAt < 0 ? null : (codePath, source.Substring(0, signatureAt).Count(c => c == '\n') + 1);
 	}
 
+	/// <summary>
+	/// Removes the event subscription <see cref="WireTemplateSignal"/> generated (<c>_id.OnEvent += ...;</c>)
+	/// from the template class's <c>Initialize()</c>, the one whose handler is <paramref name="handler"/> (what
+	/// the Events pad shows, read back by <see cref="TemplateSignals"/>). The <c>[Gtk.Connect]</c> field and
+	/// the handler method stay: they are user-owned code and other members may use them. Returns false when the class was not
+	/// found; true when the subscription is gone (including when there was none).
+	/// </summary>
+	public static bool UnwireTemplateSignal(string uiPath, string className, string objectId, string eventName, string handler)
+	{
+		// Without the handler the Events pad shows, nothing identifies which subscriber is ours.
+		if (string.IsNullOrEmpty(handler)) return true;
+		var codePath = TemplateClassFile(uiPath, className);
+		if (codePath == null) return false;
+		var source = ReadText(codePath);
+		if (source == null) return false;
+		var classDecl = FindClass(CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot(), className);
+		if (classDecl == null) return false;
+
+		var removals = new List<(int Start, int End)>();
+		foreach (var found in GeneratedSubscriptions(classDecl, ConnectedLocals(classDecl))) {
+			if (found.ObjectId != objectId || found.EventName != eventName || found.Handler != handler) continue;
+			var statement = found.Statement;
+			var start = LineStartOf(source, statement.SpanStart);
+			var end = statement.Span.End;
+			var newline = source.IndexOf('\n', end);
+			if (start != statement.SpanStart && source.Substring(end, (newline < 0 ? source.Length : newline) - end).Trim().Length == 0)
+				end = newline < 0 ? source.Length : newline + 1;
+			removals.Add((start, end));
+		}
+		if (removals.Count == 0) return true;
+		foreach (var removal in removals.OrderByDescending(r => r.Start))
+			source = source.Remove(removal.Start, removal.End - removal.Start);
+		ApplyText(codePath, source);
+		return true;
+	}
+
+	/// <summary>The designer-shaped subscriptions of a template class, in one place so that what the Events pad
+	/// shows (<see cref="TemplateSignals"/>) is exactly what a clear removes (<see cref="UnwireTemplateSignal"/>):
+	/// the top-level statements of <c>Initialize()</c>, where <see cref="WireTemplateSignal"/> writes them.
+	/// <paramref name="locals"/> maps a <c>[Gtk.Connect]</c> field name to its object id.</summary>
+	static IEnumerable<(ExpressionStatementSyntax Statement, string ObjectId, string EventName, string Handler)> GeneratedSubscriptions(
+		ClassDeclarationSyntax classDecl, IReadOnlyDictionary<string, string> locals)
+	{
+		foreach (var method in classDecl.Members.OfType<MethodDeclarationSyntax>().Where(m => m.Identifier.Text == "Initialize" && m.Body != null)) {
+			foreach (var statement in method.Body!.Statements.OfType<ExpressionStatementSyntax>()) {
+				if (statement.Expression is AssignmentExpressionSyntax assignment
+					&& assignment.IsKind(SyntaxKind.AddAssignmentExpression)
+					&& assignment.Left is MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax target } member
+					&& member.Name.Identifier.ValueText.StartsWith("On", StringComparison.Ordinal)
+					&& locals.TryGetValue(target.Identifier.ValueText, out var id)
+					&& GeneratedHandler(assignment.Right, target.Identifier.ValueText) is { } handler)
+					yield return (statement, id, member.Name.Identifier.ValueText, handler);
+			}
+		}
+	}
+
+	/// <summary>Reads the shape <see cref="WireTemplateSignal"/> writes, <c>(_, args) =&gt; handler(local, args)</c>,
+	/// and returns its handler. Any other subscriber (another callee argument list, a one-parameter
+	/// lambda, a method group) is the user's own and is neither shown in the Events pad nor removed.</summary>
+	static string? GeneratedHandler(ExpressionSyntax subscriber, string local)
+	{
+		if (subscriber is not ParenthesizedLambdaExpressionSyntax { ParameterList.Parameters: { Count: 2 } parameters, Body: InvocationExpressionSyntax call })
+			return null;
+		return call.Expression is IdentifierNameSyntax callee
+			&& call.ArgumentList.Arguments is { Count: 2 } arguments
+			&& arguments[0].Expression is IdentifierNameSyntax first && first.Identifier.ValueText == local
+			&& arguments[1].Expression is IdentifierNameSyntax second && second.Identifier.ValueText == parameters[1].Identifier.ValueText
+			? callee.Identifier.ValueText : null;
+	}
+
 	/// <summary>The template class's wired signals: (object id, Gir.Core event name) -&gt; handler.
 	/// Read back from the class because a template document has no &lt;signal&gt; entries to read.</summary>
 	public static IReadOnlyDictionary<(string ObjectId, string EventName), string> TemplateSignals(string uiPath, string className)
@@ -194,25 +264,24 @@ static class GtkCodeBehind
 		if (codePath == null) return result;
 		var source = ReadText(codePath);
 		if (source == null) return result;
-
-		var locals = new Dictionary<string, string>(StringComparer.Ordinal);
-		var connect = new System.Text.RegularExpressions.Regex(
-			@"\[(?:global::)?Gtk\.Connect\(\s*""(?<id>[^""]+)""\s*\)\]\s*(?:\r?\n\s*)*[^;\r\n]*?\b(?<local>[A-Za-z_@][A-Za-z0-9_]*)\s*;");
-		foreach (System.Text.RegularExpressions.Match match in connect.Matches(source)) {
-			var local = match.Groups["local"].Value;
-			if (local.StartsWith("@", StringComparison.Ordinal)) local = local.Substring(1);
-			locals[local] = match.Groups["id"].Value;
-		}
-
-		var subscribe = new System.Text.RegularExpressions.Regex(
-			@"(?<local>[A-Za-z_@][A-Za-z0-9_]*)\.(?<event>On[A-Za-z0-9_]+)\s*\+=\s*\([^)]*\)\s*=>\s*(?<handler>[A-Za-z_@][A-Za-z0-9_]*)\s*\(");
-		foreach (System.Text.RegularExpressions.Match match in subscribe.Matches(source)) {
-			var local = match.Groups["local"].Value;
-			if (local.StartsWith("@", StringComparison.Ordinal)) local = local.Substring(1);
-			if (locals.TryGetValue(local, out var id))
-				result[(id, match.Groups["event"].Value)] = match.Groups["handler"].Value;
-		}
+		var classDecl = FindClass(CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot(), className);
+		if (classDecl == null) return result;
+		foreach (var found in GeneratedSubscriptions(classDecl, ConnectedLocals(classDecl)))
+			result[(found.ObjectId, found.EventName)] = found.Handler;
 		return result;
+	}
+
+	/// <summary>The class's <c>[Gtk.Connect("id")]</c> fields: field name -&gt; object id.</summary>
+	static Dictionary<string, string> ConnectedLocals(ClassDeclarationSyntax classDecl)
+	{
+		var locals = new Dictionary<string, string>(StringComparer.Ordinal);
+		foreach (var field in classDecl.Members.OfType<FieldDeclarationSyntax>())
+			foreach (var attribute in field.AttributeLists.SelectMany(list => list.Attributes))
+				if (attribute.Name.ToString().EndsWith("Connect", StringComparison.Ordinal)
+					&& attribute.ArgumentList?.Arguments.FirstOrDefault()?.Expression is LiteralExpressionSyntax literal)
+					foreach (var variable in field.Declaration.Variables)
+						locals[variable.Identifier.ValueText] = literal.Token.ValueText;
+		return locals;
 	}
 
 	/// <summary>The class file for a template: a sibling X.cs first, then any project file declaring

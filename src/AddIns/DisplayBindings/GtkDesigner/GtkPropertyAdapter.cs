@@ -82,7 +82,15 @@ public sealed class GtkPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEve
 	public PropertyDescriptorCollection GetProperties(Attribute[]? attributes) => GetProperties();
 
 	string IPropertyGridEventSource.GetEventHandler(string eventName) => node.Events.FirstOrDefault(e => e.Name == eventName)?.Handler ?? "";
-	void IPropertyGridEventSource.SetEventHandler(string eventName, string handlerName) { var item = node.Events.FirstOrDefault(e => e.Name == eventName); if (item != null && item.Handler != handlerName && setEvent(eventName, handlerName)) item.Handler = handlerName; }
+	void IPropertyGridEventSource.SetEventHandler(string eventName, string handlerName)
+	{
+		var item = node.Events.FirstOrDefault(e => e.Name == eventName);
+		if (item == null || item.Handler == handlerName) return;
+		var before = item.Handler;
+		// A composite template re-reads its wired handlers while setEvent rebuilds (clearing one can
+		// reveal another subscriber of the same shape); only write back when that did not touch it.
+		if (setEvent(eventName, handlerName) && item.Handler == before) item.Handler = handlerName;
+	}
 	void IEventBindingHost.BindEvent(string eventName) { if (string.IsNullOrEmpty(((IPropertyGridEventSource)this).GetEventHandler(eventName))) ((IPropertyGridEventSource)this).SetEventHandler(eventName, node.Id.TrimStart('$') + "_" + eventName.Replace('-', '_')); }
 	public EventDescriptorCollection GetEvents() => new(node.Events.Select(e => (EventDescriptor)new RemoteEventDescriptor(e)).ToArray(), true);
 	public EventDescriptorCollection GetEvents(Attribute[]? attributes) => GetEvents();

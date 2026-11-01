@@ -558,8 +558,15 @@ fixture's `TemplatePanel` button, checks the generated field/method/subscription
 `TemplatePanel` is a real Gir.Core `[Template]` class with an embedded resource, exercised by the
 fixture smoke test.
 
-Remaining limitations: clearing an event from the pad does not remove the C# subscription (it is
-user-owned code), and a template whose class is outside the project cannot be wired.
+Clearing an event from the pad removes the subscription the pad shows for it. A subscription is
+recognised by shape alone, `(_, args) => handler(local, args)` as a top-level statement of `Initialize()`
+(the form and place the designer generates, read back by `GtkCodeBehind.TemplateSignals` and removed by the
+same enumeration, so the pad shows exactly what a clear removes), so a hand-written subscriber in exactly that shape is
+indistinguishable and is treated as a wired handler; every other subscriber, the `[Gtk.Connect]`
+field and the handler method stay, so re-wiring reuses them. `GtkDesigner_CompositeTemplate_WiresSignalsInTheTemplateClass`
+clears, re-wires and builds the fixture, whose `TemplatePanel` carries a hand-written subscriber.
+
+Remaining limitation: a template whose class is outside the project cannot be wired.
 
 `AdwToolbarView` uses its GtkBuildable slots: a drop in the top third becomes a
 `<child type="top">` bar, the bottom third a `<child type="bottom">` bar, and the middle fills the
@@ -640,9 +647,8 @@ manifest redraws and rebuilds the resource registry without touching the `.ui`. 
 integration test opens a real `GtkImage` document using a sibling manifest and requires a native
 frame on the canvas.
 
-Still open: clearing an event from a template's Events pad does not remove the C# subscription (the
-subscription is user-owned code), and a template class outside the project cannot be wired. See
-"Composite templates" for the implemented pattern.
+Still open: a template class outside the project cannot be wired. See "Composite templates" for the
+implemented pattern.
 
 ### Dropping onto the Source half (2026-10-02)
 
@@ -957,8 +963,7 @@ Product features:
 - list/model depth: non-string-list models (`Gio.ListStore`, `GtkSelectionModel`, sort/filter
   models), `GtkSignalListItemFactory`, column sorters, and factories beyond the inline
   `GtkBuilderListItemFactory` template editor;
-- composite templates: clearing an Events-pad event does not remove the generated C# subscription,
-  and a template class outside the project cannot be wired.
+- composite templates: a template class outside the project cannot be wired.
 
 Coverage (tests, not product behaviour):
 

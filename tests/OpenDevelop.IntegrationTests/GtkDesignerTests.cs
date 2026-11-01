@@ -1119,6 +1119,41 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 
 		Assert.True((await app.InvokeAsync("od.file.save", templatePath)).GetProperty("success").GetBoolean());
 		Assert.DoesNotContain("<signal", await File.ReadAllTextAsync(templatePath, TestContext.Current.CancellationToken));
+
+		// Clearing goes through the Properties pad's own adapter. Identity is the shape
+		// `(_, args) => handler(local, args)`, so the first clear removes the designer-wired subscription
+		// and the pad then shows the hand-written one of the same shape (indistinguishable, and as
+		// hand-wired template handlers always appeared) instead of writing "" over it.
+		var cleared = await app.InvokeAsync("od.gtk-designer.properties.event.set", "clicked", "");
+		Assert.True(cleared.GetProperty("success").GetBoolean(), cleared.ToString());
+		Assert.Equal("Observe", cleared.GetProperty("handler").GetString());
+		// The wiring opened the class in the editor, so the edit lands in its buffer: save it.
+		Assert.True((await app.InvokeAsync("od.file.save", classPath)).GetProperty("success").GetBoolean());
+		source = await File.ReadAllTextAsync(classPath, TestContext.Current.CancellationToken);
+		Assert.DoesNotContain("runButton_clicked(_runButton, args)", source);
+		Assert.Contains("_runButton.OnClicked += (_, _) => _runButton.Label = \"Running\";", source); // another shape: never shown or touched
+		Assert.Contains("_runButton.OnClicked += (_, args) => Observe(_runButton, args);", source);
+		Assert.Contains("void runButton_clicked(Gtk.Button sender, System.EventArgs args)", source); // the user-owned method stays
+		Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(source, "Gtk\\.Connect\\(\"runButton\"\\)").Count);
+		// Clearing what the pad now shows removes that subscription too; the pad then shows nothing.
+		var clearedAgain = await app.InvokeAsync("od.gtk-designer.properties.event.set", "clicked", "");
+		Assert.True(clearedAgain.GetProperty("success").GetBoolean(), clearedAgain.ToString());
+		Assert.Equal("", clearedAgain.GetProperty("handler").GetString());
+		Assert.True((await app.InvokeAsync("od.file.save", classPath)).GetProperty("success").GetBoolean());
+		source = await File.ReadAllTextAsync(classPath, TestContext.Current.CancellationToken);
+		// Only the Initialize() subscription went; the same-shaped one in SubscribeElsewhere() is neither
+		// shown (the pad reads ""), nor removed.
+		Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(source, "Observe\\(_runButton, args\\)").Count);
+		Assert.Contains("void SubscribeElsewhere()", source);
+		Assert.Contains("_runButton.OnClicked += (_, _) => _runButton.Label = \"Running\";", source);
+		Assert.Contains("private static void Observe(", source); // the method itself is user code and stays
+		// Wiring again reuses the field and the method instead of duplicating them.
+		Assert.True((await app.InvokeAsync("od.gtk-designer.signal.set", "clicked", "runButton_clicked")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.file.save", classPath)).GetProperty("success").GetBoolean());
+		source = await File.ReadAllTextAsync(classPath, TestContext.Current.CancellationToken);
+		Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(source, "runButton_clicked\\(_runButton, args\\)").Count);
+		Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(source, "void runButton_clicked").Count);
+
 		// The generated method and subscription must compile; the fixture also runs the template.
 		await ValidateFixtureBuildAsync(projectPath);
 		await app.InvokeAsync("od.close-active-view");

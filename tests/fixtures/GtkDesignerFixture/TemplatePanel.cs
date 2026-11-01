@@ -20,5 +20,18 @@ public partial class TemplatePanel
     {
         _runButton.Label = "Wired";
         _runButton.OnClicked += (_, _) => _runButton.Label = "Running";
+        // Hand-written, but in exactly the shape the designer generates, so the designer treats it
+        // as a wired handler once the generated one is cleared (see the template integration test).
+        _runButton.OnClicked += (_, args) => Observe(_runButton, args);
+    }
+
+    // Not Initialize(): the designer neither shows nor removes a subscription made elsewhere.
+    private void SubscribeElsewhere()
+    {
+        _runButton.OnClicked += (_, args) => Observe(_runButton, args);
+    }
+
+    private static void Observe(Gtk.Button sender, System.EventArgs args)
+    {
     }
 }

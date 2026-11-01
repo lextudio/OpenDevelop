@@ -417,10 +417,24 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	/// <see cref="GtkCodeBehind.WireTemplateSignal"/>) and opens the generated handler.</summary>
 	bool SetTemplateEvent(string id, string signal, string handler)
 	{
-		// Clearing is a C# edit the designer does not make: the subscription is user-owned code.
-		if (string.IsNullOrEmpty(handler)) return true;
 		var uiPath = PrimaryFileName?.ToString();
 		var className = TemplateClassName();
+		if (string.IsNullOrEmpty(handler)) {
+			// Clearing removes only the subscription the designer generated; the [Gtk.Connect]
+			// field and the handler method stay, because they are user-owned code.
+			if (string.IsNullOrEmpty(uiPath) || className == null) return true;
+			// The handler the pad shows (read back from the class) identifies the subscription to remove.
+			var shown = FindById(id)?.Events.FirstOrDefault(e => e.Name == signal)?.Handler ?? "";
+			if (!GtkCodeBehind.UnwireTemplateSignal(uiPath, className, id, "On" + GtkSignalWiring.Pascal(signal), shown)) {
+				diagnostic.Text = $"Composite template: no C# class named {className} was found to clear '{signal}'.";
+				return false;
+			}
+			// MergeTemplateSignals only ever adds handlers, so drop the one the pad still shows.
+			if (FindById(id) is { } cleared)
+				foreach (var e in cleared.Events.Where(e => e.Name == signal)) e.Handler = null;
+			Rebuild();
+			return true;
+		}
 		var node = FindById(id);
 		if (string.IsNullOrEmpty(uiPath) || className == null || node == null) {
 			diagnostic.Text = "Composite template: select an object in a document with a <template class=\"...\"> root.";

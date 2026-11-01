@@ -237,6 +237,14 @@ public static class GtkDesignerDevFlowActions
 	public static string Undo() { var view = Activate(); view?.Undo(); return Status(); }
 	[DevFlowAction("od.gtk-designer.redo", Description = "Redo a GTK designer source edit")]
 	public static string Redo() { var view = Activate(); view?.Redo(); return Status(); }
+	[DevFlowAction("od.gtk-designer.properties.event.set", Description = "Set (or clear, with an empty handler) a GTK signal handler through the selected Properties-pad adapter; returns the handler the pad then shows")]
+	public static string SetPropertiesEvent(string eventName, string handlerName)
+	{
+		var view = Activate(); var selected = PropertyGrid?.SelectedObject;
+		var source = selected as IPropertyGridEventSource;
+		source?.SetEventHandler(eventName, handlerName ?? "");
+		return JsonSerializer.Serialize(new { success = source != null, eventName, handler = source?.GetEventHandler(eventName), selectedId = view?.SelectedId });
+	}
 	[DevFlowAction("od.gtk-designer.refresh", Description = "Redraw the current GTK design preview without changing source-model history")]
 	public static string Refresh() { var view = Activate(); view?.RefreshDesign(); return JsonSerializer.Serialize(new { success = view != null, hostProcessId = view?.HostProcessId ?? 0 }); }
 	[DevFlowAction("od.gtk-designer.restart-host", Description = "Restart the isolated GTK designer host")]
