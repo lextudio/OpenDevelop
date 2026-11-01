@@ -468,6 +468,11 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 					e.Handler = wired;
 	}
 
+	/// <summary>The selected popover/menu button's top-level menu items, or null.</summary>
+	public IReadOnlyList<GtkMenuItemInfo>? MenuItems() { if (host == null || selected == null) return null; return host.MenuItemsAsync(selected.Id).GetAwaiter().GetResult(); }
+	/// <summary>Replaces the selected popover/menu button's top-level menu items as one undo step.</summary>
+	public bool SetMenuItems(IReadOnlyList<GtkMenuItemInfo> items) { if (host == null || selected == null) return false; return Mutate(() => host.SetMenuItemsAsync(state.Version, selected.Id, items.ToList()).GetAwaiter().GetResult()); }
+
 	/// <summary>The selected list/grid/column view's inline factory template, or null.</summary>
 	public string? FactoryTemplate() { if (host == null || selected == null) return null; return host.FactoryTemplateAsync(selected.Id).GetAwaiter().GetResult(); }
 	/// <summary>Replaces the selected view's factory template as one undo step.</summary>
@@ -527,6 +532,46 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		var accepted = false; ok.Click += (_, _) => { accepted = true; window.Close(); };
 		window.ShowDialog();
 		if (accepted && text.Text != template && !SetFactoryTemplate(text.Text)) MessageService.ShowError(state.Error);
+	}
+
+	/// <summary>Edits the selected popover's top-level menu items, one "label = action" per line.</summary>
+	void EditMenu()
+	{
+		if (selected == null || MenuItems() is not { } items) return;
+		var window = new Window {
+			Title = "Menu items", Width = 560, Height = 420,
+			WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = Application.Current?.MainWindow
+		};
+		var text = new TextBox {
+			Text = string.Join(Environment.NewLine, items.Select(item => item.Action.Length == 0 ? item.Label : item.Label + " = " + item.Action)),
+			AcceptsReturn = true, FontFamily = new FontFamily("Menlo, Consolas, monospace"),
+			HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+		};
+		var ok = new Button { Content = "OK", IsDefault = true, MinWidth = 80, Margin = new Thickness(0, 6, 6, 0) };
+		var cancel = new Button { Content = "Cancel", IsCancel = true, MinWidth = 80, Margin = new Thickness(0, 6, 0, 0) };
+		var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+		buttons.Children.Add(ok); buttons.Children.Add(cancel);
+		var panel = new DockPanel { Margin = new Thickness(8) };
+		DockPanel.SetDock(buttons, Dock.Bottom); panel.Children.Add(buttons); panel.Children.Add(text);
+		window.Content = panel;
+		var accepted = false; ok.Click += (_, _) => { accepted = true; window.Close(); };
+		window.ShowDialog();
+		if (!accepted) return;
+		var edited = ParseMenuLines(text.Text, items.Count);
+		if (!SetMenuItems(edited)) MessageService.ShowError(state.Error);
+	}
+
+	static List<GtkMenuItemInfo> ParseMenuLines(string text, int existing)
+	{
+		var result = new List<GtkMenuItemInfo>();
+		foreach (var line in (text ?? "").Replace("\r", "").Split('\n')) {
+			if (string.IsNullOrWhiteSpace(line)) continue;
+			var at = line.IndexOf('=');
+			var label = (at < 0 ? line : line[..at]).Trim();
+			var action = at < 0 ? "" : line[(at + 1)..].Trim();
+			result.Add(new GtkMenuItemInfo { SourceIndex = result.Count < existing ? result.Count : -1, Label = label, Action = action });
+		}
+		return result;
 	}
 
 	void RequestRename() { if (selected == null || selected.Id.StartsWith("$", StringComparison.Ordinal)) return; var newId = MessageService.ShowInputBox("Rename", "Enter a new object id:", selected.Name ?? selected.Id)?.Trim(); if (!string.IsNullOrEmpty(newId) && !string.Equals(newId, selected.Id, StringComparison.Ordinal) && !RenameSelected(newId)) MessageService.ShowError(state.Error); }
@@ -675,7 +720,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			("-", ""), ("Grid/Column span +1", "span-column-more"), ("Grid/Column span -1", "span-column-less"), ("Grid/Row span +1", "span-row-more"), ("Grid/Row span -1", "span-row-less"),
 			("Grid/Insert row above", "grid-insert-row"), ("Grid/Insert column left", "grid-insert-column"),
 			("Grid/Delete row", "grid-delete-row"), ("Grid/Delete column", "grid-delete-column"),
-			("-", ""), ("Edit List Item Template...", "edit-factory-template"), ("-", ""), ("Wrap/GtkBox", "wrap-GtkBox"), ("Wrap/GtkFrame", "wrap-GtkFrame") , ("Unwrap", "unwrap") });
+			("-", ""), ("Edit List Item Template...", "edit-factory-template"), ("Edit Menu...", "edit-menu"), ("-", ""), ("Wrap/GtkBox", "wrap-GtkBox"), ("Wrap/GtkFrame", "wrap-GtkFrame") , ("Unwrap", "unwrap") });
 		canvas.ContextCommandCanExecute = command => command switch {
 			"grid-insert-row" or "grid-insert-column" or "grid-delete-row" or "grid-delete-column" => host?.IsAlive == true && SelectedGridChild() != null,
 			var span when span.StartsWith("span-", StringComparison.Ordinal) => host?.IsAlive == true && SelectedGridChild() is { } cell
@@ -685,6 +730,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			"move-first" or "move-earlier" => host?.IsAlive == true && SiblingPosition() is { Index: > 0 },
 			"move-later" or "move-last" => host?.IsAlive == true && SiblingPosition() is { } position && position.Index < position.Count - 1,
 			"edit-factory-template" => host?.IsAlive == true && selected != null && Flatten(selected).Any(node => node.Type == "GtkBuilderListItemFactory"),
+			"edit-menu" => host?.IsAlive == true && selected?.Type is "GtkPopoverMenu" or "GtkMenuButton",
 			"wrap-GtkFrame" => host?.IsAlive == true && selection.SelectedIds.Count == 1 && SharesOneParent(),
 			"unwrap" => host?.IsAlive == true && selection.SelectedIds.Count == 1 && state.Tree != null && Flatten(state.Tree).FirstOrDefault(node => node.Id == selection.SelectedIds[0]) is { Children.Count: > 0 } && SharesOneParent(),
 			"wrap-GtkBox" => host?.IsAlive == true && selection.SelectedIds.Count > 0 && SharesOneParent(),
@@ -708,6 +754,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 				case var wrap when wrap.StartsWith("wrap-", StringComparison.Ordinal): WrapSelected(wrap.Substring("wrap-".Length)); break;
 				case "unwrap": UnwrapSelected(); break;
 				case "edit-factory-template": EditFactoryTemplate(); break;
+				case "edit-menu": EditMenu(); break;
 				case var span when span.StartsWith("span-", StringComparison.Ordinal): SpanSelected(span); break;
 				case "grid-insert-row" or "grid-insert-column": InsertGridTrack(command.Command); break;
 				case "grid-delete-row" or "grid-delete-column": DeleteGridTrack(command.Command); break;

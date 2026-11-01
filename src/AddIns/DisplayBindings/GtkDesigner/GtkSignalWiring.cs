@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Xml.Linq;
 
 namespace ICSharpCode.GtkDesigner;
@@ -23,6 +24,14 @@ public sealed class GtkSignalWiringResult
 {
 	public string Source { get; set; } = "";
 	public List<GtkSignalHandlerInfo> Handlers { get; set; } = new();
+}
+
+/// <summary>One top-level menu item on the wire (design host -&gt; IDE).</summary>
+public sealed class GtkMenuItemInfo
+{
+	[JsonPropertyName("sourceIndex")] public int SourceIndex { get; set; } = -1;
+	[JsonPropertyName("label")] public string Label { get; set; } = "";
+	[JsonPropertyName("action")] public string Action { get; set; } = "";
 }
 
 public sealed class GtkSignalHandlerInfo

@@ -145,6 +145,28 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		return State(session, false);
 	}
 
+	/// <summary>The selected object's top-level menu items (a &lt;menu&gt; in its menu-model property).</summary>
+	[JsonRpcMethod("gtk/menu-items")]
+	public List<GtkMenuItemInfo>? MenuItems(string sessionId, string documentId, string elementId)
+	{
+		EnsureSession(sessionId);
+		var items = Get(documentId).Editor.GetMenuItems(elementId);
+		return items?.Select((item, index) => new GtkMenuItemInfo { SourceIndex = index, Label = item.Label, Action = item.Action }).ToList();
+	}
+
+	/// <summary>Replaces the top-level menu items as one undo step.</summary>
+	[JsonRpcMethod("gtk/set-menu-items")]
+	public DesignerSessionState SetMenuItems(string sessionId, string documentId, long baseVersion, string elementId, List<GtkMenuItemInfo> items)
+	{
+		EnsureSession(sessionId);
+		var session = Get(documentId);
+		EnsureVersion(session, baseVersion);
+		if (!session.Editor.SetMenuItems(elementId, items.Select(item => (item.SourceIndex, item.Label, item.Action)).ToList()))
+			throw new InvalidOperationException("The menu items were rejected.");
+		session.Version++;
+		return State(session, false);
+	}
+
 	/// <summary>Removes the property so GTK's own default applies - the GIR catalogue is the
 	/// defaults model IDesignHostPropertyReset asks for; no default value is ever written.</summary>
 	[JsonRpcMethod("design/reset-property")]

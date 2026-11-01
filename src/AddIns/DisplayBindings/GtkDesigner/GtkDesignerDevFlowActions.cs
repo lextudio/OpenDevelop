@@ -214,6 +214,21 @@ public static class GtkDesignerDevFlowActions
 	public static string GetFactoryTemplate() { var view = Activate(); var template = view?.FactoryTemplate(); return JsonSerializer.Serialize(new { success = template != null, template }); }
 	[DevFlowAction("od.gtk-designer.factory-template.set", Description = "Replace the selected list/grid/column view's factory template as one undo step; invalid XML is refused")]
 	public static string SetFactoryTemplate(string template) { var view = Activate(); var ok = view?.SetFactoryTemplate(template) == true; return JsonSerializer.Serialize(new { success = ok, template = view?.FactoryTemplate() }); }
+	[DevFlowAction("od.gtk-designer.menu-items", Description = "Read the selected popover/menu button's top-level menu items as label/action pairs")]
+	public static string GetMenuItems() { var view = Activate(); var items = view?.MenuItems(); return JsonSerializer.Serialize(new { success = items != null, items }); }
+	[DevFlowAction("od.gtk-designer.menu-items.set", Description = "Replace the selected popover/menu button's top-level menu items from 'label=action;...' (one undo step); sections and submenus are refused")]
+	public static string SetMenuItems(string items)
+	{
+		var view = Activate();
+		var before = view?.MenuItems() ?? Array.Empty<GtkMenuItemInfo>();
+		var parsed = (items ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+			.Select((line, index) => {
+				var at = line.IndexOf('=');
+				return new GtkMenuItemInfo { SourceIndex = index < before.Count ? index : -1, Label = (at < 0 ? line : line[..at]).Trim(), Action = at < 0 ? "" : line[(at + 1)..].Trim() };
+			}).ToList();
+		var ok = view?.SetMenuItems(parsed) == true;
+		return JsonSerializer.Serialize(new { success = ok, items = view?.MenuItems() });
+	}
 	[DevFlowAction("od.gtk-designer.reorder", Description = "Move the selected GTK child within its parent")]
 	public static string Reorder(int delta) { var view = Activate(); return JsonSerializer.Serialize(new { success = view?.ReorderSelected(delta) == true, selectedId = view?.SelectedId }); }
 	[DevFlowAction("od.gtk-designer.pointer-reorder", Description = "Exercise the native-bounds pointer reorder mapping between sibling objects")]

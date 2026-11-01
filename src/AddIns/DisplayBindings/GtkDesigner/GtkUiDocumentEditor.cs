@@ -464,6 +464,54 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
+	/// <summary>A menu definition (<c>&lt;menu&gt;</c>) held by the object's <c>menu-model</c>
+	/// property. GtkBuilder parses menus as XML tags, not as a Gio.Menu object.</summary>
+	static XElement? MenuElement(XElement element)
+		=> element.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "menu-model"))
+			?.Elements().FirstOrDefault(e => e.Name.LocalName == "menu");
+
+	/// <summary>The top-level menu items as (label, action). Null when the object has no menu or
+	/// the menu uses sections/submenus, which this editor does not rewrite.</summary>
+	public IReadOnlyList<(string Label, string Action)>? GetMenuItems(string id)
+	{
+		var menu = Find(id) is { } element ? MenuElement(element) : null;
+		if (menu == null || menu.Elements().Any(e => e.Name.LocalName is "section" or "submenu")) return null;
+		return menu.Elements().Where(e => e.Name.LocalName == "item")
+			.Select(item => (MenuAttribute(item, "label"), MenuAttribute(item, "action"))).ToList();
+	}
+
+	/// <summary>Replaces the top-level menu items as one undo step. An entry with a SourceIndex
+	/// keeps that item's other attributes; an empty action removes the action attribute.</summary>
+	public bool SetMenuItems(string id, IReadOnlyList<(int SourceIndex, string Label, string Action)> items)
+	{
+		var menu = Find(id) is { } element ? MenuElement(element) : null;
+		if (menu == null || menu.Elements().Any(e => e.Name.LocalName is "section" or "submenu")) return false;
+		var old = menu.Elements().Where(e => e.Name.LocalName == "item").ToList();
+		var sources = items.Where(item => item.SourceIndex >= 0).Select(item => item.SourceIndex).ToList();
+		if (sources.Any(index => index >= old.Count) || sources.Distinct().Count() != sources.Count) return false;
+		var rebuilt = items.Select(item => {
+			var copy = item.SourceIndex >= 0 ? new XElement(old[item.SourceIndex]) : new XElement("item");
+			SetMenuAttribute(copy, "label", item.Label);
+			SetMenuAttribute(copy, "action", item.Action);
+			return copy;
+		}).ToList();
+		if (rebuilt.Select(e => e.ToString()).SequenceEqual(old.Select(e => e.ToString()))) return true;
+		old.ForEach(item => item.Remove());
+		menu.Add(rebuilt);
+		return Commit();
+	}
+
+	static string MenuAttribute(XElement item, string name)
+		=> item.Elements().FirstOrDefault(e => e.Name.LocalName == "attribute" && (string?)e.Attribute("name") == name)?.Value ?? "";
+
+	static void SetMenuAttribute(XElement item, string name, string value)
+	{
+		var attribute = item.Elements().FirstOrDefault(e => e.Name.LocalName == "attribute" && (string?)e.Attribute("name") == name);
+		if (string.IsNullOrEmpty(value)) attribute?.Remove();
+		else if (attribute == null) item.Add(new XElement("attribute", new XAttribute("name", name), value));
+		else attribute.Value = value;
+	}
+
 	/// <summary>The inline GtkBuilderListItemFactory held by the object's <c>factory</c> property.</summary>
 	XElement? FactoryElement(string id)
 	{

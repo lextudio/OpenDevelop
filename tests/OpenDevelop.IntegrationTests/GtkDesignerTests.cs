@@ -849,6 +849,60 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_MenuItems_EditThePopoverMenu()
+	{
+		// GtkBuilder parses menus as <menu> tags, not a Gio.Menu object; the designer edits the
+		// top-level label/action pairs of the selected popover and leaves sections to the source.
+		var path = Path.Combine(workDir, "Windows", "MenuWindow.ui");
+		await File.WriteAllTextAsync(path, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <object class="GtkWindow" id="menuWindow">
+			    <property name="default-width">320</property>
+			    <property name="default-height">200</property>
+			    <child>
+			      <object class="GtkMenuButton" id="menuButton">
+			        <property name="label">Menu</property>
+			        <property name="popover">
+			          <object class="GtkPopoverMenu" id="menuPopover">
+			            <property name="menu-model">
+			              <menu>
+			                <item><attribute name="label">New</attribute><attribute name="action">app.new</attribute></item>
+			                <item><attribute name="label">Open</attribute><attribute name="action">app.open</attribute></item>
+			              </menu>
+			            </property>
+			          </object>
+			        </property>
+			      </object>
+			    </child>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", path); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("menuWindow"); Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+		Assert.Contains("menuPopover", status.GetProperty("elementIds").EnumerateArray().Select(id => id.GetString()));
+
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "menuPopover")).GetProperty("success").GetBoolean());
+		var before = await app.InvokeAsync("od.gtk-designer.menu-items");
+		Assert.True(before.GetProperty("success").GetBoolean(), before.ToString());
+		Assert.Equal(new[] { "New", "Open" }, before.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("label").GetString()));
+		var edited = await app.InvokeAsync("od.gtk-designer.menu-items.set", "New=app.new;Open=app.open;Quit=app.quit");
+		Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+		Assert.Equal(new[] { "New", "Open", "Quit" }, edited.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("label").GetString()));
+
+		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
+		var xml = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+		Assert.Contains("<attribute name=\"label\">Quit</attribute>", xml);
+		Assert.Contains("<attribute name=\"action\">app.quit</attribute>", xml);
+		await ValidateGtkBuilderAsync(path);
+		Assert.True((await app.InvokeAsync("od.gtk-designer.undo")).GetProperty("canRedo").GetBoolean());
+		Assert.Equal(2, (await app.InvokeAsync("od.gtk-designer.menu-items")).GetProperty("items").GetArrayLength());
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
 	public async Task GtkDesigner_SourceView_SharesTheDesignerToolbox_AndPlacesDroppedItems()
 	{
 		// A .ui shown Design and Source side by side has one toolbox. With the Source half focused the

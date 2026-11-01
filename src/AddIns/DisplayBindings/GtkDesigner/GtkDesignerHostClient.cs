@@ -97,6 +97,10 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 		=> connection.InvokeAsync<string?>("gtk/factory-template", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
 	public Task<DesignerSessionState> SetFactoryTemplateAsync(long v, string elementId, string template, CancellationToken token = default)
 		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("gtk/set-factory-template", new { sessionId = SessionId, documentId = DocumentId, baseVersion = v, elementId, template }, token), token);
+	public Task<List<GtkMenuItemInfo>?> MenuItemsAsync(string elementId, CancellationToken token = default)
+		=> connection.InvokeAsync<List<GtkMenuItemInfo>?>("gtk/menu-items", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
+	public Task<DesignerSessionState> SetMenuItemsAsync(long v, string elementId, List<GtkMenuItemInfo> items, CancellationToken token = default)
+		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("gtk/set-menu-items", new { sessionId = SessionId, documentId = DocumentId, baseVersion = v, elementId, items }, token), token);
 	public Task<DesignerSessionState> ResetPropertyAsync(long v, string id, string name, CancellationToken token = default) => TrackMutationAsync(connection.ResetPropertyAsync(DocumentId, v, id, name, token), token);
 	public async Task<DesignerSessionState> SetThemeAsync(long v, string theme, CancellationToken token = default)
 	{

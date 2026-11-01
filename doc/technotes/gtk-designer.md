@@ -819,6 +819,18 @@ on the column view is refused ("A GtkColumnView holds columns; add a GtkColumnVi
 Delete and the Order commands work on the column objects, and the column's
 `title`/`resizable`/`expand`/`fixed-width` are GIR-typed Properties-pad values.
 
+### Menus (2026-11-01)
+
+GtkBuilder parses a menu as `<menu>` tags (not a `Gio.Menu` object) in a `menu-model` property. With
+a `GtkPopoverMenu` (or `GtkMenuButton`) selected, the surface's context menu offers **Edit Menu...**:
+one `label = action` per line, rewritten as
+`<item><attribute name="label">…</attribute><attribute name="action">…</attribute></item>` in one
+undo step (`gtk/menu-items` / `gtk/set-menu-items`; `od.gtk-designer.menu-items(.set)` for tests).
+A kept item keeps its other attributes; an empty action removes the attribute. A menu with
+`<section>` or `<submenu>` is source-only, because rewriting the top level would drop the structure.
+The action names refer to `Gio.Action`s the application registers in code; the designer edits the
+menu model, not the action implementations.
+
 ## Migration from Stetic and GTK 3 UI
 
 Migration is an explicit tool, not an implicit designer load path:
@@ -904,7 +916,7 @@ Status 2026-11-01: not implemented except where marked.
   the project's assembly and native code are never loaded;
 - Libadwaita catalogue and named-child policies: the catalogue, toolbox category and navigation
   page shapes are implemented; general named-child/page editing is not;
-- menus, actions, list models (an inline `GtkStringList`'s items are editable), factories and expressions: not implemented;
+- menus, actions, list models (an inline `GtkStringList`'s items are editable), factories and expressions: top-level menu items are editable (see "Menus"); `Gio.Action` implementations, menu sections/submenus and expressions are not;
 - translation and resource tooling: GResource preview is implemented; no string extraction,
   `.po` editing or translation workflow;
 - explicit GTK 3/Stetic migration assistant: not implemented;

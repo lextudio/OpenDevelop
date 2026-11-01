@@ -192,4 +192,22 @@ public sealed class GtkUiDocumentEditorTests
 		Assert.True(editor.Undo());
 		Assert.Contains("GtkLabel", editor.GetFactoryTemplate(id));
 	}
+
+	[Fact]
+	public void MenuItems_EditTopLevelItemsAndRefuseSections()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkPopoverMenu" id="popover"><property name="menu-model"><menu><item><attribute name="label">New</attribute><attribute name="action">app.new</attribute></item></menu></property></object></interface>"""), editor.Error);
+		Assert.Equal(new[] { ("New", "app.new") }, editor.GetMenuItems("popover"));
+		Assert.True(editor.SetMenuItems("popover", new[] { (0, "Newer", "app.newer"), (-1, "Open", "app.open") }), editor.Error);
+		Assert.Equal(new[] { ("Newer", "app.newer"), ("Open", "app.open") }, editor.GetMenuItems("popover"));
+		Assert.Contains("<attribute name=\"label\">Open</attribute>", editor.Text);
+		Assert.True(editor.Undo());
+		Assert.Equal(new[] { ("New", "app.new") }, editor.GetMenuItems("popover"));
+
+		// A sectioned menu is source-only: rewriting it here would drop the section structure.
+		Assert.True(editor.Reset("""<interface><requires lib="gtk" version="4.0"/><object class="GtkPopoverMenu" id="popover"><property name="menu-model"><menu><section><item><attribute name="label">New</attribute></item></section></menu></property></object></interface>"""), editor.Error);
+		Assert.Null(editor.GetMenuItems("popover"));
+		Assert.False(editor.SetMenuItems("popover", new[] { (-1, "Open", "") }));
+	}
 }
