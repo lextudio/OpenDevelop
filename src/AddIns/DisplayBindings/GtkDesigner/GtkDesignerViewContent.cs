@@ -85,8 +85,8 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		tools.ItemInvoked += (_, item) => Add(item.TypeName);
 		RefreshToolbox();
 		selection = new DesignerSelectionController(node => Adapter(node), nodes => new DesignerMultiPropertyAdapter(nodes.Select(node => (object)Adapter(node))));
-		commands.RegisterStandard(() => host?.IsAlive == true && state.CanUndo, () => Mutate(() => host!.UndoAsync(state.Version).GetAwaiter().GetResult()),
-			() => host?.IsAlive == true && state.CanRedo, () => Mutate(() => host!.RedoAsync(state.Version).GetAwaiter().GetResult()),
+		commands.RegisterStandard(() => host?.IsAlive == true && state.CanUndo, () => RewireAfterHistory(Mutate(() => host!.UndoAsync(state.Version).GetAwaiter().GetResult())),
+			() => host?.IsAlive == true && state.CanRedo, () => RewireAfterHistory(Mutate(() => host!.RedoAsync(state.Version).GetAwaiter().GetResult())),
 			() => selection.SelectedIds.Count > 0 && host?.IsAlive == true, DeleteSelectedCore);
 		pads = new DesignerPadController(selection, outline.SetRoots, value => properties.SelectedObject = value, outline.SelectNodeById, node => { selected = node; canvasController?.RestoreSelection(selection.SelectedIds); });
 		canvasController = new DesignSurfaceController(canvas, DesignSurfaceKeying.Id);
@@ -485,7 +485,24 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	/// <summary>The selected popover/menu button's top-level menu items, or null.</summary>
 	public IReadOnlyList<DesignerMenuNode>? MenuItems() { if (host == null || selected == null) return null; return host.MenuItemsAsync(selected.Id).GetAwaiter().GetResult(); }
 	/// <summary>Replaces the selected popover/menu button's top-level menu items as one undo step.</summary>
-	public bool SetMenuItems(IReadOnlyList<DesignerMenuNode> items) { if (host == null || selected == null) return false; return Mutate(() => host.SetMenuItemsAsync(state.Version, selected.Id, items.ToList()).GetAwaiter().GetResult()); }
+	public bool SetMenuItems(IReadOnlyList<DesignerMenuNode> items)
+	{
+		if (host == null || selected == null) return false;
+		var accepted = Mutate(() => host.SetMenuItemsAsync(state.Version, selected.Id, items.ToList()).GetAwaiter().GetResult());
+		// A menu that names window actions ("win.save") gets their handler stubs and the companion's
+		// AddMenuActions; once a companion exists it is rewritten even when the last action went away.
+		if (accepted) UpdateCodeBehind(null, force: HasWindowAction(items));
+		return accepted;
+	}
+	/// <summary>Undo or redo can bring back (or take away) a menu's window actions, a signal, or any other
+	/// thing the companion and behavior class follow; once a companion exists it is brought in step again,
+	/// the way a direct edit does.</summary>
+	bool RewireAfterHistory(bool accepted)
+	{
+		if (accepted && PrimaryFileName?.ToString() is { Length: > 0 } uiPath && File.Exists(GtkCodeBehind.CompanionPath(uiPath))) UpdateCodeBehind(null);
+		return accepted;
+	}
+	static bool HasWindowAction(IEnumerable<DesignerMenuNode> nodes) => nodes.Any(n => n.Action.StartsWith("win.", StringComparison.Ordinal) || HasWindowAction(n.Children));
 
 	/// <summary>The selected list/grid/column view's inline factory template, or null.</summary>
 	public string? FactoryTemplate() { if (host == null || selected == null) return null; return host.FactoryTemplateAsync(selected.Id).GetAwaiter().GetResult(); }
@@ -494,8 +511,12 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 
 	/// <summary>Keeps X.cs and X.ui.cs in step with the .ui's signals (see GtkCodeBehind): with
 	/// <paramref name="newHandler"/>, ensures the behavior class has that method and opens it there.</summary>
-	void UpdateCodeBehind(string? newHandler)
+	/// <summary>The message under the canvas (a refusal, a render failure, a code-behind notice).</summary>
+	public string DiagnosticText => diagnostic.Text;
+	string? codeBehindNotice;
+	void UpdateCodeBehind(string? newHandler, bool force = false)
 	{
+		codeBehindNotice = null;
 		var uiPath = PrimaryFileName?.ToString();
 		if (host == null || string.IsNullOrEmpty(uiPath)) return;
 		// A composite template is instantiated by its own C# class (Gir.Core [Template]); a BuildUi
@@ -507,10 +528,18 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		}
 		try {
 			var hasSignals = loadedText.Contains("<signal", StringComparison.Ordinal) || newHandler != null;
-			if (newHandler == null && !hasSignals && !File.Exists(GtkCodeBehind.CompanionPath(uiPath))) return;
+			if (newHandler == null && !hasSignals && !force && !File.Exists(GtkCodeBehind.CompanionPath(uiPath))) return;
 			if (GtkCodeBehind.EnsureBehaviorClass(uiPath) is not { } behavior) return;
 			var wiring = host.SignalWiringAsync(Path.GetFileName(uiPath), behavior.Namespace, behavior.ClassName).GetAwaiter().GetResult();
+			// The companion's AddMenuActions is called from application code; losing it (the last window
+			// action left the menu) must not break that call site silently.
+			var hadMenuActions = GtkCodeBehind.ReadCompanion(uiPath)?.Contains("AddMenuActions", StringComparison.Ordinal) == true;
 			GtkCodeBehind.WriteCompanion(uiPath, wiring.Source);
+			if (hadMenuActions && !wiring.Source.Contains("AddMenuActions", StringComparison.Ordinal)) {
+				// Kept until the next code-behind update: every render rebuilds the diagnostic text.
+				codeBehindNotice = $"No window actions remain, so AddMenuActions was removed from {Path.GetFileName(GtkCodeBehind.CompanionPath(uiPath))}; remove the call to it from your code.";
+				diagnostic.Text += Environment.NewLine + codeBehindNotice;
+			}
 			var line = GtkCodeBehind.AddMissingHandlers(uiPath, behavior.ClassName, wiring.Handlers);
 			if (newHandler != null && wiring.Handlers.FirstOrDefault(h => h.Handler == newHandler) is { Supported: false } skipped)
 				diagnostic.Text = $"Signal '{skipped.Signal}' is not connected by the designer: {skipped.Reason}.";
@@ -669,7 +698,8 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	}
 	void Rebuild()
 	{
-		diagnostic.Text = HasNativeFrame ? Status : Status + " - no native frame: the GTK 4 runtime could not render this interface.";
+		diagnostic.Text = (HasNativeFrame ? Status : Status + " - no native frame: the GTK 4 runtime could not render this interface.")
+			+ (codeBehindNotice == null ? "" : Environment.NewLine + codeBehindNotice);
 		MergeTemplateSignals();
 		pads.UpdateRoots(state.Tree == null ? null : state.Tree.Id == "$interface" ? state.Tree.Children : new[] { state.Tree });
 		canvasController.ApplySnapshot(CanvasSnapshot());

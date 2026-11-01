@@ -917,6 +917,36 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.Contains("<section>", xml);
 		Assert.Contains("<submenu>", xml);
 		await ValidateGtkBuilderAsync(path);
+
+		// Window actions ("win.save") get a handler stub in MenuWindow.cs and an AddMenuActions in the
+		// companion; an application action ("app.quit") belongs to application code and gets nothing.
+		var actions = await app.InvokeAsync("od.gtk-designer.menu-items.set", "Save=win.save;Save as=win.save-as;Save dotted=win.save.as;Odd=win.under_score;Quit=app.quit");
+		Assert.True(actions.GetProperty("success").GetBoolean(), actions.ToString());
+		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
+		var behaviorPath = Path.ChangeExtension(path, ".cs");
+		// Neither file is open in an editor, so the designer wrote them to disk directly.
+		var companionPath = path + ".cs";
+		var behavior = await File.ReadAllTextAsync(behaviorPath, TestContext.Current.CancellationToken);
+		Assert.Contains("void save_action(Gio.SimpleAction sender, Gio.SimpleAction.ActivateSignalArgs args)", behavior);
+		Assert.Contains("void save_as_action(Gio.SimpleAction sender, Gio.SimpleAction.ActivateSignalArgs args)", behavior);
+		Assert.Contains("void save__as_action(Gio.SimpleAction sender, Gio.SimpleAction.ActivateSignalArgs args)", behavior); // "save.as" is not "save-as"
+		Assert.DoesNotContain("under_score", behavior); // not a GAction name (g_simple_action_new would return NULL)
+		Assert.DoesNotContain("quit_action", behavior);
+		var companion = await File.ReadAllTextAsync(companionPath, TestContext.Current.CancellationToken);
+		Assert.Contains("public void AddMenuActions(global::Gio.ActionMap map)", companion);
+		Assert.Contains("global::Gio.SimpleAction.New(\"save-as\", null)", companion);
+		Assert.DoesNotContain("\"quit\"", companion);
+		// The generated stubs and registration must compile against Gir.Core.
+		await ValidateFixtureBuildAsync(projectPath);
+		// Dropping the last window action drops AddMenuActions; the user's call site is told, not left to a compile error.
+		var removed = await app.InvokeAsync("od.gtk-designer.menu-items.set", "Quit=app.quit");
+		Assert.True(removed.GetProperty("success").GetBoolean(), removed.ToString());
+		Assert.DoesNotContain("AddMenuActions", await File.ReadAllTextAsync(companionPath, TestContext.Current.CancellationToken));
+		Assert.Contains("AddMenuActions", (await app.InvokeAsync("od.gtk-designer.status")).GetProperty("diagnosticText").GetString());
+		// Undo brings the actions back, and the companion follows (a history step is not a blind spot).
+		await app.InvokeAsync("od.gtk-designer.undo");
+		Assert.Contains("AddMenuActions", await File.ReadAllTextAsync(companionPath, TestContext.Current.CancellationToken));
+		await ValidateFixtureBuildAsync(projectPath);
 		await app.InvokeAsync("od.close-active-view");
 	}
 

@@ -106,7 +106,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		EnsureSession(sessionId);
 		var session = Get(documentId);
 		var catalog = GtkPropertyMetadata.Catalog ?? throw new InvalidOperationException(GtkPropertyMetadata.Diagnostic);
-		var handlers = GtkSignalWiring.Handlers(session.Editor.Text, catalog);
+		var handlers = GtkSignalWiring.Handlers(session.Editor.Text, catalog).Concat(GtkSignalWiring.MenuActions(session.Editor.Text)).ToList();
 		return new GtkSignalWiringResult {
 			Source = GtkSignalWiring.GenerateCompanion(uiFileName, namespaceName, className, handlers),
 			Handlers = handlers.Select(GtkSignalHandlerInfo.From).ToList()

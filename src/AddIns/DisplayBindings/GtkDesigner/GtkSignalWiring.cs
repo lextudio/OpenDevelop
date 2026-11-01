@@ -72,6 +72,50 @@ public static class GtkSignalWiring
 		return result;
 	}
 
+	/// <summary>The marker an action handler carries in <see cref="GtkSignalHandler.ObjectId"/>:
+	/// <c>action:save</c> is the window action <c>win.save</c>, which has no object in the .ui.</summary>
+	public const string ActionPrefix = "action:";
+
+	/// <summary>The window actions (<c>win.name</c>) the document's menus refer to, as handlers of a
+	/// <c>Gio.SimpleAction</c>: <c>void name_action(Gio.SimpleAction sender, Gio.SimpleAction.ActivateSignalArgs args)</c>.
+	/// Only <c>win.</c> actions: they live on the window the companion's <c>AddMenuActions</c> is given, while
+	/// an <c>app.</c> action belongs to the application object, which only application code can see.</summary>
+	public static IReadOnlyList<GtkSignalHandler> MenuActions(string uiText)
+	{
+		var names = new List<string>();
+		try {
+			foreach (var attribute in XDocument.Parse(uiText).Descendants().Where(e => e.Name.LocalName == "attribute" && (string?)e.Attribute("name") == "action")) {
+				var value = attribute.Value.Trim();
+				if (!value.StartsWith("win.", StringComparison.Ordinal)) continue;
+				var name = value.Substring(4);
+				// GAction names are alphanumerics, '-' and '.': g_simple_action_new rejects anything else (an
+				// underscore included) and returns NULL, so such a name is not registered, only left to user code.
+				if (name.Length > 0 && name.All(c => (c < 128 && char.IsLetterOrDigit(c)) || c == '-' || c == '.') && !names.Contains(name)) names.Add(name);
+			}
+		} catch (System.Xml.XmlException) { return Array.Empty<GtkSignalHandler>(); }
+		// The name itself decides the method (ActionMethod), which keeps an action bound to its user-written
+		// stub whatever else is in the menu. Only names that still collide ("a--b" and "a.b" are both a__b)
+		// are disambiguated, by ordinal name order.
+		var methods = new Dictionary<string, string>(StringComparer.Ordinal);
+		var taken = new HashSet<string>(StringComparer.Ordinal);
+		foreach (var name in names.OrderBy(n => n, StringComparer.Ordinal)) {
+			var method = ActionMethod(name);
+			for (var n = 2; !taken.Add(method); n++) method = ActionMethod(name) + "_" + n;
+			methods[name] = method;
+		}
+		return names.Select(name => new GtkSignalHandler(ActionPrefix + name, "Gio.SimpleAction", "activate", methods[name], "OnActivate",
+			"void", "Gio.SimpleAction.ActivateSignalArgs", true, "")).ToList();
+	}
+
+	/// <summary>"save-as" -&gt; "save_as_action", "save.as" -&gt; "save__as_action" (a GAction name has no underscore
+	/// of its own, so these never meet); "2nd" -&gt; "_2nd_action".</summary>
+	public static string ActionMethod(string actionName)
+	{
+		var name = string.Concat(actionName.Select(c => c == '.' ? "__" : char.IsLetterOrDigit(c) ? c.ToString() : "_"));
+		// "2nd" is a valid action name but not a C# identifier start.
+		return (name.Length == 0 || char.IsDigit(name[0]) ? "_" : "") + name + "_action";
+	}
+
 	/// <summary>Resolves one signal for a document that cannot carry a &lt;signal&gt; entry (a
 	/// composite template): same rules as <see cref="Handlers"/>, without the XML attributes.</summary>
 	public static GtkSignalHandler Describe(string objectId, string builderClass, string signalName, string handler, GirCatalog catalog)
@@ -135,7 +179,7 @@ public static class GtkSignalWiring
 		// AddFromString, not NewFromString: the latter aborts the process on any error; this throws.
 		sb.AppendLine($"{indent}\t\tvar builder = global::Gtk.Builder.New();");
 		sb.AppendLine($"{indent}\t\tbuilder.AddFromString(document.ToString(), -1);");
-		foreach (var group in handlers.GroupBy(h => h.ObjectId)) {
+		foreach (var group in handlers.Where(h => !h.ObjectId.StartsWith(ActionPrefix, StringComparison.Ordinal)).GroupBy(h => h.ObjectId)) {
 			var supported = group.Where(h => h.Supported).ToList();
 			if (supported.Count > 0) {
 				var local = Local(group.Key);
@@ -149,6 +193,22 @@ public static class GtkSignalWiring
 		}
 		sb.AppendLine($"{indent}\t\treturn builder;");
 		sb.AppendLine($"{indent}\t}}");
+		var actions = handlers.Where(h => h.ObjectId.StartsWith(ActionPrefix, StringComparison.Ordinal)).ToList();
+		if (actions.Count > 0) {
+			sb.AppendLine();
+			sb.AppendLine($"{indent}\t/// <summary>Registers the window actions {uiFileName}'s menus refer to (\"win.name\") on <paramref name=\"map\"/>,");
+			sb.AppendLine($"{indent}\t/// typically the window BuildUi created, each calling its handler in the other part of this class.</summary>");
+			sb.AppendLine($"{indent}\tpublic void AddMenuActions(global::Gio.ActionMap map)");
+			sb.AppendLine($"{indent}\t{{");
+			foreach (var action in actions) {
+				var name = action.ObjectId.Substring(ActionPrefix.Length);
+				var local = Local("action_" + action.Handler); // unique per action; not the handler's own name, which the lambda calls
+				sb.AppendLine($"{indent}\t\tvar {local} = global::Gio.SimpleAction.New(\"{name}\", null);");
+				sb.AppendLine($"{indent}\t\t{local}.OnActivate += (_, args) => {action.Handler}({local}, args);");
+				sb.AppendLine($"{indent}\t\tmap.AddAction({local});");
+			}
+			sb.AppendLine($"{indent}\t}}");
+		}
 		sb.AppendLine($"{indent}}}");
 		if (indent.Length > 0) sb.AppendLine("}");
 		return sb.ToString();

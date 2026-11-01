@@ -98,6 +98,9 @@ static class GtkCodeBehind
 		return source.Substring(0, insertAt).Count(c => c == '\n') + 1 + (leadingBlank ? 1 : 0);
 	}
 
+	/// <summary>The companion's current text, from its editor buffer when it is open there, else from disk.</summary>
+	public static string? ReadCompanion(string uiPath) => ReadText(CompanionPath(uiPath));
+
 	/// <summary>Writes the companion X.ui.cs when its content changed.</summary>
 	public static void WriteCompanion(string uiPath, string source)
 	{

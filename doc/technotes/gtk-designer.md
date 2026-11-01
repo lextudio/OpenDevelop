@@ -864,8 +864,24 @@ entry's other attributes (icons, hints); an unchanged menu is a no-op that recor
 action removes the attribute; an unknown kind, a repeated or out-of-range source index, or an item
 holding children is refused. Parse errors (an entry indented below an item, deeper than its parent allows, or by an odd number
 of spaces) are shown instead of silently flattening the structure.
-The action names refer to `Gio.Action`s the application registers in code; the designer edits the
-menu model, not the action implementations.
+A window action (`win.save`) also gets code. When a menu edit names one, the designer adds
+`void save_action(Gio.SimpleAction sender, Gio.SimpleAction.ActivateSignalArgs args)` to the behavior
+class (the same `AddMissingHandlers` path as signal handlers, so an existing method is never
+rewritten) and regenerates the companion with
+`AddMenuActions(Gio.ActionMap map)`, which creates a `Gio.SimpleAction` per distinct action name and
+calls that handler; application code passes it the window after `BuildUi`. Only valid GAction names
+(ASCII alphanumerics, `-` and `.`) are registered: `g_simple_action_new` rejects anything else, an
+underscore included, so such a name is left to user code. The method name comes from the action name
+alone, so an action stays bound to its stub whatever else is in the menu: `save-as` is
+`save_as_action`, `save.as` is `save__as_action`, a leading digit gets an `_`, and only a pathological
+pair such as `a--b` next to `a.b` still collides and is told apart by ordinal name order. The
+companion is rewritten on later menu edits, and by undo and redo, once it exists; a removed action
+leaves its stub (user code) but not its registration, and when the last one goes the designer says
+under the canvas that `AddMenuActions` is gone, so the call site is not left to a compile error.
+`app.` actions belong to the application object, which only application code can see, and get nothing.
+`GtkSignalWiringTests` covers the extraction, naming and generated registration;
+`GtkDesigner_MenuItems_EditThePopoverMenu` builds the fixture to prove the generated code compiles
+against Gir.Core, removes the last action and undoes it.
 
 ## Migration from Stetic and GTK 3 UI
 
@@ -955,8 +971,8 @@ Status 2026-11-01: not implemented except where marked.
   policies (`GtkHeaderBar` start/end/title and `GtkNotebook` tab labels are implemented;
   `AdwTabView` pages are implemented; creating `GtkNotebook` action widgets is not);
 - menus, actions, list models (an inline `GtkStringList`'s items are editable), factories and
-  expressions: menu items, sections and submenus are editable (see "Menus"); `Gio.Action`
-  implementations and expressions are not;
+  expressions: menu items, sections and submenus are editable (see "Menus"); `win.` actions get stubs and registration
+  (`app.` actions and expressions are not);
 - translation and resource tooling: GResource preview is implemented; no string extraction,
   `.po` editing or translation workflow;
 - explicit GTK 3/Stetic migration assistant: not implemented;
@@ -977,8 +993,7 @@ Product features:
   no tool exists);
 - custom project widget execution in the sandboxed host (only the data-only
   `.gtkdesigner.json` preview mapping exists);
-- `Gio.Action` implementations for menu actions: the designer edits the menu model, the actions
-  stay in application code;
+- `app.` menu actions and action state/parameters (`win.` actions get stubs and registration; see "Menus");
 - list/model depth: non-string-list models (`Gio.ListStore`, `GtkSelectionModel`, sort/filter
   models), `GtkSignalListItemFactory`, column sorters, and factories beyond the inline
   `GtkBuilderListItemFactory` template editor;

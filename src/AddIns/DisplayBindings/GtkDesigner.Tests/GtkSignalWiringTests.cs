@@ -74,4 +74,74 @@ public sealed class GtkSignalWiringTests
 		// No namespace: the class is emitted at top level.
 		Assert.DoesNotContain("namespace", GtkSignalWiring.GenerateCompanion("Main.ui", null, "MainWindow", Handlers()));
 	}
+
+	const string MenuUi = """
+		<interface>
+		  <requires lib="gtk" version="4.0"/>
+		  <object class="GtkPopoverMenu" id="menu">
+		    <property name="menu-model">
+		      <menu>
+		        <section>
+		          <item><attribute name="label">Save</attribute><attribute name="action">win.save</attribute></item>
+		          <item><attribute name="label">Save as</attribute><attribute name="action">win.save-as</attribute></item>
+		          <item><attribute name="label">Again</attribute><attribute name="action">win.save</attribute></item>
+		          <item><attribute name="label">Dotted</attribute><attribute name="action">win.save.as</attribute></item>
+		          <item><attribute name="label">Underscore</attribute><attribute name="action">win.under_score</attribute></item>
+		        </section>
+		        <item><attribute name="label">Quit</attribute><attribute name="action">app.quit</attribute></item>
+		        <item><attribute name="label">Odd</attribute><attribute name="action">win.bad name</attribute></item>
+		        <item><attribute name="label">Plain</attribute></item>
+		      </menu>
+		    </property>
+		  </object>
+		</interface>
+		""";
+
+	[Fact]
+	public void MenuActions_AreTheDistinctWellFormedWindowActions()
+	{
+		var actions = GtkSignalWiring.MenuActions(MenuUi);
+		// "under_score" is not a GAction name (g_simple_action_new would return NULL), so it is left out.
+		Assert.Equal(new[] { "action:save", "action:save-as", "action:save.as" }, actions.Select(a => a.ObjectId));
+		// '-' and '.' map differently, so "save-as" and "save.as" are different methods without any suffix.
+		Assert.Equal(new[] { "save_action", "save_as_action", "save__as_action" }, actions.Select(a => a.Handler));
+		Assert.Equal("void save_as_action(Gio.SimpleAction sender, Gio.SimpleAction.ActivateSignalArgs args)", actions[1].Signature);
+		Assert.Empty(GtkSignalWiring.MenuActions("<not xml"));
+		// A leading digit is a valid action name but not a C# identifier start.
+		var digit = GtkSignalWiring.MenuActions(MenuUi.Replace("win.save-as", "win.2nd"));
+		Assert.Contains("_2nd_action", digit.Select(a => a.Handler));
+		Assert.All(digit, a => Assert.True(GtkSignalWiring.IsIdentifier(a.Handler)));
+	}
+
+	[Fact]
+	public void MenuActions_AnActionKeepsItsMethodWhenOthersAreAddedRemovedOrReordered()
+	{
+		string MethodOf(string menuNames, string name) => GtkSignalWiring.MenuActions(
+			"<interface><object class=\"GtkPopoverMenu\" id=\"m\"><property name=\"menu-model\"><menu>" + string.Concat(menuNames.Split(',').Select(n => $"<item><attribute name=\"action\">win.{n}</attribute></item>"))
+			+ "</menu></property></object></interface>").First(a => a.ObjectId == "action:" + name).Handler;
+		// Adding or removing "save.as" next to "save-as" does not re-point either at another stub.
+		Assert.Equal(MethodOf("save-as", "save-as"), MethodOf("save.as,save-as", "save-as"));
+		Assert.Equal(MethodOf("save.as", "save.as"), MethodOf("save-as,save.as", "save.as"));
+		Assert.NotEqual(MethodOf("save-as,save.as", "save-as"), MethodOf("save-as,save.as", "save.as"));
+		// A pathological pair that still collides ("a--b" and "a.b" are both a__b) is told apart by ordinal name order, not menu order.
+		Assert.Equal(MethodOf("a--b,a.b", "a.b"), MethodOf("a.b,a--b", "a.b"));
+		Assert.NotEqual(MethodOf("a--b,a.b", "a--b"), MethodOf("a--b,a.b", "a.b"));
+	}
+
+		[Fact]
+	public void Companion_RegistersWindowActionsAndLeavesAnActionlessCompanionUnchanged()
+	{
+		var source = GtkSignalWiring.GenerateCompanion("Main.ui", "Demo", "MainWindow", GtkSignalWiring.MenuActions(MenuUi));
+		Assert.Contains("public void AddMenuActions(global::Gio.ActionMap map)", source);
+		Assert.Contains("var @action_save_action = global::Gio.SimpleAction.New(\"save\", null);", source);
+		Assert.Contains("@action_save_action.OnActivate += (_, args) => save_action(@action_save_action, args);", source);
+		Assert.Contains("var @action_save_as_action = global::Gio.SimpleAction.New(\"save-as\", null);", source);
+		Assert.Contains("map.AddAction(@action_save_as_action);", source);
+		// "save.as" is a different action with its own local and registration.
+		Assert.Contains("var @action_save__as_action = global::Gio.SimpleAction.New(\"save.as\", null);", source);
+		Assert.Single(System.Text.RegularExpressions.Regex.Matches(source, "var @action_save_as_action = "));
+		// Actions are not objects in the .ui, so BuildUi must not look any up.
+		Assert.DoesNotContain("builder.GetObject(\"action:", source);
+		Assert.DoesNotContain("AddMenuActions", GtkSignalWiring.GenerateCompanion("Main.ui", "Demo", "MainWindow", Handlers()));
+	}
 }
