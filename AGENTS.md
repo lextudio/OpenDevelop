@@ -239,6 +239,25 @@ Spending runs:
 - The `diagnose` input and `diagnose-host.ps1` are gone (the host starts on every runner); add a one-off step on a topic
   branch when a new start-up question needs one.
 
+**Every shipped platform gets the same stages.** Both workflows are organised by this table; adding a platform or a stage
+means filling its whole row or column, not one cell:
+
+| Stage | Win x64 | Win ARM64 | macOS ARM64 | Linux x64 | Linux ARM64 |
+|---|---|---|---|---|---|
+| CI Debug build (`Build`) | own | x64 archive (`buildFrom`) | own | own | own |
+| CI unit suites (`unit` lane) | in place | from the x64 archive | in place | in place | in place |
+| CI IDE journeys (`integration-*` lanes) | yes | yes | yes | yes (Xvfb) | yes (Xvfb) |
+| Release build (`package-*`) | one payload on x64 | same payload | native | native | native |
+| Release check (`verify` row) | on x64 | on ARM64 | from the mounted DMG | from the tar.xz | from the tar.xz |
+
+- One entry per suite in `test-plan.json`, with a status for every platform. A new platform's entries start `observe` and
+  are promoted after two green runs; an entry that cannot run on an OS says `"excluded"` with a `reason` (for example
+  `xamldom-tests-microsoftwpf` needs Microsoft WPF). Never copy an entry per platform (the old `*-arm` entries were merged).
+- A `buildsInLane` lane runs in place on each platform that builds for itself and from the provider's archive on a
+  `buildFrom` platform, so every lane tests the build its platform ships (`Test-BuildsInPlace` in `run-statuses.ps1`).
+- Linux runner setup is `.github/ci/install-linux-prerequisites.sh` in both workflows; `run-test-plan.ps1` starts each
+  entry under `xvfb-run` when there is no display.
+
 Layout, so a change goes in the right place:
 
 - The build job compiles the archive lanes once and uploads the workspace (~2.5 GiB, 1-day retention). The in-place lane
@@ -287,14 +306,17 @@ Highlight, Known issues, Full Changelog).
 
 - The workflow checks the tag first: `vMAJOR.MINOR.PATCH[-suffix]`, on `master`, at least one **release-grade** `ci.yml` run
   for that exact commit (one that uploaded the `release-grade` artifact: no `through_batch`/`platforms` narrowing, the plan
-  not in focus mode or dispatched with `full=true`, and every distribution packaged), and no release for it yet. A merely
+  not in focus mode or dispatched with `full=true`, and its plan and build jobs passed), and no release for it yet. A merely
   green run does not qualify. Run CI on the commit before tagging it; while `"focus": true`, dispatch it with `full=true`.
 - The packaged-app checks run the same journeys on every platform: `build/verify-packaged-common.sh` (macOS and Linux share it)
   and `build/windows/verify-packaged-app.ps1` (mirrors its DevFlow actions). Add or tighten a journey in both. Windows still
   skips only the per-RID bitness journeys (`-SkipDebugJourneys`).
 - Division of labour: `ci.yml` is the **Debug** build with tests and debug information and never builds a Release payload or
   runs `dist.*`; `release.yml` is the only place that builds the Release distributions, and it only runs the lean packaged-app
-  checks above before drafting. Do not add packaging to CI to "verify early": add the journey to the packaged-app checks.
+  checks above, one `verify` row per shipped platform on its own runner, before drafting. Do not add packaging to CI to
+  "verify early": add the journey to the packaged-app checks.
+- `gh workflow run release.yml --ref <branch>` is a rehearsal: it builds and verifies every distribution, skips the tag
+  checks and drafts nothing. Use it after changing `release.yml`, `dist.*` or `build/**`, instead of an rc tag.
 - It leaves a **draft**. A draft is never `latest`, so the IDE's update check (`releases/latest`) stays quiet until the notes
   are read and the draft is published (`gh release edit <tag> --draft=false`).
 - Write the "Changes since" bullets in `doc/releases/<tag>.md` *before* tagging. Without that file the script uses the
