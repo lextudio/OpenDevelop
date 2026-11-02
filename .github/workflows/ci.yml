@@ -63,9 +63,7 @@ concurrency:
 env:
   # Read by .github/ci/run-statuses.ps1: with the plan in focus mode, 'true' runs the 'required' entries as well.
   OD_CI_FULL: ${{ inputs.full && 'true' || 'false' }}
-  # The cache steps name this folder relatively (artifacts/nuget-packages): actions/cache hashes the path text into the
-  # entry's version, and the workspace is D:\a\... on the x64 runner but C:\a\... on the ARM64 one, so an absolute path
-  # made the ARM64 lane miss the entry the x64 build saved under the very same key.
+  # The global packages folder: the build job restores into it, packs it, and the lanes that start the IDE unpack it.
   NUGET_CACHE_PATH: ${{ github.workspace }}/artifacts/nuget-packages
   NUGET_PACKAGES: ${{ github.workspace }}/artifacts/nuget-packages
   # NuGet consumes this conventional variable without writing the ephemeral token into NuGet.config,
@@ -107,9 +105,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.build_matrix) }}
-    # The IDE lanes restore the same cache entry, so the key is computed once here and handed to them.
-    outputs:
-      nuget_cache_key: ${{ steps.nuget-key.outputs.key }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -126,20 +121,6 @@ jobs:
         with:
           global-json-file: global.json
           architecture: ${{ matrix.dotnet_architecture }}
-      - id: nuget-key
-        name: Compute the package cache key
-        shell: pwsh
-        run: |
-          $key = "nuget-${{ matrix.name }}-${{ inputs.through_batch || 'default' }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config', 'openavalon-closure.json', '.github/ci/test-plan.json', 'tests/fixtures/**/*.csproj') }}"
-          Write-Host "cache key: $key"
-          "key=$key" | Add-Content -Path $env:GITHUB_OUTPUT
-      # The package folder is the same cache entry the IDE lanes restore: restoring it here is what makes the
-      # compile cheap, and saving it once per key keeps those lanes from re-resolving every package.
-      - name: Restore the NuGet package cache
-        uses: actions/cache@v6
-        with:
-          path: artifacts/nuget-packages
-          key: ${{ steps.nuget-key.outputs.key }}
       - name: Compile everything the enabled entries need, once
         shell: pwsh
         env:
@@ -170,6 +151,20 @@ jobs:
           name: workspace-${{ matrix.name }}
           path: ${{ runner.temp }}/archive/
           # The archive is compressed already; a second pass only costs time.
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      # The IDE host is not self-contained: at run time it resolves the LibreWPF assemblies from the global packages
+      # folder, so the lanes that start the IDE need it. It travels as an artifact (one tar.zst, like the workspace), not
+      # as an actions/cache entry: the repository's cache is capped at 10 GB and the four per-platform entries (3.4-4.3 GB
+      # each) could not coexist, so GitHub evicted one while the jobs that needed it were still queued (run 41457885169).
+      - name: Pack the NuGet package folder
+        shell: pwsh
+        run: ./.github/ci/package-workspace.ps1 -Platform '${{ matrix.name }}' -Kind NuGetCache -Directory '${{ runner.temp }}/nuget-archive'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nuget-${{ matrix.name }}
+          path: ${{ runner.temp }}/nuget-archive/
           compression-level: 0
           retention-days: 1
           if-no-files-found: error
@@ -307,25 +302,18 @@ jobs:
           ./.github/ci/verify-gtk-windows.ps1
           $environment = if ($env:GTK_PLATFORM -eq 'windows-arm64') { 'clangarm64' } else { 'ucrt64' }
           "GTK4_ROOT=$(Join-Path $env:GTK_MSYS_ROOT $environment)" | Add-Content -Path $env:GITHUB_ENV
-      # Keyed by the platform whose build job saved the entry, not by this runner: the Windows ARM64 lane runs the
-      # windows-x64 build ('buildFrom'), and a runner.arch key made it look for an ARM64 entry nobody saves.
-      - id: nuget-key
-        name: Compute the package cache key
+      # The package folder the build job packed, for the lanes that start the IDE. Named by the platform whose build job
+      # produced it, not by this runner: the Windows ARM64 lane runs the windows-x64 build ('buildFrom').
+      - name: Download the NuGet package folder
+        if: matrix.needs_nuget_cache
+        uses: actions/download-artifact@v8
+        with:
+          name: nuget-${{ matrix.build_platform }}
+          path: ${{ runner.temp }}/nuget-archive
+      - name: Unpack the NuGet package folder
         if: matrix.needs_nuget_cache
         shell: pwsh
-        run: |
-          $key = "nuget-${{ matrix.build_platform }}-${{ inputs.through_batch || 'default' }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config', 'openavalon-closure.json', '.github/ci/test-plan.json', 'tests/fixtures/**/*.csproj') }}"
-          "key=$key" | Add-Content -Path $env:GITHUB_OUTPUT
-      # The IDE host is not self-contained: at run time it resolves the LibreWPF assemblies from the global packages
-      # folder, so a lane that starts the IDE needs that folder. Same key the build job saved, and a miss is a failure
-      # rather than a silently slower lane that later dies at start-up.
-      - name: Restore the NuGet package cache
-        if: matrix.needs_nuget_cache
-        uses: actions/cache/restore@v6
-        with:
-          path: artifacts/nuget-packages
-          key: ${{ steps.nuget-key.outputs.key }}
-          fail-on-cache-miss: true
+        run: ./.github/ci/package-workspace.ps1 -Extract -Kind NuGetCache -Directory '${{ runner.temp }}/nuget-archive'
       - name: Verify native Terminal package assets
         if: matrix.needs_nuget_cache
         shell: pwsh

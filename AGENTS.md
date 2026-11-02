@@ -22,9 +22,9 @@ Keep this file concise and operational. Read the referenced technote only when t
     has, then sync and rebuild.
   - **Take a republish:** openavalon republishes under the same version, which no NuGet cache can
     tell apart. `openavalon-closure.json` names the openavalon commit whose publish run this checkout
-    consumes; after a publish you want, set it to that commit. It is part of CI's package cache key,
-    and `sync-openavalon-feed.ps1` writes it into each closure package's `.verified` receipt, so
-    both fetch the packages again (the script also drops the stale copy in `artifacts/nuget-packages`).
+    consumes; after a publish you want, set it to that commit. `sync-openavalon-feed.ps1` writes it
+    into each closure package's `.verified` receipt, so a republish is fetched again (CI restores every
+    run from scratch since it stopped caching the packages) (the script also drops the stale copy in `artifacts/nuget-packages`).
   - **Try a LibreWPF change locally:** build just that assembly in `../openavalon` and replace it -
     `../openavalon/dev-overlay.sh <OpenDevelop bin dir> <Assembly>` (the `bin` copy; the next build
     undoes it) or `../openavalon/dev-patch-feed.sh <Assembly>` (the package inside
@@ -283,9 +283,12 @@ Layout, so a change goes in the right place:
 
 - The build job compiles every enabled entry's project once (`build-binaries.ps1 -Platform <p>`) and uploads the workspace
   (~2.5 GiB, 1-day retention); every lane job downloads and unpacks it.
-- The NuGet package folder is one `actions/cache` entry keyed by `Directory.Packages.props`, `global.json` and
-  `NuGet.config`; the build job computes it and the lanes restore that key. Never ship it as an artifact again - it was
-  3.3 GiB and eight minutes per lane.
+- The NuGet package folder is **not** an `actions/cache` entry any more: the repository's cache is capped at 10 GB, the four
+  per-platform entries (3.4-4.3 GB) could not coexist, and run 41457885169 lost the Windows entry while its lanes were still
+  queued behind a 2.3-hour macOS build wait. The build job packs the folder (`package-workspace.ps1 -Kind NuGetCache`, a
+  faithful copy: no per-platform trimming, the Terminal verifier needs all five RIDs' natives) and uploads it as the
+  `nuget-<platform>` artifact (1-day retention); a lane with `needsNuGetCache` downloads and unpacks it. Artifacts are not
+  capped like caches (the repository is public). The build job therefore restores every package from the feeds on each run.
 - `dotnet build` of `src/Main/SharpDevelop/SharpDevelop.csproj` must happen **once** per output folder: a second build
   deletes the host's mutable package outputs (`_ProGpuWpfSdkClearMutablePackageOutputs`) and does not put them back, so
   the folder ends up without `PresentationFramework.dll`. Measured on the runner: 193 DLLs present after the first build,

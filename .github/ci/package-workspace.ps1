@@ -74,7 +74,10 @@ try {
     # The project-local global packages folder is cached and transferred separately as NuGetCache.
     # Including it here duplicates several GB into every workspace artifact and every test lane.
     if ($Kind -eq 'Workspace') { $exclusions += @('--exclude=.git', '--exclude=node_modules', '--exclude=.vs', '--exclude=.nuget', '--exclude=artifacts/nuget-packages', '--exclude=externals/monodevelop') }
-    if ($Platform -like 'windows-*') {
+    # A NuGetCache archive is a faithful copy of the packages folder: the Terminal package verifier needs the native assets of
+    # all five RIDs in it, so the per-platform trimming below applies to the workspace only.
+    if ($Kind -ne 'Workspace') { }
+    elseif ($Platform -like 'windows-*') {
         # The Windows package is one payload for x64 and ARM64 (dist.windows.bat), so both win RID trees stay: a lane on
         # either architecture exercises the same unified layout.
         $exclusions += @('--exclude=*.so', '--exclude=*.so.*', '--exclude=*.dylib', '--exclude=*.a', '--exclude=*.lib')

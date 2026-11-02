@@ -356,13 +356,20 @@ plan  ->  build (per platform)  ->  test (per platform x lane, unit and integrat
   few minutes earlier, but it compiled the same tree a second time and tested a build no other lane used; Windows ARM64
   could not use it at all. The unit suites are now one more lane on the build archive.
 
-The package folder is one `actions/cache` entry keyed by `Directory.Packages.props`, `global.json`, `NuGet.config`,
-the test plan, fixture projects and the requested batch. Plan, fixture or batch changes must use a fresh key because GitHub caches are immutable:
-the build may restore new fixture packages that are absent from an older cache entry.
-The build job restores and saves it and publishes the key; a lane with `needsNuGetCache` restores that exact key with
-`fail-on-cache-miss: true`, because the IDE host is not self-contained - it resolves its LibreWPF assemblies from the
-global packages folder at run time, which the first integration lane run showed as a start-up `FileNotFoundException`
-for `PresentationFramework`. A miss fails the lane instead of letting the IDE die later.
+The package folder travels as an artifact, not an `actions/cache` entry (changed 2026-11-02). It used to be a cache entry keyed by
+`Directory.Packages.props`, `global.json`, `NuGet.config`, the test plan, fixture projects and the requested batch, saved by the
+build job and restored by the lanes with `fail-on-cache-miss: true`. The repository's cache is capped at 10 GB
+(`gh api repos/<repo>/actions/cache/storage-limit`) and the four per-platform entries were 3.4-4.3 GB each (about 14.4 GB), so
+GitHub evicted one whenever all four were saved. Run 41457885169 lost the Windows entry that way: its builds finished at 17:11
+but `Build (macos-arm64)` waited 2.3 hours for a runner, every lane `needs` the whole build matrix, and the macOS build's own cache
+save at 19:38 evicted the oldest entry, so every Windows lane failed at "Restore the NuGet package cache" before running a test.
+Now the build job packs the folder (`package-workspace.ps1 -Kind NuGetCache`, no per-platform trimming) and uploads it as
+`nuget-<platform>` (1-day retention, like the workspace archive); a lane with `needsNuGetCache` downloads and unpacks it before
+the Terminal asset verifier. The IDE host is not self-contained - it resolves its LibreWPF assemblies from the global packages
+folder at run time, which the first integration lane run showed as a start-up `FileNotFoundException` for `PresentationFramework` -
+so the lanes that start it still need the folder. The cost is that the build job restores every package from the feeds on each run
+(it was 1 second of cache restore plus a 4 GB read before) and that each lane downloads about as much as it used to restore;
+the gain is that nothing depends on the 10 GB budget or on how long a lane waits for a runner.
 
 ## What makes a green lane mean something
 
