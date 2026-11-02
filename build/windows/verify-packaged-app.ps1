@@ -93,12 +93,18 @@ function Wait-Agent {
         } catch { }
         Start-Sleep -Seconds 2
     }
-    Fail 'the DevFlow agent did not start in the packaged application'
+    # Say what the launcher did: a launcher that exited with a code never started its host; one still running started it
+    # but the agent never answered.
+    $state = if ($null -eq $appProcess) { 'was not started' } elseif ($appProcess.HasExited) { "exited with code $($appProcess.ExitCode)" } else { 'is still running' }
+    Fail "the DevFlow agent did not start in the packaged application (the launcher $state)"
 }
 
 try {
     New-Item -ItemType Directory -Path $configDir -Force | Out-Null
-    $launcher = Join-Path $payload 'OpenDevelop.exe'
+    # The payload carries both launchers; run the one for this machine's architecture, as dist.ps1's own smoke phase does.
+    # An ARM64 runner has no x64 .NET runtime, so the x64 launcher's child host never starts there and the agent never answers.
+    $launcherName = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64) { 'OpenDevelopARM64.exe' } else { 'OpenDevelop.exe' }
+    $launcher = Join-Path $payload $launcherName
     $arguments = @("-devflow:$Port", "-configdir:$configDir")
     Write-Host "==> Starting the packaged application ($launcher)..."
     if (Test-Path -LiteralPath $launcher) {
@@ -277,4 +283,7 @@ try {
         try { & taskkill /T /F /PID $appProcess.Id | Out-Null } catch { }
     }
     Remove-Item -LiteralPath $configDir -Recurse -Force -ErrorAction SilentlyContinue
+    # taskkill exits non-zero for a child that has already gone, and the workflow step takes the last native exit code for
+    # the script's own: a run in which every journey passed was reported as a failure. A real failure still throws above.
+    $global:LASTEXITCODE = 0
 }
