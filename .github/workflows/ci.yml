@@ -375,22 +375,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
-  # Packaging runs the same reusable workflow as the release, so the artifact a tag ships has already passed the same steps
-  # on this commit. Pull requests only package Linux (the cheap one); the Windows and macOS packages run on master and on
-  # manual dispatches. 'platforms' narrows a manual run (for example when a runner pool is unavailable).
-  package:
-    name: Package
-    uses: ./.github/workflows/package.yml
-    with:
-      include: ${{ github.event_name == 'pull_request' && 'linux' || inputs.platforms || 'windows,macos,linux' }}
-      retention-days: 7
-
   # What release.yml's gate looks for. A green run is not enough: with the plan in focus mode the 'required' entries are
   # skipped, and a dispatch narrowed by 'through_batch' or 'platforms' runs a subset. Only a run that executed the full plan
-  # and packaged every distribution on this commit uploads the 'release-grade' artifact.
+  # on this commit uploads the 'release-grade' artifact. This workflow is the Debug build with tests and debug information;
+  # Release builds and packaging belong to release.yml alone.
   release-grade:
     name: Release grade
-    needs: [plan, build, test, in-place, package]
+    needs: [plan, build, test, in-place]
     if: always() && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:

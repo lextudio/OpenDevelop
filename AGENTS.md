@@ -292,8 +292,9 @@ Highlight, Known issues, Full Changelog).
 - The packaged-app checks run the same journeys on every platform: `build/verify-packaged-common.sh` (macOS and Linux share it)
   and `build/windows/verify-packaged-app.ps1` (mirrors its DevFlow actions). Add or tighten a journey in both. Windows still
   skips only the per-RID bitness journeys (`-SkipDebugJourneys`).
-- `package.yml` is the one definition of how Windows, macOS and Linux are built and verified; `ci.yml` (master pushes and
-  dispatches; PRs only Linux) and `release.yml` both call it, so edit packaging steps there, never in either caller.
+- Division of labour: `ci.yml` is the **Debug** build with tests and debug information and never builds a Release payload or
+  runs `dist.*`; `release.yml` is the only place that builds the Release distributions, and it only runs the lean packaged-app
+  checks above before drafting. Do not add packaging to CI to "verify early": add the journey to the packaged-app checks.
 - It leaves a **draft**. A draft is never `latest`, so the IDE's update check (`releases/latest`) stays quiet until the notes
   are read and the draft is published (`gh release edit <tag> --draft=false`).
 - Write the "Changes since" bullets in `doc/releases/<tag>.md` *before* tagging. Without that file the script uses the

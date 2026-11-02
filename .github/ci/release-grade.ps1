@@ -16,8 +16,8 @@ if ($env:NARROWED -eq 'true') { $problems += 'a dispatch narrowed by through_bat
 $focus = $plan.PSObject.Properties['focus'] -and $plan.focus
 if ($focus -and $env:OD_CI_FULL -ne 'true') { $problems += 'the plan is in focus mode and this run did not set full=true, so the required entries were skipped' }
 
-# plan, build and package must have run and passed. The lane jobs may be skipped (no lane scheduled), never failed.
-foreach ($job in 'plan', 'build', 'package') {
+# plan and build must have run and passed. The lane jobs may be skipped (no lane scheduled), never failed.
+foreach ($job in 'plan', 'build') {
     $result = $needs.$job.result
     if ($result -ne 'success') { $problems += "$job finished as '$result'" }
 }
@@ -29,7 +29,7 @@ foreach ($job in 'test', 'in-place') {
 $summary = $env:GITHUB_STEP_SUMMARY
 if ($problems.Count -eq 0) {
     "release-grade $env:GITHUB_SHA run $env:GITHUB_RUN_ID" | Set-Content $Output
-    if ($summary) { "### Release grade: yes`nThis run executed the full plan and packaged every distribution on this commit." | Add-Content $summary }
+    if ($summary) { "### Release grade: yes`nThis run executed the full plan on this commit." | Add-Content $summary }
     'release grade: yes'
 } else {
     if ($summary) { "### Release grade: no`n$(($problems | ForEach-Object { "- $_" }) -join "`n")" | Add-Content $summary }
