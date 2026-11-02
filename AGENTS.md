@@ -20,6 +20,11 @@ Keep this file concise and operational. Read the referenced technote only when t
     `global.json` (`LibreWPF.Sdk`) and `Directory.Build.props` (`ProGpuWpfLibreWinFormsPackageVersion`,
     `ProGpuPackageVersion`). To take a newer LibreWPF, move all three to a version GitHub Packages
     has, then sync and rebuild.
+  - **Take a republish:** openavalon republishes under the same version, which no NuGet cache can
+    tell apart. `openavalon-closure.json` names the openavalon commit whose publish run this checkout
+    consumes; after a publish you want, set it to that commit. It is part of CI's package cache key,
+    and `sync-openavalon-feed.ps1` writes it into each closure package's `.verified` receipt, so
+    both fetch the packages again (the script also drops the stale copy in `artifacts/nuget-packages`).
   - **Try a LibreWPF change locally:** build just that assembly in `../openavalon` and replace it -
     `../openavalon/dev-overlay.sh <OpenDevelop bin dir> <Assembly>` (the `bin` copy; the next build
     undoes it) or `../openavalon/dev-patch-feed.sh <Assembly>` (the package inside

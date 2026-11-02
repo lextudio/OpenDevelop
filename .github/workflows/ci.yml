@@ -130,7 +130,7 @@ jobs:
         name: Compute the package cache key
         shell: pwsh
         run: |
-          $key = "nuget-${{ matrix.name }}-${{ inputs.through_batch || 'default' }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config', '.github/ci/test-plan.json', 'tests/fixtures/**/*.csproj') }}"
+          $key = "nuget-${{ matrix.name }}-${{ inputs.through_batch || 'default' }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config', 'openavalon-closure.json', '.github/ci/test-plan.json', 'tests/fixtures/**/*.csproj') }}"
           Write-Host "cache key: $key"
           "key=$key" | Add-Content -Path $env:GITHUB_OUTPUT
       # The package folder is the same cache entry the IDE lanes restore: restoring it here is what makes the
@@ -314,7 +314,7 @@ jobs:
         if: matrix.needs_nuget_cache
         shell: pwsh
         run: |
-          $key = "nuget-${{ matrix.build_platform }}-${{ inputs.through_batch || 'default' }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config', '.github/ci/test-plan.json', 'tests/fixtures/**/*.csproj') }}"
+          $key = "nuget-${{ matrix.build_platform }}-${{ inputs.through_batch || 'default' }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config', 'openavalon-closure.json', '.github/ci/test-plan.json', 'tests/fixtures/**/*.csproj') }}"
           "key=$key" | Add-Content -Path $env:GITHUB_OUTPUT
       # The IDE host is not self-contained: at run time it resolves the LibreWPF assemblies from the global packages
       # folder, so a lane that starts the IDE needs that folder. Same key the build job saved, and a miss is a failure

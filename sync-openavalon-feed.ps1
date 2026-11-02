@@ -56,11 +56,19 @@ function Test-NuGetPackage([string]$Path, [string]$PackageId, [string]$Version) 
     } catch { return $false }
 }
 
-function Test-VerifiedNuGetPackage([string]$Path, [string]$PackageId, [string]$Version) {
+# The receipt records what was verified: the id, the version and, for the OpenAvalon closure, the openavalon commit
+# from openavalon-closure.json. openavalon republishes under the same version, so the commit is what tells a newer
+# publish apart; a receipt written for another commit no longer matches and the package is fetched again.
+function Get-ReceiptText([string]$PackageId, [string]$Version, [string]$Closure) {
+    if ([string]::IsNullOrWhiteSpace($Closure)) { return "$PackageId`n$Version" }
+    return "$PackageId`n$Version`n$Closure"
+}
+
+function Test-VerifiedNuGetPackage([string]$Path, [string]$PackageId, [string]$Version, [string]$Closure) {
     $receipt = "$Path.verified"
     return (Test-NuGetPackage $Path $PackageId $Version) -and
         (Test-Path -LiteralPath $receipt -PathType Leaf) -and
-        ((Get-Content -LiteralPath $receipt -Raw).Trim() -eq "$PackageId`n$Version")
+        ((Get-Content -LiteralPath $receipt -Raw).Trim() -eq (Get-ReceiptText $PackageId $Version $Closure))
 }
 
 $globalJson = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'global.json') -Raw | ConvertFrom-Json
@@ -72,6 +80,9 @@ $proGpuVersion = Get-XmlPropertyValue (Join-Path $PSScriptRoot 'Directory.Build.
 if ($sdkVersion -ne $libreWinFormsVersion -or $sdkVersion -ne $proGpuVersion) {
     throw "The OpenAvalon package closure requires one version, but this checkout requests LibreWPF.Sdk $sdkVersion, LibreWinForms $libreWinFormsVersion, and ProGPU $proGpuVersion. Update the package pins or extend this script with an explicit multi-version closure."
 }
+$closureFile = Join-Path $PSScriptRoot 'openavalon-closure.json'
+$closureCommit = [string](Get-Content -LiteralPath $closureFile -Raw | ConvertFrom-Json).openavalonCommit
+if ([string]::IsNullOrWhiteSpace($closureCommit)) { throw "$closureFile does not name an openavalonCommit." }
 $libGhosttyVersion = Get-XmlPropertyValue (Join-Path $PSScriptRoot 'Directory.Packages.props') 'LibGhosttyNetVersion'
 # The AvalonEdit and AvalonDock forks, which used to be submodules here, publish to the same GitHub
 # Packages endpoint from their own workflows; their versions are the central pins.
@@ -88,19 +99,20 @@ $forkPackages = @(
 $devFlowPackages = @(
     'LeXtudio.DevFlow.Agent.Core', 'LeXtudio.DevFlow.Agent.LibreWpf'
 ) | ForEach-Object { [pscustomobject]@{ Id = $_; Version = Get-CentralPackageVersion (Join-Path $PSScriptRoot 'Directory.Packages.props') $_ } }
-$packages = @($openAvalonPackages | ForEach-Object { [pscustomobject]@{ Id = $_; Version = $sdkVersion } }) +
-    [pscustomobject]@{ Id = 'LibGhostty.Net'; Version = $libGhosttyVersion } +
-    $forkPackages + $devFlowPackages
+# Only the OpenAvalon closure carries the openavalon commit; the other packages are published separately.
+$packages = @($openAvalonPackages | ForEach-Object { [pscustomobject]@{ Id = $_; Version = $sdkVersion; Closure = $closureCommit } }) +
+    [pscustomobject]@{ Id = 'LibGhostty.Net'; Version = $libGhosttyVersion; Closure = '' } +
+    @($forkPackages + $devFlowPackages | ForEach-Object { [pscustomobject]@{ Id = $_.Id; Version = $_.Version; Closure = '' } })
 
 Write-Host "OpenAvalon local feed: $FeedPath"
-Write-Host "OpenAvalon package version: $sdkVersion ($($openAvalonPackages.Count) packages); LibGhostty.Net $libGhosttyVersion; $($forkPackages.Count) AvalonEdit/AvalonDock fork packages; $($devFlowPackages.Count) DevFlow packages"
+Write-Host "OpenAvalon package version: $sdkVersion from openavalon $closureCommit ($($openAvalonPackages.Count) packages); LibGhostty.Net $libGhosttyVersion; $($forkPackages.Count) AvalonEdit/AvalonDock fork packages; $($devFlowPackages.Count) DevFlow packages"
 if ($Plan) {
     $packages | ForEach-Object { Write-Host "  $($_.Id) $($_.Version)" }
     exit 0
 }
 
 if (-not $Force -and (@($packages | Where-Object {
-    -not (Test-VerifiedNuGetPackage (Join-Path $FeedPath "$($_.Id).$($_.Version).nupkg") $_.Id $_.Version)
+    -not (Test-VerifiedNuGetPackage (Join-Path $FeedPath "$($_.Id).$($_.Version).nupkg") $_.Id $_.Version $_.Closure)
 }).Count -eq 0)) {
     Write-Host 'Local package feed is already complete.'
     # This script is dot-sourced by build.ps1/dist.ps1.  `exit` here would terminate the
@@ -144,11 +156,12 @@ try {
     foreach ($package in $packages) {
         $packageId = [string]$package.Id
         $packageVersion = [string]$package.Version
+        $packageClosure = [string]$package.Closure
         $id = $packageId.ToLowerInvariant()
         $version = $packageVersion.ToLowerInvariant()
         $fileName = "$packageId.$packageVersion.nupkg"
         $destination = Join-Path $FeedPath $fileName
-        if (-not $Force -and (Test-VerifiedNuGetPackage $destination $packageId $packageVersion)) {
+        if (-not $Force -and (Test-VerifiedNuGetPackage $destination $packageId $packageVersion $packageClosure)) {
             Write-Host "Already present: $fileName"
             continue
         }
@@ -194,7 +207,7 @@ try {
                 Remove-Item -LiteralPath $extracted -Recurse -Force
                 Write-Host "Cleared the extracted copy of $packageId $packageVersion"
             }
-            [IO.File]::WriteAllText("$destination.verified", "$packageId`n$packageVersion`n", [Text.UTF8Encoding]::new($false))
+            [IO.File]::WriteAllText("$destination.verified", (Get-ReceiptText $packageId $packageVersion $packageClosure) + "`n", [Text.UTF8Encoding]::new($false))
             Write-Host "Synced: $fileName"
         } finally {
             Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
