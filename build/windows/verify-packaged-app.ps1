@@ -1,7 +1,9 @@
 #!/usr/bin/env pwsh
 #
 # Verifies the *packaged* Windows payload the way a user drives it, not the development tree:
-# start the released launcher, then run the journeys that the payload's per-RID assets exist for.
+# start the released launcher, then run the same journeys as the macOS and Linux checks (solution and build, Roslyn child
+# host, terminal, ILSpy, XAML language server, WPF designer, debugger breakpoint; see build/verify-packaged-common.sh,
+# whose DevFlow actions and assertions this mirrors), then the journeys that the payload's per-RID assets exist for.
 #
 # The bitness journeys are the reason the payload keeps add-in `runtimes/<rid>` trees at all. Each
 # one builds a framework-dependent fixture for one RID, starts it under the packaged debugger and
@@ -21,9 +23,9 @@ param(
     # arm64 + x64 + x86).
     [Parameter(Mandatory)][string[]]$Targets,
     [int]$Port = 9307,
-    # The debugger journeys still start BitnessFixture.dll (dotnet <dll>), so the process is always
-    # the runner's own dotnet and the RID never matters; they are being rebuilt around an apphost.
-    # Until then they report what they see without blocking a release.
+    # Skips only the per-RID bitness journeys: they still start BitnessFixture.dll (dotnet <dll>), so the process is
+    # always the runner's own dotnet and the RID never matters; they are being rebuilt around an apphost. The debugger
+    # breakpoint journey on the runner's own architecture and the per-RID dbgshim check still run.
     [switch]$SkipDebugJourneys
 )
 
@@ -37,6 +39,7 @@ $configDir = Join-Path ([System.IO.Path]::GetTempPath()) ("od-bitness-" + [guid]
 $fixture = Join-Path $repoRoot 'tests/fixtures/BitnessFixture/BitnessFixture.csproj'
 $breakpointSource = Join-Path $repoRoot 'tests/fixtures/BitnessFixture/Program.cs'
 $appProcess = $null
+$debugFixture = Join-Path $repoRoot 'tests/fixtures/DebugTestApp'
 
 function Fail([string]$message) {
     Write-Host "::error::packaged Windows verification: $message"
@@ -53,6 +56,17 @@ function Invoke-DevFlow([string]$action, [object[]]$Arguments = @()) {
     if (-not $response.success) { Fail "$action returned an unsuccessful envelope: $($response | ConvertTo-Json -Depth 6 -Compress)" }
     if ($null -eq $response.returnValue) { return $null }
     return ($response.returnValue | ConvertFrom-Json)
+}
+
+# Polls an action until the predicate accepts its result or the attempts run out; returns the last result either way.
+function Wait-DevFlow([string]$action, [object[]]$Arguments, [scriptblock]$Accept, [int]$Attempts = 30, [int]$DelaySeconds = 2) {
+    $result = $null
+    for ($i = 0; $i -lt $Attempts; $i++) {
+        $result = Invoke-DevFlow $action $Arguments
+        if (& $Accept $result) { return $result }
+        Start-Sleep -Seconds $DelaySeconds
+    }
+    return $result
 }
 
 function Get-PeMachine([string]$Path) {
@@ -104,6 +118,31 @@ try {
     $built = Invoke-DevFlow 'od.build-solution'
     if (-not $built.success -or $built.result -ne 'Success' -or $built.errorCount -ne 0) { Fail "the solution fixture did not build cleanly: $($built | ConvertTo-Json -Compress)" }
 
+    Write-Host '==> Checking the packaged Roslyn child host and project workspace...'
+    $csharpSource = Join-Path $repoRoot 'tests/fixtures/SolutionExplorerFixture/SampleApp/Program.cs'
+    if (-not (Invoke-DevFlow 'od.open-file' @($csharpSource)).opened) { Fail 'the C# fixture source did not open' }
+    $roslyn = Wait-DevFlow 'od.language-workspace.status' @($csharpSource) { param($r) $r.supported -and $r.tracked -and $r.metadataReferenceCount -gt 0 }
+    if (-not ($roslyn.supported -and $roslyn.tracked -and $roslyn.metadataReferenceCount -gt 0)) { Fail "the Roslyn child host did not provide a project workspace: $($roslyn | ConvertTo-Json -Compress)" }
+    $legacy = Invoke-DevFlow 'od.roslyn-legacy-workspace.status'
+    if (-not $legacy.remoteHostMode -or $legacy.workspaceCreated) { Fail 'Roslyn fell back to the deprecated in-process workspace' }
+
+    Write-Host '==> Checking terminal shell, output, and both split directions...'
+    $terminal = Invoke-DevFlow 'od.terminal.new' @($env:ComSpec)
+    if (-not $terminal.success -or $terminal.pid -le 0) { Fail 'the terminal shell did not start' }
+    # cmd expands %OS% itself: the echoed command line contains "terminal-%OS%", only the output contains
+    # "terminal-Windows_NT", so the check cannot pass on the typed input alone.
+    if (-not (Invoke-DevFlow 'od.terminal.send' @("echo terminal-%OS%`r")).success) { Fail 'terminal input failed' }
+    $terminalText = Wait-DevFlow 'od.terminal.text' @() { param($r) $r.text -like '*terminal-Windows_NT*' } -Attempts 25 -DelaySeconds 1
+    if ($terminalText.text -notlike '*terminal-Windows_NT*') { Fail 'the terminal did not render shell output' }
+    if (-not (Invoke-DevFlow 'od.terminal.split').success) { Fail 'the horizontal terminal split failed' }
+    if (-not (Invoke-DevFlow 'od.terminal.split-vertical').success) { Fail 'the vertical terminal split failed' }
+    if (@((Invoke-DevFlow 'od.terminal.list').sessions).Count -lt 3) { Fail 'the terminal splits did not create three sessions' }
+
+    Write-Host '==> Checking the hosted ILSpy add-in...'
+    if (-not (Invoke-DevFlow 'od.ilspy.open-assembly' @((Join-Path $payload 'OpenDevelop.dll'))).opened) { Fail 'ILSpy could not open the packaged assembly' }
+    $ilspy = Invoke-DevFlow 'od.ilspy.status'
+    if (@($ilspy.loadedAssemblies) -notcontains 'OpenDevelop' -or @($ilspy.panes).Count -lt 3) { Fail "ILSpy panes or decompiler dependencies are unavailable: $($ilspy | ConvertTo-Json -Compress)" }
+
     Write-Host '==> Checking the packaged WPF designer child host...'
     $wpfSolution = Join-Path $repoRoot 'tests/fixtures/WpfHotReloadFixture/WpfHotReloadFixture.slnx'
     $wpfXaml = Join-Path $repoRoot 'externals/vscode-wpf/sample/net6.0/MainWindow.xaml'
@@ -111,6 +150,15 @@ try {
     $null = Invoke-DevFlow 'od.open-solution' @($wpfSolution)
     $openedXaml = Invoke-DevFlow 'od.open-file' @($wpfXaml)
     if (-not $openedXaml.opened) { Fail 'the WPF fixture XAML did not open' }
+    $xamlServer = Invoke-DevFlow 'od.xaml.language-server' @($wpfXaml)
+    $expectedWorkspace = [System.IO.Path]::GetFullPath((Split-Path $wpfSolution -Parent)).TrimEnd('\', '/')
+    $actualWorkspace = if ($xamlServer.workspace) { [System.IO.Path]::GetFullPath([string]$xamlServer.workspace).TrimEnd('\', '/') } else { '' }
+    if (-not $xamlServer.success -or $xamlServer.key -ne 'LibreWpf' -or $xamlServer.server -ne 'librewpf-xaml-ls.dll' -or $actualWorkspace -ne $expectedWorkspace) {
+        Fail "the XAML file was not routed to the packaged LibreWPF language server: $($xamlServer | ConvertTo-Json -Compress)"
+    }
+    $outlineAccepted = { param($r) $r.active -and $r.rootChildCount -gt 0 -and @($r.outlineNames | Where-Object { $_ -like 'Button [[]PrimaryButton]*' }).Count -gt 0 }
+    $outline = Wait-DevFlow 'od.xaml-outline.status' @() $outlineAccepted
+    if (-not (& $outlineAccepted $outline)) { Fail "the LibreWPF XAML language server did not return the fixture outline: $($outline | ConvertTo-Json -Compress)" }
     $null = Invoke-DevFlow 'od.wpf-designer.activate-design'
     $designerStatus = $null
     for ($i = 0; $i -lt 30; $i++) {
@@ -139,11 +187,42 @@ try {
         Write-Host "    shared closure: designer host started with --additionalprobingpath '$sharedManaged'"
     }
 
+    # The per-RID debugger shim is what the payload keeps `runtimes/<rid>` trees for: a pruned one used to surface only when a
+    # user debugged an x86 or ARM64 application, so check it for every target without needing that architecture's runtime.
+    foreach ($rid in $Targets) {
+        $shim = Join-Path $payload "AddIns/Debugger/runtimes/$rid/native/dbgshim.dll"
+        if (-not (Test-Path -LiteralPath $shim)) { Fail "the payload has no $rid debugger shim: $shim" }
+    }
+
+    Write-Host '==> Checking debugger launch and breakpoint stop...'
+    if (-not (Test-Path -LiteralPath (Join-Path $payload 'AddIns/Debugger/SharpDbg.Cli.dll'))) { Fail 'the debugger add-in is missing SharpDbg.Cli.dll' }
+    $debugSource = Join-Path $debugFixture 'Program.cs'
+    $debugProject = Join-Path $debugFixture 'DebugTestApp.csproj'
+    $debugAppLine = (Select-String -LiteralPath $debugSource -Pattern 'var message = ComputeGreeting\("World"\);').LineNumber
+    if (-not $debugAppLine) { Fail 'the debug fixture breakpoint source line was not found' }
+    # The check starts the fixture binary, not the project, so a checkout that never built the test tree has nothing to run.
+    if (-not (Test-Path -LiteralPath (Join-Path $debugFixture 'bin/Debug/net10.0/DebugTestApp.dll'))) {
+        & dotnet build $debugProject -c Debug -v q --nologo
+        if ($LASTEXITCODE -ne 0) { Fail 'the debug fixture did not build' }
+    }
+    if (-not (Invoke-DevFlow 'od.open-solution' @((Join-Path $debugFixture 'DebugTestApp.slnx'))).success) { Fail 'the debug fixture solution did not open' }
+    $null = Invoke-DevFlow 'od.debug.clear-breakpoints'
+    $debugBreakpoint = Invoke-DevFlow 'od.debug.set-breakpoint' @($debugSource, $debugAppLine)
+    if (-not $debugBreakpoint.success -or ($debugBreakpoint.lines -notcontains $debugAppLine)) { Fail 'the debug breakpoint was not set' }
+    $debugStarted = $null
+    try { $debugStarted = Invoke-DevFlow 'od.debug.start' @($debugProject, $true, 60) } catch { Write-Host "    debug start failed: $($_.Exception.Message)" }
+    $debugOutput = $null
+    try { $debugOutput = Invoke-DevFlow 'od.debug.output' } catch { }
+    $null = try { Invoke-DevFlow 'od.debug.stop' } catch { }
+    if (-not ($debugStarted.started -and $debugStarted.stopped -and $debugStarted.currentLine -eq $debugAppLine)) {
+        Fail "the debugger did not stop at the fixture breakpoint: $($debugStarted | ConvertTo-Json -Compress); output: $($debugOutput | ConvertTo-Json -Compress)"
+    }
+
     $debugLine = (Select-String -LiteralPath $breakpointSource -Pattern 'var message = ComputeGreeting\("World"\);').LineNumber
     if (-not $debugLine) { Fail 'the bitness fixture breakpoint line was not found' }
 
     if ($SkipDebugJourneys) {
-        Write-Host '==> Skipping the debugger journeys (being rebuilt around an apphost).'
+        Write-Host '==> Skipping the per-RID bitness journeys (being rebuilt around an apphost).'
         Write-Host 'Packaged Windows verification passed.'
         return
     }

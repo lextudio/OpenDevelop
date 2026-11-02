@@ -6,8 +6,8 @@
 # only proves that the application starts and paints its first workbench frame, so everything a
 # payload can get wrong after that - a pruned `runtimes/` tree, a missing deps.json entry, a native
 # library the child hosts need, the XAML/Roslyn/terminal/ILSpy add-ins inside the bundle - reached
-# Linux users unverified. This runs the same journeys the macOS bundle check runs, against the
-# payload directory `dist.linux.sh` produced.
+# Linux users unverified. This runs the same journeys the macOS bundle check runs (they share
+# build/verify-packaged-common.sh), against the payload directory `dist.linux.sh` produced.
 #
 # Usage (the release job wraps it in xvfb-run, which is what provides DISPLAY):
 #   xvfb-run -a build/linux/verify-application-payload.sh OpenDevelop-linux-x64
@@ -82,33 +82,10 @@ command -v dotnet >/dev/null || fail 'dotnet (the host the payload runs on) is r
 
 base_url="http://127.0.0.1:$port"
 
-claim_lease() {
-  local lease
-  if ! lease=$(curl --fail --silent --show-error --max-time 10 \
-      -X POST "$base_url/api/v1/agent/lease" \
-      -H 'Content-Type: application/json' \
-      --data "$(jq -nc --arg id "$lease_id" '{action:"claim", leaseId:$id, holderKind:"release-payload-check", label:"Linux release payload verification", force:true}')"); then
-    fail 'could not claim a DevFlow lease (the application may have exited)'
-  fi
-  jq -e '.allowed == true' <<<"$lease" >/dev/null || fail "the DevFlow agent refused the lease: $lease"
-}
-
-# Prints the parsed inner JSON returned by a DevFlow action. Claim immediately before every request
-# because the agent deliberately uses a short mutation lease.
-invoke() {
-  local action=$1
-  shift
-  local payload_args response
-  payload_args=$(jq -nc '$ARGS.positional' --args "$@")
-  claim_lease
-  response=$(curl --fail --silent --show-error --max-time 120 \
-    -X POST "$base_url/api/v1/invoke/actions/$action" \
-    -H 'Content-Type: application/json' \
-    -H "X-DevFlow-Lease: $lease_id" \
-    --data "$(jq -nc --argjson args "$payload_args" '{args:$args}')") || fail "$action request failed"
-  jq -e '.success == true' <<<"$response" >/dev/null || fail "$action returned an unsuccessful envelope: $response"
-  jq -er '.returnValue | fromjson' <<<"$response"
-}
+verify_label='Linux release payload verification'
+agent_exited() { ! kill -0 "$app_pid" 2>/dev/null; }
+# shellcheck source=../verify-packaged-common.sh
+source "$repo_root/build/verify-packaged-common.sh"
 
 echo '==> Starting the packaged OpenDevelop payload with DevFlow enabled...'
 app_log="$config_dir/OpenDevelop.stdio.log"
@@ -117,115 +94,13 @@ DEVFLOW_ENABLE=1 DEVFLOW_AGENT_PORT="$port" \
   >"$app_log" 2>&1 &
 app_pid=$!
 
-agent_started=0
-for _ in $(seq 1 60); do
-  if status=$(curl --silent --show-error --fail --max-time 2 "$base_url/api/v1/agent/status" 2>/dev/null) \
-    && jq -e '.running == true' <<<"$status" >/dev/null; then
-    agent_started=1
-    break
-  fi
-  kill -0 "$app_pid" 2>/dev/null || fail 'the payload exited before its DevFlow agent answered'
-  sleep 2
-done
-[[ "$agent_started" == 1 ]] || fail 'DevFlow agent did not start'
+wait_for_agent 60
 
-# The agent listens before the docking workbench has finished constructing.
-invoke od.active-view >/dev/null
-sleep 2
-invoke od.active-view >/dev/null
-
-echo '==> Checking solution loading, Roslyn and build...'
-solution="$repo_root/tests/fixtures/SolutionExplorerFixture/SolutionExplorerFixture.slnx"
-invoke od.open-solution "$solution" | jq -e --arg solution "$solution" '.success == true and .currentSolution == $solution' >/dev/null \
-  || fail 'solution fixture did not open'
-invoke od.build-solution | jq -e '.success == true and .result == "Success" and .errorCount == 0' >/dev/null \
-  || fail 'solution fixture did not build cleanly'
-
-echo '==> Checking the packaged Roslyn child host and project workspace...'
-csharp_source="$repo_root/tests/fixtures/SolutionExplorerFixture/SampleApp/Program.cs"
-invoke od.open-file "$csharp_source" | jq -e '.opened == true' >/dev/null || fail 'C# fixture source did not open'
-roslyn_status=''
-for _ in $(seq 1 30); do
-  roslyn_status=$(invoke od.language-workspace.status "$csharp_source")
-  jq -e '.supported == true and .tracked == true and .metadataReferenceCount > 0' <<<"$roslyn_status" >/dev/null && break
-  sleep 2
-done
-jq -e '.supported == true and .tracked == true and .metadataReferenceCount > 0' <<<"$roslyn_status" >/dev/null \
-  || fail "Roslyn child host did not provide a project workspace: $roslyn_status"
-invoke od.roslyn-legacy-workspace.status | jq -e '.remoteHostMode == true and .workspaceCreated == false' >/dev/null \
-  || fail 'Roslyn fell back to the deprecated in-process workspace'
-
-echo '==> Checking terminal shell, output, and both split directions...'
-terminal=$(invoke od.terminal.new /bin/sh)
-jq -e '.success == true and .pid > 0' <<<"$terminal" >/dev/null || fail 'terminal shell did not start'
-invoke od.terminal.send $'printf \'linux-payload-ok\\n\'\r' | jq -e '.success == true' >/dev/null || fail 'terminal input failed'
-terminal_text=''
-for _ in $(seq 1 25); do
-  terminal_text=$(invoke od.terminal.text)
-  jq -e '.text | contains("linux-payload-ok")' <<<"$terminal_text" >/dev/null && break
-  sleep 1
-done
-jq -e '.text | contains("linux-payload-ok")' <<<"$terminal_text" >/dev/null || fail 'terminal did not render shell output'
-invoke od.terminal.split | jq -e '.success == true' >/dev/null || fail 'horizontal terminal split failed'
-invoke od.terminal.split-vertical | jq -e '.success == true' >/dev/null || fail 'vertical terminal split failed'
-invoke od.terminal.list | jq -e '.sessions | length >= 3' >/dev/null || fail 'terminal splits did not create three sessions'
-
-echo '==> Checking the hosted ILSpy add-in...'
-invoke od.ilspy.open-assembly "$payload/OpenDevelop.dll" | jq -e '.opened == true' >/dev/null \
-  || fail 'ILSpy could not open the packaged assembly'
-invoke od.ilspy.status | jq -e '([.loadedAssemblies[]] | index("OpenDevelop")) != null and (.panes | length >= 3)' >/dev/null \
-  || fail 'ILSpy panes or decompiler dependencies are unavailable'
-
-echo '==> Checking the LibreWPF designer child host and its rendered frame...'
-wpf_solution="$repo_root/tests/fixtures/WpfHotReloadFixture/WpfHotReloadFixture.slnx"
-wpf_xaml="$repo_root/externals/vscode-wpf/sample/net6.0/MainWindow.xaml"
-[[ -f "$wpf_xaml" ]] || fail "linked WPF fixture source is missing: $wpf_xaml"
-invoke od.open-solution "$wpf_solution" | jq -e '.success == true' >/dev/null || fail 'WPF fixture solution did not open'
-invoke od.open-file "$wpf_xaml" | jq -e '.opened == true' >/dev/null || fail 'WPF fixture XAML did not open'
-invoke od.xaml.language-server "$wpf_xaml" | jq -e --arg workspace "$(dirname "$wpf_solution")" \
-  '.success == true and .key == "LibreWpf" and .server == "librewpf-xaml-ls.dll" and .workspace == $workspace' >/dev/null \
-  || fail 'XAML file was not routed to the packaged LibreWPF language server'
-xaml_outline=''
-for _ in $(seq 1 30); do
-  xaml_outline=$(invoke od.xaml-outline.status)
-  jq -e '.active == true and .rootChildCount > 0 and any(.outlineNames[]; startswith("Button [PrimaryButton]"))' <<<"$xaml_outline" >/dev/null && break
-  sleep 2
-done
-jq -e '.active == true and .rootChildCount > 0 and any(.outlineNames[]; startswith("Button [PrimaryButton]"))' <<<"$xaml_outline" >/dev/null \
-  || fail "LibreWPF XAML language server did not return the fixture outline: $xaml_outline"
-invoke od.wpf-designer.activate-design | jq -e '.success == true' >/dev/null || fail 'WPF design view did not activate'
-wpf_status=''
-for _ in $(seq 1 30); do
-  wpf_status=$(invoke od.wpf-designer.status)
-  jq -e '.backend == "LibreWPF" and .hostAlive == true and .designerLoaded == true and .hasRenderFrame == true and .rootItemType == "Window"' <<<"$wpf_status" >/dev/null && break
-  sleep 2
-done
-jq -e '.backend == "LibreWPF" and .hostAlive == true and .designerLoaded == true and .hasRenderFrame == true and .rootItemType == "Window"' <<<"$wpf_status" >/dev/null \
-  || fail "WPF designer did not load a rendered frame: $wpf_status"
-
-if [[ "${OD_VERIFY_REQUIRE_DEBUGGER:-0}" == 1 ]]; then
-  echo '==> Checking debugger launch and breakpoint stop...'
-  [[ -f "$payload/AddIns/Debugger/SharpDbg.Cli.dll" ]] || fail 'debugger add-in is missing SharpDbg.Cli.dll'
-  debug_solution="$repo_root/tests/fixtures/DebugTestApp/DebugTestApp.slnx"
-  debug_project="$repo_root/tests/fixtures/DebugTestApp/DebugTestApp.csproj"
-  debug_source="$repo_root/tests/fixtures/DebugTestApp/Program.cs"
-  debug_line=$(awk '/var message = ComputeGreeting\("World"\);/ { print NR; exit }' "$debug_source")
-  [[ -n "$debug_line" ]] || fail 'debug fixture breakpoint source line was not found'
-  if [[ ! -x "$repo_root/tests/fixtures/DebugTestApp/bin/Debug/net10.0/DebugTestApp" ]]; then
-    echo '==> Building the debug fixture the check launches...'
-    dotnet build "$debug_project" -c Debug -v q -nologo || fail 'the debug fixture did not build'
-  fi
-  debug_binary="$repo_root/tests/fixtures/DebugTestApp/bin/Debug/net10.0/DebugTestApp"
-  invoke od.open-solution "$debug_solution" | jq -e '.success == true' >/dev/null || fail 'debug fixture solution did not open'
-  invoke od.debug.clear-breakpoints >/dev/null || fail 'could not clear breakpoints'
-  invoke od.debug.set-breakpoint "$debug_source" "$debug_line" | jq -e --argjson line "$debug_line" '.success == true and (.lines | index($line)) != null' >/dev/null \
-    || fail 'the debugger breakpoint was not set'
-  started=$(invoke od.debug.start "$debug_project" true 60) || fail 'the debugger did not start'
-  jq -e --argjson line "$debug_line" '.started == true and .stopped == true and .currentLine == $line' <<<"$started" >/dev/null \
-    || fail "the debugger did not stop at the fixture breakpoint: $started"
-  invoke od.debug.stop >/dev/null || true
-else
-  echo '==> Skipping the debugger journey (set OD_VERIFY_REQUIRE_DEBUGGER=1 to enforce it).'
-fi
+verify_solution_build
+verify_roslyn
+verify_terminal
+verify_ilspy "$payload/OpenDevelop.dll"
+verify_wpf_designer
+verify_debugger "$payload/AddIns/Debugger" "${OD_VERIFY_REQUIRE_DEBUGGER:-0}"
 
 echo 'Packaged Linux payload verification passed.'

@@ -55,6 +55,8 @@ tests/fixtures/CoverageFixture/CoverageTests/CodeCoverage/coverage.xml
 !/build/common.psm1
 # regenerates build/macos/opendevelop.icns and build/windows/opendevelop.ico from images/opendevelop.png
 !/build/make-branding-assets.sh
+# journeys shared by the macOS and Linux packaged-app checks
+!/build/verify-packaged-common.sh
 tests/fixtures/SampleTestProject/CodeCoverage/
 /tests/OpenDevelop.IntegrationTests/TestResults/
 /OpenDevelop-win*/

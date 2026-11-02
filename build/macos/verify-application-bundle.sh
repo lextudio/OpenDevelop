@@ -113,36 +113,9 @@ command -v jq >/dev/null || fail 'jq is required'
 
 base_url="http://127.0.0.1:$port"
 
-claim_lease() {
-  local lease
-  # A lease request that cannot reach the agent is the first sign the application is gone; route it
-  # through fail() so that becomes a dump of the process/log rather than a bare curl exit code.
-  if ! lease=$(curl --fail --silent --show-error --max-time 10 \
-      -X POST "$base_url/api/v1/agent/lease" \
-      -H 'Content-Type: application/json' \
-      --data "$(jq -nc --arg id "$lease_id" '{action:"claim", leaseId:$id, holderKind:"release-bundle-check", label:"macOS release bundle verification", force:true}')"); then
-    fail 'could not claim a DevFlow lease (the application may have exited)'
-  fi
-  jq -e '.allowed == true' <<<"$lease" >/dev/null || fail "the DevFlow agent refused the lease: $lease"
-}
-
-# Prints the parsed inner JSON returned by a DevFlow action.  Claim immediately
-# before every request because the agent deliberately uses a short mutation
-# lease, which prevents a slow earlier check from invalidating the next one.
-invoke() {
-  local action=$1
-  shift
-  local payload response
-  payload=$(jq -nc '$ARGS.positional' --args "$@")
-  claim_lease
-  response=$(curl --fail --silent --show-error --max-time 90 \
-    -X POST "$base_url/api/v1/invoke/actions/$action" \
-    -H 'Content-Type: application/json' \
-    -H "X-DevFlow-Lease: $lease_id" \
-    --data "$(jq -nc --argjson args "$payload" '{args:$args}')") || fail "$action request failed"
-  jq -e '.success == true' <<<"$response" >/dev/null || fail "$action returned an unsuccessful envelope: $response"
-  jq -er '.returnValue | fromjson' <<<"$response"
-}
+verify_label='macOS release bundle verification'
+# shellcheck source=../verify-packaged-common.sh
+source "$repo_root/build/verify-packaged-common.sh"
 
 echo '==> Starting the packaged OpenDevelop app with DevFlow enabled...'
 # A CLR fatal error (unhandled exception outside our handlers, FailFast, stack overflow) writes a
@@ -154,125 +127,22 @@ touch "$launch_marker"
 DEVFLOW_ENABLE=1 DEVFLOW_AGENT_PORT="$port" \
   DOTNET_DbgEnableMiniDump=1 DOTNET_DbgMiniDumpType=4 DOTNET_DbgMiniDumpName="$crash_dump_pattern" \
   open -n "$app_path" --args "-devflow:$port" "-configdir:$config_dir"
-agent_started=0
-for _ in $(seq 1 45); do
-  if status=$(curl --silent --show-error --fail --max-time 2 "$base_url/api/v1/agent/status" 2>/dev/null) \
-    && jq -e '.running == true' <<<"$status" >/dev/null; then
-    agent_started=1
-    break
-  fi
-  sleep 2
-done
-[[ "$agent_started" == 1 ]] || fail 'DevFlow agent did not start'
+wait_for_agent 45
 app_pid=$(pgrep -nf "${app_path}/Contents/MacOS/OpenDevelop.*-devflow:$port" || true)
 [[ -n "$app_pid" ]] || fail 'could not identify the launched app process'
 
-# The agent listens before the docking workbench has finished constructing.
-# Require two successful workbench-backed reads before driving add-ins.
-invoke od.active-view >/dev/null
-sleep 2
-invoke od.active-view >/dev/null
+verify_solution_build
+verify_roslyn
+verify_terminal
+verify_ilspy "$app_path/Contents/MacOS/OpenDevelop.dll"
+verify_wpf_designer
 
-echo '==> Checking solution loading, Roslyn and build...'
-solution="$repo_root/tests/fixtures/SolutionExplorerFixture/SolutionExplorerFixture.slnx"
-invoke od.open-solution "$solution" | jq -e --arg solution "$solution" '.success == true and .currentSolution == $solution' >/dev/null \
-  || fail 'solution fixture did not open'
-invoke od.build-solution | jq -e '.success == true and .result == "Success" and .errorCount == 0' >/dev/null \
-  || fail 'solution fixture did not build cleanly'
-
-echo '==> Checking the packaged Roslyn child host and project workspace...'
-csharp_source="$repo_root/tests/fixtures/SolutionExplorerFixture/SampleApp/Program.cs"
-invoke od.open-file "$csharp_source" | jq -e '.opened == true' >/dev/null || fail 'C# fixture source did not open'
-for _ in $(seq 1 30); do
-  roslyn_status=$(invoke od.language-workspace.status "$csharp_source")
-  jq -e '.supported == true and .tracked == true and .metadataReferenceCount > 0' <<<"$roslyn_status" >/dev/null && break
-  sleep 2
-done
-jq -e '.supported == true and .tracked == true and .metadataReferenceCount > 0' <<<"$roslyn_status" >/dev/null \
-  || fail "Roslyn child host did not provide a project workspace: $roslyn_status"
-invoke od.roslyn-legacy-workspace.status | jq -e '.remoteHostMode == true and .workspaceCreated == false' >/dev/null \
-  || fail 'Roslyn fell back to the deprecated in-process workspace'
-
-echo '==> Checking terminal shell, output, and both split directions...'
-terminal=$(invoke od.terminal.new /bin/sh)
-printf '%s' "$terminal" | jq -e '.success == true and .pid > 0' >/dev/null || fail 'terminal shell did not start'
-invoke od.terminal.send $'printf \'bundle-terminal-ok\\n\'\r' | jq -e '.success == true' >/dev/null || fail 'terminal input failed'
-for _ in $(seq 1 25); do
-  terminal_text=$(invoke od.terminal.text)
-  jq -e '.text | contains("bundle-terminal-ok")' <<<"$terminal_text" >/dev/null && break
-  sleep 1
-done
-jq -e '.text | contains("bundle-terminal-ok")' <<<"$terminal_text" >/dev/null || fail 'terminal did not render shell output'
-invoke od.terminal.split | jq -e '.success == true' >/dev/null || fail 'horizontal terminal split failed'
-invoke od.terminal.split-vertical | jq -e '.success == true' >/dev/null || fail 'vertical terminal split failed'
-invoke od.terminal.list | jq -e '.sessions | length >= 3' >/dev/null || fail 'terminal splits did not create three sessions'
-
-echo '==> Checking the hosted ILSpy add-in...'
-invoke od.ilspy.open-assembly "$app_path/Contents/MacOS/OpenDevelop.dll" | jq -e '.opened == true' >/dev/null \
-  || fail 'ILSpy could not open the packaged assembly'
-invoke od.ilspy.status | jq -e '([.loadedAssemblies[]] | index("OpenDevelop")) != null and (.panes | length >= 3)' >/dev/null \
-  || fail 'ILSpy panes or decompiler dependencies are unavailable'
-
-echo '==> Checking the LibreWPF designer child host and its rendered frame...'
-wpf_solution="$repo_root/tests/fixtures/WpfHotReloadFixture/WpfHotReloadFixture.slnx"
-wpf_xaml="$repo_root/externals/vscode-wpf/sample/net6.0/MainWindow.xaml"
-[[ -f "$wpf_xaml" ]] || fail "linked WPF fixture source is missing: $wpf_xaml"
-invoke od.open-solution "$wpf_solution" | jq -e '.success == true' >/dev/null || fail 'WPF fixture solution did not open'
-invoke od.open-file "$wpf_xaml" | jq -e '.opened == true' >/dev/null || fail 'WPF fixture XAML did not open'
-invoke od.xaml.language-server "$wpf_xaml" | jq -e --arg workspace "$(dirname "$wpf_solution")" \
-  '.success == true and .key == "LibreWpf" and .server == "librewpf-xaml-ls.dll" and .workspace == $workspace' >/dev/null \
-  || fail 'XAML file was not routed to the packaged LibreWPF language server'
-for _ in $(seq 1 30); do
-  xaml_outline=$(invoke od.xaml-outline.status)
-  jq -e '.active == true and .rootChildCount > 0 and any(.outlineNames[]; startswith("Button [PrimaryButton]"))' <<<"$xaml_outline" >/dev/null && break
-  sleep 2
-done
-jq -e '.active == true and .rootChildCount > 0 and any(.outlineNames[]; startswith("Button [PrimaryButton]"))' <<<"$xaml_outline" >/dev/null \
-  || fail "LibreWPF XAML language server did not return the fixture outline: $xaml_outline"
-invoke od.wpf-designer.activate-design | jq -e '.success == true' >/dev/null || fail 'WPF design view did not activate'
-for _ in $(seq 1 30); do
-  wpf_status=$(invoke od.wpf-designer.status)
-  jq -e '.backend == "LibreWPF" and .hostAlive == true and .designerLoaded == true and .hasRenderFrame == true and .rootItemType == "Window"' <<<"$wpf_status" >/dev/null && break
-  sleep 2
-done
-jq -e '.backend == "LibreWPF" and .hostAlive == true and .designerLoaded == true and .hasRenderFrame == true and .rootItemType == "Window"' <<<"$wpf_status" >/dev/null \
-  || fail "WPF designer did not load a rendered frame: $wpf_status"
-
-echo '==> Checking debugger launch and breakpoint stop...'
-debugger_addin="$app_path/Contents/MacOS/AddIns/Debugger"
-[[ -f "$debugger_addin/SharpDbg.Cli.dll" ]] || fail 'debugger add-in is missing SharpDbg.Cli.dll'
+# macOS 27 presently regresses CoreCLR's debugger-startup semaphore handshake, so a developer on that host only gets the
+# packaged-adapter check; the release workflow forces the live journey on its macOS 15 runner.
+# https://github.com/dotnet/runtime/issues/116545
 darwin_major=$(uname -r | cut -d. -f1)
-if [[ "${OD_BUNDLE_VERIFY_REQUIRE_DEBUGGER:-0}" == 1 || "$darwin_major" -lt 27 ]]; then
-  debug_solution="$repo_root/tests/fixtures/DebugTestApp/DebugTestApp.slnx"
-  debug_project="$repo_root/tests/fixtures/DebugTestApp/DebugTestApp.csproj"
-  debug_source="$repo_root/tests/fixtures/DebugTestApp/Program.cs"
-  debug_line=$(awk '/var message = ComputeGreeting\("World"\);/ { print NR; exit }' "$debug_source")
-  [[ -n "$debug_line" ]] || fail 'debug fixture breakpoint source line was not found'
-  # The check starts the fixture binary, not the project, so a release checkout that never built
-  # the test tree has nothing to run ("DebugTestApp does not exist and cannot be started").
-  if [[ ! -x "$repo_root/tests/fixtures/DebugTestApp/bin/Debug/net10.0/DebugTestApp" ]]; then
-    echo '==> Building the debug fixture the check launches...'
-    dotnet build "$debug_project" -c Debug -v q -nologo || fail 'the debug fixture did not build'
-  fi
-  invoke od.open-solution "$debug_solution" | jq -e '.success == true' >/dev/null || fail 'debug fixture solution did not open'
-  invoke od.debug.clear-breakpoints >/dev/null
-  invoke od.debug.set-breakpoint "$debug_source" "$debug_line" | jq -e --argjson line "$debug_line" '.success == true and (.lines | index($line)) != null' >/dev/null \
-    || fail 'debug breakpoint was not set'
-  debug_started=0
-  if debug_start=$(invoke od.debug.start "$debug_project" true 45); then
-    if jq -e --argjson line "$debug_line" '.started == true and .stopped == true and .currentLine == $line' <<<"$debug_start" >/dev/null; then
-      debug_started=1
-    fi
-  fi
-  debug_output=$(invoke od.debug.output || true)
-  invoke od.debug.stop >/dev/null || true
-  [[ "$debug_started" == 1 ]] || fail "debugger did not stop at the fixture breakpoint: ${debug_start:-no result}; output: ${debug_output:-unavailable}"
-else
-  # macOS 27 presently regresses CoreCLR's debugger-startup semaphore handshake. The
-  # release workflow forces this branch on its macOS 15 runner; developers on the
-  # affected host still verify that the packaged adapter and every other path load.
-  # https://github.com/dotnet/runtime/issues/116545
-  echo "::warning::Skipping live debugger assertion on Darwin $darwin_major; set OD_BUNDLE_VERIFY_REQUIRE_DEBUGGER=1 to enforce it."
-fi
+require_debugger=${OD_VERIFY_REQUIRE_DEBUGGER:-${OD_BUNDLE_VERIFY_REQUIRE_DEBUGGER:-0}}
+if [[ "$darwin_major" -lt 27 ]]; then require_debugger=1; fi
+verify_debugger "$app_path/Contents/MacOS/AddIns/Debugger" "$require_debugger"
 
 echo 'Packaged macOS feature verification passed.'
