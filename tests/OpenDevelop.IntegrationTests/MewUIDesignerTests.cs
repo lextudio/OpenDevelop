@@ -357,8 +357,9 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.True((await app.InvokeAsync("od.mewui-designer.select", "statusText")).GetProperty("success").GetBoolean());
 		var docked = await app.InvokeAsync("od.mewui-designer.set-property", "DockPanel.Dock", "Top");
 		Assert.True(docked.GetProperty("success").GetBoolean(), docked.ToString());
-		var mismatch = await Assert.ThrowsAsync<InvalidOperationException>(() => app.InvokeAsync("od.mewui-designer.set-property", "Grid.Bogus", "1"));
-		Assert.Contains("MewUI property mutation was rejected", mismatch.Message, StringComparison.Ordinal);
+		var mismatch = await app.InvokeAsync("od.mewui-designer.set-property", "Grid.Bogus", "1");   // a refusal is a normal result: success=false, the reason under the canvas
+		Assert.False(mismatch.GetProperty("success").GetBoolean(), mismatch.ToString());
+		Assert.Contains("MewUI property mutation was rejected", (await app.InvokeAsync("od.mewui-designer.status")).GetProperty("diagnosticText").GetString(), StringComparison.Ordinal);
 		var bogus = await app.InvokeAsync("od.mewui-designer.set-property", "DockPanel.Bogus", "1");
 		Assert.True(bogus.GetProperty("success").GetBoolean(), bogus.ToString());
 		status = await app.InvokeAsync("od.mewui-designer.status");

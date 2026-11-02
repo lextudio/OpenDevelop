@@ -591,8 +591,7 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.False(dropped.GetProperty("success").GetBoolean(), dropped.ToString());
 
 		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "frame")).GetProperty("success").GetBoolean());
-		var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkButton"));
-		Assert.True(refused.Message.Contains("A GtkFrame holds a single child."), refused.Message);
+		await AssertRefusedWithReasonAsync("A GtkFrame holds a single child.", "od.gtk-designer.toolbox.insert", "GtkButton");   // a refusal is a normal result: success=false, the reason under the canvas
 		status = await app.InvokeAsync("od.gtk-designer.status");
 		Assert.Equal(count, status.GetProperty("elementCount").GetInt32());
 		Assert.True((await app.InvokeAsync("od.file.save", framePath)).GetProperty("success").GetBoolean());
@@ -685,8 +684,7 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 
 		// An insertion addressed at the full paned is refused with its own reason.
 		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "paned")).GetProperty("success").GetBoolean());
-		var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkButton"));
-		Assert.True(refused.Message.Contains("A GtkPaned holds only a start and an end child."), refused.Message);
+		await AssertRefusedWithReasonAsync("A GtkPaned holds only a start and an end child.", "od.gtk-designer.toolbox.insert", "GtkButton");
 
 		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
 		var xml = System.Xml.Linq.XDocument.Parse((await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken)).Replace("\r", ""));
@@ -833,8 +831,7 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var column = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkColumnViewColumn");
 		Assert.True(column.GetProperty("success").GetBoolean(), column.ToString());
 		Assert.Equal("column2", column.GetProperty("selectedId").GetString());
-		var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkButton"));
-		Assert.Contains("holds columns", refused.Message);
+		await AssertRefusedWithReasonAsync("holds columns", "od.gtk-designer.toolbox.insert", "GtkButton");
 		Assert.True((await app.InvokeAsync("od.gtk-designer.delete")).GetProperty("success").GetBoolean());
 
 		// The cell template is editable as XML; invalid XML is refused and keeps the old template.
@@ -846,8 +843,9 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var updated = await app.InvokeAsync("od.gtk-designer.factory-template.set", template.Replace("GtkLabel", "GtkButton"));
 		Assert.True(updated.GetProperty("success").GetBoolean(), updated.ToString());
 		Assert.Contains("GtkButton", updated.GetProperty("template").GetString());
-		var invalid = await Assert.ThrowsAsync<InvalidOperationException>(() => app.InvokeAsync("od.gtk-designer.factory-template.set", "<not xml"));
-		Assert.Contains("not valid XML", invalid.Message);
+		// A refusal is a normal result now (the host returns the unchanged state, not accepted, with the reason): reported under
+		// the canvas like the other edits' refusals, not thrown out of the handler.
+		await AssertRefusedWithReasonAsync("not valid XML", "od.gtk-designer.factory-template.set", "<not xml");
 
 		// The starter model is a GtkSingleSelection (the view's property is a GtkSelectionModel) around the string list; the
 		// selection model can be changed (the "Extra" item added above went through the wrapper), and undo restores it.
@@ -1897,8 +1895,7 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var middleY = bounds.GetProperty("y").GetDouble() + bounds.GetProperty("height").GetDouble() * 0.5;
 		var middlePlan = await app.InvokeAsync("od.gtk-designer.drop-plan", x, middleY);
 		Assert.Equal(2, middlePlan.GetProperty("index").GetInt32());
-		var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => app.InvokeAsync("od.gtk-designer.toolbox.drop-at", "GtkLabel", x, middleY));
-		Assert.Contains("one content widget", refused.Message);
+		await AssertRefusedWithReasonAsync("one content widget", "od.gtk-designer.toolbox.drop-at", "GtkLabel", x, middleY);
 
 		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
 		var xml = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
@@ -2125,6 +2122,20 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.Contains("id=\"salutation\"", after);
 		Assert.Contains(">salutation<", after);
 		Assert.DoesNotContain("greeting", after);
+	}
+
+	/// <summary>Runs an edit the host must refuse and waits until its reason shows under the canvas. A refusal is a normal result
+	/// (success=false, the unchanged state, the reason); an earlier edit's queued render can still repaint the status line, so the
+	/// refusal - which changes nothing - is repeated until the reason is read.</summary>
+	async Task AssertRefusedWithReasonAsync(string reason, string action, params object[] args)
+	{
+		string? text = null;
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			var refused = await app.InvokeAsync(action, args);
+			Assert.False(refused.GetProperty("success").GetBoolean(), refused.ToString());
+			text = (await app.InvokeAsync("od.gtk-designer.status")).GetProperty("diagnosticText").GetString();
+			return text?.Contains(reason, StringComparison.Ordinal) == true;
+		}, TimeSpan.FromSeconds(15)), "the refusal reason '" + reason + "' was not shown under the canvas: " + text);
 	}
 
 	static (int Line, int Column) LineColumn(string text, int offset)

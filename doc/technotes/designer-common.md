@@ -324,19 +324,26 @@ their menus from the shared pieces and parse alignment/grid-unit commands with t
 style/template, Orientation/Dock and Edit Style entries. WinForms is not adopted: its context menus are
 CodeDom/designer-verb driven, not command strings. `DesignerStandardCommandsTests` pins the vocabulary once.
 
-Shared host edit plumbing (2026-11-01): `Designer.Server/SourceModelHost.cs` gives the source-model hosts (GTK, MewUI)
-the part of every `design/*` mutation that was copied per handler: `documents.Open(sessionId, documentId, baseVersion)`
-(session check, document lookup, "Stale version X; current is Y.") and `documents.Edit(..., apply, rejected, state, detail,
-edited)` (one editor operation; a refusal throws `rejected` plus the editor's own reason; an accepted edit bumps the version -
-MewUI's `Mutated` also tracks undo depth - and returns the state). Sessions implement `ISourceModelSession` (a `Version`).
-GTK converted 11 handlers and MewUI 7; handlers with their own logic (created ids, native render, hit test, multi-step edits)
-keep their bodies. The WPF and Uno hosts patch text instead of owning an editor model and are not adopted; WinForms is CodeDom.
+Shared host edit plumbing (2026-11-01): `Designer.Server/SourceModelHost.cs` gives the source-model hosts (GTK, MewUI) the part of
+every `design/*` mutation that was copied per handler: `documents.Open(sessionId, documentId, baseVersion)` (session check,
+document lookup, "Stale version X; current is Y.") and `documents.Edit(..., apply, rejected, state, detail, edited)` (one editor
+operation). **A refusal is a normal result, as in the WPF and Uno hosts**: the unchanged state comes back with `Accepted = false`,
+the reason (`rejected` plus the editor's own reason; or the stale-version text; or the message of an `InvalidOperationException`
+the operation threw while validating its input) in `Error` and the diagnostics, and the version unchanged. Only an unknown session
+or document - a protocol error - throws. An accepted edit bumps the version (MewUI's `Mutated` also tracks undo depth) and returns
+the state. Sessions implement `ISourceModelSession` (a `Version`). Every mutating GTK and MewUI handler now goes through `Edit`
+(set-property(-many), reset, add, delete, paste, wrap, unwrap, reorder, set-items/events, undo/redo, grid tracks, menu items, the
+list-model verbs); `design/theme` still throws for a bad theme name (a programming error, not a user edit). The GTK and MewUI views
+recognise a refusal (not accepted, same version as their last good state) in `Mutate`, show the reason under the canvas and keep
+the last good state, so users see what they saw when the refusal was thrown; DevFlow reports it as `success=false` instead of an
+exception (the integration tests assert that, polling for the reason because a queued render can repaint the status line).
 
 Where consolidation stops, and why (2026-11-01) - recorded so it is not re-litigated:
 
-- **WPF and Uno hosts do not use `SourceModelHost`.** Their mutations are dispatcher-bound, per-document services that *soft-reject*:
-  a stale version or a failed edit returns a state with `Accepted = false` (`RejectIfStale`, `NotFound`), not an exception. The shared
-  `Edit` throws, which is the GTK/MewUI wire behaviour; adopting it would change what WPF and Uno clients see on every refusal.
+- **WPF and Uno hosts do not use `SourceModelHost`, although all four hosts now refuse the same way** (a state with `Accepted = false`
+  and the reason - GTK and MewUI were changed to match). WPF and Uno mutations are dispatcher-bound, per-document services
+  (`RejectIfStale`, `NotFound`, no `DesignerDocumentRegistry`, no `ISourceModelSession`), so the registry-based `Edit` has nothing to
+  attach to; a refusal on any of the four looks the same to a client.
 - **WinForms does not use the shared context commands or `SourceModelHost`.** Its menus are designer-verb/CodeDom driven and its
   host owns a live design surface, not a source-model editor with a version. Its clients already use the shared document verbs
   where the shapes match (hit-test, add-element, set-bounds, delete-elements, set-property, rename, set-event, flush, close).

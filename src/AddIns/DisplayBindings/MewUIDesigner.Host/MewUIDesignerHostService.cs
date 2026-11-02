@@ -14,7 +14,7 @@ sealed class MewUIDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("initialize")] public HostHandshake Initialize(string token, int protocolVersion, string sessionId) { DesignerHostHandshakeValidator.Validate(expectedToken, token, protocolVersion); documents.Initialize(sessionId); this.sessionId = sessionId; return new HostHandshake { ProtocolVersion = DesignerProtocol.Version, Runtime = "MewUI MXAML model", ProcessId = Environment.ProcessId, SessionId = sessionId }; }
 	[JsonRpcMethod("session/open")] public DesignerSessionState Open(DesignerDocumentRequest request) => Load(request.Snapshot, create: true); [JsonRpcMethod("session/update")] public DesignerSessionState Update(DesignerDocumentRequest request) => Load(request.Snapshot, create: false);
 	DesignerSessionState Load(DesignerDocumentSnapshot snapshot, bool create) { EnsureSession(snapshot.SessionId); var session = create ? GetOrCreate(snapshot.DocumentId) : Get(snapshot.DocumentId); session.Version = snapshot.Version; var file = snapshot.Files.FirstOrDefault(f => f.Kind == "Designer") ?? snapshot.Files.FirstOrDefault(); session.FileName = file?.FileName ?? snapshot.DesignerFileName; session.Document.Reset(file?.Text ?? ""); session.UndoDepth = session.RedoDepth = 0; return State(session); }
-	[JsonRpcMethod("design/set-property")] public DesignerSessionState SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); var ok = propertyName == "$name" ? session.Document.Rename(elementId, value) : session.Document.SetProperty(elementId, propertyName, value); if (!ok) throw new InvalidOperationException("MewUI property mutation was rejected."); Mutated(session); return State(session); }
+	[JsonRpcMethod("design/set-property")] public DesignerSessionState SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value) => documents.Edit(sessionId, documentId, baseVersion, session => propertyName == "$name" ? session.Document.Rename(elementId, value) : session.Document.SetProperty(elementId, propertyName, value), "MewUI property mutation was rejected.", State, edited: Mutated);
 	/// <summary>Sets one property on several elements as one undo step (all-or-nothing).</summary>
 	[JsonRpcMethod("design/set-property-many")]
 	public DesignerSessionState SetPropertyMany(string sessionId, string documentId, long baseVersion, string[] elementIds, string propertyName, string value)
@@ -29,7 +29,13 @@ sealed class MewUIDesignerHostService : IDesignerChildService
 	}
 	[JsonRpcMethod("design/set-event")] public DesignerSessionState SetEvent(string sessionId, string documentId, long baseVersion, string elementId, string eventName, string handlerName) => documents.Edit(sessionId, documentId, baseVersion, session => session.Document.SetEvent(elementId, eventName, string.IsNullOrWhiteSpace(handlerName) ? null : handlerName), "MewUI event mutation was rejected.", State, edited: Mutated);
 	[JsonRpcMethod("design/add-element")] public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget) => documents.Edit(sessionId, documentId, baseVersion, session => session.Document.Add(parentId, string.IsNullOrEmpty(item.TypeName) ? item.Name : item.TypeName), "MewUI element insertion was rejected.", State, edited: Mutated);
-	[JsonRpcMethod("design/delete-elements")] public DesignerSessionState DeleteElements(string sessionId, string documentId, long baseVersion, string[] elementIds) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); foreach (var id in elementIds) if (!session.Document.Remove(id)) throw new InvalidOperationException("MewUI element deletion was rejected: " + id); Mutated(session); return State(session); }
+	[JsonRpcMethod("design/delete-elements")] public DesignerSessionState DeleteElements(string sessionId, string documentId, long baseVersion, string[] elementIds) {
+		string? failed = null;
+		return documents.Edit(sessionId, documentId, baseVersion, session => {
+			foreach (var id in elementIds) if (!session.Document.Remove(id)) { failed = id; return false; }
+			return true;
+		}, "MewUI element deletion was rejected:", State, _ => failed, Mutated);
+	}
 	/// <summary>The named elements as MXAML snippets (read-only; the same contract as the WPF and GTK hosts' copy).</summary>
 	[JsonRpcMethod("design/copy-elements")]
 	public DesignerCopyResult CopyElements(string sessionId, string documentId, long baseVersion, string[] elementIds)
@@ -44,43 +50,32 @@ sealed class MewUIDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("design/paste-elements")]
 	public DesignerSessionState PasteElements(string sessionId, string documentId, long baseVersion, string targetId, string[] snippets, string? afterId = null)
 	{
-		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
-		if (!session.Document.Paste(targetId, snippets ?? Array.Empty<string>(), out var created, afterId))
-			throw new InvalidOperationException("The clipboard is not pastable MewUI markup for this target.");
-		Mutated(session);
-		var state = State(session);
-		state.CreatedElementIds = created;
-		return state;
+		var created = new List<string>();
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Document.Paste(targetId, snippets ?? Array.Empty<string>(), out created, afterId),
+			"The clipboard is not pastable MewUI markup for this target.", session => { var state = State(session); state.CreatedElementIds = created; return state; }, edited: Mutated);
 	}
 	/// <summary>Wraps sibling elements in a new container (the WPF host's wrap contract); the wrapper is CreatedElementId.</summary>
 	[JsonRpcMethod("design/wrap-elements")]
 	public DesignerSessionState WrapElements(string sessionId, string documentId, long baseVersion, string[] elementIds, string containerType)
 	{
-		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
-		if (!session.Document.Wrap(elementIds ?? Array.Empty<string>(), containerType, out var created))
-			throw new InvalidOperationException("MewUI wrap was rejected: the elements must be non-root siblings, and a single-child container takes one.");
-		Mutated(session);
-		var state = State(session);
-		state.CreatedElementId = created;
-		return state;
+		string? created = null;
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Document.Wrap(elementIds ?? Array.Empty<string>(), containerType, out created),
+			"MewUI wrap was rejected: the elements must be non-root siblings, and a single-child container takes one.", session => { var state = State(session); state.CreatedElementId = created; return state; }, edited: Mutated);
 	}
 	/// <summary>Replaces a container with its children in place (the WPF host's unwrap contract).</summary>
 	[JsonRpcMethod("design/unwrap-element")]
 	public DesignerSessionState UnwrapElement(string sessionId, string documentId, long baseVersion, string elementId)
 	{
-		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
-		if (!session.Document.Unwrap(elementId))
-			throw new InvalidOperationException("MewUI unwrap was rejected: a non-root container with children is required, and a single-child host takes one.");
-		Mutated(session);
-		return State(session);
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Document.Unwrap(elementId),
+			"MewUI unwrap was rejected: a non-root container with children is required, and a single-child host takes one.", State, edited: Mutated);
 	}
 	/// <summary>Replaces a ComboBox/ListBox's &lt;Item&gt; strings from the shared list editor.</summary>
 	[JsonRpcMethod("design/set-items")] public DesignerSessionState SetItems(string sessionId, string documentId, long baseVersion, string elementId, DesignerCollectionItemEdit[] items) => documents.Edit(sessionId, documentId, baseVersion, session => session.Document.SetItems(elementId, (items ?? Array.Empty<DesignerCollectionItemEdit>()).Select(item => item.Text ?? "").ToList()), "MewUI items edit was rejected: a ComboBox or ListBox is required.", State, edited: Mutated);
 	[JsonRpcMethod("design/rename")] public DesignerSessionState Rename(string sessionId, string documentId, long baseVersion, string elementId, string newName) => SetProperty(sessionId, documentId, baseVersion, elementId, "$name", newName);
 	[JsonRpcMethod("design/reorder")] public DesignerSessionState Reorder(string sessionId, string documentId, long baseVersion, string elementId, int delta) => documents.Edit(sessionId, documentId, baseVersion, session => session.Document.Reorder(elementId, delta), "MewUI reorder was rejected.", State, edited: Mutated);
 	[JsonRpcMethod("design/set-bounds")] public DesignerSessionState SetBounds(string sessionId, string documentId, long baseVersion, string elementId, double x, double y, double width, double height) => documents.Edit(sessionId, documentId, baseVersion, session => session.Document.SetCanvasBounds(elementId, x, y, width, height), "MewUI bounds mutation was rejected: only direct Canvas children can be positioned or resized.", State, edited: Mutated);
-	[JsonRpcMethod("design/undo")] public DesignerSessionState Undo(string sessionId, string documentId, long baseVersion) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Document.Undo()) throw new InvalidOperationException("Nothing to undo."); session.UndoDepth--; session.RedoDepth++; session.Version++; return State(session); }
-	[JsonRpcMethod("design/redo")] public DesignerSessionState Redo(string sessionId, string documentId, long baseVersion) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Document.Redo()) throw new InvalidOperationException("Nothing to undo."); session.RedoDepth--; session.UndoDepth++; session.Version++; return State(session); }
+	[JsonRpcMethod("design/undo")] public DesignerSessionState Undo(string sessionId, string documentId, long baseVersion) => documents.Edit(sessionId, documentId, baseVersion, session => session.Document.Undo(), "Nothing to undo.", State, edited: session => { session.UndoDepth--; session.RedoDepth++; session.Version++; });
+	[JsonRpcMethod("design/redo")] public DesignerSessionState Redo(string sessionId, string documentId, long baseVersion) => documents.Edit(sessionId, documentId, baseVersion, session => session.Document.Redo(), "Nothing to redo.", State, edited: session => { session.RedoDepth--; session.UndoDepth++; session.Version++; });
 	[JsonRpcMethod("session/flush")] public DesignerEditSet Flush(string sessionId, string documentId, long baseVersion) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); return new DesignerEditSet { SessionId = this.sessionId, DocumentId = documentId, BaseVersion = session.Version, Files = { new DesignerSourceFileSnapshot { FileName = session.FileName, Kind = "Designer", Text = session.Document.ToXaml() } } }; }
 	[JsonRpcMethod("session/close")] public object Close(string sessionId, string documentId) { EnsureSession(sessionId); documents.Remove(sessionId, documentId, _ => { }); return new(); }
 	DesignerSessionState State(DocumentSession session) { var root = session.Document.Root; var state = new DesignerSessionState { SessionId = sessionId, DocumentId = session.DocumentId, Version = session.Version, Accepted = !session.Document.HasErrors && session.Document.LastParseSucceeded, Error = session.Document.Error, RootType = root?.Type ?? "", ComponentCount = root == null ? 0 : Count(root), Tree = root == null ? null : Node(root, "0"), CanUndo = session.UndoDepth > 0, CanRedo = session.RedoDepth > 0 }; Render(session, root, state); return state; }

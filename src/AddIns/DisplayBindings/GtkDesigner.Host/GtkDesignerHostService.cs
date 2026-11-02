@@ -51,39 +51,30 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("design/set-property")]
 	public DesignerSessionState SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value)
 	{
-		EnsureSession(sessionId);
-		var session = Get(documentId); EnsureVersion(session, baseVersion);
-		bool changed;
-		if (propertyName == "$id") changed = session.Editor.Rename(elementId, value);
-		else {
-			// Type-checked against the GIR catalogue first, so invalid text never enters the document.
+		return documents.Edit(sessionId, documentId, baseVersion, session => {
+			if (propertyName == "$id") return session.Editor.Rename(elementId, value);
+			// Type-checked against the GIR catalogue first, so invalid text never enters the document (a refusal with its reason).
 			var (node, parentClass) = Locate(session.Editor, elementId);
 			var normalized = GtkPropertyMetadata.Validate(node, propertyName, value, parentClass);
-			changed = propertyName.StartsWith(GtkPropertyMetadata.LayoutPrefix, StringComparison.Ordinal)
+			return propertyName.StartsWith(GtkPropertyMetadata.LayoutPrefix, StringComparison.Ordinal)
 				? session.Editor.SetLayoutProperty(elementId, propertyName.Substring(GtkPropertyMetadata.LayoutPrefix.Length), normalized)
 				: session.Editor.SetProperty(elementId, propertyName, normalized,
 					translatable: node != null && GtkPropertyMetadata.IsTranslatable(node.ClassName, propertyName));
-		}
-		if (!changed) throw new InvalidOperationException("GTK property mutation was rejected.");
-		session.Version++; return State(session, false);
+		}, "GTK property mutation was rejected.", session => State(session, false));
 	}
 
 	/// <summary>Sets one property on several elements as one transaction (one undo step), each value validated like a single edit.</summary>
 	[JsonRpcMethod("design/set-property-many")]
 	public DesignerSessionState SetPropertyMany(string sessionId, string documentId, long baseVersion, string[] elementIds, string propertyName, string value)
 	{
-		EnsureSession(sessionId);
-		var session = Get(documentId); EnsureVersion(session, baseVersion);
 		if (elementIds == null || elementIds.Length == 0 || propertyName.StartsWith(GtkPropertyMetadata.LayoutPrefix, StringComparison.Ordinal) || propertyName == "$id")
-			throw new InvalidOperationException("GTK multi-property mutation was rejected: element ids and a plain property are required.");
-		var ok = session.Editor.Batch(() => elementIds.All(id => {
+			return documents.Edit(sessionId, documentId, baseVersion, _ => false, "GTK multi-property mutation was rejected: element ids and a plain property are required.", session => State(session, false));
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.Batch(() => elementIds.All(id => {
 			var (node, parentClass) = Locate(session.Editor, id);
 			var normalized = GtkPropertyMetadata.Validate(node, propertyName, value, parentClass);
 			return session.Editor.SetProperty(id, propertyName, normalized,
 				translatable: node != null && GtkPropertyMetadata.IsTranslatable(node.ClassName, propertyName));
-		}));
-		if (!ok) throw new InvalidOperationException("GTK multi-property mutation was rejected.");
-		session.Version++; return State(session, false);
+		})), "GTK multi-property mutation was rejected.", session => State(session, false));
 	}
 
 	[JsonRpcMethod("design/theme")]
@@ -241,13 +232,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("gtk/set-menu-items")]
 	public DesignerSessionState SetMenuItems(string sessionId, string documentId, long baseVersion, string elementId, List<DesignerMenuNode> items)
 	{
-		EnsureSession(sessionId);
-		var session = Get(documentId);
-		EnsureVersion(session, baseVersion);
-		if (!session.Editor.SetMenuItems(elementId, items))
-			throw new InvalidOperationException("The menu items were rejected.");
-		session.Version++;
-		return State(session, false);
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.SetMenuItems(elementId, items), "The menu items were rejected.", session => State(session, false));
 	}
 
 	/// <summary>Removes the property so GTK's own default applies - the GIR catalogue is the
@@ -255,20 +240,15 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("design/reset-property")]
 	public DesignerSessionState ResetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName)
 	{
-		EnsureSession(sessionId);
-		var session = Get(documentId); EnsureVersion(session, baseVersion);
-		var reset = propertyName.StartsWith(GtkPropertyMetadata.LayoutPrefix, StringComparison.Ordinal)
+		return documents.Edit(sessionId, documentId, baseVersion, session => propertyName.StartsWith(GtkPropertyMetadata.LayoutPrefix, StringComparison.Ordinal)
 			? session.Editor.SetLayoutProperty(elementId, propertyName.Substring(GtkPropertyMetadata.LayoutPrefix.Length), null)
-			: session.Editor.SetProperty(elementId, propertyName, null);
-		if (!reset) throw new InvalidOperationException("GTK property reset was rejected.");
-		session.Version++; return State(session, false);
+			: session.Editor.SetProperty(elementId, propertyName, null), "GTK property reset was rejected.", session => State(session, false));
 	}
 
 	[JsonRpcMethod("design/add-element")]
 	public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget)
 	{
-		EnsureSession(sessionId);
-		var session = Get(documentId); EnsureVersion(session, baseVersion);
+		return documents.Edit(sessionId, documentId, baseVersion, session => {
 		// A drop carries its design position (a toolbox click sends -1, -1): resolve it with the same
 		// planner the IDE drew its indicator from, against GTK's own measured bounds.
 		// A dropTarget is the IDE's own resolution of this point (DesignerDropTarget, computed by
@@ -281,23 +261,24 @@ sealed class GtkDesignerHostService : IDesignerChildService
 			&& GtkDropPlanner.Plan(DropNode(session, first), x, y) is { } plan && plan.ContainerId == parentId) {
 			index = plan.Index; cell = plan.Cell;
 		}
-		if (!session.Editor.Add(parentId, string.IsNullOrEmpty(item.TypeName) ? item.Name : item.TypeName, index, cell))
-			throw new InvalidOperationException("GTK element insertion was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
-		session.Version++;
-		// The created widget, not a page/model wrapper around it: a Stack drop writes a
-		// GtkStackPage and a list view a model/factory, and the user asked for the widget.
-		var state = State(session, false);
-		state.CreatedElementId = session.Editor.LastCreatedId;
-		return state;
+		return session.Editor.Add(parentId, string.IsNullOrEmpty(item.TypeName) ? item.Name : item.TypeName, index, cell);
+		}, "GTK element insertion was rejected.", session => {
+			// The created widget, not a page/model wrapper around it: a Stack drop writes a
+			// GtkStackPage and a list view a model/factory, and the user asked for the widget.
+			var state = State(session, false);
+			state.CreatedElementId = session.Editor.LastCreatedId;
+			return state;
+		}, session => session.Editor.Refusal);
 	}
 
 	[JsonRpcMethod("design/delete-elements")]
 	public DesignerSessionState DeleteElements(string sessionId, string documentId, long baseVersion, string[] elementIds)
 	{
-		EnsureSession(sessionId);
-		var session = Get(documentId); EnsureVersion(session, baseVersion);
-		foreach (var id in elementIds) if (!session.Editor.Remove(id)) throw new InvalidOperationException("GTK element deletion was rejected: " + id);
-		session.Version++; return State(session, false);
+		string? failed = null;
+		return documents.Edit(sessionId, documentId, baseVersion, session => {
+			foreach (var id in elementIds) if (!session.Editor.Remove(id)) { failed = id; return false; }
+			return true;
+		}, "GTK element deletion was rejected:", session => State(session, false), _ => failed);
 	}
 
 	[JsonRpcMethod("design/rename")]
@@ -323,70 +304,50 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("design/paste-elements")]
 	public DesignerSessionState PasteElements(string sessionId, string documentId, long baseVersion, string targetId, string[] snippets, string? afterId = null)
 	{
-		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
-		if (!session.Editor.Paste(targetId, snippets ?? Array.Empty<string>(), out var created, afterId))
-			throw new InvalidOperationException("The clipboard is not pastable GTK markup for this target.");
-		session.Version++;
-		var state = State(session, false);
-		state.CreatedElementIds = created;
-		return state;
+		List<string> created = new();
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.Paste(targetId, snippets ?? Array.Empty<string>(), out created, afterId),
+			"The clipboard is not pastable GTK markup for this target.", session => { var state = State(session, false); state.CreatedElementIds = created; return state; });
 	}
 
 	/// <summary>Wraps sibling objects in a new GtkBox/GtkFrame (the WPF host's wrap contract); the wrapper is CreatedElementId.</summary>
 	[JsonRpcMethod("design/wrap-elements")]
 	public DesignerSessionState WrapElements(string sessionId, string documentId, long baseVersion, string[] elementIds, string containerType)
 	{
-		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
-		if (!session.Editor.Wrap(elementIds ?? Array.Empty<string>(), containerType, out var created))
-			throw new InvalidOperationException("GTK wrap was rejected: the objects must be placed siblings, and a GtkFrame takes one.");
-		session.Version++;
-		var state = State(session, false);
-		state.CreatedElementId = created;
-		return state;
+		string? created = null;
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.Wrap(elementIds ?? Array.Empty<string>(), containerType, out created),
+			"GTK wrap was rejected: the objects must be placed siblings, and a GtkFrame takes one.", session => { var state = State(session, false); state.CreatedElementId = created; return state; });
 	}
 
 	/// <summary>Replaces a placed container with its children in place (the WPF host's unwrap contract).</summary>
 	[JsonRpcMethod("design/unwrap-element")]
 	public DesignerSessionState UnwrapElement(string sessionId, string documentId, long baseVersion, string elementId)
 	{
-		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
-		if (!session.Editor.Unwrap(elementId))
-			throw new InvalidOperationException("GTK unwrap was rejected: a placed container whose children are all <child> objects is required, and a single-child parent takes one.");
-		session.Version++;
-		return State(session, false);
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.Unwrap(elementId),
+			"GTK unwrap was rejected: a placed container whose children are all <child> objects is required, and a single-child parent takes one.", session => State(session, false));
 	}
 
 	/// <summary>Deletes the grid row or column the element sits in as one transaction.</summary>
 	[JsonRpcMethod("design/delete-grid-track")]
 	public DesignerSessionState DeleteGridTrack(string sessionId, string documentId, long baseVersion, string elementId, bool row)
 	{
-		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
-		if (!session.Editor.DeleteGridTrack(elementId, row))
-			throw new InvalidOperationException("GTK grid delete was rejected: a placed child of a GtkGrid is required.");
-		session.Version++;
-		return State(session, false);
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.DeleteGridTrack(elementId, row),
+			"GTK grid delete was rejected: a placed child of a GtkGrid is required.", session => State(session, false));
 	}
 
 	/// <summary>Opens an empty grid row or column at the element's position as one transaction.</summary>
 	[JsonRpcMethod("design/insert-grid-track")]
 	public DesignerSessionState InsertGridTrack(string sessionId, string documentId, long baseVersion, string elementId, bool row)
 	{
-		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
-		if (!session.Editor.InsertGridTrack(elementId, row))
-			throw new InvalidOperationException("GTK grid insert was rejected: a placed child of a GtkGrid is required.");
-		session.Version++;
-		return State(session, false);
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.InsertGridTrack(elementId, row),
+			"GTK grid insert was rejected: a placed child of a GtkGrid is required.", session => State(session, false));
 	}
 
 	/// <summary>Replaces a GtkDropDown's strings (its <c>&lt;items&gt;</c>) from the shared list editor.</summary>
 	[JsonRpcMethod("design/set-items")]
 	public DesignerSessionState SetItems(string sessionId, string documentId, long baseVersion, string elementId, DesignerCollectionItemEdit[] items)
 	{
-		EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion);
-		if (!session.Editor.SetItems(elementId, (items ?? Array.Empty<DesignerCollectionItemEdit>()).Select(item => (item.SourceIndex, item.Text ?? "")).ToList()))
-			throw new InvalidOperationException("GTK items edit was rejected: a GtkDropDown without a model property, and valid source indexes, are required.");
-		session.Version++;
-		return State(session, false);
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.SetItems(elementId, (items ?? Array.Empty<DesignerCollectionItemEdit>()).Select(item => (item.SourceIndex, item.Text ?? "")).ToList()),
+			"GTK items edit was rejected: a GtkDropDown without a model property, and valid source indexes, are required.", session => State(session, false));
 	}
 
 	[JsonRpcMethod("design/hit-test")]

@@ -33,15 +33,18 @@ public sealed class SourceModelHostTests
 	}
 
 	[Fact]
-	public void Edit_RefusalThrowsTheMessageWithTheEditorsReason_AndLeavesTheVersionAlone()
+	public void Edit_RefusalIsANormalResult_WithTheMessageAndTheEditorsReason_AndTheVersionUnchanged()
 	{
 		var (documents, session) = Open();
 		session.Reason = "no such element";
-		var ex = Assert.Throws<InvalidOperationException>(() => documents.Edit("s1", "d1", 1, _ => false, "The change was rejected.", State, s => s.Reason));
-		Assert.Equal("The change was rejected. no such element", ex.Message);
+		var state = documents.Edit("s1", "d1", 1, _ => false, "The change was rejected.", State, s => s.Reason);
+		Assert.False(state.Accepted);
+		Assert.Equal("The change was rejected. no such element", state.Error);
+		Assert.Contains(state.Diagnostics, d => d.Message == state.Error);
+		Assert.Equal(1, state.Version);
 		Assert.Equal(1, session.Version);
 		session.Reason = "";
-		Assert.Equal("rejected", Assert.Throws<InvalidOperationException>(() => documents.Edit("s1", "d1", 1, _ => false, "rejected", State, s => s.Reason)).Message);
+		Assert.Equal("rejected", documents.Edit("s1", "d1", 1, _ => false, "rejected", State, s => s.Reason).Error);
 	}
 
 	[Fact]
@@ -66,11 +69,37 @@ public sealed class SourceModelHostTests
 	}
 
 	[Fact]
-	public void AStaleEdit_NeverRunsTheOperation()
+	public void AStaleEdit_IsRefusedAsANormalResult_AndNeverRunsTheOperation()
 	{
 		var (documents, session) = Open();
-		Assert.Throws<InvalidOperationException>(() => documents.Edit("s1", "d1", 0, s => { s.Edits++; return true; }, "rejected", State));
+		session.Version = 5;
+		var state = documents.Edit("s1", "d1", 4, s => { s.Edits++; return true; }, "rejected", State);
+		Assert.False(state.Accepted);
+		Assert.Equal("Stale version 4; current is 5.", state.Error);
+		Assert.Equal(5, state.Version);
 		Assert.Equal(0, session.Edits);
+		Assert.Equal(5, session.Version);
+	}
+
+	[Fact]
+	public void AnUnknownSessionOrDocument_IsAProtocolErrorAndStillThrows()
+	{
+		var (documents, _) = Open();
+		Assert.Throws<UnauthorizedAccessException>(() => documents.Edit("other-session", "d1", 1, _ => true, "rejected", State));
+		Assert.Throws<InvalidOperationException>(() => documents.Edit("s1", "missing", 1, _ => true, "rejected", State));
+	}
+
+	[Fact]
+	public void AnOperationThatThrowsInvalidOperation_IsRefusedWithItsOwnReason_AndNoCreatedIdsLeakIntoTheRefusal()
+	{
+		var (documents, session) = Open();
+		var state = documents.Edit("s1", "d1", 1, _ => throw new InvalidOperationException("Button:width: abc is not a number."), "rejected",
+			s => { var st = State(s); st.CreatedElementId = "stale"; st.CreatedElementIds.Add("stale"); return st; });
+		Assert.False(state.Accepted);
+		Assert.Equal("Button:width: abc is not a number.", state.Error);
+		Assert.Null(state.CreatedElementId);
+		Assert.Empty(state.CreatedElementIds);
 		Assert.Equal(1, session.Version);
+		Assert.Throws<ArgumentException>(() => documents.Edit("s1", "d1", 1, _ => throw new ArgumentException("not a refusal"), "rejected", State));
 	}
 }

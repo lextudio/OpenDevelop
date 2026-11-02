@@ -230,6 +230,8 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	static readonly string[] WrapContainers = { "StackPanel", "Grid", "Border" };
 	/// <summary>The canvas context menu's commands as opening it would evaluate them (header path, command, enabled).</summary>
 	public IReadOnlyList<(string Header, string Command, bool Enabled)> DescribeContextCommands() => canvas.DescribeContextCommands();
+	/// <summary>The message under the canvas (a refusal, or the host status).</summary>
+	public string DiagnosticText => diagnostic.Text;
 	DesignerStandardCommands.Context CommandContext() => new(host?.IsAlive == true, selection.SelectedIds.Count, ClipboardSnippets().Length > 0,
 		canvas.ContextMenuDesignPoint != null, SiblingPosition(), SharesOneParent(), SelectedHasChildren());
 	bool SelectedHasChildren() => DesignerStandardCommands.SelectedHasChildren(state.Tree, selection.SelectedIds);
@@ -277,7 +279,16 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	public void RefreshDesign() { if (host == null) return; var text = host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; state = host.UpdateAsync(Snapshot(text, state.Version + 1)).GetAwaiter().GetResult(); loadedMxamlText = text; Rebuild(); }
 	public void RestartDesignHost() { if (host == null) return; state = host.RestartPoolAsync().GetAwaiter().GetResult(); loadedMxamlText = host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; Rebuild(); }
 	public void TerminateDesignHost() { if (host == null) return; state = host.TerminateAndRecoverAsync().GetAwaiter().GetResult(); Rebuild(); }
-	bool Mutate(Func<DesignerSessionState> action) { state = action(); if (state.Accepted) mxamlFile.MakeDirty(); Rebuild(); commands.Invalidate(); return state.Accepted; }
+	bool Mutate(Func<DesignerSessionState> action)
+	{
+		var result = action();
+		// An edit the host refused leaves the document as it was (same version, not accepted, with the reason): show the
+		// reason and keep the last good state, exactly as a thrown refusal used to.
+		if (!result.Accepted && state.Accepted && result.Version == state.Version) { diagnostic.Text = result.Error; commands.Invalidate(); return false; }
+		state = result;
+		if (state.Accepted) mxamlFile.MakeDirty();
+		Rebuild(); commands.Invalidate(); return state.Accepted;
+	}
 	void Rebuild()
 	{
 		diagnostic.Text = HasNativeFrame ? Status : Status + " - no MewUI frame: the MewUI runtime could not render this document on this platform.";

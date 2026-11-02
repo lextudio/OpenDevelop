@@ -739,7 +739,16 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	public void RestartDesignHost() { if (host == null) return; state = host.RestartPoolAsync().GetAwaiter().GetResult(); canvas.SetTheme(host.PreviewTheme); loadedText = host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; Rebuild(); }
 	public void TerminateDesignHost() { if (host == null) return; state = host.TerminateAndRecoverAsync().GetAwaiter().GetResult(); canvas.SetTheme(host.PreviewTheme); requestedRenderRevision = renderedRevision = state.Render?.Sequence ?? 0; Rebuild(); }
 	public void ShowSource() { var window = WorkbenchWindow; if (window == null) return; for (var i = 0; i < window.ViewContents.Count; i++) if (!ReferenceEquals(window.ViewContents[i], this)) { window.SwitchView(i); return; } }
-	bool Mutate(Func<DesignerSessionState> action) { state = action(); if (state.Accepted) { PrimaryFile?.MakeDirty(); QueueRender(); } Rebuild(); commands.Invalidate(); return state.Accepted; }
+	bool Mutate(Func<DesignerSessionState> action)
+	{
+		var result = action();
+		// An edit the host refused leaves the document as it was (same version, not accepted, with the reason): show the
+		// reason and keep the last good state, exactly as a thrown refusal used to.
+		if (!result.Accepted && state.Accepted && result.Version == state.Version) { diagnostic.Text = result.Error; commands.Invalidate(); return false; }
+		state = result;
+		if (state.Accepted) { PrimaryFile?.MakeDirty(); QueueRender(); }
+		Rebuild(); commands.Invalidate(); return state.Accepted;
+	}
 	void QueueRender()
 	{
 		if (host == null || !state.Accepted) return;

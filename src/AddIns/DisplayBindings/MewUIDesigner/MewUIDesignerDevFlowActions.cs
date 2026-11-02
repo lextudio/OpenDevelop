@@ -25,7 +25,7 @@ public static class MewUIDesignerDevFlowActions
 		var view = Activate();
 		var grid = PropertyGrid;
 		return view == null ? JsonSerializer.Serialize(new { active = false }) : JsonSerializer.Serialize(new {
-			active = true, status = view.Status, windowClassName = view.WindowClassName, elementCount = view.ElementCount,
+			active = true, status = view.Status, diagnosticText = view.DiagnosticText, windowClassName = view.WindowClassName, elementCount = view.ElementCount,
 			selectedName = view.SelectedName, selectedIds = view.SelectedIds, hostProcessId = view.HostProcessId, hostPoolKey = view.HostPoolKey, hostSessionId = view.HostSessionId, hostDocumentId = view.HostDocumentId, activeHostLeases = view.ActiveHostLeases, hostRecoveryCount = view.HostRecoveryCount, canUndo = view.EnableUndo, canRedo = view.EnableRedo,
 			toolboxItemCount = view.ToolboxItemCount, toolboxDrag = SharedToolbox.Instance.DragDiagnostic, toolboxFilterText = view.ToolboxFilterText, toolboxSelectedItem = view.SelectedToolboxType, toolboxHosted = view.IsToolboxHosted, toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true, zoomComboSelectedIndex = view.ZoomComboSelectedIndex, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
 			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName, propertyPadPropertyCount = grid?.Properties?.Count ?? 0,
