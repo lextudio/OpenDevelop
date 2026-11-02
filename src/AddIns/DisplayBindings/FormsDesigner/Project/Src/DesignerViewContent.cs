@@ -2563,23 +2563,31 @@ namespace ICSharpCode.FormsDesigner
 			}
 		}
 
+		/// <summary>The Edit-menu decision, made by the same function every designer's context menu uses
+		/// (<see cref="DesignerStandardCommands.CanExecute"/>): nothing is enabled without a loaded designer, Paste needs something on
+		/// the designer's clipboard, and Cut/Copy/Delete need a selection the user may remove (<see cref="SelectionIsRemovable"/> counts
+		/// as one selected element; the root, which owns the surface, counts as none).</summary>
+		bool CanExecuteEditCommand(string command)
+			=> DesignerStandardCommands.CanExecute(command,
+				new DesignerStandardCommands.Context(IsRemoteDesignerLoaded, SelectionIsRemovable ? 1 : 0, remoteClipboard?.Count > 0,
+					HasDesignPoint: false, Sibling: null, SharesOneParent: false, SelectedHasChildren: false),
+				System.Array.Empty<string>(), _ => false);
+
 		public bool EnableCut {
-			get { return SelectionIsRemovable; }
+			get { return CanExecuteEditCommand("cut"); }
 		}
 
 		public bool EnableCopy {
-			get { return SelectionIsRemovable; }
+			get { return CanExecuteEditCommand("copy"); }
 		}
 
 		const string ComponentClipboardFormat = "CF_DESIGNERCOMPONENTS";
 		public bool EnablePaste {
-			get {
-				return IsRemoteDesignerLoaded && remoteClipboard?.Count > 0;
-			}
+			get { return CanExecuteEditCommand("paste"); }
 		}
 
 		public bool EnableDelete {
-			get { return SelectionIsRemovable; }
+			get { return CanExecuteEditCommand("delete"); }
 		}
 
 		public bool EnableSelectAll {

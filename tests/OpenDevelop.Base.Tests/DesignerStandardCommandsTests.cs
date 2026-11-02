@@ -179,4 +179,23 @@ public sealed class DesignerStandardCommandsTests
 		Assert.False(DesignerStandardCommands.CanExecute("delete", Ctx(selected: 0), Wraps, OneChild));
 		Assert.False(DesignerStandardCommands.CanExecute("wrap-Other", Ctx(selected: 0), Wraps, OneChild));   // not a wrap of a listed container: the default
 	}
+
+	[Fact]
+	public void CanExecute_AsTheWinFormsEditMenuUsesIt_NoWrapContainersNoSiblings()
+	{
+		// The WinForms view asks only cut/copy/paste/delete, with its removable-selection count (0 for the root or nothing, else 1)
+		// and its own clipboard; there are no wrap containers and no sibling/design-point information.
+		var none = Array.Empty<string>();
+		static bool Can(string command, bool loaded, int removable, bool clipboard)
+			=> DesignerStandardCommands.CanExecute(command, new DesignerStandardCommands.Context(loaded, removable, clipboard, false, null, false, false), Array.Empty<string>(), _ => false);
+		Assert.False(Can("cut", loaded: false, removable: 1, clipboard: true));
+		Assert.False(Can("paste", loaded: false, removable: 1, clipboard: true));
+		foreach (var command in new[] { "cut", "copy", "delete" }) {
+			Assert.True(Can(command, loaded: true, removable: 1, clipboard: false));
+			Assert.False(Can(command, loaded: true, removable: 0, clipboard: true));   // the root / nothing selected
+		}
+		Assert.True(Can("paste", loaded: true, removable: 0, clipboard: true));
+		Assert.False(Can("paste", loaded: true, removable: 1, clipboard: false));
+		Assert.Empty(none);
+	}
 }

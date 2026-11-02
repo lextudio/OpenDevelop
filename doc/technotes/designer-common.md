@@ -321,8 +321,10 @@ commands first and falls back to it. `od.gtk-designer.context-commands` and `od.
 entries with their enablement (like the WPF and WinUI actions of the same name), and the GTK and MewUI journeys assert the
 move/wrap/unwrap/paste-here states through them. GTK and MewUI lost their byte-identical copies (MewUI keeps only `IsNamedId`); WPF and WinUI compose
 their menus from the shared pieces and parse alignment/grid-unit commands with them, keeping their own z-order,
-style/template, Orientation/Dock and Edit Style entries. WinForms is not adopted: its context menus are
-CodeDom/designer-verb driven, not command strings. `DesignerStandardCommandsTests` pins the vocabulary once.
+style/template, Orientation/Dock and Edit Style entries. WinForms adopts the enabling decision only: its Edit menu
+(`IClipboardHandler.EnableCut/Copy/Paste/Delete`) asks `CanExecute` with a context of "designer loaded", the removable-selection
+count (`DesignerContextMenuPolicy.IsRemovable`) and its own clipboard. Its context menus are CodeDom/designer-verb driven (menu
+codons and `CommandID`s such as Align/Size/Spacing), not command strings, so the menu itself is not shared. `DesignerStandardCommandsTests` pins the vocabulary once.
 
 Shared host edit plumbing (2026-11-01): `Designer.Server/SourceModelHost.cs` gives the source-model hosts (GTK, MewUI) the part of
 every `design/*` mutation that was copied per handler: `documents.Open(sessionId, documentId, baseVersion)` (session check,
