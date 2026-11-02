@@ -182,8 +182,7 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	/// <summary>Writes an already-known handler name to a WPF XAML event attribute. This does not
 	/// execute project code or synthesize code-behind; the editor remains source-authoritative.</summary>
 	public Task<DesignerSessionState> SetEventAsync(long baseVersion, string elementId, string eventName, string handlerName, CancellationToken cancellationToken = default)
-		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-event",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, eventName, handlerName }, cancellationToken), cancellationToken);
+		=> TrackMutationAsync(Document.SetEventAsync(baseVersion, elementId, eventName, handlerName, cancellationToken), cancellationToken);
 
 	/// <summary>Updates an existing WPF Binding through the child's design model. The RPC accepts
 	/// only a property path, never arbitrary markup, so a Properties-pad edit cannot replace a
