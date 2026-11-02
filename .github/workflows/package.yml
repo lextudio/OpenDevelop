@@ -1,0 +1,207 @@
+name: Package
+
+# The one definition of how each distribution is built, smoke-tested and archived.  ci.yml calls it on every master push
+# (a pull request packages only Linux) and release.yml calls it for a tag, so the artifact a release ships has been through
+# exactly the steps the commit's CI run already passed.  Nothing here publishes: it only uploads artifacts named
+# release-windows, release-macos-arm64 and release-linux-<rid>, which the release's draft job collects.
+on:
+  workflow_call:
+    inputs:
+      include:
+        description: Distributions to build, as a comma separated text containing any of windows, macos, linux.
+        type: string
+        default: windows,macos,linux
+      retention-days:
+        description: How long the uploaded packages are kept.
+        type: number
+        default: 90
+
+permissions:
+  contents: read
+  # LibreWPF, LibreWinForms, AvalonEdit, AvalonDock and LibGhostty.Net come from this organization's packages.
+  packages: read
+
+env:
+  # Same convention as ci.yml: NuGet reads the token from here without writing it to NuGet.config.
+  NuGetPackageSourceCredentials_lextudio_github: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
+
+jobs:
+  windows:
+    name: Package Windows
+    if: contains(inputs.include, 'windows')
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The build stamps its version from git history (GitVersion).
+          fetch-depth: 0
+      - name: Initialize the submodules the build needs
+        shell: bash
+        run: bash .github/ci/init-submodules.sh
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          architecture: x64
+      # The sharing rules decide which host copies are deleted, and a mistake there only surfaces as
+      # a packaged designer child that cannot load an assembly - after the whole payload build. This
+      # synthetic payload pins both rules (no store entry for an identity with two contents, a store
+      # entry for an identical one) in seconds.
+      - name: Test the payload sharing rules
+        shell: pwsh
+        run: ./build/windows/test-share-managed-payload.ps1
+      # One payload serves x64 and ARM64 (dist.ps1 builds both launchers and runs its own smoke phase). GitVersion's GitHub
+      # Actions integration races on the runner's env file when projects build in parallel (see build-binaries.ps1), so the
+      # variable that enables it is removed for the packaging.
+      - name: Build the unified Windows distribution
+        shell: cmd
+        env:
+          # Collapses the designer hosts' duplicated managed closure into shared/managed; the
+          # bitness step below starts a real designer host and would fail if it were incomplete.
+          OD_SHARE_MANAGED_CLOSURE: '1'
+        run: |
+          set "GITHUB_ACTIONS="
+          rem No gh credential can read the lextudio feed with this ephemeral token; NuGet restores
+          rem the same closure from GitHub Packages with the credential the job env provides.
+          dist.windows.bat --skip-feed-sync
+      # The same journeys the macOS and Linux jobs run on their packages (solution and build, Roslyn, terminal, ILSpy, XAML
+      # language server, WPF designer, a debugger breakpoint stop), plus a check that every per-RID debugger shim is packaged.
+      # -SkipDebugJourneys skips only the per-RID bitness journeys, which are being rebuilt around an apphost; when they
+      # return, this step must also install the x86 (and on ARM64 the x64) .NET runtime they debug (dotnet-install.ps1).
+      - name: Verify the packaged payload by bitness
+        shell: pwsh
+        run: |
+          $targets = if ($env:RUNNER_ARCH -eq 'ARM64') { @('win-arm64', 'win-x64', 'win-x86') } else { @('win-x64', 'win-x86') }
+          ./build/windows/verify-packaged-app.ps1 -PayloadRoot OpenDevelop-win -Targets $targets -SkipDebugJourneys
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-windows
+          path: OpenDevelop-win.7z
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
+
+  macos:
+    name: Package macOS ARM64
+    if: contains(inputs.include, 'macos')
+    # The same image ci.yml tests macOS on; dist.macos.sh probes for a linking toolchain and is sensitive to the SDK.
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Initialize the submodules the build needs
+        shell: bash
+        run: bash .github/ci/init-submodules.sh
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          architecture: arm64
+      - name: Build the macOS ARM64 distribution
+        run: |
+          unset GITHUB_ACTIONS
+          # No gh credential can read the lextudio feed with this ephemeral token; NuGet restores
+          # the same closure from GitHub Packages with the credential the job env provides.
+          ./dist.macos.sh --skip-feed-sync
+      # dist.macos.sh verifies that the bundle renders its first workbench window.  Keep the
+      # gate stronger: run the assembled .app itself, not project output, through the
+      # principal add-in/child-process paths before the DMG is allowed to leave this checkout.
+      - name: Verify packaged macOS application features
+        shell: bash
+        env:
+          # Keep the debugger breakpoint journey mandatory, including if GitHub upgrades its macOS image.
+          OD_VERIFY_REQUIRE_DEBUGGER: '1'
+        run: build/macos/verify-application-bundle.sh OpenDevelop.app
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-macos-arm64
+          path: OpenDevelop-macos.dmg
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
+
+  linux:
+    name: Package Linux (${{ matrix.rid }})
+    if: contains(inputs.include, 'linux')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: linux-x64
+            runner: ubuntu-24.04
+            dotnet_architecture: x64
+          - rid: linux-arm64
+            runner: ubuntu-24.04-arm
+            dotnet_architecture: arm64
+    # Each architecture is built on a native runner: there is no cross-architecture Linux payload.
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Initialize the submodules the build needs
+        shell: bash
+        run: bash .github/ci/init-submodules.sh
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          architecture: ${{ matrix.dotnet_architecture }}
+      - name: Install Linux display and native runtime prerequisites
+        shell: bash
+        run: |
+          # The hosted runners have no GPU. wgpu-native needs a graphics backend to create the window
+          # surface: without a Vulkan loader and a software driver (Mesa's lavapipe) it has no
+          # instance at all and aborts with SIGABRT (status 134) at wgpuInstanceCreateSurface.
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0 libx11-xcb1 libxkbcommon0 libgl1 libvulkan1 mesa-vulkan-drivers
+      # The x64 payload build once died with the runner's own "No space left on device" while the
+      # arm64 job on the same commit passed, so it is the image's free space, not the product. The
+      # hosted images ship multi-gigabyte caches this build never uses; drop them and print the
+      # numbers so a future space problem is visible here instead of in a killed runner process.
+      - name: Reclaim disk space for the payload build
+        shell: bash
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          sudo apt-get clean || true
+          df -h /
+      # dist.linux.sh starts the packaged app and requires its first workbench render before it writes the tar.xz.
+      - name: Build and smoke-test the native Linux payload
+        shell: bash
+        run: |
+          # GitVersion's GitHub Actions integration races on the runner's env file when projects build in parallel.
+          unset GITHUB_ACTIONS
+          xvfb-run -a bash dist.linux.sh --skip-feed-sync
+          test -f "OpenDevelop-${{ matrix.rid }}.tar.xz"
+          module="OpenDevelop-${{ matrix.rid }}/AddIns/Misc/PackageManagement/Scripts/OpenDevelop.PackageManagement.ps1"
+          test -f "$module"
+          pwsh -NoProfile -Command ". '$module'; foreach (\$name in 'Get-Package','Install-Package','Update-Package','Uninstall-Package') { Get-Command \$name -ErrorAction Stop | Out-Null }"
+      # The smoke phase inside dist only proves the payload starts and paints one frame. Windows and
+      # macOS have had a journey check on the packaged artifact for a while; Linux had none, so a
+      # pruned runtime tree, a missing deps entry or a child host that cannot start reached users.
+      # Same journeys as the macOS bundle check, against the payload directory itself.
+      - name: Verify the packaged Linux payload
+        shell: bash
+        env:
+          # Same as macOS: the breakpoint journey is mandatory.
+          OD_VERIFY_REQUIRE_DEBUGGER: '1'
+        run: xvfb-run -a ./build/linux/verify-application-payload.sh "OpenDevelop-${{ matrix.rid }}"
+      # The check above runs the directory dist left behind. Users get the tar.xz, so unpack that exact file
+      # elsewhere and run the same journeys on it; this catches what archiving loses (modes, symlinks, paths).
+      - name: Verify the shipped Linux archive after extraction
+        shell: bash
+        env:
+          OD_VERIFY_REQUIRE_DEBUGGER: '1'
+        run: |
+          extract="$RUNNER_TEMP/archive-check"
+          rm -rf "$extract"; mkdir -p "$extract"
+          tar -xJf "OpenDevelop-${{ matrix.rid }}.tar.xz" -C "$extract"
+          payload=$(find "$extract" -maxdepth 2 -name OpenDevelop.dll -printf '%h\n' -quit)
+          test -n "$payload" || { echo '::error::OpenDevelop.dll not found in the extracted archive'; exit 1; }
+          xvfb-run -a ./build/linux/verify-application-payload.sh "$payload"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.rid }}
+          path: OpenDevelop-${{ matrix.rid }}.tar.xz
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}

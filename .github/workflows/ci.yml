@@ -19,24 +19,17 @@ on:
       - 'doc/**'
       - '**/*.md'
       - 'images/**'
-      - 'build/macos/**'
   pull_request:
     paths-ignore:
       - 'doc/**'
       - '**/*.md'
       - 'images/**'
-      - 'build/macos/**'
   workflow_dispatch:
     inputs:
       through_batch:
         description: Run plan entries up to this batch (empty = the plan's throughBatch).
         required: false
         default: ''
-      diagnose:
-        description: Run the temporary IDE host diagnostics (build and test jobs).
-        required: false
-        type: boolean
-        default: false
       full:
         description: Also run the 'required' entries that the plan's "focus" mode skips.
         required: false
@@ -58,7 +51,7 @@ permissions:
 # A newer pull request run supersedes an older one.  Master runs are not cancelled: a 40-minute run that is thrown away
 # by the next push never produced a result anyone could read.
 concurrency:
-  # The event name is part of the group so a manual 'diagnose' run can run beside a push instead of being folded into it
+  # The event name is part of the group so a manual dispatch can run beside a push instead of being folded into it
   # (a workflow_dispatch queued behind a push in the same group is cancelled, which is how the first diagnostic run died).
   group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -89,7 +82,7 @@ jobs:
       in_lane_architecture: ${{ steps.matrix.outputs.in_lane_architecture }}
       in_lane_timeout: ${{ steps.matrix.outputs.in_lane_timeout }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: .github/ci
       - name: Verify shared build selection
@@ -120,7 +113,7 @@ jobs:
     outputs:
       nuget_cache_key: ${{ steps.nuget-key.outputs.key }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The build stamps its version from git history (GitVersion).
           fetch-depth: 0
@@ -141,7 +134,7 @@ jobs:
       # The package folder is the same cache entry the IDE lanes restore: restoring it here is what makes the
       # compile cheap, and saving it once per key keeps those lanes from re-resolving every package.
       - name: Restore the NuGet package cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: artifacts/nuget-packages
           key: ${{ steps.nuget-key.outputs.key }}
@@ -164,16 +157,10 @@ jobs:
       - name: Verify payload bitness
         shell: pwsh
         run: ./.github/ci/verify-bitness.ps1 -Platform '${{ matrix.name }}' -PayloadOnly
-      # TEMPORARY: starts the host right after compiling, before it is archived, to tell a build-output problem from an
-      # archive/extract problem. Run it with the 'diagnose' input; remove it with the matching test-job step.
-      - name: Diagnose the freshly built IDE host (before packing)
-        if: inputs.diagnose
-        shell: pwsh
-        run: ./.github/ci/diagnose-host.ps1
       - name: Pack the workspace
         shell: pwsh
         run: ./.github/ci/package-workspace.ps1 -Platform '${{ matrix.name }}' -Directory '${{ runner.temp }}/archive'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: workspace-${{ matrix.name }}
           path: ${{ runner.temp }}/archive/
@@ -192,10 +179,10 @@ jobs:
       matrix: ${{ fromJSON(needs.plan.outputs.lane_matrix) }}
     steps:
       # Only the scripts: the archive carries the rest, including this same .github/ci.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: .github/ci
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           # The archive of the packaging unit this lane belongs to: Windows x64 and ARM64 share one build.
           name: workspace-${{ matrix.build_platform }}
@@ -231,20 +218,7 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/od-test-logs"
-          echo "user=$(id -un) console=$(stat -f %Su /dev/console)"; who || true
-          echo "frontmost: $(lsappinfo front 2>&1 | head -1) $(lsappinfo info -only name "$(lsappinfo front)" 2>&1 | head -1)"
-          echo "screen locked flag: $(ioreg -n Root -d1 -w0 2>/dev/null | grep -o 'CGSSessionScreenIsLocked[^,]*' | head -1)"
-          echo "cliclick position: $(cliclick p 2>&1)"
-          cliclick m:200,200 2>&1 || true; sleep 0.5
-          echo "cliclick position after m:200,200: $(cliclick p 2>&1)"
-          echo "System Events: $(osascript -e 'tell application "System Events" to count processes' 2>&1 | head -2)"
-          for db in "/Library/Application Support/com.apple.TCC/TCC.db" "$HOME/Library/Application Support/com.apple.TCC/TCC.db"; do
-            echo "== $db"
-            sudo sqlite3 "$db" "select service, client, auth_value from access where service in ('kTCCServiceAccessibility','kTCCServicePostEvent','kTCCServiceListenEvent','kTCCServiceScreenCapture')" 2>&1 | head -40
-          done
-          echo "SIP: $(csrutil status 2>&1)"
-          screencapture -x "$RUNNER_TEMP/od-test-logs/macos-desktop.png" 2>&1 || true
+          bash "$GITHUB_WORKSPACE/.github/ci/macos-report-input.sh"
       # Read-only probe for the macOS pointer journeys. TCC allows the IDE's cliclick helper (the unified log shows
       # Auth:Allowed for PostEvent and Accessibility, no denial), the desktop is Finder with the screen unlocked, and
       # cliclick moves the cursor from a shell, yet every test that sends a real click sees no mouse-down. Show one
@@ -255,25 +229,7 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/od-test-logs"
-          swiftc -o "$RUNNER_TEMP/click-probe" "$GITHUB_WORKSPACE/.github/ci/macos-click-probe.swift"
-          log="$RUNNER_TEMP/od-test-logs/click-probe.log"
-          "$RUNNER_TEMP/click-probe" > "$log" 2>&1 &
-          probe=$!
-          for _ in $(seq 1 60); do grep -q READY "$log" && break; sleep 0.5; done
-          cat "$log"
-          read -r _ x y _ < <(grep -m1 READY "$log" || echo "READY 400 400")
-          echo "frontmost: $(lsappinfo info -only name "$(lsappinfo front)" 2>&1 | head -1)"
-          screencapture -x "$RUNNER_TEMP/od-test-logs/click-probe-before.png" 2>&1 || true
-          for attempt in "c:$x,$y" "m:$x,$y dd:$x,$y du:$x,$y"; do
-            grep -q DOWN "$log" && break
-            echo "cliclick $attempt"; cliclick $attempt 2>&1 || true
-            for _ in $(seq 1 12); do grep -q DOWN "$log" && break; sleep 0.25; done
-          done
-          screencapture -x "$RUNNER_TEMP/od-test-logs/click-probe-after.png" 2>&1 || true
-          cat "$log"
-          grep -q DOWN "$log" && echo "RESULT: the click reached the probe window" || echo "RESULT: NO mouse-down reached the probe window"
-          kill "$probe" 2>/dev/null || true
+          bash "$GITHUB_WORKSPACE/.github/ci/macos-probe-click.sh"
       # The click probe above shows an OS-level click does reach a Cocoa window on this VM, so the failing pointer
       # journeys miss for a reason specific to the IDE window. The VM display is 1024x768 with a menu bar and a Dock,
       # and the IDE window is 1024x768 placed at (10,10): macOS moves and shrinks a titled window to fit under the menu
@@ -285,12 +241,7 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/od-test-logs"
-          swiftc -o "$RUNNER_TEMP/window-list" "$GITHUB_WORKSPACE/.github/ci/macos-window-list.swift"
-          nohup bash -c 'n=0; while true; do { echo "== $(date +%H:%M:%S)"; "$0"; } >> "$1"; if [ $((n % 3)) -eq 0 ]; then screencapture -x "$2/macos-$(date +%H%M%S).png"; fi; n=$((n + 1)); sleep 10; done' "$RUNNER_TEMP/window-list" "$RUNNER_TEMP/od-test-logs/macos-windows.log" "$RUNNER_TEMP/od-test-logs" > /dev/null 2>&1 &
-          disown
-          sleep 2
-          cat "$RUNNER_TEMP/od-test-logs/macos-windows.log"
+          bash "$GITHUB_WORKSPACE/.github/ci/macos-sample-desktop.sh"
       # The ARM64 lane runs the output of the Windows x64 build job. Its PDBs carry that runner's workspace
       # path (D:\a\<repo>\<repo>), while this runner's workspace is C:\a\<repo>\<repo>. The debugger reports
       # the PDB path, so the IDE could not open the stop location (log: "Can't load file Program.cs under
@@ -323,127 +274,7 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          Add-Type -Namespace Native -Name Desk -MemberDefinition @'
-          public delegate bool EnumProc(System.IntPtr hwnd, System.IntPtr lParam);
-          [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
-          [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc proc, System.IntPtr lParam);
-          [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool IsWindowVisible(System.IntPtr hwnd);
-          [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool GetWindowRect(System.IntPtr hwnd, out RECT r);
-          [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(System.IntPtr hwnd, out uint pid);
-          [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] public static extern int GetClassName(System.IntPtr hwnd, System.Text.StringBuilder s, int n);
-          [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] public static extern int GetWindowText(System.IntPtr hwnd, System.Text.StringBuilder s, int n);
-          [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr hwnd, int cmd);
-          [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern uint GetDpiForSystem();
-          [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern int GetSystemMetrics(int i);
-          [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)] public static extern bool SystemParametersInfo(uint action, uint param, ref int value, uint winIni);
-          [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)] public static extern bool SystemParametersInfo(uint action, uint param, System.IntPtr value, uint winIni);
-          '@
-          function Get-TopWindows {
-            $list = New-Object System.Collections.Generic.List[object]
-            [void][Native.Desk]::EnumWindows({ param($h, $l)
-              if ([Native.Desk]::IsWindowVisible($h)) {
-                $r = New-Object Native.Desk+RECT; [void][Native.Desk]::GetWindowRect($h, [ref]$r)
-                if (($r.R - $r.L) -gt 0 -and ($r.B - $r.T) -gt 0) {
-                  $c = New-Object System.Text.StringBuilder 256; [void][Native.Desk]::GetClassName($h, $c, 256)
-                  $t = New-Object System.Text.StringBuilder 256; [void][Native.Desk]::GetWindowText($h, $t, 256)
-                  $procId = [uint32]0; [void][Native.Desk]::GetWindowThreadProcessId($h, [ref]$procId)
-                  $name = (Get-Process -Id $procId -ErrorAction SilentlyContinue).ProcessName
-                  $list.Add([pscustomobject]@{ Handle = $h; Process = $name; Pid = $procId; Class = "$c"; Title = "$t"; Rect = "$($r.L),$($r.T) $($r.R - $r.L)x$($r.B - $r.T)" })
-                }
-              }
-              $true }, [IntPtr]::Zero)
-            $list
-          }
-          function Save-Desktop([string]$name) {
-            Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-            $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
-            [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
-            New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/od-test-logs" | Out-Null
-            $bmp.Save("$env:RUNNER_TEMP/od-test-logs/$name.png")
-          }
-
-          "system DPI = $([Native.Desk]::GetDpiForSystem()) (96 = 100%), screen = $([Native.Desk]::GetSystemMetrics(0)) x $([Native.Desk]::GetSystemMetrics(1)), arch = $env:PROCESSOR_ARCHITECTURE, session = $((Get-Process -Id $PID).SessionId)"
-          "== visible top-level windows before"
-          Get-TopWindows | Format-Table Process, Pid, Class, Title, Rect -AutoSize | Out-String -Width 220
-          Save-Desktop 'desktop-as-provisioned'
-
-          # First-logon/privacy UI. The page is hosted by these processes; stop them and keep the
-          # experience from being offered again.
-          New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OOBE' -Force | Out-Null
-          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OOBE' -Name DisablePrivacyExperience -Value 1 -Type DWord
-          foreach ($name in 'WWAHost', 'CloudExperienceHostBroker', 'UserOOBEBroker', 'OOBENetworkConnectionFlow', 'msoobe') {
-            Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object { "stopping $($_.ProcessName) ($($_.Id))"; Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
-          }
-          # Closing the first-logon page drops the session onto an open Start menu over the middle of
-          # the screen (it opened a few seconds later and was not in the window list). It is a shell
-          # surface that cannot be minimised; Esc closes it and is harmless when nothing is open.
-          Add-Type -AssemblyName System.Windows.Forms
-          for ($i = 0; $i -lt 3; $i++) {
-            Start-Sleep -Seconds 2
-            Get-TopWindows | Where-Object { $_.Process -in 'StartMenuExperienceHost', 'SearchHost', 'ShellExperienceHost' } |
-              ForEach-Object { "shell surface $($_.Process) '$($_.Title)' $($_.Rect)" }
-            [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
-          }
-          # Whatever is still visible and is not the shell gets minimised (SW_MINIMIZE).
-          Get-TopWindows | Where-Object { $_.Process -ne 'explorer' -and $_.Class -notin 'Shell_TrayWnd', 'Shell_SecondaryTrayWnd', 'Progman', 'WorkerW' } |
-            ForEach-Object { "minimising $($_.Process) '$($_.Title)' [$($_.Class)]"; [void][Native.Desk]::ShowWindow($_.Handle, 6) }
-
-          # windows-11-arm's WSL app runs `wsl.exe --update --confirm --prompt-before-exit` from
-          # backgroundTaskHost every 30 s, each time in a new Windows Terminal window that becomes the
-          # foreground window over the app under test (the failures named it: WindowsTerminal, title
-          # 'C:\Windows\system32\wsl.exe'). A watchdog for the rest of the job stops exactly that
-          # command and its window, and records what started it; the runner cleans it up with the job.
-          # Its log lands in the uploaded test-log directory. Other wsl.exe processes are left alone:
-          # the images' provisioning agent probes WSL with a windowless `wsl -u root -e ls`, which an
-          # earlier version of this watchdog stopped as well (provjobd.exe in the log).
-          # The retries come from the update never finishing: --prompt-before-exit leaves it waiting for
-          # a key, and stopping it counts as a failed update. Finish the update here, before the tests,
-          # so the background task has nothing left to do; the watchdog stays as the safety net and its
-          # log shows whether it still had to step in.
-          if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
-            $sw = [Diagnostics.Stopwatch]::StartNew()
-            $update = Start-Process wsl.exe -ArgumentList '--update', '--web-download' -WindowStyle Hidden -PassThru
-            if ($update.WaitForExit(300000)) {
-              "wsl --update finished with exit code $($update.ExitCode) after $([int]$sw.Elapsed.TotalSeconds) s"
-            } else {
-              "wsl --update did not finish within 300 s; stopping it"
-              Stop-Process -Id $update.Id -Force -ErrorAction SilentlyContinue
-            }
-            wsl.exe --version 2>&1 | Out-String
-          }
-
-          $watchdog = Join-Path $env:RUNNER_TEMP 'desktop-watchdog.ps1'
-          $watchdogLog = Join-Path $env:RUNNER_TEMP 'od-test-logs/desktop-watchdog.log'
-          Set-Content -Path $watchdog -Value @'
-          param([string]$Log)
-          while ($true) {
-            foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name = 'wsl.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*--update*' })) {
-              $parent = Get-CimInstance Win32_Process -Filter "ProcessId = $($p.ParentProcessId)" -ErrorAction SilentlyContinue
-              Add-Content $Log "$(Get-Date -Format HH:mm:ss.fff) stopping $($p.Name) ($($p.ProcessId)) '$($p.CommandLine)' started by $($parent.Name) ($($p.ParentProcessId)) '$($parent.CommandLine)'"
-              Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
-            }
-            foreach ($t in @(Get-Process -Name WindowsTerminal -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like '*wsl*' })) {
-              Add-Content $Log "$(Get-Date -Format HH:mm:ss.fff) closing WindowsTerminal ($($t.Id)) '$($t.MainWindowTitle)'"
-              Stop-Process -Id $t.Id -Force -ErrorAction SilentlyContinue
-            }
-            Start-Sleep -Milliseconds 500
-          }
-          '@
-          Start-Process pwsh -WindowStyle Hidden -ArgumentList '-NoProfile', '-File', $watchdog, '-Log', $watchdogLog
-          Start-Sleep -Seconds 2
-          if (Test-Path $watchdogLog) { Get-Content $watchdogLog }
-
-          $full = 0; [void][Native.Desk]::SystemParametersInfo(0x0026, 0, [ref]$full, 0)
-          $set = [Native.Desk]::SystemParametersInfo(0x0025, 1, [IntPtr]::Zero, 3)
-          $after = 0; [void][Native.Desk]::SystemParametersInfo(0x0026, 0, [ref]$after, 0)
-          "drag full windows: was=$full set=$set now=$after"
-
-          Start-Sleep -Seconds 1
-          "== visible top-level windows after"
-          Get-TopWindows | Format-Table Process, Pid, Class, Title, Rect -AutoSize | Out-String -Width 220
-          Save-Desktop 'desktop-before-tests'
-          exit 0
+          ./.github/ci/prepare-windows-desktop.ps1
 
       - name: Install GTK designer runtimes and metadata
         if: matrix.needs_gtk && matrix.platform == 'macos-arm64'
@@ -481,7 +312,7 @@ jobs:
       # rather than a silently slower lane that later dies at start-up.
       - name: Restore the NuGet package cache
         if: matrix.needs_nuget_cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: artifacts/nuget-packages
           key: ${{ steps.nuget-key.outputs.key }}
@@ -494,10 +325,6 @@ jobs:
       - name: Verify the lane's bitness
         shell: pwsh
         run: ./.github/ci/verify-bitness.ps1 -Platform '${{ matrix.platform }}'
-      - name: Diagnose the IDE host start-up
-        if: matrix.needs_nuget_cache && inputs.diagnose
-        shell: pwsh
-        run: ./.github/ci/diagnose-host.ps1
       - name: Run the lane
         shell: pwsh
         env:
@@ -528,19 +355,19 @@ jobs:
       - name: Publish the test results as a check
         if: always()
         continue-on-error: true
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         with:
           name: ${{ matrix.lane }} (${{ matrix.platform }})
           path: TestResults/*.trx
           reporter: dotnet-trx
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: results-${{ matrix.lane }}-${{ matrix.platform }}
           path: TestResults
           if-no-files-found: ignore
           retention-days: 3
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: logs-${{ matrix.lane }}-${{ matrix.platform }}
@@ -548,62 +375,40 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
-  # Linux is packaged and started here, not run through the test plan: its test lanes are not enabled yet, but a broken
-  # payload or a window that never renders must turn this run red, and the release workflow only accepts a commit with a
-  # green run of this file. Each architecture builds on a native runner (there is no cross-architecture Linux payload),
-  # packages OpenDevelop-<rid>.zip, and starts the packaged app under Xvfb until its first workbench render.
-  package-linux:
-    name: Package Linux (${{ matrix.rid }})
-    # 'platforms' narrows a manual run (for example when a runner pool is unavailable); every other trigger runs it.
-    if: github.event_name != 'workflow_dispatch' || inputs.platforms == '' || contains(inputs.platforms, 'linux')
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - rid: linux-x64
-            runner: ubuntu-24.04
-            dotnet_architecture: x64
-          - rid: linux-arm64
-            runner: ubuntu-24.04-arm
-            dotnet_architecture: arm64
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+  # Packaging runs the same reusable workflow as the release, so the artifact a tag ships has already passed the same steps
+  # on this commit. Pull requests only package Linux (the cheap one); the Windows and macOS packages run on master and on
+  # manual dispatches. 'platforms' narrows a manual run (for example when a runner pool is unavailable).
+  package:
+    name: Package
+    uses: ./.github/workflows/package.yml
+    with:
+      include: ${{ github.event_name == 'pull_request' && 'linux' || inputs.platforms || 'windows,macos,linux' }}
+      retention-days: 7
+
+  # What release.yml's gate looks for. A green run is not enough: with the plan in focus mode the 'required' entries are
+  # skipped, and a dispatch narrowed by 'through_batch' or 'platforms' runs a subset. Only a run that executed the full plan
+  # and packaged every distribution on this commit uploads the 'release-grade' artifact.
+  release-grade:
+    name: Release grade
+    needs: [plan, build, test, in-place, package]
+    if: always() && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
-      - name: Initialize build submodules
-        shell: bash
-        run: bash .github/ci/init-submodules.sh
-      - uses: actions/setup-dotnet@v6
+          sparse-checkout: .github/ci
+      - name: Decide whether this run can gate a release
+        shell: pwsh
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          NARROWED: ${{ (inputs.through_batch || inputs.platforms) && 'true' || 'false' }}
+        run: ./.github/ci/release-grade.ps1 -Output release-grade.txt
+      - uses: actions/upload-artifact@v7
         with:
-          global-json-file: global.json
-          architecture: ${{ matrix.dotnet_architecture }}
-      - name: Install Linux display and native runtime prerequisites
-        shell: bash
-        run: |
-          # The hosted runners have no GPU. wgpu-native needs a graphics backend to create the window
-          # surface: without a Vulkan loader and a software driver (Mesa's lavapipe) it has no
-          # instance at all and aborts with SIGABRT (status 134) at wgpuInstanceCreateSurface.
-          sudo apt-get update
-          sudo apt-get install -y xvfb libgtk-3-0 libx11-xcb1 libxkbcommon0 libgl1 libvulkan1 mesa-vulkan-drivers
-      - name: Build and smoke-test the native Linux payload
-        shell: bash
-        run: |
-          # GitVersion's GitHub Actions integration races on the runner's env file when projects build in parallel.
-          unset GITHUB_ACTIONS
-          xvfb-run -a bash dist.linux.sh --skip-feed-sync
-          test -f "OpenDevelop-${{ matrix.rid }}.tar.xz"
-          payload="OpenDevelop-${{ matrix.rid }}"
-          module="$payload/AddIns/Misc/PackageManagement/Scripts/OpenDevelop.PackageManagement.ps1"
-          test -f "$module"
-          pwsh -NoProfile -Command ". '$module'; foreach (\$name in 'Get-Package','Install-Package','Update-Package','Uninstall-Package') { Get-Command \$name -ErrorAction Stop | Out-Null }"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-package-${{ matrix.rid }}
-          path: OpenDevelop-${{ matrix.rid }}.tar.xz
-          if-no-files-found: error
-          retention-days: 7
+          name: release-grade
+          path: release-grade.txt
+          if-no-files-found: ignore
+          retention-days: 90
 
   # The lane whose plan definition says 'buildsInLane'. It has no archive and no dependency on the platform build, so
   # its result arrives minutes into the run instead of behind the compile-and-pack job. It compiles only its own entries.
@@ -614,7 +419,7 @@ jobs:
     runs-on: ${{ needs.plan.outputs.in_lane_runner }}
     timeout-minutes: ${{ fromJSON(needs.plan.outputs.in_lane_timeout) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Initialize the submodules the build needs
@@ -634,7 +439,7 @@ jobs:
       # Restore only: the build job owns this entry. This lane starts before that job saves it, so a miss here is normal
       # and simply means an uncached restore - saving would spend four minutes compressing a duplicate.
       - name: Restore the NuGet package cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: artifacts/nuget-packages
           key: ${{ steps.nuget-key.outputs.key }}
@@ -661,19 +466,19 @@ jobs:
       - name: Publish the test results as a check
         if: always()
         continue-on-error: true
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         with:
           name: ${{ needs.plan.outputs.in_lane_name }} (${{ needs.plan.outputs.in_lane_platform }}, in place)
           path: TestResults/*.trx
           reporter: dotnet-trx
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: results-${{ needs.plan.outputs.in_lane_name }}-in-place
           path: TestResults
           if-no-files-found: ignore
           retention-days: 3
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: logs-${{ needs.plan.outputs.in_lane_name }}-in-place

@@ -38,10 +38,10 @@ jobs:
     name: Check the tag
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: The tag is a release version, on master, with a green CI run, and not released yet
+      - name: The tag is a release version, on master, with a release-grade CI run, and not released yet
         shell: bash
         run: |
           set -euo pipefail
@@ -52,233 +52,49 @@ jobs:
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
             echo "::error::$GITHUB_REF_NAME ($GITHUB_SHA) is not on master. Release from master."; exit 1
           fi
-          green=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&per_page=50" \
-            --jq '[.workflow_runs[] | select(.conclusion == "success")] | length')
+          # A green run is not enough: only a run that executed the full plan and packaged every distribution on this
+          # commit uploads the 'release-grade' artifact (ci.yml, job "Release grade"). A focus-mode or narrowed run is
+          # green and has none.
+          green=0
+          for run_id in $(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&per_page=50" \
+              --jq '.workflow_runs[] | select(.conclusion == "success") | .id'); do
+            marker=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?name=release-grade" \
+              --jq '[.artifacts[] | select(.expired == false)] | length')
+            if [[ "$marker" -ge 1 ]]; then green=$((green + 1)); fi
+          done
           if [[ "$green" -lt 1 ]]; then
             # Escape hatch for a release whose CI is red only for infrastructure reasons (hosted
             # macOS runners that never arrive and time out as "cancelled"). Set the repository
             # variable for one release, then delete it, so the gate stays on by default.
             if [[ "${{ vars.RELEASE_SKIP_CI_GATE }}" == "true" ]]; then
-              echo "::warning::No successful CI run exists for $GITHUB_SHA; continuing because RELEASE_SKIP_CI_GATE is true."
+              echo "::warning::No release-grade CI run exists for $GITHUB_SHA; continuing because RELEASE_SKIP_CI_GATE is true."
             else
-              echo "::error::No successful CI run exists for $GITHUB_SHA. Run ci.yml on this commit first (a push to master, or a dispatch)."; exit 1
+              echo "::error::No release-grade CI run exists for $GITHUB_SHA. Dispatch ci.yml on this commit with full=true and no through_batch/platforms (a plain push is release-grade only when the plan is not in focus mode)."; exit 1
             fi
           fi
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             echo "::error::A release for $GITHUB_REF_NAME already exists."; exit 1
           fi
-          echo "$GITHUB_REF_NAME: on master, $green successful CI run(s), no release yet."
+          echo "$GITHUB_REF_NAME: on master, $green release-grade CI run(s), no release yet."
 
-  windows:
-    name: Package Windows
+  # Every distribution is built and verified by the same workflow ci.yml calls on each master push.
+  package:
+    name: Package
     needs: prepare
-    runs-on: windows-2025
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          # The build stamps its version from git history (GitVersion).
-          fetch-depth: 0
-      - name: Initialize the submodules the build needs
-        shell: bash
-        run: bash .github/ci/init-submodules.sh
-      - uses: actions/setup-dotnet@v6
-        with:
-          global-json-file: global.json
-          architecture: x64
-      # The sharing rules decide which host copies are deleted, and a mistake there only surfaces as
-      # a packaged designer child that cannot load an assembly - after the whole payload build. This
-      # synthetic payload pins both rules (no store entry for an identity with two contents, a store
-      # entry for an identical one) in seconds.
-      - name: Test the payload sharing rules
-        shell: pwsh
-        run: ./build/windows/test-share-managed-payload.ps1
-      # One payload serves x64 and ARM64 (dist.ps1 builds both launchers and runs its own smoke phase). GitVersion's GitHub
-      # Actions integration races on the runner's env file when projects build in parallel (see build-binaries.ps1), so the
-      # variable that enables it is removed for the packaging.
-      - name: Build the unified Windows distribution
-        shell: cmd
-        env:
-          # Collapses the designer hosts' duplicated managed closure into shared/managed; the
-          # bitness step below starts a real designer host and would fail if it were incomplete.
-          OD_SHARE_MANAGED_CLOSURE: '1'
-        run: |
-          set "GITHUB_ACTIONS="
-          rem No gh credential can read the lextudio feed with this ephemeral token; NuGet restores
-          rem the same closure from GitHub Packages with the credential the job env provides.
-          dist.windows.bat --skip-feed-sync
-      # The bitness journeys debug a framework-dependent fixture built for another architecture, so
-      # the runner needs that architecture's runtime - the same thing a user who debugs an x86 (or,
-      # on ARM64, an x64) application has installed. Nothing is bundled into the artifact: the
-      # product still requires the user's .NET 10 runtime. dotnet-install does not register the
-      # install for the apphost, so point it there explicitly.
-      - name: Install the runtimes the bitness journeys debug
-        shell: pwsh
-        run: |
-          $architectures = if ($env:RUNNER_ARCH -eq 'ARM64') { @('x64', 'x86') } else { @('x86') }
-          Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile "$env:RUNNER_TEMP/dotnet-install.ps1"
-          foreach ($architecture in $architectures) {
-            $installDir = switch ($architecture) {
-              'x86' { "${env:ProgramFiles(x86)}\dotnet" }
-              'x64' { "$env:ProgramFiles\dotnet\x64" }
-            }
-            & "$env:RUNNER_TEMP/dotnet-install.ps1" -Runtime dotnet -Channel 10.0 -Architecture $architecture -InstallDir $installDir -NoPath
-            # $LASTEXITCODE is not set by a PowerShell script, only by a native command, so check
-            # what the install actually produced.
-            if (-not (Get-ChildItem -Path (Join-Path $installDir 'shared/Microsoft.NETCore.App') -Directory -ErrorAction SilentlyContinue)) {
-              throw "the $architecture runtime did not install into $installDir"
-            }
-            if ($architecture -eq 'x86') { "DOTNET_ROOT_X86=$installDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }
-            if ($architecture -eq 'x64') { "DOTNET_ROOT_X64=$installDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }
-          }
-          dotnet --list-runtimes
-      # The packaged payload is what users get, and its per-RID assets exist only so a project built
-      # for another bitness can be designed and debugged. Prove that on the artifact itself rather
-      # than on a development tree: the x64 runner debugs x64 and x86, the ARM64 runner debugs
-      # arm64, x64 and x86 through Windows' emulation. A pruned runtime pack or debugger shim turns
-      # this step red instead of reaching users.
-      - name: Verify the packaged payload by bitness
-        shell: pwsh
-        run: |
-          $targets = if ($env:RUNNER_ARCH -eq 'ARM64') { @('win-arm64', 'win-x64', 'win-x86') } else { @('win-x64', 'win-x86') }
-          ./build/windows/verify-packaged-app.ps1 -PayloadRoot OpenDevelop-win -Targets $targets -SkipDebugJourneys
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-windows
-          path: OpenDevelop-win.7z
-          if-no-files-found: error
-  macos:
-    name: Package macOS ARM64
-    needs: prepare
-    # The same image ci.yml builds macOS on; dist.macos.sh probes for a linking toolchain and is sensitive to the SDK.
-    runs-on: macos-15
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Initialize the submodules the build needs
-        shell: bash
-        run: bash .github/ci/init-submodules.sh
-      - uses: actions/setup-dotnet@v6
-        with:
-          global-json-file: global.json
-          architecture: arm64
-      - name: Build the macOS ARM64 distribution
-        run: |
-          unset GITHUB_ACTIONS
-          # No gh credential can read the lextudio feed with this ephemeral token; NuGet restores
-          # the same closure from GitHub Packages with the credential the job env provides.
-          ./dist.macos.sh --skip-feed-sync
-      # dist.macos.sh verifies that the bundle renders its first workbench window.  Keep the
-      # release gate stronger: run the assembled .app itself, not project output, through the
-      # principal add-in/child-process paths before the DMG is allowed to leave this checkout.
-      - name: Verify packaged macOS application features
-        shell: bash
-        env:
-          # Keep the debugger breakpoint journey mandatory in the release checkout,
-          # including if GitHub upgrades its macOS image.
-          OD_BUNDLE_VERIFY_REQUIRE_DEBUGGER: '1'
-        run: build/macos/verify-application-bundle.sh OpenDevelop.app
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-macos-arm64
-          path: OpenDevelop-macos.dmg
-          if-no-files-found: error
-
-  linux:
-    name: Package Linux (${{ matrix.rid }})
-    needs: prepare
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - rid: linux-x64
-            runner: ubuntu-24.04
-            dotnet_architecture: x64
-          - rid: linux-arm64
-            runner: ubuntu-24.04-arm
-            dotnet_architecture: arm64
-    # Each architecture is built on a native runner: there is no cross-architecture Linux payload. ci.yml runs the same
-    # steps on every master push, so a release that reaches this job has already seen them pass on this commit.
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Initialize the submodules the build needs
-        shell: bash
-        run: bash .github/ci/init-submodules.sh
-      - uses: actions/setup-dotnet@v6
-        with:
-          global-json-file: global.json
-          architecture: ${{ matrix.dotnet_architecture }}
-      - name: Install Linux display and native runtime prerequisites
-        shell: bash
-        run: |
-          # No GPU on hosted runners: wgpu-native needs a software Vulkan driver (lavapipe) to create a surface.
-          sudo apt-get update
-          sudo apt-get install -y xvfb libgtk-3-0 libx11-xcb1 libxkbcommon0 libgl1 libvulkan1 mesa-vulkan-drivers
-      # The x64 payload build once died with the runner's own "No space left on device" while the
-      # arm64 job on the same commit passed, so it is the image's free space, not the product. The
-      # hosted images ship multi-gigabyte caches this build never uses; drop them and print the
-      # numbers so a future space problem is visible here instead of in a killed runner process.
-      - name: Reclaim disk space for the payload build
-        shell: bash
-        run: |
-          df -h /
-          sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
-          sudo apt-get clean || true
-          df -h /
-      # dist.linux.sh starts the packaged app and requires its first workbench render before it writes the tar.xz.
-      - name: Build and smoke-test the native Linux payload
-        shell: bash
-        run: |
-          unset GITHUB_ACTIONS
-          xvfb-run -a bash dist.linux.sh --skip-feed-sync
-          test -f "OpenDevelop-${{ matrix.rid }}.tar.xz"
-      # The smoke phase inside dist only proves the payload starts and paints one frame. Windows and
-      # macOS have had a journey check on the packaged artifact for a while; Linux had none, so a
-      # pruned runtime tree, a missing deps entry or a child host that cannot start reached users.
-      # Same journeys as the macOS bundle check, against the payload directory itself.
-      - name: Verify the packaged Linux payload
-        shell: bash
-        env:
-          # Same as macOS: the breakpoint journey is mandatory in the release checkout.
-          OD_VERIFY_REQUIRE_DEBUGGER: '1'
-        run: xvfb-run -a ./build/linux/verify-application-payload.sh "OpenDevelop-${{ matrix.rid }}"
-      # The check above runs the directory dist left behind. Users get the tar.xz, so unpack that exact file
-      # elsewhere and run the same journeys on it; this catches what archiving loses (modes, symlinks, paths).
-      - name: Verify the shipped Linux archive after extraction
-        shell: bash
-        env:
-          OD_VERIFY_REQUIRE_DEBUGGER: '1'
-        run: |
-          extract="$RUNNER_TEMP/archive-check"
-          rm -rf "$extract"; mkdir -p "$extract"
-          tar -xJf "OpenDevelop-${{ matrix.rid }}.tar.xz" -C "$extract"
-          payload=$(find "$extract" -maxdepth 2 -name OpenDevelop.dll -printf '%h\n' -quit)
-          test -n "$payload" || { echo '::error::OpenDevelop.dll not found in the extracted archive'; exit 1; }
-          xvfb-run -a ./build/linux/verify-application-payload.sh "$payload"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-${{ matrix.rid }}
-          path: OpenDevelop-${{ matrix.rid }}.tar.xz
-          if-no-files-found: error
+    uses: ./.github/workflows/package.yml
 
   draft:
     name: Draft the GitHub Release
-    needs: [windows, macos, linux]
+    needs: package
     runs-on: ubuntu-latest
     permissions:
       contents: write
       actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts/release
           merge-multiple: true

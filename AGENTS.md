@@ -228,7 +228,7 @@ Spending runs:
 
 - **A push to `master` is the only automatic trigger** (plus PRs), so a diagnostic iteration does not need one: push a
   topic branch (`git push origin HEAD:refs/heads/ci-probe`), dispatch against it
-  (`gh workflow run ci.yml --ref ci-probe -f diagnose=true`) and delete the branch afterwards. Never push to `master` and
+  (`gh workflow run ci.yml --ref ci-probe -f full=true`) and delete the branch afterwards. Never push to `master` and
   also dispatch the same commit - that runs the same thing twice, which happened twice on 2026-10-25 and cost about 28
   runner minutes.
 - **One hypothesis, one run.** Batch related edits, read the result, then act. Cancel a superseded run
@@ -236,8 +236,8 @@ Spending runs:
 - Read the lane's job summary table (`| Entry | Mode | Result | Seconds | Tests |`), not the console tail. `observe`
   entries do not fail the job by themselves, but `run-test-plan.ps1` now fails an `xunit-exe` entry that reports no test
   total or 0 tests, and fails a lane in which every entry failed - so a green lane does mean it ran something.
-- The temporary host diagnostics only run with the `diagnose` input; use it when the question is how the IDE host
-  starts, and remove the step once the host is fixed.
+- The `diagnose` input and `diagnose-host.ps1` are gone (the host starts on every runner); add a one-off step on a topic
+  branch when a new start-up question needs one.
 
 Layout, so a change goes in the right place:
 
@@ -285,8 +285,15 @@ releases v5.6.0 - v5.6.3, so keep them: the title is the tag (`v5.6.4`, not `Ope
 `releases/latest/download/<name>`), and the notes follow `.github/release-notes.template.md` (badge, "Changes since",
 Highlight, Known issues, Full Changelog).
 
-- The workflow checks the tag first: `vMAJOR.MINOR.PATCH[-suffix]`, on `master`, at least one successful `ci.yml` run for
-  that exact commit, and no release for it yet. Run CI on the commit before tagging it.
+- The workflow checks the tag first: `vMAJOR.MINOR.PATCH[-suffix]`, on `master`, at least one **release-grade** `ci.yml` run
+  for that exact commit (one that uploaded the `release-grade` artifact: no `through_batch`/`platforms` narrowing, the plan
+  not in focus mode or dispatched with `full=true`, and every distribution packaged), and no release for it yet. A merely
+  green run does not qualify. Run CI on the commit before tagging it; while `"focus": true`, dispatch it with `full=true`.
+- The packaged-app checks run the same journeys on every platform: `build/verify-packaged-common.sh` (macOS and Linux share it)
+  and `build/windows/verify-packaged-app.ps1` (mirrors its DevFlow actions). Add or tighten a journey in both. Windows still
+  skips only the per-RID bitness journeys (`-SkipDebugJourneys`).
+- `package.yml` is the one definition of how Windows, macOS and Linux are built and verified; `ci.yml` (master pushes and
+  dispatches; PRs only Linux) and `release.yml` both call it, so edit packaging steps there, never in either caller.
 - It leaves a **draft**. A draft is never `latest`, so the IDE's update check (`releases/latest`) stays quiet until the notes
   are read and the draft is published (`gh release edit <tag> --draft=false`).
 - Write the "Changes since" bullets in `doc/releases/<tag>.md` *before* tagging. Without that file the script uses the

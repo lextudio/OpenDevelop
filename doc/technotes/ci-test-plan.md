@@ -2,8 +2,8 @@
 
 Goal: broaden GitHub Actions coverage of locally runnable tests on Windows x64, Windows ARM64 and macOS ARM64.
 Introduce substantial groups in observe mode, inspect their actual runner results, and promote stable entries to
-required per platform. Linux is packaged and started on native x64 and ARM64 runners by the `package-linux` job of
-`ci.yml`, and `release.yml` attaches both Linux `tar.xz` archives; Linux test lanes are the next planned expansion and no Linux
+required per platform. Linux is packaged and started on native x64 and ARM64 runners by the `package` job of
+`ci.yml` (the reusable `package.yml`), and `release.yml` attaches both Linux `tar.xz` archives; Linux test lanes are the next planned expansion and no Linux
 platform is enabled in the test plan yet.
 
 ## Current status (2026-10-28, 14:12 UTC)
@@ -16,8 +16,8 @@ not individual test cases. They describe the complete plan, not what a focus-mod
 | Windows x64 | 32 | 0 | No test entries; its build can still supply Windows ARM64. |
 | Windows ARM64 | 25 | 2 | Only the two observed entries run. |
 | macOS ARM64 | 26 | 5 | Only the five observed entries run. |
-| Linux x64 | 0 | 0 | No test entries; the `package-linux` job builds, audits and starts the packaged app. |
-| Linux ARM64 | 0 | 0 | No test entries; the `package-linux` job builds, audits and starts the packaged app. |
+| Linux x64 | 0 | 0 | No test entries; the `package` job builds, audits and starts the packaged app. |
+| Linux ARM64 | 0 | 0 | No test entries; the `package` job builds, audits and starts the packaged app. |
 
 **Focus mode skips every required entry. A green focus run does not prove that required coverage passed.** Use
 `workflow_dispatch` with `full=true` to run both statuses before relying on the complete gate. Its `platforms` input
@@ -65,10 +65,12 @@ smoke evidence is required before either architecture can claim CI coverage.
 
 The first native evidence came from a separate observational `Linux package smoke` workflow (since removed): it ran
 `dist.linux.sh` inside Xvfb on `ubuntu-24.04` and `ubuntu-24.04-arm`, verified the matching ZIP exists, and retained it
-as a short-lived artifact. Once both architectures were green (see below) those steps moved into the `package-linux` job
-of `ci.yml`, so a Linux packaging or startup failure turns the CI run red, and `release.yml` gates a tag on a green
-`ci.yml` run for the commit. `release.yml` also has a `linux` job (one native runner per architecture) whose
-`OpenDevelop-linux-x64.tar.xz` and `OpenDevelop-linux-arm64.tar.xz` the draft release attaches. The CI invocation skips the
+as a short-lived artifact. Once both architectures were green (see below) those steps moved into the `Package` job
+of `ci.yml`, so a packaging or startup failure turns the CI run red. That job is the reusable `.github/workflows/package.yml`,
+the single definition `release.yml` also calls (Windows, macOS and Linux, one native runner per Linux architecture). A tag is
+gated on a *release-grade* `ci.yml` run for the commit: the `Release grade` job uploads a `release-grade` artifact only when
+the run executed the full plan (not focus mode unless `full=true`, no `through_batch`/`platforms`) and packaged every
+distribution. The release's draft attaches `OpenDevelop-linux-x64.tar.xz` and `OpenDevelop-linux-arm64.tar.xz`. The CI invocation skips the
 developer-only local-feed synchronizer and restores directly from GitHub Packages with the workflow's short-lived
 package credential.
 
@@ -545,5 +547,5 @@ Two defects stopped the IDE during start-up on Windows, one after the other.
 How the second one was found, for the next host-start problem: search the built host folder's DLL metadata for the API
 that changes the state (`SelectMediaBackend`, `ProGpuWpfNativeMediaServices`), decompile the SDK bootstrap actually
 compiled into `OpenDevelop.dll` with `ilspycmd`, and compare with the LibreWPF package versions in use rather than with the
-`../openavalon` working tree. The `diagnose-host.ps1` step runs only for a `workflow_dispatch` with `diagnose`, and it
-inspects assembly resolution (`COREHOST_TRACE`, trusted platform assemblies), not media or windowing state.
+`../openavalon` working tree. The removed `diagnose-host.ps1` step (git history) inspected assembly resolution (`COREHOST_TRACE`, trusted platform
+assemblies), not media or windowing state.
