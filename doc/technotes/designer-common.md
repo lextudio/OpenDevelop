@@ -332,6 +332,24 @@ MewUI's `Mutated` also tracks undo depth - and returns the state). Sessions impl
 GTK converted 11 handlers and MewUI 7; handlers with their own logic (created ids, native render, hit test, multi-step edits)
 keep their bodies. The WPF and Uno hosts patch text instead of owning an editor model and are not adopted; WinForms is CodeDom.
 
+Where consolidation stops, and why (2026-11-01) - recorded so it is not re-litigated:
+
+- **WPF and Uno hosts do not use `SourceModelHost`.** Their mutations are dispatcher-bound, per-document services that *soft-reject*:
+  a stale version or a failed edit returns a state with `Accepted = false` (`RejectIfStale`, `NotFound`), not an exception. The shared
+  `Edit` throws, which is the GTK/MewUI wire behaviour; adopting it would change what WPF and Uno clients see on every refusal.
+- **WinForms does not use the shared context commands or `SourceModelHost`.** Its menus are designer-verb/CodeDom driven and its
+  host owns a live design surface, not a source-model editor with a version. Its clients already use the shared document verbs
+  where the shapes match (hit-test, add-element, set-bounds, delete-elements, set-property, rename, set-event, flush, close).
+- **No GTK/MewUI view base class.** About 150 lines of their `*ViewContent` are identical, but a base would have to derive from the
+  IDE's view-content type and use the shared canvas (`DesignSurface`): the only projects that reference both (the two addins) are
+  separate deployables, while `Designer.Shell`/`Designer.Presentation` must stay free of the IDE and the canvas. A shared base
+  therefore needs a new assembly with its own addin deployment (or a linked source file that defines the type twice); that cost
+  outweighs the duplication. Their pure logic already lives in `DesignerStandardCommands`.
+- **No shared DevFlow action set.** `[DevFlowAction("od.<designer>.<name>")]` names must be literals that the agent finds by
+  scanning, so a prefix-parameterised base cannot register them; the actions are one-liners over per-view methods.
+- **Property adapters are not duplicates.** GTK/MewUI adapters share 74 of ~200 normalized lines and one 6-line block; naming
+  (`DescriptorName`, the layout prefix) and descriptor behaviour differ by design.
+
 `DesignerDocumentHostClient` now supplies the surrounding parent-side lease state for those
 three adapters: document identity, process status, host-exit forwarding and ping/close lifecycle.
 This leaves each adapter with only its pool compatibility key, release policy and runtime-specific
