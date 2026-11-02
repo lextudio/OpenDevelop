@@ -226,18 +226,18 @@ One workflow, `.github/workflows/ci.yml`, driven by `.github/ci/test-plan.json`;
 
 Spending runs:
 
-- **A push to `master` is the only automatic trigger** (plus PRs), so a diagnostic iteration does not need one: push a
-  topic branch (`git push origin HEAD:refs/heads/ci-probe`), dispatch against it
-  (`gh workflow run ci.yml --ref ci-probe -f full=true`) and delete the branch afterwards. Never push to `master` and
-  also dispatch the same commit - that runs the same thing twice, which happened twice on 2026-10-25 and cost about 28
-  runner minutes.
+- **Push reviewed CI changes straight to `master`**; do not use a topic branch (`ci-probe` and the like) to try them first.
+  The push is the run: read its result and follow up with another reviewed commit. A push to `master` (plus PRs) is the
+  only automatic trigger. Dispatch on `master` only for what a push cannot do (`full=true`, `through_batch`, `platforms`),
+  and never for a commit whose push run is still going - that runs the same thing twice, which happened twice on
+  2026-10-25 and cost about 28 runner minutes.
 - **One hypothesis, one run.** Batch related edits, read the result, then act. Cancel a superseded run
   (`gh run cancel <id>`) instead of letting it finish.
 - Read the lane's job summary table (`| Entry | Mode | Result | Seconds | Tests |`), not the console tail. `observe`
   entries do not fail the job by themselves, but `run-test-plan.ps1` now fails an `xunit-exe` entry that reports no test
   total or 0 tests, and fails a lane in which every entry failed - so a green lane does mean it ran something.
-- The `diagnose` input and `diagnose-host.ps1` are gone (the host starts on every runner); add a one-off step on a topic
-  branch when a new start-up question needs one.
+- The `diagnose` input and `diagnose-host.ps1` are gone (the host starts on every runner). When a new start-up question
+  needs one, add a temporary diagnostic step in a reviewed commit pushed to `master`, and remove it in the next one.
 
 **Every shipped platform gets the same stages.** Both workflows are organised by this table; adding a platform or a stage
 means filling its whole row or column, not one cell:
@@ -315,7 +315,7 @@ Highlight, Known issues, Full Changelog).
   runs `dist.*`; `release.yml` is the only place that builds the Release distributions, and it only runs the lean packaged-app
   checks above, one `verify` row per shipped platform on its own runner, before drafting. Do not add packaging to CI to
   "verify early": add the journey to the packaged-app checks.
-- `gh workflow run release.yml --ref <branch>` is a rehearsal: it builds and verifies every distribution, skips the tag
+- `gh workflow run release.yml --ref master` is a rehearsal: it builds and verifies every distribution, skips the tag
   checks and drafts nothing. Use it after changing `release.yml`, `dist.*` or `build/**`, instead of an rc tag.
 - It leaves a **draft**. A draft is never `latest`, so the IDE's update check (`releases/latest`) stays quiet until the notes
   are read and the draft is published (`gh release edit <tag> --draft=false`).
