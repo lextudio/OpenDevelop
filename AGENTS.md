@@ -10,12 +10,27 @@ Keep this file concise and operational. Read the referenced technote only when t
   Homebrew SDK path that made the cache, e.g. `/opt/homebrew/Cellar/dotnet/<version>/libexec/dotnet`.
 - `SharpDevelop.sln` is stale; use `OpenDevelop.Mvp.slnx`.
 - LibreWPF source lives in the sibling repo `../openavalon` (not in this repo); look there for
-  window/ProGPU behaviour, e.g. first-window init and show timing. OpenDevelop consumes it only as
-  NuGet packages from the local feed `../openavalon/artifacts/local-feed`, so a LibreWPF change is
-  invisible until it is published to the feed (or overlaid). **`../openavalon/AGENTS.md` is
-  authoritative** for versions, lanes, incremental receipts and `dev-overlay.sh` (one-assembly
-  inner loop, no feed); `doc/technotes/librewpf.md` is consumer-side background and may lag it.
-  Publish with `./repack-librewpf.sh` (wraps `dist.local.sh`); never hand-pack or hand-copy DLLs.
+  window/ProGPU behaviour, e.g. first-window init and show timing. OpenDevelop consumes it, with
+  LibreWinForms and the ProGPU closure, only as NuGet packages that GitHub Actions builds and
+  publishes to lextudio GitHub Packages. Nobody compiles that closure locally any more:
+  - **Get the packages:** `pwsh ./sync-openavalon-feed.ps1` downloads the pinned versions with the
+    GitHub CLI's credential (`gh auth login`, then `gh auth refresh -h github.com -s read:packages`)
+    into `artifacts/openavalon-feed`, the `opendevelop-openavalon-local` source in `NuGet.config`;
+    CI restores the same closure from GitHub Packages with its own token. The pins are one version:
+    `global.json` (`LibreWPF.Sdk`) and `Directory.Build.props` (`ProGpuWpfLibreWinFormsPackageVersion`,
+    `ProGpuPackageVersion`). To take a newer LibreWPF, move all three to a version GitHub Packages
+    has, then sync and rebuild.
+  - **Try a LibreWPF change locally:** build just that assembly in `../openavalon` and replace it -
+    `../openavalon/dev-overlay.sh <OpenDevelop bin dir> <Assembly>` (the `bin` copy; the next build
+    undoes it) or `../openavalon/dev-patch-feed.sh <Assembly>` (the package inside
+    `artifacts/openavalon-feed`; `--restore` puts the originals back). Never hand-copy DLLs.
+  - **Ship it:** commit and push in `../openavalon`; its `publish-librewpf-github-packages.yml` builds
+    and publishes the whole closure (about 1.5-2 hours, one run at a time), then move the pins here.
+  `../openavalon/AGENTS.md` owns that publishing side (versions, packing invariants). Its
+  `dist.local.sh` is what the publish workflow runs; do not run it, `repack-librewpf.sh/.ps1` or a
+  local feed to feed OpenDevelop - those are the slow pre-GitHub-Packages route.
+  `doc/technotes/librewpf.md` describes that older route; its NuGet same-version cache trap still
+  applies to a patched or republished package.
 
 ## OpenCode review and commits
 
@@ -414,7 +429,7 @@ the excluded `Startup/SplashScreen.cs`, `src/Setup/**` WiX and `.tgitconfig`. Th
 ## References
 
 - `doc/technotes/fast-mode.md`, `doc/technotes/build-from-source.md`
-- `doc/technotes/librewpf.md` (LibreWPF local feed, repack, stale-cache traps)
+- `doc/technotes/librewpf.md` (the older local-feed route; its NuGet same-version cache trap still applies)
 - `doc/technotes/in-process-analysis.md`, `doc/technotes/winforms-designer.md`
 - `tests/OpenDevelop.IntegrationTests/TESTING.md`
 - `../AGENTS.md` — the external add-in checkouts (CoreWF, Stride, MAUI-Designer), how to locate

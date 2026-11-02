@@ -1,5 +1,13 @@
 # Packing LibreWPF locally for OpenDevelop
 
+> **Superseded route.** OpenDevelop no longer consumes a locally packed feed. GitHub Actions publishes
+> the LibreWPF/LibreWinForms/ProGPU closure to GitHub Packages, `sync-openavalon-feed.ps1` downloads the
+> pinned versions with the GitHub CLI into `artifacts/openavalon-feed`, and a LibreWPF change is tried
+> locally by rebuilding one assembly and replacing it (`../openavalon/dev-overlay.sh`,
+> `../openavalon/dev-patch-feed.sh`). See `AGENTS.md` ("Working rules") and `../openavalon/AGENTS.md`.
+> What follows is kept for the NuGet same-version cache trap, which still applies to a patched or
+> republished package, and for the history of the local feed.
+>
 > **Authority:** `../openavalon/AGENTS.md` is the maintained source for the feed. Where this note
 > disagrees, it wins. Known drift: versions are now a single `0.1.0-preview.65` pair set at the top
 > of `dist.local.sh` (not the `.57`/`.62` split below); `dist.local.sh` is incremental (receipts
