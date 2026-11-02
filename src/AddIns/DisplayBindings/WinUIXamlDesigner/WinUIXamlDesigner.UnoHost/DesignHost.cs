@@ -1225,16 +1225,11 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		{
 			if (baseVersion == version || allowNewerVersion && baseVersion > version)
 				return null;
-			var error = $"Stale base version {baseVersion}; the open document is at version {version}.";
-			var state = new DesignerSessionState {
+			return SourceModelHost.Refuse(new DesignerSessionState {
 				SessionId = requestSessionId,
 				DocumentId = requestDocumentId,
-				Version = baseVersion,
-				Accepted = false,
-				Error = error
-			};
-			state.Diagnostics.Add(new DesignerDiagnostic { Message = error });
-			return state;
+				Version = baseVersion
+			}, SourceModelHost.StaleVersionMessage(baseVersion, version));
 		}
 
 		async Task<DesignerSessionState> SetPropertyAsync(string requestSessionId, string requestDocumentId, long baseVersion, string elementId, string propertyName, string value)

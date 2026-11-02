@@ -951,10 +951,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 
 		[JsonRpcMethod("design/set-property")]
 		public DesignerSessionState SetProperty(long baseVersion, string elementId, string propertyName, string value)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item))
 					return NotFound(state, "Element not found: " + elementId);
 				DesignItemProperty? property;
@@ -983,17 +980,12 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					return NotFound(state, e.GetBaseException().Message);
 				}
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		[JsonRpcMethod("design/set-rich-text")]
 		public DesignerSessionState SetRichText(long baseVersion, string elementId, DesignerRichTextRun[] runs)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item) || !TryGetEditableRichText(item, out _))
 					return NotFound(state, "The TextBlock's inline content is not safely editable.");
 				runs ??= Array.Empty<DesignerRichTextRun>();
@@ -1033,9 +1025,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					changeGroup.Commit();
 				}
 				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Resolves an <c>Owner.Member</c> name to a WPF framework attached property
@@ -1057,10 +1047,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// Clearing resets the attribute rather than writing False.</summary>
 		[JsonRpcMethod("design/set-design-time-flag")]
 		public DesignerSessionState SetDesignTimeFlag(long baseVersion, string elementId, string flag, bool value)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item) || elementId.Length == 0 || item.View is not UIElement)
 					return NotFound(state, "Not a design-time flaggable element: " + elementId);
 				var dependencyProperty = flag switch {
@@ -1079,9 +1066,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						property.Reset();
 				}
 				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Visual Studio's Edit Style → Create Empty: adds <c>&lt;Style x:Key="ButtonStyle1"
@@ -1121,10 +1106,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// already sets a Style.</summary>
 		[JsonRpcMethod("design/copy-theme-style")]
 		public DesignerSessionState CopyThemeStyle(long baseVersion, string elementId)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId ?? "", out var item) || current?.RootItem is not XamlDesignItem root || item == root
 					|| item.Component is not FrameworkElement)
 					return NotFound(state, "Edit a Copy needs a non-root element: " + elementId);
@@ -1178,17 +1160,12 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					changeGroup.Commit();
 				}
 				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		DesignerSessionState CreateEmptyResource(long baseVersion, string elementId, string propertyName, string keySuffix,
 			Func<object> create, Func<DesignItem, bool> accepts, bool basedOnCurrent = false)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				var title = basedOnCurrent ? "Create " + propertyName + " Based On Current" : "Create Empty " + propertyName;
 				if (!pathToItem.TryGetValue(elementId ?? "", out var item) || current?.RootItem is not { } root || item == root
 					|| !accepts(item))
@@ -1235,9 +1212,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					changeGroup.Commit();
 				}
 				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Replaces a Brush-typed property's value with the brush the Properties-pad brush
@@ -1245,10 +1220,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// A solid brush is written as attribute text; a gradient as a property element.</summary>
 		[JsonRpcMethod("design/set-brush")]
 		public DesignerSessionState SetBrush(long baseVersion, string elementId, string propertyName, DesignerBrushInfo brush)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item))
 					return NotFound(state, "Element not found: " + elementId);
 				DesignItemProperty? property;
@@ -1378,9 +1350,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					return NotFound(state, e.GetBaseException().Message);
 				}
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Edits the path of an existing <see cref="System.Windows.Data.Binding"/> through
@@ -1390,10 +1360,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// object-model mutation, so rejection leaves the source untouched.</summary>
 		[JsonRpcMethod("design/set-binding-path")]
 		public DesignerSessionState SetBindingPath(long baseVersion, string elementId, string propertyName, string path, int childIndex = -1)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item))
 					return NotFound(state, "Element not found: " + elementId);
 				if (String.IsNullOrWhiteSpace(propertyName))
@@ -1421,9 +1388,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					return NotFound(state, e.GetBaseException().Message);
 				}
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		[JsonRpcMethod("design/set-binding-mode")]
@@ -1898,10 +1863,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// same native undo transaction as an in-process WPF designer reset.</summary>
 		[JsonRpcMethod("design/reset-property")]
 		public DesignerSessionState ResetProperty(long baseVersion, string elementId, string propertyName)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item))
 					return NotFound(state, "Element not found: " + elementId);
 				DesignItemProperty? property;
@@ -1924,9 +1886,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					return NotFound(state, e.GetBaseException().Message);
 				}
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Sets or clears a XAML event attribute through the design model. The host does
@@ -1934,10 +1894,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// code is run or authored inside this isolated process.</summary>
 		[JsonRpcMethod("design/set-event")]
 		public DesignerSessionState SetEvent(long baseVersion, string elementId, string eventName, string handlerName)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item))
 					return NotFound(state, "Element not found: " + elementId);
 				var property = item.Properties[eventName];
@@ -1954,9 +1911,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					return NotFound(state, e.GetBaseException().Message);
 				}
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Notifies the child of the current selection so it can temporarily expand any
@@ -2239,10 +2194,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// tracking as every other structural edit.</summary>
 		[JsonRpcMethod("design/move-element")]
 		public DesignerSessionState MoveElement(long baseVersion, string elementId, int delta)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item))
 					return NotFound(state, "Element not found: " + elementId);
 				var parentProperty = item.ParentProperty;
@@ -2262,9 +2214,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					return NotFound(state, e.GetBaseException().Message);
 				}
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Serializes elements for the IDE's clipboard, as the in-process designer's Copy
@@ -2276,7 +2226,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				var result = new DesignerCopyResult();
 				if (current == null || version != baseVersion)
 				{
-					result.Error = $"Stale base version {baseVersion}; the open document is at version {version}.";
+					result.Error = SourceModelHost.StaleVersionMessage(baseVersion, version);
 					return result;
 				}
 				var items = new List<DesignItem>();
@@ -2782,10 +2732,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// <see cref="ICSharpCode.WpfDesign.Designer.ModelTools.UnwrapItemsFromContainer"/>.</summary>
 		[JsonRpcMethod("design/unwrap-element")]
 		public DesignerSessionState UnwrapElement(long baseVersion, string elementId)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var container))
 					return NotFound(state, "Element not found: " + elementId);
 				if (container.Component is not (Grid or Canvas))
@@ -2803,9 +2750,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					changeGroup.Commit();
 				}
 				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Appends one more item under an existing <see cref="StatusBar"/> or
@@ -2860,10 +2805,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 
 		[JsonRpcMethod("design/set-bounds")]
 		public DesignerSessionState SetBounds(long baseVersion, string elementId, double x, double y, double width, double height)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item))
 					return NotFound(state, "Element not found: " + elementId);
 				try
@@ -2907,9 +2849,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 							+ placementFailure.GetBaseException().Message + ")");
 					}
 				}
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Applies all bounds under one <see cref="PlacementOperation"/>. A group drag is
@@ -2917,10 +2857,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// document untouched, and committing once preserves the designer's native undo boundary.</summary>
 		[JsonRpcMethod("design/set-bounds-batch")]
 		public DesignerSessionState SetBoundsBatch(long baseVersion, DesignerBoundsEdit[] edits)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (edits == null || edits.Length == 0)
 					return NotFound(state, "At least one bounds edit is required.");
 				if (edits.Any(edit => string.IsNullOrEmpty(edit.ElementId)))
@@ -2977,9 +2914,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					return NotFound(state, e.GetBaseException().Message);
 				}
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Writes an edge that the common canvas displayed from actual WPF layout. This is
@@ -2991,10 +2926,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// Every edit is one design-model group, preserving the native undo boundary.</summary>
 		[JsonRpcMethod("design/set-layout-inset")]
 		public DesignerSessionState SetLayoutInset(long baseVersion, string elementId, string kind, string edge, double value)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item))
 					return NotFound(state, "Element not found: " + elementId);
 				if (!double.IsFinite(value))
@@ -3058,9 +2990,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					return NotFound(state, e.GetBaseException().Message);
 				}
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Switches one Grid edge between its alignment anchor and Stretch. The current
@@ -3069,10 +2999,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// Grid child: Canvas has independent attached-property anchor semantics.</summary>
 		[JsonRpcMethod("design/toggle-layout-inset-anchor")]
 		public DesignerSessionState ToggleLayoutInsetAnchor(long baseVersion, string elementId, string edge)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item) || item.Parent?.Component is not Grid grid || item.View is not FrameworkElement element)
 					return NotFound(state, "The element is not a Grid child.");
 				if (edge is not ("Left" or "Top" or "Right" or "Bottom"))
@@ -3118,9 +3045,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					return NotFound(state, e.GetBaseException().Message);
 				}
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		static double GridOffset(IList<ColumnDefinition> definitions, int index, double extent)
@@ -3179,7 +3104,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				if (version != baseVersion)
 					return new DesignerGridGuides {
 						Accepted = false,
-						Error = $"Stale base version {baseVersion}; the open document is at version {version}."
+						Error = SourceModelHost.StaleVersionMessage(baseVersion, version)
 					};
 				if (!pathToItem.TryGetValue(elementId, out var item))
 					return new DesignerGridGuides { Accepted = false, Error = "Element not found: " + elementId };
@@ -3197,10 +3122,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// notification coverage every other mutation RPC does.</summary>
 		[JsonRpcMethod("design/set-grid-track-size")]
 		public DesignerSessionState SetGridTrackSize(long baseVersion, string elementId, bool isRow, int index, double pixels)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item))
 					return NotFound(state, "Element not found: " + elementId);
 				var collection = item.Properties[isRow ? "RowDefinitions" : "ColumnDefinitions"];
@@ -3217,9 +3139,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					return NotFound(state, e.GetBaseException().Message);
 				}
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Changes one Grid track's unit, as the in-process rail's GridUnitSelector does
@@ -3227,10 +3147,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// a meaningless 1 - takes the track's measured size for Pixel and 1 for Star.</summary>
 		[JsonRpcMethod("design/set-grid-track-unit")]
 		public DesignerSessionState SetGridTrackUnit(long baseVersion, string elementId, bool isRow, int index, string unit)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item) || item.Component is not Grid grid)
 					return NotFound(state, "Element is not a Grid: " + elementId);
 				if (!Enum.TryParse<GridUnitType>(unit, ignoreCase: false, out var unitType) || !Enum.IsDefined(unitType))
@@ -3255,9 +3172,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					property.SetValue(newLength);
 				}
 				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Splits one measured Grid track at its local pixel <paramref name="position"/>.
@@ -3268,10 +3183,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 	/// This preserves the pre-split visual placement rather than merely preserving logical indices.</summary>
 		[JsonRpcMethod("design/split-grid-track")]
 		public DesignerSessionState SplitGridTrack(long baseVersion, string elementId, bool isRow, double position)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item) || item.Component is not Grid grid)
 					return NotFound(state, "Element is not a Grid: " + elementId);
 				var definitions = isRow ? grid.RowDefinitions.Cast<DefinitionBase>().ToArray() : grid.ColumnDefinitions.Cast<DefinitionBase>().ToArray();
@@ -3305,9 +3217,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					changeGroup.Commit();
 				}
 				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Updates logical Grid indices after inserting a track: children after the split
@@ -3335,10 +3245,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 
 		[JsonRpcMethod("design/delete-elements")]
 		public DesignerSessionState DeleteElements(long baseVersion, string[] elementIds)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				// Resolve every id before removing anything: a bad id partway through the list
 				// must reject the whole operation, not leave the earlier ones already deleted
 				// (the same "reject cannot partially apply" invariant flush/stale-version checks
@@ -3360,17 +3267,12 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					return NotFound(state, e.GetBaseException().Message);
 				}
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		[JsonRpcMethod("design/rename")]
 		public DesignerSessionState Rename(long baseVersion, string elementId, string newName)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item))
 					return NotFound(state, "Element not found: " + elementId);
 				try
@@ -3381,9 +3283,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					return NotFound(state, e.GetBaseException().Message);
 				}
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Switches the design-time theme by name, per the WPF-standard convention of
@@ -3395,10 +3295,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// other mutation.</summary>
 		[JsonRpcMethod("design/theme")]
 		public DesignerSessionState SetTheme(long baseVersion, string theme)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				state.SupportsThemeSwitch = themeSources != null;
 				state.DesignThemes = themeSources?.Keys.ToArray() ?? Array.Empty<string>();
 				if (themeSources == null || !themeSources.TryGetValue(theme, out var resourceName))
@@ -3422,9 +3319,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					return NotFound(state, "Failed to load theme dictionary '" + theme + "': " + e.GetBaseException().Message);
 				}
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Resolves the design-time themes of <paramref name="projectAssembly"/> using the
@@ -3493,6 +3388,22 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			});
 		}
 
+		/// <summary>The edit lifecycle every mutation here follows (the same contract the GTK and MewUI hosts' <c>SourceModelHost.Edit</c>
+		/// implements, in this host's dispatcher/per-document form): refuse a stale base version, run <paramref name="body"/> against a fresh
+		/// state, and either return the refusal it produced (a state from <see cref="NotFound"/>) or - when it returns null - rebuild the
+		/// tree, render and report the edit accepted.</summary>
+		DesignerSessionState Edit(long baseVersion, Func<DesignerSessionState, DesignerSessionState?> body)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (body(state) is { } refused)
+					return refused;
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
 		DesignerSessionState NewState(long baseVersion) => new() { SessionId = sessionId ?? "", DocumentId = documentId ?? "", Version = baseVersion };
 
 		/// <summary>Enforces the DDP's mandatory stale-operation rule ("every mutating operation
@@ -3508,17 +3419,12 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return NotFound(NewState(baseVersion), "No document is open.");
 			if (version != baseVersion)
 				return NotFound(NewState(baseVersion),
-					$"Stale base version {baseVersion}; the open document is at version {version}.");
+					SourceModelHost.StaleVersionMessage(baseVersion, version));
 			return null;
 		}
 
 		static DesignerSessionState NotFound(DesignerSessionState state, string error)
-		{
-			state.Accepted = false;
-			state.Error = error;
-			state.Diagnostics.Add(new DesignerDiagnostic { Message = error });
-			return state;
-		}
+			=> SourceModelHost.Refuse(state, error);
 
 		static object ConvertValue(Type targetType, string value)
 		{
@@ -4144,10 +4050,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// -1 for a new element; items not named are removed.</summary>
 		[JsonRpcMethod("design/set-items")]
 		public DesignerSessionState SetItems(long baseVersion, string elementId, DesignerCollectionItemEdit[] items)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var element))
 					return NotFound(state, "Element not found: " + elementId);
 				if (!TryGetEditableItems(element, out var itemsProperty, out var kind) || itemsProperty == null || kind == null)
@@ -4181,9 +4084,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					changeGroup.Commit();
 				}
 				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		/// <summary>Rewrites a proven TreeViewItem hierarchy as one undoable mutation. Each existing
@@ -4191,10 +4092,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// state and prevents a move from silently changing an unknown object graph.</summary>
 		[JsonRpcMethod("design/set-tree-items")]
 		public DesignerSessionState SetTreeItems(long baseVersion, string elementId, DesignerTreeItemEdit[] items)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var element))
 					return NotFound(state, "Element not found: " + elementId);
 				if (!TryGetEditableTreeItems(element, out var property) || property == null)
@@ -4204,9 +4102,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					ApplyTreeItems(element, property.CollectionElements, items ?? Array.Empty<DesignerTreeItemEdit>());
 					group.Commit();
 				} catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		[JsonRpcMethod("design/set-menu-items")]
@@ -4280,10 +4176,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// collection unavailable rather than risking a lossy graph rewrite.</summary>
 		[JsonRpcMethod("design/set-binding-items")]
 		public DesignerSessionState SetBindingItems(long baseVersion, string elementId, string propertyName, DesignerCollectionItemEdit[] items)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var element))
 					return NotFound(state, "Element not found: " + elementId);
 				if (!TryGetEditableBindingItems(element, propertyName, out var bindingsProperty) || bindingsProperty == null)
@@ -4316,9 +4209,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					changeGroup.Commit();
 				}
 				catch (Exception e) { return NotFound(state, e.GetBaseException().Message); }
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		static bool TryGetEditableBindingItems(DesignItem element, string propertyName, out DesignItemProperty? bindingsProperty)
@@ -4860,10 +4751,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// a Brush property (its own editor) is refused.</summary>
 		[JsonRpcMethod("design/set-resource-reference")]
 		public DesignerSessionState SetResourceReference(long baseVersion, string elementId, string propertyName, string kind, string key)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item))
 					return NotFound(state, "Element not found: " + elementId);
 				DesignItemProperty? property;
@@ -4897,9 +4785,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					return NotFound(state, e.GetBaseException().Message);
 				}
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		static readonly string[] TransformOpTypes = { "Rotate", "Scale", "Skew", "Translate" };
@@ -5028,10 +4914,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// not a Transform, or one that currently holds something the editor cannot describe (so nothing is lost).</summary>
 		[JsonRpcMethod("design/set-transform")]
 		public DesignerSessionState SetTransform(long baseVersion, string elementId, string propertyName, DesignerTransformOp[] ops)
-			=> dispatcher.Dispatch(() => {
-				if (RejectIfStale(baseVersion) is { } stale)
-					return stale;
-				var state = NewState(baseVersion);
+			=> Edit(baseVersion, state => {
 				if (!pathToItem.TryGetValue(elementId, out var item))
 					return NotFound(state, "Element not found: " + elementId);
 				DesignItemProperty? property;
@@ -5056,9 +4939,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				{
 					return NotFound(state, e.GetBaseException().Message);
 				}
-				RebuildTreeAndRender(state);
-				state.Accepted = true;
-				return state;
+				return null;
 			});
 
 		static string BrushDisplayText(DesignerBrushInfo brush) => brush.Kind switch {

@@ -15,22 +15,27 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 
 	public static class SourceModelHost
 	{
+		/// <summary>The one text every host reports for an operation issued against an older source snapshot (the WPF and Uno
+		/// hosts' established wording, which their tests assert).</summary>
+		public static string StaleVersionMessage(long baseVersion, long current)
+			=> $"Stale base version {baseVersion}; the open document is at version {current}.";
+
 		/// <summary>Validates the session identity, finds the open document and checks <paramref name="baseVersion"/>
-		/// against its current version ("Stale version X; current is Y." - the same text every host reported).</summary>
+		/// against its current version (<see cref="StaleVersionMessage"/>).</summary>
 		public static TSession Open<TSession>(this DesignerDocumentRegistry<TSession> documents, string sessionId, string documentId, long baseVersion)
 			where TSession : class, ISourceModelSession
 		{
 			documents.ValidateSession(sessionId);
 			var session = documents.Get(sessionId, documentId);
 			if (baseVersion != session.Version)
-				throw new InvalidOperationException($"Stale version {baseVersion}; current is {session.Version}.");
+				throw new InvalidOperationException(StaleVersionMessage(baseVersion, session.Version));
 			return session;
 		}
 
 		/// <summary>Applies one mutation. A refusal is a normal result, not an exception - the same convention the WPF and Uno
 		/// hosts use: the state comes back with <c>Accepted = false</c>, the reason in <c>Error</c> and the diagnostics, and the
 		/// version unchanged, so the caller can show the reason and keep editing. A stale <paramref name="baseVersion"/> is refused
-		/// the same way ("Stale version X; current is Y."), and so is an <paramref name="apply"/> that returns false (the message
+		/// the same way (<see cref="StaleVersionMessage"/>), and so is an <paramref name="apply"/> that returns false (the message
 		/// is <paramref name="rejected"/>, plus <paramref name="detail"/> - the editor's own reason - when it gives one). An unknown
 		/// session or document is a protocol error and still throws. An <paramref name="apply"/> that throws
 		/// <see cref="InvalidOperationException"/> (input validation with a readable reason) is refused with that reason. An accepted edit runs <paramref name="edited"/> (default: the
@@ -42,7 +47,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			documents.ValidateSession(sessionId);
 			var session = documents.Get(sessionId, documentId);
 			if (baseVersion != session.Version)
-				return Refuse(state(session), $"Stale version {baseVersion}; current is {session.Version}.");
+				return Refuse(state(session), StaleVersionMessage(baseVersion, session.Version));
 			bool applied;
 			try {
 				applied = apply(session);

@@ -340,10 +340,14 @@ exception (the integration tests assert that, polling for the reason because a q
 
 Where consolidation stops, and why (2026-11-01) - recorded so it is not re-litigated:
 
-- **WPF and Uno hosts do not use `SourceModelHost`, although all four hosts now refuse the same way** (a state with `Accepted = false`
-  and the reason - GTK and MewUI were changed to match). WPF and Uno mutations are dispatcher-bound, per-document services
-  (`RejectIfStale`, `NotFound`, no `DesignerDocumentRegistry`, no `ISourceModelSession`), so the registry-based `Edit` has nothing to
-  attach to; a refusal on any of the four looks the same to a client.
+- **WPF and Uno hosts use the shared refusal contract but not the registry-based `SourceModelHost.Edit`.** All four hosts now refuse the same
+  way (a state with `Accepted = false` and the reason; GTK and MewUI were changed to match) and share two pieces of
+  `SourceModelHost`: `StaleVersionMessage` (one wording for a stale base version - the WPF/Uno text their tests assert) and `Refuse`
+  (the WPF `NotFound` and the Uno stale rejection are built with it). WPF's 26 uniform mutations (stale check, fresh state, lookup/edit,
+  rebuild, accepted) now share one local `Edit(baseVersion, body)` helper implementing the same lifecycle; the other 25 `RejectIfStale`
+  sites are handlers whose success path differs (extra state, no rebuild, other result types) and keep their bodies. The registry-based
+  `Edit` has nothing to attach to there: WPF and Uno are dispatcher-bound per-document services without a `DesignerDocumentRegistry` or an
+  `ISourceModelSession`, and a refused WPF state carries no tree (the shared one carries the current tree).
 - **WinForms does not use the shared context commands or `SourceModelHost`.** Its menus are designer-verb/CodeDom driven and its
   host owns a live design surface, not a source-model editor with a version. Its clients already use the shared document verbs
   where the shapes match (hit-test, add-element, set-bounds, delete-elements, set-property, rename, set-event, flush, close).

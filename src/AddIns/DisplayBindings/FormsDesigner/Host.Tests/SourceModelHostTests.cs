@@ -61,7 +61,7 @@ public sealed class SourceModelHostTests
 	{
 		var (documents, session) = Open();
 		session.Version = 5;
-		Assert.Equal("Stale version 4; current is 5.", Assert.Throws<InvalidOperationException>(() => documents.Open("s1", "d1", 4)).Message);
+		Assert.Equal("Stale base version 4; the open document is at version 5.", Assert.Throws<InvalidOperationException>(() => documents.Open("s1", "d1", 4)).Message);
 		Assert.Same(session, documents.Open("s1", "d1", 5));
 		Assert.Throws<UnauthorizedAccessException>(() => documents.Open("other-session", "d1", 5));   // the registry's own session check
 		Assert.Throws<InvalidOperationException>(() => documents.Open("s1", "missing", 5));
@@ -75,7 +75,7 @@ public sealed class SourceModelHostTests
 		session.Version = 5;
 		var state = documents.Edit("s1", "d1", 4, s => { s.Edits++; return true; }, "rejected", State);
 		Assert.False(state.Accepted);
-		Assert.Equal("Stale version 4; current is 5.", state.Error);
+		Assert.Equal("Stale base version 4; the open document is at version 5.", state.Error);
 		Assert.Equal(5, state.Version);
 		Assert.Equal(0, session.Edits);
 		Assert.Equal(5, session.Version);
