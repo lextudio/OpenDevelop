@@ -357,7 +357,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	/// <summary>The single selected element's position among its parent's children, or null.</summary>
 	(int Index, int Count)? SiblingPosition() => DesignerStandardCommands.SiblingPosition(state.Tree, selection.SelectedIds);
 	static readonly string[] WrapContainers = { "GtkBox", "GtkFrame" };
-	bool SelectedHasChildren() => state.Tree != null && selection.SelectedIds.Count == 1 && Flatten(state.Tree).FirstOrDefault(node => node.Id == selection.SelectedIds[0]) is { Children.Count: > 0 };
+	bool SelectedHasChildren() => DesignerStandardCommands.SelectedHasChildren(state.Tree, selection.SelectedIds);
 
 	/// <summary>Moves the selected child within its container: child order is layout order here
 	/// (a box or stack), so these are "move", not z-order "bring to front".</summary>
@@ -943,10 +943,10 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 
 	void FitView() { canvas.FitView(); FitMeasured = canvas.HasRender && canvas.IsFitMode; }
 	static bool IsContainer(DesignerElementNode n) => GtkDropPlanner.Containers.Contains(n.Type);
-	DesignerElementNode? NearestContainer(DesignerElementNode node) { if (state.Tree == null) return null; for (var current = node; ; ) { if (IsContainer(current)) return current; var parent = Flatten(state.Tree).FirstOrDefault(p => p.Children.Contains(current)); if (parent == null) return null; current = parent; } }
+	DesignerElementNode? NearestContainer(DesignerElementNode node) => DesignerStandardCommands.NearestContainer(state.Tree, node, IsContainer);
 	static DesignerElementNode? NativeNodeAt(DesignerElementNode root, Point point, DesignerElementNode? except = null) => Flatten(root).Where(n => !ReferenceEquals(n, except) && n.Width > 0 && n.Height > 0 && point.X >= n.X && point.Y >= n.Y && point.X <= n.X + n.Width && point.Y <= n.Y + n.Height).OrderBy(n => n.Width * n.Height).FirstOrDefault();
-	bool ReorderBetween(DesignerElementNode root, DesignerElementNode source, DesignerElementNode target) { var parent = Flatten(root).FirstOrDefault(p => p.Children.Contains(source) && p.Children.Contains(target)); if (parent == null) return false; var delta = parent.Children.IndexOf(target) - parent.Children.IndexOf(source); if (delta == 0) return false; Select(source); return ReorderSelected(delta); }
-	static string Value(DesignerElementNode n, string key, string fallback) => n.Properties.FirstOrDefault(p => p.Name == key)?.Value ?? fallback; static IEnumerable<DesignerElementNode> Flatten(DesignerElementNode n) => new[] { n }.Concat(n.Children.SelectMany(Flatten));
+	bool ReorderBetween(DesignerElementNode root, DesignerElementNode source, DesignerElementNode target) { var delta = DesignerStandardCommands.ReorderDelta(root, source, target); if (delta == 0) return false; Select(source); return ReorderSelected(delta); }
+	static string Value(DesignerElementNode n, string key, string fallback) => n.Properties.FirstOrDefault(p => p.Name == key)?.Value ?? fallback; static IEnumerable<DesignerElementNode> Flatten(DesignerElementNode n) => DesignerStandardCommands.Flatten(n);
 	DesignerDocumentSnapshot Snapshot(string text, long version) => new() { Version = version, PrimaryFileName = PrimaryFile?.FileName.ToString() ?? "", Files = { new DesignerSourceFileSnapshot { FileName = PrimaryFile?.FileName.ToString() ?? "", Kind = "Designer", Text = text } } };
 	public int LoadCount { get; private set; }
 	// In the split layout the source editor and this designer are both live, and every switch of the

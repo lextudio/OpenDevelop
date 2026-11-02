@@ -130,6 +130,33 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 			return parent == null ? null : (parent.Children.FindIndex(child => child.Id == selectedIds[0]), parent.Children.Count);
 		}
 
+		/// <summary>The node itself or its nearest ancestor for which <paramref name="isContainer"/> holds, or null.</summary>
+		public static DesignerElementNode? NearestContainer(DesignerElementNode? root, DesignerElementNode node, Func<DesignerElementNode, bool> isContainer)
+		{
+			if (root == null)
+				return null;
+			for (var current = node; ;) {
+				if (isContainer(current))
+					return current;
+				var parent = ParentOf(root, current.Id);
+				if (parent == null)
+					return null;
+				current = parent;
+			}
+		}
+
+		/// <summary>Whether exactly one node is selected and it has children (so it can be unwrapped).</summary>
+		public static bool SelectedHasChildren(DesignerElementNode? root, IReadOnlyList<string> selectedIds)
+			=> root != null && selectedIds.Count == 1 && Flatten(root).FirstOrDefault(node => node.Id == selectedIds[0]) is { Children.Count: > 0 };
+
+		/// <summary>How many places <paramref name="source"/> moves to take <paramref name="target"/>'s position among their
+		/// shared parent's children; zero when they are not siblings or already in place.</summary>
+		public static int ReorderDelta(DesignerElementNode root, DesignerElementNode source, DesignerElementNode target)
+		{
+			var parent = Flatten(root).FirstOrDefault(node => node.Children.Contains(source) && node.Children.Contains(target));
+			return parent == null ? 0 : parent.Children.IndexOf(target) - parent.Children.IndexOf(source);
+		}
+
 		/// <summary>Whether every selected node has the same (non-null) parent.</summary>
 		public static bool SharesOneParent(DesignerElementNode? root, IReadOnlyList<string> selectedIds)
 		{

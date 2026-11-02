@@ -111,4 +111,25 @@ public sealed class DesignerStandardCommandsTests
 		Assert.False(DesignerStandardCommands.SharesOneParent(root, new[] { "root" }));
 		Assert.False(DesignerStandardCommands.SharesOneParent(root, Array.Empty<string>()));
 	}
+
+	[Fact]
+	public void NearestContainer_ReorderDelta_AndSelectedHasChildren()
+	{
+		var a1 = Node("a1"); var a2 = Node("a2"); var a = Node("a", a1, a2); var b = Node("b");
+		var root = Node("root", a, b);
+		Func<DesignerElementNode, bool> isContainer = node => node.Id is "a" or "root";
+		Assert.Equal("a", DesignerStandardCommands.NearestContainer(root, a1, isContainer)!.Id);
+		Assert.Equal("a", DesignerStandardCommands.NearestContainer(root, a, isContainer)!.Id);
+		Assert.Equal("root", DesignerStandardCommands.NearestContainer(root, b, isContainer)!.Id);
+		Assert.Null(DesignerStandardCommands.NearestContainer(root, b, _ => false));
+		Assert.Null(DesignerStandardCommands.NearestContainer(null, b, isContainer));
+		Assert.Equal(1, DesignerStandardCommands.ReorderDelta(root, a1, a2));
+		Assert.Equal(-1, DesignerStandardCommands.ReorderDelta(root, a2, a1));
+		Assert.Equal(0, DesignerStandardCommands.ReorderDelta(root, a1, a1));
+		Assert.Equal(0, DesignerStandardCommands.ReorderDelta(root, a1, b));
+		Assert.True(DesignerStandardCommands.SelectedHasChildren(root, new[] { "a" }));
+		Assert.False(DesignerStandardCommands.SelectedHasChildren(root, new[] { "b" }));
+		Assert.False(DesignerStandardCommands.SelectedHasChildren(root, new[] { "a", "b" }));
+		Assert.False(DesignerStandardCommands.SelectedHasChildren(null, new[] { "a" }));
+	}
 }

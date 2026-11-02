@@ -311,7 +311,7 @@ re-spelled for their canvas context menu (`SetContextCommands` takes any `(heade
 and Unwrap (`WrapMenu`, `WrapContainer` - case-insensitive, so WinUI keeps its lowercase ids), Horizontal/Vertical
 Alignment (`AlignmentMenu`, `Alignment`), Grid row/column units (`GridUnitMenu`, `GridUnit`), the wrap/unwrap enabling
 rules (`CanWrap`, `CanUnwrap`) and the tree queries every view needs (`Flatten`, `ParentOf`, `SiblingPosition`,
-`SharesOneParent`). GTK and MewUI lost their byte-identical copies (MewUI keeps only `IsNamedId`); WPF and WinUI compose
+`SharesOneParent`, `NearestContainer`, `SelectedHasChildren`, `ReorderDelta`). GTK and MewUI lost their byte-identical copies (MewUI keeps only `IsNamedId`); WPF and WinUI compose
 their menus from the shared pieces and parse alignment/grid-unit commands with them, keeping their own z-order,
 style/template, Orientation/Dock and Edit Style entries. WinForms is not adopted: its context menus are
 CodeDom/designer-verb driven, not command strings. `DesignerStandardCommandsTests` pins the vocabulary once.
