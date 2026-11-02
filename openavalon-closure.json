@@ -1,4 +1,4 @@
 {
-  "openavalonCommit": "8c61b3d",
+  "openavalonCommit": "b18e662",
   "note": "The openavalon commit whose publish-librewpf-github-packages.yml run produced the LibreWPF/LibreWinForms/ProGPU packages this checkout consumes. openavalon republishes under the same version, so NuGet cannot tell two publishes apart: change this after a publish you want to take, and the CI package cache key and sync-openavalon-feed.ps1 both fetch the packages again."
 }
