@@ -136,13 +136,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("gtk/set-factory-template")]
 	public DesignerSessionState SetFactoryTemplate(string sessionId, string documentId, long baseVersion, string elementId, string template)
 	{
-		EnsureSession(sessionId);
-		var session = Get(documentId);
-		EnsureVersion(session, baseVersion);
-		if (!session.Editor.SetFactoryTemplate(elementId, template))
-			throw new InvalidOperationException("The factory template was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
-		session.Version++;
-		return State(session, false);
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.SetFactoryTemplate(elementId, template), "The factory template was rejected.", session => State(session, false), session => session.Editor.Refusal);
 	}
 
 	/// <summary>The selection model (<c>GtkNoSelection</c>, <c>GtkSingleSelection</c>, <c>GtkMultiSelection</c>) of the selected list, grid or column view, or null.</summary>
@@ -157,13 +151,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("gtk/set-selection-model")]
 	public DesignerSessionState SetSelectionModel(string sessionId, string documentId, long baseVersion, string elementId, string selectionClass)
 	{
-		EnsureSession(sessionId);
-		var session = Get(documentId);
-		EnsureVersion(session, baseVersion);
-		if (!session.Editor.SetSelectionModel(elementId, selectionClass))
-			throw new InvalidOperationException("The selection model was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
-		session.Version++;
-		return State(session, false);
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.SetSelectionModel(elementId, selectionClass), "The selection model was rejected.", session => State(session, false), session => session.Editor.Refusal);
 	}
 
 	/// <summary>The class chain of the selected list, grid or column view's model (selection, sort, filter, data), or null.</summary>
@@ -178,13 +166,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("gtk/set-model-wrapper")]
 	public DesignerSessionState SetModelWrapper(string sessionId, string documentId, long baseVersion, string elementId, string kind, bool add)
 	{
-		EnsureSession(sessionId);
-		var session = Get(documentId);
-		EnsureVersion(session, baseVersion);
-		if (!(add ? session.Editor.AddModelWrapper(elementId, kind) : session.Editor.RemoveModelWrapper(elementId, kind)))
-			throw new InvalidOperationException("The model change was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
-		session.Version++;
-		return State(session, false);
+		return documents.Edit(sessionId, documentId, baseVersion, session => (add ? session.Editor.AddModelWrapper(elementId, kind) : session.Editor.RemoveModelWrapper(elementId, kind)), "The model change was rejected.", session => State(session, false), session => session.Editor.Refusal);
 	}
 
 	/// <summary>Whether a GtkColumnViewColumn has a sorter; null when the object is not a column of a column view.</summary>
@@ -199,13 +181,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("gtk/set-column-sortable")]
 	public DesignerSessionState SetColumnSortable(string sessionId, string documentId, long baseVersion, string elementId, bool sortable)
 	{
-		EnsureSession(sessionId);
-		var session = Get(documentId);
-		EnsureVersion(session, baseVersion);
-		if (!session.Editor.SetColumnSortable(elementId, sortable))
-			throw new InvalidOperationException("The column change was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
-		session.Version++;
-		return State(session, false);
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.SetColumnSortable(elementId, sortable), "The column change was rejected.", session => State(session, false), session => session.Editor.Refusal);
 	}
 
 	/// <summary>The class of the inline list-item factory of the selected list view, grid view or column, or null.</summary>
@@ -220,13 +196,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("gtk/set-factory-class")]
 	public DesignerSessionState SetFactoryClass(string sessionId, string documentId, long baseVersion, string elementId, string factoryClass)
 	{
-		EnsureSession(sessionId);
-		var session = Get(documentId);
-		EnsureVersion(session, baseVersion);
-		if (!session.Editor.SetFactoryClass(elementId, factoryClass))
-			throw new InvalidOperationException("The factory change was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
-		session.Version++;
-		return State(session, false);
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.SetFactoryClass(elementId, factoryClass), "The factory change was rejected.", session => State(session, false), session => session.Editor.Refusal);
 	}
 
 	/// <summary>The class of the selected list view's innermost inline data model (GtkStringList, GListStore, ...), or null.</summary>
@@ -241,13 +211,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("gtk/set-model-data")]
 	public DesignerSessionState SetModelData(string sessionId, string documentId, long baseVersion, string elementId, string modelClass)
 	{
-		EnsureSession(sessionId);
-		var session = Get(documentId);
-		EnsureVersion(session, baseVersion);
-		if (!session.Editor.SetModelData(elementId, modelClass))
-			throw new InvalidOperationException("The model change was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
-		session.Version++;
-		return State(session, false);
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.SetModelData(elementId, modelClass), "The model change was rejected.", session => State(session, false), session => session.Editor.Refusal);
 	}
 
 	/// <summary>The item-type of a GListStore (the object itself, or the one a list view's chain ends in): "" when unset, null when there is no store.</summary>
@@ -262,13 +226,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("gtk/set-item-type")]
 	public DesignerSessionState SetItemType(string sessionId, string documentId, long baseVersion, string elementId, string typeName)
 	{
-		EnsureSession(sessionId);
-		var session = Get(documentId);
-		EnsureVersion(session, baseVersion);
-		if (!session.Editor.SetItemType(elementId, typeName))
-			throw new InvalidOperationException("The item type was rejected." + (string.IsNullOrEmpty(session.Editor.Refusal) ? "" : " " + session.Editor.Refusal));
-		session.Version++;
-		return State(session, false);
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.SetItemType(elementId, typeName), "The item type was rejected.", session => State(session, false), session => session.Editor.Refusal);
 	}
 
 	/// <summary>The selected object's menu entries: items, sections and submenus (a &lt;menu&gt; in its menu-model property).</summary>
@@ -345,9 +303,9 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("design/rename")]
 	public DesignerSessionState Rename(string sessionId, string documentId, long baseVersion, string elementId, string newName) => SetProperty(sessionId, documentId, baseVersion, elementId, "$id", newName);
 	[JsonRpcMethod("design/set-event")]
-	public DesignerSessionState SetEvent(string sessionId, string documentId, long baseVersion, string elementId, string eventName, string handlerName) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.SetSignal(elementId, eventName, handlerName)) throw new InvalidOperationException("GTK signal mutation was rejected."); session.Version++; return State(session, false); }
+	public DesignerSessionState SetEvent(string sessionId, string documentId, long baseVersion, string elementId, string eventName, string handlerName) => documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.SetSignal(elementId, eventName, handlerName), "GTK signal mutation was rejected.", session => State(session, false));
 	[JsonRpcMethod("design/reorder")]
-	public DesignerSessionState Reorder(string sessionId, string documentId, long baseVersion, string elementId, int delta) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Reorder(elementId, delta)) throw new InvalidOperationException("GTK reorder was rejected."); session.Version++; return State(session, false); }
+	public DesignerSessionState Reorder(string sessionId, string documentId, long baseVersion, string elementId, int delta) => documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.Reorder(elementId, delta), "GTK reorder was rejected.", session => State(session, false));
 	/// <summary>The selected objects as GtkBuilder &lt;child&gt; snippets (read-only; the same
 	/// contract as the WPF host's copy).</summary>
 	[JsonRpcMethod("design/copy-elements")]
@@ -434,9 +392,9 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("design/hit-test")]
 	public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, double x, double y) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); y -= WindowTitleBarOffset(session); var hit = session.NativeBounds.Where(p => x >= p.Value.X && y >= p.Value.Y && x <= p.Value.X + p.Value.Width && y <= p.Value.Y + p.Value.Height).OrderBy(p => p.Value.Width * p.Value.Height).FirstOrDefault(); return string.IsNullOrEmpty(hit.Key) ? new DesignerHitTestResult() : new DesignerHitTestResult { Hit = true, ComponentName = hit.Key, Chain = { hit.Key } }; }
 	[JsonRpcMethod("design/undo")]
-	public DesignerSessionState Undo(string sessionId, string documentId, long baseVersion) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Undo()) throw new InvalidOperationException("Nothing to undo."); session.Version++; return State(session, false); }
+	public DesignerSessionState Undo(string sessionId, string documentId, long baseVersion) => documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.Undo(), "Nothing to undo.", session => State(session, false));
 	[JsonRpcMethod("design/redo")]
-	public DesignerSessionState Redo(string sessionId, string documentId, long baseVersion) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Redo()) throw new InvalidOperationException("Nothing to redo."); session.Version++; return State(session, false); }
+	public DesignerSessionState Redo(string sessionId, string documentId, long baseVersion) => documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.Redo(), "Nothing to redo.", session => State(session, false));
 
 	[JsonRpcMethod("design/render")]
 	public DesignerSessionState RenderDocument(string sessionId, string documentId, long baseVersion) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); return State(session, true); }
@@ -895,7 +853,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		}
 	}
 	public void OnParentDisconnected() { shutdown.Set(); gtkWorkAvailable.Set(); }
-	sealed class DocumentSession
+	sealed class DocumentSession : ISourceModelSession
 	{
 		public DocumentSession(string documentId) => DocumentId = documentId;
 		public string DocumentId { get; }
@@ -917,7 +875,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		public string NativeRootId = "";
 		public long NativeVersion = -1;
 		public string FileName = "";
-		public long Version;
+		public long Version { get; set; }
 		public string Theme = "Light";
 		public void LoadNative(string xml, string rootId, string resourceKey)
 		{

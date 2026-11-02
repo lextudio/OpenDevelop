@@ -316,6 +316,14 @@ their menus from the shared pieces and parse alignment/grid-unit commands with t
 style/template, Orientation/Dock and Edit Style entries. WinForms is not adopted: its context menus are
 CodeDom/designer-verb driven, not command strings. `DesignerStandardCommandsTests` pins the vocabulary once.
 
+Shared host edit plumbing (2026-11-01): `Designer.Server/SourceModelHost.cs` gives the source-model hosts (GTK, MewUI)
+the part of every `design/*` mutation that was copied per handler: `documents.Open(sessionId, documentId, baseVersion)`
+(session check, document lookup, "Stale version X; current is Y.") and `documents.Edit(..., apply, rejected, state, detail,
+edited)` (one editor operation; a refusal throws `rejected` plus the editor's own reason; an accepted edit bumps the version -
+MewUI's `Mutated` also tracks undo depth - and returns the state). Sessions implement `ISourceModelSession` (a `Version`).
+GTK converted 11 handlers and MewUI 7; handlers with their own logic (created ids, native render, hit test, multi-step edits)
+keep their bodies. The WPF and Uno hosts patch text instead of owning an editor model and are not adopted; WinForms is CodeDom.
+
 `DesignerDocumentHostClient` now supplies the surrounding parent-side lease state for those
 three adapters: document identity, process status, host-exit forwarding and ping/close lifecycle.
 This leaves each adapter with only its pool compatibility key, release policy and runtime-specific
