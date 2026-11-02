@@ -21,7 +21,7 @@ foreach ($job in 'plan', 'build') {
     $result = $needs.$job.result
     if ($result -ne 'success') { $problems += "$job finished as '$result'" }
 }
-foreach ($job in 'test', 'in-place') {
+foreach ($job in 'test') {
     $result = $needs.$job.result
     if ($result -notin 'success', 'skipped') { $problems += "$job finished as '$result'" }
 }

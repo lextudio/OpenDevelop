@@ -5,7 +5,7 @@
 # An entry runs when its batch is <= the through-batch and its status for the platform is 'observe' or 'required'.
 # A failing 'required' entry fails the script (exit 1); a failing 'observe' entry is only reported (a ::warning::
 # annotation and a row in the job summary). Nothing is restored or built here: the build job compiled everything once and
-# the test job unpacked that workspace, or, for a lane with 'buildsInLane', the job built it before calling this script.
+# the test job unpacked that workspace.
 #
 # Three rules keep a green lane meaningful:
 #   * an 'xunit-exe' entry that exits 0 but reports no test total, or a total of 0, is a failure - a filter that matches

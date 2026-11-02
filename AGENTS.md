@@ -222,7 +222,8 @@ verification targets. Run the full integration suite only when asked and do not 
 
 One workflow, `.github/workflows/ci.yml`, driven by `.github/ci/test-plan.json`; the scripts that read it are in
 `.github/ci/`. `doc/technotes/ci-test-plan.md` explains the shape. Job names: `Plan`, `Build (<platform>)`,
-`<lane> (<platform>)`, and `<lane> (<platform>, in place)` for the one lane with `buildsInLane` (today `unit`).
+`<lane> (<platform>)` and `Release grade`. Each platform builds once; then every lane, `unit` included, unpacks that build's
+archive and runs in parallel with the others.
 
 Spending runs:
 
@@ -245,7 +246,7 @@ means filling its whole row or column, not one cell:
 | Stage | Win x64 | Win ARM64 | macOS ARM64 | Linux x64 | Linux ARM64 |
 |---|---|---|---|---|---|
 | CI Debug build (`Build`) | own | x64 archive (`buildFrom`) | own | own | own |
-| CI unit suites (`unit` lane) | in place | from the x64 archive | in place | in place | in place |
+| CI unit suites (`unit` lane) | own archive | x64 archive | own archive | own archive | own archive |
 | CI IDE journeys (`integration-*` lanes) | yes | yes | yes | yes (Xvfb) | yes (Xvfb) |
 | Release build (`package-*`) | one payload on x64 | same payload | native | native | native |
 | Release check (`verify` row) | on x64 | on ARM64 | from the mounted DMG | from the tar.xz | from the tar.xz |
@@ -253,17 +254,15 @@ means filling its whole row or column, not one cell:
 - One entry per suite in `test-plan.json`, with a status for every platform. A new platform's entries start `observe` and
   are promoted after two green runs; an entry that cannot run on an OS says `"excluded"` with a `reason` (for example
   `xamldom-tests-microsoftwpf` needs Microsoft WPF). Never copy an entry per platform (the old `*-arm` entries were merged).
-- A `buildsInLane` lane runs in place on each platform that builds for itself and from the provider's archive on a
-  `buildFrom` platform, so every lane tests the build its platform ships (`Test-BuildsInPlace` in `run-statuses.ps1`).
+- No lane compiles for itself: a second compile of the same tree is waste and lets the unit suites test a build no lane
+  ships. A `buildFrom` platform's lanes unpack the provider's archive, which is the build that platform ships.
 - Linux runner setup is `.github/ci/install-linux-prerequisites.sh` in both workflows; `run-test-plan.ps1` starts each
   entry under `xvfb-run` when there is no display.
 
 Layout, so a change goes in the right place:
 
-- The build job compiles the archive lanes once and uploads the workspace (~2.5 GiB, 1-day retention). The in-place lane
-  checks out and compiles only its own entries, which is why its result arrives in ~9 minutes instead of behind the pack
-  step; `build-binaries.ps1 -Lane <lane> -SkipHostBuilds` is what it runs, and the build job skips that lane's projects
-  with `-ArchiveLanesOnly`.
+- The build job compiles every enabled entry's project once (`build-binaries.ps1 -Platform <p>`) and uploads the workspace
+  (~2.5 GiB, 1-day retention); every lane job downloads and unpacks it.
 - The NuGet package folder is one `actions/cache` entry keyed by `Directory.Packages.props`, `global.json` and
   `NuGet.config`; the build job computes it and the lanes restore that key. Never ship it as an artifact again - it was
   3.3 GiB and eight minutes per lane.

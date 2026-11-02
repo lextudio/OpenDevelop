@@ -1,12 +1,9 @@
-# Compiles everything the enabled plan entries need, once per platform (the 'build' job) or once per in-place lane
-# (a lane with 'buildsInLane', which has its own checkout and no build archive).
+# Compiles everything the enabled plan entries need, once per build platform (the 'build' job). Every lane, unit suites
+# included, then runs from the archive of that one build.
 #
-#   pwsh .github/ci/build-binaries.ps1 -Platform windows-x64 [-ThroughBatch 3] [-Lane unit] [-SkipHostBuilds] [-List]
+#   pwsh .github/ci/build-binaries.ps1 -Platform windows-x64 [-ThroughBatch 3] [-List]
 #
 # -List prints the build commands in order and exits, which is how to check a plan edit without building.
-# -Lane restricts the build to the entries of one lane; -ArchiveLanesOnly leaves out the entries of lanes that build in
-# place (they compile in their own job); -SkipHostBuilds leaves out both the 'buildFirst' and 'buildLast'
-# projects, which an in-place lane does not need: nothing in it builds an add-in against the host manifest or starts the IDE.
 #
 # The plan's 'buildFirst' projects (the host) are built first, then every distinct 'project' of an enabled entry (Debug,
 # with the entry's 'buildArgs'), then the 'buildLast' projects (the host once more, as the Terminal workflow builds it; see the plan).  Test jobs later run the compiled assemblies without
@@ -15,9 +12,6 @@
 param(
     [Parameter(Mandatory = $true)][string]$Platform,
     [int]$ThroughBatch = -1,
-    [string]$Lane = '',
-    [switch]$ArchiveLanesOnly,
-    [switch]$SkipHostBuilds,
     [switch]$List,
     [string]$PlanPath = (Join-Path $PSScriptRoot 'test-plan.json')
 )
@@ -47,34 +41,21 @@ function Resolve-BuildPlatform([string]$platformName, [hashtable]$seen) {
     if ($from -eq $platformName) { return $platformName }
     return Resolve-BuildPlatform $from $seen
 }
-$laneDefinition = if ($Lane) { $plan.lanes.PSObject.Properties[$Lane] } else { $null }
-$buildsInLane = $laneDefinition -and $laneDefinition.Value.PSObject.Properties['buildsInLane'] -and $laneDefinition.Value.buildsInLane
-$consumerPlatforms = if ($buildsInLane) { @($Platform) } else {
-    @($plan.platforms.PSObject.Properties | Where-Object {
-        $_.Name -eq $Platform -or (Resolve-BuildPlatform $_.Name @{}) -eq $Platform
-    } | ForEach-Object { $_.Name })
-}
+$consumerPlatforms = @($plan.platforms.PSObject.Properties | Where-Object {
+    $_.Name -eq $Platform -or (Resolve-BuildPlatform $_.Name @{}) -eq $Platform
+} | ForEach-Object { $_.Name })
 
-# An entry of a 'buildsInLane' lane compiles in its own job on a platform that builds for itself, so the archive build
-# leaves it out there; a consumer platform with 'buildFrom' runs it from this archive, so the archive keeps it for that
-# consumer (Test-BuildsInPlace, shared with the planner).
 $selected = @($plan.entries | Where-Object {
     $entry = $_
     $enabledForConsumer = @($consumerPlatforms | Where-Object {
-        $entry.platforms.PSObject.Properties[$_] -and $entry.platforms.$_ -in $runStatuses -and
-            (-not $ArchiveLanesOnly -or -not (Test-BuildsInPlace $plan $entry.lane $_))
+        $entry.platforms.PSObject.Properties[$_] -and $entry.platforms.$_ -in $runStatuses
     }).Count -gt 0
-    $entry.batch -le $ThroughBatch -and $enabledForConsumer -and (-not $Lane -or $entry.lane -eq $Lane)
+    $entry.batch -le $ThroughBatch -and $enabledForConsumer
 })
-$scope = if ($Lane) { "lane '$Lane'" } elseif ($ArchiveLanesOnly) { 'the archive lanes' } else { 'any lane' }
-if ($selected.Count -eq 0) { throw "No entry is enabled for $Platform in $scope up to batch $ThroughBatch." }
-# An entry without a 'project' (kind msbuild) runs from the source tree and needs nothing compiled first. A lane made only
-# of such entries - macOS 'unit' in focus mode, where only its observed AddinSdk entries are left - has nothing to build.
+if ($selected.Count -eq 0) { throw "No entry is enabled for $Platform up to batch $ThroughBatch." }
+# An entry without a 'project' (kind msbuild) runs from the source tree and needs nothing compiled for itself; the host
+# below is still built, because those entries run against it.
 $entries = @($selected | Where-Object { $_.PSObject.Properties['project'] })
-if ($entries.Count -eq 0 -and $SkipHostBuilds) {
-    Write-Host "Nothing to compile for $Platform in ${scope}: its $($selected.Count) enabled entries run from source."
-    exit 0
-}
 
 # One build per distinct project.  Entries sharing a project must agree on its build arguments.
 $builds = @()
@@ -101,11 +82,11 @@ $builds = @($builds | Sort-Object { if ($_.Project -like '*OpenDevelop.Integrati
 
 # The host goes first (see 'buildFirst' in the plan): its build writes the manifest every add-in build trims against.
 $first = @()
-if (-not $SkipHostBuilds -and $plan.PSObject.Properties['buildFirst']) {
+if ($plan.PSObject.Properties['buildFirst']) {
     foreach ($item in @($plan.buildFirst)) { $first += [pscustomobject]@{ Project = $item.project; Args = [string[]]@(); First = $true } }
 }
 $last = @()
-if (-not $SkipHostBuilds -and $plan.PSObject.Properties['buildLast']) {
+if ($plan.PSObject.Properties['buildLast']) {
     $platformEntry = $plan.platforms.PSObject.Properties[$Platform]
     $rid = if ($platformEntry -and $platformEntry.Value.PSObject.Properties['rid']) { [string]$platformEntry.Value.rid } else { '' }
     foreach ($item in @($plan.buildLast)) {

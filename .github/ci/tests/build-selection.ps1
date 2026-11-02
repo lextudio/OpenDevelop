@@ -1,5 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $builder = Join-Path $PSScriptRoot '../build-binaries.ps1'
+$planner = Join-Path $PSScriptRoot '../plan-matrix.ps1'
 $directory = Join-Path ([System.IO.Path]::GetTempPath()) ('od-build-selection-' + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $directory | Out-Null
 try {
@@ -13,108 +14,93 @@ try {
     "consumer": { "buildFrom": "windows-arm64" },
     "macos-arm64": {}
   },
-  "lanes": { "archive": {}, "unit": { "buildsInLane": true } },
+  "lanes": { "archive": {}, "unit": {} },
   "entries": [
     { "id": "early", "batch": 1, "lane": "archive", "project": "early.csproj", "platforms": { "windows-x64": "required" } },
     { "id": "arm", "batch": 4, "lane": "archive", "project": "arm.csproj", "platforms": { "windows-arm64": "observe" }, "additionalProjects": [{ "project": "fixture.csproj", "platforms": ["windows-x64"] }] },
     { "id": "transitive", "batch": 4, "lane": "archive", "project": "transitive.csproj", "platforms": { "consumer": "required" } },
     { "id": "mac", "batch": 4, "lane": "archive", "project": "mac.csproj", "platforms": { "macos-arm64": "observe" } },
     { "id": "unit-x64", "batch": 1, "lane": "unit", "project": "unit-x64.csproj", "platforms": { "windows-x64": "required" } },
-    { "id": "unit-arm", "batch": 1, "lane": "unit", "project": "unit-arm.csproj", "platforms": { "windows-arm64": "observe" } }
+    { "id": "unit-arm", "batch": 1, "lane": "unit", "project": "unit-arm.csproj", "platforms": { "windows-arm64": "observe" } },
+    { "id": "unit-msbuild", "batch": 1, "lane": "unit", "kind": "msbuild", "target": "tests.proj", "platforms": { "macos-arm64": "observe" } }
   ]
 }
 '@ | Set-Content -LiteralPath $planPath
-    $archive = & pwsh -NoProfile -File $builder -Platform windows-x64 -ArchiveLanesOnly -List -PlanPath $planPath
+
+    # One build per platform compiles every lane's projects, unit suites included, for itself and for each platform that
+    # takes its archive through 'buildFrom' (transitively).
+    $archive = & pwsh -NoProfile -File $builder -Platform windows-x64 -List -PlanPath $planPath
     if ($LASTEXITCODE -ne 0) { throw 'Archive selection failed.' }
-    # 'unit-arm' is a unit-lane entry of a 'buildFrom' platform: Windows ARM64 runs that lane from this archive (the build
-    # it ships), so the archive must carry it, while 'unit-x64' builds in place on Windows x64 and stays out.
-    foreach ($name in @('arm.csproj', 'fixture.csproj', 'transitive.csproj', 'unit-arm.csproj')) {
-        if (-not ($archive | Where-Object { $_ -like "*$name*" })) { throw "Missing $name from archive build." }
+    foreach ($name in @('early.csproj', 'arm.csproj', 'fixture.csproj', 'transitive.csproj', 'unit-x64.csproj', 'unit-arm.csproj')) {
+        if (-not ($archive | Where-Object { $_ -like "* $name *" })) { throw "Missing $name from the windows-x64 build." }
     }
-    foreach ($name in @('mac.csproj', 'unit-x64.csproj')) {
-        if ($archive | Where-Object { $_ -like "*$name*" }) { throw "Unexpected $name in archive build." }
+    if ($archive | Where-Object { $_ -like '* mac.csproj *' }) { throw 'Unexpected mac.csproj in the windows-x64 build.' }
+    $mac = & pwsh -NoProfile -File $builder -Platform macos-arm64 -List -PlanPath $planPath
+    if ($LASTEXITCODE -ne 0 -or -not ($mac | Where-Object { $_ -like '* mac.csproj *' }) -or ($mac | Where-Object { $_ -like '* arm.csproj *' -or $_ -like '* transitive.csproj *' -or $_ -like '* fixture.csproj *' -or $_ -like '* unit-*.csproj *' })) {
+        throw 'The macOS build must include its own projects and exclude the Windows ones.'
     }
-    $mac = & pwsh -NoProfile -File $builder -Platform macos-arm64 -ArchiveLanesOnly -List -PlanPath $planPath
-    if ($LASTEXITCODE -ne 0 -or -not ($mac | Where-Object { $_ -like '*mac.csproj*' }) -or ($mac | Where-Object { $_ -like '* arm.csproj *' -or $_ -like '*transitive.csproj*' -or $_ -like '*fixture.csproj*' })) {
-        throw 'macOS archive must include its own projects and exclude Windows-only projects.'
-    }
-    $early = & pwsh -NoProfile -File $builder -Platform windows-x64 -ArchiveLanesOnly -ThroughBatch 3 -List -PlanPath $planPath
-    if ($LASTEXITCODE -ne 0 -or -not ($early | Where-Object { $_ -like '*early.csproj*' }) -or ($early | Where-Object { $_ -like '* arm.csproj *' })) {
-        throw 'Archive selection did not respect the batch limit.'
-    }
-    $unit = & pwsh -NoProfile -File $builder -Platform windows-x64 -Lane unit -SkipHostBuilds -List -PlanPath $planPath
-    if ($LASTEXITCODE -ne 0 -or -not ($unit | Where-Object { $_ -like '*unit-x64.csproj*' }) -or ($unit | Where-Object { $_ -like '*unit-arm.csproj*' })) {
-        throw 'In-place lane must build only its own platform entries.'
+    $early = & pwsh -NoProfile -File $builder -Platform windows-x64 -ThroughBatch 3 -List -PlanPath $planPath
+    if ($LASTEXITCODE -ne 0 -or -not ($early | Where-Object { $_ -like '* early.csproj *' }) -or ($early | Where-Object { $_ -like '* arm.csproj *' })) {
+        throw 'Build selection did not respect the batch limit.'
     }
 
-    # An in-place lane whose enabled entries all run from source (kind msbuild, no 'project') compiles nothing and succeeds.
+    # Every (platform, lane) with an enabled entry is one test job on its build platform's archive: the unit lane of a
+    # 'buildFrom' platform unpacks its provider's archive, and a lane of source-only entries (kind msbuild) still runs.
+    $plannerOutput = (& pwsh -NoProfile -File $planner -PlanPath $planPath) -join "`n"
+    if ($LASTEXITCODE -ne 0) { throw 'Planning failed.' }
+    $lanes = [regex]::Match($plannerOutput, '(?m)^lane_matrix=(\{.*\})$').Groups[1].Value | ConvertFrom-Json
+    $laneNames = @($lanes.include | ForEach-Object { "$($_.lane)/$($_.platform)<-$($_.build_platform)" } | Sort-Object)
+    foreach ($expected in @('unit/windows-x64<-windows-x64', 'unit/windows-arm64<-windows-x64', 'unit/macos-arm64<-macos-arm64')) {
+        if ($expected -notin $laneNames) { throw "Missing lane $expected; planned: $($laneNames -join ', ')" }
+    }
+    if ($plannerOutput -match 'in_lane') { throw 'The planner must not emit in-place outputs any more.' }
+
+    # A platform whose only enabled entry runs from source (kind msbuild, no 'project') still gets a successful build: the
+    # host from 'buildFirst' and nothing for the entry itself. A platform with no enabled entry at all is an error.
     $sourcePlan = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
-    $sourcePlan.entries += [pscustomobject]@{ id = 'unit-msbuild'; batch = 1; lane = 'unit'; kind = 'msbuild'; target = 'tests.proj'; platforms = [pscustomobject]@{ 'macos-arm64' = 'observe' } }
+    $sourcePlan.platforms | Add-Member -NotePropertyName solo -NotePropertyValue ([pscustomobject]@{})
+    $sourcePlan.platforms | Add-Member -NotePropertyName empty -NotePropertyValue ([pscustomobject]@{})
+    $sourcePlan | Add-Member -NotePropertyName buildFirst -NotePropertyValue @([pscustomobject]@{ project = 'host.csproj' })
+    $sourcePlan.entries += [pscustomobject]@{ id = 'solo-msbuild'; batch = 1; lane = 'unit'; kind = 'msbuild'; target = 'solo.proj'; platforms = [pscustomobject]@{ solo = 'observe' } }
     $sourcePlanPath = Join-Path $directory 'source-plan.json'
     $sourcePlan | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $sourcePlanPath
-    $sourceOnly = & pwsh -NoProfile -File $builder -Platform macos-arm64 -Lane unit -SkipHostBuilds -List -PlanPath $sourcePlanPath
-    if ($LASTEXITCODE -ne 0 -or ($sourceOnly | Where-Object { $_ -like 'dotnet *' })) { throw 'An in-place lane of source-only entries must compile nothing and succeed.' }
-    & pwsh -NoProfile -File $builder -Platform macos-arm64 -Lane nonexistent -SkipHostBuilds -List -PlanPath $sourcePlanPath *> $null
-    if ($LASTEXITCODE -eq 0) { throw 'A lane with no enabled entry must still fail.' }
+    $solo = @(& pwsh -NoProfile -File $builder -Platform solo -List -PlanPath $sourcePlanPath | Where-Object { $_ -like 'dotnet *' })
+    if ($LASTEXITCODE -ne 0 -or $solo.Count -ne 1 -or $solo[0] -notlike '* host.csproj *') {
+        throw "A platform with only source-only entries must build just the host, got: $($solo -join ' | ')"
+    }
+    & pwsh -NoProfile -File $builder -Platform empty -List -PlanPath $sourcePlanPath *> $null
+    if ($LASTEXITCODE -eq 0) { throw 'A platform with no enabled entry must fail the build.' }
 
-    # The planner gives every self-building platform its own in-place job for a 'buildsInLane' lane, and turns that lane
-    # into an archive lane on a 'buildFrom' platform.
-    $plannerPath = Join-Path $PSScriptRoot '../plan-matrix.ps1'
-    $multiPlan = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
-    $multiPlan.entries += [pscustomobject]@{ id = 'unit-mac'; batch = 1; lane = 'unit'; project = 'unit-mac.csproj'; platforms = [pscustomobject]@{ 'macos-arm64' = 'observe' } }
-    $multiPlanPath = Join-Path $directory 'multi-plan.json'
-    $multiPlan | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $multiPlanPath
-    $multiOutput = (& pwsh -NoProfile -File $plannerPath -PlanPath $multiPlanPath) -join "`n"
-    if ($LASTEXITCODE -ne 0) { throw 'Planning several in-place platforms failed.' }
-    $inLaneMatrix = [regex]::Match($multiOutput, 'in_lane_matrix=(\{.*\})').Groups[1].Value | ConvertFrom-Json
-    $inLanePlatforms = @($inLaneMatrix.include | ForEach-Object { "$($_.lane)/$($_.platform)" } | Sort-Object)
-    if (($inLanePlatforms -join ',') -ne 'unit/macos-arm64,unit/windows-x64') { throw "In-place jobs must be one per self-building platform, got: $($inLanePlatforms -join ',')" }
-    $multiLanes = [regex]::Match($multiOutput, 'lane_matrix=(\{.*\})').Groups[1].Value | ConvertFrom-Json
-    $armUnit = @($multiLanes.include | Where-Object { $_.lane -eq 'unit' -and $_.platform -eq 'windows-arm64' })
-    if ($armUnit.Count -ne 1 -or $armUnit[0].build_platform -ne 'windows-x64') { throw 'A buildFrom platform must run the unit lane from its provider archive.' }
-
-    # Focus mode: 'required' entries drop out of the planner, the archive build and the in-place lane alike, and
-    # OD_CI_FULL=true brings them back. 'solo' has only an in-place entry, so it must get no build job.
+    # Focus mode: 'required' entries drop out of the planner and the build alike, and OD_CI_FULL=true brings them back.
     $focusPlan = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
     $focusPlan | Add-Member -NotePropertyName focus -NotePropertyValue $true
-    $focusPlan.platforms | Add-Member -NotePropertyName solo -NotePropertyValue ([pscustomobject]@{})
-    $focusPlan.entries += [pscustomobject]@{ id = 'unit-solo'; batch = 1; lane = 'unit'; project = 'unit-solo.csproj'; platforms = [pscustomobject]@{ solo = 'observe' } }
     $focusPlanPath = Join-Path $directory 'focus-plan.json'
     $focusPlan | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $focusPlanPath
-    $planner = Join-Path $PSScriptRoot '../plan-matrix.ps1'
     $previousFull = $env:OD_CI_FULL
     try {
         $env:OD_CI_FULL = 'false'
-        $focus = & pwsh -NoProfile -File $builder -Platform windows-x64 -ArchiveLanesOnly -List -PlanPath $focusPlanPath
-        if ($LASTEXITCODE -ne 0 -or -not ($focus | Where-Object { $_ -like '* arm.csproj *' }) -or ($focus | Where-Object { $_ -like '*transitive.csproj*' -or $_ -like '*early.csproj*' })) {
+        $focus = & pwsh -NoProfile -File $builder -Platform windows-x64 -List -PlanPath $focusPlanPath
+        if ($LASTEXITCODE -ne 0 -or -not ($focus | Where-Object { $_ -like '* arm.csproj *' }) -or ($focus | Where-Object { $_ -like '* transitive.csproj *' -or $_ -like '* early.csproj *' -or $_ -like '* unit-x64.csproj *' })) {
             throw 'Focus mode must build the observe entries and leave the required ones out.'
         }
-        $plannerOutput = (& pwsh -NoProfile -File $planner -PlanPath $focusPlanPath) -join "`n"
+        $focusOutput = (& pwsh -NoProfile -File $planner -PlanPath $focusPlanPath) -join "`n"
         if ($LASTEXITCODE -ne 0) { throw 'Planning in focus mode failed.' }
-        $buildMatrix = [regex]::Match($plannerOutput, 'build_matrix=(\{.*\})').Groups[1].Value | ConvertFrom-Json
-        $buildNames = @($buildMatrix.include | ForEach-Object { $_.name })
-        if ('solo' -in $buildNames) { throw 'A platform with only in-place entries must get no build job.' }
-        $focusInLane = [regex]::Match($plannerOutput, 'in_lane_matrix=(\{.*\})').Groups[1].Value | ConvertFrom-Json
-        if (-not @($focusInLane.include | Where-Object { $_.lane -eq 'unit' -and $_.platform -eq 'solo' })) { throw 'Focus mode must keep the observe in-place entry.' }
+        $buildNames = @(([regex]::Match($focusOutput, '(?m)^build_matrix=(\{.*\})$').Groups[1].Value | ConvertFrom-Json).include | ForEach-Object { $_.name })
         if (-not ('windows-x64' -in $buildNames -and 'macos-arm64' -in $buildNames)) { throw 'Focus mode dropped a build that observe entries need.' }
         # -Platforms limits the run to the named platforms (a dispatch input), so an unavailable platform cannot hold the
         # others back, and rejects a name the plan does not define.
         $macOnly = (& pwsh -NoProfile -File $planner -PlanPath $focusPlanPath -Platforms 'macos-arm64') -join "`n"
         if ($LASTEXITCODE -ne 0) { throw 'Planning for one platform failed.' }
-        $macMatrix = [regex]::Match($macOnly, 'build_matrix=(\{.*\})').Groups[1].Value | ConvertFrom-Json
-        $macLanes = [regex]::Match($macOnly, 'lane_matrix=(\{.*\})').Groups[1].Value | ConvertFrom-Json
+        $macMatrix = [regex]::Match($macOnly, '(?m)^build_matrix=(\{.*\})$').Groups[1].Value | ConvertFrom-Json
+        $macLanes = [regex]::Match($macOnly, '(?m)^lane_matrix=(\{.*\})$').Groups[1].Value | ConvertFrom-Json
         if (@($macMatrix.include | ForEach-Object { $_.name }) -join ',' -ne 'macos-arm64') { throw '-Platforms macos-arm64 must plan only the macOS build.' }
         if (@($macLanes.include | Where-Object { $_.platform -ne 'macos-arm64' }).Count -gt 0) { throw '-Platforms macos-arm64 must plan only macOS lanes.' }
         & pwsh -NoProfile -File $planner -PlanPath $focusPlanPath -Platforms 'no-such-platform' *> $null
         if ($LASTEXITCODE -eq 0) { throw '-Platforms must reject a platform the plan does not define.' }
         $env:OD_CI_FULL = 'true'
-        $full = & pwsh -NoProfile -File $builder -Platform windows-x64 -ArchiveLanesOnly -List -PlanPath $focusPlanPath
-        if ($LASTEXITCODE -ne 0 -or -not ($full | Where-Object { $_ -like '*transitive.csproj*' })) {
+        $full = & pwsh -NoProfile -File $builder -Platform windows-x64 -List -PlanPath $focusPlanPath
+        if ($LASTEXITCODE -ne 0 -or -not ($full | Where-Object { $_ -like '* transitive.csproj *' }) -or -not ($full | Where-Object { $_ -like '* unit-x64.csproj *' })) {
             throw 'OD_CI_FULL=true must bring the required entries back in focus mode.'
-        }
-        $unitFull = & pwsh -NoProfile -File $builder -Platform windows-x64 -Lane unit -SkipHostBuilds -List -PlanPath $focusPlanPath
-        if ($LASTEXITCODE -ne 0 -or -not ($unitFull | Where-Object { $_ -like '*unit-x64.csproj*' })) {
-            throw 'OD_CI_FULL=true must bring the required in-place entries back.'
         }
     } finally {
         $env:OD_CI_FULL = $previousFull

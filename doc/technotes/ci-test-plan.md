@@ -17,8 +17,8 @@ not individual test cases. They describe the complete plan, not what a focus-mod
 | Windows x64 | 32 | 0 | No test entries; its build can still supply Windows ARM64. |
 | Windows ARM64 | 25 | 5 | Only the 5 observed entries run. |
 | macOS ARM64 | 26 | 7 | Only the 7 observed entries run. |
-| Linux x64 | 0 | 8 | All 8 entries are observed (unit suites in place, workbench/DevFlow under Xvfb), so all run. |
-| Linux ARM64 | 0 | 8 | All 8 entries are observed (unit suites in place, workbench/DevFlow under Xvfb), so all run. |
+| Linux x64 | 0 | 8 | All 8 entries are observed (unit suites, workbench/DevFlow under Xvfb), so all run. |
+| Linux ARM64 | 0 | 8 | All 8 entries are observed (unit suites, workbench/DevFlow under Xvfb), so all run. |
 
 **Focus mode skips every required entry. A green focus run does not prove that required coverage passed.** Use
 `workflow_dispatch` with `full=true` to run both statuses before relying on the complete gate. Its `platforms` input
@@ -330,9 +330,8 @@ one row installs an SDK over the network; its other rows need a separately budge
 `.github/workflows/ci.yml` is the one workflow. `.github/ci/test-plan.json` is the only place that decides what runs.
 
 ```
-plan  ->  build (per platform)  ->  test (per platform x lane)
+plan  ->  build (per platform)  ->  test (per platform x lane, unit and integration alike, in parallel)
           compile once, upload       download, unpack, run the lane's test assemblies
-      \->  in-place (the one lane with "buildsInLane": own checkout, own compile, no archive)
 ```
 
 * **plan** (`plan-matrix.ps1`) reads the plan and emits the two job matrices. A packaging platform gets a build job when
@@ -353,12 +352,9 @@ plan  ->  build (per platform)  ->  test (per platform x lane)
   or built there by the runner. Some integration journeys restore temporary fixture projects using the populated package
   cache; those restores can consult configured feeds. The workflow does not write credentials into the workspace archive.
   Windows ARM64 maps the original x64 build workspace path to its own checkout for paths embedded in build outputs and PDBs.
-* **in-place** runs only for the lane whose definition says `"buildsInLane": true` (today `unit`). It has its own
-  checkout and submodules, restores the same package cache entry, compiles only that lane's entries
-  (`build-binaries.ps1 -Lane <lane> -SkipHostBuilds`, so neither the host nor the RID rebuild happens) and runs them. It
-  needs `plan` only and does not download the workspace archive, so its result arrives minutes into the run instead of
-  behind the compile-and-pack job. The build job leaves that lane's projects out (`-ArchiveLanesOnly`), so nothing is
-  compiled twice.
+* There is no in-place lane any more (until 2026-11-02 `unit` compiled in its own job with `buildsInLane`). It reported a
+  few minutes earlier, but it compiled the same tree a second time and tested a build no other lane used; Windows ARM64
+  could not use it at all. The unit suites are now one more lane on the build archive.
 
 The package folder is one `actions/cache` entry keyed by `Directory.Packages.props`, `global.json`, `NuGet.config`,
 the test plan, fixture projects and the requested batch. Plan, fixture or batch changes must use a fresh key because GitHub caches are immutable:
@@ -429,7 +425,8 @@ NuGet cache took 11-15 minutes on Windows (up to 21) and 3-12 minutes on macOS o
 tests for code coverage and the ARM64 unit suites. So entries share as few jobs as possible, grouped by how reliable they
 have been, and a lane is split only for a real environment need or a timeout.
 
-* `unit` (Windows x64, in place) compiles and runs its own unit suites without the archive, so its result comes first.
+* `unit` runs the unit suites (Base, VSEditorCompat, XamlDom, Profiler, the AddIn SDK projects) on every platform from
+  that platform's build archive; an entry gets 10 minutes so one hang cannot use up the lane.
 * `integration-stable` holds the entries that passed on every hosted run in which the IDE started: the five workbench
   classes, the stable core journeys (solution folder, project options, T4, Task List, project reload, the Windows Terminal
   journey, Razor, the Windows and macOS new-project dialogs, fixture isolation, Profiler journeys, the WPF designer
@@ -495,8 +492,7 @@ The `platformNotes` in the plan record each decision.
 
 ## The archives
 
-Only the archive lanes consume the workspace archive; the in-place lane never downloads it, and the build job no longer
-compiles that lane's projects. The first full run measured the raw workspace at about 14 GB (`AddIns` 12.2 GB: every
+Every lane consumes the workspace archive. The first full run measured the raw workspace at about 14 GB (`AddIns` 12.2 GB: every
 add-in carries ~550 MB because the RID-less build copies the native libraries of every system, and `.pdb` files are 4.2 GB
 of it), packed to 5.3 GB, and the test jobs spent 4 to 6 minutes downloading and unpacking it. `package-workspace.ps1 -Platform windows-x64` therefore leaves
 out what Windows can never load: `.so`, `.dylib`, `.a`, `.lib`, the `runtimes/<linux|osx|android|ios|tvos|maccatalyst|browser>*`

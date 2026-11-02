@@ -4,10 +4,9 @@ name: CI
 #
 #   plan       -> reads the plan and emits the job matrices
 #   build      -> per platform, compiles everything the enabled archive lanes need exactly once, uploads the workspace
-#   test       -> per (platform, lane) that consumes that archive, unpacks it and runs the lane's assemblies
-#   in-place   -> per platform that builds for itself, each 'buildsInLane' lane (the unit suites): its own checkout, no
-#                 archive, so it reports early instead of waiting for the platform build. A 'buildFrom' platform (Windows
-#                 ARM64) runs the same lane as a 'test' job from its provider's archive, because that is what it ships.
+#   test       -> per (platform, lane), unit suites and integration journeys alike: once the platform's build is done,
+#                 unpacks its archive and runs the lane's assemblies, every lane in parallel. A 'buildFrom' platform
+#                 (Windows ARM64) unpacks its provider's archive, because that build is what it ships.
 #
 # Every platform the release ships (test-plan.json 'platforms': Windows x64 and ARM64, macOS ARM64, Linux x64 and ARM64)
 # gets the same three layers here: a Debug build, the unit suites and the IDE journeys. This is the Debug build with tests
@@ -80,8 +79,6 @@ jobs:
     outputs:
       build_matrix: ${{ steps.matrix.outputs.build_matrix }}
       lane_matrix: ${{ steps.matrix.outputs.lane_matrix }}
-      in_lane_matrix: ${{ steps.matrix.outputs.in_lane_matrix }}
-      has_in_lane: ${{ steps.matrix.outputs.has_in_lane }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -150,7 +147,7 @@ jobs:
         run: |
           $through = -1
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
-          ./.github/ci/build-binaries.ps1 -Platform '${{ matrix.name }}' -ArchiveLanesOnly -ThroughBatch $through
+          ./.github/ci/build-binaries.ps1 -Platform '${{ matrix.name }}' -ThroughBatch $through
       - name: Verify complete native Terminal package closure
         # The GitHub Packages fork is a single, version-locked cross-platform contract. Verify
         # the five supported RIDs on every native platform build; a Linux asset omission must not wait
@@ -393,7 +390,7 @@ jobs:
   # Release builds and packaging belong to release.yml alone.
   release-grade:
     name: Release grade
-    needs: [plan, build, test, in-place]
+    needs: [plan, build, test]
     if: always() && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -412,88 +409,3 @@ jobs:
           path: release-grade.txt
           if-no-files-found: ignore
           retention-days: 90
-
-  # Each 'buildsInLane' lane on each platform that builds for itself (plan-matrix.ps1, Test-BuildsInPlace). It has no
-  # archive and no dependency on the platform build, so its result arrives minutes into the run instead of behind the
-  # compile-and-pack job. It compiles only its own entries.
-  in-place:
-    name: ${{ matrix.lane }} (${{ matrix.platform }}, in place)
-    needs: plan
-    if: needs.plan.outputs.has_in_lane == 'true'
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.timeout }}
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.plan.outputs.in_lane_matrix) }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Initialize the submodules the build needs
-        shell: bash
-        run: bash .github/ci/init-submodules.sh
-      - uses: actions/setup-dotnet@v6
-        with:
-          global-json-file: global.json
-          architecture: ${{ matrix.dotnet_architecture }}
-      # The entries run under xvfb-run on Linux (run-test-plan.ps1), which needs the display packages.
-      - name: Install Linux display and native runtime prerequisites
-        if: runner.os == 'Linux'
-        shell: bash
-        run: bash .github/ci/install-linux-prerequisites.sh --display
-      - id: nuget-key
-        name: Compute the package cache key
-        shell: pwsh
-        run: |
-          $key = "nuget-${{ matrix.platform }}-${{ inputs.through_batch || 'default' }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config', '.github/ci/test-plan.json', 'tests/fixtures/**/*.csproj') }}"
-          Write-Host "cache key: $key"
-          "key=$key" | Add-Content -Path $env:GITHUB_OUTPUT
-      # Restore only: the build job owns this entry. This lane starts before that job saves it, so a miss here is normal
-      # and simply means an uncached restore - saving would spend four minutes compressing a duplicate.
-      - name: Restore the NuGet package cache
-        uses: actions/cache/restore@v6
-        with:
-          path: artifacts/nuget-packages
-          key: ${{ steps.nuget-key.outputs.key }}
-      # No host builds: nothing in this lane builds an add-in against the host manifest or starts the IDE.
-      - name: Compile this lane's entries
-        shell: pwsh
-        env:
-          THROUGH_BATCH: ${{ inputs.through_batch }}
-        run: |
-          $through = -1
-          if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
-          ./.github/ci/build-binaries.ps1 -Platform '${{ matrix.platform }}' -Lane '${{ matrix.lane }}' -SkipHostBuilds -ThroughBatch $through
-      - name: Run the lane
-        shell: pwsh
-        env:
-          THROUGH_BATCH: ${{ inputs.through_batch }}
-          OD_TEST_LOG_DIR: ${{ runner.temp }}/od-test-logs
-          OD_TEST_KEEP_ARTIFACTS: '1'
-          OD_TEST_RESULTS: TestResults
-        run: |
-          $through = -1
-          if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
-          ./.github/ci/run-test-plan.ps1 -Platform '${{ matrix.platform }}' -Lane '${{ matrix.lane }}' -ThroughBatch $through
-      - name: Publish the test results as a check
-        if: always()
-        continue-on-error: true
-        uses: dorny/test-reporter@v3
-        with:
-          name: ${{ matrix.lane }} (${{ matrix.platform }}, in place)
-          path: TestResults/*.trx
-          reporter: dotnet-trx
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: results-${{ matrix.lane }}-${{ matrix.platform }}-in-place
-          path: TestResults
-          if-no-files-found: ignore
-          retention-days: 3
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: logs-${{ matrix.lane }}-${{ matrix.platform }}-in-place
-          path: ${{ runner.temp }}/od-test-logs
-          if-no-files-found: ignore
-          retention-days: 3
