@@ -58,17 +58,22 @@ $consumerPlatforms = if ($buildsInLane) { @($Platform) } else {
 # An entry of a 'buildsInLane' lane compiles in its own job on a platform that builds for itself, so the archive build
 # leaves it out there; a consumer platform with 'buildFrom' runs it from this archive, so the archive keeps it for that
 # consumer (Test-BuildsInPlace, shared with the planner).
-$entries = @($plan.entries | Where-Object {
+$selected = @($plan.entries | Where-Object {
     $entry = $_
     $enabledForConsumer = @($consumerPlatforms | Where-Object {
         $entry.platforms.PSObject.Properties[$_] -and $entry.platforms.$_ -in $runStatuses -and
             (-not $ArchiveLanesOnly -or -not (Test-BuildsInPlace $plan $entry.lane $_))
     }).Count -gt 0
-    $entry.batch -le $ThroughBatch -and $entry.PSObject.Properties['project'] -and $enabledForConsumer -and (-not $Lane -or $entry.lane -eq $Lane)
+    $entry.batch -le $ThroughBatch -and $enabledForConsumer -and (-not $Lane -or $entry.lane -eq $Lane)
 })
-if ($entries.Count -eq 0) {
-    $scope = if ($Lane) { "lane '$Lane'" } elseif ($ArchiveLanesOnly) { 'the archive lanes' } else { 'any lane' }
-    throw "No project to build for $Platform in $scope up to batch $ThroughBatch."
+$scope = if ($Lane) { "lane '$Lane'" } elseif ($ArchiveLanesOnly) { 'the archive lanes' } else { 'any lane' }
+if ($selected.Count -eq 0) { throw "No entry is enabled for $Platform in $scope up to batch $ThroughBatch." }
+# An entry without a 'project' (kind msbuild) runs from the source tree and needs nothing compiled first. A lane made only
+# of such entries - macOS 'unit' in focus mode, where only its observed AddinSdk entries are left - has nothing to build.
+$entries = @($selected | Where-Object { $_.PSObject.Properties['project'] })
+if ($entries.Count -eq 0 -and $SkipHostBuilds) {
+    Write-Host "Nothing to compile for $Platform in ${scope}: its $($selected.Count) enabled entries run from source."
+    exit 0
 }
 
 # One build per distinct project.  Entries sharing a project must agree on its build arguments.

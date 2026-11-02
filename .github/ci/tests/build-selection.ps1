@@ -47,6 +47,16 @@ try {
         throw 'In-place lane must build only its own platform entries.'
     }
 
+    # An in-place lane whose enabled entries all run from source (kind msbuild, no 'project') compiles nothing and succeeds.
+    $sourcePlan = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
+    $sourcePlan.entries += [pscustomobject]@{ id = 'unit-msbuild'; batch = 1; lane = 'unit'; kind = 'msbuild'; target = 'tests.proj'; platforms = [pscustomobject]@{ 'macos-arm64' = 'observe' } }
+    $sourcePlanPath = Join-Path $directory 'source-plan.json'
+    $sourcePlan | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $sourcePlanPath
+    $sourceOnly = & pwsh -NoProfile -File $builder -Platform macos-arm64 -Lane unit -SkipHostBuilds -List -PlanPath $sourcePlanPath
+    if ($LASTEXITCODE -ne 0 -or ($sourceOnly | Where-Object { $_ -like 'dotnet *' })) { throw 'An in-place lane of source-only entries must compile nothing and succeed.' }
+    & pwsh -NoProfile -File $builder -Platform macos-arm64 -Lane nonexistent -SkipHostBuilds -List -PlanPath $sourcePlanPath *> $null
+    if ($LASTEXITCODE -eq 0) { throw 'A lane with no enabled entry must still fail.' }
+
     # The planner gives every self-building platform its own in-place job for a 'buildsInLane' lane, and turns that lane
     # into an archive lane on a 'buildFrom' platform.
     $plannerPath = Join-Path $PSScriptRoot '../plan-matrix.ps1'
