@@ -448,7 +448,12 @@ have been, and a lane is split only for a real environment need or a timeout.
 * `integration-designer` holds every designer journey (LibreWPF editing and property editors, LibreWinForms, MewUI and
   both GTK entries) and installs the GTK runtime (`needsGtk`, 3.5 minutes on Windows). Entries in a lane run one after
   another, so the LibreWPF journeys that edit `src/Samples` in place still never share the sample with a running test.
-  On Windows the 30 LibreWPF editing journeys alone took 24-28 minutes (budget 35 minutes). The setup uses Homebrew on
+  On Windows the 30 LibreWPF editing journeys alone took 24-28 minutes (budget 35 minutes). The GTK journeys class grew from 12 to
+  35 journeys; on run 41379926317 both Windows jobs killed `gtk-designer-journeys` at its old 12-minute budget while it was
+  still progressing (the app log shows 20 journeys started in 11 minutes, 35 seconds each on average; ARM64 the same), so the
+  entry now measures 1250 seconds with a 28-minute budget and the lane's timeout is 100 minutes (about 15 minutes of
+  preparation, 3.5 for GTK, 25-28 LibreWPF, 21 GTK, 7 MewUI and 2 WinForms plus the nested GTK journey). If the lane
+  outgrows this again, split the GTK entries into their own lane rather than raising it further. The setup uses Homebrew on
   macOS and architecture-specific MSYS2 environments on Windows, verifying the Windows DLLs and GIR metadata.
 
 Merging the former nine archive lanes into these three changed no build input: `build-binaries.ps1 -List` produces the
