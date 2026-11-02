@@ -2,11 +2,12 @@
 
 Goal: broaden GitHub Actions coverage of locally runnable tests on Windows x64, Windows ARM64 and macOS ARM64.
 Introduce substantial groups in observe mode, inspect their actual runner results, and promote stable entries to
-required per platform. `ci.yml` is the Debug build with tests; it builds no Release payload. Linux is packaged, started and
-verified on native x64 and ARM64 runners only by `release.yml`, which attaches both Linux `tar.xz` archives; Linux test lanes
-are the next planned expansion and no Linux platform is enabled in the test plan yet, so Linux has no CI coverage until one is.
+required per platform. `ci.yml` is the Debug build with tests; it builds no Release payload. Every platform the release
+ships (Windows x64 and ARM64, macOS ARM64, Linux x64 and ARM64) has the same stages: a Debug build, the unit suites, the IDE
+journeys, a Release build and a packaged-app check on its own runner (the table in `AGENTS.md`, "CI"). Linux joined the plan
+on 2026-11-02 with the unit suites and the workbench and DevFlow journeys as `observe`.
 
-## Current status (2026-10-28, 14:12 UTC)
+## Current status (2026-11-02)
 
 The checked-in plan uses batch 4 and `focus: true`. The numbers below count enabled **entry/platform pairs**,
 not individual test cases. They describe the complete plan, not what a focus-mode run actually executes:
@@ -14,10 +15,10 @@ not individual test cases. They describe the complete plan, not what a focus-mod
 | Platform | Required | Observe | Default focus run |
 | --- | ---: | ---: | --- |
 | Windows x64 | 32 | 0 | No test entries; its build can still supply Windows ARM64. |
-| Windows ARM64 | 25 | 2 | Only the two observed entries run. |
-| macOS ARM64 | 26 | 5 | Only the five observed entries run. |
-| Linux x64 | 0 | 0 | No test entries; no CI job; `release.yml` builds, audits and starts the packaged app. |
-| Linux ARM64 | 0 | 0 | No test entries; no CI job; `release.yml` builds, audits and starts the packaged app. |
+| Windows ARM64 | 25 | 5 | Only the 5 observed entries run. |
+| macOS ARM64 | 26 | 7 | Only the 7 observed entries run. |
+| Linux x64 | 0 | 8 | All 8 entries are observed (unit suites in place, workbench/DevFlow under Xvfb), so all run. |
+| Linux ARM64 | 0 | 8 | All 8 entries are observed (unit suites in place, workbench/DevFlow under Xvfb), so all run. |
 
 **Focus mode skips every required entry. A green focus run does not prove that required coverage passed.** Use
 `workflow_dispatch` with `full=true` to run both statuses before relying on the complete gate. Its `platforms` input

@@ -55,16 +55,16 @@ $consumerPlatforms = if ($buildsInLane) { @($Platform) } else {
     } | ForEach-Object { $_.Name })
 }
 
-# A lane with 'buildsInLane' compiles its own entries in its own job, so the archive build leaves them out.
-$inLaneNames = @($plan.lanes.PSObject.Properties |
-    Where-Object { $_.Value.PSObject.Properties['buildsInLane'] -and $_.Value.buildsInLane } |
-    ForEach-Object { $_.Name })
+# An entry of a 'buildsInLane' lane compiles in its own job on a platform that builds for itself, so the archive build
+# leaves it out there; a consumer platform with 'buildFrom' runs it from this archive, so the archive keeps it for that
+# consumer (Test-BuildsInPlace, shared with the planner).
 $entries = @($plan.entries | Where-Object {
     $entry = $_
     $enabledForConsumer = @($consumerPlatforms | Where-Object {
-        $entry.platforms.PSObject.Properties[$_] -and $entry.platforms.$_ -in $runStatuses
+        $entry.platforms.PSObject.Properties[$_] -and $entry.platforms.$_ -in $runStatuses -and
+            (-not $ArchiveLanesOnly -or -not (Test-BuildsInPlace $plan $entry.lane $_))
     }).Count -gt 0
-    $entry.batch -le $ThroughBatch -and $entry.PSObject.Properties['project'] -and $enabledForConsumer -and (-not $Lane -or $entry.lane -eq $Lane) -and (-not $ArchiveLanesOnly -or $entry.lane -notin $inLaneNames)
+    $entry.batch -le $ThroughBatch -and $entry.PSObject.Properties['project'] -and $enabledForConsumer -and (-not $Lane -or $entry.lane -eq $Lane)
 })
 if ($entries.Count -eq 0) {
     $scope = if ($Lane) { "lane '$Lane'" } elseif ($ArchiveLanesOnly) { 'the archive lanes' } else { 'any lane' }

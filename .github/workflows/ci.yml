@@ -2,11 +2,16 @@ name: CI
 
 # One workflow for the local test suites that .github/ci/test-plan.json has switched on.
 #
-#   plan       -> reads the plan and emits the job matrices (and the one lane that builds in place)
+#   plan       -> reads the plan and emits the job matrices
 #   build      -> per platform, compiles everything the enabled archive lanes need exactly once, uploads the workspace
 #   test       -> per (platform, lane) that consumes that archive, unpacks it and runs the lane's assemblies
-#   in-place   -> the one lane whose definition says 'buildsInLane': its own checkout, no archive, so it reports
-#                 early instead of waiting for the platform build
+#   in-place   -> per platform that builds for itself, each 'buildsInLane' lane (the unit suites): its own checkout, no
+#                 archive, so it reports early instead of waiting for the platform build. A 'buildFrom' platform (Windows
+#                 ARM64) runs the same lane as a 'test' job from its provider's archive, because that is what it ships.
+#
+# Every platform the release ships (test-plan.json 'platforms': Windows x64 and ARM64, macOS ARM64, Linux x64 and ARM64)
+# gets the same three layers here: a Debug build, the unit suites and the IDE journeys. This is the Debug build with tests
+# and debug information; Release builds and packaging belong to release.yml alone.
 #
 # Lanes run in parallel, each on its own fresh machine, so they cannot interfere through ports, config directories
 # or temp files; the entries inside a lane run one after another.  What runs is decided by the plan, not by this file:
@@ -75,12 +80,8 @@ jobs:
     outputs:
       build_matrix: ${{ steps.matrix.outputs.build_matrix }}
       lane_matrix: ${{ steps.matrix.outputs.lane_matrix }}
+      in_lane_matrix: ${{ steps.matrix.outputs.in_lane_matrix }}
       has_in_lane: ${{ steps.matrix.outputs.has_in_lane }}
-      in_lane_name: ${{ steps.matrix.outputs.in_lane_name }}
-      in_lane_platform: ${{ steps.matrix.outputs.in_lane_platform }}
-      in_lane_runner: ${{ steps.matrix.outputs.in_lane_runner }}
-      in_lane_architecture: ${{ steps.matrix.outputs.in_lane_architecture }}
-      in_lane_timeout: ${{ steps.matrix.outputs.in_lane_timeout }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -120,6 +121,10 @@ jobs:
       - name: Initialize the submodules the build needs
         shell: bash
         run: bash .github/ci/init-submodules.sh
+      - name: Reclaim disk space on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash .github/ci/install-linux-prerequisites.sh --reclaim-disk
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
@@ -154,7 +159,10 @@ jobs:
         shell: pwsh
         run: ./.github/ci/verify-terminal-assets.ps1 -Platform '${{ matrix.name }}'
       # One Windows payload serves x64 and ARM64: fail here if any IL-only assembly was built for one architecture.
+      # Linux is skipped here only because its contract (no foreign linux-* RID tree) holds for the trimmed archive, not
+      # for the RID-less Debug tree: its lanes run the same check, payload included, after unpacking.
       - name: Verify payload bitness
+        if: runner.os != 'Linux'
         shell: pwsh
         run: ./.github/ci/verify-bitness.ps1 -Platform '${{ matrix.name }}' -PayloadOnly
       - name: Pack the workspace
@@ -276,6 +284,10 @@ jobs:
         run: |
           ./.github/ci/prepare-windows-desktop.ps1
 
+      - name: Install Linux display and native runtime prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash .github/ci/install-linux-prerequisites.sh --display
       - name: Install GTK designer runtimes and metadata
         if: matrix.needs_gtk && matrix.platform == 'macos-arm64'
         shell: bash
@@ -318,7 +330,7 @@ jobs:
           key: ${{ steps.nuget-key.outputs.key }}
           fail-on-cache-miss: true
       - name: Verify native Terminal package assets
-        if: matrix.needs_nuget_cache && (matrix.platform == 'windows-x64' || matrix.platform == 'windows-arm64' || matrix.platform == 'macos-arm64')
+        if: matrix.needs_nuget_cache
         shell: pwsh
         run: ./.github/ci/verify-terminal-assets.ps1 -Platform '${{ matrix.platform }}'
       # The lane must run the architecture its platform promises, against the payload that carries those assets.
@@ -401,14 +413,18 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
-  # The lane whose plan definition says 'buildsInLane'. It has no archive and no dependency on the platform build, so
-  # its result arrives minutes into the run instead of behind the compile-and-pack job. It compiles only its own entries.
+  # Each 'buildsInLane' lane on each platform that builds for itself (plan-matrix.ps1, Test-BuildsInPlace). It has no
+  # archive and no dependency on the platform build, so its result arrives minutes into the run instead of behind the
+  # compile-and-pack job. It compiles only its own entries.
   in-place:
-    name: ${{ needs.plan.outputs.in_lane_name }} (${{ needs.plan.outputs.in_lane_platform }}, in place)
+    name: ${{ matrix.lane }} (${{ matrix.platform }}, in place)
     needs: plan
     if: needs.plan.outputs.has_in_lane == 'true'
-    runs-on: ${{ needs.plan.outputs.in_lane_runner }}
-    timeout-minutes: ${{ fromJSON(needs.plan.outputs.in_lane_timeout) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.in_lane_matrix) }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -419,12 +435,17 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
-          architecture: ${{ needs.plan.outputs.in_lane_architecture }}
+          architecture: ${{ matrix.dotnet_architecture }}
+      # The entries run under xvfb-run on Linux (run-test-plan.ps1), which needs the display packages.
+      - name: Install Linux display and native runtime prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash .github/ci/install-linux-prerequisites.sh --display
       - id: nuget-key
         name: Compute the package cache key
         shell: pwsh
         run: |
-          $key = "nuget-${{ needs.plan.outputs.in_lane_platform }}-${{ inputs.through_batch || 'default' }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config', '.github/ci/test-plan.json', 'tests/fixtures/**/*.csproj') }}"
+          $key = "nuget-${{ matrix.platform }}-${{ inputs.through_batch || 'default' }}-${{ hashFiles('Directory.Packages.props', 'global.json', 'NuGet.config', '.github/ci/test-plan.json', 'tests/fixtures/**/*.csproj') }}"
           Write-Host "cache key: $key"
           "key=$key" | Add-Content -Path $env:GITHUB_OUTPUT
       # Restore only: the build job owns this entry. This lane starts before that job saves it, so a miss here is normal
@@ -442,7 +463,7 @@ jobs:
         run: |
           $through = -1
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
-          ./.github/ci/build-binaries.ps1 -Platform '${{ needs.plan.outputs.in_lane_platform }}' -Lane '${{ needs.plan.outputs.in_lane_name }}' -SkipHostBuilds -ThroughBatch $through
+          ./.github/ci/build-binaries.ps1 -Platform '${{ matrix.platform }}' -Lane '${{ matrix.lane }}' -SkipHostBuilds -ThroughBatch $through
       - name: Run the lane
         shell: pwsh
         env:
@@ -453,26 +474,26 @@ jobs:
         run: |
           $through = -1
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
-          ./.github/ci/run-test-plan.ps1 -Platform '${{ needs.plan.outputs.in_lane_platform }}' -Lane '${{ needs.plan.outputs.in_lane_name }}' -ThroughBatch $through
+          ./.github/ci/run-test-plan.ps1 -Platform '${{ matrix.platform }}' -Lane '${{ matrix.lane }}' -ThroughBatch $through
       - name: Publish the test results as a check
         if: always()
         continue-on-error: true
         uses: dorny/test-reporter@v3
         with:
-          name: ${{ needs.plan.outputs.in_lane_name }} (${{ needs.plan.outputs.in_lane_platform }}, in place)
+          name: ${{ matrix.lane }} (${{ matrix.platform }}, in place)
           path: TestResults/*.trx
           reporter: dotnet-trx
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: results-${{ needs.plan.outputs.in_lane_name }}-in-place
+          name: results-${{ matrix.lane }}-${{ matrix.platform }}-in-place
           path: TestResults
           if-no-files-found: ignore
           retention-days: 3
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: logs-${{ needs.plan.outputs.in_lane_name }}-in-place
+          name: logs-${{ matrix.lane }}-${{ matrix.platform }}-in-place
           path: ${{ runner.temp }}/od-test-logs
           if-no-files-found: ignore
           retention-days: 3

@@ -15,7 +15,7 @@
     "'buildArgs' are extra dotnet build arguments for the entry's 'project'; entries that share a project must agree on them.  The integration project is built with -p:BuildIntegrationFixtures=false because its fixture target builds every fixture inside one MSBuild process (Uno.Sdk 6.6.42 then clashes with the already resolved 6.5.31, MSB4240); a lane that needs a fixture lists that fixture's own csproj as an entry 'project' so it builds in its own process.",
     "A lane with 'needsNuGetCache' also downloads the build job's NuGet package cache: the IDE host resolves its LibreWPF assemblies from the global packages folder at run time, so a lane that starts the IDE (the integration lanes) needs it; the unit lane does not.",
     "'buildLast' projects are built after everything else, with their own 'args' ('{rid}' is the platform's 'rid').  The host is built last with '--runtime <rid> -p:AppendRuntimeIdentifierToOutputPath=false', the recipe terminal-cross-platform.yml uses (it builds the Terminal add-in that way, which builds the host project it references as that RID into the same folder) and whose IDE does start on the Windows runner.  Measured on the runner without it: the host's OpenDevelop.deps.json is 166 libraries without a 'PresentationFramework/11.0.0.0' reference entry from the very first host build on, whatever is built afterwards in the default way (a macOS build has 193, with 28 'reference' entries for the LibreWPF assemblies), and the IDE dies at start-up with a FileNotFoundException for PresentationFramework 11.0.0.0.  The build summary records the host deps.json after every build, so the run shows what the RID-specific build changes.",
-    "A lane definition holds 'timeoutMinutes', optionally 'needsNuGetCache' (the IDE host resolves its LibreWPF assemblies from the global packages folder at run time), 'needsGtk' for native GTK dependencies, and 'buildsInLane'.",
+    "A lane definition holds 'timeoutMinutes', optionally 'needsNuGetCache' (the IDE host resolves its LibreWPF assemblies from the global packages folder at run time), 'needsGtk' for native GTK dependencies, and 'buildsInLane' (the lane compiles in its own job on every platform that builds for itself, while a 'buildFrom' platform runs it from its provider's archive, the build it ships).",
     "'additionalProjects' declares fixture projects needed by an enabled entry; optional platforms refer to the build platform, so Windows ARM64 prerequisites belong to windows-x64 when it supplies the shared archive.",
     "Profiler and Terminal are entries here; their own workflows (profiler.yml, terminal-cross-platform.yml) were deleted when they were folded in. Windows ARM64 and macOS ARM64 start as observed Terminal journeys and are promoted after repeated green runs."
   ],
@@ -23,7 +23,8 @@
     "macos-arm64": "dist.macos.sh ships an osx-arm64-only payload, so this platform builds for itself and its archive drops the Windows RID trees the package never contains.",
     "windows-x64": "Every unit and integration entry is required here since 2026-10-27 (base-tests and xamldom-tests-microsoftwpf were the last unit entries promoted), so focus mode schedules no Windows x64 job beyond the build, which windows-arm64 still needs.",
     "windows-arm64": "Runs the native Windows ARM64 Terminal journey against the same unified Windows payload the x64 lane tests: dist.windows.bat ships one package with runtimes/ plus per-RID win-x64/win-arm64 folders and both launchers, so 'buildFrom': 'windows-x64' keeps a single compile for both lanes.",
-    "linux-x64": "Not enabled yet: profiler.yml ran the Profiler tests on ubuntu-latest and passed; it comes back as this platform's first entry when the platform is added."
+    "linux-x64": "Enabled on 2026-11-02 with the unit suites (Profiler among them, which profiler.yml once ran on ubuntu-latest) and the workbench and DevFlow journeys, all 'observe'. The IDE entries run under xvfb-run with Mesa's software Vulkan driver (install-linux-prerequisites.sh); promote per the usual two green runs.",
+    "linux-arm64": "Same entries and rules as linux-x64, on the native ubuntu-24.04-arm runner: dist.linux.sh ships one archive per Linux architecture, so each builds for itself."
   },
   "throughBatch": 4,
   "focus": true,
@@ -44,12 +45,24 @@
       "dotnetArchitecture": "arm64",
       "rid": "osx-arm64",
       "needsCliclick": true
+    },
+    "linux-x64": {
+      "runner": "ubuntu-24.04",
+      "dotnetArchitecture": "x64",
+      "rid": "linux-x64"
+    },
+    "linux-arm64": {
+      "runner": "ubuntu-24.04-arm",
+      "dotnetArchitecture": "arm64",
+      "rid": "linux-arm64"
     }
   },
   "lanes": {
     "unit": {
       "timeoutMinutes": 30,
-      "buildsInLane": true
+      "buildsInLane": true,
+      "needsNuGetCache": true,
+      "note": "In place on every platform that builds for itself; Windows ARM64 ('buildFrom': 'windows-x64') runs it from the x64 archive, the build it ships, and needs the package cache for that like any archive lane."
     },
     "integration-stable": {
       "timeoutMinutes": 55,
@@ -86,9 +99,11 @@
         "-p:AppendRuntimeIdentifierToOutputPath=false"
       ],
       "platforms": [
-        "macos-arm64"
+        "macos-arm64",
+        "linux-x64",
+        "linux-arm64"
       ],
-      "note": "macOS is a single-architecture payload (dist.macos.sh), so building the add-in for that RID is harmless and keeps its native staging identical to the previous lanes. On Windows the unified payload already carries runtimes/win-x64 and win-arm64, so a RID build is what used to strip the host folder - the build guard rejects it there."
+      "note": "macOS and Linux are single-architecture payloads (dist.macos.sh, dist.linux.sh), so building the add-in for that RID is harmless and stages the native Terminal assets the lanes use. On Windows the unified payload already carries runtimes/win-x64 and win-arm64, so a RID build is what used to strip the host folder - the build guard rejects it there."
     },
     {
       "project": "src/Main/SharpDevelop/SharpDevelop.csproj",
@@ -117,10 +132,8 @@
       "project": "tests/OpenDevelop.Base.Tests/OpenDevelop.Base.Tests.csproj",
       "target": "tests/OpenDevelop.Base.Tests/bin/Debug/net10.0-windows/OpenDevelop.Base.Tests.dll",
       "measuredSeconds": null,
-      "platforms": {
-        "windows-x64": "required"
-      },
-      "note": "499 tests (9 skipped) when measured on macOS arm64. On the Windows runner one WinUI Hot Reload case (x86 probe) intermittently reports hr=0x80070490 because the probe can run before the live application applies the change; x64 and ARM64 pass."
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required", "linux-x64": "observe", "linux-arm64": "observe" },
+      "note": "499 tests (9 skipped) when measured on macOS arm64. On the Windows runner one WinUI Hot Reload case (x86 probe) intermittently reports hr=0x80070490 because the probe can run before the live application applies the change; x64 and ARM64 pass. Windows ARM64 and macOS ARM64 (formerly the separate base-tests-arm entry, merged so each suite is one entry with every platform): macOS ARM64: 490 passed, 9 platform-specific skips. Windows ARM64: the two Hot Reload end-to-end cases failed until 1966db2a72 (the WinUI ARM64 fixture is built on x64 and the WPF fixture runs through dotnet there); 499 tests passed in runs 40662664664 and 40671568295. Linux starts as observe."
     },
     {
       "id": "vseditorcompat-tests",
@@ -130,10 +143,8 @@
       "project": "tests/OpenDevelop.VSEditorCompat.Tests/OpenDevelop.VSEditorCompat.Tests.csproj",
       "target": "tests/OpenDevelop.VSEditorCompat.Tests/bin/Debug/net10.0-windows/OpenDevelop.VSEditorCompat.Tests.dll",
       "measuredSeconds": null,
-      "platforms": {
-        "windows-x64": "required"
-      },
-      "note": "141 tests when measured on macOS arm64."
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required", "linux-x64": "observe", "linux-arm64": "observe" },
+      "note": "141 tests when measured on macOS arm64. Windows ARM64 and macOS ARM64 (formerly the separate vseditorcompat-tests-arm entry, merged so each suite is one entry with every platform): macOS ARM64: 141 passed. Linux starts as observe."
     },
     {
       "id": "xamldom-tests-librewpf",
@@ -143,10 +154,8 @@
       "project": "tests/OpenDevelop.XamlDom.Tests.LibreWPF/OpenDevelop.XamlDom.Tests.LibreWPF.csproj",
       "target": "tests/OpenDevelop.XamlDom.Tests.LibreWPF/bin/Debug/net10.0-windows/OpenDevelop.XamlDom.Tests.LibreWPF.dll",
       "measuredSeconds": null,
-      "platforms": {
-        "windows-x64": "required"
-      },
-      "note": "97 tests; the test body is tests/OpenDevelop.XamlDom.Tests.Shared."
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required", "linux-x64": "observe", "linux-arm64": "observe" },
+      "note": "97 tests; the test body is tests/OpenDevelop.XamlDom.Tests.Shared. Windows ARM64 and macOS ARM64 (formerly the separate xamldom-tests-librewpf-arm entry, merged so each suite is one entry with every platform): macOS ARM64: 101 passed, including portable text compatibility. Linux starts as observe."
     },
     {
       "id": "addinsdk-tests",
@@ -154,9 +163,7 @@
       "lane": "unit",
       "kind": "msbuild",
       "target": "tests/OpenDevelop.AddinSdk.Tests/OpenDevelop.AddinSdk.Tests.proj",
-      "platforms": {
-        "windows-x64": "required"
-      },
+      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "observe", "linux-x64": "observe", "linux-arm64": "observe" },
       "note": "Run with dotnet msbuild -t:Build as doc/technotes/addin-sdk.md says; 'dotnet build' fails the same file."
     },
     {
@@ -165,9 +172,7 @@
       "lane": "unit",
       "kind": "msbuild",
       "target": "tests/OpenDevelop.AddinSdk.Tests/OpenDevelop.AddinSdk.Staging.Tests.proj",
-      "platforms": {
-        "windows-x64": "required"
-      }
+      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "observe", "linux-x64": "observe", "linux-arm64": "observe" }
     },
     {
       "id": "xamldom-tests-microsoftwpf",
@@ -177,54 +182,9 @@
       "project": "tests/OpenDevelop.XamlDom.Tests.MicrosoftWPF/OpenDevelop.XamlDom.Tests.MicrosoftWPF.csproj",
       "target": "tests/OpenDevelop.XamlDom.Tests.MicrosoftWPF/bin/Debug/net10.0-windows/OpenDevelop.XamlDom.Tests.MicrosoftWPF.dll",
       "measuredSeconds": null,
-      "platforms": {
-        "windows-x64": "required"
-      },
+      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "excluded", "linux-x64": "excluded", "linux-arm64": "excluded" },
+      "reason": "Microsoft WPF exists only on Windows; the LibreWPF suite covers the same shared tests on macOS and Linux.",
       "note": "Microsoft's XamlReader is loaded on its own STA thread with a 20-second deadline; on a cold runner the first cases can exceed it and report HANG. One case failed that way on 2026-10-25 while the other 96 passed."
-    },
-    {
-      "id": "base-tests-arm",
-      "batch": 4,
-      "lane": "integration-unstable",
-      "measuredSeconds": 50,
-      "kind": "xunit-exe",
-      "project": "tests/OpenDevelop.Base.Tests/OpenDevelop.Base.Tests.csproj",
-      "target": "tests/OpenDevelop.Base.Tests/bin/Debug/net10.0-windows/OpenDevelop.Base.Tests.dll",
-      "platforms": { "windows-arm64": "required", "macos-arm64": "required" },
-      "note": "macOS ARM64: 490 passed, 9 platform-specific skips. Windows ARM64: the two Hot Reload end-to-end cases failed until 1966db2a72 (the WinUI ARM64 fixture is built on x64 and the WPF fixture runs through dotnet there); 499 tests passed in runs 40662664664 and 40671568295."
-    },
-    {
-      "id": "vseditorcompat-tests-arm",
-      "batch": 4,
-      "lane": "integration-stable",
-      "measuredSeconds": 3,
-      "kind": "xunit-exe",
-      "project": "tests/OpenDevelop.VSEditorCompat.Tests/OpenDevelop.VSEditorCompat.Tests.csproj",
-      "target": "tests/OpenDevelop.VSEditorCompat.Tests/bin/Debug/net10.0-windows/OpenDevelop.VSEditorCompat.Tests.dll",
-      "platforms": { "windows-arm64": "required", "macos-arm64": "required" },
-      "note": "macOS ARM64: 141 passed."
-    },
-    {
-      "id": "xamldom-tests-librewpf-arm",
-      "batch": 4,
-      "lane": "integration-stable",
-      "measuredSeconds": 3,
-      "kind": "xunit-exe",
-      "project": "tests/OpenDevelop.XamlDom.Tests.LibreWPF/OpenDevelop.XamlDom.Tests.LibreWPF.csproj",
-      "target": "tests/OpenDevelop.XamlDom.Tests.LibreWPF/bin/Debug/net10.0-windows/OpenDevelop.XamlDom.Tests.LibreWPF.dll",
-      "platforms": { "windows-arm64": "required", "macos-arm64": "required" },
-      "note": "macOS ARM64: 101 passed, including portable text compatibility."
-    },
-    {
-      "id": "profiler-tests-arm",
-      "batch": 4,
-      "lane": "integration-stable",
-      "measuredSeconds": 70,
-      "kind": "xunit-exe",
-      "project": "tests/OpenDevelop.Profiler.Tests/OpenDevelop.Profiler.Tests.csproj",
-      "target": "tests/OpenDevelop.Profiler.Tests/bin/Debug/net10.0/OpenDevelop.Profiler.Tests.dll",
-      "platforms": { "windows-arm64": "required", "macos-arm64": "required" },
-      "note": "macOS ARM64: 143 passed, including real process captures."
     },
     {
       "id": "devflow-tests",
@@ -243,7 +203,9 @@
       "platforms": {
         "windows-x64": "required",
         "windows-arm64": "required",
-        "macos-arm64": "required"
+        "macos-arm64": "required",
+        "linux-x64": "observe",
+        "linux-arm64": "observe"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
@@ -268,7 +230,9 @@
       "platforms": {
         "windows-x64": "required",
         "windows-arm64": "required",
-        "macos-arm64": "required"
+        "macos-arm64": "required",
+        "linux-x64": "observe",
+        "linux-arm64": "observe"
       },
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
@@ -473,11 +437,9 @@
       "lane": "unit",
       "kind": "xunit-exe",
       "target": "tests/OpenDevelop.Profiler.Tests/bin/Debug/net10.0/OpenDevelop.Profiler.Tests.dll",
-      "platforms": {
-        "windows-x64": "required"
-      },
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required", "linux-x64": "observe", "linux-arm64": "observe" },
       "project": "tests/OpenDevelop.Profiler.Tests/OpenDevelop.Profiler.Tests.csproj",
-      "note": "The data layer attaches to a real .NET process, so it needs no IDE host and shares the unit lane. Its cross-platform matrix (Linux and macOS) was retired with profiler.yml and comes back as platform entries."
+      "note": "The data layer attaches to a real .NET process, so it needs no IDE host and shares the unit lane. Its cross-platform matrix (Linux and macOS) was retired with profiler.yml and comes back as platform entries. Windows ARM64 and macOS ARM64 (formerly the separate profiler-tests-arm entry, merged so each suite is one entry with every platform): macOS ARM64: 143 passed, including real process captures. Linux starts as observe."
     },
     {
       "id": "terminal-integration",

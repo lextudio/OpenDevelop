@@ -7,12 +7,12 @@
 #
 # build_matrix : one include per platform that has an enabled entry (the job compiles once there).
 # lane_matrix  : one include per (platform, lane) that consumes the build archive (one test job each).
-# in_lane_*    : the single lane whose definition says "buildsInLane"; its test job has its own
-#                checkout and builds the lane's entries in place instead of downloading the archive.
-# has_in_lane  : 'true' when such a lane is enabled, which is what gates that job.
+# in_lane_matrix : one include per (platform, lane) that builds in place (Test-BuildsInPlace: a 'buildsInLane' lane on a
+#                  platform that builds for itself); its job has its own checkout and compiles the lane's entries there
+#                  instead of downloading the archive. A 'buildFrom' platform runs the same lane from the archive.
+# has_in_lane    : 'true' when at least one such job is planned, which is what gates that job.
 #
-# The outputs are written as JSON ('{"include":[...]}') to $GITHUB_OUTPUT. A plan that enables nothing fails,
-# and so does a plan whose every lane builds in place (nothing would consume the build job).
+# The outputs are written as JSON ('{"include":[...]}') to $GITHUB_OUTPUT. A plan that enables nothing fails.
 param(
     [int]$ThroughBatch = -1,
     [string]$Platforms = '',
@@ -59,11 +59,8 @@ function Resolve-BuildPlatform([string]$platformName, [hashtable]$seen) {
 
 # Only archive lanes consume the build job; a platform whose entries all build in place (more likely in focus mode,
 # where 'required' entries drop out) would otherwise get a build job with nothing to compile.
-$inLaneNames = @($plan.lanes.PSObject.Properties |
-    Where-Object { $_.Value.PSObject.Properties['buildsInLane'] -and $_.Value.buildsInLane } |
-    ForEach-Object { $_.Name })
 $build = @()
-foreach ($platformName in @($enabled | Where-Object { $_.Lane -notin $inLaneNames } | ForEach-Object { Resolve-BuildPlatform $_.Platform @{} } | Sort-Object -Unique)) {
+foreach ($platformName in @($enabled | Where-Object { -not (Test-BuildsInPlace $plan $_.Lane $_.Platform) } | ForEach-Object { Resolve-BuildPlatform $_.Platform @{} } | Sort-Object -Unique)) {
     $platform = $plan.platforms.PSObject.Properties[$platformName]
     if ($null -eq $platform) { throw "Build platform '$platformName' is not defined under 'platforms'." }
     $build += [ordered]@{ name = $platformName; runner = $platform.Value.runner; dotnet_architecture = $platform.Value.dotnetArchitecture }
@@ -88,30 +85,23 @@ foreach ($group in @($enabled | Group-Object Platform, Lane | Sort-Object Name))
         needs_gtk = [bool]($lane.Value.PSObject.Properties['needsGtk'] -and $lane.Value.needsGtk)
         entries = $group.Count
     }
-    $buildsInLane = [bool]($lane.Value.PSObject.Properties['buildsInLane'] -and $lane.Value.buildsInLane)
-    if ($buildsInLane) { $inLane += $item } else { $lanes += $item }
+    if (Test-BuildsInPlace $plan $laneName $platformName) { $inLane += $item } else { $lanes += $item }
 }
 
+# fromJSON of an empty include fails the job that expands it, so an empty matrix is reported as such, not emitted.
 if ($lanes.Count -eq 0) { throw "Every enabled lane builds in place, so nothing would consume the build job; enable one archive lane." }
-if ($inLane.Count -gt 1) { throw "Only one in-place build lane is supported, but $($inLane.Count) are enabled: $(($inLane | ForEach-Object { $_.lane }) -join ', ')." }
 
 $buildJson = (@{ include = $build } | ConvertTo-Json -Compress -Depth 5)
 $laneJson = (@{ include = $lanes } | ConvertTo-Json -Compress -Depth 5)
-$single = if ($inLane.Count -eq 1) { $inLane[0] } else { $null }
+$inLaneJson = (@{ include = $inLane } | ConvertTo-Json -Compress -Depth 5)
 
 Write-Host "ThroughBatch=$ThroughBatch RunStatuses=$($runStatuses -join ',') Platforms=$(if ($onlyPlatforms.Count -gt 0) { $onlyPlatforms -join ',' } else { 'all' })"
 Write-Host "build_matrix=$buildJson"
 Write-Host "lane_matrix=$laneJson"
-Write-Host "in_lane=$(if ($single) { "$($single.lane) ($($single.platform))" } else { 'none' })"
+Write-Host "in_lane_matrix=$inLaneJson"
 if ($env:GITHUB_OUTPUT) {
     Add-Content -Path $env:GITHUB_OUTPUT -Value "build_matrix=$buildJson"
     Add-Content -Path $env:GITHUB_OUTPUT -Value "lane_matrix=$laneJson"
-    Add-Content -Path $env:GITHUB_OUTPUT -Value "has_in_lane=$([bool]$single ? 'true' : 'false')"
-    if ($single) {
-        Add-Content -Path $env:GITHUB_OUTPUT -Value "in_lane_name=$($single.lane)"
-        Add-Content -Path $env:GITHUB_OUTPUT -Value "in_lane_platform=$($single.platform)"
-        Add-Content -Path $env:GITHUB_OUTPUT -Value "in_lane_runner=$($single.runner)"
-        Add-Content -Path $env:GITHUB_OUTPUT -Value "in_lane_architecture=$($single.dotnet_architecture)"
-        Add-Content -Path $env:GITHUB_OUTPUT -Value "in_lane_timeout=$($single.timeout)"
-    }
+    Add-Content -Path $env:GITHUB_OUTPUT -Value "in_lane_matrix=$inLaneJson"
+    Add-Content -Path $env:GITHUB_OUTPUT -Value "has_in_lane=$($inLane.Count -gt 0 ? 'true' : 'false')"
 }

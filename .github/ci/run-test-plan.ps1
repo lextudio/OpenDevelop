@@ -104,8 +104,17 @@ function Save-Screenshot([string]$path) {
 # fixture's IDE included). '& dotnet' printed nothing until exit, so a hang ended in a lane timeout that cancelled the job
 # and lost every result; this way a hung entry costs only its budget and the next entry still runs. .NET copies the two
 # streams to files itself (no PowerShell callback runs off the pipeline thread), and this loop tails them.
+#
+# A Linux runner has no display, and the integration entries start the IDE's window: there each entry runs under its own
+# xvfb-run (installed by install-linux-prerequisites.sh). The Xvfb server is a child of that process tree, so the budget
+# kill below takes it down with the entry.
 function Invoke-Entry([string[]]$arguments, [int]$timeoutSeconds, [string]$logBase) {
-    $startInfo = [System.Diagnostics.ProcessStartInfo]::new('dotnet')
+    if ($IsLinux -and -not $env:DISPLAY) {
+        $startInfo = [System.Diagnostics.ProcessStartInfo]::new('xvfb-run')
+        foreach ($argument in @('-a', '--server-args=-screen 0 1280x1024x24', 'dotnet')) { $startInfo.ArgumentList.Add($argument) }
+    } else {
+        $startInfo = [System.Diagnostics.ProcessStartInfo]::new('dotnet')
+    }
     foreach ($argument in $arguments) { $startInfo.ArgumentList.Add($argument) }
     $startInfo.UseShellExecute = $false
     $startInfo.RedirectStandardOutput = $true
