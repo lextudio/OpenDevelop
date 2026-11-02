@@ -220,10 +220,18 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var undoAlign = await app.InvokeAsync("od.gtk-designer.undo"); Assert.Equal(5, undoAlign.GetProperty("elementCount").GetInt32());
 		// Move First/Last keep the element selected; the first child cannot move earlier.
 		await app.InvokeAsync("od.gtk-designer.select", "heading");
+		async Task<Dictionary<string, bool>> ContextEnabledAsync()
+			=> (await app.InvokeAsync("od.gtk-designer.context-commands")).GetProperty("commands").EnumerateArray().ToDictionary(c => c.GetProperty("command").GetString()!, c => c.GetProperty("enabled").GetBoolean());
 		var movedFirst = await app.InvokeAsync("od.gtk-designer.clipboard", "move-first"); Assert.True(movedFirst.GetProperty("success").GetBoolean(), movedFirst.ToString());
 		Assert.Equal(new[] { "heading" }, movedFirst.GetProperty("selectedIds").EnumerateArray().Select(item => item.GetString()).ToArray());
+		// The menu's own enablement (the shared rules, evaluated as opening it would): first child -> only the later moves.
+		var atFirst = await ContextEnabledAsync();
+		Assert.False(atFirst["move-first"]); Assert.False(atFirst["move-earlier"]); Assert.True(atFirst["move-later"]); Assert.True(atFirst["move-last"]);
+		Assert.True(atFirst["wrap-GtkBox"]); Assert.True(atFirst["wrap-GtkFrame"]); Assert.False(atFirst["unwrap"]); Assert.True(atFirst["delete"]); Assert.False(atFirst["paste-here"]);
 		Assert.False((await app.InvokeAsync("od.gtk-designer.clipboard", "move-earlier")).GetProperty("success").GetBoolean());
 		var movedLast = await app.InvokeAsync("od.gtk-designer.clipboard", "move-last"); Assert.True(movedLast.GetProperty("success").GetBoolean(), movedLast.ToString());
+		var atLast = await ContextEnabledAsync();
+		Assert.True(atLast["move-first"]); Assert.True(atLast["move-earlier"]); Assert.False(atLast["move-later"]); Assert.False(atLast["move-last"]);
 		Assert.False((await app.InvokeAsync("od.gtk-designer.clipboard", "move-later")).GetProperty("success").GetBoolean());
 		await app.InvokeAsync("od.gtk-designer.undo"); await app.InvokeAsync("od.gtk-designer.undo");
 		var saved = await app.InvokeAsync("od.file.save", uiPath); Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());

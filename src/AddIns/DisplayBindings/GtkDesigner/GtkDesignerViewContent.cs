@@ -357,6 +357,10 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	/// <summary>The single selected element's position among its parent's children, or null.</summary>
 	(int Index, int Count)? SiblingPosition() => DesignerStandardCommands.SiblingPosition(state.Tree, selection.SelectedIds);
 	static readonly string[] WrapContainers = { "GtkBox", "GtkFrame" };
+	/// <summary>The canvas context menu's commands as opening it would evaluate them (header path, command, enabled).</summary>
+	public IReadOnlyList<(string Header, string Command, bool Enabled)> DescribeContextCommands() => canvas.DescribeContextCommands();
+	DesignerStandardCommands.Context CommandContext() => new(host?.IsAlive == true, selection.SelectedIds.Count, ClipboardSnippets().Length > 0,
+		canvas.ContextMenuDesignPoint != null, SiblingPosition(), SharesOneParent(), SelectedHasChildren());
 	bool SelectedHasChildren() => DesignerStandardCommands.SelectedHasChildren(state.Tree, selection.SelectedIds);
 
 	/// <summary>Moves the selected child within its container: child order is layout order here
@@ -811,9 +815,6 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			"grid-insert-row" or "grid-insert-column" or "grid-delete-row" or "grid-delete-column" => host?.IsAlive == true && SelectedGridChild() != null,
 			var span when span.StartsWith("span-", StringComparison.Ordinal) => host?.IsAlive == true && SelectedGridChild() is { } cell
 				&& (!span.EndsWith("less", StringComparison.Ordinal) || int.TryParse(Value(cell.Node, span.Contains("column") ? "layout:column-span" : "layout:row-span", "1"), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var currentSpan) && currentSpan > 1),
-			"paste" => host?.IsAlive == true && ClipboardSnippets().Length > 0,
-			"paste-here" => host?.IsAlive == true && canvas.ContextMenuDesignPoint != null && ClipboardSnippets().Length > 0,
-			var move when DesignerStandardCommands.IsMoveCommand(move) => host?.IsAlive == true && SiblingPosition() is { } position && DesignerStandardCommands.CanMove(move, position.Index, position.Count),
 			"edit-factory-template" => host?.IsAlive == true && selected != null && Flatten(selected).Any(node => node.Type == "GtkBuilderListItemFactory"),
 			"edit-menu" => host?.IsAlive == true && selected?.Type is "GtkPopoverMenu" or "GtkMenuButton",
 			var factory when GtkUiDocumentEditor.FactoryCommand(factory) != null => host?.IsAlive == true && selected?.Type is "GtkListView" or "GtkGridView" or "GtkColumnViewColumn",
@@ -822,9 +823,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			"model-item-type" => host?.IsAlive == true && selected?.Type is "GtkListView" or "GtkGridView" or "GtkColumnView" or "GListStore",
 			var model when GtkUiDocumentEditor.ModelCommand(model) != null => host?.IsAlive == true && selected?.Type is "GtkListView" or "GtkGridView" or "GtkColumnView",
 			var selection when selection.StartsWith("selection-", StringComparison.Ordinal) => host?.IsAlive == true && selected?.Type is "GtkListView" or "GtkGridView" or "GtkColumnView",
-			"unwrap" => host?.IsAlive == true && DesignerStandardCommands.CanUnwrap(selection.SelectedIds.Count, SelectedHasChildren(), SharesOneParent()),
-			var wrap when DesignerStandardCommands.WrapContainer(wrap, WrapContainers) is { } container => host?.IsAlive == true && DesignerStandardCommands.CanWrap(selection.SelectedIds.Count, SharesOneParent(), containerHoldsOneChild: container == "GtkFrame"),
-			_ => selection.SelectedIds.Count > 0 && host?.IsAlive == true
+			_ => DesignerStandardCommands.CanExecute(command, CommandContext(), WrapContainers, container => container == "GtkFrame")
 		};
 		canvasController.ClearsSelectionOnEmptyClick = true;
 		canvasController.SelectionChanged += (_, ids) => { if (!ids.SequenceEqual(selection.SelectedIds)) pads.CommitSelection(ids); };

@@ -228,6 +228,10 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 
 	(int Index, int Count)? SiblingPosition() => DesignerStandardCommands.SiblingPosition(state.Tree, selection.SelectedIds);
 	static readonly string[] WrapContainers = { "StackPanel", "Grid", "Border" };
+	/// <summary>The canvas context menu's commands as opening it would evaluate them (header path, command, enabled).</summary>
+	public IReadOnlyList<(string Header, string Command, bool Enabled)> DescribeContextCommands() => canvas.DescribeContextCommands();
+	DesignerStandardCommands.Context CommandContext() => new(host?.IsAlive == true, selection.SelectedIds.Count, ClipboardSnippets().Length > 0,
+		canvas.ContextMenuDesignPoint != null, SiblingPosition(), SharesOneParent(), SelectedHasChildren());
 	bool SelectedHasChildren() => DesignerStandardCommands.SelectedHasChildren(state.Tree, selection.SelectedIds);
 
 	/// <summary>Moves the selected child within its container: child order is layout order here
@@ -335,14 +339,9 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 			.Append(("-", "")).Concat(DesignerStandardCommands.AlignmentMenu).Concat(DesignerStandardCommands.GridUnitMenu)
 			.Append(("-", "")).Concat(DesignerStandardCommands.WrapMenu(WrapContainers)));
 		canvas.ContextCommandCanExecute = command => command switch {
-			"paste" => host?.IsAlive == true && ClipboardSnippets().Length > 0,
-			"paste-here" => host?.IsAlive == true && canvas.ContextMenuDesignPoint != null && ClipboardSnippets().Length > 0,
 			var track when DesignerStandardCommands.GridUnit(track) != null => host?.IsAlive == true && SelectedGridChild() is { } gridCell && MewUIContextCommands.IsNamedId(gridCell.Grid.Id),
 			var set when DesignerStandardCommands.Alignment(set) != null => host?.IsAlive == true && selection.SelectedIds.Count > 0 && selection.SelectedIds.All(MewUIContextCommands.IsNamedId),
-			var move when DesignerStandardCommands.IsMoveCommand(move) => host?.IsAlive == true && SiblingPosition() is { } position && DesignerStandardCommands.CanMove(move, position.Index, position.Count),
-			"unwrap" => host?.IsAlive == true && DesignerStandardCommands.CanUnwrap(selection.SelectedIds.Count, SelectedHasChildren(), SharesOneParent()),
-			var wrap when DesignerStandardCommands.WrapContainer(wrap, WrapContainers) is { } container => host?.IsAlive == true && DesignerStandardCommands.CanWrap(selection.SelectedIds.Count, SharesOneParent(), containerHoldsOneChild: container == "Border"),
-			_ => selection.SelectedIds.Count > 0 && host?.IsAlive == true
+			_ => DesignerStandardCommands.CanExecute(command, CommandContext(), WrapContainers, container => container == "Border")
 		};
 		canvasController.ClearsSelectionOnEmptyClick = true;
 		canvasController.SelectionChanged += (_, ids) => { if (!ids.SequenceEqual(selection.SelectedIds)) pads.CommitSelection(ids); };

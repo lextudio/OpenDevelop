@@ -311,7 +311,12 @@ re-spelled for their canvas context menu (`SetContextCommands` takes any `(heade
 and Unwrap (`WrapMenu`, `WrapContainer` - case-insensitive, so WinUI keeps its lowercase ids), Horizontal/Vertical
 Alignment (`AlignmentMenu`, `Alignment`), Grid row/column units (`GridUnitMenu`, `GridUnit`), the wrap/unwrap enabling
 rules (`CanWrap`, `CanUnwrap`) and the tree queries every view needs (`Flatten`, `ParentOf`, `SiblingPosition`,
-`SharesOneParent`, `NearestContainer`, `SelectedHasChildren`, `ReorderDelta`). GTK and MewUI lost their byte-identical copies (MewUI keeps only `IsNamedId`); WPF and WinUI compose
+`SharesOneParent`, `NearestContainer`, `SelectedHasChildren`, `ReorderDelta`). The enabling decision itself is
+`CanExecute(command, Context, wrapContainers, holdsOneChild)`: Paste needs clipboard content (Paste Here also a design point), a move
+needs room, Wrap/Unwrap follow the rules above, and anything else needs a live host and a selection; a designer answers its own
+commands first and falls back to it. `od.gtk-designer.context-commands` and `od.mewui-designer.context-commands` list the menu's
+entries with their enablement (like the WPF and WinUI actions of the same name), and the GTK and MewUI journeys assert the
+move/wrap/unwrap/paste-here states through them. GTK and MewUI lost their byte-identical copies (MewUI keeps only `IsNamedId`); WPF and WinUI compose
 their menus from the shared pieces and parse alignment/grid-unit commands with them, keeping their own z-order,
 style/template, Orientation/Dock and Edit Style entries. WinForms is not adopted: its context menus are
 CodeDom/designer-verb driven, not command strings. `DesignerStandardCommandsTests` pins the vocabulary once.

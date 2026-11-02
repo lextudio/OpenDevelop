@@ -107,6 +107,34 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 		public static bool CanWrap(int selectedCount, bool sharesOneParent, bool containerHoldsOneChild)
 			=> selectedCount > 0 && sharesOneParent && (!containerHoldsOneChild || selectedCount == 1);
 
+		/// <summary>What the enabling rules need to know about the surface right now.</summary>
+		/// <param name="Sibling">Index and sibling count of the single selected node, or null.</param>
+		public sealed record Context(bool HostAlive, int SelectedCount, bool ClipboardHasContent, bool HasDesignPoint,
+			(int Index, int Count)? Sibling, bool SharesOneParent, bool SelectedHasChildren);
+
+		/// <summary>Whether a command is enabled: Paste needs clipboard content (Paste Here also a design point), a move needs
+		/// room to move, Unwrap/Wrap follow <see cref="CanUnwrap"/>/<see cref="CanWrap"/>, and every other command - Cut, Copy,
+		/// Duplicate, Delete, or one a designer adds - needs a live host and a selection. Nothing is enabled without a live host.
+		/// A designer answers its own commands first and falls back to this.</summary>
+		/// <param name="wrapContainers">The containers its wrap menu offers.</param>
+		/// <param name="holdsOneChild">Whether a wrap container takes exactly one child (a frame, a border).</param>
+		public static bool CanExecute(string? command, Context context, IEnumerable<string> wrapContainers, Func<string, bool> holdsOneChild)
+		{
+			if (!context.HostAlive)
+				return false;
+			if (command == "paste")
+				return context.ClipboardHasContent;
+			if (command == "paste-here")
+				return context.ClipboardHasContent && context.HasDesignPoint;
+			if (IsMoveCommand(command))
+				return context.Sibling is { } position && CanMove(command, position.Index, position.Count);
+			if (command == "unwrap")
+				return CanUnwrap(context.SelectedCount, context.SelectedHasChildren, context.SharesOneParent);
+			if (WrapContainer(command, wrapContainers) is { } container)
+				return CanWrap(context.SelectedCount, context.SharesOneParent, holdsOneChild(container));
+			return context.SelectedCount > 0;
+		}
+
 		/// <summary>The nodes of a tree, parents before children.</summary>
 		public static IEnumerable<DesignerElementNode> Flatten(DesignerElementNode root)
 		{

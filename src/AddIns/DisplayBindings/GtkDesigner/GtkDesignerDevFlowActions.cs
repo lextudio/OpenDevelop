@@ -99,6 +99,13 @@ public static class GtkDesignerDevFlowActions
 
 	[DevFlowAction("od.gtk-designer.select", Description = "Select a GtkBuilder object and populate the real Properties pad")]
 	public static string Select(string id) { var view = Activate(); var ok = view?.SelectById(id) == true; return JsonSerializer.Serialize(new { success = ok, selectedId = view?.SelectedId, propertyPadSelectedType = PropertyGrid?.SelectedObject?.GetType().FullName }); }
+	[DevFlowAction("od.gtk-designer.context-commands", Description = "List the GTK design surface context menu's commands (header path, command, enabled) as opening the menu would evaluate them")]
+	public static string GetContextCommands()
+	{
+		var view = Activate();
+		return view == null ? DesignerDevFlowResults.Failure("GTK designer is not active")
+			: JsonSerializer.Serialize(new { success = true, commands = view.DescribeContextCommands().Select(entry => new { header = entry.Header, command = entry.Command, enabled = entry.Enabled }) });
+	}
 	[DevFlowAction("od.gtk-designer.multi-select", Description = "Replace the GTK designer selection set; first id is primary")]
 	public static string MultiSelect(string ids) { var view = Activate(); var list = ids.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries); var ok = view?.SelectByIds(list) == true; return DesignerDevFlowResults.Selection(ok, view?.SelectedIds); }
 	[DevFlowAction("od.gtk-designer.surface-geometry", Description = "Report the shared design surface geometry (rendered native frame, selection outline, handle and the scroll viewport) in screen coordinates - the same probe od.wpf-designer.surface-geometry publishes, so a synthetic pointer gesture can start on real viewport background")]

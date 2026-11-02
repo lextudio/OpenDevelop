@@ -132,4 +132,51 @@ public sealed class DesignerStandardCommandsTests
 		Assert.False(DesignerStandardCommands.SelectedHasChildren(root, new[] { "a", "b" }));
 		Assert.False(DesignerStandardCommands.SelectedHasChildren(null, new[] { "a" }));
 	}
+
+	static readonly string[] Wraps = { "Box", "Frame" };
+	static bool OneChild(string container) => container == "Frame";
+	static DesignerStandardCommands.Context Ctx(bool alive = true, int selected = 1, bool clipboard = false, bool point = false,
+		(int, int)? sibling = null, bool sharesParent = true, bool hasChildren = false)
+		=> new(alive, selected, clipboard, point, sibling, sharesParent, hasChildren);
+
+	[Fact]
+	public void CanExecute_NothingIsEnabledWithoutALiveHost()
+	{
+		foreach (var command in new[] { "cut", "paste", "paste-here", "move-first", "unwrap", "wrap-Box", "anything" })
+			Assert.False(DesignerStandardCommands.CanExecute(command, Ctx(alive: false, selected: 3, clipboard: true, point: true, sibling: (2, 5), hasChildren: true), Wraps, OneChild));
+	}
+
+	[Fact]
+	public void CanExecute_PasteNeedsClipboard_AndPasteHereAlsoADesignPoint()
+	{
+		Assert.False(DesignerStandardCommands.CanExecute("paste", Ctx(selected: 0), Wraps, OneChild));
+		Assert.True(DesignerStandardCommands.CanExecute("paste", Ctx(selected: 0, clipboard: true), Wraps, OneChild));
+		Assert.False(DesignerStandardCommands.CanExecute("paste-here", Ctx(clipboard: true), Wraps, OneChild));
+		Assert.True(DesignerStandardCommands.CanExecute("paste-here", Ctx(clipboard: true, point: true), Wraps, OneChild));
+		Assert.False(DesignerStandardCommands.CanExecute("paste-here", Ctx(point: true), Wraps, OneChild));
+	}
+
+	[Fact]
+	public void CanExecute_MoveFollowsTheSiblingPosition()
+	{
+		Assert.False(DesignerStandardCommands.CanExecute("move-first", Ctx(), Wraps, OneChild));   // not one non-root node
+		Assert.False(DesignerStandardCommands.CanExecute("move-earlier", Ctx(sibling: (0, 3)), Wraps, OneChild));
+		Assert.True(DesignerStandardCommands.CanExecute("move-later", Ctx(sibling: (0, 3)), Wraps, OneChild));
+		Assert.True(DesignerStandardCommands.CanExecute("move-first", Ctx(sibling: (2, 3)), Wraps, OneChild));
+		Assert.False(DesignerStandardCommands.CanExecute("move-last", Ctx(sibling: (2, 3)), Wraps, OneChild));
+	}
+
+	[Fact]
+	public void CanExecute_WrapAndUnwrapUseTheirRules_AndEverythingElseNeedsASelection()
+	{
+		Assert.True(DesignerStandardCommands.CanExecute("wrap-Box", Ctx(selected: 2), Wraps, OneChild));
+		Assert.False(DesignerStandardCommands.CanExecute("wrap-Frame", Ctx(selected: 2), Wraps, OneChild));
+		Assert.True(DesignerStandardCommands.CanExecute("wrap-Frame", Ctx(selected: 1), Wraps, OneChild));
+		Assert.False(DesignerStandardCommands.CanExecute("wrap-Box", Ctx(sharesParent: false), Wraps, OneChild));
+		Assert.True(DesignerStandardCommands.CanExecute("unwrap", Ctx(hasChildren: true), Wraps, OneChild));
+		Assert.False(DesignerStandardCommands.CanExecute("unwrap", Ctx(hasChildren: false), Wraps, OneChild));
+		Assert.True(DesignerStandardCommands.CanExecute("delete", Ctx(selected: 1), Wraps, OneChild));
+		Assert.False(DesignerStandardCommands.CanExecute("delete", Ctx(selected: 0), Wraps, OneChild));
+		Assert.False(DesignerStandardCommands.CanExecute("wrap-Other", Ctx(selected: 0), Wraps, OneChild));   // not a wrap of a listed container: the default
+	}
 }

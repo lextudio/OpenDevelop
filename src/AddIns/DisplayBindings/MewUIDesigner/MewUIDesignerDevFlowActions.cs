@@ -35,6 +35,13 @@ public static class MewUIDesignerDevFlowActions
 	}
 	[DevFlowAction("od.mewui-designer.select", Description = "Select a MewUI element by generated field name")]
 	public static string Select(string name) { var v = Activate(); var ok = v?.SelectByName(name) == true; return JsonSerializer.Serialize(new { success = ok, selectedName = v?.SelectedName, propertyPadSelectedType = PropertyGrid?.SelectedObject?.GetType().FullName }); }
+	[DevFlowAction("od.mewui-designer.context-commands", Description = "List the MewUI design surface context menu's commands (header path, command, enabled) as opening the menu would evaluate them")]
+	public static string GetContextCommands()
+	{
+		var view = Activate();
+		return view == null ? DesignerDevFlowResults.Failure("MewUI designer is not active")
+			: JsonSerializer.Serialize(new { success = true, commands = view.DescribeContextCommands().Select(entry => new { header = entry.Header, command = entry.Command, enabled = entry.Enabled }) });
+	}
 	[DevFlowAction("od.mewui-designer.multi-select", Description = "Replace the MewUI designer selection set; first name is primary")]
 	public static string MultiSelect(string names) { var view = Activate(); var list = names.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries); var ok = view?.SelectByNames(list) == true; return DesignerDevFlowResults.Selection(ok, view?.SelectedIds); }
 	[DevFlowAction("od.mewui-designer.toolbox.insert", Description = "Insert a MewUI control into the selected container")]
