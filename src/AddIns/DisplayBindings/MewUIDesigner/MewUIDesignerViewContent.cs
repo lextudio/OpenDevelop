@@ -106,7 +106,7 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	/// <summary>Handles "set:HorizontalAlignment:Left" style commands for every selected element (the WPF designer's shortcuts).</summary>
 	public bool AlignSelected(string command)
 	{
-		if (host == null || MewUIContextCommands.Alignment(command) is not { } alignment || selection.SelectedIds.Count == 0 || !selection.SelectedIds.All(MewUIContextCommands.IsNamedId)) return false;
+		if (host == null || DesignerStandardCommands.Alignment(command) is not { } alignment || selection.SelectedIds.Count == 0 || !selection.SelectedIds.All(MewUIContextCommands.IsNamedId)) return false;
 		var ids = selection.SelectedIds.ToArray();
 		try {
 			if (!Mutate(() => host.SetPropertyManyAsync(state.Version, ids, alignment.Property, alignment.Value).GetAwaiter().GetResult())) return false;
@@ -178,13 +178,7 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	}
 
 	/// <summary>Whether every selected element has the same (non-null) parent.</summary>
-	bool SharesOneParent()
-	{
-		if (state.Tree == null || selection.SelectedIds.Count == 0) return false;
-		DesignerElementNode? ParentOf(string id) => Flatten(state.Tree).FirstOrDefault(node => node.Children.Any(child => child.Id == id));
-		var parent = ParentOf(selection.SelectedIds[0]);
-		return parent != null && selection.SelectedIds.All(id => ParentOf(id) == parent);
-	}
+	bool SharesOneParent() => DesignerStandardCommands.SharesOneParent(state.Tree, selection.SelectedIds);
 
 	/// <summary>Wraps the selected siblings in a new container and selects it.</summary>
 	public bool WrapSelected(string containerType)
@@ -222,8 +216,8 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	/// <summary>Sets the Grid row ("grid-row-Auto") or column ("grid-column-Star") the selected child sits in to that unit.</summary>
 	public bool SetGridTrackUnit(string command)
 	{
-		if (host == null || MewUIContextCommands.GridTrack(command) is not { } track || SelectedGridChild() is not { } cell || !MewUIContextCommands.IsNamedId(cell.Grid.Id)) return false;
-		var row = track.Row;
+		if (host == null || DesignerStandardCommands.GridUnit(command) is not { } track || SelectedGridChild() is not { } cell || !MewUIContextCommands.IsNamedId(cell.Grid.Id)) return false;
+		var row = track.IsRow;
 		var index = int.TryParse(Value(cell.Node, row ? "Grid.Row" : "Grid.Column", "0"), out var parsed) ? Math.Max(0, parsed) : 0;
 		var id = cell.Node.Id;
 		try {
@@ -232,26 +226,16 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		return pads.CommitSelection(new[] { id });
 	}
 
-	(int Index, int Count)? SiblingPosition()
-	{
-		if (selection.SelectedIds.Count != 1 || state.Tree == null) return null;
-		var id = selection.SelectedIds[0];
-		var parent = Flatten(state.Tree).FirstOrDefault(node => node.Children.Any(child => child.Id == id));
-		return parent == null ? null : (parent.Children.FindIndex(child => child.Id == id), parent.Children.Count);
-	}
+	(int Index, int Count)? SiblingPosition() => DesignerStandardCommands.SiblingPosition(state.Tree, selection.SelectedIds);
+	static readonly string[] WrapContainers = { "StackPanel", "Grid", "Border" };
+	bool SelectedHasChildren() => state.Tree != null && selection.SelectedIds.Count == 1 && Flatten(state.Tree).FirstOrDefault(node => node.Id == selection.SelectedIds[0]) is { Children.Count: > 0 };
 
 	/// <summary>Moves the selected child within its container: child order is layout order here
 	/// (a box or stack), so these are "move", not z-order "bring to front".</summary>
 	public bool MoveSelected(string command)
 	{
 		if (SiblingPosition() is not { } position) return false;
-		var delta = command switch {
-			"move-first" => -position.Index,
-			"move-earlier" => position.Index > 0 ? -1 : 0,
-			"move-later" => position.Index < position.Count - 1 ? 1 : 0,
-			"move-last" => position.Count - 1 - position.Index,
-			_ => 0
-		};
+		var delta = DesignerStandardCommands.MoveDelta(command, position.Index, position.Count);
 		if (delta == 0) return false;
 		try { return ReorderSelected(delta); }
 		catch (Exception ex) { diagnostic.Text = ex.GetBaseException().Message; return false; }
@@ -346,20 +330,18 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	{
 		canvas.Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit | DesignerCanvasCapabilities.Gridlines | DesignerCanvasCapabilities.ShowNames;
 		canvas.ResizeHandlesEnabled = false;
-		canvas.SetContextCommands(new[] { ("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Paste Here", "paste-here"), ("Duplicate", "duplicate"), ("-", ""), ("Delete", "delete"),
-			("-", ""), ("Order/Move First", "move-first"), ("Order/Move Earlier", "move-earlier"), ("Order/Move Later", "move-later"), ("Order/Move Last", "move-last"), ("-", "") }
-			.Concat(MewUIContextCommands.LayoutMenu)
-			.Concat(new[] { ("-", ""), ("Wrap/StackPanel", "wrap-StackPanel"), ("Wrap/Grid", "wrap-Grid"), ("Wrap/Border", "wrap-Border"), ("Unwrap", "unwrap") }));
+		canvas.SetContextCommands(DesignerStandardCommands.EditMenu(pasteHere: true)
+			.Append(("-", "")).Concat(DesignerStandardCommands.MoveMenu)
+			.Append(("-", "")).Concat(DesignerStandardCommands.AlignmentMenu).Concat(DesignerStandardCommands.GridUnitMenu)
+			.Append(("-", "")).Concat(DesignerStandardCommands.WrapMenu(WrapContainers)));
 		canvas.ContextCommandCanExecute = command => command switch {
 			"paste" => host?.IsAlive == true && ClipboardSnippets().Length > 0,
 			"paste-here" => host?.IsAlive == true && canvas.ContextMenuDesignPoint != null && ClipboardSnippets().Length > 0,
-			var track when MewUIContextCommands.GridTrack(track) != null => host?.IsAlive == true && SelectedGridChild() is { } gridCell && MewUIContextCommands.IsNamedId(gridCell.Grid.Id),
-			var set when MewUIContextCommands.Alignment(set) != null => host?.IsAlive == true && selection.SelectedIds.Count > 0 && selection.SelectedIds.All(MewUIContextCommands.IsNamedId),
-			"move-first" or "move-earlier" => host?.IsAlive == true && SiblingPosition() is { Index: > 0 },
-			"move-later" or "move-last" => host?.IsAlive == true && SiblingPosition() is { } position && position.Index < position.Count - 1,
-			"wrap-Border" => host?.IsAlive == true && selection.SelectedIds.Count == 1 && SharesOneParent(),
-			"unwrap" => host?.IsAlive == true && selection.SelectedIds.Count == 1 && state.Tree != null && Flatten(state.Tree).FirstOrDefault(node => node.Id == selection.SelectedIds[0]) is { Children.Count: > 0 } && SharesOneParent(),
-			"wrap-StackPanel" or "wrap-Grid" => host?.IsAlive == true && selection.SelectedIds.Count > 0 && SharesOneParent(),
+			var track when DesignerStandardCommands.GridUnit(track) != null => host?.IsAlive == true && SelectedGridChild() is { } gridCell && MewUIContextCommands.IsNamedId(gridCell.Grid.Id),
+			var set when DesignerStandardCommands.Alignment(set) != null => host?.IsAlive == true && selection.SelectedIds.Count > 0 && selection.SelectedIds.All(MewUIContextCommands.IsNamedId),
+			var move when DesignerStandardCommands.IsMoveCommand(move) => host?.IsAlive == true && SiblingPosition() is { } position && DesignerStandardCommands.CanMove(move, position.Index, position.Count),
+			"unwrap" => host?.IsAlive == true && DesignerStandardCommands.CanUnwrap(selection.SelectedIds.Count, SelectedHasChildren(), SharesOneParent()),
+			var wrap when DesignerStandardCommands.WrapContainer(wrap, WrapContainers) is { } container => host?.IsAlive == true && DesignerStandardCommands.CanWrap(selection.SelectedIds.Count, SharesOneParent(), containerHoldsOneChild: container == "Border"),
 			_ => selection.SelectedIds.Count > 0 && host?.IsAlive == true
 		};
 		canvasController.ClearsSelectionOnEmptyClick = true;
@@ -375,11 +357,11 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 				case "paste": PasteIntoSelection(); break;
 				case "paste-here": PasteHere(); break;
 				case "duplicate": DuplicateSelection(); break;
-				case "move-first" or "move-earlier" or "move-later" or "move-last": MoveSelected(command.Command); break;
-				case var wrap when wrap.StartsWith("wrap-", StringComparison.Ordinal): WrapSelected(wrap.Substring("wrap-".Length)); break;
+				case var move when DesignerStandardCommands.IsMoveCommand(move): MoveSelected(move); break;
+				case var wrap when DesignerStandardCommands.WrapContainer(wrap, WrapContainers) is { } container: WrapSelected(container); break;
 				case "unwrap": UnwrapSelected(); break;
-				case var track when MewUIContextCommands.GridTrack(track) != null: SetGridTrackUnit(track); break;
-				case var set when MewUIContextCommands.Alignment(set) != null: AlignSelected(set); break;
+				case var track when DesignerStandardCommands.GridUnit(track) != null: SetGridTrackUnit(track); break;
+				case var set when DesignerStandardCommands.Alignment(set) != null: AlignSelected(set); break;
 			}
 		};
 		canvas.RenameRequested += (_, _) => RequestRename();

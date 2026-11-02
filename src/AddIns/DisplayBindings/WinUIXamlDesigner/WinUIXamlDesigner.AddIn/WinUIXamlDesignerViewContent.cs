@@ -1072,10 +1072,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 
 	public IReadOnlyList<(string Header, string Command, bool Enabled)> DescribeContextCommands() => previewHost.DescribeContextCommands();
 
-	static (bool IsRow, string Unit)? ParseGridUnitCommand(string command)
-		=> command.StartsWith("grid-row-", StringComparison.Ordinal) ? (true, command.Substring("grid-row-".Length))
-		: command.StartsWith("grid-column-", StringComparison.Ordinal) ? (false, command.Substring("grid-column-".Length))
-		: null;
+	static (bool IsRow, string Unit)? ParseGridUnitCommand(string command) => DesignerStandardCommands.GridUnit(command);
 
 	/// <summary>The selected Grid's authored row/column definition under the context-menu point,
 	/// located with the same boundaries the visible dividers use (measured tracks when the runtime

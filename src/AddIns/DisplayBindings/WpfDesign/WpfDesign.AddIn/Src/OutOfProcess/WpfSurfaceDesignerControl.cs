@@ -239,36 +239,29 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			StatusText = string.Format(ResourceService.GetString("WpfDesign.Status.StartingHost"), BackendName);
 			// The in-process designer's RightClickContextMenu (z-order) and ArrangeItemsContextMenu
 			// (alignment to the primary selection).
-			SetContextCommands(new[] {
-				("Cut", "cut"), ("Copy", "copy"), ("Paste", "paste"), ("Paste Here", "paste-here"), ("Duplicate", "duplicate"),
-				("-", ""),
-				("Delete", "delete"),
+			SetContextCommands(DesignerStandardCommands.EditMenu(pasteHere: true).Concat(new[] {
 				("-", ""),
 				("Align/Left", "align-left"), ("Align/Center", "align-center"), ("Align/Right", "align-right"),
 				("Align/Top", "align-top"), ("Align/Middle", "align-middle"), ("Align/Bottom", "align-bottom"),
 				("Order/Bring to Front", "order-front"), ("Order/Bring Forward", "order-forward"),
 				("Order/Send Backward", "order-backward"), ("Order/Send to Back", "order-back"),
-				("-", ""),
-				("Wrap/Canvas", "wrap-Canvas"), ("Wrap/Grid", "wrap-Grid"), ("Wrap/Viewbox", "wrap-Viewbox"),
-				("Unwrap", "unwrap"),
+				("-", "") })
+				.Concat(DesignerStandardCommands.WrapMenu("Canvas", "Grid", "Viewbox"))
+				.Concat(new[] {
 				("Edit Style/Create Empty", "create-empty-style"),
 				("Edit Style/Create Based On Current", "create-based-on-style"),
 				("Edit Style/Edit a Copy (Project Theme)", "copy-theme-style"),
 				("Edit Template/Create Empty", "create-empty-template"),
-				("-", ""),
+				("-", "") })
 				// The in-process QuickOperationMenu's single-element property shortcuts.
-				("Horizontal Alignment/Left", "set:HorizontalAlignment:Left"), ("Horizontal Alignment/Center", "set:HorizontalAlignment:Center"),
-				("Horizontal Alignment/Right", "set:HorizontalAlignment:Right"), ("Horizontal Alignment/Stretch", "set:HorizontalAlignment:Stretch"),
-				("Vertical Alignment/Top", "set:VerticalAlignment:Top"), ("Vertical Alignment/Center", "set:VerticalAlignment:Center"),
-				("Vertical Alignment/Bottom", "set:VerticalAlignment:Bottom"), ("Vertical Alignment/Stretch", "set:VerticalAlignment:Stretch"),
+				.Concat(DesignerStandardCommands.AlignmentMenu)
+				.Concat(new[] {
 				("Orientation/Horizontal", "set:Orientation:Horizontal"), ("Orientation/Vertical", "set:Orientation:Vertical"),
 				("Dock/Left", "set:DockPanel.Dock:Left"), ("Dock/Top", "set:DockPanel.Dock:Top"),
 				("Dock/Right", "set:DockPanel.Dock:Right"), ("Dock/Bottom", "set:DockPanel.Dock:Bottom"),
-				("-", ""),
+				("-", "") })
 				// The in-process Grid rail's GridUnitSelector, for the track under the pointer.
-				("Grid Row/Fixed", "grid-row-Pixel"), ("Grid Row/Star", "grid-row-Star"), ("Grid Row/Auto", "grid-row-Auto"),
-				("Grid Column/Fixed", "grid-column-Pixel"), ("Grid Column/Star", "grid-column-Star"), ("Grid Column/Auto", "grid-column-Auto")
-			});
+				.Concat(DesignerStandardCommands.GridUnitMenu));
 			ContextCommandCanExecute = command => command switch {
 				"cut" or "copy" => CanCopySelection,
 				"paste" => CanPaste,
@@ -875,10 +868,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				DocumentChanged?.Invoke(this, result);
 		}
 
-		static (bool IsRow, string Unit)? ParseGridUnitCommand(string command)
-			=> command.StartsWith("grid-row-", StringComparison.Ordinal) ? (true, command.Substring("grid-row-".Length))
-			: command.StartsWith("grid-column-", StringComparison.Ordinal) ? (false, command.Substring("grid-column-".Length))
-			: null;
+		static (bool IsRow, string Unit)? ParseGridUnitCommand(string command) => DesignerStandardCommands.GridUnit(command);
 
 		/// <summary>The row or column of the single selected Grid that contains the point the context
 		/// menu was opened at, from the snapshot's measured tracks; null if there is none.</summary>

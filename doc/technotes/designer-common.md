@@ -305,6 +305,17 @@ exact argument names. Deliberately not shared because the shapes differ: WinForm
 `propertyName`), `set-z-order` (WinForms `bringToFront` vs WPF `placement`), `hit-test` (WinForms rounds), and
 `set-grid-track-unit` (WPF `elementId`/`isRow` vs MewUI `gridId`/`row`) - converge the hosts first, then move them.
 
+Shared context commands (2026-11-01): `Designer.Presentation.DesignerStandardCommands` holds what four designers each
+re-spelled for their canvas context menu (`SetContextCommands` takes any `(header, command)` string pair): the Edit group
+(`EditMenu`, with or without Paste Here), Move First/Earlier/Later/Last (`MoveMenu`, `MoveDelta`, `CanMove`), `wrap-X`
+and Unwrap (`WrapMenu`, `WrapContainer` - case-insensitive, so WinUI keeps its lowercase ids), Horizontal/Vertical
+Alignment (`AlignmentMenu`, `Alignment`), Grid row/column units (`GridUnitMenu`, `GridUnit`), the wrap/unwrap enabling
+rules (`CanWrap`, `CanUnwrap`) and the tree queries every view needs (`Flatten`, `ParentOf`, `SiblingPosition`,
+`SharesOneParent`). GTK and MewUI lost their byte-identical copies (MewUI keeps only `IsNamedId`); WPF and WinUI compose
+their menus from the shared pieces and parse alignment/grid-unit commands with them, keeping their own z-order,
+style/template, Orientation/Dock and Edit Style entries. WinForms is not adopted: its context menus are
+CodeDom/designer-verb driven, not command strings. `DesignerStandardCommandsTests` pins the vocabulary once.
+
 `DesignerDocumentHostClient` now supplies the surrounding parent-side lease state for those
 three adapters: document identity, process status, host-exit forwarding and ping/close lifecycle.
 This leaves each adapter with only its pool compatibility key, release policy and runtime-specific
