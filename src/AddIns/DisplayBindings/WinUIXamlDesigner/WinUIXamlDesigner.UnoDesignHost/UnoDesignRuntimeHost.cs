@@ -495,7 +495,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 					report: message => { SetStatus(message); ReportDesigner(message); });
 				if (!build.IsUsable)
 				{
-					SetStatus("WinUI designer cannot use the active build: " + build.Error);
+					SetStatus(hostDisplayName + " cannot use the active build: " + build.Error);
 					return;
 				}
 			}

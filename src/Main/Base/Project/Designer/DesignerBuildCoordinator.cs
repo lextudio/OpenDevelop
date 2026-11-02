@@ -87,9 +87,23 @@ namespace ICSharpCode.SharpDevelop.Project
 					return new DesignerBuildResult(true, true, null);
 				}
 				lock (successfulBuilds) failedBuilds[requested.Identity] = requested;
-				return new DesignerBuildResult(true, false, "Build returned " + results.Result + ".");
+				return new DesignerBuildResult(true, false, DescribeBuildFailure(results));
 			}
 			finally { gate.Release(); }
+		}
+
+		/// <summary>The sentence a designer shows when its build fails: the result code, then the first errors
+		/// the build reported (a bare "Build returned Error." hid the one line - a failed NuGet restore, a
+		/// missing SDK - that explains it).</summary>
+		public static string DescribeBuildFailure(BuildResults results)
+		{
+			const int shown = 3;
+			var errors = results.Errors.Where(error => !error.IsWarning && !error.IsMessage).ToList();
+			var text = "Build returned " + results.Result + ".";
+			if (errors.Count == 0)
+				return text;
+			var lines = errors.Take(shown).Select(error => (string.IsNullOrEmpty(error.ErrorCode) ? "" : error.ErrorCode + ": ") + error.ErrorText.Trim());
+			return text + " " + string.Join(" | ", lines) + (errors.Count > shown ? " (+" + (errors.Count - shown) + " more; see the Build output)" : "");
 		}
 
 		static BuildStamp CreateStamp(IProject project, bool requireRuntimeGraph)
