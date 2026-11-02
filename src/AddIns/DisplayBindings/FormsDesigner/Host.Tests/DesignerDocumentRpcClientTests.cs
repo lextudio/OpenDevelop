@@ -72,4 +72,20 @@ public sealed class DesignerDocumentRpcClientTests
 		var withAfter = JsonDocument.Parse(connection.Calls[1].Json).RootElement;
 		Assert.Equal("sibling", withAfter.GetProperty("afterId").GetString());
 	}
+
+	[Fact]
+	public async Task WholeNumberCoordinates_GoOnTheWireWithoutADecimalPoint_SoAnIntegerHostParameterStillBinds()
+	{
+		// WinForms rounds to int before calling; the shared verbs take double. A whole double must serialize as 10, not 10.0.
+		var (client, connection) = Create();
+		await client.HitTestAsync(1, (int)Math.Round(10.4), (int)Math.Round(20.6));
+		await client.AddElementAsync(1, "parent", new DesignerToolboxItemInfo { Name = "Button" }, "button1", 10, 20);
+		await client.SetBoundsAsync(1, "button1", 10, 20, 30, 40);
+		foreach (var (_, json) in connection.Calls) {
+			Assert.DoesNotContain(".0", json);
+			Assert.DoesNotContain("e+", json);
+		}
+		Assert.Contains("\"x\":10,\"y\":21", connection.Calls[0].Json);
+		Assert.Contains("\"x\":10,\"y\":20,\"width\":30,\"height\":40", connection.Calls[2].Json);
+	}
 }

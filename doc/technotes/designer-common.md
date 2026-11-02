@@ -301,9 +301,12 @@ them now live in `DesignerDocumentRpcClient` too - `design/undo`, `redo`, `reord
 `set-items`, `wrap-elements`, `unwrap-element`, `copy-elements` and `paste-elements` (`afterId` is sent only when
 set, so a host that predates it keeps working). WPF, GTK and MewUI use them through `Document.*` and no longer
 keep a one-line copy in their own connection class; `DesignerDocumentRpcClientTests` pins every verb's name and
-exact argument names. Deliberately not shared because the shapes differ: WinForms `set-items` (carries
-`propertyName`), `set-z-order` (WinForms `bringToFront` vs WPF `placement`), `hit-test` (WinForms rounds), and
-`set-grid-track-unit` (WPF `elementId`/`isRow` vs MewUI `gridId`/`row`) - converge the hosts first, then move them.
+exact argument names. WinForms and Uno also use the already-shared `hit-test`, `add-element`, `set-bounds` and
+`delete-elements` through `Document.*` (WinForms rounds the coordinates to int before the call; a whole double is written
+without a decimal point, so its integer host parameters still bind - pinned by a test). Deliberately not shared because
+the shapes differ: WinForms `set-items` (carries `propertyName`), `set-z-order` (WinForms `bringToFront` vs WPF
+`placement`), and `set-grid-track-unit` (WPF `elementId`/`isRow` vs MewUI `gridId`/`row`) - converge the hosts first,
+then move them.
 
 Shared context commands (2026-11-01): `Designer.Presentation.DesignerStandardCommands` holds what four designers each
 re-spelled for their canvas context menu (`SetContextCommands` takes any `(header, command)` string pair): the Edit group

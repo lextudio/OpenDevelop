@@ -282,7 +282,7 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	/// <summary>Maps a surface point to the element chain under it. The common version envelope is
 	/// carried even though hit testing is read-only, so all DDP adapters share one request shape.</summary>
 	public Task<DesignerHitTestResult> HitTestAsync(long baseVersion, double x, double y, CancellationToken cancellationToken = default)
-		=> connection.InvokeAsync<DesignerHitTestResult>("design/hit-test", new { sessionId = SessionId, documentId = DocumentId, baseVersion, x, y }, cancellationToken);
+		=> Document.HitTestAsync(baseVersion, x, y, cancellationToken);
 
 	/// <summary>True while the child process is running and not yet shut down.</summary>
 	public bool IsProcessAlive => IsAlive;
