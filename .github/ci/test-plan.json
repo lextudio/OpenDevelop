@@ -41,7 +41,7 @@
       "buildFrom": "windows-x64"
     },
     "macos-arm64": {
-      "runner": "macos-15",
+      "runner": "macos-26",
       "dotnetArchitecture": "arm64",
       "rid": "osx-arm64",
       "needsCliclick": true

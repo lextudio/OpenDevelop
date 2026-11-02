@@ -138,7 +138,7 @@ verify_ilspy "$app_path/Contents/MacOS/OpenDevelop.dll"
 verify_wpf_designer
 
 # macOS 27 presently regresses CoreCLR's debugger-startup semaphore handshake, so a developer on that host only gets the
-# packaged-adapter check; the release workflow forces the live journey on its macOS 15 runner.
+# packaged-adapter check; the release workflow forces the live journey on its macOS 26 runner.
 # https://github.com/dotnet/runtime/issues/116545
 darwin_major=$(uname -r | cut -d. -f1)
 require_debugger=${OD_VERIFY_REQUIRE_DEBUGGER:-${OD_BUNDLE_VERIFY_REQUIRE_DEBUGGER:-0}}

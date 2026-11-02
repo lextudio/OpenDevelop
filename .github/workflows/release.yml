@@ -135,7 +135,7 @@ jobs:
     name: Package macOS ARM64
     needs: prepare
     # The same image ci.yml runs macOS on; dist.macos.sh probes for a linking toolchain and is sensitive to the SDK.
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
@@ -233,7 +233,7 @@ jobs:
             # The ARM64 runner can debug arm64, and x64 and x86 through Windows' emulation.
             targets: win-arm64,win-x64,win-x86
           - platform: macos-arm64
-            runner: macos-15
+            runner: macos-26
             dotnet_architecture: arm64
             artifact: release-macos-arm64
             file: OpenDevelop-macos.dmg
