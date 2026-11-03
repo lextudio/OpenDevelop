@@ -268,8 +268,8 @@ means filling its whole row or column, not one cell:
 | CI Debug build (`Build`) | own | x64 archive (`buildFrom`) | own | own | own |
 | CI unit suites (`unit` lane) | own archive | x64 archive | own archive | own archive | own archive |
 | CI IDE journeys (`integration-*` lanes) | yes | yes | yes | yes (Xvfb) | yes (Xvfb) |
-| Release build (`package-*`) | one payload on x64 | same payload | native | native | native |
-| Release check (`verify` row) | on x64 | on ARM64 | from the mounted DMG | from the tar.xz | from the tar.xz |
+| Release build (`package-windows`, `macos`, `linux`) | one payload on x64 | same payload | native | native | native |
+| Release check | `verify-windows` row, native x64 | `verify-windows` row, native ARM64 | same job as the build, from the mounted DMG | same job, from the tar.xz | same job, from the tar.xz |
 
 - One entry per suite in `test-plan.json`, with a status for every platform. A new platform's entries start `observe` and
   are promoted after two green runs; an entry that cannot run on an OS says `"excluded"` with a `reason` (for example
@@ -335,8 +335,11 @@ Highlight, Known issues, Full Changelog).
   skips only the per-RID bitness journeys (`-SkipDebugJourneys`).
 - Division of labour: `ci.yml` is the **Debug** build with tests and debug information and never builds a Release payload or
   runs `dist.*`; `release.yml` is the only place that builds the Release distributions, and it only runs the lean packaged-app
-  checks above, one `verify` row per shipped platform on its own runner, before drafting. Do not add packaging to CI to
-  "verify early": add the journey to the packaged-app checks.
+  checks above before drafting: macOS and each Linux architecture build and check in one job (one runner, no artifact round
+  trip, nothing waiting for the slowest platform), starting the check from a clean slate (the build's `artifacts/nuget-packages`
+  and payload directory are deleted, only the shipped file is unpacked) so a payload that leans on the build's NuGet folder
+  cannot pass; Windows is built once and checked in parallel on native x64 and ARM64 runners. Only a file that passed is
+  uploaded. Do not add packaging to CI to "verify early": add the journey to the packaged-app checks.
 - `gh workflow run release.yml --ref master` is a rehearsal: it builds and verifies every distribution, skips the tag
   checks and drafts nothing. Use it after changing `release.yml`, `dist.*` or `build/**`, instead of an rc tag.
 - It leaves a **draft**. A draft is never `latest`, so the IDE's update check (`releases/latest`) stays quiet until the notes

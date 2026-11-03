@@ -11,12 +11,17 @@ name: Release
 # doc/releases/<tag>.md before tagging. A manual dispatch is a rehearsal: it builds and verifies every distribution from
 # the chosen ref, skips the tag checks and drafts nothing.
 #
-# Shape, the same for every platform the release ships:
-#   package-* -> builds one distribution (Release) on a native runner; dist.* runs its own start-up smoke
-#   verify    -> one row per shipped platform (Windows x64 and ARM64 share one payload; macOS ARM64; Linux x64 and ARM64):
-#                on that platform's own runner, takes the file users download (7z, dmg, tar.xz), unpacks it and runs the
-#                lean packaged-app check (build/verify-packaged-common.sh, build/windows/verify-packaged-app.ps1)
-#   draft     -> only after every row passed
+# Shape, the same for every platform the release ships (Windows x64 and ARM64 share one payload; macOS ARM64; Linux x64
+# and ARM64): the file users download (7z, dmg, tar.xz) is built by dist.* (which runs its own start-up smoke), then unpacked
+# and run through the lean packaged-app check (build/verify-packaged-common.sh, build/windows/verify-packaged-app.ps1).
+#   macos, linux    -> build and check in ONE job on the platform's own runner: one runner to wait for, no artifact round
+#                      trip, and nothing waits for the slowest platform. The check starts from a clean slate (the build's
+#                      package folder and payload directory are deleted and only the shipped file is unpacked), because a
+#                      packaged app that still found its dependencies in the build's NuGet folder would pass here and fail
+#                      on a user's machine. Only a file that passed is uploaded.
+#   package-windows -> builds the one Windows payload, on x64
+#   verify-windows  -> two rows in parallel on native runners, x64 and ARM64 (ARM64 is not emulated)
+#   draft           -> only after every platform passed
 #
 # The Windows 7z and the Linux tar.xz replace the ZIPs those releases shipped. Both payloads carry the same dependency
 # closure at the application root and inside every out-of-process child host, so a ZIP stored 63% of its bytes more
@@ -131,12 +136,16 @@ jobs:
           path: OpenDevelop-win.7z
           if-no-files-found: error
 
-  package-macos:
-    name: Package macOS ARM64
+  # macOS builds and checks in one job (see the header). The build is Release; dist.macos.sh verifies that the bundle renders
+  # its first workbench window, and the check below goes further, through the principal add-in and child-process paths.
+  macos:
+    name: Package and verify macOS ARM64
     needs: prepare
     # The same image ci.yml runs macOS on; dist.macos.sh probes for a linking toolchain and is sensitive to the SDK.
     runs-on: macos-26
     timeout-minutes: 90
+    env:
+      OD_VERIFY_REQUIRE_DEBUGGER: '1'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -154,14 +163,31 @@ jobs:
           # No gh credential can read the lextudio feed with this ephemeral token; NuGet restores
           # the same closure from GitHub Packages with the credential the job env provides.
           ./dist.macos.sh --skip-feed-sync
+      # Start from a clean slate: NuGet.config makes artifacts/nuget-packages the package folder this build restored into,
+      # and the build directory still holds OpenDevelop.app. Neither may help the check, which must see only what a user
+      # gets from the DMG: mount it, run a copy as a user does after dragging it to Applications, not the read-only volume.
+      - name: Verify the shipped macOS application
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf OpenDevelop.app artifacts/nuget-packages "$HOME/.nuget/packages"
+          mount="$RUNNER_TEMP/dmg"
+          mkdir -p "$mount"
+          hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$mount" OpenDevelop-macos.dmg
+          ditto "$mount/OpenDevelop.app" "$RUNNER_TEMP/OpenDevelop.app"
+          hdiutil detach "$mount" -quiet || hdiutil detach "$mount" -force
+          build/macos/verify-application-bundle.sh "$RUNNER_TEMP/OpenDevelop.app"
+      # Only a DMG that passed is uploaded, so the draft can never attach an unchecked one.
       - uses: actions/upload-artifact@v7
         with:
           name: release-macos-arm64
           path: OpenDevelop-macos.dmg
           if-no-files-found: error
 
-  package-linux:
-    name: Package Linux (${{ matrix.rid }})
+  # Each Linux architecture is built and checked on a native runner: there is no cross-architecture Linux payload. Unpacking
+  # the tar.xz also catches what archiving loses (modes, symlinks, paths).
+  linux:
+    name: Package and verify Linux (${{ matrix.rid }})
     needs: prepare
     strategy:
       fail-fast: false
@@ -173,9 +199,10 @@ jobs:
           - rid: linux-arm64
             runner: ubuntu-24.04-arm
             dotnet_architecture: arm64
-    # Each architecture is built on a native runner: there is no cross-architecture Linux payload.
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
+    env:
+      OD_VERIFY_REQUIRE_DEBUGGER: '1'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -201,19 +228,31 @@ jobs:
           module="OpenDevelop-${{ matrix.rid }}/AddIns/Misc/PackageManagement/Scripts/OpenDevelop.PackageManagement.ps1"
           test -f "$module"
           pwsh -NoProfile -Command ". '$module'; foreach (\$name in 'Get-Package','Install-Package','Update-Package','Uninstall-Package') { Get-Command \$name -ErrorAction Stop | Out-Null }"
+      # Clean slate, as on macOS: delete the build's package folder and payload directory, then unpack the shipped archive
+      # elsewhere and run the journeys on that.
+      - name: Verify the shipped Linux archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "OpenDevelop-${{ matrix.rid }}" artifacts/nuget-packages "$HOME/.nuget/packages"
+          extract="$RUNNER_TEMP/payload"
+          mkdir -p "$extract"
+          tar -xJf "OpenDevelop-${{ matrix.rid }}.tar.xz" -C "$extract"
+          payload=$(find "$extract" -maxdepth 2 -name OpenDevelop.dll -printf '%h\n' -quit)
+          test -n "$payload" || { echo '::error::OpenDevelop.dll not found in the extracted archive'; exit 1; }
+          xvfb-run -a ./build/linux/verify-application-payload.sh "$payload"
       - uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.rid }}
           path: OpenDevelop-${{ matrix.rid }}.tar.xz
           if-no-files-found: error
 
-  # The smoke phase inside dist only proves a payload starts and paints one frame. Each row runs the lean packaged-app
-  # check on the file users download, unpacked on that platform's own runner: the Windows payload is built once on x64 and
-  # verified on x64 and on ARM64, where it had never been checked before; macOS mounts the DMG; Linux unpacks the tar.xz,
-  # which also catches what archiving loses (modes, symlinks, paths). The debugger breakpoint journey is mandatory.
-  verify:
+  # The smoke phase inside dist only proves a payload starts and paints one frame. The Windows payload is built once, on x64,
+  # and checked on both architectures at the same time on native runners; ARM64 is not emulated here, and an x64 runner
+  # checks the x64 launcher natively. The debugger breakpoint journey is mandatory.
+  verify-windows:
     name: Verify ${{ matrix.platform }}
-    needs: [package-windows, package-macos, package-linux]
+    needs: package-windows
     strategy:
       fail-fast: false
       matrix:
@@ -221,38 +260,19 @@ jobs:
           - platform: windows-x64
             runner: windows-2025
             dotnet_architecture: x64
-            artifact: release-windows
-            file: OpenDevelop-win.7z
             # The x64 runner can debug x64 and, through WOW64, x86.
             targets: win-x64,win-x86
           - platform: windows-arm64
             runner: windows-11-arm
             dotnet_architecture: arm64
-            artifact: release-windows
-            file: OpenDevelop-win.7z
             # The ARM64 runner can debug arm64, and x64 and x86 through Windows' emulation.
             targets: win-arm64,win-x64,win-x86
-          - platform: macos-arm64
-            runner: macos-26
-            dotnet_architecture: arm64
-            artifact: release-macos-arm64
-            file: OpenDevelop-macos.dmg
-          - platform: linux-x64
-            runner: ubuntu-24.04
-            dotnet_architecture: x64
-            artifact: release-linux-x64
-            file: OpenDevelop-linux-x64.tar.xz
-          - platform: linux-arm64
-            runner: ubuntu-24.04-arm
-            dotnet_architecture: arm64
-            artifact: release-linux-arm64
-            file: OpenDevelop-linux-arm64.tar.xz
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
       OD_VERIFY_REQUIRE_DEBUGGER: '1'
     steps:
-      # The checks drive the app against the repository's fixtures (some from submodules); nothing here builds the product.
+      # The check drives the app against the repository's fixtures (some from submodules); nothing here builds the product.
       - uses: actions/checkout@v7
       - name: Initialize the submodules the fixtures need
         shell: bash
@@ -261,20 +281,15 @@ jobs:
         with:
           global-json-file: global.json
           architecture: ${{ matrix.dotnet_architecture }}
-      - name: Install Linux display and native runtime prerequisites
-        if: runner.os == 'Linux'
-        shell: bash
-        run: bash .github/ci/install-linux-prerequisites.sh --display
       - uses: actions/download-artifact@v8
         with:
-          name: ${{ matrix.artifact }}
+          name: release-windows
           path: ${{ runner.temp }}/download
       - name: Verify the shipped Windows payload
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $extract = Join-Path $env:RUNNER_TEMP 'payload'
-          $archive = Join-Path $env:RUNNER_TEMP 'download/${{ matrix.file }}'
+          $archive = Join-Path $env:RUNNER_TEMP 'download/OpenDevelop-win.7z'
           # dist.ps1 writes the archive with 7-Zip; use the same tool when the image has it.
           $sevenZip = Join-Path $env:ProgramFiles '7-Zip\7z.exe'
           if (Test-Path $sevenZip) { & $sevenZip x $archive "-o$extract" -y | Out-Null } else { tar -xf $archive -C (New-Item -ItemType Directory -Force $extract).FullName }
@@ -284,31 +299,10 @@ jobs:
           # -SkipDebugJourneys skips only the per-RID bitness journeys, which are being rebuilt around an apphost; when they
           # return, this job must also install the x86 (and on ARM64 the x64) .NET runtime they debug (dotnet-install.ps1).
           ./build/windows/verify-packaged-app.ps1 -PayloadRoot $payload.DirectoryName -Targets ('${{ matrix.targets }}' -split ',') -SkipDebugJourneys
-      - name: Verify the shipped macOS application
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          mount="$RUNNER_TEMP/dmg"
-          mkdir -p "$mount"
-          hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$mount" "$RUNNER_TEMP/download/${{ matrix.file }}"
-          # Run a copy, as a user does after dragging it to Applications, not the read-only volume.
-          ditto "$mount/OpenDevelop.app" "$RUNNER_TEMP/OpenDevelop.app"
-          hdiutil detach "$mount" -quiet || hdiutil detach "$mount" -force
-          build/macos/verify-application-bundle.sh "$RUNNER_TEMP/OpenDevelop.app"
-      - name: Verify the shipped Linux archive
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          extract="$RUNNER_TEMP/payload"
-          mkdir -p "$extract"
-          tar -xJf "$RUNNER_TEMP/download/${{ matrix.file }}" -C "$extract"
-          payload=$(find "$extract" -maxdepth 2 -name OpenDevelop.dll -printf '%h\n' -quit)
-          test -n "$payload" || { echo '::error::OpenDevelop.dll not found in the extracted archive'; exit 1; }
-          xvfb-run -a ./build/linux/verify-application-payload.sh "$payload"
 
   draft:
     name: Draft the GitHub Release
-    needs: verify
+    needs: [verify-windows, macos, linux]
     # A manual dispatch is a rehearsal and drafts nothing.
     if: github.event_name == 'push'
     runs-on: ubuntu-latest

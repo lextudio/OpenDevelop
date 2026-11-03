@@ -68,7 +68,7 @@ The first native evidence came from a separate observational `Linux package smok
 `dist.linux.sh` inside Xvfb on `ubuntu-24.04` and `ubuntu-24.04-arm`, verified the matching ZIP exists, and retained it
 as a short-lived artifact. Once both architectures were green (see below) those steps lived for a while in a `package-linux` job of
 `ci.yml`; Release builds do not belong in the Debug CI, so they now run only in `release.yml` (Windows, macOS and Linux, one
-native runner per Linux architecture, each followed by the lean packaged-app check). A tag is gated on a *release-grade*
+native runner per Linux architecture, each followed by the lean packaged-app check; macOS and Linux build and check in one job, Windows is built once and checked on x64 and ARM64 runners in parallel). A tag is gated on a *release-grade*
 `ci.yml` run for the commit: the `Release grade` job uploads a `release-grade` artifact only when the run executed the
 full plan (not focus mode unless `full=true`, no `through_batch`/`platforms`) and its plan and build jobs passed. The release's draft attaches `OpenDevelop-linux-x64.tar.xz` and `OpenDevelop-linux-arm64.tar.xz`. The CI invocation skips the
 developer-only local-feed synchronizer and restores directly from GitHub Packages with the workflow's short-lived
