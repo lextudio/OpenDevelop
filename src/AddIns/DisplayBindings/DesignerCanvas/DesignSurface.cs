@@ -58,6 +58,15 @@ public class DesignSurface : DesignerCanvas
 	// real drag targets without swallowing clicks on the rendered design underneath.
 	readonly Canvas overlay = new();
 	readonly Border frameBackdrop = new() { IsHitTestVisible = false };
+	// Device body chrome (null DeviceChrome hides both). The body sits behind the frame so only
+	// its ring is visible around the screen; the home indicator sits above the rendered page.
+	readonly Border chromeBody = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+	readonly System.Windows.Shapes.Rectangle chromeHomeBar = new() {
+		IsHitTestVisible = false,
+		Visibility = Visibility.Collapsed
+	};
+	readonly Border chromeNotch = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+	DesignerDeviceChrome? deviceChrome;
 	readonly Canvas viewportCanvas = new();
 	readonly Canvas contentCanvas = new();
 	// Marquee (rubber-band) selection, drawn in content coordinates so it scrolls with the design.
@@ -133,8 +142,11 @@ public class DesignSurface : DesignerCanvas
 		ShowNamesRequested += (_, enabled) => adornerLayer.ShowNameLabel = enabled;
 		textEditor.KeyDown += OnTextEditorKeyDown;
 		textEditor.LostKeyboardFocus += OnTextEditorLostFocus;
+		viewportCanvas.Children.Add(chromeBody);
 		viewportCanvas.Children.Add(frameBackdrop);
 		viewportCanvas.Children.Add(framePresenter.Visual);
+		viewportCanvas.Children.Add(chromeNotch);
+		viewportCanvas.Children.Add(chromeHomeBar);
 		viewportCanvas.Children.Add(GridlineVisual);
 		viewportCanvas.Children.Add(overlay);
 		viewportCanvas.Children.Add(textEditor);
@@ -1321,6 +1333,26 @@ public class DesignSurface : DesignerCanvas
 		set => frameBackdrop.Background = value;
 	}
 
+	/// <summary>
+	/// Optional device body drawn around the design preview. Set by a backend that knows it is
+	/// previewing a specific device; null (the default) keeps the plain bitmap. Hit testing and
+	/// design coordinates are unaffected: the body is drawn around the design rect, and the
+	/// screen mask only clips the bitmap.
+	/// </summary>
+	public DesignerDeviceChrome? DeviceChrome {
+		get => deviceChrome;
+		set {
+			if (ReferenceEquals(deviceChrome, value))
+				return;
+			deviceChrome = value;
+			ApplyViewport();
+		}
+	}
+
+	/// <summary>Empty margin around the design bitmap: the usual canvas margin plus the device
+	/// body's thickness, so a fit-to-view leaves the whole body visible.</summary>
+	double ChromeMargin => CanvasMargin + (deviceChrome?.BezelThickness ?? 0);
+
 	/// <summary>The scroll metrics of the design area, in surface pixels (tests, DevFlow).</summary>
 	public DesignSurfaceScrollStatus ScrollStatus => new(
 		scroller.ExtentWidth, scroller.ExtentHeight,
@@ -1373,8 +1405,8 @@ public class DesignSurface : DesignerCanvas
 	/// </para></summary>
 	DesignViewport CurrentViewport()
 		=> fitMode
-			? DesignViewport.Fit(pixelWidth, pixelHeight, FitInnerExtent(FitBasisWidth), FitInnerExtent(FitBasisHeight), 1.0, panX + CanvasMargin, panY + CanvasMargin)
-			: DesignViewport.Zoom(pixelWidth, pixelHeight, FitBasisWidth, FitBasisHeight, zoomScale, panX + CanvasMargin, panY + CanvasMargin);
+			? DesignViewport.Fit(pixelWidth, pixelHeight, FitInnerExtent(FitBasisWidth), FitInnerExtent(FitBasisHeight), 1.0, panX + ChromeMargin, panY + ChromeMargin)
+			: DesignViewport.Zoom(pixelWidth, pixelHeight, FitBasisWidth, FitBasisHeight, zoomScale, panX + ChromeMargin, panY + ChromeMargin);
 
 	// Fit must leave room for the CanvasMargin that the frame is offset by on every side.
 	// Fitting to the whole basis and then adding the margin pushed the frame CanvasMargin past
@@ -1385,6 +1417,84 @@ public class DesignSurface : DesignerCanvas
 	double FitBasisHeight => scroller.ActualHeight > 0 ? scroller.ActualHeight : scroller.ViewportHeight;
 
 	double EffectiveScale() => CurrentViewport().Scale;
+
+	/// <summary>
+	/// Draws the device body around the design rect, clips the rendered page to the device's
+	/// screen silhouette, and lays out the home indicator. All lengths are design units scaled by
+	/// the canvas zoom; the body overflows <see cref="viewportCanvas"/> deliberately.
+	/// </summary>
+	void LayoutDeviceChrome(double scale)
+	{
+		var chrome = deviceChrome;
+		var on = chrome != null && viewportCanvas.Width > 0 && viewportCanvas.Height > 0;
+		chromeBody.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+		chromeHomeBar.Visibility = on && chrome!.HomeIndicator ? Visibility.Visible : Visibility.Collapsed;
+		chromeNotch.Visibility = Visibility.Collapsed;
+		if (!on) {
+			framePresenter.Visual.OpacityMask = null;
+			framePresenter.Visual.Clip = null;
+			return;
+		}
+
+		double bezel = chrome!.BezelThickness * scale;
+		double corner = Math.Max(0, chrome.ScreenCornerRadius + chrome.BezelThickness) * scale;
+		chromeBody.Width = viewportCanvas.Width + bezel * 2;
+		chromeBody.Height = viewportCanvas.Height + bezel * 2;
+		Canvas.SetLeft(chromeBody, -bezel);
+		Canvas.SetTop(chromeBody, -bezel);
+		chromeBody.CornerRadius = new CornerRadius(corner);
+		chromeBody.Background = chrome.BodyBrush;
+		chromeBody.BorderBrush = chrome.EdgeBrush;
+		chromeBody.BorderThickness = new Thickness(Math.Max(1, scale));
+
+		// No Clip/OpacityMask on the image: LibreWPF's compositor drops the whole image when either
+		// is applied to it, leaving only the body. Screen rounding is a separate concern; the body
+		// and the cut-out are drawn around/over an unclipped page.
+		framePresenter.Visual.OpacityMask = null;
+		framePresenter.Visual.Clip = null;
+
+		double notchWidth = 0, notchHeight = 0, notchTop = 0;
+		double notchCorner = 0;
+		switch (chrome.Notch) {
+			case DesignerNotchKind.Island:
+				notchWidth = viewportCanvas.Width * 0.30;
+				notchHeight = Math.Max(notchWidth * 0.29, 8 * scale);
+				notchTop = viewportCanvas.Height * 0.010;
+				notchCorner = notchHeight / 2;
+				break;
+			case DesignerNotchKind.Notch:
+				notchWidth = viewportCanvas.Width * 0.62;
+				notchHeight = Math.Max(viewportCanvas.Height * 0.032, 10 * scale);
+				notchTop = 0;
+				notchCorner = notchHeight * 0.45;
+				break;
+		}
+
+		chromeNotch.Visibility = notchWidth > 0 ? Visibility.Visible : Visibility.Collapsed;
+		if (notchWidth > 0) {
+			chromeNotch.Width = notchWidth;
+			chromeNotch.Height = notchHeight;
+			chromeNotch.CornerRadius = chrome.Notch == DesignerNotchKind.Notch
+				? new CornerRadius(0, 0, notchCorner, notchCorner)
+				: new CornerRadius(notchCorner);
+			chromeNotch.Background = chrome.BodyBrush;
+			Canvas.SetLeft(chromeNotch, (viewportCanvas.Width - notchWidth) / 2);
+			Canvas.SetTop(chromeNotch, notchTop);
+		}
+
+		if (chrome.HomeIndicator) {
+			double width = viewportCanvas.Width * 0.33;
+			double height = Math.Max(1.5, 5 * scale);
+			double bottom = Math.Max(2, 8 * scale);
+			chromeHomeBar.Width = width;
+			chromeHomeBar.Height = height;
+			chromeHomeBar.RadiusX = height / 2;
+			chromeHomeBar.RadiusY = height / 2;
+			chromeHomeBar.Fill = chrome.HomeIndicatorBrush;
+			Canvas.SetLeft(chromeHomeBar, (viewportCanvas.Width - width) / 2);
+			Canvas.SetTop(chromeHomeBar, viewportCanvas.Height - height - bottom);
+		}
+	}
 
 	/// <summary>The viewport for elements that live INSIDE <see cref="viewportCanvas"/> (the
 	/// selection adorner layer, snap/grid guides): the frame's Canvas position already carries
@@ -1434,8 +1544,8 @@ public class DesignSurface : DesignerCanvas
 		// offsets change, which is what makes the scrollbars actually scroll the canvas.
 		// A fixed margin keeps the design bitmap off the edges, surrounded by the dotted
 		// empty-canvas EdgePattern (see DesignerCanvas).
-		contentCanvas.Width = Math.Max(scroller.ViewportWidth, pixelWidth * scale + CanvasMargin * 2);
-		contentCanvas.Height = Math.Max(scroller.ViewportHeight, pixelHeight * scale + CanvasMargin * 2);
+		contentCanvas.Width = Math.Max(scroller.ViewportWidth, pixelWidth * scale + ChromeMargin * 2);
+		contentCanvas.Height = Math.Max(scroller.ViewportHeight, pixelHeight * scale + ChromeMargin * 2);
 		// BaseOrigin already has CanvasMargin folded in through viewport.PanX/PanY (see
 		// CurrentViewport) - reading the raw panX/panY fields here instead (as a previous pass did) placed the rendered
 		// frame CanvasMargin short of where every other conversion (ToDesignPoint,
@@ -1451,6 +1561,7 @@ public class DesignSurface : DesignerCanvas
 		// the bitmap's natural DIP size (1 design unit = 1 DIP), which at fit scale is about
 		// 2x too large and drifts from the selection outline.
 		framePresenter.Resize(CurrentViewport());
+		LayoutDeviceChrome(scale);
 		UpdateGridlines(viewportCanvas.Width, viewportCanvas.Height, scale);
 		LayoutSelection();
 		foreach (var name in secondaryBounds.Keys)
