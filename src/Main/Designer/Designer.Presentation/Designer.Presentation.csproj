@@ -12,6 +12,7 @@
          and DesignerElementNode / DesignerToolboxItemInfo come from the designer protocol. -->
     <ProjectReference Include="..\..\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" />
     <ProjectReference Include="..\Designer.Remote\Designer.Remote.csproj" />
+    <ProjectReference Include="..\Designer.Shell\Designer.Shell.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -19,6 +19,8 @@
 
 	<!-- Autostart so DevFlow can discover od.androiddevice.* actions without a menu click first -->
 	<Path name="/SharpDevelop/Autostart">
+		<Class id="AndroidDeviceProviderRegistration"
+		       class="ICSharpCode.AndroidDeviceManager.RegisterDeviceProviderCommand"/>
 		<Class id="AndroidDeviceManagerRegisterDevFlowActionsCommand"
 		       class="ICSharpCode.AndroidDeviceManager.RegisterDevFlowActionsCommand"/>
 	</Path>

@@ -18,6 +18,7 @@
     <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
     <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
     <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Shell\Designer.Shell.csproj" Private="false" />
     <PackageReference Include="LeXtudio.DevFlow.Agent.Core" />
   </ItemGroup>
   <ItemGroup>
