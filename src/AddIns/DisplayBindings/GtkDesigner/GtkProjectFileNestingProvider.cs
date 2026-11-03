@@ -24,28 +24,23 @@ sealed class GtkProjectFileNestingProvider : IProjectFileNestingProvider
 
 	public string? GetParentDisplayPath(string projectFilePath, string displayPath, IReadOnlySet<string> projectDisplayPaths)
 	{
-		// The behavior class is the user-owned authority. Markup, its generated wiring companion,
-		// and a same-stem stylesheet are one GTK design unit. This only describes the pad; it never
-		// changes the project's DependentUpon metadata.
+		// The .ui markup is the design unit's root: the designer opens from it, and its behavior
+		// class, generated wiring companion and same-stem stylesheet are all derived from or
+		// attached to it. This only describes the pad; it never changes the project's
+		// DependentUpon metadata.
+		string? stem = null;
 		if (displayPath.EndsWith(".ui.cs", StringComparison.OrdinalIgnoreCase))
-			return displayPath[..^".ui.cs".Length] + ".cs";
-		if (displayPath.EndsWith(".ui.vb", StringComparison.OrdinalIgnoreCase))
-			return displayPath[..^".ui.vb".Length] + ".vb";
-		if (displayPath.EndsWith(".ui", StringComparison.OrdinalIgnoreCase)) {
-			var stem = displayPath[..^".ui".Length];
-			foreach (var companion in new[] { stem + ".cs", stem + ".vb" })
-				if (projectDisplayPaths.Contains(companion)) return companion;
+			stem = displayPath[..^".ui.cs".Length];
+		else if (displayPath.EndsWith(".ui.vb", StringComparison.OrdinalIgnoreCase))
+			stem = displayPath[..^".ui.vb".Length];
+		else if (displayPath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+			|| displayPath.EndsWith(".vb", StringComparison.OrdinalIgnoreCase)
+			|| displayPath.EndsWith(".css", StringComparison.OrdinalIgnoreCase))
+			stem = displayPath[..displayPath.LastIndexOf('.')];
+		if (stem is null)
 			return null;
-		}
-		if (displayPath.EndsWith(".css", StringComparison.OrdinalIgnoreCase)) {
-			var stem = displayPath[..^".css".Length];
-			var markup = stem + ".ui";
-			if (!projectDisplayPaths.Contains(markup)) return null;
-			foreach (var companion in new[] { stem + ".cs", stem + ".vb" })
-				if (projectDisplayPaths.Contains(companion)) return companion;
-			return markup;
-		}
-		return null;
+		var markup = stem + ".ui";
+		return projectDisplayPaths.Contains(markup) ? markup : null;
 	}
 }
 

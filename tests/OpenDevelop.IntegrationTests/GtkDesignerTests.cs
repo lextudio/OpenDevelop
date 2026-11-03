@@ -63,10 +63,10 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
 		var browser = await WaitForProjectBrowserAsync();
 		Assert.True(browser.GetProperty("success").GetBoolean(), browser.ToString());
-		var behaviorNode = FindProjectBrowserNode(browser.GetProperty("project"), "MainWindow.cs");
-		Assert.True(behaviorNode.ValueKind != JsonValueKind.Undefined, browser.ToString());
-		var companions = behaviorNode.GetProperty("children").EnumerateArray().Select(child => child.GetProperty("name").GetString()).ToArray();
-		Assert.Contains("MainWindow.ui", companions);
+		var markupNode = FindProjectBrowserNode(browser.GetProperty("project"), "MainWindow.ui");
+		Assert.True(markupNode.ValueKind != JsonValueKind.Undefined, browser.ToString());
+		var companions = markupNode.GetProperty("children").EnumerateArray().Select(child => child.GetProperty("name").GetString()).ToArray();
+		Assert.Contains("MainWindow.cs", companions);
 		Assert.Contains("MainWindow.ui.cs", companions);
 		Assert.Contains("MainWindow.css", companions);
 		var sized = await app.InvokeAsync("od.window.maximize"); Assert.True(sized.GetProperty("success").GetBoolean(), sized.ToString());
