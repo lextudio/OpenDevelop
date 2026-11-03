@@ -162,8 +162,19 @@ Write-Host "Platform=$Platform Lane=$Lane ThroughBatch=$ThroughBatch -> $($selec
 if ($selected.Count -eq 0) { throw "The plan enables nothing in lane '$Lane' for $Platform up to batch $ThroughBatch." }
 
 $results = @()
+# A lane's timeoutMinutes is its budget even when several lanes share one CI job (whose own timeout is only the sum of them
+# plus headroom): once it is spent, the entries not started yet are skipped, so a slow lane cannot use up the time of the
+# lanes after it. A skipped 'required' entry fails the lane, an 'observe' one only warns.
+$laneWatch = [System.Diagnostics.Stopwatch]::StartNew()
+$laneBudgetSeconds = if ($laneDefinition -and $laneDefinition.PSObject.Properties['timeoutMinutes']) { [int]([double]$laneDefinition.timeoutMinutes * 60) } else { 0 }
 foreach ($entry in $selected) {
     $status = Get-Status $entry $Platform
+    if ($laneBudgetSeconds -gt 0 -and $laneWatch.Elapsed.TotalSeconds -gt $laneBudgetSeconds) {
+        $level = if ($status -eq 'required') { 'error' } else { 'warning' }
+        Write-Host "::$($level) title=$($entry.id) ($status)::not started: the $Lane lane's $($laneDefinition.timeoutMinutes)-minute budget is spent."
+        $results += [pscustomobject]@{ Id = $entry.id; Status = $status; Outcome = 'skipped'; Seconds = 0; Tests = -1; Planned = $entry.measuredSeconds; Note = 'lane budget spent' }
+        continue
+    }
     # Typed, because a function's one-element array result is unrolled to a string and would be splatted as characters.
     [string[]]$arguments = Get-Command-Arguments $entry
     if ($entry.kind -eq 'xunit-exe') { $arguments += @('-trx', (Join-Path $resultsDirectory "$($entry.id).trx")) }

@@ -14,7 +14,12 @@ try {
     "consumer": { "buildFrom": "windows-arm64" },
     "macos-arm64": {}
   },
-  "lanes": { "archive": {}, "unit": {} },
+  "lanes": {
+    "unit": { "job": "fast", "timeoutMinutes": 10 },
+    "archive": { "job": "fast", "timeoutMinutes": 30, "needsNuGetCache": true },
+    "long": { "job": "slow", "timeoutMinutes": 60, "needsGtk": true },
+    "alone": { "timeoutMinutes": 5 }
+  },
   "entries": [
     { "id": "early", "batch": 1, "lane": "archive", "project": "early.csproj", "platforms": { "windows-x64": "required" } },
     { "id": "arm", "batch": 4, "lane": "archive", "project": "arm.csproj", "platforms": { "windows-arm64": "observe" }, "additionalProjects": [{ "project": "fixture.csproj", "platforms": ["windows-x64"] }] },
@@ -22,7 +27,9 @@ try {
     { "id": "mac", "batch": 4, "lane": "archive", "project": "mac.csproj", "platforms": { "macos-arm64": "observe" } },
     { "id": "unit-x64", "batch": 1, "lane": "unit", "project": "unit-x64.csproj", "platforms": { "windows-x64": "required" } },
     { "id": "unit-arm", "batch": 1, "lane": "unit", "project": "unit-arm.csproj", "platforms": { "windows-arm64": "observe" } },
-    { "id": "unit-msbuild", "batch": 1, "lane": "unit", "kind": "msbuild", "target": "tests.proj", "platforms": { "macos-arm64": "observe" } }
+    { "id": "unit-msbuild", "batch": 1, "lane": "unit", "kind": "msbuild", "target": "tests.proj", "platforms": { "macos-arm64": "observe" } },
+    { "id": "mac-long", "batch": 4, "lane": "long", "project": "mac-long.csproj", "platforms": { "macos-arm64": "observe" } },
+    { "id": "mac-alone", "batch": 4, "lane": "alone", "project": "mac-alone.csproj", "platforms": { "macos-arm64": "observe" } }
   ]
 }
 '@ | Set-Content -LiteralPath $planPath
@@ -49,11 +56,27 @@ try {
     $plannerOutput = (& pwsh -NoProfile -File $planner -PlanPath $planPath) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw 'Planning failed.' }
     $lanes = [regex]::Match($plannerOutput, '(?m)^lane_matrix=(\{.*\})$').Groups[1].Value | ConvertFrom-Json
-    $laneNames = @($lanes.include | ForEach-Object { "$($_.lane)/$($_.platform)<-$($_.build_platform)" } | Sort-Object)
+    $laneNames = @($lanes.include | ForEach-Object { $include = $_; $include.lanes | ForEach-Object { "$_/$($include.platform)<-$($include.build_platform)" } } | Sort-Object)
     foreach ($expected in @('unit/windows-x64<-windows-x64', 'unit/windows-arm64<-windows-x64', 'unit/macos-arm64<-macos-arm64')) {
         if ($expected -notin $laneNames) { throw "Missing lane $expected; planned: $($laneNames -join ', ')" }
     }
     if ($plannerOutput -match 'in_lane') { throw 'The planner must not emit in-place outputs any more.' }
+
+    # Lanes that name the same 'job' run in ONE job (the archive is downloaded once), in plan order, with the sum of their
+    # timeouts and the flags any of them asks for; a lane of another job, or with no job, is a job of its own.
+    $mac = @($lanes.include | Where-Object { $_.platform -eq 'macos-arm64' } | Sort-Object job)
+    if (($mac | ForEach-Object { $_.job }) -join ',' -ne 'alone,fast,slow') { throw "macOS must plan the jobs alone, fast and slow, got: $(($mac | ForEach-Object { $_.job }) -join ',')" }
+    $fast = $mac | Where-Object { $_.job -eq 'fast' }
+    if (($fast.lanes -join ',') -ne 'unit,archive') { throw "The fast job must run its lanes in plan order, got: $($fast.lanes -join ',')" }
+    if ($fast.timeout -ne 70) { throw "A job's timeout is the sum of its lanes' timeouts plus 30 minutes of headroom (10+30+30), got $($fast.timeout)." }
+    if (-not $fast.needs_nuget_cache -or $fast.needs_gtk) { throw 'The fast job takes needsNuGetCache from archive and has no GTK need.' }
+    $slow = $mac | Where-Object { $_.job -eq 'slow' }
+    if (-not $slow.needs_gtk -or $slow.needs_nuget_cache) { throw 'The slow job takes needsGtk from its lane only.' }
+    $alone = $mac | Where-Object { $_.job -eq 'alone' }
+    if (($alone.lanes -join ',') -ne 'alone' -or $alone.timeout -ne 35) { throw 'A lane without a job is a job of its own.' }
+    # A platform's jobs never mix: Windows x64 has only the 'fast' job's lanes it enables.
+    $armJobs = @($lanes.include | Where-Object { $_.platform -eq 'windows-arm64' } | ForEach-Object { $_.job })
+    if ($armJobs.Count -ne 1) { throw "windows-arm64 enables only the unit lane, expected one job, got: $($armJobs -join ',')" }
 
     # A platform whose only enabled entry runs from source (kind msbuild, no 'project') still gets a successful build: the
     # host from 'buildFirst' and nothing for the entry itself. A platform with no enabled entry at all is an error.

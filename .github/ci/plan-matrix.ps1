@@ -6,8 +6,13 @@
 # one build matrix, so a platform whose runners are unavailable would otherwise hold the results of the others back.
 #
 # build_matrix : one include per platform that has an enabled entry (the job compiles once there).
-# lane_matrix  : one include per (platform, lane) with an enabled entry; every lane, unit suites included, unpacks the
-#                archive of its platform's build and runs in parallel with the others once that build is done.
+# lane_matrix  : one include per (platform, job): the lanes of a platform that share a 'job' in the plan (the unit suites and
+#                the stable and unstable integration lanes are 'fast') run one after another in ONE job, because every job
+#                has to download and unpack the platform's whole archive (measured: 70 minutes of that against 30 minutes of
+#                tests across the lane jobs of one run). A lane without a 'job' is its own job. Jobs of different groups
+#                (fast, designer) run in parallel once the build is done. Each include carries 'lanes' (in plan order) and
+#                the sum of their timeouts plus 30 minutes of preparation headroom; a flag a lane asks for (needsNuGetCache,
+#                needsGtk) holds for the whole job.
 #
 # The outputs are written as JSON ('{"include":[...]}') to $GITHUB_OUTPUT. A plan that enables nothing fails.
 param(
@@ -61,22 +66,38 @@ foreach ($platformName in @($enabled | ForEach-Object { Resolve-BuildPlatform $_
     $build += [ordered]@{ name = $platformName; runner = $platform.Value.runner; dotnet_architecture = $platform.Value.dotnetArchitecture }
 }
 
-$lanes = @()
-foreach ($group in @($enabled | Group-Object Platform, Lane | Sort-Object Name)) {
-    $platformName = $group.Group[0].Platform
-    $laneName = $group.Group[0].Lane
+# The job a lane runs in: its 'job' when the plan names one, else the lane itself.
+function Get-LaneJob([string]$laneName) {
     $lane = $plan.lanes.PSObject.Properties[$laneName]
     if ($null -eq $lane) { throw "Lane '$laneName' is used by an entry but not defined under 'lanes'." }
+    if ($lane.Value.PSObject.Properties['job'] -and $lane.Value.job) { return [string]$lane.Value.job }
+    return $laneName
+}
+function Test-LaneFlag([string]$laneName, [string]$flag) {
+    $lane = $plan.lanes.PSObject.Properties[$laneName].Value
+    return [bool]($lane.PSObject.Properties[$flag] -and $lane.$flag)
+}
+$laneOrder = @($plan.lanes.PSObject.Properties.Name)
+
+$lanes = @()
+foreach ($group in @($enabled | Group-Object { "$($_.Platform)|$(Get-LaneJob $_.Lane)" } | Sort-Object Name)) {
+    $platformName = $group.Group[0].Platform
+    $jobName = Get-LaneJob $group.Group[0].Lane
+    # The lanes this job runs, in the order the plan defines them (the quick unit suites first).
+    [string[]]$laneNames = @($group.Group | ForEach-Object { $_.Lane } | Sort-Object -Unique | Sort-Object { $laneOrder.IndexOf($_) })
     $platform = $plan.platforms.PSObject.Properties[$platformName].Value
     $item = [ordered]@{
-        platform = $platformName; lane = $laneName
-        # The archive this lane unpacks: the packaging unit it belongs to (see Resolve-BuildPlatform).
+        platform = $platformName; job = $jobName; lanes = $laneNames
+        # The archive this job unpacks: the packaging unit it belongs to (see Resolve-BuildPlatform).
         build_platform = (Resolve-BuildPlatform $platformName @{})
         runner = $platform.runner
-        dotnet_architecture = $platform.dotnetArchitecture; timeout = [int]$lane.Value.timeoutMinutes
+        dotnet_architecture = $platform.dotnetArchitecture
+        # The lanes' own budgets plus headroom for what sits outside every one of them: the archive download and unpack and
+        # the installs (11-15 minutes on Windows), and the summary and upload steps that must still run after the last lane.
+        timeout = [int](($laneNames | ForEach-Object { [int]$plan.lanes.PSObject.Properties[$_].Value.timeoutMinutes } | Measure-Object -Sum).Sum) + 30
         needs_cliclick = [bool]($platform.PSObject.Properties['needsCliclick'] -and $platform.needsCliclick)
-        needs_nuget_cache = [bool]($lane.Value.PSObject.Properties['needsNuGetCache'] -and $lane.Value.needsNuGetCache)
-        needs_gtk = [bool]($lane.Value.PSObject.Properties['needsGtk'] -and $lane.Value.needsGtk)
+        needs_nuget_cache = [bool]@($laneNames | Where-Object { Test-LaneFlag $_ 'needsNuGetCache' }).Count
+        needs_gtk = [bool]@($laneNames | Where-Object { Test-LaneFlag $_ 'needsGtk' }).Count
         entries = $group.Count
     }
     $lanes += $item

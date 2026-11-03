@@ -4,16 +4,17 @@ name: CI
 #
 #   plan       -> reads the plan and emits the job matrices
 #   build      -> per platform, compiles everything the enabled archive lanes need exactly once, uploads the workspace
-#   test       -> per (platform, lane), unit suites and integration journeys alike: once the platform's build is done,
-#                 unpacks its archive and runs the lane's assemblies, every lane in parallel. A 'buildFrom' platform
-#                 (Windows ARM64) unpacks its provider's archive, because that build is what it ships.
+#   test       -> per (platform, job): once the platform's build is done, unpacks its archive and runs the lanes of the job one
+#                 after another. The quick lanes (unit, integration-stable, integration-unstable) share the 'fast' job, so the
+#                 archive is downloaded once for them; the long designer lane is its own job and runs in parallel. A
+#                 'buildFrom' platform (Windows ARM64) unpacks its provider's archive, because that build is what it ships.
 #
 # Every platform the release ships (test-plan.json 'platforms': Windows x64 and ARM64, macOS ARM64, Linux x64 and ARM64)
 # gets the same three layers here: a Debug build, the unit suites and the IDE journeys. This is the Debug build with tests
 # and debug information; Release builds and packaging belong to release.yml alone.
 #
-# Lanes run in parallel, each on its own fresh machine, so they cannot interfere through ports, config directories
-# or temp files; the entries inside a lane run one after another.  What runs is decided by the plan, not by this file:
+# Jobs run in parallel, each on its own fresh machine, so they cannot interfere through ports, config directories
+# or temp files; the lanes of a job and the entries inside a lane run one after another.  What runs is decided by the plan, not by this file:
 # enabling more tests is a reviewed edit of the plan (a new batch starts as 'observe').  The Profiler tests and the
 # Terminal journey are plan entries now; their own workflows are gone.
 on:
@@ -170,7 +171,7 @@ jobs:
           if-no-files-found: error
 
   test:
-    name: ${{ matrix.lane }} (${{ matrix.platform }})
+    name: ${{ matrix.job }} (${{ matrix.platform }})
     needs: [plan, build]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout }}
@@ -334,7 +335,21 @@ jobs:
         run: |
           $through = -1
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
-          ./.github/ci/run-test-plan.ps1 -Platform '${{ matrix.platform }}' -Lane '${{ matrix.lane }}' -ThroughBatch $through
+          # The lanes of this job run one after another on the one unpacked archive; a failing lane does not stop the next,
+          # and the step fails when any of them did.
+          $failed = @()
+          foreach ($lane in '${{ join(matrix.lanes, ' ') }}' -split ' ') {
+              try {
+                  ./.github/ci/run-test-plan.ps1 -Platform '${{ matrix.platform }}' -Lane $lane -ThroughBatch $through
+              } catch {
+                  # run-test-plan.ps1 throws instead of exiting when the plan or its own state is wrong; that must cost
+                  # only this lane.
+                  Write-Host "::error title=$lane::$($_.Exception.Message)"
+                  $global:LASTEXITCODE = 1
+              }
+              if ($LASTEXITCODE -ne 0) { $failed += $lane }
+          }
+          if ($failed.Count -gt 0) { Write-Host "::error::Failed lanes: $($failed -join ', ')"; exit 1 }
       # Read-only, after the lane: the pointer journeys inject clicks through cliclick, started by the IDE under
       # this job's process chain, so macOS decides input permission for that chain, not for the step shell the
       # readiness report ran in. The unified log records each decision; keep the input-related ones in the
@@ -354,20 +369,20 @@ jobs:
         continue-on-error: true
         uses: dorny/test-reporter@v3
         with:
-          name: ${{ matrix.lane }} (${{ matrix.platform }})
+          name: ${{ matrix.job }} (${{ matrix.platform }})
           path: TestResults/*.trx
           reporter: dotnet-trx
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: results-${{ matrix.lane }}-${{ matrix.platform }}
+          name: results-${{ matrix.job }}-${{ matrix.platform }}
           path: TestResults
           if-no-files-found: ignore
           retention-days: 3
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: logs-${{ matrix.lane }}-${{ matrix.platform }}
+          name: logs-${{ matrix.job }}-${{ matrix.platform }}
           path: ${{ runner.temp }}/od-test-logs
           if-no-files-found: ignore
           retention-days: 3

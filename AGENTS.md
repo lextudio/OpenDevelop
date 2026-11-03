@@ -242,8 +242,12 @@ verification targets. Run the full integration suite only when asked and do not 
 
 One workflow, `.github/workflows/ci.yml`, driven by `.github/ci/test-plan.json`; the scripts that read it are in
 `.github/ci/`. `doc/technotes/ci-test-plan.md` explains the shape. Job names: `Plan`, `Build (<platform>)`,
-`<lane> (<platform>)` and `Release grade`. Each platform builds once; then every lane, `unit` included, unpacks that build's
-archive and runs in parallel with the others.
+`fast (<platform>)`, `designer (<platform>)` and `Release grade`. Each platform builds once; then at most two jobs
+per platform unpack that build's archive in parallel: `fast` runs the quick lanes (`unit`, `integration-stable`,
+`integration-unstable`) one after another, so the archive is downloaded once for them, and the long designer lane is its own
+job. A lane's `job` in `test-plan.json` decides this; do not add a lane as a job of its own just to parallelise a few
+minutes of tests, because every job pays a full archive download (measured: 70 minutes of preparation against 30 minutes of
+tests across one run's lane jobs).
 
 Spending runs:
 

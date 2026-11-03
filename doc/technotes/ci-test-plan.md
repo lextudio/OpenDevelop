@@ -330,8 +330,8 @@ one row installs an SDK over the network; its other rows need a separately budge
 `.github/workflows/ci.yml` is the one workflow. `.github/ci/test-plan.json` is the only place that decides what runs.
 
 ```
-plan  ->  build (per platform)  ->  test (per platform x lane, unit and integration alike, in parallel)
-          compile once, upload       download, unpack, run the lane's test assemblies
+plan  ->  build (per platform)  ->  test (per platform x job, in parallel; a job runs its lanes one after another)
+          compile once, upload       download, unpack, run the lanes' test assemblies
 ```
 
 * **plan** (`plan-matrix.ps1`) reads the plan and emits the two job matrices. A packaging platform gets a build job when
@@ -398,9 +398,12 @@ the safety net: the slowest preparation (about 21 minutes) plus the lane's measu
 `observe` means an individual failure does not fail the job; a lane with `allowAllFailures` can also stay green when no
 entry passes.
 
-Lanes are separate jobs on separate fresh machines, so they cannot interfere through ports (the DevFlow port), config
-directories, temp files or a shared IDE instance. Inside a lane the entries run one after another; an integration entry
-starts its own IDE process.
+Jobs run on separate fresh machines, so they cannot interfere through ports (the DevFlow port), config directories, temp
+files or a shared IDE instance. Inside a job the lanes, and inside a lane the entries, run one after another on the one
+machine; an integration entry starts its own IDE process, waits for it to exit and kills its whole process tree if it
+overruns its budget. Putting several lanes in one job adds no kind of sharing that entries of one lane did not already have
+(same machine, same ports, same temp area, strictly one after another), but it does mean a leftover process of one entry can
+now reach the entries of the next lane too; that is why the `fast` group keeps the 'observe' lane last.
 
 What a platform may build and how its lanes must run is the packaging contract, not a CI preference: one Windows payload
 serves x64 and ARM64, macOS ships osx-arm64 only. [`dual-architecture-packaging.md`](dual-architecture-packaging.md)
@@ -431,6 +434,17 @@ Preparing a lane job costs more than most entries: downloading and unpacking the
 NuGet cache took 11-15 minutes on Windows (up to 21) and 3-12 minutes on macOS on run 40444468212, against 1-2 minutes of
 tests for code coverage and the ARM64 unit suites. So entries share as few jobs as possible, grouped by how reliable they
 have been, and a lane is split only for a real environment need or a timeout.
+
+Since 2026-11-02 that is made explicit by the lane's `job` in the plan: lanes of one platform with the same `job` run in one
+CI job, one after another, on the one unpacked archive. `unit`, `integration-stable` and `integration-unstable` are job
+`fast` (unit first, so its result arrives within minutes); `integration-designer` is job `designer` (the longest lane, which
+also needs the GTK runtimes). Run 41395236804 spent 70 minutes of its lane jobs on downloading and unpacking against 30 minutes
+of tests, Windows ARM64 alone paying 11-15 minutes three times for 16 minutes of tests; a platform now pays it twice. A job's
+timeout is the sum of its lanes' timeouts plus 30 minutes of headroom for the preparation that sits outside every lane budget.
+Each lane still keeps its own budget: `run-test-plan.ps1` starts no further entry once the lane's `timeoutMinutes` are spent
+(they are reported as skipped, which fails a `required` entry and only warns for an `observe` one), so a slow lane cannot eat
+the lanes after it. A failing lane, or one whose script throws, does not stop the next one, and the step fails if any lane
+failed.
 
 * `unit` runs the unit suites (Base, VSEditorCompat, XamlDom, Profiler, the AddIn SDK projects) on every platform from
   that platform's build archive; an entry gets 10 minutes so one hang cannot use up the lane.
