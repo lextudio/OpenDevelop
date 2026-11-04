@@ -105,6 +105,42 @@ runs a different runtime (`net10.0-ios`/`-android`) and needs assemblies built f
 Phase 1 starts with the spike because it answers the biggest unknown (does a real-window Uno iOS head render
 `RenderTargetBitmap` frames reliably and start quickly enough) before the rest is built on it.
 
+## 4a. Progress and spike results (2026-11-04)
+
+**Phase 0, host processes: partly done.** iOS is complete and verified; Android is pending (the shared Android class exists and is unit-tested, but MAUI still uses its own copy). The rest of phase 0 (preview-target model, preflight, device-frame builder, connection coordinator) is not started. `IosSimulatorHostProcess` and `AndroidEmulatorHostProcess` are in `Designer.Remote`
+(subclasses of `DesignerHostProcessClient`; `DesignerHostProcessClient` gained `OnDisposed`, `RaiseOutputLine`, a settable
+`Handshake`, and release-once cleanup that also runs when a start fails or the host is terminated). The MAUI iOS client uses the iOS
+class (its iOS and macOS journeys pass); the MAUI Android client still has its own copy until the Android journey can be verified
+again. Reviews of this code found real defects worth remembering for any future device host: the watcher's `grep` matched its own
+command line (use the `[-]-port` bracket form), `ps` output must not be truncated (`-ww`), an EXIT trap does not run when the
+script is killed (remove the `adb reverse` bridge in `OnDisposed` too), and device-side cleanup must not depend on `Dispose` alone.
+
+**Phase 1 spike (iOS): the head is feasible.** A scratch Uno 6.5.31 `net10.0-ios` app (single project, `SkiaRenderer`) was built,
+installed into an iOS 26.x simulator, launched, created a `Window` and rendered its content with `RenderTargetBitmap` about 1.5 s
+after launch: `1206x2622` pixels (a full-screen frame at 3x) from `RenderAsync`/`GetPixelsAsync`. This answers risk 2 below for iOS:
+frame capture works in a real window, so a mobile head can use the same `RenderTargetBitmap` path as the desktop host.
+
+What the spike also showed (each cost time, so they are recorded):
+
+- **Workloads.** Building `net10.0-ios` needs the iOS workload for the SDK that builds it. The system `dotnet` (10.0.200 and
+  11.0.100-rc.1) had no `ios` workload; installing it into the user-level dotnet (`~/.dotnet`, SDK 10.0.4xx) works. The newest
+  workload (27.1) needs Xcode 27.1; with Xcode 27.0 use the 26.5 manifests (a rollback file such as
+  `{"microsoft.net.sdk.ios": "26.5.10315/10.0.100"}` with `--from-rollback-file`) and pass `-p:ValidateXcodeVersion=false`, as the MAUI
+  host builds do. `SupportedOSPlatformVersion` must be at least 15.0.
+- **Launch screen.** Without a launch storyboard the Apple SDK writes `UILaunchStoryboardName=LaunchScreen` into the app and the app
+  dies at start ("Could not find a storyboard named 'LaunchScreen'"). An empty `UILaunchScreen` dict alone did not stop that here;
+  a minimal `LaunchScreen.storyboard` (as `InterfaceDefinition`) did. (The MAUI iOS host works with just the empty dict; the
+  difference is Uno.Sdk's single-project defaults.) An empty launch screen is also what keeps iOS out of legacy 320x480 mode.
+- **Noise.** `Uno.UI.Runtime.Skia.AppleUIKit` logs a `TypeLoadException` on registration at start-up; rendering still works.
+
+**Not yet started:** the real multi-target `WinUIXamlDesigner.UnoHost` head (the desktop `HeadlessDispatcher` becomes one
+implementation behind a dispatcher abstraction, because `DesignHost` calls it directly in about 18 places; the mobile
+implementation marshals to the window's `DispatcherQueue` and installs the `HostVisualRoot`/`HostAwaitFrame` hooks that `DesignHost`
+already exposes for hosts that need a window), the `UnoDesignClient` connection abstraction (it is built on a private
+`Connection : DesignerHostProcessClient` and reads capabilities from the handshake), the view-content picker/overlay, preview-target
+extraction, and everything Android. Android is also blocked on a healthy emulator and on installing the Android workload the same
+way as iOS.
+
 ## 5. Risks and open questions
 
 1. **Workloads and build weight.** Mobile TFMs need the `ios`/`android` workloads and Xcode/Android SDK. Opt-in TFMs keep the add-in
