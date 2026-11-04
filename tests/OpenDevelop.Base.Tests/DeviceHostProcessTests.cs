@@ -122,6 +122,28 @@ public sealed class IosSimulatorHostProcessTests
     }
 
     [Fact]
+    public void ABinaryPlistIsConvertedBeforeReading()
+    {
+        Assert.SkipWhen(!OperatingSystem.IsMacOS(), "plutil is a macOS tool");
+        var directory = Path.Combine(Path.GetTempPath(), "bundle-" + Guid.NewGuid().ToString("N") + ".app");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var plist = Path.Combine(directory, "Info.plist");
+            File.WriteAllText(plist, "<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>com.example.binary</string><key>CFBundleExecutable</key><string>Bin</string></dict></plist>");
+            using (var convert = System.Diagnostics.Process.Start("/usr/bin/plutil", new[] { "-convert", "binary1", plist })!)
+                convert.WaitForExit();
+            Assert.StartsWith("bplist", System.Text.Encoding.ASCII.GetString(File.ReadAllBytes(plist), 0, 6));
+            Assert.Equal("com.example.binary", IosSimulatorHostProcess.ReadBundleId(directory, "fallback"));
+            Assert.Equal("Bin", IosSimulatorHostProcess.ReadPlistString(directory, "CFBundleExecutable", "fallback"));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void AMissingPlistFallsBack()
     {
         Assert.Equal("fallback", IosSimulatorHostProcess.ReadBundleId(Path.Combine(Path.GetTempPath(), "nope-" + Guid.NewGuid().ToString("N")), "fallback"));

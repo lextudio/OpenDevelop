@@ -158,8 +158,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		{
 			var plist = Path.Combine(appBundlePath, "Info.plist");
 			if (File.Exists(plist)) {
-				// The generated plist is XML; a substring read keeps this dependency-free.
-				string xml = File.ReadAllText(plist);
+				// An XML plist is read with a plain substring search (dependency-free). A built app's plist
+				// is often binary ("bplist00": Uno and the Apple SDK compile it), so convert that first.
+				string xml = ReadPlistAsXml(plist);
 				string marker = "<key>" + key + "</key>";
 				int i = xml.IndexOf(marker, StringComparison.Ordinal);
 				if (i >= 0) {
@@ -174,6 +175,32 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			}
 
 			return fallback;
+		}
+
+		static string ReadPlistAsXml(string plistPath)
+		{
+			var bytes = File.ReadAllBytes(plistPath);
+			bool binary = bytes.Length >= 6 && bytes[0] == (byte)'b' && bytes[1] == (byte)'p' && bytes[2] == (byte)'l' && bytes[3] == (byte)'i' && bytes[4] == (byte)'s' && bytes[5] == (byte)'t';
+			if (!binary)
+				return System.Text.Encoding.UTF8.GetString(bytes);
+			try {
+				var startInfo = new ProcessStartInfo("/usr/bin/plutil") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+				foreach (var argument in new[] { "-convert", "xml1", "-o", "-", plistPath })
+					startInfo.ArgumentList.Add(argument);
+				using (var process = Process.Start(startInfo)) {
+					if (process == null)
+						return string.Empty;
+					var output = process.StandardOutput.ReadToEndAsync();
+					process.StandardError.ReadToEndAsync();
+					if (!process.WaitForExit(10000)) {
+						try { process.Kill(true); } catch (Exception) { }
+						return string.Empty;
+					}
+					return process.ExitCode == 0 ? output.GetAwaiter().GetResult() : string.Empty;
+				}
+			} catch (Exception) {
+				return string.Empty;
+			}
 		}
 
 		static async Task RunSimctlAsync(string[] args, string operation, CancellationToken cancellationToken)
