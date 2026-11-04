@@ -21,12 +21,18 @@
     <OpenDevelopAddinKind>OutOfProcessHost</OpenDevelopAddinKind>
   </PropertyGroup>
   <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-ios'">
+    <!-- A device head is one RID-specific app (simulator / emulator ABI), deployed as a bundle or APK rather than
+         loaded into the IDE, so the AnyCPU AddIn rule of a distribution build does not apply to it. -->
+    <OpenDevelopAllowRidSpecificAddin>true</OpenDevelopAllowRidSpecificAddin>
     <RuntimeIdentifier>iossimulator-arm64</RuntimeIdentifier>
     <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
     <ApplicationId>com.lextudio.opendevelop.unodesignhost</ApplicationId>
     <ValidateXcodeVersion Condition="'$(ValidateXcodeVersion)' == ''">false</ValidateXcodeVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-android'">
+    <!-- A device head is one RID-specific app (simulator / emulator ABI), deployed as a bundle or APK rather than
+         loaded into the IDE, so the AnyCPU AddIn rule of a distribution build does not apply to it. -->
+    <OpenDevelopAllowRidSpecificAddin>true</OpenDevelopAllowRidSpecificAddin>
     <ApplicationId>com.lextudio.opendevelop.unodesignhost</ApplicationId>
     <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
     <AndroidPackageFormat>apk</AndroidPackageFormat>

@@ -14,6 +14,11 @@ function Find-DotNetHost {
     # Locate the dotnet host the same way launch.sh used to: well-known install dirs
     # first (Homebrew arm64/intel), then PATH fallback. Works on macOS and Windows.
     $candidates = @()
+    # An explicit DOTNET_ROOT wins: it is how a caller picks the SDK root that carries the workloads
+    # (ios/android) a build needs, instead of whichever root happens to be installed first.
+    if ($env:DOTNET_ROOT) {
+        $candidates += (Join-Path $env:DOTNET_ROOT $(if ($IsWindows) { 'dotnet.exe' } else { 'dotnet' }))
+    }
     if ($IsWindows) {
         $candidates += @(
             (Join-Path $env:ProgramFiles 'dotnet/dotnet.exe'),

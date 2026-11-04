@@ -200,9 +200,11 @@ no pixel test of how it looks.
 wants either more AVD RAM or those apps disabled.
 
 **Not yet started:** project assemblies on a device, preview-target/preflight extraction from
-MAUI (the Uno code duplicates a little of it), device debugging (see below), and a verified packaging path. The macOS bundle script and `dist.ps1` now keep the `UnoHost.iOS` and `UnoHost.Android` folders intact (an app bundle
-and an APK must not go through the by-basename dedup), but no package was built to check it, and the mobile heads only exist when built with
-`-p:UnoDesignHostMobile=true`, so a release must set that explicitly.
+MAUI (the Uno code duplicates a little of it), device debugging (see below), and Windows packaging. The macOS bundle script and `dist.ps1` keep the `UnoHost.iOS` and `UnoHost.Android` folders intact (an app bundle
+and an APK must not go through the by-basename dedup). Verified on macOS (Debug, 2026-11-04): `DOTNET_ROOT=$HOME/.dotnet UnoDesignHostMobile=true pwsh ./dist.ps1 -Configuration Debug`
+produced `AddIns/DisplayBindings/WinUIXamlDesigner/UnoHost.iOS/WinUIXamlDesigner.UnoHost.app` (413 files) and `UnoHost.Android/WinUIXamlDesigner.UnoHost.apk` (73 MB) in the bundle.
+The mobile heads only exist when the env var / `-p:UnoDesignHostMobile=true` is set, so a release must set it explicitly. The SDK root must carry the ios/android
+workloads; `dist.ps1` now honours `DOTNET_ROOT` (it otherwise prefers Homebrew's dotnet), and the heads set `OpenDevelopAllowRidSpecificAddin` because they are RID-specific apps, not AnyCPU add-ins. Release configuration and Windows are not exercised.
 
 ## 4b. Debugging on a device (direction, 2026-11-04; nothing implemented)
 
