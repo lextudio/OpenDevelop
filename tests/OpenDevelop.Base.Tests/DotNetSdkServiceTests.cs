@@ -1,3 +1,4 @@
+using System.IO;
 using System.Runtime.InteropServices;
 using ICSharpCode.SharpDevelop.Project.Sdk;
 using Xunit;
@@ -147,6 +148,87 @@ public class DotNetSdkServiceTests
 
 		Assert.False(choice.IsDefault);
 		Assert.Contains("targets a newer .NET", DotNetSdkService.DescribeChoice(choice, "", discovered));
+	}
+
+	[Fact]
+	public void ApplyGlobalJsonPin_TakesTheRootThatHasThePinnedSdk_WhenTheChosenOneLacksIt()
+	{
+		var system = Sdk("/usr/local/share/dotnet", "10.0.200", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System,
+			previews: new[] { "11.0.100-rc.3.26522.148" });
+		// The only root with the iOS workload, on an older pre-release the project's global.json pins
+		var user = Sdk("/home/u/.dotnet", "10.0.403", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System,
+			previews: new[] { "11.0.100-rc.1.26425.128" });
+		var discovered = new[] { system, user };
+		var choice = DotNetSdkService.ResolveSdkForTargetFrameworks(discovered, "", new[] { "net11.0-ios" });
+		Assert.Same(system, choice.Sdk);
+
+		var pinned = DotNetSdkService.ApplyGlobalJsonPin(choice, discovered, "11.0.100-rc.1.26425.128");
+
+		Assert.Same(user, pinned.Sdk);
+		Assert.Equal("11.0.100-rc.1.26425.128", pinned.Version);
+		Assert.True(pinned.PinnedByGlobalJson);
+		Assert.Contains("global.json pins", DotNetSdkService.DescribeChoice(pinned, "", discovered));
+	}
+
+	[Fact]
+	public void ApplyGlobalJsonPin_KeepsTheChoice_WhenItHasThePinnedSdkOrNoRootDoes()
+	{
+		var sdk = Sdk("/opt/dotnet", "10.0.302", RuntimeInformation.ProcessArchitecture, versions: new[] { "10.0.201", "10.0.302" },
+			origin: DotNetSdkOrigin.System);
+		var discovered = new[] { sdk };
+		var choice = DotNetSdkService.ResolveSdkForTargetFrameworks(discovered, "", new[] { "net10.0" });
+
+		Assert.Same(choice, DotNetSdkService.ApplyGlobalJsonPin(choice, discovered, "10.0.201"));
+		Assert.Same(choice, DotNetSdkService.ApplyGlobalJsonPin(choice, discovered, "12.0.100"));
+		Assert.Same(choice, DotNetSdkService.ApplyGlobalJsonPin(choice, discovered, null));
+	}
+
+	[Fact]
+	public void ApplyGlobalJsonPin_KeepsNoChoice_EvenWhenAnUnsupportedRootHasThePinnedSdk()
+	{
+		// Issue #19: with no supported SDK there is no choice, and a global.json pin must not revive SDK 9
+		var sdk9 = Sdk("/dotnet9", "9.0.305", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System);
+		var discovered = new[] { sdk9 };
+		var choice = DotNetSdkService.ResolveSdkForTargetFrameworks(discovered, "", new[] { "net9.0" });
+		Assert.Null(choice);
+
+		Assert.Null(DotNetSdkService.ApplyGlobalJsonPin(choice, discovered, "9.0.305"));
+	}
+
+	[Fact]
+	public void DescribeChoice_NamesTheGlobalJsonPin_EvenWithASelectedRoot()
+	{
+		var selected = Sdk("/selected", "10.0.302", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.Custom);
+		var user = Sdk("/home/u/.dotnet", "10.0.403", RuntimeInformation.ProcessArchitecture, origin: DotNetSdkOrigin.System,
+			previews: new[] { "11.0.100-rc.3.26522.148" });
+		var discovered = new[] { selected, user };
+		var choice = DotNetSdkService.ResolveSdkForTargetFrameworks(discovered, selected.RootPath, new[] { "net10.0" });
+
+		var pinned = DotNetSdkService.ApplyGlobalJsonPin(choice, discovered, "11.0.100-rc.3.26522.148");
+
+		string text = DotNetSdkService.DescribeChoice(pinned, selected.RootPath, discovered);
+		Assert.Contains("global.json pins", text);
+		Assert.DoesNotContain("is not usable", text);
+	}
+
+	[Fact]
+	public void ReadGlobalJsonSdkVersion_ReadsTheNearestGlobalJson()
+	{
+		string root = Directory.CreateTempSubdirectory("od-globaljson-").FullName;
+		try {
+			string project = Directory.CreateDirectory(Path.Combine(root, "app", "src")).FullName;
+			File.WriteAllText(Path.Combine(root, "global.json"), "{ \"sdk\": { \"version\": \"10.0.100\" } }");
+			File.WriteAllText(Path.Combine(root, "app", "global.json"),
+				"{\n  // Uno's template writes comments\n  \"msbuild-sdks\": { \"Uno.Sdk\": \"6.7.30\" },\n  \"sdk\": { \"version\": \"11.0.100-rc.3.26522.148\", },\n}");
+
+			Assert.Equal("11.0.100-rc.3.26522.148", DotNetSdkService.ReadGlobalJsonSdkVersion(project));
+
+			// The nearest file wins even when it pins nothing; the host does not look further up
+			File.WriteAllText(Path.Combine(root, "app", "global.json"), "{ \"msbuild-sdks\": { \"Uno.Sdk\": \"6.7.30\" } }");
+			Assert.Null(DotNetSdkService.ReadGlobalJsonSdkVersion(project));
+		} finally {
+			Directory.Delete(root, true);
+		}
 	}
 
 	[Fact]

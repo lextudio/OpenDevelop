@@ -10358,6 +10358,9 @@ Press Esc to cancel this operation.</value>
   <data name="Build.Sdk.ReasonDefault" xml:space="preserve">
     <value>no SDK is selected in Options; a supported system SDK was chosen automatically (matching this IDE's architecture first, then the highest version)</value>
   </data>
+  <data name="Build.Sdk.ReasonGlobalJson" xml:space="preserve">
+    <value>the project's global.json pins this SDK version</value>
+  </data>
   <data name="Build.Sdk.ReasonNewerFramework" xml:space="preserve">
     <value>the project targets a newer .NET than the default SDK supports</value>
   </data>

@@ -9964,6 +9964,9 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   <data name="Build.Sdk.ReasonDefault" xml:space="preserve">
     <value>选项中未选择 SDK；自动选择了受支持的系统 SDK（优先与此 IDE 架构一致的，其次版本最高的）</value>
   </data>
+  <data name="Build.Sdk.ReasonGlobalJson" xml:space="preserve">
+    <value>项目的 global.json 固定了此 SDK 版本</value>
+  </data>
   <data name="Build.Sdk.ReasonNewerFramework" xml:space="preserve">
     <value>项目面向的 .NET 版本高于默认 SDK 所支持的版本</value>
   </data>

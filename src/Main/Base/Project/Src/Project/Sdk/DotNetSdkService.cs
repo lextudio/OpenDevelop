@@ -676,6 +676,9 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			/// <summary>True when this is the IDE's effective SDK at its highest version - the choice every project got before.</summary>
 			public bool IsDefault { get; init; }
 
+			/// <summary>True when the project's global.json pinned this version and the framework-based choice lacked it.</summary>
+			public bool PinnedByGlobalJson { get; init; }
+
 			public bool IsPreview => Version != null && Version.Contains('-');
 		}
 
@@ -808,7 +811,10 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			if (choice?.Sdk == null)
 				return Localized("Build.Sdk.NoneSelected", "No .NET SDK was selected for this build.");
 			string reason;
-			if (!string.IsNullOrEmpty(selectedRoot) && SameRoot(choice.Sdk.RootPath, selectedRoot))
+			// Checked first: the pin overrides any selection, which says nothing about whether that selection was usable
+			if (choice.PinnedByGlobalJson)
+				reason = Localized("Build.Sdk.ReasonGlobalJson", "the project's global.json pins this SDK version");
+			else if (!string.IsNullOrEmpty(selectedRoot) && SameRoot(choice.Sdk.RootPath, selectedRoot))
 				reason = Localized("Build.Sdk.ReasonSelected", "selected in Tools > Options > .NET SDK");
 			else if (!string.IsNullOrEmpty(selectedRoot))
 				reason = Localized("Build.Sdk.ReasonSelectedUnusable",
@@ -817,7 +823,7 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 				reason = Localized("Build.Sdk.ReasonDefault", "no SDK is selected in Options; a supported system SDK was chosen automatically (matching this IDE's architecture first, then the highest version)");
 			else
 				// Implicit: ResolveSdkForTargetFrameworks returns a non-default choice only when a
-				// project needs a newer major than the default SDK; revisit if it gains another reason.
+				// project needs a newer major than the default SDK (a global.json pin is handled above).
 				reason = Localized("Build.Sdk.ReasonNewerFramework", "the project targets a newer .NET than the default SDK supports");
 			string found = discovered == null || discovered.Count == 0
 				? Localized("Build.Sdk.DiscoveredNone", "none")
@@ -874,7 +880,52 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 					frameworks.AddRange(multiple.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(f => f.Trim()));
 			}
 			string selected = SelectedSdkRootPath;
-			return ResolveSdkForTargetFrameworks(DiscoverSdksCached(selected, CustomRoots), selected, frameworks);
+			var discovered = DiscoverSdksCached(selected, CustomRoots);
+			var choice = ResolveSdkForTargetFrameworks(discovered, selected, frameworks);
+			string projectDirectory = project?.FileName == null ? null : Path.GetDirectoryName(project.FileName.ToString());
+			return ApplyGlobalJsonPin(choice, discovered, ReadGlobalJsonSdkVersion(projectDirectory));
+		}
+
+		/// <summary>
+		/// A project whose global.json pins an SDK version the chosen root does not have cannot be built
+		/// from that root at all (the dotnet host stops with "A compatible .NET SDK was not found"). Take
+		/// the discovered root that has exactly that version instead. Any other choice is kept as it is.
+		/// </summary>
+		public static SdkChoice ApplyGlobalJsonPin(SdkChoice choice, IReadOnlyList<DotNetSdkInfo> discovered, string pinnedVersion)
+		{
+			// No supported SDK at all stays that way: a pin must not bring back an SDK the choice refused
+			if (choice?.Sdk == null || string.IsNullOrWhiteSpace(pinnedVersion) || discovered == null)
+				return choice;
+			bool Has(DotNetSdkInfo sdk) => sdk != null && sdk.InstalledSdkVersions.Concat(sdk.PreviewSdkVersions)
+				.Any(v => string.Equals(v, pinnedVersion, StringComparison.OrdinalIgnoreCase));
+			if (Has(choice?.Sdk))
+				return choice;
+			var pinned = discovered.FirstOrDefault(Has);
+			return pinned == null ? choice : new SdkChoice { Sdk = pinned, Version = pinnedVersion, PinnedByGlobalJson = true };
+		}
+
+		/// <summary>sdk.version of the global.json nearest to <paramref name="directory"/> (the one the dotnet host reads), or null.</summary>
+		public static string ReadGlobalJsonSdkVersion(string directory)
+		{
+			for (var current = directory; !string.IsNullOrEmpty(current); current = Path.GetDirectoryName(current)) {
+				var path = Path.Combine(current, "global.json");
+				if (!File.Exists(path))
+					continue;
+				try {
+					using (var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path),
+						new System.Text.Json.JsonDocumentOptions { CommentHandling = System.Text.Json.JsonCommentHandling.Skip, AllowTrailingCommas = true })) {
+						if (document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+							&& document.RootElement.TryGetProperty("sdk", out var sdk) && sdk.ValueKind == System.Text.Json.JsonValueKind.Object
+							&& sdk.TryGetProperty("version", out var version) && version.ValueKind == System.Text.Json.JsonValueKind.String)
+							return version.GetString();
+					}
+				} catch (System.Text.Json.JsonException) {
+				} catch (IOException) {
+				} catch (UnauthorizedAccessException) {
+				}
+				return null;
+			}
+			return null;
 		}
 
 		/// <summary>
