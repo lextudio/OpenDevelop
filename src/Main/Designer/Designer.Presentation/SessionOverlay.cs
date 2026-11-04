@@ -20,6 +20,7 @@ public sealed class SessionOverlay : Grid
     readonly TextBlock reason = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0), MaxWidth = 340 };
     readonly TextBlock elapsed = new() { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.7 };
     readonly Button retry = new() { Content = "Retry", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(0, 0, 6, 0) };
+    readonly Button cancel = new() { Content = "Cancel", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
     readonly Button fallback = new() { Padding = new Thickness(10, 2, 10, 2) };
     readonly StackPanel buttons = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
 
@@ -44,19 +45,26 @@ public sealed class SessionOverlay : Grid
         body.Children.Add(reason);
         body.Children.Add(elapsed);
         body.Children.Add(buttons);
+        body.Children.Add(cancel);
         card.Child = body;
         Children.Add(card);
         retry.Click += (_, _) => RetryRequested?.Invoke(this, EventArgs.Empty);
+        cancel.Click += (_, _) => CancelRequested?.Invoke(this, EventArgs.Empty);
         fallback.Click += (_, _) => FallbackRequested?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>Raised by Cancel while the session is still starting; the designer abandons the
+    /// start and returns to the previous target.</summary>
+    public event EventHandler? CancelRequested;
 
     public event EventHandler? RetryRequested;
 
     public event EventHandler? FallbackRequested;
 
     /// <summary>Shows the card for an in-progress or failed session, hides it otherwise.
-    /// <paramref name="fallbackLabel"/> (e.g. "Use macOS") adds the escape button on failure.</summary>
-    public void Update(DesignerSessionStatus status, string deviceName, string? fallbackLabel, DateTimeOffset now)
+    /// <paramref name="fallbackLabel"/> (e.g. "Use macOS") adds the escape button on failure;
+    /// <paramref name="canCancel"/> shows Cancel while the session is still starting.</summary>
+    public void Update(DesignerSessionStatus status, string deviceName, string? fallbackLabel, bool canCancel, DateTimeOffset now)
     {
         var failed = status.Phase == DesignerSessionPhase.Failed;
         if (!status.InProgress && !failed)
@@ -96,6 +104,7 @@ public sealed class SessionOverlay : Grid
         fallback.Content = fallbackLabel;
         fallback.Visibility = fallbackLabel == null ? Visibility.Collapsed : Visibility.Visible;
         buttons.Visibility = failed ? Visibility.Visible : Visibility.Collapsed;
+        cancel.Visibility = !failed && canCancel ? Visibility.Visible : Visibility.Collapsed;
     }
 
     static Brush Brush(string resourceKey, Brush fallback) =>
