@@ -255,7 +255,7 @@ Undo, Redo and Delete now execute through the common `DesignerCommandController`
 retains its XML history, source mutations, multi-selection gestures and preview synchronization.
 
 Current status: the out-of-process Uno host is implemented and is the preferred renderer for Uno
-projects. It starts a real Uno 6.5.31 `net10.0-desktop` child, loads XAML and application
+projects. It starts a real Uno 6.7.30 `net10.0-desktop` child, loads XAML and application
 resources, renders a bitmap, returns a visual-tree snapshot and hit-test results, and supplies a
 runtime-derived Toolbox catalog. The WPF-side surface also implements selection overlays, zoom,
 pan, design-size changes, drag/resize source edits, inline text editing, unnamed-element picking,
@@ -271,7 +271,7 @@ There are **three supported runtime profiles**, not two interchangeable names fo
 
 | Project/runtime profile | Renderer | Host model | Current state |
 |---|---|---|---|
-| Uno Platform (`Uno.Sdk`, `Uno.WinUI`) | Bundled Uno 6.5.31 runtime today; project runtime is the target | Out of process | Implemented for the fixture; project-version loading remains |
+| Uno Platform (`Uno.Sdk`, `Uno.WinUI`) | Bundled Uno 6.7.30 runtime today; project runtime is the target | Out of process | Implemented for the fixture; project-version loading remains |
 | ProGPU WinUI (`ProGPU.WinUI`) | ProGPU's WinUI-shaped runtime and compositor | In process in the LibreWPF shell | Standard-control path implemented; must be routed explicitly |
 | Native WinUI (`Microsoft.WindowsAppSDK`) | The project's Windows App SDK/WinUI runtime | Windows-only, out of process | Planned adapter |
 
@@ -498,7 +498,7 @@ OpenDevelop's shell
 contracts; only `WinUIXamlHost`'s backing changes from in-process ProGPU to child-process RPC. The
 fixture (`UnoXamlSample`) is handled by that child using the controls/resources available in the
 child's bundled runtime.
-The checked-in child currently runs its own Uno 6.5.31 `.runtimeconfig.json`/`.deps.json`; it does
+The checked-in child currently runs its own Uno 6.7.30 `.runtimeconfig.json`/`.deps.json`; it does
 not yet accept a project assembly or run under the opened project's dependency context described
 in fact 5. That is the main remaining boundary between fixture support and version-correct real
 Uno project support.
@@ -936,8 +936,9 @@ version, custom controls, converters, muxc types). Two child-side pieces make th
   own `pg:PropertyGridControl`, no event handlers) renders with zero diagnostics, while the
   unbuilt `UnoXamlSample` fixture falls back to the child's own deployment unchanged.
 
-The compile baseline stays Uno.Sdk 6.5.31 (the API floor); the project's runtime is whatever
-the project references (verified against 6.6.42). The two reflection points into Uno internals
+The compile baseline is Uno.Sdk 6.7.30 (the API floor; raised from 6.5.31 on 2026-11-04); the project's
+runtime is whatever the project references. That was verified against 6.6.42 while the baseline was still
+6.5.31, so it is below the new floor: re-verify against a 6.7.30 or newer project before claiming it again. The two reflection points into Uno internals
 (`CoreDispatcher.DispatchOverride`, `RootScale._testOverrideScale`) remain the version-risk
 surface; both fail with clear fallbacks.
 

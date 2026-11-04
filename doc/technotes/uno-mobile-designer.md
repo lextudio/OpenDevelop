@@ -1,7 +1,9 @@
 # Uno designer: iOS Simulator and Android Emulator previews
 
-Status: project charter and design (2026-11-03). Nothing in this document is implemented yet except the shared device layer it
-builds on. Related: `winui-designer.md` (the Uno/WinUI runtimes and the out-of-process decision),
+Status: project charter and design (2026-11-03), updated 2026-11-04. Implemented so far: the shared device layer, the shared
+iOS/Android host-process classes in `Designer.Remote`, the Uno 6.7.30 baseline, and an opt-in Skia-based iOS head of the Uno design host that
+opens a document and renders a frame in a simulator (see section 4a). Not started: the Android head, the `UnoDesignClient`/IDE wiring
+(picker, progress card), project assemblies on a device, and packaging. Related: `winui-designer.md` (the Uno/WinUI runtimes and the out-of-process decision),
 `designer-common.md` ("Machine-wide devices and the Device Manager", DDP), and the MAUI Designer's design
 (`MAUI-Designer/opendevelop-addin/docs/design.md`), which this project follows and reuses.
 
@@ -16,7 +18,7 @@ Uno hot reload service is separate), and non-Apple/Android targets (WebAssembly,
 
 ## 2. What exists (verified in the tree)
 
-- **Desktop host.** `WinUIXamlDesigner.UnoHost` is an Uno.Sdk 6.5.31 `net10.0-desktop` Skia app. It installs a headless
+- **Desktop host.** `WinUIXamlDesigner.UnoHost` is an Uno.Sdk 6.7.30 (baseline raised from 6.5.31 on 2026-11-04) `net10.0-desktop` Skia app. It installs a headless
   dispatcher (`HeadlessDispatcher`), renders an element that belongs to no window with `RenderTargetBitmap`, encodes the frame
   through SkiaSharp, and speaks DDP through `DesignerChildHost.Run(...)`. It preloads the project's assemblies from `--appbin`.
 - **Client.** `WinUIXamlDesigner.UnoDesignHost/UnoDesignClient` (`RecoverableDesignerDocumentHostClient`, DDP method mapping)
@@ -115,7 +117,7 @@ again. Reviews of this code found real defects worth remembering for any future 
 command line (use the `[-]-port` bracket form), `ps` output must not be truncated (`-ww`), an EXIT trap does not run when the
 script is killed (remove the `adb reverse` bridge in `OnDisposed` too), and device-side cleanup must not depend on `Dispose` alone.
 
-**Phase 1 spike (iOS): the head is feasible.** A scratch Uno 6.5.31 `net10.0-ios` app (single project, `SkiaRenderer`) was built,
+**Phase 1 spike (iOS): the head is feasible.** A scratch Uno 6.5.31 (native iOS renderer) `net10.0-ios` app (single project, `SkiaRenderer`) was built,
 installed into an iOS 26.x simulator, launched, created a `Window` and rendered its content with `RenderTargetBitmap` about 1.5 s
 after launch: `1206x2622` pixels (a full-screen frame at 3x) from `RenderAsync`/`GetPixelsAsync`. This answers risk 2 below for iOS:
 frame capture works in a real window, so a mobile head can use the same `RenderTargetBitmap` path as the desktop host.
@@ -133,10 +135,27 @@ What the spike also showed (each cost time, so they are recorded):
   difference is Uno.Sdk's single-project defaults.) An empty launch screen is also what keeps iOS out of legacy 320x480 mode.
 - **Noise.** `Uno.UI.Runtime.Skia.AppleUIKit` logs a `TypeLoadException` on registration at start-up; rendering still works.
 
-**Not yet started:** the real multi-target `WinUIXamlDesigner.UnoHost` head (the desktop `HeadlessDispatcher` becomes one
-implementation behind a dispatcher abstraction, because `DesignHost` calls it directly in about 18 places; the mobile
-implementation marshals to the window's `DispatcherQueue` and installs the `HostVisualRoot`/`HostAwaitFrame` hooks that `DesignHost`
-already exposes for hosts that need a window), the `UnoDesignClient` connection abstraction (it is built on a private
+**Direction change: Skia-only, Uno 6.7 baseline (2026-11-04).** Uno 7 is expected to be Skia-only; the local `Uno.WinUI` 7.0.0-dev packages
+have no `net10.0-ios`/`-android` lib flavours (6.5 has them), which supports that. The spike above used the native iOS renderer, so it is not
+the shape to ship. The real iOS head is Skia-based from the start, and the Uno baseline is now 6.7.30 (central pin
+`Microsoft.Extensions.DependencyInjection.Abstractions` raised to 10.0.12, because Uno 6.7 brings `Microsoft.Extensions.Logging.Console`
+10.0.12). What that changes in practice: with `SkiaRenderer`, `Application` is not a `UIApplicationDelegate`, so `UIApplication.Main(typeof(App))`
+fails ("No class named App is loaded", found the hard way when a multi-targeted build silently switched flavours); the entry point is
+`UnoPlatformHostBuilder.Create().App(() => new App()).UseAppleUIKit().Build().Run()`, and the managed `Main` args are empty, so
+`--port`/`--token` come from `NSProcessInfo.ProcessInfo.Arguments`. The same host-builder pattern will be used for Android.
+
+**Phase 1, iOS head: working end to end (commits `9cdd64144a`, `67254aed11`).** `WinUIXamlDesigner.UnoHost` now multi-targets
+`net10.0-desktop` (always) and `net10.0-ios` (opt-in, `-p:UnoDesignHostMobile=true`; needs the iOS workload). `DesignHost` talks to a swappable
+`IHostDispatcher` (desktop: the unchanged headless pump; mobile: the window's `DispatcherQueue`) and the mobile head parks the design root in
+a real window through the existing `HostVisualRoot`/`HostCommitLayout`/`HostAwaitFrame` hooks. Driven by a scratch program with the shared
+`IosSimulatorHostProcess`: installed into an iOS simulator, DDP connected in 8.6 s, `session/open` accepted, a 1170x155 frame at dpi 3 rendered,
+clean disposal. Desktop regression check: `WinUIXamlDesigner.UnoHost.Tests` 27 passed, 3 skipped on 6.7.30. Also found on the way: a built app's
+`Info.plist` is binary, which the shared bundle-id reader could not read (fixed with a `plutil` conversion).
+Caveats: the Windows-only `WinUIXamlDesigner.MicrosoftHost` source-links `DesignHost.cs` and now also links `HostDispatcher.cs`; it could not be
+built on the macOS machine used here, so it needs a Windows build before release. Packaging has no mobile path yet (the deploy target is
+desktop-only). The iOS head has no automated test yet (the driver was a scratch program).
+
+**Not yet started:** the `UnoDesignClient` connection abstraction (it is built on a private
 `Connection : DesignerHostProcessClient` and reads capabilities from the handshake), the view-content picker/overlay, preview-target
 extraction, and everything Android. Android is also blocked on a healthy emulator and on installing the Android workload the same
 way as iOS.
@@ -146,8 +165,9 @@ way as iOS.
 1. **Workloads and build weight.** Mobile TFMs need the `ios`/`android` workloads and Xcode/Android SDK. Opt-in TFMs keep the add-in
    buildable without them; CI needs a macOS lane with both. Xcode 27 currently trails the installed iOS workload (see the
    workspace `AGENTS.md`): the MAUI iOS host builds with `-p:ValidateXcodeVersion=false`; Uno will need the same.
-2. **Frame capture on mobile.** `RenderTargetBitmap` behaviour on Uno iOS/Android (renderer choice: native vs Skia, pixel scale,
-   timing of the first frame) is unverified; the phase-1 spike decides, and may force the Skia renderer for the mobile heads.
+2. **Frame capture on mobile.** Resolved for iOS: the Skia-based head renders `RenderTargetBitmap` frames in a simulator (section 4a;
+   Skia is the only renderer Uno 7 is expected to offer on mobile). Still unverified for Android (pixel scale, first-frame timing,
+   `UnoPlatformHostBuilder` on Android).
 3. **Startup time.** A cold simulator or emulator takes tens of seconds to over a minute; the progress card and Cancel already
    cover the UX. The Android test AVD has been seen to starve (2 GB), so Android journeys need a healthy emulator.
 4. **Conditional XAML.** Uno XAML uses `ios:`/`android:` prefixes resolved at build time; the desktop host strips them
