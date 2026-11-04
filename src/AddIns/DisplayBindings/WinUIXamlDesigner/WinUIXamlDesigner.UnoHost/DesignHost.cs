@@ -74,10 +74,10 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		string lastPrimaryFileName = "";
 
 		public DesignerCapabilities GetCapabilities()
-			=> HeadlessDispatcher.Dispatch(() => BuildCapabilities());
+			=> HostDispatcher.Dispatch(() => BuildCapabilities());
 
 		public DesignerSessionState LoadDesign(string xaml, double width, double height, double dpi)
-			=> HeadlessDispatcher.DispatchAsync(() => LoadDesignAsync(new LoadDesignRequest { Xaml = xaml, Width = width, Height = height, Dpi = dpi })).GetAwaiter().GetResult();
+			=> HostDispatcher.DispatchAsync(() => LoadDesignAsync(new LoadDesignRequest { Xaml = xaml, Width = width, Height = height, Dpi = dpi })).GetAwaiter().GetResult();
 
 		/// <summary>Session-aware first load (session/open): stamps the returned snapshot with
 		/// the session/document ids and the initial version.</summary>
@@ -85,7 +85,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		{
 			this.sessionId = sessionId;
 			this.documentId = documentId;
-			var snapshot = HeadlessDispatcher.DispatchAsync(() => LoadDesignAsync(new LoadDesignRequest {
+			var snapshot = HostDispatcher.DispatchAsync(() => LoadDesignAsync(new LoadDesignRequest {
 				SessionId = sessionId, DocumentId = documentId, FileName = fileName, Version = 1, Xaml = xaml, Width = width, Height = height, Dpi = dpi
 			})).GetAwaiter().GetResult();
 			version = 1;
@@ -102,7 +102,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			EnsureOwnSession(sessionId, documentId);
 			if (RejectIfStale(sessionId, documentId, baseVersion, allowNewerVersion: true) is { } stale)
 				return stale;
-			var snapshot = HeadlessDispatcher.DispatchAsync(() => LoadDesignAsync(new LoadDesignRequest {
+			var snapshot = HostDispatcher.DispatchAsync(() => LoadDesignAsync(new LoadDesignRequest {
 				SessionId = sessionId, DocumentId = documentId, FileName = fileName, Version = baseVersion, Xaml = xaml, Width = width, Height = height, Dpi = dpi
 			})).GetAwaiter().GetResult();
 			version = baseVersion;
@@ -133,34 +133,34 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		/// re-renders, without re-running XamlReader.Load - the point of moving off design/load
 		/// for incremental edits.</summary>
 		public DesignerSessionState SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value)
-			=> HeadlessDispatcher.DispatchAsync(() => SetPropertyAsync(sessionId, documentId, baseVersion, elementId, propertyName, value)).GetAwaiter().GetResult();
+			=> HostDispatcher.DispatchAsync(() => SetPropertyAsync(sessionId, documentId, baseVersion, elementId, propertyName, value)).GetAwaiter().GetResult();
 
 		/// <summary>No live code-behind instance exists in this design host, so this just
 		/// validates the element/event names and returns the snapshot unchanged - lands the
 		/// RPC contract; deeper semantics is future work.</summary>
 		public DesignerSessionState SetEvent(string sessionId, string documentId, long baseVersion, string elementId, string eventName, string handlerName)
-			=> HeadlessDispatcher.Dispatch(() => SetEventCore(sessionId, documentId, baseVersion, elementId, eventName, handlerName));
+			=> HostDispatcher.Dispatch(() => SetEventCore(sessionId, documentId, baseVersion, elementId, eventName, handlerName));
 
 		/// <summary>Parses <paramref name="item"/> and inserts it as a child of the named
 		/// parent, then re-renders without re-running the full document XamlReader.Load.</summary>
 		public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, double x, double y)
-			=> HeadlessDispatcher.DispatchAsync(() => AddElementAsync(sessionId, documentId, baseVersion, parentId, item, x, y)).GetAwaiter().GetResult();
+			=> HostDispatcher.DispatchAsync(() => AddElementAsync(sessionId, documentId, baseVersion, parentId, item, x, y)).GetAwaiter().GetResult();
 
 		/// <summary>Sets an element's Width/Height directly, and its Canvas.Left/Top when its
 		/// parent is a Canvas, then re-renders.</summary>
 		public DesignerSessionState SetBounds(string sessionId, string documentId, long baseVersion, string elementId, double x, double y, double width, double height)
-			=> HeadlessDispatcher.DispatchAsync(() => SetBoundsAsync(sessionId, documentId, baseVersion, elementId, x, y, width, height)).GetAwaiter().GetResult();
+			=> HostDispatcher.DispatchAsync(() => SetBoundsAsync(sessionId, documentId, baseVersion, elementId, x, y, width, height)).GetAwaiter().GetResult();
 
 		/// <summary>Removes each named element from its Panel parent, then re-renders.</summary>
 		public DesignerSessionState DeleteElements(string sessionId, string documentId, long baseVersion, string[] elementIds)
-			=> HeadlessDispatcher.DispatchAsync(() => DeleteElementsAsync(sessionId, documentId, baseVersion, elementIds)).GetAwaiter().GetResult();
+			=> HostDispatcher.DispatchAsync(() => DeleteElementsAsync(sessionId, documentId, baseVersion, elementIds)).GetAwaiter().GetResult();
 
 		/// <summary>Renames the live element (FrameworkElement.Name), then re-renders.</summary>
 		public DesignerSessionState Rename(string sessionId, string documentId, long baseVersion, string elementId, string newName)
-			=> HeadlessDispatcher.DispatchAsync(() => RenameAsync(sessionId, documentId, baseVersion, elementId, newName)).GetAwaiter().GetResult();
+			=> HostDispatcher.DispatchAsync(() => RenameAsync(sessionId, documentId, baseVersion, elementId, newName)).GetAwaiter().GetResult();
 
 		public DesignerSessionState Layout(double width, double height, double dpi)
-			=> HeadlessDispatcher.DispatchAsync(() => LayoutAsync(new LayoutRequest { Width = width, Height = height, Dpi = dpi })).GetAwaiter().GetResult();
+			=> HostDispatcher.DispatchAsync(() => LayoutAsync(new LayoutRequest { Width = width, Height = height, Dpi = dpi })).GetAwaiter().GetResult();
 
 		// Theme and visual state change only how the document is presented, never its source, so a base
 		// version NEWER than the open document is accepted and adopted the way session/update does it; an
@@ -175,11 +175,11 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		// call deadlocked every visual-state switch (and theme switch) on the Microsoft WinUI host until the
 		// client's 30 s timeout killed it; the Uno host has no frame wait, which is why it never showed there.
 		public DesignerSessionState SetTheme(string sessionId, string documentId, long baseVersion, string theme)
-			=> HeadlessDispatcher.DispatchAsync(async () => RejectIfStale(sessionId, documentId, baseVersion, allowNewerVersion: true) is { } stale
+			=> HostDispatcher.DispatchAsync(async () => RejectIfStale(sessionId, documentId, baseVersion, allowNewerVersion: true) is { } stale
 				? stale : AdoptVersion(baseVersion, await SetThemeAsync(theme))).GetAwaiter().GetResult();
 
 		public DesignerSessionState GoToState(string sessionId, string documentId, long baseVersion, string group, string state)
-			=> HeadlessDispatcher.DispatchAsync(async () => RejectIfStale(sessionId, documentId, baseVersion, allowNewerVersion: true) is { } stale
+			=> HostDispatcher.DispatchAsync(async () => RejectIfStale(sessionId, documentId, baseVersion, allowNewerVersion: true) is { } stale
 				? stale : AdoptVersion(baseVersion, await GoToStateAsync(group, state))).GetAwaiter().GetResult();
 
 		DesignerSessionState AdoptVersion(long baseVersion, DesignerSessionState snapshot)
@@ -191,12 +191,12 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		}
 
 		public DesignerAppResourcesResult LoadAppResources(string xaml)
-			=> HeadlessDispatcher.Dispatch(() => LoadAppResourcesCore(xaml));
+			=> HostDispatcher.Dispatch(() => LoadAppResourcesCore(xaml));
 
 		/// <summary>Renders the current design again and writes it as a PNG to the given
 		/// path (via Skia, which the WPF-side PNG codecs cannot do under LibreWPF).</summary>
 		public string ExportPng(string path)
-			=> HeadlessDispatcher.DispatchAsync(() => ExportPngAsync(path)).GetAwaiter().GetResult();
+			=> HostDispatcher.DispatchAsync(() => ExportPngAsync(path)).GetAwaiter().GetResult();
 
 		async Task<string> ExportPngAsync(string path)
 		{
@@ -238,17 +238,17 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, double x, double y)
 		{
 			EnsureOwnSession(sessionId, documentId);
-			return HeadlessDispatcher.Dispatch(() => HitTestCore(new HitTestRequest { X = x, Y = y }));
+			return HostDispatcher.Dispatch(() => HitTestCore(new HitTestRequest { X = x, Y = y }));
 		}
 
 		public void Shutdown()
 		{
-			HeadlessDispatcher.RequestExit();
+			HostDispatcher.RequestExit();
 		}
 
 		public void Close()
 		{
-			HeadlessDispatcher.Dispatch(() => {
+			HostDispatcher.Dispatch(() => {
 				var closedRoot = root;
 				root = null;
 				HostVisualRoot?.Invoke(closedRoot, null);

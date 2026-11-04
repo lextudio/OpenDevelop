@@ -1,3 +1,4 @@
+#if !__IOS__ && !__ANDROID__
 using System;
 using System.IO;
 using System.Reflection;
@@ -43,3 +44,4 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		}
 	}
 }
+#endif

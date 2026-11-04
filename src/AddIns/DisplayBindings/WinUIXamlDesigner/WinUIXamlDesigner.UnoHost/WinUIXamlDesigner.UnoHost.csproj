@@ -1,17 +1,36 @@
-<Project Sdk="Uno.Sdk/6.5.31">
+<Project Sdk="Uno.Sdk/6.7.30">
   <PropertyGroup>
     <!-- The sources annotate nullability with '?' throughout; the annotation context must be
          enabled for those annotations to be legal, without turning the warning context on for
          legacy files that were never audited. -->
     <Nullable>annotations</Nullable>
-    <TargetFramework>net10.0-desktop</TargetFramework>
+    <!-- The desktop head is always built. The iOS head needs the iOS workload and Xcode, which not every
+         machine (or CI lane) has, so it is opt-in: -p:UnoDesignHostMobile=true. -->
+    <UnoDesignHostMobile Condition="'$(UnoDesignHostMobile)' == ''">false</UnoDesignHostMobile>
+    <TargetFrameworks>net10.0-desktop</TargetFrameworks>
+    <TargetFrameworks Condition="'$(UnoDesignHostMobile)' == 'true'">net10.0-desktop;net10.0-ios</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <UnoSingleProject>true</UnoSingleProject>
+    <!-- Every head renders with Skia. Uno 7 drops the native iOS/Android renderers (its package has no
+         net10.0-ios/-android flavour), so the mobile heads are Skia from the start: Uno.UI.dll becomes the Skia
+         flavour, whose Application is not a UIApplicationDelegate, so the iOS entry point goes through
+         UnoPlatformHostBuilder.UseAppleUIKit() instead of UIApplication.Main(typeof(App)). -->
     <UnoFeatures>SkiaRenderer</UnoFeatures>
     <RootNamespace>ICSharpCode.WinUIXamlDesigner.UnoHost</RootNamespace>
     <OpenDevelopAddin>true</OpenDevelopAddin>
     <OpenDevelopAddinKind>OutOfProcessHost</OpenDevelopAddinKind>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-ios'">
+    <RuntimeIdentifier>iossimulator-arm64</RuntimeIdentifier>
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
+    <ApplicationId>com.lextudio.opendevelop.unodesignhost</ApplicationId>
+    <ValidateXcodeVersion Condition="'$(ValidateXcodeVersion)' == ''">false</ValidateXcodeVersion>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-ios'">
+    <InterfaceDefinition Include="Platforms/iOS/LaunchScreen.storyboard" />
+    <Page Remove="Platforms/iOS/App.xaml" />
+    <ApplicationDefinition Include="Platforms/iOS/App.xaml" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
 	<ProjectReference Include="..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
@@ -20,7 +39,7 @@
   <!-- Deploy the whole runnable child (dll + deps + runtimeconfig + native libs) into the addin's
        own folder, next to ICSharpCode.WinUIXamlDesigner.dll, so the WPF side can find and spawn
        it from the deployed AddIns tree exactly like it does at dev time. -->
-  <Target Name="DeployToAddIns" AfterTargets="Build">
+  <Target Name="DeployToAddIns" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net10.0-desktop'">
     <ItemGroup>
       <HostOutput Include="$(TargetDir)**" />
     </ItemGroup>

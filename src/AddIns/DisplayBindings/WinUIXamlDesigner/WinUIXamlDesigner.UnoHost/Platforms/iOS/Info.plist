@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- An empty UILaunchScreen opts into native full-screen sizes (no legacy 320x480 mode), so
+	     the device metrics the host reports are the device's real ones. -->
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>CFBundleDisplayName</key>
+	<string>UnoDesignHost</string>
+	<key>MinimumOSVersion</key>
+	<string>15.0</string>
+</dict>
+</plist>

@@ -47,6 +47,7 @@
          (HeadlessDispatcher.cs). Linking rather than reimplementing is what keeps the two WinUI
          hosts a single implementation - see DesignRpc.cs's header. -->
     <Compile Include="..\WinUIXamlDesigner.UnoHost\DesignHost.cs" Link="DesignHost.cs" />
+    <Compile Include="..\WinUIXamlDesigner.UnoHost\HostDispatcher.cs" Link="HostDispatcher.cs" />
     <Compile Include="..\WinUIXamlDesigner.UnoHost\DesignProtocol.cs" Link="DesignProtocol.cs" />
     <Compile Include="..\WinUIXamlDesigner.UnoHost\DesignRpc.cs" Link="DesignRpc.cs" />
     <Compile Include="..\WinUIXamlDesigner.UnoHost\HostBootstrap.cs" Link="HostBootstrap.cs" />

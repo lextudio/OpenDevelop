@@ -1,3 +1,4 @@
+#if !__IOS__ && !__ANDROID__
 using System;
 using System.Collections.Concurrent;
 using System.Reflection;
@@ -144,3 +145,4 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		}
 	}
 }
+#endif
