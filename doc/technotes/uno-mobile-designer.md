@@ -2,9 +2,9 @@
 
 Status: project charter and design (2026-11-03), updated 2026-11-04. Implemented so far: the shared device layer, the shared
 iOS/Android host-process classes in `Designer.Remote`, the Uno 6.7.30 baseline, an opt-in Skia-based iOS head of the Uno design host, and the
-IDE side for iOS: the Uno designer offers the shared device picker and progress card for a project that targets iOS, and previews on a
-simulator end to end (see section 4a). Not started: the Android head, project assemblies on a device, orientation/device chrome/Cancel for the
-Uno designer, and packaging. Related: `winui-designer.md` (the Uno/WinUI runtimes and the out-of-process decision),
+IDE side for iOS and Android: the Uno designer offers the shared device picker and progress card for a project that targets iOS or Android, and
+previews on a simulator or an emulator end to end (see section 4a). Not started: project assemblies on a device, orientation/device chrome/Cancel
+for the Uno designer, debugging on a device, and packaging. Related: `winui-designer.md` (the Uno/WinUI runtimes and the out-of-process decision),
 `designer-common.md` ("Machine-wide devices and the Device Manager", DDP), and the MAUI Designer's design
 (`MAUI-Designer/opendevelop-addin/docs/design.md`), which this project follows and reuses.
 
@@ -171,18 +171,37 @@ connection and could leave the adopted host leaked). Verified by the integration
 otherwise build in the same MSBuild process as the new Uno.Sdk. Known limits: framework controls only on the device, the Android entry in the
 picker reads "not available yet", no orientation toggle, no device chrome, no Cancel button, and the remembered-device restore path has no test.
 
-**Not yet started:** the Android head (and `UnoPlatformHostBuilder` on Android), orientation and device chrome for the Uno designer,
-preview-target/preflight extraction from MAUI (the Uno code duplicates a little of it), project assemblies on a device, and packaging
-(the deploy target is a developer-machine convenience, not a release path). Android is also blocked on a healthy emulator and on installing the Android workload the same way as iOS.
+**Phase 2, Android: working.** The same host source builds as `net10.0-android` (opt-in with the other mobile heads). Skia-based Uno on Android
+runs as `Microsoft.UI.Xaml.NativeApplication` + `ApplicationActivity`; the IDE starts the activity with `am start --es port N --es token T` (via
+`AndroidEmulatorHostProcess`) and the activity turns the extras into the `--port/--token` arguments the other heads get on their command line. Things
+that cost time and are worth remembering: `ApplicationActivity` throws "You need to use a Theme.AppCompat theme" without an AppCompat theme
+(`Platforms/Android/Resources/values/Styles.xml`); the all-ABI debug APK is about 130 MB and was slow to install, so the head is built for one ABI
+(`android-arm64` on an arm64 machine; 74 MB, installs in about 20 s); `EmbedAssembliesIntoApk` is needed for a plain `adb install`; and a small
+emulator (1.5 GB AVD) takes tens of seconds to start the Mono app and to render the first frame, which exceeded the host-process defaults (30 s
+connect, 30 s request) and made a healthy host look dead, so device hosts now carry their own connect and request timeouts. The IDE side
+(`UnoDesignRuntimeHost.Devices.cs`) offers the AVDs of the Android Device Manager provider for a project that targets Android (macOS/Linux; the host
+process is a Unix script), starts an emulator that is not running and waits for `sys.boot_completed`, installs the APK deployed beside the desktop
+head (`UnoHost.Android`), and uses the same session phases, overlay, remembered device and generation guard as iOS. Verified by the integration
+journey `AddInTests.WinUIDesigner_UnoOnAndroidEmulator_RendersOnTheDeviceAndSwitchesBack` (real IDE, real emulator: Ready with a 412-wide frame, then back
+to the 1280-wide desktop preview), skipped unless an emulator is running and the APK is deployed. Known limits are the iOS ones (framework controls
+only, no orientation/chrome/Cancel) plus: the preview target for Android defaults to 412x915 rather than the AVD's own screen size.
+
+**Machine note (2026-11-04).** On the 16 GB development Mac the memory pressure (swap about 7 of 8 GB) came mostly from two booted iOS simulators
+(about 3.5 GB across 356 processes), Spotlight's `mds_stores` (about 1.1 GB) and the emulator; inside the 1.5 GB AVD the Google apps of the
+`google_apis` image (Wellbeing, Gboard, Messages, quick search) use about 1 GB that a design host does not need. A healthy emulator for the journeys
+wants either more AVD RAM or those apps disabled.
+
+**Not yet started:** project assemblies on a device, orientation and device chrome for the Uno designer, preview-target/preflight extraction from
+MAUI (the Uno code duplicates a little of it), device debugging (see below), and packaging (the deploy targets are a developer-machine convenience,
+not a release path).
 
 ## 5. Risks and open questions
 
 1. **Workloads and build weight.** Mobile TFMs need the `ios`/`android` workloads and Xcode/Android SDK. Opt-in TFMs keep the add-in
    buildable without them; CI needs a macOS lane with both. Xcode 27 currently trails the installed iOS workload (see the
    workspace `AGENTS.md`): the MAUI iOS host builds with `-p:ValidateXcodeVersion=false`; Uno will need the same.
-2. **Frame capture on mobile.** Resolved for iOS: the Skia-based head renders `RenderTargetBitmap` frames in a simulator (section 4a;
-   Skia is the only renderer Uno 7 is expected to offer on mobile). Still unverified for Android (pixel scale, first-frame timing,
-   `UnoPlatformHostBuilder` on Android).
+2. **Frame capture on mobile.** Resolved for iOS and Android: the Skia-based heads render `RenderTargetBitmap` frames in a simulator and an
+   emulator (section 4a; Skia is the only renderer Uno 7 is expected to offer on mobile).
 3. **Startup time.** A cold simulator or emulator takes tens of seconds to over a minute; the progress card and Cancel already
    cover the UX. The Android test AVD has been seen to starve (2 GB), so Android journeys need a healthy emulator.
 4. **Conditional XAML.** Uno XAML uses `ios:`/`android:` prefixes resolved at build time; the desktop host strips them

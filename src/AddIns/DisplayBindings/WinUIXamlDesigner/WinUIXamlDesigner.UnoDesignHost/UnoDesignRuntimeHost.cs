@@ -506,11 +506,13 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 		UnoDesignClient created = null;
 		try
 		{
-			if (device.Platform == ICSharpCode.SharpDevelop.Designer.Devices.DevicePlatform.IosSimulator)
+			if (device.Platform != ICSharpCode.SharpDevelop.Designer.Devices.DevicePlatform.Host)
 			{
-				// A simulator preview needs neither the desktop build nor its dependency graph: the iOS head
+				// A device preview needs neither the desktop build nor its dependency graph: the iOS/Android head
 				// renders framework controls on the device (project assemblies on a device come later).
-				created = await StartIosDeviceClientAsync(device, generation);
+				created = device.Platform == ICSharpCode.SharpDevelop.Designer.Devices.DevicePlatform.AndroidEmulator
+					? await StartAndroidDeviceClientAsync(device, generation)
+					: await StartIosDeviceClientAsync(device, generation);
 				if (generation != Volatile.Read(ref connectGeneration))
 				{
 					// Disposing waits for the host to shut down (up to 3 s): keep that off the UI thread.
@@ -1622,7 +1624,12 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 	{
 		var (documentWidth, documentHeight) = ParseDocumentSize(text);
 		// A phone-shaped canvas by default on a device (its own screen replaces the desktop presets).
-		var deviceDefault = previewDevice.Platform == ICSharpCode.SharpDevelop.Designer.Devices.DevicePlatform.Host ? (1280, 720) : (390, 844);
+		var deviceDefault = previewDevice.Platform switch
+		{
+			ICSharpCode.SharpDevelop.Designer.Devices.DevicePlatform.Host => (1280, 720),
+			ICSharpCode.SharpDevelop.Designer.Devices.DevicePlatform.AndroidEmulator => (412, 915),
+			_ => (390, 844),
+		};
 		// A remembered desktop size preset belongs to the desktop; a device canvas starts from the device default.
 		var onDevice = previewDevice.Platform != ICSharpCode.SharpDevelop.Designer.Devices.DevicePlatform.Host;
 		var width = documentWidth > 0 ? documentWidth : (onDevice ? null : configuredDesignWidth) ?? deviceDefault.Item1;

@@ -8,7 +8,7 @@
          machine (or CI lane) has, so it is opt-in: -p:UnoDesignHostMobile=true. -->
     <UnoDesignHostMobile Condition="'$(UnoDesignHostMobile)' == ''">false</UnoDesignHostMobile>
     <TargetFrameworks>net10.0-desktop</TargetFrameworks>
-    <TargetFrameworks Condition="'$(UnoDesignHostMobile)' == 'true'">net10.0-desktop;net10.0-ios</TargetFrameworks>
+    <TargetFrameworks Condition="'$(UnoDesignHostMobile)' == 'true'">net10.0-desktop;net10.0-ios;net10.0-android</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <UnoSingleProject>true</UnoSingleProject>
     <!-- Every head renders with Skia. Uno 7 drops the native iOS/Android renderers (its package has no
@@ -26,10 +26,24 @@
     <ApplicationId>com.lextudio.opendevelop.unodesignhost</ApplicationId>
     <ValidateXcodeVersion Condition="'$(ValidateXcodeVersion)' == ''">false</ValidateXcodeVersion>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-android'">
+    <ApplicationId>com.lextudio.opendevelop.unodesignhost</ApplicationId>
+    <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <!-- One ABI, the one this machine's emulators run: the all-ABI debug APK is ~130 MB, which takes minutes to
+         adb install into a small AVD. An x64 machine runs x86_64 emulators. -->
+    <RuntimeIdentifier Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'Arm64'">android-arm64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' != 'Arm64'">android-x64</RuntimeIdentifier>
+    <!-- A plain "adb install" cannot satisfy Fast Deployment, so the assemblies travel inside the APK. -->
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+  </PropertyGroup>
+  <!-- Both mobile heads share one application definition (Fluent control resources), like the desktop head does in code. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-ios' Or '$(TargetFramework)' == 'net10.0-android'">
+    <Page Remove="Platforms/Mobile/App.xaml" />
+    <ApplicationDefinition Include="Platforms/Mobile/App.xaml" />
+  </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-ios'">
     <InterfaceDefinition Include="Platforms/iOS/LaunchScreen.storyboard" />
-    <Page Remove="Platforms/iOS/App.xaml" />
-    <ApplicationDefinition Include="Platforms/iOS/App.xaml" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
@@ -59,6 +73,15 @@
       <_IosDeployRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../../../../AddIns/DisplayBindings/WinUIXamlDesigner/UnoHost.iOS'))</_IosDeployRoot>
     </PropertyGroup>
     <Exec Command="rm -rf &quot;$(_IosDeployRoot)&quot; &amp;&amp; mkdir -p &quot;$(_IosDeployRoot)&quot; &amp;&amp; cp -R &quot;$(OutDir)$(AssemblyName).app&quot; &quot;$(_IosDeployRoot)/&quot;" />
+  </Target>
+
+  <!-- The Android head ships as an APK beside the desktop head ("UnoHost.Android"); the designer adb-installs it into the emulator. -->
+  <Target Name="DeployAndroidHostToAddIns" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net10.0-android'">
+    <PropertyGroup>
+      <_AndroidDeployRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../../../../AddIns/DisplayBindings/WinUIXamlDesigner/UnoHost.Android'))</_AndroidDeployRoot>
+    </PropertyGroup>
+    <MakeDir Directories="$(_AndroidDeployRoot)" />
+    <Copy SourceFiles="$(OutDir)$(ApplicationId)-Signed.apk" DestinationFiles="$(_AndroidDeployRoot)/WinUIXamlDesigner.UnoHost.apk" />
   </Target>
 
   <ItemGroup>

@@ -27,6 +27,9 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 	/// <summary>Folder (beside this assembly) that holds the iOS head's app bundle.</summary>
 	internal const string IosHostFolder = "UnoHost.iOS";
 	const string IosHostBundle = "WinUIXamlDesigner.UnoHost.app";
+	internal const string AndroidHostFolder = "UnoHost.Android";
+	const string AndroidHostApk = "WinUIXamlDesigner.UnoHost.apk";
+	const string AndroidPackage = "com.lextudio.opendevelop.unodesignhost";
 
 	Device previewDevice = Device.Host;
 	DevicePreferences devicePreferences = DevicePreferences.Empty;
@@ -38,7 +41,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 	UIElement chromeRoot;
 	bool chromeBuilt;
 	int connectGeneration;
-	IosSimulatorHostProcess currentDeviceHost;
+	DesignerHostProcessClient currentDeviceHost;
 	readonly DesignerSession deviceSession = new();
 	static DeviceManagerDialog deviceManager;
 
@@ -64,7 +67,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 		bool isUno = !hostDisplayName.Contains("WinUI", StringComparison.OrdinalIgnoreCase)
 			&& !hostDisplayName.Contains("ProGPU", StringComparison.OrdinalIgnoreCase);
 		projectTargets = isUno ? ProjectTargets.ReadFromFile(projectFileName) : ProjectTargets.None;
-		if (!projectTargets.SupportsIos || !OperatingSystem.IsMacOS())
+		if (!OffersDevices)
 			return;
 		devicePreferences = DevicePreferencesStore.Load();
 		DeviceService.Default.Changed += OnSharedDevicesChanged;
@@ -96,6 +99,12 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 		}).Task.Unwrap().ConfigureAwait(false);
 	}
 
+	/// <summary>Whether this project can preview on a device here: iOS needs macOS, Android needs a Unix shell (the host
+	/// process is a watcher script).</summary>
+	bool OffersDevices =>
+		(projectTargets.SupportsIos && OperatingSystem.IsMacOS())
+		|| (projectTargets.SupportsAndroid && !OperatingSystem.IsWindows());
+
 	public UIElement ChromeRoot
 	{
 		get
@@ -103,7 +112,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 			if (!chromeBuilt)
 			{
 				chromeBuilt = true;
-				if (projectTargets.SupportsIos && OperatingSystem.IsMacOS())
+				if (OffersDevices)
 					BuildChrome();
 			}
 
@@ -153,6 +162,8 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 		var devices = new List<Device> { Device.Host };
 		if (projectTargets.SupportsIos && OperatingSystem.IsMacOS())
 			devices.AddRange(devicePreferences.Visible(shared.Where(d => d.Platform == DevicePlatform.IosSimulator)));
+		if (projectTargets.SupportsAndroid && !OperatingSystem.IsWindows())
+			devices.AddRange(devicePreferences.Visible(shared.Where(d => d.Platform == DevicePlatform.AndroidEmulator)));
 		return devices;
 	}
 
@@ -165,7 +176,18 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 		else if (!OfferedDevicesList().Any(d => d.Platform == DevicePlatform.IosSimulator))
 			reasons.Add("iOS: no iPhone or iPad simulator is installed (or all are hidden).");
 		if (projectTargets.SupportsAndroid)
-			reasons.Add("Android: previews are not available yet.");
+		{
+			var android = DeviceService.Default.Providers.FirstOrDefault(p => p.Platform == DevicePlatform.AndroidEmulator);
+			if (OperatingSystem.IsWindows())
+				reasons.Add("Android: previews need macOS or Linux for now.");
+			else if (android == null)
+				reasons.Add("Android: the Android Device Manager add-in is not loaded.");
+			else if (android.Unavailable is { } androidWhy)
+				reasons.Add("Android: " + androidWhy);
+			else if (!OfferedDevicesList().Any(d => d.Platform == DevicePlatform.AndroidEmulator))
+				reasons.Add("Android: no emulator exists (create one in Manage devices) or all are hidden.");
+		}
+
 		return reasons;
 	}
 
@@ -294,6 +316,82 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 			throw;
 		}
 
+		TrackDeviceHost(host, device, generation);
+		Step(DesignerSessionPhase.Rendering);
+		return UnoDesignClient.AdoptDeviceHost(host);
+	}
+
+	/// <summary>Starts the Android head in the chosen emulator (starting the emulator first when it is not running) and wraps it as
+	/// a design client. Reports every step to the session.</summary>
+	async Task<UnoDesignClient> StartAndroidDeviceClientAsync(Device device, int generation)
+	{
+		void Step(DesignerSessionPhase phase)
+		{
+			if (generation == Volatile.Read(ref connectGeneration))
+				deviceSession.Enter(phase);
+		}
+
+		Step(DesignerSessionPhase.Preflight);
+		var apk = LocateAndroidHostApk();
+		if (apk == null)
+			throw new InvalidOperationException("The Android design host is not installed with this add-in (expected "
+				+ AndroidHostFolder + "/" + AndroidHostApk + "). Build WinUIXamlDesigner.UnoHost with -p:UnoDesignHostMobile=true.");
+		var provider = DeviceService.Default.Providers.FirstOrDefault(p => p.Platform == DevicePlatform.AndroidEmulator);
+		if (provider == null)
+			throw new InvalidOperationException("The Android Device Manager add-in is not loaded, so emulators cannot be started.");
+		if (provider.Unavailable is { } unavailable)
+			throw new InvalidOperationException("Android emulators are unavailable: " + unavailable);
+		var adb = AndroidEmulatorHostProcess.LocateAdb()
+			?? throw new InvalidOperationException("adb was not found. Install the Android SDK platform-tools or set ANDROID_HOME.");
+		var avd = device.Id.StartsWith("android:", StringComparison.Ordinal) ? device.Id["android:".Length..] : device.Id;
+		if (DeviceService.Default.Devices.All(d => d.Id != device.Id))
+			throw new InvalidOperationException($"{device.Name} no longer exists on this machine; pick another device.");
+
+		// An emulator that is not running is started, then waited for: adb lists it a while before it is usable.
+		Step(DesignerSessionPhase.BootingDevice);
+		var serial = await Task.Run(() => AndroidEmulatorHostProcess.FindSerialForAvd(adb, avd)).ConfigureAwait(true);
+		if (serial == null)
+		{
+			if (provider is not IDeviceManagement management)
+				throw new InvalidOperationException($"{device.Name} is not running and cannot be started from here.");
+			var started = await management.BootAsync(device).ConfigureAwait(true);
+			if (!started.Ok)
+				throw new InvalidOperationException($"Could not start {device.Name}: {started.Error}");
+		}
+
+		var deadline = DateTime.UtcNow + TimeSpan.FromMinutes(4);
+		while (true)
+		{
+			serial ??= await Task.Run(() => AndroidEmulatorHostProcess.FindSerialForAvd(adb, avd)).ConfigureAwait(true);
+			if (serial != null && await Task.Run(() => AndroidEmulatorHostProcess.IsBootCompleted(adb, serial)).ConfigureAwait(true))
+				break;
+			if (DateTime.UtcNow > deadline || generation != Volatile.Read(ref connectGeneration))
+				throw new TimeoutException($"{device.Name} did not finish starting in time.");
+			await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(true);
+		}
+
+		Step(DesignerSessionPhase.InstallingHost);
+		await AndroidEmulatorHostProcess.InstallAsync(adb, serial, apk, CancellationToken.None).ConfigureAwait(true);
+		var host = new AndroidEmulatorHostProcess(adb, serial, apk, AndroidPackage, "Uno");
+		Step(DesignerSessionPhase.LaunchingHost);
+		try
+		{
+			await host.StartConnectionAsync(CancellationToken.None).ConfigureAwait(true);
+		}
+		catch
+		{
+			host.Dispose();
+			throw;
+		}
+
+		TrackDeviceHost(host, device, generation);
+		Step(DesignerSessionPhase.Rendering);
+		return UnoDesignClient.AdoptDeviceHost(host);
+	}
+
+	/// <summary>Remembers the live host for the current connection and marks the session Stale when it exits.</summary>
+	void TrackDeviceHost(DesignerHostProcessClient host, Device device, int generation)
+	{
 		// Only the current connection owns the live-host slot, so an abandoned one cannot hide the real host's exit.
 		if (generation == Volatile.Read(ref connectGeneration))
 			currentDeviceHost = host;
@@ -301,12 +399,19 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 		{
 			if (!disposed && ReferenceEquals(currentDeviceHost, host))
 			{
-				Step(DesignerSessionPhase.Stale);
+				deviceSession.Enter(DesignerSessionPhase.Stale);
 				SetStatus($"The design host on {device.Name} stopped.");
 			}
 		});
-		Step(DesignerSessionPhase.Rendering);
-		return UnoDesignClient.AdoptDeviceHost(host);
+	}
+
+	static string LocateAndroidHostApk()
+	{
+		var directory = Path.GetDirectoryName(typeof(UnoDesignClient).Assembly.Location);
+		if (string.IsNullOrEmpty(directory))
+			return null;
+		var candidate = Path.Combine(directory, AndroidHostFolder, AndroidHostApk);
+		return File.Exists(candidate) ? candidate : null;
 	}
 
 	static string LocateIosHostBundle()

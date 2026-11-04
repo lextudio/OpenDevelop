@@ -1481,64 +1481,111 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
     public async Task WinUIDesigner_UnoOnIosSimulator_RendersOnTheDeviceAndSwitchesBack()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "iOS simulators run on macOS only.");
+        await RunUnoDevicePreviewJourneyAsync(
+            hostFolder: Path.Combine("UnoHost.iOS", "WinUIXamlDesigner.UnoHost.app"), directory: true,
+            targetFramework: "net10.0-ios", platform: "IosSimulator", namePrefix: "iPhone", deviceWidthMarker: "390",
+            readyTimeout: TimeSpan.FromSeconds(240));
+    }
+
+    /// <summary>
+    /// The same journey on an Android emulator: the Android head (an APK adb-installed into the running emulator)
+    /// connects back over adb reverse and renders at the device's width. Needs a running emulator and the deployed APK.
+    /// </summary>
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
+    public async Task WinUIDesigner_UnoOnAndroidEmulator_RendersOnTheDeviceAndSwitchesBack()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Android previews need a Unix shell.");
+        Assert.SkipUnless(AndroidEmulatorIsRunning(), "No Android emulator is running (start one with `emulator -avd <name>`).");
+        await RunUnoDevicePreviewJourneyAsync(
+            hostFolder: Path.Combine("UnoHost.Android", "WinUIXamlDesigner.UnoHost.apk"), directory: false,
+            targetFramework: "net10.0-android", platform: "AndroidEmulator", namePrefix: "", deviceWidthMarker: "412",
+            readyTimeout: TimeSpan.FromMinutes(10));
+    }
+
+    static bool AndroidEmulatorIsRunning()
+    {
+        try
+        {
+            var roots = new[] { Environment.GetEnvironmentVariable("ANDROID_HOME"), Environment.GetEnvironmentVariable("ANDROID_SDK_ROOT"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Android", "sdk"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Android", "Sdk") };
+            var adb = roots.Where(r => !string.IsNullOrEmpty(r)).Select(r => Path.Combine(r!, "platform-tools", "adb")).FirstOrDefault(File.Exists);
+            if (adb == null)
+                return false;
+            var start = new System.Diagnostics.ProcessStartInfo(adb, "devices") { RedirectStandardOutput = true, UseShellExecute = false };
+            using var process = System.Diagnostics.Process.Start(start)!;
+            var output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(15000);
+            return output.Split('\n').Any(line => line.StartsWith("emulator-", StringComparison.Ordinal) && line.TrimEnd().EndsWith("device", StringComparison.Ordinal));
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    async Task RunUnoDevicePreviewJourneyAsync(string hostFolder, bool directory, string targetFramework, string platform,
+        string namePrefix, string deviceWidthMarker, TimeSpan readyTimeout)
+    {
         var appPath = Environment.GetEnvironmentVariable("OPENDEVELOP_APP_PATH");
         var addInDir = appPath == null ? null : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(appPath)!, "..", "..", "..", "..", "..", "..", "AddIns", "DisplayBindings", "WinUIXamlDesigner"));
-        Assert.SkipUnless(addInDir != null && Directory.Exists(Path.Combine(addInDir, "UnoHost.iOS", "WinUIXamlDesigner.UnoHost.app")),
-            "The iOS design host is not deployed (build WinUIXamlDesigner.UnoHost with -p:UnoDesignHostMobile=true).");
+        var deployed = addInDir == null ? null : Path.Combine(addInDir, hostFolder);
+        Assert.SkipUnless(deployed != null && (directory ? Directory.Exists(deployed) : File.Exists(deployed)),
+            "The device design host is not deployed (build WinUIXamlDesigner.UnoHost with -p:UnoDesignHostMobile=true).");
 
-        // The project still builds for the desktop (the first render needs that); an iOS target that is never
-        // active is enough for the designer to offer simulators, because the project file is only read for targets.
+        // The project still builds for the desktop (the first render needs that); a device target that is never
+        // active is enough for the designer to offer devices, because the project file is only read for targets.
         var csproj = Directory.GetFiles(_unoSampleDir, "*.csproj").Single();
         var original = await File.ReadAllTextAsync(csproj);
         await File.WriteAllTextAsync(csproj, original.Replace("</Project>",
-            "<PropertyGroup Condition=\"'$(OfferDevicePreviewsOnly)' == '1'\"><TargetFrameworks>net10.0-ios;net10.0-desktop</TargetFrameworks></PropertyGroup></Project>"));
+            $"<PropertyGroup Condition=\"'$(OfferDevicePreviewsOnly)' == '1'\"><TargetFrameworks>{targetFramework};net10.0-desktop</TargetFrameworks></PropertyGroup></Project>"));
         try
         {
+            await OpenUnoDesignerAsync();
+            JsonElement initial = default;
+            JsonElement device = default;
+            // Devices are listed in the background (simctl / avdmanager), so the picker fills in a moment after the page renders.
+            var offered = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+            {
+                initial = await _app.InvokeAsync("od.winui-designer.device");
+                device = initial.GetProperty("offered").EnumerateArray()
+                    .FirstOrDefault(d => d.GetProperty("platform").GetString() == platform && d.GetProperty("name").GetString()!.StartsWith(namePrefix, StringComparison.Ordinal));
+                return device.ValueKind == JsonValueKind.Object;
+            }, TimeSpan.FromSeconds(60));
+            Assert.True(initial.GetProperty("success").GetBoolean(), initial.ToString());
+            Assert.Equal("host", initial.GetProperty("device").GetString());
+            Assert.True(offered, $"No {platform} device is offered: " + initial);
 
-        await OpenUnoDesignerAsync();
-        JsonElement initial = default;
-        JsonElement simulator = default;
-        // The simulators are listed in the background (simctl), so the picker fills in a moment after the page renders.
-        var offered = await OpenDevelopAppFixture.PollUntilAsync(async () =>
-        {
-            initial = await _app.InvokeAsync("od.winui-designer.device");
-            simulator = initial.GetProperty("offered").EnumerateArray()
-                .FirstOrDefault(d => d.GetProperty("platform").GetString() == "IosSimulator" && d.GetProperty("name").GetString()!.StartsWith("iPhone", StringComparison.Ordinal));
-            return simulator.ValueKind == JsonValueKind.Object;
-        }, TimeSpan.FromSeconds(60));
-        Assert.True(initial.GetProperty("success").GetBoolean(), initial.ToString());
-        Assert.Equal("host", initial.GetProperty("device").GetString());
-        Assert.True(offered, "No iPhone simulator is offered: " + initial);
+            // 1. Switch to the device: the head starts in it, connects and renders.
+            var id = device.GetProperty("id").GetString()!;
+            var switched = await _app.InvokeAsync("od.winui-designer.device", id);
+            Assert.True(switched.GetProperty("success").GetBoolean(), switched.ToString());
+            JsonElement onDevice = default;
+            var ready = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+            {
+                onDevice = await _app.InvokeAsync("od.winui-designer.device");
+                var phase = onDevice.GetProperty("session").GetProperty("phase").GetString();
+                Assert.NotEqual("Failed", phase);
+                return phase == "Ready" && onDevice.GetProperty("rendered").GetBoolean();
+            }, readyTimeout);
+            Assert.True(ready, "The device preview never reached Ready: " + onDevice);
+            Assert.Equal(id, onDevice.GetProperty("device").GetString());
+            // A phone-shaped canvas (the head renders at the device's width), not the desktop's 1280.
+            Assert.Contains(deviceWidthMarker, onDevice.GetProperty("status").GetString());
 
-        // 1. Switch to the simulator: the iOS head boots in it, connects and renders.
-        var id = simulator.GetProperty("id").GetString()!;
-        var switched = await _app.InvokeAsync("od.winui-designer.device", id);
-        Assert.True(switched.GetProperty("success").GetBoolean(), switched.ToString());
-        JsonElement onDevice = default;
-        var ready = await OpenDevelopAppFixture.PollUntilAsync(async () =>
-        {
-            onDevice = await _app.InvokeAsync("od.winui-designer.device");
-            var phase = onDevice.GetProperty("session").GetProperty("phase").GetString();
-            Assert.NotEqual("Failed", phase);
-            return phase == "Ready" && onDevice.GetProperty("rendered").GetBoolean();
-        }, TimeSpan.FromSeconds(240));
-        Assert.True(ready, "The simulator preview never reached Ready: " + onDevice);
-        Assert.Equal(id, onDevice.GetProperty("device").GetString());
-        // A phone-shaped canvas (the iOS head renders at the device's width), not the desktop's 1280.
-        Assert.Contains("390", onDevice.GetProperty("status").GetString());
-
-        // 2. Back to the desktop host: the preview works there again.
-        var back = await _app.InvokeAsync("od.winui-designer.device", "host");
-        Assert.True(back.GetProperty("success").GetBoolean(), back.ToString());
-        JsonElement atDesktop = default;
-        var desktopAgain = await OpenDevelopAppFixture.PollUntilAsync(async () =>
-        {
-            atDesktop = await _app.InvokeAsync("od.winui-designer.device");
-            return atDesktop.GetProperty("device").GetString() == "host"
-                && atDesktop.GetProperty("rendered").GetBoolean()
-                && (atDesktop.GetProperty("status").GetString() ?? "").Contains("1280", StringComparison.Ordinal);
-        }, TimeSpan.FromSeconds(120));
-        Assert.True(desktopAgain, "The desktop preview did not come back: " + atDesktop);
+            // 2. Back to the desktop host: the preview works there again.
+            var back = await _app.InvokeAsync("od.winui-designer.device", "host");
+            Assert.True(back.GetProperty("success").GetBoolean(), back.ToString());
+            JsonElement atDesktop = default;
+            var desktopAgain = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+            {
+                atDesktop = await _app.InvokeAsync("od.winui-designer.device");
+                return atDesktop.GetProperty("device").GetString() == "host"
+                    && atDesktop.GetProperty("rendered").GetBoolean()
+                    && (atDesktop.GetProperty("status").GetString() ?? "").Contains("1280", StringComparison.Ordinal);
+            }, TimeSpan.FromSeconds(120));
+            Assert.True(desktopAgain, "The desktop preview did not come back: " + atDesktop);
         }
         finally
         {

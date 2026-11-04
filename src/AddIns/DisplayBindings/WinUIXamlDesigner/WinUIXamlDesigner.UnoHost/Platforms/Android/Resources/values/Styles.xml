@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Uno's ApplicationActivity is an AppCompat activity: without an AppCompat theme it throws
+       "You need to use a Theme.AppCompat theme" as soon as it is created. -->
+  <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+    <item name="android:windowBackground">@android:color/white</item>
+  </style>
+</resources>
