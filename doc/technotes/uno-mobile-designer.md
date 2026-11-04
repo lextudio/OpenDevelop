@@ -4,7 +4,7 @@ Status: project charter and design (2026-11-03), updated 2026-11-04. Implemented
 iOS/Android host-process classes in `Designer.Remote`, the Uno 6.7.30 baseline, an opt-in Skia-based iOS head of the Uno design host, and the
 IDE side for iOS and Android: the Uno designer offers the shared device picker and progress card for a project that targets iOS or Android, and
 previews on a simulator or an emulator end to end (see section 4a). Not started: project assemblies on a device, orientation/device chrome/Cancel
-for the Uno designer, debugging on a device, and packaging. Related: `winui-designer.md` (the Uno/WinUI runtimes and the out-of-process decision),
+for the Uno designer, debugging on a device (feasibility in section 4b), and packaging. Related: `winui-designer.md` (the Uno/WinUI runtimes and the out-of-process decision),
 `designer-common.md` ("Machine-wide devices and the Device Manager", DDP), and the MAUI Designer's design
 (`MAUI-Designer/opendevelop-addin/docs/design.md`), which this project follows and reuses.
 
@@ -194,6 +194,46 @@ wants either more AVD RAM or those apps disabled.
 **Not yet started:** project assemblies on a device, orientation and device chrome for the Uno designer, preview-target/preflight extraction from
 MAUI (the Uno code duplicates a little of it), device debugging (see below), and packaging (the deploy targets are a developer-machine convenience,
 not a release path).
+
+## 4b. Debugging on a device (feasibility, 2026-11-04; nothing implemented)
+
+Asked for alongside the Android work: run and debug the user's Uno app on an iOS Simulator or an Android emulator from the IDE. This is a
+separate feature from the designer preview; this section only records what exists and what it would take, so the next session does not
+re-derive it. What was observed on this machine is marked "observed"; claims about Mono runtime flags, debug properties, launch environment
+variables and PDB handling are from general knowledge of Mono/.NET mobile and are **unverified here**.
+
+**What OpenDevelop has.** `Debugger.AddIn` talks the Debug Adapter Protocol to SharpDbg (`externals/sharpdbg`, `ICorDebug` via ClrDebug), which
+debugs **CoreCLR** processes on the same machine (`doc/technotes/debugging.md`). A Uno app on a device does not run on CoreCLR: it runs on the
+Mono runtime (observed: the Android APK built by this tree contains `libmonosgen-2.0.so` and `libmonodroid.so`, and the iOS app bundle contains
+`libmono-component-debugger.dylib` and `MonoTouchDebugConfiguration.txt`; its crash stack traces earlier in this work showed `libmonosgen-2.0.dylib`
+frames; CoreCLR packs for Android are also installed but are not what these builds use), and Mono is debugged with the **soft debugger** (SDB), a TCP protocol between the IDE and a debugger agent inside the runtime. So `ICorDebug`/SharpDbg cannot
+attach to it, and the device debugger is a second backend, not a configuration of the first one.
+
+**What is already in the tree.** The `externals/monodevelop` submodule carries `Mono.Debugging.Soft` (the SDB client library, under
+`main/external/debugger-libs`), `MonoDevelop.Debugger.Soft` and `MonoDevelop.Debugger.VSCodeDebugProtocol`. The IDE's debugger service is
+DAP-shaped (`Debugger.AddIn/Service/Dap`), so the natural shape is a small **DAP adapter over `Mono.Debugging.Soft`**, launched the way SharpDbg is,
+instead of teaching the IDE a new debugger API. Whether the submodule's projects build and run under LibreWPF on this stack is unknown.
+
+**What a device debug session needs (each is a work item):**
+
+1. *Build and deploy the user's app for the device TFM.* Needs the iOS/Android workloads and the project's real `net10.0-ios`/`-android` build (the
+   same cost as the "project assemblies on a device" item); the IDE's build system has no mobile path today.
+2. *Launch with the debugger agent on.* Android: the app is started with debugger properties (the `debug.mono.*` system properties or the
+   Android tooling's debug-connect mechanism) and the agent port is reached with `adb forward tcp:N tcp:N` (the mirror of the `adb reverse` the design
+   host uses). iOS simulator: the process runs on the Mac, so the agent listens on loopback and the runtime flags are passed through the launch
+   environment (`simctl launch` with `SIMCTL_CHILD_`-prefixed variables). The shared `IosSimulatorHostProcess`/`AndroidEmulatorHostProcess` already own
+   install, launch and lifetime, so a debug launch is an extension of them (extra arguments/environment, a forwarded port), not new infrastructure.
+3. *Debug symbols and source mapping* (unverified). Portable PDBs must reach the debugger, with Mono's debug settings enabled in the app; on
+   Android the assemblies are embedded in the APK (observed: `EmbedAssembliesIntoApk`), so the PDBs would have to be located next to the build output.
+4. *The adapter and its IDE hook-up:* breakpoints, stepping, stack, variables, exceptions over SDB; a Run/Debug target picker for "this simulator / this
+   emulator" (the shared device picker and Device Manager already list them); stop/restart lifecycle; the DevFlow test hooks the debugger tests use.
+5. *Hot reload* is a separate, existing feature (`UnoHotReloadService`) and is not part of this item.
+
+**Order I would take, and the risks.** (a) A spike outside the IDE: build the Uno app for the Android emulator, launch it with the agent, and drive
+`Mono.Debugging.Soft` from a console to hit one breakpoint - this answers whether the submodule library works here at all. (b) The DAP adapter. (c) The
+IDE launch/attach path and picker. (d) iOS after Android (the same adapter, a different launch). Biggest risks: the soft debugger's compatibility
+with the .NET 10 Mono runtimes of the installed workloads, the cost of a real device-TFM build in the IDE, and the 1.5 GB emulator, which struggles
+with the app alone. This is weeks of work, not a follow-up commit; it should be scoped as its own project with its own charter.
 
 ## 5. Risks and open questions
 
