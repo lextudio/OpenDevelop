@@ -200,8 +200,9 @@ no pixel test of how it looks.
 wants either more AVD RAM or those apps disabled.
 
 **Not yet started:** project assemblies on a device, preview-target/preflight extraction from
-MAUI (the Uno code duplicates a little of it), device debugging (see below), and packaging (the deploy targets are a developer-machine convenience,
-not a release path).
+MAUI (the Uno code duplicates a little of it), device debugging (see below), and a verified packaging path. The macOS bundle script and `dist.ps1` now keep the `UnoHost.iOS` and `UnoHost.Android` folders intact (an app bundle
+and an APK must not go through the by-basename dedup), but no package was built to check it, and the mobile heads only exist when built with
+`-p:UnoDesignHostMobile=true`, so a release must set that explicitly.
 
 ## 4b. Debugging on a device (direction, 2026-11-04; nothing implemented)
 
@@ -274,8 +275,10 @@ The project owner asked to start testing on .NET 11. Steps taken and where it st
   `Uno.UI.Runtime.Android` (`NativeApplication` now has an abstract `CreateHost()` that builds the host with
   `UnoPlatformHostBuilder.Create().App(...).UseAndroid().Build()`; `ApplicationActivity` is in the same namespace), as iOS already uses the host builder.
 - **It does not build yet:** `Uno.UI.Runtime.Android` from that dev package was compiled against `Java.Interop 99.61`, newer than the one in the newest
-  published Android workload for this band (`Java.Interop 11.0`, error CS1705). No newer workload manifest is published; this needs either an older
-  Uno 7 dev build that matches the rc workload or a newer Android workload (nightly feed).
+  published Android workload for this band (`Java.Interop 11.0`, error CS1705). No newer workload manifest is published on nuget.org (only
+  `37.2.0-rc.2.84`, 2026-10-13). An older Uno 7 build does **not** help: `Uno.Sdk 7.0.0-dev.75` (published the same day, `Uno.WinUI 7.0.0-dev.2282`) fails
+  the same way, so Uno 7's Android runtime is built against dotnet/android main (`99.x`), and building it needs an Android workload from that nightly feed
+  (its source was not tried: it is not published where this machine looks).
 - iOS on .NET 11 works (see the spike above): `net11.0-ios` + Uno 7 dev builds and runs on CoreCLR in a simulator. Uno 6.7 does **not** support .NET 11: its
   `Uno.WinUI` package (and 6.8 dev) carries only `net9.0`/`net10.0` and their platform TFMs; `net11.0` first appears in the Uno 7 dev packages. Moving the
   heads in this tree to .NET 11 therefore means moving to Uno 7 and its host-builder entry on every platform.

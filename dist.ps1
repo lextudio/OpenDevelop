@@ -1435,6 +1435,8 @@ function Invoke-WindowsPayload {
         'DisplayBindings\GtkDesigner\Host',
         'DisplayBindings\MewUIDesigner\Host',
         'DisplayBindings\WinUIXamlDesigner\UnoHost',
+        'DisplayBindings\WinUIXamlDesigner\UnoHost.Android',
+        'DisplayBindings\WinUIXamlDesigner\UnoHost.iOS',
         'DisplayBindings\WinUIXamlDesigner\MicrosoftHost',
         'DisplayBindings\WpfDesign\Host',
         'DisplayBindings\WpfDesign\MicrosoftHost',

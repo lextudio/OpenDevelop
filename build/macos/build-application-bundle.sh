@@ -87,6 +87,11 @@ populate_repo_payload() {
   # exclude-from below.
   local keep_addin_folders=(
     "DisplayBindings/WinUIXamlDesigner/UnoHost"
+    # The opt-in iOS/Android heads of the Uno design host (an .app bundle and an APK, built with
+    # -p:UnoDesignHostMobile=true). They are never loaded by the IDE: the designer installs them into a
+    # simulator/emulator. Dedup by basename would corrupt an app bundle, so keep both folders intact.
+    "DisplayBindings/WinUIXamlDesigner/UnoHost.iOS"
+    "DisplayBindings/WinUIXamlDesigner/UnoHost.Android"
     "DisplayBindings/FormsDesigner/Host"
     "DisplayBindings/WpfDesign/Host"
     "DisplayBindings/GtkDesigner/Host"
