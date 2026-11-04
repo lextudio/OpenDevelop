@@ -294,7 +294,9 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 			throw;
 		}
 
-		currentDeviceHost = host;
+		// Only the current connection owns the live-host slot, so an abandoned one cannot hide the real host's exit.
+		if (generation == Volatile.Read(ref connectGeneration))
+			currentDeviceHost = host;
 		host.HostExited += (_, _) => dispatcher.BeginInvoke(() =>
 		{
 			if (!disposed && ReferenceEquals(currentDeviceHost, host))

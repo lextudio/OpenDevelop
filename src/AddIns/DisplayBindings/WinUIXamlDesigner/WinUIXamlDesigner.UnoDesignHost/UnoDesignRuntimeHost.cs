@@ -513,7 +513,8 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 				created = await StartIosDeviceClientAsync(device, generation);
 				if (generation != Volatile.Read(ref connectGeneration))
 				{
-					created.Dispose();
+					// Disposing waits for the host to shut down (up to 3 s): keep that off the UI thread.
+					_ = Task.Run(created.Dispose);
 					return;
 				}
 
@@ -562,7 +563,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 			created = await UnoDesignClient.AcquireSharedAsync(runtimeConfig, depsFile, CancellationToken.None, child, appBin, dotnetHostPath, dotnetHostArchitecture);
 			if (generation != Volatile.Read(ref connectGeneration))
 			{
-				created.Dispose();
+				_ = Task.Run(created.Dispose);
 				return;
 			}
 
@@ -574,7 +575,8 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 			if (generation != Volatile.Read(ref connectGeneration))
 			{
 				// An abandoned connection failing says nothing about the current one.
-				try { created?.Dispose(); } catch (Exception) { }
+				if (created != null)
+					_ = Task.Run(created.Dispose);
 				return;
 			}
 

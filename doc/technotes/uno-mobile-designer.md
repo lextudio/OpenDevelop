@@ -1,9 +1,10 @@
 # Uno designer: iOS Simulator and Android Emulator previews
 
 Status: project charter and design (2026-11-03), updated 2026-11-04. Implemented so far: the shared device layer, the shared
-iOS/Android host-process classes in `Designer.Remote`, the Uno 6.7.30 baseline, and an opt-in Skia-based iOS head of the Uno design host that
-opens a document and renders a frame in a simulator (see section 4a). Not started: the Android head, the `UnoDesignClient`/IDE wiring
-(picker, progress card), project assemblies on a device, and packaging. Related: `winui-designer.md` (the Uno/WinUI runtimes and the out-of-process decision),
+iOS/Android host-process classes in `Designer.Remote`, the Uno 6.7.30 baseline, an opt-in Skia-based iOS head of the Uno design host, and the
+IDE side for iOS: the Uno designer offers the shared device picker and progress card for a project that targets iOS, and previews on a
+simulator end to end (see section 4a). Not started: the Android head, project assemblies on a device, orientation/device chrome/Cancel for the
+Uno designer, and packaging. Related: `winui-designer.md` (the Uno/WinUI runtimes and the out-of-process decision),
 `designer-common.md` ("Machine-wide devices and the Device Manager", DDP), and the MAUI Designer's design
 (`MAUI-Designer/opendevelop-addin/docs/design.md`), which this project follows and reuses.
 
@@ -155,10 +156,24 @@ Caveats: the Windows-only `WinUIXamlDesigner.MicrosoftHost` source-links `Design
 built on the macOS machine used here, so it needs a Windows build before release. Packaging has no mobile path yet (the deploy target is
 desktop-only). The iOS head has no automated test yet (the driver was a scratch program).
 
-**Not yet started:** the `UnoDesignClient` connection abstraction (it is built on a private
-`Connection : DesignerHostProcessClient` and reads capabilities from the handshake), the view-content picker/overlay, preview-target
-extraction, and everything Android. Android is also blocked on a healthy emulator and on installing the Android workload the same
-way as iOS.
+**Phase 1, IDE side for iOS: working (commits `f85aca3be9`, `ef6002db9b`).** `UnoDesignClient.AdoptDeviceHost` wraps a host that
+`IosSimulatorHostProcess` already started (not pooled, no automatic crash recovery; `HostExited` tells the view). `ProjectTargets`
+(`Designer.Shell`) reads the project's target frameworks, so the picker only appears for a project that targets iOS. In
+`UnoDesignRuntimeHost` (new partial `UnoDesignRuntimeHost.Devices.cs`) the canvas is wrapped in `DevicePickerBar` + `SessionOverlay`
+(`IWinUIXamlChrome`; the view and DevFlow reach the device state through `IWinUIXamlDevicePreview`). Switching disposes the current client, runs a
+preflight (iOS head bundle present, provider available, device exists), boots/installs/launches/connects through the shared host process, and
+the session reaches Ready on the first frame; the device is remembered per project; a device that is hidden or deleted while selected falls
+back to the computer. The iOS head ships as an app bundle beside the desktop head (`UnoHost.iOS`, copied by a mac-only deploy target). A
+connection generation guards overlapping switches (found in review: the remembered-simulator restore raced the constructor's first desktop
+connection and could leave the adopted host leaked). Verified by the integration journey
+`AddInTests.WinUIDesigner_UnoOnIosSimulator_RendersOnTheDeviceAndSwitchesBack` against the real IDE and a real simulator (device preview with a
+390-wide frame, then back to the 1280-wide desktop preview); it needs `-p:BuildIntegrationFixtures=false` when run locally because the fixtures
+otherwise build in the same MSBuild process as the new Uno.Sdk. Known limits: framework controls only on the device, the Android entry in the
+picker reads "not available yet", no orientation toggle, no device chrome, no Cancel button, and the remembered-device restore path has no test.
+
+**Not yet started:** the Android head (and `UnoPlatformHostBuilder` on Android), orientation and device chrome for the Uno designer,
+preview-target/preflight extraction from MAUI (the Uno code duplicates a little of it), project assemblies on a device, and packaging
+(the deploy target is a developer-machine convenience, not a release path). Android is also blocked on a healthy emulator and on installing the Android workload the same way as iOS.
 
 ## 5. Risks and open questions
 

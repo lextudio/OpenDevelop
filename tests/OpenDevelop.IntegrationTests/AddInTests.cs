@@ -1489,9 +1489,11 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         // The project still builds for the desktop (the first render needs that); an iOS target that is never
         // active is enough for the designer to offer simulators, because the project file is only read for targets.
         var csproj = Directory.GetFiles(_unoSampleDir, "*.csproj").Single();
-        var text = await File.ReadAllTextAsync(csproj);
-        await File.WriteAllTextAsync(csproj, text.Replace("</Project>",
+        var original = await File.ReadAllTextAsync(csproj);
+        await File.WriteAllTextAsync(csproj, original.Replace("</Project>",
             "<PropertyGroup Condition=\"'$(OfferDevicePreviewsOnly)' == '1'\"><TargetFrameworks>net10.0-ios;net10.0-desktop</TargetFrameworks></PropertyGroup></Project>"));
+        try
+        {
 
         await OpenUnoDesignerAsync();
         JsonElement initial = default;
@@ -1537,6 +1539,12 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
                 && (atDesktop.GetProperty("status").GetString() ?? "").Contains("1280", StringComparison.Ordinal);
         }, TimeSpan.FromSeconds(120));
         Assert.True(desktopAgain, "The desktop preview did not come back: " + atDesktop);
+        }
+        finally
+        {
+            // The sample directory is a per-test copy, but leave the project file as it was found anyway.
+            await File.WriteAllTextAsync(csproj, original);
+        }
     }
 
     /// <summary>The phone/tablet/desktop canvas presets must resize the rendered design.</summary>
