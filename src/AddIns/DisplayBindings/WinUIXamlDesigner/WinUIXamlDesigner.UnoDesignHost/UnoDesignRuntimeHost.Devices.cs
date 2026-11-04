@@ -44,6 +44,8 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 	CancellationTokenSource connectCancellation = new();
 	Device deviceBeforeSwitch = Device.Host;
 	bool landscape;
+	bool frameEnabled = true;
+	CheckBox frameToggle;
 	Button orientationButton;
 	/// <summary>Longest wait for an emulator that had to be started (a cold boot of a small AVD takes minutes).</summary>
 	static readonly TimeSpan EmulatorBootTimeout = TimeSpan.FromMinutes(8);
@@ -54,6 +56,8 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 	public string PreviewDeviceId => previewDevice.Id;
 
 	public bool IsLandscape => landscape;
+
+	public bool HasDeviceFrame => surface.DeviceChrome != null;
 
 	public DesignerSessionStatus SessionStatus => deviceSession.Status;
 
@@ -158,6 +162,19 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 		orientation.Click += (_, _) => ToggleOrientation();
 		orientationButton = orientation;
 		bar.Panel.Children.Add(orientation);
+
+		var frame = new CheckBox
+		{
+			Content = "Frame",
+			IsChecked = frameEnabled,
+			Margin = new Thickness(8, 0, 0, 0),
+			VerticalAlignment = VerticalAlignment.Center,
+			ToolTip = "Draw a device body around the preview.",
+		};
+		frame.Checked += (_, _) => SetFrame(true);
+		frame.Unchecked += (_, _) => SetFrame(false);
+		frameToggle = frame;
+		bar.Panel.Children.Add(frame);
 
 		var overlay = new SessionOverlay();
 		overlay.CancelRequested += (_, _) => _ = CancelSwitchAsync();
@@ -275,8 +292,35 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 		surface.Capabilities = device.Platform == DevicePlatform.Host
 			? surface.Capabilities | ICSharpCode.SharpDevelop.Widgets.DesignerCanvasCapabilities.DesignSize
 			: surface.Capabilities & ~ICSharpCode.SharpDevelop.Widgets.DesignerCanvasCapabilities.DesignSize;
+		ApplyDeviceChrome();
 		RefreshDeviceBar();
 		await ReconnectAsync();
+	}
+
+	void SetFrame(bool enabled)
+	{
+		frameEnabled = enabled;
+		ApplyDeviceChrome();
+	}
+
+	/// <summary>Draws a generic device body for a phone or tablet (no Xcode/Android device database is read: the shape is a
+	/// plausible default per platform and family), or none on the computer or when the Frame box is off.</summary>
+	void ApplyDeviceChrome() => surface.DeviceChrome = frameEnabled ? ChromeFor(previewDevice) : null;
+
+	static ICSharpCode.SharpDevelop.Designer.Surface.DesignerDeviceChrome ChromeFor(Device device)
+	{
+		if (device.Platform == DevicePlatform.Host)
+			return null;
+		bool tablet = device.Family == DeviceFamily.Tablet;
+		bool ios = device.Platform == DevicePlatform.IosSimulator;
+		return new ICSharpCode.SharpDevelop.Designer.Surface.DesignerDeviceChrome
+		{
+			Kind = tablet ? ICSharpCode.SharpDevelop.Designer.Surface.DesignerDeviceKind.Tablet : ICSharpCode.SharpDevelop.Designer.Surface.DesignerDeviceKind.Phone,
+			ScreenCornerRadius = tablet ? 18 : ios ? 47 : 28,
+			BezelThickness = tablet ? 12 : 6,
+			Notch = !tablet && ios ? ICSharpCode.SharpDevelop.Designer.Surface.DesignerNotchKind.Island : ICSharpCode.SharpDevelop.Designer.Surface.DesignerNotchKind.None,
+			HomeIndicator = ios && !tablet,
+		};
 	}
 
 	/// <summary>The overlay's Cancel: abandon the start in flight (its connection is cancelled) and go back to the device that was

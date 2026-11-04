@@ -3,8 +3,8 @@
 Status: project charter and design (2026-11-03), updated 2026-11-04. Implemented so far: the shared device layer, the shared
 iOS/Android host-process classes in `Designer.Remote`, the Uno 6.7.30 baseline, an opt-in Skia-based iOS head of the Uno design host, and the
 IDE side for iOS and Android: the Uno designer offers the shared device picker and progress card for a project that targets iOS or Android, and
-previews on a simulator or an emulator end to end (see section 4a). Also done: Cancel and portrait/landscape for device previews. Not started: project assemblies on a device, device chrome
-for the Uno designer, debugging on a device (direction in section 4b), and packaging. The mobile runtime is expected to be CoreCLR from .NET 11; Mono is not a target. Related: `winui-designer.md` (the Uno/WinUI runtimes and the out-of-process decision),
+previews on a simulator or an emulator end to end (see section 4a). Also done: Cancel, portrait/landscape and a generic device body (Frame checkbox) for device previews. Not started: project assemblies on a device,
+debugging on a device (direction in section 4b), and packaging. The mobile runtime is expected to be CoreCLR from .NET 11; Mono is not a target. Related: `winui-designer.md` (the Uno/WinUI runtimes and the out-of-process decision),
 `designer-common.md` ("Machine-wide devices and the Device Manager", DDP), and the MAUI Designer's design
 (`MAUI-Designer/opendevelop-addin/docs/design.md`), which this project follows and reuses.
 
@@ -169,7 +169,7 @@ connection and could leave the adopted host leaked). Verified by the integration
 `AddInTests.WinUIDesigner_UnoOnIosSimulator_RendersOnTheDeviceAndSwitchesBack` against the real IDE and a real simulator (device preview with a
 390-wide frame, then back to the 1280-wide desktop preview); it needs `-p:BuildIntegrationFixtures=false` when run locally because the fixtures
 otherwise build in the same MSBuild process as the new Uno.Sdk. Known limits: framework controls only on the device, the Android entry in the
-picker reads "not available yet" (superseded by the Android work below), no device chrome, and the remembered-device restore path has no test. (Cancel and a
+picker reads "not available yet" (superseded by the Android work below), and the remembered-device restore path has no test. (Cancel and a
 portrait/landscape toggle were added afterwards and are covered by the same journeys: the status text must show the rotated width, and a start that is cancelled
 must leave a working desktop preview.)
 
@@ -186,14 +186,20 @@ process is a Unix script), starts an emulator that is not running and waits for 
 head (`UnoHost.Android`), and uses the same session phases, overlay, remembered device and generation guard as iOS. Verified by the integration
 journey `AddInTests.WinUIDesigner_UnoOnAndroidEmulator_RendersOnTheDeviceAndSwitchesBack` (real IDE, real emulator: Ready with a 412-wide frame, then back
 to the 1280-wide desktop preview), skipped unless an emulator is running and the APK is deployed. Known limits are the iOS ones (framework controls
-only, no device chrome) plus: the preview target for Android defaults to 412x915 rather than the AVD's own screen size.
+only) plus: the preview target for Android defaults to 412x915 rather than the AVD's own screen size.
+
+**Device body.** Device previews draw a generic body around the canvas (`DesignSurface.DeviceChrome`, Frame checkbox in the picker row): a rounded
+bezel, a Dynamic-Island cut-out and home indicator for an iPhone, a plain rounded body for Android phones, a squarer, thicker one for tablets. Unlike
+MAUI's builder it reads no device database (no Xcode/AVD screen shapes), so the shapes are plausible defaults, not each device's own; landscape keeps the
+portrait shapes. The journeys assert only that a body is set on a device preview and not on the computer's (`frame` in `od.winui-designer.device`); there is
+no pixel test of how it looks.
 
 **Machine note (2026-11-04).** On the 16 GB development Mac the memory pressure (swap about 7 of 8 GB) came mostly from two booted iOS simulators
 (about 3.5 GB across 356 processes), Spotlight's `mds_stores` (about 1.1 GB) and the emulator; inside the 1.5 GB AVD the Google apps of the
 `google_apis` image (Wellbeing, Gboard, Messages, quick search) use about 1 GB that a design host does not need. A healthy emulator for the journeys
 wants either more AVD RAM or those apps disabled.
 
-**Not yet started:** project assemblies on a device, device chrome for the Uno designer, preview-target/preflight extraction from
+**Not yet started:** project assemblies on a device, preview-target/preflight extraction from
 MAUI (the Uno code duplicates a little of it), device debugging (see below), and packaging (the deploy targets are a developer-machine convenience,
 not a release path).
 

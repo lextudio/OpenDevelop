@@ -629,6 +629,8 @@ public interface IWinUIXamlDevicePreview
 	System.Threading.Tasks.Task<bool> SwitchDeviceAsync(string deviceId);
 	/// <summary>Whether a device preview is rotated to landscape.</summary>
 	bool IsLandscape { get; }
+	/// <summary>Whether a device body is drawn around the preview.</summary>
+	bool HasDeviceFrame { get; }
 	/// <summary>Rotates the device preview (no effect on the computer's preview).</summary>
 	void ToggleOrientation();
 	/// <summary>Abandons a device start in flight and returns to the device shown before it.</summary>

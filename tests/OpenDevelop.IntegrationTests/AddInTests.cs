@@ -1510,7 +1510,8 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             var roots = new[] { Environment.GetEnvironmentVariable("ANDROID_HOME"), Environment.GetEnvironmentVariable("ANDROID_SDK_ROOT"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Android", "sdk"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Android", "Sdk") };
-            var adb = roots.Where(r => !string.IsNullOrEmpty(r)).Select(r => Path.Combine(r!, "platform-tools", "adb")).FirstOrDefault(File.Exists);
+            var onPath = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator).Where(d => d.Length > 0).Select(d => Path.Combine(d, "adb"));
+            var adb = roots.Where(r => !string.IsNullOrEmpty(r)).Select(r => Path.Combine(r!, "platform-tools", "adb")).Concat(onPath).FirstOrDefault(File.Exists);
             if (adb == null)
                 return false;
             var start = new System.Diagnostics.ProcessStartInfo(adb, "devices") { RedirectStandardOutput = true, UseShellExecute = false };
@@ -1573,6 +1574,8 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             Assert.Equal(id, onDevice.GetProperty("device").GetString());
             // A phone-shaped canvas (the head renders at the device's width), not the desktop's 1280.
             Assert.Contains(deviceWidthMarker, onDevice.GetProperty("status").GetString());
+            // The device body is drawn around a device preview (and only there).
+            Assert.True(onDevice.GetProperty("frame").GetBoolean(), onDevice.ToString());
 
             // 1b. Rotate the device: the canvas swaps to landscape and the frame follows.
             var rotated = await _app.InvokeAsync("od.winui-designer.device-orientation");
@@ -1598,6 +1601,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
                     && (atDesktop.GetProperty("status").GetString() ?? "").Contains("1280", StringComparison.Ordinal);
             }, TimeSpan.FromSeconds(120));
             Assert.True(desktopAgain, "The desktop preview did not come back: " + atDesktop);
+            Assert.False(atDesktop.GetProperty("frame").GetBoolean(), atDesktop.ToString());
 
             // 3. Cancel: start the device again and abandon the start at once; the designer returns to the desktop and the
             //    cancelled start must not leave the session failed or stale.

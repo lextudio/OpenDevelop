@@ -94,6 +94,7 @@ public static class WinUIXamlDesignerDevFlowActions
 					reason = status.Reason,
 					elapsedMs = (long)status.Elapsed(DateTimeOffset.UtcNow).TotalMilliseconds,
 				},
+				frame = preview.HasDeviceFrame,
 				offered = preview.OfferedDevices.Select(d => new { id = d.Id, name = d.Name, platform = d.Platform.ToString(), state = d.State.ToString() }).ToArray(),
 				rendered = view.HasRenderedPreview,
 				status = view.StatusText,
