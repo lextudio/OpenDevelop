@@ -125,7 +125,8 @@ public sealed class IosSimulatorProvider : IDeviceProvider, IDeviceManagement, I
     /// <summary>First non-empty line of simctl's complaint, which is the part worth showing.</summary>
     static string Reason(SimctlResult result)
     {
-        var text = string.IsNullOrWhiteSpace(result.Error) ? result.Output : result.Error;
+        // stderr first, then stdout: the header and the reason may be on different streams.
+        var text = result.Error + "\n" + result.Output;
         var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (lines.Length == 0)
             return $"simctl exited with code {result.ExitCode}.";

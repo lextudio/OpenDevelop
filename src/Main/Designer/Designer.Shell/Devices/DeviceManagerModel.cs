@@ -96,7 +96,16 @@ public sealed class DeviceManagerModel
     {
         if (CreationFor(platform) is not { } creation)
             return DeviceActionResult.Failure("This platform cannot create devices here.");
-        var result = await creation.CreateAsync(name, deviceTypeId, runtimeId, cancellationToken).ConfigureAwait(false);
+        DeviceActionResult result;
+        try
+        {
+            result = await creation.CreateAsync(name, deviceTypeId, runtimeId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            result = DeviceActionResult.Failure(exception.Message);
+        }
+
         await service.RefreshAsync(cancellationToken).ConfigureAwait(false);
         return result;
     }

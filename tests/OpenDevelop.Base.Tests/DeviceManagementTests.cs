@@ -92,6 +92,14 @@ public sealed class IosSimulatorManagementTests
     }
 
     [Fact]
+    public async Task TheReasonIsFoundEvenWhenHeaderAndReasonAreOnDifferentStreams()
+    {
+        var provider = Provider([], _ => new SimctlResult(1, "Incompatible device", "An error was encountered processing the command (code=403):"));
+        // The header ends in a colon but nothing follows it on stderr; stdout carries the reason.
+        Assert.Equal("Incompatible device", (await provider.CreateAsync("n", "t", "r", TestContext.Current.CancellationToken)).Error);
+    }
+
+    [Fact]
     public async Task TheReasonIsTheLineAfterAnErrorHeader()
     {
         var provider = Provider([], _ => new SimctlResult(1, "", "An error was encountered processing the command (domain=com.apple.CoreSimulator.SimError, code=403):\nIncompatible device\nUnable to create a device for device type: x"));
@@ -231,6 +239,71 @@ public sealed class DeviceManagerModelTests
         var rows = new DeviceManagerModel(service).Rows(service.Devices, DevicePreferences.Empty.Hide("ios:a"));
         Assert.True(rows.Single(r => r.Device.Id == "ios:a").Hidden);
         Assert.True(rows.Single(r => r.Device.Id == "ios:a").CanHide);
+    }
+
+    sealed class ListOnlyProvider(params Device[] devices) : IDeviceProvider
+    {
+        public string DisplayName => "list only";
+
+        public DevicePlatform Platform => DevicePlatform.AndroidEmulator;
+
+        public string? Unavailable => null;
+
+        public Task<IReadOnlyList<Device>> ListAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Device>>(devices);
+    }
+
+    [Fact]
+    public async Task ADeviceWhoseProviderCannotManageItStillCanBeHidden()
+    {
+        var avd = new Device(DevicePlatform.AndroidEmulator, "android:a", "a", DeviceFamily.Phone, "Android API", "35", DeviceState.Shutdown);
+        var service = new DeviceService();
+        service.Register(new ListOnlyProvider(avd));
+        await service.RefreshAsync(TestContext.Current.CancellationToken);
+        var row = new DeviceManagerModel(service).Rows(service.Devices, DevicePreferences.Empty).Single(r => r.Device.Id == "android:a");
+        Assert.False(row.CanStart || row.CanStop || row.CanDelete);
+        Assert.True(row.CanHide);
+    }
+
+    [Fact]
+    public async Task RowsListTheHostFirstThenNewestRuntimes()
+    {
+        var service = new DeviceService();
+        service.Register(new FakeProvider(
+            DevicePlatform.IosSimulator,
+            new Device(DevicePlatform.IosSimulator, "ios:old", "iPhone 15", DeviceFamily.Phone, "iOS", "17.2", DeviceState.Shutdown),
+            new Device(DevicePlatform.IosSimulator, "ios:new", "iPhone 17", DeviceFamily.Phone, "iOS", "26.1", DeviceState.Shutdown)));
+        await service.RefreshAsync(TestContext.Current.CancellationToken);
+        var rows = new DeviceManagerModel(service).Rows(service.Devices, DevicePreferences.Empty);
+        Assert.Equal(["host", "ios:new", "ios:old"], rows.Select(r => r.Device.Id));
+    }
+
+    [Fact]
+    public async Task ACreationThatThrowsBecomesAFailedResult()
+    {
+        var service = new DeviceService();
+        service.Register(new ThrowingCreator());
+        var result = await new DeviceManagerModel(service).CreateAsync(DevicePlatform.IosSimulator, "n", "t", "r", TestContext.Current.CancellationToken);
+        Assert.False(result.Ok);
+        Assert.Equal("boom", result.Error);
+    }
+
+    sealed class ThrowingCreator : IDeviceProvider, IDeviceCreation
+    {
+        public string DisplayName => "throwing";
+
+        public DevicePlatform Platform => DevicePlatform.IosSimulator;
+
+        public string? Unavailable => null;
+
+        public Task<IReadOnlyList<Device>> ListAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Device>>([]);
+
+        public Task<DeviceCreateOptions> GetCreateOptionsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new DeviceCreateOptions([], []));
+
+        public Task<DeviceActionResult> CreateAsync(string name, string deviceTypeId, string runtimeId, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("boom");
     }
 
     [Fact]
