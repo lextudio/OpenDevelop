@@ -80,3 +80,45 @@ public sealed class DesignerSessionTests
         Assert.Equal("", DesignerSessionStatus.Describe(DesignerSessionPhase.Idle, "iPhone 17"));
     }
 }
+
+public sealed class DesignerSessionStepsTests
+{
+    static string Render(DesignerSession session) =>
+        string.Join(",", DesignerSessionSteps.For(session.Status).Select(s => s.State.ToString()[0]));
+
+    [Fact]
+    public void ProgressMarksEarlierStepsDoneAndTheCurrentOneActive()
+    {
+        var session = new DesignerSession();
+        Assert.Equal("P,P,P,P", Render(session));
+        session.Enter(DesignerSessionPhase.BootingDevice);
+        Assert.Equal("A,P,P,P", Render(session));
+        session.Enter(DesignerSessionPhase.LaunchingHost);
+        Assert.Equal("D,A,P,P", Render(session));
+        session.Enter(DesignerSessionPhase.Rendering);
+        Assert.Equal("D,D,D,A", Render(session));
+        session.Enter(DesignerSessionPhase.Ready);
+        Assert.Equal("D,D,D,D", Render(session));
+    }
+
+    [Fact]
+    public void FailureMarksTheFailedStepAndKeepsEarlierOnesDone()
+    {
+        var session = new DesignerSession();
+        session.Enter(DesignerSessionPhase.InstallingHost);
+        session.Fail("install failed");
+        Assert.Equal("D,F,P,P", Render(session));
+
+        var early = new DesignerSession();
+        early.Fail("nothing was running");
+        Assert.Equal("F,P,P,P", Render(early));
+    }
+
+    [Fact]
+    public void StaleShowsNothingInFlight()
+    {
+        var session = new DesignerSession();
+        session.Enter(DesignerSessionPhase.Stale);
+        Assert.Equal("P,P,P,P", Render(session));
+    }
+}
