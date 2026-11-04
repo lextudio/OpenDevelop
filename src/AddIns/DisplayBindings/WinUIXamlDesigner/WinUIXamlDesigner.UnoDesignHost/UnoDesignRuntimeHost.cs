@@ -503,6 +503,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 		// owns its generation: when it is no longer current its host is disposed instead of replacing the newer client.
 		var generation = Volatile.Read(ref connectGeneration);
 		var device = previewDevice;
+		var cancellationToken = connectCancellation.Token;
 		UnoDesignClient created = null;
 		try
 		{
@@ -511,8 +512,8 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 				// A device preview needs neither the desktop build nor its dependency graph: the iOS/Android head
 				// renders framework controls on the device (project assemblies on a device come later).
 				created = device.Platform == ICSharpCode.SharpDevelop.Designer.Devices.DevicePlatform.AndroidEmulator
-					? await StartAndroidDeviceClientAsync(device, generation)
-					: await StartIosDeviceClientAsync(device, generation);
+					? await StartAndroidDeviceClientAsync(device, generation, cancellationToken)
+					: await StartIosDeviceClientAsync(device, generation, cancellationToken);
 				if (generation != Volatile.Read(ref connectGeneration))
 				{
 					// Disposing waits for the host to shut down (up to 3 s): keep that off the UI thread.
@@ -1634,6 +1635,9 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 		var onDevice = previewDevice.Platform != ICSharpCode.SharpDevelop.Designer.Devices.DevicePlatform.Host;
 		var width = documentWidth > 0 ? documentWidth : (onDevice ? null : configuredDesignWidth) ?? deviceDefault.Item1;
 		var height = documentHeight > 0 ? documentHeight : (onDevice ? null : configuredDesignHeight) ?? deviceDefault.Item2;
+		// A rotated device swaps its canvas; a size the document asks for explicitly is left alone.
+		if (onDevice && landscape && documentWidth <= 0 && documentHeight <= 0)
+			return (height, width);
 		return (width, height);
 	}
 

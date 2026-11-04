@@ -3,8 +3,8 @@
 Status: project charter and design (2026-11-03), updated 2026-11-04. Implemented so far: the shared device layer, the shared
 iOS/Android host-process classes in `Designer.Remote`, the Uno 6.7.30 baseline, an opt-in Skia-based iOS head of the Uno design host, and the
 IDE side for iOS and Android: the Uno designer offers the shared device picker and progress card for a project that targets iOS or Android, and
-previews on a simulator or an emulator end to end (see section 4a). Not started: project assemblies on a device, orientation/device chrome/Cancel
-for the Uno designer, debugging on a device (feasibility in section 4b), and packaging. Related: `winui-designer.md` (the Uno/WinUI runtimes and the out-of-process decision),
+previews on a simulator or an emulator end to end (see section 4a). Also done: Cancel and portrait/landscape for device previews. Not started: project assemblies on a device, device chrome
+for the Uno designer, debugging on a device (direction in section 4b), and packaging. The mobile runtime is expected to be CoreCLR from .NET 11; Mono is not a target. Related: `winui-designer.md` (the Uno/WinUI runtimes and the out-of-process decision),
 `designer-common.md` ("Machine-wide devices and the Device Manager", DDP), and the MAUI Designer's design
 (`MAUI-Designer/opendevelop-addin/docs/design.md`), which this project follows and reuses.
 
@@ -169,7 +169,9 @@ connection and could leave the adopted host leaked). Verified by the integration
 `AddInTests.WinUIDesigner_UnoOnIosSimulator_RendersOnTheDeviceAndSwitchesBack` against the real IDE and a real simulator (device preview with a
 390-wide frame, then back to the 1280-wide desktop preview); it needs `-p:BuildIntegrationFixtures=false` when run locally because the fixtures
 otherwise build in the same MSBuild process as the new Uno.Sdk. Known limits: framework controls only on the device, the Android entry in the
-picker reads "not available yet", no orientation toggle, no device chrome, no Cancel button, and the remembered-device restore path has no test.
+picker reads "not available yet" (superseded by the Android work below), no device chrome, and the remembered-device restore path has no test. (Cancel and a
+portrait/landscape toggle were added afterwards and are covered by the same journeys: the status text must show the rotated width, and a start that is cancelled
+must leave a working desktop preview.)
 
 **Phase 2, Android: working.** The same host source builds as `net10.0-android` (opt-in with the other mobile heads). Skia-based Uno on Android
 runs as `Microsoft.UI.Xaml.NativeApplication` + `ApplicationActivity`; the IDE starts the activity with `am start --es port N --es token T` (via
@@ -184,56 +186,93 @@ process is a Unix script), starts an emulator that is not running and waits for 
 head (`UnoHost.Android`), and uses the same session phases, overlay, remembered device and generation guard as iOS. Verified by the integration
 journey `AddInTests.WinUIDesigner_UnoOnAndroidEmulator_RendersOnTheDeviceAndSwitchesBack` (real IDE, real emulator: Ready with a 412-wide frame, then back
 to the 1280-wide desktop preview), skipped unless an emulator is running and the APK is deployed. Known limits are the iOS ones (framework controls
-only, no orientation/chrome/Cancel) plus: the preview target for Android defaults to 412x915 rather than the AVD's own screen size.
+only, no device chrome) plus: the preview target for Android defaults to 412x915 rather than the AVD's own screen size.
 
 **Machine note (2026-11-04).** On the 16 GB development Mac the memory pressure (swap about 7 of 8 GB) came mostly from two booted iOS simulators
 (about 3.5 GB across 356 processes), Spotlight's `mds_stores` (about 1.1 GB) and the emulator; inside the 1.5 GB AVD the Google apps of the
 `google_apis` image (Wellbeing, Gboard, Messages, quick search) use about 1 GB that a design host does not need. A healthy emulator for the journeys
 wants either more AVD RAM or those apps disabled.
 
-**Not yet started:** project assemblies on a device, orientation and device chrome for the Uno designer, preview-target/preflight extraction from
+**Not yet started:** project assemblies on a device, device chrome for the Uno designer, preview-target/preflight extraction from
 MAUI (the Uno code duplicates a little of it), device debugging (see below), and packaging (the deploy targets are a developer-machine convenience,
 not a release path).
 
-## 4b. Debugging on a device (feasibility, 2026-11-04; nothing implemented)
+## 4b. Debugging on a device (direction, 2026-11-04; nothing implemented)
 
-Asked for alongside the Android work: run and debug the user's Uno app on an iOS Simulator or an Android emulator from the IDE. This is a
-separate feature from the designer preview; this section only records what exists and what it would take, so the next session does not
-re-derive it. What was observed on this machine is marked "observed"; claims about Mono runtime flags, debug properties, launch environment
-variables and PDB handling are from general knowledge of Mono/.NET mobile and are **unverified here**.
+Asked for alongside the Android work: run and debug the user's Uno app on an iOS Simulator or an Android emulator from the IDE. Direction given
+by the project owner: **.NET 11 moves the mobile platforms to CoreCLR, and the Mono runtime is no longer a target.** So the earlier idea of a second
+debugger backend over Mono's soft debugger (SDB, `Mono.Debugging.Soft`) is dropped; device debugging is the existing CoreCLR route (`Debugger.AddIn`
+speaking DAP to SharpDbg over `ICorDebug`, `doc/technotes/debugging.md`) pointed at a process that lives in a simulator or emulator. This section only
+records what that needs; nothing is built. What was observed on this machine is marked "observed"; the rest is general knowledge and **unverified**.
 
-**What OpenDevelop has.** `Debugger.AddIn` talks the Debug Adapter Protocol to SharpDbg (`externals/sharpdbg`, `ICorDebug` via ClrDebug), which
-debugs **CoreCLR** processes on the same machine (`doc/technotes/debugging.md`). A Uno app on a device does not run on CoreCLR: it runs on the
-Mono runtime (observed: the Android APK built by this tree contains `libmonosgen-2.0.so` and `libmonodroid.so`, and the iOS app bundle contains
-`libmono-component-debugger.dylib` and `MonoTouchDebugConfiguration.txt`; its crash stack traces earlier in this work showed `libmonosgen-2.0.dylib`
-frames; CoreCLR packs for Android are also installed but are not what these builds use), and Mono is debugged with the **soft debugger** (SDB), a TCP protocol between the IDE and a debugger agent inside the runtime. So `ICorDebug`/SharpDbg cannot
-attach to it, and the device debugger is a second backend, not a configuration of the first one.
-
-**What is already in the tree.** The `externals/monodevelop` submodule carries `Mono.Debugging.Soft` (the SDB client library, under
-`main/external/debugger-libs`), `MonoDevelop.Debugger.Soft` and `MonoDevelop.Debugger.VSCodeDebugProtocol`. The IDE's debugger service is
-DAP-shaped (`Debugger.AddIn/Service/Dap`), so the natural shape is a small **DAP adapter over `Mono.Debugging.Soft`**, launched the way SharpDbg is,
-instead of teaching the IDE a new debugger API. Whether the submodule's projects build and run under LibreWPF on this stack is unknown.
+**Observed.** The .NET 10 builds produced by this tree run on Mono (the Android APK has `libmonosgen-2.0.so`, the iOS bundle
+`libmono-component-debugger.dylib`), so they cannot be used to prototype CoreCLR device debugging: that needs the .NET 11 workloads and a Uno
+build for .NET 11 (see "Testing on .NET 11" below).
 
 **What a device debug session needs (each is a work item):**
 
-1. *Build and deploy the user's app for the device TFM.* Needs the iOS/Android workloads and the project's real `net10.0-ios`/`-android` build (the
-   same cost as the "project assemblies on a device" item); the IDE's build system has no mobile path today.
-2. *Launch with the debugger agent on.* Android: the app is started with debugger properties (the `debug.mono.*` system properties or the
-   Android tooling's debug-connect mechanism) and the agent port is reached with `adb forward tcp:N tcp:N` (the mirror of the `adb reverse` the design
-   host uses). iOS simulator: the process runs on the Mac, so the agent listens on loopback and the runtime flags are passed through the launch
-   environment (`simctl launch` with `SIMCTL_CHILD_`-prefixed variables). The shared `IosSimulatorHostProcess`/`AndroidEmulatorHostProcess` already own
-   install, launch and lifetime, so a debug launch is an extension of them (extra arguments/environment, a forwarded port), not new infrastructure.
-3. *Debug symbols and source mapping* (unverified). Portable PDBs must reach the debugger, with Mono's debug settings enabled in the app; on
-   Android the assemblies are embedded in the APK (observed: `EmbedAssembliesIntoApk`), so the PDBs would have to be located next to the build output.
-4. *The adapter and its IDE hook-up:* breakpoints, stepping, stack, variables, exceptions over SDB; a Run/Debug target picker for "this simulator / this
-   emulator" (the shared device picker and Device Manager already list them); stop/restart lifecycle; the DevFlow test hooks the debugger tests use.
-5. *Hot reload* is a separate, existing feature (`UnoHotReloadService`) and is not part of this item.
+1. *Build and deploy the user's app for the device TFM* with the .NET 11 workloads; the IDE's build system has no mobile path today (the same cost
+   as the "project assemblies on a device" item).
+2. *Launch it so the CoreCLR debugger can reach it* (unverified): the runtime's diagnostics IPC (a diagnostic port) has to be reachable from the Mac,
+   through `adb forward` for Android and loopback for the simulator, and the process started suspended until the debugger attaches. The shared
+   `IosSimulatorHostProcess`/`AndroidEmulatorHostProcess` already own install, launch and lifetime, so a debug launch is an extension of them.
+3. *The attach path in `Debugger.AddIn`/SharpDbg:* today it attaches to or launches local processes through dbgshim; attaching to a runtime on a
+   device is an open question (whether `dbgshim`/`ICorDebug` can be driven over the diagnostic channel the way remote CoreCLR debugging is, and what
+   SharpDbg would need). This is the main unknown and decides the cost.
+4. *IDE hook-up:* a Run/Debug target picker for "this simulator / this emulator" (the shared device picker and Device Manager already list them),
+   symbols (portable PDBs next to the build output), stop/restart lifecycle, DevFlow test hooks.
 
-**Order I would take, and the risks.** (a) A spike outside the IDE: build the Uno app for the Android emulator, launch it with the agent, and drive
-`Mono.Debugging.Soft` from a console to hit one breakpoint - this answers whether the submodule library works here at all. (b) The DAP adapter. (c) The
-IDE launch/attach path and picker. (d) iOS after Android (the same adapter, a different launch). Biggest risks: the soft debugger's compatibility
-with the .NET 10 Mono runtimes of the installed workloads, the cost of a real device-TFM build in the IDE, and the 1.5 GB emulator, which struggles
-with the app alone. This is weeks of work, not a follow-up commit; it should be scoped as its own project with its own charter.
+**Order.** (a) Get a .NET 11 Uno build running on a device (the blocker below). (b) A spike outside the IDE: launch that app suspended on the
+Android emulator and attach a CoreCLR debugger to it. (c) Only then the SharpDbg/`Debugger.AddIn` work and the picker. Hot reload
+(`UnoHotReloadService`) is a separate existing feature.
+
+### iOS debugging spike on .NET 11 (2026-11-04)
+
+Asked for as the first debugging target while Android on .NET 11 is blocked. The iOS Simulator is the better first target: its apps are ordinary macOS
+processes, so no `adb forward`-style tunnel is needed. A scratch Uno 7 app on `net11.0-ios` (iOS workload `27.0.12212-net11-rc.2`, Xcode 27.0, entry via
+`UnoPlatformHostBuilder.UseAppleUIKit()`, no code changes beyond the Uno 7 host-builder entry the iOS heads here already use) builds and runs in the
+simulator. Results, all observed unless marked:
+
+- **The runtime is CoreCLR.** `RuntimeInformation.FrameworkDescription` reports `.NET 11.0.0-rc.3.26522.148`, there is no `Mono.Runtime` type, and the
+  bundle contains `libcoreclr.dylib` and `libxamarin-dotnet-coreclr-debug.dylib`. Cold start to the first managed code took about 15 s on this loaded machine.
+- **The app is a plain Mac process** (its command line is under `CoreSimulator/Devices/<udid>/data/Containers/Bundle/Application`), and its CoreCLR debugger
+  transport pipes (`clr-debug-pipe-<pid>-<id>-in/out`) are created in the **app container's `tmp`**, not the Mac's `$TMPDIR`. SharpDbg finds them only if the adapter is
+  started with `TMPDIR=<container>/tmp` (`xcrun simctl get_app_container <udid> <bundle id> data`).
+- **Attach by pid is blocked by the debug components, not by the protocol.** With that `TMPDIR`, `attach` succeeds at the DAP level and then SharpDbg's
+  `RegisterForRuntimeStartup` fails with `0x80131C3C` ("A debug component is not installed"): the app bundle has no `libmscordbi`/`libmscordaccore`. The runtime pack
+  `microsoft.netcore.app.runtime.iossimulator-arm64` has them, but they are **iOS-simulator-platform Mach-O** binaries (observed with `vtool`), which a macOS debugger
+  process cannot `dlopen`, so putting them in the bundle does not help. Putting the **macOS** `libmscordbi/libmscordaccore` of the same runtime version
+  (`~/.dotnet/shared/Microsoft.NETCore.App/11.0.0-rc.3.../`) into the bundle makes the app fail to start.
+- **The remote-port path exists but did not produce a debugger.** The iOS CoreCLR debug library reads `MonoTouchDebugConfiguration.txt` in the bundle (`IP: 127.0.0.1`,
+  `Port: 10000`; observed) and connects out to the "IDE" at start (observed: `Socket error while connecting to IDE on 127.0.0.1:10000`), so the debugger is the
+  listener. SharpDbg's DAP `attach` accepts `coreClrMobileDebuggerOptions` (`address`, `port`, `platform`, `isServer`, `mscordbiPath`, `assembliesPath`; this is its
+  mobile path, `ClrDebugExtensions.Mobile`, `RegisterForRuntimeStartupRemotePort`). With a host-platform (macOS) `mscordbi` it returned success but a **null `ICorDebug`**
+  for every platform string tried (`ios`, `iossimulator`, `osx`) and with the iOS-simulator `mscordbi` it failed with `0x80131C3C` as above. SharpDbg bundles
+  `Microsoft.Diagnostics.DbgShim 9.0.661903`; whether a dbgshim matching the .NET 11 runtime, different `isServer`/platform semantics, or an app-side setting is
+  needed is **unknown** and is the next thing to find out (the dbgshim remote-port code is the place to read).
+- **Not reached:** a breakpoint hit, stepping, variables. The harness used (a DAP script driving `AddIns/Debugger/SharpDbg.Cli.dll`, with a probe app whose
+  `Tick()` runs once a second as the breakpoint target) is a scratch artefact and is not in the tree.
+
+So iOS device debugging is **plausible but not demonstrated**: every layer up to "debugger attached over the remote port" exists in SharpDbg and the iOS runtime,
+and the missing piece is getting a usable `ICorDebug` from `RegisterForRuntimeStartupRemotePort` against a .NET 11 simulator runtime. Estimate after the next step.
+
+### Testing on .NET 11 (2026-11-04)
+
+The project owner asked to start testing on .NET 11. Steps taken and where it stops (all on the machine used for this work, user-level dotnet
+`~/.dotnet`, SDK `11.0.100-rc.3.26522.148`):
+
+- The Android workload for that SDK installed (`37.2.0-rc.2.84`); the .NET 11 Android build needs API level 37, installed through the build's own
+  `InstallAndroidDependencies` target with the SDK license accepted by the user.
+- A scratch Uno project on `Uno.Sdk/7.0.0-dev.81` (`Uno.WinUI 7.0.0-dev.2347`) targeting `net11.0-android` restores and reaches the C# compiler.
+  Two things differ from Uno 6.7 and the heads in this tree need updating when the baseline moves: the Android entry types moved to
+  `Uno.UI.Runtime.Android` (`NativeApplication` now has an abstract `CreateHost()` that builds the host with
+  `UnoPlatformHostBuilder.Create().App(...).UseAndroid().Build()`; `ApplicationActivity` is in the same namespace), as iOS already uses the host builder.
+- **It does not build yet:** `Uno.UI.Runtime.Android` from that dev package was compiled against `Java.Interop 99.61`, newer than the one in the newest
+  published Android workload for this band (`Java.Interop 11.0`, error CS1705). No newer workload manifest is published; this needs either an older
+  Uno 7 dev build that matches the rc workload or a newer Android workload (nightly feed).
+- iOS on .NET 11 works (see the spike above): `net11.0-ios` + Uno 7 dev builds and runs on CoreCLR in a simulator. Uno 6.7 does **not** support .NET 11: its
+  `Uno.WinUI` package (and 6.8 dev) carries only `net9.0`/`net10.0` and their platform TFMs; `net11.0` first appears in the Uno 7 dev packages. Moving the
+  heads in this tree to .NET 11 therefore means moving to Uno 7 and its host-builder entry on every platform.
 
 ## 5. Risks and open questions
 

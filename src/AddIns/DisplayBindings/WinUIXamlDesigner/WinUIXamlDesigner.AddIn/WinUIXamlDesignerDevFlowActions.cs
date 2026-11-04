@@ -101,6 +101,29 @@ public static class WinUIXamlDesignerDevFlowActions
 		});
 	}
 
+	[DevFlowAction("od.winui-designer.device-orientation", Description = "Rotate the active Uno designer's device preview (portrait/landscape) and report the new orientation")]
+	public static string DeviceOrientation()
+	{
+		var view = ActivateDesigner();
+		if (view?.PreviewRuntime is not IWinUIXamlDevicePreview preview)
+			return JsonSerializer.Serialize(new { success = false, error = "The active designer has no device previews." });
+		return SD.MainThread.InvokeIfRequired(() =>
+		{
+			preview.ToggleOrientation();
+			return JsonSerializer.Serialize(new { success = true, landscape = preview.IsLandscape, device = preview.PreviewDeviceId });
+		});
+	}
+
+	[DevFlowAction("od.winui-designer.device-cancel", Description = "Press Cancel on the active Uno designer's device progress card: abandon the start in flight and return to the previous device (starts it and returns at once)")]
+	public static string DeviceCancel()
+	{
+		var view = ActivateDesigner();
+		if (view?.PreviewRuntime is not IWinUIXamlDevicePreview preview)
+			return JsonSerializer.Serialize(new { success = false, error = "The active designer has no device previews." });
+		SD.MainThread.InvokeAsyncAndForget(() => _ = preview.CancelSwitchAsync());
+		return JsonSerializer.Serialize(new { success = true });
+	}
+
 	[DevFlowAction("od.winui-designer.toolbox.filter", Description = "Filter the active WinUI/Uno Toolbox by control or category name")]
 	public static string FilterToolbox(string text)
 	{

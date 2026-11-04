@@ -41,11 +41,19 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 	UIElement chromeRoot;
 	bool chromeBuilt;
 	int connectGeneration;
+	CancellationTokenSource connectCancellation = new();
+	Device deviceBeforeSwitch = Device.Host;
+	bool landscape;
+	Button orientationButton;
+	/// <summary>Longest wait for an emulator that had to be started (a cold boot of a small AVD takes minutes).</summary>
+	static readonly TimeSpan EmulatorBootTimeout = TimeSpan.FromMinutes(8);
 	DesignerHostProcessClient currentDeviceHost;
 	readonly DesignerSession deviceSession = new();
 	static DeviceManagerDialog deviceManager;
 
 	public string PreviewDeviceId => previewDevice.Id;
+
+	public bool IsLandscape => landscape;
 
 	public DesignerSessionStatus SessionStatus => deviceSession.Status;
 
@@ -138,7 +146,21 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 		bar.ManageRequested += (_, _) => OpenDeviceManager();
 		deviceBar = bar;
 
+		// Portrait/landscape swaps the device canvas (the head renders at whatever size it is asked for).
+		var orientation = new Button
+		{
+			Width = 26,
+			Height = 22,
+			Margin = new Thickness(4, 3, 0, 3),
+			Padding = new Thickness(0),
+			ToolTip = "Rotate the device",
+		};
+		orientation.Click += (_, _) => ToggleOrientation();
+		orientationButton = orientation;
+		bar.Panel.Children.Add(orientation);
+
 		var overlay = new SessionOverlay();
+		overlay.CancelRequested += (_, _) => _ = CancelSwitchAsync();
 		overlay.RetryRequested += (_, _) => _ = ReconnectAsync();
 		overlay.FallbackRequested += (_, _) => _ = SwitchDeviceAsync(Device.Host);
 		deviceOverlay = overlay;
@@ -197,6 +219,11 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 			return;
 		deviceBar.Refresh(previewDevice, OfferedDevicesList(), devicePreferences, UnavailableReasons(),
 			"Preview device: " + previewDevice.Name);
+		if (orientationButton != null)
+		{
+			orientationButton.IsEnabled = previewDevice.Platform != DevicePlatform.Host;
+			orientationButton.Content = DeviceIcons.For(previewDevice.Platform, landscape);
+		}
 	}
 
 	void OnSharedDevicesChanged(object sender, EventArgs e) => dispatcher.BeginInvoke(() =>
@@ -218,7 +245,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 			deviceSession.Status,
 			previewDevice.Name,
 			previewDevice.Platform == DevicePlatform.Host ? null : "Use desktop",
-			canCancel: false,
+			canCancel: deviceBeforeSwitch.Id != previewDevice.Id,
 			DateTimeOffset.UtcNow);
 
 	static void OpenDeviceManager()
@@ -242,6 +269,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 	{
 		if (disposed || device.Id == previewDevice.Id)
 			return;
+		deviceBeforeSwitch = previewDevice;
 		previewDevice = device;
 		RememberDeviceId(device.Id);
 		surface.Capabilities = device.Platform == DevicePlatform.Host
@@ -251,12 +279,37 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 		await ReconnectAsync();
 	}
 
+	/// <summary>The overlay's Cancel: abandon the start in flight (its connection is cancelled) and go back to the device that was
+	/// showing before the switch.</summary>
+	public async Task CancelSwitchAsync()
+	{
+		var back = deviceBeforeSwitch;
+		if (disposed || back.Id == previewDevice.Id)
+			return;
+		await SwitchDeviceAsync(back).ConfigureAwait(true);
+	}
+
+	/// <summary>Swaps portrait and landscape for a device preview and renders again.</summary>
+	public void ToggleOrientation()
+	{
+		if (previewDevice.Platform == DevicePlatform.Host)
+			return;
+		landscape = !landscape;
+		RefreshDeviceBar();
+		if (Volatile.Read(ref lastLoadedText) is { } text && client != null)
+			_ = RenderAsync(text, Interlocked.Increment(ref version));
+	}
+
 	/// <summary>Drops the current host and starts a fresh one for the current device (also the overlay's Retry).</summary>
 	internal async Task ReconnectAsync()
 	{
 		if (disposed)
 			return;
 		Interlocked.Increment(ref connectGeneration);
+		// Whatever the abandoned connection is waiting on (boot, install, launch) is cancelled, not left to finish.
+		var abandoned = connectCancellation;
+		connectCancellation = new CancellationTokenSource();
+		try { abandoned.Cancel(); } catch (Exception) { }
 		deviceSession.Reset();
 		var old = client;
 		client = null;
@@ -280,7 +333,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 	}
 
 	/// <summary>Starts the iOS head in the chosen simulator and wraps it as a design client. Reports every step to the session.</summary>
-	async Task<UnoDesignClient> StartIosDeviceClientAsync(Device device, int generation)
+	async Task<UnoDesignClient> StartIosDeviceClientAsync(Device device, int generation, CancellationToken cancellationToken)
 	{
 		// Only the current connection reports progress: an abandoned one must not move the shared session.
 		void Step(DesignerSessionPhase phase)
@@ -302,13 +355,13 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 			throw new InvalidOperationException($"{device.Name} no longer exists on this machine; pick another device.");
 
 		Step(DesignerSessionPhase.BootingDevice);
-		await IosSimulatorHostProcess.PrepareAsync(udid, bundle, CancellationToken.None).ConfigureAwait(true);
+		await IosSimulatorHostProcess.PrepareAsync(udid, bundle, cancellationToken).ConfigureAwait(true);
 		var bundleId = IosSimulatorHostProcess.ReadBundleId(bundle, "com.lextudio.opendevelop.unodesignhost");
 		var host = new IosSimulatorHostProcess(bundle, udid, bundleId, "Uno");
 		Step(DesignerSessionPhase.LaunchingHost);
 		try
 		{
-			await host.StartConnectionAsync(CancellationToken.None).ConfigureAwait(true);
+			await host.StartConnectionAsync(cancellationToken).ConfigureAwait(true);
 		}
 		catch
 		{
@@ -323,7 +376,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 
 	/// <summary>Starts the Android head in the chosen emulator (starting the emulator first when it is not running) and wraps it as
 	/// a design client. Reports every step to the session.</summary>
-	async Task<UnoDesignClient> StartAndroidDeviceClientAsync(Device device, int generation)
+	async Task<UnoDesignClient> StartAndroidDeviceClientAsync(Device device, int generation, CancellationToken cancellationToken)
 	{
 		void Step(DesignerSessionPhase phase)
 		{
@@ -359,24 +412,25 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 				throw new InvalidOperationException($"Could not start {device.Name}: {started.Error}");
 		}
 
-		var deadline = DateTime.UtcNow + TimeSpan.FromMinutes(4);
+		var deadline = DateTime.UtcNow + EmulatorBootTimeout;
 		while (true)
 		{
 			serial ??= await Task.Run(() => AndroidEmulatorHostProcess.FindSerialForAvd(adb, avd)).ConfigureAwait(true);
 			if (serial != null && await Task.Run(() => AndroidEmulatorHostProcess.IsBootCompleted(adb, serial)).ConfigureAwait(true))
 				break;
-			if (DateTime.UtcNow > deadline || generation != Volatile.Read(ref connectGeneration))
-				throw new TimeoutException($"{device.Name} did not finish starting in time.");
-			await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(true);
+			cancellationToken.ThrowIfCancellationRequested();
+			if (DateTime.UtcNow > deadline)
+				throw new TimeoutException($"{device.Name} did not finish starting within {EmulatorBootTimeout.TotalMinutes:0} minutes.");
+			await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(true);
 		}
 
 		Step(DesignerSessionPhase.InstallingHost);
-		await AndroidEmulatorHostProcess.InstallAsync(adb, serial, apk, CancellationToken.None).ConfigureAwait(true);
+		await AndroidEmulatorHostProcess.InstallAsync(adb, serial, apk, cancellationToken).ConfigureAwait(true);
 		var host = new AndroidEmulatorHostProcess(adb, serial, apk, AndroidPackage, "Uno");
 		Step(DesignerSessionPhase.LaunchingHost);
 		try
 		{
-			await host.StartConnectionAsync(CancellationToken.None).ConfigureAwait(true);
+			await host.StartConnectionAsync(cancellationToken).ConfigureAwait(true);
 		}
 		catch
 		{

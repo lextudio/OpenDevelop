@@ -38,8 +38,11 @@
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
   </PropertyGroup>
   <!-- Both mobile heads share one application definition (Fluent control resources), like the desktop head does in code. -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-ios' Or '$(TargetFramework)' == 'net10.0-android'">
+  <ItemGroup>
+    <!-- Unconditional: the desktop head must not compile the mobile application definition either (the SDK globs *.xaml into Page). -->
     <Page Remove="Platforms/Mobile/App.xaml" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-ios' Or '$(TargetFramework)' == 'net10.0-android'">
     <ApplicationDefinition Include="Platforms/Mobile/App.xaml" />
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-ios'">

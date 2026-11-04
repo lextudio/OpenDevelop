@@ -1483,7 +1483,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "iOS simulators run on macOS only.");
         await RunUnoDevicePreviewJourneyAsync(
             hostFolder: Path.Combine("UnoHost.iOS", "WinUIXamlDesigner.UnoHost.app"), directory: true,
-            targetFramework: "net10.0-ios", platform: "IosSimulator", namePrefix: "iPhone", deviceWidthMarker: "390",
+            targetFramework: "net10.0-ios", platform: "IosSimulator", namePrefix: "iPhone", deviceWidthMarker: "390", rotatedWidthMarker: "844",
             readyTimeout: TimeSpan.FromSeconds(240));
     }
 
@@ -1499,7 +1499,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         Assert.SkipUnless(AndroidEmulatorIsRunning(), "No Android emulator is running (start one with `emulator -avd <name>`).");
         await RunUnoDevicePreviewJourneyAsync(
             hostFolder: Path.Combine("UnoHost.Android", "WinUIXamlDesigner.UnoHost.apk"), directory: false,
-            targetFramework: "net10.0-android", platform: "AndroidEmulator", namePrefix: "", deviceWidthMarker: "412",
+            targetFramework: "net10.0-android", platform: "AndroidEmulator", namePrefix: "", deviceWidthMarker: "412", rotatedWidthMarker: "915",
             readyTimeout: TimeSpan.FromMinutes(10));
     }
 
@@ -1526,7 +1526,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
     }
 
     async Task RunUnoDevicePreviewJourneyAsync(string hostFolder, bool directory, string targetFramework, string platform,
-        string namePrefix, string deviceWidthMarker, TimeSpan readyTimeout)
+        string namePrefix, string deviceWidthMarker, string rotatedWidthMarker, TimeSpan readyTimeout)
     {
         var appPath = Environment.GetEnvironmentVariable("OPENDEVELOP_APP_PATH");
         var addInDir = appPath == null ? null : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(appPath)!, "..", "..", "..", "..", "..", "..", "AddIns", "DisplayBindings", "WinUIXamlDesigner"));
@@ -1566,13 +1566,25 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             {
                 onDevice = await _app.InvokeAsync("od.winui-designer.device");
                 var phase = onDevice.GetProperty("session").GetProperty("phase").GetString();
-                Assert.NotEqual("Failed", phase);
+                Assert.True(phase != "Failed", "The device preview failed: " + onDevice);
                 return phase == "Ready" && onDevice.GetProperty("rendered").GetBoolean();
             }, readyTimeout);
             Assert.True(ready, "The device preview never reached Ready: " + onDevice);
             Assert.Equal(id, onDevice.GetProperty("device").GetString());
             // A phone-shaped canvas (the head renders at the device's width), not the desktop's 1280.
             Assert.Contains(deviceWidthMarker, onDevice.GetProperty("status").GetString());
+
+            // 1b. Rotate the device: the canvas swaps to landscape and the frame follows.
+            var rotated = await _app.InvokeAsync("od.winui-designer.device-orientation");
+            Assert.True(rotated.GetProperty("success").GetBoolean() && rotated.GetProperty("landscape").GetBoolean(), rotated.ToString());
+            JsonElement landscape = default;
+            var landscapeRendered = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+            {
+                landscape = await _app.InvokeAsync("od.winui-designer.device");
+                return (landscape.GetProperty("status").GetString() ?? "").Contains(rotatedWidthMarker, StringComparison.Ordinal);
+            }, readyTimeout);
+            Assert.True(landscapeRendered, "The rotated device never re-rendered in landscape: " + landscape);
+            await _app.InvokeAsync("od.winui-designer.device-orientation"); // back to portrait
 
             // 2. Back to the desktop host: the preview works there again.
             var back = await _app.InvokeAsync("od.winui-designer.device", "host");
@@ -1586,6 +1598,28 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
                     && (atDesktop.GetProperty("status").GetString() ?? "").Contains("1280", StringComparison.Ordinal);
             }, TimeSpan.FromSeconds(120));
             Assert.True(desktopAgain, "The desktop preview did not come back: " + atDesktop);
+
+            // 3. Cancel: start the device again and abandon the start at once; the designer returns to the desktop and the
+            //    cancelled start must not leave the session failed or stale.
+            var again = await _app.InvokeAsync("od.winui-designer.device", id);
+            Assert.True(again.GetProperty("success").GetBoolean(), again.ToString());
+            // The start must still be in flight when Cancel is pressed, or this would only prove a switch back to the desktop.
+            var inFlight = await _app.InvokeAsync("od.winui-designer.device");
+            Assert.Equal(id, inFlight.GetProperty("device").GetString());
+            Assert.NotEqual("Ready", inFlight.GetProperty("session").GetProperty("phase").GetString());
+            var cancelled = await _app.InvokeAsync("od.winui-designer.device-cancel");
+            Assert.True(cancelled.GetProperty("success").GetBoolean(), cancelled.ToString());
+            JsonElement afterCancel = default;
+            var backOnDesktop = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+            {
+                afterCancel = await _app.InvokeAsync("od.winui-designer.device");
+                var phase = afterCancel.GetProperty("session").GetProperty("phase").GetString();
+                Assert.True(phase != "Failed", "The preview failed after Cancel: " + afterCancel);
+                return afterCancel.GetProperty("device").GetString() == "host"
+                    && afterCancel.GetProperty("rendered").GetBoolean()
+                    && (afterCancel.GetProperty("status").GetString() ?? "").Contains("1280", StringComparison.Ordinal);
+            }, TimeSpan.FromSeconds(180));
+            Assert.True(backOnDesktop, "Cancel did not return to a working desktop preview: " + afterCancel);
         }
         finally
         {

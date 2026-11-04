@@ -627,6 +627,12 @@ public interface IWinUIXamlDevicePreview
 	System.Collections.Generic.IReadOnlyList<ICSharpCode.SharpDevelop.Designer.Devices.Device> OfferedDevices { get; }
 	/// <summary>Switches the preview; false when <paramref name="deviceId"/> is not offered.</summary>
 	System.Threading.Tasks.Task<bool> SwitchDeviceAsync(string deviceId);
+	/// <summary>Whether a device preview is rotated to landscape.</summary>
+	bool IsLandscape { get; }
+	/// <summary>Rotates the device preview (no effect on the computer's preview).</summary>
+	void ToggleOrientation();
+	/// <summary>Abandons a device start in flight and returns to the device shown before it.</summary>
+	System.Threading.Tasks.Task CancelSwitchAsync();
 }
 
 /// <summary>Optional: the runtime wraps its design canvas in extra chrome (a device picker row, a
