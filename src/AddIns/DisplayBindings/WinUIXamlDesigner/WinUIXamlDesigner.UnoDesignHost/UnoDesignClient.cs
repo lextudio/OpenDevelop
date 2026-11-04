@@ -37,7 +37,7 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	/// Wired per CONNECTION, not per document: one child is shared by every document with the same
 	/// compatibility key, so subscribing per document would print each line once per open document.
 	/// </summary>
-	static void RouteOutput(Connection connection)
+	static void RouteOutput(DesignerHostProcessClient connection)
 		=> connection.OutputLineReceived += (_, line)
 			#if DESIGNER_STANDALONE_CLIENT
 			=> Console.Error.WriteLine(line);
@@ -47,7 +47,7 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	static readonly object clientsGate = new();
 	static readonly HashSet<UnoDesignClient> clients = new();
 	static readonly Dictionary<CompatibilityKey, SharedDesignerHostRecovery<UnoDesignClient, Connection>> recoveries = new();
-	Connection connection;
+	DesignerHostProcessClient connection;
 	readonly CompatibilityKey? poolKey;
 	DesignerCapabilities capabilities;
 	// Theme and forced visual states exist only in the child process.  Keep the last successful
@@ -68,11 +68,11 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	// then reported an empty document from the other while set-property mutated a host that had no
 	// root at all.
 
-	UnoDesignClient(Connection connection, CompatibilityKey? poolKey) : base(connection)
+	UnoDesignClient(DesignerHostProcessClient connection, CompatibilityKey? poolKey) : base(connection)
 	{
 		this.connection = connection;
 		this.poolKey = poolKey;
-		capabilities = connection.Capabilities;
+		capabilities = connection is Connection own ? own.Capabilities : connection.HandshakeCapabilities ?? new DesignerCapabilities();
 		if (poolKey != null) { connection.HostExited += OnConnectionExited; lock (clientsGate) clients.Add(this); }
 	}
 
@@ -135,6 +135,20 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		RouteOutput(connection);
 		await connection.StartConnectionAsync(cancellationToken).ConfigureAwait(false);
 		return new UnoDesignClient(connection, null);
+	}
+
+	/// <summary>
+	/// Wraps a design host that something else already started and connected: the iOS/Android heads,
+	/// which live in a simulator or emulator and are launched by <c>IosSimulatorHostProcess</c> /
+	/// <c>AndroidEmulatorHostProcess</c> rather than spawned here. Such a client is not pooled and has no
+	/// automatic crash recovery: when the host goes away <see cref="DesignerHostProcessClient.HostExited"/> fires
+	/// and the view decides what to do (retry, fall back). Disposing the client disposes the host process.
+	/// </summary>
+	public static UnoDesignClient AdoptDeviceHost(DesignerHostProcessClient startedHost)
+	{
+		if (startedHost == null) throw new ArgumentNullException(nameof(startedHost));
+		RouteOutput(startedHost);
+		return new UnoDesignClient(startedHost, null);
 	}
 
 	/// <param name="appBinPath">The designed app's output directory, preloaded by the child so
@@ -345,7 +359,7 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 				" processes indefinitely. Fix or replace the document's content, then reopen it."));
 			return;
 		}
-		_ = RecoveryFor(poolKey).RecoverAllAsync(connection, false, CancellationToken.None);
+		_ = RecoveryFor(poolKey).RecoverAllAsync((Connection)connection, false, CancellationToken.None); // pooled clients always hold a Connection
 	}
 
 	void OnRecoveryFailed(Exception exception) => RecoveryFailed?.Invoke(this, exception);
@@ -356,7 +370,7 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		disposed = true;
 		if (poolKey != null) { connection.HostExited -= OnConnectionExited; DetachHostConnection(); lock (clientsGate) clients.Remove(this); }
 		try { ShutdownAsync().Wait(TimeSpan.FromSeconds(3)); } catch { }
-		if (poolKey != null) sharedPool.Release(poolKey, connection); else connection.Dispose();
+		if (poolKey != null) sharedPool.Release(poolKey, (Connection)connection); else connection.Dispose();
 	}
 
 	sealed record CompatibilityKey(string RuntimeConfigPath, string DepsFilePath, string HostDllPath, Architecture Architecture, string AppBinPath = "", string? DotnetHostPath = null);

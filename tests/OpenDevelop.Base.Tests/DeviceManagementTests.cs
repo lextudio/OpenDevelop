@@ -334,3 +334,51 @@ public sealed class DeviceManagerModelTests
         Assert.Contains("cannot be managed", result.Error);
     }
 }
+
+public sealed class ProjectTargetsTests
+{
+    [Fact]
+    public void AnUnoSingleProjectListsItsPlatforms()
+    {
+        var targets = ProjectTargets.Parse("<Project Sdk=\"Uno.Sdk\"><PropertyGroup><TargetFrameworks>net10.0-android;net10.0-ios;net10.0-desktop</TargetFrameworks></PropertyGroup></Project>");
+        Assert.True(targets.SupportsIos);
+        Assert.True(targets.SupportsAndroid);
+        Assert.Equal(3, targets.TargetFrameworks.Count);
+    }
+
+    [Fact]
+    public void ADesktopOnlyProjectOffersNoDevices()
+    {
+        var targets = ProjectTargets.Parse("<Project><PropertyGroup><TargetFramework>net10.0-desktop</TargetFramework></PropertyGroup></Project>");
+        Assert.False(targets.SupportsIos);
+        Assert.False(targets.SupportsAndroid);
+    }
+
+    [Fact]
+    public void MacCatalystCountsAsApple()
+    {
+        Assert.True(ProjectTargets.Parse("<Project><PropertyGroup><TargetFrameworks>net10.0-maccatalyst</TargetFrameworks></PropertyGroup></Project>").SupportsIos);
+    }
+
+    [Fact]
+    public void UnoOverrideAndConditionalGroupsAreSeen()
+    {
+        var targets = ProjectTargets.Parse("<Project><PropertyGroup Condition=\"'$(X)'=='1'\"><UnoTargetFrameworkOverride>net10.0-ios</UnoTargetFrameworkOverride></PropertyGroup></Project>");
+        Assert.True(targets.SupportsIos);
+    }
+
+    [Fact]
+    public void UnresolvedPropertyReferencesAreIgnored()
+    {
+        var targets = ProjectTargets.Parse("<Project><PropertyGroup><TargetFrameworks>$(Tfms);net10.0-android</TargetFrameworks></PropertyGroup></Project>");
+        Assert.Equal(["net10.0-android"], targets.TargetFrameworks);
+    }
+
+    [Fact]
+    public void BrokenXmlAndMissingFilesMeanNothingKnown()
+    {
+        Assert.Empty(ProjectTargets.Parse("<Project><oops").TargetFrameworks);
+        Assert.Empty(ProjectTargets.ReadFromFile(Path.Combine(Path.GetTempPath(), "missing-" + Guid.NewGuid().ToString("N") + ".csproj")).TargetFrameworks);
+        Assert.Empty(ProjectTargets.ReadFromFile(null).TargetFrameworks);
+    }
+}

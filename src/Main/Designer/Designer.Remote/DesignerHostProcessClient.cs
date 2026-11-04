@@ -33,6 +33,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// adapters may read its optional capabilities, but must not replace the common validation.
 		/// </summary>
 		protected HostHandshake Handshake { get; set; } = null!;
+
+		/// <summary>The capabilities the host reported in its handshake, or null before it connected.
+		/// For callers that only hold a <see cref="DesignerHostProcessClient"/>.</summary>
+		public DesignerCapabilities? HandshakeCapabilities => Handshake?.Capabilities;
 		volatile bool disposing;
 		bool started;
 
