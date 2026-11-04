@@ -485,6 +485,44 @@ designer" because its `SwitchView` path does re-enter `LoadInternal`; the WPF an
 the ones that were reworded. Prefer `od.<designer>.toolbox.query-item-bounds` (which does not
 activate anything) when a test only needs toolbox row coordinates.
 
+### Machine-wide devices and the Device Manager (2026-11-03)
+
+Designers that preview on a simulator or emulator (MAUI today; Uno and others later) share one device layer instead of each
+keeping its own list. It lives in `Designer.Shell/Devices` (no UI, no SDK dependency) and `Designer.Presentation` (the controls).
+
+- **Model.** `Device` is a machine device: `Platform` (Host, IosSimulator, AndroidEmulator), `Id` (`host`, `ios:<udid>`,
+  `android:<avd>`), family, runtime, `State` (Unknown, Shutdown, Booting, Booted). `ModelKey` is the runtime-independent name
+  (`ios:<slug>`), which is what favorites and recents store so they survive a runtime upgrade. A designer's own notion of a
+  preview target (MAUI: device + orientation) sits above it.
+- **Providers.** One `IDeviceProvider` per platform lists devices and says why it cannot (`Unavailable`). iOS Simulator
+  (`IosSimulatorProvider`, `xcrun simctl`) is built in; Android registers `AndroidDeviceProvider` from the Android Device
+  Manager add-in at startup. `DeviceService.Default` refreshes them concurrently with a per-provider timeout and raises
+  `Changed` only when the list differs. The iOS family comes from the device type identifier, not the name, because users name
+  their own simulators.
+- **Management capabilities** are optional interfaces on a provider: `IDeviceManagement` (start, stop, delete),
+  `IDeviceCreation` (models, runtimes, create) and `IExternalDeviceCreator` (a platform whose creation is its own window; Android
+  opens the AVD editor). A new platform implements only what its tooling supports. Safety rules worth keeping: Android reports
+  `Unknown`, and refuses to delete, whenever adb is installed but cannot say what is running or sees an emulator it cannot
+  identify (offline/booting), so a running AVD is never removed. A model newer than a runtime cannot be created
+  ("Incompatible device"); `RuntimeOption.Supports` carries simctl's `supportedDeviceTypes` so the form only offers valid pairs.
+- **Preferences.** `DevicePreferences` holds favorites (ordered), the last five used (recents) and hidden ids; one
+  `DevicePreferencesStore` (user settings `Designer.Devices.*`) serves every designer and raises `Saved` so open designers re-read
+  it. A hidden device is not selectable anywhere, DevFlow included.
+- **Controls.** `DevicePickerBar` (chip, favorite toggle, quick strip, searchable grouped popup with same-model runtimes folded,
+  "Manage devices..." footer) and `DeviceManagerDialog` (list with state, start/stop/delete, hide/show, create, environment
+  strip, 5 s poll). The dialog is only a window over `DeviceManagerModel`, which decides row actions and routes them to the
+  provider, so the logic is unit-tested without a window.
+- **Session progress.** `DesignerSession` is a thread-safe phase tracker (Idle, Preflight, ProvisioningDevice, BootingDevice,
+  InstallingHost, LaunchingHost, Connecting, Rendering, Ready, Stale, Failed with the stage and a plain reason).
+  `DesignerSessionSteps` maps it to four card rows and `SessionOverlay` lays that card over the canvas with Cancel, Retry and a
+  fallback button. A designer that abandons a start (target switch, retry, Cancel) must invalidate that connection (MAUI uses a
+  generation counter) so a late host is disposed instead of adopted.
+- **Tests.** `OpenDevelop.Base.Tests`: `DeviceCatalogTests`, `DevicePreferencesTests`, `IosSimulatorProviderTests`,
+  `IosSimulatorManagementTests`, `AndroidDeviceProviderTests`, `AndroidEmulatorProcessTests`, `AndroidDeviceSafetyTests`,
+  `DeviceServiceTests`, `DeviceManagerModelTests`, `DesignerSessionTests`, `DesignerSessionStepsTests`. The dialog and overlay
+  have no pixel tests; the MAUI add-in's integration journeys exercise them under LibreWPF with the real tools. Design rationale
+  and the MAUI-specific parts: `MAUI-Designer/opendevelop-addin/docs/design.md`.
+
 ### Observability and acceptance
 
 Every designer status endpoint exposes backend, pool key, host PID, session id, document id, pool
