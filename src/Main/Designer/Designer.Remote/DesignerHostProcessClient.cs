@@ -32,7 +32,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>The authenticated common handshake for the current child connection. Runtime
 		/// adapters may read its optional capabilities, but must not replace the common validation.
 		/// </summary>
-		protected HostHandshake Handshake { get; private set; } = null!;
+		protected HostHandshake Handshake { get; set; } = null!;
 		volatile bool disposing;
 		bool started;
 
@@ -59,6 +59,13 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// swallowed rather than killing the pump.
 		/// </summary>
 		public event EventHandler<string>? OutputLineReceived;
+
+		/// <summary>For subclasses that have an extra log source of their own (an Android device's
+		/// logcat): surfaces <paramref name="line"/> exactly like a line the child wrote itself.</summary>
+		protected void RaiseOutputLine(string line)
+		{
+			try { OutputLineReceived?.Invoke(this, line); } catch (Exception) { }
+		}
 
 		/// <summary>Host-chosen identity for this child process, minted before launch and
 		/// confirmed by the child's handshake echo. Stable for the child's life; every
@@ -121,6 +128,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>Spawns the child and completes the authenticated handshake.</summary>
 		protected async Task StartAsync(CancellationToken cancellationToken)
 		{
+			// A (re)start owns a fresh set of releasable resources: a failed earlier attempt has already released its own.
+			Interlocked.Exchange(ref released, 0);
 			var childDll = GetChildDllPath();
 			if (String.IsNullOrEmpty(childDll) || !File.Exists(childDll))
 				throw new FileNotFoundException("The out-of-process designer host is not deployed.", childDll);
@@ -213,6 +222,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				var childLog = ChildLog;
 				process.Dispose();
 				started = false;
+				// A start that failed leaves nothing for Dispose to clean up (the child is gone), so
+				// release what the child did not own (a device app, a temp script) here as well.
+				ReleaseOnce();
 				if (childExitCts.IsCancellationRequested && childExited)
 					throw new InvalidOperationException(
 						$"The designer host process exited before connecting (exit code {exitCode})." +
@@ -289,6 +301,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			} catch (System.ComponentModel.Win32Exception) {
 				// Access denied or already terminating: the same race, seen from the OS.
 			}
+			// Killing the child does not take down what it left on a device (an app, a port bridge);
+			// a terminated host is dead for good, so release now rather than waiting for a Dispose
+			// some callers never make.
+			ReleaseOnce();
 		}
 
 		async Task PumpAsync(StreamReader reader)
@@ -329,6 +345,23 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				if (started && !process.WaitForExit(3000)) process.Kill(entireProcessTree: true);
 			} catch { }
 			try { process?.Dispose(); } catch { }
+			ReleaseOnce();
 		}
+
+		int released;
+
+		/// <summary>Runs <see cref="OnDisposed"/> at most once per client, whether the start failed or
+		/// the client was disposed (or both).</summary>
+		void ReleaseOnce()
+		{
+			if (Interlocked.Exchange(ref released, 1) == 0) {
+				try { OnDisposed(); } catch { }
+			}
+		}
+
+		/// <summary>Called once at the end of <see cref="Dispose"/>, after the graceful shutdown
+		/// and the child's exit, so a subclass can release what the child process does not own
+		/// (an app left running on a device, an extra log process). Must not throw.</summary>
+		protected virtual void OnDisposed() { }
 	}
 }
