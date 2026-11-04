@@ -24,7 +24,12 @@ public interface IDeviceManagement
 public sealed record DeviceTypeOption(string Id, string Name, DeviceFamily Family);
 
 /// <summary>A runtime a new device can run ("iOS 26.1").</summary>
-public sealed record RuntimeOption(string Id, string Name, string Version);
+public sealed record RuntimeOption(string Id, string Name, string Version, IReadOnlySet<string>? SupportedDeviceTypeIds = null)
+{
+    /// <summary>Whether this runtime can host the given model. Unknown support (null) allows it:
+    /// the tool then has the last word and its error is shown.</summary>
+    public bool Supports(string deviceTypeId) => SupportedDeviceTypeIds == null || SupportedDeviceTypeIds.Contains(deviceTypeId);
+}
 
 public sealed record DeviceCreateOptions(IReadOnlyList<DeviceTypeOption> Types, IReadOnlyList<RuntimeOption> Runtimes);
 

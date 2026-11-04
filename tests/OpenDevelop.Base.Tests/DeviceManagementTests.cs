@@ -92,6 +92,43 @@ public sealed class IosSimulatorManagementTests
     }
 
     [Fact]
+    public async Task TheReasonIsTheLineAfterAnErrorHeader()
+    {
+        var provider = Provider([], _ => new SimctlResult(1, "", "An error was encountered processing the command (domain=com.apple.CoreSimulator.SimError, code=403):\nIncompatible device\nUnable to create a device for device type: x"));
+        Assert.Equal("Incompatible device", (await provider.CreateAsync("n", "t", "r", TestContext.Current.CancellationToken)).Error);
+    }
+
+    [Fact]
+    public void ACustomNamedSimulatorIsStillAnIPhoneOrIPad()
+    {
+        const string json = """
+            {"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-26-1":[
+              {"udid":"A","name":"My Phone","state":"Shutdown","isAvailable":true,"deviceTypeIdentifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-17"},
+              {"udid":"B","name":"Lab slate","state":"Shutdown","isAvailable":true,"deviceTypeIdentifier":"com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-M5-8GB"},
+              {"udid":"C","name":"Watch","state":"Shutdown","isAvailable":true,"deviceTypeIdentifier":"com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-10-46mm"}]}}
+            """;
+        var devices = IosSimulatorProvider.Parse(json);
+        Assert.Equal(["My Phone", "Lab slate"], devices.Select(d => d.Name).OrderByDescending(n => n));
+        Assert.Equal(DeviceFamily.Tablet, devices.Single(d => d.Name == "Lab slate").Family);
+    }
+
+    [Fact]
+    public void RuntimesRememberWhichModelsTheySupport()
+    {
+        const string json = """
+            {"runtimes":[
+              {"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-26-5","name":"iOS 26.5","isAvailable":true,
+               "supportedDeviceTypes":[{"identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-17"}]},
+              {"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-17-2","name":"iOS 17.2","isAvailable":true}]}
+            """;
+        var runtimes = ParseRuntimes(json);
+        Assert.True(runtimes[0].Supports("com.apple.CoreSimulator.SimDeviceType.iPhone-17"));
+        Assert.False(runtimes[0].Supports("com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro"));
+        // No support list: unknown, so allowed (simctl decides and its reason is shown).
+        Assert.True(runtimes[1].Supports("anything"));
+    }
+
+    [Fact]
     public void RuntimesKeepAvailableIosNewestFirst()
     {
         const string json = """
@@ -113,5 +150,114 @@ public sealed class IosSimulatorManagementTests
         var options = await provider.GetCreateOptionsAsync(TestContext.Current.CancellationToken);
         Assert.Single(options.Types);
         Assert.Single(options.Runtimes);
+    }
+}
+
+public sealed class DeviceManagerModelTests
+{
+    sealed class FakeProvider(DevicePlatform platform, params Device[] devices) : IDeviceProvider, IDeviceManagement
+    {
+        public List<string> Calls { get; } = [];
+
+        public string DisplayName => "fake";
+
+        public DevicePlatform Platform { get; } = platform;
+
+        public string? Unavailable => null;
+
+        public Task<IReadOnlyList<Device>> ListAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Device>>(devices);
+
+        public Task<DeviceActionResult> BootAsync(Device device, CancellationToken cancellationToken = default)
+        {
+            Calls.Add("boot " + device.Id);
+            return Task.FromResult(DeviceActionResult.Success);
+        }
+
+        public Task<DeviceActionResult> ShutdownAsync(Device device, CancellationToken cancellationToken = default)
+        {
+            Calls.Add("shutdown " + device.Id);
+            return Task.FromResult(DeviceActionResult.Success);
+        }
+
+        public Task<DeviceActionResult> DeleteAsync(Device device, CancellationToken cancellationToken = default)
+        {
+            Calls.Add("delete " + device.Id);
+            return Task.FromResult(DeviceActionResult.Failure("nope"));
+        }
+    }
+
+    static Device Ios(string id, DeviceState state) =>
+        new(DevicePlatform.IosSimulator, id, id, DeviceFamily.Phone, "iOS", "26.1", state);
+
+    [Fact]
+    public async Task ActionsFollowTheDeviceState()
+    {
+        var stopped = Ios("ios:a", DeviceState.Shutdown);
+        var running = Ios("ios:b", DeviceState.Booted);
+        var starting = Ios("ios:c", DeviceState.Booting);
+        var unknown = Ios("ios:d", DeviceState.Unknown);
+        var service = new DeviceService();
+        service.Register(new FakeProvider(DevicePlatform.IosSimulator, stopped, running, starting, unknown));
+        await service.RefreshAsync(TestContext.Current.CancellationToken);
+        var model = new DeviceManagerModel(service);
+
+        var rows = model.Rows(service.Devices, DevicePreferences.Empty).ToDictionary(r => r.Device.Id);
+        Assert.True(rows["ios:a"].CanStart && !rows["ios:a"].CanStop && rows["ios:a"].CanDelete);
+        Assert.True(!rows["ios:b"].CanStart && rows["ios:b"].CanStop && !rows["ios:b"].CanDelete);
+        Assert.True(!rows["ios:c"].CanStart && rows["ios:c"].CanStop && !rows["ios:c"].CanDelete);
+        Assert.True(rows["ios:d"].CanStart && !rows["ios:d"].CanStop && rows["ios:d"].CanDelete);
+        Assert.Equal("Running", rows["ios:b"].StateText);
+        Assert.Equal("Starting…", rows["ios:c"].StateText);
+    }
+
+    [Fact]
+    public async Task TheHostComputerCanBeNeitherManagedNorHidden()
+    {
+        var service = new DeviceService();
+        await service.RefreshAsync(TestContext.Current.CancellationToken);
+        var row = new DeviceManagerModel(service).Rows(service.Devices, DevicePreferences.Empty).Single(r => r.Device.Platform == DevicePlatform.Host);
+        Assert.False(row.CanStart || row.CanStop || row.CanDelete || row.CanHide);
+        Assert.Equal("This computer", row.StateText);
+    }
+
+    [Fact]
+    public async Task HiddenDevicesAreListedButFlagged()
+    {
+        var a = Ios("ios:a", DeviceState.Shutdown);
+        var service = new DeviceService();
+        service.Register(new FakeProvider(DevicePlatform.IosSimulator, a));
+        await service.RefreshAsync(TestContext.Current.CancellationToken);
+        var rows = new DeviceManagerModel(service).Rows(service.Devices, DevicePreferences.Empty.Hide("ios:a"));
+        Assert.True(rows.Single(r => r.Device.Id == "ios:a").Hidden);
+        Assert.True(rows.Single(r => r.Device.Id == "ios:a").CanHide);
+    }
+
+    [Fact]
+    public async Task ExecuteRoutesToTheProviderAndRefreshes()
+    {
+        var a = Ios("ios:a", DeviceState.Shutdown);
+        var provider = new FakeProvider(DevicePlatform.IosSimulator, a);
+        var service = new DeviceService();
+        service.Register(provider);
+        var refreshed = 0;
+        service.Changed += (_, _) => refreshed++;
+        var model = new DeviceManagerModel(service);
+
+        Assert.True((await model.ExecuteAsync(DeviceAction.Start, a, TestContext.Current.CancellationToken)).Ok);
+        var failed = await model.ExecuteAsync(DeviceAction.Delete, a, TestContext.Current.CancellationToken);
+        Assert.False(failed.Ok);
+        Assert.Equal("nope", failed.Error);
+        Assert.Equal(["boot ios:a", "delete ios:a"], provider.Calls);
+        Assert.True(refreshed >= 1);
+    }
+
+    [Fact]
+    public async Task APlatformWithoutManagementReportsWhyInsteadOfThrowing()
+    {
+        var service = new DeviceService();
+        var result = await new DeviceManagerModel(service).ExecuteAsync(DeviceAction.Start, Ios("ios:z", DeviceState.Shutdown), TestContext.Current.CancellationToken);
+        Assert.False(result.Ok);
+        Assert.Contains("cannot be managed", result.Error);
     }
 }

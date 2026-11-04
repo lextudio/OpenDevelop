@@ -126,8 +126,12 @@ public sealed class IosSimulatorProvider : IDeviceProvider, IDeviceManagement, I
     static string Reason(SimctlResult result)
     {
         var text = string.IsNullOrWhiteSpace(result.Error) ? result.Output : result.Error;
-        var line = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
-        return line ?? $"simctl exited with code {result.ExitCode}.";
+        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (lines.Length == 0)
+            return $"simctl exited with code {result.ExitCode}.";
+        // simctl often opens with "An error was encountered processing the command (...):" and
+        // puts the actual reason on the next line; the reason is what the user needs.
+        return lines[0].EndsWith(':') && lines.Length > 1 ? lines[1] : lines[0];
     }
 
     async Task<DeviceActionResult> ActionAsync(IReadOnlyList<string> args, string? okWhenErrorContains, CancellationToken cancellationToken)
@@ -242,7 +246,22 @@ public sealed class IosSimulatorProvider : IDeviceProvider, IDeviceManagement, I
             bool available = !runtime.TryGetProperty("isAvailable", out var a) || a.ValueKind != JsonValueKind.False;
             var (family, version) = ParseRuntime(id);
             if (id.Length > 0 && available && family == "iOS")
-                result.Add(new RuntimeOption(id, name.Length > 0 ? name : "iOS " + version, version));
+            {
+                // simctl names the models each runtime can host; a model newer than the runtime
+                // (iPhone 18 Pro on iOS 26.5) fails with "Incompatible device" if combined anyway.
+                HashSet<string>? supported = null;
+                if (runtime.TryGetProperty("supportedDeviceTypes", out var types) && types.ValueKind == JsonValueKind.Array)
+                {
+                    supported = [];
+                    foreach (var type in types.EnumerateArray())
+                    {
+                        if (type.TryGetProperty("identifier", out var typeId) && typeId.GetString() is { Length: > 0 } identifier)
+                            supported.Add(identifier);
+                    }
+                }
+
+                result.Add(new RuntimeOption(id, name.Length > 0 ? name : "iOS " + version, version, supported));
+            }
         }
 
         return result.OrderByDescending(r => Version.TryParse(r.Version, out var v) ? v : new Version(0, 0)).ToArray();
@@ -271,8 +290,13 @@ public sealed class IosSimulatorProvider : IDeviceProvider, IDeviceManagement, I
                 string state = entry.GetProperty("state").GetString() ?? "";
                 bool unavailable = entry.TryGetProperty("isAvailable", out var available)
                     && available.ValueKind == JsonValueKind.False;
-                bool phone = name.StartsWith("iPhone", StringComparison.Ordinal);
-                bool tablet = name.StartsWith("iPad", StringComparison.Ordinal);
+                // The model decides the family, not the name: a simulator the user called "My Phone"
+                // is still an iPhone. Name prefixes are only the fallback for older simctl output.
+                string typeId = entry.TryGetProperty("deviceTypeIdentifier", out var typeProperty) ? typeProperty.GetString() ?? "" : "";
+                bool phone = typeId.Contains("SimDeviceType.iPhone", StringComparison.Ordinal)
+                    || (typeId.Length == 0 && name.StartsWith("iPhone", StringComparison.Ordinal));
+                bool tablet = typeId.Contains("SimDeviceType.iPad", StringComparison.Ordinal)
+                    || (typeId.Length == 0 && name.StartsWith("iPad", StringComparison.Ordinal));
                 if (udid.Length == 0 || unavailable || !(phone || tablet))
                     continue;
                 devices.Add(new Device(DevicePlatform.IosSimulator, "ios:" + udid, name,
