@@ -216,6 +216,75 @@ public sealed class AndroidEmulatorHostProcessTests
         Assert.Equal("emulator-9999", AndroidEmulatorHostProcess.ResolveSerial("/nonexistent/adb", "pixel", "emulator-9999"));
     }
 
+    static string FakeAdb(string directory, string body)
+    {
+        var path = Path.Combine(directory, "adb");
+        File.WriteAllText(path, "#!/bin/sh\n" + body + "\n");
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return path;
+    }
+
+    [Fact]
+    public void TheSerialOfARunningAvdIsFoundByNameAndNeverGuessed()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "needs /bin/sh");
+        var directory = Path.Combine(Path.GetTempPath(), "fakeadb-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var adb = FakeAdb(directory, string.Join("\n",
+                "case \"$*\" in",
+                "  devices) printf 'List of devices attached\\nemulator-5554\\tdevice\\nemulator-5556\\tdevice\\n' ;;",
+                "  '-s emulator-5554 emu avd name') printf 'first_avd\\r\\nOK\\r\\n' ;;",
+                "  '-s emulator-5556 emu avd name') printf 'second_avd\\r\\nOK\\r\\n' ;;",
+                "esac"));
+            Assert.Equal("emulator-5556", AndroidEmulatorHostProcess.FindSerialForAvd(adb, "second_avd"));
+            Assert.Equal("emulator-5554", AndroidEmulatorHostProcess.FindSerialForAvd(adb, "FIRST_AVD"));
+            // An AVD that is not running yields null (ResolveSerial would fall back to some other emulator).
+            Assert.Null(AndroidEmulatorHostProcess.FindSerialForAvd(adb, "third_avd"));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AnAdbThatPrintsALotToStderrDoesNotStallTheCommand()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "needs /bin/sh");
+        var directory = Path.Combine(Path.GetTempPath(), "fakeadb-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            // 400 KB on stderr would fill the pipe and block adb if nothing drained it.
+            var adb = FakeAdb(directory, "head -c 400000 /dev/zero | tr '\\\\0' 'x' >&2; printf '1\\n'");
+            Assert.True(AndroidEmulatorHostProcess.IsBootCompleted(adb, "emulator-5554"));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void BootCompletedMeansTheDevicePropertyIsOne()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "needs /bin/sh");
+        var directory = Path.Combine(Path.GetTempPath(), "fakeadb-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            Assert.True(AndroidEmulatorHostProcess.IsBootCompleted(FakeAdb(directory, "printf '1\\r\\n'"), "emulator-5554"));
+            Assert.False(AndroidEmulatorHostProcess.IsBootCompleted(FakeAdb(directory, "printf '\\n'"), "emulator-5554"));
+            Assert.False(AndroidEmulatorHostProcess.IsBootCompleted(FakeAdb(directory, "exit 1"), "emulator-5554"));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task InstallingAMissingApkFailsBeforeRunningAdb()
     {

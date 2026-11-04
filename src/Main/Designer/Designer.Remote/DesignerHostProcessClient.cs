@@ -107,6 +107,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		protected virtual string BuildCommandLine(string childDll, int port, string token)
 			=> $"exec \"{childDll}\" --port {port} --token {token}";
 
+		/// <summary>How long to wait for the child to connect back to the loopback port after it was started. A host that
+		/// boots inside a device (a cold emulator running a Mono app) needs far longer than a local process.</summary>
+		protected virtual TimeSpan ConnectTimeout => TimeSpan.FromSeconds(30);
+
 		/// <summary>Timeout for the post-connect handshake. Runtimes with a slow boot (e.g.
 		/// headless Uno initialization) override this with a longer limit.</summary>
 		protected virtual TimeSpan HandshakeTimeout => TimeSpan.FromSeconds(15);
@@ -207,7 +211,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			try {
 				using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, childExitCts.Token);
 				tcp = await listener.AcceptTcpClientAsync(linkedCts.Token).AsTask()
-					.WaitAsync(TimeSpan.FromSeconds(30), linkedCts.Token).ConfigureAwait(false);
+					.WaitAsync(ConnectTimeout, linkedCts.Token).ConfigureAwait(false);
 				var stream = tcp.GetStream();
 				var handler = new HeaderDelimitedMessageHandler(stream, stream, DesignerJsonRpc.CreateFormatter());
 				rpc = new JsonRpc(handler);

@@ -35,6 +35,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		CancellationTokenSource logcatCancellation;
 
 		public AndroidEmulatorHostProcess(string adb, string serial, string apkPath, string packageName, string displayName = "designer")
+			// A cold, small emulator renders a first frame in tens of seconds (measured: over 30 s on a 1.5 GB AVD); the default
+			// request timeout would terminate a healthy but slow host.
+			: base(TimeSpan.FromMinutes(3))
 		{
 			// The watcher is a /bin/sh script: macOS and Linux only.
 			if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Android emulator previews need a Unix shell (macOS or Linux).");
@@ -65,6 +68,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		protected override string DotnetHostPath => "/bin/sh";
 
 		protected override TimeSpan HandshakeTimeout => TimeSpan.FromSeconds(180);
+
+		// A cold emulator needs minutes to start a Mono app (measured: over 30 s on a 1.5 GB AVD).
+		protected override TimeSpan ConnectTimeout => TimeSpan.FromSeconds(180);
 
 		protected override string BuildCommandLine(string childDll, int port, string token)
 		{
@@ -233,6 +239,24 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			return devices.FirstOrDefault(d => d.StartsWith("emulator-", StringComparison.Ordinal)) ?? devices[0];
 		}
 
+		/// <summary>The serial of the running emulator started from AVD <paramref name="avdName"/>, or null when that AVD is
+		/// not running (unlike <see cref="ResolveSerial"/>, never falls back to another device).</summary>
+		public static string FindSerialForAvd(string adb, string avdName)
+		{
+			foreach (var serial in ListDevices(adb)) {
+				var name = RunAdb(adb, serial, new[] { "emu", "avd", "name" });
+				var first = name?.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.Length > 0 && l != "OK");
+				if (string.Equals(first, avdName, StringComparison.OrdinalIgnoreCase))
+					return serial;
+			}
+
+			return null;
+		}
+
+		/// <summary>True once the device reports <c>sys.boot_completed=1</c> (adb sees it a while before it is usable).</summary>
+		public static bool IsBootCompleted(string adb, string serial) =>
+			RunAdb(adb, serial, new[] { "shell", "getprop", "sys.boot_completed" })?.Trim() == "1";
+
 		/// <summary>Online device serials from <c>adb devices</c> output.</summary>
 		public static IReadOnlyList<string> ParseDevices(string adbDevicesOutput) =>
 			(adbDevicesOutput ?? string.Empty)
@@ -249,9 +273,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				using (var process = Process.Start(startInfo)) {
 					if (process == null)
 						return new string[0];
-					string output = process.StandardOutput.ReadToEnd();
-					process.WaitForExit(15000);
-					return ParseDevices(output);
+					return ParseDevices(ReadWithTimeout(process));
 				}
 			} catch (Exception) {
 				return new string[0];
@@ -329,13 +351,26 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				using (var process = Process.Start(startInfo)) {
 					if (process == null)
 						return null;
-					string output = process.StandardOutput.ReadToEnd();
-					process.WaitForExit(15000);
-					return process.ExitCode == 0 ? output : null;
+					string output = ReadWithTimeout(process);
+					return output != null && process.HasExited && process.ExitCode == 0 ? output : null;
 				}
 			} catch (Exception) {
 				return null;
 			}
+		}
+
+		/// <summary>Reads a short adb command's stdout under a 15 s limit: both pipes drain concurrently and a wedged adb is
+		/// killed, so the boot-wait loop that polls it can never hang. Null on timeout.</summary>
+		static string ReadWithTimeout(Process process)
+		{
+			var output = process.StandardOutput.ReadToEndAsync();
+			process.StandardError.ReadToEndAsync().ContinueWith(t => { var ignored = t.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
+			if (!process.WaitForExit(15000)) {
+				try { process.Kill(true); } catch (Exception) { }
+				return null;
+			}
+
+			return output.Wait(5000) ? output.Result : null;
 		}
 
 		static string Quote(string value) => "'" + value.Replace("'", "'\\''") + "'";

@@ -33,6 +33,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <param name="bundleId">The app's bundle identifier (see <see cref="ReadBundleId"/>).</param>
 		/// <param name="displayName">Names the host in error messages ("MAUI", "Uno").</param>
 		public IosSimulatorHostProcess(string appBundlePath, string udid, string bundleId, string displayName = "designer")
+			: base(TimeSpan.FromMinutes(1))
 		{
 			if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("iOS simulators run on macOS only.");
 			if (string.IsNullOrWhiteSpace(appBundlePath)) throw new ArgumentException("An app bundle path is required.", nameof(appBundlePath));
@@ -54,6 +55,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		protected override string DotnetHostPath => "/bin/sh";
 
 		protected override TimeSpan HandshakeTimeout => TimeSpan.FromSeconds(120);
+
+		protected override TimeSpan ConnectTimeout => TimeSpan.FromSeconds(90);
 
 		protected override string BuildCommandLine(string childDll, int port, string token)
 		{
