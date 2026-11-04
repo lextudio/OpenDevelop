@@ -142,7 +142,9 @@ namespace Debugger.AddIn.Service.Dap
 			IEnumerable<KeyValuePair<string, string>> launchEnvironment = null,
 			bool noDebug = false,
 			int? attachProcessId = null,
-			string debuggeeRuntimeHost = null)
+			string debuggeeRuntimeHost = null,
+			JsonObject attachOptions = null,
+			IEnumerable<KeyValuePair<string, string>> adapterEnvironment = null)
 		{
 			var argumentList = arguments != null ? arguments.ToList() : new List<string>();
 			string adapterDll = ResolveAdapterDll();
@@ -166,7 +168,7 @@ namespace Debugger.AddIn.Service.Dap
 					debuggeeLaunchHost = debuggeeRuntimeHost;
 			}
 			adapterLogPath = CreateAdapterLogPath();
-			adapterProcess = LaunchAdapter(adapterDll, debuggeeHost, adapterLogPath);
+			adapterProcess = LaunchAdapter(adapterDll, debuggeeHost, adapterLogPath, adapterEnvironment);
 			// Surface the adapter's (and, since the debuggee inherits it, the debuggee's) stderr to
 			// the caller so it can be shown in the Debug output channel. Without this an adapter
 			// crash or a debuggee launch failure (e.g. "the specified framework was not found")
@@ -202,11 +204,15 @@ namespace Debugger.AddIn.Service.Dap
 
 			if (launchMode == DapLaunchMode.AttachToProcess) {
 				DebuggeeProcessId = attachProcessId;
-				await client.SendRequestAsync("attach", new JsonObject {
+				var attachArguments = new JsonObject {
 					["processId"] = attachProcessId,
 					["console"] = "internalConsole",
 					["justMyCode"] = true
-				}, cancellationToken).ConfigureAwait(false);
+				};
+				// Adapter-specific attach settings, e.g. where an iOS simulator target's debugger libraries are
+				foreach (var option in attachOptions ?? new JsonObject())
+					attachArguments[option.Key] = option.Value?.DeepClone();
+				await client.SendRequestAsync("attach", attachArguments, cancellationToken).ConfigureAwait(false);
 			} else if (launchMode == DapLaunchMode.AttachToSuspendedProcess) {
 				debuggeeProcess = LaunchDebuggeeSuspended(debuggeeLaunchHost, targetPath, workingDirectory, argumentList, launchEnvironment);
 				DebuggeeProcessId = debuggeeProcess.Id;
@@ -948,7 +954,8 @@ namespace Debugger.AddIn.Service.Dap
 		/// <param name="logPath">Where to ask SharpDbg to write its own diagnostics. It logs nothing
 		/// unless told to, so this is the only record of what the adapter was doing while a session
 		/// was making no progress.</param>
-		static Process LaunchAdapter(string adapterDll, string debuggeeHost, string logPath)
+		static Process LaunchAdapter(string adapterDll, string debuggeeHost, string logPath,
+			IEnumerable<KeyValuePair<string, string>> adapterEnvironment)
 		{
 			var processStartInfo = new ProcessStartInfo {
 				FileName = debuggeeHost,
@@ -960,6 +967,9 @@ namespace Debugger.AddIn.Service.Dap
 				CreateNoWindow = true
 			};
 			UseDotNetHost(processStartInfo, debuggeeHost);
+			// mscordbi finds the debuggee's transport pipes under TMPDIR, which an iOS simulator app has in its container
+			foreach (var variable in adapterEnvironment ?? Enumerable.Empty<KeyValuePair<string, string>>())
+				processStartInfo.Environment[variable.Key] = variable.Value;
 			var process = new Process {
 				StartInfo = processStartInfo,
 				EnableRaisingEvents = true

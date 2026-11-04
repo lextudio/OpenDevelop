@@ -495,7 +495,37 @@ namespace ICSharpCode.SharpDevelop.Services
 			AttachAsync(existingProcess.Id).FireAndForget();
 		}
 
-		public async Task AttachAsync(int processId)
+		/// <summary>
+		/// Debugs an app the iOS Simulator started stopped (simctl launch --wait-for-debugger): the
+		/// adapter registers for its runtime start-up, then lets the process continue.
+		/// </summary>
+		/// <returns>False when a session is already running; the caller then owns the stopped app.</returns>
+		public bool StartIosSimulatorDebugging(int processId, string debuggerLibraryDirectory, string containerTempDirectory)
+		{
+			if (IsDebugging) {
+				MessageService.ShowMessage(errorDebugging);
+				return false;
+			}
+			OnDebugStarting(EventArgs.Empty);
+			var attachOptions = new System.Text.Json.Nodes.JsonObject {
+				["debuggerLibraryDirectory"] = debuggerLibraryDirectory,
+				["continueStoppedProcess"] = true
+			};
+			var adapterEnvironment = new[] {
+				new KeyValuePair<string, string>("TMPDIR", containerTempDirectory.EndsWith("/", StringComparison.Ordinal) ? containerTempDirectory : containerTempDirectory + "/")
+			};
+			AttachWithOptionsAsync(processId, attachOptions, adapterEnvironment).FireAndForget();
+			return true;
+		}
+
+		// Kept with this exact signature: od.debug.attach reflects on it by name with one argument
+		public Task AttachAsync(int processId)
+		{
+			return AttachWithOptionsAsync(processId, null, null);
+		}
+
+		async Task AttachWithOptionsAsync(int processId, System.Text.Json.Nodes.JsonObject attachOptions,
+			IEnumerable<KeyValuePair<string, string>> adapterEnvironment)
 		{
 			DapSession session = null;
 			try {
@@ -508,7 +538,8 @@ namespace ICSharpCode.SharpDevelop.Services
 				CurrentSession.Exited += SessionExited;
 				CurrentSession.OutputReceived += PrintDebugMessage;
 
-				await CurrentSession.StartAsync(null, null, false, null, DapLaunchMode.AttachToProcess, default, null, false, processId).ConfigureAwait(false);
+				await CurrentSession.StartAsync(null, null, false, null, DapLaunchMode.AttachToProcess, default, null, false, processId,
+					attachOptions: attachOptions, adapterEnvironment: adapterEnvironment).ConfigureAwait(false);
 				await SyncAllBreakpointsBeforeLaunchAsync();
 				await CurrentSession.SetExceptionBreakpointsAsync(new[] { "user-unhandled" }).ConfigureAwait(false);
 				await CurrentSession.ConfigurationDoneAsync().ConfigureAwait(false);

@@ -26,6 +26,8 @@
          Watch/Locals SharpTreeView-based pads to resolve it at runtime. -->
     <ProjectReference Include="..\..\..\Libraries\SharpTreeView\ICSharpCode.TreeView\ICSharpCode.TreeView.csproj" />
     <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
+    <!-- DeviceService: the machine-wide device list, used to pick the iOS Simulator to debug in -->
+    <ProjectReference Include="..\..\..\Main\Designer\Designer.Shell\Designer.Shell.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\ICSharpCode.Core.WinForms\ICSharpCode.Core.WinForms.csproj" Private="false" />

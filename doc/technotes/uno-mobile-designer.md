@@ -285,6 +285,72 @@ The project owner asked to start testing on .NET 11. Steps taken and where it st
   `Uno.WinUI` package (and 6.8 dev) carries only `net9.0`/`net10.0` and their platform TFMs; `net11.0` first appears in the Uno 7 dev packages. Moving the
   heads in this tree to .NET 11 therefore means moving to Uno 7 and its host-builder entry on every platform.
 
+## 4c. iOS simulator debugging on .NET 11 CoreCLR (spike, 2026-11-04: breakpoint hit)
+
+Scope decision: debugging targets **.NET 11 only**, where iOS runs on CoreCLR, so the existing SharpDbg/`ICorDebug` path applies and the
+soft-debugger backend in 4b is not needed. Everything below was observed on this machine (Xcode 27.0, `~/.dotnet` SDK
+`11.0.100-rc.3.26522.148`, iOS SDK pack `net11.0_27.0`), with a plain `dotnet new ios` app (not yet Uno) attached in a running state.
+
+- A `net11.0-ios` simulator build (`-r iossimulator-arm64`; the spike also passed `-p:ValidateXcodeVersion=false`, which turned out unnecessary, see below) ships `libcoreclr.dylib`, `libmscordbi.dylib` and
+  `libmscordaccore.dylib` in the bundle, no Mono. No provisioning profile is needed for the simulator; a *non-empty* `Entitlements.plist`
+  (for example adding `get-task-allow`) makes the build demand one, and is not needed (below).
+- The simulator runtime has only the pipe transport (`DbgTransportPipeChannel`). It creates `clr-debug-pipe-<pid>-*` in the **app container's**
+  `tmp/` (`simctl get_app_container <udid> <bundle> data`), not the IDE's `$TMPDIR`. Starting the adapter with `TMPDIR=<container>/tmp/` is enough
+  for dbgshim/mscordbi to find it.
+- dbgshim loads mscordbi from the target runtime's directory, which holds iOS-simulator-platform dylibs a macOS process cannot load
+  (`CORDBG_E_DEBUG_COMPONENT_MISSING`). SharpDbg's attach now takes `debuggerLibraryDirectory` and registers through
+  `RegisterForRuntimeStartup3` with an `ICLRDebuggingLibraryProvider3` that serves mscordbi/DAC from that directory.
+- The host's macOS mscordbi/DAC of the **same commit** load but fail in `DebugActiveProcess` with `CORDBG_E_READVIRTUAL_FAILURE`
+  (the iOS runtime build's layout differs). What works: the bundle's own simulator `libmscordbi`/`libmscordaccore`, retargeted with
+  `vtool -set-build-version macos 15.0 15.0 -replace`, their `$ORIGIN` rpath changed to `@loader_path` (`install_name_tool -rpath`), and
+  re-signed ad hoc.
+- Memory access is not a blocker: the `dotnet` host carries `com.apple.security.cs.debugger`, and `task_for_pid` on the simulator app succeeds
+  from it without `get-task-allow` on the app (a plain process without that entitlement fails for any target, so it is no control).
+- Result: attach -> breakpoint bound -> `stopped` (reason `breakpoint`) with the right frame `Spike.AppDelegate.Tick()` and source line.
+- **Start-up breakpoints.** The diagnostic-port route does not work here: `SIMCTL_CHILD_DOTNET_DefaultDiagnosticPortSuspend=1` neither suspends the
+  app nor creates a diagnostic socket, and the Xamarin native launcher's own IDE handshake (`MonoTouchDebugConfiguration.txt`,
+  `127.0.0.1:10000`) logs "debugger loading not implemented for CoreCLR". What works is `simctl launch --wait-for-debugger`: the process starts
+  stopped (`ps` state `T`) before the runtime loads, SharpDbg registers for runtime startup, then sends `SIGCONT` (new attach option
+  `continueStoppedProcess`). A breakpoint on `return true;` in `FinishedLaunching` was hit this way.
+
+Attach arguments used: `{"processId": <pid>, "debuggerLibraryDirectory": "<retargeted DBI dir>", "continueStoppedProcess": true}`, adapter
+started with `TMPDIR=<container>/tmp/`.
+SharpDbg (`externals/sharpdbg`, commit `53930b0`) rejects `continueStoppedProcess` off macOS (signal numbers differ) and
+`debuggerLibraryDirectory` on Windows (the provider serves Unix libraries only); a restart replays the library directory but not the
+continue. Its `tests/SharpDbg.Cli.Tests/AttachOptionsTests` cover both options; there the library test names the runtime's own directory,
+because the adapter runs inside the test host and a second mscordbi copy from another directory deadlocks the tests that follow.
+
+- **A Uno app.** `dotnet new unoapp -platforms ios -presentation none -tfm net10.0` (Uno.Sdk 6.7.30), retargeted to `net11.0-ios`, builds for
+  the simulator with three changes: `SupportedOSPlatformVersion` 15.0 (the net11 iOS SDK's minimum; the template says 14.2),
+  `UnoDisableHotDesign=true` (otherwise the Debug-only `Uno.UI.HotDesign` brings `uno.ai.xamlgeneration`'s `Anthropic.SDK.dll` into the app and
+  the iOS linker fails in `CoreTypeMap` with MT2390), and the template's `#if DEBUG MainWindow.UseStudio();` removed (it needs Hot Design). The
+  bundle is CoreCLR, and its `libmscordbi`/`libmscordaccore` are byte-identical to the plain iOS app's, so one retargeted DBI directory serves
+  every app on that runtime version. The same suspended launch hit a breakpoint in `UnoSpike.MainPage..ctor()`.
+
+**In the IDE (2026-11-04).** F5 on a project whose *active* target framework is `net11.0-ios` or later (the project's TFM picker,
+`ProjectTargetFrameworkService`) debugs it in the iOS Simulator; verified with the real F5 command (`od.workbench.invoke-shortcut f5`, IDE
+build-before-run included) on UnoSpike: breakpoint in `MainPage..ctor()` hit 67 s after F5, call stack resolved, Stop terminates the app.
+- `Debugger.AddIn/Service/Ios/IosSimulatorProjectBehavior` (registered under `/SharpDevelop/Workbench/ProjectBehaviors`, condition
+  `IosSimulatorProject`: macOS and a declared net11+ iOS TFM) handles `Start` when the active TFM is iOS and defers to the normal behavior
+  otherwise. It builds with the project's SDK CLI (`dotnet build -f <tfm> -r iossimulator-arm64 -c <config>`; the in-process build does no
+  device RID), picks a simulator through `DeviceService` (project preference `IosSimulatorUdid`, else a booted iPhone, else the newest
+  iPhone; `DeviceService` ids are `ios:<udid>`, simctl takes the bare UDID), boots and installs, and launches stopped. Ctrl+F5 launches
+  normally (the `od.debug.run-without-debugging` action bypasses project behaviors and does not cover this).
+- `IosSimulatorDebugSupport` caches the retargeted DBI/DAC under `~/Library/Caches/OpenDevelop/ios-simulator-dbi/<hash>` (hash of the two
+  dylibs), reads the bundle id with `plutil`, and reads the container `tmp/`.
+- `WindowsDebugger.StartIosSimulatorDebugging` -> `AttachAsync` with the SharpDbg attach options above; `DapSession.StartAsync` gained
+  `attachOptions` and `adapterEnvironment` (the adapter's `TMPDIR`).
+- **SDK choice.** The IDE's build picked `/usr/local/share/dotnet` (SDK 11 rc.1, no iOS workload) over the project's `global.json` pin
+  (rc.3, only in `~/.dotnet`) and failed with NETSDK1147. `DotNetSdkService.ResolveSdkForProject` now applies the nearest `global.json`'s
+  `sdk.version` when the framework-based choice lacks it (`ApplyGlobalJsonPin`, reason "the project's global.json pins this SDK version");
+  every other choice is unchanged.
+- No `ValidateXcodeVersion=false` is needed: the net11 iOS SDK (27.0) accepts Xcode 27.
+- Known costs: F5 builds twice (the IDE's build-before-run, then the RID-specific CLI build; the second is mostly up to date). No simulator
+  picker UI yet (only the preference). No integration test yet: it needs the .NET 11 iOS workload and a simulator.
+
+Next steps: the device path (TCP
+`RegisterForRuntimeStartupRemotePort`, already in SharpDbg, and a local Xcode Personal Team profile for signing).
+
 ## 5. Risks and open questions
 
 1. **Workloads and build weight.** Mobile TFMs need the `ios`/`android` workloads and Xcode/Android SDK. Opt-in TFMs keep the add-in

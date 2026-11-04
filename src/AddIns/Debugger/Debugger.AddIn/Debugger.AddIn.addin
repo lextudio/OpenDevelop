@@ -13,8 +13,16 @@
 		<Import assembly="Debugger.AddIn.dll">
 			<ConditionEvaluator name = "IsBreakpointSet" class = "Debugger.AddIn.IsBreakpointCondition"/>
 			<ConditionEvaluator name = "IsBreakpointActive" class="Debugger.AddIn.IsActiveBreakpointCondition" />
+			<ConditionEvaluator name = "IosSimulatorProject" class="Debugger.AddIn.Ios.IosSimulatorProjectCondition" />
 		</Import>
 	</Runtime>
+
+	<!-- net11.0-ios and later: run and debug in the iOS Simulator when that framework is active -->
+	<Path name="/SharpDevelop/Workbench/ProjectBehaviors">
+		<Condition name="IosSimulatorProject">
+			<Class id="IosSimulatorProjectBehavior" class="Debugger.AddIn.Ios.IosSimulatorProjectBehavior"/>
+		</Condition>
+	</Path>
 	
 	<Path name="/SharpDevelop/Services">
 		<Service id="ICSharpCode.SharpDevelop.Debugging.IDebuggerService"
