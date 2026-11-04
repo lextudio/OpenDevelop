@@ -50,6 +50,19 @@ public sealed class DevicePickerBar
         var body = new StackPanel { Width = 380 };
         body.Children.Add(search);
         body.Children.Add(scroll);
+        var manage = new Button
+        {
+            Content = "Manage devices…",
+            Margin = new Thickness(0, 6, 0, 0),
+            Padding = new Thickness(8, 2, 8, 2),
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        manage.Click += (_, _) =>
+        {
+            popup.IsOpen = false;
+            ManageRequested?.Invoke(this, EventArgs.Empty);
+        };
+        body.Children.Add(manage);
         popup.Child = new Border
         {
             Padding = new Thickness(8),
@@ -74,6 +87,9 @@ public sealed class DevicePickerBar
     public event EventHandler<Device>? DeviceChosen;
 
     public event EventHandler<string>? FavoriteToggled;
+
+    /// <summary>The user asked for the Device Manager from the picker's footer.</summary>
+    public event EventHandler? ManageRequested;
 
     /// <summary>Re-renders chip, favorite toggle and quick strip from the view's current state.</summary>
     public void Refresh(Device target, IReadOnlyList<Device> visibleDevices, DevicePreferences preferences,

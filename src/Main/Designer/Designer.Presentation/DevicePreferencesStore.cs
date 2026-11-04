@@ -14,6 +14,9 @@ public static class DevicePreferencesStore
     const string Recents = "Designer.Devices.Recents";
     const string Hidden = "Designer.Devices.Hidden";
 
+    /// <summary>Raised after every Save, so open designers re-read the lists (hide/unhide).</summary>
+    public static event EventHandler? Saved;
+
     public static DevicePreferences Load()
     {
         try
@@ -42,5 +45,7 @@ public static class DevicePreferencesStore
         catch (Exception)
         {
         }
+
+        Saved?.Invoke(null, EventArgs.Empty);
     }
 }
