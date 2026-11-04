@@ -14,6 +14,9 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 {
 	IWinUIXamlRuntimeHost runtime;
 
+	/// <summary>The runtime behind this host (null when none started).</summary>
+	public IWinUIXamlRuntimeHost Runtime => runtime;
+
 	/// <summary>Selected runtime identity, available even if the first document render fails.</summary>
 	public string BackendName => ((runtime?.WpfSurface ?? Content) as ICSharpCode.SharpDevelop.Widgets.DesignerCanvas)?.BackendName ?? "";
 
@@ -76,7 +79,9 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 				nudge.UndoRedoRequested += OnRuntimeUndoRedoRequested;
 			}
 		}
-		Content = runtime?.WpfSurface ?? new TextBlock {
+		// A runtime may wrap its canvas in chrome of its own (the device picker row and progress card);
+		// coordinate mapping below keeps using the canvas itself.
+		Content = (runtime as IWinUIXamlChrome)?.ChromeRoot ?? runtime?.WpfSurface ?? new TextBlock {
 			Margin = new Thickness(16), TextWrapping = TextWrapping.Wrap, Text = StatusText
 		};
 		AllowDrop = true;
@@ -448,7 +453,7 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 			return new Rect(translated.X, translated.Y,
 				bounds.Value.Width * view.GetViewportScale(), bounds.Value.Height * view.GetViewportScale());
 		}
-		var origin = Content is UIElement surface ? surface.PointToScreen(surfacePoint) : PointToScreen(surfacePoint);
+		var origin = (runtime?.WpfSurface ?? Content as UIElement) is UIElement surface ? surface.PointToScreen(surfacePoint) : PointToScreen(surfacePoint);
 		return new Rect(origin.X, origin.Y, bounds.Value.Width * scale, bounds.Value.Height * scale);
 	}
 
@@ -482,7 +487,7 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		// dead-center on a button's own on-screen bounds reported a hit-test point far outside
 		// them), so the container never resolved and every drop silently fell back to the
 		// document root instead of the container the user visibly aimed at.
-		var point = Content is UIElement surface ? e.GetPosition(surface) : e.GetPosition(this);
+		var point = (runtime?.WpfSurface ?? Content as UIElement) is UIElement surface ? e.GetPosition(surface) : e.GetPosition(this);
 		var container = ResolveNameAt(new System.Numerics.Vector2((float)point.X, (float)point.Y));
 		ControlDropped?.Invoke(this, (controlName, container));
 		e.Handled = true;
@@ -610,6 +615,28 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 /// Implemented by the independent XAML Studio/Uno runtime assembly. Microsoft.UI.Xaml objects
 /// never cross this interface; only the WPF hosting surface does.
 /// </summary>
+/// <summary>Optional: the runtime can preview on an iOS Simulator (or Android emulator) as well as the desktop. Lets the
+/// view content, DevFlow and tests drive and observe the device choice without knowing the runtime's type.</summary>
+public interface IWinUIXamlDevicePreview
+{
+	/// <summary>The device the document is previewed on ("host" for this computer, "ios:&lt;udid&gt;").</summary>
+	string PreviewDeviceId { get; }
+	/// <summary>Where the connection to that device's design host is (progress, ready, failed).</summary>
+	ICSharpCode.SharpDevelop.Designer.Devices.DesignerSessionStatus SessionStatus { get; }
+	/// <summary>The devices this project can preview on right now (the computer first).</summary>
+	System.Collections.Generic.IReadOnlyList<ICSharpCode.SharpDevelop.Designer.Devices.Device> OfferedDevices { get; }
+	/// <summary>Switches the preview; false when <paramref name="deviceId"/> is not offered.</summary>
+	System.Threading.Tasks.Task<bool> SwitchDeviceAsync(string deviceId);
+}
+
+/// <summary>Optional: the runtime wraps its design canvas in extra chrome (a device picker row, a
+/// progress card) and wants the host to show <see cref="ChromeRoot"/> instead of the bare canvas. Null
+/// means no chrome. The canvas stays reachable as <see cref="IWinUIXamlRuntimeHost.WpfSurface"/>.</summary>
+public interface IWinUIXamlChrome
+{
+	UIElement ChromeRoot { get; }
+}
+
 public interface IWinUIXamlRuntimeHost : IDisposable
 {
 	UIElement WpfSurface { get; }

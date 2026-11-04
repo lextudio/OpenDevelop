@@ -66,6 +66,41 @@ public static class WinUIXamlDesignerDevFlowActions
 		});
 	}
 
+	[DevFlowAction("od.winui-designer.device", Description = "Show or switch the device the active Uno designer previews on: no argument reports the offered devices and the connection phase; 'host' or 'ios:<udid>' starts the switch and returns at once (poll the reported session phase for Ready)")]
+	public static string Device(string id = "")
+	{
+		var view = ActivateDesigner();
+		if (view?.PreviewRuntime is not IWinUIXamlDevicePreview preview)
+			return JsonSerializer.Serialize(new { success = false, error = "The active designer has no device previews." });
+		if (id.Length > 0)
+		{
+			// Starting a simulator preview takes a long time (boot, install, launch); this action only starts the switch,
+			// so it never holds the UI thread the switch itself needs. Callers poll the reported phase.
+			var offered = SD.MainThread.InvokeIfRequired(() => preview.OfferedDevices.Any(d => string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase)));
+			if (!offered)
+				return JsonSerializer.Serialize(new { success = false, error = $"'{id}' is not an offered device." });
+			SD.MainThread.InvokeAsyncAndForget(() => _ = preview.SwitchDeviceAsync(id));
+		}
+
+		return SD.MainThread.InvokeIfRequired(() =>
+		{
+			var status = preview.SessionStatus;
+			return JsonSerializer.Serialize(new {
+				success = true,
+				device = preview.PreviewDeviceId,
+				session = new {
+					phase = status.Phase.ToString(),
+					stage = (status.FailedStage ?? status.Phase).ToString(),
+					reason = status.Reason,
+					elapsedMs = (long)status.Elapsed(DateTimeOffset.UtcNow).TotalMilliseconds,
+				},
+				offered = preview.OfferedDevices.Select(d => new { id = d.Id, name = d.Name, platform = d.Platform.ToString(), state = d.State.ToString() }).ToArray(),
+				rendered = view.HasRenderedPreview,
+				status = view.StatusText,
+			});
+		});
+	}
+
 	[DevFlowAction("od.winui-designer.toolbox.filter", Description = "Filter the active WinUI/Uno Toolbox by control or category name")]
 	public static string FilterToolbox(string text)
 	{

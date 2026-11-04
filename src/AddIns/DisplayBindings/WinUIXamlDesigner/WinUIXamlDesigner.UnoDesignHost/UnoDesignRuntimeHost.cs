@@ -37,7 +37,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 /// XamlReader, lays it out and renders it to a PNG that is displayed here. All state
 /// crossings are JSON over loopback TCP - no WinUI type ever enters this process.
 /// </summary>
-sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay, IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlToolboxCatalog, IWinUIXamlLifecycleProbe, IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlVisualStates, IWinUIXamlMultiSelection, IWinUIXamlContextCommands, IWinUIXamlContextMenu, IWinUIXamlGridGuides, IWinUIXamlGridTrackSplit, IWinUIXamlDiagnostics, IWinUIXamlIncrementalRender, IWinUIXamlComponentTray
+sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay, IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlToolboxCatalog, IWinUIXamlLifecycleProbe, IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlVisualStates, IWinUIXamlMultiSelection, IWinUIXamlContextCommands, IWinUIXamlContextMenu, IWinUIXamlGridGuides, IWinUIXamlGridTrackSplit, IWinUIXamlDiagnostics, IWinUIXamlIncrementalRender, IWinUIXamlComponentTray
 {
 	// The shared design canvas (ICSharpCode.DesignerCanvas addin): the surface, and the controller
 	// that owns selection, drags and picking over it. This class is only the Uno/WinUI backend:
@@ -102,12 +102,14 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		canvas.NudgeRequested += (_, delta) => NudgeRequested?.Invoke(this, delta);
 		canvas.UndoRedoRequested += (_, undo) => UndoRedoRequested?.Invoke(this, undo);
 		LoadSettings();
+		InitializeDeviceTargets(framework?.ProjectFileName);
 		if (settingsGridlines)
 			surface.SetGridlines(true);
 		surface.IsGridEnabled = settingsGridlines;
 		if (settingsSizePreset is { } size)
 			SetDesignSize(size.Width, size.Height);
-		connectTask = ConnectAsync(framework?.Kind.ToString() ?? "unknown");
+		connectKind = framework?.Kind.ToString() ?? "unknown";
+		connectTask = ConnectAsync(connectKind);
 
 		// LibreWPF raises no window DpiChanged event, so a monitor-scale change (window
 		// dragged to a differently-scaled display, display scaling changed in System
@@ -475,10 +477,51 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 
 	#endregion
 
+	/// <summary>Everything after a client exists, desktop or device: catalog, app resources, status.</summary>
+	async Task AfterClientConnectedAsync(UnoDesignClient connected, string kind)
+	{
+		connected.Recovered += OnClientRecovered;
+		connected.RecoveryFailed += OnClientRecoveryFailed;
+		var capabilities = await connected.GetCapabilitiesAsync();
+		Volatile.Write(ref catalogCache, capabilities.Toolbox
+			.Select(tool => new ToolboxItemInfo {
+				Name = tool.Name,
+				DisplayName = tool.DisplayName,
+				Category = tool.Category,
+				Template = tool.Template,
+				XamlNamespace = tool.XamlNamespace,
+				TypeName = tool.TypeName
+			}).ToList());
+		var appNote = await EnsureAppResourcesAsync();
+		SetStatus($"{hostDisplayName} ready ({capabilities.Runtime} {capabilities.Version}) for {kind}.{appNote}");
+	}
+
 	async Task ConnectAsync(string kind)
 	{
+		// A switch (or Retry) can start a new connection while this one is still in flight - notably the remembered
+		// simulator is restored while the constructor's first desktop connection is still starting. Each connection
+		// owns its generation: when it is no longer current its host is disposed instead of replacing the newer client.
+		var generation = Volatile.Read(ref connectGeneration);
+		var device = previewDevice;
+		UnoDesignClient created = null;
 		try
 		{
+			if (device.Platform == ICSharpCode.SharpDevelop.Designer.Devices.DevicePlatform.IosSimulator)
+			{
+				// A simulator preview needs neither the desktop build nor its dependency graph: the iOS head
+				// renders framework controls on the device (project assemblies on a device come later).
+				created = await StartIosDeviceClientAsync(device, generation);
+				if (generation != Volatile.Read(ref connectGeneration))
+				{
+					created.Dispose();
+					return;
+				}
+
+				client = created;
+				await AfterClientConnectedAsync(created, kind);
+				return;
+			}
+
 			// Create (and so cache) this designer's output channel here, on the UI thread and before a host
 			// exists: when the project output is current nothing below writes to it first, and the first
 			// request would then come from the thread that pumps the child's output, which must never wait
@@ -516,27 +559,30 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			// versioned Microsoft child here, beside dependency-context discovery, rather than
 			// freezing the IDE's net10 default during factory registration.
 			var child = hostDllPath ?? hostDllPathLocator?.Invoke(dotnetHostArchitecture);
-			client = await UnoDesignClient.AcquireSharedAsync(runtimeConfig, depsFile, CancellationToken.None, child, appBin, dotnetHostPath, dotnetHostArchitecture);
-			client.Recovered += OnClientRecovered;
-			client.RecoveryFailed += OnClientRecoveryFailed;
-			var capabilities = await client.GetCapabilitiesAsync();
-			Volatile.Write(ref catalogCache, capabilities.Toolbox
-				.Select(tool => new ToolboxItemInfo {
-					Name = tool.Name,
-					DisplayName = tool.DisplayName,
-					Category = tool.Category,
-					Template = tool.Template,
-					XamlNamespace = tool.XamlNamespace,
-					TypeName = tool.TypeName
-				}).ToList());
-			var appNote = await EnsureAppResourcesAsync();
-			SetStatus($"{hostDisplayName} ready ({capabilities.Runtime} {capabilities.Version}) for {kind}.{appNote}");
+			created = await UnoDesignClient.AcquireSharedAsync(runtimeConfig, depsFile, CancellationToken.None, child, appBin, dotnetHostPath, dotnetHostArchitecture);
+			if (generation != Volatile.Read(ref connectGeneration))
+			{
+				created.Dispose();
+				return;
+			}
+
+			client = created;
+			await AfterClientConnectedAsync(created, kind);
 		}
 		catch (Exception e)
 		{
+			if (generation != Volatile.Read(ref connectGeneration))
+			{
+				// An abandoned connection failing says nothing about the current one.
+				try { created?.Dispose(); } catch (Exception) { }
+				return;
+			}
+
 			client?.Dispose();
 			client = null;
 			var failure = hostDisplayName + " failed to start: " + e.GetBaseException().Message;
+			if (device.Platform != ICSharpCode.SharpDevelop.Designer.Devices.DevicePlatform.Host)
+				deviceSession.Fail(e.GetBaseException().Message);
 			SetStatus(failure);
 			// Host process lifecycle is not specific to one designer, so it goes to the shared IDE
 			// channel; the child's own output stays on the designer's channel.
@@ -1149,6 +1195,8 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 				: $"{hostDisplayName} render failed: " + e.GetBaseException().Message;
 			SetStatus(message);
 			DesignerOutput.AppendLine(DesignerOutput.Channel(UnoDesignClient.OutputChannelName), message);
+			if (previewDevice.Platform != ICSharpCode.SharpDevelop.Designer.Devices.DevicePlatform.Host)
+				deviceSession.Fail(e.GetBaseException().Message);
 			return;
 		}
 		if (disposed || Volatile.Read(ref version) != requested)
@@ -1535,6 +1583,8 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		canvas.ApplySnapshot(snapshot);
 		if (snapshot.Render != null)
 			HasRenderedPreview = true;
+		if (snapshot.Render != null)
+			NoteDeviceFrame();
 		// A warning accompanies a frame that is shown (e.g. a page that never stops animating), so it reads
 		// after "Rendered by ..." rather than replacing it the way an error does.
 		var errors = snapshot.Diagnostics.Where(d => !string.Equals(d.Severity, "Warning", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -1569,8 +1619,12 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	(double Width, double Height) DesignSize(string text)
 	{
 		var (documentWidth, documentHeight) = ParseDocumentSize(text);
-		var width = documentWidth > 0 ? documentWidth : configuredDesignWidth ?? 1280;
-		var height = documentHeight > 0 ? documentHeight : configuredDesignHeight ?? 720;
+		// A phone-shaped canvas by default on a device (its own screen replaces the desktop presets).
+		var deviceDefault = previewDevice.Platform == ICSharpCode.SharpDevelop.Designer.Devices.DevicePlatform.Host ? (1280, 720) : (390, 844);
+		// A remembered desktop size preset belongs to the desktop; a device canvas starts from the device default.
+		var onDevice = previewDevice.Platform != ICSharpCode.SharpDevelop.Designer.Devices.DevicePlatform.Host;
+		var width = documentWidth > 0 ? documentWidth : (onDevice ? null : configuredDesignWidth) ?? deviceDefault.Item1;
+		var height = documentHeight > 0 ? documentHeight : (onDevice ? null : configuredDesignHeight) ?? deviceDefault.Item2;
 		return (width, height);
 	}
 
@@ -1698,6 +1752,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			return;
 		disposed = true;
 		scaleTimer?.Stop();
+		DisposeDevices();
 		canvas.Dispose();
 		if (client != null) { client.Recovered -= OnClientRecovered; client.RecoveryFailed -= OnClientRecoveryFailed; }
 		client?.Dispose();

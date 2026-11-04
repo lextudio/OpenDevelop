@@ -52,6 +52,15 @@
           DestinationFiles="@(HostOutput->'$(_HostDeployRoot)\%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
 
+  <!-- The iOS head ships as an app bundle beside the desktop head ("UnoHost.iOS"), where the designer finds it and installs
+       it into a simulator on demand. A bundle is a directory tree with symlinks, so it is copied with cp -R, not MSBuild's Copy. -->
+  <Target Name="DeployIosHostToAddIns" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net10.0-ios' And $([MSBuild]::IsOSPlatform('OSX'))">
+    <PropertyGroup>
+      <_IosDeployRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../../../../AddIns/DisplayBindings/WinUIXamlDesigner/UnoHost.iOS'))</_IosDeployRoot>
+    </PropertyGroup>
+    <Exec Command="rm -rf &quot;$(_IosDeployRoot)&quot; &amp;&amp; mkdir -p &quot;$(_IosDeployRoot)&quot; &amp;&amp; cp -R &quot;$(OutDir)$(AssemblyName).app&quot; &quot;$(_IosDeployRoot)/&quot;" />
+  </Target>
+
   <ItemGroup>
     <!-- StreamJsonRpc pulls MessagePack transitively; reference it directly so NuGet unifies on the
          centrally pinned release instead of resolving the vulnerable 2.5.x (NU1902/NU1903). -->

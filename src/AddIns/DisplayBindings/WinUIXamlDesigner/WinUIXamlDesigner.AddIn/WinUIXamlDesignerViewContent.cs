@@ -118,6 +118,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public string BackendName => previewHost.BackendName;
 	public bool HasRenderedPreview => previewHost.HasRenderedPreview;
 	public bool IsLoading => previewHost.IsLoading;
+	/// <summary>The runtime behind the preview, for optional capabilities such as device previews.</summary>
+	public IWinUIXamlRuntimeHost PreviewRuntime => previewHost.Runtime;
 	public int VisualStateLoadingShownCount => previewHost.VisualStateLoadingShownCount;
 	public object OutlineContent => outline;
 
