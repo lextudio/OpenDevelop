@@ -42,6 +42,49 @@ public class IosSimulatorDebugSupportTests
 		Assert.Equal("D", IosSimulatorProjectBehavior.SimctlUdid(bootedPad));
 	}
 
+	[Fact]
+	public void IsFreshBuild_AcceptsOnlyABundleThatARecentBuildWrote()
+	{
+		var root = Directory.CreateTempSubdirectory("od-ios-bundle-");
+		try {
+			var bundle = Directory.CreateDirectory(Path.Combine(root.FullName, "App.app")).FullName;
+			var executable = Path.Combine(bundle, "App");
+			File.WriteAllText(executable, "");
+			var written = new DateTime(2026, 11, 4, 12, 0, 30, DateTimeKind.Utc);
+			File.SetLastWriteTimeUtc(executable, written);
+			var started = written.AddSeconds(-20);
+			var finished = written.AddSeconds(5);
+			var age = TimeSpan.FromMinutes(2);
+
+			Assert.True(IosSimulatorDebugSupport.IsFreshBuild(bundle, started, finished, finished.AddSeconds(1), age));
+			// Written before that build started: an earlier build's output, which this build may not have refreshed
+			Assert.False(IosSimulatorDebugSupport.IsFreshBuild(bundle, written.AddSeconds(1), finished, finished.AddSeconds(1), age));
+			Assert.False(IosSimulatorDebugSupport.IsFreshBuild(bundle, started, finished, finished + age + TimeSpan.FromSeconds(1), age));
+			Assert.False(IosSimulatorDebugSupport.IsFreshBuild(null, started, finished, finished.AddSeconds(1), age));
+			Assert.False(IosSimulatorDebugSupport.IsFreshBuild(Path.Combine(root.FullName, "Missing.app"), started, finished, finished.AddSeconds(1), age));
+		} finally {
+			root.Delete(true);
+		}
+	}
+
+	[Fact]
+	public void BuildChoices_ListsAutomaticThenSimulators_AndChecksTheStoredOne()
+	{
+		var phone = Simulator("P", DeviceFamily.Phone, "26.5", DeviceState.Booted);
+		var pad = Simulator("T", DeviceFamily.Tablet, "26.5", DeviceState.Shutdown);
+		var devices = new[] { Device.Host, pad, phone };
+
+		var automatic = IosSimulatorMenuBuilder.BuildChoices(devices, "", "Automatic");
+		Assert.Equal(new[] { "Automatic", "Sim P (iOS 26.5) \u2022", "Sim T (iOS 26.5)" }, automatic.Select(c => c.Label));
+		Assert.Equal(new[] { true, false, false }, automatic.Select(c => c.IsChecked));
+		Assert.Equal(new string?[] { null, "P", "T" }, automatic.Select(c => c.Udid));
+
+		Assert.Equal(new[] { false, false, true }, IosSimulatorMenuBuilder.BuildChoices(devices, "T", "Automatic").Select(c => c.IsChecked));
+		Assert.Equal(new[] { false, false, true }, IosSimulatorMenuBuilder.BuildChoices(devices, "ios:T", "Automatic").Select(c => c.IsChecked));
+		// A stored simulator that was deleted falls back to Automatic, which is what F5 then does
+		Assert.Equal(new[] { true, false, false }, IosSimulatorMenuBuilder.BuildChoices(devices, "gone", "Automatic").Select(c => c.IsChecked));
+	}
+
 	static Device Simulator(string udid, DeviceFamily family, string runtime, DeviceState state) =>
 		new(DevicePlatform.IosSimulator, "ios:" + udid, "Sim " + udid, family, "iOS", runtime, state);
 }

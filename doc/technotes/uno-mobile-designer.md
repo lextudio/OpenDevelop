@@ -345,8 +345,20 @@ build-before-run included) on UnoSpike: breakpoint in `MainPage..ctor()` hit 67 
   `sdk.version` when the framework-based choice lacks it (`ApplyGlobalJsonPin`, reason "the project's global.json pins this SDK version");
   every other choice is unchanged.
 - No `ValidateXcodeVersion=false` is needed: the net11 iOS SDK (27.0) accepts Xcode 27.
-- Known costs: F5 builds twice (the IDE's build-before-run, then the RID-specific CLI build; the second is mostly up to date). No simulator
-  picker UI yet (only the preference). No integration test yet: it needs the .NET 11 iOS workload and a simulator.
+- One build per F5: the IDE's build-before-run already writes the `iossimulator-arm64` bundle (the iOS SDK's default RID on Apple
+  silicon), so the behavior records each project's last successful IDE build (`IBuildService.BuildStarted/BuildFinished`) and skips its CLI
+  build when that build finished within two minutes and the bundle's executable is newer than its start (`IsFreshBuild`). Measured on
+  UnoSpike: F5 to breakpoint 31 s instead of 52-108 s. `od.debug.start` (no IDE build first) still builds.
+- Debug > **iOS Simulator** (shown when the startup project declares net11+ iOS) lists "Automatic" and every simulator from `DeviceService`,
+  checking the stored one; a pick writes the `IosSimulatorUdid` project preference. DevFlow: `od.ios-simulator.choices`,
+  `od.ios-simulator.select <udid|"">` (same code as the menu). Verified: selecting the booted iPad made F5 run the app on it.
+- Ctrl+F5 verified (`od.workbench.invoke-shortcut ctrl+f5`): builds, installs and starts the app normally, no debug session.
+- A failed attach is reported: SharpDbg sends an output event with the reason and `terminated`, so the IDE stops the session instead of
+  showing one that never attaches (verified with a corrupted cached `libmscordbi.dylib`). The app then keeps running without a debugger.
+  A corrupted cache entry is not detected or rebuilt; delete `~/Library/Caches/OpenDevelop/ios-simulator-dbi` to recover.
+- Integration test `IosSimulatorDebuggingIntegrationTests.IosApp_DebugsInTheSimulator_AndStopsAtABreakpointInFinishedLaunching`: `dotnet new
+  ios` from a discovered SDK 11 root that has the iOS workload, breakpoint in `FinishedLaunching`, `od.debug.start`; skips without macOS,
+  such a root or an iPhone simulator (so it skips on CI). 134 s here.
 
 Next steps: the device path (TCP
 `RegisterForRuntimeStartupRemotePort`, already in SharpDbg, and a local Xcode Personal Team profile for signing).

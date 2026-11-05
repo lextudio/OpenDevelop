@@ -40,6 +40,19 @@ namespace Debugger.AddIn.Ios
 		}
 
 		/// <summary>
+		/// True when <paramref name="appBundle"/> was written by a successful build that started at
+		/// <paramref name="buildStarted"/> and finished at most <paramref name="maximumAge"/> ago: its executable is
+		/// newer than the build's start, so that build (not an earlier one) produced it.
+		/// </summary>
+		public static bool IsFreshBuild(string appBundle, DateTime buildStarted, DateTime buildFinished, DateTime now, TimeSpan maximumAge)
+		{
+			if (appBundle == null || now - buildFinished > maximumAge || now < buildFinished)
+				return false;
+			var executable = Path.Combine(appBundle, Path.GetFileNameWithoutExtension(appBundle));
+			return File.Exists(executable) && File.GetLastWriteTimeUtc(executable) >= buildStarted;
+		}
+
+		/// <summary>
 		/// A directory with the app's libmscordbi and libmscordaccore that a macOS process can load.
 		/// The bundle's copies are built for the iOS simulator platform; the host's macOS copies of the
 		/// same runtime build do not match the iOS runtime's layout. Cached by content, so every app on

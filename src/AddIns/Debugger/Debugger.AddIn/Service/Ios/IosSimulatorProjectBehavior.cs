@@ -28,6 +28,34 @@ namespace Debugger.AddIn.Ios
 
 		static int starting;
 
+		// When the IDE last built each project successfully (start and end), so that F5 - whose build-before-run already
+		// wrote the simulator bundle, the iOS SDK's default RID on this Mac - does not pay for a second, no-op build
+		static readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> buildStarts = new(StringComparer.OrdinalIgnoreCase);
+		static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime Started, DateTime Finished)> successfulBuilds = new(StringComparer.OrdinalIgnoreCase);
+		static readonly TimeSpan RecentBuild = TimeSpan.FromMinutes(2);
+
+		static int buildTrackingStarted;
+
+		// The first behavior subscribes, once per process; static helpers stay usable without the IDE's services
+		public IosSimulatorProjectBehavior()
+		{
+			if (Interlocked.Exchange(ref buildTrackingStarted, 1) == 1)
+				return;
+			SD.BuildService.BuildStarted += (sender, e) => {
+				foreach (var project in e.Projects ?? Array.Empty<IProject>())
+					buildStarts[project.FileName.ToString()] = DateTime.UtcNow;
+			};
+			SD.BuildService.BuildFinished += (sender, e) => {
+				foreach (var project in e.Projects ?? Array.Empty<IProject>()) {
+					var key = project.FileName.ToString();
+					if (e.Results?.Result == BuildResultCode.Success && buildStarts.TryGetValue(key, out var started))
+						successfulBuilds[key] = (started, DateTime.UtcNow);
+					else
+						successfulBuilds.TryRemove(key, out _);
+				}
+			};
+		}
+
 		string ActiveIosTargetFramework {
 			get {
 				var targetFramework = ProjectTargetFrameworkService.GetActiveTargetFramework(Project);
@@ -66,9 +94,16 @@ namespace Debugger.AddIn.Ios
 			var configuration = Project.ActiveConfiguration.Configuration ?? "Debug";
 			var assemblyName = (Project as MSBuildBasedProject)?.GetEvaluatedProperty("AssemblyName") ?? Path.GetFileNameWithoutExtension(Project.FileName.ToString());
 
-			BaseDebuggerService.PrintDebugMessage("> Building " + Project.Name + " (" + targetFramework + ", " + IosSimulatorDebugSupport.RuntimeIdentifier + ")...\n");
-			await BuildAsync(targetFramework, configuration, cancellationToken).ConfigureAwait(false);
-			var appBundle = IosSimulatorDebugSupport.FindAppBundle(Project.Directory.ToString(), configuration, targetFramework, assemblyName)
+			var projectDirectory = Project.Directory.ToString();
+			var builtBundle = IosSimulatorDebugSupport.FindAppBundle(projectDirectory, configuration, targetFramework, assemblyName);
+			if (successfulBuilds.TryGetValue(Project.FileName.ToString(), out var build)
+				&& IosSimulatorDebugSupport.IsFreshBuild(builtBundle, build.Started, build.Finished, DateTime.UtcNow, RecentBuild)) {
+				BaseDebuggerService.PrintDebugMessage("> Using the simulator bundle the IDE just built for " + Project.Name + ".\n");
+			} else {
+				BaseDebuggerService.PrintDebugMessage("> Building " + Project.Name + " (" + targetFramework + ", " + IosSimulatorDebugSupport.RuntimeIdentifier + ")...\n");
+				await BuildAsync(targetFramework, configuration, cancellationToken).ConfigureAwait(false);
+			}
+			var appBundle = IosSimulatorDebugSupport.FindAppBundle(projectDirectory, configuration, targetFramework, assemblyName)
 				?? throw new FileNotFoundException("The build produced no .app bundle for " + targetFramework + ".");
 			var bundleId = await IosSimulatorDebugSupport.ReadBundleIdAsync(appBundle, cancellationToken).ConfigureAwait(false);
 

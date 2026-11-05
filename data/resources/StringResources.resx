@@ -5704,6 +5704,15 @@ Shows the full callstack of the error.</comment>
   <data name="MainWindow.Windows.Debug.Restart" xml:space="preserve">
     <value>Restart</value>
   </data>
+  <data name="MainWindow.Windows.Debug.IosSimulator" xml:space="preserve">
+    <value>iOS Simulator</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.IosSimulator.Automatic" xml:space="preserve">
+    <value>Automatic (booted or newest iPhone)</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.IosSimulator.Refreshing" xml:space="preserve">
+    <value>Looking for simulators...</value>
+  </data>
   <data name="MainWindow.Windows.Debug.InsertLogpoint" xml:space="preserve">
     <value>Insert Logpoint</value>
   </data>
