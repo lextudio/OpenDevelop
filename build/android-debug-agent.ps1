@@ -50,15 +50,26 @@ try {
         }
     }
     Copy-Item -LiteralPath (Join-Path $source 'Directory.Build.props') -Destination $scratch
-    # The OmniSharp DAP fork comes from the checkout's local feed (sync-openavalon-feed.ps1 downloads it with the
-    # gh CLI's credential), never from GitHub Packages directly: no token reaches this build.
-    $dapFeed = Join-Path $root 'artifacts/openavalon-feed'
+    # The OmniSharp DAP fork (lextudio GitHub Packages) is resolved the way every other lextudio package is:
+    #  - GitHub Actions restores it directly from GitHub Packages with the job's own token, which the workflow
+    #    passes in NuGetPackageSourceCredentials_lextudio_github (NuGet reads it without writing it to a file);
+    #  - a developer machine restores it from the checkout's local feed, which sync-openavalon-feed.ps1 fills with
+    #    the gh CLI's credential. No token ever reaches a local build.
     $dapVersionNode = ([xml](Get-Content -LiteralPath (Join-Path $root 'Directory.Packages.props') -Raw)).SelectSingleNode("//*[local-name()='LextudioDapForkVersion']")
     if ($null -eq $dapVersionNode -or [string]::IsNullOrWhiteSpace($dapVersionNode.InnerText)) { throw 'Directory.Packages.props does not define LextudioDapForkVersion.' }
     $dapVersion = $dapVersionNode.InnerText.Trim()
-    $dapFeedXml = [System.Security.SecurityElement]::Escape($dapFeed)
-    foreach ($id in 'OmniSharp.Extensions.DebugAdapter', 'OmniSharp.Extensions.DebugAdapter.Server', 'OmniSharp.Extensions.DebugAdapter.Shared', 'OmniSharp.Extensions.JsonRpc', 'OmniSharp.Extensions.JsonRpc.Generators') {
-        if (-not (Test-Path -LiteralPath (Join-Path $dapFeed "$id.$dapVersion.nupkg") -PathType Leaf)) { throw "$id $dapVersion is not in $dapFeed. Run ./sync-openavalon-feed.ps1 first." }
+    $inGitHubActions = $env:GITHUB_ACTIONS -eq 'true'
+    if ($inGitHubActions) {
+        if ([string]::IsNullOrWhiteSpace($env:NuGetPackageSourceCredentials_lextudio_github)) { throw 'NuGetPackageSourceCredentials_lextudio_github is not set; the workflow must pass the GitHub Packages credential to this job.' }
+        $dapSource = '<add key="lextudio_github" value="https://nuget.pkg.github.com/lextudio/index.json" />'
+        $dapSourceKey = 'lextudio_github'
+    } else {
+        $dapFeed = Join-Path $root 'artifacts/openavalon-feed'
+        foreach ($id in 'OmniSharp.Extensions.DebugAdapter', 'OmniSharp.Extensions.DebugAdapter.Server', 'OmniSharp.Extensions.DebugAdapter.Shared', 'OmniSharp.Extensions.JsonRpc', 'OmniSharp.Extensions.JsonRpc.Generators') {
+            if (-not (Test-Path -LiteralPath (Join-Path $dapFeed "$id.$dapVersion.nupkg") -PathType Leaf)) { throw "$id $dapVersion is not in $dapFeed. Run ./sync-openavalon-feed.ps1 first." }
+        }
+        $dapSource = '<add key="dap-local" value="' + [System.Security.SecurityElement]::Escape($dapFeed) + '" />'
+        $dapSourceKey = 'dap-local'
     }
     @"
 <?xml version="1.0" encoding="utf-8"?>
@@ -66,10 +77,10 @@ try {
   <packageSources>
     <clear />
     <add key="nuget" value="https://api.nuget.org/v3/index.json" />
-    <add key="dap-local" value="$dapFeedXml" />
+    $dapSource
   </packageSources>
   <packageSourceMapping>
-    <packageSource key="dap-local"><package pattern="OmniSharp.Extensions.*" /></packageSource>
+    <packageSource key="$dapSourceKey"><package pattern="OmniSharp.Extensions.*" /></packageSource>
     <packageSource key="nuget"><package pattern="*" /></packageSource>
   </packageSourceMapping>
 </configuration>

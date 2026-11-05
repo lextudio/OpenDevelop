@@ -27,7 +27,9 @@ Keep this file concise and operational. Read the referenced technote only when t
     AvalonDock forks, DevFlow, LibGhostty.Net, and `LextudioDapForkVersion`, the five `OmniSharp.Extensions.*` packages
     (lextudio's NativeAOT-capable DAP fork) that `externals/sharpdbg`'s Android agent hosts its adapter in.
     `build/android-debug-agent.ps1` writes a scratch `nuget.config` that maps `OmniSharp.Extensions.*` to that local
-    feed and refuses to run when the pinned version is missing there. To take a new fork version, publish it from the
+    feed and refuses to run when the pinned version is missing there; in GitHub Actions it maps them to the
+    `lextudio_github` source instead and uses the job's own token from `NuGetPackageSourceCredentials_lextudio_github`,
+    like the rest of CI. To take a new fork version, publish it from the
     fork's `Publish lextudio DAP packages` workflow, change `LextudioDapForkVersion`, run `./sync-openavalon-feed.ps1`,
     then rebuild the agent.
   - **Take a republish:** openavalon republishes under the same version, which no NuGet cache can
