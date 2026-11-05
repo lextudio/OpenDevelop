@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Builds Microsoft.VisualStudio.CoreUtility from the MIT-licensed sources in
+       externals/vs-editor-api instead of consuming the NuGet package. The package's
+       LICENSE is "MICROSOFT SOFTWARE LICENSE TERMS - MICROSOFT VISUAL STUDIO ADD-ONs
+       and EXTENSIONS", which limits use to Visual Studio and forbids redistributing it
+       inside another application; the repository it is built from is MIT. See
+       doc/technotes/licensing-audit.md.
+
+       The upstream project targets net472 and pulls the framework's
+       System.ComponentModel.Composition reference; this build only changes the target
+       framework and package references, no source file. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>Microsoft.VisualStudio.CoreUtility</AssemblyName>
+    <RootNamespace>Microsoft.VisualStudio.Utilities</RootNamespace>
+    <Version>16.0.0</Version>
+    <AssemblyVersion>16.0.0.0</AssemblyVersion>
+    <FileVersion>16.0.0.0</FileVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS0618;CS1591;CS1572;CS1573;CS0649;CS0414;CS0169;CS3021;SYSLIB0003;SYSLIB0050;SYSLIB0051</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\..\..\externals\vs-editor-api\src\Editor\Core\Def\**\*.cs"
+             Exclude="..\..\..\..\externals\vs-editor-api\src\Editor\Core\Def\**\*AssemblyInfo.cs;..\..\..\..\externals\vs-editor-api\src\Editor\Core\Def\**\bin\**;..\..\..\..\externals\vs-editor-api\src\Editor\Core\Def\**\obj\**"
+             LinkBase="vs-editor-api\Core\Def" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.VisualStudio.Threading" />
+    <PackageReference Include="System.ComponentModel.Composition" />
+  </ItemGroup>
+</Project>

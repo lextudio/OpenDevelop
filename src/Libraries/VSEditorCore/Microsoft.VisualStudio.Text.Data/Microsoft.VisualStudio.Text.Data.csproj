@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Builds Microsoft.VisualStudio.Text.Data from the MIT-licensed sources in
+       externals/vs-editor-api; see Microsoft.VisualStudio.CoreUtility.csproj for why the
+       NuGet package is not used. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>Microsoft.VisualStudio.Text.Data</AssemblyName>
+    <RootNamespace>Microsoft.VisualStudio.Text</RootNamespace>
+    <Version>16.0.0</Version>
+    <AssemblyVersion>16.0.0.0</AssemblyVersion>
+    <FileVersion>16.0.0.0</FileVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS0618;CS1591;CS1572;CS1573;CS0649;CS0414;CS0169;CS3021;SYSLIB0003;SYSLIB0050;SYSLIB0051</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\..\..\externals\vs-editor-api\src\Editor\Text\Def\TextData\**\*.cs"
+             Exclude="..\..\..\..\externals\vs-editor-api\src\Editor\Text\Def\TextData\**\*AssemblyInfo.cs;..\..\..\..\externals\vs-editor-api\src\Editor\Text\Def\TextData\**\bin\**;..\..\..\..\externals\vs-editor-api\src\Editor\Text\Def\TextData\**\obj\**"
+             LinkBase="vs-editor-api\Text\Def\TextData" />
+    <!-- The upstream snapshot predates the 17.14 rename constructor and OldFilePath property;
+         this local file supplies that shape. It also carries FileActionTypes, which lives in
+         the same upstream file. -->
+    <Compile Remove="..\..\..\..\externals\vs-editor-api\src\Editor\Text\Def\TextData\Document\TextDocumentFileActionEventArgs.cs" />
+    <Compile Include="TextDocumentFileActionEventArgs.cs" />
+    <!-- Strings.Designer.cs asks the ResourceManager for "Microsoft.VisualStudio.Text.Strings". -->
+    <EmbeddedResource Include="..\..\..\..\externals\vs-editor-api\src\Editor\Text\Def\TextData\Strings.resx"
+                      LogicalName="Microsoft.VisualStudio.Text.Strings.resources"
+                      Link="vs-editor-api\Text\Def\TextData\Strings.resx" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Microsoft.VisualStudio.CoreUtility\Microsoft.VisualStudio.CoreUtility.csproj" />
+    <PackageReference Include="Microsoft.VisualStudio.Threading" />
+  </ItemGroup>
+</Project>

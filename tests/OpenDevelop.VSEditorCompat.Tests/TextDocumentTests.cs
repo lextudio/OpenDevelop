@@ -143,11 +143,21 @@ public sealed class TextDocumentTests : IDisposable
 		var newPath = Path.Combine(tempDir, "renamed.txt");
 
 		FileActionTypes? lastAction = null;
-		document.FileActionOccurred += (_, e) => lastAction = e.FileActionType;
+		string? oldPath = null;
+		string? reportedPath = null;
+		document.FileActionOccurred += (_, e) =>
+		{
+			lastAction = e.FileActionType;
+			oldPath = e.OldFilePath;
+			reportedPath = e.FilePath;
+		};
 		document.Rename(newPath);
 
 		Assert.Equal(newPath, document.FilePath);
 		Assert.Equal(FileActionTypes.DocumentRenamed, lastAction);
+		// The source-built Microsoft.VisualStudio.Text.Data supplies 17.14's two-path shape.
+		Assert.Equal(path, oldPath);
+		Assert.Equal(newPath, reportedPath);
 	}
 
 	[Fact]

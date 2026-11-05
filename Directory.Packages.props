@@ -73,9 +73,15 @@
     <PackageVersion Include="Microsoft.TemplateEngine.IDE" Version="10.0.302" />
     <PackageVersion Include="Microsoft.TemplateEngine.Orchestrator.RunnableProjects" Version="10.0.302" />
     <PackageVersion Include="Microsoft.TemplateEngine.Utils" Version="10.0.302" />
-    <PackageVersion Include="Microsoft.VisualStudio.Text.Data" Version="17.14.249" />
-    <PackageVersion Include="Microsoft.VisualStudio.Text.Logic" Version="17.14.249" />
-    <PackageVersion Include="Microsoft.VisualStudio.Text.UI" Version="17.14.249" />
+    <!-- Microsoft.VisualStudio.Text.Data/Logic/UI and CoreUtility are no longer NuGet
+         packages: their packages are licensed under "MICROSOFT SOFTWARE LICENSE TERMS -
+         MICROSOFT VISUAL STUDIO ADD-ONs and EXTENSIONS" (Visual Studio use only, no
+         redistribution inside another application), while the source repository is MIT.
+         src/Libraries/VSEditorCore builds them from externals/vs-editor-api instead. The
+         three packages below are what that source needs. -->
+    <PackageVersion Include="Microsoft.VisualStudio.Threading" Version="17.13.2" />
+    <PackageVersion Include="Microsoft.VisualStudio.Validation" Version="17.13.22" />
+    <PackageVersion Include="System.ComponentModel.Composition" Version="10.0.5" />
     <PackageVersion Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.142" />
     <PackageVersion Include="Mono.TextTemplating" Version="3.0.0" />
     <PackageVersion Include="NUnit" Version="4.4.0" />

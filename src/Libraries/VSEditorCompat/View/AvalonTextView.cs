@@ -11,10 +11,14 @@
 // buffers, section 11).
 
 using System;
+using System.Collections.ObjectModel;
+using System.Windows;
+using System.Windows.Media;
 
 using AvalonEditing = ICSharpCode.AvalonEdit.Editing;
 using ICSharpCode.AvalonEdit.Document;
 using Microsoft.VisualStudio.Text;
+using Microsoft.VisualStudio.Text.Adornments;
 using Microsoft.VisualStudio.Text.Editor;
 using Microsoft.VisualStudio.Text.Formatting;
 using Microsoft.VisualStudio.Text.Projection;
@@ -180,5 +184,49 @@ public sealed class AvalonTextView : ITextView
 	{
 		// No space-reservation-manager adornment stack exists yet (section 64: adornments are
 		// High risk / deferred) - nothing to refresh.
+	}
+
+	// The source-built ITextView (externals/vs-editor-api) exposes this lookup; the retired
+	// Microsoft.VisualStudio.Text.UI NuGet contract did not. Adornments remain out of scope
+	// (section 64), so the manager exists only to keep callers that enumerate managers working.
+	public ISpaceReservationManager GetSpaceReservationManager(string name)
+		=> spaceReservationManager ??= new AvalonSpaceReservationManager(name ?? string.Empty);
+
+	AvalonSpaceReservationManager spaceReservationManager;
+
+	sealed class AvalonSpaceReservationManager : ISpaceReservationManager
+	{
+		static readonly ReadOnlyCollection<ISpaceReservationAgent> noAgents = new(Array.Empty<ISpaceReservationAgent>());
+
+		public AvalonSpaceReservationManager(string name) => Name = name;
+
+		public string Name { get; }
+
+		public int Rank => 0;
+
+		public bool IsMouseOver => false;
+
+		public bool HasAggregateFocus => false;
+
+		public ReadOnlyCollection<ISpaceReservationAgent> Agents => noAgents;
+
+		public event EventHandler<SpaceReservationAgentChangedEventArgs> AgentChanged { add { } remove { } }
+
+		public event EventHandler LostAggregateFocus { add { } remove { } }
+
+		public event EventHandler GotAggregateFocus { add { } remove { } }
+
+		public ISpaceReservationAgent CreatePopupAgent(ITrackingSpan visualSpan, PopupStyles style, UIElement content)
+			=> throw new NotSupportedException("Space-reservation adornments are not implemented by the AvalonEdit compatibility view.");
+
+		public void UpdatePopupAgent(ISpaceReservationAgent agent, ITrackingSpan visualSpan, PopupStyles styles)
+			=> throw new NotSupportedException("Space-reservation adornments are not implemented by the AvalonEdit compatibility view.");
+
+		public void AddAgent(ISpaceReservationAgent agent)
+			=> throw new NotSupportedException("Space-reservation adornments are not implemented by the AvalonEdit compatibility view.");
+
+		public bool RemoveAgent(ISpaceReservationAgent agent) => false;
+
+		public void PositionAndDisplay(GeometryGroup reservedGeometry) { }
 	}
 }

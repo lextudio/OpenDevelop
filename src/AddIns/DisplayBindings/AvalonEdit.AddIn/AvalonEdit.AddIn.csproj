@@ -15,11 +15,11 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ICSharpCode.AvalonEdit.LibreWPF" />
-    <!-- Private="false": OpenDevelop.VSEditorCompat (and its Microsoft.VisualStudio.Text.*
-         contract packages) are provided by the SharpDevelop app project so there is exactly
-         one loaded copy - the CodeEditor registers its AvalonTextBuffer into the document
-         service container, and the DevFlow actions / extensions resolve the same buffer by
-         interface identity. -->
+    <!-- Private="false": OpenDevelop.VSEditorCompat (and the Microsoft.VisualStudio.Text.*
+         contracts it builds from externals/vs-editor-api) are provided by the SharpDevelop
+         app project so there is exactly one loaded copy - the CodeEditor registers its
+         AvalonTextBuffer into the document service container, and the DevFlow actions /
+         extensions resolve the same buffer by interface identity. -->
     <ProjectReference Include="..\..\..\Libraries\VSEditorCompat\OpenDevelop.VSEditorCompat.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />

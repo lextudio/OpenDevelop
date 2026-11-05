@@ -7,6 +7,11 @@
        Microsoft.VisualStudio.Text.*; the dependency points only this way:
 
            Microsoft.VisualStudio.Text.*  &lt;-  OpenDevelop.VSEditorCompat  -&gt;  ICSharpCode.AvalonEdit
+
+       The left side is built from externals/vs-editor-api by src/Libraries/VSEditorCore, not
+       taken from the Microsoft NuGet packages: those packages' LICENSE restricts them to
+       Visual Studio use and forbids redistributing them inside another application (see
+       doc/technotes/licensing-audit.md).
   -->
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -20,13 +25,19 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- The single pinned VS editor contract generation - do not mix versions across the
-         Microsoft.VisualStudio.Text.* family (vs-editor-api.md §38). Text.UI carries the
-         non-WPF view contracts (ITextView/ITextCaret/ITextSelection/IViewScroller) - the
-         WPF-only UI.Wpf package stays out (sections 5.1 and 36). -->
-    <PackageReference Include="Microsoft.VisualStudio.Text.Data" />
-    <PackageReference Include="Microsoft.VisualStudio.Text.UI" />
-    <PackageReference Include="Microsoft.VisualStudio.Text.Logic" />
+    <!-- Build the editor contracts from externals/vs-editor-api (MIT) instead of the
+         Microsoft.VisualStudio.Text.* NuGet packages, whose LICENSE limits use to Visual
+         Studio and forbids redistributing the assemblies inside another application - the
+         same problem that retired Microsoft.VisualStudio.Shared.VSCodeDebugProtocol. See
+         src/Libraries/VSEditorCore and doc/technotes/licensing-audit.md.
+
+         Build all three from one source checkout - do not mix them with NuGet copies
+         (vs-editor-api.md §38). Text.UI carries the non-WPF view contracts
+         (ITextView/ITextCaret/ITextSelection/IViewScroller); the WPF-only UI.Wpf assembly
+         stays out (sections 5.1 and 36). -->
+    <ProjectReference Include="..\VSEditorCore\Microsoft.VisualStudio.Text.Data\Microsoft.VisualStudio.Text.Data.csproj" />
+    <ProjectReference Include="..\VSEditorCore\Microsoft.VisualStudio.Text.Logic\Microsoft.VisualStudio.Text.Logic.csproj" />
+    <ProjectReference Include="..\VSEditorCore\Microsoft.VisualStudio.Text.UI\Microsoft.VisualStudio.Text.UI.csproj" />
   </ItemGroup>
 
   <ItemGroup>

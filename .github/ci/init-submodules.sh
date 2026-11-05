@@ -3,6 +3,8 @@
 # Initialises the submodules the build reaches. Every job that compiles calls this, so the list lives in one place.
 #   bash .github/ci/init-submodules.sh
 #
+# src/Libraries/VSEditorCore compiles the Microsoft.VisualStudio.Text.* contracts straight out of externals/vs-editor-api
+# (MIT) instead of taking Microsoft's NuGet packages, so every build that reaches OpenDevelop.VSEditorCompat needs it.
 # The integration test project's ProjectReference closure reaches cps, WPF Toolkit and vscode-wpf
 # (with its nested WpfDesigner/wxsg); the debugger, coverage and XAML submodules are small and kept in case a build target
 # uses them directly. The AspNetCore add-in compiles four source files straight out of externals/monodevelop (a Compile
@@ -11,6 +13,6 @@
 set -euo pipefail
 
 git submodule update --init \
-  externals/wpftoolkit externals/sharpdbg externals/xamlstudio externals/altcover externals/vsmac-codecoverage
+  externals/wpftoolkit externals/sharpdbg externals/xamlstudio externals/altcover externals/vsmac-codecoverage externals/vs-editor-api
 git submodule update --init --recursive externals/cps externals/vscode-wpf
 git submodule update --init --depth 1 externals/monodevelop

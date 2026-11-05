@@ -226,4 +226,20 @@ public sealed class AvalonTextViewLine : ITextViewLine
 	public TextBounds? GetAdornmentBounds(object identityTag) => null;
 
 	public ReadOnlyCollection<object> GetAdornmentTags(object identityTag) => new(Array.Empty<object>());
+
+	// The setters below exist only on the source-built ITextViewLine (externals/vs-editor-api);
+	// they are the layout engine's mutation hooks and were not part of the retired
+	// Microsoft.VisualStudio.Text.UI NuGet contract. This line is a read-only view of AvalonEdit's
+	// VisualLine/TextLine pair, recomputed rather than mutated, so there is nothing to store.
+	public void SetChange(TextViewLineChange change) { }
+
+	public void SetTop(double top) { }
+
+	public void SetDeltaY(double deltaY) { }
+
+	public void SetSnapshot(ITextSnapshot visualSnapshot, ITextSnapshot editSnapshot) { }
+
+	public void SetLineTransform(LineTransform transform) { }
+
+	public void Dispose() { }
 }

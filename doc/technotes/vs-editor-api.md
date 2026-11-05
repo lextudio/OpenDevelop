@@ -2486,7 +2486,26 @@ microsoft/vs-editor-api source repository
 
 Therefore, implementing adapters based on the public source/API design is compatible with an MIT OpenDevelop codebase.
 
-However, before redistributing official Microsoft NuGet binaries, review the license metadata and notices of the exact packages chosen.
+The compatibility layer is compiled from `externals/vs-editor-api` by
+`src/Libraries/VSEditorCore`; it does not reference the
+`Microsoft.VisualStudio.Text.Data`/`.Logic`/`.UI`/`CoreUtility` NuGet packages. Those packages
+are licensed under "MICROSOFT SOFTWARE LICENSE TERMS - MICROSOFT VISUAL STUDIO ADD-ONs and
+EXTENSIONS", which limits use to Visual Studio and forbids combining the assemblies with another
+application for others to use. Shipping them in OpenDevelop was therefore not permitted. The
+repository they are built from is MIT; rebuilding from it is the same remedy already applied to
+`Microsoft.VisualStudio.Shared.VSCodeDebugProtocol`.
+
+Consequences to keep in mind:
+
+- The four assemblies keep their upstream names but are unsigned, versioned `16.0.0.0`, and
+  compiled from the repository snapshot rather than Microsoft's released binaries.
+- `Microsoft.VisualStudio.Text.Data/TextDocumentFileActionEventArgs.cs` locally supplies the
+  17.14 rename constructor and `OldFilePath` property that the snapshot predates; every other
+  file is compiled unmodified.
+- Do not add `PackageReference` items for those four packages, and do not mix a NuGet copy with
+  the in-tree projects (section 38).
+- The audit entry lives in `doc/technotes/licensing-audit.md`; release payloads carry
+  `SOURCE-LICENSES/vs-editor-api-MIT.txt`.
 
 Avoid any dependency on historical private/internal packages such as:
 
