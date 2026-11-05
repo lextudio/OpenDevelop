@@ -93,4 +93,48 @@ public class RemoteDapSessionTests
 		Assert.Equal("/src/MainActivity.cs", requests[2]["arguments"]!["source"]!["path"]!.GetValue<string>());
 		Assert.False(requests[4]["arguments"]!["terminateDebuggee"]!.GetValue<bool>());
 	}
+
+	[Fact]
+	public async Task RemoteSession_ReportsRejectedSessionTokenAndStops()
+	{
+		using var listener = new TcpListener(IPAddress.Loopback, 0);
+		listener.Start();
+		var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+		var commands = new List<string>();
+		var server = Task.Run(async () => {
+			using var peer = await listener.AcceptTcpClientAsync();
+			using var stream = peer.GetStream();
+			using var reader = new StreamReader(stream, Encoding.UTF8, false, 1024, leaveOpen: true);
+			while (true) {
+				string? header = await reader.ReadLineAsync();
+				if (header == null) return;
+				int length = int.Parse(header["Content-Length:".Length..].Trim());
+				Assert.Equal("", await reader.ReadLineAsync());
+				var chars = new char[length];
+				Assert.Equal(length, await reader.ReadBlockAsync(chars, 0, length));
+				var request = JsonNode.Parse(new string(chars))!.AsObject();
+				string command = request["command"]!.GetValue<string>();
+				commands.Add(command);
+				// Like the device agent: initialize is fine, attach with the wrong token is refused.
+				bool reject = command == "attach";
+				var response = new JsonObject {
+					["seq"] = commands.Count, ["type"] = "response", ["request_seq"] = request["seq"]!.GetValue<int>(),
+					["success"] = !reject, ["command"] = command
+				};
+				if (reject) response["message"] = "Invalid debug session token.";
+				else response["body"] = new JsonObject();
+				byte[] body = Encoding.UTF8.GetBytes(response.ToJsonString());
+				await stream.WriteAsync(Encoding.ASCII.GetBytes($"Content-Length: {body.Length}\r\n\r\n"));
+				await stream.WriteAsync(body);
+			}
+		});
+		using var session = new DapSession();
+		var error = await Assert.ThrowsAnyAsync<Exception>(() => session.StartRemoteAsync("127.0.0.1", port, new JsonObject { ["sessionToken"] = "wrong" }));
+		Assert.Contains("Invalid debug session token", error.Message);
+		session.Stop();
+		Assert.False(session.IsRunning);
+		await server.WaitAsync(TimeSpan.FromSeconds(5));
+		Assert.Equal(new[] { "initialize", "attach" }, commands.Take(2));
+		Assert.DoesNotContain("configurationDone", commands);
+	}
 }

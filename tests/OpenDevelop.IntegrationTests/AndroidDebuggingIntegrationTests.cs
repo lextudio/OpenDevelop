@@ -44,6 +44,7 @@ public sealed class AndroidDebuggingIntegrationTests
 			Assert.Contains(choices.GetProperty("choices").EnumerateArray(), choice => choice.GetProperty("serial").ValueKind == JsonValueKind.String && choice.GetProperty("serial").GetString() == serial && choice.GetProperty("isChecked").GetBoolean());
 			var breakpoint = await ide.InvokeAsync("od.debug.set-breakpoint", source, 10);
 			Assert.True(breakpoint.GetProperty("success").GetBoolean(), breakpoint.ToString());
+			string baselineForwards = NormalizeForwards(await CommandAsync(adb, "-s " + serial + " forward --list"));
 			var started = await ide.InvokeAsync("od.debug.start", project, true, 420);
 			try {
 				Assert.True(started.GetProperty("stopped").GetBoolean(), started.ToString());
@@ -57,6 +58,32 @@ public sealed class AndroidDebuggingIntegrationTests
 				await ide.InvokeAsync("od.debug.stop");
 			}
 			Assert.False((await ide.InvokeAsync("od.debug.service-info")).GetProperty("isDebugging").GetBoolean());
+			await AssertDeviceIsCleanAsync();
+			// A repeated session must start from that clean state and hit the same breakpoint again.
+			started = await ide.InvokeAsync("od.debug.start", project, true, 420);
+			try {
+				Assert.True(started.GetProperty("stopped").GetBoolean(), started.ToString());
+				Assert.Equal(10, started.GetProperty("currentLine").GetInt32());
+			} finally {
+				await ide.InvokeAsync("od.debug.stop");
+			}
+			Assert.False((await ide.InvokeAsync("od.debug.service-info")).GetProperty("isDebugging").GetBoolean());
+			await AssertDeviceIsCleanAsync();
+
+			async Task AssertDeviceIsCleanAsync()
+			{
+				// Stop disposes the device session asynchronously; give its adb cleanup a moment. Forwards the
+				// session did not create (the developer's own) are in the baseline and must stay untouched.
+				string debugApp = "", forwards = "";
+				for (int i = 0; i < 20; i++) {
+					debugApp = await CommandAsync(adb, "-s " + serial + " shell dumpsys activity processes");
+					forwards = await CommandAsync(adb, "-s " + serial + " forward --list");
+					if (!debugApp.Contains("mDebugApp=com.opendevelop.androiddebugtest") && NormalizeForwards(forwards) == baselineForwards) return;
+					await Task.Delay(500);
+				}
+				Assert.DoesNotContain("mDebugApp=com.opendevelop.androiddebugtest", debugApp);
+				Assert.Equal(baselineForwards, NormalizeForwards(forwards));
+			}
 		} finally {
 			try { Directory.Delete(work, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
 		}
@@ -84,6 +111,9 @@ public sealed class AndroidDebuggingIntegrationTests
 		}
 		Assert.Fail("Android project did not load.");
 	}
+
+	static string NormalizeForwards(string list) =>
+		string.Join("\n", list.Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0).OrderBy(line => line, StringComparer.Ordinal));
 
 	static async Task<string> CommandAsync(string executable, string argument)
 	{

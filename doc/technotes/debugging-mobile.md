@@ -82,7 +82,11 @@ member (for example `configurationDone`) made `DapReceiver` call
 and ended the input loop. Fork commit `58b878f0` builds those objects through `JsonNode`/`JsonDocument`, and the
 smoke test now sends an argument-less request (12/12 pass; exit 134 without the fix). Run
 [41991522905](https://github.com/lextudio/csharp-language-server-protocol/actions/runs/41991522905) published
-the fixed version `1.0.0-lextudio.41991522905.1` (the five `OmniSharp.Extensions.*` packages).
+the fixed version `1.0.0-lextudio.41991522905.1` (the five `OmniSharp.Extensions.*` packages). Run
+[42043402458](https://github.com/lextudio/csharp-language-server-protocol/actions/runs/42043402458) published
+`1.0.0-lextudio.42043402458.1`, the current pin, which adds `supportsSingleThreadExecutionRequests` to the
+capabilities model (the desktop adapter honours `singleThread` and had no way to advertise it). The Android
+journey above was rerun with the current version and still passes (1/1).
 
 OpenDevelop pins that version as `LextudioDapForkVersion` in `Directory.Packages.props`.
 `sync-openavalon-feed.ps1` downloads the packages with the `gh` CLI into `artifacts/openavalon-feed`, and
@@ -99,9 +103,15 @@ decompiled `clrdbg` or `ICorDebugSharp` source was imported.
 
 ## Remaining work
 
-1. Exercise the IDE journey beyond the happy path: locals/watch, exception configuration, authentication
-   failure, cancellation during build/attach, repeated sessions, multiple-device selection, Stop and
-   disconnect cleanup.
+1. Failure paths now covered by tests (all pass): a wrong session token is refused by the agent
+   (`SharpDbg.AndroidAgent.Tests`) and reported by the IDE without sending `configurationDone`
+   (`RemoteDapSessionTests`); cancellation while launching cleans up everything the session owns, and
+   cancellation before anything is owned leaves the device untouched; a repeated session starts from a clean
+   state; a second concurrent session is refused without disturbing the first; device selection never guesses
+   or falls back (`AndroidDebugSupportTests`, fake `adb`). The integration journey stops and starts the app
+   twice and checks that no `mDebugApp` setting or new `adb forward` is left (forwards that were already there
+   are left alone). Still open: locals/watch panes, exception-filter configuration from the IDE, cancellation
+   while MSBuild runs, selecting between two real devices, and a physical device.
 2. The `x86_64` and `armeabi-v7a` agents build and pass the ELF/notice verification but have not run on a
    device. NativeAOT trimming warnings and reflection-dependent features need targeted coverage.
 3. CI and release wiring for the agent (`build/android-debug-agent.ps1` in the workflows, SPDX/notices, the

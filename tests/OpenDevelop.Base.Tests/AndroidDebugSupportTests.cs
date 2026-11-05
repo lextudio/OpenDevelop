@@ -172,4 +172,141 @@ public class AndroidDebugSupportTests
 			Directory.Delete(directory, true);
 		}
 	}
+
+	// A stateful fake adb: set-debug-app/clear-debug-app flip a marker that the dumpsys output reflects,
+	// every call is logged, and chosen steps block so a test can cancel while they run.
+	static string WriteFakeAdb(string directory, string blockOn = "", string package = "com.example.app")
+	{
+		string adb = Path.Combine(directory, "adb"), log = Path.Combine(directory, "calls"), marker = Path.Combine(directory, "marked");
+		string Block(string step) => blockOn == step ? "sleep 30; " : "";
+		File.WriteAllText(adb, "#!/bin/sh\n" +
+			"printf '%s\\n' \"$*\" >> '" + log + "'\n" +
+			"case \"$*\" in\n" +
+			"  *'get-current-user') echo 0;;\n" +
+			"  *'dumpsys activity processes') if [ -f '" + marker + "' ]; then echo 'mProcessesReady=true mDebugApp=" + package + "/orig=null'; else echo 'mProcessesReady=true'; fi;;\n" +
+			"  *'am set-debug-app'*) touch '" + marker + "';;\n" +
+			"  *'am clear-debug-app'*) rm -f '" + marker + "';;\n" +
+			"  *'forward tcp:0'*) echo 45678;;\n" +
+			"  *'resolve-activity'*) " + Block("resolve-activity") + "echo '" + package + "/.MainActivity';;\n" +
+			"  *'install -r'*) " + Block("install") + ";;\n" +
+			"  *'sh -c'*) cat > /dev/null;;\n" +
+			"esac\n");
+		File.SetUnixFileMode(adb, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+		File.WriteAllText(Path.Combine(directory, "app.apk"), "apk");
+		return adb;
+	}
+
+	static async Task<string> CallsAsync(string directory) =>
+		File.Exists(Path.Combine(directory, "calls")) ? await File.ReadAllTextAsync(Path.Combine(directory, "calls"), TestContext.Current.CancellationToken) : "";
+
+	static int Count(string text, string needle) => text.Split(needle).Length - 1;
+
+	[Fact]
+	public async Task DeviceSession_CancelledWhileLaunching_CleansUpEverythingItOwns()
+	{
+		if (OperatingSystem.IsWindows()) return;
+		string directory = Path.Combine(Path.GetTempPath(), "android-adb-cancel-late-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		try {
+			string adb = WriteFakeAdb(directory, blockOn: "resolve-activity");
+			using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+			await Assert.ThrowsAnyAsync<OperationCanceledException>(() => AndroidDebugSession.StartAsync(adb, "emulator-5554", "com.example.app", Path.Combine(directory, "app.apk"), directory, cancel.Token));
+			string calls = await CallsAsync(directory);
+			Assert.Contains("am set-debug-app com.example.app", calls);
+			Assert.Contains("forward --remove tcp:45678", calls);
+			Assert.Contains("am clear-debug-app", calls);
+			Assert.Equal(2, Count(calls, "am force-stop com.example.app"));
+			Assert.DoesNotContain("am start", calls);
+			Assert.False(File.Exists(Path.Combine(directory, "marked")), "the debug-app setting must be cleared again");
+		} finally {
+			Directory.Delete(directory, true);
+		}
+	}
+
+	[Fact]
+	public async Task DeviceSession_CancelledBeforeAnythingIsOwned_LeavesTheDeviceSettingsAlone()
+	{
+		if (OperatingSystem.IsWindows()) return;
+		string directory = Path.Combine(Path.GetTempPath(), "android-adb-cancel-early-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		try {
+			string adb = WriteFakeAdb(directory, blockOn: "install");
+			using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+			await Assert.ThrowsAnyAsync<OperationCanceledException>(() => AndroidDebugSession.StartAsync(adb, "emulator-5554", "com.example.app", Path.Combine(directory, "app.apk"), directory, cancel.Token));
+			string calls = await CallsAsync(directory);
+			Assert.Contains("install -r", calls);
+			Assert.DoesNotContain("set-debug-app", calls);
+			Assert.DoesNotContain("clear-debug-app", calls);
+			Assert.DoesNotContain("force-stop", calls);
+			Assert.DoesNotContain("forward tcp:0", calls);
+		} finally {
+			Directory.Delete(directory, true);
+		}
+	}
+
+	[Fact]
+	public async Task DeviceSession_RepeatedSessionsStartAndCleanUpIndependently()
+	{
+		if (OperatingSystem.IsWindows()) return;
+		string directory = Path.Combine(Path.GetTempPath(), "android-adb-repeat-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		try {
+			string adb = WriteFakeAdb(directory), apk = Path.Combine(directory, "app.apk");
+			var first = await AndroidDebugSession.StartAsync(adb, "emulator-5554", "com.example.app", apk, directory, TestContext.Current.CancellationToken);
+			await first.DisposeAsync();
+			Assert.False(File.Exists(Path.Combine(directory, "marked")));
+			var second = await AndroidDebugSession.StartAsync(adb, "emulator-5554", "com.example.app", apk, directory, TestContext.Current.CancellationToken);
+			Assert.NotEqual(first.Token, second.Token);
+			await second.DisposeAsync();
+			string calls = await CallsAsync(directory);
+			Assert.Equal(2, Count(calls, "am set-debug-app"));
+			Assert.Equal(2, Count(calls, "am clear-debug-app"));
+			Assert.Equal(2, Count(calls, "forward --remove tcp:45678"));
+			Assert.False(File.Exists(Path.Combine(directory, "marked")));
+		} finally {
+			Directory.Delete(directory, true);
+		}
+	}
+
+	[Fact]
+	public async Task DeviceSession_SecondConcurrentSessionIsRefusedAndDoesNotDisturbTheFirst()
+	{
+		if (OperatingSystem.IsWindows()) return;
+		string directory = Path.Combine(Path.GetTempPath(), "android-adb-concurrent-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		try {
+			string adb = WriteFakeAdb(directory), apk = Path.Combine(directory, "app.apk");
+			var first = await AndroidDebugSession.StartAsync(adb, "emulator-5554", "com.example.app", apk, directory, TestContext.Current.CancellationToken);
+			string before = await CallsAsync(directory);
+			var error = await Assert.ThrowsAsync<InvalidOperationException>(() => AndroidDebugSession.StartAsync(adb, "emulator-5554", "com.example.app", apk, directory, TestContext.Current.CancellationToken));
+			Assert.Contains("Another Android debug-app setting is active", error.Message);
+			string after = (await CallsAsync(directory))[before.Length..];
+			Assert.DoesNotContain("install -r", after);
+			Assert.DoesNotContain("force-stop", after);
+			Assert.DoesNotContain("clear-debug-app", after);
+			Assert.True(File.Exists(Path.Combine(directory, "marked")), "the first session's setting must survive the refused second one");
+			await first.DisposeAsync();
+			Assert.False(File.Exists(Path.Combine(directory, "marked")));
+		} finally {
+			Directory.Delete(directory, true);
+		}
+	}
+
+	[Theory]
+	[InlineData(new[] { "emulator-5554" }, "", "emulator-5554")]
+	[InlineData(new[] { "emulator-5554", "R5CT123" }, "R5CT123", "R5CT123")]
+	[InlineData(new[] { "emulator-5554", "R5CT123" }, "emulator-5554", "emulator-5554")]
+	public void SelectSerial_PicksTheChosenOrOnlyDevice(string[] devices, string preferred, string expected) =>
+		Assert.Equal(expected, Debugger.AddIn.Android.AndroidDebugProjectBehavior.SelectSerial(devices, preferred));
+
+	[Theory]
+	[InlineData(new string[0], "", "connected devices: 0")]
+	[InlineData(new[] { "emulator-5554", "R5CT123" }, "", "connected devices: 2")]
+	[InlineData(new[] { "emulator-5554", "R5CT123" }, "ZY0000", "ZY0000")]
+	[InlineData(new[] { "emulator-5554" }, "R5CT123", "R5CT123")]
+	public void SelectSerial_RefusesToGuessOrFallBack(string[] devices, string preferred, string expectedInMessage)
+	{
+		var error = Assert.Throws<InvalidOperationException>(() => Debugger.AddIn.Android.AndroidDebugProjectBehavior.SelectSerial(devices, preferred));
+		Assert.Contains(expectedInMessage, error.Message);
+	}
 }
