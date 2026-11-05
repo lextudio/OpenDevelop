@@ -59,6 +59,26 @@ run. Everything else still applies to whoever commits, OpenCode included: verify
 tests, stage exactly the intended paths, commit only those, write the message from `git diff --cached`,
 and never push without the user's explicit request.
 
+**Run every review and every OpenCode commit through `build/opencode-review.ps1` (pwsh, macOS/Linux/Windows).**
+Never hand-roll `opencode run`, `opencode session export` or the commit agent call: the script applies the rules below
+the same way every time, and a hand-rolled run is not a valid review. The flow, per review target `<unique>`:
+
+1. Stage exactly the target, then write `tmp/opencode/<unique>-prompt.txt` (user-facing intent, staged paths, the tree hash
+   from `git write-tree`, invariants and risks, the complete call chain for a boundary change, and the test command with its
+   result). New files must be staged; other working-tree changes must be named as out of scope.
+2. `pwsh build/opencode-review.ps1 -Action Launch -Name <unique> [-Directory externals/sharpdbg]` preflights the staged target
+   (no `index.lock`, `git diff --cached --check`, a non-empty diff), records the tree hash and the pre-launch session
+   snapshot, and runs the reviewer in the foreground with stdout and stderr in separate files. It never retries.
+3. `pwsh build/opencode-review.ps1 -Action Read -Name <unique> [-Directory <the same directory>]` polls the export (5-20 minutes is normal; exit code 3 means
+   "not yet", run it again) and verifies the **export**: new session, exact title, directory, agent and model, created
+   after the launch, normal finish, one verdict, a commit-message block on approval, and an unchanged staged tree. Exit
+   codes: 0 approved, 2 changes requested (fix, stage the new tree, and start again from step 1), 4 unusable or stale.
+4. `pwsh build/opencode-review.ps1 -Action Commit -Name <unique> [-Directory <the same directory>]` re-checks the tree, has the `build` agent run
+   `git commit -F` on the reviewer's message, and verifies that the new commit's tree is the reviewed one.
+
+If the script is wrong or missing something, fix it in a reviewed commit (or ask the user); do not bypass it. The details
+below describe what the script does and the conventions it relies on; keep them in sync with it.
+
 Use OpenCode with `opencode-go/deepseek-v4.1-flash` at High effort. One commit is one small,
 complete review target. Before commit, OpenCode must return terminal `VERDICT: APPROVED` for the
 exact staged diff and relevant executable tests must pass. `CHANGES_REQUESTED`, timeout, error,
@@ -120,7 +140,7 @@ report that to the user instead of rewriting it.
 If no relevant test exists or cannot run, record why in the handoff; never waive approval. OpenCode
 commits; never push without the user's explicit request.
 
-Invocation (OpenCode CLI v2): use structured output: review with `opencode run --format json --agent
+Invocation (OpenCode CLI v2), as implemented by `build/opencode-review.ps1`: use structured output: review with `opencode run --format json --agent
 reviewer -m opencode-go/deepseek-v4.1-flash#high --title "<unique title> <tree>" "<context>" > tmp/opencode/<unique>.json 2>&1`
 and commit with `--agent build` in the same form. CLI v2.0.32 returns after a tool-call turn, rather
 than retaining one foreground process. Read the JSON `sessionID`; if its last event is a tool-call
