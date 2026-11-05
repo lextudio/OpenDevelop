@@ -81,13 +81,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: .github/ci
+          # The device-journey guard below reads the integration test sources to find the classes that need a device.
+          sparse-checkout: |
+            .github/ci
+            tests/OpenDevelop.IntegrationTests
       - name: Verify shared build selection
         shell: pwsh
         run: ./.github/ci/tests/build-selection.ps1
       - name: Verify Windows GTK validation
         shell: pwsh
         run: ./.github/ci/tests/verify-gtk-windows.ps1
+      - name: Verify the plan runs no emulator or simulator journeys
+        shell: pwsh
+        run: ./.github/ci/tests/verify-no-device-journeys.ps1
       - id: matrix
         shell: pwsh
         env:

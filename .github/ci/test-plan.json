@@ -9,6 +9,7 @@
     "Per platform an entry is 'observe' (runs; a failure is reported as a warning and does not fail the job), 'required' (a failure fails",
     "the job) or 'excluded' (does not run; 'reason' says why).  A platform missing from an entry is excluded.  A new batch starts as 'observe';",
     "promote it to 'required' after it has been green on that platform for several runs.",
+    "No entry may run an Android emulator or iOS Simulator journey: GitHub Actions runners cannot run them reliably (no nested virtualisation on the macOS arm64 runners). .github/ci/tests/verify-no-device-journeys.ps1 fails the plan job when a -class entry names a class that uses simctl, avdmanager, the emulator binary or adb. Those journeys run by hand on a developer machine.",
     "kind: xunit-exe = dotnet <target> [args] (an xUnit v3 test assembly, run directly); msbuild = dotnet msbuild <target> -t:Build.",
     "'project' is built once in the build job (distinct projects only).  'measuredSeconds' is the last measured duration; keep it current when promoting a batch.",
     "'buildFirst' projects are built before everything else on every platform that builds: the host's build writes the host-assembly manifest that lets every add-in trim what the host already ships (without it each add-in carries ~550 MB of copy-local dependencies and AddIns reaches 13 GB); tests/OpenDevelop.IntegrationTests/TESTING.md says the same: build the application first.",

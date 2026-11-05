@@ -410,6 +410,21 @@ serves x64 and ARM64, macOS ships osx-arm64 only. [`dual-architecture-packaging.
 states it, and its "CI: the same contract, enforced instead of hoped for" section maps it to the checks that live in this
 workflow (`buildFrom`, the archive rules per platform, the payload scan and the per-lane RID/architecture check).
 
+## No emulator or simulator journeys
+
+GitHub Actions runners cannot run an Android emulator or an iOS Simulator reliably (the macOS arm64 runners have no
+nested virtualisation, and no runner has a device), so no entry may run a journey that needs one:
+`AndroidDebuggingIntegrationTests`, `IosSimulatorDebuggingIntegrationTests` and the iOS-simulator method of
+`AddInTests` stay out of the plan and are run by hand on a developer machine with the simulator or emulator booted.
+Entries select integration tests by class (`-class Namespace.Class`) or by method (`-method Namespace.Class.Method`).
+`verify-no-device-journeys.ps1` (run by the `plan` job, which sparse-checks out the integration test sources for it)
+makes the exclusion a rule instead of a habit: it fails when either argument names a class whose source uses `simctl`,
+`avdmanager`, the `emulator` binary or `adb`. A class that mixes device and other journeys (`AddInTests`) therefore cannot
+be listed even by method: move its device journeys into a class of their own first.
+
+The hermetic unit tests about devices stay in `base-tests` and are fine: they parse `adb devices` or `simctl` text, build
+launch scripts, or drive a fake `adb` shell script, and they need no emulator.
+
 ## How an entry is enabled
 
 * `batch` orders the rollout; `throughBatch` is the highest batch that runs. `workflow_dispatch` can override it once
