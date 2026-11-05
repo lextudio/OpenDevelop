@@ -69,3 +69,6 @@ tests/fixtures/SampleTestProject/CodeCoverage/
 *.tar.xz
 tests/fixtures/CoverageFixture/CoverageTests/CodeCoverage/
 tmp/
+# dist.ps1 builds from a short-lived filtered copy of the solution in the repository root; a run that is
+# interrupted leaves it behind
+.opendevelop-distribution-*.slnx
