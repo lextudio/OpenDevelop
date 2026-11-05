@@ -39,8 +39,10 @@ Microsoft's NuGet packages. The upstream license is copied as
 ## Microsoft components
 
 Microsoft Windows App SDK, .NET runtime components and Windows SDK assets are
-governed by the license metadata and notices shipped with their exact packages.
-They must not be treated as MIT merely because they are Microsoft packages.
+governed by the license metadata and notices shipped with their exact packages;
+so are the native SQL Server SNI and Management Infrastructure runtimes pulled
+in by `Microsoft.Data.SqlClient` and `Microsoft.PowerShell.SDK`. They must not be
+treated as MIT merely because they are Microsoft packages.
 
 ## Release requirement
 
