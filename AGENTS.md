@@ -63,13 +63,23 @@ exact staged diff and relevant executable tests must pass. `CHANGES_REQUESTED`, 
 empty or truncated output blocks the commit. After any staged-diff change, re-review the full target.
 Ask the reviewer for exactly those two terminal tokens; free-form wording such as "OK TO COMMIT" or
 "BLOCKING" is not an approval and cannot be matched mechanically.
+Format deviations do not matter once the content we asked for is there: if the exported final assistant message
+carries one verdict (`VERDICT: APPROVED` or `VERDICT: CHANGES_REQUESTED`; the same line repeated at the top and the
+bottom is one verdict) and, on approval, a
+`COMMIT_MESSAGE_BEGIN`/`COMMIT_MESSAGE_END` block, accept it wherever those sit (the verdict first or last, extra
+prose around them, findings in another order). Do not discard a review or launch another because the verdict is not
+on the last line; only a missing or contradictory verdict, or an approval without the message block, is unusable.
+`opencode session export <id>` often prints nothing (or "Session not found") for 5-15 minutes after a run has ended,
+even though the run finished: keep polling it (a loop of `opencode session list` then the export, 30 s apart, stdout to
+a file and stderr to another) instead of treating that as a failed or non-terminal review. Fixing the findings of a
+`CHANGES_REQUESTED` and reviewing the new staged tree from scratch is the normal loop, not a retry.
 The command's streamed output is not the record of approval: it can be truncated while OpenCode is
 still working. Record the review launch time and distinctive prompt title; after its process exits,
 locate the matching newly-created session in `opencode session list`, then inspect its final assistant
 message with `opencode session export <session-id>`. Only an explicit final `VERDICT: APPROVED` in that
 exported session is approval. Do not start another review while the first is running, and do not infer
-approval from exit status, a partial transcript, or an empty final tool response. Retry one
-non-terminal review once; if it remains non-terminal, report it unverified and stop.
+approval from exit status, a partial transcript, or an empty final tool response. Never retry a
+non-terminal review (no usable verdict, transport error, a staged tree that changed while it ran): report it as unverified with the session id and stop, and let the user decide.
 Treat `CHANGES_REQUESTED` as terminal and authoritative for that staged tree: do not launch a
 second "confirming" review, and an approval from another concurrent or later session cannot
 override it. Fix every actionable finding, stage the resulting new tree, and review that new tree
@@ -115,7 +125,7 @@ than retaining one foreground process. Read the JSON `sessionID`; if its last ev
 finish (not an `idle`/final assistant response), resume that *same* review with
 `opencode run --format json --session <id> "Continue the original review; inspect the remaining
 required context and finish with the requested terminal verdict." > tmp/opencode/<unique>-next.json 2>&1`. Repeat only
-that same-session continuation until terminal; it is not a retry or a concurrent review. A bare
+that same-session continuation until terminal; it is the same review, not a retry or a concurrent one. A bare
 `--continue` fails because v2 requires a message. This was verified with two separate read-only
 git calls and `PROBE_TWO_TOOL_DONE`. `reviewer` (`~/.config/opencode/agents/reviewer.md`) is read-only
 and begins with the full `git diff --cached` before its bounded context reads, so put the intent and
@@ -128,7 +138,7 @@ Run OpenCode in the foreground of the command runner and retain/poll that runner
 until exit; never append `&`, use `nohup`, or otherwise daemonize it. In managed command runners,
 the background child can be terminated before OpenCode initializes, leaving no log record and no
 session. A missing newly-created session is a non-terminal review failure, not approval; diagnose
-with a foreground no-tool diagnostic session if necessary, then apply the normal retry rule.
+with a foreground no-tool diagnostic session if necessary, then report it unverified; do not retry.
 Empty intermediate polls are normal while the reviewer is reading code: wait for the original
 foreground process to exit before looking up its session or deciding that the launch failed. Do not
 start a second review merely because its streamed output is quiet.
