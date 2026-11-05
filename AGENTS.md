@@ -20,6 +20,16 @@ Keep this file concise and operational. Read the referenced technote only when t
     `global.json` (`LibreWPF.Sdk`) and `Directory.Build.props` (`ProGpuWpfLibreWinFormsPackageVersion`,
     `ProGpuPackageVersion`). To take a newer LibreWPF, move all three to a version GitHub Packages
     has, then sync and rebuild.
+  - **Same rule for every other lextudio GitHub Packages dependency (local development):** download with the
+    `gh` CLI into the fixed local feed `artifacts/openavalon-feed` through `sync-openavalon-feed.ps1`, and restore
+    from there. Never point a local build at `nuget.pkg.github.com` with a token in `NuGetPackageSourceCredentials_*`
+    or `NuGet.config`; only CI does that. The script pins versions in `Directory.Packages.props`: the AvalonEdit and
+    AvalonDock forks, DevFlow, LibGhostty.Net, and `LextudioDapForkVersion`, the five `OmniSharp.Extensions.*` packages
+    (lextudio's NativeAOT-capable DAP fork) that `externals/sharpdbg`'s Android agent hosts its adapter in.
+    `build/android-debug-agent.ps1` writes a scratch `nuget.config` that maps `OmniSharp.Extensions.*` to that local
+    feed and refuses to run when the pinned version is missing there. To take a new fork version, publish it from the
+    fork's `Publish lextudio DAP packages` workflow, change `LextudioDapForkVersion`, run `./sync-openavalon-feed.ps1`,
+    then rebuild the agent.
   - **Take a republish:** openavalon republishes under the same version, which no NuGet cache can
     tell apart. `openavalon-closure.json` names the openavalon commit whose publish run this checkout
     consumes; after a publish you want, set it to that commit. `sync-openavalon-feed.ps1` writes it
