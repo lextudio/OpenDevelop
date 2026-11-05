@@ -1,0 +1,32 @@
+name: Build Android debug agents
+description: Build the C# NativeAOT target-side DAP agents and their license metadata once for all host platforms.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 11.0.x
+        dotnet-quality: preview
+    - name: Install Android workload and SDK dependencies
+      shell: bash
+      working-directory: ${{ runner.temp }}
+      run: |
+        set -euo pipefail
+        test -n "${ANDROID_HOME:-}" && test -d "$ANDROID_HOME"
+        # Run every dotnet command of this step under the 11.x SDK that setup-dotnet just installed, whatever else the
+        # image carries: the repository's global.json pins 10.0.x and is not found from here, and this pin (found from
+        # the working directory) makes that explicit, like the scratch global.json of build/android-debug-agent.ps1.
+        sdk11=$(dotnet --list-sdks | awk '$1 ~ /^11\./ { print $1 }' | sort -V | tail -n 1)
+        test -n "$sdk11"
+        printf '{"sdk":{"version":"%s","allowPrerelease":true,"rollForward":"disable"}}\n' "$sdk11" > global.json
+        dotnet workload install android --skip-manifest-update
+        sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+        test -x "$sdkmanager"
+        yes | "$sdkmanager" --licenses >/dev/null || true
+        "$sdkmanager" 'ndk;27.2.12479018'
+        dotnet build "$GITHUB_WORKSPACE/externals/sharpdbg/src/SharpDbg.AndroidAgent/SharpDbg.AndroidAgent.csproj" \
+          -t:InstallAndroidDependencies "-p:AndroidSdkDirectory=$ANDROID_HOME" \
+          "-p:AndroidNdkDirectory=$ANDROID_HOME/ndk/27.2.12479018" -p:AcceptAndroidSdkLicenses=true
+    - name: Publish and verify all Android ABIs
+      shell: pwsh
+      run: ./build/android-debug-agent.ps1 -AndroidSdkDirectory $env:ANDROID_HOME -AndroidNdkDirectory (Join-Path $env:ANDROID_HOME 'ndk/27.2.12479018')

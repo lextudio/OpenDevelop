@@ -142,6 +142,15 @@ verify_debugger() {
   local debugger_addin=$1 require=$2
   echo '==> Checking debugger launch and breakpoint stop...'
   [[ -f "$debugger_addin/SharpDbg.Cli.dll" ]] || fail 'debugger add-in is missing SharpDbg.Cli.dll'
+  # The adapter's DAP transport is the MIT OmniSharp fork. Microsoft's debug protocol package is under a license that cannot be
+  # redistributed, and a stale development output folder can still hold a copy (the copy targets never delete).
+  [[ -z "$(find "$debugger_addin" -name 'Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll' -print -quit)" ]] || fail 'debugger add-in ships Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll (not redistributable; the adapter uses the OmniSharp fork)'
+  for abi in arm64-v8a x86_64 armeabi-v7a; do
+    [[ -f "$debugger_addin/android/$abi/libSharpDbg.AndroidAgent.so" ]] || fail "debugger add-in is missing the Android agent for $abi"
+    for runtime in dotnet android; do
+      [[ -f "$debugger_addin/android/$abi/licenses/$runtime/LICENSE.TXT" && -f "$debugger_addin/android/$abi/licenses/$runtime/THIRD-PARTY-NOTICES.TXT" ]] || fail "Android agent $abi is missing $runtime runtime notices"
+    done
+  done
   if [[ "$require" != 1 ]]; then
     echo '::warning::Skipping the live debugger assertion (set OD_VERIFY_REQUIRE_DEBUGGER=1 to enforce it).'
     return 0

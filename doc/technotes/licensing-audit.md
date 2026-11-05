@@ -29,6 +29,33 @@ copies its complete out-of-process adapter closure into the application
 payload. Its MIT license is therefore copied as
 `THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt`.
 
+The Android debug agent is built from `externals/sharpdbg/src/SharpDbg.AndroidAgent`
+and the SharpDbg infrastructure project. Its profiler callbacks
+use the NuGet packages `Silhouette` 4.2.0 and `NativeObjects` 1.4.0; both packages'
+nuspec files declare MIT. The agent uses `ICorDebugSharp` and the target .NET runtime's
+debugging library; it does not include decompiled `ICorDebugSharp` or `clrdbg` code.
+Its DAP transport is lextudio's NativeAOT-capable build of the OmniSharp DAP server
+(`OmniSharp.Extensions.DebugAdapter`, `.DebugAdapter.Server`, `.DebugAdapter.Shared` and
+`.JsonRpc`, from `lextudio/csharp-language-server-protocol`, a fork of
+`OmniSharp/csharp-language-server-protocol`; the packages ship the upstream MIT `LICENSE`
+file), pinned as `LextudioDapForkVersion` in `Directory.Packages.props` and restored from
+lextudio GitHub Packages (CI) or the local feed (developers; see `AGENTS.md`).
+The agent build records its NuGet graphs, copies the actual NativeAOT runtime and
+Android runtime pack license and third-party notices alongside each ABI, and supplies
+package metadata for the distribution SPDX manifest. The packaged-app verifiers
+require these runtime notices with every agent binary.
+
+**Resolved:** `SharpDbg.Application` (the desktop adapter), `SharpDbg.Cli`, the packed
+`SharpDbg.InMemory` package and the Android agent no longer depend on
+`Microsoft.VisualStudio.Shared.VSCodeDebugProtocol` 18.0.10427.1, whose nuspec requires
+acceptance of Microsoft's separate, non-open-source
+[software license](https://go.microsoft.com/fwlink/?linkid=832965); they use the OmniSharp
+fork above. That package remains only in `externals/sharpdbg/tests/SharpDbg.Cli.Tests`,
+where it is the protocol client of the adapter tests; a test project is not part of any
+payload. The packaged-app verifiers fail when a payload still contains
+`Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll` (an old development output folder can
+hold a stale copy because the copy targets never delete).
+
 `externals/vscode-wpf/sample` is used by integration tests only and is not
 part of the runtime payload.
 

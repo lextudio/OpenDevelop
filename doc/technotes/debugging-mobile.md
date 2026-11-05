@@ -90,8 +90,9 @@ journey above was rerun with the current version and still passes (1/1).
 
 OpenDevelop pins that version as `LextudioDapForkVersion` in `Directory.Packages.props`.
 `sync-openavalon-feed.ps1` downloads the packages with the `gh` CLI into `artifacts/openavalon-feed`, and
-`build/android-debug-agent.ps1` restores them from there only (never from GitHub Packages with a token; see
-`AGENTS.md`). `NuGet.config` maps the ids to `lextudio_github` for CI and to the local source. The agent
+`build/android-debug-agent.ps1` restores them from there on a developer machine (no token ever reaches a local build;
+see `AGENTS.md`). In GitHub Actions the same script restores them directly from GitHub Packages (`lextudio_github`)
+with the job's own token. `NuGet.config` maps the ids to both sources. The agent
 project and `SharpDbg.AndroidAgent.Tests` pin the version exactly (`[x]`): a floating `>=` resolved to a
 different `1.0.0` on nuget.org.
 

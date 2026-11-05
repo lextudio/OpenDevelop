@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory = $true)][string[]]$AssetsFile,
     [Parameter(Mandatory = $true)][string]$PackageRoot,
     [Parameter(Mandatory = $true)][string]$OutputPath,
-    [string]$NoticeDirectory
+    [string]$NoticeDirectory,
+    [string]$FallbackPackageRoot = (Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts/android-debug-agent-package-metadata')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,6 +22,13 @@ foreach ($assetPath in $AssetsFile) {
 function Get-LicenseExpression([string]$id, [string]$version) {
     $directory = Join-Path (Join-Path $PackageRoot $id.ToLowerInvariant()) $version.ToLowerInvariant()
     $nuspec = Get-ChildItem -LiteralPath $directory -Filter '*.nuspec' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $nuspec) {
+        # Android NativeAOT agents are cross-built in a separate job. Its small metadata bundle
+        # carries license declarations for packages absent from this platform's NuGet cache.
+        $fallback = Join-Path (Join-Path $FallbackPackageRoot $id.ToLowerInvariant()) $version.ToLowerInvariant()
+        $nuspec = Get-ChildItem -LiteralPath $fallback -Filter '*.nuspec' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($nuspec) { $directory = $fallback }
+    }
     if (-not $nuspec) { return 'NOASSERTION' }
     try {
         [xml]$xml = Get-Content -LiteralPath $nuspec.FullName -Raw
