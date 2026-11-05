@@ -1655,7 +1655,10 @@ function Invoke-WindowsArchive {
 
 function Invoke-RestorePhase {
     Write-Host '==> Restoring solution...'
-    Restore-Solution -DotNet $dotnet -Solution $sln -ExtraProperties @('-p:ProGpuWpfUseCurrentRuntimeIdentifier=false')
+    # Restore in the configuration that will be built: the Uno SDK decides at restore time whether a project
+    # gets the dev-only DevServer package (Optimize != true), and a Release build of a Debug-restored
+    # graph then fails with UNOB0019.
+    Restore-Solution -DotNet $dotnet -Solution $sln -ExtraProperties @('-p:ProGpuWpfUseCurrentRuntimeIdentifier=false', "-p:Configuration=$config")
 
     # The hot-reload agents are built through the IDE's deployment targets rather than being
     # solution entries.  The later distribution build deliberately uses --no-restore, so make
