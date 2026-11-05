@@ -190,9 +190,19 @@ public sealed class AvalonTextView : ITextView
 	// Microsoft.VisualStudio.Text.UI NuGet contract did not. Adornments remain out of scope
 	// (section 64), so the manager exists only to keep callers that enumerate managers working.
 	public ISpaceReservationManager GetSpaceReservationManager(string name)
-		=> spaceReservationManager ??= new AvalonSpaceReservationManager(name ?? string.Empty);
+	{
+		// One manager per name, as the contract has it: a second lookup with another name must not
+		// report the first name.
+		name ??= string.Empty;
+		if (!spaceReservationManagers.TryGetValue(name, out var manager))
+		{
+			manager = new AvalonSpaceReservationManager(name);
+			spaceReservationManagers.Add(name, manager);
+		}
+		return manager;
+	}
 
-	AvalonSpaceReservationManager spaceReservationManager;
+	readonly System.Collections.Generic.Dictionary<string, AvalonSpaceReservationManager> spaceReservationManagers = new(StringComparer.Ordinal);
 
 	sealed class AvalonSpaceReservationManager : ISpaceReservationManager
 	{

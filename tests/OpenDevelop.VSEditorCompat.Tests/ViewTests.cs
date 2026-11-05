@@ -36,6 +36,21 @@ public sealed class ViewTests
 	}
 
 	[Xunit.UIFactAttribute]
+	public void SpaceReservationManager_Is_Cached_Per_Name_And_Reports_Its_Own_Name()
+	{
+		var (_, _, view) = CreateView("hello");
+
+		var first = view.GetSpaceReservationManager("first");
+		var second = view.GetSpaceReservationManager("second");
+
+		Assert.Equal("first", first.Name);
+		Assert.Equal("second", second.Name);
+		Assert.NotSame(first, second);
+		Assert.Same(first, view.GetSpaceReservationManager("first"));
+		Assert.Equal(string.Empty, view.GetSpaceReservationManager(null).Name);
+	}
+
+	[Xunit.UIFactAttribute]
 	public void TextViewRegistry_Returns_The_Same_Instance_For_The_Same_TextArea()
 	{
 		var (_, textArea, view) = CreateView("x");
