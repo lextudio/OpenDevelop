@@ -27,12 +27,20 @@ mappings. Distribution packaging copies package-contained LICENSE, COPYING,
 and NOTICE files into `THIRD-PARTY-NOTICES/NuGet/`, with a catalog generated
 from the exact resolved package graph.
 
+## Visual Studio editor API
+
+`Microsoft.VisualStudio.CoreUtility`, `Microsoft.VisualStudio.Text.Data`,
+`Microsoft.VisualStudio.Text.Logic` and `Microsoft.VisualStudio.Text.UI` are
+built from the MIT-licensed `microsoft/vs-editor-api` sources in
+`externals/vs-editor-api` (see `src/Libraries/VSEditorCore`), not from
+Microsoft's NuGet packages. The upstream license is copied as
+`SOURCE-LICENSES/vs-editor-api-MIT.txt`.
+
 ## Microsoft components
 
-Microsoft Windows App SDK, Visual Studio editor APIs, .NET runtime components
-and Windows SDK assets are governed by the license metadata and notices shipped
-with their exact packages. They must not be treated as MIT merely because they
-are Microsoft packages.
+Microsoft Windows App SDK, .NET runtime components and Windows SDK assets are
+governed by the license metadata and notices shipped with their exact packages.
+They must not be treated as MIT merely because they are Microsoft packages.
 
 ## Release requirement
 

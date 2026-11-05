@@ -11,6 +11,12 @@ does not apply automatically to every OpenDevelop release.
 | `AspNetCore.csproj` | `externals/monodevelop/main/src/addins/MonoDevelop.AspNetCore/MonoDevelop.AspNetCore/ILaunchProfile.cs`, `LaunchProfile.cs` | Both files state `Copyright (c) Microsoft` and `Apache-2.0`. MonoDevelop's top-level `main/COPYING` is LGPL-2.1, but it is not the license evidence for these two source-linked files. | `SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt`. |
 | `CodeCoverage.csproj` | Eight explicit files under `externals/vsmac-codecoverage/VSMac-CodeCoverage/CodeCoverage.Core` | `externals/vsmac-codecoverage/LICENSE`, MIT, Copyright Arthur Demanuele. | `SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt`. |
 | Microsoft WPF Designer hosts | The `Project/**` source trees of `WpfDesign`, `WpfDesign.XamlDom`, and `WpfDesign.Designer`; the latter also links XAML and images. | `externals/vscode-wpf/external/WpfDesigner/LICENSE`, MIT, Copyright ICSharpCode. | `SOURCE-LICENSES/WpfDesigner-MIT.txt`. |
+| `src/Libraries/VSEditorCore` (`Microsoft.VisualStudio.CoreUtility`, `.Text.Data`, `.Text.Logic`, `.Text.UI`) | The `src/Editor/Core/Def`, `src/Editor/Text/Def/TextData`, `TextLogic`, and `TextUI` source trees of `externals/vs-editor-api`, plus one local 17.14-compatibility file (`Microsoft.VisualStudio.Text.Data/TextDocumentFileActionEventArgs.cs`). | `externals/vs-editor-api/LICENSE`, MIT, Copyright Microsoft Corporation. These four projects replace the NuGet packages of the same names, whose LICENSE is "MICROSOFT SOFTWARE LICENSE TERMS - MICROSOFT VISUAL STUDIO ADD-ONs and EXTENSIONS": use is limited to Visual Studio, and it forbids combining/providing the assemblies inside another application for others to use. | `SOURCE-LICENSES/vs-editor-api-MIT.txt`. |
+
+`src/Libraries/VSEditorCore` is a build-only replacement: the assemblies keep their
+`Microsoft.VisualStudio.*` names (the compatibility layer's public types are those contracts) but
+are unsigned and versioned `16.0.0.0`. Only `OpenDevelop.VSEditorCompat` consumes them, and it is
+rebuilt against these copies in the same build, so no binary expects Microsoft's public key token.
 
 The submodule commits are the Gitlinks recorded by the OpenDevelop commit.
 The audit must be repeated when a project adds or changes a `Compile`, `Page`,

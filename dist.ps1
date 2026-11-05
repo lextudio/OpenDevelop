@@ -138,6 +138,7 @@ function Write-DistributionLegalFiles {
     Copy-Item -LiteralPath (Join-Path $repoRoot 'legal/Apache-2.0.txt') -Destination (Join-Path $sourceNotices 'MonoDevelop.AspNetCore-Apache-2.0.txt') -Force
     Copy-Item -LiteralPath (Join-Path $repoRoot 'externals/vsmac-codecoverage/LICENSE') -Destination (Join-Path $sourceNotices 'VSMac-CodeCoverage-MIT.txt') -Force
     Copy-Item -LiteralPath (Join-Path $repoRoot 'externals/vscode-wpf/external/WpfDesigner/LICENSE') -Destination (Join-Path $sourceNotices 'WpfDesigner-MIT.txt') -Force
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'externals/vs-editor-api/LICENSE') -Destination (Join-Path $sourceNotices 'vs-editor-api-MIT.txt') -Force
     [xml]$packageVersions = Get-Content -LiteralPath (Join-Path $repoRoot 'Directory.Packages.props') -Raw
     $ghosttyVersion = [string]$packageVersions.Project.PropertyGroup.LibGhosttyNetVersion
     $ghosttyNotices = Join-Path (Join-Path (Join-Path (Get-NuGetGlobalPackages) 'libghostty.net') $ghosttyVersion) 'THIRD-PARTY-NOTICES'
@@ -165,7 +166,7 @@ function Write-DistributionLegalFiles {
 function Test-DistributionLegalFiles {
     param([Parameter(Mandatory)][string]$Destination)
 
-    foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md', 'THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt', 'THIRD-PARTY-NOTICES/NuGet/NOTICE.md', 'THIRD-PARTY-NOTICES/NuGet/SPDX-Zlib.txt') {
+    foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'SOURCE-LICENSES/vs-editor-api-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md', 'THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt', 'THIRD-PARTY-NOTICES/NuGet/NOTICE.md', 'THIRD-PARTY-NOTICES/NuGet/SPDX-Zlib.txt') {
         $legalPath = Join-Path $Destination $legalFile
         if (-not (Test-Path -LiteralPath $legalPath)) { throw "Distribution payload lacks required legal file: $legalPath" }
     }
@@ -792,7 +793,7 @@ function Test-WindowsDistributionArchive {
     $entries = Get-ArchiveEntries -ArchivePath $ArchivePath
     $prefix = 'OpenDevelop-win/'
     if (-not ($entries -contains "${prefix}OpenDevelop.dll")) { throw "Archive lacks ${prefix}OpenDevelop.dll: $ArchivePath" }
-    foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md', 'THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt', 'THIRD-PARTY-NOTICES/NuGet/NOTICE.md', 'THIRD-PARTY-NOTICES/NuGet/SPDX-Zlib.txt') {
+    foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'SOURCE-LICENSES/vs-editor-api-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md', 'THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt', 'THIRD-PARTY-NOTICES/NuGet/NOTICE.md', 'THIRD-PARTY-NOTICES/NuGet/SPDX-Zlib.txt') {
         if (-not ($entries -contains "${prefix}$legalFile")) {
             throw "Archive lacks required legal file ${prefix}${legalFile}: $ArchivePath"
         }
