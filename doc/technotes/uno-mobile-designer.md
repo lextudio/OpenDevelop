@@ -363,6 +363,66 @@ build-before-run included) on UnoSpike: breakpoint in `MainPage..ctor()` hit 67 
 Next steps: the device path (TCP
 `RegisterForRuntimeStartupRemotePort`, already in SharpDbg, and a local Xcode Personal Team profile for signing).
 
+### 4d. Android CoreCLR debugging: NativeAOT target-side DAP spike
+
+**Status: integrated locally; release packaging and cross-platform verification remain.** On a macOS ARM64 host, an Android API 35 ARM64 emulator,
+and .NET SDK `11.0.100-rc.3.26522.148` with Android workload `37.2.0-rc.2.84`, a .NET 11 Android app was debugged with a C# NativeAOT
+shared library loaded as a CoreCLR profiler. The library hosted the existing SharpDbg engine and DAP adapter in its own NativeAOT
+runtime, while the app continued to use CoreCLR. The adapter listened on device loopback and a DAP test client connected through
+`adb forward`.
+
+The end-to-end test submitted a source breakpoint before attaching, observed it become verified, hit it, received the correct
+source stack, stepped from line 54 to 55, read the local `testValue = 123`, and received a successful `continue` response. The app
+subsequently hit the breakpoint again, showing that execution resumed. This demonstrates a C# agent without a separate custom
+debugger RPC. The initial native agent experiment also created `ICorDebug`, attached, handled callbacks, and answered TCP requests
+while the target CoreCLR was stopped.
+
+The OpenDevelop integration journey now selects the connected adb serial, builds a clean Android project with a temporary targets
+import, deploys the agent and matching modules, and verifies F5, a source breakpoint, step, watch expression and Stop. A separate
+device test also passed an exception-filter configuration and a conditional breakpoint (`testValue == 123`). ARM64 is the only
+device ABI exercised end to end so far.
+
+A further experiment held the profiler's startup callback until the DAP client had connected and the debugger had attached. With
+the client connecting promptly, a breakpoint on the first statement of `MainActivity.OnCreate` was hit before that statement ran.
+When the client connected too late, Android terminated the app for failing to complete startup (ANR), before the 25-second spike
+timeout expired. Startup coordination therefore needs a bounded, prompt connection and an explicit failure path; indefinitely
+blocking the Android main thread is not viable.
+
+In a controlled follow-up, `adb shell am set-debug-app <package>` before launch allowed the profiler to wait 17 seconds for a DAP
+client and still hit the startup breakpoint. Without that setting, the same 17-second delay produced an Android startup ANR after
+about 15 seconds. Once attached, a 20-second stop at `OnCreate` resumed both with and without that setting. These are single-device
+experiments; the launch workflow must restore any prior debug-app setting, bound its wait, and test cancellation and other devices.
+
+This was not an IDE journey or a release-ready implementation:
+
+- The first spike used a hand-written profiler COM vtable that did not validate interface IDs or every method signature. A later
+  Android ARM64 test replaced it with the Silhouette 4.2.0 NuGet package and again passed breakpoint, step, local, watch, and
+  continue. Its NuGet metadata and that of its NativeObjects 1.4.0 dependency declare MIT licenses. NativeAOT reported that
+  Silhouette's `IClassFactory.LockServer` export uses a non-blittable `bool` and will throw on .NET 11. An experimental class factory
+  using the correct `int` ABI and Silhouette's callback implementation passed the same test; it still needs a complete COM/lifetime
+  review and tests. The Android NativeAOT build is experimental and other ABIs and build hosts are unverified.
+- The existing SharpDbg DAP library initially failed in the NativeAOT dynamic binder. Rooting `Microsoft.CSharp`, Newtonsoft.Json,
+  the DAP assembly and SharpDbg assemblies, and setting `IlcGenerateCompleteTypeMetadata=true`, made the tested DAP messages work.
+  AOT and trimming warnings remain. A watch expression `testValue + 1` initially failed because `System.Private.CoreLib` metadata
+  was unavailable and its reported name lacked the `.dll` suffix expected by SharpDbg. Supplying the runtime DLL and adjusting the
+  two name checks initialized the evaluator. A subsequent error exposed missing NativeAOT metadata for a DAP enum array; rooting that
+  array restored error serialization. Roslyn then tried to read `typeof(object).Assembly.Location`, which is empty in NativeAOT.
+  Replacing it experimentally with the runtime DLL path got further, but its emit operation aborted the app in the NativeAOT OpenSSL
+  initializer: the experimental `linux-bionic-arm64` build links the Linux OpenSSL shim, unavailable in this Android app. Building
+  the same agent as `net11.0-android` for `android-arm64` selected Android's crypto implementation and avoided the crash. With the
+  matching current app DLL/PDB deployed, the DAP watch expression returned `124`, and execution continued. This used a temporary
+  source modification and manual deployment; other expressions and dynamic/reflection-dependent features remain unvalidated. The
+  original Linux-Bionic shared library was approximately 48 MiB for one ABI.
+- The first attach used a timer and reflection into a private SharpDbg method. A later temporary SharpDbg modification removed both:
+  `attach`, `setBreakpoints`, and `configurationDone` drove an in-process attach, and both the `OnCreate` startup breakpoint and
+  the step/watch/continue test passed. The startup gate also released after a DAP reader failure. A production adapter still needs
+  a reviewed public API, bounded startup, and verified disconnect/cancellation cleanup.
+- Android loaded the app assembly from memory. The experiment manually pushed the matching DLL/PDB into the app's private files
+  directory and modified a temporary SharpDbg clone to read that copy by simple name. Product code must validate assembly identity
+  and PDB matching, handle duplicate names and framework assemblies, and deploy/clean up its symbol files automatically.
+- OpenDevelop has a TCP DAP session and Android build/install/device selection, profiler injection, forwarding and teardown. Agent
+  production and release packaging still need to be wired into the build pipelines and verified across host platforms and ABIs.
+
 ## 5. Risks and open questions
 
 1. **Workloads and build weight.** Mobile TFMs need the `ios`/`android` workloads and Xcode/Android SDK. Opt-in TFMs keep the add-in

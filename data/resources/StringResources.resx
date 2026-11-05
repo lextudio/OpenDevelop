@@ -5704,6 +5704,8 @@ Shows the full callstack of the error.</comment>
   <data name="MainWindow.Windows.Debug.Restart" xml:space="preserve">
     <value>Restart</value>
   </data>
+  <data name="MainWindow.Windows.Debug.AndroidDevice" xml:space="preserve"><value>Android Device</value></data>
+  <data name="MainWindow.Windows.Debug.AndroidDevice.Automatic" xml:space="preserve"><value>Automatic</value></data>
   <data name="MainWindow.Windows.Debug.IosSimulator" xml:space="preserve">
     <value>iOS Simulator</value>
   </data>

@@ -34,7 +34,7 @@ namespace Debugger.AddIn.Service.Dap
 	sealed class DapClient : IDisposable
 	{
 		readonly StreamWriter writer;
-		readonly StreamReader reader;
+		readonly Stream reader;
 		readonly ConcurrentDictionary<int, TaskCompletionSource<JsonObject>> pending = new ConcurrentDictionary<int, TaskCompletionSource<JsonObject>>();
 		readonly CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
 		// Requests must be written one at a time (a torn/interleaved Content-Length + body from two
@@ -63,7 +63,7 @@ namespace Debugger.AddIn.Service.Dap
 		public DapClient(Stream input, Stream output, Action<string> log = null)
 		{
 			writer = new StreamWriter(output, new UTF8Encoding(false)) { AutoFlush = true };
-			reader = new StreamReader(input, new UTF8Encoding(false));
+			reader = new BufferedStream(input);
 			this.log = log ?? (_ => { });
 		}
 
@@ -169,7 +169,7 @@ namespace Debugger.AddIn.Service.Dap
 				while (!cancellationTokenSource.IsCancellationRequested) {
 					int contentLength = 0;
 					while (true) {
-						string line = await reader.ReadLineAsync().ConfigureAwait(false);
+						string line = await ReadHeaderLineAsync().ConfigureAwait(false);
 						if (line == null) {
 							return;
 						}
@@ -180,7 +180,7 @@ namespace Debugger.AddIn.Service.Dap
 						}
 					}
 
-					char[] buffer = new char[contentLength];
+					byte[] buffer = new byte[contentLength];
 					int read = 0;
 					while (read < contentLength) {
 						int count = await reader.ReadAsync(buffer, read, contentLength - read).ConfigureAwait(false);
@@ -190,7 +190,7 @@ namespace Debugger.AddIn.Service.Dap
 						read += count;
 					}
 
-					string json = new string(buffer);
+					string json = Encoding.UTF8.GetString(buffer);
 					log("RECV " + json);
 					Dispatch(json);
 				}
@@ -210,6 +210,23 @@ namespace Debugger.AddIn.Service.Dap
 					}
 				}
 				FailPendingRequests(new IOException("The debug adapter closed the connection."));
+			}
+		}
+
+		async Task<string> ReadHeaderLineAsync()
+		{
+			using (var bytes = new MemoryStream()) {
+				var one = new byte[1];
+				while (await reader.ReadAsync(one, 0, 1).ConfigureAwait(false) != 0) {
+					if (one[0] == '\n') {
+						var line = Encoding.ASCII.GetString(bytes.ToArray());
+						return line.EndsWith("\r", StringComparison.Ordinal) ? line.Substring(0, line.Length - 1) : line;
+					}
+					if (bytes.Length >= 8192)
+						throw new IOException("The debug adapter sent an oversized header.");
+					bytes.WriteByte(one[0]);
+				}
+				return null;
 			}
 		}
 

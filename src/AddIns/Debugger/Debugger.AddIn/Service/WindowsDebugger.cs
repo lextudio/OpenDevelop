@@ -47,6 +47,7 @@ namespace ICSharpCode.SharpDevelop.Services
 		public static DapThreadInfo CurrentThread { get; set; }
 		public static DapStackFrameInfo CurrentStackFrame { get; set; }
 		static int currentStopSequence;
+		Debugger.AddIn.Android.AndroidDebugSession androidSession;
 
 		public static Action RefreshingPads;
 
@@ -449,6 +450,9 @@ namespace ICSharpCode.SharpDevelop.Services
 
 		void SessionExited()
 		{
+			var android = System.Threading.Interlocked.Exchange(ref androidSession, null);
+			if (android != null)
+				_ = Task.Run(async () => await android.DisposeAsync().ConfigureAwait(false));
 			SD.MainThread.InvokeAsyncAndForget(() => {
 				// Clear the paused-line highlight: the session is over, so leaving the marker (as
 				// happened before) made a dead session look like it was still stopped at a line.
@@ -516,6 +520,54 @@ namespace ICSharpCode.SharpDevelop.Services
 			};
 			AttachWithOptionsAsync(processId, attachOptions, adapterEnvironment).FireAndForget();
 			return true;
+		}
+
+		/// <summary>Attaches the IDE to a target-side Android DAP adapter.</summary>
+		public bool StartAndroidDebugging(Debugger.AddIn.Android.AndroidDebugSession deviceSession)
+		{
+			if (IsDebugging || androidSession != null) return false;
+			androidSession = deviceSession ?? throw new ArgumentNullException(nameof(deviceSession));
+			OnDebugStarting(EventArgs.Empty);
+			AttachAndroidAsync(deviceSession).FireAndForget();
+			return true;
+		}
+
+		async Task AttachAndroidAsync(Debugger.AddIn.Android.AndroidDebugSession deviceSession)
+		{
+			DapSession session = null;
+			try {
+				PrintDebugMessage("> Connecting to Android debug adapter...\n");
+				using (var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(20))) {
+					while (true) {
+						session = new DapSession();
+						try {
+							await session.StartRemoteAsync("127.0.0.1", deviceSession.HostPort, new System.Text.Json.Nodes.JsonObject {
+								["processId"] = 0, ["justMyCode"] = true, ["sessionToken"] = deviceSession.Token
+							}, timeout.Token).ConfigureAwait(false);
+							break;
+						} catch (Exception ex) when (ex is System.IO.IOException or System.Net.Sockets.SocketException or ObjectDisposedException) {
+							session.Stop();
+							await Task.Delay(200, timeout.Token).ConfigureAwait(false);
+						}
+					}
+				}
+				CurrentSession = session;
+				session.Started += SessionStarted;
+				session.Stopped += SessionStopped;
+				session.Continued += SessionContinued;
+				session.Exited += SessionExited;
+				session.OutputReceived += PrintDebugMessage;
+				if (!session.IsRunning) throw new IOException("The Android debug adapter disconnected during startup.");
+				await SyncAllBreakpointsBeforeLaunchAsync().ConfigureAwait(false);
+				await session.SetExceptionBreakpointsAsync(new[] { "user-unhandled" }).ConfigureAwait(false);
+				await session.ConfigurationDoneAsync().ConfigureAwait(false);
+				PrintDebugMessage("> Connected to Android debug adapter.\n");
+			} catch (Exception ex) {
+				if (session != null && ReferenceEquals(stopRequestedFor, session)) return;
+				PrintDebugMessage("ERROR: Android debugging could not start: " + ex.Message + "\n");
+				session?.Stop();
+				SessionExited();
+			}
 		}
 
 		// Kept with this exact signature: od.debug.attach reflects on it by name with one argument

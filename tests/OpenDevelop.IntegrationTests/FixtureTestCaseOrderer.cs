@@ -42,6 +42,7 @@ public sealed class FixtureTestCaseOrderer : ITestCaseOrderer
         if (testName.Contains("TerminalPadTests", StringComparison.Ordinal) || testName.Contains("TerminalCrossPlatformTests", StringComparison.Ordinal)) return 31;
         if (testName.Contains("CodeCoverageTests", StringComparison.Ordinal)) return 40;
         if (testName.Contains("DebuggerIntegrationTests", StringComparison.Ordinal)) return 50;
+        if (testName.Contains("AndroidDebuggingIntegrationTests", StringComparison.Ordinal)) return 51;
         if (testName.Contains("RuntimeUpgradeIntegrationTests", StringComparison.Ordinal)) return 60;
         // Launches and hot-reloads its own application, so it runs after the debugger journeys
         // that own the debug session.

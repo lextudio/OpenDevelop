@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
     <!-- DeviceService: the machine-wide device list, used to pick the iOS Simulator to debug in -->
     <ProjectReference Include="..\..\..\Main\Designer\Designer.Shell\Designer.Shell.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\ICSharpCode.Core.WinForms\ICSharpCode.Core.WinForms.csproj" Private="false" />
@@ -138,6 +139,16 @@
     </ItemGroup>
     <Copy SourceFiles="@(SharpDbgFiles)"
           DestinationFolder="$(OutputPath)%(RecursiveDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Android agents are native, per-device-ABI payloads produced by build/android-debug-agent.ps1. -->
+  <Target Name="CopyAndroidDebugAgents" AfterTargets="Build" BeforeTargets="OpenDevelopTrimAddinOutput">
+    <ItemGroup>
+      <AndroidDebugAgentFiles Include="$(MSBuildThisFileDirectory)..\..\..\..\artifacts\android-debug-agent\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(AndroidDebugAgentFiles)"
+          DestinationFiles="@(AndroidDebugAgentFiles->'$(OutputPath)android\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
 </Project>

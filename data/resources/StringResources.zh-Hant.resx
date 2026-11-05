@@ -4988,6 +4988,8 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
   <data name="MainWindow.Windows.Debug.Restart" xml:space="preserve">
     <value>重新啟動</value>
   </data>
+  <data name="MainWindow.Windows.Debug.AndroidDevice" xml:space="preserve"><value>Android 裝置</value></data>
+  <data name="MainWindow.Windows.Debug.AndroidDevice.Automatic" xml:space="preserve"><value>自動</value></data>
   <data name="MainWindow.Windows.Debug.IosSimulator" xml:space="preserve">
     <value>iOS 模擬器</value>
   </data>

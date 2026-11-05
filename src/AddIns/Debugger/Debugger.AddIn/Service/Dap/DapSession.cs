@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.Sockets;
 using System.Reflection.PortableExecutable;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -65,6 +66,9 @@ namespace Debugger.AddIn.Service.Dap
 	{
 		Process adapterProcess;
 		Process debuggeeProcess;
+		TcpClient remoteAdapter;
+		int remoteConnected;
+		readonly object cleanupLock = new object();
 
 		/// <summary>The operating system id of the program being debugged, once known; null before that.</summary>
 		public int? DebuggeeProcessId { get; private set; }
@@ -99,7 +103,7 @@ namespace Debugger.AddIn.Service.Dap
 		static readonly string TestLogDirectory = Environment.GetEnvironmentVariable("OD_TEST_LOG_DIR");
 		const int AdapterLogTailLines = 30;
 
-		public bool IsRunning { get { return adapterProcess != null && !adapterProcess.HasExited; } }
+		public bool IsRunning { get { return Volatile.Read(ref remoteConnected) != 0 || (adapterProcess != null && !adapterProcess.HasExited); } }
 		public bool IsPaused { get; private set; }
 		public int ActiveThreadId { get; private set; }
 		public int ActiveFrameId { get; set; }
@@ -134,6 +138,50 @@ namespace Debugger.AddIn.Service.Dap
 			this.clientId = clientId;
 			this.log = log ?? (_ => { });
 			sharpDbgArtifactsSegments = sharpDbgArtifactsPathFromRepoRoot ?? new[] { "externals", "sharpdbg" };
+		}
+
+		/// <summary>Connects to an already running DAP adapter. The caller owns the remote debuggee's lifecycle.</summary>
+		public async Task StartRemoteAsync(string host, int port, JsonObject attachOptions, CancellationToken cancellationToken = default)
+		{
+			if (client != null || adapterProcess != null || remoteAdapter != null)
+				throw new InvalidOperationException("The debug session has already started.");
+			launchMode = DapLaunchMode.AttachToProcess;
+			cancellationTokenSource = new CancellationTokenSource();
+			var socket = new TcpClient();
+			remoteAdapter = socket;
+			try {
+				await socket.ConnectAsync(host, port, cancellationToken).ConfigureAwait(false);
+				var stream = socket.GetStream();
+				var connection = new DapClient(stream, stream, log);
+				client = connection;
+				connection.EventReceived += OnDapEvent;
+				Volatile.Write(ref remoteConnected, 1);
+				connection.Disconnected += () => {
+					connection.FailPendingRequests(new IOException("The remote debug adapter closed the connection."));
+					if (Interlocked.Exchange(ref remoteConnected, 0) != 0) {
+						_ = Task.Run(() => { CleanupSession(); Exited?.Invoke(); });
+					}
+				};
+				connection.Start();
+				var initialize = await connection.SendRequestAsync("initialize", new JsonObject {
+					["clientID"] = clientId, ["clientName"] = clientId, ["adapterID"] = "sharpdbg",
+					["linesStartAt1"] = true, ["columnsStartAt1"] = true, ["supportsRunInTerminalRequest"] = false
+				}, cancellationToken).ConfigureAwait(false);
+				EnsureRemoteSuccess(initialize, "initialize");
+				Capabilities = ParseCapabilities(initialize);
+				var response = await connection.SendRequestAsync("attach", (JsonObject)(attachOptions?.DeepClone() ?? new JsonObject()), cancellationToken).ConfigureAwait(false);
+				EnsureRemoteSuccess(response, "attach");
+			} catch {
+				Interlocked.Exchange(ref remoteConnected, 0);
+				CleanupSession();
+				throw;
+			}
+		}
+
+		static void EnsureRemoteSuccess(JsonObject response, string command)
+		{
+			if (response?["success"]?.GetValue<bool>() == false)
+				throw new InvalidOperationException("Remote adapter " + command + " failed: " + (response["message"]?.GetValue<string>() ?? "unknown error"));
 		}
 
 		public async Task StartAsync(string targetPath, string workingDirectory, bool breakAtBeginning,
@@ -382,9 +430,10 @@ namespace Debugger.AddIn.Service.Dap
 
 		public void Stop()
 		{
+			Interlocked.Exchange(ref remoteConnected, 0);
 			cancellationTokenSource?.Cancel();
 			try {
-				client?.SendRequestAsync("disconnect", new JsonObject { ["terminateDebuggee"] = true }).Wait(1000);
+				client?.SendRequestAsync("disconnect", new JsonObject { ["terminateDebuggee"] = remoteAdapter == null }).Wait(1000);
 			} catch {
 			}
 			try {
@@ -920,30 +969,35 @@ namespace Debugger.AddIn.Service.Dap
 
 		void CleanupSession()
 		{
-			IsPaused = false;
-			ActiveThreadId = 0;
-			ActiveFrameId = 0;
-			lock (modulesLock) {
-				modules.Clear();
-			}
-			if (adapterProcess != null) {
-				adapterProcess.Exited -= AdapterProcessExited;
-			}
-			client?.Dispose();
-			client = null;
-			cancellationTokenSource?.Dispose();
-			cancellationTokenSource = null;
-			adapterProcess?.Dispose();
-			adapterProcess = null;
-			debuggeeProcess?.Dispose();
-			debuggeeProcess = null;
-			// A session that never surfaced its adapter log leaves nothing behind; one that did keeps
-			// the file, because that log is the only post-mortem left of a session that went quiet.
-			if (!adapterLogReported && string.IsNullOrEmpty(TestLogDirectory) && !string.IsNullOrEmpty(adapterLogPath)) {
-				try {
-					File.Delete(adapterLogPath);
-				} catch (IOException) {
-				} catch (UnauthorizedAccessException) {
+			lock (cleanupLock) {
+				Interlocked.Exchange(ref remoteConnected, 0);
+				IsPaused = false;
+				ActiveThreadId = 0;
+				ActiveFrameId = 0;
+				lock (modulesLock) {
+					modules.Clear();
+				}
+				if (adapterProcess != null) {
+					adapterProcess.Exited -= AdapterProcessExited;
+				}
+				client?.Dispose();
+				client = null;
+				remoteAdapter?.Dispose();
+				remoteAdapter = null;
+				cancellationTokenSource?.Dispose();
+				cancellationTokenSource = null;
+				adapterProcess?.Dispose();
+				adapterProcess = null;
+				debuggeeProcess?.Dispose();
+				debuggeeProcess = null;
+				// A session that never surfaced its adapter log leaves nothing behind; one that did keeps
+				// the file, because that log is the only post-mortem left of a session that went quiet.
+				if (!adapterLogReported && string.IsNullOrEmpty(TestLogDirectory) && !string.IsNullOrEmpty(adapterLogPath)) {
+					try {
+						File.Delete(adapterLogPath);
+					} catch (IOException) {
+					} catch (UnauthorizedAccessException) {
+					}
 				}
 			}
 		}

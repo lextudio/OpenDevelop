@@ -15,11 +15,16 @@
 			<ConditionEvaluator name = "IsBreakpointActive" class="Debugger.AddIn.IsActiveBreakpointCondition" />
 			<ConditionEvaluator name = "IosSimulatorProject" class="Debugger.AddIn.Ios.IosSimulatorProjectCondition" />
 			<ConditionEvaluator name = "IosSimulatorStartupProject" class="Debugger.AddIn.Ios.IosSimulatorStartupProjectCondition" />
+			<ConditionEvaluator name = "AndroidDebugProject" class="Debugger.AddIn.Android.AndroidDebugProjectCondition" />
+			<ConditionEvaluator name = "AndroidDebugStartupProject" class="Debugger.AddIn.Android.AndroidDebugStartupProjectCondition" />
 		</Import>
 	</Runtime>
 
 	<!-- net11.0-ios and later: run and debug in the iOS Simulator when that framework is active -->
 	<Path name="/SharpDevelop/Workbench/ProjectBehaviors">
+		<Condition name="AndroidDebugProject">
+			<Class id="AndroidDebugProjectBehavior" class="Debugger.AddIn.Android.AndroidDebugProjectBehavior"/>
+		</Condition>
 		<Condition name="IosSimulatorProject">
 			<Class id="IosSimulatorProjectBehavior" class="Debugger.AddIn.Ios.IosSimulatorProjectBehavior"/>
 		</Condition>
@@ -78,6 +83,11 @@
 			          class = "Debugger.AddIn.DebugExecutableMenuCommand"/>
 		</Condition>
 		<!-- Which simulator F5 uses for a net11.0-ios startup project -->
+		<Condition name = "AndroidDebugStartupProject" action="Exclude">
+			<MenuItem id="AndroidDebugDevice" insertbefore="ExecutionControlSeparator" type="Menu" label="${res:MainWindow.Windows.Debug.AndroidDevice}">
+				<MenuItem id="AndroidDebugDeviceChoices" type="Builder" class="Debugger.AddIn.Android.AndroidDebugDeviceMenuBuilder"/>
+			</MenuItem>
+		</Condition>
 		<Condition name = "IosSimulatorStartupProject" action="Exclude">
 			<MenuItem id = "IosSimulator"
 			          insertbefore = "ExecutionControlSeparator"

@@ -1,5 +1,8 @@
 # Debugging migration plan
 
+For the current iOS Simulator and Android debugging work, see
+[Mobile debugging: status and remaining work](debugging-mobile.md).
+
 **Status update (2026-10-01): an x86 native-host debug session intermittently
 hangs. Two SharpDbg Launch-mode bugs were found and fixed; the harness's
 "stopped never arrives" turned out to be a harness bug.** The investigation
