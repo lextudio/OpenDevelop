@@ -593,8 +593,8 @@ distinct `project` of an enabled entry with that entry's `buildArgs`.
   `.csproj` as an entry `project`, which builds in a process of its own.
 * `build-binaries.ps1 -List` prints these commands without running them; use it to check a plan edit.
 
-The job initialises the submodules the build reaches: cps, WPF Toolkit, vscode-wpf (with its
-nested WpfDesigner and wxsg), the small debugger, coverage and XAML ones, and `externals/monodevelop` shallow, because
+The job initialises the submodules the build reaches: cps, WPF Toolkit, the standalone WpfDesigner and WinAppVSCE
+submodules, the small debugger, coverage and XAML ones, and `externals/monodevelop` shallow, because
 the AspNetCore add-in compiles four files straight out of it (a `Compile Include`, which a `ProjectReference` closure does
 not show). The monodevelop sources stay out of the workspace archive. The build uses the repository's LibreWPF SDK pin (`0.1.0-preview.69` in `global.json`) and the configured package
 source mappings. AvalonEdit and AvalonDock are consumed as packages rather than initialized as submodules here.
