@@ -11,7 +11,10 @@ namespace OpenDevelop.IntegrationTests;
 internal sealed class IsolatedIde : IDisposable
 {
     readonly Process _process;
-    readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(4) };
+    // No client-level timeout: a per-request budget (InvokeAsync's default, 4 minutes) is what bounds each action.
+    // od.debug.start on a device gets a larger one - the action does the build and install before answering, and
+    // HttpClient's default 100 s gave the desktop journey its "operation was canceled" on the first device build.
+    readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
     readonly StringBuilder _output = new();
     readonly string _baseUrl;
 
@@ -103,15 +106,16 @@ internal sealed class IsolatedIde : IDisposable
                 Assert.Fail($"The IDE exited during startup (code {_process.ExitCode}).\n{Output}");
             try
             {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
                 if (!agentUp)
                 {
-                    using var status = await _http.GetAsync(_baseUrl + "/api/v1/agent/status");
+                    using var status = await _http.GetAsync(_baseUrl + "/api/v1/agent/status", cts.Token);
                     agentUp = status.IsSuccessStatusCode;
                 }
                 if (agentUp)
                 {
                     using var content = new StringContent("{\"args\":[]}", Encoding.UTF8, "application/json");
-                    using var response = await _http.PostAsync(_baseUrl + "/api/v1/invoke/actions/od.active-view", content);
+                    using var response = await _http.PostAsync(_baseUrl + "/api/v1/invoke/actions/od.active-view", content, cts.Token);
                     string body = await response.Content.ReadAsStringAsync();
                     bool success = false;
                     try { success = JsonDocument.Parse(body).RootElement.GetProperty("success").GetBoolean(); }
@@ -130,7 +134,7 @@ internal sealed class IsolatedIde : IDisposable
                     }
                 }
             }
-            catch (HttpRequestException ex)
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
             {
                 lastError = ex.Message;
                 stableReads = 0;
@@ -140,10 +144,17 @@ internal sealed class IsolatedIde : IDisposable
         Assert.Fail($"The IDE did not become ready on {_baseUrl} within 3 minutes (agent up: {agentUp}; last od.active-view response: {lastError}).\n{Output}");
     }
 
+    /// <summary>Invoke a DevFlow action with the default 4-minute request budget.</summary>
     public async Task<JsonElement> InvokeAsync(string action, params object[] args)
+        => await InvokeAsync(TimeSpan.FromMinutes(4), action, args);
+
+    /// <summary>Invoke a DevFlow action with an explicit request budget. Actions whose watchdog bounds real work (a
+    /// device build inside od.debug.start) need one that outlives it.</summary>
+    public async Task<JsonElement> InvokeAsync(TimeSpan timeout, string action, params object[] args)
     {
+        using var cts = new CancellationTokenSource(timeout);
         using var content = new StringContent(JsonSerializer.Serialize(new { args }), Encoding.UTF8, "application/json");
-        using var response = await _http.PostAsync($"{_baseUrl}/api/v1/invoke/actions/{action}", content);
+        using var response = await _http.PostAsync($"{_baseUrl}/api/v1/invoke/actions/{action}", content, cts.Token);
         Assert.True(response.IsSuccessStatusCode,
             $"Action '{action}' failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}\n{Output}");
         var envelope = await response.Content.ReadFromJsonAsync<JsonElement>();

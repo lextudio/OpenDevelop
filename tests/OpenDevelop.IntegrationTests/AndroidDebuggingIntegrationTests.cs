@@ -16,6 +16,10 @@ namespace OpenDevelop.IntegrationTests;
 [Collection("94 Android debugging (isolated IDE)")]
 public sealed class AndroidDebuggingIntegrationTests
 {
+	/// <summary>The IDE's own watchdog inside od.debug.start is 420 s; give the HTTP call more than that (the
+	/// default 4-minute budget cancels the request while a device build is still running).</summary>
+	static readonly TimeSpan DebugStartBudget = TimeSpan.FromMinutes(8);
+
 	[Fact]
 	public async Task AndroidApp_F5StopsStepsEvaluatesAndStopsCleanly()
 	{
@@ -58,7 +62,7 @@ public sealed class AndroidDebuggingIntegrationTests
 			var breakpoint = await ide.InvokeAsync("od.debug.set-breakpoint", source, 10);
 			Assert.True(breakpoint.GetProperty("success").GetBoolean(), breakpoint.ToString());
 			string baselineForwards = NormalizeForwards(await CommandAsync(adb, "-s " + serial + " forward --list"));
-			var started = await ide.InvokeAsync("od.debug.start", project, true, 420);
+			var started = await ide.InvokeAsync(DebugStartBudget, "od.debug.start", project, true, 420);
 			try {
 				Assert.True(started.GetProperty("stopped").GetBoolean(), started.ToString());
 				Assert.EndsWith("MainActivity.cs", started.GetProperty("currentFile").GetString());
@@ -73,7 +77,7 @@ public sealed class AndroidDebuggingIntegrationTests
 			Assert.False((await ide.InvokeAsync("od.debug.service-info")).GetProperty("isDebugging").GetBoolean());
 			await AssertDeviceIsCleanAsync();
 			// A repeated session must start from that clean state and hit the same breakpoint again.
-			started = await ide.InvokeAsync("od.debug.start", project, true, 420);
+			started = await ide.InvokeAsync(DebugStartBudget, "od.debug.start", project, true, 420);
 			try {
 				Assert.True(started.GetProperty("stopped").GetBoolean(), started.ToString());
 				Assert.Equal(10, started.GetProperty("currentLine").GetInt32());

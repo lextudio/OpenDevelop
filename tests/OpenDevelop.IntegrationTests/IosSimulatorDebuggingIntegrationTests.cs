@@ -17,6 +17,10 @@ namespace OpenDevelop.IntegrationTests;
 [Collection("93 iOS Simulator debugging (isolated IDE)")]
 public sealed class IosSimulatorDebuggingIntegrationTests
 {
+    /// <summary>The IDE's own watchdog inside od.debug.start is 420 s; give the HTTP call more than that (the
+    /// default 4-minute budget cancels the request while a device build is still running).</summary>
+    static readonly TimeSpan DebugStartBudget = TimeSpan.FromMinutes(8);
+
     [Fact]
     public async Task IosApp_DebugsInTheSimulator_AndStopsAtABreakpointInFinishedLaunching()
     {
@@ -47,7 +51,7 @@ public sealed class IosSimulatorDebuggingIntegrationTests
             Assert.True(breakpoint.GetProperty("success").GetBoolean(), breakpoint.ToString());
 
             // A cold simulator boot plus the first device build can take minutes
-            var start = await ide.InvokeAsync("od.debug.start", Path.Combine(work, "IosApp", "IosApp.csproj"), true, 420);
+            var start = await ide.InvokeAsync(DebugStartBudget, "od.debug.start", Path.Combine(work, "IosApp", "IosApp.csproj"), true, 420);
             try
             {
                 Assert.True(start.GetProperty("stopped").GetBoolean(), "The app never stopped at the breakpoint: " + start);
