@@ -73,7 +73,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	Dictionary<string, string> pathById = new(StringComparer.Ordinal);
 	GtkDesignerHostClient? host; DesignerSessionState state = new(); DesignerElementNode? selected; string loadedText = "";
 	CancellationTokenSource? renderCancellation; long requestedRenderRevision; long renderedRevision;
-	FileSystemWatcher? cssWatcher; string[] watchedCssPaths = Array.Empty<string>(); DispatcherTimer? cssRefreshTimer; bool disposed;
+	FileSystemWatcher? cssWatcher; readonly List<FileSystemWatcher> customWidgetWatchers = new(); string[] watchedCssPaths = Array.Empty<string>(); string[] watchedCustomWidgetAssemblies = Array.Empty<string>(); DispatcherTimer? cssRefreshTimer; bool restartForCustomWidgetChange; bool disposed;
 
 	public GtkDesignerViewContent(OpenedFile file) : base(file)
 	{
@@ -186,6 +186,14 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	public bool SetSelectedProperty(string name, string value) => selected != null && SetProperty(selected.Id, name, value);
 	bool SetProperty(string id, string name, string value) { if (host == null || !Mutate(() => host.SetPropertyAsync(state.Version, id, name, value).GetAwaiter().GetResult())) return false; return name == "$id" ? SelectById(value) : selection.Find(id) != null; }
 	public bool Add(string type) { if (host == null || state.Tree == null) return false; var parent = selected == null ? Flatten(state.Tree).FirstOrDefault(IsContainer) : NearestContainer(selected); if (parent == null) return false; return AddTo(parent.Id, type, -1, -1); }
+	/// <summary>Adds a button to the selected notebook's start or end action area instead of creating
+	/// a page. The context menu exposes this common action-widget case; other widget classes can be
+	/// selected through the same host operation by callers such as DevFlow.</summary>
+	public bool AddNotebookAction(bool atEnd, string className = "GtkButton")
+	{
+		if (host == null || selected?.Type != "GtkNotebook") return false;
+		return Mutate(() => host.AddNotebookActionAsync(state.Version, selected.Id, className, atEnd).GetAwaiter().GetResult());
+	}
 	/// <summary>Adds <paramref name="type"/> to the container <paramref name="parentId"/>; a drop
 	/// passes its design point so the host places it by the container's child policy (GtkDropPlanner),
 	/// a toolbox click passes (-1, -1) to append.</summary>
@@ -477,9 +485,9 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	{
 		if (host == null || selected == null) return false;
 		var accepted = Mutate(() => host.SetMenuItemsAsync(state.Version, selected.Id, items.ToList()).GetAwaiter().GetResult());
-		// A menu that names window actions ("win.save") gets their handler stubs and the companion's
-		// AddMenuActions; once a companion exists it is rewritten even when the last action went away.
-		if (accepted) UpdateCodeBehind(null, force: HasWindowAction(items));
+		// Menu actions get their handler stubs and registration companion; once it exists it is
+		// rewritten even when the last action went away.
+		if (accepted) UpdateCodeBehind(null, force: HasGeneratedAction(items));
 		return accepted;
 	}
 	/// <summary>Undo or redo can bring back (or take away) a menu's window actions, a signal, or any other
@@ -490,7 +498,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		if (accepted && PrimaryFileName?.ToString() is { Length: > 0 } uiPath && File.Exists(GtkCodeBehind.CompanionPath(uiPath))) UpdateCodeBehind(null);
 		return accepted;
 	}
-	static bool HasWindowAction(IEnumerable<DesignerMenuNode> nodes) => nodes.Any(n => n.Action.StartsWith("win.", StringComparison.Ordinal) || HasWindowAction(n.Children));
+	static bool HasGeneratedAction(IEnumerable<DesignerMenuNode> nodes) => nodes.Any(n => n.Action.StartsWith("win.", StringComparison.Ordinal) || n.Action.StartsWith("app.", StringComparison.Ordinal) || HasGeneratedAction(n.Children));
 
 	/// <summary>The selected list/grid/column view's inline factory template, or null.</summary>
 	public string? FactoryTemplate() { if (host == null || selected == null) return null; return host.FactoryTemplateAsync(selected.Id).GetAwaiter().GetResult(); }
@@ -539,6 +547,11 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		UpdateCodeBehind(null, force: factoryClass == GtkUiDocumentEditor.SignalFactory);
 		return true;
 	}
+	void RequestFactoryClass()
+	{
+		var factoryClass = MessageService.ShowInputBox("List item factory", "Registered GtkListItemFactory GType:", FactoryClass() ?? "");
+		if (factoryClass != null) SetFactoryClass(factoryClass);
+	}
 	/// <summary>The class of the selected list view's innermost inline data model, or null.</summary>
 	public string? ModelData() { if (host == null || selected == null) return null; return host.ModelDataAsync(selected.Id).GetAwaiter().GetResult(); }
 	/// <summary>Switches the selected list view's data model between a string list and a list store as one undo step; a refusal is shown under the canvas.</summary>
@@ -564,6 +577,18 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		var current = ItemType();
 		var typeName = MessageService.ShowInputBox("Item type", "GType name of the list store's items (empty for GObject):", current ?? "");
 		if (typeName != null) SetItemType(typeName);
+	}
+	public string? ItemProperty() { if (host == null || selected == null) return null; return host.ItemPropertyAsync(selected.Id).GetAwaiter().GetResult(); }
+	public bool SetItemProperty(string propertyName)
+	{
+		if (host == null || selected == null) return false;
+		try { return Mutate(() => host.SetItemPropertyAsync(state.Version, selected.Id, propertyName).GetAwaiter().GetResult()); }
+		catch (Exception ex) { diagnostic.Text = ex.GetBaseException().Message; return false; }
+	}
+	void RequestItemProperty()
+	{
+		var value = MessageService.ShowInputBox("Item property", "Property to show, sort and filter on:", ItemProperty() ?? "");
+		if (value != null) SetItemProperty(value);
 	}
 	public bool SetFactoryTemplate(string template) { if (host == null || selected == null) return false; return Mutate(() => host.SetFactoryTemplateAsync(state.Version, selected.Id, template).GetAwaiter().GetResult()); }
 
@@ -677,10 +702,13 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory)) return;
 		// The same preview-only debounce also covers custom-widget declarations: neither CSS nor
 		// .gtkdesigner.json is source-model input, so both must redraw without resetting undo.
+		var customDiagnostics = new List<string>();
+		watchedCustomWidgetAssemblies = GtkCustomWidgetPreview.Load(uiPath, customDiagnostics).Assemblies.Select(Path.GetFullPath).ToArray();
 		watchedCssPaths = new[] { Path.ChangeExtension(uiPath, ".css"), Path.Combine(directory, "style.css"), Path.Combine(directory, ".gtkdesigner.json") }
 			.Concat(ResourceFiles(directory))
 			.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 		cssWatcher?.Dispose();
+		DisposeCustomWidgetWatchers();
 		try {
 			cssWatcher = new FileSystemWatcher(directory, "*") { NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size };
 			cssWatcher.Changed += CssChanged; cssWatcher.Created += CssChanged; cssWatcher.Deleted += CssChanged; cssWatcher.Renamed += CssRenamed;
@@ -689,7 +717,20 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			cssWatcher = null;
 			LoggingService.Warn("GTK designer: could not watch preview CSS: " + ex.Message);
 		}
+		foreach (var assembly in watchedCustomWidgetAssemblies) {
+			var assemblyDirectory = Path.GetDirectoryName(assembly);
+			if (string.IsNullOrWhiteSpace(assemblyDirectory) || !Directory.Exists(assemblyDirectory)) continue;
+			try {
+				var watcher = new FileSystemWatcher(assemblyDirectory, Path.GetFileName(assembly)) { NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size };
+				watcher.Changed += CustomWidgetAssemblyChanged; watcher.Created += CustomWidgetAssemblyChanged; watcher.Deleted += CustomWidgetAssemblyChanged; watcher.Renamed += CustomWidgetAssemblyRenamed;
+				watcher.EnableRaisingEvents = true;
+				customWidgetWatchers.Add(watcher);
+			} catch (Exception ex) {
+				LoggingService.Warn("GTK designer: could not watch custom widget assembly '" + assembly + "': " + ex.Message);
+			}
+		}
 	}
+	void DisposeCustomWidgetWatchers() { foreach (var watcher in customWidgetWatchers) watcher.Dispose(); customWidgetWatchers.Clear(); }
 	/// <summary>The GResource manifests beside the document and the files they list. The preview
 	/// resolves <c>resource:///</c> when it builds the native tree, so an edited image or manifest
 	/// has to redraw too - neither is part of the GtkBuilder source model.</summary>
@@ -713,19 +754,29 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		}
 		return files;
 	}
-	void CssChanged(object sender, FileSystemEventArgs e) { if (IsWatchedPreviewPath(e.FullPath)) ScheduleCssRefresh(); }
-	void CssRenamed(object sender, RenamedEventArgs e) { if (IsWatchedPreviewPath(e.FullPath) || IsWatchedPreviewPath(e.OldFullPath)) ScheduleCssRefresh(); }
+	void CssChanged(object sender, FileSystemEventArgs e) { if (IsWatchedPreviewPath(e.FullPath)) ScheduleCssRefresh(IsCustomWidgetAssembly(e.FullPath) || IsCustomWidgetDeclaration(e.FullPath)); }
+	void CssRenamed(object sender, RenamedEventArgs e) { if (IsWatchedPreviewPath(e.FullPath) || IsWatchedPreviewPath(e.OldFullPath)) ScheduleCssRefresh(IsCustomWidgetAssembly(e.FullPath) || IsCustomWidgetAssembly(e.OldFullPath) || IsCustomWidgetDeclaration(e.FullPath) || IsCustomWidgetDeclaration(e.OldFullPath)); }
+	void CustomWidgetAssemblyChanged(object sender, FileSystemEventArgs e) { if (IsCustomWidgetAssembly(e.FullPath)) ScheduleCssRefresh(restartHost: true); }
+	void CustomWidgetAssemblyRenamed(object sender, RenamedEventArgs e) { if (IsCustomWidgetAssembly(e.FullPath) || IsCustomWidgetAssembly(e.OldFullPath)) ScheduleCssRefresh(restartHost: true); }
 	/// <summary>A manifest created after the watcher started is still a preview input: the glob
 	/// matches it even though it was not in the list captured by <see cref="ConfigureCssWatcher"/>.</summary>
 	bool IsWatchedPreviewPath(string path) => path.EndsWith(".gresource.xml", StringComparison.OrdinalIgnoreCase)
-		|| watchedCssPaths.Contains(Path.GetFullPath(path), StringComparer.OrdinalIgnoreCase);
-	void ScheduleCssRefresh()
+		|| watchedCssPaths.Contains(Path.GetFullPath(path), StringComparer.OrdinalIgnoreCase) || IsCustomWidgetAssembly(path);
+	bool IsCustomWidgetAssembly(string path) => watchedCustomWidgetAssemblies.Contains(Path.GetFullPath(path), StringComparer.OrdinalIgnoreCase);
+	bool IsCustomWidgetDeclaration(string path) => string.Equals(Path.GetFileName(path), ".gtkdesigner.json", StringComparison.OrdinalIgnoreCase);
+	void ScheduleCssRefresh(bool restartHost = false)
 	{
 		var dispatcher = Application.Current?.Dispatcher;
 		if (dispatcher == null) return;
 		_ = dispatcher.BeginInvoke(new Action(() => {
 			if (disposed) return;
-			cssRefreshTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(180) };
+			restartForCustomWidgetChange |= restartHost;
+			cssRefreshTimer ??= new DispatcherTimer();
+			// MSBuild commonly replaces a DLL as delete/create/write events.  Restarting after the
+			// CSS debounce would dispose the only assembly watcher between the delete and final write,
+			// leaving the preview host with a missing or half-written binary.  Wait for that replacement
+			// burst to settle; later assembly events reset this same timer.
+			cssRefreshTimer.Interval = restartForCustomWidgetChange ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(180);
 			cssRefreshTimer.Tick -= CssRefreshTimerTick;
 			cssRefreshTimer.Tick += CssRefreshTimerTick;
 			cssRefreshTimer.Stop(); cssRefreshTimer.Start();
@@ -734,7 +785,15 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	void CssRefreshTimerTick(object? sender, EventArgs e)
 	{
 		cssRefreshTimer?.Stop();
-		if (!disposed && host?.IsAlive == true) RefreshPreview();
+		if (!disposed && host?.IsAlive == true) {
+			var restart = restartForCustomWidgetChange; restartForCustomWidgetChange = false;
+			if (restart) {
+				// A declaration can add/remove an assembly too; rebuild the watch list before the new host
+				// opens its snapshot, rather than waiting for the next document reload.
+				if (PrimaryFileName?.ToString() is { Length: > 0 } uiPath) ConfigureCssWatcher(uiPath);
+				RestartDesignHost();
+			} else RefreshPreview();
+		}
 	}
 	public void RestartDesignHost() { if (host == null) return; state = host.RestartPoolAsync().GetAwaiter().GetResult(); canvas.SetTheme(host.PreviewTheme); loadedText = host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; Rebuild(); }
 	public void TerminateDesignHost() { if (host == null) return; state = host.TerminateAndRecoverAsync().GetAwaiter().GetResult(); canvas.SetTheme(host.PreviewTheme); requestedRenderRevision = renderedRevision = state.Render?.Sequence ?? 0; Rebuild(); }
@@ -817,18 +876,21 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			("Align/Vertical: Fill", "align-v-fill"), ("Align/Vertical: Start", "align-v-start"), ("Align/Vertical: Center", "align-v-center"), ("Align/Vertical: End", "align-v-end"),
 			("-", ""), ("Grid/Column span +1", "span-column-more"), ("Grid/Column span -1", "span-column-less"), ("Grid/Row span +1", "span-row-more"), ("Grid/Row span -1", "span-row-less"),
 			("Grid/Insert row above", "grid-insert-row"), ("Grid/Insert column left", "grid-insert-column"),
-			("Grid/Delete row", "grid-delete-row"), ("Grid/Delete column", "grid-delete-column"),
-			("-", ""), ("Edit List Item Template...", "edit-factory-template"), ("List Item Factory/Builder Template", "factory-GtkBuilderListItemFactory"), ("List Item Factory/Signals (code)", "factory-GtkSignalListItemFactory"), ("Sort Column/Enable", "column-sortable-on"), ("Sort Column/Disable", "column-sortable-off"), ("Model/Data: String List", "model-data-GtkStringList"), ("Model/Data: List Store", "model-data-GListStore"), ("Model/Item Type...", "model-item-type"), ("Model/Add Sorting", "model-add-sort"), ("Model/Remove Sorting", "model-remove-sort"), ("Model/Add Filtering", "model-add-filter"), ("Model/Remove Filtering", "model-remove-filter"), ("Selection/None", "selection-GtkNoSelection"), ("Selection/Single", "selection-GtkSingleSelection"), ("Selection/Multiple", "selection-GtkMultiSelection"), ("Edit Menu...", "edit-menu") })
+			("Grid/Delete row", "grid-delete-row"), ("Grid/Delete column", "grid-delete-column"), ("Notebook/Add Start Action Button", "notebook-add-action-start"), ("Notebook/Add End Action Button", "notebook-add-action-end"),
+			("-", ""), ("Edit List Item Template...", "edit-factory-template"), ("List Item Factory/Builder Template", "factory-GtkBuilderListItemFactory"), ("List Item Factory/Signals (code)", "factory-GtkSignalListItemFactory"), ("List Item Factory/Custom Type...", "factory-custom"), ("Sort Column/Enable", "column-sortable-on"), ("Sort Column/Disable", "column-sortable-off"), ("Model/Data: String List", "model-data-GtkStringList"), ("Model/Data: List Store", "model-data-GListStore"), ("Model/Item Type...", "model-item-type"), ("Model/Item Property...", "model-item-property"), ("Model/Add Sorting", "model-add-sort"), ("Model/Remove Sorting", "model-remove-sort"), ("Model/Add Filtering", "model-add-filter"), ("Model/Remove Filtering", "model-remove-filter"), ("Selection/None", "selection-GtkNoSelection"), ("Selection/Single", "selection-GtkSingleSelection"), ("Selection/Multiple", "selection-GtkMultiSelection"), ("Edit Menu...", "edit-menu") })
 			.Append(("-", "")).Concat(DesignerStandardCommands.WrapMenu(WrapContainers)));
 		canvas.ContextCommandCanExecute = command => command switch {
+			"notebook-add-action-start" or "notebook-add-action-end" => host?.IsAlive == true && selected?.Type == "GtkNotebook",
 			"grid-insert-row" or "grid-insert-column" or "grid-delete-row" or "grid-delete-column" => host?.IsAlive == true && SelectedGridChild() != null,
 			var span when span.StartsWith("span-", StringComparison.Ordinal) => host?.IsAlive == true && SelectedGridChild() is { } cell
 				&& (!span.EndsWith("less", StringComparison.Ordinal) || int.TryParse(Value(cell.Node, span.Contains("column") ? "layout:column-span" : "layout:row-span", "1"), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var currentSpan) && currentSpan > 1),
 			"edit-factory-template" => host?.IsAlive == true && selected != null && Flatten(selected).Any(node => node.Type == "GtkBuilderListItemFactory"),
 			"edit-menu" => host?.IsAlive == true && selected?.Type is "GtkPopoverMenu" or "GtkMenuButton",
 			var factory when GtkUiDocumentEditor.FactoryCommand(factory) != null => host?.IsAlive == true && selected?.Type is "GtkListView" or "GtkGridView" or "GtkColumnViewColumn",
+			"factory-custom" => host?.IsAlive == true && selected?.Type is "GtkListView" or "GtkGridView" or "GtkColumnViewColumn",
 			var column when GtkUiDocumentEditor.ColumnSortCommand(column) != null => host?.IsAlive == true && selected?.Type == "GtkColumnViewColumn",
 			var data when GtkUiDocumentEditor.ModelDataCommand(data) != null => host?.IsAlive == true && selected?.Type is "GtkListView" or "GtkGridView" or "GtkColumnView",
+			"model-item-property" => host?.IsAlive == true && selected?.Type is "GtkListView" or "GtkGridView" or "GtkColumnView" or "GtkColumnViewColumn",
 			"model-item-type" => host?.IsAlive == true && selected?.Type is "GtkListView" or "GtkGridView" or "GtkColumnView" or "GListStore",
 			var model when GtkUiDocumentEditor.ModelCommand(model) != null => host?.IsAlive == true && selected?.Type is "GtkListView" or "GtkGridView" or "GtkColumnView",
 			var selection when selection.StartsWith("selection-", StringComparison.Ordinal) => host?.IsAlive == true && selected?.Type is "GtkListView" or "GtkGridView" or "GtkColumnView",
@@ -853,10 +915,14 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 				case "unwrap": UnwrapSelected(); break;
 				case "edit-factory-template": EditFactoryTemplate(); break;
 				case "edit-menu": EditMenu(); break;
+				case "notebook-add-action-start": AddNotebookAction(atEnd: false); break;
+				case "notebook-add-action-end": AddNotebookAction(atEnd: true); break;
 				case var factory when GtkUiDocumentEditor.FactoryCommand(factory) is { } factoryClass: SetFactoryClass(factoryClass); break;
+				case "factory-custom": RequestFactoryClass(); break;
 				case var column when GtkUiDocumentEditor.ColumnSortCommand(column) is { } sortable: SetColumnSortable(sortable); break;
 				case var data when GtkUiDocumentEditor.ModelDataCommand(data) is { } dataClass: SetModelData(dataClass); break;
 				case "model-item-type": RequestItemType(); break;
+				case "model-item-property": RequestItemProperty(); break;
 				case var model when GtkUiDocumentEditor.ModelCommand(model) is { } change: SetModelWrapper(change.Kind, change.Add); break;
 				case var selection when selection.StartsWith("selection-", StringComparison.Ordinal): SetSelectionModel(selection.Substring("selection-".Length)); break;
 				case var span when span.StartsWith("span-", StringComparison.Ordinal): SpanSelected(span); break;
@@ -970,5 +1036,5 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		// in the XML editor); WriteCompanion only touches the file when its content differs.
 		if (host?.IsAlive == true) UpdateCodeBehind(null); }
 	void HostRecovered(object? sender, DesignerSessionState recovered) { Application.Current.Dispatcher.BeginInvoke(new Action(() => { OutputChannel.Write("GtkDesigner", "Host recovered"); state = recovered; canvas.SetTheme(host?.PreviewTheme ?? "Light"); requestedRenderRevision = renderedRevision = recovered.Render?.Sequence ?? 0; Rebuild(); })); }
-	public override void Dispose() { disposed = true; OutputChannel.Write("GtkDesigner", "Designer view disposed"); cssRefreshTimer?.Stop(); cssWatcher?.Dispose(); renderCancellation?.Cancel(); renderCancellation?.Dispose(); pads.Dispose(); properties.Clear(); if (host != null) host.Recovered -= HostRecovered; host?.Dispose(); base.Dispose(); }
+	public override void Dispose() { disposed = true; OutputChannel.Write("GtkDesigner", "Designer view disposed"); cssRefreshTimer?.Stop(); cssWatcher?.Dispose(); DisposeCustomWidgetWatchers(); renderCancellation?.Cancel(); renderCancellation?.Dispose(); pads.Dispose(); properties.Clear(); if (host != null) host.Recovered -= HostRecovered; host?.Dispose(); base.Dispose(); }
 }

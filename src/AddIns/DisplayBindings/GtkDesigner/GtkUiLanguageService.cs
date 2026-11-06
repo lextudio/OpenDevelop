@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using ICSharpCode.SharpDevelop.LanguageServices;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace ICSharpCode.GtkDesigner;
 
@@ -731,6 +734,8 @@ public sealed class GtkUiLanguageService : ILanguageService, ILanguageServiceDoc
 		if (!TryGet(documentId, out var text))
 			return Task.FromResult<IReadOnlyList<NavigationTarget>>(Array.Empty<NavigationTarget>());
 		var document = GtkUiDocument.Parse(text);
+		if (HandlerAt(document, offset) is { } handler)
+			return Task.FromResult<IReadOnlyList<NavigationTarget>>(HandlerDefinitions(documentId, handler.Name));
 		if (IdAt(document, text, offset) is not { } token || document.FindById(token.Id) is not { } target || target.Attribute("id") is not { } declaration)
 			return Task.FromResult<IReadOnlyList<NavigationTarget>>(Array.Empty<NavigationTarget>());
 		return Task.FromResult<IReadOnlyList<NavigationTarget>>(new[] {
@@ -757,7 +762,8 @@ public sealed class GtkUiLanguageService : ILanguageService, ILanguageServiceDoc
 		cancellationToken.ThrowIfCancellationRequested();
 		if (!TryGet(documentId, out var text))
 			return Task.FromResult<string?>(null);
-		return Task.FromResult(IdAt(GtkUiDocument.Parse(text), text, offset)?.Id);
+		var document = GtkUiDocument.Parse(text);
+		return Task.FromResult(HandlerAt(document, offset)?.Name ?? IdAt(document, text, offset)?.Id);
 	}
 
 	public Task<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>> RenameSymbolAsync(
@@ -769,6 +775,19 @@ public sealed class GtkUiLanguageService : ILanguageService, ILanguageServiceDoc
 		if (!TryGet(documentId, out var text) || !IsValidId(newName))
 			return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>>(edits);
 		var document = GtkUiDocument.Parse(text);
+		if (HandlerAt(document, offset) is { } handler) {
+			if (!IsCSharpIdentifier(newName)) return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>>(edits);
+			var uiEdits = document.All.SelectMany(e => e.Name == "signal" ? e.Attributes.Where(a => a.Name == "handler" && a.Value == handler.Name) : Enumerable.Empty<GtkUiAttribute>())
+				.Select(a => new TextEdit(SpanOf(text, a.ValueStart, a.ValueEnd), newName)).ToList();
+			if (uiEdits.Count > 0) edits[documentId.FileName] = uiEdits;
+			foreach (var (path, source) in HandlerSources(documentId, handler.Name)) {
+				var tree = CSharpSyntaxTree.ParseText(source);
+				var declarations = tree.GetRoot(cancellationToken).DescendantNodes().OfType<MethodDeclarationSyntax>()
+					.Where(method => method.Identifier.Text == handler.Name).Select(method => method.Identifier.Span).ToList();
+				if (declarations.Count > 0) edits[path] = declarations.Select(span => new TextEdit(SpanOf(source, span.Start, span.End), newName)).ToList();
+			}
+			return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>>(edits);
+		}
 		if (IdAt(document, text, offset) is not { } token || token.Id == newName)
 			return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>>(edits);
 		// Another object already owns the new id: renaming would merge two objects into one.
@@ -842,6 +861,28 @@ public sealed class GtkUiLanguageService : ILanguageService, ILanguageServiceDoc
 	}
 
 	#endregion
+
+	static (string Name, int Start, int End)? HandlerAt(GtkUiDocument document, int offset)
+	{
+		var tag = document.TagAt(offset);
+		if (tag?.Name != "signal" || AttributeAt(tag, offset) is not { HasValue: true, Name: "handler" } attribute || attribute.Value.Length == 0) return null;
+		return (attribute.Value, attribute.ValueStart, attribute.ValueEnd);
+	}
+
+	static IReadOnlyList<NavigationTarget> HandlerDefinitions(DocumentId documentId, string handler)
+		=> HandlerSources(documentId, handler).SelectMany(pair => CSharpSyntaxTree.ParseText(pair.Source).GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>()
+			.Where(method => method.Identifier.Text == handler).Select(method => new NavigationTarget(pair.Path, PositionOf(pair.Source, method.Identifier.SpanStart), SpanOf(pair.Source, method.Identifier.SpanStart, method.Identifier.Span.End)))).ToList();
+
+	static IEnumerable<(string Path, string Source)> HandlerSources(DocumentId documentId, string handler)
+	{
+		var path = Path.ChangeExtension(documentId.FileName, ".cs");
+		if (!File.Exists(path)) yield break;
+		string source;
+		try { source = File.ReadAllText(path); } catch (IOException) { yield break; }
+		if (source.Contains(handler, StringComparison.Ordinal)) yield return (path, source);
+	}
+
+	static bool IsCSharpIdentifier(string value) => !string.IsNullOrEmpty(value) && (char.IsLetter(value[0]) || value[0] == '_') && value.Skip(1).All(c => char.IsLetterOrDigit(c) || c == '_');
 
 	#region outline
 
@@ -955,10 +996,25 @@ public sealed class GtkUiLanguageService : ILanguageService, ILanguageServiceDoc
 		=> Task.FromResult<IReadOnlyList<SemanticToken>>(Array.Empty<SemanticToken>());
 
 	public Task<IReadOnlyList<CodeActionInfo>> GetCodeActionsAsync(DocumentId documentId, TextSpan span, CancellationToken cancellationToken)
-		=> Task.FromResult<IReadOnlyList<CodeActionInfo>>(Array.Empty<CodeActionInfo>());
+	{
+		cancellationToken.ThrowIfCancellationRequested();
+		if (!TryGet(documentId, out var text)) return Task.FromResult<IReadOnlyList<CodeActionInfo>>(Array.Empty<CodeActionInfo>());
+		var actions = GetDiagnosticsAsync(documentId, cancellationToken).GetAwaiter().GetResult().Any(d => d.Id == "GTK1009")
+			? new[] { new CodeActionInfo("gtk.add-libadwaita-requires", "Add libadwaita <requires>", true) } : Array.Empty<CodeActionInfo>();
+		return Task.FromResult<IReadOnlyList<CodeActionInfo>>(actions);
+	}
 
 	public Task<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>> ApplyCodeActionAsync(DocumentId documentId, string actionId, CancellationToken cancellationToken)
-		=> Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>>(new Dictionary<string, IReadOnlyList<TextEdit>>());
+	{
+		cancellationToken.ThrowIfCancellationRequested();
+		var edits = new Dictionary<string, IReadOnlyList<TextEdit>>(StringComparer.OrdinalIgnoreCase);
+		if (actionId != "gtk.add-libadwaita-requires" || !TryGet(documentId, out var text)) return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>>(edits);
+		var root = GtkUiDocument.Parse(text).Roots.FirstOrDefault(e => e.Name == "interface");
+		if (root == null || root.Children.Any(e => e.Name == "requires" && e.Value("lib") == "libadwaita")) return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>>(edits);
+		var indent = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n  " : "\n  ";
+		edits[documentId.FileName] = new[] { new TextEdit(SpanOf(text, root.OpenEnd, root.OpenEnd), indent + "<requires lib=\"libadwaita\" version=\"1.0\"/>") };
+		return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>>(edits);
+	}
 
 	public Task<ExtractInterfaceInfo?> GetExtractInterfaceInfoAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
 		=> Task.FromResult<ExtractInterfaceInfo?>(null);

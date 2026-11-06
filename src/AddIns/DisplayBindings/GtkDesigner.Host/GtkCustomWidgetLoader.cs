@@ -8,8 +8,8 @@ namespace ICSharpCode.GtkDesigner.Host;
 /// disposable child process, never the IDE - and registers their Gtk.Widget subclasses so GtkBuilder
 /// can create them (doc/technotes/gtk-designer.md, "Custom widget execution"). Gir.Core registers a
 /// GObject subclass's GType from its static GetGType(), which is what runs here. Each path is loaded
-/// once per host: a GType cannot be unregistered, so a rebuilt assembly needs a fresh host (the
-/// designer says so). Every failure becomes a diagnostic and leaves the labelled placeholder.
+/// once per host: a GType cannot be unregistered, so a rebuilt assembly causes the IDE to replace
+/// this disposable host. Every failure becomes a diagnostic and leaves the labelled placeholder.
 /// </summary>
 static class GtkCustomWidgetLoader
 {
@@ -82,6 +82,15 @@ static class GtkCustomWidgetLoader
 			try { Default.LoadFromAssemblyName(name); return null; } catch (FileNotFoundException) { }
 			var resolved = resolver.ResolveAssemblyToPath(name);
 			return resolved == null ? null : LoadFromAssemblyPath(resolved);
+		}
+
+		/// <summary>Project widgets commonly P/Invoke their own native helper. AssemblyDependencyResolver
+		/// is the authoritative .deps.json mapping for both managed and unmanaged assets, so use it here
+		/// rather than relying on the host process's working directory or PATH.</summary>
+		protected override nint LoadUnmanagedDll(string unmanagedDllName)
+		{
+			var resolved = resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
+			return resolved == null ? IntPtr.Zero : LoadUnmanagedDllFromPath(resolved);
 		}
 	}
 }

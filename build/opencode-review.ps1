@@ -178,6 +178,14 @@ switch ($Action) {
         if ([string]::IsNullOrWhiteSpace([string]$info.outcome) -and
             (-not $assistant -or $assistant.finish -ne 'stop' -or -not $text)) {
             $exitText = Get-Content -LiteralPath (Artifact '-review-exit.txt') -Raw -ErrorAction SilentlyContinue
+            # Launch writes this receipt only after its foreground OpenCode process has returned.
+            # An export can legitimately expose a live tool-call session before then; that is a
+            # polling state, not an unusable review.  In particular, never turn it into exit 4,
+            # since doing so tempts callers to launch a second reviewer for the same tree.
+            if ([string]::IsNullOrWhiteSpace([string]$exitText)) {
+                Write-Host "The review is still running ($([DateTime]::Now.ToString('HH:mm:ss'))); its exit receipt is not written yet. Run Read again; do not start another review."
+                exit 3
+            }
             $reviewExit = 0
             if (-not [int]::TryParse([string]$exitText, [ref]$reviewExit)) {
                 $problems.Add('the recorded review exit status is missing or invalid')

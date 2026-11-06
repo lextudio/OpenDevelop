@@ -595,7 +595,8 @@ indistinguishable and is treated as a wired handler; every other subscriber, the
 field and the handler method stay, so re-wiring reuses them. `GtkDesigner_CompositeTemplate_WiresSignalsInTheTemplateClass`
 clears, re-wires and builds the fixture, whose `TemplatePanel` carries a hand-written subscriber.
 
-Remaining limitation: a template whose class is outside the project cannot be wired.
+The template class lookup also searches the other loaded solution projects, allowing a reusable template declared in a
+referenced project to receive the same generated connection code.
 
 `AdwToolbarView` uses its GtkBuildable slots: a drop in the top third becomes a
 `<child type="top">` bar, the bottom third a `<child type="bottom">` bar, and the middle fills the
@@ -809,7 +810,7 @@ GTK 4 has no generic container mutation API. Every drop is resolved through `chi
   (GTK then shows "Page N"). Insertion and reorder indexes count pages, not tabs, and a reorder moves a page together with its tab. A page is a bare `<child>`: a
   `type="action-start|action-end"` action widget is kept as written but is not a page (it is not
   counted, reordered or given a tab), and a duplicate or paste after a page lands after that page's
-  tab so the original keeps its label. Creating action widgets is still done in the source. Covered by `GtkUiDocumentEditorTests.Stack_Add_WritesANamedTitledPage` /
+  tab so the original keeps its label. The Notebook context menu creates start/end action buttons. Covered by `GtkUiDocumentEditorTests.Stack_Add_WritesANamedTitledPage` /
   `Notebook_Add_WritesAPlainPageChild`, `Notebook_PageGetsATabLabelAndTakesItAlongWhenRemoved` and the journey
   `GtkDesigner_StackPages_UseGtkStackPageObjects_AndTheNotebookUsesAPlainChild`, which saves and
   validates both documents with `gtk4-builder-tool`;
@@ -909,8 +910,8 @@ reference cannot be inspected, so the sorter is added and the model is assumed t
 is not a column of a column view is refused. Covered by the `ColumnSort_*` unit tests and
 `GtkDesigner_ColumnSorters_MakeAColumnSortableAndRender` (rendered by the real host with no diagnostics).
 
-The **List Item Factory** submenu (Builder Template / Signals (code)) of a list view, grid view or column switches
-its factory between a `GtkBuilderListItemFactory` and a `GtkSignalListItemFactory`
+The **List Item Factory** submenu (Builder Template / Signals (code) / Custom Type...) of a list view, grid view or column switches
+its factory between a `GtkBuilderListItemFactory`, a `GtkSignalListItemFactory`, or a registered concrete custom factory GType
 (`gtk/factory-class` / `gtk/set-factory-class`; `od.gtk-designer.factory-class(.set)`), as one undo step. The signal
 factory is `GtkSignalListItemFactory id="signalFactoryN"` with `setup` and `bind` signals whose handlers are
 `signalFactoryN_setup` and `signalFactoryN_bind`; it is an ordinary object, so its other signals (`unbind`, `teardown`) are
@@ -932,9 +933,10 @@ starter cell, sorters and filters read. The new model keeps the old one's id, so
 selection, sort and filter wrappers around it stay; going to a store drops the string items (undo restores them), going
 back starts the two starter items. The `item-type` is a GType name (letters, digits, underscores; an empty name removes
 it, which means `GObject`); the Item Type command works on the store itself or on the view whose chain ends in it. The
-string sorter, string filter and column sorter read the item's string, so they are refused, with the reason under the
-canvas, when the items are not strings (an inline `GListStore` whose `item-type` is not `GtkStringObject`; a column
-view's sort model, driven by its own sorter, is still allowed); a model reference is assumed to hold strings. The
+string sorter, string filter and column sorter read the item's string by default. For a typed non-string store,
+**Model > Item Property** selects an identifier property and writes the same typed lookup into the builder factory,
+sorters and filters, so all three use one value. Until a property is selected those operations are refused with the
+reason under the canvas; a model reference is assumed to hold strings. The
 preview cannot register an application's item type, and GtkBuilder rejects the whole document for an unknown GType name,
 so the preview sanitiser previews such a store with `GObject` items and says so in the diagnostics, while the saved
 source keeps the real name. Refused: a class other than the two, an object that is not a list view, a view with no inline
@@ -1124,10 +1126,10 @@ Status 2026-11-01: not implemented except where marked.
 - Libadwaita catalogue and named-child policies: the catalogue, toolbox category, navigation
   page shapes and AdwToolbarView's top/bottom/content slots are implemented; other named-child
   policies (`GtkHeaderBar` start/end/title and `GtkNotebook` tab labels are implemented;
-  `AdwTabView` pages are implemented; creating `GtkNotebook` action widgets is not);
+  `AdwTabView` pages and `GtkNotebook` action-start/action-end widgets are implemented);
 - menus, actions, list models (an inline `GtkStringList`'s items are editable), factories and
-  expressions: menu items, sections and submenus are editable (see "Menus"); `win.` actions get stubs and registration
-  (`app.` actions and expressions are not);
+  expressions: menu items, sections and submenus are editable (see "Menus"); `win.` and `app.` actions get stubs and
+  registration, including variant targets, parameters and state;
 - translation and resource tooling: GResource preview is implemented. Extraction of `translatable` strings
   (a `GtkTranslatableSource`) feeds the shared Translations addin, which writes `po/<project>.pot` and
   merges every `po/*.po`, its translator view edits them and its language service checks them (see
@@ -1146,18 +1148,17 @@ roughly in intended priority order.
 
 Product features:
 
-- creating `GtkNotebook` action widgets from the designer (existing ones are preserved);
 - an explicit GTK 3/Stetic migration assistant (the migration section describes the manual steps;
   no tool exists);
-- custom widget execution: a rebuilt assembly needs a reopened designer, and a widget's native
-  libraries are not resolved;
-- `app.` menu actions and action state/parameters (`win.` actions get stubs and registration; see "Menus");
+- custom widget execution: implemented for declared assemblies, including automatic isolated-host
+  replacement after a rebuilt assembly and `.deps.json` native-library resolution;
 - list/model depth: selection, sort and filter models, string column sorters, the signal factory and a declared
-  `GListStore` (its items are filled by code; a builder cannot add them) are editable; sorters and filters for
-  non-string items and factories beyond the builder-template and signal classes are not;
-- composite templates: a template class outside the project cannot be wired;
-- language service depth: `handler=` navigation/rename through Roslyn, code actions (add
-  `<requires>`, wrap in a container) and formatting; the service is read-only otherwise.
+  `GListStore` (its items are filled by code; a builder cannot add them) are editable; a typed store's chosen item
+  property drives its builder factory, sorters and filters. A registered concrete custom list-item factory can also be
+  selected; its own behavior remains application code;
+- language service depth: `handler=` navigation and rename reach the sibling C# behavior method through Roslyn syntax,
+  and the diagnostic for a missing libadwaita dependency offers an **Add libadwaita `<requires>`** code action.
+  Container wrapping and formatting remain to be implemented.
 
 Coverage (tests, not product behaviour):
 

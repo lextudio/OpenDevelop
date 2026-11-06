@@ -287,31 +287,44 @@ static class GtkCodeBehind
 		return locals;
 	}
 
-	/// <summary>The class file for a template: a sibling X.cs first, then any project file declaring
-	/// <c>class X</c> (the template's C# class is often beside the project, not the .ui).</summary>
+	/// <summary>The class file for a template: a sibling X.cs first, then the owning project and other loaded solution
+	/// projects. A reusable template commonly lives in a referenced project, so its code is deliberately not required to
+	/// share the UI project's directory.</summary>
 	static string? TemplateClassFile(string uiPath, string className)
 	{
 		var sibling = BehaviorPath(uiPath);
 		if (File.Exists(sibling) || IsOpen(sibling)) {
 			var text = ReadText(sibling);
-			if (text != null && text.Contains("class " + className, StringComparison.Ordinal)) return sibling;
+			if (text != null && DeclaresClass(text, className)) return sibling;
 		}
 		try {
 			var project = SD.ProjectService.FindProjectContainingFile(FileName.Create(uiPath));
-			var directory = project?.Directory?.ToString();
-			if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory)) return null;
-			foreach (var file in Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories)) {
-				var relative = file.Substring(directory.Length).TrimStart(Path.DirectorySeparatorChar, '/');
-				if (relative.StartsWith("bin" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-					|| relative.StartsWith("obj" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;
-				var text = ReadText(file);
-				if (text != null && text.Contains("class " + className, StringComparison.Ordinal)) return file;
-			}
+			var directories = new[] { project?.Directory?.ToString() }
+				.Concat(SD.ProjectService.CurrentSolution?.Projects.Select(p => p.Directory?.ToString()) ?? Enumerable.Empty<string?>())
+				.Where(directory => !string.IsNullOrEmpty(directory) && Directory.Exists(directory!))
+				.Select(directory => directory!);
+			return FindTemplateClassInDirectories(className, directories);
 		} catch (Exception ex) {
 			LoggingService.Warn("GTK designer: could not locate the template class " + className + ": " + ex.Message);
 		}
 		return null;
 	}
+
+	internal static string? FindTemplateClassInDirectories(string className, IEnumerable<string> directories)
+	{
+		foreach (var directory in directories.Distinct(StringComparer.OrdinalIgnoreCase))
+			foreach (var file in Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories)) {
+				var relative = file.Substring(directory.Length).TrimStart(Path.DirectorySeparatorChar, '/');
+				if (relative.StartsWith("bin" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+					|| relative.StartsWith("obj" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;
+				var text = ReadText(file);
+				if (text != null && DeclaresClass(text, className)) return file;
+			}
+		return null;
+	}
+
+	static bool DeclaresClass(string source, string className)
+		=> CSharpSyntaxTree.ParseText(source).GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>().Any(c => c.Identifier.Text == className);
 
 	/// <summary>"runButton" -&gt; "_runButton"; never starts with a digit.</summary>
 	static string TemplateLocal(string objectId)

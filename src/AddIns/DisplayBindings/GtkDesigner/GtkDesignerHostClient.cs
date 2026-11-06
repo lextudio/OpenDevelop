@@ -86,6 +86,8 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 	public Task<DesignerEditSet> FlushAsync(long version, CancellationToken token = default) => Document.FlushAsync(version, token);
 	public Task<DesignerSessionState> SetPropertyAsync(long v, string id, string name, string value, CancellationToken token = default) => TrackMutationAsync(Document.SetPropertyAsync(v, id, name, value, token), token);
 	public Task<DesignerSessionState> AddElementAsync(long v, string parent, DesignerToolboxItemInfo item, string name, double x, double y, DesignerDropTarget dropTarget = null, CancellationToken token = default) => TrackMutationAsync(Document.AddElementAsync(v, parent, item, name, x, y, dropTarget, token), token);
+	public Task<DesignerSessionState> AddNotebookActionAsync(long v, string notebookId, string className, bool atEnd, CancellationToken token = default)
+		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("gtk/add-notebook-action", new { sessionId = SessionId, documentId = DocumentId, baseVersion = v, notebookId, className, atEnd }, token), token);
 	public Task<DesignerSessionState> DeleteElementsAsync(long v, string[] ids, CancellationToken token = default) => TrackMutationAsync(Document.DeleteElementsAsync(v, ids, token), token);
 	/// <summary>The companion wiring source and handler signatures for this document's signals.</summary>
 	public Task<GtkSignalWiringResult> SignalWiringAsync(string uiFileName, string? namespaceName, string className, CancellationToken token = default)
@@ -121,6 +123,10 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 		=> connection.InvokeAsync<string?>("gtk/item-type", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
 	public Task<DesignerSessionState> SetItemTypeAsync(long v, string elementId, string typeName, CancellationToken token = default)
 		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("gtk/set-item-type", new { sessionId = SessionId, documentId = DocumentId, baseVersion = v, elementId, typeName }, token), token);
+	public Task<string?> ItemPropertyAsync(string elementId, CancellationToken token = default)
+		=> connection.InvokeAsync<string?>("gtk/item-property", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
+	public Task<DesignerSessionState> SetItemPropertyAsync(long v, string elementId, string propertyName, CancellationToken token = default)
+		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("gtk/set-item-property", new { sessionId = SessionId, documentId = DocumentId, baseVersion = v, elementId, propertyName }, token), token);
 	public Task<List<DesignerMenuNode>?> MenuItemsAsync(string elementId, CancellationToken token = default)
 		=> connection.InvokeAsync<List<DesignerMenuNode>?>("gtk/menu-items", new { sessionId = SessionId, documentId = DocumentId, elementId }, token);
 	public Task<DesignerSessionState> SetMenuItemsAsync(long v, string elementId, List<DesignerMenuNode> items, CancellationToken token = default)

@@ -215,15 +215,17 @@ public static class GtkDesignerDevFlowActions
 	}
 	[DevFlowAction("od.gtk-designer.signal.set", Description = "Set a GtkBuilder signal handler on the selected object")]
 	public static string SetSignal(string signalName, string handlerName) { var view = Activate(); return JsonSerializer.Serialize(new { success = view?.SetSelectedSignal(signalName, handlerName) == true, selectedId = view?.SelectedId }); }
+	[DevFlowAction("od.gtk-designer.notebook-action.add", Description = "Add a GTK notebook action-start or action-end widget to the selected GtkNotebook")]
+	public static string AddNotebookAction(bool atEnd, string className = "GtkButton") { var view = Activate(); var ok = view?.AddNotebookAction(atEnd, className) == true; return JsonSerializer.Serialize(new { success = ok, selectedId = view?.SelectedId }); }
 	[DevFlowAction("od.gtk-designer.properties.event.bind", Description = "Bind a GTK signal through the selected Properties-pad adapter")]
 	public static string BindEvent(string eventName) { var view = Activate(); var selected = PropertyGrid?.SelectedObject; var exists = selected != null && TypeDescriptor.GetEvents(selected).Find(eventName, false) != null; if (exists && selected is IEventBindingHost host) host.BindEvent(eventName); return JsonSerializer.Serialize(new { success = exists && selected is IEventBindingHost, eventName, selectedId = view?.SelectedId }); }
 	[DevFlowAction("od.gtk-designer.factory-template", Description = "Read the selected list/grid/column view's GtkBuilderListItemFactory bytes (the cell template)")]
 	public static string GetFactoryTemplate() { var view = Activate(); var template = view?.FactoryTemplate(); return JsonSerializer.Serialize(new { success = template != null, template }); }
 	[DevFlowAction("od.gtk-designer.factory-template.set", Description = "Replace the selected list/grid/column view's factory template as one undo step; invalid XML is refused")]
 	public static string SetFactoryTemplate(string template) { var view = Activate(); var ok = view?.SetFactoryTemplate(template) == true; return JsonSerializer.Serialize(new { success = ok, template = view?.FactoryTemplate() }); }
-	[DevFlowAction("od.gtk-designer.factory-class", Description = "The class of the selected list view, grid view or column's inline list-item factory (GtkBuilderListItemFactory or GtkSignalListItemFactory), or null")]
+	[DevFlowAction("od.gtk-designer.factory-class", Description = "The class of the selected list view, grid view or column's inline list-item factory, or null")]
 	public static string GetFactoryClass() { var view = Activate(); return JsonSerializer.Serialize(new { success = view != null, factoryClass = view?.FactoryClass() }); }
-	[DevFlowAction("od.gtk-designer.factory-class.set", Description = "Switch the selected list view, grid view or column's list-item factory to GtkBuilderListItemFactory or GtkSignalListItemFactory as one undo step; the signal factory's setup/bind stubs are generated; a refusal returns success=false and shows under the canvas")]
+	[DevFlowAction("od.gtk-designer.factory-class.set", Description = "Switch the selected list view, grid view or column's list-item factory to a builder, signal or registered custom GtkListItemFactory GType as one undo step; the signal factory's setup/bind stubs are generated")]
 	public static string SetFactoryClass(string factoryClass) { var view = Activate(); var ok = view?.SetFactoryClass(factoryClass) == true; return JsonSerializer.Serialize(new { success = ok, factoryClass = view?.FactoryClass() }); }
 	[DevFlowAction("od.gtk-designer.column-sortable", Description = "Whether the selected GtkColumnViewColumn has a sorter (null when it is not a column of a column view)")]
 	public static string GetColumnSortable() { var view = Activate(); return JsonSerializer.Serialize(new { success = view != null, sortable = view?.ColumnSortable() }); }
@@ -237,6 +239,10 @@ public static class GtkDesignerDevFlowActions
 	public static string GetItemType() { var view = Activate(); return JsonSerializer.Serialize(new { success = view != null, itemType = view?.ItemType() }); }
 	[DevFlowAction("od.gtk-designer.item-type.set", Description = "Set the selected GListStore's item-type to a GType name (empty removes it) as one undo step; a refusal returns success=false and shows under the canvas")]
 	public static string SetItemType(string typeName) { var view = Activate(); var ok = view?.SetItemType(typeName) == true; return JsonSerializer.Serialize(new { success = ok, itemType = view?.ItemType() }); }
+	[DevFlowAction("od.gtk-designer.item-property", Description = "The selected non-string list's property used by its builder factory, sorter and filter, or null until chosen")]
+	public static string GetItemProperty() { var view = Activate(); return JsonSerializer.Serialize(new { success = view != null, itemProperty = view?.ItemProperty() }); }
+	[DevFlowAction("od.gtk-designer.item-property.set", Description = "Set the selected GListStore object's displayed/sorted/filtered property as one undo step")]
+	public static string SetItemProperty(string propertyName) { var view = Activate(); var ok = view?.SetItemProperty(propertyName) == true; return JsonSerializer.Serialize(new { success = ok, itemProperty = view?.ItemProperty() }); }
 	[DevFlowAction("od.gtk-designer.model-chain", Description = "Read the selected list/grid/column view's model chain, outermost first (selection, sort, filter, data)")]
 	public static string GetModelChain() { var view = Activate(); var chain = view?.ModelChain(); return JsonSerializer.Serialize(new { success = view != null, chain }); }
 	[DevFlowAction("od.gtk-designer.model-wrapper.set", Description = "Add (add=true) or remove the selected list/grid/column view's 'sort' or 'filter' model as one undo step; a refusal returns success=false and shows under the canvas")]

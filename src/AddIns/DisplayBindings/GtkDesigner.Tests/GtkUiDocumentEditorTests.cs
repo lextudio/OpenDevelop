@@ -428,6 +428,15 @@ public sealed class GtkUiDocumentEditorTests
 	}
 
 	[Fact]
+	public void Notebook_ActionWidgetRejectsAnIncompleteGtkClassName()
+	{
+		var editor = new GtkUiDocumentEditor();
+		Assert.True(editor.Reset("<interface><requires lib=\"gtk\" version=\"4.0\"/><object class=\"GtkNotebook\" id=\"book\"/></interface>"), editor.Error);
+		Assert.False(editor.AddNotebookAction("book", "Gtk", atEnd: false));
+		Assert.Contains("complete widget class", editor.Refusal);
+	}
+
+	[Fact]
 	public void TabView_Add_WritesAnAdwTabPageHoldingTheWidget()
 	{
 		var editor = new GtkUiDocumentEditor();
@@ -765,7 +774,7 @@ public sealed class GtkUiDocumentEditorTests
 		Assert.True(editor.SetFactoryClass("column1", GtkUiDocumentEditor.SignalFactory), editor.Error);
 		Assert.Equal(GtkUiDocumentEditor.SignalFactory, editor.GetFactoryClass("column1"));
 		Assert.False(editor.SetFactoryClass("column1", "GtkListItemFactory"));
-		Assert.Contains("is not a list-item factory the designer switches to", editor.Refusal);
+		Assert.Contains("is abstract", editor.Refusal);
 		Assert.False(editor.SetFactoryClass("w", GtkUiDocumentEditor.SignalFactory));
 		Assert.Contains("Only a GtkListView", editor.Refusal);
 		Assert.Null(editor.GetFactoryClass("nothing"));
@@ -870,6 +879,45 @@ public sealed class GtkUiDocumentEditorTests
 		Assert.True(columns.SetItemType(columnView, "GtkStringObject"), columns.Error);
 		Assert.True(columns.SetColumnSortable("column1", true), columns.Error);
 	}
+
+	[Fact]
+	public void ListStore_ObjectPropertyDrivesTheBuilderFactorySorterFilterAndColumnSorter()
+	{
+		var editor = ViewEditor("GtkListView");
+		var view = editor.LastCreatedId!;
+		Assert.True(editor.SetModelData(view, GtkUiDocumentEditor.ListStoreModel), editor.Error);
+		Assert.True(editor.SetItemType(view, "MyApp_Item"), editor.Error);
+		Assert.True(editor.SetItemProperty(view, "title"), editor.Error);
+		Assert.True(editor.SetItemProperty(view, "display-name"), editor.Error);
+		Assert.Equal("display-name", editor.GetItemProperty(view));
+		Assert.Contains("lookup name=\"display-name\" type=\"MyApp_Item\"", editor.GetFactoryTemplate(view));
+		Assert.True(editor.AddModelWrapper(view, GtkUiDocumentEditor.Filtering), editor.Error);
+		Assert.True(editor.AddModelWrapper(view, GtkUiDocumentEditor.Sorting), editor.Error);
+		Assert.Matches("GtkStringFilter[\\s\\S]*?<lookup type=\"MyApp_Item\" name=\"display-name\"", editor.Text);
+		Assert.Matches("GtkStringSorter[\\s\\S]*?<lookup type=\"MyApp_Item\" name=\"display-name\"", editor.Text);
+
+		var columns = ViewEditor("GtkColumnView");
+		var columnView = columns.LastCreatedId!;
+		Assert.True(columns.SetModelData(columnView, GtkUiDocumentEditor.ListStoreModel), columns.Error);
+		Assert.True(columns.SetItemType(columnView, "MyApp_Item"), columns.Error);
+		Assert.True(columns.SetItemProperty("column1", "title"), columns.Error);
+		Assert.True(columns.SetColumnSortable("column1", true), columns.Error);
+		Assert.Matches("GtkStringSorter[\\s\\S]*?<lookup type=\"MyApp_Item\" name=\"title\"", columns.Text);
+	}
+
+	[Fact]
+	public void Factory_CustomRegisteredTypeIsPreservedWithoutInventingSignals()
+	{
+		var editor = ViewEditor("GtkListView");
+		var view = editor.LastCreatedId!;
+		Assert.True(editor.SetFactoryClass(view, "MyApp_ItemFactory"), editor.Error);
+		Assert.Equal("MyApp_ItemFactory", editor.GetFactoryClass(view));
+		Assert.Contains("<object class=\"MyApp_ItemFactory\" id=\"listItemFactory1\"", editor.Text);
+		Assert.DoesNotContain("signalFactory1_setup", editor.Text);
+		Assert.False(editor.SetFactoryClass(view, "not a type"));
+		Assert.Contains("not a list-item factory GType", editor.Refusal);
+	}
+
 
 	[Fact]
 	public void ListStore_RefusesWhatItCannotSwitch()

@@ -102,9 +102,9 @@ public sealed class GtkSignalWiringTests
 	{
 		var actions = GtkSignalWiring.MenuActions(MenuUi);
 		// "under_score" is not a GAction name (g_simple_action_new would return NULL), so it is left out.
-		Assert.Equal(new[] { "action:save", "action:save-as", "action:save.as" }, actions.Select(a => a.ObjectId));
+		Assert.Equal(new[] { "action:save", "action:save-as", "action:save.as", "application-action:quit" }, actions.Select(a => a.ObjectId));
 		// '-' and '.' map differently, so "save-as" and "save.as" are different methods without any suffix.
-		Assert.Equal(new[] { "save_action", "save_as_action", "save__as_action" }, actions.Select(a => a.Handler));
+		Assert.Equal(new[] { "save_action", "save_as_action", "save__as_action", "app_quit_action" }, actions.Select(a => a.Handler));
 		Assert.Equal("void save_as_action(Gio.SimpleAction sender, Gio.SimpleAction.ActivateSignalArgs args)", actions[1].Signature);
 		Assert.Empty(GtkSignalWiring.MenuActions("<not xml"));
 		// A leading digit is a valid action name but not a C# identifier start.
@@ -143,5 +143,29 @@ public sealed class GtkSignalWiringTests
 		// Actions are not objects in the .ui, so BuildUi must not look any up.
 		Assert.DoesNotContain("builder.GetObject(\"action:", source);
 		Assert.DoesNotContain("AddMenuActions", GtkSignalWiring.GenerateCompanion("Main.ui", "Demo", "MainWindow", Handlers()));
+	}
+
+	[Fact]
+	public void Companion_RegistersApplicationActionsWithParametersAndState()
+	{
+		var ui = MenuUi.Replace("<item><attribute name=\"label\">Quit</attribute><attribute name=\"action\">app.quit</attribute></item>", """
+			<item><attribute name="label">Open</attribute><attribute name="action">app.open</attribute><attribute name="target">'recent'</attribute></item>
+			<item><attribute name="label">Dark</attribute><attribute name="action">app.theme</attribute><attribute name="state">'light'</attribute><attribute name="target">'dark'</attribute></item>
+			""");
+		var source = GtkSignalWiring.GenerateCompanion("Main.ui", "Demo", "MainWindow", GtkSignalWiring.MenuActions(ui));
+		Assert.Contains("public void AddApplicationMenuActions(global::Gio.ActionMap map)", source);
+		Assert.Contains("Gio.SimpleAction.New(\"open\", global::GLib.Variant.Parse(null, \"'recent'\", null, null).GetType())", source);
+		Assert.Contains("Gio.SimpleAction.NewStateful(\"theme\", global::GLib.Variant.Parse(null, \"'dark'\", null, null).GetType()", source);
+		Assert.Contains("OnChangeState +=", source);
+		Assert.Contains("SetState(args.Value)", source);
+	}
+
+	[Fact]
+	public void Companion_DerivesAStatefulActionParameterTypeFromItsStateWhenThereIsNoTarget()
+	{
+		var ui = MenuUi.Replace("<item><attribute name=\"label\">Quit</attribute><attribute name=\"action\">app.quit</attribute></item>", "<item><attribute name=\"label\">Dark</attribute><attribute name=\"action\">app.theme</attribute><attribute name=\"state\">'light'</attribute></item>");
+		var source = GtkSignalWiring.GenerateCompanion("Main.ui", "Demo", "MainWindow", GtkSignalWiring.MenuActions(ui));
+		Assert.Contains("NewStateful(\"theme\", @action_app_theme_action_state_state.GetType(), @action_app_theme_action_state_state)", source);
+		Assert.DoesNotContain("NewStateful(\"theme\", null", source);
 	}
 }

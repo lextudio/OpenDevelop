@@ -276,6 +276,34 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
+	/// <summary>Adds a GtkNotebook action widget. GTK keeps these outside its pages as a named
+	/// <c>action-start</c> or <c>action-end</c> child, so they must not go through <see cref="Add"/>,
+	/// which deliberately creates a page and its tab label for every ordinary notebook insert.</summary>
+	public bool AddNotebookAction(string notebookId, string className, bool atEnd)
+	{
+		Refusal = ""; LastCreatedId = null;
+		var notebook = Find(notebookId);
+		if (notebook == null || (string?)notebook.Attribute("class") != "GtkNotebook") { Refusal = "Select a GtkNotebook to add an action widget."; return false; }
+		className = className?.Trim() ?? "";
+		if (className.Length == 0) { Refusal = "Choose a widget class for the notebook action."; return false; }
+		var baseName = className.StartsWith("Gtk", StringComparison.Ordinal) ? className[3..] : className;
+		if (baseName.Length == 0) { Refusal = "Choose a complete widget class for the notebook action."; return false; }
+		baseName = char.ToLowerInvariant(baseName[0]) + baseName[1..];
+		var id = UniqueId((atEnd ? "end" : "start") + char.ToUpperInvariant(baseName[0]) + baseName[1..]);
+		LastCreatedId = id;
+		var widget = new XElement("object", new XAttribute("class", className), new XAttribute("id", id));
+		if (className == "GtkButton") widget.Add(new XElement("property", new XAttribute("name", "label"), new XAttribute("translatable", "yes"), atEnd ? "End" : "Start"));
+		var child = new XElement("child", new XAttribute("type", atEnd ? "action-end" : "action-start"), widget);
+		// Keep action-start before pages and action-end after pages. GTK accepts several action
+		// widgets per side; their XML order is their visual order.
+		if (atEnd) notebook.Add(child);
+		else {
+			var firstPage = notebook.Elements().FirstOrDefault(IsNotebookPage);
+			if (firstPage == null) notebook.AddFirst(child); else firstPage.AddBeforeSelf(child);
+		}
+		return Commit();
+	}
+
 	/// <summary>Adds a new <paramref name="className"/> child where a toolbox drop onto the source text
 	/// at <paramref name="offset"/> puts it: into the innermost container holding that point, beside the
 	/// child the point is on (see XmlToolboxDropPlanner). False when no container holds the point.</summary>
@@ -538,6 +566,10 @@ public sealed class GtkUiDocumentEditor
 		=> new("property", new XAttribute("name", propertyName),
 			new XElement("lookup", new XAttribute("type", "GtkStringObject"), new XAttribute("name", "string")));
 
+	static XElement ItemExpression(string propertyName, string itemType, string itemProperty)
+		=> new("property", new XAttribute("name", propertyName),
+			new XElement("lookup", new XAttribute("type", itemType), new XAttribute("name", itemProperty)));
+
 	/// <summary>The sort or filter change a Model submenu command stands for: <c>model-add-sort</c>, <c>model-remove-sort</c>,
 	/// <c>model-add-filter</c> and <c>model-remove-filter</c> map to (<see cref="Sorting"/> or <see cref="Filtering"/>, add or remove);
 	/// null for any other command.</summary>
@@ -573,15 +605,18 @@ public sealed class GtkUiDocumentEditor
 		return FactoryProperty(owner)?.Elements().FirstOrDefault(IsObject) is { } factory ? (string?)factory.Attribute("class") : null;
 	}
 
-	/// <summary>Switches the object's list-item factory between a <c>GtkBuilderListItemFactory</c> (the XML cell template) and a
-	/// <c>GtkSignalListItemFactory</c> (cells built in code from its <c>setup</c> and <c>bind</c> signals), as one undo step. The
+	/// <summary>Switches the object's list-item factory between a <c>GtkBuilderListItemFactory</c> (the XML cell template), a
+	/// <c>GtkSignalListItemFactory</c> (cells built in code from its <c>setup</c> and <c>bind</c> signals), or a registered custom
+	/// list-item factory GType, as one undo step. The
 	/// signal factory gets <c>setup</c> and <c>bind</c> handlers named <c>&lt;factoryId&gt;_setup</c> / <c>_bind</c>, which the signal
 	/// wiring turns into method stubs and connections. Switching back drops the factory's signals from the document, not the
 	/// methods from the user's class. Refused for an unknown class, an object that has no factory (a column view's factories
 	/// are its columns'), or a factory that is a reference to an object defined elsewhere; choosing the current class is a no-op.</summary>
 	public bool SetFactoryClass(string id, string factoryClass)
 	{
-		if (factoryClass != BuilderFactory && factoryClass != SignalFactory) { Refusal = $"{factoryClass} is not a list-item factory the designer switches to (GtkBuilderListItemFactory or GtkSignalListItemFactory)."; return false; }
+		factoryClass = (factoryClass ?? "").Trim();
+		if (factoryClass == "GtkListItemFactory") { Refusal = "GtkListItemFactory is abstract; choose GtkBuilderListItemFactory, GtkSignalListItemFactory, or a registered concrete subclass."; return false; }
+		if (factoryClass != BuilderFactory && factoryClass != SignalFactory && !IsIdentifier(factoryClass)) { Refusal = $"'{factoryClass}' is not a list-item factory GType name (letters, digits and underscores)."; return false; }
 		var owner = Find(id);
 		var ownerClass = owner == null ? "" : (string?)owner.Attribute("class") ?? "";
 		if (ownerClass == "GtkColumnView") { Refusal = "A GtkColumnView's factories belong to its columns: select a column."; return false; }
@@ -592,12 +627,12 @@ public sealed class GtkUiDocumentEditor
 		if (property != null && current == null && property.Value.Trim().Length > 0) { Refusal = "The factory is a reference to an object defined elsewhere; switch it there."; return false; }
 		XElement factory;
 		if (factoryClass == BuilderFactory) factory = ListFactoryProperty().Elements().First();
-		else {
+		else if (factoryClass == SignalFactory) {
 			var factoryId = UniqueId("signalFactory");
 			factory = new XElement("object", new XAttribute("class", SignalFactory), new XAttribute("id", factoryId),
 				new XElement("signal", new XAttribute("name", "setup"), new XAttribute("handler", factoryId + "_setup")),
 				new XElement("signal", new XAttribute("name", "bind"), new XAttribute("handler", factoryId + "_bind")));
-		}
+		} else factory = new XElement("object", new XAttribute("class", factoryClass), new XAttribute("id", UniqueId("listItemFactory")));
 		if (property == null) { property = new XElement("property", new XAttribute("name", "factory")); owner.Add(property); }
 		property.RemoveNodes();
 		property.Add(factory);
@@ -705,6 +740,77 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
+	/// <summary>Returns the item property used by the selected builder factory, sorter or filter. String lists always use
+	/// <c>string</c>; a custom object store returns null until its property is chosen.</summary>
+	public string? GetItemProperty(string id)
+	{
+		if (Find(id) is not { } element) return null;
+		var view = ListViewClasses.Contains((string?)element.Attribute("class") ?? "") ? element : ColumnViewOf(element);
+		if (view == null) return null;
+		if (ItemsAreStrings(view)) return "string";
+		return ExpressionOf(view)?.Property;
+	}
+
+	/// <summary>Sets the property of a non-string <c>GListStore</c> item that its builder factory, string sorter and string
+	/// filter read. The same typed lookup is written everywhere, keeping the item presentation, filtering and sorting in
+	/// agreement. The application must register the selected item GType before loading the UI.</summary>
+	public bool SetItemProperty(string id, string propertyName)
+	{
+		propertyName = (propertyName ?? "").Trim();
+		if (!IsGObjectPropertyName(propertyName)) { Refusal = $"'{propertyName}' is not a property name (letters, digits, underscores and hyphens)."; return false; }
+		if (Find(id) is not { } selected) { Refusal = "There is no selected list model to set an item property on."; return false; }
+		var view = ListViewClasses.Contains((string?)selected.Attribute("class") ?? "") ? selected : ColumnViewOf(selected);
+		if (view == null || ListStoreOf(view) is not { } store) { Refusal = "Choose a list, grid or column view backed by an inline GListStore."; return false; }
+		var itemType = ItemTypeOf(store);
+		if (string.IsNullOrWhiteSpace(itemType) || itemType == "GtkStringObject") { Refusal = "Set the GListStore item type to the application's GType before choosing its property."; return false; }
+		var owners = (string?)selected.Attribute("class") == "GtkColumnViewColumn"
+			? new[] { selected }
+			: (string?)view.Attribute("class") == "GtkColumnView"
+				? view.Elements("child").Elements("object").Where(column => (string?)column.Attribute("class") == "GtkColumnViewColumn").ToArray()
+				: FactoryOwners.Contains((string?)view.Attribute("class") ?? "") ? new[] { view } : Array.Empty<XElement>();
+		if (owners.Length == 0) { Refusal = "The selected view has no item factory to bind to the object's property."; return false; }
+		if (owners.Any(owner => FactoryElement(owner) is not { })) { Refusal = "A typed item property needs a GtkBuilderListItemFactory; switch the selected factory from signals to a builder template first."; return false; }
+		foreach (var owner in owners) SetFactoryTemplate(owner, ItemFactoryTemplate(itemType, propertyName));
+		foreach (var expression in ExpressionsIn(view)) SetExpression(expression, itemType, propertyName);
+		return Commit();
+	}
+
+	static (string Type, string Property)? ExpressionOf(XElement view)
+	{
+		var lookup = ExpressionsIn(view).Select(expression => expression.Elements().FirstOrDefault(e => e.Name.LocalName == "lookup"))
+			.FirstOrDefault(lookup => lookup?.Attribute("type") != null && lookup.Attribute("name") != null);
+		if (lookup != null) return ((string)lookup.Attribute("type")!, (string)lookup.Attribute("name")!);
+		var owners = (string?)view.Attribute("class") == "GtkColumnView"
+			? view.Elements("child").Elements("object").Where(column => (string?)column.Attribute("class") == "GtkColumnViewColumn")
+			: FactoryOwners.Contains((string?)view.Attribute("class") ?? "") ? new[] { view } : Array.Empty<XElement>();
+		foreach (var owner in owners) {
+			var bytes = FactoryElement(owner)?.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "bytes"))?.Value;
+			if (string.IsNullOrWhiteSpace(bytes)) continue;
+			try {
+				var itemLookup = XDocument.Parse(bytes).Descendants("lookup").FirstOrDefault(e => e.Attribute("type") != null && e.Attribute("name") != null);
+				if (itemLookup != null) return ((string)itemLookup.Attribute("type")!, (string)itemLookup.Attribute("name")!);
+			} catch (XmlException) { }
+		}
+		return null;
+	}
+
+	static IEnumerable<XElement> ExpressionsIn(XElement view)
+		=> view.DescendantsAndSelf("object").Where(o => (string?)o.Attribute("class") is "GtkStringSorter" or "GtkStringFilter")
+			.SelectMany(o => o.Elements().Where(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "expression")));
+
+	static void SetExpression(XElement expression, string itemType, string itemProperty)
+	{
+		expression.RemoveNodes();
+		expression.Add(new XElement("lookup", new XAttribute("type", itemType), new XAttribute("name", itemProperty)));
+	}
+
+	XElement? DisplayExpression(XElement view, string propertyName)
+	{
+		if (ItemsAreStrings(view)) return StringExpression(propertyName);
+		var itemType = ListStoreOf(view) is { } store ? ItemTypeOf(store) : null;
+		return ExpressionOf(view) is { } expression && expression.Type == itemType ? ItemExpression(propertyName, expression.Type, expression.Property) : null;
+	}
+
 	/// <summary>The column view that owns a <c>GtkColumnViewColumn</c> object, or null.</summary>
 	XElement? ColumnViewOf(XElement column)
 		=> (string?)column.Attribute("class") == "GtkColumnViewColumn" && column.Parent is { Name.LocalName: "child" } wrapper
@@ -743,15 +849,16 @@ public sealed class GtkUiDocumentEditor
 		}
 		if (existing != null) return true;
 		var chain = GetModelChain((string?)view.Attribute("id") ?? "");
-		if (!ItemsAreStrings(view)) {
-			Refusal = $"The view's items are {(chain == null ? "unknown" : chain[^1])}, not strings: set the column's sorter and its expression in the source.";
+		var expression = DisplayExpression(view, "expression");
+		if (expression == null) {
+			Refusal = $"The view's items are {(chain == null ? "unknown" : chain[^1])}, not strings: set an item property before adding a column sorter.";
 			return false;
 		}
 		var needsSortModel = chain != null && !chain.Contains("GtkSortListModel");
 		var viewId = (string?)view.Attribute("id") ?? "";
 		return Batch(() => {
 			column.Add(new XElement("property", new XAttribute("name", "sorter"),
-				new XElement("object", new XAttribute("class", "GtkStringSorter"), new XAttribute("id", UniqueId("stringSorter")), StringExpression("expression"))));
+				new XElement("object", new XAttribute("class", "GtkStringSorter"), new XAttribute("id", UniqueId("stringSorter")), expression)));
 			return Commit() && (!needsSortModel || AddModelWrapper(viewId, Sorting));
 		});
 	}
@@ -801,8 +908,9 @@ public sealed class GtkUiDocumentEditor
 		var className = kind == Sorting ? "GtkSortListModel" : "GtkFilterListModel";
 		if (chain.Contains(className)) { Refusal = $"The view's model already has a {className}."; return false; }
 		// A string sorter or filter reads the item's string; a column view's sort model is driven by its own sorter and reads nothing.
-		if (!ItemsAreStrings(view) && !(kind == Sorting && (string?)view.Attribute("class") == "GtkColumnView")) {
-			Refusal = "The view's items are not strings: add the sort or filter model with its expression in the source.";
+		var expression = DisplayExpression(view, "expression");
+		if (expression == null && !(kind == Sorting && (string?)view.Attribute("class") == "GtkColumnView")) {
+			Refusal = "The view's items are not strings: set an item property before adding the sort or filter model.";
 			return false;
 		}
 		var (holder, model) = kind == Sorting ? WrapPoint(view) : WrapPoint(view, "GtkSortListModel");
@@ -814,14 +922,14 @@ public sealed class GtkUiDocumentEditor
 		wrapper.Add(inner);
 		if (kind == Filtering) {
 			var filter = new XElement("object", new XAttribute("class", "GtkStringFilter"), new XAttribute("id", UniqueId("stringFilter")),
-				StringExpression("expression"), new XElement("property", new XAttribute("name", "ignore-case"), "true"));
+				expression!, new XElement("property", new XAttribute("name", "ignore-case"), "true"));
 			wrapper.Add(new XElement("property", new XAttribute("name", "filter"), filter));
 		} else if ((string?)view.Attribute("class") == "GtkColumnView") {
 			// The column headers' sorter drives the model: <binding name="sorter"><lookup name="sorter">columnView</lookup>.
 			wrapper.Add(new XElement("binding", new XAttribute("name", "sorter"), new XElement("lookup", new XAttribute("name", "sorter"), id)));
 		} else {
 			wrapper.Add(new XElement("property", new XAttribute("name", "sorter"),
-				new XElement("object", new XAttribute("class", "GtkStringSorter"), new XAttribute("id", UniqueId("stringSorter")), StringExpression("expression"))));
+				new XElement("object", new XAttribute("class", "GtkStringSorter"), new XAttribute("id", UniqueId("stringSorter")), expression!)));
 		}
 		holder.RemoveNodes();
 		holder.Add(wrapper);
@@ -928,6 +1036,14 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
+	static void SetFactoryTemplate(XElement owner, string template)
+	{
+		var factory = FactoryElement(owner)!;
+		var property = factory.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "bytes"));
+		if (property == null) factory.Add(new XElement("property", new XAttribute("name", "bytes"), template));
+		else property.Value = template;
+	}
+
 	/// <summary>A menu definition (<c>&lt;menu&gt;</c>) held by the object's <c>menu-model</c>
 	/// property. GtkBuilder parses menus as XML tags, not as a Gio.Menu object.</summary>
 	static XElement? MenuElement(XElement element)
@@ -944,7 +1060,7 @@ public sealed class GtkUiDocumentEditor
 		=> MenuEntries(container).Select((entry, index) => {
 			var node = new DesignerMenuNode { SourceIndex = index, Kind = entry.Name.LocalName, Label = MenuAttribute(entry, "label") };
 			if (node.IsContainer) node.Children = ReadMenuEntries(entry);
-			else node.Action = MenuAttribute(entry, "action");
+			else { node.Action = MenuAttribute(entry, "action"); node.Target = MenuAttribute(entry, "target"); node.State = MenuAttribute(entry, "state"); }
 			return node;
 		}).ToList();
 
@@ -972,7 +1088,7 @@ public sealed class GtkUiDocumentEditor
 
 	static bool SameMenu(IReadOnlyList<DesignerMenuNode> edited, IReadOnlyList<DesignerMenuNode> current)
 		=> edited.Count == current.Count && edited.Select((node, index) => node.SourceIndex == index && node.Kind == current[index].Kind
-			&& node.Label == current[index].Label && (node.IsContainer ? SameMenu(node.Children, current[index].Children) : node.Action == current[index].Action)).All(same => same);
+			&& node.Label == current[index].Label && (node.IsContainer ? SameMenu(node.Children, current[index].Children) : node.Action == current[index].Action && node.Target == current[index].Target && node.State == current[index].State)).All(same => same);
 
 	static List<XElement>? RebuildMenuEntries(IReadOnlyList<DesignerMenuNode> nodes, IReadOnlyList<XElement> old)
 	{
@@ -990,7 +1106,7 @@ public sealed class GtkUiDocumentEditor
 				if (children == null) return null;
 				oldChildren.ForEach(entry => entry.Remove());
 				copy.Add(children);
-			} else SetMenuAttribute(copy, "action", node.Action);
+			} else { SetMenuAttribute(copy, "action", node.Action); SetMenuAttribute(copy, "target", node.Target); SetMenuAttribute(copy, "state", node.State); }
 			result.Add(copy);
 		}
 		return result;
@@ -1009,8 +1125,10 @@ public sealed class GtkUiDocumentEditor
 
 	/// <summary>The inline GtkBuilderListItemFactory held by the object's <c>factory</c> property.</summary>
 	XElement? FactoryElement(string id)
+		=> Find(id) is { } element ? FactoryElement(element) : null;
+
+	static XElement? FactoryElement(XElement element)
 	{
-		var element = Find(id);
 		var property = element?.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), "factory"));
 		var factory = property?.Elements().FirstOrDefault(IsObject);
 		return factory != null && (string?)factory.Attribute("class") == "GtkBuilderListItemFactory" ? factory : null;
@@ -1220,6 +1338,9 @@ public sealed class GtkUiDocumentEditor
 			new XElement("property", new XAttribute("name", "bytes"), ListItemFactoryTemplate)));
 
 	const string ListItemFactoryTemplate = "<interface><template class=\"GtkListItem\"><property name=\"child\"><object class=\"GtkLabel\"><binding name=\"label\"><lookup name=\"string\" type=\"GtkStringObject\"><lookup name=\"item\">GtkListItem</lookup></lookup></binding></object></property></template></interface>";
+	static string ItemFactoryTemplate(string itemType, string itemProperty)
+		=> $"<interface><template class=\"GtkListItem\"><property name=\"child\"><object class=\"GtkLabel\"><binding name=\"label\"><lookup name=\"{itemProperty}\" type=\"{itemType}\"><lookup name=\"item\">GtkListItem</lookup></lookup></binding></object></property></template></interface>";
 	static bool IsIdentifier(string value) => !string.IsNullOrWhiteSpace(value) && (char.IsLetter(value[0]) || value[0] == '_') && value.Skip(1).All(c => char.IsLetterOrDigit(c) || c == '_');
+	static bool IsGObjectPropertyName(string value) => !string.IsNullOrWhiteSpace(value) && (char.IsLetter(value[0]) || value[0] == '_') && value.Skip(1).All(c => char.IsLetterOrDigit(c) || c is '_' or '-');
 	sealed class Utf8StringWriter : StringWriter { public override System.Text.Encoding Encoding => new System.Text.UTF8Encoding(false); }
 }

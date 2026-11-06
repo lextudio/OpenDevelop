@@ -1,3 +1,4 @@
+using System.IO;
 using ICSharpCode.GtkDesigner;
 using ICSharpCode.SharpDevelop.LanguageServices;
 using Xunit;
@@ -288,6 +289,40 @@ public sealed class GtkUiLanguageServiceTests
 		var service = Service(text);
 		var offset = text.IndexOf("label1</property>", StringComparison.Ordinal) + 2;
 		Assert.Empty(service.RenameSymbolAsync(id, offset, "label2", CancellationToken.None).GetAwaiter().GetResult());
+	}
+
+	[Fact]
+	public void Handler_NavigatesAndRenamesTheBehaviorMethod()
+	{
+		var directory = Path.Combine(Path.GetTempPath(), "GtkDesignerHandler-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		var uiPath = Path.Combine(directory, "Panel.ui");
+		var codePath = Path.ChangeExtension(uiPath, ".cs");
+		var text = "<interface><object class=\"GtkButton\" id=\"run\"><signal name=\"clicked\" handler=\"on_run\"/></object></interface>";
+		File.WriteAllText(codePath, "partial class Panel { void on_run() { } }");
+		try {
+			var documentId = new DocumentId(uiPath);
+			var service = new GtkUiLanguageService();
+			service.UpsertDocumentAsync(documentId, text, CancellationToken.None).GetAwaiter().GetResult();
+			var offset = text.IndexOf("on_run", StringComparison.Ordinal) + 2;
+			var target = Assert.Single(service.GoToDefinitionAsync(documentId, offset, CancellationToken.None).GetAwaiter().GetResult());
+			Assert.Equal(codePath, target.FileName);
+			var edits = service.RenameSymbolAsync(documentId, offset, "run_clicked", CancellationToken.None).GetAwaiter().GetResult();
+			Assert.Equal("run_clicked", Assert.Single(edits[uiPath]).NewText);
+			Assert.Equal("run_clicked", Assert.Single(edits[codePath]).NewText);
+		} finally { Directory.Delete(directory, recursive: true); }
+	}
+
+	[Fact]
+	public void CodeActions_OfferAndApplyLibadwaitaRequirement()
+	{
+		var text = "<interface><requires lib=\"gtk\" version=\"4.0\"/><object class=\"AdwWindow\"/></interface>";
+		var service = Service(text);
+		var actions = service.GetCodeActionsAsync(id, new TextSpan(new TextPosition(1, 1), new TextPosition(1, text.Length + 1)), CancellationToken.None).GetAwaiter().GetResult();
+		var action = Assert.Single(actions);
+		Assert.Equal("gtk.add-libadwaita-requires", action.Id);
+		var edit = Assert.Single(service.ApplyCodeActionAsync(id, action.Id, CancellationToken.None).GetAwaiter().GetResult()[id.FileName]);
+		Assert.Contains("libadwaita", edit.NewText);
 	}
 
 	[Fact]

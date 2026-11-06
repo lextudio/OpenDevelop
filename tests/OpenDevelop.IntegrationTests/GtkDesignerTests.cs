@@ -546,6 +546,16 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.Equal("tab", (string?)notebookChildren[1].Attribute("type"));
 		Assert.Equal("GtkLabel", (string?)notebookChildren[1].Element("object")?.Attribute("class"));
 		Assert.DoesNotContain("GtkNotebookPage", notebookText);
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "notebook")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.notebook-action.add", false, "GtkButton")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.notebook-action.add", true, "GtkButton")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.file.save", notebookPath)).GetProperty("success").GetBoolean());
+		notebook = System.Xml.Linq.XDocument.Parse((await File.ReadAllTextAsync(notebookPath, TestContext.Current.CancellationToken)).Replace("\r", "")).Descendants("object").Single(x => (string?)x.Attribute("id") == "notebook");
+		notebookChildren = notebook.Elements("child").ToList();
+		Assert.Equal("action-start", (string?)notebookChildren[0].Attribute("type"));
+		Assert.Equal("startButton1", (string?)notebookChildren[0].Element("object")?.Attribute("id"));
+		Assert.Equal("action-end", (string?)notebookChildren[^1].Attribute("type"));
+		Assert.Equal("endButton1", (string?)notebookChildren[^1].Element("object")?.Attribute("id"));
 		await ValidateGtkBuilderAsync(notebookPath);
 		await app.InvokeAsync("od.close-active-view");
 	}
@@ -944,9 +954,9 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.Contains("<submenu>", xml);
 		await ValidateGtkBuilderAsync(path);
 
-		// Window actions ("win.save") get a handler stub in MenuWindow.cs and an AddMenuActions in the
-		// companion; an application action ("app.quit") belongs to application code and gets nothing.
-		var actions = await app.InvokeAsync("od.gtk-designer.menu-items.set", "Save=win.save;Save as=win.save-as;Save dotted=win.save.as;Odd=win.under_score;Quit=app.quit");
+		// Window and application actions both get typed stubs and registrations. Targets provide the
+		// GAction parameter type; state makes the application action stateful.
+		var actions = await app.InvokeAsync("od.gtk-designer.menu-items.set", "Save=win.save;Save as=win.save-as;Save dotted=win.save.as;Odd=win.under_score;Open=app.open | target='recent';Dark=app.theme | state='light' | target='dark'");
 		Assert.True(actions.GetProperty("success").GetBoolean(), actions.ToString());
 		Assert.True((await app.InvokeAsync("od.file.save", path)).GetProperty("success").GetBoolean());
 		var behaviorPath = Path.ChangeExtension(path, ".cs");
@@ -957,11 +967,15 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.Contains("void save_as_action(Gio.SimpleAction sender, Gio.SimpleAction.ActivateSignalArgs args)", behavior);
 		Assert.Contains("void save__as_action(Gio.SimpleAction sender, Gio.SimpleAction.ActivateSignalArgs args)", behavior); // "save.as" is not "save-as"
 		Assert.DoesNotContain("under_score", behavior); // not a GAction name (g_simple_action_new would return NULL)
-		Assert.DoesNotContain("quit_action", behavior);
+		Assert.Contains("void app_open_action(Gio.SimpleAction sender, Gio.SimpleAction.ActivateSignalArgs args)", behavior);
+		Assert.Contains("void app_theme_action_state(Gio.SimpleAction sender, Gio.SimpleAction.ChangeStateSignalArgs args)", behavior);
 		var companion = await File.ReadAllTextAsync(companionPath, TestContext.Current.CancellationToken);
 		Assert.Contains("public void AddMenuActions(global::Gio.ActionMap map)", companion);
 		Assert.Contains("global::Gio.SimpleAction.New(\"save-as\", null)", companion);
-		Assert.DoesNotContain("\"quit\"", companion);
+		Assert.Contains("public void AddApplicationMenuActions(global::Gio.ActionMap map)", companion);
+		Assert.Contains("Gio.SimpleAction.New(\"open\", global::GLib.Variant.Parse(null, \"'recent'\", null, null).GetType())", companion);
+		Assert.Contains("Gio.SimpleAction.NewStateful(\"theme\", global::GLib.Variant.Parse(null, \"'dark'\", null, null).GetType()", companion);
+		Assert.Contains("SetState(args.Value)", companion);
 		// The generated stubs and registration must compile against Gir.Core.
 		await ValidateFixtureBuildAsync(projectPath);
 		// Dropping the last window action drops AddMenuActions; the user's call site is told, not left to a compile error.
@@ -1163,6 +1177,19 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.Contains("no-such-property", diagnostics);
 		Assert.Contains("has no property", diagnostics);
 		Assert.DoesNotContain("not a GTK type the designer can instantiate", diagnostics);
+
+		// Rebuilding the declared assembly replaces the disposable host instead of retaining its old
+		// AssemblyLoadContext. The widget's label changes the rendered native frame, proving the new
+		// binary was loaded without closing/reopening the designer.
+		var sourcePath = Path.Combine(workDir, "FixtureStars.cs");
+		var source = await File.ReadAllTextAsync(sourcePath, TestContext.Current.CancellationToken);
+		Assert.Contains("SetLabel(\"***\")", source);
+		var hostProcessId = status.GetProperty("hostProcessId").GetInt32();
+		await File.WriteAllTextAsync(sourcePath, source.Replace("SetLabel(\"***\")", "SetLabel(\"rebuilt\")", StringComparison.Ordinal), TestContext.Current.CancellationToken);
+		await ValidateFixtureBuildAsync(projectPath);
+		var rebuilt = await WaitForHostChangeAsync(hostProcessId, "starsWindow");
+		Assert.True(rebuilt.GetProperty("nativeFrame").GetBoolean(), rebuilt.ToString());
+		Assert.Contains("FixtureStars custom widget created from the project", rebuilt.GetProperty("diagnostics").ToString());
 		await app.InvokeAsync("od.close-active-view");
 	}
 

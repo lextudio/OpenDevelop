@@ -220,6 +220,19 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		return documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.SetItemType(elementId, typeName), "The item type was rejected.", session => State(session, false), session => session.Editor.Refusal);
 	}
 
+	[JsonRpcMethod("gtk/item-property")]
+	public string? ItemProperty(string sessionId, string documentId, string elementId)
+	{
+		EnsureSession(sessionId);
+		return Get(documentId).Editor.GetItemProperty(elementId);
+	}
+
+	[JsonRpcMethod("gtk/set-item-property")]
+	public DesignerSessionState SetItemProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName)
+	{
+		return documents.Edit(sessionId, documentId, baseVersion, session => session.Editor.SetItemProperty(elementId, propertyName), "The item property was rejected.", session => State(session, false), session => session.Editor.Refusal);
+	}
+
 	/// <summary>The selected object's menu entries: items, sections and submenus (a &lt;menu&gt; in its menu-model property).</summary>
 	[JsonRpcMethod("gtk/menu-items")]
 	public List<DesignerMenuNode>? MenuItems(string sessionId, string documentId, string elementId)
@@ -269,6 +282,16 @@ sealed class GtkDesignerHostService : IDesignerChildService
 			state.CreatedElementId = session.Editor.LastCreatedId;
 			return state;
 		}, session => session.Editor.Refusal);
+	}
+
+	[JsonRpcMethod("gtk/add-notebook-action")]
+	public DesignerSessionState AddNotebookAction(string sessionId, string documentId, long baseVersion, string notebookId, string className, bool atEnd)
+	{
+		return documents.Edit(sessionId, documentId, baseVersion,
+			session => session.Editor.AddNotebookAction(notebookId, className, atEnd),
+			"GTK notebook action insertion was rejected.", session => {
+				var state = State(session, false); state.CreatedElementId = session.Editor.LastCreatedId; return state;
+			}, session => session.Editor.Refusal);
 	}
 
 	[JsonRpcMethod("design/delete-elements")]

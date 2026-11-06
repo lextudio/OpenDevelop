@@ -22,6 +22,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		[JsonPropertyName("kind")] public string Kind { get; set; } = ItemKind;
 		[JsonPropertyName("label")] public string Label { get; set; } = "";
 		[JsonPropertyName("action")] public string Action { get; set; } = "";
+		[JsonPropertyName("target")] public string Target { get; set; } = "";
+		[JsonPropertyName("state")] public string State { get; set; } = "";
 		[JsonPropertyName("children")] public List<DesignerMenuNode> Children { get; set; } = new List<DesignerMenuNode>();
 
 		public bool IsContainer => Kind == SectionKind || Kind == SubmenuKind;
@@ -54,7 +56,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 					builder.Append('\n');
 					Append(builder, node.Children, depth + 1);
 				} else {
-					builder.Append(node.Action.Length == 0 ? node.Label : node.Label + " = " + node.Action).Append('\n');
+					builder.Append(node.Action.Length == 0 ? node.Label : node.Label + " = " + node.Action);
+					if (node.Target.Length > 0) builder.Append(" | target=").Append(node.Target);
+					if (node.State.Length > 0) builder.Append(" | state=").Append(node.State);
+					builder.Append('\n');
 				}
 			}
 		}
@@ -112,7 +117,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			for (var i = 0; i < nodes.Count; i++) {
 				matches[i] = -1;
 				for (var j = 0; j < existing.Count; j++) {
-					if (claimed[j] || existing[j].Kind != nodes[i].Kind || existing[j].Label != nodes[i].Label || existing[j].Action != nodes[i].Action) continue;
+					if (claimed[j] || existing[j].Kind != nodes[i].Kind || existing[j].Label != nodes[i].Label || existing[j].Action != nodes[i].Action || existing[j].Target != nodes[i].Target || existing[j].State != nodes[i].State) continue;
 					matches[i] = j; claimed[j] = true;
 					break;
 				}
@@ -134,11 +139,14 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				return new DesignerMenuNode { Kind = DesignerMenuNode.SectionKind, Label = text.Substring(SectionTag.Length).Trim() };
 			if (text.StartsWith(SubmenuTag, StringComparison.OrdinalIgnoreCase))
 				return new DesignerMenuNode { Kind = DesignerMenuNode.SubmenuKind, Label = text.Substring(SubmenuTag.Length).Trim() };
-			var at = text.IndexOf('=');
-			return new DesignerMenuNode {
-				Label = (at < 0 ? text : text.Substring(0, at)).Trim(),
-				Action = at < 0 ? "" : text.Substring(at + 1).Trim()
-			};
+			var parts = text.Split('|').Select(part => part.Trim()).ToArray();
+			var at = parts[0].IndexOf('=');
+			var result = new DesignerMenuNode { Label = (at < 0 ? parts[0] : parts[0].Substring(0, at)).Trim(), Action = at < 0 ? "" : parts[0].Substring(at + 1).Trim() };
+			foreach (var option in parts.Skip(1)) {
+				if (option.StartsWith("target=", StringComparison.OrdinalIgnoreCase)) result.Target = option.Substring("target=".Length).Trim();
+				else if (option.StartsWith("state=", StringComparison.OrdinalIgnoreCase)) result.State = option.Substring("state=".Length).Trim();
+			}
+			return result;
 		}
 
 		static int DepthOf(string line)

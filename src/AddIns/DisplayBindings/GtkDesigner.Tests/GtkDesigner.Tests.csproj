@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <!-- The .ui language service is pure (contracts + GIR XML + the text parser), so it is tested
          here without a host; the IDE only adds the registry and completion-binding plumbing. -->
     <ProjectReference Include="..\..\..\Main\LanguageServices\LanguageServices.Contracts\LanguageServices.Contracts.csproj" />

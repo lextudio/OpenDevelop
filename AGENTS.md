@@ -7,7 +7,7 @@ Keep this file concise and operational. Read the referenced technote only when t
 - Make small, verified changes; preserve unrelated user changes.
 - Run relevant maintained tests yourself. Test failures caused by the change block it.
 - Use one .NET SDK on macOS. Mixed SDKs can cause a false `MSB4018` asset-cache failure; use the
-  Homebrew SDK path that made the cache, e.g. `/opt/homebrew/Cellar/dotnet/<version>/libexec/dotnet`.
+  environment-selected `dotnet` consistently and do not invoke a Homebrew SDK path directly.
 - `SharpDevelop.sln` is stale; use `OpenDevelop.Mvp.slnx`.
 - LibreWPF source lives in the sibling repo `../openavalon` (not in this repo); look there for
   window/ProGPU behaviour, e.g. first-window init and show timing. OpenDevelop consumes it, with
@@ -70,7 +70,8 @@ the same way every time, and a hand-rolled run is not a valid review. The flow, 
    (no `index.lock`, `git diff --cached --check`, a non-empty diff), records the tree hash and the pre-launch session
    snapshot, and runs the reviewer in the foreground with stdout and stderr in separate files. It never retries.
 3. `pwsh build/opencode-review.ps1 -Action Read -Name <unique> [-Directory <the same directory>]` polls the export (5-20 minutes is normal; exit code 3 means
-   "not yet", run it again) and verifies the **export**: new session, exact title, directory, agent and model, created
+   "not yet", including a live tool-call session whose `-review-exit.txt` receipt has not been written; run it again and
+   never launch a second reviewer) and verifies the **export**: new session, exact title, directory, agent and model, created
    after the launch, normal finish, one verdict, a commit-message block on approval, and an unchanged staged tree. Exit
    codes: 0 approved, 2 changes requested (fix, stage the new tree, and start again from step 1), 4 unusable or stale.
 4. `pwsh build/opencode-review.ps1 -Action Commit -Name <unique> [-Directory <the same directory>]` re-checks the tree, has the `build` agent run
@@ -164,6 +165,9 @@ with a foreground no-tool diagnostic session if necessary, then report it unveri
 Empty intermediate polls are normal while the reviewer is reading code: wait for the original
 foreground process to exit before looking up its session or deciding that the launch failed. Do not
 start a second review merely because its streamed output is quiet.
+When `Read` sees an exported tool-call session before Launch has written `-review-exit.txt`, that is
+also an ordinary in-progress state: the script must return exit 3, not exit 4 or an invalid-review
+diagnosis. Keep polling that exact session until it has a normal terminal assistant message.
 
 Progress must be observable while a review or commit agent runs, because `--format json` redirected to a
 file stays empty until the process exits (observed on every run; a 40-minute review looks identical to a

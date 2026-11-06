@@ -11,7 +11,8 @@ namespace ICSharpCode.GtkDesigner;
 /// When <see cref="Supported"/> is false, <see cref="Reason"/> says why it is left to user code.</summary>
 public sealed record GtkSignalHandler(
 	string ObjectId, string ObjectType, string Signal, string Handler,
-	string EventName, string ReturnType, string ArgsType, bool Supported, string Reason)
+	string EventName, string ReturnType, string ArgsType, bool Supported, string Reason,
+	string Target = "", string State = "")
 {
 	/// <summary>The method a behavior class needs: <c>void runButton_clicked(Gtk.Button sender, System.EventArgs args)</c>.</summary>
 	public string Signature => $"{ReturnType} {Handler}({ObjectType} sender, {ArgsType} args)";
@@ -78,19 +79,24 @@ public static class GtkSignalWiring
 
 	/// <summary>The window actions (<c>win.name</c>) the document's menus refer to, as handlers of a
 	/// <c>Gio.SimpleAction</c>: <c>void name_action(Gio.SimpleAction sender, Gio.SimpleAction.ActivateSignalArgs args)</c>.
-	/// Only <c>win.</c> actions: they live on the window the companion's <c>AddMenuActions</c> is given, while
-	/// an <c>app.</c> action belongs to the application object, which only application code can see.</summary>
+	/// Window and application actions. Menu <c>target</c> gives a parameter type; the designer's
+	/// <c>state</c> metadata gives the initial variant for a stateful action.</summary>
 	public static IReadOnlyList<GtkSignalHandler> MenuActions(string uiText)
 	{
-		var names = new List<string>();
+		var actions = new List<(string Scope, string Name, string Target, string State)>();
 		try {
 			foreach (var attribute in XDocument.Parse(uiText).Descendants().Where(e => e.Name.LocalName == "attribute" && (string?)e.Attribute("name") == "action")) {
 				var value = attribute.Value.Trim();
-				if (!value.StartsWith("win.", StringComparison.Ordinal)) continue;
-				var name = value.Substring(4);
+				var scope = value.StartsWith("win.", StringComparison.Ordinal) ? "win" : value.StartsWith("app.", StringComparison.Ordinal) ? "app" : "";
+				if (scope.Length == 0) continue;
+				var name = value.Substring(scope.Length + 1);
 				// GAction names are alphanumerics, '-' and '.': g_simple_action_new rejects anything else (an
 				// underscore included) and returns NULL, so such a name is not registered, only left to user code.
-				if (name.Length > 0 && name.All(c => (c < 128 && char.IsLetterOrDigit(c)) || c == '-' || c == '.') && !names.Contains(name)) names.Add(name);
+				if (name.Length == 0 || !name.All(c => (c < 128 && char.IsLetterOrDigit(c)) || c == '-' || c == '.')) continue;
+				var item = attribute.Parent;
+				var target = item?.Elements().FirstOrDefault(e => e.Name.LocalName == "attribute" && (string?)e.Attribute("name") == "target")?.Value.Trim() ?? "";
+				var state = item?.Elements().FirstOrDefault(e => e.Name.LocalName == "attribute" && (string?)e.Attribute("name") == "state")?.Value.Trim() ?? "";
+				if (!actions.Any(a => a.Scope == scope && a.Name == name)) actions.Add((scope, name, target, state));
 			}
 		} catch (System.Xml.XmlException) { return Array.Empty<GtkSignalHandler>(); }
 		// The name itself decides the method (ActionMethod), which keeps an action bound to its user-written
@@ -98,13 +104,14 @@ public static class GtkSignalWiring
 		// are disambiguated, by ordinal name order.
 		var methods = new Dictionary<string, string>(StringComparer.Ordinal);
 		var taken = new HashSet<string>(StringComparer.Ordinal);
-		foreach (var name in names.OrderBy(n => n, StringComparer.Ordinal)) {
-			var method = ActionMethod(name);
-			for (var n = 2; !taken.Add(method); n++) method = ActionMethod(name) + "_" + n;
-			methods[name] = method;
+		foreach (var action in actions.OrderBy(a => a.Scope, StringComparer.Ordinal).ThenBy(a => a.Name, StringComparer.Ordinal)) {
+			var method = ActionMethod((action.Scope == "app" ? "app_" : "") + action.Name) + (action.State.Length > 0 ? "_state" : "");
+			for (var n = 2; !taken.Add(method); n++) method = ActionMethod((action.Scope == "app" ? "app_" : "") + action.Name) + "_" + n;
+			methods[action.Scope + ":" + action.Name] = method;
 		}
-		return names.Select(name => new GtkSignalHandler(ActionPrefix + name, "Gio.SimpleAction", "activate", methods[name], "OnActivate",
-			"void", "Gio.SimpleAction.ActivateSignalArgs", true, "")).ToList();
+		return actions.Select(action => new GtkSignalHandler(action.Scope == "win" ? ActionPrefix + action.Name : "application-action:" + action.Name,
+			"Gio.SimpleAction", action.State.Length > 0 ? "change-state" : "activate", methods[action.Scope + ":" + action.Name], action.State.Length > 0 ? "OnChangeState" : "OnActivate",
+			"void", action.State.Length > 0 ? "Gio.SimpleAction.ChangeStateSignalArgs" : "Gio.SimpleAction.ActivateSignalArgs", true, "", action.Target, action.State)).ToList();
 	}
 
 	/// <summary>"save-as" -&gt; "save_as_action", "save.as" -&gt; "save__as_action" (a GAction name has no underscore
@@ -179,7 +186,7 @@ public static class GtkSignalWiring
 		// AddFromString, not NewFromString: the latter aborts the process on any error; this throws.
 		sb.AppendLine($"{indent}\t\tvar builder = global::Gtk.Builder.New();");
 		sb.AppendLine($"{indent}\t\tbuilder.AddFromString(document.ToString(), -1);");
-		foreach (var group in handlers.Where(h => !h.ObjectId.StartsWith(ActionPrefix, StringComparison.Ordinal)).GroupBy(h => h.ObjectId)) {
+		foreach (var group in handlers.Where(h => !h.ObjectId.StartsWith(ActionPrefix, StringComparison.Ordinal) && !h.ObjectId.StartsWith("application-action:", StringComparison.Ordinal)).GroupBy(h => h.ObjectId)) {
 			var supported = group.Where(h => h.Supported).ToList();
 			if (supported.Count > 0) {
 				var local = Local(group.Key);
@@ -193,24 +200,42 @@ public static class GtkSignalWiring
 		}
 		sb.AppendLine($"{indent}\t\treturn builder;");
 		sb.AppendLine($"{indent}\t}}");
-		var actions = handlers.Where(h => h.ObjectId.StartsWith(ActionPrefix, StringComparison.Ordinal)).ToList();
-		if (actions.Count > 0) {
-			sb.AppendLine();
-			sb.AppendLine($"{indent}\t/// <summary>Registers the window actions {uiFileName}'s menus refer to (\"win.name\") on <paramref name=\"map\"/>,");
-			sb.AppendLine($"{indent}\t/// typically the window BuildUi created, each calling its handler in the other part of this class.</summary>");
-			sb.AppendLine($"{indent}\tpublic void AddMenuActions(global::Gio.ActionMap map)");
-			sb.AppendLine($"{indent}\t{{");
-			foreach (var action in actions) {
-				var name = action.ObjectId.Substring(ActionPrefix.Length);
-				var local = Local("action_" + action.Handler); // unique per action; not the handler's own name, which the lambda calls
-				sb.AppendLine($"{indent}\t\tvar {local} = global::Gio.SimpleAction.New(\"{name}\", null);");
-				sb.AppendLine($"{indent}\t\t{local}.OnActivate += (_, args) => {action.Handler}({local}, args);");
-				sb.AppendLine($"{indent}\t\tmap.AddAction({local});");
-			}
-			sb.AppendLine($"{indent}\t}}");
-		}
+		var windowActions = handlers.Where(h => h.ObjectId.StartsWith(ActionPrefix, StringComparison.Ordinal)).ToList();
+		var applicationActions = handlers.Where(h => h.ObjectId.StartsWith("application-action:", StringComparison.Ordinal)).ToList();
+		AppendMenuActions(sb, indent, uiFileName, windowActions, "AddMenuActions", "window");
+		AppendMenuActions(sb, indent, uiFileName, applicationActions, "AddApplicationMenuActions", "application");
 		sb.AppendLine($"{indent}}}");
 		if (indent.Length > 0) sb.AppendLine("}");
 		return sb.ToString();
 	}
+
+	static void AppendMenuActions(StringBuilder sb, string indent, string uiFileName, IReadOnlyList<GtkSignalHandler> actions, string method, string owner)
+	{
+		if (actions.Count == 0) return;
+		sb.AppendLine();
+		sb.AppendLine($"{indent}\t/// <summary>Registers the {owner} actions {uiFileName}'s menus refer to on <paramref name=\"map\"/>.");
+		sb.AppendLine($"{indent}\t/// Pass the Gtk.Application for app.* actions and the window for win.* actions.</summary>");
+		sb.AppendLine($"{indent}\tpublic void {method}(global::Gio.ActionMap map)");
+		sb.AppendLine($"{indent}\t{{");
+		foreach (var action in actions) {
+			var name = action.ObjectId.StartsWith(ActionPrefix, StringComparison.Ordinal) ? action.ObjectId.Substring(ActionPrefix.Length) : action.ObjectId.Substring("application-action:".Length);
+			var local = Local("action_" + action.Handler);
+			var parameter = action.Target.Length == 0 ? "null" : $"global::GLib.Variant.Parse(null, \"{Escape(action.Target)}\", null, null)";
+			if (action.State.Length > 0) {
+				var state = $"global::GLib.Variant.Parse(null, \"{Escape(action.State)}\", null, null)";
+				sb.AppendLine($"{indent}\t\tvar {local}_state = {state};");
+				// GSimpleAction requires a stateful action's parameter type to match its state type.
+				// A target supplies that type; without one the initial state is the only valid source.
+				sb.AppendLine($"{indent}\t\tvar {local} = global::Gio.SimpleAction.NewStateful(\"{name}\", {(action.Target.Length == 0 ? local + "_state.GetType()" : parameter + ".GetType()")}, {local}_state);");
+				sb.AppendLine($"{indent}\t\t{local}.OnChangeState += (_, args) => {{ if (args.Value != null) {local}.SetState(args.Value); {action.Handler}({local}, args); }};");
+			} else {
+				sb.AppendLine($"{indent}\t\tvar {local} = global::Gio.SimpleAction.New(\"{name}\", {(action.Target.Length == 0 ? "null" : parameter + ".GetType()")});");
+				sb.AppendLine($"{indent}\t\t{local}.OnActivate += (_, args) => {action.Handler}({local}, args);");
+			}
+			sb.AppendLine($"{indent}\t\tmap.AddAction({local});");
+		}
+		sb.AppendLine($"{indent}\t}}");
+	}
+
+	static string Escape(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"");
 }
