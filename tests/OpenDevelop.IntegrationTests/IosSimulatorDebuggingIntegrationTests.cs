@@ -9,8 +9,10 @@ namespace OpenDevelop.IntegrationTests;
 /// doc/technotes/uno-mobile-designer.md section 4c): build for iossimulator-arm64, install, launch stopped, attach
 /// SharpDbg with the app's own retargeted mscordbi, stop at a breakpoint in FinishedLaunching.
 ///
-/// Needs macOS, an SDK 11 root that carries the .NET 11 iOS workload, and an iPhone simulator; it skips otherwise
-/// (CI has none of them). Installing the workload here would cost gigabytes, so the test only uses one that exists.
+/// Needs macOS, an SDK 11 root that carries the .NET 11 iOS workload, and an iPhone simulator; it skips otherwise.
+/// Installing the workload here would cost gigabytes, so the test only uses one that exists. The CI lane
+/// 'mobile-ios' installs that SDK 11 under ~/.dotnet and boots an iPhone on the xcode-27 image, whose Xcode 27
+/// the workload set's iOS 27 SDK requires.
 /// </summary>
 [Collection("93 iOS Simulator debugging (isolated IDE)")]
 public sealed class IosSimulatorDebuggingIntegrationTests

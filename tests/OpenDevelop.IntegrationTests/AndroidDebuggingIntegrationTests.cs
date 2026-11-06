@@ -4,15 +4,24 @@ using Xunit;
 
 namespace OpenDevelop.IntegrationTests;
 
+/// <summary>
+/// Debugging a net11.0-android app on an Android emulator (Debugger.AddIn's AndroidDebugProjectBehavior, see
+/// doc/technotes/debugging-mobile.md): build for the device's ABI, install, launch stopped, attach the
+/// NativeAOT SharpDbg agent from the device-side library the payload carries, stop at a breakpoint, step and
+/// evaluate, then check that stop left no debug-app setting or adb forward behind.
+///
+/// Needs an SDK 11 root that carries the android workload and exactly one connected device; it skips otherwise.
+/// The CI lane 'mobile-android' boots a headless x86_64 emulator on a Linux runner, the only runner family with KVM.
+/// </summary>
 [Collection("94 Android debugging (isolated IDE)")]
 public sealed class AndroidDebuggingIntegrationTests
 {
 	[Fact]
 	public async Task AndroidApp_F5StopsStepsEvaluatesAndStopsCleanly()
 	{
-		Assert.SkipUnless(OperatingSystem.IsMacOS(), "This journey needs the local Android emulator and SDK workload.");
-		string adb = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Android", "sdk", "platform-tools", "adb");
-		Assert.SkipUnless(File.Exists(adb), "The Android SDK platform tools are not installed.");
+		string? located = FindAdb();
+		Assert.SkipUnless(located != null, "The Android SDK platform tools (adb) are not installed; set ANDROID_HOME/ANDROID_SDK_ROOT or put adb on PATH.");
+		string adb = located!;
 		var devices = (await CommandAsync(adb, "devices")).Split('\n').Select(line => line.TrimEnd()).Where(line => line.EndsWith("\tdevice", StringComparison.Ordinal)).ToArray();
 		Assert.SkipUnless(devices.Length == 1, "Exactly one Android device must be connected.");
 		string serial = devices[0].Split('\t')[0];
@@ -118,6 +127,32 @@ public sealed class AndroidDebuggingIntegrationTests
 
 	static string NormalizeForwards(string list) =>
 		string.Join("\n", list.Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0).OrderBy(line => line, StringComparer.Ordinal));
+
+	/// <summary>The Android SDK's adb: ANDROID_HOME/ANDROID_SDK_ROOT, the well-known SDK folders, then PATH - the order
+	/// AndroidEmulatorHostProcess.LocateAdb uses, so the journey and the IDE it drives find the same tool.</summary>
+	static string? FindAdb()
+	{
+		string name = OperatingSystem.IsWindows() ? "adb.exe" : "adb";
+		var roots = new List<string>();
+		foreach (var variable in new[] { "ANDROID_HOME", "ANDROID_SDK_ROOT" }) {
+			var root = Environment.GetEnvironmentVariable(variable);
+			if (!string.IsNullOrWhiteSpace(root)) roots.Add(root);
+		}
+		string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+		roots.Add(OperatingSystem.IsMacOS() ? Path.Combine(home, "Library", "Android", "sdk")
+			: OperatingSystem.IsWindows() ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Android", "Sdk")
+			: Path.Combine(home, "Android", "Sdk"));
+		foreach (var root in roots) {
+			var candidate = Path.Combine(root, "platform-tools", name);
+			if (File.Exists(candidate)) return candidate;
+		}
+		foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator)) {
+			if (directory.Length == 0) continue;
+			var candidate = Path.Combine(directory, name);
+			if (File.Exists(candidate)) return candidate;
+		}
+		return null;
+	}
 
 	static async Task<string> CommandAsync(string executable, string argument)
 	{
