@@ -20,6 +20,10 @@ on:
         description: Release tag whose Windows payload to test
         required: true
         default: v5.7.2
+      payload_run_id:
+        description: Optional run id whose release-windows artifact to test instead (a release.yml rehearsal build, for a fix that is not released yet)
+        required: false
+        default: ''
       scenarios:
         description: Scenarios to run; control must stay first because it needs the runner's own SDK
         required: true
@@ -68,13 +72,24 @@ jobs:
             throw 'this image has no .NET 10 desktop runtime; the published payload needs one to start'
           }
 
-      - name: Download the released Windows payload
+      - name: Download the Windows payload
         shell: pwsh
         run: |
           $archive = Join-Path $env:RUNNER_TEMP 'OpenDevelop-win.7z'
-          gh release download '${{ inputs.release_tag }}' --repo $env:GITHUB_REPOSITORY `
-            --pattern 'OpenDevelop-win.7z' --output $archive --clobber
-          if (-not (Test-Path -LiteralPath $archive)) { throw 'the release has no OpenDevelop-win.7z asset' }
+          $runId = '${{ inputs.payload_run_id }}'.Trim()
+          if ($runId) {
+            # A release.yml rehearsal build: it uploads the same release-windows artifact the
+            # release verification consumes, so a fix that is not released yet can be checked here.
+            $download = Join-Path $env:RUNNER_TEMP 'download'
+            gh run download $runId --repo $env:GITHUB_REPOSITORY --name release-windows --dir $download
+            $built = Get-ChildItem -LiteralPath $download -Recurse -Filter 'OpenDevelop-win.7z' | Select-Object -First 1
+            if (-not $built) { throw "run $runId has no release-windows artifact containing OpenDevelop-win.7z" }
+            Copy-Item -LiteralPath $built.FullName -Destination $archive -Force
+          } else {
+            gh release download '${{ inputs.release_tag }}' --repo $env:GITHUB_REPOSITORY `
+              --pattern 'OpenDevelop-win.7z' --output $archive --clobber
+          }
+          if (-not (Test-Path -LiteralPath $archive)) { throw 'no OpenDevelop-win.7z was downloaded' }
           Write-Host ('downloaded {0:N0} MB' -f ((Get-Item -LiteralPath $archive).Length / 1MB))
 
       - name: Extract the payload

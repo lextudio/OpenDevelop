@@ -51,9 +51,14 @@ $leaseId = [guid]::NewGuid().ToString()
 # MSBuild's own InvalidProjectFileException text, wrapped in ProjectLoadException by
 # MSBuildBasedProject.OpenConfiguration. This is what the reporter pasted.
 $expectedFailure = "The SDK 'Microsoft.NET.Sdk' specified could not be found"
-# Issue #21's first, packaging-caused failure. It must NOT come back: with a missing SDK the report
-# has to be about the SDK, not about a resolver DLL path the user never created.
-$packagingFailure = 'Could not load SDK Resolver'
+# Issue #21's packaging-caused failure, in both forms this app can produce: the stale manifest a
+# payload shipped, and the resolver folder left behind when the manifest is removed (MSBuild's
+# SdkResolverLoader rejects a folder holding neither a DLL nor a manifest). Neither may come back:
+# with a missing SDK the report has to be about the SDK, not about this folder.
+$resolverFailures = @(
+    'Could not load SDK Resolver',
+    'SDK Resolver folder exists but without an SDK Resolver DLL or manifest file'
+)
 $sdkCheckHeading = '.NET SDK 10 or newer: NOT FOUND'
 $appLogPath = Join-Path ([System.IO.Path]::GetTempPath()) 'OpenDevelop.log'
 
@@ -148,6 +153,10 @@ function Get-DotnetRoots {
         if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
         $full = $null
         try { $full = [System.IO.Path]::GetFullPath($candidate) } catch { continue }
+        # PATH commonly holds the same root with a trailing separator ("C:\Program Files\dotnet\"),
+        # which GetFullPath keeps, so without this the root is listed twice and removing its SDKs
+        # once per copy fails the second time on a folder that is already gone.
+        if ($full.Length -gt 3) { $full = $full.TrimEnd('\', '/') }
         if (-not (Test-Path -LiteralPath (Join-Path $full 'dotnet.exe') -PathType Leaf)) { continue }
         if (-not (Test-Path -LiteralPath (Join-Path $full 'sdk') -PathType Container)) { continue }
         if (-not ($roots -contains $full)) { $roots.Add($full) }
@@ -183,6 +192,7 @@ function Write-SdkState([string]$label) {
 function Remove-AllSdks {
     foreach ($root in Get-DotnetRoots) {
         $sdkDirectory = Join-Path $root 'sdk'
+        if (-not (Test-Path -LiteralPath $sdkDirectory -PathType Container)) { continue }
         Write-Host "    removing $sdkDirectory"
         Remove-Item -LiteralPath $sdkDirectory -Recurse -Force
     }
@@ -224,8 +234,12 @@ function LimitToSdk9 {
 
 # The manifest MSBuildInternals.PointNuGetSdkResolverManifestAtSdk writes at startup, naming this
 # machine's SDK by absolute path. Issue #21 was a payload shipping a foreign one.
+function Get-ResolverFolderPath {
+    return [System.IO.Path]::Combine($payload, 'SdkResolvers', 'Microsoft.Build.NuGetSdkResolver')
+}
+
 function Get-ResolverManifestPath {
-    return [System.IO.Path]::Combine($payload, 'SdkResolvers', 'Microsoft.Build.NuGetSdkResolver', 'Microsoft.Build.NuGetSdkResolver.xml')
+    return [System.IO.Path]::Combine((Get-ResolverFolderPath), 'Microsoft.Build.NuGetSdkResolver.xml')
 }
 
 function Get-ResolverManifestText {
@@ -386,7 +400,10 @@ function Invoke-Scenario([string]$name) {
     $manifestAfter = Get-ResolverManifestText
 
     $sdkNotFound = $appLog -match [regex]::Escape($expectedFailure)
-    $packagingError = $appLog -match [regex]::Escape($packagingFailure)
+    $resolverError = $false
+    foreach ($pattern in $resolverFailures) {
+        if ($appLog -match [regex]::Escape($pattern)) { $resolverError = $true }
+    }
     $sdkReported = $padText -match [regex]::Escape($sdkCheckHeading)
     $effective = $null
     if ($sdks -and $sdks.effective) { $effective = [string]$sdks.effective.HighestSdkVersion }
@@ -408,9 +425,10 @@ function Invoke-Scenario([string]$name) {
     } else {
         if ($loaded) { $problems.Add('the project loaded although no usable .NET SDK 10 or newer exists') }
         if (-not $sdkNotFound) { $problems.Add("the expected message never appeared: $expectedFailure") }
-        if ($packagingError) { $problems.Add('the removed #21 packaging failure came back (a stale SDK-resolver manifest)') }
+        if ($resolverError) { $problems.Add('a resolver-deployment failure came back instead of the missing-SDK message (issue #21 regression)') }
         if (-not $sdkReported) { $problems.Add("the Build pad did not report: $sdkCheckHeading") }
         if ($manifestAfter -ne '(absent)') { $problems.Add("the stale SDK-resolver manifest survived: $manifestAfter") }
+        if (Test-Path -LiteralPath (Get-ResolverFolderPath)) { $problems.Add("the emptied SDK-resolver folder survived: $(Get-ResolverFolderPath)") }
     }
 
     $verdict = 'as expected'
