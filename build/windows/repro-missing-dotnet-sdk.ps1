@@ -287,18 +287,19 @@ function Start-OpenDevelop([string]$configDirectory, [string]$outLog, [string]$e
     }
 }
 
+# Returns $true when the workbench rendered, $false when the process left first. A payload that
+# refuses to start without a .NET SDK does that on purpose (ProjectService
+# .ReportMissingSdkAtStartup), so "exited" is a result to report, not a harness failure.
 function Wait-Rendered($process, [string]$outLog, [string]$errLog) {
     for ($attempt = 0; $attempt -lt 90; $attempt++) {
         Start-Sleep -Seconds 1
-        if ($process.HasExited) {
-            Fail "the packaged application exited during startup (status $($process.ExitCode)).`n$(Read-LogFile @($outLog, $errLog))"
-        }
+        if ($process.HasExited) { return $false }
         # WorkbenchStartup emits this only after the main window has loaded and rendered; the
         # launcher forwards its "dotnet exec" child's output when it was itself started with
         # standard handles (as here), so the same marker covers the launcher path.
-        if ((Read-LogFile @($outLog, $errLog)) -match 'startup/main-window-rendered') { return }
+        if ((Read-LogFile @($outLog, $errLog)) -match 'startup/main-window-rendered') { return $true }
     }
-    Fail 'the packaged application did not render its main window within 90 seconds.'
+    Fail 'the packaged application neither rendered its main window nor exited within 90 seconds.'
 }
 
 function Wait-Agent {
@@ -349,46 +350,54 @@ function Invoke-Scenario([string]$name) {
     $padText = ''
     $loaded = $false
     $buildOk = $null
+    $exited = $false
     try {
-        Wait-Rendered $process $outLog $errLog
-        Wait-Agent
+        $rendered = Wait-Rendered $process $outLog $errLog
+        $exited = -not $rendered
+        if ($exited) {
+            # A payload that refuses to start without a .NET SDK: the report is in the log, and
+            # there is no session to drive. Older payloads instead start and fail the first load.
+            Write-Host '    the application left during startup'
+        } else {
+            Wait-Agent
 
-        $sdks = Invoke-DevFlow 'od.sdk.list'
-        ($sdks | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath (Join-Path $runDirectory 'sdk-list.json') -Encoding utf8
-        $padText = [string](Invoke-DevFlow 'od.output-text' @('Build')).text
-        Set-Content -LiteralPath (Join-Path $runDirectory 'build-pad.txt') -Value $padText -Encoding utf8
+            $sdks = Invoke-DevFlow 'od.sdk.list'
+            ($sdks | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath (Join-Path $runDirectory 'sdk-list.json') -Encoding utf8
+            $padText = [string](Invoke-DevFlow 'od.output-text' @('Build')).text
+            Set-Content -LiteralPath (Join-Path $runDirectory 'build-pad.txt') -Value $padText -Encoding utf8
 
-        # The reporter's own journey: File > New > Solution, Console App, Create.
-        $null = Invoke-DevFlow 'od.new-solution-dialog'
-        $dialog = Wait-DevFlow 'od.new-template-dialog.status' @() { param($r) $r.open -and $r.kind -eq 'project' -and $r.templateCount -gt 0 } -Attempts 60 -DelaySeconds 1
-        if (-not ($dialog.open -and $dialog.kind -eq 'project' -and $dialog.templateCount -gt 0)) {
-            Fail "[$name] the New Solution dialog never listed a project template: $($dialog | ConvertTo-Json -Compress)"
-        }
-        $submitted = Invoke-DevFlow 'od.new-solution-dialog.create' @('Console App', 'ReproApp', $projectRoot, 'ReproSolution')
-        if (-not $submitted.submitted) {
-            Fail "[$name] the New Solution dialog did not accept the create request: $($submitted | ConvertTo-Json -Compress)"
-        }
-
-        $projectFile = Join-Path (Join-Path (Join-Path $projectRoot 'ReproSolution') 'ReproApp') 'ReproApp.csproj'
-        for ($attempt = 0; $attempt -lt 60; $attempt++) {
-            Start-Sleep -Seconds 1
-            $tree = Invoke-DevFlow 'od.solution-tree'
-            if (@($tree.projects | Where-Object { $_.fileName -eq $projectFile }).Count -gt 0) {
-                $loaded = $true
-                break
+            # The reporter's own journey: File > New > Solution, Console App, Create.
+            $null = Invoke-DevFlow 'od.new-solution-dialog'
+            $dialog = Wait-DevFlow 'od.new-template-dialog.status' @() { param($r) $r.open -and $r.kind -eq 'project' -and $r.templateCount -gt 0 } -Attempts 60 -DelaySeconds 1
+            if (-not ($dialog.open -and $dialog.kind -eq 'project' -and $dialog.templateCount -gt 0)) {
+                Fail "[$name] the New Solution dialog never listed a project template: $($dialog | ConvertTo-Json -Compress)"
             }
-            # Stop as soon as the failure is on disk: waiting out the full minute proves nothing more.
-            if ((Read-LogFile @($appLogPath, $outLog, $errLog)) -match [regex]::Escape($expectedFailure)) { break }
-        }
-        if (-not $loaded) {
-            Write-Host '    the created project never reached the live solution model'
-        }
+            $submitted = Invoke-DevFlow 'od.new-solution-dialog.create' @('Console App', 'ReproApp', $projectRoot, 'ReproSolution')
+            if (-not $submitted.submitted) {
+                Fail "[$name] the New Solution dialog did not accept the create request: $($submitted | ConvertTo-Json -Compress)"
+            }
 
-        # Only the control run has an SDK to build with; it is what proves the harness itself works.
-        if ($loaded -and $name -eq 'control') {
-            $build = Invoke-DevFlow 'od.build-solution' @('ReproApp')
-            $buildOk = [bool]($build.success -and $build.result -eq 'Success')
-            ($build | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath (Join-Path $runDirectory 'build.json') -Encoding utf8
+            $projectFile = Join-Path (Join-Path (Join-Path $projectRoot 'ReproSolution') 'ReproApp') 'ReproApp.csproj'
+            for ($attempt = 0; $attempt -lt 60; $attempt++) {
+                Start-Sleep -Seconds 1
+                $tree = Invoke-DevFlow 'od.solution-tree'
+                if (@($tree.projects | Where-Object { $_.fileName -eq $projectFile }).Count -gt 0) {
+                    $loaded = $true
+                    break
+                }
+                # Stop as soon as the failure is on disk: waiting out the full minute proves nothing more.
+                if ((Read-LogFile @($appLogPath, $outLog, $errLog)) -match [regex]::Escape($expectedFailure)) { break }
+            }
+            if (-not $loaded) {
+                Write-Host '    the created project never reached the live solution model'
+            }
+
+            # Only the control run has an SDK to build with; it is what proves the harness itself works.
+            if ($loaded -and $name -eq 'control') {
+                $build = Invoke-DevFlow 'od.build-solution' @('ReproApp')
+                $buildOk = [bool]($build.success -and $build.result -eq 'Success')
+                ($build | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath (Join-Path $runDirectory 'build.json') -Encoding utf8
+            }
         }
     } finally {
         Stop-OpenDevelop $process
@@ -400,6 +409,8 @@ function Invoke-Scenario([string]$name) {
     $manifestAfter = Get-ResolverManifestText
 
     $sdkNotFound = $appLog -match [regex]::Escape($expectedFailure)
+    # A payload that refuses to start without a .NET SDK says so at startup instead (issue #23).
+    $startupRefused = $appLog -match [regex]::Escape('No usable .NET SDK was found for this process')
     $resolverError = $false
     foreach ($pattern in $resolverFailures) {
         if ($appLog -match [regex]::Escape($pattern)) { $resolverError = $true }
@@ -417,16 +428,21 @@ function Invoke-Scenario([string]$name) {
 
     $problems = New-Object System.Collections.Generic.List[string]
     if ($name -eq 'control') {
+        if ($exited) { $problems.Add('the control run left during startup although an SDK is installed') }
         if (-not $effective) { $problems.Add('the control run found no effective .NET SDK 10 or newer on this runner') }
         if (-not $loaded) { $problems.Add('the control run did not load the project it created') }
         if ($buildOk -ne $true) { $problems.Add('the control run could not build the project it created') }
-        if ($sdkNotFound) { $problems.Add('the control run logged the missing-SDK failure') }
+        if ($sdkNotFound -or $startupRefused) { $problems.Add('the control run logged the missing-SDK failure') }
         if ($sdkReported) { $problems.Add('the control run reported a missing SDK although one is installed') }
     } else {
         if ($loaded) { $problems.Add('the project loaded although no usable .NET SDK 10 or newer exists') }
-        if (-not $sdkNotFound) { $problems.Add("the expected message never appeared: $expectedFailure") }
+        # Either shape is the report: an older payload starts and fails the first project load, a
+        # current one refuses to start at all.
+        if (-not ($sdkNotFound -or $startupRefused)) {
+            $problems.Add("neither the project-load failure nor the startup refusal appeared: $expectedFailure")
+        }
         if ($resolverError) { $problems.Add('a resolver-deployment failure came back instead of the missing-SDK message (issue #21 regression)') }
-        if (-not $sdkReported) { $problems.Add("the Build pad did not report: $sdkCheckHeading") }
+        if (-not $sdkReported -and -not $exited) { $problems.Add("the Build pad did not report: $sdkCheckHeading") }
         if ($manifestAfter -ne '(absent)') { $problems.Add("the stale SDK-resolver manifest survived: $manifestAfter") }
         if (Test-Path -LiteralPath (Get-ResolverFolderPath)) { $problems.Add("the emptied SDK-resolver folder survived: $(Get-ResolverFolderPath)") }
     }
@@ -437,16 +453,18 @@ function Invoke-Scenario([string]$name) {
         Scenario         = $name
         SdkRoots         = $rootSummary
         EffectiveSdk     = $effective
+        Exited           = $exited
         ProjectLoaded    = $loaded
         SdkNotFound      = $sdkNotFound
+        StartupRefused   = $startupRefused
         BuildPadReport   = $sdkReported
         ResolverManifest = $manifestAfter
         Verdict          = $verdict
     }
     $results.Add($result)
 
-    Write-Host ("    effective SDK: {0}; project loaded: {1}; missing-SDK error: {2}; Build pad report: {3}; resolver manifest: {4}" -f `
-        $(if ($effective) { $effective } else { '(none)' }), $loaded, $sdkNotFound, $sdkReported, $manifestAfter)
+    Write-Host ("    effective SDK: {0}; exited at startup: {1}; project loaded: {2}; missing-SDK error: {3}; startup refusal: {4}; Build pad report: {5}; resolver manifest: {6}" -f `
+        $(if ($effective) { $effective } else { '(none)' }), $exited, $loaded, $sdkNotFound, $startupRefused, $sdkReported, $manifestAfter)
     if ($problems.Count -gt 0) {
         Fail "[$name] did not behave as the report says: $($problems -join '; ')"
     }
@@ -476,11 +494,11 @@ foreach ($name in $ordered) {
 }
 
 $lines = New-Object System.Collections.Generic.List[string]
-$lines.Add('| Scenario | Discovered SDK roots | Effective SDK | Project loaded | Missing-SDK error | Build pad report | Resolver manifest | Verdict |')
-$lines.Add('|---|---|---|---|---|---|---|---|')
+$lines.Add('| Scenario | Discovered SDK roots | Effective SDK | Exited at startup | Project loaded | Missing-SDK error | Startup refusal | Build pad report | Resolver manifest | Verdict |')
+$lines.Add('|---|---|---|---|---|---|---|---|---|---|')
 foreach ($result in $results) {
     $effectiveLabel = if ($result.EffectiveSdk) { $result.EffectiveSdk } else { '(none)' }
-    $lines.Add("| $($result.Scenario) | $($result.SdkRoots) | $effectiveLabel | $($result.ProjectLoaded) | $($result.SdkNotFound) | $($result.BuildPadReport) | $($result.ResolverManifest) | $($result.Verdict) |")
+    $lines.Add("| $($result.Scenario) | $($result.SdkRoots) | $effectiveLabel | $($result.Exited) | $($result.ProjectLoaded) | $($result.SdkNotFound) | $($result.StartupRefused) | $($result.BuildPadReport) | $($result.ResolverManifest) | $($result.Verdict) |")
 }
 $table = $lines -join [Environment]::NewLine
 

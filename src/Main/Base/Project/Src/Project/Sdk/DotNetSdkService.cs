@@ -133,6 +133,12 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 		{
 			if (customRoots == null)
 				throw new ArgumentNullException(nameof(customRoots));
+			// Diagnostic switch for the journey that must exercise "this machine has no usable SDK"
+			// on a machine that has one: the startup prerequisite check (ProjectService
+			// .ReportMissingSdkAtStartup) is otherwise only reachable by uninstalling the SDK. The
+			// product never sets it.
+			if (Environment.GetEnvironmentVariable("OD_IGNORE_DOTNET_SDKS") == "1")
+				return Array.Empty<DotNetSdkInfo>();
 			var results = new List<DotNetSdkInfo>();
 			var seenRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 			var optedInRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

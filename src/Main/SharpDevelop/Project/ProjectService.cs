@@ -202,20 +202,20 @@ namespace ICSharpCode.SharpDevelop.Project
 		}
 
 		/// <summary>
-		/// Shows the ".NET SDK check" as a copyable modal error, once the workbench has rendered,
-		/// when this process has no usable .NET SDK at all. Without one every SDK-style project
-		/// fails to load and build, and the Build pad's copy of this text sits behind the first
-		/// failure's dialog: issue #21's follow-up pasted the resulting stack and nothing actionable.
+		/// Shows the ".NET SDK check" as a copyable modal error, once the workbench has rendered, and
+		/// then leaves, when this process has no usable .NET SDK at all. Without one every SDK-style
+		/// project fails to load and build, and the Build pad's copy of this text sits behind the
+		/// first failure's dialog: issue #21's follow-up pasted the resulting stack and nothing
+		/// actionable.
 		///
-		/// Deliberately not fatal. A newer SDK major is only discovered after its folder is added
-		/// under Tools &gt; Options &gt; .NET SDK, so the user must be able to reach that page from
-		/// here. Test runs skip it: OD_TEST_MODE has nobody to click the dialog (see TestMode).
+		/// Leaving rather than opening a session that cannot do its job is deliberate: a .NET SDK 10
+		/// is a prerequisite of this IDE, not a problem to work around after the fact. Test runs
+		/// (OD_TEST_MODE) cannot show the dialog, so they skip it and still exit with the same code -
+		/// which is also what makes the path reachable on a machine that has an SDK
+		/// (OD_IGNORE_DOTNET_SDKS).
 		/// </summary>
 		public void ReportMissingSdkAtStartup()
 		{
-			if (TestMode.IsActive)
-				return;
-
 			var discovered = DotNetSdkService.DiscoverSdks();
 			string preferredRoot = DotNetSdkService.SelectedSdkRootPath;
 			bool evaluationFailed = MSBuildInternals.NoCompatibleInProcessSdkFound;
@@ -227,18 +227,28 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (report.Count == 0)
 				return;
 
+			// The log gets the same text as the pad and the dialog: it is the only record left once
+			// the process is gone, and the only one a CI run can see.
+			LoggingService.Error("No usable .NET SDK was found for this process: " + Environment.NewLine + string.Join(Environment.NewLine, report));
 			try {
-				// The log gets the same text as the pad and the dialog: it is what a bug report
-				// pastes when the dialog is gone.
-				LoggingService.Error("No usable .NET SDK was found for this process: " + Environment.NewLine + string.Join(Environment.NewLine, report));
-				ExceptionBox.ShowCopyableError(
-					"OpenDevelop needs the .NET SDK 10 or newer",
-					string.Join(Environment.NewLine, report),
-					System.Windows.Application.Current?.MainWindow);
+				if (!TestMode.IsActive) {
+					ExceptionBox.ShowCopyableError(
+						"OpenDevelop needs the .NET SDK 10 or newer",
+						string.Join(Environment.NewLine, report),
+						System.Windows.Application.Current?.MainWindow);
+				}
 			} catch (Exception ex) {
-				// A missing SDK must not turn into a crash of its own; the pad still has the text.
+				// A missing SDK must not turn into a crash of its own; the log already has the text.
 				LoggingService.Warn("Could not show the .NET SDK error.", ex);
 			}
+
+			// Environment.ExitCode, not Shutdown's argument: the entry point is a void Main that
+			// ignores Application.Run's return value, so the code has to be set on the process.
+			Environment.ExitCode = 1;
+			if (System.Windows.Application.Current != null)
+				System.Windows.Application.Current.Shutdown();
+			else
+				Environment.Exit(1);
 		}
 
 		static bool reportedSdkAvailability;

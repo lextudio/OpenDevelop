@@ -32,29 +32,9 @@ internal sealed class IsolatedIde : IDisposable
 
     public static async Task<IsolatedIde> StartAsync(string configDir)
     {
-        string dll = Environment.GetEnvironmentVariable("OD_IT_IDE_DLL") is { Length: > 0 } custom
-            ? Path.GetFullPath(custom)
-            : Path.Combine(Path.GetDirectoryName(OpenDevelopAppFixture.LocateOpenDevelopProject())!,
-                "bin", "Debug", "net10.0-windows", "OpenDevelop.dll");
-        Assert.True(File.Exists(dll),
-            $"The IDE build '{dll}' was not found; building tests/OpenDevelop.IntegrationTests builds it (or set OD_IT_IDE_DLL).");
-
+        string dll = ResolveIdeDll();
         int port = FreePort();
-        string host = OpenDevelopAppFixture.ResolveDotNetHost();
-        var psi = new ProcessStartInfo(host)
-        {
-            WorkingDirectory = Path.GetDirectoryName(dll)!,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        psi.ArgumentList.Add("exec");
-        psi.ArgumentList.Add(dll);
-        psi.ArgumentList.Add("-configdir:" + configDir);
-        psi.Environment["DEVFLOW_AGENT_PORT"] = port.ToString();
-        psi.Environment["OD_TEST_MODE"] = "1";
-        psi.Environment["LANG"] = "en_US.UTF-8";
-        psi.Environment["LC_ALL"] = "en_US.UTF-8";
+        var psi = CreateStartInfo(dll, configDir, port);
 
         var process = Process.Start(psi) ?? throw new InvalidOperationException("Could not start " + dll);
         var ide = new IsolatedIde(process, port);
@@ -72,6 +52,90 @@ internal sealed class IsolatedIde : IDisposable
             throw;
         }
         return ide;
+    }
+
+    /// <summary>
+    /// Starts one IDE process, waits for it to exit, and returns its exit code and output. For the
+    /// startup paths that are supposed to end the process - a missing .NET SDK - which
+    /// <see cref="StartAsync"/> would otherwise report as a failure to become ready.
+    /// </summary>
+    public static async Task<(int ExitCode, string Output)> RunToExitAsync(
+        string configDir, IReadOnlyDictionary<string, string> environment, TimeSpan timeout)
+    {
+        string dll = ResolveIdeDll();
+        var psi = CreateStartInfo(dll, configDir, FreePort());
+        foreach (var pair in environment)
+            psi.Environment[pair.Key] = pair.Value;
+
+        var output = new StringBuilder();
+        void Append(string? line)
+        {
+            if (line is null)
+                return;
+            lock (output)
+                output.AppendLine(line);
+        }
+
+        string Output()
+        {
+            lock (output)
+                return output.ToString();
+        }
+
+        var process = Process.Start(psi) ?? throw new InvalidOperationException("Could not start " + dll);
+        process.OutputDataReceived += (_, e) => Append(e.Data);
+        process.ErrorDataReceived += (_, e) => Append(e.Data);
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        try
+        {
+            using var cts = new CancellationTokenSource(timeout);
+            try
+            {
+                await process.WaitForExitAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                Assert.Fail($"The IDE did not exit within {timeout}.\n{Output()}");
+            }
+            return (process.ExitCode, Output());
+        }
+        finally
+        {
+            process.Dispose();
+        }
+    }
+
+    static string ResolveIdeDll()
+    {
+        string dll = Environment.GetEnvironmentVariable("OD_IT_IDE_DLL") is { Length: > 0 } custom
+            ? Path.GetFullPath(custom)
+            : Path.Combine(Path.GetDirectoryName(OpenDevelopAppFixture.LocateOpenDevelopProject())!,
+                "bin", "Debug", "net10.0-windows", "OpenDevelop.dll");
+        Assert.True(File.Exists(dll),
+            $"The IDE build '{dll}' was not found; building tests/OpenDevelop.IntegrationTests builds it (or set OD_IT_IDE_DLL).");
+        return dll;
+    }
+
+    static ProcessStartInfo CreateStartInfo(string dll, string configDir, int port)
+    {
+        string host = OpenDevelopAppFixture.ResolveDotNetHost();
+        var psi = new ProcessStartInfo(host)
+        {
+            WorkingDirectory = Path.GetDirectoryName(dll)!,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        psi.ArgumentList.Add("exec");
+        psi.ArgumentList.Add(dll);
+        psi.ArgumentList.Add("-configdir:" + configDir);
+        psi.Environment["DEVFLOW_AGENT_PORT"] = port.ToString();
+        psi.Environment["OD_TEST_MODE"] = "1";
+        psi.Environment["LANG"] = "en_US.UTF-8";
+        psi.Environment["LC_ALL"] = "en_US.UTF-8";
+        return psi;
     }
 
     void Append(string? line)
