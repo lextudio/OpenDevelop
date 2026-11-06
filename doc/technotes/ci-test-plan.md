@@ -416,7 +416,7 @@ A device journey needs a runner that hosts the device, and only two hosted image
 
 | Journey | Runtime | Runner | Why |
 | --- | --- | --- | --- |
-| iOS Simulator (`IosSimulatorDebuggingIntegrationTests`) | iPhone simulator, `xcode-27` image | `macos-arm64` (lane overrides `runner`) | A simulator is a native macOS process, so no virtualisation is involved; the .NET 11 iOS workload set pins `Microsoft.NET.Sdk.iOS` 27.x, which needs Xcode 27, and no `macos-26` image carries it. |
+| iOS Simulator (`IosSimulatorDebuggingIntegrationTests`) | iPhone simulator, `xcode-27` image | `macos-arm64` (lane overrides `runner`) | A simulator is a native macOS process, so no virtualisation is involved; the .NET 11 iOS workload set pins `Microsoft.NET.Sdk.iOS` 27.x, which needs Xcode 27, and no `macos-26` image carries it. The image's default is Xcode 27.1, but the workload pack requires exactly 27.0, so the job `xcode-select`s `/Applications/Xcode_27.app` before it starts a simulator. |
 | Android emulator (`AndroidDebuggingIntegrationTests`) | headless `google_apis` x86_64 AVD | `linux-x64` on `ubuntu-24.04` | The emulator needs KVM. The hosted Linux x86_64 runners provide it; macOS arm64 and `ubuntu-24.04-arm` have no nested virtualisation. |
 
 Both journeys stay in lanes of their own (`mobile-ios`, `mobile-android`) because a job runs on one machine and each needs

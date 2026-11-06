@@ -424,7 +424,11 @@ jobs:
           fi
           nohup "$ANDROID_HOME/emulator/emulator" -avd opendevelop-ci -no-window -no-audio -no-boot-anim -no-snapshot \
             -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
-          "$adb" wait-for-device
+          if ! timeout 300 "$adb" wait-for-device; then
+            tail -n 50 "$RUNNER_TEMP/emulator.log"
+            echo '::error::The Android emulator never reached adb within 5 minutes.'
+            exit 1
+          fi
           for attempt in $(seq 1 150); do
             [ "$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = '1' ] && break
             sleep 2
@@ -440,6 +444,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # The image ships Xcode 27.0 beside its 27.1 default (/Applications/Xcode_27.app), and the .NET 11 iOS
+          # workload pack (27.0.12212-net11-rc.2) requires exactly that 27.0 SDK, which Xcode 27.1 is not. Select
+          # it for the whole machine here - the IDE's build in the lane resolves Xcode through xcrun.
+          sudo xcode-select -s /Applications/Xcode_27.app
           # The .NET 11 iOS workload set pins Microsoft.NET.Sdk.iOS 27.0.12212-net11-rc.2, which needs Xcode 27.
           xcodebuild -version
           # The journey installs and launches through simctl, and the IDE picks a booted iPhone first, so booting one
