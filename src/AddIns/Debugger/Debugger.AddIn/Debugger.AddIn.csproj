@@ -99,9 +99,11 @@
     <DotNetHostPath Condition="'$(DotNetHostPath)' == '' and '$(DOTNET_HOST_PATH)' != ''">$(DOTNET_HOST_PATH)</DotNetHostPath>
     <DotNetHostPath Condition="'$(DotNetHostPath)' == ''">dotnet</DotNetHostPath>
     <!-- SharpDbg's own nuget.config keeps only nuget.org and the (empty on a fresh checkout) local feed.
-         CI has no local feed, so the nested build restores the OmniSharp fork from lextudio GitHub Packages
-         with the job token instead; see .github/ci/sharpdbg-ci-nuget.config. -->
-    <SharpDbgRestoreArguments Condition="'$(GITHUB_ACTIONS)' == 'true'"> -p:RestoreConfigFile=&quot;$(MSBuildThisFileDirectory)..\..\..\..\.github\ci\sharpdbg-ci-nuget.config&quot;</SharpDbgRestoreArguments>
+         CI restores the OmniSharp fork from lextudio GitHub Packages with the job's own credential instead; see
+         .github/ci/sharpdbg-ci-nuget.config. Gate on that credential rather than GITHUB_ACTIONS:
+         .github/ci/build-binaries.ps1 clears GITHUB_ACTIONS (GitVersion races on the runner's env file), while the
+         credential is what the nested restore actually needs and a developer machine never has it. -->
+    <SharpDbgRestoreArguments Condition="'$(NuGetPackageSourceCredentials_lextudio_github)' != ''"> -p:RestoreConfigFile=&quot;$(MSBuildThisFileDirectory)..\..\..\..\.github\ci\sharpdbg-ci-nuget.config&quot;</SharpDbgRestoreArguments>
   </PropertyGroup>
 
   <!-- Always built (dotnet build is incremental, so an unchanged adapter costs a no-op). Gating this
