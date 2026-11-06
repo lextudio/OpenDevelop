@@ -563,6 +563,19 @@
       "note": "Covers template dialogs and project creation. The SDK-selection theory is excluded on Windows because one data row installs an SDK over the network; schedule it separately with its own time budget."
     },
     {
+      "id": "missing-sdk-startup",
+      "batch": 4,
+      "lane": "integration-stable",
+      "measuredSeconds": 60,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.MissingSdkStartupIntegrationTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe" },
+      "note": "Issue #23: OD_IGNORE_DOTNET_SDKS simulates a machine with no .NET SDK, so the IDE must report it at startup and leave. One fact checks the exit code and the log; the other finds the WPF dialog through EnumWindows, posts WM_CLOSE and requires the same exit, which is why it runs on Windows only. Starts as observe: promote after two green hosted runs."
+    },
+    {
       "id": "add-reference-journey",
       "batch": 4,
       "lane": "integration-unstable",
