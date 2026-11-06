@@ -8,6 +8,8 @@ namespace OpenDevelop.Base.Tests;
 /// another machine - or one naming an SDK that has since been uninstalled - breaks every SDK-style
 /// project load with "Could not load SDK Resolver. A manifest file exists, but the path to the SDK
 /// Resolver DLL file could not be found". v5.6.3 shipped such a manifest inside the Windows zip.
+/// Deleting the manifest is not enough on its own: MSBuild rejects a resolver *folder* that holds
+/// neither a DLL nor a manifest, so the folder has to go with it.
 /// </summary>
 public sealed class NuGetSdkResolverManifestTests : IDisposable
 {
@@ -31,6 +33,35 @@ public sealed class NuGetSdkResolverManifestTests : IDisposable
 		MSBuildInternals.RemoveStaleNuGetSdkResolverManifest(root);
 
 		Assert.False(File.Exists(ManifestPath), "a manifest naming a missing resolver would fail every project load");
+	}
+
+	[Fact]
+	public void RemovesTheResolverFolderItEmptied()
+	{
+		// A payload that ran once with an SDK and then lost it (uninstalled, or another root
+		// selected) leaves exactly this. MSBuild's SdkResolverLoader rejects the folder that is left
+		// behind - "SDK Resolver folder exists but without an SDK Resolver DLL or manifest file" -
+		// so removing only the manifest swaps one failure naming this folder for another.
+		WriteManifest(@"C:\Program Files\dotnet\sdk\10.0.401\" + ManifestName + ".dll");
+
+		MSBuildInternals.RemoveStaleNuGetSdkResolverManifest(root);
+
+		Assert.False(Directory.Exists(Path.GetDirectoryName(ManifestPath)),
+			"an emptied resolver folder fails every project load just like the manifest did");
+	}
+
+	[Fact]
+	public void KeepsAResolverFolderThatStillHoldsSomething()
+	{
+		// Half a resolver (its DLL, but no manifest) is not ours to delete: the folder only has to
+		// disappear when this method emptied it.
+		WriteManifest(@"C:\Program Files\dotnet\sdk\10.0.401\" + ManifestName + ".dll");
+		File.WriteAllText(Path.Combine(Path.GetDirectoryName(ManifestPath)!, ManifestName + ".dll"), "");
+
+		MSBuildInternals.RemoveStaleNuGetSdkResolverManifest(root);
+
+		Assert.False(File.Exists(ManifestPath));
+		Assert.True(Directory.Exists(Path.GetDirectoryName(ManifestPath)));
 	}
 
 	[Fact]

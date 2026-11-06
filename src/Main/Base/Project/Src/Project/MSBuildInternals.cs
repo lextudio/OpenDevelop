@@ -243,7 +243,8 @@ namespace ICSharpCode.SharpDevelop.Project
 		}
 
 		/// <summary>
-		/// Deletes this app's NuGet SDK-resolver manifest when the DLL it names no longer exists.
+		/// Deletes this app's NuGet SDK-resolver manifest when the DLL it names no longer exists,
+		/// and the resolver folder with it.
 		///
 		/// A manifest names an absolute path inside one SDK installation, so it only describes the
 		/// machine that wrote it. A released payload that shipped one built on a different machine -
@@ -252,6 +253,11 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// Resolver DLL file could not be found", naming a path the user never created. With no
 		/// manifest MSBuild simply has no extra resolver, NuGet-based Sdk resolution fails as an
 		/// ordinary unresolved SDK, and the SDK-availability report says what is really missing.
+		///
+		/// The folder has to go as well: MSBuild's SdkResolverLoader rejects a resolver directory
+		/// that holds neither a DLL nor a manifest ("SDK Resolver folder exists but without an SDK
+		/// Resolver DLL or manifest file"), so deleting only the file turns the message above into
+		/// that other message about the same folder the user never created.
 		/// </summary>
 		public static void RemoveStaleNuGetSdkResolverManifest(string binDir)
 		{
@@ -268,8 +274,28 @@ namespace ICSharpCode.SharpDevelop.Project
 					return;
 				File.Delete(manifestPath);
 				LoggingService.Info($"Removed the stale {resolverName} manifest at {manifestPath} (it named '{declared}', which does not exist).");
+				RemoveResolverFolderIfEmpty(Path.GetDirectoryName(manifestPath));
 			} catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is System.Xml.XmlException) {
 				LoggingService.Warn($"Could not remove the stale {resolverName} manifest at {manifestPath}.", ex);
+			}
+		}
+
+		/// <summary>
+		/// Deletes an SDK-resolver folder this app emptied, unless something else was deployed into
+		/// it: a resolver that is still there (its DLL, another file) is a working resolver, and the
+		/// folder is then not ours to remove.
+		/// </summary>
+		static void RemoveResolverFolderIfEmpty(string resolverDirectory)
+		{
+			if (string.IsNullOrEmpty(resolverDirectory) || !Directory.Exists(resolverDirectory))
+				return;
+			try {
+				if (Directory.EnumerateFileSystemEntries(resolverDirectory).Any())
+					return;
+				Directory.Delete(resolverDirectory);
+				LoggingService.Info($"Removed the empty SDK-resolver folder {resolverDirectory}.");
+			} catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) {
+				LoggingService.Warn($"Could not remove the empty SDK-resolver folder {resolverDirectory}.", ex);
 			}
 		}
 		
