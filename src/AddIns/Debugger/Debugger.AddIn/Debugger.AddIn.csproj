@@ -98,6 +98,10 @@
     <SharpDbgBinDir>$(MSBuildThisFileDirectory)..\..\..\..\externals\sharpdbg\artifacts\bin\SharpDbg.Cli\$(SharpDbgConfiguration)\</SharpDbgBinDir>
     <DotNetHostPath Condition="'$(DotNetHostPath)' == '' and '$(DOTNET_HOST_PATH)' != ''">$(DOTNET_HOST_PATH)</DotNetHostPath>
     <DotNetHostPath Condition="'$(DotNetHostPath)' == ''">dotnet</DotNetHostPath>
+    <!-- SharpDbg's own nuget.config keeps only nuget.org and the (empty on a fresh checkout) local feed.
+         CI has no local feed, so the nested build restores the OmniSharp fork from lextudio GitHub Packages
+         with the job token instead; see .github/ci/sharpdbg-ci-nuget.config. -->
+    <SharpDbgRestoreArguments Condition="'$(GITHUB_ACTIONS)' == 'true'"> -p:RestoreConfigFile=&quot;$(MSBuildThisFileDirectory)..\..\..\..\.github\ci\sharpdbg-ci-nuget.config&quot;</SharpDbgRestoreArguments>
   </PropertyGroup>
 
   <!-- Always built (dotnet build is incremental, so an unchanged adapter costs a no-op). Gating this
@@ -109,7 +113,7 @@
     <!-- Forward the fork pin from Directory.Packages.props: SharpDbg is a separate repository with
          its own defaults, and the adapter's DAP packages must match the version the rest of
          OpenDevelop restores. -->
-    <Exec Command="&quot;$(DotNetHostPath)&quot; build &quot;$(SharpDbgProject)&quot; -c $(Configuration) -tl:off -p:LextudioDapForkVersion=$(LextudioDapForkVersion)"
+    <Exec Command="&quot;$(DotNetHostPath)&quot; build &quot;$(SharpDbgProject)&quot; -c $(Configuration) -tl:off -p:LextudioDapForkVersion=$(LextudioDapForkVersion)$(SharpDbgRestoreArguments)"
           ConsoleToMSBuild="true"
           IgnoreExitCode="false" />
   </Target>
