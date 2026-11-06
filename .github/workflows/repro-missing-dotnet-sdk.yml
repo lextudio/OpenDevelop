@@ -1,0 +1,113 @@
+name: Repro missing .NET SDK
+
+# Diagnostic, dispatch-only: reproduces the v5.7.2 report in issue #21 (comment 6689151041) on a
+# Windows machine whose .NET SDK is absent, older than 10, or of another architecture. It runs the
+# PUBLISHED payload (not a build) and it DELETES the runner's SDK folders, so it must never be
+# triggered by push or pull_request, and it is not part of the test plan in .github/ci.
+#
+# Dispatch from master (workflow_dispatch only sees the default branch):
+#   gh workflow run repro-missing-dotnet-sdk.yml -f release_tag=v5.7.2
+#
+# Read the job summary table: "control" must pass (the journey works with an SDK, so a failure in
+# the others is the missing SDK and not the harness), and both failing scenarios must show the
+# reporter's exact message. Delete this workflow once the report is answered, or promote the
+# runtime-only journey into release.yml's packaged-app check.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag whose Windows payload to test
+        required: true
+        default: v5.7.2
+      scenarios:
+        description: Scenarios to run; control must stay first because it needs the runner's own SDK
+        required: true
+        default: control,sdk9-only,runtime-only
+      runner:
+        description: Runner image
+        type: choice
+        options:
+          - windows-2025
+          - windows-11-arm
+        default: windows-2025
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repro-missing-dotnet-sdk
+  cancel-in-progress: true
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  repro:
+    name: Repro on ${{ inputs.runner }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Only the reproduction script; nothing here builds the product.
+          sparse-checkout: |
+            build/windows
+          sparse-checkout-cone-mode: false
+
+      - name: Inventory .NET before touching it
+        shell: pwsh
+        run: |
+          dotnet --info
+          Write-Host 'sdk folders:'
+          Get-ChildItem 'C:\Program Files\dotnet\sdk' -Directory -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty Name
+          # The payload is framework-dependent: without the desktop runtime it cannot even start, and
+          # every scenario would fail for the wrong reason.
+          if (-not (& dotnet --list-runtimes | Where-Object { $_ -like 'Microsoft.WindowsDesktop.App 10.*' })) {
+            throw 'this image has no .NET 10 desktop runtime; the published payload needs one to start'
+          }
+
+      - name: Download the released Windows payload
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'OpenDevelop-win.7z'
+          gh release download '${{ inputs.release_tag }}' --repo $env:GITHUB_REPOSITORY `
+            --pattern 'OpenDevelop-win.7z' --output $archive --clobber
+          if (-not (Test-Path -LiteralPath $archive)) { throw 'the release has no OpenDevelop-win.7z asset' }
+          Write-Host ('downloaded {0:N0} MB' -f ((Get-Item -LiteralPath $archive).Length / 1MB))
+
+      - name: Extract the payload
+        shell: pwsh
+        run: |
+          $extract = Join-Path $env:RUNNER_TEMP 'payload'
+          New-Item -ItemType Directory -Path $extract -Force | Out-Null
+          $archive = Join-Path $env:RUNNER_TEMP 'OpenDevelop-win.7z'
+          # dist.ps1 writes the archive with 7-Zip; use the same tool when the image has it (the
+          # release workflow's packaged check does the same and falls back to tar's libarchive).
+          $sevenZip = Join-Path $env:ProgramFiles '7-Zip\7z.exe'
+          if (Test-Path -LiteralPath $sevenZip) { & $sevenZip x $archive "-o$extract" -y | Out-Null }
+          else { tar -xf $archive -C $extract }
+          if ($LASTEXITCODE -ne 0) { throw "could not extract $archive" }
+          $payload = Get-ChildItem -LiteralPath $extract -Recurse -Depth 1 -Filter OpenDevelop.dll | Select-Object -First 1
+          if (-not $payload) { throw 'OpenDevelop.dll not found in the extracted archive' }
+          "OPENDEVELOP_PAYLOAD=$($payload.DirectoryName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "payload: $($payload.DirectoryName)"
+
+      - name: Reproduce
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'repro'
+          $scenarios = ('${{ inputs.scenarios }}' -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+          ./build/windows/repro-missing-dotnet-sdk.ps1 `
+            -PayloadRoot $env:OPENDEVELOP_PAYLOAD `
+            -Scenario $scenarios `
+            -OutputDirectory $output
+
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: repro-missing-dotnet-sdk-${{ inputs.runner }}
+          path: ${{ runner.temp }}/repro
+          if-no-files-found: warn
