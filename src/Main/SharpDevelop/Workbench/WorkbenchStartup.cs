@@ -274,6 +274,14 @@ namespace ICSharpCode.SharpDevelop.Workbench
 					Console.Out.WriteLine("startup/main-window-rendered");
 					Console.Out.Flush();
 				}
+				// A machine with no usable .NET SDK cannot load or build any SDK-style project, and
+				// the Build pad's report is behind the first failure's dialog (issue #21's
+				// follow-up). Say it once, now that there is a visible window to own the dialog, and
+				// let the user carry on to Tools > Options > .NET SDK. Idle priority so the startup
+				// splash is gone first.
+				SD.MainThread.InvokeAsyncAndForget(
+					SD.ProjectService.ReportMissingSdkAtStartup,
+					System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 			};
 			SD.Workbench.MainWindow.ContentRendered += onFirstRender;
 			if (ExternalRunLoop) {

@@ -653,6 +653,111 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			};
 		}
 
+		/// <summary>
+		/// The ".NET SDK check" block the Build pad prints at startup, and that an exception dialog
+		/// carries when in-process MSBuild had no usable SDK. One line per fact, ending with what to
+		/// install; empty when the setup is healthy, so callers can treat "no lines" as "nothing to
+		/// say".
+		///
+		/// It lives here, next to <see cref="DescribeAvailability"/>, rather than in the pad that
+		/// first needed it: the exception dialog has to be able to say the same thing without going
+		/// through a pad the user may never open (issue #21's follow-up pasted a stack trace whose
+		/// only actionable sentence was in that pad).
+		/// </summary>
+		public static IReadOnlyList<string> DescribeAvailabilityReport(
+			IReadOnlyList<DotNetSdkInfo> discovered,
+			string preferredRoot,
+			bool noCompatibleInProcessSdkFound,
+			Architecture architecture)
+		{
+			var availability = DescribeAvailability(discovered, preferredRoot, noCompatibleInProcessSdkFound);
+			if (availability.IsHealthy)
+				return Array.Empty<string>();
+
+			string preferred = preferredRoot ?? string.Empty;
+			string installerName = ArchitectureInstallerName(architecture);
+			var lines = new List<string> {
+				".NET SDK check"
+			};
+
+			if (availability.SupportedSdkRoot != null)
+				lines.Add(
+					$"  .NET SDK 10 or newer: found - {availability.SupportedSdkRoot.RootPath} (SDK {availability.SupportedSdkVersion}, "
+					+ $"{availability.SupportedSdkRoot.Architecture?.ToString() ?? "unknown architecture"}).");
+			else
+				lines.Add(
+					"  .NET SDK 10 or newer: NOT FOUND. This IDE and the projects it opens require .NET SDK 10 or newer, "
+					+ "so building and loading them may fail.");
+
+			if (!availability.PreferredRootSet)
+				lines.Add("  Preferred SDK (Tools > Options > .NET SDK): none set - the system default is used.");
+			else if (availability.PreferredRootUnsupported)
+				lines.Add(
+					$"  Preferred SDK (Tools > Options > .NET SDK): {preferred} - found, but it is ignored: it needs .NET SDK 10 or newer "
+					+ $"matching this {architecture} process (it has SDK {availability.PreferredSdk.HighestSdkVersion}, "
+					+ $"{availability.PreferredSdk.Architecture?.ToString() ?? "unknown architecture"}).");
+			else if (availability.PreferredSdk != null)
+				lines.Add(
+					$"  Preferred SDK (Tools > Options > .NET SDK): {preferred} - found "
+					+ $"(SDK {availability.PreferredSdk.HighestSdkVersion}).");
+			else
+				lines.Add(
+					$"  Preferred SDK (Tools > Options > .NET SDK): {preferred} - NOT FOUND. The IDE falls "
+					+ "back to a system SDK; re-select it or clear the setting.");
+
+			if (availability.InProcessSdk != null)
+				lines.Add(
+					$"  In-process SDK (must match this {architecture} process): {availability.InProcessSdk.RootPath} "
+					+ $"(SDK {availability.InProcessSdk.HighestSdkVersion}).");
+			else
+				lines.Add(
+					$"  In-process SDK (must match this {architecture} process): NONE. Every SDK-style project "
+					+ $"will load with no items until a {installerName} SDK is installed.");
+
+			// The explicit caveat: a preferred SDK that exists does not by itself mean the setup is
+			// fine, which is the part a bare "found" would hide.
+			lines.Add(
+				"  Note: a preferred SDK being present is not a guarantee on its own. The NuGet SDK resolver "
+				+ "this IDE loads in-process is architecture-specific, so the SDK must both be version 10 or newer "
+				+ "and match this process.");
+
+			if (discovered.Count > 0) {
+				lines.Add("  Installed .NET SDK roots:");
+				foreach (var candidate in discovered) {
+					lines.Add(
+						$"    {candidate.RootPath}  (SDK {candidate.HighestSdkVersion}, "
+						+ $"{candidate.Architecture?.ToString() ?? "unknown architecture"})");
+				}
+			}
+
+			if (availability.InProcessSdk == null || availability.SupportedSdkRoot == null) {
+				lines.Add(
+					$"  To fix: install the {installerName} .NET SDK 10 or newer side-by-side - "
+					+ $"\"winget install Microsoft.DotNet.SDK.{HighestAutomaticallyDiscoveredSdkMajor} --architecture {installerName}\" - "
+					+ "then restart OpenDevelop. An SDK added under Tools > Options > .NET SDK is picked up the same way.");
+				lines.Add(
+					$"  .NET SDK {HighestAutomaticallyDiscoveredSdkMajor + 1} and newer are not discovered "
+					+ "automatically: add their folder under Tools > Options > .NET SDK with Add Custom Path, then select it there.");
+			}
+
+			return lines;
+		}
+
+		/// <summary>The spelling the .NET installers and winget use for an architecture.</summary>
+		static string ArchitectureInstallerName(Architecture architecture)
+		{
+			switch (architecture) {
+				case Architecture.X64:
+					return "x64";
+				case Architecture.X86:
+					return "x86";
+				case Architecture.Arm64:
+					return "arm64";
+				default:
+					return architecture.ToString().ToLowerInvariant();
+			}
+		}
+
 		/// <summary>Major version of an SDK version string ("10.0.401" -&gt; 10), or -1 if unparsable.</summary>
 		public static int SdkMajorVersion(string version)
 		{

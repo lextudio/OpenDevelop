@@ -29,6 +29,7 @@ using ICSharpCode.Core;
 using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.SharpDevelop.Logging;
 using ICSharpCode.SharpDevelop.Project.Sdk;
 using ICSharpCode.SharpDevelop.Workbench;
 using Microsoft.Build.Exceptions;
@@ -200,6 +201,46 @@ namespace ICSharpCode.SharpDevelop.Project
 			PerfTimeline.Mark(PerfTimeline.SolutionOpen, "solution-opened-handlers-done");
 		}
 
+		/// <summary>
+		/// Shows the ".NET SDK check" as a copyable modal error, once the workbench has rendered,
+		/// when this process has no usable .NET SDK at all. Without one every SDK-style project
+		/// fails to load and build, and the Build pad's copy of this text sits behind the first
+		/// failure's dialog: issue #21's follow-up pasted the resulting stack and nothing actionable.
+		///
+		/// Deliberately not fatal. A newer SDK major is only discovered after its folder is added
+		/// under Tools &gt; Options &gt; .NET SDK, so the user must be able to reach that page from
+		/// here. Test runs skip it: OD_TEST_MODE has nobody to click the dialog (see TestMode).
+		/// </summary>
+		public void ReportMissingSdkAtStartup()
+		{
+			if (TestMode.IsActive)
+				return;
+
+			var discovered = DotNetSdkService.DiscoverSdks();
+			string preferredRoot = DotNetSdkService.SelectedSdkRootPath;
+			bool evaluationFailed = MSBuildInternals.NoCompatibleInProcessSdkFound;
+			if (DotNetSdkService.DescribeAvailability(discovered, preferredRoot, evaluationFailed).InProcessSdk != null)
+				return;
+
+			var report = DotNetSdkService.DescribeAvailabilityReport(
+				discovered, preferredRoot, evaluationFailed, RuntimeInformation.ProcessArchitecture);
+			if (report.Count == 0)
+				return;
+
+			try {
+				// The log gets the same text as the pad and the dialog: it is what a bug report
+				// pastes when the dialog is gone.
+				LoggingService.Error("No usable .NET SDK was found for this process: " + Environment.NewLine + string.Join(Environment.NewLine, report));
+				ExceptionBox.ShowCopyableError(
+					"OpenDevelop needs the .NET SDK 10 or newer",
+					string.Join(Environment.NewLine, report),
+					System.Windows.Application.Current?.MainWindow);
+			} catch (Exception ex) {
+				// A missing SDK must not turn into a crash of its own; the pad still has the text.
+				LoggingService.Warn("Could not show the .NET SDK error.", ex);
+			}
+		}
+
 		static bool reportedSdkAvailability;
 		static bool reportedAfterEvaluationFailure;
 
@@ -228,7 +269,9 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// and a command the user has to act on, and a native modal dialog can neither be copied out
 		/// of nor left open beside the Projects Pad while fixing the problem. Diagnostics belong in a
 		/// pad that can be scrolled back to, not in a popup that must be dismissed to see the tree it
-		/// is describing.
+		/// is describing. The same lines are also carried by an exception dialog when in-process
+		/// MSBuild had no usable SDK (<see cref="DotNetSdkService.DescribeAvailabilityReport"/>), since
+		/// a crash report is exactly when nobody opens the pad.
 		/// </summary>
 		public void ReportSdkAvailability()
 		{
@@ -240,12 +283,11 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (reportedSdkAvailability && (reportedAfterEvaluationFailure || !evaluationFailed))
 				return;
 
-			var discovered = DotNetSdkService.DiscoverSdks();
-			var availability = DotNetSdkService.DescribeAvailability(
-				discovered,
+			var report = DotNetSdkService.DescribeAvailabilityReport(
+				DotNetSdkService.DiscoverSdks(),
 				DotNetSdkService.SelectedSdkRootPath,
-				evaluationFailed);
-			string preferredRoot = DotNetSdkService.SelectedSdkRootPath ?? string.Empty;
+				evaluationFailed,
+				RuntimeInformation.ProcessArchitecture);
 
 			// Set only once discovery has succeeded, so a transient failure above does not
 			// suppress the report for the rest of the session.
@@ -254,90 +296,15 @@ namespace ICSharpCode.SharpDevelop.Project
 
 			// Say nothing when there is nothing to act on: an in-process SDK 10, plus either no
 			// preference or a preference that still resolves, is a working setup.
-			if (availability.IsHealthy)
+			if (report.Count == 0)
 				return;
 
-			var architecture = RuntimeInformation.ProcessArchitecture;
 			var category = SD.OutputPad.BuildCategory;
 			category.Activate(bringPadToFront: true);
 			category.AppendLine(string.Empty);
-			category.AppendLine(".NET SDK check");
-
-			if (availability.SupportedSdkRoot != null)
-				category.AppendLine(
-					$"  .NET SDK 10 or newer: found - {availability.SupportedSdkRoot.RootPath} (SDK {availability.SupportedSdkVersion}, "
-					+ $"{availability.SupportedSdkRoot.Architecture?.ToString() ?? "unknown architecture"}).");
-			else
-				category.AppendLine(
-					"  .NET SDK 10 or newer: NOT FOUND. This IDE and the projects it opens require .NET SDK 10 or newer, "
-					+ "so building and loading them may fail.");
-
-			if (!availability.PreferredRootSet)
-				category.AppendLine("  Preferred SDK (Tools > Options > .NET SDK): none set - the system default is used.");
-			else if (availability.PreferredRootUnsupported)
-				category.AppendLine(
-					$"  Preferred SDK (Tools > Options > .NET SDK): {preferredRoot} - found, but it is ignored: it needs .NET SDK 10 or newer "
-					+ $"matching this {architecture} process (it has SDK {availability.PreferredSdk.HighestSdkVersion}, "
-					+ $"{availability.PreferredSdk.Architecture?.ToString() ?? "unknown architecture"}).");
-			else if (availability.PreferredSdk != null)
-				category.AppendLine(
-					$"  Preferred SDK (Tools > Options > .NET SDK): {preferredRoot} - found "
-					+ $"(SDK {availability.PreferredSdk.HighestSdkVersion}).");
-			else
-				category.AppendLine(
-					$"  Preferred SDK (Tools > Options > .NET SDK): {preferredRoot} - NOT FOUND. The IDE falls "
-					+ "back to a system SDK; re-select it or clear the setting.");
-
-			if (availability.InProcessSdk != null)
-				category.AppendLine(
-					$"  In-process SDK (must match this {architecture} process): {availability.InProcessSdk.RootPath} "
-					+ $"(SDK {availability.InProcessSdk.HighestSdkVersion}).");
-			else
-				category.AppendLine(
-					$"  In-process SDK (must match this {architecture} process): NONE. Every SDK-style project "
-					+ $"will load with no items until a {ArchitectureInstallerName(architecture)} SDK is installed.");
-
-			// The explicit caveat: a preferred SDK that exists does not by itself mean the setup is
-			// fine, which is the part a bare "found" would hide.
-			category.AppendLine(
-				"  Note: a preferred SDK being present is not a guarantee on its own. The NuGet SDK resolver "
-				+ "this IDE loads in-process is architecture-specific, so the SDK must both be version 10 or newer "
-				+ "and match this process.");
-
-			if (discovered.Count > 0) {
-				category.AppendLine("  Installed .NET SDK roots:");
-				foreach (var candidate in discovered) {
-					category.AppendLine(
-						$"    {candidate.RootPath}  (SDK {candidate.HighestSdkVersion}, "
-						+ $"{candidate.Architecture?.ToString() ?? "unknown architecture"})");
-				}
-			}
-
-			if (availability.InProcessSdk == null || availability.SupportedSdkRoot == null) {
-				category.AppendLine(
-					$"  To fix: install the {ArchitectureInstallerName(architecture)} .NET SDK 10 or newer side-by-side - "
-					+ $"\"winget install Microsoft.DotNet.SDK.10 --architecture {ArchitectureInstallerName(architecture)}\" - "
-					+ "then restart OpenDevelop. An SDK added under Tools > Options > .NET SDK is picked up the same way.");
-				category.AppendLine(
-					$"  .NET SDK {DotNetSdkService.HighestAutomaticallyDiscoveredSdkMajor + 1} and newer are not discovered "
-					+ "automatically: add their folder under Tools > Options > .NET SDK with Add Custom Path, then select it there.");
-			}
+			foreach (var line in report)
+				category.AppendLine(line);
 			category.AppendLine(string.Empty);
-		}
-
-		/// <summary>The spelling the .NET installers and winget use for an architecture.</summary>
-		static string ArchitectureInstallerName(Architecture architecture)
-		{
-			switch (architecture) {
-				case Architecture.X64:
-					return "x64";
-				case Architecture.X86:
-					return "x86";
-				case Architecture.Arm64:
-					return "arm64";
-				default:
-					return architecture.ToString().ToLowerInvariant();
-			}
 		}
 		
 		/// <summary>

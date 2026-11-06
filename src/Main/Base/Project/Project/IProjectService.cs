@@ -108,6 +108,14 @@ namespace ICSharpCode.SharpDevelop.Project
 		void ReportSdkAvailability();
 
 		/// <summary>
+		/// Shows the same .NET SDK check as a copyable modal error when this process has no usable
+		/// .NET SDK at all, so a machine missing the IDE's prerequisite is told at startup instead of
+		/// through the first project-load failure. Called once, after the workbench window has
+		/// rendered; skipped in test runs and a no-op when an SDK is usable.
+		/// </summary>
+		void ReportMissingSdkAtStartup();
+
+		/// <summary>
 		/// Re-reads one project of the open solution from disk in place, without closing the
 		/// solution or any document, and publishes <see cref="ProjectReloadedMessageEventArgs"/>.
 		/// Returns false when the project cannot be reloaded on its own (the caller then reloads
