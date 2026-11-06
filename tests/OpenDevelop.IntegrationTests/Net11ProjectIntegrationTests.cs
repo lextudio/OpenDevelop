@@ -10,6 +10,10 @@ namespace OpenDevelop.IntegrationTests;
 /// builds it with that SDK and starts it on that SDK's runtime, while the IDE itself keeps its stable
 /// SDK (DotNetSdkService.ResolveSdkForProject).
 ///
+/// .NET 11 is never discovered automatically (DotNetSdkService.HighestAutomaticallyDiscoveredSdkMajor),
+/// so an installed SDK 11 is ignored unless its root is added with Add Custom Path; that is what the
+/// second test does with od.sdk.add-custom-root.
+///
 /// Each test starts its own IDE (<see cref="IsolatedIde"/>), so the custom SDK root it registers never
 /// reaches the shared app instance.
 /// </summary>
@@ -17,15 +21,18 @@ namespace OpenDevelop.IntegrationTests;
 public sealed class Net11ProjectIntegrationTests
 {
     [Fact]
-    public async Task Net11Project_LoadsButFailsToBuild_WithoutAnSdk11()
+    public async Task Net11Project_LoadsButFailsToBuild_WhenNoRootHoldingSdk11IsAdded()
     {
         using var work = new WorkFolder();
         string solution = await CreateNet11ConsoleSolutionAsync(work.Path);
         using var ide = await IsolatedIde.StartAsync(work.CreateConfigDirectory());
 
-        // Only meaningful where no SDK 11 of any kind is installed; elsewhere the build would rightly succeed.
-        var sdk11 = FindAnySdk11(await ide.InvokeAsync("od.sdk.list"));
-        Assert.SkipWhen(sdk11 != null, $"This machine has an SDK 11 ({sdk11}), so 'no SDK 11' cannot be tested here.");
+        // Automatic discovery stops at .NET SDK 10, so an SDK 11 installed on this machine must not
+        // appear. A regression that exposed one must fail here, not skip: skipping would turn it into
+        // an untested path on exactly the machines that have .NET 11.
+        string? discoveredSdk11 = FindAnySdk11(await ide.InvokeAsync("od.sdk.list"));
+        Assert.True(discoveredSdk11 == null,
+            $"Automatic discovery exposed an SDK 11 ({discoveredSdk11}); SDK 11 roots must be added as a custom path.");
 
         await OpenAndWaitForItemsAsync(ide, solution);
 

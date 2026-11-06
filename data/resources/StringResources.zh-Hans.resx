@@ -9676,7 +9676,7 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
     <value>立即检查</value>
   </data>
   <data name="DotNetSdk.Description" xml:space="preserve">
-    <value>选择用于编译、调试和运行项目文件测试的已安装 .NET SDK。默认使用系统安装的 SDK。</value>
+    <value>选择用于编译、调试和运行项目文件测试的已安装 .NET SDK。默认使用系统安装的 SDK。自动发现只到 .NET SDK 10；要使用 .NET SDK 11 或更高版本，请用“添加自定义路径”添加其文件夹。</value>
   </data>
   <data name="DotNetSdk.AddCustomPath" xml:space="preserve">
     <value>添加自定义路径...</value>

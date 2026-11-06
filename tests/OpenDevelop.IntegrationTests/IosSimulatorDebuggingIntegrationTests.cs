@@ -28,8 +28,13 @@ public sealed class IosSimulatorDebuggingIntegrationTests
             string config = Directory.CreateDirectory(Path.Combine(work, "config")).FullName;
             using var ide = await IsolatedIde.StartAsync(config);
 
+            // .NET 11 is not discovered automatically (DotNetSdkService.HighestAutomaticallyDiscoveredSdkMajor):
+            // opt in the folder that holds it, like Tools > Options > .NET SDK > Add Custom Path.
+            foreach (var candidate in SdkRootCandidates.WithSdk11())
+                await ide.InvokeAsync("od.sdk.add-custom-root", candidate);
+
             var (sdkRoot, sdkVersion) = FindSdk11WithIosWorkload(await ide.InvokeAsync("od.sdk.list"));
-            Assert.SkipWhen(sdkRoot == null, "No discovered SDK 11 root has the .NET 11 iOS workload (packs/Microsoft.iOS.Sdk.net11.0_*).");
+            Assert.SkipWhen(sdkRoot == null, "No SDK 11 root with the .NET 11 iOS workload is installed (packs/Microsoft.iOS.Sdk.net11.0_*).");
 
             var (solution, appDelegate, breakLine) = await CreateIosAppAsync(work, sdkRoot!, sdkVersion!);
             var open = await ide.InvokeAsync("od.open-solution", solution);

@@ -9676,7 +9676,7 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
     <value>立即檢查</value>
   </data>
   <data name="DotNetSdk.Description" xml:space="preserve">
-    <value>選擇用來編譯、偵錯及執行專案檔測試的已安裝 .NET SDK。預設為系統安裝的 SDK。</value>
+    <value>選擇用來編譯、偵錯及執行專案檔測試的已安裝 .NET SDK。預設為系統安裝的 SDK。自動探索只到 .NET SDK 10；若要使用 .NET SDK 11 或更新版本，請用「新增自訂路徑」加入其資料夾。</value>
   </data>
   <data name="DotNetSdk.AddCustomPath" xml:space="preserve">
     <value>新增自訂路徑...</value>

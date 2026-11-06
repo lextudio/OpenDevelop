@@ -33,6 +33,16 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 		/// always returning empty) for every Windows install, dev or packaged alike.</summary>
 		static readonly string DotnetExeFileName = OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
 
+		/// <summary>
+		/// The highest SDK major automatic discovery accepts from the bundled, PATH-default and
+		/// well-known system roots. This IDE and the projects it opens target .NET 10, so a newer
+		/// major (currently .NET 11) is an explicit choice: the user adds its root under
+		/// Tools &gt; Options &gt; .NET SDK with Add Custom Path, and only a Custom root is
+		/// described with every version it holds. Bump this when the IDE itself moves to a newer
+		/// target framework (and update the DotNetSdk.Description resource, which names the cut-off).
+		/// </summary>
+		public const int HighestAutomaticallyDiscoveredSdkMajor = 10;
+
 		public static string SelectedSdkRootPath {
 			get { return PropertyService.Get(SelectedSdkRootPathKey, string.Empty); }
 			set { PropertyService.Set(SelectedSdkRootPathKey, value ?? string.Empty); }
@@ -85,7 +95,7 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			}
 
 			try {
-				sdk = TryDescribeRoot(normalized, "Custom", DotNetSdkOrigin.Custom);
+				sdk = DescribeRoot(normalized, "Custom", DotNetSdkOrigin.Custom);
 			} catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) {
 				error = $"The SDK folder could not be read:\n{normalized}\n\n{ex.Message}";
 				return false;
@@ -102,18 +112,37 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 		/// this OpenDevelop process itself was launched under (via launch.sh's DOTNET_ROOT), and
 		/// any custom paths the user has added. Duplicate roots (same resolved directory) are
 		/// collapsed to a single entry.
+		///
+		/// Only a root added as a custom path is described with every installed version. The
+		/// automatic candidates stop at <see cref="HighestAutomaticallyDiscoveredSdkMajor"/>, so a
+		/// newer major does not appear just because it is installed.
 		/// </summary>
 		public static IReadOnlyList<DotNetSdkInfo> DiscoverSdks()
 		{
 			return DiscoverSdks(CustomRoots);
 		}
 
-		internal static IReadOnlyList<DotNetSdkInfo> DiscoverSdks(IEnumerable<string> customRoots)
+		/// <summary>
+		/// <see cref="DiscoverSdks()"/> for an explicit set of custom roots (the Settings dialog's
+		/// list, or a test). A root in <paramref name="customRoots"/> is treated as Custom even when
+		/// it is also one of the automatic candidates: the user asked for that folder, so its newer
+		/// SDK majors are kept and deduplication must not drop the opted-in entry in favour of the
+		/// filtered automatic one.
+		/// </summary>
+		public static IReadOnlyList<DotNetSdkInfo> DiscoverSdks(IEnumerable<string> customRoots)
 		{
 			if (customRoots == null)
 				throw new ArgumentNullException(nameof(customRoots));
 			var results = new List<DotNetSdkInfo>();
 			var seenRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			var optedInRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			foreach (var custom in customRoots) {
+				if (string.IsNullOrEmpty(custom))
+					continue;
+				var normalizedCustom = NormalizeRoot(custom);
+				if (normalizedCustom != null)
+					optedInRoots.Add(normalizedCustom);
+			}
 
 			void TryAdd(string rootPath, string label, DotNetSdkOrigin origin)
 			{
@@ -122,7 +151,9 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 				var normalized = NormalizeRoot(rootPath);
 				if (normalized == null || !seenRoots.Add(normalized))
 					return;
-				var info = TryDescribeRoot(normalized, label, origin);
+				bool explicitlyAdded = optedInRoots.Contains(normalized);
+				var info = DescribeRoot(normalized, explicitlyAdded ? "Custom" : label,
+					explicitlyAdded ? DotNetSdkOrigin.Custom : origin);
 				if (info != null)
 					results.Add(info);
 			}
@@ -234,7 +265,15 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			}
 		}
 
-		static DotNetSdkInfo TryDescribeRoot(string rootPath, string label, DotNetSdkOrigin origin)
+		/// <summary>
+		/// Describes one SDK root for discovery. Returns null when the folder is not a root (no
+		/// "dotnet" host or no "sdk" folder) or holds no version this <paramref name="origin"/> may
+		/// use. Automatic origins keep only
+		/// <see cref="HighestAutomaticallyDiscoveredSdkMajor"/> and older; a Custom root (added
+		/// under Tools &gt; Options &gt; .NET SDK) keeps every installed version, including
+		/// pre-releases, which is how a newer major is opted into.
+		/// </summary>
+		public static DotNetSdkInfo DescribeRoot(string rootPath, string label, DotNetSdkOrigin origin)
 		{
 			string dotnetExe = Path.Combine(rootPath, DotnetExeFileName);
 			string sdkDir = Path.Combine(rootPath, "sdk");
@@ -248,14 +287,18 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 				.Select(Path.GetFileName)
 				.Where(v => v != null)
 				.ToList();
+			bool custom = origin == DotNetSdkOrigin.Custom;
+			bool Allowed(string version) => custom || SdkMajorVersion(version) <= HighestAutomaticallyDiscoveredSdkMajor;
 			var versions = names
 				.Where(v => !v.Contains('-'))
+				.Where(Allowed)
 				.OrderBy(v => Version.TryParse(v, out var ver) ? ver : new Version(0, 0))
 				.ToList();
 			// Pre-releases are kept apart: they never become the IDE's SDK, but a project targeting a
 			// framework no stable SDK supports yet (net11.0 before .NET 11 ships) can only be built with one.
 			var previews = names
 				.Where(v => v.Contains('-') && Version.TryParse(v.Split('-')[0], out _))
+				.Where(Allowed)
 				.OrderBy(v => v, PrereleaseVersionComparer.Instance)
 				.ToList();
 			if (versions.Count == 0 && previews.Count == 0)

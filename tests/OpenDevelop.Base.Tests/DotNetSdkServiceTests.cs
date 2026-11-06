@@ -50,6 +50,66 @@ public class DotNetSdkServiceTests
 	}
 
 	[Fact]
+	public void DescribeRoot_AutomaticOrigins_OmitANewerMajor()
+	{
+		using var root = new TemporaryDirectory();
+		File.WriteAllText(System.IO.Path.Combine(root.Path, DotnetExecutableName), "");
+		Directory.CreateDirectory(System.IO.Path.Combine(root.Path, "sdk", "10.0.401"));
+		Directory.CreateDirectory(System.IO.Path.Combine(root.Path, "sdk", "11.0.100"));
+		Directory.CreateDirectory(System.IO.Path.Combine(root.Path, "sdk", "11.0.100-rc.1.26425.128"));
+
+		var sdk = DotNetSdkService.DescribeRoot(root.Path, "System", DotNetSdkOrigin.System);
+
+		Assert.NotNull(sdk);
+		Assert.Equal(new[] { "10.0.401" }, sdk.InstalledSdkVersions);
+		Assert.Empty(sdk.PreviewSdkVersions);
+		Assert.Equal("10.0.401", sdk.HighestSdkVersion);
+	}
+
+	[Fact]
+	public void DescribeRoot_AutomaticOrigins_SkipARootThatOnlyHoldsANewerMajor()
+	{
+		using var root = new TemporaryDirectory();
+		File.WriteAllText(System.IO.Path.Combine(root.Path, DotnetExecutableName), "");
+		Directory.CreateDirectory(System.IO.Path.Combine(root.Path, "sdk", "11.0.100"));
+
+		Assert.Null(DotNetSdkService.DescribeRoot(root.Path, "System", DotNetSdkOrigin.System));
+	}
+
+	[Fact]
+	public void DescribeRoot_CustomOrigin_KeepsANewerMajor()
+	{
+		using var root = new TemporaryDirectory();
+		File.WriteAllText(System.IO.Path.Combine(root.Path, DotnetExecutableName), "");
+		Directory.CreateDirectory(System.IO.Path.Combine(root.Path, "sdk", "10.0.401"));
+		Directory.CreateDirectory(System.IO.Path.Combine(root.Path, "sdk", "11.0.100"));
+		Directory.CreateDirectory(System.IO.Path.Combine(root.Path, "sdk", "11.0.100-rc.1.26425.128"));
+
+		var sdk = DotNetSdkService.DescribeRoot(root.Path, "Custom", DotNetSdkOrigin.Custom);
+
+		Assert.NotNull(sdk);
+		Assert.Equal(new[] { "10.0.401", "11.0.100" }, sdk.InstalledSdkVersions);
+		Assert.Equal(new[] { "11.0.100-rc.1.26425.128" }, sdk.PreviewSdkVersions);
+		Assert.Equal("11.0.100", sdk.HighestSdkVersion);
+	}
+
+	[Fact]
+	public void DiscoverSdks_ShowsANewerMajorOnlyForARootAddedAsCustom()
+	{
+		using var root = new TemporaryDirectory();
+		File.WriteAllText(System.IO.Path.Combine(root.Path, DotnetExecutableName), "");
+		Directory.CreateDirectory(System.IO.Path.Combine(root.Path, "sdk", "11.0.100"));
+
+		// Not one of the automatic candidates, and even if it were, discovery would stop at 10.
+		Assert.DoesNotContain(DotNetSdkService.DiscoverSdks(Array.Empty<string>()), sdk => DotNetSdkService.SameRoot(sdk.RootPath, root.Path));
+
+		var custom = DotNetSdkService.DiscoverSdks(new[] { root.Path })
+			.Single(sdk => DotNetSdkService.SameRoot(sdk.RootPath, root.Path));
+		Assert.Equal(DotNetSdkOrigin.Custom, custom.Origin);
+		Assert.Equal("11.0.100", custom.HighestSdkVersion);
+	}
+
+	[Fact]
 	public void DescribeAvailability_IsHealthy_WithAnInProcessSdk10OrNewerAndNoPreference()
 	{
 		var sdk = Sdk("C:\\dotnet", "10.0.401", RuntimeInformation.ProcessArchitecture);

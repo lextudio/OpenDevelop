@@ -94,9 +94,13 @@ so on macOS it always reports Skipped and this startup path has no automated cov
 
 `Net11ProjectIntegrationTests` covers a project whose target framework no stable SDK supports yet
 (net11.0 while .NET 11 is a release candidate), again each test in its own IDE.
-`Net11Project_LoadsButFailsToBuild_WithoutAnSdk11` expects the build to fail with NETSDK1045; it is
-**Skipped** on a machine where any discovered SDK root holds an 11.x SDK, because there the build
-rightly succeeds - so it only runs on a machine without .NET 11. `Net11Project_BuildsAndRuns_WithADotnetupInstalledPreviewSdk11`
+`Net11Project_LoadsButFailsToBuild_WhenNoRootHoldingSdk11IsAdded` expects the build to fail with
+NETSDK1045. It runs on any machine, because automatic discovery stops at .NET SDK 10
+(`DotNetSdkService.HighestAutomaticallyDiscoveredSdkMajor`): an installed .NET 11 is ignored until
+its root is added as a custom path, so the IDE keeps its stable SDK 10 and the net11.0 target is
+rejected. The test fails if discovery starts exposing an SDK 11 again, so the policy cannot regress
+silently on the machines that have .NET 11 installed.
+`Net11Project_BuildsAndRuns_WithADotnetupInstalledPreviewSdk11`
 installs the `11.0` channel with dotnetup (a pre-release until .NET 11 ships), registers it as a
 custom SDK root, and requires that the IDE keeps a stable SDK as its own, builds the project with the
 pre-release SDK, and runs it to completion on the .NET 11 runtime from that root.

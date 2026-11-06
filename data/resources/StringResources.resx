@@ -10070,7 +10070,7 @@ Press Esc to cancel this operation.</value>
     <value>Check Now</value>
   </data>
   <data name="DotNetSdk.Description" xml:space="preserve">
-    <value>Choose which installed .NET SDK is used to compile, debug, and run tests for project files. The default is the system-installed SDK.</value>
+    <value>Choose which installed .NET SDK is used to compile, debug, and run tests for project files. The default is the system-installed SDK. Automatic discovery stops at .NET SDK 10; to use .NET SDK 11 or newer, add its folder with Add Custom Path.</value>
   </data>
   <data name="DotNetSdk.AddCustomPath" xml:space="preserve">
     <value>Add Custom Path...</value>

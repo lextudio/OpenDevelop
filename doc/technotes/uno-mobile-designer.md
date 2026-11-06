@@ -344,6 +344,11 @@ build-before-run included) on UnoSpike: breakpoint in `MainPage..ctor()` hit 67 
   (rc.3, only in `~/.dotnet`) and failed with NETSDK1147. `DotNetSdkService.ResolveSdkForProject` now applies the nearest `global.json`'s
   `sdk.version` when the framework-based choice lacks it (`ApplyGlobalJsonPin`, reason "the project's global.json pins this SDK version");
   every other choice is unchanged.
+- **Discovery policy (2026-11-05).** Automatic discovery stops at .NET SDK 10
+  (`DotNetSdkService.HighestAutomaticallyDiscoveredSdkMajor`): an installed SDK 11 is not offered by Tools > Options > .NET SDK until that
+  root is added there with **Add Custom Path** (only a Custom root keeps 11, stable or preview). Without the opt-in, a `net11.0` project
+  builds with SDK 10 and fails NETSDK1045, and the `global.json` pin above can only pick a version from a root that is discovered. The
+  Android/iOS journeys therefore add the root themselves (`od.sdk.add-custom-root`, `SdkRootCandidates.WithSdk11`).
 - No `ValidateXcodeVersion=false` is needed: the net11 iOS SDK (27.0) accepts Xcode 27.
 - One build per F5: the IDE's build-before-run already writes the `iossimulator-arm64` bundle (the iOS SDK's default RID on Apple
   silicon), so the behavior records each project's last successful IDE build (`IBuildService.BuildStarted/BuildFinished`) and skips its CLI

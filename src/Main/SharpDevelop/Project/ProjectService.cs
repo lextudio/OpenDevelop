@@ -318,6 +318,9 @@ namespace ICSharpCode.SharpDevelop.Project
 					$"  To fix: install the {ArchitectureInstallerName(architecture)} .NET SDK 10 or newer side-by-side - "
 					+ $"\"winget install Microsoft.DotNet.SDK.10 --architecture {ArchitectureInstallerName(architecture)}\" - "
 					+ "then restart OpenDevelop. An SDK added under Tools > Options > .NET SDK is picked up the same way.");
+				category.AppendLine(
+					$"  .NET SDK {DotNetSdkService.HighestAutomaticallyDiscoveredSdkMajor + 1} and newer are not discovered "
+					+ "automatically: add their folder under Tools > Options > .NET SDK with Add Custom Path, then select it there.");
 			}
 			category.AppendLine(string.Empty);
 		}

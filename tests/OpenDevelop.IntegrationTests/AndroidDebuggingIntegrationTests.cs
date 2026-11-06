@@ -20,9 +20,13 @@ public sealed class AndroidDebuggingIntegrationTests
 		Directory.CreateDirectory(work);
 		try {
 			using var ide = await IsolatedIde.StartAsync(Directory.CreateDirectory(Path.Combine(work, "config")).FullName);
+			// .NET 11 is not discovered automatically (DotNetSdkService.HighestAutomaticallyDiscoveredSdkMajor):
+			// opt in the folder that holds it, like Tools > Options > .NET SDK > Add Custom Path.
+			foreach (var candidate in SdkRootCandidates.WithSdk11())
+				await ide.InvokeAsync("od.sdk.add-custom-root", candidate);
 			var sdks = (await ide.InvokeAsync("od.sdk.list")).GetProperty("sdks");
 			(string? root, string? version) = FindSdk(sdks);
-			Assert.SkipWhen(root == null, "No discovered SDK 11 root has the Android workload.");
+			Assert.SkipWhen(root == null, "No SDK 11 root with the Android workload is installed.");
 			await File.WriteAllTextAsync(Path.Combine(work, "global.json"), "{\"sdk\":{\"version\":\"" + version + "\",\"allowPrerelease\":true,\"rollForward\":\"disable\"}}");
 			string app = Directory.CreateDirectory(Path.Combine(work, "AndroidApp")).FullName;
 			await File.WriteAllTextAsync(Path.Combine(app, "Directory.Build.props"), "<Project><PropertyGroup><BaseOutputPath>custom-bin/</BaseOutputPath><BaseIntermediateOutputPath>custom-obj/</BaseIntermediateOutputPath></PropertyGroup></Project>");
