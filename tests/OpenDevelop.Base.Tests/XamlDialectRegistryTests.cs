@@ -198,13 +198,13 @@ namespace OpenDevelop.Tests
 				"Silent", name => string.Equals(Path.GetFileName(name), "Silent.xaml", StringComparison.Ordinal)));
 			var mauiServer = Path.Combine(tempDirectory, "maui-xaml-ls.dll");
 			var wpfServer = Path.Combine(tempDirectory, "wpf-xaml-ls.dll");
-			using var mauiRegistration = XamlLanguageServers.Register("Maui", mauiServer);
+			using var mauiRegistration = XamlLanguageServers.Register("Maui", mauiServer, "--framework", "maui");
 			using var wpfRegistration = XamlLanguageServers.Register(XamlLanguageServers.MicrosoftWpf, wpfServer);
 
 			try {
 				var spec = XamlLanguageServers.GetLaunchSpec(maui);
 				Assert.NotNull(spec);
-				Assert.Equal(new[] { "exec", mauiServer, "--workspace", tempDirectory }, spec!.Arguments);
+				Assert.Equal(new[] { "exec", mauiServer, "--workspace", tempDirectory, "--framework", "maui" }, spec!.Arguments);
 				// Registered dialect without a server, and an unclaimed file: no server at all -
 				// never the WPF one registered alongside.
 				Assert.Null(XamlLanguageServers.GetLaunchSpec(silent));

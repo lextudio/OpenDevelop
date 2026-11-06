@@ -99,6 +99,7 @@ $forkPackages = @(
 $devFlowPackages = @(
     'LeXtudio.DevFlow.Agent.Core', 'LeXtudio.DevFlow.Agent.LibreWpf'
 ) | ForEach-Object { [pscustomobject]@{ Id = $_; Version = Get-CentralPackageVersion (Join-Path $PSScriptRoot 'Directory.Packages.props') $_ } }
+$wpfHotReloadPackages = @('WpfHotReload.Runtime') | ForEach-Object { [pscustomobject]@{ Id = $_; Version = Get-CentralPackageVersion (Join-Path $PSScriptRoot 'Directory.Packages.props') $_ } }
 # The OmniSharp DAP fork that hosts SharpDbg's debug adapter inside the Android agent. One version for the five packages.
 $dapForkVersion = Get-XmlPropertyValue (Join-Path $PSScriptRoot 'Directory.Packages.props') 'LextudioDapForkVersion'
 $dapForkPackages = @(
@@ -108,7 +109,7 @@ $dapForkPackages = @(
 # Only the OpenAvalon closure carries the openavalon commit; the other packages are published separately.
 $packages = @($openAvalonPackages | ForEach-Object { [pscustomobject]@{ Id = $_; Version = $sdkVersion; Closure = $closureCommit } }) +
     [pscustomobject]@{ Id = 'LibGhostty.Net'; Version = $libGhosttyVersion; Closure = '' } +
-    @($forkPackages + $devFlowPackages + $dapForkPackages | ForEach-Object { [pscustomobject]@{ Id = $_.Id; Version = $_.Version; Closure = '' } })
+    @($forkPackages + $devFlowPackages + $wpfHotReloadPackages + $dapForkPackages | ForEach-Object { [pscustomobject]@{ Id = $_.Id; Version = $_.Version; Closure = '' } })
 
 Write-Host "OpenAvalon local feed: $FeedPath"
 Write-Host "OpenAvalon package version: $sdkVersion from openavalon $closureCommit ($($openAvalonPackages.Count) packages); LibGhostty.Net $libGhosttyVersion; $($forkPackages.Count) AvalonEdit/AvalonDock fork packages; $($devFlowPackages.Count) DevFlow packages"

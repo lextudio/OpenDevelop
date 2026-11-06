@@ -11,8 +11,8 @@ reads different assemblies, so each has its own server - they are never mixed.
 The unit of selection is the **project**, not the file extension and not an abstract
 "framework". A project is unambiguously one XAML framework, so:
 
-- Each XAML framework gets its **own** language server binary, which knows its own framework and
-  therefore never has to detect anything. WPF already has one: `wpf-xaml-ls.dll`.
+- Each XAML framework gets its **own** language-server process, which is passed its framework
+  profile at launch. Microsoft WPF uses `WinUiXaml.LanguageServer --framework wpf`.
 - The XAML **framework addin** owns that server: it starts it and contributes a binding that
   says "this server serves projects of this dialect". Enabling or disabling the addin therefore
   enables or disables the dialect's language support, with no extra bookkeeping.
@@ -30,12 +30,8 @@ each host has to populate. Each server references only its own framework's profi
 
 | Piece | Where | State |
 |---|---|---|
-| WPF language server | `externals/vscode-wpf/src/XamlLanguageServer.Wpf/` (`wpf-xaml-ls.dll`) | works, WPF-only, `net10.0-windows` |
-| Its bootstrap | `.../XamlLanguageServer.Wpf/Program.cs` | ~110 lines; wires the Tier-1/Tier-2 pipeline |
-| Framework-neutral engine | `wxsg/.../src/XamlToCSharpGenerator.LanguageServer/` (`AxsgLanguageServer`) | exists; the WPF server is built on it |
-| Analysis engine | `wxsg/.../XamlToCSharpGenerator.LanguageService/` | exists |
-| MAUI framework profile | `wxsg/.../LanguageService.Framework.Maui/MauiLanguageFrameworkProvider.cs` | **exists and is complete** (95 lines) |
-| Other profiles | `...Framework.{Avalonia,WinUI,Uno,Wpf}/` | exist |
+| WPF/WinUI/Uno language server | `externals/winappvsce/server/src/WinUiXaml.LanguageServer/` | profile-aware managed server, `net10.0` |
+| Framework profiles | `.../FrameworkProfiles.cs` | Microsoft WPF, LibreWPF, WinUI, ProGPU and Uno |
 | Project-based detection | `src/Main/Base/Project/Src/LanguageServices/Xaml/XamlFrameworkDetector.cs` | exists, keyed on the owning project |
 | Runtime dialect registry | `.../XamlDialectRegistry.cs` | exists, added for out-of-tree designers |
 | Per-file language-service routing | `LanguageServiceRegistry.RegisterExtension(ext, Func<string, ILanguageService>)` | exists — the resolver receives the file name and may return `null` |
@@ -161,24 +157,22 @@ clobber the first. See the implementation section below.
 
 | Runtime (key) | Server | Lives in | Registered by | Tier-1 assemblies |
 |---|---|---|---|---|
-| Microsoft WPF (`MicrosoftWpf`) | `wpf-xaml-ls` | `externals/vscode-wpf` | WPF designer addin | `microsoft.windowsdesktop.app.ref` → `Microsoft.WindowsDesktop.App.Ref` → `Microsoft.WindowsDesktop.App` (first hit wins; see `WpfTier1ReferenceSet`) |
-| LibreWPF (`LibreWpf`) | `librewpf-xaml-ls` | `WpfDesign/WpfDesign.LanguageServer.LibreWpf` | WPF designer addin | `librewpf.transport` |
-| Microsoft WinUI (`MicrosoftWinUI`) | `winui-xaml-ls` | `WinUIXamlDesigner/…LanguageServer.WinUI` | WinUI designer addin | Windows App SDK (`Microsoft.WinUI.dll`) + Windows SDK projection |
-| ProGPU WinUI (`ProGpuWinUI`) | `progpu-winui-xaml-ls` | `WinUIXamlDesigner/…LanguageServer.ProGpu` | WinUI designer addin | `progpu.winui`, `progpu.winrt` |
-| Uno (`Uno`) | `uno-xaml-ls` | `WinUIXamlDesigner/…LanguageServer.Uno` | WinUI designer addin | `uno.winui`, `uno.foundation`, `uno.winrt` |
+| Microsoft WPF (`MicrosoftWpf`) | `WinUiXaml.LanguageServer --framework wpf` | `externals/winappvsce` | WPF designer addin | Microsoft WPF project evaluation; a bounded `System.Windows` fallback supports the no-reference design-host fixture |
+| LibreWPF (`LibreWpf`) | `WinUiXaml.LanguageServer --framework librewpf` | `externals/winappvsce` | WPF designer addin | LibreWPF project evaluation; a bounded `System.Windows` fallback supports an unavailable closure |
+| Microsoft WinUI (`MicrosoftWinUI`) | `WinUiXaml.LanguageServer` | `externals/winappvsce` | WinUI designer addin | Microsoft WinUI XAML LSP project evaluation |
+| ProGPU WinUI (`ProGpuWinUI`) | `WinUiXaml.LanguageServer --framework progpu` | `externals/winappvsce` | WinUI designer addin | bounded `Microsoft.UI.Xaml` fallback for the marker-only ProGPU project |
+| Uno (`Uno`) | `WinUiXaml.LanguageServer --framework uno` | `externals/winappvsce` | WinUI designer addin | `Uno.WinUI` metadata and source-generator output |
 | MAUI (`Maui`, the dialect key) | `maui-xaml-ls` | MAUI-Designer `opendevelop-addin/MAUIDesigner.LanguageServer` (MIT) | MAUI addin (bundled under `LanguageServer/`) | MAUI packages |
 
-Each server's `Program.cs` is one call to `XamlLanguageServerHost.RunAsync(args, framework,
-referenceSet)` (wxsg `XamlToCSharpGenerator.LanguageServer/Hosting`), with its framework profile and
-its own `ITier1ReferenceSet`. No server takes a framework switch. Tier-1 assemblies are read as
-metadata only, so every server builds and runs on any OS (WinUI's needs only a *restored* WinUI
-project on the machine - `dotnet restore` works on macOS). A server with no Tier-1 assemblies on
-the machine runs on Tier 2 alone; it never borrows another runtime's.
+Microsoft WPF, LibreWPF, Microsoft WinUI, ProGPU WinUI and Uno share WinAppVSCE's managed server
+and choose a strict profile at launch; MAUI retains its dedicated server. Metadata is read only, so
+every server builds and runs on any OS (WinUI needs only a *restored* WinUI project on the machine -
+`dotnet restore` works on macOS). A server with no Tier-1 assemblies on the machine runs on Tier 2
+alone; it never borrows another runtime's.
 
-Every server still links the whole wxsg engine, whose `LanguageService` project references every
-framework profile (`Framework.All`); at run time a server uses only its own profile, because it
-passes its framework id and the engine then skips detection. Splitting the engine per profile is
-a separate change.
+The AXSG launchers formerly used for LibreWPF and ProGPU are removed. The WPF designer uses the
+separate `externals/WpfDesigner` submodule for its design surface and XAML DOM; it is independent
+from the retired language-service path.
 
 ### Routing (OpenDevelop)
 

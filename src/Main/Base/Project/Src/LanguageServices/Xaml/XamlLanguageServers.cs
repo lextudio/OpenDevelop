@@ -11,7 +11,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 /// Which language server serves which XAML runtime.
 /// <para>
 /// Every XAML runtime has its own server executable, reading only its own assemblies: Microsoft WPF
-/// (wpf-xaml-ls) and LibreWPF (librewpf-xaml-ls) are separate even though both are WPF markup, and
+/// (WinUiXaml.LanguageServer --framework wpf) and LibreWPF (librewpf-xaml-ls) are separate even though both are WPF markup, and
 /// so are Microsoft WinUI (winui-xaml-ls), ProGPU WinUI (progpu-winui-xaml-ls) and Uno
 /// (uno-xaml-ls), even though all three are WinUI markup; an out-of-tree dialect (MAUI:
 /// maui-xaml-ls) has its own too. The addin that owns a runtime registers its server here under that
@@ -23,7 +23,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 /// </summary>
 public static class XamlLanguageServers
 {
-	static readonly Dictionary<string, string> servers = new(StringComparer.OrdinalIgnoreCase);
+	static readonly Dictionary<string, ServerRegistration> servers = new(StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>Server keys of the built-in runtimes.</summary>
 	public const string MicrosoftWpf = "MicrosoftWpf";
@@ -62,13 +62,14 @@ public static class XamlLanguageServers
 	/// <c>dotnet exec</c>) as the language server for <paramref name="key"/> (see
 	/// <see cref="ResolveKey"/>). Registering a key again replaces the earlier server; disposing the
 	/// result removes it.</summary>
-	public static IDisposable Register(string key, string serverAssembly)
+	public static IDisposable Register(string key, string serverAssembly, params string[] serverArguments)
 	{
 		if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("A server key is required.", nameof(key));
 		if (string.IsNullOrWhiteSpace(serverAssembly)) throw new ArgumentException("A server assembly is required.", nameof(serverAssembly));
+		var registration = new ServerRegistration(serverAssembly, serverArguments ?? Array.Empty<string>());
 		lock (servers)
-			servers[key] = serverAssembly;
-		return new Registration(key, serverAssembly);
+			servers[key] = registration;
+		return new Registration(key, registration);
 	}
 
 	/// <summary>The server registered for <paramref name="key"/>, or null.</summary>
@@ -76,7 +77,7 @@ public static class XamlLanguageServers
 	{
 		if (string.IsNullOrEmpty(key)) return null;
 		lock (servers)
-			return servers.TryGetValue(key, out var server) ? server : null;
+			return servers.TryGetValue(key, out var server) ? server.ServerAssembly : null;
 	}
 
 	/// <summary>
@@ -88,11 +89,14 @@ public static class XamlLanguageServers
 	public static LspServerLaunchSpec? GetLaunchSpec(string xamlFileName)
 	{
 		var key = ResolveKey(xamlFileName);
-		var server = key == null ? null : GetServerAssembly(key);
-		if (server == null)
+		ServerRegistration? registration;
+		lock (servers)
+			registration = key != null && servers.TryGetValue(key, out var registered) ? registered : null;
+		if (registration == null)
 			return null;
-		return new LspServerLaunchSpec("xaml", "dotnet", Path.GetDirectoryName(server),
-			"exec", server, "--workspace", FindProjectDirectory(xamlFileName));
+		return new LspServerLaunchSpec("xaml", "dotnet", Path.GetDirectoryName(registration.ServerAssembly),
+			new[] { "exec", registration.ServerAssembly, "--workspace", FindProjectDirectory(xamlFileName) }
+				.Concat(registration.ServerArguments).ToArray());
 	}
 
 	/// <summary>The directory of the project that owns the file, else the file's own directory.
@@ -142,12 +146,12 @@ public static class XamlLanguageServers
 	sealed class Registration : IDisposable
 	{
 		readonly string key;
-		readonly string serverAssembly;
+		readonly ServerRegistration registration;
 
-		public Registration(string key, string serverAssembly)
+		public Registration(string key, ServerRegistration registration)
 		{
 			this.key = key;
-			this.serverAssembly = serverAssembly;
+			this.registration = registration;
 		}
 
 		public void Dispose()
@@ -155,9 +159,11 @@ public static class XamlLanguageServers
 			lock (servers)
 			{
 				// Only remove what this registration put there, not a later replacement.
-				if (servers.TryGetValue(key, out var current) && current == serverAssembly)
+				if (servers.TryGetValue(key, out var current) && current == registration)
 					servers.Remove(key);
 			}
 		}
 	}
+
+	sealed record ServerRegistration(string ServerAssembly, string[] ServerArguments);
 }

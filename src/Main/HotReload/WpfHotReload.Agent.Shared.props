@@ -23,13 +23,10 @@
     <RuntimeIdentifiers>osx-arm64;osx-x64;linux-x64;linux-arm64;win-x64;win-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 
-  <!-- vscode-wpf's own agent, source-linked rather than copied so it keeps its own licence and
-       dependency boundary, and so a fix on either side stays in one place. It only needs the WPF
-       diagnostic APIs, which it resolves by reflection, so the same source compiles against
-       LibreWPF for macOS/Linux as against Microsoft WPF. -->
+  <!-- The source-only GitHub Package compiles the agent into this project, so it binds against
+       this variant's own LibreWPF or Microsoft WPF reference closure. -->
   <ItemGroup>
-    <Compile Include="$(MSBuildThisFileDirectory)..\..\..\externals\vscode-wpf\src\WpfHotReload.Runtime\WpfHotReloadAgent.cs" Link="WpfHotReloadAgent.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)..\..\..\externals\vscode-wpf\src\WpfHotReload.Runtime\StartupHook.cs" Link="StartupHook.cs" />
+    <PackageReference Include="WpfHotReload.Runtime" PrivateAssets="all" />
   </ItemGroup>
 
   <!-- Deploy into the WPF designer addin, under HotReload/<runtime>/, so its adapter can pick the

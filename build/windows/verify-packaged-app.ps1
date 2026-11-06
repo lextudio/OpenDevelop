@@ -151,7 +151,7 @@ try {
 
     Write-Host '==> Checking the packaged WPF designer child host...'
     $wpfSolution = Join-Path $repoRoot 'tests/fixtures/WpfHotReloadFixture/WpfHotReloadFixture.slnx'
-    $wpfXaml = Join-Path $repoRoot 'externals/vscode-wpf/sample/net6.0/MainWindow.xaml'
+    $wpfXaml = Join-Path $repoRoot 'tests/fixtures/WpfHotReloadFixture/MainWindow.xaml'
     if (-not (Test-Path -LiteralPath $wpfXaml)) { Fail "the linked WPF fixture source is missing: $wpfXaml" }
     $null = Invoke-DevFlow 'od.open-solution' @($wpfSolution)
     $openedXaml = Invoke-DevFlow 'od.open-file' @($wpfXaml)

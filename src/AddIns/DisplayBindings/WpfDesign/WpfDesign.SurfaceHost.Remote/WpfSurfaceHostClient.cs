@@ -128,7 +128,7 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 
 		var directory = new DirectoryInfo(startDirectory);
 		while (directory != null) {
-			if (Directory.Exists(Path.Combine(directory.FullName, "externals", "vscode-wpf")) &&
+			if (Directory.Exists(Path.Combine(directory.FullName, "externals", "WpfDesigner")) &&
 				Directory.Exists(Path.Combine(directory.FullName, "src", "Main", "Base")))
 				return directory.FullName;
 			directory = directory.Parent;

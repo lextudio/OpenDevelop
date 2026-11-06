@@ -151,11 +151,11 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ICSharpCode.Data.SQLServer"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "WpfDesign", "WpfDesign", "{D54BEB89-8CBE-475C-8BB9-836D2FD71260}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WpfDesign", "externals\vscode-wpf\external\WpfDesigner\WpfDesign\Project\WpfDesign.csproj", "{66A378A1-E9F4-4AD5-8946-D0EC06C2902F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WpfDesign", "externals\WpfDesigner\WpfDesign\Project\WpfDesign.csproj", "{66A378A1-E9F4-4AD5-8946-D0EC06C2902F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WpfDesign.XamlDom", "externals\vscode-wpf\external\WpfDesigner\WpfDesign.XamlDom\Project\WpfDesign.XamlDom.csproj", "{88DA149F-21B2-48AB-82C4-28FB6BDFD783}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WpfDesign.XamlDom", "externals\WpfDesigner\WpfDesign.XamlDom\Project\WpfDesign.XamlDom.csproj", "{88DA149F-21B2-48AB-82C4-28FB6BDFD783}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WpfDesign.Designer", "externals\vscode-wpf\external\WpfDesigner\WpfDesign.Designer\Project\WpfDesign.Designer.csproj", "{78CC29AC-CC79-4355-B1F2-97936DF198AC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WpfDesign.Designer", "externals\WpfDesigner\WpfDesign.Designer\Project\WpfDesign.Designer.csproj", "{78CC29AC-CC79-4355-B1F2-97936DF198AC}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WpfDesign.AddIn", "src\AddIns\DisplayBindings\WpfDesign\WpfDesign.AddIn\WpfDesign.AddIn.csproj", "{9A9D6FD4-6A2E-455D-ACC3-DDA775FE9865}"
 EndProject

@@ -1,32 +1,35 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- winui-xaml-ls: the XAML language server for WinUI (Windows App SDK) projects, and only for
-       them. Each XAML runtime has its own server (wpf-xaml-ls, librewpf-xaml-ls, uno-xaml-ls, progpu-winui-xaml-ls, maui-xaml-ls); see
-       doc/technotes/xaml-language-servers.md. It reads WinUI metadata only, so it builds and runs
-       on any OS - no Windows App SDK runtime is loaded. -->
+  <!-- Builds and deploys Microsoft's WinUI XAML language server for Microsoft WinUI projects.
+       The upstream server is managed here (rather than its Windows-only Native AOT VS Code
+       payload), so OpenDevelop can retain its cross-platform dotnet-exec LSP host. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <OutputType>Exe</OutputType>
+    <OutputType>Library</OutputType>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>winui-xaml-ls</AssemblyName>
     <RootNamespace>ICSharpCode.WinUIXamlDesigner.LanguageServer.WinUI</RootNamespace>
+    <LanguageServerDeployDir>$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\LanguageServices\WinUIXamlLanguageServer</LanguageServerDeployDir>
     <!-- Started by path as a managed dll (dotnet exec), never through an apphost. -->
     <OpenDevelopAddin>true</OpenDevelopAddin>
     <OpenDevelopAddinKind>OutOfProcessHost</OpenDevelopAddinKind>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\external\wxsg\external\XamlToCSharpGenerator\src\XamlToCSharpGenerator.LanguageServer\XamlToCSharpGenerator.LanguageServer.csproj" />
-    <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\external\wxsg\external\XamlToCSharpGenerator\src\XamlToCSharpGenerator.LanguageService\XamlToCSharpGenerator.LanguageService.csproj" />
-    <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\external\wxsg\external\XamlToCSharpGenerator\src\XamlToCSharpGenerator.LanguageService.Framework.WinUI\XamlToCSharpGenerator.LanguageService.Framework.WinUI.csproj" />
+    <ProjectReference Include="..\..\..\..\..\externals\winappvsce\server\src\WinUiXaml.LanguageServer\WinUiXaml.LanguageServer.csproj"
+                      ReferenceOutputAssembly="false"
+                      SkipGetTargetFrameworkProperties="true"
+                      Private="false" />
   </ItemGroup>
-  <!-- Deploy the runnable server into AddIns/LanguageServices/WinUIXamlLanguageServer/, where the
-       WinUI designer addin looks for it (and which dist.ps1 / the macOS bundle keep as an
-       out-of-process folder). -->
+  <!-- The upstream project copies its generator host beside its build output. Deploy that complete
+       runnable directory under the addin-owned location. -->
   <Target Name="DeployToAddIns" AfterTargets="Build">
     <ItemGroup>
-      <LanguageServerOutput Include="$(TargetDir)**" />
+      <LanguageServerOutput Include="$(MSBuildThisFileDirectory)..\..\..\..\..\externals\winappvsce\server\src\WinUiXaml.LanguageServer\bin\$(Configuration)\net10.0\**\*" />
     </ItemGroup>
+    <Error Condition="'@(LanguageServerOutput)' == ''" Text="The WinAppVSCE language-server output is missing; build its project before deploying the WinUI server." />
+    <RemoveDir Directories="$(LanguageServerDeployDir)" />
     <Copy SourceFiles="@(LanguageServerOutput)" SkipUnchangedFiles="true"
-          DestinationFiles="@(LanguageServerOutput->'$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\LanguageServices\WinUIXamlLanguageServer\%(RecursiveDir)%(Filename)%(Extension)')" />
+          DestinationFiles="@(LanguageServerOutput->'$(LanguageServerDeployDir)\%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
 </Project>

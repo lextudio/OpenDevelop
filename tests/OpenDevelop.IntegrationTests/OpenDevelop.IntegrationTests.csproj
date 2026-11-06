@@ -276,12 +276,6 @@
     <!-- Class-library Hot Reload (issue #18): the library is the startup project and its debug
          options launch this host, which also builds the library. -->
     <_FixtureProject Include="../fixtures/WpfHotReloadClassLibFixture/Host/HotReloadClassLibHost.csproj" />
-    <!-- The WPF designer sample (WpfSampleSolutionPath): its MainWindow.xaml hosts
-         <local:SamplePane x:Name="MainPane"/>, a control defined in this same project - so the
-         designer can only instantiate it, and the Outline pad can only show "MainPane", once the
-         sample assembly exists. Unbuilt, the element is silently dropped from the element tree and
-         the test failed as "MainPane not found in the outline", which reads like an outline bug. -->
-    <_FixtureProject Include="../../externals/vscode-wpf/sample/net6.0/sample.csproj" />
   </ItemGroup>
   <!-- The Microsoft WPF twin of the class-library fixture (the Microsoft-adapter half of issue
        #18). Windows-only: Microsoft WPF needs the Windows Desktop runtime, so a non-Windows build

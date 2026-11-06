@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Microsoft-WPF build of externals/vscode-wpf WpfDesign.XamlDom. See
+  <!-- Microsoft-WPF build of externals/WpfDesigner WpfDesign.XamlDom. See
        Core/MicrosoftWpfDesign.Core.csproj for why the upstream assembly split and the
        one-directory-per-project layout are both load-bearing rather than cosmetic. -->
   <PropertyGroup>
@@ -15,7 +15,7 @@
     <NoWarn>$(NoWarn);CS1572;CS1573;CS1591</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.XamlDom\Project\**\*.cs" Exclude="**\bin\**;**\obj\**;**\AssemblyInfo.cs" LinkBase="WpfDesign.XamlDom" />
+    <Compile Include="..\..\..\..\..\..\externals\WpfDesigner\WpfDesign.XamlDom\Project\**\*.cs" Exclude="**\bin\**;**\obj\**;**\AssemblyInfo.cs" LinkBase="WpfDesign.XamlDom" />
     <ProjectReference Include="..\Core\MicrosoftWpfDesign.Core.csproj" />
   </ItemGroup>
 </Project>

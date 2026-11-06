@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Microsoft-WPF build of externals/vscode-wpf WpfDesign (upstream ICSharpCode.WpfDesign).
+  <!-- Microsoft-WPF build of externals/WpfDesigner WpfDesign (upstream ICSharpCode.WpfDesign).
        Mirrors the upstream project one-for-one INSTEAD of merging all three source trees into a
        single assembly: the WPF markup compiler's pass 1 resolves an XmlnsDefinition-mapped xmlns
        only through REFERENCED assemblies, so with everything merged, PropertyGridView.xaml's
@@ -23,6 +23,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="CoreXamlAssemblyAttributes.cs" />
-    <Compile Include="..\..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign\Project\**\*.cs" Exclude="**\bin\**;**\obj\**;**\AssemblyInfo.cs" LinkBase="WpfDesign" />
+    <Compile Include="..\..\..\..\..\..\externals\WpfDesigner\WpfDesign\Project\**\*.cs" Exclude="**\bin\**;**\obj\**;**\AssemblyInfo.cs" LinkBase="WpfDesign" />
   </ItemGroup>
 </Project>

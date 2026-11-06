@@ -8,9 +8,6 @@
 [submodule "externals/altcover"]
 	path = externals/altcover
 	url = https://github.com/lextudio/altcover.git
-[submodule "externals/vscode-wpf"]
-	path = externals/vscode-wpf
-	url = https://github.com/lextudio/vscode-wpf
 [submodule "externals/wpftoolkit"]
 	path = externals/wpftoolkit
 	url = https://github.com/lextudio/wpftoolkit.git
@@ -30,3 +27,9 @@
 [submodule "externals/vs-editor-api"]
 	path = externals/vs-editor-api
 	url = https://github.com/microsoft/vs-editor-api.git
+[submodule "externals/winappvsce"]
+	path = externals/winappvsce
+	url = https://github.com/lextudio/WinAppVSCE.git
+[submodule "externals/WpfDesigner"]
+	path = externals/WpfDesigner
+	url = https://github.com/lextudio/WpfDesigner.git

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Deploy Microsoft's profile-aware XAML language server for Microsoft WPF. It remains a
+       separate process from LibreWPF, so their metadata closures never mix. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>wpf-xaml-ls</AssemblyName>
+    <RootNamespace>ICSharpCode.WpfDesign.LanguageServer.Microsoft</RootNamespace>
+    <LanguageServerDeployDir>$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\LanguageServices\MicrosoftWpfXamlLanguageServer</LanguageServerDeployDir>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>OutOfProcessHost</OpenDevelopAddinKind>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\..\externals\winappvsce\server\src\WinUiXaml.LanguageServer\WinUiXaml.LanguageServer.csproj"
+                      ReferenceOutputAssembly="false"
+                      SkipGetTargetFrameworkProperties="true"
+                      Private="false" />
+  </ItemGroup>
+  <Target Name="DeployToAddIns" AfterTargets="Build">
+    <ItemGroup>
+      <LanguageServerOutput Include="$(MSBuildThisFileDirectory)..\..\..\..\..\externals\winappvsce\server\src\WinUiXaml.LanguageServer\bin\$(Configuration)\net10.0\**\*" />
+    </ItemGroup>
+    <Error Condition="'@(LanguageServerOutput)' == ''" Text="The WinAppVSCE language-server output is missing; build its project before deploying the Microsoft WPF server." />
+    <RemoveDir Directories="$(LanguageServerDeployDir)" />
+    <Copy SourceFiles="@(LanguageServerOutput)" SkipUnchangedFiles="true"
+          DestinationFiles="@(LanguageServerOutput->'$(LanguageServerDeployDir)\%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
+</Project>

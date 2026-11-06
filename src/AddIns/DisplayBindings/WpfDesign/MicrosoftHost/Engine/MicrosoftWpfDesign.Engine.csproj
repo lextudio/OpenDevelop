@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Microsoft-WPF build of externals/vscode-wpf WpfDesign.Designer (upstream
+  <!-- Microsoft-WPF build of externals/WpfDesigner WpfDesign.Designer (upstream
        ICSharpCode.WpfDesign.Designer). Carries only the Designer source tree and references the
        other two, mirroring upstream; see Core/MicrosoftWpfDesign.Core.csproj for why that split
        is load-bearing rather than cosmetic. -->
@@ -21,7 +21,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="DesignerXamlAssemblyAttributes.cs" />
-    <Compile Include="..\..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.Designer\Project\**\*.cs" Exclude="**\bin\**;**\obj\**;**\AssemblyInfo.cs;**\Configuration\**" LinkBase="WpfDesign.Designer" />
+    <Compile Include="..\..\..\..\..\..\externals\WpfDesigner\WpfDesign.Designer\Project\**\*.cs" Exclude="**\bin\**;**\obj\**;**\AssemblyInfo.cs;**\Configuration\**" LinkBase="WpfDesign.Designer" />
     <!-- The XAML-backed controls (GridUnitSelector, PropertyContextMenu, FormatedTextEditor, ...)
          must come in as Page + code-behind: other hand-written sources reference those types
          directly, so dropping the .xaml.cs leaves them undefined (CS0246 / CS0234).
@@ -46,8 +46,8 @@
          WpfDesign.Designer/Project/ with no extra segment - matching how the original,
          non-source-shared WpfDesign.Designer.csproj (built directly from its own directory, no
          Link at all) has always compiled these same files for the LibreWPF backend. -->
-    <Page Include="..\..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.Designer\Project\**\*.xaml" Exclude="**\bin\**;**\obj\**" Link="%(RecursiveDir)%(Filename)%(Extension)" SubType="Designer" Generator="MSBuild:Compile" />
-    <Resource Include="..\..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.Designer\Project\Images\*" Link="Images\%(Filename)%(Extension)" />
+    <Page Include="..\..\..\..\..\..\externals\WpfDesigner\WpfDesign.Designer\Project\**\*.xaml" Exclude="**\bin\**;**\obj\**" Link="%(RecursiveDir)%(Filename)%(Extension)" SubType="Designer" Generator="MSBuild:Compile" />
+    <Resource Include="..\..\..\..\..\..\externals\WpfDesigner\WpfDesign.Designer\Project\Images\*" Link="Images\%(Filename)%(Extension)" />
     <ProjectReference Include="..\Core\MicrosoftWpfDesign.Core.csproj" />
     <ProjectReference Include="..\XamlDom\MicrosoftWpfDesign.XamlDom.csproj" />
   </ItemGroup>

@@ -16,7 +16,7 @@
     <IsPackable>false</IsPackable>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
     <IsTestProject>true</IsTestProject>
-    <XamlDomSource>..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.XamlDom\Project\</XamlDomSource>
+    <XamlDomSource>..\..\externals\WpfDesigner\WpfDesign.XamlDom\Project\</XamlDomSource>
     <NoWarn>$(NoWarn);CS1572;CS1573;CS1591;CS8632</NoWarn>
   </PropertyGroup>
 

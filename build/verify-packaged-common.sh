@@ -111,7 +111,7 @@ verify_ilspy() {
 verify_wpf_designer() {
   echo '==> Checking the LibreWPF designer child host and its rendered frame...'
   local wpf_solution="$repo_root/tests/fixtures/WpfHotReloadFixture/WpfHotReloadFixture.slnx"
-  local wpf_xaml="$repo_root/externals/vscode-wpf/sample/net6.0/MainWindow.xaml" xaml_outline='' wpf_status=''
+  local wpf_xaml="$repo_root/tests/fixtures/WpfHotReloadFixture/MainWindow.xaml" xaml_outline='' wpf_status=''
   [[ -f "$wpf_xaml" ]] || fail "linked WPF fixture source is missing: $wpf_xaml"
   invoke od.open-solution "$wpf_solution" | jq -e '.success == true' >/dev/null || fail 'WPF fixture solution did not open'
   invoke od.open-file "$wpf_xaml" | jq -e '.opened == true' >/dev/null || fail 'WPF fixture XAML did not open'

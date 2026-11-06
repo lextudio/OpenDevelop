@@ -13,9 +13,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign\Project\WpfDesign.csproj" />
-    <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.XamlDom\Project\WpfDesign.XamlDom.csproj" />
-    <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.Designer\Project\WpfDesign.Designer.csproj" />
+    <ProjectReference Include="..\..\..\..\..\externals\WpfDesigner\WpfDesign\Project\WpfDesign.csproj" />
+    <ProjectReference Include="..\..\..\..\..\externals\WpfDesigner\WpfDesign.XamlDom\Project\WpfDesign.XamlDom.csproj" />
+    <ProjectReference Include="..\..\..\..\..\externals\WpfDesigner\WpfDesign.Designer\Project\WpfDesign.Designer.csproj" />
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
     <PackageReference Include="StreamJsonRpc" />

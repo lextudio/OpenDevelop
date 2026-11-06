@@ -1,32 +1,33 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- uno-xaml-ls: the XAML language server for Uno Platform projects, and only for
-       them. Each XAML runtime has its own server (wpf-xaml-ls, librewpf-xaml-ls, winui-xaml-ls, progpu-winui-xaml-ls, maui-xaml-ls); see
-       doc/technotes/xaml-language-servers.md. It reads Uno metadata only, so it builds and runs
-       on any OS - no Uno runtime is loaded. -->
+  <!-- Builds and deploys the Uno profile of Microsoft's XAML language server. It is a separate
+       process deployment from Microsoft WinUI, so the profiles cannot mix metadata. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <OutputType>Exe</OutputType>
+    <OutputType>Library</OutputType>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>uno-xaml-ls</AssemblyName>
     <RootNamespace>ICSharpCode.WinUIXamlDesigner.LanguageServer.Uno</RootNamespace>
+    <LanguageServerDeployDir>$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\LanguageServices\UnoXamlLanguageServer</LanguageServerDeployDir>
     <!-- Started by path as a managed dll (dotnet exec), never through an apphost. -->
     <OpenDevelopAddin>true</OpenDevelopAddin>
     <OpenDevelopAddinKind>OutOfProcessHost</OpenDevelopAddinKind>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\external\wxsg\external\XamlToCSharpGenerator\src\XamlToCSharpGenerator.LanguageServer\XamlToCSharpGenerator.LanguageServer.csproj" />
-    <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\external\wxsg\external\XamlToCSharpGenerator\src\XamlToCSharpGenerator.LanguageService\XamlToCSharpGenerator.LanguageService.csproj" />
-    <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\external\wxsg\external\XamlToCSharpGenerator\src\XamlToCSharpGenerator.LanguageService.Framework.Uno\XamlToCSharpGenerator.LanguageService.Framework.Uno.csproj" />
+    <ProjectReference Include="..\..\..\..\..\externals\winappvsce\server\src\WinUiXaml.LanguageServer\WinUiXaml.LanguageServer.csproj"
+                      ReferenceOutputAssembly="false"
+                      SkipGetTargetFrameworkProperties="true"
+                      Private="false" />
   </ItemGroup>
-  <!-- Deploy the runnable server into AddIns/LanguageServices/UnoXamlLanguageServer/, where the
-       WinUI/Uno designer addin looks for it (and which dist.ps1 / the macOS bundle keep as an
-       out-of-process folder). -->
+  <!-- Deploy the upstream server and its generator host under the Uno-owned location. -->
   <Target Name="DeployToAddIns" AfterTargets="Build">
     <ItemGroup>
-      <LanguageServerOutput Include="$(TargetDir)**" />
+      <LanguageServerOutput Include="$(MSBuildThisFileDirectory)..\..\..\..\..\externals\winappvsce\server\src\WinUiXaml.LanguageServer\bin\$(Configuration)\net10.0\**\*" />
     </ItemGroup>
+    <Error Condition="'@(LanguageServerOutput)' == ''" Text="The WinAppVSCE language-server output is missing; build its project before deploying the Uno server." />
+    <RemoveDir Directories="$(LanguageServerDeployDir)" />
     <Copy SourceFiles="@(LanguageServerOutput)" SkipUnchangedFiles="true"
-          DestinationFiles="@(LanguageServerOutput->'$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\LanguageServices\UnoXamlLanguageServer\%(RecursiveDir)%(Filename)%(Extension)')" />
+          DestinationFiles="@(LanguageServerOutput->'$(LanguageServerDeployDir)\%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
 </Project>

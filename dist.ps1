@@ -137,7 +137,7 @@ function Write-DistributionLegalFiles {
     New-Item -ItemType Directory -Path $sourceNotices -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $repoRoot 'legal/Apache-2.0.txt') -Destination (Join-Path $sourceNotices 'MonoDevelop.AspNetCore-Apache-2.0.txt') -Force
     Copy-Item -LiteralPath (Join-Path $repoRoot 'externals/vsmac-codecoverage/LICENSE') -Destination (Join-Path $sourceNotices 'VSMac-CodeCoverage-MIT.txt') -Force
-    Copy-Item -LiteralPath (Join-Path $repoRoot 'externals/vscode-wpf/external/WpfDesigner/LICENSE') -Destination (Join-Path $sourceNotices 'WpfDesigner-MIT.txt') -Force
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'externals/WpfDesigner/LICENSE') -Destination (Join-Path $sourceNotices 'WpfDesigner-MIT.txt') -Force
     Copy-Item -LiteralPath (Join-Path $repoRoot 'externals/vs-editor-api/LICENSE') -Destination (Join-Path $sourceNotices 'vs-editor-api-MIT.txt') -Force
     [xml]$packageVersions = Get-Content -LiteralPath (Join-Path $repoRoot 'Directory.Packages.props') -Raw
     $ghosttyVersion = [string]$packageVersions.Project.PropertyGroup.LibGhosttyNetVersion

@@ -38,9 +38,9 @@
     <Project Path="src/AddIns/DisplayBindings/Data/ICSharpCode.Data.SQLServer/ICSharpCode.Data.SQLServer.csproj" />
   </Folder>
   <Folder Name="/AddIns/Display Bindings/WpfDesign/">
-    <Project Path="externals/vscode-wpf/external/WpfDesigner/WpfDesign.Designer/Project/WpfDesign.Designer.csproj" />
-    <Project Path="externals/vscode-wpf/external/WpfDesigner/WpfDesign.XamlDom/Project/WpfDesign.XamlDom.csproj" />
-    <Project Path="externals/vscode-wpf/external/WpfDesigner/WpfDesign/Project/WpfDesign.csproj" />
+    <Project Path="externals/WpfDesigner/WpfDesign.Designer/Project/WpfDesign.Designer.csproj" />
+    <Project Path="externals/WpfDesigner/WpfDesign.XamlDom/Project/WpfDesign.XamlDom.csproj" />
+    <Project Path="externals/WpfDesigner/WpfDesign/Project/WpfDesign.csproj" />
     <Project Path="src/AddIns/DisplayBindings/WpfDesign/WpfDesign.AddIn/WpfDesign.AddIn.csproj" />
   </Folder>
   <Folder Name="/AddIns/Language Bindings/">

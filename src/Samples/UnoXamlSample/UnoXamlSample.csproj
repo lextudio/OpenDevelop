@@ -1,5 +1,10 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
-  <!-- Detection fixture only: evaluation does not require restoring the package. -->
-  <ItemGroup><PackageReference Include="Uno.WinUI" Version="5.0.0" ExcludeAssets="all" /></ItemGroup>
+<Project Sdk="Uno.Sdk/6.7.30">
+  <PropertyGroup>
+    <!-- Keep this sample a real Uno project: the language server needs the Uno metadata closure,
+         not merely a package name, to answer completion and hover requests. -->
+    <TargetFramework>net10.0-desktop</TargetFramework>
+    <UnoFeatures>SkiaRenderer</UnoFeatures>
+    <UnoDisableHotDesign>true</UnoDisableHotDesign>
+    <UnoDisableMCPSupport>true</UnoDisableMCPSupport>
+  </PropertyGroup>
 </Project>

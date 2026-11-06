@@ -5,20 +5,18 @@
     <Platform Name="x86" />
   </Configurations>
   <Folder Name="/externals/" />
-  <Folder Name="/externals/vscode-wpf/" />
-  <Folder Name="/externals/vscode-wpf/external/" />
-  <Folder Name="/externals/vscode-wpf/external/WpfDesigner/" />
-  <Folder Name="/externals/vscode-wpf/external/WpfDesigner/WpfDesign.Designer/" />
-  <Folder Name="/externals/vscode-wpf/external/WpfDesigner/WpfDesign.Designer/Project/">
-    <Project Path="externals/vscode-wpf/external/WpfDesigner/WpfDesign.Designer/Project/WpfDesign.Designer.csproj" />
+  <Folder Name="/externals/WpfDesigner/" />
+  <Folder Name="/externals/WpfDesigner/WpfDesign.Designer/" />
+  <Folder Name="/externals/WpfDesigner/WpfDesign.Designer/Project/">
+    <Project Path="externals/WpfDesigner/WpfDesign.Designer/Project/WpfDesign.Designer.csproj" />
   </Folder>
-  <Folder Name="/externals/vscode-wpf/external/WpfDesigner/WpfDesign.XamlDom/" />
-  <Folder Name="/externals/vscode-wpf/external/WpfDesigner/WpfDesign.XamlDom/Project/">
-    <Project Path="externals/vscode-wpf/external/WpfDesigner/WpfDesign.XamlDom/Project/WpfDesign.XamlDom.csproj" />
+  <Folder Name="/externals/WpfDesigner/WpfDesign.XamlDom/" />
+  <Folder Name="/externals/WpfDesigner/WpfDesign.XamlDom/Project/">
+    <Project Path="externals/WpfDesigner/WpfDesign.XamlDom/Project/WpfDesign.XamlDom.csproj" />
   </Folder>
-  <Folder Name="/externals/vscode-wpf/external/WpfDesigner/WpfDesign/" />
-  <Folder Name="/externals/vscode-wpf/external/WpfDesigner/WpfDesign/Project/">
-    <Project Path="externals/vscode-wpf/external/WpfDesigner/WpfDesign/Project/WpfDesign.csproj" />
+  <Folder Name="/externals/WpfDesigner/WpfDesign/" />
+  <Folder Name="/externals/WpfDesigner/WpfDesign/Project/">
+    <Project Path="externals/WpfDesigner/WpfDesign/Project/WpfDesign.csproj" />
   </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/Libraries/">
@@ -212,6 +210,5 @@
   <Project Path="src/Main/Base/Project/ICSharpCode.SharpDevelop.csproj" />
   <Project Path="externals/cps/src/ProjectSystem/Microsoft.VisualStudio.ProjectSystem.Shim.csproj" />
   <Project Path="externals/cps/src/ProjectSystemManaged/Microsoft.VisualStudio.ProjectSystem.Managed.csproj" />
-  <Project Path="externals/vscode-wpf/src/XamlLanguageServer.Wpf/XamlLanguageServer.Wpf.csproj" />
   <Project Path="src/Main/SharpDevelop/SharpDevelop.csproj" />
 </Solution>

@@ -3302,7 +3302,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         }
         finally
         {
-            // The vscode-wpf sample is a repository fixture, so a successful save must not leave
+			// The WPF designer sample is a repository fixture, so a successful save must not leave
             // the developer's checkout modified after this integration test.
             await File.WriteAllTextAsync(xamlPath, originalXaml);
         }
@@ -6920,8 +6920,8 @@ EndGlobal
 
     /// <summary>
     /// Each XAML runtime has its own language server and a file reaches no other: Microsoft WPF
-    /// (wpf-xaml-ls) and LibreWPF (librewpf-xaml-ls) although both are WPF markup; Microsoft WinUI
-    /// (winui-xaml-ls), ProGPU WinUI (progpu-winui-xaml-ls) and Uno (uno-xaml-ls) although all
+    /// (profile-aware WinUiXaml.LanguageServer) and LibreWPF (the same server's LibreWPF profile) although both are WPF markup;
+    /// Microsoft WinUI, ProGPU WinUI and Uno likewise use separate profiles of that server although all
     /// three are WinUI markup. Before the servers were split, every page was served by one server as
     /// WPF - a WinUI or Uno page completed System.Windows.Controls.Grid - and a ProGPU project was
     /// even taken for Uno. The same "&lt;Grid" in each sample must resolve to that runtime's own
@@ -6932,28 +6932,30 @@ EndGlobal
     public async Task XamlLanguageService_EachRuntime_UsesItsOwnServerAndControls()
     {
         var samples = Path.GetDirectoryName(Path.GetDirectoryName(_app.LibreWpfSampleSolutionPath))!;
-        var cases = new (string Runtime, string Solution, string Page, string Server, string ExpectedGrid)[]
+        var cases = new (string Runtime, string Solution, string Page, string Server, string Profile, string ExpectedGrid)[]
         {
-            ("LibreWPF", _app.LibreWpfSampleSolutionPath, "MainWindow.xaml", "librewpf-xaml-ls.dll", "System.Windows.Controls.Grid"),
-            ("Microsoft WPF", _app.MicrosoftWpfSampleSolutionPath, "MainWindow.xaml", "wpf-xaml-ls.dll", "System.Windows.Controls.Grid"),
-            ("Uno", _app.UnoXamlSampleSolutionPath, "MainPage.xaml", "uno-xaml-ls.dll", "Microsoft.UI.Xaml.Controls.Grid"),
-            ("ProGPU WinUI", _app.ProGpuWinUISampleSolutionPath, "MainPage.xaml", "progpu-winui-xaml-ls.dll", "Microsoft.UI.Xaml.Controls.Grid"),
-            ("Microsoft WinUI", _app.WinUISampleSolutionPath, "MainPage.xaml", "winui-xaml-ls.dll", "Microsoft.UI.Xaml.Controls.Grid"),
-            ("Microsoft WinUI (no package)", Path.Combine(samples, "MicrosoftWinUISample", "MicrosoftWinUISample.slnx"), "MainPage.xaml", "winui-xaml-ls.dll", "Microsoft.UI.Xaml.Controls.Grid"),
+            ("LibreWPF", _app.LibreWpfSampleSolutionPath, "MainWindow.xaml", "WinUiXaml.LanguageServer.dll", "librewpf", "System.Windows.Controls.Grid"),
+            ("Microsoft WPF", _app.MicrosoftWpfSampleSolutionPath, "MainWindow.xaml", "WinUiXaml.LanguageServer.dll", "wpf", "System.Windows.Controls.Grid"),
+            ("Uno", _app.UnoXamlSampleSolutionPath, "MainPage.xaml", "WinUiXaml.LanguageServer.dll", "uno", "Microsoft.UI.Xaml.Controls.Grid"),
+            ("ProGPU WinUI", _app.ProGpuWinUISampleSolutionPath, "MainPage.xaml", "WinUiXaml.LanguageServer.dll", "progpu", "Microsoft.UI.Xaml.Controls.Grid"),
+            ("Microsoft WinUI", _app.WinUISampleSolutionPath, "MainPage.xaml", "WinUiXaml.LanguageServer.dll", "winui", "Microsoft.UI.Xaml.Controls.Grid"),
+            ("Microsoft WinUI (no package)", Path.Combine(samples, "MicrosoftWinUISample", "MicrosoftWinUISample.slnx"), "MainPage.xaml", "WinUiXaml.LanguageServer.dll", "winui", "Microsoft.UI.Xaml.Controls.Grid"),
         };
 
-        foreach (var (runtime, solution, page, server, expectedGrid) in cases)
+        foreach (var (runtime, solution, page, server, profile, expectedGrid) in cases)
         {
             var pagePath = Path.Combine(Path.GetDirectoryName(solution)!, page);
-            var (line, column) = PositionAfterOpeningAngle(await File.ReadAllTextAsync(pagePath), "<Grid");
+            var (line, column) = PositionAfterElementPrefix(await File.ReadAllTextAsync(pagePath), "<Grid");
             Assert.True((await _app.ReopenSolutionAsync(solution)).GetProperty("success").GetBoolean(), runtime);
             Assert.True((await _app.InvokeAsync("od.open-file", pagePath)).GetProperty("opened").GetBoolean(), runtime);
 
             var routed = await _app.InvokeAsync("od.xaml.language-server", pagePath);
             Assert.Equal(server, routed.GetProperty("server").GetString());
             Assert.Equal(Path.GetDirectoryName(solution), routed.GetProperty("workspace").GetString());
+            Assert.Equal(new[] { "exec", Path.Combine(Path.GetDirectoryName(routed.GetProperty("arguments")[1].GetString()!)!, server), "--workspace", Path.GetDirectoryName(solution), "--framework", profile },
+                routed.GetProperty("arguments").EnumerateArray().Select(argument => argument.GetString()).ToArray());
 
-            async Task<string[]> GridCompletionTypes()
+            async Task<(string[] GridTypes, string[] Candidates)> GridCompletionTypes()
             {
                 JsonElement result = default;
                 var answered = await OpenDevelopAppFixture.PollUntilAsync(async () =>
@@ -6962,15 +6964,23 @@ EndGlobal
                     return result.TryGetProperty("count", out var count) && count.GetInt32() > 0;
                 }, TimeSpan.FromSeconds(90));
                 Assert.True(answered, $"{runtime}: no completions at <Grid ({line},{column}) of {pagePath}: {result}");
-                return result.GetProperty("items").EnumerateArray()
+                var items = result.GetProperty("items").EnumerateArray().ToArray();
+                var candidates = items
+                    .Select(item => item.GetProperty("displayText").GetString() ?? "")
+                    .ToArray();
+                return (items
                     .Where(item => item.GetProperty("displayText").GetString() == "Grid")
                     .Select(item => item.GetProperty("description").GetString() ?? "")
-                    .ToArray();
+                    .ToArray(), candidates);
             }
 
-            Assert.Equal(new[] { expectedGrid }, await GridCompletionTypes());
+            var firstCompletions = await GridCompletionTypes();
+            Assert.True(firstCompletions.GridTypes.SequenceEqual(new[] { expectedGrid }),
+                $"{runtime}: expected '{expectedGrid}', got Grid types [{string.Join(", ", firstCompletions.GridTypes)}]; candidates [{string.Join(", ", firstCompletions.Candidates)}]");
             await Task.Delay(TimeSpan.FromSeconds(20));
-            Assert.Equal(new[] { expectedGrid }, await GridCompletionTypes());
+            var warmedCompletions = await GridCompletionTypes();
+            Assert.True(warmedCompletions.GridTypes.SequenceEqual(new[] { expectedGrid }),
+                $"{runtime}: expected '{expectedGrid}' after prewarm, got Grid types [{string.Join(", ", warmedCompletions.GridTypes)}]; candidates [{string.Join(", ", warmedCompletions.Candidates)}]");
 
             // Closing the previous solution released its server: one per open workspace, not one
             // per workspace ever opened (21 XAML servers once piled up across one run).
@@ -6979,16 +6989,16 @@ EndGlobal
         }
     }
 
-    /// <summary>The 1-based line and column just after the "&lt;" of the first
-    /// <paramref name="tag"/> - where element-name completion is asked for.</summary>
-    static (int Line, int Column) PositionAfterOpeningAngle(string text, string tag)
+    /// <summary>The 1-based line and column just after the first element-name prefix,
+    /// where completion should rank its matching element before unrelated types.</summary>
+    static (int Line, int Column) PositionAfterElementPrefix(string text, string tag)
     {
         var lines = text.Replace("\r\n", "\n").Split('\n');
         for (var i = 0; i < lines.Length; i++)
         {
             var at = lines[i].IndexOf(tag, StringComparison.Ordinal);
             if (at >= 0)
-                return (i + 1, at + 2);
+                return (i + 1, at + tag.Length + 1);
         }
         throw new InvalidOperationException(tag + " not found");
     }

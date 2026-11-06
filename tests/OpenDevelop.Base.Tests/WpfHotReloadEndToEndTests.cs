@@ -68,9 +68,9 @@ public sealed class WpfHotReloadEndToEndTests
 					+ $"Application exited: {app.HasExited}.");
 				Assert.Equal(HotReloadSessionState.Ready, session.State);
 
-				// PaneTitle is declared in the shared vscode-wpf sample, which the fixture links.
+				// PaneTitle is declared in the self-contained WPF Hot Reload fixture.
 				// The edit is only ever sent over the pipe - the sample on disk is never written to.
-				var xamlPath = Path.Combine(RepositoryRoot(), "externals", "vscode-wpf", "sample", "net6.0",
+				var xamlPath = Path.Combine(RepositoryRoot(), "tests", "fixtures", "WpfHotReloadFixture",
 					"SamplePane.xaml");
 				var originalXaml = await File.ReadAllTextAsync(xamlPath);
 				Assert.Equal("Sample pane", await QueryAgentAsync(pipeName, "PaneTitle.Text"));

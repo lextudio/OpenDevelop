@@ -43,9 +43,8 @@ public sealed class WpfDesignerAssemblyLockTests
 		var initial = await _app.InvokeAsync("od.build-solution");
 		Assert.Equal("Success", initial.GetProperty("result").GetString());
 
-		// The fixture is only an SDK wrapper: every XAML it builds is <Page Include="..." Link="..."/>
-		// from vscode-wpf's sample, so the file to open lives there rather than next to the solution.
-		var xaml = Path.Combine(RepositoryRoot(), "externals", "vscode-wpf", "sample", "net6.0", "MainWindow.xaml");
+		// The fixture is self-contained: its XAML files are the stable input for the designer journey.
+		var xaml = Path.Combine(RepositoryRoot(), "tests", "fixtures", "WpfHotReloadFixture", "MainWindow.xaml");
 		Assert.True(File.Exists(xaml), $"The fixture's window XAML must exist: {xaml}");
 		Assert.True((await _app.InvokeAsync("od.open-file", xaml)).GetProperty("opened").GetBoolean());
 
@@ -73,7 +72,7 @@ public sealed class WpfDesignerAssemblyLockTests
 	static string RepositoryRoot()
 	{
 		var directory = AppContext.BaseDirectory;
-		while (directory is not null && !Directory.Exists(Path.Combine(directory, "externals", "vscode-wpf")))
+		while (directory is not null && !Directory.Exists(Path.Combine(directory, "externals", "WpfDesigner")))
 			directory = Path.GetDirectoryName(directory);
 		Assert.NotNull(directory);
 		return directory!;

@@ -27,9 +27,8 @@ public sealed class WpfHotReloadJourneyTests
 	public async Task StartHotReload_ThenApply_UpdatesTheRunningApplication()
 	{
 		var solution = _app.WpfHotReloadFixturePath;
-		// The fixture is only an SDK wrapper; the XAML it links lives in vscode-wpf's own sample,
-		// which is what the agent's built-in queries are named after.
-		var xaml = Path.Combine(RepositoryRoot(), "externals", "vscode-wpf", "sample", "net6.0", "SamplePane.xaml");
+		// The self-contained fixture owns the XAML whose named elements form the agent contract.
+		var xaml = Path.Combine(RepositoryRoot(), "tests", "fixtures", "WpfHotReloadFixture", "SamplePane.xaml");
 		Assert.True(File.Exists(xaml), $"The linked sample XAML must exist: {xaml}");
 
 		var opened = await _app.ReopenSolutionAsync(solution);
@@ -105,7 +104,7 @@ public sealed class WpfHotReloadJourneyTests
 	public async Task Apply_WithDynamicResourceOnDependencyProperty_StillRunsFullApply()
 	{
 		var solution = _app.WpfHotReloadFixturePath;
-		var xaml = Path.Combine(RepositoryRoot(), "externals", "vscode-wpf", "sample", "net6.0", "SamplePane.xaml");
+		var xaml = Path.Combine(RepositoryRoot(), "tests", "fixtures", "WpfHotReloadFixture", "SamplePane.xaml");
 		Assert.True(File.Exists(xaml), $"The linked sample XAML must exist: {xaml}");
 
 		var opened = await _app.ReopenSolutionAsync(solution);
@@ -487,7 +486,7 @@ public sealed class WpfHotReloadJourneyTests
 	static string RepositoryRoot()
 	{
 		var directory = AppContext.BaseDirectory;
-		while (directory is not null && !Directory.Exists(Path.Combine(directory, "externals", "vscode-wpf")))
+		while (directory is not null && !Directory.Exists(Path.Combine(directory, "externals", "WpfDesigner")))
 			directory = Path.GetDirectoryName(directory);
 		Assert.NotNull(directory);
 		return directory!;

@@ -1353,12 +1353,12 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         var dir = AppContext.BaseDirectory;
         while (dir is not null)
         {
-            var candidate = Path.Combine(dir, "externals", "vscode-wpf", "sample", "net6.0", "sample.sln");
+            var candidate = Path.Combine(dir, "tests", "fixtures", "WpfHotReloadFixture", "WpfHotReloadFixture.slnx");
             if (File.Exists(candidate)) return candidate;
             dir = Path.GetDirectoryName(dir);
         }
         throw new FileNotFoundException(
-            "Could not locate externals/vscode-wpf/sample/net6.0/sample.sln by walking up from " + AppContext.BaseDirectory);
+            "Could not locate tests/fixtures/WpfHotReloadFixture/WpfHotReloadFixture.slnx by walking up from " + AppContext.BaseDirectory);
     }
 
     static string LocateSample(string relativePath)

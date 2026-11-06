@@ -45,6 +45,7 @@
     <PackageVersion Include="LibGhostty.Net" Version="$(LibGhosttyNetVersion)" />
     <PackageVersion Include="Porta.Pty" Version="2.2.3" />
     <PackageVersion Include="LeXtudio.DevFlow.Agent.LibreWpf" Version="0.3.1" />
+    <PackageVersion Include="WpfHotReload.Runtime" Version="0.1.0-ci.1" />
     <!-- <PackageVersion Include="LeXtudio.DevFlow.Agent.Wpf" Version="0.3.0" /> -->
     <PackageVersion Include="McMaster.Extensions.CommandLineUtils" Version="5.1.0" />
     <PackageVersion Include="MessagePack" Version="3.1.12" />
