@@ -107,6 +107,42 @@ internal sealed class IsolatedIde : IDisposable
         }
     }
 
+    /// <summary>
+    /// Starts one IDE process and hands it back while it runs, for a journey that inspects the
+    /// process itself (a modal window, closing that window) instead of DevFlow. The caller owns the
+    /// process and must dispose it.
+    /// </summary>
+    public static (Process Process, Func<string> ReadOutput) StartProcess(
+        string configDir, IReadOnlyDictionary<string, string> environment, bool testMode)
+    {
+        string dll = ResolveIdeDll();
+        var psi = CreateStartInfo(dll, configDir, FreePort(), testMode);
+        foreach (var pair in environment)
+            psi.Environment[pair.Key] = pair.Value;
+
+        var output = new StringBuilder();
+        void Append(string? line)
+        {
+            if (line is null)
+                return;
+            lock (output)
+                output.AppendLine(line);
+        }
+
+        string ReadOutput()
+        {
+            lock (output)
+                return output.ToString();
+        }
+
+        var process = Process.Start(psi) ?? throw new InvalidOperationException("Could not start " + dll);
+        process.OutputDataReceived += (_, e) => Append(e.Data);
+        process.ErrorDataReceived += (_, e) => Append(e.Data);
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        return (process, ReadOutput);
+    }
+
     static string ResolveIdeDll()
     {
         string dll = Environment.GetEnvironmentVariable("OD_IT_IDE_DLL") is { Length: > 0 } custom
@@ -118,7 +154,7 @@ internal sealed class IsolatedIde : IDisposable
         return dll;
     }
 
-    static ProcessStartInfo CreateStartInfo(string dll, string configDir, int port)
+    static ProcessStartInfo CreateStartInfo(string dll, string configDir, int port, bool testMode = true)
     {
         string host = OpenDevelopAppFixture.ResolveDotNetHost();
         var psi = new ProcessStartInfo(host)
@@ -132,7 +168,10 @@ internal sealed class IsolatedIde : IDisposable
         psi.ArgumentList.Add(dll);
         psi.ArgumentList.Add("-configdir:" + configDir);
         psi.Environment["DEVFLOW_AGENT_PORT"] = port.ToString();
-        psi.Environment["OD_TEST_MODE"] = "1";
+        // A journey that must see a modal dialog leaves test mode off: OD_TEST_MODE suppresses
+        // every prompt, which is exactly what the rest of this suite relies on.
+        if (testMode)
+            psi.Environment["OD_TEST_MODE"] = "1";
         psi.Environment["LANG"] = "en_US.UTF-8";
         psi.Environment["LC_ALL"] = "en_US.UTF-8";
         return psi;
