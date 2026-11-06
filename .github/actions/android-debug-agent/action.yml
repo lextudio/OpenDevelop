@@ -24,9 +24,31 @@ runs:
         test -x "$sdkmanager"
         yes | "$sdkmanager" --licenses >/dev/null || true
         "$sdkmanager" 'ndk;27.2.12479018'
+        # The sharpdbg submodule's own nuget.config clears the repository's sources and keeps only nuget.org and
+        # the (empty on a fresh CI checkout) local feed, while the repository's packageSourceMapping pins the
+        # OmniSharp DAP fork to lextudio_github/opendevelop-openavalon-local. The exact mapping wins over
+        # nuget.org's "*", so restoring this project in place fails with NU1101. Restore through the same
+        # configuration build/android-debug-agent.ps1 writes for its scratch copy; the credential comes from the
+        # workflow's NuGetPackageSourceCredentials_lextudio_github.
+        dapConfig="$RUNNER_TEMP/dap-nuget.config"
+        cat > "$dapConfig" <<'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <configuration>
+          <packageSources>
+            <clear />
+            <add key="nuget" value="https://api.nuget.org/v3/index.json" />
+            <add key="lextudio_github" value="https://nuget.pkg.github.com/lextudio/index.json" />
+          </packageSources>
+          <packageSourceMapping>
+            <packageSource key="lextudio_github"><package pattern="OmniSharp.Extensions.*" /></packageSource>
+            <packageSource key="nuget"><package pattern="*" /></packageSource>
+          </packageSourceMapping>
+        </configuration>
+        EOF
         dotnet build "$GITHUB_WORKSPACE/externals/sharpdbg/src/SharpDbg.AndroidAgent/SharpDbg.AndroidAgent.csproj" \
           -t:InstallAndroidDependencies "-p:AndroidSdkDirectory=$ANDROID_HOME" \
-          "-p:AndroidNdkDirectory=$ANDROID_HOME/ndk/27.2.12479018" -p:AcceptAndroidSdkLicenses=true
+          "-p:AndroidNdkDirectory=$ANDROID_HOME/ndk/27.2.12479018" -p:AcceptAndroidSdkLicenses=true \
+          "-p:RestoreConfigFile=$dapConfig"
     - name: Publish and verify all Android ABIs
       shell: pwsh
       run: ./build/android-debug-agent.ps1 -AndroidSdkDirectory $env:ANDROID_HOME -AndroidNdkDirectory (Join-Path $env:ANDROID_HOME 'ndk/27.2.12479018')
