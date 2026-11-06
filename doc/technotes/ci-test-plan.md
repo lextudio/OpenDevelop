@@ -9,15 +9,15 @@ on 2026-11-02 with the unit suites and the workbench and DevFlow journeys as `ob
 
 ## Current status (2026-11-02)
 
-The checked-in plan uses batch 4 and `focus: true`. The numbers below count enabled **entry/platform pairs**,
+The checked-in plan uses batch 5 and `focus: true`. The numbers below count enabled **entry/platform pairs**,
 not individual test cases. They describe the complete plan, not what a focus-mode run actually executes:
 
 | Platform | Required | Observe | Default focus run |
 | --- | ---: | ---: | --- |
 | Windows x64 | 32 | 0 | No test entries; its build can still supply Windows ARM64. |
 | Windows ARM64 | 25 | 5 | Only the 5 observed entries run. |
-| macOS ARM64 | 26 | 7 | Only the 7 observed entries run. |
-| Linux x64 | 0 | 8 | All 8 entries are observed (unit suites, workbench/DevFlow under Xvfb), so all run. |
+| macOS ARM64 | 26 | 8 | Only the 8 observed entries run. |
+| Linux x64 | 0 | 9 | All 9 entries are observed (unit suites, workbench/DevFlow under Xvfb, the Android debugging journey), so all run. |
 | Linux ARM64 | 0 | 8 | All 8 entries are observed (unit suites, workbench/DevFlow under Xvfb), so all run. |
 
 **Focus mode skips every required entry. A green focus run does not prove that required coverage passed.** Use
@@ -410,20 +410,56 @@ serves x64 and ARM64, macOS ships osx-arm64 only. [`dual-architecture-packaging.
 states it, and its "CI: the same contract, enforced instead of hoped for" section maps it to the checks that live in this
 workflow (`buildFrom`, the archive rules per platform, the payload scan and the per-lane RID/architecture check).
 
-## No emulator or simulator journeys
+## Device journeys (emulator and Simulator)
 
-GitHub Actions runners cannot run an Android emulator or an iOS Simulator reliably (the macOS arm64 runners have no
-nested virtualisation, and no runner has a device), so no entry may run a journey that needs one:
-`AndroidDebuggingIntegrationTests`, `IosSimulatorDebuggingIntegrationTests` and the iOS-simulator method of
-`AddInTests` stay out of the plan and are run by hand on a developer machine with the simulator or emulator booted.
-Entries select integration tests by class (`-class Namespace.Class`) or by method (`-method Namespace.Class.Method`).
-`verify-no-device-journeys.ps1` (run by the `plan` job, which sparse-checks out the integration test sources for it)
-makes the exclusion a rule instead of a habit: it fails when either argument names a class whose source uses `simctl`,
-`avdmanager`, the `emulator` binary or `adb`. A class that mixes device and other journeys (`AddInTests`) therefore cannot
-be listed even by method: move its device journeys into a class of their own first.
+A device journey needs a runner that hosts the device, and only two hosted image families do:
 
-The hermetic unit tests about devices stay in `base-tests` and are fine: they parse `adb devices` or `simctl` text, build
-launch scripts, or drive a fake `adb` shell script, and they need no emulator.
+| Journey | Runtime | Runner | Why |
+| --- | --- | --- | --- |
+| iOS Simulator (`IosSimulatorDebuggingIntegrationTests`) | iPhone simulator, `xcode-27` image | `macos-arm64` (lane overrides `runner`) | A simulator is a native macOS process, so no virtualisation is involved; the .NET 11 iOS workload set pins `Microsoft.NET.Sdk.iOS` 27.x, which needs Xcode 27, and no `macos-26` image carries it. |
+| Android emulator (`AndroidDebuggingIntegrationTests`) | headless `google_apis` x86_64 AVD | `linux-x64` on `ubuntu-24.04` | The emulator needs KVM. The hosted Linux x86_64 runners provide it; macOS arm64 and `ubuntu-24.04-arm` have no nested virtualisation. |
+
+Both journeys stay in lanes of their own (`mobile-ios`, `mobile-android`) because a job runs on one machine and each needs
+a runner the rest of the plan does not use. A lane declares what it may run as a class-to-OS-family map:
+
+```json
+"deviceClasses": { "AndroidDebuggingIntegrationTests": "linux" }
+```
+
+`verify-no-device-journeys.ps1` (run by the `plan` job, which sparse-checks out the integration test sources for it) scans
+those sources for classes that use `simctl`, `avdmanager`, the `emulator` binary or `adb`, then fails when
+
+* an entry runs one of them from a lane that does not declare it (by `-class` or `-method`),
+* a declared class name does not exist in the sources, so a rename cannot silently allow a different class,
+* a lane's job would run on a runner image of another OS family (the lane's own `runner`, else the platform's), or
+* an integration-test entry uses no `-class`/`-method` selector, or filters with `-namespace`/`-trait`, which could run a
+  device journey by accident.
+
+A class that mixes device and other journeys (`AddInTests`) therefore cannot be listed even by method: move its device
+journeys into a class of their own first. The hermetic unit tests about devices stay in `base-tests` and are fine: they
+parse `adb devices` or `simctl` text, build launch scripts, or drive a fake `adb` shell script, and they need no emulator.
+
+Each lane job provisions its own device in front of the journey:
+
+* **Both**: install the .NET 11 SDK into `~/.dotnet` with `dotnet-install.sh --no-path` and add the platform workload
+  through the SDK's own workload set. `setup-dotnet` is deliberately not used: it repoints `DOTNET_ROOT`/`PATH`, which
+  would change the runtime the archive's net10.0 test host runs on. `SdkRootCandidates.WithSdk11` finds `~/.dotnet`, and
+  the journeys register it with `od.sdk.add-custom-root` - the same opt-in as Tools > Options > .NET SDK.
+* **`mobile-android`**: enable `/dev/kvm` (the image ships it root-only), install JDK 17, install the emulator and the
+  `android-35;google_apis;x86_64` system image, boot the `opendevelop-ci` AVD headless, and fail fast on `-accel-check`
+  or a boot that never reaches `sys.boot_completed`. The job must not run `install-linux-prerequisites.sh
+  --reclaim-disk`, which deletes `/usr/local/lib/android`.
+* **`mobile-ios`**: boot the first available iPhone simulator with `simctl bootstatus -b`, so the IDE's "booted iPhone
+  first" choice is unambiguous; also print `xcodebuild -version`. The pointer/desktop diagnostics in that job are gated
+  off for this lane; the debugger-attach authorization stays on, because SharpDbg attaches to the simulator app.
+
+Both lanes start with `allowAllFailures: true`, the bootstrap exception described under "Lanes": a lane whose only entry
+failed would otherwise be red from its first run, before there is anything to learn from it. Drop the flag and promote
+each entry to `required` after two green runs.
+
+**A skipped device journey is not a passing one.** xUnit reports a skip as a passing total, so a lane whose provisioning
+never produced a device is green with nothing exercised. Read the entry's own result and its test count in the job
+summary rather than the lane's colour; the entry notes say which prerequisites make the journey skip.
 
 ## How an entry is enabled
 
@@ -515,6 +551,9 @@ failures are under control. Focus mode does not gate anything: the `required` en
   targets see). They need no IDE process.
 * Lanes `integration-stable`, `integration-unstable` and `integration-designer`: the integration entries, grouped as
   described under "Lanes".
+* Lanes `mobile-ios` and `mobile-android`: the iOS Simulator and Android emulator debugging journeys, each its own job on
+  the one runner image family that hosts its device (see "Device journeys"). Both run `observe` and are the reason plan
+  entries may now declare `deviceClasses`.
 
 Not planned yet: `AddInTests` (about 15 minutes, its own lane), the Microsoft designer
 backends (need Visual Studio), and the heavy or environment-bound ones named in

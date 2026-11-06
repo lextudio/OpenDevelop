@@ -9,14 +9,14 @@
     "Per platform an entry is 'observe' (runs; a failure is reported as a warning and does not fail the job), 'required' (a failure fails",
     "the job) or 'excluded' (does not run; 'reason' says why).  A platform missing from an entry is excluded.  A new batch starts as 'observe';",
     "promote it to 'required' after it has been green on that platform for several runs.",
-    "No entry may run an Android emulator or iOS Simulator journey: GitHub Actions runners cannot run them reliably (no nested virtualisation on the macOS arm64 runners). .github/ci/tests/verify-no-device-journeys.ps1 fails the plan job when a -class entry names a class that uses simctl, avdmanager, the emulator binary or adb. Those journeys run by hand on a developer machine.",
+    "A device journey (a real Android emulator or an iOS Simulator) may run only in a lane that declares its class under 'deviceClasses' together with the OS family whose runner hosts the device: 'macos' for the iOS Simulator, which is a native macOS process, and 'linux' for the Android emulator, which needs KVM. .github/ci/tests/verify-no-device-journeys.ps1 fails the plan job for any entry that runs a device class from a lane that does not declare it, and for a declared lane whose runner is not of that family. Every other entry stays off devices; those journeys run by hand on a developer machine.",
     "kind: xunit-exe = dotnet <target> [args] (an xUnit v3 test assembly, run directly); msbuild = dotnet msbuild <target> -t:Build.",
     "'project' is built once in the build job (distinct projects only).  'measuredSeconds' is the last measured duration; keep it current when promoting a batch.",
     "'buildFirst' projects are built before everything else on every platform that builds: the host's build writes the host-assembly manifest that lets every add-in trim what the host already ships (without it each add-in carries ~550 MB of copy-local dependencies and AddIns reaches 13 GB); tests/OpenDevelop.IntegrationTests/TESTING.md says the same: build the application first.",
     "'buildArgs' are extra dotnet build arguments for the entry's 'project'; entries that share a project must agree on them.  The integration project is built with -p:BuildIntegrationFixtures=false because its fixture target builds every fixture inside one MSBuild process (Uno.Sdk 6.6.42 then clashes with the already resolved 6.5.31, MSB4240); a lane that needs a fixture lists that fixture's own csproj as an entry 'project' so it builds in its own process.",
     "A lane with 'needsNuGetCache' also downloads the build job's NuGet package cache: the IDE host resolves its LibreWPF assemblies from the global packages folder at run time, so a lane that starts the IDE (the integration lanes) needs it; the unit lane does not.",
     "'buildLast' projects are built after everything else, with their own 'args' ('{rid}' is the platform's 'rid').  The host is built last with '--runtime <rid> -p:AppendRuntimeIdentifierToOutputPath=false', the recipe terminal-cross-platform.yml uses (it builds the Terminal add-in that way, which builds the host project it references as that RID into the same folder) and whose IDE does start on the Windows runner.  Measured on the runner without it: the host's OpenDevelop.deps.json is 166 libraries without a 'PresentationFramework/11.0.0.0' reference entry from the very first host build on, whatever is built afterwards in the default way (a macOS build has 193, with 28 'reference' entries for the LibreWPF assemblies), and the IDE dies at start-up with a FileNotFoundException for PresentationFramework 11.0.0.0.  The build summary records the host deps.json after every build, so the run shows what the RID-specific build changes.",
-    "A lane definition holds 'timeoutMinutes', optionally 'needsNuGetCache' (the IDE host resolves its LibreWPF assemblies from the global packages folder at run time), 'needsGtk' for native GTK dependencies, and 'entryTimeoutMinutes' (an entry's default budget), and 'job': lanes of one platform that name the same job run one after another in ONE CI job, so the platform's archive is downloaded and unpacked once (the quick lanes - unit, integration-stable, integration-unstable - are job 'fast'; the long designer lane is its own job and runs in parallel); a job's timeout is the sum of its lanes' timeouts plus 30 minutes of preparation headroom.",
+    "A lane definition holds 'timeoutMinutes', optionally 'needsNuGetCache' (the IDE host resolves its LibreWPF assemblies from the global packages folder at run time), 'needsGtk' for native GTK dependencies, and 'entryTimeoutMinutes' (an entry's default budget), and 'job': lanes of one platform that name the same job run one after another in ONE CI job, so the platform's archive is downloaded and unpacked once (the quick lanes - unit, integration-stable, integration-unstable - are job 'fast'; the long designer lane is its own job and runs in parallel); a job's timeout is the sum of its lanes' timeouts plus 30 minutes of preparation headroom.  A lane may also name 'runner' (its job runs on that image instead of the platform's, which is how the iOS Simulator lane gets Xcode 27) and 'deviceClasses' (the device journeys it may run, with the OS family that hosts the device - see the entry above).",
     "'additionalProjects' declares fixture projects needed by an enabled entry; optional platforms refer to the build platform, so Windows ARM64 prerequisites belong to windows-x64 when it supplies the shared archive.",
     "Profiler and Terminal are entries here; their own workflows (profiler.yml, terminal-cross-platform.yml) were deleted when they were folded in. Windows ARM64 and macOS ARM64 start as observed Terminal journeys and are promoted after repeated green runs."
   ],
@@ -27,7 +27,7 @@
     "linux-x64": "Enabled on 2026-11-02 with the unit suites (Profiler among them, which profiler.yml once ran on ubuntu-latest) and the workbench and DevFlow journeys, all 'observe'. The IDE entries run under xvfb-run with Mesa's software Vulkan driver (install-linux-prerequisites.sh); promote per the usual two green runs.",
     "linux-arm64": "Same entries and rules as linux-x64, on the native ubuntu-24.04-arm runner: dist.linux.sh ships one archive per Linux architecture, so each builds for itself."
   },
-  "throughBatch": 4,
+  "throughBatch": 5,
   "focus": true,
   "platforms": {
     "windows-x64": {
@@ -88,6 +88,25 @@
       "needsNuGetCache": true,
       "needsGtk": true,
       "note": "All designer journeys (LibreWPF, LibreWinForms, MewUI, GTK) in one job. Entries in a lane run serially, so the LibreWPF journeys that edit src/Samples still never share the sample with a concurrent test. Windows: ~15 minutes preparation, 3.5 minutes GTK install, 24-28 minutes of LibreWPF editing."
+    },
+    "mobile-ios": {
+      "job": "mobile-ios",
+      "runner": "xcode-27",
+      "timeoutMinutes": 45,
+      "entryTimeoutMinutes": 35,
+      "needsNuGetCache": true,
+      "deviceClasses": { "IosSimulatorDebuggingIntegrationTests": "macos" },
+      "allowAllFailures": true,
+      "note": "The iOS Simulator debugging journey (Debugger.AddIn's IosSimulatorProjectBehavior) on the xcode-27 image: an iOS Simulator is a native macOS process, so no nested virtualisation is involved, but the .NET 11 iOS workload set pins Microsoft.NET.Sdk.iOS 27.0.12212-net11-rc.2, which needs Xcode 27, and no macos-26 image carries it. The job installs the SDK 11 and its ios workload into ~/.dotnet and boots one iPhone simulator; the journey registers that SDK through od.sdk.add-custom-root and attaches SharpDbg to the app it installs with simctl. allowAllFailures is the bootstrap exception (a lane whose only entry failed fails the lane): drop it and promote the entry to required after two green runs."
+    },
+    "mobile-android": {
+      "job": "mobile-android",
+      "timeoutMinutes": 60,
+      "entryTimeoutMinutes": 45,
+      "needsNuGetCache": true,
+      "deviceClasses": { "AndroidDebuggingIntegrationTests": "linux" },
+      "allowAllFailures": true,
+      "note": "The Android debugging journey (Debugger.AddIn's AndroidDebugProjectBehavior) against a headless emulator on the hosted ubuntu-24.04 runner, the only runner image family with KVM (macOS arm64 and ubuntu-24.04-arm have no nested virtualisation). The job enables /dev/kvm, installs the android workload next to the SDK 11 it puts in ~/.dotnet, and boots one google_apis x86_64 AVD, whose ABI the archive's AddIns/Debugger/android/x86_64 agent covers. allowAllFailures is the bootstrap exception (a lane whose only entry failed fails the lane): drop it and promote the entry to required after two green runs."
     }
   },
   "buildFirst": [
@@ -767,6 +786,30 @@
       ],
       "measuredSeconds": 47,
       "note": "First batch-4 designer-host entry. Opens the LibreWPF designer, waits until its out-of-process host loads the project assembly, then rebuilds and rejects file-lock diagnostics. Measured locally on macOS ARM64: 1 test in 47 seconds; keep observe until repeated runner results are stable."
+    },
+    {
+      "id": "ios-simulator-debugging-journey",
+      "batch": 5,
+      "lane": "mobile-ios",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.IosSimulatorDebuggingIntegrationTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "platforms": { "macos-arm64": "observe" },
+      "note": "Builds a net11.0-ios app with the SDK 11 the lane installed, installs and launches it stopped through simctl, attaches SharpDbg with the app's own retargeted mscordbi, and stops at a breakpoint in FinishedLaunching. The journey skips when no iPhone simulator or SDK 11 with the iOS workload exists, and xUnit reports a skip as a passing total, so read the entry's own result rather than the lane's colour."
+    },
+    {
+      "id": "android-debugging-journey",
+      "batch": 5,
+      "lane": "mobile-android",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.AndroidDebuggingIntegrationTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "platforms": { "linux-x64": "observe" },
+      "note": "Builds a net11.0-android app with the SDK 11 the lane installed, deploys it to the headless emulator through adb, stops at a breakpoint, steps, evaluates and checks that the session leaves no debug-app setting or adb forward behind; then repeats the session. The journey skips when adb or exactly one connected device is missing, and xUnit reports a skip as a passing total, so read the entry's own result rather than the lane's colour."
     }
   ]
 }

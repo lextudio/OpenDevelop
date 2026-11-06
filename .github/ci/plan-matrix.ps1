@@ -12,7 +12,9 @@
 #                tests across the lane jobs of one run). A lane without a 'job' is its own job. Jobs of different groups
 #                (fast, designer) run in parallel once the build is done. Each include carries 'lanes' (in plan order) and
 #                the sum of their timeouts plus 30 minutes of preparation headroom; a flag a lane asks for (needsNuGetCache,
-#                needsGtk) holds for the whole job.
+#                needsGtk) holds for the whole job. A lane may also name 'runner': the device lanes need an image their
+#                platform's default runner is not (the iOS Simulator lane needs Xcode 27), so the job runs there instead.
+#                Lanes that share a job must name the same runner, because a job runs on one machine.
 #
 # The outputs are written as JSON ('{"include":[...]}') to $GITHUB_OUTPUT. A plan that enables nothing fails.
 param(
@@ -86,11 +88,20 @@ foreach ($group in @($enabled | Group-Object { "$($_.Platform)|$(Get-LaneJob $_.
     # The lanes this job runs, in the order the plan defines them (the quick unit suites first).
     [string[]]$laneNames = @($group.Group | ForEach-Object { $_.Lane } | Sort-Object -Unique | Sort-Object { $laneOrder.IndexOf($_) })
     $platform = $plan.platforms.PSObject.Properties[$platformName].Value
+    # A lane may name the image its job runs on; the device lanes need one their platform's default is not. Lanes that
+    # share a job must agree, because the job runs on one machine.
+    $runnerOverrides = @($laneNames | ForEach-Object {
+        $definition = $plan.lanes.PSObject.Properties[$_].Value
+        if ($definition.PSObject.Properties['runner'] -and $definition.runner) { [string]$definition.runner }
+    } | Sort-Object -Unique)
+    if ($runnerOverrides.Count -gt 1) {
+        throw "The lanes of job '$jobName' on '$platformName' name different runners ($($runnerOverrides -join ', ')); a job runs on one machine."
+    }
     $item = [ordered]@{
         platform = $platformName; job = $jobName; lanes = $laneNames
         # The archive this job unpacks: the packaging unit it belongs to (see Resolve-BuildPlatform).
         build_platform = (Resolve-BuildPlatform $platformName @{})
-        runner = $platform.runner
+        runner = if ($runnerOverrides.Count -eq 1) { $runnerOverrides[0] } else { $platform.runner }
         dotnet_architecture = $platform.dotnetArchitecture
         # The lanes' own budgets plus headroom for what sits outside every one of them: the archive download and unpack and
         # the installs (11-15 minutes on Windows), and the summary and upload steps that must still run after the last lane.

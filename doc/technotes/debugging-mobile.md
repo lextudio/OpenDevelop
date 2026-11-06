@@ -115,8 +115,12 @@ any payload. See [licensing-audit.md](licensing-audit.md). No decompiled `clrdbg
    while MSBuild runs, selecting between two real devices, and a physical device.
 2. The `x86_64` and `armeabi-v7a` agents build and pass the ELF/notice verification but have not run on a
    device. NativeAOT trimming warnings and reflection-dependent features need targeted coverage.
-3. CI and release wiring for the agent (`build/android-debug-agent.ps1` in the workflows, SPDX/notices, the
-   packaged-app check) has not run in GitHub Actions.
+3. CI wiring runs now: `build/android-debug-agent.ps1` is a `Plan`-gated job that also exports the SPDX/notices,
+   and the debugging journeys run in the `mobile-android` and `mobile-ios` lanes of `.github/workflows/ci.yml`
+   (see [`ci-test-plan.md`](ci-test-plan.md), "Device journeys"). The release packaged-app check still has no
+   Android device, so it covers the agent's files and metadata only. The lanes start `observe` with
+   `allowAllFailures`, so read their per-entry results rather than their colour: a journey whose device or
+   workload was missing skips and still reports a passing total.
 4. Remove or replace the desktop adapter's Microsoft debug-protocol dependency, if the product migrates.
 5. Physical iOS devices and signing remain future work.
 
