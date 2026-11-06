@@ -12,13 +12,15 @@ try {
     "windows-x64": {},
     "windows-arm64": { "buildFrom": "windows-x64" },
     "consumer": { "buildFrom": "windows-arm64" },
-    "macos-arm64": {}
+    "macos-arm64": {},
+    "merged": { "runner": "macos-26", "singleJob": "macos" }
   },
   "lanes": {
     "unit": { "job": "fast", "timeoutMinutes": 10 },
     "archive": { "job": "fast", "timeoutMinutes": 30, "needsNuGetCache": true },
     "long": { "job": "slow", "timeoutMinutes": 60, "needsGtk": true },
-    "alone": { "timeoutMinutes": 5 }
+    "alone": { "timeoutMinutes": 5 },
+    "device": { "timeoutMinutes": 20, "runner": "xcode-27" }
   },
   "entries": [
     { "id": "early", "batch": 1, "lane": "archive", "project": "early.csproj", "platforms": { "windows-x64": "required" } },
@@ -29,7 +31,9 @@ try {
     { "id": "unit-arm", "batch": 1, "lane": "unit", "project": "unit-arm.csproj", "platforms": { "windows-arm64": "observe" } },
     { "id": "unit-msbuild", "batch": 1, "lane": "unit", "kind": "msbuild", "target": "tests.proj", "platforms": { "macos-arm64": "observe" } },
     { "id": "mac-long", "batch": 4, "lane": "long", "project": "mac-long.csproj", "platforms": { "macos-arm64": "observe" } },
-    { "id": "mac-alone", "batch": 4, "lane": "alone", "project": "mac-alone.csproj", "platforms": { "macos-arm64": "observe" } }
+    { "id": "mac-alone", "batch": 4, "lane": "alone", "project": "mac-alone.csproj", "platforms": { "macos-arm64": "observe" } },
+    { "id": "merged-unit", "batch": 1, "lane": "unit", "project": "merged-unit.csproj", "platforms": { "merged": "observe" } },
+    { "id": "merged-device", "batch": 1, "lane": "device", "project": "merged-device.csproj", "platforms": { "merged": "observe" } }
   ]
 }
 '@ | Set-Content -LiteralPath $planPath
@@ -77,6 +81,24 @@ try {
     # A platform's jobs never mix: Windows x64 has only the 'fast' job's lanes it enables.
     $armJobs = @($lanes.include | Where-Object { $_.platform -eq 'windows-arm64' } | ForEach-Object { $_.job })
     if ($armJobs.Count -ne 1) { throw "windows-arm64 enables only the unit lane, expected one job, got: $($armJobs -join ',')" }
+
+    # A platform that names 'singleJob' collapses every lane into one job of that name, on the runner a lane names; the
+    # lanes keep plan order and the timeout is their sum plus the 30-minute headroom (10+20+30).
+    $merged = @($lanes.include | Where-Object { $_.platform -eq 'merged' })
+    if ($merged.Count -ne 1) { throw "A 'singleJob' platform must plan one job, got $($merged.Count)." }
+    if ($merged[0].job -ne 'macos') { throw "The merged job must use the platform's 'singleJob' name, got '$($merged[0].job)'." }
+    if (($merged[0].lanes -join ',') -ne 'unit,device') { throw "The merged job must run its lanes in plan order, got $($merged[0].lanes -join ',')." }
+    if ($merged[0].timeout -ne 60) { throw "The merged job's timeout is its lanes' budgets plus 30 minutes of headroom (10+20+30), got $($merged[0].timeout)." }
+    if ($merged[0].runner -ne 'xcode-27') { throw "The merged job must run on the runner its lane names, got '$($merged[0].runner)'." }
+
+    # Lanes of one merged job must name the same runner, because the job runs on one machine.
+    $conflict = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
+    $conflict.lanes | Add-Member -NotePropertyName device2 -NotePropertyValue ([pscustomobject]@{ timeoutMinutes = 5; runner = 'macos-26' })
+    $conflict.entries += [pscustomobject]@{ id = 'merged-conflict'; batch = 1; lane = 'device2'; project = 'merged-conflict.csproj'; platforms = [pscustomobject]@{ merged = 'observe' } }
+    $conflictPath = Join-Path $directory 'conflict-plan.json'
+    $conflict | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $conflictPath
+    & pwsh -NoProfile -File $planner -PlanPath $conflictPath *> $null
+    if ($LASTEXITCODE -eq 0) { throw 'A merged job must reject lanes that name different runners.' }
 
     # A platform whose only enabled entry runs from source (kind msbuild, no 'project') still gets a successful build: the
     # host from 'buildFirst' and nothing for the entry itself. A platform with no enabled entry at all is an error.

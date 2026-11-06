@@ -10,11 +10,14 @@
 #                the stable and unstable integration lanes are 'fast') run one after another in ONE job, because every job
 #                has to download and unpack the platform's whole archive (measured: 70 minutes of that against 30 minutes of
 #                tests across the lane jobs of one run). A lane without a 'job' is its own job. Jobs of different groups
-#                (fast, designer) run in parallel once the build is done. Each include carries 'lanes' (in plan order) and
-#                the sum of their timeouts plus 30 minutes of preparation headroom; a flag a lane asks for (needsNuGetCache,
-#                needsGtk) holds for the whole job. A lane may also name 'runner': the device lanes need an image their
-#                platform's default runner is not (the iOS Simulator lane needs Xcode 27), so the job runs there instead.
-#                Lanes that share a job must name the same runner, because a job runs on one machine.
+#                (fast, designer) run in parallel once the build is done. A platform may name 'singleJob': every lane of
+#                that platform then runs in ONE job with that name, so a scarce runner image (macOS) is acquired once and
+#                finishes all of its lanes instead of queueing once per group. Each include carries 'lanes' (in plan order)
+#                and the sum of their timeouts plus 30 minutes of preparation headroom; a flag a lane asks for
+#                (needsNuGetCache, needsGtk) holds for the whole job, and 'needs_ios_simulator' says the job hosts an iOS
+#                Simulator. A lane may also name 'runner': the device lanes need an image their platform's default runner is
+#                not (the iOS Simulator lane needs Xcode 27), so the job runs there instead. Lanes that share a job must
+#                name the same runner, because a job runs on one machine.
 #
 # The outputs are written as JSON ('{"include":[...]}') to $GITHUB_OUTPUT. A plan that enables nothing fails.
 param(
@@ -79,12 +82,32 @@ function Test-LaneFlag([string]$laneName, [string]$flag) {
     $lane = $plan.lanes.PSObject.Properties[$laneName].Value
     return [bool]($lane.PSObject.Properties[$flag] -and $lane.$flag)
 }
+# A lane declares the device classes it may run with the OS family that hosts the device; the job needs the iOS Simulator
+# set up when one of its lanes declares that class (the workflow boots it before the lanes start).
+function Test-LaneDeviceClass([string]$laneName, [string]$className) {
+    $lane = $plan.lanes.PSObject.Properties[$laneName].Value
+    if (-not $lane.PSObject.Properties['deviceClasses']) { return $false }
+    return [bool]($lane.deviceClasses.PSObject.Properties[$className])
+}
+# A platform that names 'singleJob' runs every lane in one job of that name, on one runner: the macOS image is the scarce
+# resource, so the unit, integration, designer and Simulator lanes share one acquisition instead of three queue entries.
+function Get-PlatformSingleJob([string]$platformName) {
+    $platform = $plan.platforms.PSObject.Properties[$platformName]
+    if ($null -eq $platform) { throw "Platform '$platformName' is used by an entry but not defined under 'platforms'." }
+    if ($platform.Value.PSObject.Properties['singleJob'] -and $platform.Value.singleJob) { return [string]$platform.Value.singleJob }
+    return $null
+}
+function Get-EffectiveJob([string]$platformName, [string]$laneName) {
+    $single = Get-PlatformSingleJob $platformName
+    if ($single) { return $single }
+    return Get-LaneJob $laneName
+}
 $laneOrder = @($plan.lanes.PSObject.Properties.Name)
 
 $lanes = @()
-foreach ($group in @($enabled | Group-Object { "$($_.Platform)|$(Get-LaneJob $_.Lane)" } | Sort-Object Name)) {
+foreach ($group in @($enabled | Group-Object { "$($_.Platform)|$(Get-EffectiveJob $_.Platform $_.Lane)" } | Sort-Object Name)) {
     $platformName = $group.Group[0].Platform
-    $jobName = Get-LaneJob $group.Group[0].Lane
+    $jobName = Get-EffectiveJob $platformName $group.Group[0].Lane
     # The lanes this job runs, in the order the plan defines them (the quick unit suites first).
     [string[]]$laneNames = @($group.Group | ForEach-Object { $_.Lane } | Sort-Object -Unique | Sort-Object { $laneOrder.IndexOf($_) })
     $platform = $plan.platforms.PSObject.Properties[$platformName].Value
@@ -109,6 +132,7 @@ foreach ($group in @($enabled | Group-Object { "$($_.Platform)|$(Get-LaneJob $_.
         needs_cliclick = [bool]($platform.PSObject.Properties['needsCliclick'] -and $platform.needsCliclick)
         needs_nuget_cache = [bool]@($laneNames | Where-Object { Test-LaneFlag $_ 'needsNuGetCache' }).Count
         needs_gtk = [bool]@($laneNames | Where-Object { Test-LaneFlag $_ 'needsGtk' }).Count
+        needs_ios_simulator = [bool]@($laneNames | Where-Object { Test-LaneDeviceClass $_ 'IosSimulatorDebuggingIntegrationTests' }).Count
         entries = $group.Count
     }
     $lanes += $item

@@ -288,12 +288,14 @@ verification targets. Run the full integration suite only when asked and do not 
 
 One workflow, `.github/workflows/ci.yml`, driven by `.github/ci/test-plan.json`; the scripts that read it are in
 `.github/ci/`. `doc/technotes/ci-test-plan.md` explains the shape. Job names: `Plan`, `Build (<platform>)`,
-`fast (<platform>)`, `designer (<platform>)` and `Release grade`. Each platform builds once; then at most two jobs
-per platform unpack that build's archive in parallel: `fast` runs the quick lanes (`unit`, `integration-stable`,
-`integration-unstable`) one after another, so the archive is downloaded once for them, and the long designer lane is its own
-job. A lane's `job` in `test-plan.json` decides this; do not add a lane as a job of its own just to parallelise a few
-minutes of tests, because every job pays a full archive download (measured: 70 minutes of preparation against 30 minutes of
-tests across one run's lane jobs).
+`Release grade`, and per platform the test jobs its lanes are grouped into: `fast (<platform>)` and
+`designer (<platform>)` on Windows and Linux, `mobile-android (linux-x64)`, and the single `macos (macos-arm64)` job.
+macOS names `singleJob` in its platform definition, so **every one of its lanes runs in that one job**: a macOS runner image
+is the scarce resource, and one acquisition then finishes the unit, integration, designer and Simulator lanes instead of
+three jobs queueing separately. Elsewhere a lane's `job` in `test-plan.json` decides the grouping; do not add a lane as a
+job of its own just to parallelise a few minutes of tests, because every job pays a full archive download (measured:
+70 minutes of preparation against 30 minutes of tests across one run's lane jobs). Within a job the lanes run one after
+another, each under its own budget, so a slow or failing lane does not stop the next.
 
 Spending runs:
 
