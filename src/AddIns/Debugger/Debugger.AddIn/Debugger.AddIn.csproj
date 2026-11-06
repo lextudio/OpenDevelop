@@ -106,7 +106,10 @@
        that ran EXCEL.EXE-style hosts like apps and failed with "hostpolicy.dll ... not found". -->
   <Target Name="BuildSharpDbg" BeforeTargets="Build"
           Condition="Exists('$(SharpDbgProject)')">
-    <Exec Command="&quot;$(DotNetHostPath)&quot; build &quot;$(SharpDbgProject)&quot; -c $(Configuration) -tl:off"
+    <!-- Forward the fork pin from Directory.Packages.props: SharpDbg is a separate repository with
+         its own defaults, and the adapter's DAP packages must match the version the rest of
+         OpenDevelop restores. -->
+    <Exec Command="&quot;$(DotNetHostPath)&quot; build &quot;$(SharpDbgProject)&quot; -c $(Configuration) -tl:off -p:LextudioDapForkVersion=$(LextudioDapForkVersion)"
           ConsoleToMSBuild="true"
           IgnoreExitCode="false" />
   </Target>
@@ -118,8 +121,15 @@
   <Target Name="CopySharpDbgToAddInOutput" AfterTargets="Build"
           BeforeTargets="OpenDevelopTrimAddinOutput"
           Condition="Exists('$(SharpDbgBinDir)SharpDbg.Cli.dll')">
+    <!-- The adapter used to ship Microsoft.VisualStudio.Shared.VSCodeDebugProtocol, whose license
+         is not open source. It now uses the MIT OmniSharp fork, but an incremental SharpDbg build
+         (and this folder) can still hold the old DLL: the copy target never deletes. Drop it from
+         both places, or the payload verifier fails the release. See doc/technotes/licensing-audit.md. -->
+    <Delete Files="$(SharpDbgBinDir)Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll;$(OutputPath)Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll"
+            Condition="Exists('$(SharpDbgBinDir)Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll') Or Exists('$(OutputPath)Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll')" />
     <ItemGroup>
-      <SharpDbgFiles Include="$(SharpDbgBinDir)**\*.*" />
+      <SharpDbgFiles Include="$(SharpDbgBinDir)**\*.*"
+                      Exclude="$(SharpDbgBinDir)Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.*" />
       <!-- SharpDbg.Cli is an OUT-OF-PROCESS program that happens to be deployed inside an
            in-process addin's folder. It resolves its dependencies through its own deps.json, from
            its own directory - it cannot fall back to the host's base directory the way an

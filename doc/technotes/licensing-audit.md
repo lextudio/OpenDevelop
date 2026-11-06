@@ -62,15 +62,28 @@ payload. The packaged-app verifiers fail when a payload still contains
 `Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll` (an old development output folder can
 hold a stale copy because the copy targets never delete).
 
+**Excluded commercial components:** `Uno.Sdk` 6.7.30 injects `Uno.UI.HotDesign` and
+`Uno.UI.App.Mcp` into every Exe project. Neither package declares a license (the nuspec has
+only `Copyright ... all rights reserved`), and Hot Design is a commercial Uno Platform Studio
+feature, so they cannot be redistributed in OpenDevelop's payload.
+`WinUIXamlDesigner.UnoHost.csproj` sets `UnoDisableHotDesign` and `UnoDisableMCPSupport`;
+the Uno designer host no longer restores, builds or ships either package.
+`Uno.Sdk.Extras` and `Uno.Settings.DevServer` are `PrivateAssets="all"` build tooling and are
+not part of the payload. Distribution staging fails if `Uno.UI.HotDesign*.dll` or
+`Uno.UI.App.Mcp*.dll` reappear under the Uno designer host.
+
 `externals/vscode-wpf/sample` is used by integration tests only and is not
 part of the runtime payload.
 
 ## NuGet and native payloads
 
-The generated `THIRD-PARTY.spdx.json` inventories the resolved host and AddIn
-NuGet graphs. It records declared nuspec expressions where available and uses
-`NOASSERTION` where metadata is absent; it is an inventory, not a legal
-conclusion. Package-contained LICENSE, COPYING, and NOTICE files are copied
+The generated `THIRD-PARTY.spdx.json` inventories the resolved host, AddIn and
+SharpDbg adapter NuGet graphs. The SharpDbg closure comes from
+`externals/sharpdbg/artifacts/obj/SharpDbg.Cli/project.assets.json`; it is not an
+OpenDevelop project and previously appeared in no `src/**/project.assets.json`, so
+its packages were missing from the manifest. It records declared nuspec expressions
+where available and uses `NOASSERTION` where metadata is absent; it is an
+inventory, not a legal conclusion. Package-contained LICENSE, COPYING, and NOTICE files are copied
 under `THIRD-PARTY-NOTICES/NuGet/`, with a per-package notice catalog.
 
 The distribution packaging step also copies the `LibGhostty.Net`

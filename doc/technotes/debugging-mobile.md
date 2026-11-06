@@ -96,11 +96,11 @@ with the job's own token. `NuGet.config` maps the ids to both sources. The agent
 project and `SharpDbg.AndroidAgent.Tests` pin the version exactly (`[x]`): a floating `>=` resolved to a
 different `1.0.0` on nuget.org.
 
-The Android agent no longer references Microsoft's `Microsoft.VisualStudio.Shared.VSCodeDebugProtocol`. The
-desktop SharpDbg adapter still does; removing that dependency from the whole product and auditing the
-replacement's distribution closure remain open. Earlier text in [licensing-audit.md](licensing-audit.md) about
-the Microsoft package being embedded in the Android agent describes the previous implementation. No
-decompiled `clrdbg` or `ICorDebugSharp` source was imported.
+Neither the Android agent nor the desktop SharpDbg adapter references Microsoft's
+`Microsoft.VisualStudio.Shared.VSCodeDebugProtocol`: both use the same MIT OmniSharp DAP fork. The
+Microsoft package remains only in the adapter's test project, as its DAP client, and is not part of
+any payload. See [licensing-audit.md](licensing-audit.md). No decompiled `clrdbg` or
+`ICorDebugSharp` source was imported.
 
 ## Remaining work
 

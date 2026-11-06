@@ -18,6 +18,11 @@ The bundled `SharpDbg.Cli` debug adapter is MIT-licensed. Its license is
 included as `THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt` in every release
 payload.
 
+The desktop adapter and the Android debug agent implement the Debug Adapter
+Protocol with the MIT-licensed OmniSharp `OmniSharp.Extensions.DebugAdapter`
+fork; their notices are covered by the generated NuGet catalog. Microsoft's
+`Microsoft.VisualStudio.Shared.VSCodeDebugProtocol` is no longer bundled.
+
 ## UI framework and editors
 
 OpenDevelop consumes LibreWPF, LibreWinForms, ProGPU, AvalonEdit and AvalonDock

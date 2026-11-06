@@ -16,6 +16,13 @@
          flavour, whose Application is not a UIApplicationDelegate, so the iOS entry point goes through
          UnoPlatformHostBuilder.UseAppleUIKit() instead of UIApplication.Main(typeof(App)). -->
     <UnoFeatures>SkiaRenderer</UnoFeatures>
+    <!-- Older Uno.Sdk versions inject Uno.UI.HotDesign (and Uno.UI.App.Mcp) into every Exe
+         project. Neither package carries a license: their nuspec has only "all rights reserved"
+         and Hot Design is a commercial Uno Platform Studio feature, so they cannot be shipped in
+         OpenDevelop's payload. The host does not use either (the designer has its own DesignHost),
+         so keep them out of restore and the output. See doc/technotes/licensing-audit.md. -->
+    <UnoDisableHotDesign>true</UnoDisableHotDesign>
+    <UnoDisableMCPSupport>true</UnoDisableMCPSupport>
     <RootNamespace>ICSharpCode.WinUIXamlDesigner.UnoHost</RootNamespace>
     <OpenDevelopAddin>true</OpenDevelopAddin>
     <OpenDevelopAddinKind>OutOfProcessHost</OpenDevelopAddinKind>

@@ -152,9 +152,21 @@ function Write-DistributionLegalFiles {
     # filename and leave the native notices out of a release.
     Get-ChildItem -LiteralPath $ghosttyNotices -Force | Copy-Item -Destination $destinationNotices -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $repoRoot 'externals/sharpdbg/LICENSE.txt') -Destination (Join-Path $destinationNotices 'SharpDbg-LICENSE.txt') -Force
-    $assetsFiles = @((Join-Path $repoRoot 'src/Main/SharpDevelop/obj/project.assets.json')) + @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src/AddIns') -Recurse -File -Filter 'project.assets.json' | ForEach-Object FullName)
+    # The SharpDbg adapter is not an OpenDevelop project: Debugger.AddIn's BuildSharpDbg target
+    # runs `dotnet build` on externals/sharpdbg and copies the whole closure. Its packages
+    # (notably Microsoft.VisualStudio.Shared.VSCodeDebugProtocol before it was replaced) therefore
+    # appear in no src/**/project.assets.json and were silently absent from the SBOM. Feed the
+    # adapter's own restore output into the manifest as well.
+    $assetsFiles = @(
+        (Join-Path $repoRoot 'src/Main/SharpDevelop/obj/project.assets.json')
+    ) + @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src/AddIns') -Recurse -File -Filter 'project.assets.json' | ForEach-Object FullName) + @(
+        (Join-Path $repoRoot 'externals/sharpdbg/artifacts/obj/SharpDbg.Cli/project.assets.json')
+    )
     $missingAssets = @($assetsFiles | Where-Object { -not (Test-Path -LiteralPath $_) })
-    if ($missingAssets.Count -gt 0) { throw "Cannot generate SPDX manifest; restore did not produce $($missingAssets -join ', ')" }
+    if ($missingAssets.Count -gt 0) {
+        throw "Cannot generate SPDX manifest; restore did not produce $($missingAssets -join ', '). " +
+            "For the SharpDbg entry, initialize externals/sharpdbg and build Debugger.AddIn."
+    }
     try {
         & $spdxScript -AssetsFile $assetsFiles -PackageRoot (Get-NuGetGlobalPackages) -OutputPath (Join-Path $Destination 'THIRD-PARTY.spdx.json') -NoticeDirectory (Join-Path $destinationNotices 'NuGet')
     }
@@ -169,6 +181,17 @@ function Test-DistributionLegalFiles {
     foreach ($legalFile in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'THIRD-PARTY.spdx.json', 'SOURCE-LICENSES/MonoDevelop.AspNetCore-Apache-2.0.txt', 'SOURCE-LICENSES/VSMac-CodeCoverage-MIT.txt', 'SOURCE-LICENSES/WpfDesigner-MIT.txt', 'SOURCE-LICENSES/vs-editor-api-MIT.txt', 'THIRD-PARTY-NOTICES/Ghostty/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/LICENSE', 'THIRD-PARTY-NOTICES/WindowsTerminal/NOTICE.md', 'THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt', 'THIRD-PARTY-NOTICES/NuGet/NOTICE.md', 'THIRD-PARTY-NOTICES/NuGet/SPDX-Zlib.txt') {
         $legalPath = Join-Path $Destination $legalFile
         if (-not (Test-Path -LiteralPath $legalPath)) { throw "Distribution payload lacks required legal file: $legalPath" }
+    }
+
+    # Uno.Sdk injects these into Exe projects. Neither package declares a license and Hot Design is
+    # a commercial Uno Platform Studio feature, so a payload must never carry them (see
+    # WinUIXamlDesigner.UnoHost.csproj and doc/technotes/licensing-audit.md).
+    $unoHost = Join-Path $Destination 'AddIns/DisplayBindings/WinUIXamlDesigner/UnoHost'
+    if (Test-Path -LiteralPath $unoHost) {
+        foreach ($excluded in 'Uno.UI.HotDesign*.dll', 'Uno.UI.App.Mcp*.dll') {
+            $match = Get-ChildItem -LiteralPath $unoHost -Recurse -File -Filter $excluded -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($match) { throw "Distribution payload contains $($match.Name) ($($match.FullName)), which has no open-source license." }
+        }
     }
 }
 
