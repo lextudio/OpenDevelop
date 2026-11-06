@@ -80,13 +80,23 @@ function Get-FinalText($export) {
     return $assistant, $text
 }
 
+function Invoke-OpenCodeRun([string[]] $Arguments) {
+    if ($IsWindows) {
+        $null | & opencode @Arguments
+        return
+    }
+
+    $zsh = Get-Command zsh -ErrorAction Stop
+    & $zsh.Source -c 'exec "$0" "$@" </dev/null' opencode @Arguments
+}
+
 switch ($Action) {
     'Launch' {
         $prompt = if ($PromptFile) { $PromptFile } else { Artifact '-prompt.txt' }
         if (-not (Test-Path -LiteralPath $prompt)) { throw "Write the review prompt first: $prompt" }
         $tree = Get-StagedTree
         # Nothing from an earlier run of this name may be mistaken for this review (a stale message, export or approval).
-        foreach ($stale in '-message.txt', '-final.txt', '-export.json', '-export.err', '-approved-tree.txt', '-sessionid.txt', '-commit.json', '-commit.log', '-review.json', '-review.log') {
+        foreach ($stale in '-message.txt', '-final.txt', '-export.json', '-export.err', '-approved-tree.txt', '-sessionid.txt', '-commit.json', '-commit.log', '-review.json', '-review.log', '-review-exit.txt') {
             Remove-Item -LiteralPath (Artifact $stale) -Force -ErrorAction SilentlyContinue
         }
         Set-Content -LiteralPath (Artifact '-tree.txt') -Value $tree -NoNewline
@@ -99,10 +109,11 @@ switch ($Action) {
         Write-Host "  progress log: $(Artifact '-review.log')   (service log: ~/.local/share/opencode/log/opencode.log)"
         Push-Location $target
         try {
-            $null | & opencode run --format json --print-logs --log-level info --agent reviewer -m $Model --title $title (Get-Content -LiteralPath $prompt -Raw) > (Artifact '-review.json') 2> (Artifact '-review.log')
+            Invoke-OpenCodeRun @('run', '--format', 'json', '--print-logs', '--log-level', 'info', '--agent', 'reviewer', '-m', $Model, '--title', $title, (Get-Content -LiteralPath $prompt -Raw)) > (Artifact '-review.json') 2> (Artifact '-review.log')
             $exit = $LASTEXITCODE
         } finally { Pop-Location }
         Write-Host "opencode exit code: $exit"
+        Set-Content -LiteralPath (Artifact '-review-exit.txt') -Value $exit -NoNewline
         $sessionId = ''
         foreach ($line in (Get-Content -LiteralPath (Artifact '-review.json') -ErrorAction SilentlyContinue)) {
             if ($line -match '"sessionID":"(?<id>[^"]+)"') { $sessionId = $Matches['id']; break }
@@ -159,8 +170,27 @@ switch ($Action) {
             if ($launched -lt 100000000000) { $launched *= 1000 }   # seconds written by older runs
             if ([int64]$info.time.created -lt $launched - 5000) { $problems.Add('the session was created before the launch') }
         }
-        if ($info.outcome -ne 'succeeded') { $problems.Add("session outcome '$($info.outcome)'") }
         $assistant, $text = Get-FinalText $export
+        # `session export` is available while OpenCode is still executing tools. In that state the
+        # outcome and last assistant message are deliberately incomplete; it is not a failed review.
+        # Return the documented polling result so callers retain this session instead of starting a
+        # second reviewer for the same tree.
+        if ([string]::IsNullOrWhiteSpace([string]$info.outcome) -and
+            (-not $assistant -or $assistant.finish -ne 'stop' -or -not $text)) {
+            $exitText = Get-Content -LiteralPath (Artifact '-review-exit.txt') -Raw -ErrorAction SilentlyContinue
+            $reviewExit = 0
+            if (-not [int]::TryParse([string]$exitText, [ref]$reviewExit)) {
+                $problems.Add('the recorded review exit status is missing or invalid')
+            }
+            elseif ($reviewExit -ne 0) {
+                $problems.Add("the review command exited $reviewExit before a terminal verdict")
+            }
+            if ($problems.Count -eq 0) {
+                Write-Host "The review is still running ($([DateTime]::Now.ToString('HH:mm:ss'))). Run Read again; do not start another review."
+                exit 3
+            }
+        }
+        if ($info.outcome -ne 'succeeded') { $problems.Add("session outcome '$($info.outcome)'") }
         if (-not $assistant -or $assistant.finish -ne 'stop' -or -not $text) { $problems.Add('the last assistant message did not finish normally') }
         $text = ([string]$text) -replace "`r`n", "`n"
         Set-Content -LiteralPath (Artifact '-final.txt') -Value $text
@@ -209,7 +239,7 @@ switch ($Action) {
         Write-Host "Committing tree $tree in $target (stdout: $(Artifact '-commit.json'), log: $(Artifact '-commit.log'))"
         Push-Location $target
         try {
-            $null | & opencode run --format json --print-logs --log-level info --agent build -m $Model --title "$Name-commit $($tree.Substring(0, 8))" $instruction > (Artifact '-commit.json') 2> (Artifact '-commit.log')
+            Invoke-OpenCodeRun @('run', '--format', 'json', '--print-logs', '--log-level', 'info', '--agent', 'build', '-m', $Model, '--title', "$Name-commit $($tree.Substring(0, 8))", $instruction) > (Artifact '-commit.json') 2> (Artifact '-commit.log')
             $exit = $LASTEXITCODE
         } finally { Pop-Location }
         Write-Host "opencode exit code: $exit"
