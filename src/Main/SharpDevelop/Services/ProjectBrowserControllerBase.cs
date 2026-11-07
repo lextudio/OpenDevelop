@@ -542,6 +542,12 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
             return;
         }
 
+        if (target?.Kind == ProjectBrowserNodeKind.Project)
+        {
+            RenameProject(target);
+            return;
+        }
+
         if (target is null || IsVirtualProjectFile(target) || (!target.IsFileLike && target.Kind != ProjectBrowserNodeKind.Folder))
         {
             return;
@@ -570,7 +576,13 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
             return;
         }
 
-        var isDirectory = target.Kind == ProjectBrowserNodeKind.Folder || target.Kind == ProjectBrowserNodeKind.Project;
+        if (target.Kind == ProjectBrowserNodeKind.Project)
+        {
+            DeleteProject(target);
+            return;
+        }
+
+        var isDirectory = target.Kind == ProjectBrowserNodeKind.Folder;
         if (IsVirtualProjectFile(target) || (!target.IsFileLike && !isDirectory))
         {
             return;
@@ -587,6 +599,84 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
             _explorerService.DeleteItem(target.FullPath, isDirectory);
             Host?.RefreshSolutionTree();
         }, "Failed to delete item.");
+    }
+
+    /// <summary>
+    /// Deletes a project: it leaves the solution first (a project whose files are gone but which is
+    /// still loaded breaks the next save), then its folder goes. A project node's FullPath is the
+    /// .csproj file, so the generic item path - which deletes that path as a directory - could only
+    /// throw, which is why Delete on a project did nothing at all (issue #24).
+    /// </summary>
+    void DeleteProject(ProjectBrowserNodeContext target)
+    {
+        if (Host is not null && !Host.ConfirmDelete(target.Name))
+        {
+            return;
+        }
+
+        ExecuteFileSystemAction(() =>
+        {
+            if (!_explorerService.TryRemoveProject(target.FullPath, out _))
+            {
+                return;
+            }
+
+            SD.ProjectService.CurrentSolution?.Save();
+            Host?.CloseViewsForPath(target.FullPath);
+            var directory = Path.GetDirectoryName(target.FullPath);
+            if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            Host?.RefreshSolutionTree();
+        }, "Failed to delete project.");
+    }
+
+    /// <summary>
+    /// Renames a project: the .csproj file moves to the new name, the solution entry follows, and
+    /// the project is loaded again from the new path. Renaming only the file - what the generic item
+    /// rename does - would leave the .slnx naming a path that no longer exists.
+    /// </summary>
+    void RenameProject(ProjectBrowserNodeContext target)
+    {
+        var oldPath = target.FullPath;
+        var currentName = Path.GetFileNameWithoutExtension(oldPath);
+        var newName = Host?.ShowInputBox("Rename", "Enter new name:", currentName)?.Trim();
+        if (string.IsNullOrWhiteSpace(newName) || string.Equals(newName, currentName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var name = newName!;
+        if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            || name.IndexOfAny(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }) >= 0)
+        {
+            ServiceSingleton.GetRequiredService<IMessageService>()
+                .ShowError($"'{name}' is not a valid project name.");
+            return;
+        }
+
+        ExecuteFileSystemAction(() =>
+        {
+            var solution = SD.ProjectService.CurrentSolution;
+            var project = solution?.Projects.FirstOrDefault(p =>
+                string.Equals(p.FileName.ToString(), oldPath, StringComparison.OrdinalIgnoreCase));
+            var folder = project?.ParentFolder;
+            if (solution is null || project is null || folder is null)
+            {
+                return;
+            }
+
+            var newPath = Path.Combine(Path.GetDirectoryName(oldPath)!, name + Path.GetExtension(oldPath));
+            Host?.CloseViewsForPath(oldPath);
+            // Out of the solution first: the project must not be loaded from a path that is about to
+            // disappear, and adding it back is what writes the new path into the .slnx.
+            folder.Items.Remove(project);
+            File.Move(oldPath, newPath);
+            folder.AddExistingProject(FileName.Create(newPath));
+            solution.Save();
+            Host?.RefreshSolutionTree();
+        }, "Failed to rename project.");
     }
 
     public void RemoveFromProject(ProjectBrowserNodeContext? node = null)

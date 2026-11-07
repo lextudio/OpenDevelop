@@ -99,7 +99,7 @@ internal sealed record ProjectBrowserNodeContext(
         | (Kind switch
         {
             ProjectBrowserNodeKind.Solution => ProjectBrowserNodeState.Solution | ProjectBrowserNodeState.CreateChild,
-            ProjectBrowserNodeKind.Project => ProjectBrowserNodeState.Project | ProjectBrowserNodeState.CreateChild | ProjectBrowserNodeState.Deletable | ProjectBrowserNodeState.StartupProject | ProjectBrowserNodeState.RemovableFromSolution | ProjectBrowserNodeState.AddExisting | ProjectBrowserNodeState.OpenWith,
+            ProjectBrowserNodeKind.Project => ProjectBrowserNodeState.Project | ProjectBrowserNodeState.CreateChild | ProjectBrowserNodeState.Renameable | ProjectBrowserNodeState.Deletable | ProjectBrowserNodeState.StartupProject | ProjectBrowserNodeState.RemovableFromSolution | ProjectBrowserNodeState.AddExisting | ProjectBrowserNodeState.OpenWith,
             ProjectBrowserNodeKind.DependenciesFolder or ProjectBrowserNodeKind.ReferencesFolder or ProjectBrowserNodeKind.PackagesFolder => ProjectBrowserNodeState.Folder,
             ProjectBrowserNodeKind.Reference or ProjectBrowserNodeKind.PackageReference => ProjectBrowserNodeState.File | ProjectBrowserNodeState.RemovableReference,
             ProjectBrowserNodeKind.ProjectReference => ProjectBrowserNodeState.File | ProjectBrowserNodeState.RemovableReference | ProjectBrowserNodeState.OpenReference,

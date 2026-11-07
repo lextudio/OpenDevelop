@@ -563,6 +563,19 @@
       "note": "Covers template dialogs and project creation. The SDK-selection theory is excluded on Windows because one data row installs an SDK over the network; schedule it separately with its own time budget."
     },
     {
+      "id": "project-lifecycle",
+      "batch": 4,
+      "lane": "integration-stable",
+      "measuredSeconds": 90,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.ProjectLifecycleTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "note": "Issue #24: the real Project Browser context menu on a project node (Rename, Delete, Remove present and enabled), then rename and delete on a copy of SlnxFixture - the .csproj, the .slnx entry and a rebuild under the new name. Starts as observe."
+    },
+    {
       "id": "missing-sdk-startup",
       "batch": 4,
       "lane": "integration-stable",

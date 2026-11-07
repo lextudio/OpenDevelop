@@ -34,6 +34,8 @@ public sealed class FixtureTestCaseOrderer : ITestCaseOrderer
         if (testName.Contains("StopAfterFirstFailureBuildTests", StringComparison.Ordinal)) return 21;
         // Solution-folder journeys on their own SlnxFixture copies; same app state as WorkbenchTests.
         if (testName.Contains("SolutionFolderTests", StringComparison.Ordinal)) return 25;
+        // Project node commands (rename/delete/remove) on their own SlnxFixture copies; same app state.
+        if (testName.Contains("ProjectLifecycleTests", StringComparison.Ordinal)) return 25;
         if (testName.Contains("AddReferenceTests", StringComparison.Ordinal)) return 26;
         if (testName.Contains("ProjectOptionsIntegrationTests", StringComparison.Ordinal)) return 27;
         if (testName.Contains("T4IntegrationTests", StringComparison.Ordinal)) return 28;
