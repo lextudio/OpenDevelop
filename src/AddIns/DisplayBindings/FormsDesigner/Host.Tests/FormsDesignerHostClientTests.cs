@@ -3463,7 +3463,7 @@ public sealed class FormsDesignerHostClientTests
 	/// `[DefaultEvent("Click")]` flows through the SAME generic TypeDescriptor-based code path
 	/// (ActivateDefaultEvent never special-cases Control), so this is a regression test for that
 	/// genericity rather than new functionality - confirmed working with no code changes needed by
-	/// a live DevFlow double-click on tests/fixtures/ToolStripFixture's own toolStripButton1 before
+	/// a live DevFlow double-click on a ToolStrip item in the (since retired) ToolStrip fixture before
 	/// this test was added.
 	/// </summary>
 	[Fact]

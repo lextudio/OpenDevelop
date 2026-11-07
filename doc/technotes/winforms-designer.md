@@ -53,6 +53,10 @@ the host context. The VB backend is implemented in the same
 out-of-process child (see "VB.NET WinForms support" below); only the legacy in-process
 fallback remains C#-only.
 
+The manual `tests/fixtures/TabControlFixture` and `tests/fixtures/ToolStripFixture` projects were
+retired on 2026-11-07; the sections below use them as historical evidence, and the regression
+coverage they motivated lives in the automated tests named there.
+
 ## Current Baseline
 
 | Component | Location | Current Status |
