@@ -1483,7 +1483,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "iOS simulators run on macOS only.");
         await RunUnoDevicePreviewJourneyAsync(
             hostFolder: Path.Combine("UnoHost.iOS", "WinUIXamlDesigner.UnoHost.app"), directory: true,
-            targetFramework: "net10.0-ios", platform: "IosSimulator", namePrefix: "iPhone", deviceWidthMarker: "390", rotatedWidthMarker: "844",
+            platform: "IosSimulator", namePrefix: "iPhone", deviceWidthMarker: "390", rotatedWidthMarker: "844",
             readyTimeout: TimeSpan.FromSeconds(240));
     }
 
@@ -1499,7 +1499,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         Assert.SkipUnless(AndroidEmulatorIsRunning(), "No Android emulator is running (start one with `emulator -avd <name>`).");
         await RunUnoDevicePreviewJourneyAsync(
             hostFolder: Path.Combine("UnoHost.Android", "WinUIXamlDesigner.UnoHost.apk"), directory: false,
-            targetFramework: "net10.0-android", platform: "AndroidEmulator", namePrefix: "", deviceWidthMarker: "412", rotatedWidthMarker: "915",
+            platform: "AndroidEmulator", namePrefix: "", deviceWidthMarker: "412", rotatedWidthMarker: "915",
             readyTimeout: TimeSpan.FromMinutes(10));
     }
 
@@ -1526,7 +1526,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         }
     }
 
-    async Task RunUnoDevicePreviewJourneyAsync(string hostFolder, bool directory, string targetFramework, string platform,
+    async Task RunUnoDevicePreviewJourneyAsync(string hostFolder, bool directory, string platform,
         string namePrefix, string deviceWidthMarker, string rotatedWidthMarker, TimeSpan readyTimeout)
     {
         var appPath = Environment.GetEnvironmentVariable("OPENDEVELOP_APP_PATH");
@@ -1535,12 +1535,8 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         Assert.SkipUnless(deployed != null && (directory ? Directory.Exists(deployed) : File.Exists(deployed)),
             "The device design host is not deployed (build WinUIXamlDesigner.UnoHost with -p:UnoDesignHostMobile=true).");
 
-        // The project still builds for the desktop (the first render needs that); a device target that is never
-        // active is enough for the designer to offer devices, because the project file is only read for targets.
-        var csproj = Directory.GetFiles(_unoSampleDir, "*.csproj").Single();
-        var original = await File.ReadAllTextAsync(csproj);
-        await File.WriteAllTextAsync(csproj, original.Replace("</Project>",
-            $"<PropertyGroup Condition=\"'$(OfferDevicePreviewsOnly)' == '1'\"><TargetFrameworks>{targetFramework};net10.0-desktop</TargetFrameworks></PropertyGroup></Project>"));
+        // The fixture csproj already names the device TFMs in a conditional group that no build evaluates; the designer
+        // reads them regardless of conditions, so both the iOS and the Android journey use the same project unchanged.
         try
         {
             await OpenUnoDesignerAsync();
@@ -1627,8 +1623,9 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         }
         finally
         {
-            // The sample directory is a per-test copy, but leave the project file as it was found anyway.
-            await File.WriteAllTextAsync(csproj, original);
+            // The IDE is shared by the whole assembly: a failed journey must not leave it previewing a device.
+            try { await _app.InvokeAsync("od.winui-designer.device", "host"); }
+            catch { /* the IDE or the device session may already be gone */ }
         }
     }
 

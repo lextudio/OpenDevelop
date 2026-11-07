@@ -7,4 +7,11 @@
     <UnoDisableHotDesign>true</UnoDisableHotDesign>
     <UnoDisableMCPSupport>true</UnoDisableMCPSupport>
   </PropertyGroup>
+  <!-- Device previews: the iOS Simulator and Android emulator journeys share this project. The Uno designer offers a
+       device only when the project file names that platform's TFM, and ProjectTargets reads TargetFramework(s) from the
+       XML while ignoring conditions, so these are visible to the designer even though no build evaluates them: a normal
+       build stays desktop-only and needs no mobile workload. -->
+  <PropertyGroup Condition="'$(EnableDevicePreviews)' == '1'">
+    <TargetFrameworks>net10.0-ios;net10.0-android;net10.0-desktop</TargetFrameworks>
+  </PropertyGroup>
 </Project>

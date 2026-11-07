@@ -367,6 +367,19 @@ public sealed class ProjectTargetsTests
         Assert.True(targets.SupportsIos);
     }
 
+    /// <summary>The fixture pattern: a desktop-only build with the device TFMs in a conditional group no build evaluates.
+    /// The designer still offers both devices, so the iOS and Android journeys share the one project.</summary>
+    [Fact]
+    public void ConditionalDeviceTargetFrameworksAreOfferedWithoutABuild()
+    {
+        var targets = ProjectTargets.Parse(
+            "<Project Sdk=\"Uno.Sdk\"><PropertyGroup><TargetFramework>net10.0-desktop</TargetFramework></PropertyGroup>" +
+            "<PropertyGroup Condition=\"'$(EnableDevicePreviews)'=='1'\"><TargetFrameworks>net10.0-ios;net10.0-android;net10.0-desktop</TargetFrameworks></PropertyGroup></Project>");
+        Assert.True(targets.SupportsIos);
+        Assert.True(targets.SupportsAndroid);
+        Assert.Contains("net10.0-desktop", targets.TargetFrameworks);
+    }
+
     [Fact]
     public void UnresolvedPropertyReferencesAreIgnored()
     {
