@@ -330,6 +330,11 @@ jobs:
         uses: msys2/setup-msys2@v2
         with:
           msystem: ${{ matrix.platform == 'windows-arm64' && 'CLANGARM64' || 'UCRT64' }}
+          # The freshly extracted release has an older keyring on Windows ARM64, which rejects
+          # current package signatures. The hosted ARM64 image's maintained installation is at
+          # C:/msys64; retain the fresh-release path that already works for Windows x64.
+          release: ${{ matrix.platform != 'windows-arm64' }}
+          location: C:/msys64
           update: true
           install: ${{ matrix.platform == 'windows-arm64' && 'mingw-w64-clang-aarch64-gtk4 mingw-w64-clang-aarch64-libadwaita' || 'mingw-w64-ucrt-x86_64-gtk4 mingw-w64-ucrt-x86_64-libadwaita' }}
       - name: Verify Windows GTK runtime and metadata
