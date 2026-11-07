@@ -92,33 +92,13 @@
     <Page Include="Visualizers\GridVisualizer\ColumnPicker.xaml" />
   </ItemGroup>
 
-  <PropertyGroup>
-    <SharpDbgProject>$(MSBuildThisFileDirectory)..\..\..\..\externals\sharpdbg\src\SharpDbg.Cli\SharpDbg.Cli.csproj</SharpDbgProject>
-    <SharpDbgConfiguration>$([System.String]::Copy('$(Configuration)').ToLowerInvariant())</SharpDbgConfiguration>
-    <SharpDbgBinDir>$(MSBuildThisFileDirectory)..\..\..\..\externals\sharpdbg\artifacts\bin\SharpDbg.Cli\$(SharpDbgConfiguration)\</SharpDbgBinDir>
-    <DotNetHostPath Condition="'$(DotNetHostPath)' == '' and '$(DOTNET_HOST_PATH)' != ''">$(DOTNET_HOST_PATH)</DotNetHostPath>
-    <DotNetHostPath Condition="'$(DotNetHostPath)' == ''">dotnet</DotNetHostPath>
-    <!-- SharpDbg's own nuget.config keeps only nuget.org and the (empty on a fresh checkout) local feed.
-         CI restores the OmniSharp fork from lextudio GitHub Packages with the job's own credential instead; see
-         .github/ci/sharpdbg-ci-nuget.config. Gate on that credential rather than GITHUB_ACTIONS:
-         .github/ci/build-binaries.ps1 clears GITHUB_ACTIONS (GitVersion races on the runner's env file), while the
-         credential is what the nested restore actually needs and a developer machine never has it. -->
-    <SharpDbgRestoreArguments Condition="'$(NuGetPackageSourceCredentials_lextudio_github)' != ''"> -p:RestoreConfigFile=&quot;$(MSBuildThisFileDirectory)..\..\..\..\.github\ci\sharpdbg-ci-nuget.config&quot;</SharpDbgRestoreArguments>
-  </PropertyGroup>
-
-  <!-- Always built (dotnet build is incremental, so an unchanged adapter costs a no-op). Gating this
-       on "the output does not exist yet" froze each configuration at its first build: Release stayed
-       at a two-week-old adapter without native-host launch, so every dist payload shipped a SharpDbg
-       that ran EXCEL.EXE-style hosts like apps and failed with "hostpolicy.dll ... not found". -->
-  <Target Name="BuildSharpDbg" BeforeTargets="Build"
-          Condition="Exists('$(SharpDbgProject)')">
-    <!-- Forward the fork pin from Directory.Packages.props: SharpDbg is a separate repository with
-         its own defaults, and the adapter's DAP packages must match the version the rest of
-         OpenDevelop restores. -->
-    <Exec Command="&quot;$(DotNetHostPath)&quot; build &quot;$(SharpDbgProject)&quot; -c $(Configuration) -tl:off -p:LextudioDapForkVersion=$(LextudioDapForkVersion)$(SharpDbgRestoreArguments)"
-          ConsoleToMSBuild="true"
-          IgnoreExitCode="false" />
-  </Target>
+  <ItemGroup>
+    <!-- The adapter comes from lextudio's SharpDbg package, published by externals/sharpdbg's own
+         workflow (publish-opendevelop-packages.yml). It is an out-of-process program copied next to the
+         add-in, so ExcludeAssets="all" keeps it out of this project's own reference closure, and
+         GeneratePathProperty is what gives the copy a path into the restored package. -->
+    <PackageReference Include="LeXtudio.SharpDbg.Cli" ExcludeAssets="all" GeneratePathProperty="true" />
+  </ItemGroup>
 
   <!-- BeforeTargets is load-bearing: OpenDevelop.Addin.Sdk's OpenDevelopTrimAddinOutput also runs
        AfterTargets="Build", and it deletes anything from this folder whose filename also exists in
@@ -126,16 +106,15 @@
        dependencies back out. -->
   <Target Name="CopySharpDbgToAddInOutput" AfterTargets="Build"
           BeforeTargets="OpenDevelopTrimAddinOutput"
-          Condition="Exists('$(SharpDbgBinDir)SharpDbg.Cli.dll')">
+          Condition="Exists('$(PkgLeXtudio_SharpDbg_Cli)')">
     <!-- The adapter used to ship Microsoft.VisualStudio.Shared.VSCodeDebugProtocol, whose license
-         is not open source. It now uses the MIT OmniSharp fork, but an incremental SharpDbg build
-         (and this folder) can still hold the old DLL: the copy target never deletes. Drop it from
-         both places, or the payload verifier fails the release. See doc/technotes/licensing-audit.md. -->
-    <Delete Files="$(SharpDbgBinDir)Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll;$(OutputPath)Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll"
-            Condition="Exists('$(SharpDbgBinDir)Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll') Or Exists('$(OutputPath)Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll')" />
+         is not open source. The package carries the MIT OmniSharp fork instead, but an output folder
+         built before that change can still hold the old DLL: the copy target never deletes. Drop it,
+         or the payload verifier fails the release. See doc/technotes/licensing-audit.md. -->
+    <Delete Files="$(OutputPath)Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll"
+            Condition="Exists('$(OutputPath)Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll')" />
     <ItemGroup>
-      <SharpDbgFiles Include="$(SharpDbgBinDir)**\*.*"
-                      Exclude="$(SharpDbgBinDir)Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.*" />
+      <SharpDbgFiles Include="$(PkgLeXtudio_SharpDbg_Cli)\lib\net10.0\**\*.*" />
       <!-- SharpDbg.Cli is an OUT-OF-PROCESS program that happens to be deployed inside an
            in-process addin's folder. It resolves its dependencies through its own deps.json, from
            its own directory - it cannot fall back to the host's base directory the way an

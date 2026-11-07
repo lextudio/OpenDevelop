@@ -106,10 +106,15 @@ $dapForkPackages = @(
     'OmniSharp.Extensions.DebugAdapter', 'OmniSharp.Extensions.DebugAdapter.Server', 'OmniSharp.Extensions.DebugAdapter.Shared',
     'OmniSharp.Extensions.JsonRpc', 'OmniSharp.Extensions.JsonRpc.Generators'
 ) | ForEach-Object { [pscustomobject]@{ Id = $_; Version = $dapForkVersion } }
+# SharpDbg's DAP adapter, published from externals/sharpdbg's own workflow (publish-opendevelop-packages.yml)
+# and versioned by the sharpdbg run that produced it. The debugger add-in restores it instead of building
+# that repository from source.
+$sharpDbgVersion = Get-XmlPropertyValue (Join-Path $PSScriptRoot 'Directory.Packages.props') 'SharpDbgCliVersion'
+$sharpDbgPackages = @('LeXtudio.SharpDbg.Cli') | ForEach-Object { [pscustomobject]@{ Id = $_; Version = $sharpDbgVersion } }
 # Only the OpenAvalon closure carries the openavalon commit; the other packages are published separately.
 $packages = @($openAvalonPackages | ForEach-Object { [pscustomobject]@{ Id = $_; Version = $sdkVersion; Closure = $closureCommit } }) +
     [pscustomobject]@{ Id = 'LibGhostty.Net'; Version = $libGhosttyVersion; Closure = '' } +
-    @($forkPackages + $devFlowPackages + $wpfHotReloadPackages + $dapForkPackages | ForEach-Object { [pscustomobject]@{ Id = $_.Id; Version = $_.Version; Closure = '' } })
+    @($forkPackages + $devFlowPackages + $wpfHotReloadPackages + $dapForkPackages + $sharpDbgPackages | ForEach-Object { [pscustomobject]@{ Id = $_.Id; Version = $_.Version; Closure = '' } })
 
 Write-Host "OpenAvalon local feed: $FeedPath"
 Write-Host "OpenAvalon package version: $sdkVersion from openavalon $closureCommit ($($openAvalonPackages.Count) packages); LibGhostty.Net $libGhosttyVersion; $($forkPackages.Count) AvalonEdit/AvalonDock fork packages; $($devFlowPackages.Count) DevFlow packages"
