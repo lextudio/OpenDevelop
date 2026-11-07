@@ -6928,7 +6928,6 @@ EndGlobal
     [Fact]
     public async Task XamlLanguageService_EachRuntime_UsesItsOwnServerAndControls()
     {
-        var samples = Path.GetDirectoryName(Path.GetDirectoryName(_app.LibreWpfSampleSolutionPath))!;
         var cases = new (string Runtime, string Solution, string Page, string Server, string Profile, string ExpectedGrid)[]
         {
             ("LibreWPF", _app.LibreWpfSampleSolutionPath, "MainWindow.xaml", "WinUiXaml.LanguageServer.dll", "librewpf", "System.Windows.Controls.Grid"),
@@ -6936,7 +6935,7 @@ EndGlobal
             ("Uno", _app.UnoXamlSampleSolutionPath, "MainPage.xaml", "WinUiXaml.LanguageServer.dll", "uno", "Microsoft.UI.Xaml.Controls.Grid"),
             ("ProGPU WinUI", _app.ProGpuWinUISampleSolutionPath, "MainPage.xaml", "WinUiXaml.LanguageServer.dll", "progpu", "Microsoft.UI.Xaml.Controls.Grid"),
             ("Microsoft WinUI", _app.WinUISampleSolutionPath, "MainPage.xaml", "WinUiXaml.LanguageServer.dll", "winui", "Microsoft.UI.Xaml.Controls.Grid"),
-            ("Microsoft WinUI (no package)", Path.Combine(samples, "MicrosoftWinUISample", "MicrosoftWinUISample.slnx"), "MainPage.xaml", "WinUiXaml.LanguageServer.dll", "winui", "Microsoft.UI.Xaml.Controls.Grid"),
+            ("Microsoft WinUI (no package)", _app.MicrosoftWinUIHostSampleSolutionPath, "MainPage.xaml", "WinUiXaml.LanguageServer.dll", "winui", "Microsoft.UI.Xaml.Controls.Grid"),
         };
 
         foreach (var (runtime, solution, page, server, profile, expectedGrid) in cases)

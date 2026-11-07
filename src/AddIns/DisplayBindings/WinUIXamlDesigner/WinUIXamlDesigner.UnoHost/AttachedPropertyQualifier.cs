@@ -15,7 +15,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost;
 /// <c>xmlns:local="using:TheApp.Controls"</c> it therefore looks for
 /// <c>TheApp.Controls.AnimatedIcon</c>, which nobody declared, and reports
 /// "The type 'AnimatedIcon' was not found" - naming the type as written, so the wrong namespace it
-/// actually searched never appears. src/Samples/MicrosoftWinUISample/AttachedPropertyPage.xaml is
+/// actually searched never appears. tests/fixtures/WinUIDesignerFixture/MicrosoftHost/AttachedPropertyPage.xaml is
 /// the minimal case: the page renders as soon as that one xmlns line is gone.
 ///
 /// Correcting it inside the metadata provider was tried and does not work: answering the

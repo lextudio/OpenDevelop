@@ -233,7 +233,7 @@ substitutes the other one:
   `Microsoft.WindowsDesktop.App`. `XamlFrameworkDetector.IsRuntimeSupportedOnThisOS` is the single
   OS rule; `od.designer-canvas.status` reports `unavailable`/`statusText` for tests.
 - Test fixtures follow the same split: `WpfSampleSolutionPath` is the Microsoft WPF sample on
-  Windows and `src/Samples/LibreWpfSample` elsewhere (`LibreWpfSampleSolutionPath` is always the
+  Windows and `tests/fixtures/WpfDesignerFixture/Libre` elsewhere (`LibreWpfSampleSolutionPath` is always the
   LibreWPF one); `src/Samples/LibreWinFormsSample` is the LibreWinForms counterpart of
   `WinFormsSample`. A portable sample must own real copies of its XAML, not links, because the
   file's runtime comes from the project that contains it.

@@ -10,7 +10,7 @@ namespace OpenDevelop.IntegrationTests;
 /// <summary>
 /// Drives the MICROSOFT WinUI design host (<c>WinUIXamlDesigner.MicrosoftHost</c>) against the real
 /// WinUI-Gallery application - a corpus far larger and more hostile than the tiny
-/// <c>src/Samples/WinUISample</c> fixture the <c>WinUIOnly_*</c> tests in <c>AddInTests</c> use.
+/// <c>tests/fixtures/WinUIDesignerFixture/Microsoft</c> fixture the <c>WinUIOnly_*</c> tests in <c>AddInTests</c> use.
 ///
 /// The Gallery is a Windows App SDK app whose pages are all wrapped in the app's own
 /// <c>controls:ControlExample</c> and whose controls are declared with <c>x:Bind</c>; seeing them

@@ -91,6 +91,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     // are links to WinFormsSample's, which the WinForms designer attributes to this project.
     public string LibreWinFormsSampleSolutionPath => LocateSample(Path.Combine("src", "Samples", "LibreWinFormsSample", "LibreWinFormsSample.slnx"));
     public string MicrosoftWpfSampleSolutionPath => LocateMicrosoftWpfSampleSolution();
+    public string MicrosoftWinUIHostSampleSolutionPath => LocateMicrosoftWinUIHostSampleSolution();
     public string WinFormsSampleSolutionPath => LocateWinFormsSampleSolution();
     // The solution the WinForms designer tests design Form1 through: the Microsoft WinForms sample on
     // Windows, elsewhere its LibreWinForms counterpart, which links the same Form1 sources (so every
@@ -1378,12 +1379,12 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         var dir = AppContext.BaseDirectory;
         while (dir is not null)
         {
-            var candidate = Path.Combine(dir, "src", "Samples", "LibreWpfSample", "LibreWpfSample.slnx");
+            var candidate = Path.Combine(dir, "tests", "fixtures", "WpfDesignerFixture", "Libre", "LibreWpfSample.slnx");
             if (File.Exists(candidate)) return candidate;
             dir = Path.GetDirectoryName(dir);
         }
         throw new FileNotFoundException(
-            "Could not locate src/Samples/LibreWpfSample/LibreWpfSample.slnx by walking up from " + AppContext.BaseDirectory);
+            "Could not locate tests/fixtures/WpfDesignerFixture/Libre/LibreWpfSample.slnx by walking up from " + AppContext.BaseDirectory);
     }
 
     static string LocateWinFormsSampleSolution()
@@ -1404,11 +1405,11 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         var dir = AppContext.BaseDirectory;
         while (dir is not null)
         {
-            var candidate = Path.Combine(dir, "src", "Samples", "UnoXamlSample", "UnoXamlSample.slnx");
+            var candidate = Path.Combine(dir, "tests", "fixtures", "WinUIDesignerFixture", "Uno", "UnoXamlSample.slnx");
             if (File.Exists(candidate)) return candidate;
             dir = Path.GetDirectoryName(dir);
         }
-        throw new FileNotFoundException("Could not locate src/Samples/UnoXamlSample/UnoXamlSample.slnx");
+        throw new FileNotFoundException("Could not locate tests/fixtures/WinUIDesignerFixture/Uno/UnoXamlSample.slnx");
     }
 
     static string LocateWinUISampleSolution()
@@ -1416,11 +1417,11 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         var dir = AppContext.BaseDirectory;
         while (dir is not null)
         {
-            var candidate = Path.Combine(dir, "src", "Samples", "WinUISample", "WinUISample.slnx");
+            var candidate = Path.Combine(dir, "tests", "fixtures", "WinUIDesignerFixture", "Microsoft", "WinUISample.slnx");
             if (File.Exists(candidate)) return candidate;
             dir = Path.GetDirectoryName(dir);
         }
-        throw new FileNotFoundException("Could not locate src/Samples/WinUISample/WinUISample.slnx");
+        throw new FileNotFoundException("Could not locate tests/fixtures/WinUIDesignerFixture/Microsoft/WinUISample.slnx");
     }
 
     // The real WinUI-Gallery checkout is optional. Order: explicit OD_WINUI_GALLERY_ROOT, then a
@@ -1471,11 +1472,11 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         var dir = AppContext.BaseDirectory;
         while (dir is not null)
         {
-            var candidate = Path.Combine(dir, "src", "Samples", "MicrosoftWpfSample", "MicrosoftWpfSample.slnx");
+            var candidate = Path.Combine(dir, "tests", "fixtures", "WpfDesignerFixture", "Microsoft", "MicrosoftWpfSample.slnx");
             if (File.Exists(candidate)) return candidate;
             dir = Path.GetDirectoryName(dir);
         }
-        throw new FileNotFoundException("Could not locate src/Samples/MicrosoftWpfSample/MicrosoftWpfSample.slnx");
+        throw new FileNotFoundException("Could not locate tests/fixtures/WpfDesignerFixture/Microsoft/MicrosoftWpfSample.slnx");
     }
 
     static string LocateProGpuWinUISampleSolution()
@@ -1483,11 +1484,23 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         var dir = AppContext.BaseDirectory;
         while (dir is not null)
         {
-            var candidate = Path.Combine(dir, "src", "Samples", "ProGpuWinUISample", "ProGpuWinUISample.slnx");
+            var candidate = Path.Combine(dir, "tests", "fixtures", "WinUIDesignerFixture", "ProGpu", "ProGpuWinUISample.slnx");
             if (File.Exists(candidate)) return candidate;
             dir = Path.GetDirectoryName(dir);
         }
-        throw new FileNotFoundException("Could not locate src/Samples/ProGpuWinUISample/ProGpuWinUISample.slnx");
+        throw new FileNotFoundException("Could not locate tests/fixtures/WinUIDesignerFixture/ProGpu/ProGpuWinUISample.slnx");
+    }
+
+    static string LocateMicrosoftWinUIHostSampleSolution()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "tests", "fixtures", "WinUIDesignerFixture", "MicrosoftHost", "MicrosoftWinUISample.slnx");
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException("Could not locate tests/fixtures/WinUIDesignerFixture/MicrosoftHost/MicrosoftWinUISample.slnx");
     }
 
     static string LocateXmlFixtureFile()

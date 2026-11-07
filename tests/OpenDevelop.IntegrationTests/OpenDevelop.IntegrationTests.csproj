@@ -174,7 +174,7 @@
          Passed as a full path relative to the repo root - build.ps1's own WorkingDirectory below -
          not a fuzzy name: "WinUISample" also matches MicrosoftWinUISample/ProGpuWinUISample (both
          end with the same substring). -->
-    <_MicrosoftHostProject Include="src/Samples/WinUISample/WinUISample.csproj" />
+    <_MicrosoftHostProject Include="tests/fixtures/WinUIDesignerFixture/Microsoft/WinUISample.csproj" />
   </ItemGroup>
   <Target Name="BuildMicrosoftDesignerHostsForIntegrationTests" Condition="'$(OS)' == 'Windows_NT'">
     <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildThisFileDirectory)..\..\build.ps1&quot; &quot;%(_MicrosoftHostProject.Identity)&quot; -Configuration $(Configuration)"

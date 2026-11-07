@@ -260,7 +260,7 @@ resources, renders a bitmap, returns a visual-tree snapshot and hit-test results
 runtime-derived Toolbox catalog. The WPF-side surface also implements selection overlays, zoom,
 pan, design-size changes, drag/resize source edits, inline text editing, unnamed-element picking,
 and child-process lifecycle probing. The `WinUIDesigner_*` integration tests cover the shared
-source-edit/render path against `src/Samples/UnoXamlSample`.
+source-edit/render path against `tests/fixtures/WinUIDesignerFixture/Uno`.
 
 The Uno client explicitly implements the optional `IDesignHostEventBinding` DDP capability. Its
 versioned `design/set-event` validates the live element/event name and keeps the incremental
@@ -446,7 +446,7 @@ out-of-process boundary is also required for target-runtime and third-party desi
 **What ships now vs. later (updated 2026-08-15):**
 
 - **There is no cross-runtime in-process fallback.** The out-of-process Uno host is the only valid
-  renderer for Uno projects, including `src/Samples/UnoXamlSample`. `ProGpuRuntimeHost` and
+  renderer for Uno projects, including `tests/fixtures/WinUIDesignerFixture/Uno`. `ProGpuRuntimeHost` and
   `ProGpuXamlExecutor` remain valid for the separate ProGPU WinUI profile; they must never be used
   to materialize a project assembly built against Uno.WinUI or the Windows App SDK.
 - Fix A's compile-time half (project assembly as a `MetadataReference`) remains valid for what it
@@ -664,7 +664,7 @@ A third, separate finding did **not** get a product fix (out of scope, upstream 
 `ProGPU.WinUI`'s hit-test `HasBackground` check (`InputSystem.HitTestInternal`) only recognizes
 `Control`/`Border`/`ContentPresenter`, not `Panel`/`StackPanel` - so setting `Background` on a
 `StackPanel` has no effect on whether its own empty area is hit-testable, unlike real WinUI/UWP.
-The `src/Samples/UnoXamlSample/MainPage.xaml` fixture's `StackPanel` was named `RootStack` for the
+The `tests/fixtures/WinUIDesignerFixture/Uno/MainPage.xaml` fixture's `StackPanel` was named `RootStack` for the
 new test's parent-comparison assertion, but does **not** carry a `Background` (it would have no
 effect and could mislead a future reader into thinking it does something).
 
@@ -700,7 +700,7 @@ on the lextudio fork (which is what `progpu`/`progpu-p47` track) and packed at a
 
 Opening a real Uno Platform project's `MainPage.xaml` in the Design tab produces a **wall of
 diagnostics** (169 lines for DotUninstall's `Presentation/MainPage.xaml`) and the preview does
-not materialize. The fixture sample (`src/Samples/UnoXamlSample/MainPage.xaml`) is fine because
+not materialize. The fixture sample (`tests/fixtures/WinUIDesignerFixture/Uno/MainPage.xaml`) is fine because
 it only uses `Grid`/`StackPanel`/`TextBlock`/`Button`.
 
 The full diagnostics are returned by the `od.winui-designer.status` action (`status` field) and
@@ -1099,7 +1099,7 @@ fine" while the render still failed:
   instead qualifies it with whatever `using:` prefix happens to be in scope. Standing alone the
   theme resolves these correctly (it binds no CLR prefix); injected under a page that binds one,
   they start resolving against the app's namespace. Minimal repro:
-  `src/Samples/MicrosoftWinUISample/AttachedPropertyPage.xaml` - deleting its one `xmlns:local`
+  `tests/fixtures/WinUIDesignerFixture/MicrosoftHost/AttachedPropertyPage.xaml` - deleting its one `xmlns:local`
   line makes the same page render.
 - **Uninstantiable app controls** (`CompiledXamlControlSubstituter`) - see 5.
 
@@ -1232,7 +1232,7 @@ Measured over the same 13 Gallery pages, which is the only reason the rule is wh
 `OD_DESIGNHOST_NO_NS_FALLBACK=1` disables it outright; that switch is what made the three-way
 comparison possible and is worth keeping for the next time a control crashes the host.
 
-`src/Samples/MicrosoftWinUISample/CrashProbePage.xaml` is the isolated repro - a bare `<Pivot>` with
+`tests/fixtures/WinUIDesignerFixture/MicrosoftHost/CrashProbePage.xaml` is the isolated repro - a bare `<Pivot>` with
 no app types, no bindings and no content. It crashed identically to the Gallery page, which is what
 separated "this control's default template" from "something in that page".
 
@@ -1300,7 +1300,7 @@ When a batch result looks uniformly bad, re-check one page by hand through
   building does not refresh an already-open designer - the document has to be reopened. A document
   restored from the previous session's layout captures the state from before any change, which is
   easy to mistake for the change not working.
-- **`src/Samples/MicrosoftWinUISample`** is the Microsoft-backend fixture (the pre-existing
+- **`tests/fixtures/WinUIDesignerFixture/MicrosoftHost`** is the Microsoft-backend fixture (the pre-existing
   `ProGpuWinUISample` is Uno, so it exercises a different child). `XamlFrameworkDetector` reads only
   the csproj XML, so `<UseWinUI>true</UseWinUI>` alone routes documents there with no
   PackageReference and no restore - which matters because a designer repro must not depend on the
