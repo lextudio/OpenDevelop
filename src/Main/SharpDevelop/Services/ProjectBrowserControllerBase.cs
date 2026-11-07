@@ -26,6 +26,7 @@ internal interface IProjectBrowserHost
     void OpenFileInWorkbench(string filePath);
     string? ShowInputBox(string title, string prompt, string defaultValue);
     bool ConfirmDelete(string name);
+    bool ConfirmDeleteProject(string projectName, string directory);
     void CloseViewsForPath(string path);
     void RetargetViewForRename(string oldPath, string newPath);
     void ShowPropertiesForNode(ProjectBrowserNodeContext node);
@@ -609,7 +610,8 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
     /// </summary>
     void DeleteProject(ProjectBrowserNodeContext target)
     {
-        if (Host is not null && !Host.ConfirmDelete(target.Name))
+        var directory = Path.GetDirectoryName(target.FullPath);
+        if (Host is not null && !Host.ConfirmDeleteProject(target.Name, directory ?? target.FullPath))
         {
             return;
         }
@@ -623,7 +625,6 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
 
             SD.ProjectService.CurrentSolution?.Save();
             Host?.CloseViewsForPath(target.FullPath);
-            var directory = Path.GetDirectoryName(target.FullPath);
             if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
             {
                 Directory.Delete(directory, recursive: true);

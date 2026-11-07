@@ -88,7 +88,8 @@
     <MenuItem id="OpenTerminal" label="${res:ProjectBrowser.ContextMenu.OpenInTerminal}" class="ICSharpCode.SharpDevelop.Commands.OpenTerminalProjectBrowserCommand" />
   </Path>
 
-  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Edit">
+  <!-- The verbs every node that owns files shares: cut/copy/paste, rename, delete. -->
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/EditBase">
     <MenuItem id="Cut" label="${res:ProjectBrowser.ContextMenu.Cut}" class="ICSharpCode.SharpDevelop.Commands.CutProjectBrowserItemCommand" />
     <MenuItem id="Copy" label="${res:ProjectBrowser.ContextMenu.Copy}" class="ICSharpCode.SharpDevelop.Commands.CopyProjectBrowserItemCommand" />
     <MenuItem id="Paste" label="${res:ProjectBrowser.ContextMenu.Paste}" class="ICSharpCode.SharpDevelop.Commands.PasteProjectBrowserItemCommand" />
@@ -99,7 +100,22 @@
     <MenuItem id="Delete" label="${res:ProjectBrowser.ContextMenu.Delete}" class="ICSharpCode.SharpDevelop.Commands.DeleteProjectBrowserItemCommand">
       <Condition name="Ownerstate" ownerstate="Deletable" />
     </MenuItem>
+  </Path>
+
+  <!-- A file or folder leaves the project it belongs to; the file itself stays on disk. -->
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Edit">
+    <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/EditBase" />
     <MenuItem id="RemoveFromProject" label="${res:ProjectBrowser.ContextMenu.RemoveFromProject}" class="ICSharpCode.SharpDevelop.Commands.RemoveFromProjectProjectBrowserCommand">
+      <Condition name="Ownerstate" ownerstate="RemovableFromSolution" />
+    </MenuItem>
+    <MenuItem id="CopyPath" label="${res:ProjectBrowser.ContextMenu.CopyPath}" class="ICSharpCode.SharpDevelop.Commands.CopyPathProjectBrowserCommand" />
+  </Path>
+
+  <!-- A project leaves the solution, not "a project": the shared wording above would name the wrong
+       container, which is how issue #24's report read the menu. -->
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/EditProject">
+    <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/EditBase" />
+    <MenuItem id="RemoveFromSolution" label="${res:ProjectBrowser.ContextMenu.RemoveFromSolution}" class="ICSharpCode.SharpDevelop.Commands.RemoveFromProjectProjectBrowserCommand">
       <Condition name="Ownerstate" ownerstate="RemovableFromSolution" />
     </MenuItem>
     <MenuItem id="CopyPath" label="${res:ProjectBrowser.ContextMenu.CopyPath}" class="ICSharpCode.SharpDevelop.Commands.CopyPathProjectBrowserCommand" />
@@ -160,7 +176,7 @@
     <!-- Set Startup Project comes from ContextMenu/ProjectActions in ICSharpCode.SharpDevelop.addin, which the
          main Project menu shares, so it is not repeated here. -->
     <MenuItem id="Separator2" type="Separator" />
-    <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Edit" />
+    <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/EditProject" />
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FolderNode">

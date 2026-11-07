@@ -51,8 +51,11 @@ public sealed class ProjectLifecycleTests : IAsyncDisposable
         Assert.True(entries["Rename"].GetProperty("enabled").GetBoolean(), "Rename is disabled: " + menu);
         Assert.True(entries.ContainsKey("Delete"), "The project node has no Delete entry: " + menu);
         Assert.True(entries["Delete"].GetProperty("enabled").GetBoolean(), "Delete is disabled: " + menu);
-        Assert.True(entries.ContainsKey("RemoveFromProject"), "The project node has no Remove entry: " + menu);
-        Assert.True(entries["RemoveFromProject"].GetProperty("enabled").GetBoolean(), "Remove is disabled: " + menu);
+        Assert.True(entries.ContainsKey("RemoveFromSolution"), "The project node has no Remove entry: " + menu);
+        Assert.True(entries["RemoveFromSolution"].GetProperty("enabled").GetBoolean(), "Remove is disabled: " + menu);
+        // The project leaves the *solution*, not a project; Visual Studio's own wording for it.
+        Assert.Equal("Remove from Solution", entries["RemoveFromSolution"].GetProperty("label").GetString());
+        Assert.DoesNotContain(entries.Values, entry => entry.TryGetProperty("id", out var id) && id.GetString() == "RemoveFromProject");
     }
 
     // Renaming a project renames its file and the .slnx entry, and the project keeps loading and

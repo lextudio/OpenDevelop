@@ -248,6 +248,18 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         return ServiceSingleton.GetRequiredService<IMessageService>().AskQuestion("Are you sure you want to delete '" + name + "'?");
     }
 
+    bool IProjectBrowserHost.ConfirmDeleteProject(string projectName, string directory)
+    {
+        // Deleting a project is not the reversible detach that Remove is (see Visual Studio, whose
+        // Solution Explorer only offers Remove for a project and leaves deleting the files to the
+        // file manager), so the prompt has to name what disappears and point at the safe verb.
+        return ServiceSingleton.GetRequiredService<IMessageService>().AskQuestion(
+            "Delete project '" + projectName + "' and its folder from disk?"
+            + Environment.NewLine + Environment.NewLine + directory
+            + Environment.NewLine + Environment.NewLine
+            + "This cannot be undone. Use Remove from Solution to keep the files.");
+    }
+
     void IProjectBrowserHost.CloseViewsForPath(string path)
     {
         var view = SD.FileService.GetOpenFile(FileName.Create(path));

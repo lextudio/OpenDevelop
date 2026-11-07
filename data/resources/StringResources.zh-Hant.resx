@@ -7346,6 +7346,9 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
   <data name="ProjectBrowser.ContextMenu.RemoveFromProject" xml:space="preserve">
     <value>從專案移除</value>
   </data>
+  <data name="ProjectBrowser.ContextMenu.RemoveFromSolution" xml:space="preserve">
+    <value>從方案中移除</value>
+  </data>
   <data name="ProjectBrowser.ContextMenu.CopyPath" xml:space="preserve">
     <value>複製路徑</value>
   </data>
