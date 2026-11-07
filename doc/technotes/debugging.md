@@ -497,6 +497,11 @@ legacy visualizers can come later.
 
 ## sharpdbg submodule and bundling
 
+> Superseded for the adapter: `Debugger.AddIn` now restores `LeXtudio.SharpDbg.Cli` from GitHub
+> Packages (or the synchronized local feed) and copies the package's publish closure, so no build
+> target compiles the submodule. It remains checked out for local SharpDbg work and for the
+> `publish-opendevelop-packages.yml` workflow that produces both `LeXtudio.SharpDbg.*` packages.
+
 Add `sharpdbg` as a submodule under OpenDevelop:
 
 ```text

@@ -51,7 +51,6 @@ tests/fixtures/CoverageFixture/CoverageTests/CodeCoverage/coverage.xml
 !/build/macos/
 !/build/windows/
 !/build/patch-librewinforms-deps.ps1
-!/build/android-debug-agent.ps1
 !/build/verify-android-debug-agent.ps1
 # runs and verifies every OpenCode review and commit (AGENTS.md)
 !/build/opencode-review.ps1

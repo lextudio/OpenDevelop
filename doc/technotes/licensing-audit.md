@@ -30,12 +30,14 @@ source-link in the application projects found by this audit. They may be build
 or test dependencies. A future payload copy, source link, or bundled binary
 must add a file-level entry above before release.
 
-`SharpDbg.Cli` is not source-linked, but `Debugger.AddIn.csproj` builds and
-copies its complete out-of-process adapter closure into the application
-payload. Its MIT license is therefore copied as
-`THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt`.
+`SharpDbg.Cli` is not source-linked: `Debugger.AddIn.csproj` restores it as the
+`LeXtudio.SharpDbg.Cli` package and copies its complete out-of-process adapter
+closure into the application payload. Its MIT license is copied as
+`THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt` from the restored package.
 
-The Android debug agent is built from `externals/sharpdbg/src/SharpDbg.AndroidAgent`
+The Android debug agents are the three NativeAOT binaries in the
+`LeXtudio.SharpDbg.AndroidAgent` package, built by the SharpDbg repository's
+`publish-opendevelop-packages.yml` workflow from `src/SharpDbg.AndroidAgent`
 and the SharpDbg infrastructure project. Its profiler callbacks
 use the NuGet packages `Silhouette` 4.2.0 and `NativeObjects` 1.4.0; both packages'
 nuspec files declare MIT. The agent uses `ICorDebugSharp` and the target .NET runtime's
@@ -44,12 +46,12 @@ Its DAP transport is lextudio's NativeAOT-capable build of the OmniSharp DAP ser
 (`OmniSharp.Extensions.DebugAdapter`, `.DebugAdapter.Server`, `.DebugAdapter.Shared` and
 `.JsonRpc`, from `lextudio/csharp-language-server-protocol`, a fork of
 `OmniSharp/csharp-language-server-protocol`; the packages ship the upstream MIT `LICENSE`
-file), pinned as `LextudioDapForkVersion` in `Directory.Packages.props` and restored from
-lextudio GitHub Packages (CI) or the local feed (developers; see `AGENTS.md`).
-The agent build records its NuGet graphs, copies the actual NativeAOT runtime and
-Android runtime pack license and third-party notices alongside each ABI, and supplies
-package metadata for the distribution SPDX manifest. The packaged-app verifiers
-require these runtime notices with every agent binary.
+file). The agent package records each ABI's NuGet graph, carries the actual NativeAOT
+runtime and Android runtime pack license and third-party notices alongside each binary,
+and supplies package metadata for the distribution SPDX manifest. OpenDevelop no longer
+builds the agents, so no build job needs the .NET 11 preview SDK, the Android workload
+or an NDK; the packaged-app verifiers require these runtime notices with every agent
+binary.
 
 **Resolved:** `SharpDbg.Application` (the desktop adapter), `SharpDbg.Cli`, the packed
 `SharpDbg.InMemory` package and the Android agent no longer depend on

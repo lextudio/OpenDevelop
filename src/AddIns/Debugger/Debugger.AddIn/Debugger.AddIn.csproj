@@ -98,6 +98,10 @@
          add-in, so ExcludeAssets="all" keeps it out of this project's own reference closure, and
          GeneratePathProperty is what gives the copy a path into the restored package. -->
     <PackageReference Include="LeXtudio.SharpDbg.Cli" ExcludeAssets="all" GeneratePathProperty="true" />
+    <!-- The three NativeAOT Android agents (and the runtime notices they ship), also published by that
+         workflow: building them here required the .NET 11 preview SDK, the Android workload and an NDK
+         in every job, for content that only changes when the SharpDbg repository does. -->
+    <PackageReference Include="LeXtudio.SharpDbg.AndroidAgent" ExcludeAssets="all" GeneratePathProperty="true" />
   </ItemGroup>
 
   <!-- BeforeTargets is load-bearing: OpenDevelop.Addin.Sdk's OpenDevelopTrimAddinOutput also runs
@@ -137,10 +141,13 @@
           SkipUnchangedFiles="true" />
   </Target>
 
-  <!-- Android agents are native, per-device-ABI payloads produced by build/android-debug-agent.ps1. -->
-  <Target Name="CopyAndroidDebugAgents" AfterTargets="Build" BeforeTargets="OpenDevelopTrimAddinOutput">
+  <!-- Android agents are native, per-device-ABI payloads carried by LeXtudio.SharpDbg.AndroidAgent.
+       They are copied, not referenced, so ExcludeAssets="all" keeps the package's content out of this
+       project's own closure. -->
+  <Target Name="CopyAndroidDebugAgents" AfterTargets="Build" BeforeTargets="OpenDevelopTrimAddinOutput"
+          Condition="Exists('$(PkgLeXtudio_SharpDbg_AndroidAgent)')">
     <ItemGroup>
-      <AndroidDebugAgentFiles Include="$(MSBuildThisFileDirectory)..\..\..\..\artifacts\android-debug-agent\**\*" />
+      <AndroidDebugAgentFiles Include="$(PkgLeXtudio_SharpDbg_AndroidAgent)\agent\**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(AndroidDebugAgentFiles)"
           DestinationFiles="@(AndroidDebugAgentFiles->'$(OutputPath)android\%(RecursiveDir)%(Filename)%(Extension)')"

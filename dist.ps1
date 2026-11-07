@@ -151,24 +151,43 @@ function Write-DistributionLegalFiles {
     # LiteralPath intentionally is not used here: it would treat the asterisk as part of a
     # filename and leave the native notices out of a release.
     Get-ChildItem -LiteralPath $ghosttyNotices -Force | Copy-Item -Destination $destinationNotices -Recurse -Force
-    Copy-Item -LiteralPath (Join-Path $repoRoot 'externals/sharpdbg/LICENSE.txt') -Destination (Join-Path $destinationNotices 'SharpDbg-LICENSE.txt') -Force
-    # The SharpDbg adapter is not an OpenDevelop project: Debugger.AddIn's BuildSharpDbg target
-    # runs `dotnet build` on externals/sharpdbg and copies the whole closure. Its packages
-    # (notably Microsoft.VisualStudio.Shared.VSCodeDebugProtocol before it was replaced) therefore
-    # appear in no src/**/project.assets.json and were silently absent from the SBOM. Feed the
-    # adapter's own restore output into the manifest as well.
+    $nugetRoot = Get-NuGetGlobalPackages
+    # The SharpDbg adapter and the Android agents are not OpenDevelop projects: they arrive as
+    # LeXtudio.SharpDbg.* packages (built by the SharpDbg repository's own workflow) and therefore
+    # appear in no src/**/project.assets.json. Their packages would be silently absent from the SBOM,
+    # so feed the restore graphs the packages carry into the manifest as well. The agents' runtime
+    # packs come with the Android workload rather than a NuGet cache, which is why their metadata is
+    # a fallback root instead of a normal package lookup.
+    $sharpDbgCliVersion = [string]$packageVersions.Project.PropertyGroup.SharpDbgCliVersion
+    $sharpDbgAgentVersion = [string]$packageVersions.Project.PropertyGroup.SharpDbgAndroidAgentVersion
+    if (-not $sharpDbgCliVersion -or -not $sharpDbgAgentVersion) {
+        throw 'Directory.Packages.props must define SharpDbgCliVersion and SharpDbgAndroidAgentVersion.'
+    }
+    $sharpDbgCliRoot = Join-Path (Join-Path $nugetRoot 'lextudio.sharpdbg.cli') $sharpDbgCliVersion.ToLowerInvariant()
+    $sharpDbgAgentRoot = Join-Path (Join-Path $nugetRoot 'lextudio.sharpdbg.androidagent') $sharpDbgAgentVersion.ToLowerInvariant()
+    foreach ($required in @(
+        (Join-Path $sharpDbgCliRoot 'LICENSE.txt'),
+        (Join-Path $sharpDbgCliRoot 'spdx/project.assets.json'),
+        (Join-Path $sharpDbgAgentRoot 'spdx/assets')
+    )) {
+        if (-not (Test-Path -LiteralPath $required)) {
+            throw "The LeXtudio.SharpDbg.* packages are not restored ($required is missing). Build the debugger add-in, or run ./sync-openavalon-feed.ps1, before creating a distribution."
+        }
+    }
+    Copy-Item -LiteralPath (Join-Path $sharpDbgCliRoot 'LICENSE.txt') -Destination (Join-Path $destinationNotices 'SharpDbg-LICENSE.txt') -Force
     $assetsFiles = @(
-        (Join-Path $repoRoot 'src/Main/SharpDevelop/obj/project.assets.json')
+        (Join-Path $repoRoot 'src/Main/SharpDevelop/obj/project.assets.json'),
+        (Join-Path $sharpDbgCliRoot 'spdx/project.assets.json')
     ) + @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src/AddIns') -Recurse -File -Filter 'project.assets.json' | ForEach-Object FullName) + @(
-        (Join-Path $repoRoot 'externals/sharpdbg/artifacts/obj/SharpDbg.Cli/project.assets.json')
+        Get-ChildItem -LiteralPath (Join-Path $sharpDbgAgentRoot 'spdx/assets') -Recurse -File -Filter 'project.assets.json' | ForEach-Object FullName
     )
     $missingAssets = @($assetsFiles | Where-Object { -not (Test-Path -LiteralPath $_) })
     if ($missingAssets.Count -gt 0) {
         throw "Cannot generate SPDX manifest; restore did not produce $($missingAssets -join ', '). " +
-            "For the SharpDbg entry, initialize externals/sharpdbg and build Debugger.AddIn."
+            "The SharpDbg entries come from the LeXtudio.SharpDbg.* packages restored by the debugger add-in."
     }
     try {
-        & $spdxScript -AssetsFile $assetsFiles -PackageRoot (Get-NuGetGlobalPackages) -OutputPath (Join-Path $Destination 'THIRD-PARTY.spdx.json') -NoticeDirectory (Join-Path $destinationNotices 'NuGet')
+        & $spdxScript -AssetsFile $assetsFiles -PackageRoot $nugetRoot -FallbackPackageRoot (Join-Path $sharpDbgAgentRoot 'spdx/packages') -OutputPath (Join-Path $Destination 'THIRD-PARTY.spdx.json') -NoticeDirectory (Join-Path $destinationNotices 'NuGet')
     }
     catch {
         throw "SPDX manifest generation failed: $($_.Exception.Message)"
@@ -193,6 +212,10 @@ function Test-DistributionLegalFiles {
             if ($match) { throw "Distribution payload contains $($match.Name) ($($match.FullName)), which has no open-source license." }
         }
     }
+
+    # The three Android agents are native payloads restored from a package; verify the ABI of the
+    # copies that actually ship (ELF class/machine) and the runtime notices beside them.
+    & (Join-Path $repoRoot 'build/verify-android-debug-agent.ps1') -AgentRoot (Join-Path $Destination 'AddIns/Debugger/android')
 }
 
 function Assert-HostPublished {

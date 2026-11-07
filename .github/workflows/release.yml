@@ -92,29 +92,9 @@ jobs:
           fi
           echo "$GITHUB_REF_NAME: on master, $green release-grade CI run(s), no release yet."
 
-  android-agent:
-    name: Android debug agents
-    needs: prepare
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v7
-      - name: Initialize SharpDbg
-        run: git submodule update --init externals/sharpdbg
-      - uses: ./.github/actions/android-debug-agent
-      - uses: actions/upload-artifact@v7
-        with:
-          name: android-debug-agents
-          path: |
-            artifacts/android-debug-agent/
-            artifacts/android-debug-agent-package-metadata/
-            src/AddIns/Debugger/AndroidDebugAgent/obj/
-          if-no-files-found: error
-          retention-days: 1
-
   package-windows:
     name: Package Windows
-    needs: [prepare, android-agent]
+    needs: prepare
     runs-on: windows-2025
     timeout-minutes: 90
     steps:
@@ -125,13 +105,6 @@ jobs:
       - name: Initialize the submodules the build needs
         shell: bash
         run: bash .github/ci/init-submodules.sh
-      - uses: actions/download-artifact@v8
-        with:
-          name: android-debug-agents
-          path: .
-      - name: Verify Android debug-agent architectures
-        shell: pwsh
-        run: ./build/verify-android-debug-agent.ps1
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
@@ -167,7 +140,7 @@ jobs:
   # its first workbench window, and the check below goes further, through the principal add-in and child-process paths.
   macos:
     name: Package and verify macOS ARM64
-    needs: [prepare, android-agent]
+    needs: prepare
     # The same image ci.yml runs macOS on; dist.macos.sh probes for a linking toolchain and is sensitive to the SDK.
     runs-on: macos-26
     timeout-minutes: 90
@@ -180,13 +153,6 @@ jobs:
       - name: Initialize the submodules the build needs
         shell: bash
         run: bash .github/ci/init-submodules.sh
-      - uses: actions/download-artifact@v8
-        with:
-          name: android-debug-agents
-          path: .
-      - name: Verify Android debug-agent architectures
-        shell: pwsh
-        run: ./build/verify-android-debug-agent.ps1
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
@@ -222,7 +188,7 @@ jobs:
   # the tar.xz also catches what archiving loses (modes, symlinks, paths).
   linux:
     name: Package and verify Linux (${{ matrix.rid }})
-    needs: [prepare, android-agent]
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -244,13 +210,6 @@ jobs:
       - name: Initialize the submodules the build needs
         shell: bash
         run: bash .github/ci/init-submodules.sh
-      - uses: actions/download-artifact@v8
-        with:
-          name: android-debug-agents
-          path: .
-      - name: Verify Android debug-agent architectures
-        shell: pwsh
-        run: ./build/verify-android-debug-agent.ps1
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json

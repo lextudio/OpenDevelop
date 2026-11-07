@@ -111,10 +111,14 @@ $dapForkPackages = @(
 # that repository from source.
 $sharpDbgVersion = Get-XmlPropertyValue (Join-Path $PSScriptRoot 'Directory.Packages.props') 'SharpDbgCliVersion'
 $sharpDbgPackages = @('LeXtudio.SharpDbg.Cli') | ForEach-Object { [pscustomobject]@{ Id = $_; Version = $sharpDbgVersion } }
+# The Android debug agents (three NativeAOT ABIs) and their license/SBOM metadata, published by the same
+# workflow. Consumed as a package so no build job needs the .NET 11 preview SDK, the Android workload or an NDK.
+$sharpDbgAgentVersion = Get-XmlPropertyValue (Join-Path $PSScriptRoot 'Directory.Packages.props') 'SharpDbgAndroidAgentVersion'
+$sharpDbgAgentPackages = @('LeXtudio.SharpDbg.AndroidAgent') | ForEach-Object { [pscustomobject]@{ Id = $_; Version = $sharpDbgAgentVersion } }
 # Only the OpenAvalon closure carries the openavalon commit; the other packages are published separately.
 $packages = @($openAvalonPackages | ForEach-Object { [pscustomobject]@{ Id = $_; Version = $sdkVersion; Closure = $closureCommit } }) +
     [pscustomobject]@{ Id = 'LibGhostty.Net'; Version = $libGhosttyVersion; Closure = '' } +
-    @($forkPackages + $devFlowPackages + $wpfHotReloadPackages + $dapForkPackages + $sharpDbgPackages | ForEach-Object { [pscustomobject]@{ Id = $_.Id; Version = $_.Version; Closure = '' } })
+    @($forkPackages + $devFlowPackages + $wpfHotReloadPackages + $dapForkPackages + $sharpDbgPackages + $sharpDbgAgentPackages | ForEach-Object { [pscustomobject]@{ Id = $_.Id; Version = $_.Version; Closure = '' } })
 
 Write-Host "OpenAvalon local feed: $FeedPath"
 Write-Host "OpenAvalon package version: $sdkVersion from openavalon $closureCommit ($($openAvalonPackages.Count) packages); LibGhostty.Net $libGhosttyVersion; $($forkPackages.Count) AvalonEdit/AvalonDock fork packages; $($devFlowPackages.Count) DevFlow packages"

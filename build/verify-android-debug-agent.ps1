@@ -1,6 +1,17 @@
-param([string] $AgentRoot = (Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts/android-debug-agent'))
+param([string] $AgentRoot = '')
 
 $ErrorActionPreference = 'Stop'
+$root = Split-Path -Parent $PSScriptRoot
+if (-not $AgentRoot) {
+    $version = ([xml](Get-Content -LiteralPath (Join-Path $root 'Directory.Packages.props') -Raw)).Project.PropertyGroup.SharpDbgAndroidAgentVersion
+    if (-not $version) { throw 'Directory.Packages.props does not define SharpDbgAndroidAgentVersion.' }
+    # NuGet.config pins the package folder to artifacts/nuget-packages, so restoring the debugger
+    # add-in leaves the agents there.
+    $AgentRoot = Join-Path $root "artifacts/nuget-packages/lextudio.sharpdbg.androidagent/$version/agent"
+}
+if (-not (Test-Path -LiteralPath $AgentRoot -PathType Container)) {
+    throw "The Android debug agents are not restored at $AgentRoot. Build the debugger add-in (or run ./sync-openavalon-feed.ps1) first."
+}
 foreach ($entry in @(@{ Abi = 'arm64-v8a'; Class = 2; Machine = 183 }, @{ Abi = 'x86_64'; Class = 2; Machine = 62 }, @{ Abi = 'armeabi-v7a'; Class = 1; Machine = 40 })) {
     $path = Join-Path (Join-Path $AgentRoot $entry.Abi) 'libSharpDbg.AndroidAgent.so'
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Android debugger agent missing: $path" }

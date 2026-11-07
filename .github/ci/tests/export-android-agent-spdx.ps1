@@ -4,7 +4,9 @@ $scratch = Join-Path ([IO.Path]::GetTempPath()) ('android-agent-spdx-' + [Guid]:
 try {
     $package = Join-Path $scratch 'fallback/example.agent/1.0.0'
     New-Item -ItemType Directory -Path $package -Force | Out-Null
-    Set-Content -LiteralPath (Join-Path $package 'example.agent.nuspec') -Value '<package><metadata><license type="file">LICENSE.txt</license></metadata></package>'
+    # NuGet's pack task strips every plain .nuspec from a package, so the metadata bundle ships
+    # them as <id>.nuspec.xml; this test must exercise that shape, not the one that cannot exist.
+    Set-Content -LiteralPath (Join-Path $package 'example.agent.nuspec.xml') -Value '<package><metadata><license type="file">LICENSE.txt</license></metadata></package>'
     Set-Content -LiteralPath (Join-Path $package 'LICENSE.txt') -Value 'Example license text'
     $assets = Join-Path $scratch 'project.assets.json'
     Set-Content -LiteralPath $assets -Value '{"targets":{"native":{"Example.Agent/1.0.0":{"type":"package"}}}}'

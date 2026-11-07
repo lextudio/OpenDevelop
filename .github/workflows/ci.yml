@@ -104,35 +104,9 @@ jobs:
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
           ./.github/ci/plan-matrix.ps1 -ThroughBatch $through -Platforms $env:PLATFORMS
 
-  android-agent:
-    name: Android debug agents
-    needs: plan
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v7
-      - name: Initialize SharpDbg
-        run: git submodule update --init externals/sharpdbg
-      - name: Verify Android debug-agent architecture checks
-        shell: pwsh
-        run: ./.github/ci/tests/verify-android-debug-agent.ps1
-      - name: Verify Android debug-agent license metadata
-        shell: pwsh
-        run: ./.github/ci/tests/export-android-agent-spdx.ps1
-      - uses: ./.github/actions/android-debug-agent
-      - uses: actions/upload-artifact@v7
-        with:
-          name: android-debug-agents
-          path: |
-            artifacts/android-debug-agent/
-            artifacts/android-debug-agent-package-metadata/
-            src/AddIns/Debugger/AndroidDebugAgent/obj/
-          if-no-files-found: error
-          retention-days: 1
-
   build:
     name: Build (${{ matrix.name }})
-    needs: [plan, android-agent]
+    needs: plan
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -146,13 +120,6 @@ jobs:
       - name: Initialize the submodules the build needs
         shell: bash
         run: bash .github/ci/init-submodules.sh
-      - uses: actions/download-artifact@v8
-        with:
-          name: android-debug-agents
-          path: .
-      - name: Verify Android debug-agent architectures
-        shell: pwsh
-        run: ./build/verify-android-debug-agent.ps1
       - name: Reclaim disk space on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -169,6 +136,15 @@ jobs:
           $through = -1
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
           ./.github/ci/build-binaries.ps1 -Platform '${{ matrix.name }}' -ThroughBatch $through
+      - name: Verify the Android debug agents
+        shell: pwsh
+        run: |
+          # A narrowed build (through_batch/platforms) may never compile the debugger add-in, so
+          # restore it explicitly: the check is about the pinned package, not about the entries that
+          # happened to run. Then verify both the package payload and the copy the add-in deployed.
+          dotnet restore src/AddIns/Debugger/Debugger.AddIn/Debugger.AddIn.csproj
+          ./build/verify-android-debug-agent.ps1
+          if (Test-Path 'AddIns/Debugger/android') { ./build/verify-android-debug-agent.ps1 -AgentRoot 'AddIns/Debugger/android' }
       - name: Verify complete native Terminal package closure
         # The GitHub Packages fork is a single, version-locked cross-platform contract. Verify
         # the five supported RIDs on every native platform build; a Linux asset omission must not wait
@@ -402,8 +378,8 @@ jobs:
           "$root/dotnet" --list-sdks
           sdk=$("$root/dotnet" --list-sdks | awk '$1 ~ /^11\./ { print $1 }' | sort -V | tail -n 1)
           test -n "$sdk"
-          # The SDK's workload set, not its bundled manifest: the same reason as .github/actions/android-debug-agent
-          # (the rc.3 bundled manifest misses packs, and --skip-manifest-update keeps it).
+          # The SDK's workload set, not its bundled manifest: the rc.3 bundled manifest misses packs,
+          # and --skip-manifest-update keeps it.
           work="$RUNNER_TEMP/workload"
           mkdir -p "$work"
           printf '{"sdk":{"version":"%s","allowPrerelease":true,"rollForward":"disable"}}\n' "$sdk" > "$work/global.json"

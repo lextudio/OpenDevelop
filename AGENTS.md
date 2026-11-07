@@ -24,14 +24,15 @@ Keep this file concise and operational. Read the referenced technote only when t
     `gh` CLI into the fixed local feed `artifacts/openavalon-feed` through `sync-openavalon-feed.ps1`, and restore
     from there. Never point a local build at `nuget.pkg.github.com` with a token in `NuGetPackageSourceCredentials_*`
     or `NuGet.config`; only CI does that. The script pins versions in `Directory.Packages.props`: the AvalonEdit and
-    AvalonDock forks, DevFlow, LibGhostty.Net, and `LextudioDapForkVersion`, the five `OmniSharp.Extensions.*` packages
-    (lextudio's NativeAOT-capable DAP fork) that `externals/sharpdbg`'s Android agent hosts its adapter in.
-    `build/android-debug-agent.ps1` writes a scratch `nuget.config` that maps `OmniSharp.Extensions.*` to that local
-    feed and refuses to run when the pinned version is missing there; in GitHub Actions it maps them to the
-    `lextudio_github` source instead and uses the job's own token from `NuGetPackageSourceCredentials_lextudio_github`,
-    like the rest of CI. To take a new fork version, publish it from the
+    AvalonDock forks, DevFlow, LibGhostty.Net, `LextudioDapForkVersion` (the five `OmniSharp.Extensions.*` packages of
+    lextudio's NativeAOT-capable DAP fork), and `SharpDbgCliVersion`/`SharpDbgAndroidAgentVersion` (the debugger adapter
+    and the three NativeAOT Android agents, published by `externals/sharpdbg`'s `publish-opendevelop-packages.yml`).
+    OpenDevelop no longer references the DAP fork itself: the adapter and the agents carry their own closure, so the
+    debugger add-in just restores the two `LeXtudio.SharpDbg.*` packages. The DAP pin and its sync remain because a
+    local SharpDbg checkout's `iac/pack-opendevelop-android-agent.ps1` restores the fork from
+    `artifacts/openavalon-feed` when it builds a new agent package. To take a new fork version, publish it from the
     fork's `Publish lextudio DAP packages` workflow, change `LextudioDapForkVersion`, run `./sync-openavalon-feed.ps1`,
-    then rebuild the agent.
+    then republish the SharpDbg packages.
   - **Take a republish:** openavalon republishes under the same version, which no NuGet cache can
     tell apart. `openavalon-closure.json` names the openavalon commit whose publish run this checkout
     consumes; after a publish you want, set it to that commit. `sync-openavalon-feed.ps1` writes it

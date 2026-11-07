@@ -88,12 +88,15 @@ the fixed version `1.0.0-lextudio.41991522905.1` (the five `OmniSharp.Extensions
 capabilities model (the desktop adapter honours `singleThread` and had no way to advertise it). The Android
 journey above was rerun with the current version and still passes (1/1).
 
-OpenDevelop pins that version as `LextudioDapForkVersion` in `Directory.Packages.props`.
-`sync-openavalon-feed.ps1` downloads the packages with the `gh` CLI into `artifacts/openavalon-feed`, and
-`build/android-debug-agent.ps1` restores them from there on a developer machine (no token ever reaches a local build;
-see `AGENTS.md`). In GitHub Actions the same script restores them directly from GitHub Packages (`lextudio_github`)
-with the job's own token. `NuGet.config` maps the ids to both sources. The agent
-project and `SharpDbg.AndroidAgent.Tests` pin the version exactly (`[x]`): a floating `>=` resolved to a
+OpenDevelop pins that version as `LextudioDapForkVersion` in `Directory.Packages.props`, and
+`sync-openavalon-feed.ps1` downloads the packages with the `gh` CLI into `artifacts/openavalon-feed`.
+OpenDevelop itself no longer references the fork: the desktop adapter and the three Android agents
+arrive as the `LeXtudio.SharpDbg.Cli` and `LeXtudio.SharpDbg.AndroidAgent` packages, built by
+`externals/sharpdbg`'s `publish-opendevelop-packages.yml`. The pin and the local feed remain for a
+local SharpDbg checkout, whose `iac/pack-opendevelop-android-agent.ps1` restores the fork from that
+feed (no token ever reaches a local build; see `AGENTS.md`); in GitHub Actions the same script
+restores it from GitHub Packages (`lextudio_github`) with the job's own token. The agent project and
+`SharpDbg.AndroidAgent.Tests` pin the version exactly (`[x]`): a floating `>=` resolved to a
 different `1.0.0` on nuget.org.
 
 Neither the Android agent nor the desktop SharpDbg adapter references Microsoft's
@@ -115,12 +118,14 @@ any payload. See [licensing-audit.md](licensing-audit.md). No decompiled `clrdbg
    while MSBuild runs, selecting between two real devices, and a physical device.
 2. The `x86_64` and `armeabi-v7a` agents build and pass the ELF/notice verification but have not run on a
    device. NativeAOT trimming warnings and reflection-dependent features need targeted coverage.
-3. CI wiring runs now: `build/android-debug-agent.ps1` is a `Plan`-gated job that also exports the SPDX/notices,
-   and the debugging journeys run in the `mobile-android` and `mobile-ios` lanes of `.github/workflows/ci.yml`
-   (see [`ci-test-plan.md`](ci-test-plan.md), "Device journeys"). The release packaged-app check still has no
-   Android device, so it covers the agent's files and metadata only. The lanes start `observe` with
-   `allowAllFailures`, so read their per-entry results rather than their colour: a journey whose device or
-   workload was missing skips and still reports a passing total.
+3. The agents and their SPDX/notices are published once by `externals/sharpdbg`'s
+   `publish-opendevelop-packages.yml`; OpenDevelop restores `LeXtudio.SharpDbg.AndroidAgent`, verifies
+   the three ABIs after its build, and the debugging journeys run in the `mobile-android` and
+   `mobile-ios` lanes of `.github/workflows/ci.yml` (see [`ci-test-plan.md`](ci-test-plan.md),
+   "Device journeys"). The release packaged-app check still has no Android device, so it covers the
+   agent's files and metadata only. The lanes start `observe` with `allowAllFailures`, so read their
+   per-entry results rather than their colour: a journey whose device or workload was missing skips and
+   still reports a passing total.
 4. Remove or replace the desktop adapter's Microsoft debug-protocol dependency, if the product migrates.
 5. Physical iOS devices and signing remain future work.
 
