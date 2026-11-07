@@ -23,6 +23,11 @@ public interface IProjectFileNestingProvider
     /// <summary>Whether a physical project item with this path should be shown by this provider.</summary>
     bool IsSupportedProjectItem(string projectFilePath, string physicalPath);
 
+    /// <summary>Whether an otherwise-unknown evaluated MSBuild item type belongs in the project
+    /// tree. This keeps SDK-specific item-type admission with the owning add-in rather than in the
+    /// shell's built-in item-type list.</summary>
+    bool IsSupportedProjectItemType(string projectFilePath, string itemType) => false;
+
     /// <summary>Returns the display-relative path of a parent, or <see langword="null"/> when the
     /// item remains top-level. <paramref name="projectDisplayPaths"/> contains every visible item
     /// path in the project.</summary>

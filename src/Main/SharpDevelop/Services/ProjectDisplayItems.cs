@@ -86,7 +86,7 @@ namespace ICSharpCode.SharpDevelop.Services
 			var nestingProviders = GetNestingProviders(projectFile);
 
 			var items = project.GetEvaluatedProjectItems()
-				.Where(item => IsDisplayItemName(item.ItemType))
+				.Where(item => IsDisplayItemName(item.ItemType) || IsSupportedProjectItemType(projectFile, item.ItemType, nestingProviders))
 				.Select(item => CreateEvaluatedDisplayItem(projectDirectory, projectFile, item, nestingProviders))
 				.Where(item => item != null)
 				.Cast<ProjectDisplayItem>()
@@ -208,6 +208,19 @@ namespace ICSharpCode.SharpDevelop.Services
 		
 		private static bool IsDisplayItemName(string name) =>
 			name is "Compile" or "None" or "Content" or "EmbeddedResource" or "Resource" or "Page" or "ApplicationDefinition";
+
+		private static bool IsSupportedProjectItemType(string projectFile, string itemType, IReadOnlyList<IProjectFileNestingProvider> nestingProviders)
+		{
+			foreach (var provider in nestingProviders) {
+				try {
+					if (provider.IsSupportedProjectItemType(projectFile, itemType))
+						return true;
+				} catch (Exception ex) {
+					ICSharpCode.Core.LoggingService.Warn("Project file nesting provider failed: " + ex);
+				}
+			}
+			return false;
+		}
 
 		// Originally C#-only (ported from UnoDevelop's own C#-only UnoProjectService.cs, see this
 		// file's header comment) - .vb/.fs/.vbproj/.fsproj were simply never added, so SDK-style VB

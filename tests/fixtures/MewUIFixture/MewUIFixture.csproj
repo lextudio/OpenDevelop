@@ -5,6 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>MewUIFixture</RootNamespace>
+	<!-- The layouts are exposed solely as MewUIPage items. This guards the add-in's item-type
+	     registration instead of allowing the SDK's default None glob to mask a missing provider. -->
+	<EnableDefaultNoneItems>false</EnableDefaultNoneItems>
     <!-- Repo-relative path to the MXAML->C# generator tool (repo root = 4 levels up). -->
     <MewUIGenDll>$(MSBuildThisFileDirectory)..\..\..\src\Tools\MewUIGen\bin\$(Configuration)\net10.0\MewUIGen.dll</MewUIGenDll>
     <MewUIGeneratedDir>$(IntermediateOutputPath)mewuigen\</MewUIGeneratedDir>

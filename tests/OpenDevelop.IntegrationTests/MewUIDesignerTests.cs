@@ -35,6 +35,7 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		sourcePath = Path.Combine(workDir, "Windows", "MainWindow.mxaml.cs");
 		designerPath = Path.Combine(workDir, "Windows", "MainWindow.mxaml");
 		settingsSourcePath = Path.Combine(workDir, "Windows", "SettingsWindow.mxaml");
+		File.WriteAllText(Path.Combine(workDir, "Windows", "Orphan.mxaml.cs"), "namespace MewUIFixture; partial class Orphan { }");
 	}
 
 	public async ValueTask InitializeAsync()
@@ -87,6 +88,31 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
 		var mxaml = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
 		Assert.Matches("<Canvas Name=\"canvas1\">\\s*<Button Name=\"button1\" />\\s*</Canvas>", mxaml);
+	}
+
+	/// <summary>MewUI layouts are custom evaluated <c>MewUIPage</c> items, rather than Compile or
+	/// None. They must still be project files so the Windows folder is navigable in Projects.</summary>
+	[Fact]
+	public async Task MewUIPageItems_AppearInTheProjectsPad()
+	{
+		var opened = await app.ReopenSolutionAsync(projectPath);
+		Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+		var tree = await app.InvokeAsync("od.solution-tree");
+		var project = tree.GetProperty("projects").EnumerateArray()
+			.Single(item => item.GetProperty("name").GetString() == "MewUIFixture");
+		var files = project.GetProperty("files").EnumerateArray().Select(item => item.GetString()).ToArray();
+		Assert.Contains(files, file => file?.EndsWith(Path.Combine("Windows", "MainWindow.mxaml"), StringComparison.OrdinalIgnoreCase) == true);
+		Assert.Contains(files, file => file?.EndsWith(Path.Combine("Windows", "SettingsWindow.mxaml"), StringComparison.OrdinalIgnoreCase) == true);
+		var browser = await app.InvokeAsync("od.project-browser-state", "MewUIFixture");
+		var windows = browser.GetProperty("project").GetProperty("children").EnumerateArray()
+			.Single(node => node.GetProperty("name").GetString() == "Windows");
+		var mainWindow = windows.GetProperty("children").EnumerateArray()
+			.Single(node => node.GetProperty("name").GetString() == "MainWindow.mxaml");
+		Assert.Contains(mainWindow.GetProperty("children").EnumerateArray(), node => node.GetProperty("name").GetString() == "MainWindow.mxaml.cs");
+		var settingsWindow = windows.GetProperty("children").EnumerateArray()
+			.Single(node => node.GetProperty("name").GetString() == "SettingsWindow.mxaml");
+		Assert.Contains(settingsWindow.GetProperty("children").EnumerateArray(), node => node.GetProperty("name").GetString() == "SettingsWindow.mxaml.cs");
+		Assert.Contains(windows.GetProperty("children").EnumerateArray(), node => node.GetProperty("name").GetString() == "Orphan.mxaml.cs");
 	}
 
 	[Fact]
