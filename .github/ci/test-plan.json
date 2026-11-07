@@ -720,9 +720,9 @@
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-class", "OpenDevelop.IntegrationTests.GtkDesignerIntegrationTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
-      "additionalProjects": [{ "project": "tests/fixtures/GtkFixture/GtkFixture.csproj" }],
+      "additionalProjects": [{ "project": "tests/fixtures/GtkDesignerFixture/GtkDesignerFixture.csproj" }],
       "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required" },
-      "note": "Nested GTK selection, property editing, insertion, undo and save passed locally on macOS ARM64 in 20 seconds."
+      "note": "Nested GTK selection, property editing, insertion, undo and save passed locally on macOS ARM64 in 20 seconds. It shares GtkDesignerFixture with the other GTK entries; its document is ui/mainWindow.ui."
     },
     {
       "id": "debugger-journeys",

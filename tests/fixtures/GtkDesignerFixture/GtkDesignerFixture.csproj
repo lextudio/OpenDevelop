@@ -11,6 +11,9 @@
     <None Update="Windows/SettingsWindow.ui" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Windows/ResourceWindow.ui" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Windows/TemplatePanel.ui" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The nested-selection journey's GtkBuilder document; it deliberately has two top-level objects
+         and an id-referencing property, so it stays a document of its own rather than replacing MainWindow.ui. -->
+    <None Update="ui/mainWindow.ui" CopyToOutputDirectory="PreserveNewest" />
     <EmbeddedResource Include="Windows/TemplatePanel.ui" />
     <None Update="Windows/Resources.gresource.xml" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Windows/fixture-mark.svg" CopyToOutputDirectory="PreserveNewest" />

@@ -3,6 +3,10 @@
 `Windows/MainWindow.ui` is a standard GTK 4 GtkBuilder document and the source authority used by
 the OpenDevelop GTK designer integration tests. It is also a real GirCore GTK 4 application:
 
+`ui/mainWindow.ui` is the nested-selection document used by `GtkDesignerIntegrationTests` (two
+top-level objects plus an id-referencing property); it lives in the same project so the GTK tests
+share one fixture instead of one project per journey.
+
 ```bash
 dotnet run --project tests/fixtures/GtkDesignerFixture/GtkDesignerFixture.csproj
 ```

@@ -21,7 +21,7 @@ public sealed class GtkDesignerIntegrationTests : IAsyncDisposable
 	{
 		this.app = app;
 		var repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(app.OpenDevelopProjectPath)!, "..", "..", ".."));
-		var fixture = Path.Combine(repo, "tests", "fixtures", "GtkFixture");
+		var fixture = Path.Combine(repo, "tests", "fixtures", "GtkDesignerFixture");
 		workDir = Path.Combine(Path.GetTempPath(), "GtkDesignerTests-" + Guid.NewGuid().ToString("N"));
 		foreach (var directory in Directory.EnumerateDirectories(fixture, "*", SearchOption.AllDirectories)) {
 			if (directory.Contains(Path.DirectorySeparatorChar + "bin") || directory.Contains(Path.DirectorySeparatorChar + "obj")) continue;
@@ -34,7 +34,7 @@ public sealed class GtkDesignerIntegrationTests : IAsyncDisposable
 			Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
 			File.Copy(file, destination);
 		}
-		projectPath = Path.Combine(workDir, "GtkFixture.slnx");
+		projectPath = Path.Combine(workDir, "GtkDesignerFixture.csproj");
 		uiPath = Path.Combine(workDir, "ui", "mainWindow.ui");
 	}
 
