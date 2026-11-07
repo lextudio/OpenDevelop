@@ -11,13 +11,14 @@
 #                has to download and unpack the platform's whole archive (measured: 70 minutes of that against 30 minutes of
 #                tests across the lane jobs of one run). A lane without a 'job' is its own job. Jobs of different groups
 #                (fast, designer) run in parallel once the build is done. A platform may name 'singleJob': every lane of
-#                that platform then runs in ONE job with that name, so a scarce runner image (macOS) is acquired once and
-#                finishes all of its lanes instead of queueing once per group. Each include carries 'lanes' (in plan order)
-#                and the sum of their timeouts plus 30 minutes of preparation headroom; a flag a lane asks for
-#                (needsNuGetCache, needsGtk) holds for the whole job, and 'needs_ios_simulator' says the job hosts an iOS
-#                Simulator. A lane may also name 'runner': the device lanes need an image their platform's default runner is
-#                not (the iOS Simulator lane needs Xcode 27), so the job runs there instead. Lanes that share a job must
-#                name the same runner, because a job runs on one machine.
+#                that platform that does not name 'standalone' then runs in ONE job with that name, so a scarce runner image
+#                (macOS) is acquired once and finishes those lanes instead of queueing once per group. A 'standalone' lane
+#                keeps its own job, for a device lane whose image and set-up the other lanes must not share. Each include
+#                carries 'lanes' (in plan order) and the sum of their timeouts plus 30 minutes of preparation headroom; a
+#                flag a lane asks for (needsNuGetCache, needsGtk) holds for the whole job, and 'needs_ios_simulator' says the
+#                job hosts an iOS Simulator. A lane may also name 'runner': the device lanes need an image their platform's
+#                default runner is not (the iOS Simulator lane needs Xcode 27), so the job runs there instead. Lanes that
+#                share a job must name the same runner, because a job runs on one machine.
 #
 # The outputs are written as JSON ('{"include":[...]}') to $GITHUB_OUTPUT. A plan that enables nothing fails.
 param(
@@ -89,15 +90,22 @@ function Test-LaneDeviceClass([string]$laneName, [string]$className) {
     if (-not $lane.PSObject.Properties['deviceClasses']) { return $false }
     return [bool]($lane.deviceClasses.PSObject.Properties[$className])
 }
-# A platform that names 'singleJob' runs every lane in one job of that name, on one runner: the macOS image is the scarce
-# resource, so the unit, integration, designer and Simulator lanes share one acquisition instead of three queue entries.
+# A platform that names 'singleJob' runs its non-standalone lanes in one job of that name, on one runner: the macOS image
+# is the scarce resource, so the unit, integration and designer lanes share one acquisition instead of three queue entries.
+# A lane that names 'standalone' keeps its own job: a device lane needs a runner image (and a device set-up) the rest of the
+# platform does not, and merging it would put that image's workload on the machine that runs every other lane.
 function Get-PlatformSingleJob([string]$platformName) {
     $platform = $plan.platforms.PSObject.Properties[$platformName]
     if ($null -eq $platform) { throw "Platform '$platformName' is used by an entry but not defined under 'platforms'." }
     if ($platform.Value.PSObject.Properties['singleJob'] -and $platform.Value.singleJob) { return [string]$platform.Value.singleJob }
     return $null
 }
+function Test-LaneStandalone([string]$laneName) {
+    $lane = $plan.lanes.PSObject.Properties[$laneName].Value
+    return [bool]($lane.PSObject.Properties['standalone'] -and $lane.standalone)
+}
 function Get-EffectiveJob([string]$platformName, [string]$laneName) {
+    if (Test-LaneStandalone $laneName) { return Get-LaneJob $laneName }
     $single = Get-PlatformSingleJob $platformName
     if ($single) { return $single }
     return Get-LaneJob $laneName

@@ -336,8 +336,8 @@ plan  ->  build (per platform)  ->  test (per platform x job, in parallel; a job
 
 * **plan** (`plan-matrix.ps1`) reads the plan and emits the two job matrices. A packaging platform gets a build job when
   an enabled archive lane needs it; a (platform, job) pair gets a test job when one of its lanes has an enabled entry (and a
-  platform that names `singleJob` plans one job for all its lanes). Focus and platform filters apply before the matrices are
-  created. Entries can normally be enabled in the plan; new system prerequisites can require workflow changes.
+  platform that names `singleJob` plans one job for its non-`standalone` lanes). Focus and platform filters apply before
+  the matrices are created. Entries can normally be enabled in the plan; new system prerequisites can require workflow changes.
 * **build** (`build-binaries.ps1`, `package-workspace.ps1`) is the only job that restores and compiles. It builds every
   distinct `project` of an enabled entry, prints per-project durations and output sizes in the job summary, then packs
   the whole workspace (sources and all build outputs, no `.git`, no `node_modules`) and uploads it as one archive
@@ -418,12 +418,13 @@ A device journey needs a runner that hosts the device, and only two hosted image
 
 | Journey | Runtime | Runner | Why |
 | --- | --- | --- | --- |
-| iOS Simulator (`IosSimulatorDebuggingIntegrationTests`) | iPhone simulator, `xcode-27` image | the merged `macos` job on `macos-arm64` (the Simulator lane names `xcode-27`, so the job runs there) | A simulator is a native macOS process, so no virtualisation is involved; the .NET 11 iOS workload set pins `Microsoft.NET.Sdk.iOS` 27.x, which needs Xcode 27, and no `macos-26` image carries it. The image's default is Xcode 27.1, but the workload pack requires exactly 27.0, so the job `xcode-select`s `/Applications/Xcode_27.app` before it starts a simulator. |
+| iOS Simulator (`IosSimulatorDebuggingIntegrationTests`) | iPhone simulator, `xcode-27` image | own `mobile-ios` job on `macos-arm64` (the lane names `xcode-27` and `standalone`) | A simulator is a native macOS process, so no virtualisation is involved; the .NET 11 iOS workload set pins `Microsoft.NET.Sdk.iOS` 27.x, which needs Xcode 27, and no `macos-26` image carries it. The image's default is Xcode 27.1, but the workload pack requires exactly 27.0, so the job `xcode-select`s `/Applications/Xcode_27.app` before it starts a simulator. |
 | Android emulator (`AndroidDebuggingIntegrationTests`) | headless `google_apis` x86_64 AVD | `linux-x64` on `ubuntu-24.04` | The emulator needs KVM. The hosted Linux x86_64 runners provide it; macOS arm64 and `ubuntu-24.04-arm` have no nested virtualisation. |
 
 Each journey stays in its own lane (`mobile-ios`, `mobile-android`) because each needs a runner the rest of the plan does not
-use; on macOS that lane joins the platform's merged job, which then runs on the Simulator image, while Linux runs its own
-`mobile-android` job. A lane declares what it may run as a class-to-OS-family map:
+use; on macOS the Simulator lane is `standalone`, so it keeps its own job on the Simulator image while the platform's other
+lanes share the merged `macos` job, and Linux runs its own `mobile-android` job. A lane declares what it may run as a
+class-to-OS-family map:
 
 ```json
 "deviceClasses": { "AndroidDebuggingIntegrationTests": "linux" }
@@ -501,12 +502,14 @@ Each lane still keeps its own budget: `run-test-plan.ps1` starts no further entr
 the lanes after it. A failing lane, or one whose script throws, does not stop the next one, and the step fails if any lane
 failed.
 
-macOS goes one step further: its platform definition names `singleJob`, so every one of its lanes runs in the one
-`macos` job, one after another. A macOS hosted image is the scarce resource - runs 42173315312 and 42246598022 lost the
-`fast`, `designer` and `mobile-ios` jobs to "runner lost communication" and "the job was not acquired ... after multiple
-attempts" - so one acquisition finishes the unit, integration, designer and Simulator lanes instead of three jobs queueing
-for three images. The job runs on `xcode-27` whenever the Simulator lane is scheduled (that lane names the runner), on the
-platform's `macos-26` otherwise, and pays the archive preparation once.
+macOS goes one step further: its platform definition names `singleJob`, so its unit, integration and designer lanes run
+in the one `macos` job, one after another. A macOS hosted image is the scarce resource - runs 42173315312 and 42246598022
+lost the `fast`, `designer` and `mobile-ios` jobs to "runner lost communication" and "the job was not acquired ... after
+multiple attempts" - so one acquisition finishes those lanes instead of two jobs queueing for two images, and the job pays
+the archive preparation once. The Simulator lane opts out with `standalone` and keeps its own `mobile-ios` job on
+`xcode-27`: its SDK 11, iOS workload and booted simulator must not sit on the machine that runs the GUI lanes, and after
+run 42362589732 lost the merged job (and with it every macOS result) while the designer lane ran, the blast radius of one
+runner death stays limited to that lane. Both jobs run in parallel once the build is done.
 
 * `unit` runs the unit suites (Base, VSEditorCompat, XamlDom, Profiler, the AddIn SDK projects) on every platform from
   that platform's build archive; an entry gets 10 minutes so one hang cannot use up the lane.
@@ -563,9 +566,9 @@ failures are under control. Focus mode does not gate anything: the `required` en
 * Lanes `integration-stable`, `integration-unstable` and `integration-designer`: the integration entries, grouped as
   described under "Lanes".
 * Lanes `mobile-ios` and `mobile-android`: the iOS Simulator and Android emulator debugging journeys. Each needs the one
-  runner image family that hosts its device (see "Device journeys"); on macOS the lane joins the merged `macos` job, on
-  Linux it is the `mobile-android` job of its own. Both run `observe` and are the reason plan entries may now declare
-  `deviceClasses`.
+  runner image family that hosts its device (see "Device journeys"); either way the lane is its own job (`mobile-ios` is
+  `standalone` out of macOS's merged job, `mobile-android` is the linux-x64 job). Both run `observe` and are the reason
+  plan entries may now declare `deviceClasses`.
 
 Not planned yet: `AddInTests` (about 15 minutes, its own lane), the Microsoft designer
 backends (need Visual Studio), and the heavy or environment-bound ones named in

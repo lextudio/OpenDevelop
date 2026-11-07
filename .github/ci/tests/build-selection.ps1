@@ -20,7 +20,8 @@ try {
     "archive": { "job": "fast", "timeoutMinutes": 30, "needsNuGetCache": true },
     "long": { "job": "slow", "timeoutMinutes": 60, "needsGtk": true },
     "alone": { "timeoutMinutes": 5 },
-    "device": { "timeoutMinutes": 20, "runner": "xcode-27" }
+    "device": { "timeoutMinutes": 20, "runner": "xcode-27" },
+    "solo": { "timeoutMinutes": 7, "standalone": true }
   },
   "entries": [
     { "id": "early", "batch": 1, "lane": "archive", "project": "early.csproj", "platforms": { "windows-x64": "required" } },
@@ -33,7 +34,8 @@ try {
     { "id": "mac-long", "batch": 4, "lane": "long", "project": "mac-long.csproj", "platforms": { "macos-arm64": "observe" } },
     { "id": "mac-alone", "batch": 4, "lane": "alone", "project": "mac-alone.csproj", "platforms": { "macos-arm64": "observe" } },
     { "id": "merged-unit", "batch": 1, "lane": "unit", "project": "merged-unit.csproj", "platforms": { "merged": "observe" } },
-    { "id": "merged-device", "batch": 1, "lane": "device", "project": "merged-device.csproj", "platforms": { "merged": "observe" } }
+    { "id": "merged-device", "batch": 1, "lane": "device", "project": "merged-device.csproj", "platforms": { "merged": "observe" } },
+    { "id": "merged-solo", "batch": 1, "lane": "solo", "project": "merged-solo.csproj", "platforms": { "merged": "observe" } }
   ]
 }
 '@ | Set-Content -LiteralPath $planPath
@@ -82,14 +84,20 @@ try {
     $armJobs = @($lanes.include | Where-Object { $_.platform -eq 'windows-arm64' } | ForEach-Object { $_.job })
     if ($armJobs.Count -ne 1) { throw "windows-arm64 enables only the unit lane, expected one job, got: $($armJobs -join ',')" }
 
-    # A platform that names 'singleJob' collapses every lane into one job of that name, on the runner a lane names; the
-    # lanes keep plan order and the timeout is their sum plus the 30-minute headroom (10+20+30).
+    # A platform that names 'singleJob' collapses its lanes into one job of that name, on the runner a lane names; the
+    # lanes keep plan order and the timeout is their sum plus the 30-minute headroom (10+20+30). A 'standalone' lane keeps
+    # its own job and the platform's runner, so the merged job never inherits its image or its workload.
     $merged = @($lanes.include | Where-Object { $_.platform -eq 'merged' })
-    if ($merged.Count -ne 1) { throw "A 'singleJob' platform must plan one job, got $($merged.Count)." }
-    if ($merged[0].job -ne 'macos') { throw "The merged job must use the platform's 'singleJob' name, got '$($merged[0].job)'." }
-    if (($merged[0].lanes -join ',') -ne 'unit,device') { throw "The merged job must run its lanes in plan order, got $($merged[0].lanes -join ',')." }
-    if ($merged[0].timeout -ne 60) { throw "The merged job's timeout is its lanes' budgets plus 30 minutes of headroom (10+20+30), got $($merged[0].timeout)." }
-    if ($merged[0].runner -ne 'xcode-27') { throw "The merged job must run on the runner its lane names, got '$($merged[0].runner)'." }
+    if ($merged.Count -ne 2) { throw "A 'singleJob' platform must plan the merged job plus one job per 'standalone' lane, got $($merged.Count)." }
+    $mergedJob = $merged | Where-Object { $_.job -eq 'macos' }
+    if (-not $mergedJob) { throw "The merged job must use the platform's 'singleJob' name, got: $(($merged | ForEach-Object { $_.job }) -join ',')" }
+    if (($mergedJob.lanes -join ',') -ne 'unit,device') { throw "The merged job must run its non-standalone lanes in plan order, got $($mergedJob.lanes -join ',')." }
+    if ($mergedJob.timeout -ne 60) { throw "The merged job's timeout is its lanes' budgets plus 30 minutes of headroom (10+20+30), got $($mergedJob.timeout)." }
+    if ($mergedJob.runner -ne 'xcode-27') { throw "The merged job must run on the runner its lane names, got '$($mergedJob.runner)'." }
+    $solo = $merged | Where-Object { $_.job -eq 'solo' }
+    if (-not $solo -or ($solo.lanes -join ',') -ne 'solo' -or $solo.timeout -ne 37 -or $solo.runner -ne 'macos-26') {
+        throw "A 'standalone' lane must keep its own job on the platform's runner, got '$($solo.job)' with lanes $($solo.lanes -join ','), timeout $($solo.timeout), runner '$($solo.runner)'."
+    }
 
     # Lanes of one merged job must name the same runner, because the job runs on one machine.
     $conflict = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json

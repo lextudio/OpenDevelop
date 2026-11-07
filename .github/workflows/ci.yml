@@ -211,7 +211,7 @@ jobs:
           global-json-file: global.json
           architecture: ${{ matrix.dotnet_architecture }}
       - name: Install macOS native input helper
-        if: matrix.needs_cliclick
+        if: matrix.needs_cliclick && matrix.job != 'mobile-ios'
         shell: bash
         run: brew install cliclick
       # Attaching a debugger needs task_for_pid, which macOS authorizes through the
@@ -230,7 +230,7 @@ jobs:
       # whether the session is locked, what cliclick can do from this shell, and which input permissions are
       # granted, plus a desktop screenshot in the uploaded test-log directory. It changes nothing.
       - name: Report macOS native input readiness
-        if: matrix.platform == 'macos-arm64'
+        if: matrix.platform == 'macos-arm64' && matrix.job != 'mobile-ios'
         continue-on-error: true
         shell: bash
         run: |
@@ -241,7 +241,7 @@ jobs:
       # small Cocoa window, click its centre with cliclick, and report whether the mouse-down reached it. It answers
       # whether an OS-level click can reach any application on this VM at all, independent of the IDE.
       - name: Probe macOS click delivery
-        if: matrix.platform == 'macos-arm64'
+        if: matrix.platform == 'macos-arm64' && matrix.job != 'mobile-ios'
         continue-on-error: true
         shell: bash
         run: |
@@ -253,7 +253,7 @@ jobs:
       # real window-server geometry during the lane, with a screenshot every 30 seconds, so the failing drags can be
       # compared with it. Read-only; the loop ends with the job.
       - name: Sample the macOS desktop during the lane
-        if: matrix.platform == 'macos-arm64'
+        if: matrix.platform == 'macos-arm64' && matrix.job != 'mobile-ios'
         continue-on-error: true
         shell: bash
         run: |
