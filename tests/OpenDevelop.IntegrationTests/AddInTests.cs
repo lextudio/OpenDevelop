@@ -6349,7 +6349,18 @@ EndGlobal
             $"Public Class PackageProbe\n    Public Property Value As {TestPackageId}.Settings\nEnd Class\n", "TestPackage", visualBasic: true);
     }
 
-    async Task AssertBulbInstallsMissingPackageAsync(string source, string caretOn, bool centralPackageVersions = false, bool visualBasic = false)
+    [Fact]
+    public async Task LightBulb_OffersToInstallThePackageThatDeclaresABareTypeName()
+    {
+        // No namespace here names a package id: "ProbeWidget" is just a type, declared by OpenDevelop.TypeProbe, which
+        // a project of the solution already uses (and which is installed in the global packages folder).
+        await AssertBulbInstallsMissingPackageAsync(
+            "class PackageProbe { object O = new ProbeWidget(); }\n", "ProbeWidget",
+            packageId: "OpenDevelop.TypeProbe", restoreExistingProjectFirst: true,
+            expectedTitleContains: "(declares OpenDevelop.TypeProbe.ProbeWidget)");
+    }
+
+    async Task AssertBulbInstallsMissingPackageAsync(string source, string caretOn, bool centralPackageVersions = false, bool visualBasic = false, string packageId = TestPackageId, bool restoreExistingProjectFirst = false, string? expectedTitleContains = null)
     {
         // The light bulb suggests only packages another project of the solution already references: a
         // second project (ExistingApp) uses the package from the local test feed, the probe project
@@ -6374,17 +6385,31 @@ EndGlobal
             // A project under Central Package Management: a Version on a PackageReference fails restore (NU1008).
             // The existing project's reference is versionless, so the solution's version comes from here.
             await File.WriteAllTextAsync(centralPropsPath,
-                $"<Project>\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageVersion Include=\"Some.Other.Package\" Version=\"2.0.0\" />\n    <PackageVersion Include=\"{TestPackageId}\" Version=\"1.0.0\" />\n  </ItemGroup>\n</Project>\n");
+                $"<Project>\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageVersion Include=\"Some.Other.Package\" Version=\"2.0.0\" />\n    <PackageVersion Include=\"{packageId}\" Version=\"1.0.0\" />\n  </ItemGroup>\n</Project>\n");
         }
         Directory.CreateDirectory(Path.Combine(_projectDir, "ExistingApp"));
         await File.WriteAllTextAsync(Path.Combine(_projectDir, "ExistingApp", "ExistingApp.csproj"),
             "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\""
-            + TestPackageId + "\"" + (centralPackageVersions ? "" : " Version=\"1.0.0\"") + " />\n  </ItemGroup>\n</Project>\n");
+            + packageId + "\"" + (centralPackageVersions ? "" : " Version=\"1.0.0\"") + " />\n  </ItemGroup>\n</Project>\n");
         // The fixture's own project stays in the solution; a Visual Basic probe is one more project.
         var solutionProjects = "  <Project Path=\"NuGetFixtureApp/NuGetFixtureApp.csproj\" />\n"
             + (visualBasic ? $"  <Project Path=\"{probeProject}/{projectFileName}\" />\n" : "")
             + "  <Project Path=\"ExistingApp/ExistingApp.csproj\" />\n";
         await File.WriteAllTextAsync(Path.Combine(_projectDir, "NuGetFixture.slnx"), "<Solution>\n" + solutionProjects + "</Solution>\n");
+        if (restoreExistingProjectFirst)
+        {
+            // A bare type name is matched against the types of packages already INSTALLED in the global packages
+            // folder, so the project that uses the package is restored first (nothing downloads: the feed is local).
+            var restore = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("dotnet")
+            {
+                ArgumentList = { "restore", Path.Combine(_projectDir, "ExistingApp", "ExistingApp.csproj") },
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            })!;
+            var restoreOutput = await restore.StandardOutput.ReadToEndAsync();
+            Assert.True(restore.WaitForExit(120_000) && restore.ExitCode == 0, "dotnet restore of ExistingApp failed: " + restoreOutput);
+        }
         try
         {
             var solutionPath = Path.Combine(_projectDir, "NuGetFixture.slnx");
@@ -6397,7 +6422,7 @@ EndGlobal
 
             // Caret on the unresolved name in the using directive.
             var offset = source.IndexOf(caretOn, StringComparison.Ordinal) + 1;
-            const string titlePrefix = "Install NuGet package '" + TestPackageId + "'";
+            var titlePrefix = "Install NuGet package '" + packageId + "'";
             string? installTitle = null;
             JsonElement bulb = default;
             for (var attempt = 0; attempt < 60 && installTitle == null; attempt++)
@@ -6411,17 +6436,19 @@ EndGlobal
                     await Task.Delay(500);
             }
             Assert.True(installTitle != null, "No 'Install NuGet package' action was offered: " + bulb);
+            if (expectedTitleContains != null)
+                Assert.Contains(expectedTitleContains, installTitle);
             Assert.Contains("ICSharpCode.PackageManagement.MissingPackage",
                 bulb.GetProperty("providers").EnumerateArray().Select(p => p.GetString()));
 
             // Choosing it writes the PackageReference (and restores); the action runs in the background.
             var csprojPath = Path.Combine(_projectDir, probeProject, projectFileName);
-            Assert.DoesNotContain($"Include=\"{TestPackageId}\"", await File.ReadAllTextAsync(csprojPath));
+            Assert.DoesNotContain($"Include=\"{packageId}\"", await File.ReadAllTextAsync(csprojPath));
             await _app.InvokeAsync("od.editor.bulb-actions", probePath, offset, installTitle);
             var installed = false;
             for (var attempt = 0; attempt < 120 && !installed; attempt++)
             {
-                installed = (await File.ReadAllTextAsync(csprojPath)).Contains($"Include=\"{TestPackageId}\"", StringComparison.Ordinal);
+                installed = (await File.ReadAllTextAsync(csprojPath)).Contains($"Include=\"{packageId}\"", StringComparison.Ordinal);
                 if (!installed)
                     await Task.Delay(500);
             }
@@ -6434,21 +6461,21 @@ EndGlobal
             for (var attempt = 0; attempt < 120 && !restored; attempt++)
             {
                 restored = File.Exists(assetsPath)
-                    && (await File.ReadAllTextAsync(assetsPath)).Contains(TestPackageId + "/", StringComparison.OrdinalIgnoreCase);
+                    && (await File.ReadAllTextAsync(assetsPath)).Contains(packageId + "/", StringComparison.OrdinalIgnoreCase);
                 if (!restored)
                     await Task.Delay(500);
             }
-            Assert.True(restored, "dotnet restore never resolved " + TestPackageId + " into " + assetsPath);
+            Assert.True(restored, "dotnet restore never resolved " + packageId + " into " + assetsPath);
 
             if (centralPackageVersions)
             {
                 // The version went to Directory.Packages.props next to the existing entry; the reference carries none.
                 var csproj = await File.ReadAllTextAsync(csprojPath);
-                var reference = System.Text.RegularExpressions.Regex.Match(csproj, "<PackageReference[^>]*Include=\"" + TestPackageId + "\"[^>]*>");
+                var reference = System.Text.RegularExpressions.Regex.Match(csproj, "<PackageReference[^>]*Include=\"" + packageId + "\"[^>]*>");
                 Assert.True(reference.Success, csproj);
                 Assert.DoesNotContain("Version=", reference.Value);
                 var props = await File.ReadAllTextAsync(centralPropsPath);
-                Assert.Contains($"<PackageVersion Include=\"{TestPackageId}\" Version=\"1.0.0\" />", props);
+                Assert.Contains($"<PackageVersion Include=\"{packageId}\" Version=\"1.0.0\" />", props);
                 Assert.Contains("<PackageVersion Include=\"Some.Other.Package\" Version=\"2.0.0\" />", props);
             }
 

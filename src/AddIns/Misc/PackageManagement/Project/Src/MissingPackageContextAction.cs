@@ -55,6 +55,12 @@ namespace ICSharpCode.PackageManagement
 		// cannot be found); measured on an unreferenced "Imports X.Y" and "As X.Y.Z", where the span is the whole name.
 		static readonly string[] unresolvedNameDiagnostics = { "CS0246", "CS0234", "BC30002", "BC40056" };
 
+		// A bare name that is used as a type but cannot be resolved: besides CS0246/BC30002 (a type position),
+		// CS0103/BC30451 (an expression such as JsonConvert.SerializeObject(...)). These are matched only
+		// against the public types of packages the solution already uses (PackageTypeIndex), never as
+		// a package id, so an unresolved variable name does not become a package suggestion.
+		static readonly string[] unresolvedTypeNameDiagnostics = { "CS0246", "BC30002", "CS0103", "BC30451" };
+
 		public string ID => "ICSharpCode.PackageManagement.MissingPackage";
 		public string DisplayName => "Install missing NuGet package";
 		public string Category => "NuGet";
@@ -95,7 +101,7 @@ namespace ICSharpCode.PackageManagement
 			var caretLine = context.CaretLocation.Line;
 			// Only a diagnostic on the caret's line can matter, so the offset conversion below (a scan
 			// from the start of the text) is skipped for every other diagnostic in the file.
-			foreach (var diagnostic in diagnostics.Where(d => unresolvedNameDiagnostics.Contains(d.Id)
+			foreach (var diagnostic in diagnostics.Where(d => (unresolvedNameDiagnostics.Contains(d.Id) || unresolvedTypeNameDiagnostics.Contains(d.Id))
 				&& d.Span.Start.Line <= caretLine && caretLine <= d.Span.End.Line)) {
 				int spanStart = GetOffset(text, diagnostic.Span.Start.Line, diagnostic.Span.Start.Column);
 				// CS0246 spans the whole name, but CS0234 only the segment that does not exist
@@ -110,14 +116,60 @@ namespace ICSharpCode.PackageManagement
 				var (known, referenced) = await SD.MainThread.InvokeAsync(() => (
 					SolutionPackages.Collect(SD.ProjectService.CurrentSolution.Projects.OfType<MSBuildBasedProject>()),
 					SolutionPackages.ReferencedBy(project))).ConfigureAwait(false);
-				foreach (var candidate in Prefixes(qualified)) {
-					if (referenced.Contains(candidate))
-						return none; // already referenced here: the problem is a restore, not a missing reference
-					if (known.TryGetValue(candidate, out string? version))
-						return new IContextAction[] { new InstallMissingPackageAction(this, project, candidate, version) };
+				if (unresolvedNameDiagnostics.Contains(diagnostic.Id)) {
+					foreach (var candidate in Prefixes(qualified)) {
+						if (referenced.Contains(candidate))
+							return none; // already referenced here: the problem is a restore, not a missing reference
+						if (known.TryGetValue(candidate, out string? version))
+							return new IContextAction[] { new InstallMissingPackageAction(this, project, candidate, version) };
+					}
+				}
+
+				// No package id matches: a bare type name may be declared by a package the solution already uses.
+				if (unresolvedTypeNameDiagnostics.Contains(diagnostic.Id)
+					&& diagnostic.Span.Start.Line == diagnostic.Span.End.Line
+					&& IsSimpleIdentifier(text.Substring(spanStart, Math.Max(0, GetOffset(text, diagnostic.Span.End.Line, diagnostic.Span.End.Column) - spanStart)))) {
+					string typeName = text.Substring(spanStart, GetOffset(text, diagnostic.Span.End.Line, diagnostic.Span.End.Column) - spanStart);
+					var candidates = known.Where(pair => !referenced.Contains(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+					if (candidates.Count == 0)
+						continue;
+					// Where the packages are installed and what this project compiles against: project and settings model, UI thread.
+					var (packagesFolder, framework) = await SD.MainThread.InvokeAsync(() => (GlobalPackagesFolder(), TargetFramework(project))).ConfigureAwait(false);
+					if (packagesFolder == null || framework == null)
+						continue;
+					var matches = await Task.Run(() => PackageTypeIndex.Find(typeName, candidates, packagesFolder, framework), cancellationToken).ConfigureAwait(false);
+					if (matches.Count > 0)
+						return matches.Select(match => (IContextAction)new InstallMissingPackageAction(this, project, match.PackageId, match.Version, match.Namespace + "." + match.Name)).ToArray();
 				}
 			}
 			return none;
+		}
+
+		static bool IsSimpleIdentifier(string name) =>
+			name.Length > 0 && (char.IsLetter(name[0]) || name[0] == '_') && name.All(c => char.IsLetterOrDigit(c) || c == '_');
+
+		/// <summary>The global packages folder NuGet's configuration gives the open solution (null when it cannot be read).</summary>
+		static string? GlobalPackagesFolder()
+		{
+			try {
+				var settings = NuGet.Configuration.Settings.LoadDefaultSettings(SD.ProjectService.CurrentSolution?.Directory.ToString());
+				return NuGet.Configuration.SettingsUtility.GetGlobalPackagesFolder(settings);
+			} catch (Exception ex) {
+				LoggingService.Debug("Could not determine the global packages folder: " + ex.Message);
+				return null;
+			}
+		}
+
+		/// <summary>The framework the project compiles against (the first of TargetFrameworks for a multi-targeting project).</summary>
+		static NuGet.Frameworks.NuGetFramework? TargetFramework(MSBuildBasedProject project)
+		{
+			string tfm = project.GetEvaluatedProperty("TargetFramework");
+			if (string.IsNullOrWhiteSpace(tfm))
+				tfm = (project.GetEvaluatedProperty("TargetFrameworks") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+			if (string.IsNullOrWhiteSpace(tfm))
+				return null;
+			var framework = NuGet.Frameworks.NuGetFramework.Parse(tfm.Trim());
+			return framework.IsUnsupported ? null : framework;
 		}
 
 		/// <summary>Offset of a 1-based line/column in <paramref name="text"/>, clamped to its length.</summary>
@@ -162,19 +214,22 @@ namespace ICSharpCode.PackageManagement
 		readonly MSBuildBasedProject project;
 		readonly string packageId;
 		readonly string version;
+		readonly string? declaredType;
 
-		public InstallMissingPackageAction(IContextActionProvider provider, MSBuildBasedProject project, string packageId, string version)
+		public InstallMissingPackageAction(IContextActionProvider provider, MSBuildBasedProject project, string packageId, string version, string? declaredType = null)
 		{
 			Provider = provider;
 			this.project = project;
 			this.packageId = packageId;
 			this.version = version;
+			this.declaredType = declaredType;
 		}
 
 		public IContextActionProvider Provider { get; }
 
 		public string GetDisplayName(EditorRefactoringContext context)
-			=> "Install NuGet package '" + packageId + "' " + version + " in '" + project.Name + "'";
+			=> "Install NuGet package '" + packageId + "' " + version + " in '" + project.Name + "'"
+				+ (declaredType == null ? "" : " (declares " + declaredType + ")");
 
 		public void Execute(EditorRefactoringContext context)
 		{

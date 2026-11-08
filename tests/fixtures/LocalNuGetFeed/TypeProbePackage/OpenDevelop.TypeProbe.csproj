@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <PackageId>OpenDevelop.TypeProbe</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>OpenDevelop Integration Tests</Authors>
+    <Description>Declares one public type, ProbeWidget; used only to test the missing-package light bulb for a bare type name against a local, offline feed.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+</Project>

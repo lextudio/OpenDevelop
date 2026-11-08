@@ -312,6 +312,19 @@
              Properties="Configuration=$(Configuration);PackageOutputPath=$(MSBuildProjectDirectory)/../fixtures/LocalNuGetFeed;RestoreIgnoreFailedSources=true" />
   </Target>
 
+  <!-- A second package in the same offline feed that, unlike OpenDevelop.TestPackage, declares a public type
+       (ProbeWidget), so the light bulb can be tested for a bare type name. -->
+  <Target Name="PackTypeProbeFeedFixture" BeforeTargets="Build"
+          Condition="'$(BuildIntegrationFixtures)' == 'true'"
+          Inputs="../fixtures/LocalNuGetFeed/TypeProbePackage/OpenDevelop.TypeProbe.csproj;../fixtures/LocalNuGetFeed/TypeProbePackage/ProbeWidget.cs"
+          Outputs="../fixtures/LocalNuGetFeed/OpenDevelop.TypeProbe.1.0.0.nupkg">
+    <MSBuild Projects="../fixtures/LocalNuGetFeed/TypeProbePackage/OpenDevelop.TypeProbe.csproj"
+             Targets="Restore" Properties="RestoreIgnoreFailedSources=true" />
+    <MSBuild Projects="../fixtures/LocalNuGetFeed/TypeProbePackage/OpenDevelop.TypeProbe.csproj"
+             Targets="Pack"
+             Properties="Configuration=$(Configuration);PackageOutputPath=$(MSBuildProjectDirectory)/../fixtures/LocalNuGetFeed;RestoreIgnoreFailedSources=true" />
+  </Target>
+
   <!-- One integration-test process owns one IDE process and drives all three Microsoft hosts.
        Keep this entry point in the test project (rather than a sidecar script) so the same
        fixture, artifacts and xUnit reporting are used in CI and locally. The backend choices

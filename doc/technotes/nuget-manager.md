@@ -19,14 +19,25 @@ the version is read from `Directory.Packages.props`, and the highest version win
 It makes no network request while the caret settles. A package no project of the solution has used yet is
 added through Manage Packages, not suggested. What is left to do:
 
-- **Bare type names.** `JsonConvert` with no `using` gets no suggestion, because only the namespace is
-  matched against the known package ids (qualified name, then shorter prefixes). Mapping a type to a
-  package could read the namespaces in the packages' restored assemblies (`obj/project.assets.json` of the
-  projects that use them), which stays inside the solution and needs no index.
+- **Bare type names (done 2026-11-08).** `JsonConvert` with no `using` is matched to a package the solution
+  already references when that package declares a public type of that name (`PackageTypeIndex`): NuGet's own code
+  finds the package in the global packages folder (`VersionFolderPathResolver`, `PackageFolderReader`, nearest
+  `ref`/`lib` group for the project's framework) and `System.Reflection.Metadata` lists the public top-level
+  types. It is offered for CS0246/BC30002 and for CS0103/BC30451 (an expression such as
+  `JsonConvert.SerializeObject(...)`), only when the name is a single identifier, at most three packages, and the
+  action's title says which type it declares. Covered by `PackageTypeIndexTests` and
+  `AddInTests.LightBulb_OffersToInstallThePackageThatDeclaresABareTypeName` (a second fixture package,
+  `OpenDevelop.TypeProbe`, declares `ProbeWidget`). Limits: only packages that are restored into the global
+  packages folder (nothing is downloaded), only the packages' own compile assets (not their dependencies),
+  only direct references of the solution's projects; the action adds the reference, and the `using` is then
+  offered by Roslyn's own fix; an unresolved variable that happens to be named like a package's public type is
+  also offered; the first lookup reads each candidate package's assemblies (cached afterwards), whose cost on
+  a large solution was not measured. The test installs `OpenDevelop.TypeProbe` into the developer's real global
+  packages folder (the restore needs it there).
 - **Project shapes.** SDK-style projects only (`MSBuildBasedProject.IsSdkStyleProject`);
   `packages.config` projects get no suggestion. Visual Basic works for the namespace and type diagnostics
-  (BC40056 for an `Imports`, BC30002 for an undefined type, both measured); an undeclared bare name
-  (CS0103 / BC30451) is not matched in either language.
+  (BC40056 for an `Imports`, BC30002 for an undefined type, both measured). An undeclared bare name
+  (CS0103 / BC30451) is matched only through the type index above, never as a package id.
 - **Cold start.** The first use of a package in a solution is not offered; deliberate, see above.
 
 ### 2. Light bulb: cost and verification
@@ -144,7 +155,7 @@ Package Manager Console hosted as a `pwsh` Terminal session, EnvDTE and Cmdlets)
 | Solution Explorer nodes | **Present**: Dependencies > Packages > `<Id> (<version>)`, next to Analyzers and Frameworks. Do not port MonoDevelop's `NodeBuilders`. |
 | Project node menu | Has Manage Packages... and Restore Packages. |
 | Packages folder / package node menus | The folder has its own `PackagesFolderNode` menu (Manage Packages..., Restore Packages). A package node has Update (opens the Updates tab filtered to that package and switches to its owning project), Manage Packages..., then Remove; `AddInTests.SearchAndInstallPackage_UpdatesProjectFile` invokes the real Update command and verifies its tab and canonical package-id filter. |
-| Missing-package quick fix | **Present for unresolved namespaces**: `MissingPackageContextActionProvider` (PackageManagement add-in) reads CS0246/CS0234 at the caret in an SDK-style project, matches the qualified name at the diagnostic, and its shorter prefixes, against the packages the solution's projects already reference (no network), and offers "Install NuGet package 'X' v in 'Project'" in the light bulb; choosing it writes the PackageReference on the UI thread and runs `dotnet restore` in the background. Covered by the `AddInTests.LightBulb_*` facts (a second project of the temporary solution already uses the package from the local feed; one fact checks that a package no project uses is not offered) and by `MissingPackageNamesTests`. Not covered: a bare type name such as `JsonConvert` (only namespaces are matched) and non-SDK projects. It works for Visual Basic too (BC40056 and BC30002). Underneath it, `LanguageServiceContextActionsExtension` puts Roslyn's code actions in the bulb for C# and VB (`CSharpBinding.addin`, `VBBinding.addin`; the bulb had no providers at all because the bindings compile none of the old NRefactory context actions); the language service diffs only existing documents and flattens nested actions, so actions that create a file or ask a further choice (Generate type) are listed but report "cannot be applied yet" in the status bar. `ExtendedPopup` now sets `PlacementTarget` because LibreWPF refuses an owner-less popup. |
+| Missing-package quick fix | **Present for unresolved namespaces**: `MissingPackageContextActionProvider` (PackageManagement add-in) reads CS0246/CS0234 at the caret in an SDK-style project, matches the qualified name at the diagnostic, and its shorter prefixes, against the packages the solution's projects already reference (no network), and offers "Install NuGet package 'X' v in 'Project'" in the light bulb; choosing it writes the PackageReference on the UI thread and runs `dotnet restore` in the background. Covered by the `AddInTests.LightBulb_*` facts (a second project of the temporary solution already uses the package from the local feed; one fact checks that a package no project uses is not offered) and by `MissingPackageNamesTests`. A bare type name such as `JsonConvert` is matched through the type index of the packages the solution already uses. Not covered: non-SDK projects. It works for Visual Basic too (BC40056 and BC30002). Underneath it, `LanguageServiceContextActionsExtension` puts Roslyn's code actions in the bulb for C# and VB (`CSharpBinding.addin`, `VBBinding.addin`; the bulb had no providers at all because the bindings compile none of the old NRefactory context actions); the language service diffs only existing documents and flattens nested actions, so actions that create a file or ask a further choice (Generate type) are listed but report "cannot be applied yet" in the status bar. `ExtendedPopup` now sets `PlacementTarget` because LibreWPF refuses an owner-less popup. |
 | Package Console, EnvDTE, batch operations | Present; they came from SharpDevelop, not from `monodevelop-nuget-extensions`. |
 
 ### `monodevelop-nuget-extensions` feature audit
