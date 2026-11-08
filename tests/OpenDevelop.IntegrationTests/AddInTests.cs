@@ -6117,6 +6117,64 @@ EndGlobal
     }
 
     [Fact]
+    public async Task LightBulb_OffersRoslynCodeActions_AndAppliesOneToTheEditor()
+    {
+        // A temporary copy of the fixture project (_projectDir), so the new file is not tracked.
+        var probePath = Path.Combine(_projectDir, "NuGetFixtureApp", "BulbProbe.cs");
+        const string source = "class BulbProbe { object O = new Missing(); }\n";
+        await File.WriteAllTextAsync(probePath, source);
+        try
+        {
+
+            var solutionPath = Path.Combine(_projectDir, "NuGetFixture.sln");
+            var openResult = await _app.InvokeAsync("od.open-solution", solutionPath);
+            Assert.True(openResult.GetProperty("success").GetBoolean(), $"Failed to open {solutionPath}");
+            var opened = await _app.InvokeAsync("od.open-file", probePath);
+            Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+
+            // The caret is inside "Missing" (unresolved type). The editor's light bulb asks every
+            // IContextActionProvider registered on the text editor (od.editor.bulb-actions builds the same
+            // EditorActionsProvider the renderer does, visibility filter included); the C# binding must have put the
+            // language-service provider there, and Roslyn's CS0246 fixes must come back through it.
+            var offset = source.IndexOf("Missing", StringComparison.Ordinal) + 1;
+            JsonElement bulb = default;
+            for (var attempt = 0; attempt < 40; attempt++)
+            {
+                bulb = await _app.InvokeAsync("od.editor.bulb-actions", probePath, offset);
+                Assert.True(bulb.GetProperty("success").GetBoolean(), bulb.ToString());
+                // Diagnostics need the project loaded into the Roslyn workspace first; poll for it.
+                if (bulb.GetProperty("actions").EnumerateArray().Any(a => a.GetProperty("title").GetString() == "using System.Reflection;"))
+                    break;
+                await Task.Delay(500);
+            }
+
+            Assert.Contains("ICSharpCode.SharpDevelop.LanguageServices.CodeActions",
+                bulb.GetProperty("providers").EnumerateArray().Select(p => p.GetString()));
+            var titles = bulb.GetProperty("actions").EnumerateArray().Select(a => a.GetProperty("title").GetString()).ToList();
+            Assert.Contains("using System.Reflection;", titles);
+            Assert.Contains("Generate type 'Missing'", titles);
+
+            // An action the language service cannot express as edits to existing files (it would create a
+            // new file, or has nested choices) must report failure and leave the buffer alone, not claim success.
+            var generate = await _app.InvokeAsync("od.editor.bulb-actions", probePath, offset, "Generate type 'Missing'");
+            Assert.False(generate.GetProperty("applied").GetBoolean(), generate.ToString());
+            Assert.Equal(source, (await _app.InvokeAsync("od.file.query-vs-text-buffer", probePath)).GetProperty("text").GetString());
+
+            // Applying the fix edits the open buffer (one undo step), not the file on disk.
+            var applied = await _app.InvokeAsync("od.editor.bulb-actions", probePath, offset, "using System.Reflection;");
+            Assert.True(applied.GetProperty("applied").GetBoolean(), applied.ToString());
+            var buffer = await _app.InvokeAsync("od.file.query-vs-text-buffer", probePath);
+            Assert.StartsWith("using System.Reflection;", buffer.GetProperty("text").GetString());
+            Assert.Equal(source, await File.ReadAllTextAsync(probePath));
+        }
+        finally
+        {
+            // CS0246 on purpose: leaving it in the project would break any later build of this copy.
+            File.Delete(probePath);
+        }
+    }
+
+    [Fact]
     public async Task SearchAndInstallPackage_UpdatesProjectFile()
     {
         var solutionPath = Path.Combine(_projectDir, "NuGetFixture.sln");

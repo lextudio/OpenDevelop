@@ -136,4 +136,12 @@
 		                projectfileextension = ".csproj"
 		                class                = "CSharpBinding.CSharpProjectBinding" />
 	</Path>
+
+	<!-- Light bulb: the language service's (Roslyn) code fixes and refactorings at the caret. -->
+	<Path name="/SharpDevelop/ViewContent/TextEditor/Extensions">
+		<TextEditorExtension
+			id="CSharpCodeActions"
+			class="ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceContextActionsExtension"
+			extensions=".cs" />
+	</Path>
 </AddIn>
