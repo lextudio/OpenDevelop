@@ -43,6 +43,10 @@
     <ProjectReference Include="..\..\src\Main\LanguageServices\Roslyn.Host\Roslyn.Host.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\AddIns\Analysis\UnitTesting\UnitTesting.csproj" />
     <ProjectReference Include="..\..\src\AddIns\Misc\PackageManagement\Project\PackageManagement.csproj" />
+    <!-- PortableNuGetSettings implements this legacy NuGet 2.x ISettings; the tests drive it through that interface. -->
+    <Reference Include="NuGet.Core">
+      <HintPath>..\..\src\AddIns\Misc\PackageManagement\RequiredLibraries\NuGet.Core.dll</HintPath>
+    </Reference>
     <!-- The Hot Reload adapters live in their framework addins; the end-to-end tests drive them. -->
     <ProjectReference Include="..\..\src\AddIns\DisplayBindings\WpfDesign\WpfDesign.AddIn\WpfDesign.AddIn.csproj" />
     <!-- Exercise the public DesignerToolboxScope boundary, rather than only its SharedToolbox

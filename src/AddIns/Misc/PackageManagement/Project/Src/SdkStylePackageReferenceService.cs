@@ -47,13 +47,13 @@ namespace ICSharpCode.PackageManagement
 		
 		public void InstallPackage(IPackage package, IPackageRepository sourceRepository, ILogger logger)
 		{
-			InstallPackage(package.Id, package.Version.ToString(), sourceRepository?.Source, logger);
+			InstallPackage(package.Id, package.Version.ToString(), logger);
 		}
 
-		public void InstallPackage(string packageId, string version, string source, ILogger logger)
+		public void InstallPackage(string packageId, string version, ILogger logger)
 		{
 			AddPackageReference(packageId, version);
-			Restore(source, logger);
+			Restore(logger);
 		}
 
 		/// <summary>
@@ -126,7 +126,7 @@ namespace ICSharpCode.PackageManagement
 		/// Runs <c>dotnet restore</c> for the project and waits for it, so call it off the UI thread.
 		/// Returns null on success, otherwise why it failed (also sent to <paramref name="logger"/> when given).
 		/// </summary>
-		public string Restore(string source, ILogger logger)
+		public string Restore(ILogger logger)
 		{
 			try {
 				var startInfo = new ProcessStartInfo("dotnet") {
@@ -136,11 +136,8 @@ namespace ICSharpCode.PackageManagement
 				};
 				startInfo.ArgumentList.Add("restore");
 				startInfo.ArgumentList.Add(project.FileName.ToString());
-				if (!string.IsNullOrWhiteSpace(source) && !source.StartsWith("Aggregate", StringComparison.OrdinalIgnoreCase)) {
-					startInfo.ArgumentList.Add("--source");
-					startInfo.ArgumentList.Add(source);
-				}
-				
+				// No --source: dotnet restore uses the sources NuGet defines for this project (nuget.config in
+				// the solution's directory and above, the user's and the machine's), the ones the dialog lists.
 				using (System.Diagnostics.Process process = System.Diagnostics.Process.Start(startInfo)) {
 					string output = process.StandardOutput.ReadToEnd();
 					string error = process.StandardError.ReadToEnd();

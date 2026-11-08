@@ -87,7 +87,7 @@ ignoring entries in conditional item groups. Covered by
 existing central package from the Updates tab, `VersionOverride`, and a project whose props file is not found
 (it falls back to writing `Version=`).
 
-### 6. Verification gaps and a behaviour to decide
+### 6. Verification gaps and package-source limits
 
 - Covered by `AddInTests.SearchAndInstallPackage_UpdatesProjectFile`: from the package node and from the
   Packages folder, Manage Packages... opens the dialog (title `NuGetFixtureApp - Manage Packages` for the
@@ -96,11 +96,23 @@ existing central package from the Updates tab, `VersionOverride`, and a project 
   solution has several.** The fixture has one project, and `PackageManagementSelectedProjects` falls back
   to a solution's only project when `CurrentProject` is null, so the title cannot prove the mapping; that
   needs a second project in a fixture.
-- **Restore Packages ignores the active package source.** `NuGetPackageRestoreCommandLine` runs
-  `dotnet restore <solution>`, so only `nuget.config` decides the feeds, while the install path
-  (`SdkStylePackageReferenceService.Restore`) passes `--source <active source>`. A package that exists only in a source chosen in the Manage Packages dialog can therefore be installed and then fail a later
-  Restore Packages. Read from the code, not reproduced. Decide whether Restore should follow the active
-  source, or the dialog should write the chosen source into `nuget.config`.
+- **Package sources follow NuGet's own definition (done 2026-11-08).** The add-in used to read and write
+  only `<solution>/.nuget/NuGet.Config` (`PortableNuGetSettings`, via `SettingsProvider`), the NuGet 2.x
+  location. `dotnet restore` ignores that file (measured: a feed defined only there is not used, the same feed in
+  `<solution>/NuGet.Config` is), and it also uses feeds from parent directories and from the user's
+  `~/.nuget/NuGet/NuGet.Config`, which the dialog never listed. The restore after an install passed `--source`,
+  which hid the mismatch. Now the sources the dialog lists are the merged NuGet configuration
+  (`NuGetConfigHierarchy`: the solution's directory and every directory above it, then the user's and machine's
+  files, `<clear/>` honoured), the restore passes no `--source`, and edits go to `<solution>/NuGet.Config`
+  (the spelling already present, if any), only entries no other file provides, keeping `<clear/>` and
+  `<remove>`, so a user's private feeds are not copied into it. The selected (active) source only decides what
+  the dialog browses. Covered by `AddInTests.PackageSources_AreTheNuGetConfigurationOfTheSolution_AndRestoreUsesThem`,
+  `AddInTests.AddedPackageSource_IsWrittenWhereNuGetReadsIt_AndRestoreUsesIt`, `NuGetConfigHierarchyTests` and
+  `PortableNuGetSettingsTests`. Limits, not addressed: a source defined in another file cannot be removed or
+  re-enabled from the dialog (edit the file that defines it); sources a user had saved in the old
+  `.nuget/NuGet.Config` are no longer listed (move them to `<solution>/NuGet.Config`); credentials
+  (`packageSourceCredentials`) and `packageSourceMapping` are not read by the add-in's own list (dotnet applies
+  them during restore); the nested-value sections are still read from the solution's file only.
 - After an install, the owning language-service project is refreshed after the restore, and the
   missing-package journey checks the offer disappears; whether the editor's red squiggle clears is
   not checked.

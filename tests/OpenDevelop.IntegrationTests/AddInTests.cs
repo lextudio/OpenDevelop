@@ -6243,6 +6243,85 @@ EndGlobal
         await AssertBulbInstallsMissingPackageAsync($"using {TestPackageId};\nclass PackageProbe {{ }}\n", "OpenDevelop", centralPackageVersions: true);
     }
 
+    /// <summary>
+    /// A NuGet.Config that defines only the local test feed (<c>&lt;clear/&gt;</c> hides the user's and the machine's
+    /// sources), so a restore in these tests neither needs nor reaches nuget.org.
+    /// </summary>
+    void WriteLocalFeedNuGetConfig(string directory)
+    {
+        File.WriteAllText(Path.Combine(directory, "NuGet.Config"),
+            "<configuration>\n  <packageSources>\n    <clear />\n    <add key=\"LocalTestFeed\" value=\"" + _app.LocalNuGetFeedPath + "\" />\n  </packageSources>\n</configuration>\n");
+    }
+
+    [Fact]
+    public async Task PackageSources_AreTheNuGetConfigurationOfTheSolution_AndRestoreUsesThem()
+    {
+        // NuGet's definition: the configuration in the solution's directory and every directory above it, then
+        // the user's and the machine's. Here the feed is defined one directory ABOVE the solution; the add-in
+        // must list it, and Restore Packages (dotnet restore, with no --source) must restore from it.
+        var root = Path.Combine(_projectDir, "scope");
+        var work = Path.Combine(root, "work");
+        Directory.CreateDirectory(Path.Combine(work, "App"));
+        WriteLocalFeedNuGetConfig(root);
+        await File.WriteAllTextAsync(Path.Combine(work, "App", "App.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\""
+            + TestPackageId + "\" Version=\"1.0.0\" />\n  </ItemGroup>\n</Project>\n");
+        await File.WriteAllTextAsync(Path.Combine(work, "App", "Program.cs"), "class Program { static void Main() { } }\n");
+        await File.WriteAllTextAsync(Path.Combine(work, "Work.slnx"), "<Solution>\n  <Project Path=\"App/App.csproj\" />\n</Solution>\n");
+
+        var openResult = await _app.InvokeAsync("od.open-solution", Path.Combine(work, "Work.slnx"));
+        Assert.True(openResult.GetProperty("success").GetBoolean(), openResult.ToString());
+
+        // The source defined in the parent directory is offered.
+        var sources = await _app.InvokeAsync("od.nuget.sources");
+        Assert.Contains(sources.GetProperty("sources").EnumerateArray(),
+            source => source.GetProperty("name").GetString() == "LocalTestFeed"
+                && source.GetProperty("source").GetString() == _app.LocalNuGetFeedPath);
+
+        // Restore Packages from the project node: the assets file records the sources dotnet restore used.
+        var assetsPath = Path.Combine(work, "App", "obj", "project.assets.json");
+        var started = await _app.InvokeAsync("od.project-browser.invoke-context-menu", "Project", "RestorePackages");
+        Assert.True(started.GetProperty("started").GetBoolean(), started.ToString());
+        Assert.True(await OpenDevelopAppFixture.PollUntilAsync(() => Task.FromResult(File.Exists(assetsPath)), TimeSpan.FromSeconds(120)),
+            "Restore Packages did not produce " + assetsPath);
+        var assets = await File.ReadAllTextAsync(assetsPath);
+        Assert.Contains(TestPackageId + "/", assets);
+        Assert.Contains("LocalNuGetFeed", assets);
+        Assert.DoesNotContain("api.nuget.org", assets);
+    }
+
+    [Fact]
+    public async Task AddedPackageSource_IsWrittenWhereNuGetReadsIt_AndRestoreUsesIt()
+    {
+        // The add-in used to keep its sources in <solution>/.nuget/NuGet.Config, which dotnet restore
+        // ignores. A source added in Manage Packages must land in <solution>/NuGet.Config, and the restore
+        // (which passes no --source) must therefore see it.
+        var work = Path.Combine(_projectDir, "scope-added");
+        Directory.CreateDirectory(Path.Combine(work, "App"));
+        await File.WriteAllTextAsync(Path.Combine(work, "App", "App.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\""
+            + TestPackageId + "\" Version=\"1.0.0\" />\n  </ItemGroup>\n</Project>\n");
+        await File.WriteAllTextAsync(Path.Combine(work, "App", "Program.cs"), "class Program { static void Main() { } }\n");
+        await File.WriteAllTextAsync(Path.Combine(work, "Work.slnx"), "<Solution>\n  <Project Path=\"App/App.csproj\" />\n</Solution>\n");
+
+        var openResult = await _app.InvokeAsync("od.open-solution", Path.Combine(work, "Work.slnx"));
+        Assert.True(openResult.GetProperty("success").GetBoolean(), openResult.ToString());
+        var feed = await _app.InvokeAsync("od.nuget.set-local-feed", _app.LocalNuGetFeedPath);
+        Assert.True(feed.GetProperty("success").GetBoolean(), feed.ToString());
+
+        var configPath = Path.Combine(work, "NuGet.Config");
+        Assert.True(File.Exists(configPath), "The added source was not written to " + configPath);
+        Assert.Contains(_app.LocalNuGetFeedPath, await File.ReadAllTextAsync(configPath));
+        Assert.False(Directory.Exists(Path.Combine(work, ".nuget")), "A NuGet 2.x .nuget folder was created");
+
+        var assetsPath = Path.Combine(work, "App", "obj", "project.assets.json");
+        var started = await _app.InvokeAsync("od.project-browser.invoke-context-menu", "Project", "RestorePackages");
+        Assert.True(started.GetProperty("started").GetBoolean(), started.ToString());
+        Assert.True(await OpenDevelopAppFixture.PollUntilAsync(() => Task.FromResult(File.Exists(assetsPath)), TimeSpan.FromSeconds(120)),
+            "Restore Packages did not produce " + assetsPath);
+        Assert.Contains("LocalNuGetFeed", await File.ReadAllTextAsync(assetsPath));
+    }
+
     [Fact]
     public async Task LightBulb_DoesNotOfferAPackageNoProjectOfTheSolutionUses()
     {
@@ -6295,6 +6374,7 @@ EndGlobal
         var probePath = Path.Combine(_projectDir, "NuGetFixtureApp", "PackageProbe.cs");
 
         await File.WriteAllTextAsync(probePath, source);
+        WriteLocalFeedNuGetConfig(_projectDir);
         var centralPropsPath = Path.Combine(_projectDir, "Directory.Packages.props");
         if (centralPackageVersions)
         {
@@ -6401,6 +6481,7 @@ EndGlobal
     [Fact]
     public async Task SearchAndInstallPackage_UpdatesProjectFile()
     {
+        WriteLocalFeedNuGetConfig(_projectDir);
         var solutionPath = Path.Combine(_projectDir, "NuGetFixture.sln");
         var openResult = await _app.InvokeAsync("od.open-solution", solutionPath);
         Assert.True(openResult.GetProperty("success").GetBoolean(), $"Failed to open {solutionPath}");

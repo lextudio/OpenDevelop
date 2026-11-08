@@ -182,13 +182,12 @@ namespace ICSharpCode.PackageManagement
 		/// <summary>Public to the assembly so a test can await the install instead of polling.</summary>
 		internal async Task<bool> ExecuteAsync(FileName documentFileName)
 		{
-			var source = PackageManagementServices.RegisteredPackageRepositories.ActivePackageSource?.Source;
 			SD.StatusBar.SetMessage("Installing NuGet package '" + packageId + "' " + version + "...");
 			try {
 				var references = new SdkStylePackageReferenceService(project);
 				// The project edit belongs to the UI thread (this method was started there); `dotnet restore` blocks, so it does not.
 				references.AddPackageReference(packageId, version);
-				string restoreFailure = await Task.Run(() => references.Restore(source, null)).ConfigureAwait(true);
+				string restoreFailure = await Task.Run(() => references.Restore(null)).ConfigureAwait(true);
 				if (restoreFailure != null) {
 					// The reference is already in the project; say that the restore did not work instead of
 					// claiming the package was installed, and keep the reason for diagnosis.

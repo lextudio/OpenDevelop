@@ -51,7 +51,10 @@ namespace ICSharpCode.PackageManagement
 		{
 			ISolution solution = projectService.OpenSolution;
 			if (solution != null) {
-				return Path.Combine(solution.Directory, ".nuget");
+				// NuGet reads <solution>/NuGet.Config (and the ones above it), not the NuGet 2.x
+				// <solution>/.nuget/NuGet.Config this used to point at: dotnet restore ignores that file
+				// (measured), so a source saved there was never used by a restore without --source.
+				return solution.Directory;
 			}
 			return null;
 		}

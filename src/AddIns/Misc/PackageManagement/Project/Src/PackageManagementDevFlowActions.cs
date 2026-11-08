@@ -47,6 +47,16 @@ namespace ICSharpCode.PackageManagement
 			return JsonSerializer.Serialize(new { success = true, source = source.Source, name = source.Name });
 		}
 
+		[DevFlowAction("od.nuget.sources", Description = "List the package sources the add-in offers for the open solution (the merged NuGet configuration hierarchy) and which one is active")]
+		public static string Sources()
+		{
+			var repositories = PackageManagementServices.RegisteredPackageRepositories;
+			return JsonSerializer.Serialize(new {
+				sources = repositories.PackageSources.Select(source => new { name = source.Name, source = source.Source, isEnabled = source.IsEnabled }).ToArray(),
+				active = repositories.ActivePackageSource?.Source
+			});
+		}
+
 		[DevFlowAction("od.nuget.open-dialog", Description = "Open the real Manage NuGet Packages dialog (non-modally, so the DevFlow action returns immediately instead of blocking on ShowDialog())")]
 		public static string OpenDialog()
 		{
