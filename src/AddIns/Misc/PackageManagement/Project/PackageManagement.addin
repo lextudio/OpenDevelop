@@ -159,6 +159,6 @@
 		<TextEditorExtension
 			id="PackageManagementMissingPackage"
 			class="ICSharpCode.PackageManagement.MissingPackageContextActionsExtension"
-			extensions=".cs" />
+			extensions=".cs;.vb" />
 	</Path>
 </AddIn>

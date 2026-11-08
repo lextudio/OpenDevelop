@@ -135,6 +135,15 @@
 		<CodeCompletionBinding id = "VB-Roslyn" extensions = ".vb" class = "ICSharpCode.SharpDevelop.Roslyn.RoslynCodeCompletionBinding"/>
 	</Path>
 
+	<!-- Roslyn quick fixes/refactorings use the same light-bulb extension as C#. PackageManagement
+	     also registers its missing-package provider for .vb, so both providers are available here. -->
+	<Path name="/SharpDevelop/ViewContent/TextEditor/Extensions">
+		<TextEditorExtension
+			id="VisualBasicCodeActions"
+			class="ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceContextActionsExtension"
+			extensions=".vb" />
+	</Path>
+
 	<Path name="/SharpDevelop/Autostart">
 		<Class id="VisualBasicLanguageService" class="ICSharpCode.VBBinding.RegisterVisualBasicLanguageServiceCommand"/>
 		<Class id="VisualBasicOpenLensProviders" class="ICSharpCode.VBBinding.RegisterVisualBasicOpenLensProvidersCommand"/>

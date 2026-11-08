@@ -48,8 +48,9 @@ suggestion. Each is a separate, reviewable change.
 
 **Performance / correctness risks of the light bulb**
 - Every time the caret settles (about 500 ms) the language service now computes diagnostics and
-  code actions, and the NuGet provider asks for diagnostics a second time. Not measured. Cheapest
-  first step: skip `UpsertDocumentAsync` when the text has not changed since the last call.
+  code actions, and the NuGet provider asks for diagnostics a second time. Not measured. A provider-local
+  `UpsertDocumentAsync` cache is unsafe because outline, parser, and completion callers share the same
+  service document; any optimization needs a service-owned document-version/content contract first.
 - The bulb popup was verified only as "opens, has actions" (`od.editor.bulb-popup`). Its on-screen
   position and a real click were not checked; the popup is a separate window and is absent from the UI tree.
 - After an install, the action refreshes the owning language-service project after restore. The
@@ -61,7 +62,8 @@ suggestion. Each is a separate, reviewable change.
 - `DiffSolutionsToTextEditsAsync` diffs only documents that already exist and nested code actions are
   flattened, so "Generate type" and other actions that create a file or ask a further choice are
   listed but cannot be applied (status bar: "cannot be applied yet").
-- The light bulb is registered for `.cs` only; VB has no `TextEditorExtension` registration.
+- The light bulb is registered for C# and VB. The missing-package provider applies the same SDK-style
+  and exact-package-id restrictions to both languages.
 
 **Missing-package suggestion**
 - Only a namespace whose qualified name, or a shorter prefix, is an exact NuGet package id. A bare
@@ -76,8 +78,9 @@ suggestion. Each is a separate, reviewable change.
   Project Browser menu item and verifies the selected tab and filter.
 
 **Housekeeping**
-- `externals/altcover` has no reference in any project, props or script (only in the CI submodule
-  list); confirm there is no implicit use, then drop it like `monodevelop`.
+- `externals/altcover` is not source-linked, but remains intentionally pinned because integration
+  coverage consumes the `AltCover` NuGet package and its integration is documented in
+  `doc/technotes/altcover.md`; do not drop the submodule based on the old "no reference" claim.
 - `externals/vsmac-codecoverage` and `externals/vs-editor-api` are source-linked but frozen
   upstream; they could become LeXtudio GitHub Packages like sharpdbg.
 
@@ -193,6 +196,12 @@ where it's genuinely portable, rewrite the *host integration* and *UI* natively.
    NuGet work stayed scoped to `ICSharpCode.SharpDevelop.Uno.csproj` (which builds cleanly) and
    verified new engine pieces with standalone throwaway harnesses instead of the normal test
    project.
+Historical slices below describe the original MonoDevelop-port investigation. They are not a
+current backlog: the Status and feature-audit tables above supersede them. The shipped
+SharpDevelop-era add-in already has install/uninstall/update, multi-project operations, source
+management, and the Package Manager Console. Keep this list only for provenance when comparing
+MonoDevelop's architecture.
+
 4. **Install / uninstall** — the actual `NuGetPackageManager.InstallPackageAsync`/
    `UninstallPackageAsync` calls against the slice-1 adapter, writing back to the project file
    and triggering a restore.
