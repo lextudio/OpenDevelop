@@ -42,11 +42,15 @@ added through Manage Packages, not suggested. What is left to do:
 
 ### 2. Light bulb: cost and verification
 
-- **Cost per caret stop.** About 500 ms after the caret settles, the language service computes
-  diagnostics and code actions, and the NuGet provider asks for diagnostics a second time. Not
-  measured. A provider-local cache of `UpsertDocumentAsync` is unsafe because outline, parser and
-  completion callers share the same service document; any saving needs a service-owned
-  document-version/content contract first.
+- **Cost per caret stop (measured 2026-11-08, no change needed).** About 500 ms after the caret settles, the
+  light bulb asks every provider; both the Roslyn provider and the NuGet provider synchronise the document and
+  read diagnostics. `UpsertDocumentAsync` is a no-op for a project document when the service's own copy already has the same text
+  (a content check inside the service, which is where it is safe: outline, parser and completion share that
+  document), so the second synchronisation is free. Measured with `od.editor.bulb-actions` in the IDE on the
+  `ICSharpCode.SharpDevelop` project (747 source files, Debug build, Apple silicon, caret in a method body):
+  the first two calls after loading took about 1.3 s and 1.1 s (the compilation warming up, once); afterwards a
+  call took 0.03-0.07 s unchanged, and the first call after an edit 0.10-0.15 s. All of it runs off the UI
+  thread. Not measured: a much larger solution, a Release build, a machine without a warm compilation.
 - **The popup itself.** Verified only as "opens and has actions" (`od.editor.bulb-popup`). Its on-screen
   position and a real click are not checked (it is a separate window and absent from the UI tree).
 - **Restore failure.** After "Install NuGet package", a failed restore (offline feed, wrong source) is
