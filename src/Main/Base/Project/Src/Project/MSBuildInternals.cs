@@ -87,7 +87,10 @@ namespace ICSharpCode.SharpDevelop.Project
 			// cross-published OpenDevelop-win-x64 ended up shipping an ARM64 resolver DLL when
 			// built on this ARM64 dev machine - see the SharpDevelop.csproj comment on the (now
 			// removed) DeployNuGetSdkResolver*/ targets this replaces.
-			var sdk = DotNetSdkService.ResolveEffectiveSdkForInProcessHosting();
+			// This embedded MSBuild is part of the already-running IDE. It must remain on the SDK
+			// selected at process startup; Tools > Options controls child project builds, not DLLs
+			// loaded into this process after startup.
+			var sdk = DotNetSdkService.ResolveStartupSdkForInProcessHosting();
 			if (sdk?.RootPath == null || sdk.HighestSdkVersion == null) {
 				NoCompatibleInProcessSdkFound = true;
 				LoggingService.Error(

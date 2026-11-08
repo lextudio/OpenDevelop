@@ -16,9 +16,9 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 	/// (which is exactly how OpenDevelop ended up with three inconsistent resolution strategies and
 	/// the NETSDK1045 confusion this replaces).
 	///
-	/// Default behavior: no selection stored (empty SelectedSdkRootPath) means "use the system
-	/// SDK" - i.e. whatever "dotnet" resolves to on PATH/standard install locations - not the
-	/// bundled dev SDK this app itself happens to be running under.
+	/// Default behavior: no selection stored (empty SelectedSdkRootPath) means use the SDK root
+	/// fixed when this OpenDevelop session started. Project builds never rank another installation
+	/// as an implicit fallback; users choose a different root in Tools &gt; Options &gt; .NET SDK.
 	/// </summary>
 	public static class DotNetSdkService
 	{
@@ -32,6 +32,30 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 		/// check fail on Windows, which silently disabled this entire service (DiscoverSdks()
 		/// always returning empty) for every Windows install, dev or packaged alike.</summary>
 		static readonly string DotnetExeFileName = OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
+
+		// Capture the host chosen for this IDE session before Options participates in resolution.
+		// This is deliberately one root, rather than the output of DiscoverSdks(): a build without
+		// an Options selection must fall back to the SDK that started OpenDevelop, not silently
+		// select another installation because it happens to rank higher on this machine.
+		static readonly string StartupSdkRootPath = ResolveStartupSdkRoot();
+
+		static string ResolveStartupSdkRoot()
+		{
+			// RuntimeEnvironment identifies the runtime which actually loaded this process, including
+			// an apphost/Finder launch where neither DOTNET_ROOT nor PATH says anything useful. Its
+			// layout is <root>/shared/Microsoft.NETCore.App/<version>.
+			try {
+				var runtime = new DirectoryInfo(RuntimeEnvironment.GetRuntimeDirectory());
+				var root = runtime.Parent?.Parent?.Parent;
+				var normalized = NormalizeRoot(root?.FullName);
+				if (normalized != null && TryDescribeCustomRoot(normalized, out _, out _))
+					return normalized;
+			} catch (Exception) {
+				// Fall through to launch-environment compatibility below.
+			}
+			return NormalizeRoot(Environment.GetEnvironmentVariable("DOTNET_ROOT"))
+				?? ResolvePathDotnetRoot();
+		}
 
 		/// <summary>
 		/// The highest SDK major automatic discovery accepts from the bundled, PATH-default and
@@ -545,6 +569,20 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			return ResolveEffectiveSdkForInProcessHosting(DiscoverSdks(), SelectedSdkRootPath);
 		}
 
+		/// <summary>
+		/// Returns the SDK root that was fixed when this OpenDevelop session started, if it remains
+		/// usable in this process. In-process services must never follow a later Options choice: they
+		/// have already loaded MSBuild from this startup toolset.
+		/// </summary>
+		public static DotNetSdkInfo ResolveStartupSdkForInProcessHosting()
+		{
+			if (!TryDescribeCustomRoot(StartupSdkRootPath, out var sdk, out _)
+				|| !IsSupportedSdk(sdk)
+				|| sdk.Architecture != RuntimeInformation.ProcessArchitecture)
+				return null;
+			return sdk;
+		}
+
 		internal static DotNetSdkInfo ResolveEffectiveSdkForInProcessHosting(IReadOnlyList<DotNetSdkInfo> discovered)
 		{
 			return ResolveEffectiveSdkForInProcessHosting(discovered, SelectedSdkRootPath);
@@ -974,13 +1012,13 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 				reason = Localized("Build.Sdk.ReasonSelectedUnusable",
 					"the selected SDK '{0}' is not usable, so a system SDK was chosen automatically (matching this IDE's architecture first, then the highest version)", selectedRoot);
 			else if (choice.IsDefault)
-				reason = Localized("Build.Sdk.ReasonDefault", "no SDK is selected in Options; a supported system SDK was chosen automatically (matching this IDE's architecture first, then the highest version)");
+				reason = Localized("Build.Sdk.ReasonDefault", "no SDK is selected in Options; this IDE session's startup SDK was used (its architecture was fixed at startup)");
 			else
 				// Implicit: ResolveSdkForTargetFrameworks returns a non-default choice only when a
 				// project needs a newer major than the default SDK (a global.json pin is handled above).
 				reason = Localized("Build.Sdk.ReasonNewerFramework", "the project targets a newer .NET than the default SDK supports");
 			string found = discovered == null || discovered.Count == 0
-				? Localized("Build.Sdk.DiscoveredNone", "none")
+				? Localized("Build.Sdk.DiscoveredNone", "not enumerated")
 				: string.Join("; ", discovered.Select(s => s.RootPath + " (" + s.Origin + ", " + s.HighestSdkVersion + ")"));
 			return Localized("Build.Sdk.Using", "Using .NET SDK {0} at {1}: {2}. Discovered: {3}.",
 				choice.Version, choice.Sdk.RootPath, reason, found);
@@ -991,7 +1029,9 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 		public static string DescribeChoiceForOutput(SdkChoice choice, IReadOnlyList<DotNetSdkInfo> discovered = null)
 		{
 			try {
-				return DescribeChoice(choice, SelectedSdkRootPath, discovered ?? DiscoverSdks());
+				// Build paths must not enumerate alternate SDK roots merely to decorate a diagnostic.
+				// Callers that intentionally displayed the Options inventory can still pass it here.
+				return DescribeChoice(choice, SelectedSdkRootPath, discovered ?? Array.Empty<DotNetSdkInfo>());
 			} catch (Exception ex) {
 				return Localized("Build.Sdk.DescribeFailed", "Could not describe the .NET SDK for this build: {0}", ex.Message);
 			}
@@ -1034,8 +1074,17 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 					frameworks.AddRange(multiple.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(f => f.Trim()));
 			}
 			string selected = SelectedSdkRootPath;
-			var discovered = DiscoverSdksCached(selected, CustomRoots);
-			var choice = ResolveSdkForTargetFrameworks(discovered, selected, frameworks);
+			// Do not turn a missing/invalid Options selection into a machine-wide search: that makes
+			// builds non-deterministic and can splice a task host from a different SDK into this IDE.
+			// The only fallback is the root captured at IDE startup for this session.
+			string root = string.IsNullOrWhiteSpace(selected) ? StartupSdkRootPath : selected;
+			if (!TryDescribeCustomRoot(root, out var sdk, out _)
+				|| !IsSupportedSdk(sdk))
+				return null;
+			var discovered = (IReadOnlyList<DotNetSdkInfo>)new[] { sdk };
+			var choice = ResolveSdkForTargetFrameworks(discovered, root, frameworks);
+			// Honour a global.json exact SDK version only inside the already chosen root. It must never
+			// make a selected 10.0.200 root switch to a separate 10.0.100 installation.
 			string projectDirectory = project?.FileName == null ? null : Path.GetDirectoryName(project.FileName.ToString());
 			return ApplyGlobalJsonPin(choice, discovered, ReadGlobalJsonSdkVersion(projectDirectory));
 		}
@@ -1052,8 +1101,11 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 				return choice;
 			bool Has(DotNetSdkInfo sdk) => sdk != null && sdk.InstalledSdkVersions.Concat(sdk.PreviewSdkVersions)
 				.Any(v => string.Equals(v, pinnedVersion, StringComparison.OrdinalIgnoreCase));
-			if (Has(choice?.Sdk))
-				return choice;
+			if (Has(choice?.Sdk)) {
+				if (string.Equals(choice.Version, pinnedVersion, StringComparison.OrdinalIgnoreCase))
+					return choice;
+				return new SdkChoice { Sdk = choice.Sdk, Version = pinnedVersion, IsDefault = choice.IsDefault, PinnedByGlobalJson = true };
+			}
 			var pinned = discovered.FirstOrDefault(Has);
 			return pinned == null ? choice : new SdkChoice { Sdk = pinned, Version = pinnedVersion, PinnedByGlobalJson = true };
 		}

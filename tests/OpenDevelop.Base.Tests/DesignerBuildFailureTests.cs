@@ -43,4 +43,12 @@ public sealed class DesignerBuildFailureTests
 			new BuildError("a.csproj", 1, 1, "UNOB0005", "The version of Uno.WinUI must match the version of the Uno.Sdk found in global.json.")));
 		Assert.Equal("Build returned Error. Uno SDK/Uno.WinUI version mismatch (UNOB0005): align the Uno.Sdk and Uno.WinUI versions, restore the project, then reopen the designer. UNOB0005: The version of Uno.WinUI must match the version of the Uno.Sdk found in global.json.", text);
 	}
+
+	[Fact]
+	public void TaskHostArchitectureMismatch_IsExplainedBeforeTheRawDiagnostic()
+	{
+		var text = DesignerBuildCoordinator.DescribeBuildFailure(Results(
+			new BuildError("a.csproj", 1, 1, "MSB4216", "Could not run task because MSBuild could not create or connect to a task host with runtime NET and architecture arm64.")));
+		Assert.Equal("Build returned Error. .NET SDK task-host failure (MSB4216): this project build could not start the task host for its requested architecture. Select the intended installed SDK in Tools > Options > .NET SDK (or clear the selection to use this session's startup SDK), then rebuild the project. MSB4216: Could not run task because MSBuild could not create or connect to a task host with runtime NET and architecture arm64.", text);
+	}
 }

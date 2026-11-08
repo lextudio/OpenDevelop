@@ -111,7 +111,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// <summary>The SDK that <see cref="CreateDotnetChildStartInfo"/> uses when given no choice.</summary>
 		static DotNetSdkService.SdkChoice DefaultChoice()
 		{
-			return DefaultChoice(DotNetSdkService.DiscoverSdks());
+			return DotNetSdkService.ResolveSdkForProject(null);
 		}
 
 		/// <summary><see cref="DefaultChoice()"/> from an SDK list the caller already has, so a build that
@@ -175,7 +175,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			}) {
 				psi.EnvironmentVariables.Remove(name);
 			}
-			if (choice.IsPreview) {
+			if (choice.IsPreview || choice.PinnedByGlobalJson) {
 				// The muxer picks an SDK by itself from the working directory's global.json (or the
 				// newest in its root). Pin the exact pre-release chosen for this project, from a folder
 				// of its own, so a root with several SDKs cannot hand the build a different one.
@@ -556,11 +556,10 @@ namespace ICSharpCode.SharpDevelop.Project
 			try {
 				// Inside the try: with no supported SDK this throws, and the contract here is that a
 				// restore that cannot run returns false (each project's own build then reports it).
-				var discovered = DotNetSdkService.DiscoverSdks();
-				var choice = DefaultChoice(discovered);
+				var choice = DefaultChoice();
 				// Before the child-process setup: with no usable SDK that throws, and that is the
 				// build whose output most needs to say what was (not) found.
-				feedbackSink?.ReportMessage(new RichText(DotNetSdkService.DescribeChoiceForOutput(choice, discovered)));
+				feedbackSink?.ReportMessage(new RichText(DotNetSdkService.DescribeChoiceForOutput(choice)));
 				var psi = CreateDotnetChildStartInfo(choice);
 				psi.ArgumentList.Add("restore");
 				psi.ArgumentList.Add(solutionOrProject);
@@ -705,9 +704,8 @@ namespace ICSharpCode.SharpDevelop.Project
 			try {
 				Directory.CreateDirectory(scratch);
 				File.WriteAllText(traversal, CreateBuildTraversal(includedWaves.Select(wave => (IReadOnlyList<string>)wave.Select(project => realPathOf[project]).ToList()).ToList()));
-				var discovered = DotNetSdkService.DiscoverSdks();
-				var choice = DefaultChoice(discovered);
-				reportLine(DotNetSdkService.DescribeChoiceForOutput(choice, discovered));
+				var choice = DefaultChoice();
+				reportLine(DotNetSdkService.DescribeChoiceForOutput(choice));
 				var psi = CreateDotnetChildStartInfo(choice);
 				psi.ArgumentList.Add("msbuild");
 				psi.ArgumentList.Add(traversal);

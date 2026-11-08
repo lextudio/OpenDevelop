@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 
 namespace ICSharpCode.SharpDevelop.Project
 {
@@ -76,7 +77,14 @@ namespace ICSharpCode.SharpDevelop.Project
 				if (BuildOptions.BuildOnExecute == BuildDetection.DoNotBuild)
 					return new DesignerBuildResult(false, current.HasOutput, current.HasOutput ? null : "Designer build skipped (BuildOnExecute=DoNotBuild) and no prior output exists.");
 				report?.Invoke("Building " + project.Name + " for the designer…");
-				var results = await SD.BuildService.BuildAsync(project, new BuildOptions(BuildTarget.Build)).ConfigureAwait(true);
+				var options = new BuildOptions(BuildTarget.Build);
+				// Uno's resource injector is deliberately isolated in an MSBuild task host. On macOS
+				// that host can be unavailable even though the selected SDK can compile and emit the
+				// assembly (MSB4216). A designer consumes the compiled graph and source markup, not the
+				// packaged/injected resources, so request Uno's supported design-time build path instead.
+				if (XamlFrameworkDetector.DetectProjectFile(project.FileName.ToString()).Kind == XamlFrameworkKind.Uno)
+					options.GlobalAdditionalProperties["DesignTimeBuild"] = "true";
+				var results = await SD.BuildService.BuildAsync(project, options).ConfigureAwait(true);
 				var after = CreateStamp(project, requireRuntimeGraph);
 				if (results.Result == BuildResultCode.Success && after.HasOutput)
 				{
@@ -108,6 +116,9 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (errors.Any(error => string.Equals(error.ErrorCode, "UNOB0005", StringComparison.OrdinalIgnoreCase)
 				|| error.ErrorText.Contains("Uno.WinUI must match the version of the Uno.Sdk", StringComparison.OrdinalIgnoreCase)))
 				text += " Uno SDK/Uno.WinUI version mismatch (UNOB0005): align the Uno.Sdk and Uno.WinUI versions, restore the project, then reopen the designer.";
+			if (errors.Any(error => string.Equals(error.ErrorCode, "MSB4216", StringComparison.OrdinalIgnoreCase)
+				|| error.ErrorText.Contains("could not create or connect to a task host", StringComparison.OrdinalIgnoreCase)))
+				text += " .NET SDK task-host failure (MSB4216): this project build could not start the task host for its requested architecture. Select the intended installed SDK in Tools > Options > .NET SDK (or clear the selection to use this session's startup SDK), then rebuild the project.";
 			var lines = errors.Take(shown).Select(error => (string.IsNullOrEmpty(error.ErrorCode) ? "" : error.ErrorCode + ": ") + error.ErrorText.Trim());
 			return text + " " + string.Join(" | ", lines) + (errors.Count > shown ? " (+" + (errors.Count - shown) + " more; see the Build output)" : "");
 		}

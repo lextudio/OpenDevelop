@@ -1,12 +1,50 @@
 using System.IO;
 using System.Runtime.InteropServices;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Project.Sdk;
 using Xunit;
 
 namespace OpenDevelop.Base.Tests;
 
-public class DotNetSdkServiceTests
+public class DotNetSdkServiceTests : IDisposable
 {
+	public DotNetSdkServiceTests() => SD.InitializeForUnitTests();
+
+	public void Dispose() => SD.TearDownForUnitTests();
+
+	[Fact]
+	public void ResolveSdkForProject_WithoutAnOptionsSelection_UsesTheSessionStartupSdk()
+	{
+		var startup = DotNetSdkService.ResolveStartupSdkForInProcessHosting();
+		Assert.NotNull(startup);
+		string previous = DotNetSdkService.SelectedSdkRootPath;
+		try {
+			DotNetSdkService.SelectedSdkRootPath = string.Empty;
+			var choice = DotNetSdkService.ResolveSdkForProject(null);
+			Assert.NotNull(choice);
+			Assert.True(DotNetSdkService.SameRoot(startup.RootPath, choice.Sdk.RootPath));
+		} finally {
+			DotNetSdkService.SelectedSdkRootPath = previous;
+		}
+	}
+
+	[Fact]
+	public void ResolveSdkForProject_UsesTheExplicitOptionsRootBeforeTheStartupFallback()
+	{
+		using var root = new TemporaryDirectory();
+		File.WriteAllText(Path.Combine(root.Path, DotnetExecutableName), "");
+		Directory.CreateDirectory(Path.Combine(root.Path, "sdk", "10.0.401"));
+		string previous = DotNetSdkService.SelectedSdkRootPath;
+		try {
+			DotNetSdkService.SelectedSdkRootPath = root.Path;
+			var choice = DotNetSdkService.ResolveSdkForProject(null);
+			Assert.NotNull(choice);
+			Assert.True(DotNetSdkService.SameRoot(root.Path, choice.Sdk.RootPath));
+		} finally {
+			DotNetSdkService.SelectedSdkRootPath = previous;
+		}
+	}
+
 	[Fact]
 	public void TryDescribeCustomRoot_ReportsMissingDotnetExecutable()
 	{
@@ -238,7 +276,10 @@ public class DotNetSdkServiceTests
 		var discovered = new[] { sdk };
 		var choice = DotNetSdkService.ResolveSdkForTargetFrameworks(discovered, "", new[] { "net10.0" });
 
-		Assert.Same(choice, DotNetSdkService.ApplyGlobalJsonPin(choice, discovered, "10.0.201"));
+		var pinned = DotNetSdkService.ApplyGlobalJsonPin(choice, discovered, "10.0.201");
+		Assert.Same(sdk, pinned.Sdk);
+		Assert.Equal("10.0.201", pinned.Version);
+		Assert.True(pinned.PinnedByGlobalJson);
 		Assert.Same(choice, DotNetSdkService.ApplyGlobalJsonPin(choice, discovered, "12.0.100"));
 		Assert.Same(choice, DotNetSdkService.ApplyGlobalJsonPin(choice, discovered, null));
 	}

@@ -6,8 +6,15 @@ Keep this file concise and operational. Read the referenced technote only when t
 
 - Make small, verified changes; preserve unrelated user changes.
 - Run relevant maintained tests yourself. Test failures caused by the change block it.
-- Use one .NET SDK on macOS. Mixed SDKs can cause a false `MSB4018` asset-cache failure; use the
-  environment-selected `dotnet` consistently and do not invoke a Homebrew SDK path directly.
+- **Keep the two SDK roles distinct.** The SDK fixed when the IDE starts exists only to host the
+  OpenDevelop process and its in-process project services. A project build, restore, designer build
+  or task host must use only the SDK explicitly selected in **Tools > Options > .NET SDK**; if Options
+  has no selection, it may fall back only to that already-fixed startup SDK. Do not proactively scan,
+  rank, or substitute other installed SDKs as a build fallback. Never let inherited `DOTNET_ROOT`,
+  `DOTNET_HOST_PATH`, `MSBuildSDKsPath`, or a startup MSBuild path silently override the Options SDK.
+  On macOS, use the selected SDK's own `dotnet` consistently for a build; do not splice a Homebrew
+  SDK path into another SDK environment. Mixing roots can create false `MSB4018`/`MSB4216` task-host
+  and asset-cache failures.
 - `SharpDevelop.sln` is stale; use `OpenDevelop.Mvp.slnx`.
 - LibreWPF source lives in the sibling repo `../openavalon` (not in this repo); look there for
   window/ProGPU behaviour, e.g. first-window init and show timing. OpenDevelop consumes it, with
