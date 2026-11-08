@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -84,12 +85,12 @@ public static class MewUIDesignerDevFlowActions
 			: DesignerDevFlowResults.Failure(result.Error ?? "Items edit failed");
 	}
 	[DevFlowAction("od.mewui-designer.clipboard", Description = "Run the design surface's cut|copy|paste|paste-here|duplicate|move-first|move-earlier|move-later|move-last|unwrap|wrap-<Container> command on the selection, as its context menu does")]
-	public static string Clipboard(string command)
+	public static async Task<string> Clipboard(string command)
 	{
 		var view = Activate();
 		var ok = view != null && command switch {
 			"copy" => view.CopySelection(),
-			"cut" => view.CopySelection() && view.DeleteSelected(),
+			"cut" => view.CopySelection() && await view.DeleteSelectedAsync(),
 			"paste" => view.PasteIntoSelection(),
 			"paste-here" => view.PasteHere(),
 			"duplicate" => view.DuplicateSelection(),
@@ -101,7 +102,7 @@ public static class MewUIDesignerDevFlowActions
 		return JsonSerializer.Serialize(new { success = ok, selectedIds = view?.SelectedIds ?? Array.Empty<string>(), elementCount = view?.ElementCount ?? 0 });
 	}
 	[DevFlowAction("od.mewui-designer.delete", Description = "Delete the selected MewUI element")]
-	public static string Delete() { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.DeleteSelected() == true, elementCount = v?.ElementCount ?? 0 }); }
+	public static async Task<string> Delete() { var v = Activate(); var success = v != null && await v.DeleteSelectedAsync(); return JsonSerializer.Serialize(new { success, elementCount = v?.ElementCount ?? 0 }); }
 	[DevFlowAction("od.mewui-designer.reorder", Description = "Move the selected MewUI child within its generated Children relationship")]
 	public static string Reorder(int delta) { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.ReorderSelected(delta) == true, selectedName = v?.SelectedName }); }
 	[DevFlowAction("od.mewui-designer.canvas.move", Description = "Move an immediate MewUI Canvas child by design units through the designer's bounds mutation path")]
@@ -109,9 +110,9 @@ public static class MewUIDesignerDevFlowActions
 	[DevFlowAction("od.mewui-designer.canvas.resize", Description = "Resize an immediate MewUI Canvas child through the designer's bounds mutation path")]
 	public static string ResizeCanvasChild(string id, double width, double height) { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.ResizeCanvasChild(id, width, height) == true, selectedName = v?.SelectedName }); }
 	[DevFlowAction("od.mewui-designer.undo", Description = "Undo the last MewUI designer source edit")]
-	public static string Undo() { var v = Activate(); v?.Undo(); return Status(); }
+	public static async Task<string> Undo() { var v = Activate(); if (v != null) await v.UndoAsync(); return Status(); }
 	[DevFlowAction("od.mewui-designer.redo", Description = "Redo the last MewUI designer source edit")]
-	public static string Redo() { var v = Activate(); v?.Redo(); return Status(); }
+	public static async Task<string> Redo() { var v = Activate(); if (v != null) await v.RedoAsync(); return Status(); }
 	[DevFlowAction("od.mewui-designer.refresh", Description = "Reload the MewUI design from generated source")]
 	public static string Refresh() { var v = Activate(); v?.RefreshDesign(); return JsonSerializer.Serialize(new { success = v != null, hostProcessId = v?.HostProcessId ?? 0 }); }
 	[DevFlowAction("od.mewui-designer.restart-host", Description = "Restart the isolated MewUI designer host")]

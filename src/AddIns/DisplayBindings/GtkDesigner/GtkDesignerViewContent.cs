@@ -85,9 +85,9 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		tools.ItemInvoked += (_, item) => Add(item.TypeName);
 		RefreshToolbox();
 		selection = new DesignerSelectionController(node => Adapter(node), nodes => new DesignerMultiPropertyAdapter(nodes.Select(node => (object)Adapter(node))));
-		commands.RegisterStandard(() => host?.IsAlive == true && state.CanUndo, () => RewireAfterHistory(Mutate(() => host!.UndoAsync(state.Version).GetAwaiter().GetResult())),
-			() => host?.IsAlive == true && state.CanRedo, () => RewireAfterHistory(Mutate(() => host!.RedoAsync(state.Version).GetAwaiter().GetResult())),
-			() => selection.SelectedIds.Count > 0 && host?.IsAlive == true, DeleteSelectedCore);
+		commands.RegisterStandardAsync(() => host?.IsAlive == true && state.CanUndo, UndoCoreAsync,
+			() => host?.IsAlive == true && state.CanRedo, RedoCoreAsync,
+			() => selection.SelectedIds.Count > 0 && host?.IsAlive == true, DeleteSelectedCoreAsync);
 		pads = new DesignerPadController(selection, outline.SetRoots, value => properties.SelectedObject = value, outline.SelectNodeById, node => { selected = node; canvasController?.RestoreSelection(selection.SelectedIds); });
 		canvasController = new DesignSurfaceController(canvas, DesignSurfaceKeying.Id);
 		TabPageText = "Design"; ConfigureCanvas(); var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition()); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -177,7 +177,8 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	public long RequestedRenderRevision => requestedRenderRevision; public long RenderedRevision => renderedRevision; public bool IsRenderPending => requestedRenderRevision > renderedRevision;
 	public string Status => state.Accepted ? $"Ready: {ElementCount} GTK objects (host {host?.ProcessId}, native frame {(HasNativeFrame ? $"{NativeFrameWidth}x{NativeFrameHeight}" : "unavailable")})" : state.Error;
 	public bool IsHostAlive => host?.IsAlive == true; public bool DocumentCanUndo => state.CanUndo; public bool DocumentCanRedo => state.CanRedo; public bool EnableUndo => commands.CanExecute("Undo"); public bool EnableRedo => commands.CanExecute("Redo");
-	public void Undo() => commands.Execute("Undo"); public void Redo() => commands.Execute("Redo");
+	public void Undo() => _ = ExecuteStandardCommandAsync("Undo"); public void Redo() => _ = ExecuteStandardCommandAsync("Redo");
+	public Task<bool> UndoAsync() => commands.ExecuteAsync("Undo"); public Task<bool> RedoAsync() => commands.ExecuteAsync("Redo");
 	public bool SelectById(string id) => selection.Select(id);
 	public IReadOnlyList<string> SelectedIds => selection.SelectedIds;
 	public bool SelectByIds(IEnumerable<string> ids) => pads.CommitSelection(ids);
@@ -206,7 +207,8 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			: state.CreatedElementId is { } createdId ? Flatten(state.Tree).FirstOrDefault(n => n.Id == createdId)
 			: Flatten(state.Tree).Where(n => !before.Contains(n.Id)).LastOrDefault();
 		if (added != null) Select(added); return added != null; }
-	public bool DeleteSelected() => commands.Execute("Delete");
+	public bool DeleteSelected() { var accepted = commands.CanExecute("Delete"); if (accepted) _ = ExecuteStandardCommandAsync("Delete"); return accepted; }
+	public Task<bool> DeleteSelectedAsync() => commands.ExecuteAsync("Delete");
 
 	// The designer's own copy, kept beside the system clipboard so a multi-object copy round-trips
 	// as separate snippets; any other text on the clipboard pastes as one snippet.
@@ -391,7 +393,14 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		if (state.CreatedElementIds.Count > 0) SelectByIds(state.CreatedElementIds);
 		return true;
 	}
-	bool DeleteSelectedCore() { if (selection.SelectedIds.Count == 0 || host == null) return false; var ids = selection.SelectedIds.ToArray(); return Mutate(() => host.DeleteElementsAsync(state.Version, ids).GetAwaiter().GetResult()); }
+	async Task<bool> UndoCoreAsync() => RewireAfterHistory(await MutateAsync(() => host!.UndoAsync(state.Version)).ConfigureAwait(true));
+	async Task<bool> RedoCoreAsync() => RewireAfterHistory(await MutateAsync(() => host!.RedoAsync(state.Version)).ConfigureAwait(true));
+	async Task<bool> DeleteSelectedCoreAsync() { if (selection.SelectedIds.Count == 0 || host == null) return false; var ids = selection.SelectedIds.ToArray(); return await MutateAsync(() => host.DeleteElementsAsync(state.Version, ids)).ConfigureAwait(true); }
+	async Task ExecuteStandardCommandAsync(string name)
+	{
+		try { await commands.ExecuteAsync(name).ConfigureAwait(true); }
+		catch (Exception exception) { diagnostic.Text = exception.GetBaseException().Message; commands.Invalidate(); }
+	}
 	public bool SetSelectedSignal(string signal, string handler) { if (selected == null) return false; var id = selected.Id; return SetEvent(id, signal, handler) && SelectById(id); }
 	GtkPropertyAdapter Adapter(DesignerElementNode node) => new(node, (name, value) => SetProperty(node.Id, name, value), (name, value) => SetEvent(node.Id, name, value), name => ResetProperty(node.Id, name),
 		items => host != null && Mutate(() => host.SetItemsAsync(state.Version, node.Id, items).GetAwaiter().GetResult()) && selection.Find(node.Id) != null);
@@ -800,9 +809,23 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	public void ShowSource() { var window = WorkbenchWindow; if (window == null) return; for (var i = 0; i < window.ViewContents.Count; i++) if (!ReferenceEquals(window.ViewContents[i], this)) { window.SwitchView(i); return; } }
 	bool Mutate(Func<DesignerSessionState> action)
 	{
+		// PropertyDescriptor and legacy canvas callbacks are synchronous. They must never wait
+		// for an async history command whose continuation needs this dispatcher; reject the
+		// overlapping edit and let the Properties pad refresh from the current accepted state.
+		if (commands.IsExecuting) { diagnostic.Text = "A designer command is still running."; return false; }
 		var result = action();
 		// An edit the host refused leaves the document as it was (same version, not accepted, with the reason): show the
 		// reason and keep the last good state, exactly as a thrown refusal used to.
+		if (!result.Accepted && state.Accepted && result.Version == state.Version) { diagnostic.Text = result.Error; commands.Invalidate(); return false; }
+		state = result;
+		if (state.Accepted) { PrimaryFile?.MakeDirty(); QueueRender(); }
+		Rebuild(); commands.Invalidate(); return state.Accepted;
+	}
+	async Task<bool> MutateAsync(Func<Task<DesignerSessionState>> action)
+	{
+		var baseVersion = state.Version;
+		var result = await action().ConfigureAwait(true);
+		if (state.Version != baseVersion) { commands.Invalidate(); return false; }
 		if (!result.Accepted && state.Accepted && result.Version == state.Version) { diagnostic.Text = result.Error; commands.Invalidate(); return false; }
 		state = result;
 		if (state.Accepted) { PrimaryFile?.MakeDirty(); QueueRender(); }

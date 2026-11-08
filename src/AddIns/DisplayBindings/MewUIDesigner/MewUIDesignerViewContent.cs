@@ -34,9 +34,9 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		tools.ItemInvoked += (_, item) => Add(item.TypeName);
 		selection = new DesignerSelectionController(node => Adapter(node), nodes => new DesignerMultiPropertyAdapter(nodes.Select(node => (object)Adapter(node))));
 		selection.SelectionChanged += (_, _) => UpdateResizeHandles();
-		commands.RegisterStandard(() => host?.IsAlive == true && state.CanUndo, () => Mutate(() => host!.UndoAsync(state.Version).GetAwaiter().GetResult()),
-			() => host?.IsAlive == true && state.CanRedo, () => Mutate(() => host!.RedoAsync(state.Version).GetAwaiter().GetResult()),
-			() => selection.SelectedIds.Count > 0 && host?.IsAlive == true, DeleteSelectedCore);
+		commands.RegisterStandardAsync(() => host?.IsAlive == true && state.CanUndo, UndoCoreAsync,
+			() => host?.IsAlive == true && state.CanRedo, RedoCoreAsync,
+			() => selection.SelectedIds.Count > 0 && host?.IsAlive == true, DeleteSelectedCoreAsync);
 		pads = new DesignerPadController(selection, outline.SetRoots, value => properties.SelectedObject = value, outline.SelectNodeById, node => { selected = node; canvasController?.RestoreSelection(selection.SelectedIds); });
 		canvasController = new DesignSurfaceController(canvas, DesignSurfaceKeying.Id);
 		mxamlFile = file; TabPageText = "Design";
@@ -90,7 +90,8 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	public string HostLogTail { get { var log = host?.ChildLog ?? ""; return log.Length <= 2000 ? log : log[^2000..]; } }
 	public string HostSessionId => host?.SessionId ?? ""; public string HostDocumentId => host?.DocumentId ?? ""; public string HostPoolKey => host?.PoolKey ?? "mewui"; public int ActiveHostLeases => MewUIDesignerHostClient.ActiveLeaseCount; public int HostRecoveryCount => host?.RecoveryCount ?? 0;
 	public bool EnableUndo => commands.CanExecute("Undo"); public bool EnableRedo => commands.CanExecute("Redo");
-	public void Undo() => commands.Execute("Undo"); public void Redo() => commands.Execute("Redo");
+	public void Undo() => _ = ExecuteStandardCommandAsync("Undo"); public void Redo() => _ = ExecuteStandardCommandAsync("Redo");
+	public Task<bool> UndoAsync() => commands.ExecuteAsync("Undo"); public Task<bool> RedoAsync() => commands.ExecuteAsync("Redo");
 	public bool Add(string type) { if (host == null || state.Tree == null) return false; var parent = (selected != null ? NearestContainer(selected) : null) ?? Flatten(state.Tree).FirstOrDefault(IsContainer); if (parent == null) return false; var before = Flatten(state.Tree).Select(n => n.Id).ToHashSet(); if (!Mutate(() => host.AddElementAsync(state.Version, parent.Id, new DesignerToolboxItemInfo { Name = type, TypeName = type }, "", 0, 0).GetAwaiter().GetResult())) return false; var added = state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => !before.Contains(n.Id)); if (added != null) Select(added); return added != null; }
 	public bool SetSelectedProperty(string name, string value) => selected != null && SetProperty(selected.Id, name, value);
 	bool SetProperty(string id, string name, string value) { if (host == null || !Mutate(() => host.SetPropertyAsync(state.Version, id, name, value).GetAwaiter().GetResult())) return false; return name == "$name" ? SelectByName(value) : selection.Find(id) != null; }
@@ -117,7 +118,8 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	public bool SelectByName(string name) { var node = selection.Flatten().FirstOrDefault(n => n.Name == name || n.Id == name); return node != null && selection.Select(node); }
 	public IReadOnlyList<string> SelectedIds => selection.SelectedIds;
 	public bool SelectByNames(IEnumerable<string> names) { var ids = names.Select(name => selection.Flatten().FirstOrDefault(node => node.Name == name || node.Id == name)?.Id).Where(id => id != null).Cast<string>().ToArray(); return ids.Length > 0 && pads.CommitSelection(ids); }
-	public bool DeleteSelected() => commands.Execute("Delete");
+	public bool DeleteSelected() { var accepted = commands.CanExecute("Delete"); if (accepted) _ = ExecuteStandardCommandAsync("Delete"); return accepted; }
+	public Task<bool> DeleteSelectedAsync() => commands.ExecuteAsync("Delete");
 
 	// The designer's own copy, kept beside the system clipboard so a multi-element copy round-trips
 	// as separate snippets; other MXAML-looking text on the clipboard pastes as one snippet.
@@ -256,7 +258,14 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		if (state.CreatedElementIds.Count > 0) SelectByNames(state.CreatedElementIds);
 		return true;
 	}
-	bool DeleteSelectedCore() { if (selection.SelectedIds.Count == 0 || host == null) return false; var ids = selection.SelectedIds.ToArray(); return Mutate(() => host.DeleteElementsAsync(state.Version, ids).GetAwaiter().GetResult()); }
+	async Task<bool> UndoCoreAsync() => await MutateAsync(() => host!.UndoAsync(state.Version)).ConfigureAwait(true);
+	async Task<bool> RedoCoreAsync() => await MutateAsync(() => host!.RedoAsync(state.Version)).ConfigureAwait(true);
+	async Task<bool> DeleteSelectedCoreAsync() { if (selection.SelectedIds.Count == 0 || host == null) return false; var ids = selection.SelectedIds.ToArray(); return await MutateAsync(() => host.DeleteElementsAsync(state.Version, ids)).ConfigureAwait(true); }
+	async Task ExecuteStandardCommandAsync(string name)
+	{
+		try { await commands.ExecuteAsync(name).ConfigureAwait(true); }
+		catch (Exception exception) { diagnostic.Text = exception.GetBaseException().Message; commands.Invalidate(); }
+	}
 	public bool ReorderSelected(int delta) { if (selected == null || host == null) return false; var id = selected.Id; return Mutate(() => host.ReorderAsync(state.Version, id, delta).GetAwaiter().GetResult()) && SelectByName(id); }
 	/// <summary>Exercises the same source mutation as a committed canvas move, in design units.</summary>
 	public bool MoveCanvasChild(string id, double dx, double dy)
@@ -281,9 +290,22 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	public void TerminateDesignHost() { if (host == null) return; state = host.TerminateAndRecoverAsync().GetAwaiter().GetResult(); Rebuild(); }
 	bool Mutate(Func<DesignerSessionState> action)
 	{
+		// Framework property/canvas callbacks are synchronous. Do not block the dispatcher on
+		// a history RPC; reject the overlapping edit and preserve the accepted snapshot.
+		if (commands.IsExecuting) { diagnostic.Text = "A designer command is still running."; return false; }
 		var result = action();
 		// An edit the host refused leaves the document as it was (same version, not accepted, with the reason): show the
 		// reason and keep the last good state, exactly as a thrown refusal used to.
+		if (!result.Accepted && state.Accepted && result.Version == state.Version) { diagnostic.Text = result.Error; commands.Invalidate(); return false; }
+		state = result;
+		if (state.Accepted) mxamlFile.MakeDirty();
+		Rebuild(); commands.Invalidate(); return state.Accepted;
+	}
+	async Task<bool> MutateAsync(Func<Task<DesignerSessionState>> action)
+	{
+		var baseVersion = state.Version;
+		var result = await action().ConfigureAwait(true);
+		if (state.Version != baseVersion) { commands.Invalidate(); return false; }
 		if (!result.Accepted && state.Accepted && result.Version == state.Version) { diagnostic.Text = result.Error; commands.Invalidate(); return false; }
 		state = result;
 		if (state.Accepted) mxamlFile.MakeDirty();

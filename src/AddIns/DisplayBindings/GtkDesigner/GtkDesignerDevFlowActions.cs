@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -191,14 +192,14 @@ public static class GtkDesignerDevFlowActions
 		return JsonSerializer.Serialize(new { success = ok, containerId = plan?.ContainerId, selectedId = view?.SelectedId, elementCount = view?.ElementCount ?? 0 });
 	}
 	[DevFlowAction("od.gtk-designer.delete", Description = "Delete the selected GTK object")]
-	public static string Delete() { var view = Activate(); return JsonSerializer.Serialize(new { success = view?.DeleteSelected() == true, elementCount = view?.ElementCount ?? 0 }); }
+	public static async Task<string> Delete() { var view = Activate(); var success = view != null && await view.DeleteSelectedAsync(); return JsonSerializer.Serialize(new { success, elementCount = view?.ElementCount ?? 0 }); }
 	[DevFlowAction("od.gtk-designer.clipboard", Description = "Run the design surface's cut|copy|paste|duplicate|move-first|move-earlier|move-later|move-last|unwrap|paste-here|align-<h|v>-<fill|start|center|end>|span-<column|row>-<more|less>|grid-insert-row|grid-insert-column|grid-delete-row|grid-delete-column|wrap-<GtkClass> command on the selection, as its context menu does")]
-	public static string Clipboard(string command)
+	public static async Task<string> Clipboard(string command)
 	{
 		var view = Activate();
 		var ok = view != null && command switch {
 			"copy" => view.CopySelection(),
-			"cut" => view.CopySelection() && view.DeleteSelected(),
+			"cut" => view.CopySelection() && await view.DeleteSelectedAsync(),
 			"paste" => view.PasteIntoSelection(),
 			"duplicate" => view.DuplicateSelection(),
 			"move-first" or "move-earlier" or "move-later" or "move-last" => view.MoveSelected(command),
@@ -267,9 +268,9 @@ public static class GtkDesignerDevFlowActions
 	[DevFlowAction("od.gtk-designer.pointer-reorder", Description = "Exercise the native-bounds pointer reorder mapping between sibling objects")]
 	public static string PointerReorder(string sourceId, string targetId) { var view = Activate(); return JsonSerializer.Serialize(new { success = view?.PointerReorder(sourceId, targetId) == true, selectedId = view?.SelectedId }); }
 	[DevFlowAction("od.gtk-designer.undo", Description = "Undo a GTK designer source edit")]
-	public static string Undo() { var view = Activate(); view?.Undo(); return Status(); }
+	public static async Task<string> Undo() { var view = Activate(); if (view != null) await view.UndoAsync(); return Status(); }
 	[DevFlowAction("od.gtk-designer.redo", Description = "Redo a GTK designer source edit")]
-	public static string Redo() { var view = Activate(); view?.Redo(); return Status(); }
+	public static async Task<string> Redo() { var view = Activate(); if (view != null) await view.RedoAsync(); return Status(); }
 	[DevFlowAction("od.gtk-designer.properties.event.set", Description = "Set (or clear, with an empty handler) a GTK signal handler through the selected Properties-pad adapter; returns the handler the pad then shows")]
 	public static string SetPropertiesEvent(string eventName, string handlerName)
 	{

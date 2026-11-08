@@ -240,4 +240,21 @@ public sealed class DesignerCommandControllerTests
 		canUndo = false;
 		Assert.False(controller.Snapshot().Single(state => state.Name == DesignerCommandNames.Undo).CanExecute);
 	}
+
+	[Fact]
+	public async Task AsyncRegistrationSerializesExecutionWithoutBlockingCallers()
+	{
+		var controller = new DesignerCommandController();
+		var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+		controller.RegisterAsync("Remote", () => true, async () => { await release.Task; return true; });
+
+		var executing = controller.ExecuteAsync("Remote");
+		Assert.True(controller.IsExecuting);
+		Assert.True(controller.State("Remote").Registered);
+		Assert.False(controller.Execute("Remote"));
+		Assert.False(await controller.ExecuteAsync("Remote"));
+		release.SetResult();
+		Assert.True(await executing);
+		Assert.False(controller.IsExecuting);
+	}
 }
