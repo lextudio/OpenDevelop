@@ -3238,16 +3238,36 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250);
             Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
 
+            // MainPane already exists in this XAML. Renaming PrimaryButton to it reaches the
+            // real host uniqueness check, which rejects the queued mutation. The subsequent
+            // Content edit demonstrates that the accepted snapshot and queue remain usable.
+            var rejected = await WaitForPropertiesPadEditAsync("Name", "MainPane", timeoutSeconds: 10);
+            Assert.False(rejected.GetProperty("success").GetBoolean(), rejected.ToString());
+            Assert.Equal("PrimaryButton", rejected.GetProperty("after").GetString());
+
             var edited = await WaitForPropertiesPadEditAsync("Content", "Changed through Properties", timeoutSeconds: 10);
             Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
             Assert.Equal("Changed through Properties", edited.GetProperty("after").GetString());
+
+            // Submit a second PropertyItem edit immediately after the first completion. The
+            // adapter must use the first accepted host version rather than a stale descriptor
+            // snapshot, and the final source must preserve the second value.
+            edited = await WaitForPropertiesPadEditAsync("Content", "Changed through Properties again", timeoutSeconds: 10);
+            Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+            Assert.Equal("Changed through Properties again", edited.GetProperty("after").GetString());
+
+            // Xceed does not call the descriptor when a row is assigned its current value. That
+            // remains a successful Properties-pad no-op rather than an invented queue failure.
+            edited = await WaitForPropertiesPadEditAsync("Content", "Changed through Properties again", timeoutSeconds: 10);
+            Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+            Assert.Equal("Changed through Properties again", edited.GetProperty("after").GetString());
 
             var saved = await _app.InvokeAsync("od.file.save", xamlPath);
             Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
             Assert.False(saved.GetProperty("isDirty").GetBoolean());
 
             var savedXaml = await File.ReadAllTextAsync(xamlPath);
-            Assert.Equal(originalXaml.Replace("Content=\"Button\"", "Content=\"Changed through Properties\""), savedXaml);
+            Assert.Equal(originalXaml.Replace("Content=\"Button\"", "Content=\"Changed through Properties again\""), savedXaml);
         }
         finally
         {

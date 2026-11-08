@@ -321,6 +321,17 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return (string)method.Invoke(null, args);
 		}
 
+		static async Task<string> InvokeWpfDesignerDevFlowActionAsync(string methodName, params object[] args)
+		{
+			var type = AppDomain.CurrentDomain.GetAssemblies()
+				.Select(assembly => assembly.GetType("ICSharpCode.WpfDesign.AddIn.DevFlow.WpfDesignDevFlowActions", throwOnError: false))
+				.FirstOrDefault(candidate => candidate != null);
+			var method = type?.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static);
+			if (method == null) return JsonSerializer.Serialize(new { designerLoaded = false, success = false, error = "WPF Designer AddIn is unavailable" });
+			var result = method.Invoke(null, args);
+			return result is Task<string> pending ? await pending : (string)result;
+		}
+
 		[DevFlowAction("od.wpf-designer.status", Description = "Inspect the active WPF designer view")]
 		public static string WpfDesignerStatus() => InvokeWpfDesignerDevFlowAction("GetDesignerStatus");
 
@@ -349,10 +360,10 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		public static string WpfDesignerFlushPendingTransaction() => InvokeWpfDesignerDevFlowAction("FlushPendingTransaction");
 
 		[DevFlowAction("od.wpf-designer.properties-pad.edit", Description = "Edit a property through the Properties pad")]
-		public static string WpfDesignerEditPropertyThroughPropertiesPad(string propertyName, string value) => InvokeWpfDesignerDevFlowAction("EditPropertyThroughPropertiesPad", propertyName, value);
+		public static Task<string> WpfDesignerEditPropertyThroughPropertiesPad(string propertyName, string value) => InvokeWpfDesignerDevFlowActionAsync("EditPropertyThroughPropertiesPad", propertyName, value);
 
 		[DevFlowAction("od.wpf-designer.delete", Description = "Delete the currently selected element in the WPF designer")]
-		public static string WpfDesignerDelete() => InvokeWpfDesignerDevFlowAction("Delete");
+		public static Task<string> WpfDesignerDelete() => InvokeWpfDesignerDevFlowActionAsync("Delete");
 
 		[DevFlowAction("od.wpf-designer.activate-design", Description = "Switch to the WPF Design view")]
 		public static string WpfDesignerActivateDesign() => InvokeWpfDesignerDevFlowAction("ActivateDesign");
@@ -382,7 +393,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		public static string WpfDesignerNudge(double dx, double dy) => InvokeWpfDesignerDevFlowAction("Nudge", dx, dy);
 
 		[DevFlowAction("od.wpf-designer.set-theme", Description = "Switch the WPF designer between Light/Dark theme")]
-		public static string WpfDesignerSetTheme(string theme) => InvokeWpfDesignerDevFlowAction("SetTheme", theme);
+		public static Task<string> WpfDesignerSetTheme(string theme) => InvokeWpfDesignerDevFlowActionAsync("SetTheme", theme);
 
 		[DevFlowAction("od.wpf-designer.tab-order", Description = "Toggle the tab-order badge overlay")]
 		public static string WpfDesignerTabOrder(bool show) => InvokeWpfDesignerDevFlowAction("SetTabOrder", show);

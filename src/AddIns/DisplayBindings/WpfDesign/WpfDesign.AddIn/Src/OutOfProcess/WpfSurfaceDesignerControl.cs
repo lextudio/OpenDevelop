@@ -21,6 +21,8 @@ using LeXtudio.DevFlow.Agent.Core;
 
 namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 {
+	internal sealed record WpfPropertyEditOutcome(bool Accepted, string? Error);
+
 	/// <summary>
 	/// The WPF designer's surface: the shared design canvas (<see cref="DesignSurface"/> plus a
 	/// <see cref="DesignSurfaceController"/>, ICSharpCode.DesignerCanvas addin - see
@@ -35,8 +37,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 	/// Menu/StatusBar/ToolBar "Type Here" hotspot and the inline editor they share).
 	///
 	/// Elements are keyed by their DDP <see cref="DesignerElementNode.Id"/> (the tree path; the
-	/// document root is "", so "no selection" is null, never ""). Every mutation is a BLOCKING call
-	/// on the dispatcher thread followed by <see cref="Show"/> - see its remarks for why.
+	/// document root is "", so "no selection" is null, never ""). Legacy canvas gestures still have
+	/// synchronous paths, but Properties-pad edits are serialized asynchronously on this dispatcher.
 	/// </summary>
 	public sealed class WpfSurfaceDesignerControl : DesignSurface
 	{
@@ -44,6 +46,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		readonly DesignSurfaceController controller;
 
 		DesignerSessionState? state;
+		readonly object propertyEditGate = new();
+		Task<WpfPropertyEditOutcome> propertyEditTail = Task.FromResult(new WpfPropertyEditOutcome(true, null));
+		int propertyEditRpcInFlight;
+		long propertyEditSequence;
 
 		/// <summary>The document root's tree path/id (<c>WpfSurfaceHostService.BuildNode</c>).</summary>
 		const string RootElementId = "";
@@ -391,14 +397,11 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// Deliberately a separate step the caller invokes explicitly, rather than a continuation
 		/// this class's own async RPC wrappers run after their own await.
 		///
-		/// EVERY caller of this method blocks via <c>.GetAwaiter().GetResult()</c> and calls this
-		/// directly afterward, on the same thread - including the gesture/toolbox-drop/Delete
-		/// handlers, which are always already on the dispatcher thread. Those used to be
-		/// fire-and-forget async methods awaiting with <c>ConfigureAwait(true)</c>, and that was
-		/// proven unreliable live: the continuation resumed on a thread-pool thread, touching WPF
-		/// objects threw, and the swallowed exception meant <see cref="DocumentChanged"/> never
-		/// reached <c>WpfViewContent</c> - an applied edit was never marked dirty. Blocking needs no
-		/// SynchronizationContext capture at all (doc/technotes/wpf-designer.md).</summary>
+		/// Gesture and toolbox paths currently call this directly after their legacy synchronous
+		/// RPCs. Properties-pad edits use <see cref="QueuePropertyEdit"/>, whose continuation is
+		/// deliberately marshalled through this dispatcher before it reaches <see cref="Show"/>.
+		/// This keeps WPF object access and <see cref="DocumentChanged"/> delivery on the UI thread
+		/// without making a <see cref="PropertyDescriptor"/> callback wait for the remote host.</summary>
 		internal void Show(DesignerSessionState newState)
 		{
 			// Every host rejection or load failure also goes to the Output pad (the status line shows only the
@@ -1693,10 +1696,11 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 
 		/// <summary>An <see cref="System.ComponentModel.ICustomTypeDescriptor"/> for the shared
 		/// Properties pad, backed by the selected element's DDP property list, or null. A fresh
-		/// adapter per access, since the node instance changes on every re-render.</summary>
+		/// adapter per access, since the node instance changes on every re-render. Its edits all use
+		/// this surface's queue, rather than a per-adapter queue, so a refresh cannot reorder them.</summary>
 		public WpfSurfaceElementPropertyAdapter? SelectedPropertyAdapter =>
 			SelectedNode is { } node
-				? new WpfSurfaceElementPropertyAdapter(client, RequireVersion, node, OnPropertyEdited, OnEventHandlerBound) { ImageSourceCandidates = ImageSourceCandidates, DesignFrameProvider = () => CurrentFrame }
+				? new WpfSurfaceElementPropertyAdapter(client, node, QueuePropertyEdit, OnEventHandlerBound) { ImageSourceCandidates = ImageSourceCandidates, DesignFrameProvider = () => CurrentFrame }
 				: null;
 
 		/// <summary>The project images, relative to the designed file, for ImageSource rows.</summary>
@@ -1705,7 +1709,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		public object[] SelectedPropertyAdapters => state?.Tree == null ? Array.Empty<object>() : SelectedElementIds
 			.Select(NodeById)
 			.Where(node => node != null)
-			.Select(node => (object)new WpfSurfaceElementPropertyAdapter(client, RequireVersion, node!, OnPropertyEdited, OnEventHandlerBound) { ImageSourceCandidates = ImageSourceCandidates, DesignFrameProvider = () => CurrentFrame })
+			.Select(node => (object)new WpfSurfaceElementPropertyAdapter(client, node!, QueuePropertyEdit, OnEventHandlerBound) { ImageSourceCandidates = ImageSourceCandidates, DesignFrameProvider = () => CurrentFrame })
 			.ToArray();
 
 		/// <summary>Renders a property edit's result, then raises <see cref="SelectionChanged"/>
@@ -1714,8 +1718,89 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		void OnPropertyEdited(DesignerSessionState newState)
 		{
 			Show(newState);
-			NotifySelectionChanged();
+			// The property edit did not change selection. Raising the local event refreshes the
+			// pad from the accepted snapshot without routing design/select back to the child;
+			// NotifySelectionChanged performs that legacy synchronous RPC and must not run from
+			// this asynchronous Properties-pad completion path.
+			SelectionChanged?.Invoke(this, EventArgs.Empty);
 			DocumentChanged?.Invoke(this, newState);
+		}
+
+		// PropertyDescriptor and the custom PropertyGrid editors are synchronous WPF callbacks.
+		// They submit here and return immediately; executing in this one surface-owned queue means
+		// every operation reads the version after its predecessor was accepted, even though each
+		// refreshed descriptor is a new object.
+		internal Task<WpfPropertyEditOutcome> QueuePropertyEdit(Func<long, Task<DesignerSessionState>> edit)
+		{
+			if (!Dispatcher.CheckAccess()) {
+				return Dispatcher.InvokeAsync(() => QueuePropertyEdit(edit)).Task.Unwrap();
+			}
+			lock (propertyEditGate) {
+				propertyEditSequence++;
+				propertyEditTail = RunQueuedPropertyEditAsync(propertyEditTail, edit);
+				return propertyEditTail;
+			}
+		}
+
+		/// <summary>Waits for all PropertyGrid edits submitted before this call. Used by DevFlow's
+		/// automation seam; framework PropertyDescriptor callbacks deliberately do not await it.</summary>
+		internal long PropertyEditSequence
+		{
+			get { lock (propertyEditGate) return propertyEditSequence; }
+		}
+
+		internal async Task<WpfPropertyEditOutcome?> WaitForPropertyEditsAsync(long observedSequence)
+		{
+			Task<WpfPropertyEditOutcome> tail;
+			lock (propertyEditGate)
+				if (propertyEditSequence == observedSequence)
+					return null;
+				else tail = propertyEditTail;
+			return await tail.ConfigureAwait(true);
+		}
+
+		async Task<WpfPropertyEditOutcome> RunQueuedPropertyEditAsync(Task<WpfPropertyEditOutcome> previous, Func<long, Task<DesignerSessionState>> edit)
+		{
+			try {
+				// A notification observer must not poison the serialized tail. Every queue item
+				// reduces its own failures to an outcome so a later edit can always continue.
+				await previous.ConfigureAwait(true);
+				var version = await GetQueuedMutationVersionAsync().ConfigureAwait(true);
+				Interlocked.Increment(ref propertyEditRpcInFlight);
+				DesignerSessionState result;
+				try { result = await edit(version).ConfigureAwait(true); }
+				finally { Interlocked.Decrement(ref propertyEditRpcInFlight); }
+				if (result.Accepted) {
+					OnPropertyEdited(result);
+					return new WpfPropertyEditOutcome(true, null);
+				}
+				else {
+					var error = result.Error ?? ResourceService.GetString("WpfDesign.Status.OperationRejected");
+					StatusText = string.Format(ResourceService.GetString("WpfDesign.Status.HostError"), BackendName, error);
+					ICSharpCode.SharpDevelop.Designer.DesignerOutput.AppendLine(ICSharpCode.SharpDevelop.Designer.DesignerOutput.Channel("WPF Designer"),
+						BackendName + " property edit rejected: " + error);
+					// Rebind the pad to discard the optimistic value that the synchronous descriptor
+					// callback returned before the host rejected it.
+					NotifyPropertiesPadSelectionChanged();
+					return new WpfPropertyEditOutcome(false, error);
+				}
+			} catch (Exception exception) {
+				StatusText = string.Format(ResourceService.GetString("WpfDesign.Status.HostError"), BackendName, exception.Message);
+				ICSharpCode.SharpDevelop.Designer.DesignerOutput.AppendLine(ICSharpCode.SharpDevelop.Designer.DesignerOutput.Channel("WPF Designer"),
+					BackendName + " property edit failed: " + exception.Message);
+				NotifyPropertiesPadSelectionChanged();
+				return new WpfPropertyEditOutcome(false, exception.Message);
+			}
+		}
+
+		void NotifyPropertiesPadSelectionChanged()
+		{
+			try {
+				SelectionChanged?.Invoke(this, EventArgs.Empty);
+			} catch (Exception exception) {
+				ICSharpCode.SharpDevelop.Designer.DesignerOutput.AppendLine(ICSharpCode.SharpDevelop.Designer.DesignerOutput.Channel("WPF Designer"),
+					BackendName + " properties-pad refresh failed: " + exception.Message);
+			}
 		}
 
 		#endregion
@@ -1820,6 +1905,17 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		{
 			if (state == null)
 				throw new InvalidOperationException("No document is open - call OpenAsync first.");
+			// Legacy gesture/drop commands are still synchronous. Never send one at the old
+			// version while a Properties-pad request is in flight; the caller can retry after
+			// the queued edit has completed instead of producing a stale host rejection.
+			if (Volatile.Read(ref propertyEditRpcInFlight) != 0) {
+				// Legacy synchronous gesture paths all pass this value to a host mutation and
+				// already handle its rejected DesignerSessionState.  Returning an impossible
+				// version keeps the rejection on that established result path instead of
+				// throwing from a WPF dispatcher callback while a Properties-pad RPC is active.
+				StatusText = "A Properties-pad edit is still being applied.";
+				return -1;
+			}
 			var version = Math.Max(state.Version, Interlocked.Read(ref lastAcceptedUpdateVersion));
 			if (pendingUpdate is { } update)
 			{
@@ -1835,6 +1931,26 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				// may not have run yet when the request task completes.
 				if (update.IsCompletedSuccessfully && update.Result.Accepted)
 					version = Math.Max(version, update.Result.Version);
+			}
+			return version;
+		}
+
+		/// <summary>Asynchronous counterpart for the Properties-pad queue. Unlike
+		/// <see cref="RequireVersion"/>, this never blocks the dispatcher while a source update is
+		/// completing; it simply awaits the update and then uses its accepted version.</summary>
+		async Task<long> GetQueuedMutationVersionAsync()
+		{
+			if (state == null)
+				throw new InvalidOperationException("No document is open - call OpenAsync first.");
+			var version = Math.Max(state.Version, Interlocked.Read(ref lastAcceptedUpdateVersion));
+			if (pendingUpdate is { } update) {
+				try {
+					var updated = await update.ConfigureAwait(true);
+					if (updated.Accepted)
+						version = Math.Max(version, updated.Version);
+				} catch {
+					// The update initiator reports its own error. Use the last accepted document state.
+				}
 			}
 			return version;
 		}

@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -45,8 +46,31 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			DockPanel.SetDock(toolbar, Dock.Top); root.Children.Add(toolbar);
 			var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(8) };
 			var ok = new Button { Content = "OK", IsDefault = true, MinWidth = 76, Margin = new Thickness(4, 0, 0, 0) };
-			ok.Click += (_, _) => { if (TryExtract(editor, out var runs)) { try { adapter.SetRichText(runs); dialog.DialogResult = true; } catch (Exception ex) { MessageBox.Show(dialog, ex.Message, "Formatted text", MessageBoxButton.OK, MessageBoxImage.Warning); } } else MessageBox.Show(dialog, "Only direct text runs with supported formatting can be saved.", "Formatted text", MessageBoxButton.OK, MessageBoxImage.Warning); };
-			buttons.Children.Add(ok); buttons.Children.Add(new Button { Content = "Cancel", IsCancel = true, MinWidth = 76, Margin = new Thickness(4, 0, 0, 0) });
+			var cancel = new Button { Content = "Cancel", IsCancel = true, MinWidth = 76, Margin = new Thickness(4, 0, 0, 0) };
+			ok.Click += async (_, _) => {
+				if (!TryExtract(editor, out var runs)) {
+					MessageBox.Show(dialog, "Only direct text runs with supported formatting can be saved.", "Formatted text", MessageBoxButton.OK, MessageBoxImage.Warning);
+					return;
+				}
+				ok.IsEnabled = false;
+				try {
+					var result = await adapter.SetRichText(runs);
+					if (!dialog.IsVisible)
+						return;
+					if (result.Accepted)
+						dialog.DialogResult = true;
+					else
+						MessageBox.Show(dialog, result.Error, "Formatted text", MessageBoxButton.OK, MessageBoxImage.Warning);
+				} catch (Exception ex) {
+					if (dialog.IsVisible)
+						MessageBox.Show(dialog, ex.Message, "Formatted text", MessageBoxButton.OK, MessageBoxImage.Warning);
+				} finally {
+					if (dialog.IsVisible) {
+						ok.IsEnabled = true;
+					}
+				}
+			};
+			buttons.Children.Add(ok); buttons.Children.Add(cancel);
 			DockPanel.SetDock(buttons, Dock.Bottom); root.Children.Add(buttons); root.Children.Add(editor); dialog.Content = root; dialog.ShowDialog();
 		}
 

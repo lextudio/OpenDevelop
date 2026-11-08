@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -30,12 +31,16 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				entries.Add(current);
 			var combo = new ComboBox { Name = ComboName, ItemsSource = entries, IsEnabled = propertyItem.Instance is WpfSurfaceElementPropertyAdapter };
 			combo.SelectedItem = string.IsNullOrEmpty(current) ? ResourceReferenceEntries.NoneEntry : current;
-			combo.SelectionChanged += (_, _) => {
+			combo.SelectionChanged += async (_, _) => {
+				if (propertyItem.Instance is not WpfSurfaceElementPropertyAdapter adapter)
+					return;
 				if (combo.SelectedItem is not string entry || entry == (string.IsNullOrEmpty(current) ? ResourceReferenceEntries.NoneEntry : current)
 					|| !ResourceReferenceEntries.TryParse(entry, out var kind, out var key))
 					return;
 				try {
-					(propertyItem.Instance as WpfSurfaceElementPropertyAdapter)?.SetResourceReference(propertyItem.PropertyDescriptor.Name, kind, key);
+					var result = await adapter.SetResourceReference(propertyItem.PropertyDescriptor.Name, kind, key);
+					if (!result.Accepted)
+						throw new InvalidOperationException(result.Error);
 					current = entry == ResourceReferenceEntries.NoneEntry ? "" : entry;
 				} catch (System.Exception exception) {
 					LoggingService.Error(exception);

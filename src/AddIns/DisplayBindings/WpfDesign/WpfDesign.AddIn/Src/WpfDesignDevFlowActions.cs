@@ -15,6 +15,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -402,14 +403,14 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		/// needs to fall back to od.wpf-designer.toolbox.drop's direct calls.
 		/// </summary>
 		[DevFlowAction("od.wpf-designer.set-theme", Description = "Switch the active WPF designer between Light/Dark theme via the design/theme RPC directly (bypasses the toolbar button click, which synthetic pointer input cannot reliably hit on this toolbar) - only has an effect when od.wpf-designer.status reports supportsThemeSwitch=true")]
-		public static string SetTheme(string theme)
+		public static async Task<string> SetTheme(string theme)
 		{
 			var viewContent = FindWpfViewContent();
 			var surface = viewContent?.SurfaceControl;
 			if (surface?.State?.Accepted != true)
 				return JsonSerializer.Serialize(new { success = false, error = "WPF designer is not loaded" });
 
-			var result = surface.SetThemeAsync(theme).GetAwaiter().GetResult();
+			var result = await surface.SetThemeAsync(theme);
 			return JsonSerializer.Serialize(new {
 				success = result.Accepted,
 				error = result.Error,
@@ -591,7 +592,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		/// resolution a real drag would.
 		/// </summary>
 		[DevFlowAction("od.wpf-designer.toolbox.drop", Description = "Create a control (mirroring a toolbox drag-drop) and insert it into a container element in the active WPF designer, without needing simulated mouse input")]
-		public static string DropToolboxItem(string typeName, string containerElementName = null, string elementName = null, double width = 100, double height = 25)
+		public static async Task<string> DropToolboxItem(string typeName, string containerElementName = null, string elementName = null, double width = 100, double height = 25)
 		{
 			var surface = FindWpfViewContent()?.SurfaceControl;
 			if (surface?.State?.Accepted != true)
@@ -614,14 +615,13 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			var item = WpfToolbox.BuildToolboxItemInfo(type);
 			DesignerSessionState state;
 			try {
-				state = surface.AddElementAsync(parentId, item, elementName ?? "", 0, 0).GetAwaiter().GetResult();
+				state = await surface.AddElementAsync(parentId, item, elementName ?? "", 0, 0);
 			} catch (Exception ex) {
 				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
 			}
 			// AddElementAsync deliberately does not render internally (see
-			// WpfSurfaceDesignerControl.Show's remarks) - GetResult() above resumed this DevFlow
-			// action on the dispatcher thread it was invoked on, so calling Show() directly here
-			// is correct and safe.
+			// WpfSurfaceDesignerControl.Show's remarks). DevFlowUIThread preserves the UI
+			// context across this await, so applying the accepted state remains on the dispatcher.
 			surface.Show(state);
 			surface.NotifyDocumentChanged(state);
 			if (!state.Accepted)
@@ -692,10 +692,11 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				|| (candidate.PropertyDescriptor as WpfSurfacePropertyDescriptor)?.ProtocolName == propertyName;
 
 		[DevFlowAction("od.wpf-designer.properties-pad.edit", Description = "Edit a property through the real Xceed Properties pad PropertyItem; does not access the DDP property list directly")]
-		public static string EditPropertyThroughPropertiesPad(string propertyName, string value)
+		public static async Task<string> EditPropertyThroughPropertiesPad(string propertyName, string value)
 		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
 			var grid = PropertyPadGrid;
-			if (grid == null)
+			if (surface == null || grid == null)
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad is not available" });
 			if (!(grid.SelectedObject is WpfSurfaceElementPropertyAdapter selectedObject))
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
@@ -717,6 +718,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad property is read-only: " + propertyName });
 
 			var before = item.Value;
+			var propertyEditSequence = surface.PropertyEditSequence;
 			object convertedValue;
 			try {
 				var converter = item.PropertyDescriptor?.Converter;
@@ -730,7 +732,19 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			}
 
 			item.Value = convertedValue;
-			var after = item.Value;
+			var outcome = await surface.WaitForPropertyEditsAsync(propertyEditSequence);
+			var editError = outcome?.Error;
+			// The old PropertyItem can retain its pre-edit snapshot until Xceed processes the
+			// selection refresh. Read a fresh adapter after acceptance so DevFlow reports any
+			// host normalization, rather than echoing the submitted value.
+			object? after = item.Value;
+			if (outcome is { Accepted: true } && surface.SelectedPropertyAdapter is { } acceptedAdapter) {
+				var accepted = TypeDescriptor.GetProperties(acceptedAdapter).Cast<PropertyDescriptor>()
+					.FirstOrDefault(candidate => candidate.Name == item.PropertyName
+						|| candidate is WpfSurfacePropertyDescriptor descriptor && descriptor.ProtocolName == propertyName);
+				if (accepted != null)
+					after = accepted.GetValue(acceptedAdapter);
+			}
 
 			// The descriptor definition's binding to the selected object has
 			// ValidatesOnExceptions=true (DescriptorPropertyDefinition.CreateValueBinding), so if
@@ -747,9 +761,10 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				bindingError = errors.Count > 0 ? errors[0].ErrorContent?.ToString() : "Unknown validation error";
 			}
 
+			var noOp = outcome == null && String.Equals(before?.ToString(), convertedValue?.ToString(), StringComparison.Ordinal);
 			return JsonSerializer.Serialize(new {
-				success = bindingError == null,
-				error = bindingError,
+				success = bindingError == null && editError == null && (outcome != null || noOp),
+				error = bindingError ?? editError ?? (outcome == null && !noOp ? "Properties pad did not submit an edit." : null),
 				selectedName = selectedObject.GetComponentName(),
 				propertyName = item.PropertyName,
 				propertyItemType = item.GetType().FullName,
@@ -760,78 +775,91 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		}
 
 		[DevFlowAction("od.wpf-designer.properties-pad.edit-items", Description = "Click a collection row's real \"…\" button and apply an edit script to the collection dialog's model instead of the modal dialog: ';'-separated add:<afterIndex>:<text>, add-checkbox:<afterIndex>:<text> and add-combo:<afterIndex>:<text> for a DataGrid Columns row, remove:<i>, up:<i>, down:<i>, rename:<i>:<text>, or 'cancel'")]
-		public static string EditItemsThroughPropertiesPad(string propertyName, string script)
+		public static async Task<string> EditItemsThroughPropertiesPad(string propertyName, string script)
 		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
 			var grid = PropertyPadGrid;
-			if (grid?.SelectedObject is not WpfSurfaceElementPropertyAdapter)
+			if (surface == null || grid?.SelectedObject is not WpfSurfaceElementPropertyAdapter)
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
 			var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(candidate => IsPropertyItem(candidate, propertyName));
 			var button = (item?.Editor as DockPanel)?.Children.OfType<Button>()
 				.FirstOrDefault(candidate => candidate.Name == WpfItemsCollectionEditor.EditButtonName);
 			if (button == null || !button.IsEnabled)
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad did not render an enabled items editor button: " + propertyName });
+			var sequence = surface.PropertyEditSequence;
 			var result = CollectionItemsEditing.RunScriptedEdit(button, script);
-			return result.Success
+			var error = result.Success && result.Committed ? (await surface.WaitForPropertyEditsAsync(sequence))?.Error : null;
+			return result.Success && error == null
 				? JsonSerializer.Serialize(new { success = true, before = result.Before, after = result.After, committed = result.Committed })
-				: JsonSerializer.Serialize(new { success = false, error = result.Error });
+				: JsonSerializer.Serialize(new { success = false, error = result.Error ?? error });
 		}
 
 		[DevFlowAction("od.wpf-designer.properties-pad.edit-tree-items", Description = "Click a TreeView Items row's real tree editor button and apply a test script: rename:<rootIndex>:<text>, add-child:<rootIndex>:<text>, add:<ignored>:<text>, remove:<rootIndex>, or cancel")]
-		public static string EditTreeItemsThroughPropertiesPad(string propertyName, string script)
+		public static async Task<string> EditTreeItemsThroughPropertiesPad(string propertyName, string script)
 		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
 			var grid = PropertyPadGrid;
-			if (grid?.SelectedObject is not WpfSurfaceElementPropertyAdapter)
+			if (surface == null || grid?.SelectedObject is not WpfSurfaceElementPropertyAdapter)
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
 			var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(candidate => IsPropertyItem(candidate, propertyName));
 			var button = (item?.Editor as DockPanel)?.Children.OfType<Button>()
 				.FirstOrDefault(candidate => candidate.Name == WpfTreeItemsEditor.EditButtonName);
 			if (button == null || !button.IsEnabled)
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad did not render an enabled tree items editor button: " + propertyName });
+			var sequence = surface.PropertyEditSequence;
 			var result = TreeItemsEditing.RunScriptedEdit(button, script);
-			return result.Success
+			var error = result.Success && result.Committed ? (await surface.WaitForPropertyEditsAsync(sequence))?.Error : null;
+			return result.Success && error == null
 				? JsonSerializer.Serialize(new { success = true, committed = result.Committed })
-				: JsonSerializer.Serialize(new { success = false, error = result.Error });
+				: JsonSerializer.Serialize(new { success = false, error = result.Error ?? error });
 		}
 
 		[DevFlowAction("od.wpf-designer.properties-pad.edit-brush", Description = "Click a Brush row's real \"…\" button and apply an edit script to the brush editor's model instead of the modal dialog: ';'-separated kind:<Null|Solid|LinearGradient|RadialGradient>, color:<color>, add:<offset>, select:<i>, offset:<i>:<offset>, remove:<i>, reverse, opacity:<0-1>, start/end/center/origin/radius:x,y, mapping:<mode>, spread:<method>, or 'cancel'")]
-		public static string EditBrushThroughPropertiesPad(string propertyName, string script)
+		public static async Task<string> EditBrushThroughPropertiesPad(string propertyName, string script)
 		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
 			var grid = PropertyPadGrid;
-			if (grid?.SelectedObject is not WpfSurfaceElementPropertyAdapter)
+			if (surface == null || grid?.SelectedObject is not WpfSurfaceElementPropertyAdapter)
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
 			var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(candidate => IsPropertyItem(candidate, propertyName));
 			var button = (item?.Editor as DockPanel)?.Children.OfType<Button>()
 				.FirstOrDefault(candidate => candidate.Name == WpfBrushEditor.EditButtonName);
 			if (button == null || !button.IsEnabled)
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad did not render an enabled brush editor button: " + propertyName });
+			var sequence = surface.PropertyEditSequence;
 			var result = BrushEditing.RunScriptedEdit(button, script);
-			return result.Success
+			var error = result.Success && result.Committed ? (await surface.WaitForPropertyEditsAsync(sequence))?.Error : null;
+			return result.Success && error == null
 				? JsonSerializer.Serialize(new { success = true, before = result.Before, after = result.After, committed = result.Committed })
-				: JsonSerializer.Serialize(new { success = false, error = result.Error });
+				: JsonSerializer.Serialize(new { success = false, error = result.Error ?? error });
 		}
 
 		[DevFlowAction("od.wpf-designer.properties-pad.edit-transform", Description = "Click a Transform row's real \"…\" button (RenderTransform, LayoutTransform) and apply an edit script to the transform editor's model instead of the modal dialog: ';'-separated add:<Rotate|Scale|Skew|Translate>, remove:<i>, up:<i>, down:<i>, select:<i>, set:<i>:<Field>:<value>, or 'cancel'")]
-		public static string EditTransformThroughPropertiesPad(string propertyName, string script)
+		public static async Task<string> EditTransformThroughPropertiesPad(string propertyName, string script)
 		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
 			var grid = PropertyPadGrid;
-			if (grid?.SelectedObject is not WpfSurfaceElementPropertyAdapter)
+			if (surface == null || grid?.SelectedObject is not WpfSurfaceElementPropertyAdapter)
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
 			var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(candidate => IsPropertyItem(candidate, propertyName));
 			var button = (item?.Editor as DockPanel)?.Children.OfType<Button>()
 				.FirstOrDefault(candidate => candidate.Name == WpfTransformEditor.EditButtonName);
 			if (button == null || !button.IsEnabled)
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad did not render an enabled transform editor button: " + propertyName });
+			var sequence = surface.PropertyEditSequence;
 			var result = TransformEditing.RunScriptedEdit(button, script);
-			return result.Success
+			var error = result.Success && result.Committed ? (await surface.WaitForPropertyEditsAsync(sequence))?.Error : null;
+			return result.Success && error == null
 				? JsonSerializer.Serialize(new { success = true, before = result.Before, after = result.After, committed = result.Committed })
-				: JsonSerializer.Serialize(new { success = false, error = result.Error });
+				: JsonSerializer.Serialize(new { success = false, error = result.Error ?? error });
 		}
 
 		[DevFlowAction("od.wpf-designer.properties-pad.pick-resource", Description = "List a resource-reference row's real drop-down ('(none)', then each in-scope resource as {StaticResource key} and {DynamicResource key}), and when <entry> is given select it as a user pick does")]
-		public static string PickResourceThroughPropertiesPad(string propertyName, string entry = "")
+		public static async Task<string> PickResourceThroughPropertiesPad(string propertyName, string entry = "")
 		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
 			var grid = PropertyPadGrid;
-			if (grid?.SelectedObject is not WpfSurfaceElementPropertyAdapter)
+			if (surface == null || grid?.SelectedObject is not WpfSurfaceElementPropertyAdapter)
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
 			var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(candidate => IsPropertyItem(candidate, propertyName));
 			if (item?.Editor is not ComboBox { Name: WpfResourceReferenceEditor.ComboName } combo)
@@ -840,7 +868,11 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			if (!string.IsNullOrEmpty(entry)) {
 				if (!items.Contains(entry))
 					return JsonSerializer.Serialize(new { success = false, error = "Not offered: " + entry, items });
+				var sequence = surface.PropertyEditSequence;
 				combo.SelectedItem = entry;
+				var outcome = await surface.WaitForPropertyEditsAsync(sequence);
+				if (outcome is { Accepted: false })
+					return JsonSerializer.Serialize(new { success = false, error = outcome.Error, items, selected = combo.SelectedItem as string });
 			}
 			return JsonSerializer.Serialize(new { success = true, items, selected = combo.SelectedItem as string });
 		}
@@ -864,10 +896,11 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		}
 
 		[DevFlowAction("od.wpf-designer.properties-pad.bind-event", Description = "Double-click a WPF event through the live Properties pad adapter: binds the XAML handler attribute if unhandled, then the IDE creates (or finds) the method in the code-behind and opens it. The isolated host never touches project code")]
-		public static string BindEventThroughPropertiesPad(string eventName)
+		public static async Task<string> BindEventThroughPropertiesPad(string eventName)
 		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
 			var grid = PropertyPadGrid;
-			if (grid == null)
+			if (surface == null || grid == null)
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad is not available" });
 			if (!(grid.SelectedObject is WpfSurfaceElementPropertyAdapter selectedObject))
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
@@ -878,8 +911,12 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 
 			var eventSource = (IPropertyGridEventSource)selectedObject;
 			var before = eventSource.GetEventHandler(eventName);
+			var sequence = surface.PropertyEditSequence;
 			((IEventBindingHost)selectedObject).BindEvent(eventName);
-			var handler = eventSource.GetEventHandler(eventName);
+			var outcome = await surface.WaitForPropertyEditsAsync(sequence);
+			if (outcome is { Accepted: false })
+				return JsonSerializer.Serialize(new { success = false, error = outcome.Error, selectedName = selectedObject.GetComponentName(), eventName, before });
+			var handler = string.IsNullOrEmpty(before) ? selectedObject.GetEventBindingHandler(eventName) : before;
 
 			return JsonSerializer.Serialize(new {
 				success = !string.IsNullOrEmpty(handler),
@@ -891,10 +928,11 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		}
 
 		[DevFlowAction("od.wpf-designer.properties-pad.reset", Description = "Reset a serializable WPF property through the live Properties pad descriptor; uses the same ResetValue path as the Properties pad reset command")]
-		public static string ResetPropertyThroughPropertiesPad(string propertyName)
+		public static async Task<string> ResetPropertyThroughPropertiesPad(string propertyName)
 		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
 			var grid = PropertyPadGrid;
-			if (grid == null)
+			if (surface == null || grid == null)
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad is not available" });
 			if (!(grid.SelectedObject is WpfSurfaceElementPropertyAdapter selectedObject))
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
@@ -907,7 +945,11 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad property cannot be reset: " + propertyName });
 
 			try {
+				var sequence = surface.PropertyEditSequence;
 				item.PropertyDescriptor.ResetValue(selectedObject);
+				var outcome = await surface.WaitForPropertyEditsAsync(sequence);
+				if (outcome is { Accepted: false })
+					return JsonSerializer.Serialize(new { success = false, error = outcome.Error });
 				return JsonSerializer.Serialize(new {
 					success = true,
 					selectedName = selectedObject.GetComponentName(),
@@ -1006,14 +1048,14 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		static string Failure(string error) => DesignerDevFlowResults.Failure(error);
 
 		[DevFlowAction("od.wpf-designer.delete", Description = "Delete the currently selected element in the active WPF designer - mirrors od.winui-designer.delete")]
-		public static string Delete()
+		public static async Task<string> Delete()
 		{
 			var surface = FindWpfViewContent()?.SurfaceControl;
 			if (surface?.State?.Accepted != true)
 				return Failure("WPF designer is not loaded");
 			DesignerSessionState state;
 			try {
-				state = surface.DeleteSelectedAsync().GetAwaiter().GetResult()
+				state = await surface.DeleteSelectedAsync()
 					?? throw new InvalidOperationException("No element is selected to delete");
 			} catch (Exception ex) {
 				return Failure(ex.Message);

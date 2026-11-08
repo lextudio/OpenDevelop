@@ -3,9 +3,11 @@ using System;
 using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.WpfDesign.SurfaceHost;
@@ -20,10 +22,9 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 	/// <c>DesignItem</c> reflection - see <c>WpfSurfaceHostService.BuildProperties</c>) to the
 	/// shared Properties pad, exactly the role <c>FormsDesignerViewContent.RemoteComponentPropertyProxy</c>
 	/// plays for WinForms. Edits go out through <see cref="WpfSurfaceHostClient.SetPropertyAsync"/>
-	/// (blocking - <see cref="PropertyDescriptor.SetValue"/> is inherently synchronous, matching
-	/// <c>FormsDesignerViewContent.ExecuteRemoteEdit</c>'s established blocking-edit pattern in
-	/// this codebase) and the result is handed back through <paramref name="onStateChanged"/> so
-	/// the caller can refresh the surface/tree the same way a mutation RPC always does.
+	/// through the surface-owned serialized edit queue. <see cref="PropertyDescriptor.SetValue"/>
+	/// remains a synchronous framework callback, but it only submits the edit; it never waits for
+	/// the remote host. The surface applies accepted state on its dispatcher.
 	/// </summary>
 	/// <summary>A double-clicked event that now names a handler. <see cref="XamlChanged"/> is true when
 	/// this double-click wrote the attribute (and so pushed a designer undo entry) and false when it
@@ -33,19 +34,17 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 	public sealed class WpfSurfaceElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IItemsCollectionEditorHost, ITreeItemsEditorHost, IBrushEditorHost, ITransformEditorHost, IDesignFrameSource, IImageSourceCandidates
 	{
 		readonly WpfSurfaceHostClient client;
-		readonly Func<long> currentBaseVersion;
 		readonly DesignerElementNode node;
-		readonly Action<DesignerSessionState> onStateChanged;
+		readonly Func<Func<long, Task<DesignerSessionState>>, Task<WpfPropertyEditOutcome>> queueEdit;
 		readonly Action<WpfEventBinding>? onEventHandlerBound;
 
-		public WpfSurfaceElementPropertyAdapter(WpfSurfaceHostClient client, Func<long> currentBaseVersion,
-			DesignerElementNode node, Action<DesignerSessionState> onStateChanged, Action<WpfEventBinding>? onEventHandlerBound = null)
+		internal WpfSurfaceElementPropertyAdapter(WpfSurfaceHostClient client,
+			DesignerElementNode node, Func<Func<long, Task<DesignerSessionState>>, Task<WpfPropertyEditOutcome>> queueEdit, Action<WpfEventBinding>? onEventHandlerBound = null)
 		{
 			this.onEventHandlerBound = onEventHandlerBound;
 			this.client = client ?? throw new ArgumentNullException(nameof(client));
-			this.currentBaseVersion = currentBaseVersion ?? throw new ArgumentNullException(nameof(currentBaseVersion));
 			this.node = node ?? throw new ArgumentNullException(nameof(node));
-			this.onStateChanged = onStateChanged ?? throw new ArgumentNullException(nameof(onStateChanged));
+			this.queueEdit = queueEdit ?? throw new ArgumentNullException(nameof(queueEdit));
 		}
 
 		/// <summary>The project images an <c>ImageSource</c> row offers, relative to the designed
@@ -61,179 +60,70 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			=> ImageSourceCandidates?.Invoke() ?? Array.Empty<string>();
 
 		internal void SetProperty(string propertyName, string value)
-		{
-			var state = client.SetPropertyAsync(currentBaseVersion(), node.Id, propertyName, value)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetPropertyAsync(version, node.Id, propertyName, value));
 
-		internal void SetRichText(System.Collections.Generic.IReadOnlyList<DesignerRichTextRun> runs)
-		{
-			var state = client.SetRichTextAsync(currentBaseVersion(), node.Id, runs).GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+		internal Task<WpfPropertyEditOutcome> SetRichText(System.Collections.Generic.IReadOnlyList<DesignerRichTextRun> runs)
+			=> QueueEdit(version => client.SetRichTextAsync(version, node.Id, runs));
 
 		internal void ResetProperty(string propertyName)
-		{
-			var state = client.ResetPropertyAsync(currentBaseVersion(), node.Id, propertyName)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.ResetPropertyAsync(version, node.Id, propertyName));
 
-		internal void SetEvent(string eventName, string handlerName)
-		{
-			var state = client.SetEventAsync(currentBaseVersion(), node.Id, eventName, handlerName)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+		internal Task<WpfPropertyEditOutcome> SetEvent(string eventName, string handlerName)
+			=> QueueEdit(version => client.SetEventAsync(version, node.Id, eventName, handlerName));
 
 		internal void SetBindingPath(string propertyName, string path)
-		{
-			var state = client.SetBindingPathAsync(currentBaseVersion(), node.Id, propertyName, path)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingPathAsync(version, node.Id, propertyName, path));
 
 		internal void SetBindingChildPath(string propertyName, int childIndex, string path)
-		{
-			var state = client.SetBindingChildPathAsync(currentBaseVersion(), node.Id, propertyName, childIndex, path)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingChildPathAsync(version, node.Id, propertyName, childIndex, path));
 
 		internal void SetBindingMode(string propertyName, string mode)
-		{
-			var state = client.SetBindingModeAsync(currentBaseVersion(), node.Id, propertyName, mode)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingModeAsync(version, node.Id, propertyName, mode));
 
 		internal void SetBindingChildMode(string propertyName, int childIndex, string mode)
-		{
-			var state = client.SetBindingModeAsync(currentBaseVersion(), node.Id, propertyName, mode, childIndex)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingModeAsync(version, node.Id, propertyName, mode, childIndex));
 
 		internal void SetBindingUpdateSourceTrigger(string propertyName, string trigger)
-		{
-			var state = client.SetBindingUpdateSourceTriggerAsync(currentBaseVersion(), node.Id, propertyName, trigger)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingUpdateSourceTriggerAsync(version, node.Id, propertyName, trigger));
 
 		internal void SetBindingChildUpdateSourceTrigger(string propertyName, int childIndex, string trigger)
-		{
-			var state = client.SetBindingUpdateSourceTriggerAsync(currentBaseVersion(), node.Id, propertyName, trigger, childIndex)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingUpdateSourceTriggerAsync(version, node.Id, propertyName, trigger, childIndex));
 
 		internal void SetBindingElementName(string propertyName, string elementName)
-		{
-			var state = client.SetBindingElementNameAsync(currentBaseVersion(), node.Id, propertyName, elementName)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingElementNameAsync(version, node.Id, propertyName, elementName));
 
 		internal void SetBindingChildElementName(string propertyName, int childIndex, string elementName)
-		{
-			var state = client.SetBindingElementNameAsync(currentBaseVersion(), node.Id, propertyName, elementName, childIndex)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingElementNameAsync(version, node.Id, propertyName, elementName, childIndex));
 
 		internal void SetBindingRelativeSource(string propertyName, string relativeSource)
-		{
-			var state = client.SetBindingRelativeSourceAsync(currentBaseVersion(), node.Id, propertyName, relativeSource)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingRelativeSourceAsync(version, node.Id, propertyName, relativeSource));
 
 		internal void SetBindingChildRelativeSource(string propertyName, int childIndex, string relativeSource)
-		{
-			var state = client.SetBindingRelativeSourceAsync(currentBaseVersion(), node.Id, propertyName, relativeSource, childIndex)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingRelativeSourceAsync(version, node.Id, propertyName, relativeSource, childIndex));
 
 		internal void SetBindingAncestorLevel(string propertyName, int level)
-		{
-			var state = client.SetBindingAncestorLevelAsync(currentBaseVersion(), node.Id, propertyName, level)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingAncestorLevelAsync(version, node.Id, propertyName, level));
 
 		internal void SetBindingSource(string propertyName, string resourceKey)
-		{
-			var state = client.SetBindingSourceAsync(currentBaseVersion(), node.Id, propertyName, resourceKey)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingSourceAsync(version, node.Id, propertyName, resourceKey));
 
 		internal void SetBindingChildSource(string propertyName, int childIndex, string resourceKey)
-		{
-			var state = client.SetBindingSourceAsync(currentBaseVersion(), node.Id, propertyName, resourceKey, childIndex)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingSourceAsync(version, node.Id, propertyName, resourceKey, childIndex));
 
 		internal void SetBindingNotifyOnValidationError(string propertyName, bool notify)
-		{
-			var state = client.SetBindingNotifyOnValidationErrorAsync(currentBaseVersion(), node.Id, propertyName, notify)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingNotifyOnValidationErrorAsync(version, node.Id, propertyName, notify));
 
 		internal void SetBindingValidationOption(string propertyName, string optionName, bool enabled)
-		{
-			var state = client.SetBindingValidationOptionAsync(currentBaseVersion(), node.Id, propertyName, optionName, enabled)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingValidationOptionAsync(version, node.Id, propertyName, optionName, enabled));
 
 		internal void SetBindingChildValidationOption(string propertyName, int childIndex, string optionName, bool enabled)
-		{
-			var state = client.SetBindingValidationOptionAsync(currentBaseVersion(), node.Id, propertyName, optionName, enabled, childIndex)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingValidationOptionAsync(version, node.Id, propertyName, optionName, enabled, childIndex));
 
 		internal void SetBindingTextOption(string propertyName, string optionName, string value)
-		{
-			var state = client.SetBindingTextOptionAsync(currentBaseVersion(), node.Id, propertyName, optionName, value)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingTextOptionAsync(version, node.Id, propertyName, optionName, value));
 
 		internal void SetBindingChildTextOption(string propertyName, int childIndex, string optionName, string value)
-		{
-			var state = client.SetBindingTextOptionAsync(currentBaseVersion(), node.Id, propertyName, optionName, value, childIndex)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingTextOptionAsync(version, node.Id, propertyName, optionName, value, childIndex));
 
 		/// <summary>Commits an edited plain item list (<c>design/set-items</c>); the property is the
 		/// host-published ItemsCollection row, so only this element's Items can be targeted.</summary>
@@ -243,15 +133,13 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				&& candidate.EditorKind is "ItemsCollection" or "DataGridColumns" or "BindingCollection" or "GridViewColumns" or "StripItems");
 			if (property == null)
 				throw new InvalidOperationException("Not an editable items collection: " + propertyName);
-			var state = property.EditorKind == "BindingCollection"
-				? client.SetBindingItemsAsync(currentBaseVersion(), node.Id, property.BindingPropertyName, items.ToArray()).GetAwaiter().GetResult()
+			QueueEdit(version => property.EditorKind == "BindingCollection"
+				? client.SetBindingItemsAsync(version, node.Id, property.BindingPropertyName, items.ToArray())
 				: property.EditorKind == "GridViewColumns"
-					? client.SetGridViewColumnsAsync(currentBaseVersion(), node.Id, items).GetAwaiter().GetResult()
+					? client.SetGridViewColumnsAsync(version, node.Id, items)
 					: property.EditorKind == "StripItems"
-						? client.SetStripItemsAsync(currentBaseVersion(), node.Id, items).GetAwaiter().GetResult()
-					: client.SetItemsAsync(currentBaseVersion(), node.Id, items).GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
+						? client.SetStripItemsAsync(version, node.Id, items)
+						: client.SetItemsAsync(version, node.Id, items));
 		}
 
 		void ITreeItemsEditorHost.SetTreeItems(string propertyName, System.Collections.Generic.IReadOnlyList<DesignerTreeItemEdit> items)
@@ -259,9 +147,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			var editorKind = node.Properties.SingleOrDefault(property => property.Name == propertyName)?.EditorKind;
 			if (editorKind is not ("TreeItems" or "MenuItems"))
 				throw new InvalidOperationException("Not an editable tree items collection: " + propertyName);
-			var state = editorKind == "MenuItems" ? client.SetMenuItemsAsync(currentBaseVersion(), node.Id, items).GetAwaiter().GetResult() : client.SetTreeItemsAsync(currentBaseVersion(), node.Id, items).GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
+			QueueEdit(version => editorKind == "MenuItems" ? client.SetMenuItemsAsync(version, node.Id, items) : client.SetTreeItemsAsync(version, node.Id, items));
 		}
 
 		/// <summary>Commits an edited brush (<c>design/set-brush</c>); only a host-published Brush
@@ -270,20 +156,16 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		{
 			if (!node.Properties.Any(property => property.Name == propertyName && property.EditorKind == "Brush"))
 				throw new InvalidOperationException("Not an editable brush: " + propertyName);
-			var state = client.SetBrushAsync(currentBaseVersion(), node.Id, propertyName, brush).GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
+			QueueEdit(version => client.SetBrushAsync(version, node.Id, propertyName, brush));
 		}
 
 		/// <summary>Points a property at a resource, or clears the reference (<c>design/set-resource-reference</c>); only a
 		/// host-published ResourceReference row of this element can be targeted.</summary>
-		internal void SetResourceReference(string propertyName, string kind, string key)
+		internal Task<WpfPropertyEditOutcome> SetResourceReference(string propertyName, string kind, string key)
 		{
 			if (!node.Properties.Any(property => property.Name == propertyName && property.EditorKind == "ResourceReference"))
 				throw new InvalidOperationException("Not an editable resource reference: " + propertyName);
-			var state = client.SetResourceReferenceAsync(currentBaseVersion(), node.Id, propertyName, kind, key).GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
+			return QueueEdit(version => client.SetResourceReferenceAsync(version, node.Id, propertyName, kind, key));
 		}
 
 		/// <summary>Commits an edited transform (<c>design/set-transform</c>); only a host-published Transform
@@ -292,54 +174,22 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		{
 			if (!node.Properties.Any(property => property.Name == propertyName && property.EditorKind == "Transform"))
 				throw new InvalidOperationException("Not an editable transform: " + propertyName);
-			var state = client.SetTransformAsync(currentBaseVersion(), node.Id, propertyName, ops).GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
+			QueueEdit(version => client.SetTransformAsync(version, node.Id, propertyName, ops));
 		}
 
 		internal void SetBindingConverter(string propertyName, string resourceKey)
-		{
-			var state = client.SetBindingConverterAsync(currentBaseVersion(), node.Id, propertyName, resourceKey)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingConverterAsync(version, node.Id, propertyName, resourceKey));
 
 		internal void SetBindingChildConverter(string propertyName, int childIndex, string resourceKey)
-		{
-			var state = client.SetBindingConverterAsync(currentBaseVersion(), node.Id, propertyName, resourceKey, childIndex)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingConverterAsync(version, node.Id, propertyName, resourceKey, childIndex));
 
 		internal void SetBindingDelay(string propertyName, int delay)
-		{
-			var state = client.SetBindingDelayAsync(currentBaseVersion(), node.Id, propertyName, delay)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingDelayAsync(version, node.Id, propertyName, delay));
 
 		internal void SetBindingChildDelay(string propertyName, int childIndex, int delay)
-		{
-			var state = client.SetBindingDelayAsync(currentBaseVersion(), node.Id, propertyName, delay, childIndex)
-				.GetAwaiter().GetResult();
-			EnsureAccepted(state);
-			onStateChanged(state);
-		}
+			=> QueueEdit(version => client.SetBindingDelayAsync(version, node.Id, propertyName, delay, childIndex));
 
-		// A rejected DDP mutation is not an edit.  In particular, do not send it through
-		// OnPropertyEdited: that path marks the document dirty and refreshes the pad from a
-		// state which the host explicitly says was not applied.  Forms follows the same rule
-		// through ExecuteRemoteEdit.
-		static void EnsureAccepted(DesignerSessionState state)
-		{
-			if (!state.Accepted)
-				throw new InvalidOperationException(string.IsNullOrWhiteSpace(state.Error)
-					? "The WPF designer rejected the edit."
-					: state.Error);
-		}
+		Task<WpfPropertyEditOutcome> QueueEdit(Func<long, Task<DesignerSessionState>> edit) => queueEdit(edit);
 
 		string IPropertyGridEventSource.GetEventHandler(string eventName)
 			=> node.Events.FirstOrDefault(@event => @event.Name == eventName)?.Handler ?? "";
@@ -349,9 +199,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			var @event = node.Events.FirstOrDefault(candidate => candidate.Name == eventName);
 			if (@event == null || @event.Handler == (handlerName ?? ""))
 				return;
-			SetEvent(eventName, handlerName ?? "");
-			@event.Handler = handlerName ?? "";
+			_ = SetEvent(eventName, handlerName ?? "");
 		}
+
+		internal string GetEventBindingHandler(string eventName) => (node.Name ?? node.Type) + "_" + eventName;
 
 		// Double-click follows the in-process designer: bind the XAML attribute if the event has no
 		// handler yet, then let the view create (or find) the method in the IDE-owned code-behind
@@ -359,10 +210,32 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		void IEventBindingHost.BindEvent(string eventName)
 		{
 			var bindsXaml = string.IsNullOrEmpty(((IPropertyGridEventSource)this).GetEventHandler(eventName));
-			if (bindsXaml)
-				((IPropertyGridEventSource)this).SetEventHandler(eventName, (node.Name ?? node.Type) + "_" + eventName);
-			if (node.Events.FirstOrDefault(candidate => candidate.Name == eventName) is { Handler.Length: > 0 } bound)
-				onEventHandlerBound?.Invoke(new WpfEventBinding(bound, bindsXaml));
+			Task<WpfPropertyEditOutcome>? pending = null;
+			DesignerEventInfo? bound = node.Events.FirstOrDefault(candidate => candidate.Name == eventName);
+			if (bindsXaml) {
+				var handler = GetEventBindingHandler(eventName);
+				pending = SetEvent(eventName, handler);
+				if (bound != null)
+					bound = new DesignerEventInfo { Name = bound.Name, Category = bound.Category, HandlerTypeName = bound.HandlerTypeName, Handler = handler };
+			}
+			if (bound is { Handler.Length: > 0 })
+				NotifyEventHandlerBound(pending, new WpfEventBinding(bound, bindsXaml));
+		}
+
+		async void NotifyEventHandlerBound(Task<WpfPropertyEditOutcome>? pending, WpfEventBinding binding)
+		{
+			try {
+				if (pending != null) {
+					var outcome = await pending.ConfigureAwait(true);
+					if (!outcome.Accepted) {
+						LoggingService.Warn("WPF designer event binding rejected: " + (outcome.Error ?? "Unknown host error."));
+						return;
+					}
+				}
+				onEventHandlerBound?.Invoke(binding);
+			} catch (Exception exception) {
+				LoggingService.Error(exception);
+			}
 		}
 
 		public string GetClassName() => node.Type;
@@ -410,8 +283,7 @@ sealed class WpfSurfaceEventDescriptor : EventDescriptor, IPropertyGridEventType
 
 	void SetHandlerName(string handlerName)
 	{
-		owner.SetEvent(@event.Name, handlerName);
-		@event.Handler = handlerName;
+		_ = owner.SetEvent(@event.Name, handlerName);
 	}
 }
 
@@ -599,17 +471,8 @@ sealed class WpfSurfacePropertyDescriptor : PropertyDescriptor, IItemsCollection
 				owner.SetBindingChildDelay(property.BindingPropertyName, property.BindingChildIndex, Convert.ToInt32(value, CultureInfo.InvariantCulture));
 			else
 				owner.SetProperty(property.Name, serialized);
-			// The WPF TwoWay Value binding re-reads GetValue() right after a successful commit to
-			// refresh its target - but property (this DesignerPropertyInfo) is the snapshot
-			// captured when this descriptor was built, at SELECTION time, not a live view of the
-			// child's document. Without updating it here, that immediate re-read reports the
-			// PRE-edit value (a real, observed bug: WaitForPropertiesPadEditAsync's own "after"
-			// read back the unedited original instead of the just-set value) until the next full
-			// selection rebuilds a fresh adapter. Setting it directly is correct here specifically
-			// because the RPC above already succeeded (an exception would have thrown out of this
-			// method before reaching this line, leaving the stale snapshot in place, which is right).
-			property.Value = serialized;
-			property.IsNull = false;
+			// Do not mutate the node snapshot optimistically: it remains the last accepted host
+			// state, so a rejected queued edit can safely rebind the Properties pad from it.
 			OnValueChanged(component, EventArgs.Empty);
 		}
 	}
