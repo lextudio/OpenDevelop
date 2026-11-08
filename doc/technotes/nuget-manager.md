@@ -107,10 +107,14 @@ existing central package from the Updates tab, `VersionOverride`, and a project 
 - Covered by `AddInTests.SearchAndInstallPackage_UpdatesProjectFile`: from the package node and from the
   Packages folder, Manage Packages... opens the dialog (title `NuGetFixtureApp - Manage Packages` for the
   fixture's project), Update opens the Updates tab filtered to the package, and Restore Packages from the
-  folder recreates `obj/project.assets.json`. **Not covered: which project a node resolves to when the
-  solution has several.** The fixture has one project, and `PackageManagementSelectedProjects` falls back
-  to a solution's only project when `CurrentProject` is null, so the title cannot prove the mapping; that
-  needs a second project in a fixture.
+  folder recreates `obj/project.assets.json`. With one project the title cannot tell the node's owning
+  project from `PackageManagementSelectedProjects`' fallback to a solution's only project, so the mapping is
+  covered separately by `AddInTests.PackageNodeCommands_OpenTheDialogForTheProjectThatOwnsTheNode_WithSeveralProjects`:
+  two projects reference different packages, and Manage Packages... and Update on each package node open the
+  dialog titled for that node's own project (`AppA` / `AppB`; with two projects the fallback would give the
+  solution's name). Not covered: the Packages folder of a specific project (both folders are named `Packages` and
+  `od.project-browser.invoke-context-menu` finds the first by name) and Restore Packages from a second
+  project's node.
 - **Package sources follow NuGet's own definition (done 2026-11-08).** The add-in used to read and write
   only `<solution>/.nuget/NuGet.Config` (`PortableNuGetSettings`, via `SettingsProvider`), the NuGet 2.x
   location. `dotnet restore` ignores that file (measured: a feed defined only there is not used, the same feed in

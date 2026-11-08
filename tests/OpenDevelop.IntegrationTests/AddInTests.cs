@@ -6291,6 +6291,69 @@ EndGlobal
     }
 
     [Fact]
+    public async Task PackageNodeCommands_OpenTheDialogForTheProjectThatOwnsTheNode_WithSeveralProjects()
+    {
+        // With one project the dialog title cannot tell "the node's owning project" from the single-project
+        // fallback. Two projects that reference different packages can: the package nodes are told apart by
+        // name, and each must open the dialog for ITS project, whichever project comes first in the tree.
+        var work = Path.Combine(_projectDir, "multi");
+        Directory.CreateDirectory(work);
+        WriteLocalFeedNuGetConfig(work);
+        foreach (var (name, package) in new[] { ("AppA", TestPackageId), ("AppB", "OpenDevelop.TypeProbe") })
+        {
+            Directory.CreateDirectory(Path.Combine(work, name));
+            await File.WriteAllTextAsync(Path.Combine(work, name, name + ".csproj"),
+                "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\""
+                + package + "\" Version=\"1.0.0\" />\n  </ItemGroup>\n</Project>\n");
+            await File.WriteAllTextAsync(Path.Combine(work, name, "Program.cs"), "class Program { static void Main() { } }\n");
+            // The Packages node is built from the restored project, so restore each before opening the solution.
+            var restore = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("dotnet")
+            {
+                ArgumentList = { "restore", Path.Combine(work, name, name + ".csproj") },
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            })!;
+            var restoreOutput = await restore.StandardOutput.ReadToEndAsync();
+            Assert.True(restore.WaitForExit(120_000) && restore.ExitCode == 0, name + " restore failed: " + restoreOutput);
+        }
+        await File.WriteAllTextAsync(Path.Combine(work, "Work.slnx"),
+            "<Solution>\n  <Project Path=\"AppA/AppA.csproj\" />\n  <Project Path=\"AppB/AppB.csproj\" />\n</Solution>\n");
+
+        var openResult = await _app.InvokeAsync("od.open-solution", Path.Combine(work, "Work.slnx"));
+        Assert.True(openResult.GetProperty("success").GetBoolean(), openResult.ToString());
+
+        foreach (var (node, expectedProject) in new[] { ("OpenDevelop.TypeProbe (1.0.0)", "AppB"), (TestPackageId + " (1.0.0)", "AppA") })
+        {
+            foreach (var command in new[] { "ManagePackages", "UpdatePackage" })
+            {
+                // The tree refreshes asynchronously after the solution opens: wait for the node.
+                JsonElement started = default;
+                var found = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                    started = await _app.InvokeAsync("od.project-browser.invoke-context-menu", "PackageReference", command, node);
+                    return started.GetProperty("started").GetBoolean();
+                }, TimeSpan.FromSeconds(60));
+                Assert.True(found, $"{command} on '{node}' could not be started: {started}");
+                try
+                {
+                    JsonElement dialog = default;
+                    var opened = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                        dialog = await _app.InvokeAsync("od.nuget.dialog-state");
+                        return dialog.GetProperty("open").GetBoolean();
+                    }, TimeSpan.FromSeconds(30));
+                    Assert.True(opened, $"{command} on '{node}' did not open the dialog: {dialog}");
+                    Assert.Equal(expectedProject + " - Manage Packages", dialog.GetProperty("title").GetString());
+                }
+                finally
+                {
+                    var closed = await _app.InvokeAsync("od.nuget.close-dialog");
+                    Assert.True(closed.GetProperty("success").GetBoolean(), closed.ToString());
+                }
+            }
+        }
+    }
+
+    [Fact]
     public async Task LightBulb_DoesNotOfferAPackageNoProjectOfTheSolutionUses()
     {
         // The package is in the local feed, but no project of this solution references it: the bulb must
