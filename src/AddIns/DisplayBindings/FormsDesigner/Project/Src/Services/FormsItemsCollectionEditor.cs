@@ -29,11 +29,15 @@ namespace ICSharpCode.FormsDesigner.Services
 				Padding = new Thickness(3, 0, 3, 0)
 			};
 			// The row's own Instance is its selected object, so no visual-tree walk is needed.
-			button.Click += (_, _) => CollectionItemsEditing.Edit(propertyItem.Instance, propertyItem.PropertyDescriptor,
-				Window.GetWindow(button), exception => {
+			button.Click += async (_, _) => {
+				var edit = CollectionItemsEditing.Edit(propertyItem.Instance, propertyItem.PropertyDescriptor,
+					Window.GetWindow(button), exception => {
 					LoggingService.Error(exception);
 					MessageService.ShowError(exception.Message);
-				});
+					});
+				CollectionItemsEditing.TrackEdit(button, edit);
+				await edit;
+			};
 			DockPanel.SetDock(button, Dock.Right);
 			panel.Children.Add(button);
 			var value = new TextBlock {

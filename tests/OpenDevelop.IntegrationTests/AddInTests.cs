@@ -4672,6 +4672,19 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             var add2 = await _app.InvokeAsync("od.forms-designer.add-control", "Form1", "System.Windows.Forms.Label", "label2", 220, 30);
             Assert.True(add2.GetProperty("success").GetBoolean(), add2.ToString());
 
+            // The direct property DevFlow action shares the Properties pad's asynchronous host
+            // queue. A duplicate component name is rejected by the host, and the action must
+            // report that rejection rather than returning success when it merely enqueued work.
+            var rejectedName = await _app.InvokeAsync("od.forms-designer.set-property", "label1", "Name", "label2");
+            Assert.False(rejectedName.GetProperty("success").GetBoolean(), rejectedName.ToString());
+            Assert.False(String.IsNullOrWhiteSpace(rejectedName.GetProperty("error").GetString()), rejectedName.ToString());
+
+            var selectedForRejectedPadEdit = await _app.InvokeAsync("od.forms-designer.select", "label1");
+            Assert.True(selectedForRejectedPadEdit.GetProperty("success").GetBoolean(), selectedForRejectedPadEdit.ToString());
+            var rejectedPadName = await _app.InvokeAsync("od.forms-designer.properties-pad.edit", "Name", "label2");
+            Assert.False(rejectedPadName.GetProperty("success").GetBoolean(), rejectedPadName.ToString());
+            Assert.False(String.IsNullOrWhiteSpace(rejectedPadName.GetProperty("error").GetString()), rejectedPadName.ToString());
+
             // Multi-select both, then align left against the primary selection (label1).
             // The remote host's component state trails the add-control responses, so the
             // selection must be polled until the host knows both components.
@@ -4791,6 +4804,11 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             Assert.True(addAcceptButton.GetProperty("success").GetBoolean(), addAcceptButton.ToString());
             JsonElement acceptSelected = default;
             JsonElement acceptEdited = default;
+			var selectedForRejectedReference = await _app.InvokeAsync("od.forms-designer.select", "Form1");
+			Assert.True(selectedForRejectedReference.GetProperty("success").GetBoolean(), selectedForRejectedReference.ToString());
+			var rejectedReference = await _app.InvokeAsync("od.forms-designer.properties-pad.edit", "AcceptButton", "missingButton");
+			Assert.False(rejectedReference.GetProperty("success").GetBoolean(), rejectedReference.ToString());
+			Assert.False(String.IsNullOrWhiteSpace(rejectedReference.GetProperty("error").GetString()), rejectedReference.ToString());
             var acceptEditedOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 acceptSelected = await _app.InvokeAsync("od.forms-designer.select", "Form1");
                 if (!acceptSelected.GetProperty("success").GetBoolean()

@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading.Tasks;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -31,6 +33,13 @@ public interface IItemsCollectionEditorHost
 	void SetItems(string propertyName, IReadOnlyList<DesignerCollectionItemEdit> items);
 }
 
+/// <summary>An optional asynchronous form of the items-editor host contract. Framework editors
+/// call it when present so a remote designer can confirm the mutation before reporting success.</summary>
+public interface IAsyncItemsCollectionEditorHost
+{
+	Task SetItemsAsync(string propertyName, IReadOnlyList<DesignerCollectionItemEdit> items);
+}
+
 /// <summary>
 /// The shared "…" flow behind an <c>ItemsCollection</c> Properties-pad row, used by every designer
 /// whose host publishes one: open <see cref="CollectionItemsDialog"/> (or a test edit) over the
@@ -42,6 +51,19 @@ public static class CollectionItemsEditing
 	// commit path can be exercised; normal use never sets it. Returning false cancels.
 	public static Func<CollectionItemsEditModel, bool>? TestEdit { get; set; }
 	public static Exception? TestException { get; set; }
+	sealed class EditTask
+	{
+		public Task Value { get; init; } = Task.CompletedTask;
+	}
+	static readonly ConditionalWeakTable<Button, EditTask> editTasks = new();
+
+	/// <summary>Associates a real editor button with its in-flight commit. Scripted automation
+	/// retrieves only this button's task, so unrelated designers cannot cross-await each other.</summary>
+	public static void TrackEdit(Button button, Task task)
+	{
+		editTasks.Remove(button);
+		editTasks.Add(button, new EditTask { Value = task });
+	}
 
 	/// <summary>The outcome of <see cref="RunScriptedEdit"/>.</summary>
 	public sealed record ScriptedEditResult(bool Success, string? Error, string[]? Before, string[]? After, bool Committed);
@@ -102,10 +124,44 @@ public static class CollectionItemsEditing
 			: new ScriptedEditResult(true, null, before, after, committed);
 	}
 
+	/// <summary>Asynchronously runs a scripted edit and waits for an asynchronous host commit.
+	/// This keeps a remote host rejection visible to DevFlow instead of treating dialog closure as
+	/// commit success.</summary>
+	public static async Task<ScriptedEditResult> RunScriptedEditAsync(Button button, string script)
+	{
+		string[]? before = null;
+		string[]? after = null;
+		var committed = false;
+		TestException = null;
+		TestEdit = model => {
+			before = model.Entries.Select(entry => entry.Text).ToArray();
+			if (!ApplyScript(model, script))
+				return false;
+			after = model.Entries.Select(entry => entry.Text).ToArray();
+			committed = model.IsChanged;
+			return true;
+		};
+		try {
+			button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+			if (editTasks.TryGetValue(button, out var editTask))
+				await editTask.Value;
+		} finally {
+			TestEdit = null;
+		}
+		return TestException != null
+			? new ScriptedEditResult(false, TestException.Message, before, after, false)
+			: new ScriptedEditResult(true, null, before, after, committed);
+	}
+
 	/// <summary>Runs the editor for <paramref name="descriptor"/> on <paramref name="instance"/>
 	/// (the row's own selected object). Failures go to <paramref name="reportError"/>, or to
 	/// <see cref="TestException"/> while a test edit is active.</summary>
-	public static void Edit(object? instance, PropertyDescriptor? descriptor, Window? owner, Action<Exception> reportError)
+	public static Task Edit(object? instance, PropertyDescriptor? descriptor, Window? owner, Action<Exception> reportError)
+	{
+		return EditCoreAsync(instance, descriptor, owner, reportError);
+	}
+
+	static async Task EditCoreAsync(object? instance, PropertyDescriptor? descriptor, Window? owner, Action<Exception> reportError)
 	{
 		try {
 			if (instance is not IItemsCollectionEditorHost host || descriptor is not IItemsCollectionProperty property)
@@ -114,8 +170,13 @@ public static class CollectionItemsEditing
 			var accepted = TestEdit != null
 				? TestEdit(model)
 				: new CollectionItemsDialog(model) { Owner = owner }.ShowDialog() == true;
-			if (accepted && model.IsChanged)
-				host.SetItems((descriptor as IItemsCollectionPropertyName)?.PropertyName ?? descriptor.Name, model.ToEdits());
+			if (accepted && model.IsChanged) {
+				var propertyName = (descriptor as IItemsCollectionPropertyName)?.PropertyName ?? descriptor.Name;
+				if (host is IAsyncItemsCollectionEditorHost asyncHost)
+					await asyncHost.SetItemsAsync(propertyName, model.ToEdits());
+				else
+					host.SetItems(propertyName, model.ToEdits());
+			}
 		} catch (Exception exception) {
 			if (TestEdit != null) {
 				TestException = exception;

@@ -319,14 +319,16 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 		}
 
 		[DevFlowAction("od.forms-designer.set-property", Description = "Set a component property in the active out-of-process WinForms designer and refresh its rendered frame")]
-		public static string SetProperty(string componentName, string propertyName, string value)
+		public static async System.Threading.Tasks.Task<string> SetProperty(string componentName, string propertyName, string value)
 		{
 			var viewContent = FindFormsDesignerViewContent();
 			if (viewContent?.IsRemoteDesignerLoaded != true)
 				return JsonSerializer.Serialize(new { success = false, error = "The out-of-process WinForms designer is not loaded" });
 			try {
-				viewContent.SetRemoteProperty(componentName, propertyName, value);
-				return JsonSerializer.Serialize(new { success = true });
+				var outcome = await viewContent.SetRemotePropertyAsync(componentName, propertyName, value);
+				return outcome.Accepted
+					? JsonSerializer.Serialize(new { success = true })
+					: Failure(outcome.Error ?? "The WinForms designer rejected the property edit.");
 			} catch (Exception exception) {
 				return JsonSerializer.Serialize(new { success = false, error = exception.Message });
 			}
@@ -571,7 +573,7 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			(SD.Services.GetService(typeof(IPropertyPadHost)) as IPropertyPadHost)?.Grid;
 
 		[DevFlowAction("od.forms-designer.properties-pad.edit", Description = "Edit a property through the real shared Properties pad PropertyItem; does not access the remote designer's property list directly - mirrors od.winui-designer.properties-pad.edit")]
-		public static string EditPropertyThroughPropertiesPad(string propertyName, string value)
+		public static async System.Threading.Tasks.Task<string> EditPropertyThroughPropertiesPad(string propertyName, string value)
 		{
 			var viewContent = FindFormsDesignerViewContent();
 			if (viewContent?.IsRemoteDesignerLoaded != true)
@@ -598,6 +600,7 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 				return Failure("Properties pad property is read-only: " + propertyName);
 
 			var before = item.Value?.ToString();
+			var sequence = viewContent.RemotePropertyEditSequence;
 			try {
 				item.Value = value;
 			} catch (Exception exception) {
@@ -611,9 +614,10 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 				var errors = System.Windows.Controls.Validation.GetErrors(bindingTarget);
 				bindingError = errors.Count > 0 ? errors[0].ErrorContent?.ToString() : "Unknown validation error";
 			}
+			var outcome = await viewContent.WaitForRemotePropertyEditsAsync(sequence);
 			return JsonSerializer.Serialize(new {
-				success = bindingError == null,
-				error = bindingError,
+				success = bindingError == null && outcome is { Accepted: true },
+				error = bindingError ?? outcome?.Error ?? "Properties pad did not submit an edit.",
 				selectedName = viewContent.RemoteDesignerSelectedComponent,
 				propertyName = item.PropertyName,
 				before,
@@ -622,7 +626,7 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 		}
 
 		[DevFlowAction("od.forms-designer.properties-pad.reset", Description = "Reset a serializable WinForms property through the live shared Properties pad descriptor")]
-		public static string ResetPropertyThroughPropertiesPad(string propertyName)
+		public static async System.Threading.Tasks.Task<string> ResetPropertyThroughPropertiesPad(string propertyName)
 		{
 			var viewContent = FindFormsDesignerViewContent();
 			if (viewContent?.IsRemoteDesignerLoaded != true)
@@ -637,7 +641,11 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			if (!item.PropertyDescriptor.CanResetValue(grid.SelectedObject))
 				return Failure("Properties pad property cannot be reset: " + propertyName);
 			try {
+				var sequence = viewContent.RemotePropertyEditSequence;
 				item.PropertyDescriptor.ResetValue(grid.SelectedObject);
+				var outcome = await viewContent.WaitForRemotePropertyEditsAsync(sequence);
+				if (outcome is not { Accepted: true })
+					return Failure(outcome?.Error ?? "Properties pad did not submit a reset.");
 				return JsonSerializer.Serialize(new {
 					success = true,
 					selectedName = viewContent.RemoteDesignerSelectedComponent,
@@ -692,7 +700,7 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 		}
 
 		[DevFlowAction("od.forms-designer.properties-pad.edit-items", Description = "Click a ListBox/ComboBox Items row's real \"…\" button and apply an edit script to the collection dialog's model instead of the modal dialog: ';'-separated add:<afterIndex>:<text>, remove:<i>, up:<i>, down:<i>, rename:<i>:<text>, or 'cancel'")]
-		public static string EditItemsThroughPropertiesPad(string propertyName, string script)
+		public static async System.Threading.Tasks.Task<string> EditItemsThroughPropertiesPad(string propertyName, string script)
 		{
 			var viewContent = FindFormsDesignerViewContent();
 			if (viewContent?.IsRemoteDesignerLoaded != true)
@@ -705,7 +713,7 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 				.FirstOrDefault(candidate => candidate.Name == FormsItemsCollectionEditor.EditButtonName);
 			if (button == null || !button.IsEnabled)
 				return Failure("Properties pad did not render an enabled items editor button: " + propertyName);
-			var result = CollectionItemsEditing.RunScriptedEdit(button, script);
+			var result = await CollectionItemsEditing.RunScriptedEditAsync(button, script);
 			return result.Success
 				? JsonSerializer.Serialize(new { success = true, selectedName = viewContent.RemoteDesignerSelectedComponent, before = result.Before, after = result.After, committed = result.Committed })
 				: Failure(result.Error ?? "Items edit failed");

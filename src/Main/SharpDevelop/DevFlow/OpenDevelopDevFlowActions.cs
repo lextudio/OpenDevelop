@@ -196,6 +196,17 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return (string)method.Invoke(null, args);
 		}
 
+		static async System.Threading.Tasks.Task<string> InvokeFormsDesignerDevFlowActionAsync(string methodName, params object[] args)
+		{
+			var type = AppDomain.CurrentDomain.GetAssemblies()
+				.Select(assembly => assembly.GetType("ICSharpCode.FormsDesigner.DevFlow.FormsDesignerDevFlowActions", throwOnError: false))
+				.FirstOrDefault(candidate => candidate != null);
+			var method = type?.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static);
+			if (method == null) return JsonSerializer.Serialize(new { designerLoaded = false, success = false, error = "Forms Designer AddIn is unavailable" });
+			var result = method.Invoke(null, args);
+			return result is System.Threading.Tasks.Task<string> pending ? await pending : (string)result;
+		}
+
 		[DevFlowAction("od.editor.icon-bar-bookmarks", Description = "Inspect the declaration bookmarks currently consumed by the active editor's Icon Bar gutter")]
 		public static string GetEditorIconBarBookmarks()
 		{
@@ -239,7 +250,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		public static string FormsDesignerQueryTabHeaderScreenBounds(string tabControlName, int tabIndex) => InvokeFormsDesignerDevFlowAction("QueryTabHeaderScreenBounds", tabControlName, tabIndex);
 
 		[DevFlowAction("od.forms-designer.set-property", Description = "Set a component property in the WinForms designer")]
-		public static string FormsDesignerSetProperty(string componentName, string propertyName, string value) => InvokeFormsDesignerDevFlowAction("SetProperty", componentName, propertyName, value);
+		public static System.Threading.Tasks.Task<string> FormsDesignerSetProperty(string componentName, string propertyName, string value) => InvokeFormsDesignerDevFlowActionAsync("SetProperty", componentName, propertyName, value);
 
 		[DevFlowAction("od.forms-designer.set-event", Description = "Bind a component event in the WinForms designer")]
 		public static string FormsDesignerSetEvent(string componentName, string eventName, string handlerName) => InvokeFormsDesignerDevFlowAction("SetEvent", componentName, eventName, handlerName);
@@ -284,7 +295,10 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		public static string FormsDesignerQueryToolboxItemBounds(string typeName) => InvokeFormsDesignerDevFlowAction("QueryToolboxItemBounds", typeName);
 
 		[DevFlowAction("od.forms-designer.properties-pad.edit", Description = "Edit a property through the shared Properties pad PropertyItem")]
-		public static string FormsDesignerEditPropertyThroughPropertiesPad(string propertyName, string value) => InvokeFormsDesignerDevFlowAction("EditPropertyThroughPropertiesPad", propertyName, value);
+		public static System.Threading.Tasks.Task<string> FormsDesignerEditPropertyThroughPropertiesPad(string propertyName, string value) => InvokeFormsDesignerDevFlowActionAsync("EditPropertyThroughPropertiesPad", propertyName, value);
+
+		[DevFlowAction("od.forms-designer.properties-pad.edit-items", Description = "Edit a WinForms items collection through the shared Properties pad")]
+		public static System.Threading.Tasks.Task<string> FormsDesignerEditItemsThroughPropertiesPad(string propertyName, string script) => InvokeFormsDesignerDevFlowActionAsync("EditItemsThroughPropertiesPad", propertyName, script);
 
 		[DevFlowAction("od.forms-designer.pad-view-mode", Description = "Switch the shared Properties pad grid between Properties and Events views")]
 		public static string FormsDesignerPadViewMode(string mode, string handlerName = null) => InvokeFormsDesignerDevFlowAction("PadViewMode", mode, handlerName);

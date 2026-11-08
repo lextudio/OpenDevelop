@@ -44,6 +44,8 @@ using ICSharpCode.FormsDesigner.OutOfProcess;
 
 namespace ICSharpCode.FormsDesigner
 {
+	internal sealed record FormsPropertyEditOutcome(bool Accepted, string? Error);
+
 	public class FormsDesignerViewContent : AbstractViewContentHandlingLoadErrors, IClipboardHandler, IUndoHandler, IHasPropertyContainer, IContextHelpProvider, IToolsHost, IFileDocumentProvider, IOutlineContentHost
 	{
 		// The SideBar-backed drag-from-toolbox panel (ToolboxProvider.FormsDesignerSideBar) stays
@@ -85,7 +87,12 @@ namespace ICSharpCode.FormsDesigner
 		bool pendingCustomToolboxRefresh;
 		readonly Stack<RemoteDocumentSet> remoteUndo = new Stack<RemoteDocumentSet>();
 		readonly Stack<RemoteDocumentSet> remoteRedo = new Stack<RemoteDocumentSet>();
-			readonly DesignerCommandController commands = new DesignerCommandController();
+		// PropertyGrid callbacks are synchronous framework APIs. Keep their remote mutations on
+		// one view-owned tail instead of blocking the WPF dispatcher for each host round-trip.
+		readonly object remotePropertyEditGate = new object();
+		System.Threading.Tasks.Task<FormsPropertyEditOutcome> remotePropertyEditTail = System.Threading.Tasks.Task.FromResult(new FormsPropertyEditOutcome(true, null));
+		long remotePropertyEditSequence;
+		readonly DesignerCommandController commands = new DesignerCommandController();
 		List<DesignerComponentInfo> remoteClipboard;
 		
 		readonly DesignerSourceCodeStorage sourceCodeStorage;
@@ -134,44 +141,111 @@ namespace ICSharpCode.FormsDesigner
 
 		internal void SetRemoteProperty(string componentName, string propertyName, string value)
 		{
-			if (!IsRemoteDesignerLoaded)
-				throw new InvalidOperationException("The out-of-process WinForms designer is not loaded.");
-			ExecuteRemoteEdit(() => remoteClient.SetPropertyAsync(remoteDocumentVersion, componentName, propertyName, value,
-				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+			_ = SetRemotePropertyAsync(componentName, propertyName, value);
+		}
+
+		internal System.Threading.Tasks.Task<FormsPropertyEditOutcome> SetRemotePropertyAsync(string componentName, string propertyName, string value)
+		{
+			return QueueRemotePropertyEdit(version => remoteClient.SetPropertyAsync(version, componentName, propertyName, value,
+				System.Threading.CancellationToken.None));
 		}
 
 		/// <summary>Replaces a list control's string Items through the host's design/set-items, as
 		/// one undoable designer edit.</summary>
 		internal void SetRemoteItems(string componentName, IReadOnlyList<DesignerCollectionItemEdit> items, string? propertyName = null)
 		{
-			EnsureRemoteDesignerLoaded();
-			ExecuteRemoteEdit(() => remoteClient.SetItemsAsync(remoteDocumentVersion, componentName, items,
-				System.Threading.CancellationToken.None, propertyName).GetAwaiter().GetResult());
+			_ = SetRemoteItemsAsync(componentName, items, propertyName);
+		}
+
+		internal System.Threading.Tasks.Task<FormsPropertyEditOutcome> SetRemoteItemsAsync(string componentName, IReadOnlyList<DesignerCollectionItemEdit> items, string? propertyName = null)
+		{
+			return QueueRemotePropertyEdit(version => remoteClient.SetItemsAsync(version, componentName, items,
+				System.Threading.CancellationToken.None, propertyName));
 		}
 
 		/// <summary>Assigns a string[] property (TextBox.Lines) through the host's
 		/// design/set-string-array, as one undoable designer edit.</summary>
 		internal void SetRemoteStringArray(string componentName, string propertyName, IReadOnlyList<string> values)
 		{
-			EnsureRemoteDesignerLoaded();
-			ExecuteRemoteEdit(() => remoteClient.SetStringArrayAsync(remoteDocumentVersion, componentName, propertyName, values,
-				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+			_ = SetRemoteStringArrayAsync(componentName, propertyName, values);
+		}
+
+		internal System.Threading.Tasks.Task<FormsPropertyEditOutcome> SetRemoteStringArrayAsync(string componentName, string propertyName, IReadOnlyList<string> values)
+		{
+			return QueueRemotePropertyEdit(version => remoteClient.SetStringArrayAsync(version, componentName, propertyName, values,
+				System.Threading.CancellationToken.None));
 		}
 
 		/// <summary>A divider drag through the host's design/resize-table-layout-track, as one
 		/// undoable designer edit.</summary>
 		internal void ResizeRemoteTableLayoutTrack(string componentName, bool isRow, int index, double size)
 		{
-			EnsureRemoteDesignerLoaded();
-			ExecuteRemoteEdit(() => remoteClient.ResizeTableLayoutTrackAsync(remoteDocumentVersion, componentName, isRow, index, size,
-				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+			_ = QueueRemotePropertyEdit(version => remoteClient.ResizeTableLayoutTrackAsync(version, componentName, isRow, index, size,
+				System.Threading.CancellationToken.None));
 		}
 
 		internal void ResetRemoteProperty(string componentName, string propertyName)
 		{
-			EnsureRemoteDesignerLoaded();
-			ExecuteRemoteEdit(() => remoteClient.ResetPropertyAsync(remoteDocumentVersion, componentName, propertyName,
-				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+			_ = QueueRemotePropertyEdit(version => remoteClient.ResetPropertyAsync(version, componentName, propertyName,
+				System.Threading.CancellationToken.None));
+		}
+
+		System.Threading.Tasks.Task<FormsPropertyEditOutcome> QueueRemotePropertyEdit(Func<long, System.Threading.Tasks.Task<DesignerSessionState>> edit)
+		{
+			if (remoteControl == null)
+				throw new InvalidOperationException("The out-of-process WinForms designer is not loaded.");
+			if (!remoteControl.Dispatcher.CheckAccess())
+				return System.Threading.Tasks.TaskExtensions.Unwrap(remoteControl.Dispatcher.InvokeAsync(() => QueueRemotePropertyEdit(edit)).Task);
+			lock (remotePropertyEditGate) {
+				remotePropertyEditSequence++;
+				remotePropertyEditTail = RunRemotePropertyEditAsync(remotePropertyEditTail, edit);
+				return remotePropertyEditTail;
+			}
+		}
+
+		async System.Threading.Tasks.Task<FormsPropertyEditOutcome> RunRemotePropertyEditAsync(System.Threading.Tasks.Task<FormsPropertyEditOutcome> previous, Func<long, System.Threading.Tasks.Task<DesignerSessionState>> edit)
+		{
+			try { await previous; } catch (Exception exception) { LoggingService.Error(exception); }
+			if (!IsRemoteDesignerLoaded)
+				return new FormsPropertyEditOutcome(false, "The out-of-process WinForms designer is not loaded.");
+			try {
+				var before = CaptureRemoteDocuments();
+				var state = await edit(remoteDocumentVersion);
+				if (!state.Accepted) {
+					LoggingService.Warn("WinForms designer property edit rejected: " + state.Error);
+					QueuePropertyPadRefresh();
+					return new FormsPropertyEditOutcome(false, state.Error);
+				}
+				remoteUndo.Push(before);
+				remoteRedo.Clear();
+				ApplyRemoteEdit(state);
+				return new FormsPropertyEditOutcome(true, null);
+			} catch (Exception exception) {
+				LoggingService.Error(exception);
+				QueuePropertyPadRefresh();
+				return new FormsPropertyEditOutcome(false, exception.Message);
+			}
+		}
+
+		bool IsRemotePropertyEditPending
+		{
+			get { lock (remotePropertyEditGate) return !remotePropertyEditTail.IsCompleted; }
+		}
+
+		internal long RemotePropertyEditSequence
+		{
+			get { lock (remotePropertyEditGate) return remotePropertyEditSequence; }
+		}
+
+		internal async System.Threading.Tasks.Task<FormsPropertyEditOutcome> WaitForRemotePropertyEditsAsync(long observedSequence)
+		{
+			System.Threading.Tasks.Task<FormsPropertyEditOutcome> tail;
+			lock (remotePropertyEditGate) {
+				if (remotePropertyEditSequence == observedSequence)
+					return new FormsPropertyEditOutcome(true, null);
+				tail = remotePropertyEditTail;
+			}
+			return await tail;
 		}
 
 		/// <summary>Replaces the bytes of a proven, existing resource-backed image as one IDE-owned
@@ -529,6 +603,8 @@ namespace ICSharpCode.FormsDesigner
 
 		void ExecuteRemoteEdit(Func<DesignerSessionState> edit)
 		{
+			if (IsRemotePropertyEditPending)
+				throw new FormsDesignerLoadException("A Properties-pad edit is still being applied. Retry the designer command after it completes.");
 			var before = CaptureRemoteDocuments();
 			var state = edit();
 			if (!state.Accepted)
@@ -692,9 +768,9 @@ namespace ICSharpCode.FormsDesigner
 			: base()
 			{
 				CustomToolboxCatalog.SelectionsChanged += CustomToolboxSelectionsChanged;
-				commands.RegisterStandard(() => IsRemoteDesignerLoaded && remoteUndo.Count > 0, UndoCore,
-					() => IsRemoteDesignerLoaded && remoteRedo.Count > 0, RedoCore,
-					() => SelectedRemoteComponents().Count > 0, DeleteCore);
+				commands.RegisterStandard(() => IsRemoteDesignerLoaded && !IsRemotePropertyEditPending && remoteUndo.Count > 0, UndoCore,
+					() => IsRemoteDesignerLoaded && !IsRemotePropertyEditPending && remoteRedo.Count > 0, RedoCore,
+					() => !IsRemotePropertyEditPending && SelectedRemoteComponents().Count > 0, DeleteCore);
 				this.TabPageText = "${res:FormsDesigner.DesignTabPages.DesignTabPage}";
 			
 			this.primaryViewContent = primaryViewContent;
@@ -2193,7 +2269,7 @@ namespace ICSharpCode.FormsDesigner
 			return component;
 		}
 
-		sealed class RemoteComponentPropertyProxy : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IResourceImageEditorHost, IItemsCollectionEditorHost, IImageListEditorHost
+		sealed class RemoteComponentPropertyProxy : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost, IResourceImageEditorHost, IItemsCollectionEditorHost, IAsyncItemsCollectionEditorHost, IImageListEditorHost
 		{
 			readonly FormsDesignerViewContent owner;
 			string name;
@@ -2292,15 +2368,21 @@ namespace ICSharpCode.FormsDesigner
 
 			void IItemsCollectionEditorHost.SetItems(string propertyName, IReadOnlyList<DesignerCollectionItemEdit> items)
 			{
+				_ = ((IAsyncItemsCollectionEditorHost)this).SetItemsAsync(propertyName, items);
+			}
+
+			async System.Threading.Tasks.Task IAsyncItemsCollectionEditorHost.SetItemsAsync(string propertyName, IReadOnlyList<DesignerCollectionItemEdit> items)
+			{
 				if (!remoteProperties.Any(item => String.Equals(item.Name, propertyName, StringComparison.Ordinal)
 					&& String.Equals(item.EditorKind, "ItemsCollection", StringComparison.Ordinal)))
 					throw new InvalidOperationException("This property is not an editable items collection.");
 				// Items, TreeView.Nodes and ListView.Columns are live collections rewritten as Add/AddRange (design/set-items);
 				// any other list row is a string[] property assigned as a whole.
-				if (propertyName is "Items" or "Nodes" or "Columns" or "TabPages")
-					owner.SetRemoteItems(name, items, propertyName);
-				else
-					owner.SetRemoteStringArray(name, propertyName, items.Select(item => item.Text ?? "").ToList());
+				var outcome = propertyName is "Items" or "Nodes" or "Columns" or "TabPages"
+					? await owner.SetRemoteItemsAsync(name, items, propertyName)
+					: await owner.SetRemoteStringArrayAsync(name, propertyName, items.Select(item => item.Text ?? "").ToList());
+				if (!outcome.Accepted)
+					throw new FormsDesignerLoadException(outcome.Error ?? "The WinForms designer rejected the items edit.");
 			}
 
 			void IImageListEditorHost.SetImageList(string propertyName, IReadOnlyList<DesignerImageListEntry> images, string imageSize, string colorDepth)
@@ -2520,6 +2602,8 @@ namespace ICSharpCode.FormsDesigner
 			public bool TryUndo() => commands.Execute("Undo");
 			bool UndoCore()
 			{
+				if (IsRemotePropertyEditPending)
+					return false;
 				var before = CaptureRemoteDocuments();
 				var target = remoteUndo.Peek();
 				var state = RestoreRemoteDocuments(target);
@@ -2533,6 +2617,8 @@ namespace ICSharpCode.FormsDesigner
 			public bool TryRedo() => commands.Execute("Redo");
 			bool RedoCore()
 			{
+				if (IsRemotePropertyEditPending)
+					return false;
 				var before = CaptureRemoteDocuments();
 				var target = remoteRedo.Peek();
 				var state = RestoreRemoteDocuments(target);
@@ -2641,6 +2727,8 @@ namespace ICSharpCode.FormsDesigner
 
 			public void Delete()
 			{
+			if (IsRemotePropertyEditPending)
+				throw new FormsDesignerLoadException("A Properties-pad edit is still being applied. Retry Delete after it completes.");
 				commands.Execute("Delete");
 			}
 
