@@ -548,6 +548,8 @@ namespace ICSharpCode.WpfDesign.AddIn
 				: System.IO.File.Exists(PrimaryFile.FileName) ? System.IO.File.ReadAllText(PrimaryFile.FileName) : null;
 			var result = WpfCodeBehindHandlers.EnsureAndNavigate(PrimaryFile.FileName, xamlText, binding.Event.Handler,
 				ICSharpCode.SharpDevelop.Designer.Presentation.EventHandlerSignature.EventArgsTypeName(binding.Event.HandlerTypeName));
+			if (result == null)
+				throw new InvalidOperationException("The WPF event handler could not be created or located: " + binding.Event.Handler);
 			// Only the entry this very double-click pushed may carry the method: a binding that was
 			// already in the XAML pushed nothing, and the top entry then belongs to an older edit.
 			if (result?.Generated is { } generated && binding.XamlChanged && undoStack.Count > 0)

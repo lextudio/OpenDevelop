@@ -912,10 +912,17 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			var eventSource = (IPropertyGridEventSource)selectedObject;
 			var before = eventSource.GetEventHandler(eventName);
 			var sequence = surface.PropertyEditSequence;
-			((IEventBindingHost)selectedObject).BindEvent(eventName);
+			var completion = selectedObject.BindEvent(eventName);
 			var outcome = await surface.WaitForPropertyEditsAsync(sequence);
 			if (outcome is { Accepted: false })
 				return JsonSerializer.Serialize(new { success = false, error = outcome.Error, selectedName = selectedObject.GetComponentName(), eventName, before });
+			if (completion == null)
+				return JsonSerializer.Serialize(new { success = false, error = "Event binding did not create a handler.", selectedName = selectedObject.GetComponentName(), eventName, before });
+			try {
+				await completion;
+			} catch (Exception exception) {
+				return JsonSerializer.Serialize(new { success = false, error = exception.Message, selectedName = selectedObject.GetComponentName(), eventName, before });
+			}
 			var handler = string.IsNullOrEmpty(before) ? selectedObject.GetEventBindingHandler(eventName) : before;
 
 			return JsonSerializer.Serialize(new {

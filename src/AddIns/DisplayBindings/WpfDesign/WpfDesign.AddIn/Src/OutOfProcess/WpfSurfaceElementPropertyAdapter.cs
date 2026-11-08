@@ -207,7 +207,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		// Double-click follows the in-process designer: bind the XAML attribute if the event has no
 		// handler yet, then let the view create (or find) the method in the IDE-owned code-behind
 		// and open it. The isolated host only ever writes the attribute; project code is the IDE's.
-		void IEventBindingHost.BindEvent(string eventName)
+		internal Task? BindEvent(string eventName)
 		{
 			var bindsXaml = string.IsNullOrEmpty(((IPropertyGridEventSource)this).GetEventHandler(eventName));
 			Task<WpfPropertyEditOutcome>? pending = null;
@@ -218,24 +218,32 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				if (bound != null)
 					bound = new DesignerEventInfo { Name = bound.Name, Category = bound.Category, HandlerTypeName = bound.HandlerTypeName, Handler = handler };
 			}
-			if (bound is { Handler.Length: > 0 })
-				NotifyEventHandlerBound(pending, new WpfEventBinding(bound, bindsXaml));
+			if (bound is { Handler.Length: > 0 }) {
+				var completion = NotifyEventHandlerBoundAsync(pending, new WpfEventBinding(bound, bindsXaml));
+				ObserveEventBinding(completion);
+				return completion;
+			}
+			return null;
 		}
 
-		async void NotifyEventHandlerBound(Task<WpfPropertyEditOutcome>? pending, WpfEventBinding binding)
+		void IEventBindingHost.BindEvent(string eventName) => _ = BindEvent(eventName);
+
+		async Task NotifyEventHandlerBoundAsync(Task<WpfPropertyEditOutcome>? pending, WpfEventBinding binding)
 		{
-			try {
-				if (pending != null) {
-					var outcome = await pending.ConfigureAwait(true);
-					if (!outcome.Accepted) {
-						LoggingService.Warn("WPF designer event binding rejected: " + (outcome.Error ?? "Unknown host error."));
-						return;
-					}
+			if (pending != null) {
+				var outcome = await pending.ConfigureAwait(true);
+				if (!outcome.Accepted) {
+					LoggingService.Warn("WPF designer event binding rejected: " + (outcome.Error ?? "Unknown host error."));
+					return;
 				}
-				onEventHandlerBound?.Invoke(binding);
-			} catch (Exception exception) {
-				LoggingService.Error(exception);
 			}
+			onEventHandlerBound?.Invoke(binding);
+		}
+
+		async void ObserveEventBinding(Task bindingTask)
+		{
+			try { await bindingTask.ConfigureAwait(true); }
+			catch (Exception exception) { LoggingService.Error(exception); }
 		}
 
 		public string GetClassName() => node.Type;
