@@ -6154,6 +6154,14 @@ EndGlobal
             Assert.Contains("using System.Reflection;", titles);
             Assert.Contains("Generate type 'Missing'", titles);
 
+            // The popup itself must open for those actions. It is positioned with Placement.Absolute, and
+            // without an owner LibreWPF's portable popup path throws PlatformNotSupportedException (the
+            // renderer's async void timer turned that into an unhandled error in the real editor).
+            var popup = await _app.InvokeAsync("od.editor.bulb-popup", probePath, offset);
+            Assert.True(popup.GetProperty("success").GetBoolean(), popup.ToString());
+            Assert.True(popup.GetProperty("isOpen").GetBoolean(), popup.ToString());
+            Assert.True(popup.GetProperty("actionCount").GetInt32() > 0, popup.ToString());
+
             // An action the language service cannot express as edits to existing files (it would create a
             // new file, or has nested choices) must report failure and leave the buffer alone, not claim success.
             var generate = await _app.InvokeAsync("od.editor.bulb-actions", probePath, offset, "Generate type 'Missing'");

@@ -34,6 +34,12 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			if (parent == null)
 				throw new ArgumentNullException("parent");
 			this.parent = parent;
+			// Callers position the popup with Placement.Absolute and screen coordinates. On Windows that
+			// is legal without an owner, but LibreWPF's portable popup path needs the owner's
+			// presentation source and throws PlatformNotSupportedException instead of falling back to an
+			// unhosted popup (see CodeEditorView's tooltip popup, which crashed the same way). The
+			// parent control is the owner; Absolute placement ignores the target for positioning.
+			this.PlacementTarget = parent;
 		}
 		
 		/// <summary>

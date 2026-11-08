@@ -12,6 +12,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
+using System.Windows.Input;
+using ICSharpCode.AvalonEdit;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
@@ -25,6 +27,42 @@ namespace ICSharpCode.AvalonEdit.AddIn.ContextActions
 	[DevFlowUIThread]
 	public static class ContextActionsDevFlowActions
 	{
+		[DevFlowAction("od.editor.bulb-popup", Description = "Open the real light-bulb popup for an open file at a document offset, exactly as ContextActionsRenderer does when the caret settles (focus the text area, build the view model, OpenAtLineStart), and report whether it opened. Closes it again.")]
+		public static async Task<string> OpenBulbPopupAsync(string path, int offset)
+		{
+			try {
+				var viewContent = SD.FileService.GetOpenFile(FileName.Create(path)) ?? SD.FileService.OpenFile(FileName.Create(path));
+				var editor = viewContent?.GetService<ITextEditor>();
+				var textArea = (editor?.GetService(typeof(TextEditor)) as TextEditor)?.TextArea;
+				if (editor == null || textArea == null)
+					return JsonSerializer.Serialize(new { success = false, error = "No text editor for " + path });
+
+				var location = editor.Document.GetLocation(Math.Min(offset, editor.Document.TextLength));
+				editor.JumpTo(location.Line, location.Column);
+				// The popup only opens while its parent has keyboard focus, which is when the renderer opens it.
+				Keyboard.Focus(textArea);
+
+				var actionsProvider = new EditorActionsProvider(new EditorRefactoringContext(editor), editor.ContextActionProviders.ToArray());
+				var viewModel = new ContextActionsBulbViewModel(actionsProvider);
+				await viewModel.LoadActionsAsync(CancellationToken.None);
+
+				var popup = new ContextActionsBulbPopup(textArea) { ViewModel = viewModel };
+				try {
+					popup.OpenAtLineStart(editor);
+					return JsonSerializer.Serialize(new {
+						success = true,
+						parentFocused = textArea.IsKeyboardFocused,
+						isOpen = popup.IsOpen,
+						actionCount = viewModel.Actions.Count
+					});
+				} finally {
+					popup.Close();
+				}
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.GetType().Name + ": " + ex.Message });
+			}
+		}
+
 		[DevFlowAction("od.editor.bulb-actions", Description = "List what the light bulb offers for an open file at a document offset (the visible actions of every IContextActionProvider on its editor). With executeTitle, also runs the first action with that exact title and reports whether it applied.")]
 		public static async Task<string> GetBulbActionsAsync(string path, int offset, string? executeTitle = null)
 		{

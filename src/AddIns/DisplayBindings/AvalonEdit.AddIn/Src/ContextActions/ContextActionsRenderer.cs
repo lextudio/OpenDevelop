@@ -163,10 +163,16 @@ namespace ICSharpCode.AvalonEdit.AddIn.ContextActions
 			this.cancellationTokenSourceForPopupBeingOpened = null;
 			if (popupVM.Actions.Count == 0)
 				return;
-			if (popup == null)
-				popup = new ContextActionsBulbPopup(editorView.TextArea);
-			this.popup.ViewModel = popupVM;
-			this.popup.OpenAtLineStart(this.Editor);
+			// An async void handler: an exception thrown while building or opening the popup (for instance
+			// a platform that cannot host it) would otherwise escape to the dispatcher as an unhandled error.
+			try {
+				if (popup == null)
+					popup = new ContextActionsBulbPopup(editorView.TextArea);
+				this.popup.ViewModel = popupVM;
+				this.popup.OpenAtLineStart(this.Editor);
+			} catch (Exception ex) {
+				LoggingService.Warn("Could not open the context actions popup: " + ex.Message);
+			}
 		}
 		
 		ContextActionsBulbViewModel BuildPopupViewModel()
