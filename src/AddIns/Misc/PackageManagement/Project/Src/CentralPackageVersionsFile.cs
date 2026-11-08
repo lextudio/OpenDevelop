@@ -12,6 +12,27 @@ namespace ICSharpCode.PackageManagement
 	/// <summary>Edits the PackageVersion items of a Central Package Management <c>Directory.Packages.props</c>.</summary>
 	public static class CentralPackageVersionsFile
 	{
+		/// <summary>
+		/// The versions an unconditional <c>PackageVersion</c> entry gives each package id (ids compare
+		/// ignoring case). Entries in conditional item groups are skipped, as in <see cref="Set"/>.
+		/// </summary>
+		public static System.Collections.Generic.Dictionary<string, string> Read(string propsFile)
+		{
+			var versions = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+			XDocument document = XDocument.Load(propsFile);
+			foreach (XElement element in document.Descendants().Where(e => e.Name.LocalName == "PackageVersion")) {
+				if (element.Attribute("Condition") != null || element.Parent?.Attribute("Condition") != null) {
+					continue;
+				}
+				string id = (string)element.Attribute("Include") ?? (string)element.Attribute("Update");
+				string version = (string)element.Attribute("Version");
+				if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(version) && !versions.ContainsKey(id)) {
+					versions[id] = version;
+				}
+			}
+			return versions;
+		}
+
 		/// <summary>Sets or adds <c>&lt;PackageVersion Include="id" Version="version" /&gt;</c>, keeping the file's layout.</summary>
 		public static void Set(string propsFile, string packageId, string version)
 		{

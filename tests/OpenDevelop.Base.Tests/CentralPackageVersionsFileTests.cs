@@ -133,6 +133,19 @@ public sealed class CentralPackageVersionsFileTests : IDisposable
 	}
 
 	[Fact]
+	public void ReadsTheUnconditionalVersionsIgnoringCase()
+	{
+		var path = Write(
+			"<Project>\n  <ItemGroup>\n    <PackageVersion Include=\"Serilog\" Version=\"3.1.0\" />\n    <PackageVersion Update=\"Other\" Version=\"1.0.0\" />\n  </ItemGroup>\n  <ItemGroup Condition=\"'$(TargetFramework)' == 'net8.0'\">\n    <PackageVersion Include=\"Serilog\" Version=\"2.0.0\" />\n    <PackageVersion Include=\"OnlyNet8\" Version=\"9.0.0\" />\n  </ItemGroup>\n</Project>\n");
+
+		var versions = CentralPackageVersionsFile.Read(path);
+
+		Assert.Equal("3.1.0", versions["serilog"]);
+		Assert.Equal("1.0.0", versions["Other"]);
+		Assert.False(versions.ContainsKey("OnlyNet8"));
+	}
+
+	[Fact]
 	public void RejectsAMalformedFileWithoutWritingIt()
 	{
 		var path = Write("<Project><ItemGroup></Project>");

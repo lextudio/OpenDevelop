@@ -6243,11 +6243,55 @@ EndGlobal
         await AssertBulbInstallsMissingPackageAsync($"using {TestPackageId};\nclass PackageProbe {{ }}\n", "OpenDevelop", centralPackageVersions: true);
     }
 
+    [Fact]
+    public async Task LightBulb_DoesNotOfferAPackageNoProjectOfTheSolutionUses()
+    {
+        // The package is in the local feed, but no project of this solution references it: the bulb must
+        // not suggest it (it is added through Manage Packages). The diagnostic has to be there first,
+        // otherwise the absence would prove nothing.
+        var probePath = Path.Combine(_projectDir, "NuGetFixtureApp", "PackageProbe.cs");
+        var source = $"using {TestPackageId};\nclass PackageProbe {{ }}\n";
+        await File.WriteAllTextAsync(probePath, source);
+        try
+        {
+            var solutionPath = Path.Combine(_projectDir, "NuGetFixture.slnx");
+            var openResult = await _app.InvokeAsync("od.open-solution", solutionPath);
+            Assert.True(openResult.GetProperty("success").GetBoolean(), $"Failed to open {solutionPath}");
+            var feed = await _app.InvokeAsync("od.nuget.set-local-feed", _app.LocalNuGetFeedPath);
+            Assert.True(feed.GetProperty("success").GetBoolean(), feed.ToString());
+            var opened = await _app.InvokeAsync("od.open-file", probePath);
+            Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+
+            JsonElement diagnostics = default;
+            var unresolved = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                diagnostics = await _app.InvokeAsync("od.diagnostics", probePath);
+                return diagnostics.GetProperty("diagnostics").EnumerateArray().Any(d => d.GetProperty("id").GetString() == "CS0246");
+            }, TimeSpan.FromSeconds(60));
+            Assert.True(unresolved, "The unresolved namespace was never reported: " + diagnostics);
+
+            var offset = source.IndexOf("OpenDevelop", StringComparison.Ordinal) + 1;
+            for (var attempt = 0; attempt < 6; attempt++)
+            {
+                var bulb = await _app.InvokeAsync("od.editor.bulb-actions", probePath, offset);
+                Assert.True(bulb.GetProperty("success").GetBoolean(), bulb.ToString());
+                Assert.Contains("ICSharpCode.PackageManagement.MissingPackage", bulb.GetProperty("providers").EnumerateArray().Select(p => p.GetString()));
+                Assert.DoesNotContain(bulb.GetProperty("actions").EnumerateArray().Select(a => a.GetProperty("title").GetString()!),
+                    title => title.StartsWith("Install NuGet package", StringComparison.Ordinal));
+                await Task.Delay(500);
+            }
+        }
+        finally
+        {
+            File.Delete(probePath);
+        }
+    }
+
     async Task AssertBulbInstallsMissingPackageAsync(string source, string caretOn, bool centralPackageVersions = false)
     {
-        // The unresolved namespace is the id of a package in the local test feed, so the suggestion
-        // needs no network. The probe file is removed afterwards: it does not compile until the
-        // package is restored, and must not outlive the test inside the project copy.
+        // The light bulb suggests only packages another project of the solution already references: a
+        // second project (ExistingApp) uses the package from the local test feed, the probe project
+        // does not. The probe file is removed afterwards: it does not compile until the package is
+        // restored, and must not outlive the test inside the project copy.
         var probePath = Path.Combine(_projectDir, "NuGetFixtureApp", "PackageProbe.cs");
 
         await File.WriteAllTextAsync(probePath, source);
@@ -6255,12 +6299,19 @@ EndGlobal
         if (centralPackageVersions)
         {
             // A project under Central Package Management: a Version on a PackageReference fails restore (NU1008).
+            // The existing project's reference is versionless, so the solution's version comes from here.
             await File.WriteAllTextAsync(centralPropsPath,
-                "<Project>\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageVersion Include=\"Some.Other.Package\" Version=\"2.0.0\" />\n  </ItemGroup>\n</Project>\n");
+                $"<Project>\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageVersion Include=\"Some.Other.Package\" Version=\"2.0.0\" />\n    <PackageVersion Include=\"{TestPackageId}\" Version=\"1.0.0\" />\n  </ItemGroup>\n</Project>\n");
         }
+        Directory.CreateDirectory(Path.Combine(_projectDir, "ExistingApp"));
+        await File.WriteAllTextAsync(Path.Combine(_projectDir, "ExistingApp", "ExistingApp.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\""
+            + TestPackageId + "\"" + (centralPackageVersions ? "" : " Version=\"1.0.0\"") + " />\n  </ItemGroup>\n</Project>\n");
+        var solutionProjects = "  <Project Path=\"NuGetFixtureApp/NuGetFixtureApp.csproj\" />\n  <Project Path=\"ExistingApp/ExistingApp.csproj\" />\n";
+        await File.WriteAllTextAsync(Path.Combine(_projectDir, "NuGetFixture.slnx"), "<Solution>\n" + solutionProjects + "</Solution>\n");
         try
         {
-            var solutionPath = Path.Combine(_projectDir, "NuGetFixture.sln");
+            var solutionPath = Path.Combine(_projectDir, "NuGetFixture.slnx");
             var openResult = await _app.InvokeAsync("od.open-solution", solutionPath);
             Assert.True(openResult.GetProperty("success").GetBoolean(), $"Failed to open {solutionPath}");
             var feed = await _app.InvokeAsync("od.nuget.set-local-feed", _app.LocalNuGetFeedPath);

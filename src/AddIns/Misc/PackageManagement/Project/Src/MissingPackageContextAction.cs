@@ -1,15 +1,16 @@
 // Copyright (c) 2026 LeXtudio. MIT-licensed (see repository root LICENSE).
 //
 // Light-bulb action "Install NuGet package 'X'" for an unresolved namespace (CS0246/CS0234) in an
-// SDK-style project. It is deliberately limited to what can be decided without a package index:
-// the qualified name at the diagnostic (for "using Newtonsoft.Json;", "Newtonsoft.Json") is tried as
-// an exact NuGet package id, then shorter prefixes ("Newtonsoft"). A bare type name such as
-// JsonConvert cannot be mapped to a package this way and gets no suggestion.
+// SDK-style project. It suggests only packages that a project of the same solution already
+// references (SolutionPackages), at the version the solution already uses: no network request is made
+// while the caret settles, no version drifts between projects, and a package no project has used yet is
+// added through Manage Packages instead. The qualified name at the diagnostic (for "using
+// Newtonsoft.Json;", "Newtonsoft.Json") is matched to a known package id, then shorter prefixes
+// ("Newtonsoft"). A bare type name such as JsonConvert cannot be mapped to a package this way.
 
 #nullable enable
 
 using System;
-using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -51,33 +52,6 @@ namespace ICSharpCode.PackageManagement
 	{
 		// Reported by the C# compiler for an unresolved type/namespace, and for a missing member of a namespace.
 		static readonly string[] unresolvedNameDiagnostics = { "CS0246", "CS0234" };
-
-		// A framework root is never a package id of its own, and looking it up would cost a request.
-		static readonly string[] reservedRoots = { "System", "Microsoft" };
-
-		// Lookups are cached because the bulb asks every time the caret settles, and a network search
-		// per caret stop would be both slow and abusive. The key includes the source (switching feeds
-		// must not reuse another feed's answer) and every entry expires: a package published later is
-		// found after a while, and a failed request (offline, bad feed) is retried sooner.
-		static readonly ConcurrentDictionary<string, Lookup> lookups = new ConcurrentDictionary<string, Lookup>(StringComparer.OrdinalIgnoreCase);
-		static readonly TimeSpan foundMemory = TimeSpan.FromMinutes(10);
-		static readonly TimeSpan notFoundMemory = TimeSpan.FromMinutes(2);
-
-		sealed class Lookup
-		{
-			public Lookup(string? version, bool failed)
-			{
-				Version = version;
-				Failed = failed;
-				Time = DateTime.UtcNow;
-			}
-
-			public string? Version { get; }
-			public bool Failed { get; }
-			public DateTime Time { get; }
-
-			public bool IsFresh => DateTime.UtcNow - Time < (Version != null && !Failed ? foundMemory : notFoundMemory);
-		}
 
 		public string ID => "ICSharpCode.PackageManagement.MissingPackage";
 		public string DisplayName => "Install missing NuGet package";
@@ -129,16 +103,16 @@ namespace ICSharpCode.PackageManagement
 				if (qualified.Length == 0 || caret < runStart || caret > runStart + qualified.Length)
 					continue;
 
+				// Read the project model on the UI thread (it is not thread-safe; this method continues on a
+				// pool thread): the packages the solution already uses and what this project already has.
+				var (known, referenced) = await SD.MainThread.InvokeAsync(() => (
+					SolutionPackages.Collect(SD.ProjectService.CurrentSolution.Projects.OfType<MSBuildBasedProject>()),
+					SolutionPackages.ReferencedBy(project))).ConfigureAwait(false);
 				foreach (var candidate in Prefixes(qualified)) {
-					cancellationToken.ThrowIfCancellationRequested();
-					string? version = await FindLatestVersionAsync(candidate, cancellationToken).ConfigureAwait(false);
-					if (version == null)
-						continue;
-					// The project model is not thread-safe and this method continues on a pool thread.
-					bool installed = await SD.MainThread.InvokeAsync(() => new SdkStylePackageReferenceService(project).IsInstalled(candidate)).ConfigureAwait(false);
-					if (installed)
-						return none;
-					return new IContextAction[] { new InstallMissingPackageAction(this, project, candidate, version) };
+					if (referenced.Contains(candidate))
+						return none; // already referenced here: the problem is a restore, not a missing reference
+					if (known.TryGetValue(candidate, out string? version))
+						return new IContextAction[] { new InstallMissingPackageAction(this, project, candidate, version) };
 				}
 			}
 			return none;
@@ -158,7 +132,7 @@ namespace ICSharpCode.PackageManagement
 		/// The dotted identifier run that contains <paramref name="position"/>, without a trailing
 		/// dot, and where it starts: it extends backwards over identifier characters and dots, then forwards.
 		/// </summary>
-		internal static (int Start, string Name) ReadQualifiedName(string text, int position)
+		public static (int Start, string Name) ReadQualifiedName(string text, int position)
 		{
 			static bool IsNamePart(char c) => char.IsLetterOrDigit(c) || c == '_' || c == '.';
 			int start = Math.Min(position, text.Length);
@@ -172,40 +146,12 @@ namespace ICSharpCode.PackageManagement
 			return (start + leadingDots, run.Trim('.'));
 		}
 
-		/// <summary>"A.B.C" -> "A.B.C", "A.B", "A", skipping framework roots on their own.</summary>
-		internal static System.Collections.Generic.IEnumerable<string> Prefixes(string qualified)
+		/// <summary>"A.B.C" -> "A.B.C", "A.B", "A": the package ids a qualified name can stand for, longest first.</summary>
+		public static System.Collections.Generic.IEnumerable<string> Prefixes(string qualified)
 		{
 			var parts = qualified.Split('.', StringSplitOptions.RemoveEmptyEntries);
-			for (int count = parts.Length; count >= 1; count--) {
-				if (count == 1 && reservedRoots.Contains(parts[0], StringComparer.OrdinalIgnoreCase))
-					continue;
+			for (int count = parts.Length; count >= 1; count--)
 				yield return string.Join(".", parts.Take(count));
-			}
-		}
-
-		static async Task<string?> FindLatestVersionAsync(string packageId, CancellationToken cancellationToken)
-		{
-			var source = PackageManagementServices.RegisteredPackageRepositories.ActivePackageSource?.Source;
-			if (string.IsNullOrWhiteSpace(source))
-				return null;
-
-			var key = source + "|" + packageId;
-			if (lookups.TryGetValue(key, out var cached) && cached.IsFresh)
-				return cached.Version;
-
-			try {
-				var found = await NuGetPackageSearchService.SearchAsync(source, packageId, includePrerelease: false, take: 20, cancellationToken)
-					.ConfigureAwait(false);
-				var exact = found.FirstOrDefault(p => string.Equals(p.Id, packageId, StringComparison.OrdinalIgnoreCase));
-				lookups[key] = new Lookup(exact?.Version?.ToString(), failed: false);
-				return exact?.Version?.ToString();
-			} catch (OperationCanceledException) {
-				throw;
-			} catch (Exception ex) {
-				LoggingService.Debug("NuGet lookup for '" + packageId + "' failed: " + ex.Message);
-				lookups[key] = new Lookup(null, failed: true);
-				return null;
-			}
 		}
 	}
 

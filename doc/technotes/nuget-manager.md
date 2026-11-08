@@ -13,19 +13,21 @@ means no test or measurement covers it, not that it is known to be broken.
 
 ### 1. Missing-package suggestion: reach
 
-The light-bulb action (`MissingPackageContextActionProvider`) covers only part of the problem.
+Decision (2026-11-08): the light bulb suggests only packages that a project of the same solution already
+references, at the version the solution already uses (`SolutionPackages`; under Central Package Management
+the version is read from `Directory.Packages.props`, and the highest version wins when projects differ).
+It makes no network request while the caret settles. A package no project of the solution has used yet is
+added through Manage Packages, not suggested. What is left to do:
 
-- **Bare type names.** `JsonConvert` with no `using` gets no suggestion: mapping a type or namespace to
-  a package needs a package index (VS ships a downloaded database for this). Without one, only a
-  namespace whose qualified name, or a shorter prefix, is an exact package id is found. Decide whether a
-  small curated map of popular packages is worth carrying, or whether to consume nuget.org's own
-  search by namespace if it offers one.
-- **Version and source choice.** It always installs the latest stable version from the active source.
-  There is no version picker, no prerelease, no package source mapping.
+- **Bare type names.** `JsonConvert` with no `using` gets no suggestion, because only the namespace is
+  matched against the known package ids (qualified name, then shorter prefixes). Mapping a type to a
+  package could read the namespaces in the packages' restored assemblies (`obj/project.assets.json` of the
+  projects that use them), which stays inside the solution and needs no index.
 - **Project shapes and languages.** SDK-style projects only (`MSBuildBasedProject.IsSdkStyleProject`);
   `packages.config` projects get no suggestion. VB is registered but never fires: the provider matches
   only CS0246/CS0234. VB's equivalents (for example BC30002 and BC40056; confirm the ids) need adding,
   and the namespace extraction must read VB syntax (`Imports Newtonsoft.Json`).
+- **Cold start.** The first use of a package in a solution is not offered; deliberate, see above.
 
 ### 2. Light bulb: cost and verification
 
@@ -123,7 +125,7 @@ Package Manager Console hosted as a `pwsh` Terminal session, EnvDTE and Cmdlets)
 | Solution Explorer nodes | **Present**: Dependencies > Packages > `<Id> (<version>)`, next to Analyzers and Frameworks. Do not port MonoDevelop's `NodeBuilders`. |
 | Project node menu | Has Manage Packages... and Restore Packages. |
 | Packages folder / package node menus | The folder has its own `PackagesFolderNode` menu (Manage Packages..., Restore Packages). A package node has Update (opens the Updates tab filtered to that package and switches to its owning project), Manage Packages..., then Remove; `AddInTests.SearchAndInstallPackage_UpdatesProjectFile` invokes the real Update command and verifies its tab and canonical package-id filter. |
-| Missing-package quick fix | **Present for unresolved namespaces**: `MissingPackageContextActionProvider` (PackageManagement add-in) reads CS0246/CS0234 at the caret in an SDK-style project, tries the qualified name at the diagnostic and its shorter prefixes as an exact NuGet package id against the active source, and offers "Install NuGet package 'X' v in 'Project'" in the light bulb; choosing it writes the PackageReference on the UI thread and runs `dotnet restore` in the background. Covered by `AddInTests.LightBulb_OffersToInstallMissingNuGetPackage_AndInstallsIt` (local feed, no network). Not covered: a bare type name such as `JsonConvert` (no package index to map it), non-SDK projects, and VB (the provider is registered for `.cs;.vb` but matches only the C# diagnostics CS0246/CS0234, so VB gets no suggestion). Underneath it, `LanguageServiceContextActionsExtension` puts Roslyn's code actions in the bulb for C# and VB (`CSharpBinding.addin`, `VBBinding.addin`; the bulb had no providers at all because the bindings compile none of the old NRefactory context actions); the language service diffs only existing documents and flattens nested actions, so actions that create a file or ask a further choice (Generate type) are listed but report "cannot be applied yet" in the status bar. `ExtendedPopup` now sets `PlacementTarget` because LibreWPF refuses an owner-less popup. |
+| Missing-package quick fix | **Present for unresolved namespaces**: `MissingPackageContextActionProvider` (PackageManagement add-in) reads CS0246/CS0234 at the caret in an SDK-style project, matches the qualified name at the diagnostic, and its shorter prefixes, against the packages the solution's projects already reference (no network), and offers "Install NuGet package 'X' v in 'Project'" in the light bulb; choosing it writes the PackageReference on the UI thread and runs `dotnet restore` in the background. Covered by the `AddInTests.LightBulb_*` facts (a second project of the temporary solution already uses the package from the local feed; one fact checks that a package no project uses is not offered) and by `MissingPackageNamesTests`. Not covered: a bare type name such as `JsonConvert` (only namespaces are matched), non-SDK projects, and VB (the provider is registered for `.cs;.vb` but matches only the C# diagnostics CS0246/CS0234, so VB gets no suggestion). Underneath it, `LanguageServiceContextActionsExtension` puts Roslyn's code actions in the bulb for C# and VB (`CSharpBinding.addin`, `VBBinding.addin`; the bulb had no providers at all because the bindings compile none of the old NRefactory context actions); the language service diffs only existing documents and flattens nested actions, so actions that create a file or ask a further choice (Generate type) are listed but report "cannot be applied yet" in the status bar. `ExtendedPopup` now sets `PlacementTarget` because LibreWPF refuses an owner-less popup. |
 | Package Console, EnvDTE, batch operations | Present; they came from SharpDevelop, not from `monodevelop-nuget-extensions`. |
 
 ### `monodevelop-nuget-extensions` feature audit
