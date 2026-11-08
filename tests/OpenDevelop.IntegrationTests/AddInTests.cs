@@ -6194,10 +6194,50 @@ EndGlobal
         var csprojText = await File.ReadAllTextAsync(csprojPath);
         Assert.Contains($"Include=\"{TestPackageId}\"", csprojText);
 
-        // The Project Browser refresh is intentionally not part of this test's pass/fail boundary
-        // yet. The install path is asynchronous enough that the UI tree can lag the project-file
-        // mutation; keep this test focused on search + install not throwing and the PackageReference
-        // being persisted.
+        // Solution Explorer: the installed package is a node under Dependencies > Packages, and the
+        // package commands are reachable from the nodes themselves. The tree refresh trails the
+        // project-file write, so poll for the node instead of asserting immediately.
+        var packageNodeName = $"{TestPackageId} (";
+        JsonElement packageMenu = default;
+        for (var attempt = 0; attempt < 60 && packageMenu.ValueKind == JsonValueKind.Undefined; attempt++)
+        {
+            var candidate = await _app.InvokeAsync("od.project-browser.context-menu", "PackageReference");
+            if (candidate.GetProperty("success").GetBoolean()
+                && candidate.GetProperty("node").GetString()!.StartsWith(packageNodeName, StringComparison.Ordinal))
+                packageMenu = candidate;
+            else
+                await Task.Delay(500);
+        }
+        Assert.True(packageMenu.ValueKind != JsonValueKind.Undefined,
+            "The installed package never appeared as a PackageReference node in the Project Browser");
+        // The package commands act on SD.ProjectService.CurrentProject, and the add-in wraps them in
+        // the WriteableProject condition, which reads exactly that value. An item that is present
+        // but disabled therefore means the selected node did not resolve to its owning project.
+        static bool IsEnabledItem(JsonElement menu, string id) => menu.GetProperty("items").EnumerateArray()
+            .Any(i => i.TryGetProperty("id", out var itemId) && itemId.GetString() == id
+                && i.GetProperty("enabled").GetBoolean());
+        Assert.True(IsEnabledItem(packageMenu, "ManagePackages"),
+            "ManagePackages is missing or disabled on the package node: " + packageMenu);
+        Assert.True(IsEnabledItem(packageMenu, "RemoveReference"), packageMenu.ToString());
+        var packageMenuIds = packageMenu.GetProperty("items").EnumerateArray()
+            .Where(i => i.TryGetProperty("id", out _)).Select(i => i.GetProperty("id").GetString()).ToList();
+        Assert.True(packageMenuIds.IndexOf("ManagePackages") < packageMenuIds.IndexOf("RemoveReference"),
+            "ManagePackages must be listed before Remove: " + string.Join(", ", packageMenuIds));
+
+        var packagesFolderMenu = await _app.InvokeAsync("od.project-browser.context-menu", "PackagesFolder");
+        Assert.True(packagesFolderMenu.GetProperty("success").GetBoolean(), packagesFolderMenu.ToString());
+        Assert.EndsWith("/ContextMenu/PackagesFolderNode", packagesFolderMenu.GetProperty("path").GetString());
+        var folderMenuIds = packagesFolderMenu.GetProperty("items").EnumerateArray()
+            .Where(i => i.TryGetProperty("id", out _)).Select(i => i.GetProperty("id").GetString()).ToList();
+        Assert.True(IsEnabledItem(packagesFolderMenu, "ManagePackages"),
+            "ManagePackages is missing or disabled on the Packages folder: " + packagesFolderMenu);
+        Assert.True(IsEnabledItem(packagesFolderMenu, "RestorePackages"),
+            "RestorePackages is missing or disabled on the Packages folder: " + packagesFolderMenu);
+        // The generic FolderNode entries (Open, Open With, Add, ...) must be gone: a virtual folder
+        // has nothing to open or add to. "NewItem" lives under "Add", so test the top-level ids.
+        Assert.DoesNotContain("Add", folderMenuIds);
+        Assert.DoesNotContain("Open", folderMenuIds);
+        Assert.DoesNotContain("OpenWith", folderMenuIds);
     }
 
     [Fact]

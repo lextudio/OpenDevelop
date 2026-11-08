@@ -216,6 +216,11 @@
     </MenuItem>
   </Path>
 
+  <!-- The virtual Dependencies > Packages folder. Package commands (Manage, Restore) come from the
+       PackageManagement add-in; the folder has nothing to open, add or rename. -->
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/PackagesFolderNode">
+  </Path>
+
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/UnknownNode">
   </Path>
 

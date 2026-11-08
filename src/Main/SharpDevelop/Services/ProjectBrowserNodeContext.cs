@@ -177,7 +177,8 @@ internal sealed record ProjectBrowserNodeContext(
         {
             ProjectBrowserNodeKind.Solution => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionNode",
             ProjectBrowserNodeKind.Project => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ProjectNode",
-            ProjectBrowserNodeKind.Folder or ProjectBrowserNodeKind.GhostFolder or ProjectBrowserNodeKind.DependenciesFolder or ProjectBrowserNodeKind.ReferencesFolder or ProjectBrowserNodeKind.PackagesFolder => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FolderNode",
+            ProjectBrowserNodeKind.PackagesFolder => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/PackagesFolderNode",
+            ProjectBrowserNodeKind.Folder or ProjectBrowserNodeKind.GhostFolder or ProjectBrowserNodeKind.DependenciesFolder or ProjectBrowserNodeKind.ReferencesFolder => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FolderNode",
             ProjectBrowserNodeKind.Reference or ProjectBrowserNodeKind.ProjectReference => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ReferenceNode",
             ProjectBrowserNodeKind.PackageReference => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/PackageReferenceNode",
             ProjectBrowserNodeKind.File or ProjectBrowserNodeKind.LinkedFile or ProjectBrowserNodeKind.MissingFile or ProjectBrowserNodeKind.GhostFile => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FileNode",

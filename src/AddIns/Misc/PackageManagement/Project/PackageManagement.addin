@@ -51,6 +51,24 @@
 		</Condition>
 	</Path>
 	
+	<!-- Projects window context menu - Dependencies > Packages folder selected -->
+	<Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/PackagesFolderNode">
+		<Condition name="WriteableProject" action="Disable">
+			<MenuItem id="ManagePackages" label="${res:AddIns.PackageManagement.Menu.ManagePackages}"
+			          class="ICSharpCode.PackageManagement.ManagePackagesCommand"/>
+			<MenuItem id="RestorePackages" label="${res:AddIns.PackageManagement.Menu.RestorePackages}"
+			          class="ICSharpCode.PackageManagement.RestorePackagesCommand"/>
+		</Condition>
+	</Path>
+
+	<!-- Projects window context menu - a single package reference selected (listed before Remove) -->
+	<Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/PackageReferenceNode">
+		<Condition name="WriteableProject" action="Disable">
+			<MenuItem id="ManagePackages" insertbefore="RemoveReference" label="${res:AddIns.PackageManagement.Menu.ManagePackages}"
+			          class="ICSharpCode.PackageManagement.ManagePackagesCommand"/>
+		</Condition>
+	</Path>
+
 	<!-- Project main menu -->
 	<Path name="/SharpDevelop/Workbench/MainMenu/Project">
 		<Condition name="WriteableProject" action="Disable">

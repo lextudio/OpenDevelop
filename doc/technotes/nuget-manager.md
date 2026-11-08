@@ -5,7 +5,29 @@ per-project and per-solution), plus (later slice) a PowerShell Package Console p
 MonoDevelop's NuGet addins, reusing their NuGet.Client-based business logic and rebuilding the UI
 natively in WinUI/Uno (their UI is GTK#/Xwt, which cannot be ported as-is).
 
-## 0. Sources
+## Status (measured 2026-11-08 against the running IDE)
+
+This plan predates the current add-in. The shipped add-in is the SharpDevelop-era
+`src/AddIns/Misc/PackageManagement` (Manage Packages dialog, Restore, Options, sources, the
+Package Manager Console hosted as a `pwsh` Terminal session, EnvDTE and Cmdlets), with search on
+`NuGet.Protocol` v3. Compared with `MonoDevelop.PackageManagement`, found with DevFlow on a copy of
+`tests/fixtures/NuGetFixture` after installing a package from the local feed:
+
+| Area | State |
+|---|---|
+| Solution Explorer nodes | **Present**: Dependencies > Packages > `<Id> (<version>)`, next to Analyzers and Frameworks. Do not port MonoDevelop's `NodeBuilders`. |
+| Project node menu | Has Manage Packages... and Restore Packages. |
+| Packages folder / package node menus | Were the generic folder menu and a lone Remove. Now: the folder has its own `PackagesFolderNode` menu (Manage Packages..., Restore Packages) and the package node has Manage Packages... before Remove, covered by `AddInTests.SearchAndInstallPackage_UpdatesProjectFile`. Still missing: a per-package Update command. |
+| Missing-package quick fix | **Absent**: `using Newtonsoft.Json;` reports CS0246 and `od.code-actions` offers only Generate type/variable, no "Install package". |
+| Package Console, EnvDTE, batch operations | Present; they came from SharpDevelop, not from `monodevelop-nuget-extensions`. |
+
+Sources: `externals/monodevelop` and `externals/monodevelop-nuget-extensions` are no longer
+submodules (nothing compiled from them except two Apache-2.0 launch-profile files, now copied
+into the AspNetCore add-in). MonoDevelop's PackageManagement uses its IDE object model (GTK/Xwt),
+so it is a reference to read, not code to link: clone `https://github.com/mono/monodevelop` into a
+scratch directory when needed, and re-implement against OpenDevelop's own extension points.
+
+## 0. Sources (historical; see Status above)
 
 Two submodules, both added this session:
 
