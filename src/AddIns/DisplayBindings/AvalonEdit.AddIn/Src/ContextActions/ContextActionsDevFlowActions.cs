@@ -49,11 +49,25 @@ namespace ICSharpCode.AvalonEdit.AddIn.ContextActions
 				var popup = new ContextActionsBulbPopup(textArea) { ViewModel = viewModel };
 				try {
 					popup.OpenAtLineStart(editor);
+					// Where the popup was placed and where the text area is, both in screen device-independent units (the
+					// popup is a separate window and absent from the UI tree, so its position is read from the popup).
+					var source = System.Windows.PresentationSource.FromVisual(textArea);
+					var toUnits = source?.CompositionTarget?.TransformFromDevice ?? System.Windows.Media.Matrix.Identity;
+					var topLeft = toUnits.Transform(textArea.PointToScreen(new System.Windows.Point(0, 0)));
+					var caretLine = editor.Caret.Line;
 					return JsonSerializer.Serialize(new {
 						success = true,
 						parentFocused = textArea.IsKeyboardFocused,
 						isOpen = popup.IsOpen,
-						actionCount = viewModel.Actions.Count
+						actionCount = viewModel.Actions.Count,
+						placement = popup.Placement.ToString(),
+						popupX = popup.HorizontalOffset,
+						popupY = popup.VerticalOffset,
+						textAreaX = topLeft.X,
+						textAreaY = topLeft.Y,
+						textAreaWidth = textArea.ActualWidth,
+						textAreaHeight = textArea.ActualHeight,
+						caretLine
 					});
 				} finally {
 					popup.Close();

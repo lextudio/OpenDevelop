@@ -51,8 +51,12 @@ added through Manage Packages, not suggested. What is left to do:
   the first two calls after loading took about 1.3 s and 1.1 s (the compilation warming up, once); afterwards a
   call took 0.03-0.07 s unchanged, and the first call after an edit 0.10-0.15 s. All of it runs off the UI
   thread. Not measured: a much larger solution, a Release build, a machine without a warm compilation.
-- **The popup itself.** Verified only as "opens and has actions" (`od.editor.bulb-popup`). Its on-screen
-  position and a real click are not checked (it is a separate window and absent from the UI tree).
+- **The popup itself.** `od.editor.bulb-popup` opens the real popup the way the renderer does and
+  `AddInTests.LightBulb_OffersRoslynCodeActions_AndAppliesOneToTheEditor` checks that it opens with the actions,
+  uses absolute placement, lies inside the text area (offsets read from the popup, since its window is absent from
+  the UI tree) and follows the caret: with the caret one line higher the popup is higher. Not covered: a real
+  mouse click on an item (choosing an action is covered through its `ExecuteAsync`, which is what the click
+  calls), keyboard navigation inside the popup, and pixel-exact placement.
 - **Restore failure (covered).** After "Install NuGet package", a failed restore is reported in the status bar
   ("Added NuGet package 'X' v to the project, but restoring it failed: ...", never "Installed"), and the
   reference stays in the project. `AddInTests.LightBulb_InstallReportsAFailedRestoreInsteadOfSuccess` drives it

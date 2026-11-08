@@ -6159,7 +6159,8 @@ EndGlobal
     {
         // A temporary copy of the fixture project (_projectDir), so the new file is not tracked.
         var probePath = Path.Combine(_projectDir, "NuGetFixtureApp", "BulbProbe.cs");
-        const string source = "class BulbProbe { object O = new Missing(); }\n";
+        // Three lines, so the popup can be placed at two different caret lines.
+        const string source = "class BulbProbe\n{\n    object O = new Missing();\n}\n";
         await File.WriteAllTextAsync(probePath, source);
         try
         {
@@ -6199,6 +6200,18 @@ EndGlobal
             Assert.True(popup.GetProperty("success").GetBoolean(), popup.ToString());
             Assert.True(popup.GetProperty("isOpen").GetBoolean(), popup.ToString());
             Assert.True(popup.GetProperty("actionCount").GetInt32() > 0, popup.ToString());
+
+            // Where it opened: absolute screen placement inside the text area, at the caret's line (the popup
+            // window is not in the UI tree, so its offsets are read from the popup itself).
+            Assert.Equal("Absolute", popup.GetProperty("placement").GetString());
+            double Number(JsonElement element, string name) => element.GetProperty(name).GetDouble();
+            Assert.InRange(Number(popup, "popupX"), Number(popup, "textAreaX"), Number(popup, "textAreaX") + Number(popup, "textAreaWidth"));
+            Assert.InRange(Number(popup, "popupY"), Number(popup, "textAreaY") - 24, Number(popup, "textAreaY") + Number(popup, "textAreaHeight"));
+            var braceOffset = source.IndexOf('{') + 1;   // caret on the line above
+            var higher = await _app.InvokeAsync("od.editor.bulb-popup", probePath, braceOffset);
+            Assert.True(higher.GetProperty("isOpen").GetBoolean(), higher.ToString());
+            Assert.True(Number(higher, "popupY") < Number(popup, "popupY"),
+                $"The popup did not follow the caret line: line {higher.GetProperty("caretLine").GetInt32()} at {Number(higher, "popupY")}, line {popup.GetProperty("caretLine").GetInt32()} at {Number(popup, "popupY")}");
 
             // An action the language service cannot express as edits to existing files (it would create a
             // new file, or has nested choices) must report failure and leave the buffer alone, not claim success.
