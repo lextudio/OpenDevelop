@@ -1,6 +1,6 @@
 // Copyright (c) 2026 LeXtudio. MIT-licensed (see repository root LICENSE).
 //
-// Light-bulb action "Install NuGet package 'X'" for an unresolved namespace (CS0246/CS0234) in an
+// Light-bulb action "Install NuGet package 'X'" for an unresolved namespace (CS0246/CS0234, BC30002/BC40056) in an
 // SDK-style project. It suggests only packages that a project of the same solution already
 // references (SolutionPackages), at the version the solution already uses: no network request is made
 // while the caret settles, no version drifts between projects, and a package no project has used yet is
@@ -50,8 +50,10 @@ namespace ICSharpCode.PackageManagement
 
 	public sealed class MissingPackageContextActionProvider : IContextActionProvider
 	{
-		// Reported by the C# compiler for an unresolved type/namespace, and for a missing member of a namespace.
-		static readonly string[] unresolvedNameDiagnostics = { "CS0246", "CS0234" };
+		// An unresolved type or namespace. C#: CS0246 (type or namespace not found) and CS0234 (not in the
+		// namespace). Visual Basic: BC30002 (type not defined) and BC40056 (the namespace or type of an Imports
+		// cannot be found); measured on an unreferenced "Imports X.Y" and "As X.Y.Z", where the span is the whole name.
+		static readonly string[] unresolvedNameDiagnostics = { "CS0246", "CS0234", "BC30002", "BC40056" };
 
 		public string ID => "ICSharpCode.PackageManagement.MissingPackage";
 		public string DisplayName => "Install missing NuGet package";

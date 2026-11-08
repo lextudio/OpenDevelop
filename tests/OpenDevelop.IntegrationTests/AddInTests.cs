@@ -6334,13 +6334,37 @@ EndGlobal
         }
     }
 
-    async Task AssertBulbInstallsMissingPackageAsync(string source, string caretOn, bool centralPackageVersions = false)
+    [Fact]
+    public async Task LightBulb_OffersToInstallMissingNuGetPackage_ForAVisualBasicImports()
+    {
+        // BC40056: the namespace of an Imports cannot be found (the span is the whole qualified name).
+        await AssertBulbInstallsMissingPackageAsync($"Imports {TestPackageId}\nPublic Class PackageProbe\nEnd Class\n", "OpenDevelop", visualBasic: true);
+    }
+
+    [Fact]
+    public async Task LightBulb_OffersToInstallMissingNuGetPackage_ForAnUndefinedVisualBasicType()
+    {
+        // BC30002: a type named through a namespace that no project reference provides.
+        await AssertBulbInstallsMissingPackageAsync(
+            $"Public Class PackageProbe\n    Public Property Value As {TestPackageId}.Settings\nEnd Class\n", "TestPackage", visualBasic: true);
+    }
+
+    async Task AssertBulbInstallsMissingPackageAsync(string source, string caretOn, bool centralPackageVersions = false, bool visualBasic = false)
     {
         // The light bulb suggests only packages another project of the solution already references: a
         // second project (ExistingApp) uses the package from the local test feed, the probe project
         // does not. The probe file is removed afterwards: it does not compile until the package is
         // restored, and must not outlive the test inside the project copy.
-        var probePath = Path.Combine(_projectDir, "NuGetFixtureApp", "PackageProbe.cs");
+        // A Visual Basic probe lives in its own project (VbProbeApp); the C# probe in the fixture's project.
+        var probeProject = visualBasic ? "VbProbeApp" : "NuGetFixtureApp";
+        var projectFileName = probeProject + (visualBasic ? ".vbproj" : ".csproj");
+        var probePath = Path.Combine(_projectDir, probeProject, visualBasic ? "PackageProbe.vb" : "PackageProbe.cs");
+        if (visualBasic)
+        {
+            Directory.CreateDirectory(Path.Combine(_projectDir, probeProject));
+            await File.WriteAllTextAsync(Path.Combine(_projectDir, probeProject, projectFileName),
+                "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n    <OutputType>Library</OutputType>\n  </PropertyGroup>\n</Project>\n");
+        }
 
         await File.WriteAllTextAsync(probePath, source);
         WriteLocalFeedNuGetConfig(_projectDir);
@@ -6356,7 +6380,10 @@ EndGlobal
         await File.WriteAllTextAsync(Path.Combine(_projectDir, "ExistingApp", "ExistingApp.csproj"),
             "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\""
             + TestPackageId + "\"" + (centralPackageVersions ? "" : " Version=\"1.0.0\"") + " />\n  </ItemGroup>\n</Project>\n");
-        var solutionProjects = "  <Project Path=\"NuGetFixtureApp/NuGetFixtureApp.csproj\" />\n  <Project Path=\"ExistingApp/ExistingApp.csproj\" />\n";
+        // The fixture's own project stays in the solution; a Visual Basic probe is one more project.
+        var solutionProjects = "  <Project Path=\"NuGetFixtureApp/NuGetFixtureApp.csproj\" />\n"
+            + (visualBasic ? $"  <Project Path=\"{probeProject}/{projectFileName}\" />\n" : "")
+            + "  <Project Path=\"ExistingApp/ExistingApp.csproj\" />\n";
         await File.WriteAllTextAsync(Path.Combine(_projectDir, "NuGetFixture.slnx"), "<Solution>\n" + solutionProjects + "</Solution>\n");
         try
         {
@@ -6388,7 +6415,7 @@ EndGlobal
                 bulb.GetProperty("providers").EnumerateArray().Select(p => p.GetString()));
 
             // Choosing it writes the PackageReference (and restores); the action runs in the background.
-            var csprojPath = Path.Combine(_projectDir, "NuGetFixtureApp", "NuGetFixtureApp.csproj");
+            var csprojPath = Path.Combine(_projectDir, probeProject, projectFileName);
             Assert.DoesNotContain($"Include=\"{TestPackageId}\"", await File.ReadAllTextAsync(csprojPath));
             await _app.InvokeAsync("od.editor.bulb-actions", probePath, offset, installTitle);
             var installed = false;
@@ -6402,7 +6429,7 @@ EndGlobal
 
             // The reference is written before the restore starts, so also watch the restore itself, which
             // runs on a pool thread: it has to produce an assets file that resolves the package.
-            var assetsPath = Path.Combine(_projectDir, "NuGetFixtureApp", "obj", "project.assets.json");
+            var assetsPath = Path.Combine(_projectDir, probeProject, "obj", "project.assets.json");
             var restored = false;
             for (var attempt = 0; attempt < 120 && !restored; attempt++)
             {
@@ -6444,6 +6471,8 @@ EndGlobal
         finally
         {
             File.Delete(probePath);
+            if (visualBasic)
+                Directory.Delete(Path.Combine(_projectDir, probeProject), recursive: true);   // its reference and obj/ must not outlive the test
         }
     }
 
