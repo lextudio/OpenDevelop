@@ -6183,6 +6183,90 @@ EndGlobal
     }
 
     [Fact]
+    public async Task LightBulb_OffersToInstallMissingNuGetPackage_AndInstallsIt()
+    {
+        // CS0246: nothing named OpenDevelop exists, so the diagnostic spans the whole qualified name.
+        await AssertBulbInstallsMissingPackageAsync($"using {TestPackageId};\nclass PackageProbe {{ }}\n", "OpenDevelop");
+    }
+
+    [Fact]
+    public async Task LightBulb_OffersToInstallMissingNuGetPackage_WhenOnlyTheLastSegmentIsUnresolved()
+    {
+        // CS0234: the namespace OpenDevelop exists, so the diagnostic spans only 'TestPackage'; the
+        // provider must still read the whole dotted name to find the package id.
+        await AssertBulbInstallsMissingPackageAsync($"using {TestPackageId};\nnamespace OpenDevelop {{ class Anchor {{ }} }}\n", "TestPackage");
+    }
+
+    async Task AssertBulbInstallsMissingPackageAsync(string source, string caretOn)
+    {
+        // The unresolved namespace is the id of a package in the local test feed, so the suggestion
+        // needs no network. The probe file is removed afterwards: it does not compile until the
+        // package is restored, and must not outlive the test inside the project copy.
+        var probePath = Path.Combine(_projectDir, "NuGetFixtureApp", "PackageProbe.cs");
+
+        await File.WriteAllTextAsync(probePath, source);
+        try
+        {
+            var solutionPath = Path.Combine(_projectDir, "NuGetFixture.sln");
+            var openResult = await _app.InvokeAsync("od.open-solution", solutionPath);
+            Assert.True(openResult.GetProperty("success").GetBoolean(), $"Failed to open {solutionPath}");
+            var feed = await _app.InvokeAsync("od.nuget.set-local-feed", _app.LocalNuGetFeedPath);
+            Assert.True(feed.GetProperty("success").GetBoolean(), feed.ToString());
+            var opened = await _app.InvokeAsync("od.open-file", probePath);
+            Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+
+            // Caret on the unresolved name in the using directive.
+            var offset = source.IndexOf(caretOn, StringComparison.Ordinal) + 1;
+            const string titlePrefix = "Install NuGet package '" + TestPackageId + "'";
+            string? installTitle = null;
+            JsonElement bulb = default;
+            for (var attempt = 0; attempt < 60 && installTitle == null; attempt++)
+            {
+                bulb = await _app.InvokeAsync("od.editor.bulb-actions", probePath, offset);
+                Assert.True(bulb.GetProperty("success").GetBoolean(), bulb.ToString());
+                installTitle = bulb.GetProperty("actions").EnumerateArray()
+                    .Select(a => a.GetProperty("title").GetString()!)
+                    .FirstOrDefault(t => t.StartsWith(titlePrefix, StringComparison.Ordinal));
+                if (installTitle == null)
+                    await Task.Delay(500);
+            }
+            Assert.True(installTitle != null, "No 'Install NuGet package' action was offered: " + bulb);
+            Assert.Contains("ICSharpCode.PackageManagement.MissingPackage",
+                bulb.GetProperty("providers").EnumerateArray().Select(p => p.GetString()));
+
+            // Choosing it writes the PackageReference (and restores); the action runs in the background.
+            var csprojPath = Path.Combine(_projectDir, "NuGetFixtureApp", "NuGetFixtureApp.csproj");
+            Assert.DoesNotContain($"Include=\"{TestPackageId}\"", await File.ReadAllTextAsync(csprojPath));
+            await _app.InvokeAsync("od.editor.bulb-actions", probePath, offset, installTitle);
+            var installed = false;
+            for (var attempt = 0; attempt < 120 && !installed; attempt++)
+            {
+                installed = (await File.ReadAllTextAsync(csprojPath)).Contains($"Include=\"{TestPackageId}\"", StringComparison.Ordinal);
+                if (!installed)
+                    await Task.Delay(500);
+            }
+            Assert.True(installed, "The PackageReference was never written to " + csprojPath);
+
+            // The reference is written before the restore starts, so also watch the restore itself, which
+            // runs on a pool thread: it has to produce an assets file that resolves the package.
+            var assetsPath = Path.Combine(_projectDir, "NuGetFixtureApp", "obj", "project.assets.json");
+            var restored = false;
+            for (var attempt = 0; attempt < 120 && !restored; attempt++)
+            {
+                restored = File.Exists(assetsPath)
+                    && (await File.ReadAllTextAsync(assetsPath)).Contains(TestPackageId + "/", StringComparison.OrdinalIgnoreCase);
+                if (!restored)
+                    await Task.Delay(500);
+            }
+            Assert.True(restored, "dotnet restore never resolved " + TestPackageId + " into " + assetsPath);
+        }
+        finally
+        {
+            File.Delete(probePath);
+        }
+    }
+
+    [Fact]
     public async Task SearchAndInstallPackage_UpdatesProjectFile()
     {
         var solutionPath = Path.Combine(_projectDir, "NuGetFixture.sln");

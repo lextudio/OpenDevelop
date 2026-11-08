@@ -45,10 +45,24 @@ namespace ICSharpCode.PackageManagement
 		
 		public void InstallPackage(IPackage package, IPackageRepository sourceRepository, ILogger logger)
 		{
-			AddOrUpdatePackageReference(package.Id, package.Version.ToString());
+			InstallPackage(package.Id, package.Version.ToString(), sourceRepository?.Source, logger);
+		}
+
+		public void InstallPackage(string packageId, string version, string source, ILogger logger)
+		{
+			AddPackageReference(packageId, version);
+			Restore(source, logger);
+		}
+
+		/// <summary>
+		/// Adds (or replaces) the PackageReference, saves the project and refreshes the project
+		/// browser. Touches the project model, so call it on the UI thread.
+		/// </summary>
+		public void AddPackageReference(string packageId, string version)
+		{
+			AddOrUpdatePackageReference(packageId, version);
 			projectService.Save(project);
 			projectService.RefreshProjectBrowser();
-			Restore(sourceRepository, logger);
 		}
 		
 		void AddOrUpdatePackageReference(string packageId, string version)
@@ -83,7 +97,11 @@ namespace ICSharpCode.PackageManagement
 					group.Items.Any(item => string.Equals(item.ItemType, "PackageReference", StringComparison.OrdinalIgnoreCase)));
 		}
 		
-		void Restore(IPackageRepository sourceRepository, ILogger logger)
+		/// <summary>
+		/// Runs <c>dotnet restore</c> for the project and waits for it, so call it off the UI thread.
+		/// Returns null on success, otherwise why it failed (also sent to <paramref name="logger"/> when given).
+		/// </summary>
+		public string Restore(string source, ILogger logger)
 		{
 			try {
 				var startInfo = new ProcessStartInfo("dotnet") {
@@ -93,8 +111,7 @@ namespace ICSharpCode.PackageManagement
 				};
 				startInfo.ArgumentList.Add("restore");
 				startInfo.ArgumentList.Add(project.FileName.ToString());
-				string source = sourceRepository?.Source;
-				if (!string.IsNullOrWhiteSpace(source) && !sourceRepository.Source.StartsWith("Aggregate", StringComparison.OrdinalIgnoreCase)) {
+				if (!string.IsNullOrWhiteSpace(source) && !source.StartsWith("Aggregate", StringComparison.OrdinalIgnoreCase)) {
 					startInfo.ArgumentList.Add("--source");
 					startInfo.ArgumentList.Add(source);
 				}
@@ -108,11 +125,25 @@ namespace ICSharpCode.PackageManagement
 					}
 					if (process.ExitCode != 0) {
 						logger?.Log(MessageLevel.Warning, error);
+						return DescribeRestoreFailure(process.ExitCode, error, output);
 					}
 				}
+				return null;
 			} catch (Exception ex) {
 				logger?.Log(MessageLevel.Warning, "Unable to restore packages after installing '{0}': {1}", project.Name, ex.Message);
+				return ex.Message;
 			}
+		}
+
+		/// <summary>dotnet restore reports problems on stdout as often as on stderr; prefer an error line.</summary>
+		static string DescribeRestoreFailure(int exitCode, string error, string output)
+		{
+			string text = string.IsNullOrWhiteSpace(error) ? output : error;
+			string line = (text ?? string.Empty)
+				.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+				.FirstOrDefault(l => l.Contains("error", StringComparison.OrdinalIgnoreCase))
+				?? (text ?? string.Empty).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+			return "dotnet restore exited with code " + exitCode + (string.IsNullOrEmpty(line) ? "" : ": " + line);
 		}
 	}
 }

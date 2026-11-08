@@ -151,4 +151,12 @@
 			id="PackageManagementRegisterDevFlowActionsCommand"
 			class="ICSharpCode.PackageManagement.RegisterDevFlowActionsCommand"/>
 	</Path>
+
+	<!-- Light bulb: "Install NuGet package" for an unresolved namespace in C# files. -->
+	<Path name="/SharpDevelop/ViewContent/TextEditor/Extensions">
+		<TextEditorExtension
+			id="PackageManagementMissingPackage"
+			class="ICSharpCode.PackageManagement.MissingPackageContextActionsExtension"
+			extensions=".cs" />
+	</Path>
 </AddIn>
