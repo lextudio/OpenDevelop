@@ -53,8 +53,12 @@ added through Manage Packages, not suggested. What is left to do:
   thread. Not measured: a much larger solution, a Release build, a machine without a warm compilation.
 - **The popup itself.** Verified only as "opens and has actions" (`od.editor.bulb-popup`). Its on-screen
   position and a real click are not checked (it is a separate window and absent from the UI tree).
-- **Restore failure.** After "Install NuGet package", a failed restore (offline feed, wrong source) is
-  reported in the status bar, but no test drives that branch.
+- **Restore failure (covered).** After "Install NuGet package", a failed restore is reported in the status bar
+  ("Added NuGet package 'X' v to the project, but restoring it failed: ...", never "Installed"), and the
+  reference stays in the project. `AddInTests.LightBulb_InstallReportsAFailedRestoreInsteadOfSuccess` drives it
+  with a solution that already uses the package at a version no feed has (9.9.9), which the install copies.
+  (Breaking the feed would not work: a version already in the global packages folder is restored without
+  asking the sources.)
 
 ### 3. Language service: actions it cannot apply
 

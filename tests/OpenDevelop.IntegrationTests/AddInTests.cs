@@ -6423,7 +6423,17 @@ EndGlobal
             expectedTitleContains: "(declares OpenDevelop.TypeProbe.ProbeWidget)");
     }
 
-    async Task AssertBulbInstallsMissingPackageAsync(string source, string caretOn, bool centralPackageVersions = false, bool visualBasic = false, string packageId = TestPackageId, bool restoreExistingProjectFirst = false, string? expectedTitleContains = null)
+    [Fact]
+    public async Task LightBulb_InstallReportsAFailedRestoreInsteadOfSuccess()
+    {
+        // The solution already uses the package at a version no feed has (9.9.9), so the install offers exactly that
+        // version and its restore cannot succeed. (Breaking the feed instead would not do: 1.0.0 is in the global
+        // packages folder from other tests, and NuGet does not ask the sources for a version it already has.)
+        await AssertBulbInstallsMissingPackageAsync($"using {TestPackageId};\nclass PackageProbe {{ }}\n", "OpenDevelop",
+            restoreFails: true, existingAppVersion: "9.9.9");
+    }
+
+    async Task AssertBulbInstallsMissingPackageAsync(string source, string caretOn, bool centralPackageVersions = false, bool visualBasic = false, string packageId = TestPackageId, bool restoreExistingProjectFirst = false, string? expectedTitleContains = null, bool restoreFails = false, string existingAppVersion = "1.0.0")
     {
         // The light bulb suggests only packages another project of the solution already references: a
         // second project (ExistingApp) uses the package from the local test feed, the probe project
@@ -6453,7 +6463,7 @@ EndGlobal
         Directory.CreateDirectory(Path.Combine(_projectDir, "ExistingApp"));
         await File.WriteAllTextAsync(Path.Combine(_projectDir, "ExistingApp", "ExistingApp.csproj"),
             "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\""
-            + packageId + "\"" + (centralPackageVersions ? "" : " Version=\"1.0.0\"") + " />\n  </ItemGroup>\n</Project>\n");
+            + packageId + "\"" + (centralPackageVersions ? "" : $" Version=\"{existingAppVersion}\"") + " />\n  </ItemGroup>\n</Project>\n");
         // The fixture's own project stays in the solution; a Visual Basic probe is one more project.
         var solutionProjects = "  <Project Path=\"NuGetFixtureApp/NuGetFixtureApp.csproj\" />\n"
             + (visualBasic ? $"  <Project Path=\"{probeProject}/{projectFileName}\" />\n" : "")
@@ -6516,6 +6526,26 @@ EndGlobal
                     await Task.Delay(500);
             }
             Assert.True(installed, "The PackageReference was never written to " + csprojPath);
+
+            if (restoreFails)
+            {
+                // The reference is in the project but the restore did not work: the status bar has to say so rather
+                // than claim the package was installed.
+                string? message = null;
+                var said = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+                {
+                    message = FlattenElements(await _app.GetUITreeAsync())
+                        .Where(e => e.TryGetProperty("type", out var type) && type.GetString() == "TextBlock" && e.TryGetProperty("text", out _))
+                        .Select(e => e.GetProperty("text").GetString())
+                        .FirstOrDefault(text => text != null && text.Contains("restoring it failed", StringComparison.Ordinal));
+                    return message != null;
+                }, TimeSpan.FromSeconds(120));
+                Assert.True(said, "The status bar never reported the failed restore.");
+                Assert.Contains("Added NuGet package '" + packageId + "'", message);
+                Assert.DoesNotContain("Installed NuGet package", message);
+                Assert.Contains($"Include=\"{packageId}\"", await File.ReadAllTextAsync(csprojPath));
+                return;
+            }
 
             // The reference is written before the restore starts, so also watch the restore itself, which
             // runs on a pool thread: it has to produce an assets file that resolves the package.
