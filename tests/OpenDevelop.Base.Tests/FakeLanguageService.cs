@@ -39,6 +39,7 @@ sealed class FakeLanguageService : ILanguageService, ILanguageServiceDocumentLif
 	public SymbolReferencesResult? References { get; set; }
 	public SymbolHierarchyResult? DerivedSymbols { get; set; }
 	public int UpsertDocumentCallCount { get; private set; }
+	public DocumentId? RefreshedDocument { get; private set; }
 
 	public Task UpsertDocumentAsync(DocumentId documentId, string text, CancellationToken cancellationToken)
 	{
@@ -74,5 +75,9 @@ sealed class FakeLanguageService : ILanguageService, ILanguageServiceDocumentLif
 	public Task<SymbolHierarchyResult?> GetBaseSymbolsAsync(DocumentId documentId, int offset, CancellationToken cancellationToken) => throw new NotSupportedException();
 	public Task<string?> GetHelpKeywordAsync(DocumentId documentId, int offset, CancellationToken cancellationToken) => throw new NotSupportedException();
 	public Task<string?> GetContainingTypeNameAsync(DocumentId documentId, int offset, CancellationToken cancellationToken) => throw new NotSupportedException();
-	public Task RefreshProjectAsync(DocumentId documentId, CancellationToken cancellationToken) => throw new NotSupportedException();
+	public Task RefreshProjectAsync(DocumentId documentId, CancellationToken cancellationToken)
+	{
+		RefreshedDocument = documentId;
+		return Task.CompletedTask;
+	}
 }

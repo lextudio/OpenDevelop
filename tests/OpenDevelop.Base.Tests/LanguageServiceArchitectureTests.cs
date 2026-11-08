@@ -23,6 +23,34 @@ public class LanguageServiceArchitectureTests
     }
 
     [Fact]
+    public async Task UpsertingUnchangedDocumentDoesNotAdvanceWorkspaceRevision()
+    {
+        using var service = new CSharpVBLanguageService();
+        var id = new DocumentId(Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".cs"));
+        var token = TestContext.Current.CancellationToken;
+
+        await service.UpsertDocumentAsync(id, "class SameText {}", token);
+        var revisionAfterFirstUpsert = service.GetWorkspaceRevision();
+
+        await service.UpsertDocumentAsync(id, "class SameText {}", token);
+
+        Assert.Equal(revisionAfterFirstUpsert, service.GetWorkspaceRevision());
+    }
+
+	[Fact]
+	public async Task RegistryRefreshesTheServiceOwningTheCanonicalDocument()
+	{
+		var service = new FakeLanguageService();
+		var registry = new LanguageServiceRegistry();
+		using var registration = registry.RegisterExtension(".cs", service);
+		var file = Path.Combine(Path.GetTempPath(), "RefreshTarget.cs");
+
+		await registry.RefreshProjectAsync(file, TestContext.Current.CancellationToken);
+
+		Assert.Equal(new DocumentId(file), service.RefreshedDocument);
+	}
+
+    [Fact]
     public void DeployedHostHasNoTransitiveIdeOrWindowingRuntime()
     {
         var path = Path.Combine(AppContext.BaseDirectory, "RoslynHost", "ICSharpCode.Roslyn.Host.deps.json");

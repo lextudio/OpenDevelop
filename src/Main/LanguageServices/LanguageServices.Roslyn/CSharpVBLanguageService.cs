@@ -464,8 +464,6 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             documentId = new DocumentId(documentId.FileName);
 
             cancellationToken.ThrowIfCancellationRequested();
-            AdvanceWorkspaceRevision();
-
             var sourceText = SourceText.From(text);
             bool hasVariants;
             lock (_documentLock)
@@ -473,6 +471,21 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 hasVariants = _documentVariantsByTfm.TryGetValue(documentId, out var variants) && variants.Count > 0;
                 if (hasVariants)
                 {
+                    // Multiple editor features ask to synchronize the same settled buffer (for
+                    // example, code actions and the NuGet missing-package provider). Applying an
+                    // identical SourceText invalidates Roslyn's caches and advances the workspace
+                    // revision even though there is no edit, so leave every TFM slice alone.
+                    bool alreadyCurrent = variants!.Values.All(roslynDocumentId => {
+                        var document = _workspace.CurrentSolution.GetDocument(roslynDocumentId);
+                        if (document == null)
+                            return false;
+                        var currentText = document.GetTextAsync(CancellationToken.None);
+                        return currentText.IsCompletedSuccessfully && currentText.Result.ContentEquals(sourceText);
+                    });
+                    if (alreadyCurrent)
+                        return Task.CompletedTask;
+
+                    AdvanceWorkspaceRevision();
                     // Every TFM slice shares the same buffer — keep them all in sync so whichever
                     // one becomes active later reflects the latest edit, not a stale snapshot.
                     foreach (var roslynDocumentId in variants.Values)
@@ -484,6 +497,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
 
             if (hasVariants)
                 return Task.CompletedTask;
+
+            AdvanceWorkspaceRevision();
 
             // Refuse what this service cannot compile. Loose documents all share ONE ad-hoc project
             // per language, so a single unparsable document poisons the compilation for every other

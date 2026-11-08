@@ -230,11 +230,11 @@ namespace ICSharpCode.PackageManagement
 
 		public void Execute(EditorRefactoringContext context)
 		{
-			_ = ExecuteAsync();
+			_ = ExecuteAsync(context.FileName);
 		}
 
 		/// <summary>Public to the assembly so a test can await the install instead of polling.</summary>
-		internal async Task<bool> ExecuteAsync()
+		internal async Task<bool> ExecuteAsync(FileName documentFileName)
 		{
 			var source = PackageManagementServices.RegisteredPackageRepositories.ActivePackageSource?.Source;
 			SD.StatusBar.SetMessage("Installing NuGet package '" + packageId + "' " + version + "...");
@@ -249,6 +249,19 @@ namespace ICSharpCode.PackageManagement
 					LoggingService.Warn("Restore after adding '" + packageId + "' failed: " + restoreFailure);
 					SD.StatusBar.SetMessage("Added NuGet package '" + packageId + "' " + version + " to the project, but restoring it failed: " + restoreFailure, highlighted: true);
 					return false;
+				}
+				// The PackageReference edit changes the project's metadata references. Reload the project
+				// snapshot before announcing success, otherwise the language service keeps diagnosing the
+				// newly-resolved namespace until the project happens to be reopened.
+				var registry = SD.GetService<LanguageServiceRegistry>();
+				if (registry != null) {
+					try {
+						await registry.RefreshProjectAsync(documentFileName.ToString(), CancellationToken.None).ConfigureAwait(true);
+					} catch (Exception ex) {
+						// The package is restored successfully even if refreshing editor assistance fails.
+						// Retain the install result and make the delayed refresh diagnosable.
+						LoggingService.Warn("Refreshing language service after installing '" + packageId + "' failed: " + ex.Message);
+					}
 				}
 				SD.StatusBar.SetMessage("Installed NuGet package '" + packageId + "' " + version + ".");
 				return true;

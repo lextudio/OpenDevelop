@@ -135,6 +135,14 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                 : _fallbackService;
         }
 
+		/// <summary>Refreshes the project owning a document through its registered language service.</summary>
+		public Task RefreshProjectAsync(string fileName, System.Threading.CancellationToken cancellationToken)
+		{
+			if (string.IsNullOrWhiteSpace(fileName) || !TryGetService(fileName, out var languageService))
+				return Task.CompletedTask;
+			return languageService.RefreshProjectAsync(new DocumentId(fileName), cancellationToken);
+		}
+
         static string ExtractExtension(string fileNameOrExtension)
         {
             if (string.IsNullOrWhiteSpace(fileNameOrExtension))

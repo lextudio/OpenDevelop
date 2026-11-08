@@ -6259,6 +6259,22 @@ EndGlobal
                     await Task.Delay(500);
             }
             Assert.True(restored, "dotnet restore never resolved " + TestPackageId + " into " + assetsPath);
+
+            // The install action reloads the project's language-service snapshot after restore.
+            // Without that refresh the old CS0246 remains in Roslyn and the same offer stays in
+            // the bulb until reopening the project, despite the assets file being correct.
+            var suggestionCleared = false;
+            for (var attempt = 0; attempt < 60 && !suggestionCleared; attempt++)
+            {
+                bulb = await _app.InvokeAsync("od.editor.bulb-actions", probePath, offset);
+                Assert.True(bulb.GetProperty("success").GetBoolean(), bulb.ToString());
+                suggestionCleared = !bulb.GetProperty("actions").EnumerateArray()
+                    .Select(a => a.GetProperty("title").GetString()!)
+                    .Any(t => t.StartsWith(titlePrefix, StringComparison.Ordinal));
+                if (!suggestionCleared)
+                    await Task.Delay(500);
+            }
+            Assert.True(suggestionCleared, "The missing-package suggestion remained after restore refreshed the language service: " + bulb);
         }
         finally
         {
