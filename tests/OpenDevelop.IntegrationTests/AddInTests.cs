@@ -6235,7 +6235,15 @@ EndGlobal
         await AssertBulbInstallsMissingPackageAsync($"using {TestPackageId};\nnamespace OpenDevelop {{ class Anchor {{ }} }}\n", "TestPackage");
     }
 
-    async Task AssertBulbInstallsMissingPackageAsync(string source, string caretOn)
+    [Fact]
+    public async Task LightBulb_InstallsMissingNuGetPackage_UnderCentralPackageManagement()
+    {
+        // The version has to be written to Directory.Packages.props and left off the PackageReference,
+        // otherwise the project stops restoring (NU1008). The helper's restore check proves it restores.
+        await AssertBulbInstallsMissingPackageAsync($"using {TestPackageId};\nclass PackageProbe {{ }}\n", "OpenDevelop", centralPackageVersions: true);
+    }
+
+    async Task AssertBulbInstallsMissingPackageAsync(string source, string caretOn, bool centralPackageVersions = false)
     {
         // The unresolved namespace is the id of a package in the local test feed, so the suggestion
         // needs no network. The probe file is removed afterwards: it does not compile until the
@@ -6243,6 +6251,13 @@ EndGlobal
         var probePath = Path.Combine(_projectDir, "NuGetFixtureApp", "PackageProbe.cs");
 
         await File.WriteAllTextAsync(probePath, source);
+        var centralPropsPath = Path.Combine(_projectDir, "Directory.Packages.props");
+        if (centralPackageVersions)
+        {
+            // A project under Central Package Management: a Version on a PackageReference fails restore (NU1008).
+            await File.WriteAllTextAsync(centralPropsPath,
+                "<Project>\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageVersion Include=\"Some.Other.Package\" Version=\"2.0.0\" />\n  </ItemGroup>\n</Project>\n");
+        }
         try
         {
             var solutionPath = Path.Combine(_projectDir, "NuGetFixture.sln");
@@ -6297,6 +6312,18 @@ EndGlobal
                     await Task.Delay(500);
             }
             Assert.True(restored, "dotnet restore never resolved " + TestPackageId + " into " + assetsPath);
+
+            if (centralPackageVersions)
+            {
+                // The version went to Directory.Packages.props next to the existing entry; the reference carries none.
+                var csproj = await File.ReadAllTextAsync(csprojPath);
+                var reference = System.Text.RegularExpressions.Regex.Match(csproj, "<PackageReference[^>]*Include=\"" + TestPackageId + "\"[^>]*>");
+                Assert.True(reference.Success, csproj);
+                Assert.DoesNotContain("Version=", reference.Value);
+                var props = await File.ReadAllTextAsync(centralPropsPath);
+                Assert.Contains($"<PackageVersion Include=\"{TestPackageId}\" Version=\"1.0.0\" />", props);
+                Assert.Contains("<PackageVersion Include=\"Some.Other.Package\" Version=\"2.0.0\" />", props);
+            }
 
             // The install action reloads the project's language-service snapshot after restore.
             // Without that refresh the old CS0246 remains in Roslyn and the same offer stays in

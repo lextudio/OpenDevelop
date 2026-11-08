@@ -60,12 +60,30 @@ From reading the code, not measured end to end:
   restore results instead of an exit code. It is the largest item here and not urgent while the
   SDK-style path works.
 
-### 5. Features to audit against MonoDevelop and Visual Studio
+### 5. Features the package manager does not have
 
-Present as keywords in the code but not examined, so their depth is unknown: vulnerability and
-deprecation warnings in package details, transitive dependencies, central package management
-(`Directory.Packages.props`). Not found at all: a Consolidate view, package source mapping.
-Audit each in the running IDE before deciding whether it is a gap.
+Audited 2026-11-08 by searching `src/AddIns/Misc/PackageManagement` and `src/Main/Base/Project/Src/NuGet`
+(an earlier version of this note counted keyword hits, which were only the repository's own build
+pins, not features). None of these exist in the package manager:
+
+- Vulnerability and deprecation warnings in the package list or details.
+- A transitive-dependency view (the dependency groups in package details are the only dependency data).
+- A Consolidate view and package source mapping.
+- Central Package Management awareness beyond installing (below): the Installed and Updates tabs do not
+  read versions from `Directory.Packages.props`; not examined, so unknown whether they show the right version.
+
+**Central Package Management install (fixed).** In a project that sets `ManagePackageVersionsCentrally`,
+NuGet rejects a `Version` on a `PackageReference` (NU1008, reproduced with `dotnet restore`). The SDK-style
+install path used to write `Version=` always, so installing into such a project (OpenDevelop's own
+solution is one) broke its restore. `SdkStylePackageReferenceService` now detects it through the evaluated
+`ManagePackageVersionsCentrally` and `DirectoryPackagesPropsPath`, writes the reference without a version and
+adds or updates the `PackageVersion` entry in `Directory.Packages.props` (`CentralPackageVersionsFile`),
+keeping its BOM, line endings and XML declaration, writing the props file before the project is touched, and
+ignoring entries in conditional item groups. Covered by
+`AddInTests.LightBulb_InstallsMissingNuGetPackage_UnderCentralPackageManagement` and the unit tests in
+`tests/OpenDevelop.Base.Tests/CentralPackageVersionsFileTests.cs`. Not covered: updating an
+existing central package from the Updates tab, `VersionOverride`, and a project whose props file is not found
+(it falls back to writing `Version=`).
 
 ### 6. Verification gaps and a behaviour to decide
 

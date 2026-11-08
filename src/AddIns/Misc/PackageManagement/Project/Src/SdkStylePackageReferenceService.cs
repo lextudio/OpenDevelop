@@ -10,6 +10,8 @@
 // substantial portions of the Software.
 
 using System;
+using System.IO;
+using System.Xml.Linq;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -67,21 +69,44 @@ namespace ICSharpCode.PackageManagement
 		
 		void AddOrUpdatePackageReference(string packageId, string version)
 		{
+			// Under Central Package Management NuGet rejects a Version on a PackageReference (NU1008):
+			// the version belongs in a PackageVersion item of Directory.Packages.props.
+			string centralVersionsFile = FindCentralPackageVersionsFile();
+			if (centralVersionsFile != null) {
+				// First, so that a props file that cannot be written (read-only, locked, malformed)
+				// fails before the in-memory project is changed and a later save persists a reference
+				// without any version. An unused PackageVersion left behind by a later failure is harmless.
+				CentralPackageVersionsFile.Set(centralVersionsFile, packageId, version);
+			}
 			project.PerformUpdateOnProjectFile(() => {
 				ProjectItemElement existing = FindPackageReference(packageId);
 				if (existing != null) {
 					existing.Parent.RemoveChild(existing);
 				}
-				
+
 				ProjectItemGroupElement itemGroup = FindPackageReferenceItemGroup()
 					?? project.MSBuildProjectFile.AddItemGroup();
-				itemGroup.AddItem(
-					"PackageReference",
-					packageId,
-					new [] { new KeyValuePair<string, string>("Version", version) });
+				if (centralVersionsFile != null) {
+					itemGroup.AddItem("PackageReference", packageId);
+				} else {
+					itemGroup.AddItem(
+						"PackageReference",
+						packageId,
+						new [] { new KeyValuePair<string, string>("Version", version) });
+				}
 			});
 		}
-		
+
+		/// <summary>The Directory.Packages.props that holds the versions when the project opts into Central Package Management, otherwise null.</summary>
+		string FindCentralPackageVersionsFile()
+		{
+			if (!string.Equals(project.GetEvaluatedProperty("ManagePackageVersionsCentrally"), "true", StringComparison.OrdinalIgnoreCase)) {
+				return null;
+			}
+			string path = project.GetEvaluatedProperty("DirectoryPackagesPropsPath");
+			return !string.IsNullOrEmpty(path) && File.Exists(path) ? path : null;
+		}
+
 		ProjectItemElement FindPackageReference(string packageId)
 		{
 			return project.MSBuildProjectFile.Items
