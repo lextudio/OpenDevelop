@@ -169,6 +169,27 @@ through OpenDevelop's shell contracts (`IToolsHost.ToolsContent`,
 `WpfToolbox` pad in particular is reused by the WinForms designer too
 (see [`winforms-designer.md`](winforms-designer.md)).
 
+### Window-root preview chrome
+
+A XAML `Window` cannot be hosted or rendered as a real top-level native window inside the
+designer. The vendored WPF designer therefore substitutes `WindowClone`, an ordinary
+`ContentControl` whose template supplies the preview frame: icon, title, caption glyphs, border,
+and a clipped client-content presenter. It is rendered as part of the WPF design frame, not by
+the shared `DesignerCanvas`; consequently it needs no canvas-specific coordinate exception.
+
+`WindowClone` uses an explicit neutral light caption (`#FFE7ECF1`), client background, and
+border rather than `SystemColors` caption resources. Those resources may be black or lack
+sufficient contrast under a LibreWPF platform theme, which made a window root visually merge into
+the preview. The 30px caption matches the portable WinForms preview's caption height, but this is
+only a visual convention: WinForms composes its frame in its host bitmap and adjusts its own
+client/surface mapping, while WPF owns this template in its visual tree. Do not share the
+WinForms GDI+ painter or move either frame into `DesignerCanvas`.
+
+Other frameworks follow the same ownership rule through their own hosts: GTK synthesizes its
+window-manager-only title bar into the GTK render texture; WinUI/Uno/MAUI use their framework
+preview or optional device body. A common canvas chrome would shift content relative to the
+surface/design conversion and break selection and pointer hit testing.
+
 In the side-by-side workbench all three pads stay designer-owned while the Source pane has focus:
 Tools keeps the same `SharedToolbox` mounted, Document Outline keeps `WpfViewContent.OutlineContent`
 (the designed element tree, not AvalonEdit's XAML symbol list), and Properties keeps the selected

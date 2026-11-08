@@ -32,7 +32,14 @@ namespace ICSharpCode.WpfDesign.AddIn
 	{
 		public bool CanCreateContentForFile(FileName fileName)
 		{
-			return Path.GetExtension(fileName).Equals(".xaml", StringComparison.OrdinalIgnoreCase);
+			if (!Path.GetExtension(fileName).Equals(".xaml", StringComparison.OrdinalIgnoreCase))
+				return false;
+			// The primary binding is consulted before secondary Design bindings. Treating every
+			// .xaml file as WPF here caused an Uno project to start the LibreWPF designer before
+			// its Uno Design view had a chance to attach. Keep the generic-XAML fallback while
+			// refusing projects whose loaded-project evidence names another XAML runtime.
+			var framework = XamlFrameworkDetector.Detect(fileName.ToString());
+			return framework.Kind is XamlFrameworkKind.Unknown or XamlFrameworkKind.Wpf;
 		}
 		
 		public IViewContent CreateContentForFile(OpenedFile file)
