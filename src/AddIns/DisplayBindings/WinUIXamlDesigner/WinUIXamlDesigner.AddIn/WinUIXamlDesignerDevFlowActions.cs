@@ -63,6 +63,7 @@ public static class WinUIXamlDesignerDevFlowActions
 			canUndo = view.CanUndo,
 			canRedo = view.CanRedo,
 			isDirty = view.PrimaryFile?.IsDirty ?? false
+			, sizePresetKeys = (view.PreviewRuntime as IWinUIXamlSizePresets)?.SizePresetKeys
 		});
 	}
 

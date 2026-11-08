@@ -136,6 +136,26 @@ public sealed class UnoDesignHostRpcTests
 		Assert.Equal(775, updated.Render!.Width);
 	}
 
+	/// <summary>
+	/// A named size preset is not Auto: its height is part of the requested viewport even when
+	/// the page itself has only one short TextBlock. This suite can target either the Uno child or
+	/// the Microsoft WinUI child (see <see cref="HostDll"/>), so it guards their shared DDP path.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_FixedViewportPreservesWidthAndHeight()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await StartAsync(timeout.Token);
+		var viewport = new DesignerViewport { Width = 1280, Height = 720, Dpi = 1.0, IsFixedSize = true };
+
+		var opened = await client.OpenAsync(Document(client, Fixture("Short page")), viewport, timeout.Token);
+
+		Assert.True(opened.Accepted, opened.Error);
+		Assert.NotNull(opened.Render);
+		Assert.Equal(1280, opened.Render!.Width);
+		Assert.Equal(720, opened.Render.Height);
+	}
+
 	[Fact]
 	public async Task ChildHost_PublishesMeasuredGridTracksInTheSnapshot()
 	{

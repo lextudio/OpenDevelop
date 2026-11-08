@@ -5,6 +5,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Surface;
 /// <summary>What kind of device a design preview represents, for chrome defaults.</summary>
 public enum DesignerDeviceKind
 {
+	/// <summary>A desktop application's window frame: title bar and thin outer border.</summary>
+	DesktopWindow,
 	Phone,
 	Tablet,
 }
@@ -56,4 +58,18 @@ public sealed class DesignerDeviceChrome
 
 	public Brush HomeIndicatorBrush { get; init; } =
 		new SolidColorBrush(Color.FromArgb(0xB0, 0xFF, 0xFF, 0xFF));
+
+	/// <summary>Caption text for <see cref="DesignerDeviceKind.DesktopWindow"/>.</summary>
+	public string Title { get; init; } = "Desktop preview";
+
+	/// <summary>Height of the desktop title bar in design units. Ignored by device frames.</summary>
+	public double TitleBarHeight { get; init; } = 26;
+
+	/// <summary>Caption background for <see cref="DesignerDeviceKind.DesktopWindow"/>.</summary>
+	public Brush TitleBarBrush { get; init; } =
+		new SolidColorBrush(Color.FromRgb(0xE7, 0xEC, 0xF1));
+
+	/// <summary>Caption foreground for <see cref="DesignerDeviceKind.DesktopWindow"/>.</summary>
+	public Brush TitleBrush { get; init; } =
+		new SolidColorBrush(Color.FromRgb(0x20, 0x26, 0x2D));
 }

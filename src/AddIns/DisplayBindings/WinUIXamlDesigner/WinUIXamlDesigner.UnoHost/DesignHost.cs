@@ -72,6 +72,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		FrameworkElement? root;
 		long frameSequence;
 		string lastPrimaryFileName = "";
+		bool lastViewportIsFixed;
 
 		public DesignerCapabilities GetCapabilities()
 			=> HostDispatcher.Dispatch(() => BuildCapabilities());
@@ -81,12 +82,12 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 		/// <summary>Session-aware first load (session/open): stamps the returned snapshot with
 		/// the session/document ids and the initial version.</summary>
-		public DesignerSessionState OpenSession(string sessionId, string documentId, string fileName, string xaml, double width, double height, double dpi)
+		public DesignerSessionState OpenSession(string sessionId, string documentId, string fileName, string xaml, double width, double height, double dpi, bool viewportIsFixed = false)
 		{
 			this.sessionId = sessionId;
 			this.documentId = documentId;
 			var snapshot = HostDispatcher.DispatchAsync(() => LoadDesignAsync(new LoadDesignRequest {
-				SessionId = sessionId, DocumentId = documentId, FileName = fileName, Version = 1, Xaml = xaml, Width = width, Height = height, Dpi = dpi
+				SessionId = sessionId, DocumentId = documentId, FileName = fileName, Version = 1, Xaml = xaml, Width = width, Height = height, Dpi = dpi, IsViewportFixed = viewportIsFixed
 			})).GetAwaiter().GetResult();
 			version = 1;
 			snapshot.SessionId = sessionId;
@@ -97,13 +98,13 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 		/// <summary>Session-aware subsequent full-document push (session/update): replaces
 		/// design/load for theme reloads, size-preset changes and any other full re-render.</summary>
-		public DesignerSessionState UpdateSession(string sessionId, string documentId, string fileName, string xaml, double width, double height, double dpi, long baseVersion)
+		public DesignerSessionState UpdateSession(string sessionId, string documentId, string fileName, string xaml, double width, double height, double dpi, long baseVersion, bool viewportIsFixed = false)
 		{
 			EnsureOwnSession(sessionId, documentId);
 			if (RejectIfStale(sessionId, documentId, baseVersion, allowNewerVersion: true) is { } stale)
 				return stale;
 			var snapshot = HostDispatcher.DispatchAsync(() => LoadDesignAsync(new LoadDesignRequest {
-				SessionId = sessionId, DocumentId = documentId, FileName = fileName, Version = baseVersion, Xaml = xaml, Width = width, Height = height, Dpi = dpi
+				SessionId = sessionId, DocumentId = documentId, FileName = fileName, Version = baseVersion, Xaml = xaml, Width = width, Height = height, Dpi = dpi, IsViewportFixed = viewportIsFixed
 			})).GetAwaiter().GetResult();
 			version = baseVersion;
 			snapshot.SessionId = sessionId;
@@ -601,6 +602,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				RefreshSourceBackedElements();
 				HostVisualRoot?.Invoke(previousRoot, root);
 				// A document's own d:DesignWidth/DesignHeight wins over the session viewport.
+				lastViewportIsFixed = request.IsViewportFixed || designHeight.HasValue;
 				return await FinishLayoutAsync(designWidth ?? request.Width, designHeight ?? request.Height, request.Dpi, snapshot);
 
 				// The repairs run AFTER the host-specific transform, never before: that step is what
@@ -1550,7 +1552,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				root.Measure(new Size(width, double.PositiveInfinity));
 				var natural = root.DesiredSize;
 				var renderWidth = designWidthOverride ?? width;
-				var renderHeight = designHeightOverride ?? (natural.Height > 0 ? natural.Height : height);
+				var renderHeight = designHeightOverride ?? (lastViewportIsFixed ? height : natural.Height > 0 ? natural.Height : height);
 				root.Width = renderWidth;
 				root.Height = renderHeight;
 				root.Measure(new Size(renderWidth, renderHeight));

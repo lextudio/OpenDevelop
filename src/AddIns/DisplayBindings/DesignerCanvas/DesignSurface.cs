@@ -19,6 +19,9 @@ using RenderResult = ICSharpCode.SharpDevelop.Designer.Remote.DesignerRenderFram
 
 namespace ICSharpCode.SharpDevelop.Designer.Surface;
 
+/// <summary>A named design-size choice supplied by a framework host.</summary>
+public sealed record DesignSizePreset(string Key, string Label);
+
 /// <summary>
 /// The shared design surface every UI framework's designer uses (ICSharpCode.DesignerCanvas addin;
 /// see doc/technotes/designer-canvas-addin.md). Shows the bitmap its backend
@@ -49,7 +52,11 @@ public class DesignSurface : DesignerCanvas
 	public const double CanvasMargin = 32;
 
 	static readonly Color SelectionColor = Color.FromRgb(0x00, 0x78, 0xD4);
-	static readonly string[] SizePresetLabels = { "Auto", "Phone 390x844", "Tablet 768x1024", "Desktop 1280x720" };
+	static readonly DesignSizePreset[] DefaultSizePresets = [
+		new("phone", "Phone 390x844"),
+		new("tablet", "Tablet 768x1024"),
+		new("desktop", "Desktop 1280x720")
+	];
 	static readonly string[] HandleNames = { "nw", "n", "ne", "e", "se", "s", "sw", "w" };
 
 	readonly DesignFramePresenter framePresenter = new(Stretch.Fill, snapsToDevicePixels: true);
@@ -66,6 +73,16 @@ public class DesignSurface : DesignerCanvas
 		Visibility = Visibility.Collapsed
 	};
 	readonly Border chromeNotch = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+	// The desktop frame belongs to the designer host, not the document being rendered. It is
+	// deliberately outside the image so a Uno Page remains a Page rather than pretending its
+	// root supplied a Window title bar.
+	readonly Border chromeTitleBar = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+	readonly TextBlock chromeTitle = new() {
+		IsHitTestVisible = false,
+		VerticalAlignment = VerticalAlignment.Center,
+		Margin = new Thickness(10, 0, 10, 0),
+		TextTrimming = TextTrimming.CharacterEllipsis
+	};
 	DesignerDeviceChrome? deviceChrome;
 	readonly Canvas viewportCanvas = new();
 	readonly Canvas contentCanvas = new();
@@ -133,9 +150,7 @@ public class DesignSurface : DesignerCanvas
 	public DesignSurface()
 	{
 		Capabilities = DesignerCanvasCapabilities.All;
-		foreach (var label in SizePresetLabels)
-			DesignSizeCombo.Items.Add(label);
-		DesignSizeCombo.SelectedIndex = 0;
+		SetSizePresets(DefaultSizePresets);
 		DesignSizeCombo.SelectionChanged += OnSizePresetSelected;
 		ThemeRequested += OnThemeSelected;
 		VisualStateRequested += (_, request) => DesignVisualStateRequested?.Invoke(this, request);
@@ -147,6 +162,8 @@ public class DesignSurface : DesignerCanvas
 		viewportCanvas.Children.Add(framePresenter.Visual);
 		viewportCanvas.Children.Add(chromeNotch);
 		viewportCanvas.Children.Add(chromeHomeBar);
+		chromeTitleBar.Child = chromeTitle;
+		viewportCanvas.Children.Add(chromeTitleBar);
 		viewportCanvas.Children.Add(GridlineVisual);
 		viewportCanvas.Children.Add(overlay);
 		viewportCanvas.Children.Add(textEditor);
@@ -1352,6 +1369,7 @@ public class DesignSurface : DesignerCanvas
 	/// <summary>Empty margin around the design bitmap: the usual canvas margin plus the device
 	/// body's thickness, so a fit-to-view leaves the whole body visible.</summary>
 	double ChromeMargin => CanvasMargin + (deviceChrome?.BezelThickness ?? 0);
+	double DesktopTitleHeight => deviceChrome?.Kind == DesignerDeviceKind.DesktopWindow ? deviceChrome.TitleBarHeight : 0;
 
 	/// <summary>The scroll metrics of the design area, in surface pixels (tests, DevFlow).</summary>
 	public DesignSurfaceScrollStatus ScrollStatus => new(
@@ -1404,9 +1422,23 @@ public class DesignSurface : DesignerCanvas
 	/// The WPF canvas computes from its host size for the same reason.
 	/// </para></summary>
 	DesignViewport CurrentViewport()
-		=> fitMode
-			? DesignViewport.Fit(pixelWidth, pixelHeight, FitInnerExtent(FitBasisWidth), FitInnerExtent(FitBasisHeight), 1.0, panX + ChromeMargin, panY + ChromeMargin)
-			: DesignViewport.Zoom(pixelWidth, pixelHeight, FitBasisWidth, FitBasisHeight, zoomScale, panX + ChromeMargin, panY + ChromeMargin);
+	{
+		var title = DesktopTitleHeight;
+		DesignViewport viewport;
+		if (fitMode && title > 0) {
+			var width = FitInnerExtent(FitBasisWidth);
+			var height = FitInnerExtent(FitBasisHeight);
+			var scale = pixelWidth == 0 || pixelHeight == 0 ? 1.0 : Math.Min(width / pixelWidth, height / (pixelHeight + title));
+			viewport = DesignViewport.Zoom(pixelWidth, pixelHeight, width, height, scale, panX + ChromeMargin, panY + ChromeMargin);
+		} else {
+			viewport = fitMode
+				? DesignViewport.Fit(pixelWidth, pixelHeight, FitInnerExtent(FitBasisWidth), FitInnerExtent(FitBasisHeight), 1.0, panX + ChromeMargin, panY + ChromeMargin)
+				: DesignViewport.Zoom(pixelWidth, pixelHeight, FitBasisWidth, FitBasisHeight, zoomScale, panX + ChromeMargin, panY + ChromeMargin);
+		}
+		// The body is shifted down by the title height; half the shift keeps the entire desktop
+		// window centred in Fit mode while the full scaled title remains inside scroll extent.
+		return title > 0 ? viewport.Offset(0, title * viewport.Scale / 2) : viewport;
+	}
 
 	// Fit must leave room for the CanvasMargin that the frame is offset by on every side.
 	// Fitting to the whole basis and then adding the margin pushed the frame CanvasMargin past
@@ -1430,22 +1462,38 @@ public class DesignSurface : DesignerCanvas
 		chromeBody.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
 		chromeHomeBar.Visibility = on && chrome!.HomeIndicator ? Visibility.Visible : Visibility.Collapsed;
 		chromeNotch.Visibility = Visibility.Collapsed;
+		chromeTitleBar.Visibility = on && chrome!.Kind == DesignerDeviceKind.DesktopWindow ? Visibility.Visible : Visibility.Collapsed;
 		if (!on) {
+			chromeTitle.Text = "";
 			framePresenter.Visual.OpacityMask = null;
 			framePresenter.Visual.Clip = null;
 			return;
 		}
 
 		double bezel = chrome!.BezelThickness * scale;
+		bool desktopWindow = chrome.Kind == DesignerDeviceKind.DesktopWindow;
+		double titleHeight = desktopWindow ? Math.Max(1, chrome.TitleBarHeight * scale) : 0;
 		double corner = Math.Max(0, chrome.ScreenCornerRadius + chrome.BezelThickness) * scale;
 		chromeBody.Width = viewportCanvas.Width + bezel * 2;
-		chromeBody.Height = viewportCanvas.Height + bezel * 2;
+		chromeBody.Height = viewportCanvas.Height + bezel * 2 + titleHeight;
 		Canvas.SetLeft(chromeBody, -bezel);
-		Canvas.SetTop(chromeBody, -bezel);
+		Canvas.SetTop(chromeBody, -bezel - titleHeight);
 		chromeBody.CornerRadius = new CornerRadius(corner);
 		chromeBody.Background = chrome.BodyBrush;
 		chromeBody.BorderBrush = chrome.EdgeBrush;
 		chromeBody.BorderThickness = new Thickness(Math.Max(1, scale));
+		if (desktopWindow) {
+			chromeTitleBar.Width = viewportCanvas.Width + bezel * 2;
+			chromeTitleBar.Height = titleHeight;
+			chromeTitleBar.Background = chrome.TitleBarBrush;
+			chromeTitleBar.BorderBrush = chrome.EdgeBrush;
+			chromeTitleBar.BorderThickness = new Thickness(Math.Max(1, scale));
+			chromeTitle.Foreground = chrome.TitleBrush;
+			chromeTitle.FontSize = Math.Max(9, 12 * scale);
+			chromeTitle.Text = chrome.Title;
+			Canvas.SetLeft(chromeTitleBar, -bezel);
+			Canvas.SetTop(chromeTitleBar, -bezel - titleHeight);
+		}
 
 		// No Clip/OpacityMask on the image: LibreWPF's compositor drops the whole image when either
 		// is applied to it, leaving only the body. Screen rounding is a separate concern; the body
@@ -1545,7 +1593,7 @@ public class DesignSurface : DesignerCanvas
 		// A fixed margin keeps the design bitmap off the edges, surrounded by the dotted
 		// empty-canvas EdgePattern (see DesignerCanvas).
 		contentCanvas.Width = Math.Max(scroller.ViewportWidth, pixelWidth * scale + ChromeMargin * 2);
-		contentCanvas.Height = Math.Max(scroller.ViewportHeight, pixelHeight * scale + ChromeMargin * 2);
+		contentCanvas.Height = Math.Max(scroller.ViewportHeight, (pixelHeight + DesktopTitleHeight) * scale + ChromeMargin * 2);
 		// BaseOrigin already has CanvasMargin folded in through viewport.PanX/PanY (see
 		// CurrentViewport) - reading the raw panX/panY fields here instead (as a previous pass did) placed the rendered
 		// frame CanvasMargin short of where every other conversion (ToDesignPoint,
@@ -1640,6 +1688,32 @@ public class DesignSurface : DesignerCanvas
 
 	/// <summary>Raised when the user picks a canvas size preset; arg is "phone"/"tablet"/"desktop"/"reset".</summary>
 	public event EventHandler<string> SizePresetRequested;
+	public IReadOnlyList<string> SizePresetKeys => sizePresetKeys;
+
+	/// <summary>Replaces the design-size choices advertised by this surface. <c>Auto</c> is
+	/// always present; framework hosts supply only the form factors their project can target.
+	/// This keeps a desktop-only project from implying that it can be previewed as a phone or tablet.</summary>
+	public void SetSizePresets(IEnumerable<DesignSizePreset> presets)
+	{
+		ArgumentNullException.ThrowIfNull(presets);
+		var values = presets.Where(p => !string.IsNullOrWhiteSpace(p.Key) && !string.IsNullOrWhiteSpace(p.Label)).ToArray();
+		var oldKey = DesignSizeCombo.SelectedIndex > 0 && DesignSizeCombo.SelectedIndex <= sizePresetKeys.Length
+			? sizePresetKeys[DesignSizeCombo.SelectedIndex - 1]
+			: null;
+		syncingSizeCombo = true;
+		sizePresetKeys = values.Select(p => p.Key).ToArray();
+		DesignSizeCombo.Items.Clear();
+		DesignSizeCombo.Items.Add("Auto");
+		foreach (var preset in values)
+			DesignSizeCombo.Items.Add(preset.Label);
+		var index = oldKey == null ? -1 : Array.IndexOf(sizePresetKeys, oldKey);
+		DesignSizeCombo.SelectedIndex = index < 0 ? 0 : index + 1;
+		syncingSizeCombo = false;
+		// A runtime can withdraw a previously available form factor after it learns the
+		// project's targets. Keep the host viewport in lockstep with the visible Auto choice.
+		if (oldKey != null && index < 0)
+			SizePresetRequested?.Invoke(this, "reset");
+	}
 
 	/// <summary>Enables right, bottom and corner frame-edge drags that resize a backend's
 	/// preview-only design viewport. This is off by default because most designers bind root size
@@ -1652,19 +1726,19 @@ public class DesignSurface : DesignerCanvas
 	{
 		if (syncingSizeCombo || DesignSizeCombo.SelectedIndex <= 0)
 			return;
-		SizePresetRequested?.Invoke(this, SizePresetKeys[DesignSizeCombo.SelectedIndex - 1]);
+		SizePresetRequested?.Invoke(this, sizePresetKeys[DesignSizeCombo.SelectedIndex - 1]);
 	}
 
 	/// <summary>Syncs the size combo with the runtime (e.g. after a preset is applied).</summary>
 	public void SetSizePreset(string preset)
 	{
 		syncingSizeCombo = true;
-		var index = Array.IndexOf(SizePresetKeys, preset);
+		var index = Array.IndexOf(sizePresetKeys, preset);
 		DesignSizeCombo.SelectedIndex = index < 0 ? 0 : index + 1;
 		syncingSizeCombo = false;
 	}
 
-	static readonly string[] SizePresetKeys = { "phone", "tablet", "desktop" };
+	string[] sizePresetKeys = DefaultSizePresets.Select(p => p.Key).ToArray();
 
 	#region Viewport interactions
 

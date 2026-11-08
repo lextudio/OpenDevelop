@@ -79,7 +79,21 @@ moves to OpenDevelop **before** Uno needs it (see phase 0), so the two designers
   small coordinator that takes "start a client" as a delegate, so each designer supplies only its own client.
 
 The Uno project's targets come from its `TargetFrameworks`/`UnoFeatures` (Uno.Sdk single project): iOS and Android previews are
-offered only when the project targets them, exactly as MAUI does.
+offered only when the project targets them, exactly as MAUI does. The canvas design-size menu obeys
+the same target capability: a desktop-only project exposes only Auto and Desktop; Phone and Tablet
+are present only if the project declares an iOS or Android TFM. These are responsive preview sizes,
+not a substitute for a real device runtime.
+
+Desktop is still framed: the host draws a neutral window title bar and border around the rendered
+Uno page. That chrome is presentation-only (outside the XAML frame and its coordinate system), so
+the page remains a `Page` while retaining a visible application/window boundary.
+
+Before starting the Uno child, the designer builds the owning project. If Uno emits `UNOB0005`, the
+Design view identifies it as an **Uno SDK/Uno.WinUI version mismatch**, retains Uno's resolved and
+expected versions, and tells the user to align the package/SDK versions, restore, and reopen the
+document. It is a project build failure, not a LibreWPF designer failure. The primary WPF binding
+must also decline already-identified Uno and WinUI projects, so their XAML never enters LibreWPF's
+WPF surface while project evaluation is available.
 
 ### 3.5 Project assemblies on a device (the hard part)
 

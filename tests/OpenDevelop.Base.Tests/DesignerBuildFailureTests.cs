@@ -35,4 +35,12 @@ public sealed class DesignerBuildFailureTests
 		var text = DesignerBuildCoordinator.DescribeBuildFailure(Results(errors.Prepend(message).Prepend(warning).ToArray()));
 		Assert.Equal("Build returned Error. CS1: bad 1 | CS2: bad 2 | CS3: bad 3 (+2 more; see the Build output)", text);
 	}
+
+	[Fact]
+	public void UnoSdkVersionMismatch_IsExplainedBeforeTheRawDiagnostic()
+	{
+		var text = DesignerBuildCoordinator.DescribeBuildFailure(Results(
+			new BuildError("a.csproj", 1, 1, "UNOB0005", "The version of Uno.WinUI must match the version of the Uno.Sdk found in global.json.")));
+		Assert.Equal("Build returned Error. Uno SDK/Uno.WinUI version mismatch (UNOB0005): align the Uno.Sdk and Uno.WinUI versions, restore the project, then reopen the designer. UNOB0005: The version of Uno.WinUI must match the version of the Uno.Sdk found in global.json.", text);
+	}
 }

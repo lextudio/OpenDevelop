@@ -11,6 +11,7 @@ using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Designer.Devices;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using ICSharpCode.SharpDevelop.Designer.Surface;
 using ICSharpCode.WinUIXamlDesigner;
 
 namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
@@ -22,7 +23,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 /// device runtime. Everything device-generic (picker, Device Manager, session phases, overlay, host
 /// process) lives in OpenDevelop's shared designer layers; this file only connects them to Uno.
 /// </summary>
-sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePreview
+sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePreview, IWinUIXamlSizePresets
 {
 	/// <summary>Folder (beside this assembly) that holds the iOS head's app bundle.</summary>
 	internal const string IosHostFolder = "UnoHost.iOS";
@@ -34,6 +35,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 	Device previewDevice = Device.Host;
 	DevicePreferences devicePreferences = DevicePreferences.Empty;
 	ProjectTargets projectTargets = ProjectTargets.None;
+	bool desktopOnlyProject;
 	string projectFile;
 	string connectKind = "unknown";
 	DevicePickerBar deviceBar;
@@ -62,6 +64,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 	public DesignerSessionStatus SessionStatus => deviceSession.Status;
 
 	public IReadOnlyList<Device> OfferedDevices => OfferedDevicesList();
+	public IReadOnlyList<string> SizePresetKeys => surface.SizePresetKeys;
 
 	public async Task<bool> SwitchDeviceAsync(string deviceId)
 	{
@@ -79,6 +82,21 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 		bool isUno = !hostDisplayName.Contains("WinUI", StringComparison.OrdinalIgnoreCase)
 			&& !hostDisplayName.Contains("ProGPU", StringComparison.OrdinalIgnoreCase);
 		projectTargets = isUno ? ProjectTargets.ReadFromFile(projectFileName) : ProjectTargets.None;
+		desktopOnlyProject = isUno && !projectTargets.SupportsIos && !projectTargets.SupportsAndroid;
+		// The canvas originally advertised every responsive form factor regardless of the
+		// project's TFM. That made a net10.0-desktop-only Uno project look deployable to a
+		// phone or tablet. Keep the desktop design-size option, but expose mobile sizes only
+		// when at least one declared TFM can actually run on a mobile target.
+		if (isUno) {
+		surface.SetSizePresets(projectTargets.SupportsIos || projectTargets.SupportsAndroid
+				? [
+					new DesignSizePreset("phone", "Phone 390x844"),
+					new DesignSizePreset("tablet", "Tablet 768x1024"),
+					new DesignSizePreset("desktop", "Desktop 1280x720")
+				]
+				: [new DesignSizePreset("desktop", "Desktop 1280x720")]);
+		}
+		ApplyDeviceChrome();
 		if (!OffersDevices)
 			return;
 		devicePreferences = DevicePreferencesStore.Load();
@@ -304,8 +322,22 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlChrome, IWinUIXamlDevicePr
 	}
 
 	/// <summary>Draws a generic device body for a phone or tablet (no Xcode/Android device database is read: the shape is a
-	/// plausible default per platform and family), or none on the computer or when the Frame box is off.</summary>
-	void ApplyDeviceChrome() => surface.DeviceChrome = frameEnabled ? ChromeFor(previewDevice) : null;
+	/// plausible default per platform and family). Desktop previews always carry a host-owned
+	/// window frame, so a Page has an obvious application boundary even when its XAML fills the
+	/// whole render.</summary>
+	void ApplyDeviceChrome() => surface.DeviceChrome = previewDevice.Platform == DevicePlatform.Host
+		? frameEnabled ? DesktopChrome() : null
+		: frameEnabled ? ChromeFor(previewDevice) : null;
+
+	DesignerDeviceChrome DesktopChrome() => new()
+	{
+		Kind = DesignerDeviceKind.DesktopWindow,
+		ScreenCornerRadius = 2,
+		BezelThickness = 1,
+		Title = hostDisplayName + " desktop preview",
+		TitleBarHeight = 26,
+		HomeIndicator = false,
+	};
 
 	static ICSharpCode.SharpDevelop.Designer.Surface.DesignerDeviceChrome ChromeFor(Device device)
 	{

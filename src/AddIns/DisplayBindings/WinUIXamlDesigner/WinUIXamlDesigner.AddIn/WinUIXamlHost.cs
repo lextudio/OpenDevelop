@@ -645,6 +645,11 @@ public interface IWinUIXamlChrome
 	UIElement ChromeRoot { get; }
 }
 
+public interface IWinUIXamlSizePresets
+{
+	IReadOnlyList<string> SizePresetKeys { get; }
+}
+
 public interface IWinUIXamlRuntimeHost : IDisposable
 {
 	UIElement WpfSurface { get; }

@@ -22,6 +22,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		public double Width { get; set; } = 640;
 		public double Height { get; set; } = 480;
 		public double Dpi { get; set; } = 1.0;
+		/// <summary>Whether Width/Height came from an explicit designer preset rather than Auto.</summary>
+		public bool IsViewportFixed { get; set; }
 	}
 
 	public class LayoutRequest

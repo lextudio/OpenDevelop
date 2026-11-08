@@ -182,6 +182,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public double Width { get; set; }
 		public double Height { get; set; }
 		public double Dpi { get; set; } = 1.0;
+	/// <summary>True when the user selected an explicit responsive/design size. A renderer may
+	/// otherwise use its content height for an Auto viewport.</summary>
+	public bool IsFixedSize { get; set; }
 	}
 
 	/// <summary>One entry of a whole-collection edit: the item's index in the collection before

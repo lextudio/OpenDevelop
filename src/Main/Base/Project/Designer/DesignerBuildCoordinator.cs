@@ -102,6 +102,12 @@ namespace ICSharpCode.SharpDevelop.Project
 			var text = "Build returned " + results.Result + ".";
 			if (errors.Count == 0)
 				return text;
+			// UNOB0005 is otherwise easy to mistake for a designer failure: it is emitted while
+			// MSBuild evaluates the Uno project, before the Uno child can be started. Put the
+			// actionable category first while retaining Uno's diagnostic (and its versions) below.
+			if (errors.Any(error => string.Equals(error.ErrorCode, "UNOB0005", StringComparison.OrdinalIgnoreCase)
+				|| error.ErrorText.Contains("Uno.WinUI must match the version of the Uno.Sdk", StringComparison.OrdinalIgnoreCase)))
+				text += " Uno SDK/Uno.WinUI version mismatch (UNOB0005): align the Uno.Sdk and Uno.WinUI versions, restore the project, then reopen the designer.";
 			var lines = errors.Take(shown).Select(error => (string.IsNullOrEmpty(error.ErrorCode) ? "" : error.ErrorCode + ": ") + error.ErrorText.Trim());
 			return text + " " + string.Join(" | ", lines) + (errors.Count > shown ? " (+" + (errors.Count - shown) + " more; see the Build output)" : "");
 		}

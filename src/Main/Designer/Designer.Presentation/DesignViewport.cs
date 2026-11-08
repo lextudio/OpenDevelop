@@ -120,5 +120,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 			double surfaceX, double surfaceY)
 			=> (surfaceX - Math.Max(0, OriginX) - designX * Scale,
 				surfaceY - Math.Max(0, OriginY) - designY * Scale);
+
+		/// <summary>Returns the same design mapping translated in surface pixels. Hosts use this
+		/// for presentation chrome which occupies space outside, but not inside, the design rect.</summary>
+		public DesignViewport Offset(double x, double y)
+			=> new(DesignWidth, DesignHeight, Scale, OriginX, OriginY, PanX + x, PanY + y);
 	}
 }

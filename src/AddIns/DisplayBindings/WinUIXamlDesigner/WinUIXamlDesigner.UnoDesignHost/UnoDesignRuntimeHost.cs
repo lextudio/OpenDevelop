@@ -106,8 +106,10 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 		if (settingsGridlines)
 			surface.SetGridlines(true);
 		surface.IsGridEnabled = settingsGridlines;
-		if (settingsSizePreset is { } size)
+		if (settingsSizePreset is { } size && (!desktopOnlyProject || !IsMobilePreset(size)))
 			SetDesignSize(size.Width, size.Height);
+		else if (settingsSizePreset is not null)
+			ResetDesignSize();
 		connectKind = framework?.Kind.ToString() ?? "unknown";
 		connectTask = ConnectAsync(connectKind);
 
@@ -218,6 +220,10 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 
 	void OnSurfaceSizePresetRequested(object sender, string preset)
 	{
+		if (string.Equals(preset, "reset", StringComparison.OrdinalIgnoreCase)) {
+			ResetDesignSize();
+			return;
+		}
 		var (width, height) = preset switch
 		{
 			"phone" => (390.0, 844.0),
@@ -228,6 +234,9 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 		if (width > 0 && height > 0)
 			SetDesignSize(width, height);
 	}
+
+	static bool IsMobilePreset((double Width, double Height) size) =>
+		(size.Width == 390 && size.Height == 844) || (size.Width == 768 && size.Height == 1024);
 
 	#region IWinUIXamlTheme
 
@@ -1157,7 +1166,12 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 			// render for an update, so a design-size preset was sent with the previous size and the canvas
 			// never resized.
 			client.SetViewport(width, height, dpi);
-			var viewport = new DesignerViewport { Width = width, Height = height, Dpi = dpi };
+			var viewport = new DesignerViewport {
+				Width = width, Height = height, Dpi = dpi,
+				// Auto intentionally permits a page to use its natural content height. A selected
+				// preset is a real viewport contract, including its height.
+				IsFixedSize = configuredDesignWidth is not null && configuredDesignHeight is not null
+			};
 			var document = new DocumentSnapshot {
 				SessionId = client.SessionId,
 				DocumentId = client.DocumentId,

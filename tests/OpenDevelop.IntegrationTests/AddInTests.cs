@@ -1652,6 +1652,25 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         Assert.Contains("1280", resetStatus);
     }
 
+    [Fact]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.Uno)]
+    public async Task DesktopOnlyUnoProject_OffersOnlyDesktopSizePreset()
+    {
+        var solution = _app.UnoHotReloadFixturePath;
+        var page = Path.Combine(Path.GetDirectoryName(solution)!, "MainPage.xaml");
+        Assert.True((await _app.ReopenSolutionAsync(solution)).GetProperty("success").GetBoolean());
+        Assert.True((await _app.InvokeAsync("od.open-file", page)).GetProperty("opened").GetBoolean());
+        await WaitForRenderedAsync();
+
+        var status = await _app.InvokeAsync("od.winui-designer.status");
+        Assert.Equal(new[] { "desktop" }, status.GetProperty("sizePresetKeys").EnumerateArray().Select(item => item.GetString()).ToArray());
+		var desktop = await _app.InvokeAsync("od.winui-designer.design-size", "desktop");
+		Assert.Equal(720, desktop.GetProperty("configured").GetProperty("height").GetDouble());
+		Assert.Contains("1280×720", await WaitForStatusContainingAsync("1280×720"));
+        Assert.True((await _app.InvokeAsync("od.winui-designer.design-size", "reset")).GetProperty("success").GetBoolean());
+		Assert.Equal(JsonValueKind.Null, (await _app.InvokeAsync("od.winui-designer.design-size")).GetProperty("configured").ValueKind);
+    }
+
     /// <summary>A named Flyout is a source object owned by Button.ContextFlyout, not a child of
     /// the rendered visual tree. It must therefore appear in the shared component tray rather
     /// than being silently lost just because it has no design-surface bounds.</summary>
@@ -2759,6 +2778,13 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
     public async Task WinUIOnly_DesignSizePresets_ResizeCanvas()
     {
         await OpenWinUIDesignerAsync();
+
+        var desktop = await _app.InvokeAsync("od.winui-designer.design-size", "desktop");
+        Assert.Equal("desktop", desktop.GetProperty("preset").GetString());
+        Assert.Equal(1280, desktop.GetProperty("configured").GetProperty("width").GetDouble());
+        Assert.Equal(720, desktop.GetProperty("configured").GetProperty("height").GetDouble());
+        var desktopStatus = await WaitForStatusContainingAsync("1280×720");
+        Assert.Contains("1280×720", desktopStatus);
 
         var phone = await _app.InvokeAsync("od.winui-designer.design-size", "phone");
         Assert.Equal("phone", phone.GetProperty("preset").GetString());
