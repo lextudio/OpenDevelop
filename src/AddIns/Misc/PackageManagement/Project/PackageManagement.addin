@@ -64,6 +64,8 @@
 	<!-- Projects window context menu - a single package reference selected (listed before Remove) -->
 	<Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/PackageReferenceNode">
 		<Condition name="WriteableProject" action="Disable">
+			<MenuItem id="UpdatePackage" insertbefore="ManagePackages" label="${res:PackageManagement.Update}"
+			          class="ICSharpCode.PackageManagement.UpdatePackageReferenceCommand"/>
 			<MenuItem id="ManagePackages" insertbefore="RemoveReference" label="${res:AddIns.PackageManagement.Menu.ManagePackages}"
 			          class="ICSharpCode.PackageManagement.ManagePackagesCommand"/>
 		</Condition>

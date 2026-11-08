@@ -9057,6 +9057,9 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   <data name="PackageManagement.IncludePrerelease" xml:space="preserve">
     <value>包括预发行版</value>
   </data>
+  <data name="PackageManagement.Update" xml:space="preserve">
+    <value>更新</value>
+  </data>
   <data name="PackageManagement.UpdateAll" xml:space="preserve">
     <value>全部更新</value>
   </data>

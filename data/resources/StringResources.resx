@@ -9451,6 +9451,9 @@ Press Esc to cancel this operation.</value>
   <data name="PackageManagement.IncludePrerelease" xml:space="preserve">
     <value>Include Prerelease</value>
   </data>
+  <data name="PackageManagement.Update" xml:space="preserve">
+    <value>Update</value>
+  </data>
   <data name="PackageManagement.UpdateAll" xml:space="preserve">
     <value>Update All</value>
   </data>

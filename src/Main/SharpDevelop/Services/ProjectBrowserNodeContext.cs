@@ -65,6 +65,13 @@ internal enum ProjectBrowserNodeKind
 // GitStatusService.cs) alongside GitStatusService itself - GitAddIn only references Base, not this
 // App-layer project, so a type it needs can't live here.
 
+/// <summary>Public package-reference details supplied to add-in context-menu commands.</summary>
+public interface IProjectBrowserPackageReferenceContext
+{
+    string PackageId { get; }
+    string? ProjectFileName { get; }
+}
+
 internal sealed record ProjectBrowserNodeContext(
     string Name,
     string FullPath,
@@ -74,8 +81,22 @@ internal sealed record ProjectBrowserNodeContext(
     IProjectTree? BoundProjectTree = null,
     string? ProjectPathHint = null,
     string? IncludeHint = null,
-    GitFileStatus GitStatus = GitFileStatus.None) : ICSharpCode.Core.IOwnerState
+    GitFileStatus GitStatus = GitFileStatus.None) : ICSharpCode.Core.IOwnerState, IProjectBrowserPackageReferenceContext
 {
+
+    // CPS exposes a package node's FilePath/IncludeHint as the resolved package asset path,
+    // not the PackageReference Include value. The visible node name is intentionally rendered
+    // as "PackageId (version)"; remove only that trailing version presentation to recover the
+    // canonical id used by NuGet's Updates filter.
+    public string PackageId
+    {
+        get
+        {
+            var versionStart = Name.LastIndexOf(" (", StringComparison.Ordinal);
+            return versionStart > 0 ? Name.Substring(0, versionStart) : Name;
+        }
+    }
+    public string? ProjectFileName => ProjectPathHint;
 
     public Enum InternalState => State;
 

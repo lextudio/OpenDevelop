@@ -94,6 +94,10 @@ namespace ICSharpCode.PackageManagement
 			if (updatedPackages == null) {
 				ThrowSavedException();
 			}
+			// The base view model owns the search box text. UpdatedPackages applies its
+			// own local-package filter before asking the feed for newer versions, so carry
+			// that text across instead of silently listing every update.
+			updatedPackages.SearchTerms = searchCriteria;
 			return GetUpdatedPackages();
 		}
 		

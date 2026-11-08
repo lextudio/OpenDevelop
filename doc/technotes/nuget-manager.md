@@ -17,15 +17,69 @@ Package Manager Console hosted as a `pwsh` Terminal session, EnvDTE and Cmdlets)
 |---|---|
 | Solution Explorer nodes | **Present**: Dependencies > Packages > `<Id> (<version>)`, next to Analyzers and Frameworks. Do not port MonoDevelop's `NodeBuilders`. |
 | Project node menu | Has Manage Packages... and Restore Packages. |
-| Packages folder / package node menus | Were the generic folder menu and a lone Remove. Now: the folder has its own `PackagesFolderNode` menu (Manage Packages..., Restore Packages) and the package node has Manage Packages... before Remove, covered by `AddInTests.SearchAndInstallPackage_UpdatesProjectFile`. Still missing: a per-package Update command. |
+| Packages folder / package node menus | The folder has its own `PackagesFolderNode` menu (Manage Packages..., Restore Packages). A package node has Update (opens the Updates tab filtered to that package and switches to its owning project), Manage Packages..., then Remove; `AddInTests.SearchAndInstallPackage_UpdatesProjectFile` invokes the real Update command and verifies its tab and canonical package-id filter. |
 | Missing-package quick fix | **Present for unresolved namespaces**: `MissingPackageContextActionProvider` (PackageManagement add-in) reads CS0246/CS0234 at the caret in an SDK-style project, tries the qualified name at the diagnostic and its shorter prefixes as an exact NuGet package id against the active source, and offers \"Install NuGet package 'X' v in 'Project'\" in the light bulb; choosing it writes the PackageReference on the UI thread and runs `dotnet restore` in the background. Covered by `AddInTests.LightBulb_OffersToInstallMissingNuGetPackage_AndInstallsIt` (local feed, no network). Not covered: a bare type name such as `JsonConvert` (no package index to map it), non-SDK projects, and VB. Underneath it, `LanguageServiceContextActionsExtension` puts Roslyn's code actions in the bulb for `.cs` (the bulb had no providers at all because `CSharpBinding.csproj` compiles none of the old NRefactory context actions); the language service diffs only existing documents and flattens nested actions, so actions that create a file or ask a further choice (Generate type) are listed but report \"cannot be applied yet\" in the status bar. `ExtendedPopup` now sets `PlacementTarget` because LibreWPF refuses an owner-less popup. |
 | Package Console, EnvDTE, batch operations | Present; they came from SharpDevelop, not from `monodevelop-nuget-extensions`. |
+
+### `monodevelop-nuget-extensions` feature audit
+
+The extension's README is a useful compatibility checklist, but not an implementation
+dependency. The following maps every user-facing feature it advertised to the current
+OpenDevelop package add-in.
+
+| Former extension feature | OpenDevelop equivalent / disposition |
+| --- | --- |
+| Unified-search package install, including an explicit version | Manage Packages' Available search and version picker install to the selected project; the Package Manager Console also exposes `Install-Package <id> [version]`. The local-feed install journey is exercised by `AddInTests.SearchAndInstallPackage_UpdatesProjectFile`. |
+| Batch install, update and uninstall across projects | `PackageViewModel.ManagePackage` asks `SelectProjectsService` for the target set and runs the package action for the selected projects. |
+| PowerShell Package Console | The integrated Terminal starts `pwsh` with `OpenDevelop.PackageManagement.ps1`, which supplies `Get-Package`, `Install-Package`, `Update-Package`, and `Uninstall-Package`; `TerminalPadTests.PackageManagerConsole_LaunchesPwshAndLoadsPackageCommands` exercises its launch and script load. |
+| Partial EnvDTE support for package scripts | The add-in carries the SharpDevelop `EnvDTE` shim and uses it in `PackageManagementProject`; like the former extension this remains compatibility support, not a promise that every legacy install script works. |
+| List locally installed Portable Class Libraries | Intentionally not carried forward. This was a Mono-specific PCL utility; modern SDK-style projects target TFMs directly and PCL profiles/tooling are retired. It has no NuGet package-management analogue to preserve. |
 
 Sources: `externals/monodevelop` and `externals/monodevelop-nuget-extensions` are no longer
 submodules (nothing compiled from them except two Apache-2.0 launch-profile files, now copied
 into the AspNetCore add-in). MonoDevelop's PackageManagement uses its IDE object model (GTK/Xwt),
 so it is a reference to read, not code to link: clone `https://github.com/mono/monodevelop` into a
 scratch directory when needed, and re-implement against OpenDevelop's own extension points.
+
+## Open items (as of 2026-11-08)
+
+Left over after the Packages menus, the light bulb for Roslyn code actions, and the missing-package
+suggestion. Each is a separate, reviewable change.
+
+**Performance / correctness risks of the light bulb**
+- Every time the caret settles (about 500 ms) the language service now computes diagnostics and
+  code actions, and the NuGet provider asks for diagnostics a second time. Not measured. Cheapest
+  first step: skip `UpsertDocumentAsync` when the text has not changed since the last call.
+- The bulb popup was verified only as "opens, has actions" (`od.editor.bulb-popup`). Its on-screen
+  position and a real click were not checked; the popup is a separate window and is absent from the UI tree.
+- After an install, the action refreshes the owning language-service project after restore. The
+  missing-package integration journey verifies that its light-bulb offer disappears afterwards.
+- Restore failure after "Install NuGet package" (offline feed, wrong source) is reported in the
+  status bar but no test drives it.
+
+**Language service limits**
+- `DiffSolutionsToTextEditsAsync` diffs only documents that already exist and nested code actions are
+  flattened, so "Generate type" and other actions that create a file or ask a further choice are
+  listed but cannot be applied (status bar: "cannot be applied yet").
+- The light bulb is registered for `.cs` only; VB has no `TextEditorExtension` registration.
+
+**Missing-package suggestion**
+- Only a namespace whose qualified name, or a shorter prefix, is an exact NuGet package id. A bare
+  type name (`JsonConvert`) needs a package index (type-to-package map), which does not exist here.
+- Always installs the latest stable version of the active source; no version choice, no
+  prerelease, no package source mapping.
+- SDK-style projects only (`MSBuildBasedProject.IsSdkStyleProject`); `packages.config` projects get no suggestion.
+
+**Package nodes**
+- The Update command selects the owner project from the project-tree context and opens the Updates
+  tab filtered to the package id. The integration journey invokes that command through the real
+  Project Browser menu item and verifies the selected tab and filter.
+
+**Housekeeping**
+- `externals/altcover` has no reference in any project, props or script (only in the CI submodule
+  list); confirm there is no implicit use, then drop it like `monodevelop`.
+- `externals/vsmac-codecoverage` and `externals/vs-editor-api` are source-linked but frozen
+  upstream; they could become LeXtudio GitHub Packages like sharpdbg.
 
 ## 0. Sources (historical; see Status above)
 

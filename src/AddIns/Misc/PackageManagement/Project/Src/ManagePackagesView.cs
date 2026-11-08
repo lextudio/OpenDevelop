@@ -37,6 +37,23 @@ namespace ICSharpCode.PackageManagement
 			// this same view with Show(), so use Close() to support both modal and non-modal hosts.
 			Close();
 		}
+
+		/// <summary>Shows the Updates view filtered to one package reference from Solution Explorer.</summary>
+		public void ShowUpdatesFor(string packageId)
+		{
+			if (string.IsNullOrWhiteSpace(packageId))
+				return;
+			PackageUpdatesTab.IsSelected = true;
+			var viewModel = DataContext as ManagePackagesViewModel;
+			if (viewModel == null)
+				return;
+			viewModel.UpdatedPackagesViewModel.SearchTerms = packageId;
+			viewModel.UpdatedPackagesViewModel.SearchCommand.Execute(null);
+		}
+
+		public string SelectedTabHeader => PackageUpdatesTab.IsSelected ? PackageUpdatesTab.Header?.ToString() : null;
+
+		public string UpdatesSearchTerms => (DataContext as ManagePackagesViewModel)?.UpdatedPackagesViewModel.SearchTerms;
 		
 		public void Dispose()
 		{

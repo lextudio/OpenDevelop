@@ -96,6 +96,37 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.project-browser.invoke-context-menu", Description = "Click a real Project Browser context-menu item by its add-in id on the first node of the given kind (optionally matching its name). The click is dispatched after this action returns so modal commands can open their UI normally.")]
+		public static async Task<string> InvokeContextMenu(string kind, string id, string? name = null)
+		{
+			try {
+				if (!Enum.TryParse<ProjectBrowserNodeKind>(kind, true, out var nodeKind))
+					return JsonSerializer.Serialize(new { started = false, error = "Unknown node kind '" + kind + "'." });
+				var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<ProjectBrowserViewModel>();
+				await viewModel.WaitForCurrentRefreshAsync();
+				var node = FindNode(viewModel.RootNodes, n => n.Kind == nodeKind
+					&& (string.IsNullOrEmpty(name) || string.Equals(n.Name, name, StringComparison.OrdinalIgnoreCase)));
+				if (node == null)
+					return JsonSerializer.Serialize(new { started = false, error = "No matching " + kind + " node." });
+				viewModel.SelectedNode = node;
+				var context = node.ToContext();
+				var items = ICSharpCode.Core.Presentation.MenuService.CreateMenuItems(null, context, context.ContextMenuPath, "ContextMenu");
+				var item = FindMenuItem(items, id);
+				if (item == null || !item.IsEnabled)
+					return JsonSerializer.Serialize(new { started = false, error = "No enabled context-menu item '" + id + "'." });
+				// A detached MenuItem does not route Click through a live ContextMenu, so invoke
+				// the exact ICommand that MenuItem.OnClick would invoke once the dispatcher has
+				// returned. The command parameter remains the real ProjectBrowserNodeContext.
+				Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => {
+					if (item.Command?.CanExecute(item.CommandParameter) == true)
+						item.Command.Execute(item.CommandParameter);
+				}));
+				return JsonSerializer.Serialize(new { started = true, node = node.Name, id });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { started = false, error = ex.ToString() });
+			}
+		}
+
 		[DevFlowAction("od.project-browser.select", Description = "Select the first Project Browser node of the given kind (Solution, Project, SolutionFolder, SolutionItem, Folder, File, ...), optionally matching its name, so a following od.menu.invoke acts on it")]
 		public static async Task<string> SelectNode(string kind, string? name = null)
 		{
@@ -374,6 +405,21 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				});
 			}
 			return result;
+		}
+
+		static MenuItem? FindMenuItem(IEnumerable items, string id)
+		{
+			foreach (var item in items.OfType<MenuItem>()) {
+				if (string.Equals(FindCodon(item)?.Id, id, StringComparison.OrdinalIgnoreCase))
+					return item;
+				if (item.Items.Count > 0) {
+					item.RaiseEvent(new RoutedEventArgs(MenuItem.SubmenuOpenedEvent, item));
+					var child = FindMenuItem(item.Items, id);
+					if (child != null)
+						return child;
+				}
+			}
+			return null;
 		}
 
 		static Codon? FindCodon(object item)

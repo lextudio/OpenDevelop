@@ -6384,11 +6384,31 @@ EndGlobal
                 && i.GetProperty("enabled").GetBoolean());
         Assert.True(IsEnabledItem(packageMenu, "ManagePackages"),
             "ManagePackages is missing or disabled on the package node: " + packageMenu);
+        Assert.True(IsEnabledItem(packageMenu, "UpdatePackage"),
+            "UpdatePackage is missing or disabled on the package node: " + packageMenu);
         Assert.True(IsEnabledItem(packageMenu, "RemoveReference"), packageMenu.ToString());
         var packageMenuIds = packageMenu.GetProperty("items").EnumerateArray()
             .Where(i => i.TryGetProperty("id", out _)).Select(i => i.GetProperty("id").GetString()).ToList();
+        Assert.True(packageMenuIds.IndexOf("UpdatePackage") < packageMenuIds.IndexOf("ManagePackages"),
+            "UpdatePackage must be listed before ManagePackages: " + string.Join(", ", packageMenuIds));
         Assert.True(packageMenuIds.IndexOf("ManagePackages") < packageMenuIds.IndexOf("RemoveReference"),
             "ManagePackages must be listed before Remove: " + string.Join(", ", packageMenuIds));
+
+        // Run the actual add-in menu command with the selected package node as its owner. This
+        // proves the context reaches UpdatePackageReferenceCommand, selects the owning project,
+        // and opens the Updates tab with the package id rather than merely exposing a menu row.
+        var updateStarted = await _app.InvokeAsync("od.project-browser.invoke-context-menu", "PackageReference", "UpdatePackage");
+        Assert.True(updateStarted.GetProperty("started").GetBoolean(), updateStarted.ToString());
+        JsonElement updateDialog = default;
+        var updateOpened = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            updateDialog = await _app.InvokeAsync("od.nuget.dialog-state");
+            return updateDialog.GetProperty("open").GetBoolean();
+        }, TimeSpan.FromSeconds(30));
+        Assert.True(updateOpened, "Update Package did not open Manage Packages: " + updateDialog);
+        Assert.Contains("Update", updateDialog.GetProperty("selectedTab").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(TestPackageId, updateDialog.GetProperty("updatesSearchTerms").GetString());
+        var closedUpdateDialog = await _app.InvokeAsync("od.nuget.close-dialog");
+        Assert.True(closedUpdateDialog.GetProperty("success").GetBoolean(), closedUpdateDialog.ToString());
 
         var packagesFolderMenu = await _app.InvokeAsync("od.project-browser.context-menu", "PackagesFolder");
         Assert.True(packagesFolderMenu.GetProperty("success").GetBoolean(), packagesFolderMenu.ToString());

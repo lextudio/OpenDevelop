@@ -98,6 +98,18 @@ namespace ICSharpCode.PackageManagement
 			return currentView?.DataContext as ManagePackagesViewModel;
 		}
 
+		[DevFlowAction("od.nuget.dialog-state", Description = "Report the selected tab and Updates query of the real Manage NuGet Packages dialog, including one opened by a Project Browser context-menu command")]
+		public static string DialogState()
+		{
+			var view = System.Windows.Application.Current?.Windows
+				.OfType<ManagePackagesView>()
+				.FirstOrDefault(candidate => candidate.IsVisible)
+				?? (currentView?.IsVisible == true ? currentView : null);
+			return view == null
+				? JsonSerializer.Serialize(new { open = false })
+				: JsonSerializer.Serialize(new { open = true, selectedTab = view.SelectedTabHeader, updatesSearchTerms = view.UpdatesSearchTerms });
+		}
+
 		[DevFlowAction("od.nuget.set-search-text", Description = "Set the search box text in the currently open Manage NuGet Packages dialog's Available tab")]
 		public static string SetSearchText(string text)
 		{

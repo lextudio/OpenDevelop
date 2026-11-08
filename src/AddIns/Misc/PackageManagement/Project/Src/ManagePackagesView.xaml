@@ -81,7 +81,7 @@
 					x:Name="InstalledPackagesView"
 					DataContext="{Binding Path=InstalledPackagesViewModel}"/>
 			</TabItem>
-			<TabItem Header="{core:Localize PackageManagement.Updates}">
+			<TabItem x:Name="PackageUpdatesTab" Header="{core:Localize PackageManagement.Updates}">
 				<pm:PackagesView
 					x:Name="PackageUpdatesView"
 					DataContext="{Binding Path=UpdatedPackagesViewModel}"/>
