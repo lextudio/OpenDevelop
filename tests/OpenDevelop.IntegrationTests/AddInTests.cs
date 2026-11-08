@@ -6448,6 +6448,45 @@ EndGlobal
         var closedUpdateDialog = await _app.InvokeAsync("od.nuget.close-dialog");
         Assert.True(closedUpdateDialog.GetProperty("success").GetBoolean(), closedUpdateDialog.ToString());
 
+        // Manage Packages... from the package node and from the Packages folder must open the dialog for the
+        // project. The fixture solution has a single project, so the title ("<selection> - Manage Packages")
+        // cannot tell resolving the node's owning project from the single-project fallback in
+        // PackageManagementSelectedProjects; the enabled WriteableProject items above already show that
+        // CurrentProject was set. Telling them apart needs a second project (not covered).
+        foreach (var kind in new[] { "PackageReference", "PackagesFolder" })
+        {
+            try
+            {
+                var manageStarted = await _app.InvokeAsync("od.project-browser.invoke-context-menu", kind, "ManagePackages");
+                Assert.True(manageStarted.GetProperty("started").GetBoolean(), kind + ": " + manageStarted);
+                JsonElement manageDialog = default;
+                var manageOpened = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                    manageDialog = await _app.InvokeAsync("od.nuget.dialog-state");
+                    return manageDialog.GetProperty("open").GetBoolean();
+                }, TimeSpan.FromSeconds(30));
+                Assert.True(manageOpened, kind + ": Manage Packages did not open: " + manageDialog);
+                Assert.Equal("NuGetFixtureApp - Manage Packages", manageDialog.GetProperty("title").GetString());
+            }
+            finally
+            {
+                // The dialog is a shared window: a failed assertion must not leave it open for later tests.
+                var closedManage = await _app.InvokeAsync("od.nuget.close-dialog");
+                Assert.True(closedManage.GetProperty("success").GetBoolean(), closedManage.ToString());
+            }
+        }
+
+        // Restore Packages from the Packages folder restores the solution. Remove the assets file the
+        // install produced and require the command to write it again (the package is in the global
+        // packages folder by now, so this needs no feed).
+        var assetsPath = Path.Combine(_projectDir, "NuGetFixtureApp", "obj", "project.assets.json");
+        await OpenDevelopAppFixture.PollUntilAsync(() => Task.FromResult(File.Exists(assetsPath)), TimeSpan.FromSeconds(60));
+        Assert.True(File.Exists(assetsPath), "The install did not leave an assets file to remove: " + assetsPath);
+        File.Delete(assetsPath);
+        var restoreStarted = await _app.InvokeAsync("od.project-browser.invoke-context-menu", "PackagesFolder", "RestorePackages");
+        Assert.True(restoreStarted.GetProperty("started").GetBoolean(), restoreStarted.ToString());
+        Assert.True(await OpenDevelopAppFixture.PollUntilAsync(() => Task.FromResult(File.Exists(assetsPath)), TimeSpan.FromSeconds(90)),
+            "Restore Packages from the Packages folder did not recreate " + assetsPath);
+
         var packagesFolderMenu = await _app.InvokeAsync("od.project-browser.context-menu", "PackagesFolder");
         Assert.True(packagesFolderMenu.GetProperty("success").GetBoolean(), packagesFolderMenu.ToString());
         Assert.EndsWith("/ContextMenu/PackagesFolderNode", packagesFolderMenu.GetProperty("path").GetString());

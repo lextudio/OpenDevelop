@@ -67,12 +67,20 @@ deprecation warnings in package details, transitive dependencies, central packag
 (`Directory.Packages.props`). Not found at all: a Consolidate view, package source mapping.
 Audit each in the running IDE before deciding whether it is a gap.
 
-### 6. Verification gaps in what already ships
+### 6. Verification gaps and a behaviour to decide
 
-- The Packages-folder and package-node menu items are verified present and enabled; no test clicks
-  Manage Packages... or Restore Packages from those nodes and checks the dialog or the restore on the
-  right project. (Update is covered: the integration journey invokes it through the real Project
-  Browser menu and verifies the tab and filter.)
+- Covered by `AddInTests.SearchAndInstallPackage_UpdatesProjectFile`: from the package node and from the
+  Packages folder, Manage Packages... opens the dialog (title `NuGetFixtureApp - Manage Packages` for the
+  fixture's project), Update opens the Updates tab filtered to the package, and Restore Packages from the
+  folder recreates `obj/project.assets.json`. **Not covered: which project a node resolves to when the
+  solution has several.** The fixture has one project, and `PackageManagementSelectedProjects` falls back
+  to a solution's only project when `CurrentProject` is null, so the title cannot prove the mapping; that
+  needs a second project in a fixture.
+- **Restore Packages ignores the active package source.** `NuGetPackageRestoreCommandLine` runs
+  `dotnet restore <solution>`, so only `nuget.config` decides the feeds, while the install path
+  (`SdkStylePackageReferenceService.Restore`) passes `--source <active source>`. A package that exists only in a source chosen in the Manage Packages dialog can therefore be installed and then fail a later
+  Restore Packages. Read from the code, not reproduced. Decide whether Restore should follow the active
+  source, or the dialog should write the chosen source into `nuget.config`.
 - After an install, the owning language-service project is refreshed after the restore, and the
   missing-package journey checks the offer disappears; whether the editor's red squiggle clears is
   not checked.
