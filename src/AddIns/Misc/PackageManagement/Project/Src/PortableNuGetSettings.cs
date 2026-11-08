@@ -11,22 +11,16 @@ namespace ICSharpCode.PackageManagement
 	public sealed class PortableNuGetSettings : ISettings
 	{
 		readonly string fileName;
-		readonly string solutionDirectory;
 
 		public PortableNuGetSettings(string directory)
 		{
-			solutionDirectory = directory;
 			if (String.IsNullOrEmpty(directory)) {
 				directory = Path.Combine(
 					Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
 					".nuget",
 					"NuGet");
 			}
-			// NuGet accepts three spellings; edit the one the solution already has (a second spelling next to
-			// it would be ambiguous on a case-sensitive file system).
-			fileName = new[] { "NuGet.Config", "nuget.config", "NuGet.config" }
-				.Select(name => Path.Combine(directory, name))
-				.FirstOrDefault(File.Exists) ?? Path.Combine(directory, "NuGet.Config");
+			fileName = Path.Combine(directory, "NuGet.Config");
 		}
 
 		public string GetValue(string section, string key, bool isPath)
@@ -35,26 +29,7 @@ namespace ICSharpCode.PackageManagement
 			return value != null ? value.Value : null;
 		}
 
-		/// <summary>
-		/// What NuGet itself would use for this solution: the solution's directory and the ones above it, the
-		/// user and the machine file, merged by NuGet.Configuration. Only the file next to the solution is
-		/// ever written (see <see cref="SetValues"/>).
-		/// </summary>
 		public IList<SettingValue> GetValues(string section, bool isPath)
-		{
-			try {
-				return NuGetConfigHierarchy.Read(solutionDirectory, section, isPath)
-					.Where(entry => !String.IsNullOrEmpty(entry.Key))
-					.Select(entry => new SettingValue(entry.Key, entry.Value, isPath))
-					.ToList();
-			} catch (Exception ex) {
-				// A malformed file somewhere up the chain must not hide the solution's own sources.
-				ICSharpCode.Core.LoggingService.Warn("Could not read the NuGet configuration hierarchy; using the solution's NuGet.Config only.", ex);
-				return GetValuesFromSolutionFile(section, isPath);
-			}
-		}
-
-		IList<SettingValue> GetValuesFromSolutionFile(string section, bool isPath)
 		{
 			XElement sectionElement = GetSection(section);
 			if (sectionElement == null)
@@ -99,25 +74,8 @@ namespace ICSharpCode.PackageManagement
 			Save(document);
 		}
 
-		/// <summary>
-		/// The package sources the legacy provider hands back are the merged list, inherited ones included.
-		/// For the two source sections only the entries no other configuration file provides are written
-		/// to the solution's own file (and its <c>&lt;clear/&gt;</c> is kept), so a user's private feeds are
-		/// not copied into it. A source inherited from another file can therefore not be removed from here;
-		/// that is edited in the file that defines it.
-		/// </summary>
 		public void SetValues(string section, IList<SettingValue> values)
 		{
-			if (values != null && (section == "packageSources" || section == "disabledPackageSources")) {
-				try {
-					NuGetConfigHierarchy.WriteSection(
-						solutionDirectory, fileName, section, isPath: section == "packageSources",
-						values.Select(value => new KeyValuePair<string, string>(value.Key, value.Value)));
-					return;
-				} catch (Exception ex) when (!(ex is System.IO.IOException || ex is UnauthorizedAccessException)) {
-					ICSharpCode.Core.LoggingService.Warn("Could not read the NuGet configuration hierarchy; writing every source to the solution's NuGet.Config.", ex);
-				}
-			}
 			XDocument document = LoadOrCreate();
 			XElement sectionElement = GetOrCreateSection(document, section);
 			sectionElement.RemoveNodes();

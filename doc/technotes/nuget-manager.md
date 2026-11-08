@@ -101,18 +101,25 @@ existing central package from the Updates tab, `VersionOverride`, and a project 
   location. `dotnet restore` ignores that file (measured: a feed defined only there is not used, the same feed in
   `<solution>/NuGet.Config` is), and it also uses feeds from parent directories and from the user's
   `~/.nuget/NuGet/NuGet.Config`, which the dialog never listed. The restore after an install passed `--source`,
-  which hid the mismatch. Now the sources the dialog lists are the merged NuGet configuration
-  (`NuGetConfigHierarchy`: the solution's directory and every directory above it, then the user's and machine's
-  files, `<clear/>` honoured), the restore passes no `--source`, and edits go to `<solution>/NuGet.Config`
-  (the spelling already present, if any), only entries no other file provides, keeping `<clear/>` and
-  `<remove>`, so a user's private feeds are not copied into it. The selected (active) source only decides what
-  the dialog browses. Covered by `AddInTests.PackageSources_AreTheNuGetConfigurationOfTheSolution_AndRestoreUsesThem`,
-  `AddInTests.AddedPackageSource_IsWrittenWhereNuGetReadsIt_AndRestoreUsesIt`, `NuGetConfigHierarchyTests` and
-  `PortableNuGetSettingsTests`. Limits, not addressed: a source defined in another file cannot be removed or
-  re-enabled from the dialog (edit the file that defines it); sources a user had saved in the old
-  `.nuget/NuGet.Config` are no longer listed (move them to `<solution>/NuGet.Config`); credentials
-  (`packageSourceCredentials`) and `packageSourceMapping` are not read by the add-in's own list (dotnet applies
-  them during restore); the nested-value sections are still read from the solution's file only.
+  which hid the mismatch. Now `RegisteredPackageSourceSettings` reads and saves sources, their enabled state and
+  the active source through `NuGet.Configuration` (`Settings.LoadDefaultSettings` + `PackageSourceProvider`),
+  the code Visual Studio and the dotnet CLI use: the merged hierarchy of the solution's directory, every
+  directory above it, and the user's and machine's files, with `<clear/>` honoured; and the restore after an
+  install passes no `--source`. There is no hand-written merge or write logic in the add-in for this (an earlier
+  attempt at one was dropped; it also guessed wrong that `<remove>` and `value="false"` in a nearer file undo
+  a farther file, which `dotnet nuget list source` shows they do not). What NuGet does on a save is what happens:
+  removing an inherited source edits the file that defines it, a new source goes where NuGet puts new sources,
+  and the active source is stored in the user-level file. Reading the active-source default no longer saves it
+  (`RegisteredPackageRepositories` only remembers it), so merely opening the dialog does not write the user's
+  configuration. Covered by `AddInTests.PackageSources_AreTheNuGetConfigurationOfTheSolution_AndRestoreUsesThem`
+  (the feed is defined one directory above the solution; the assets file records that the restore used only it)
+  and `RegisteredPackageSourceSettingsTests` (settings loaded from exactly the given files, never the user's).
+  The integration tests put a `NuGet.Config` with `<clear/>` and the local feed into the temporary solution
+  directory; the old `od.nuget.set-local-feed` action is gone because adding and activating a source through
+  the provider would write the developer's own user-level configuration. Limits: sources a user had saved in
+  the old `.nuget/NuGet.Config` are no longer listed (move them to `<solution>/NuGet.Config`);
+  `packageSourceMapping` is not shown in the dialog (restore applies it); the nested-value settings used for
+  packages.config (`repositoryPath`) are still read from the old single file.
 - After an install, the owning language-service project is refreshed after the restore, and the
   missing-package journey checks the offer disappears; whether the editor's red squiggle clears is
   not checked.

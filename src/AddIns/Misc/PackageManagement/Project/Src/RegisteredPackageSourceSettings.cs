@@ -24,6 +24,7 @@ using System.Linq;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Project;
 using NuGet;
+using Modern = NuGet.Configuration;
 
 namespace ICSharpCode.PackageManagement
 {
@@ -38,7 +39,14 @@ namespace ICSharpCode.PackageManagement
 		
 		ISettings settings;
 		ISettingsProvider settingsProvider;
-		IPackageSourceProvider packageSourceProvider;
+		// Sources are read and saved by NuGet.Configuration's own provider (the same one Visual Studio and
+		// the dotnet CLI use): it merges the configuration hierarchy and saves each change to the file
+		// that NuGet says it belongs in. The legacy ISettings above is kept for the other settings.
+		Modern.ISettings nugetSettings;
+		Modern.IPackageSourceProvider packageSourceProvider;
+		// What NuGet gave us for each name, so saving does not lose what the legacy PackageSource cannot
+		// carry (credentials, protocol version, ...).
+		Dictionary<string, Modern.PackageSource> loadedSources = new Dictionary<string, Modern.PackageSource>(StringComparer.OrdinalIgnoreCase);
 		PackageSource defaultPackageSource;
 		RegisteredPackageSources packageSources;
 		PackageSource activePackageSource;
@@ -58,7 +66,7 @@ namespace ICSharpCode.PackageManagement
 			this.defaultPackageSource = defaultPackageSource;
 			
 			settings = settingsProvider.LoadSettings();
-			packageSourceProvider = CreatePackageSourceProvider(settings);
+			LoadNuGetSettings();
 			
 			ReadActivePackageSource();
 			RegisterSolutionEvents();
@@ -69,15 +77,29 @@ namespace ICSharpCode.PackageManagement
 			settingsProvider.SettingsChanged += SettingsChanged;
 		}
 		
-		static IPackageSourceProvider CreatePackageSourceProvider(ISettings settings)
+		void LoadNuGetSettings()
 		{
-			return new PackageSourceProvider(settings, new [] { RegisteredPackageSources.DefaultPackageSource });
+			try {
+				nugetSettings = settingsProvider.LoadNuGetSettings();
+			} catch (Exception ex) {
+				LoggingService.Warn("Unable to read the NuGet configuration.", ex);
+				// Fall back to nuget.org only and treat the configuration as read-only.
+				nugetSettings = Modern.NullSettings.Instance;
+			}
+			packageSourceProvider = new Modern.PackageSourceProvider(nugetSettings);
 		}
 		
 		void ReadActivePackageSource()
 		{
-			IList<SettingValue> packageSources = settings.GetValues(ActivePackageSourceSectionName, false);
-			activePackageSource = PackageSourceConverter.ConvertFromFirstSetting(packageSources);
+			string name = packageSourceProvider.ActivePackageSourceName;
+			if (String.IsNullOrEmpty(name)) {
+				activePackageSource = null;
+			} else if (string.Equals(name, AggregatePackageSource.Name, StringComparison.OrdinalIgnoreCase)) {
+				activePackageSource = AggregatePackageSource;
+			} else {
+				// Resolved against the registered sources by ActivePackageSource's getter.
+				activePackageSource = new PackageSource(name, name);
+			}
 		}
 		
 		public RegisteredPackageSources PackageSources {
@@ -94,18 +116,24 @@ namespace ICSharpCode.PackageManagement
 			try {
 				ReadPackageSources();
 			} catch (Exception ex) {
-				LoggingService.Warn("Unable to read NuGet.config file.", ex);
+				LoggingService.Warn("Unable to read the NuGet configuration.", ex);
 
 				// Fallback to using the default package source only (nuget.org)
-				// and treat NuGet.config as read-only.
-				packageSourceProvider = CreatePackageSourceProvider(NullSettings.Instance);
+				// and treat the configuration as read-only.
+				nugetSettings = Modern.NullSettings.Instance;
+				packageSourceProvider = new Modern.PackageSourceProvider(nugetSettings);
 				ReadPackageSources();
 			}
 		}
 		
 		void ReadPackageSources()
 		{
-			IEnumerable<PackageSource> savedPackageSources = packageSourceProvider.LoadPackageSources();
+			loadedSources.Clear();
+			var savedPackageSources = new List<PackageSource>();
+			foreach (Modern.PackageSource source in packageSourceProvider.LoadPackageSources()) {
+				loadedSources[source.Name] = source;
+				savedPackageSources.Add(new PackageSource(source.Source, source.Name, source.IsEnabled));
+			}
 			packageSources = new RegisteredPackageSources(savedPackageSources, defaultPackageSource);
 			packageSources.CollectionChanged += PackageSourcesChanged;
 		}
@@ -117,7 +145,23 @@ namespace ICSharpCode.PackageManagement
 		
 		void UpdatePackageSourceSettingsWithChanges()
 		{
-			packageSourceProvider.SavePackageSources(packageSources);
+			if (nugetSettings is Modern.NullSettings) {
+				// The configuration could not be read, so it is not written either.
+				return;
+			}
+			// NuGet decides where each change goes (a removal edits the file that defines the source, an
+			// addition goes where NuGet puts new sources, as for `dotnet nuget add source`).
+			packageSourceProvider.SavePackageSources(packageSources.Select(ToNuGetSource).ToList());
+		}
+
+		Modern.PackageSource ToNuGetSource(PackageSource source)
+		{
+			if (loadedSources.TryGetValue(source.Name, out Modern.PackageSource loaded) && loaded.Source == source.Source) {
+				var copy = loaded.Clone();
+				copy.IsEnabled = source.IsEnabled;
+				return copy;
+			}
+			return new Modern.PackageSource(source.Source, source.Name, source.IsEnabled);
 		}
 		
 		public PackageSource ActivePackageSource {
@@ -126,8 +170,10 @@ namespace ICSharpCode.PackageManagement
 					if (activePackageSource.IsAggregate()) {
 						return activePackageSource;
 					}
-					if (PackageSources.Contains(activePackageSource)) {
-						return activePackageSource;
+					// The configuration stores only the name; the registered source has the rest.
+					PackageSource registered = PackageSources.FirstOrDefault(source => string.Equals(source.Name, activePackageSource.Name, StringComparison.OrdinalIgnoreCase));
+					if (registered != null) {
+						return registered;
 					}
 				}
 				return null;
@@ -135,7 +181,7 @@ namespace ICSharpCode.PackageManagement
 			set {
 				activePackageSource = value;
 				
-				if (settings is NullSettings) {
+				if (nugetSettings is Modern.NullSettings) {
 					// NuGet failed to load settings so do not try to update them since this will fail.
 					return;
 				}
@@ -143,33 +189,27 @@ namespace ICSharpCode.PackageManagement
 				if (activePackageSource == null) {
 					RemoveActivePackageSourceSetting();
 				} else {
-					UpdateActivePackageSourceSetting();
+					packageSourceProvider.SaveActivePackageSource(new Modern.PackageSource(activePackageSource.Source, activePackageSource.Name));
 				}
 			}
 		}
 		
 		void RemoveActivePackageSourceSetting()
 		{
-			settings.DeleteSection(ActivePackageSourceSectionName);
-		}
-		
-		void UpdateActivePackageSourceSetting()
-		{
-			RemoveActivePackageSourceSetting();
-			
-			KeyValuePair<string, string> activePackageSourceSetting = PackageSourceConverter.ConvertToKeyValuePair(activePackageSource);
-			SaveActivePackageSourceSetting(activePackageSourceSetting);
-		}
-		
-		void SaveActivePackageSourceSetting(KeyValuePair<string, string> activePackageSource)
-		{
-			settings.SetValue(ActivePackageSourceSectionName, activePackageSource.Key, activePackageSource.Value);
+			Modern.SettingSection section = nugetSettings.GetSection(ActivePackageSourceSectionName);
+			if (section == null) {
+				return;
+			}
+			foreach (Modern.SettingItem item in section.Items.ToList()) {
+				nugetSettings.Remove(ActivePackageSourceSectionName, item);
+			}
+			nugetSettings.SaveToDisk();
 		}
 		
 		void SettingsChanged(object sender, EventArgs e)
 		{
 			settings = settingsProvider.LoadSettings();
-			packageSourceProvider = CreatePackageSourceProvider(settings);
+			LoadNuGetSettings();
 			ReadActivePackageSource();
 			ResetPackageSources();
 		}

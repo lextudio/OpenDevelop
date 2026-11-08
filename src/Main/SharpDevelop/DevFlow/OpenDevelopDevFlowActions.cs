@@ -4025,12 +4025,6 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				.ToArray();
 		}
 
-		[DevFlowAction("od.nuget.set-local-feed", Description = "Add (and activate) a local folder as the only NuGet package source, so package search/install doesn't need network access")]
-		public static string SetNuGetLocalFeed(string path)
-		{
-			return InvokePackageManagementDevFlowAction("SetLocalFeed", path);
-		}
-
 		[DevFlowAction("od.nuget.open-dialog", Description = "Open the real Manage NuGet Packages dialog")]
 		public static string OpenNuGetDialog()
 		{

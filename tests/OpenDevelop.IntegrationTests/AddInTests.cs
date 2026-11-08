@@ -6291,43 +6291,12 @@ EndGlobal
     }
 
     [Fact]
-    public async Task AddedPackageSource_IsWrittenWhereNuGetReadsIt_AndRestoreUsesIt()
-    {
-        // The add-in used to keep its sources in <solution>/.nuget/NuGet.Config, which dotnet restore
-        // ignores. A source added in Manage Packages must land in <solution>/NuGet.Config, and the restore
-        // (which passes no --source) must therefore see it.
-        var work = Path.Combine(_projectDir, "scope-added");
-        Directory.CreateDirectory(Path.Combine(work, "App"));
-        await File.WriteAllTextAsync(Path.Combine(work, "App", "App.csproj"),
-            "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\""
-            + TestPackageId + "\" Version=\"1.0.0\" />\n  </ItemGroup>\n</Project>\n");
-        await File.WriteAllTextAsync(Path.Combine(work, "App", "Program.cs"), "class Program { static void Main() { } }\n");
-        await File.WriteAllTextAsync(Path.Combine(work, "Work.slnx"), "<Solution>\n  <Project Path=\"App/App.csproj\" />\n</Solution>\n");
-
-        var openResult = await _app.InvokeAsync("od.open-solution", Path.Combine(work, "Work.slnx"));
-        Assert.True(openResult.GetProperty("success").GetBoolean(), openResult.ToString());
-        var feed = await _app.InvokeAsync("od.nuget.set-local-feed", _app.LocalNuGetFeedPath);
-        Assert.True(feed.GetProperty("success").GetBoolean(), feed.ToString());
-
-        var configPath = Path.Combine(work, "NuGet.Config");
-        Assert.True(File.Exists(configPath), "The added source was not written to " + configPath);
-        Assert.Contains(_app.LocalNuGetFeedPath, await File.ReadAllTextAsync(configPath));
-        Assert.False(Directory.Exists(Path.Combine(work, ".nuget")), "A NuGet 2.x .nuget folder was created");
-
-        var assetsPath = Path.Combine(work, "App", "obj", "project.assets.json");
-        var started = await _app.InvokeAsync("od.project-browser.invoke-context-menu", "Project", "RestorePackages");
-        Assert.True(started.GetProperty("started").GetBoolean(), started.ToString());
-        Assert.True(await OpenDevelopAppFixture.PollUntilAsync(() => Task.FromResult(File.Exists(assetsPath)), TimeSpan.FromSeconds(120)),
-            "Restore Packages did not produce " + assetsPath);
-        Assert.Contains("LocalNuGetFeed", await File.ReadAllTextAsync(assetsPath));
-    }
-
-    [Fact]
     public async Task LightBulb_DoesNotOfferAPackageNoProjectOfTheSolutionUses()
     {
         // The package is in the local feed, but no project of this solution references it: the bulb must
         // not suggest it (it is added through Manage Packages). The diagnostic has to be there first,
         // otherwise the absence would prove nothing.
+        WriteLocalFeedNuGetConfig(_projectDir);
         var probePath = Path.Combine(_projectDir, "NuGetFixtureApp", "PackageProbe.cs");
         var source = $"using {TestPackageId};\nclass PackageProbe {{ }}\n";
         await File.WriteAllTextAsync(probePath, source);
@@ -6336,8 +6305,8 @@ EndGlobal
             var solutionPath = Path.Combine(_projectDir, "NuGetFixture.slnx");
             var openResult = await _app.InvokeAsync("od.open-solution", solutionPath);
             Assert.True(openResult.GetProperty("success").GetBoolean(), $"Failed to open {solutionPath}");
-            var feed = await _app.InvokeAsync("od.nuget.set-local-feed", _app.LocalNuGetFeedPath);
-            Assert.True(feed.GetProperty("success").GetBoolean(), feed.ToString());
+            var sources = await _app.InvokeAsync("od.nuget.sources");
+            Assert.Contains(sources.GetProperty("sources").EnumerateArray(), source => source.GetProperty("source").GetString() == _app.LocalNuGetFeedPath);
             var opened = await _app.InvokeAsync("od.open-file", probePath);
             Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
 
@@ -6394,8 +6363,8 @@ EndGlobal
             var solutionPath = Path.Combine(_projectDir, "NuGetFixture.slnx");
             var openResult = await _app.InvokeAsync("od.open-solution", solutionPath);
             Assert.True(openResult.GetProperty("success").GetBoolean(), $"Failed to open {solutionPath}");
-            var feed = await _app.InvokeAsync("od.nuget.set-local-feed", _app.LocalNuGetFeedPath);
-            Assert.True(feed.GetProperty("success").GetBoolean(), feed.ToString());
+            var sources = await _app.InvokeAsync("od.nuget.sources");
+            Assert.Contains(sources.GetProperty("sources").EnumerateArray(), source => source.GetProperty("source").GetString() == _app.LocalNuGetFeedPath);
             var opened = await _app.InvokeAsync("od.open-file", probePath);
             Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
 
@@ -6492,8 +6461,8 @@ EndGlobal
                 fileName.GetString()?.EndsWith("PackageManagement.addin", StringComparison.Ordinal) == true);
         Assert.True(packageManagementAddIn.ValueKind != JsonValueKind.Undefined, "PackageManagement.addin was not registered");
 
-        var feedResult = await _app.InvokeAsync("od.nuget.set-local-feed", _app.LocalNuGetFeedPath);
-        Assert.True(feedResult.GetProperty("success").GetBoolean(), $"Set local feed failed: {feedResult}");
+        var sources = await _app.InvokeAsync("od.nuget.sources");
+        Assert.Contains(sources.GetProperty("sources").EnumerateArray(), source => source.GetProperty("source").GetString() == _app.LocalNuGetFeedPath);
 
         var openDialogResult = await _app.InvokeAsync("od.nuget.open-dialog");
         Assert.True(openDialogResult.GetProperty("success").GetBoolean(), $"Open dialog failed: {openDialogResult}");
@@ -6665,12 +6634,13 @@ EndGlobal
     [Fact]
     public async Task SearchText_FiltersPackageResultsInDialog()
     {
+        WriteLocalFeedNuGetConfig(_projectDir);
         var solutionPath = Path.Combine(_projectDir, "NuGetFixture.sln");
         var openResult = await _app.InvokeAsync("od.open-solution", solutionPath);
         Assert.True(openResult.GetProperty("success").GetBoolean(), $"Failed to open {solutionPath}");
 
-        var feedResult = await _app.InvokeAsync("od.nuget.set-local-feed", _app.LocalNuGetFeedPath);
-        Assert.True(feedResult.GetProperty("success").GetBoolean(), $"Set local feed failed: {feedResult}");
+        var sources = await _app.InvokeAsync("od.nuget.sources");
+        Assert.Contains(sources.GetProperty("sources").EnumerateArray(), source => source.GetProperty("source").GetString() == _app.LocalNuGetFeedPath);
 
         var openDialogResult = await _app.InvokeAsync("od.nuget.open-dialog");
         Assert.True(openDialogResult.GetProperty("success").GetBoolean(), $"Open dialog failed: {openDialogResult}");

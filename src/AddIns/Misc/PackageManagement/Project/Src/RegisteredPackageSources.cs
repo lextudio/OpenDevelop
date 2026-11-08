@@ -59,6 +59,25 @@ namespace ICSharpCode.PackageManagement
 			}
 		}
 		
+		/// <summary>
+		/// Replaces the whole list with a single change notification. Clearing and re-adding one by one would
+		/// make every step a change that is saved to NuGet's configuration: the first one saves an empty list,
+		/// which removes every source from the file that defines it (the user's own file included), and the
+		/// rest add them back wherever NuGet puts new sources.
+		/// </summary>
+		public void ReplaceWith(IEnumerable<PackageSource> packageSources)
+		{
+			CheckReentrancy();
+			var replacement = packageSources.ToList();
+			Items.Clear();
+			foreach (PackageSource source in replacement) {
+				Items.Add(source);
+			}
+			OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs("Count"));
+			OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs("Item[]"));
+			OnCollectionChanged(new System.Collections.Specialized.NotifyCollectionChangedEventArgs(System.Collections.Specialized.NotifyCollectionChangedAction.Reset));
+		}
+
 		bool HasNoRegisteredPackageSources {
 			get { return Count == 0; }
 		}

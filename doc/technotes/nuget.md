@@ -207,8 +207,8 @@ only confirms the host starts without throwing.
   session.
 - **`RegisteredPackageSourcesView`/`PackageManagementOptionsView`** (Tools > Options panels) still
   bind to legacy `PackageSource`/`RegisteredPackageSources` — not re-verified this session, but
-  nothing in the passing test path touches them; `PackageManagementDevFlowActions.SetLocalFeed`
-  manages sources directly through `RegisteredPackageRepositories` instead.
+  nothing in the passing test path touches them. The source list itself is read and saved through
+  `NuGet.Configuration` (see `nuget-manager.md`), which the legacy types are only a view of.
 - **PowerShell Console pad command coverage** — the pad now loads and runs a real PowerShell
   runspace (see above), but only the cmdlets already written in `Cmdlets/Project/Src/` are
   available (`Install-Package`/`Uninstall-Package`/`Get-Package`/`Get-Project`/`Update-Package`/

@@ -69,7 +69,10 @@ namespace ICSharpCode.PackageManagement
 					List<PackageSource> enabledPackageSources = 
 						options.PackageSources.GetEnabledPackageSources().ToList();
 					if (enabledPackageSources.Any()) {
-						ActivePackageSource = enabledPackageSources[0];
+						// Only a default: reading the property must not write the user's NuGet configuration,
+						// so it is remembered here and not saved (saving is for an explicit choice).
+						activePackageSource = enabledPackageSources[0];
+						activePackageRepository = null;
 					}
 				}
 				return activePackageSource;
@@ -122,10 +125,7 @@ namespace ICSharpCode.PackageManagement
 		
 		public void UpdatePackageSources(IEnumerable<PackageSource> updatedPackageSources)
 		{
-			PackageSources.Clear();
- 			foreach (PackageSource updatedPackageSource in updatedPackageSources) {
- 				PackageSources.Add(updatedPackageSource);
- 			}
+			PackageSources.ReplaceWith(updatedPackageSources);
 			
 			UpdateActivePackageSource();
 		}

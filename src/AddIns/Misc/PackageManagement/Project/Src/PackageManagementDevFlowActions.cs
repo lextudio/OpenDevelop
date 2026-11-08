@@ -34,19 +34,6 @@ namespace ICSharpCode.PackageManagement
 			}
 		}
 
-		[DevFlowAction("od.nuget.set-local-feed", Description = "Add (and activate) a local folder as the only NuGet package source, so package search/install doesn't need network access")]
-		public static string SetLocalFeed(string path)
-		{
-			var repositories = PackageManagementServices.RegisteredPackageRepositories;
-			var source = repositories.PackageSources.FirstOrDefault(s => s.Source == path)
-				?? new PackageSource(path, "LocalTestFeed");
-			if (!repositories.PackageSources.Contains(source))
-				repositories.PackageSources.Add(source);
-			repositories.ActivePackageSource = source;
-
-			return JsonSerializer.Serialize(new { success = true, source = source.Source, name = source.Name });
-		}
-
 		[DevFlowAction("od.nuget.sources", Description = "List the package sources the add-in offers for the open solution (the merged NuGet configuration hierarchy) and which one is active")]
 		public static string Sources()
 		{

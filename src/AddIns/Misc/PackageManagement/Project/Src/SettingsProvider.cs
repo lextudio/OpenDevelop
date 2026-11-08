@@ -47,14 +47,19 @@ namespace ICSharpCode.PackageManagement
 			return NullSettings.Instance;
 		}
 		
+		public NuGet.Configuration.ISettings LoadNuGetSettings()
+		{
+			// The solution's own directory, not the NuGet 2.x .nuget folder LoadSettings() uses: NuGet reads
+			// <solution>/NuGet.Config and the ones above it, and dotnet restore ignores .nuget/NuGet.Config.
+			// What is read and how a change is saved is NuGet.Configuration's business, not ours.
+			return NuGet.Configuration.Settings.LoadDefaultSettings(projectService.OpenSolution?.Directory.ToString());
+		}
+
 		string GetSolutionDirectory()
 		{
 			ISolution solution = projectService.OpenSolution;
 			if (solution != null) {
-				// NuGet reads <solution>/NuGet.Config (and the ones above it), not the NuGet 2.x
-				// <solution>/.nuget/NuGet.Config this used to point at: dotnet restore ignores that file
-				// (measured), so a source saved there was never used by a restore without --source.
-				return solution.Directory;
+				return Path.Combine(solution.Directory, ".nuget");
 			}
 			return null;
 		}

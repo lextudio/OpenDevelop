@@ -10,5 +10,7 @@ namespace ICSharpCode.PackageManagement
 	{
 		event EventHandler SettingsChanged;
 		ISettings LoadSettings();
+		/// <summary>NuGet's own view of the configuration that applies to the open solution (its directory and every directory above it, then the user's and the machine's files).</summary>
+		NuGet.Configuration.ISettings LoadNuGetSettings();
 	}
 }
