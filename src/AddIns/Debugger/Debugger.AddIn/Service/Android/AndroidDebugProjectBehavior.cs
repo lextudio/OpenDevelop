@@ -76,10 +76,9 @@ namespace Debugger.AddIn.Android
 				if (androidSdk != null && Directory.Exists(Path.Combine(androidSdk, "platforms"))) arguments.Add("-p:AndroidSdkDirectory=" + androidSdk);
 				BaseDebuggerService.PrintDebugMessage("> Building Android app for " + abi + "...\n");
 				await RunAsync(dotnet, arguments, projectDirectory, sdk?.RootPath, true).ConfigureAwait(false);
-				string output = Path.GetFullPath(values.GetProperty("OutputPath").GetString(), projectDirectory);
-				string apk = new[] { Path.Combine(output, package + "-Signed.apk"), Path.Combine(output, rid, package + "-Signed.apk") }.FirstOrDefault(File.Exists)
-					?? throw new FileNotFoundException("The Android build produced no signed APK for " + package + ".");
-				string obj = Path.GetFullPath(values.GetProperty("IntermediateOutputPath").GetString(), projectDirectory);
+				string output = ResolveBuildPath(values.GetProperty("OutputPath").GetString(), projectDirectory);
+				string apk = FindBuiltApk(output, rid, package);
+				string obj = ResolveBuildPath(values.GetProperty("IntermediateOutputPath").GetString(), projectDirectory);
 				string assets = new[] { Path.Combine(obj, "android", "assets", abi), Path.Combine(obj, rid, "android", "assets", abi) }.FirstOrDefault(Directory.Exists)
 					?? throw new DirectoryNotFoundException("The Android build produced no module directory for " + abi + ".");
 				BaseDebuggerService.PrintDebugMessage("> Installing Android app on " + serial + "...\n");
@@ -100,6 +99,25 @@ namespace Debugger.AddIn.Android
 					?? throw new InvalidOperationException("The selected Android device is not connected: " + preferred + ".");
 			if (devices.Count != 1) throw new InvalidOperationException("Select an Android device in the Debug menu; connected devices: " + devices.Count + ".");
 			return devices[0];
+		}
+
+		public static string ResolveBuildPath(string path, string projectDirectory) =>
+			Path.GetFullPath(path.Replace('\\', Path.DirectorySeparatorChar), projectDirectory);
+
+		public static string FindBuiltApk(string output, string rid, string package)
+		{
+			string[] expectedApks = { package + "-Signed.apk", package + ".apk" };
+			var candidates = expectedApks.SelectMany((name, nameRank) => new[] {
+				new { Path = Path.Combine(output, name), NameRank = nameRank, RidRank = 1 },
+				new { Path = Path.Combine(output, rid, name), NameRank = nameRank, RidRank = 0 }
+			}).Where(candidate => File.Exists(candidate.Path));
+			if (Directory.Exists(output)) {
+				candidates = candidates.Concat(Directory.EnumerateFiles(output, "*.apk", SearchOption.AllDirectories)
+					.Select(path => new { Path = path, NameRank = Array.FindIndex(expectedApks, name => string.Equals(name, Path.GetFileName(path), StringComparison.OrdinalIgnoreCase)), RidRank = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Contains(rid, StringComparer.OrdinalIgnoreCase) ? 0 : 2 })
+					.Where(candidate => candidate.NameRank >= 0));
+			}
+			return candidates.OrderBy(candidate => candidate.RidRank).ThenBy(candidate => candidate.NameRank).ThenBy(candidate => candidate.Path, StringComparer.Ordinal).Select(candidate => candidate.Path).FirstOrDefault()
+				?? throw new FileNotFoundException("The Android build produced no APK for " + package + ".");
 		}
 
 		static async Task<string> RunAsync(string executable, IEnumerable<string> arguments, string workingDirectory, string sdkRoot = null, bool showOutput = false)

@@ -28,6 +28,32 @@ public class AndroidDebugSupportTests
 	}
 
 	[Fact]
+	public void BuiltApk_UsesCurrentRidAndNormalizesMsBuildSeparators()
+	{
+		string directory = Path.Combine(Path.GetTempPath(), "android-apk-selection-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		try {
+			const string package = "com.example.app";
+			string current = Path.Combine(directory, "android-arm64", package + ".apk");
+			Directory.CreateDirectory(Path.GetDirectoryName(current)!);
+			File.WriteAllText(current, "current");
+			string stale = Path.Combine(directory, "android-x64", package + "-Signed.apk");
+			Directory.CreateDirectory(Path.GetDirectoryName(stale)!);
+			File.WriteAllText(stale, "stale");
+			Assert.Equal(current, AndroidDebugProjectBehavior.FindBuiltApk(directory, "android-arm64", package));
+			File.Delete(current);
+			string root = Path.Combine(directory, package + ".apk");
+			File.WriteAllText(root, "root");
+			Assert.Equal(root, AndroidDebugProjectBehavior.FindBuiltApk(directory, "android-arm64", package));
+			Assert.Equal(directory, AndroidDebugProjectBehavior.ResolveBuildPath(directory.Replace(Path.DirectorySeparatorChar, '\\'), directory));
+			var error = Assert.Throws<FileNotFoundException>(() => AndroidDebugProjectBehavior.FindBuiltApk(Path.Combine(directory, "missing"), "android-arm64", package));
+			Assert.Contains(package, error.Message);
+		} finally {
+			Directory.Delete(directory, true);
+		}
+	}
+
+	[Fact]
 	public void BuildInjection_EscapesPathsAndDoesNotEmbedSessionSecrets()
 	{
 		string directory = Path.Combine(Path.GetTempPath(), "android debug & " + Guid.NewGuid().ToString("N"));

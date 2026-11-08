@@ -16,7 +16,8 @@ $openAvalonPackages = @(
     'ProGPU.Avalonia', 'ProGPU.Backend', 'ProGPU.Backend.Dawn', 'ProGPU.Backend.Dx12', 'ProGPU.Backend.Native', 'ProGPU.Native.Sdk', 'ProGPU.Compute',
     'ProGPU.DirectX', 'ProGPU.Layout', 'ProGPU.Media', 'ProGPU.Media.Scene', 'ProGPU.Scene', 'ProGPU.SkiaSharp',
     'ProGPU.System.Drawing.Common', 'ProGPU.Text', 'ProGPU.Text.Shaping', 'ProGPU.Transpiler', 'ProGPU.Vector',
-    'ProGPU.Virtualization', 'ProGPU.WinRT', 'ProGPU.WinUI'
+    'ProGPU.Virtualization', 'ProGPU.WinRT', 'ProGPU.WinUI', 'ProGPU.Fonts.Inter', 'ProGPU.Fonts.Noto',
+    'ProGPU.Android', 'ProGPU.Android.Media', 'ProGPU.iOS', 'ProGPU.Apple.Media'
 )
 
 function Get-XmlPropertyValue([string]$Path, [string]$PropertyName) {

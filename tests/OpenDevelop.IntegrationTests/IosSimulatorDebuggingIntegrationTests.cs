@@ -21,6 +21,16 @@ public sealed class IosSimulatorDebuggingIntegrationTests
     /// default 4-minute budget cancels the request while a device build is still running).</summary>
     static readonly TimeSpan DebugStartBudget = TimeSpan.FromMinutes(8);
 
+    static string RepositoryRoot()
+    {
+        var directory = AppContext.BaseDirectory;
+        while (directory is not null && !File.Exists(Path.Combine(directory, "Directory.Build.props")))
+            directory = Path.GetDirectoryName(directory);
+        return directory ?? throw new DirectoryNotFoundException("Could not locate the repository root from " + AppContext.BaseDirectory);
+    }
+
+    static string ProGpuPackageVersion(string repositoryRoot) => System.Xml.Linq.XDocument.Load(Path.Combine(repositoryRoot, "Directory.Build.props")).Descendants("ProGpuPackageVersion").Single().Value;
+
     [Fact]
     public async Task IosApp_DebugsInTheSimulator_AndStopsAtABreakpointInFinishedLaunching()
     {
@@ -73,6 +83,111 @@ public sealed class IosSimulatorDebuggingIntegrationTests
         {
             try { Directory.Delete(work, recursive: true); }
             catch (IOException) { /* a lingering handle; the temp folder is swept eventually */ }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>
+    /// Exercises the debugger against the OpenAvalon ProGPU iOS package only. This intentionally
+    /// does not start a Designer device-preview host; the generated NuGet.config maps ProGPU IDs
+    /// to the synchronized local closure and the project restores into a private package cache.
+    /// </summary>
+    [Fact]
+    public async Task ProGpuIosApp_F5StopsInsideTheOpenAvalonPackageHost()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The iOS Simulator exists on macOS only.");
+        Assert.SkipUnless(await HasIphoneSimulatorAsync(), "No available iPhone simulator (xcrun simctl).");
+
+        string work = Path.Combine(Path.GetTempPath(), "opendevelop-progpu-ios-it-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(work);
+        try
+        {
+			string repositoryRoot = RepositoryRoot();
+			string packageVersion = ProGpuPackageVersion(repositoryRoot);
+            string config = Directory.CreateDirectory(Path.Combine(work, "config")).FullName;
+            using var ide = await IsolatedIde.StartAsync(config);
+            foreach (var candidate in SdkRootCandidates.WithSdk11())
+                await ide.InvokeAsync("od.sdk.add-custom-root", candidate);
+            var (sdkRoot, sdkVersion) = FindSdk11WithIosWorkload(await ide.InvokeAsync("od.sdk.list"));
+            Assert.SkipWhen(sdkRoot == null, "No SDK 11 root with the .NET 11 iOS workload is installed (packs/Microsoft.iOS.Sdk.net11.0_*).");
+
+            await File.WriteAllTextAsync(Path.Combine(work, "global.json"),
+                "{ \"sdk\": { \"version\": \"" + sdkVersion + "\", \"allowPrerelease\": true, \"rollForward\": \"disable\" } }\n");
+            string app = Directory.CreateDirectory(Path.Combine(work, "ProGpuIosApp")).FullName;
+            string feed = Path.Combine(repositoryRoot, "artifacts", "openavalon-feed");
+            Assert.SkipUnless(File.Exists(Path.Combine(feed, "ProGPU.iOS." + packageVersion + ".nupkg")), "The OpenAvalon mobile package closure has not been synchronized into artifacts/openavalon-feed.");
+            await File.WriteAllTextAsync(Path.Combine(app, "NuGet.config"), $$"""
+                <?xml version="1.0" encoding="utf-8"?>
+                <configuration>
+                  <packageSources><clear /><add key="opendevelop-openavalon-local" value="{{feed}}" /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources>
+                  <packageSourceMapping><packageSource key="opendevelop-openavalon-local"><package pattern="ProGPU.*" /></packageSource><packageSource key="nuget.org"><package pattern="*" /></packageSource></packageSourceMapping>
+                </configuration>
+                """);
+            string project = Path.Combine(app, "ProGpuIosApp.csproj");
+            await File.WriteAllTextAsync(project, $$"""
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net11.0-ios</TargetFramework>
+                    <RuntimeIdentifier>iossimulator-arm64</RuntimeIdentifier>
+                    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
+                    <OutputType>Exe</OutputType>
+                    <ApplicationId>com.opendevelop.progputest</ApplicationId>
+                    <CodesignKey></CodesignKey>
+                    <RestorePackagesPath>$(MSBuildThisFileDirectory).packages</RestorePackagesPath>
+                    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+                  </PropertyGroup>
+                  <ItemGroup><PackageReference Include="ProGPU.iOS" Version="{{packageVersion}}" /></ItemGroup>
+                </Project>
+                """);
+            string source = Path.Combine(app, "Program.cs");
+            await File.WriteAllTextAsync(source, """
+                using Microsoft.UI.Xaml;
+                using ProGPU.iOS;
+
+                namespace ProGpuIosApp;
+
+                public static class Program
+                {
+                    public static void Main(string[] args) => IosApplication.Run<ProGpuDebugApp>(args, "ProGPU debugger test");
+                }
+
+                public sealed class ProGpuDebugApp : Application
+                {
+                    protected override void OnLaunched(LaunchActivatedEventArgs args)
+                    {
+                        var window = new Window();
+                        window.Activate();
+                    }
+                }
+                """);
+            string solution = Path.Combine(app, "ProGpuIosApp.slnx");
+            await File.WriteAllTextAsync(solution, "<Solution><Project Path=\"ProGpuIosApp.csproj\" /></Solution>");
+            var open = await ide.InvokeAsync("od.open-solution", solution);
+            Assert.True(open.GetProperty("success").GetBoolean(), open.ToString());
+            await WaitForProjectItemsAsync(ide, "ProGpuIosApp");
+
+            var breakpoint = await ide.InvokeAsync("od.debug.set-breakpoint", source, 15);
+            Assert.True(breakpoint.GetProperty("success").GetBoolean(), breakpoint.ToString());
+            var started = await ide.InvokeAsync(DebugStartBudget, "od.debug.start", project, true, 420);
+            try
+            {
+                Assert.True(started.GetProperty("stopped").GetBoolean(), started.ToString());
+                Assert.EndsWith("Program.cs", started.GetProperty("currentFile").GetString());
+                Assert.Equal(15, started.GetProperty("currentLine").GetInt32());
+                var stack = await ide.InvokeAsync("od.debug.call-stack");
+                Assert.Contains(stack.EnumerateArray(), frame =>
+                    (frame.GetProperty("Name").GetString() ?? "").Contains("ProGPU.iOS", StringComparison.Ordinal));
+            }
+            finally
+            {
+                await ide.InvokeAsync("od.debug.stop");
+            }
+            Assert.False((await ide.InvokeAsync("od.debug.service-info")).GetProperty("isDebugging").GetBoolean());
+        }
+        finally
+        {
+            try { Directory.Delete(work, recursive: true); }
+            catch (IOException) { }
             catch (UnauthorizedAccessException) { }
         }
     }

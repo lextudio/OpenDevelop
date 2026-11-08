@@ -20,6 +20,16 @@ public sealed class AndroidDebuggingIntegrationTests
 	/// default 4-minute budget cancels the request while a device build is still running).</summary>
 	static readonly TimeSpan DebugStartBudget = TimeSpan.FromMinutes(8);
 
+	static string RepositoryRoot()
+	{
+		var directory = AppContext.BaseDirectory;
+		while (directory is not null && !File.Exists(Path.Combine(directory, "Directory.Build.props")))
+			directory = Path.GetDirectoryName(directory);
+		return directory ?? throw new DirectoryNotFoundException("Could not locate the repository root from " + AppContext.BaseDirectory);
+	}
+
+	static string ProGpuPackageVersion(string repositoryRoot) => System.Xml.Linq.XDocument.Load(Path.Combine(repositoryRoot, "Directory.Build.props")).Descendants("ProGpuPackageVersion").Single().Value;
+
 	[Fact]
 	public async Task AndroidApp_F5StopsStepsEvaluatesAndStopsCleanly()
 	{
@@ -51,7 +61,7 @@ public sealed class AndroidDebuggingIntegrationTests
 			await File.WriteAllTextAsync(solution, "<Solution><Project Path=\"AndroidApp.csproj\" /></Solution>");
 			var opened = await ide.InvokeAsync("od.open-solution", solution);
 			Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
-			await WaitForItemsAsync(ide);
+			await WaitForItemsAsync(ide, "AndroidApp");
 			var choices = await ide.InvokeAsync("od.android-debug.choices");
 			Assert.True(choices.GetProperty("success").GetBoolean(), choices.ToString());
 			Assert.Contains(choices.GetProperty("choices").EnumerateArray(), choice => choice.GetProperty("serial").ValueKind == JsonValueKind.String && choice.GetProperty("serial").GetString() == serial);
@@ -106,6 +116,108 @@ public sealed class AndroidDebuggingIntegrationTests
 		}
 	}
 
+	/// <summary>
+	/// Builds and debugs the OpenAvalon ProGPU Android package host, rather than a designer preview.
+	/// Its NuGet.config maps every ProGPU dependency to the synchronized local closure and uses a
+	/// private package cache, so neither GitHub Packages nor NuGet.org can satisfy a same-version ID.
+	/// </summary>
+	[Fact]
+	public async Task ProGpuAndroidApp_F5StopsInsideTheOpenAvalonPackageHost()
+	{
+		string? located = FindAdb();
+		Assert.SkipUnless(located != null, "The Android SDK platform tools (adb) are not installed; set ANDROID_HOME/ANDROID_SDK_ROOT or put adb on PATH.");
+		string adb = located!;
+		var devices = (await CommandAsync(adb, "devices")).Split('\n').Select(line => line.TrimEnd()).Where(line => line.EndsWith("\tdevice", StringComparison.Ordinal)).ToArray();
+		Assert.SkipUnless(devices.Length == 1, "Exactly one Android device must be connected.");
+		string serial = devices[0].Split('\t')[0];
+		string work = Path.Combine(Path.GetTempPath(), "opendevelop-progpu-android-it-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(work);
+		try {
+			string repositoryRoot = RepositoryRoot();
+			string packageVersion = ProGpuPackageVersion(repositoryRoot);
+			using var ide = await IsolatedIde.StartAsync(Directory.CreateDirectory(Path.Combine(work, "config")).FullName);
+			foreach (var candidate in SdkRootCandidates.WithSdk11())
+				await ide.InvokeAsync("od.sdk.add-custom-root", candidate);
+			var (root, version) = FindSdk((await ide.InvokeAsync("od.sdk.list")).GetProperty("sdks"));
+			Assert.SkipWhen(root == null, "No SDK 11 root with the Android workload is installed.");
+			await File.WriteAllTextAsync(Path.Combine(work, "global.json"), "{\"sdk\":{\"version\":\"" + version + "\",\"allowPrerelease\":true,\"rollForward\":\"disable\"}}");
+			string app = Directory.CreateDirectory(Path.Combine(work, "ProGpuAndroidApp")).FullName;
+			string feed = Path.Combine(repositoryRoot, "artifacts", "openavalon-feed");
+			Assert.SkipUnless(File.Exists(Path.Combine(feed, "ProGPU.Android." + packageVersion + ".nupkg")), "The OpenAvalon mobile package closure has not been synchronized into artifacts/openavalon-feed.");
+			await File.WriteAllTextAsync(Path.Combine(app, "NuGet.config"), $$"""
+				<?xml version="1.0" encoding="utf-8"?>
+				<configuration>
+				  <packageSources><clear /><add key="opendevelop-openavalon-local" value="{{feed}}" /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources>
+				  <packageSourceMapping><packageSource key="opendevelop-openavalon-local"><package pattern="ProGPU.*" /></packageSource><packageSource key="nuget.org"><package pattern="*" /></packageSource></packageSourceMapping>
+				</configuration>
+				""");
+			string project = Path.Combine(app, "ProGpuAndroidApp.csproj");
+			await File.WriteAllTextAsync(project, $$"""
+				<Project Sdk="Microsoft.NET.Sdk">
+				  <PropertyGroup>
+				    <TargetFramework>net11.0-android</TargetFramework>
+				    <SupportedOSPlatformVersion>30.0</SupportedOSPlatformVersion>
+				    <OutputType>Exe</OutputType>
+				    <ApplicationId>com.opendevelop.progputest</ApplicationId>
+				    <AndroidPackageFormat>apk</AndroidPackageFormat>
+				    <AndroidPackageFormats>apk</AndroidPackageFormats>
+				    <RestorePackagesPath>$(MSBuildThisFileDirectory).packages</RestorePackagesPath>
+				    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+				  </PropertyGroup>
+				  <ItemGroup><PackageReference Include="ProGPU.Android" Version="{{packageVersion}}" /></ItemGroup>
+				</Project>
+				""");
+			string source = Path.Combine(app, "MainActivity.cs");
+			await File.WriteAllTextAsync(source, """
+				using Android.App;
+				using Microsoft.UI.Xaml;
+				using ProGPU.Android;
+
+				namespace ProGpuAndroidApp;
+
+				[Activity(Label = "ProGPU debugger test", MainLauncher = true, Exported = true)]
+				public sealed class MainActivity : ProGpuActivity
+				{
+				    protected override Task LaunchProGpuApplicationAsync()
+				    {
+				        return AppBuilder<ProGpuDebugApp>.Configure().WithTitle("ProGPU debugger test").Build().RunAsync([]);
+				    }
+				}
+
+				public sealed class ProGpuDebugApp : Microsoft.UI.Xaml.Application
+				{
+				    protected override void OnLaunched(LaunchActivatedEventArgs args)
+				    {
+				        var window = new Window();
+				        window.Activate();
+				    }
+				}
+				""");
+			string solution = Path.Combine(app, "ProGpuAndroidApp.slnx");
+			await File.WriteAllTextAsync(solution, "<Solution><Project Path=\"ProGpuAndroidApp.csproj\" /></Solution>");
+			var opened = await ide.InvokeAsync("od.open-solution", solution);
+			Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+			await WaitForItemsAsync(ide, "ProGpuAndroidApp");
+			var selected = await ide.InvokeAsync("od.android-debug.select", serial);
+			Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+			var breakpoint = await ide.InvokeAsync("od.debug.set-breakpoint", source, 12);
+			Assert.True(breakpoint.GetProperty("success").GetBoolean(), breakpoint.ToString());
+			var started = await ide.InvokeAsync(DebugStartBudget, "od.debug.start", project, true, 420);
+			try {
+				Assert.True(started.GetProperty("stopped").GetBoolean(), started.ToString());
+				Assert.EndsWith("MainActivity.cs", started.GetProperty("currentFile").GetString());
+				Assert.Equal(12, started.GetProperty("currentLine").GetInt32());
+				var stack = await ide.InvokeAsync("od.debug.call-stack");
+				Assert.Contains(stack.EnumerateArray(), frame => (frame.GetProperty("Name").GetString() ?? "").Contains("ProGPU.Android", StringComparison.Ordinal));
+			} finally {
+				await ide.InvokeAsync("od.debug.stop");
+			}
+			Assert.False((await ide.InvokeAsync("od.debug.service-info")).GetProperty("isDebugging").GetBoolean());
+		} finally {
+			try { Directory.Delete(work, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+		}
+	}
+
 	static (string? Root, string? Version) FindSdk(JsonElement sdks)
 	{
 		foreach (var sdk in sdks.EnumerateArray()) {
@@ -118,15 +230,15 @@ public sealed class AndroidDebuggingIntegrationTests
 		return (null, null);
 	}
 
-	static async Task WaitForItemsAsync(IsolatedIde ide)
+	static async Task WaitForItemsAsync(IsolatedIde ide, string projectName)
 	{
 		var deadline = DateTime.UtcNow.AddSeconds(90);
 		while (DateTime.UtcNow < deadline) {
 			var tree = await ide.InvokeAsync("od.solution-tree");
-			if (tree.GetProperty("projects").EnumerateArray().Any(p => p.GetProperty("name").GetString() == "AndroidApp" && p.GetProperty("files").GetArrayLength() > 0)) return;
+			if (tree.GetProperty("projects").EnumerateArray().Any(p => p.GetProperty("name").GetString() == projectName && p.GetProperty("files").GetArrayLength() > 0)) return;
 			await Task.Delay(500);
 		}
-		Assert.Fail("Android project did not load.");
+		Assert.Fail(projectName + " did not load.");
 	}
 
 	static string NormalizeForwards(string list) =>
