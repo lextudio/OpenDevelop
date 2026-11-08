@@ -202,9 +202,14 @@ try {
 
     Write-Host '==> Checking debugger launch and breakpoint stop...'
     if (-not (Test-Path -LiteralPath (Join-Path $payload 'AddIns/Debugger/SharpDbg.Cli.dll'))) { Fail 'the debugger add-in is missing SharpDbg.Cli.dll' }
-    # The adapter's DAP transport is the MIT OmniSharp fork. Microsoft's debug protocol package is under a license that cannot be
-    # redistributed, and a stale development output folder can still hold a copy (the copy targets never delete).
-    if (Get-ChildItem -LiteralPath (Join-Path $payload 'AddIns/Debugger') -Recurse -Filter 'Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll' -File -ErrorAction SilentlyContinue | Select-Object -First 1) { Fail 'the debugger add-in ships Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll (not redistributable; the adapter uses the OmniSharp fork)' }
+    # The adapter's DAP transport is SharpDbg's own MIT DapProtocol. Microsoft's debug protocol package is under a
+    # license that cannot be redistributed, and a stale development output folder can still hold a copy (the copy
+    # targets never delete).
+    if (-not (Test-Path -LiteralPath (Join-Path $payload 'AddIns/Debugger/SharpDbg.DapProtocol.dll'))) { Fail 'the debugger add-in is missing SharpDbg.DapProtocol.dll' }
+    if (Get-ChildItem -LiteralPath (Join-Path $payload 'AddIns/Debugger') -Recurse -Filter 'Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll' -File -ErrorAction SilentlyContinue | Select-Object -First 1) { Fail 'the debugger add-in ships Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll (not redistributable; the adapter uses SharpDbg.DapProtocol)' }
+    foreach ($retired in @('OmniSharp.Extensions.*.dll', 'System.Reactive.dll')) {
+        if (Get-ChildItem -LiteralPath (Join-Path $payload 'AddIns/Debugger') -Recurse -Filter $retired -File -ErrorAction SilentlyContinue | Select-Object -First 1) { Fail "the debugger add-in ships a retired DAP transport file: $retired" }
+    }
     foreach ($abi in @('arm64-v8a', 'x86_64', 'armeabi-v7a')) {
         if (-not (Test-Path -LiteralPath (Join-Path $payload "AddIns/Debugger/android/$abi/libSharpDbg.AndroidAgent.so"))) { Fail "the debugger add-in is missing the Android agent for $abi" }
         foreach ($runtime in @('dotnet', 'android')) {

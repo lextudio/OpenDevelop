@@ -7,8 +7,8 @@
 # (MIT) instead of taking Microsoft's NuGet packages, so every build that reaches OpenDevelop.VSEditorCompat needs it.
 # The integration test project's ProjectReference closure reaches cps, WPF Toolkit, the standalone WpfDesigner
 # and WinAppVSCE submodules; the coverage and XAML submodules are small and kept in case a build target uses them
-# directly. externals/sharpdbg is deliberately absent: the debugger add-in consumes the adapter and the Android agents
-# as LeXtudio.SharpDbg.* packages, so no job builds that checkout. The AspNetCore add-in compiles four source files
+# directly. sharpdbg is deliberately absent: it is a sibling checkout (../sharpdbg), not a submodule, and the
+# debugger add-in consumes the adapter and the Android agents as LeXtudio.SharpDbg.* packages. The AspNetCore add-in compiles four source files
 # straight out of externals/monodevelop (a Compile
 # Include, which a ProjectReference closure does not show), so that one is initialised shallow and without its own
 # submodules; its sources stay out of the workspace archive. monodevelop-nuget-extensions is not used.

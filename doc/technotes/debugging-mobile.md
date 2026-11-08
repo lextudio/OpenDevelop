@@ -2,9 +2,9 @@
 
 **Status: work in progress, updated 2026-11-05.** iOS Simulator debugging works in the IDE for the tested
 .NET 11 CoreCLR configuration. Android debugging works end to end on an API 35 ARM64 emulator with the
-NativeAOT agent hosted on lextudio's OmniSharp DAP fork, built from the pinned, published fork packages
-through OpenDevelop's local feed. Other ABIs, physical devices, CI/release packaging and several failure
-paths are not yet exercised.
+NativeAOT agent hosted on SharpDbg's own MIT `SharpDbg.DapProtocol`, restored from the published agent
+package. Other ABIs, physical devices, CI/release packaging and several failure paths are not yet
+exercised.
 
 This note is the current status for mobile debugging. The experiments and
 historical implementation details are in [uno-mobile-designer.md, sections 4c
@@ -43,14 +43,14 @@ Silhouette's profiler callbacks and a C# class factory with the correct native
 - **iOS:** on macOS ARM64, F5 on a .NET 11 Uno iOS Simulator app hit a
   `MainPage` constructor breakpoint; the stack resolved and Stop terminated the
   app. The plain iOS integration test also hit a `FinishedLaunching` breakpoint.
-- **Android, OmniSharp-hosted agent:** on macOS ARM64 with an API 35 ARM64 emulator,
+- **Android agent:** on macOS ARM64 with an API 35 ARM64 emulator,
   .NET SDK `11.0.100-rc.3.26522.148`, and Android workload
   `37.2.0-rc.2.84`, `AndroidDebuggingIntegrationTests.AndroidApp_F5StopsStepsEvaluatesAndStopsCleanly`
   passed (1/1, no skips). It selected the adb serial through the IDE, built a
   project using custom output directories, hit the startup breakpoint, stepped,
-  evaluated `answer + 1` to `124`, and stopped. The agent was built for
-  `android-arm64` from `OmniSharp.Extensions.* 1.0.0-lextudio.41991522905.1` taken from the local feed with
-  no GitHub token in the environment. This replaced an earlier locally written target-side DAP server.
+  evaluated `answer + 1` to `124`, and stopped. The agent is built for
+  `android-arm64` by the SharpDbg package workflow, with no GitHub token needed in
+  the environment. This replaced an earlier locally written target-side DAP server.
 - A separate Android device experiment exercised exception filter
   configuration and a conditional breakpoint. The agent was built for
   `android-arm64`, `android-x64`, and `android-arm`; only ARM64 has been
@@ -67,43 +67,32 @@ Silhouette's profiler callbacks and a C# class factory with the correct native
   9 skipped. The package consumer was also published and run as Linux NativeAOT
   in the fork's publishing runs.
 
-## OmniSharp fork and packages
+## DAP protocol implementation
 
-[lextudio/csharp-language-server-protocol](https://github.com/lextudio/csharp-language-server-protocol)
-`master` adds NativeAOT DAP support, a protocol smoke test and the manual GitHub Packages publishing workflow.
-The package preserves four protocol assemblies through a `buildTransitive` target because DryIoc and handler
-discovery still use reflection; custom handlers, DTOs and converters may need additional metadata. Scope and
-reproducible commands are in the fork's `docs/native-aot-dap.md`.
+The desktop adapter and the Android agent both use SharpDbg's own
+`SharpDbg.DapProtocol`: a MIT implementation generated from the official
+`debugAdapterProtocol.json`, with a source-generated JSON context so it works
+under NativeAOT. It replaced lextudio's fork of `OmniSharp.Extensions.DebugAdapter`
+(the five `OmniSharp.Extensions.*` packages from
+[lextudio/csharp-language-server-protocol](https://github.com/lextudio/csharp-language-server-protocol)).
+That fork needed `buildTransitive` targets to preserve reflection metadata for
+DryIoc and handler discovery, and an earlier revision failed under NativeAOT on
+argument-less requests (`JsonSerializerIsReflectionDisabled`); `SharpDbg.DapProtocol`
+has neither problem.
 
-The first end-to-end attempt (earlier package `1.0.0-lextudio.41978764771.1`) failed with
-`The remote debug adapter closed the connection.` Cause, found in logcat: a request without an `arguments`
-member (for example `configurationDone`) made `DapReceiver` call
-`JsonSerializer.SerializeToElement(new { })`, which throws `JsonSerializerIsReflectionDisabled` under NativeAOT
-and ended the input loop. Fork commit `58b878f0` builds those objects through `JsonNode`/`JsonDocument`, and the
-smoke test now sends an argument-less request (12/12 pass; exit 134 without the fix). Run
-[41991522905](https://github.com/lextudio/csharp-language-server-protocol/actions/runs/41991522905) published
-the fixed version `1.0.0-lextudio.41991522905.1` (the five `OmniSharp.Extensions.*` packages). Run
-[42043402458](https://github.com/lextudio/csharp-language-server-protocol/actions/runs/42043402458) published
-`1.0.0-lextudio.42043402458.1`, the current pin, which adds `supportsSingleThreadExecutionRequests` to the
-capabilities model (the desktop adapter honours `singleThread` and had no way to advertise it). The Android
-journey above was rerun with the current version and still passes (1/1).
-
-OpenDevelop pins that version as `LextudioDapForkVersion` in `Directory.Packages.props`, and
-`sync-openavalon-feed.ps1` downloads the packages with the `gh` CLI into `artifacts/openavalon-feed`.
-OpenDevelop itself no longer references the fork: the desktop adapter and the three Android agents
-arrive as the `LeXtudio.SharpDbg.Cli` and `LeXtudio.SharpDbg.AndroidAgent` packages, built by
-`externals/sharpdbg`'s `publish-opendevelop-packages.yml`. The pin and the local feed remain for a
-local SharpDbg checkout, whose `iac/pack-opendevelop-android-agent.ps1` restores the fork from that
-feed (no token ever reaches a local build; see `AGENTS.md`); in GitHub Actions the same script
-restores it from GitHub Packages (`lextudio_github`) with the job's own token. The agent project and
-`SharpDbg.AndroidAgent.Tests` pin the version exactly (`[x]`): a floating `>=` resolved to a
-different `1.0.0` on nuget.org.
+The migration removed the fork from the adapter and agent closures, so
+`Directory.Packages.props` no longer defines `LextudioDapForkVersion`, the local
+feed no longer carries the five packages, and `iac/pack-opendevelop-android-agent.ps1`
+no longer needs a DAP fork feed. The Android transport test
+(`SharpDbg.AndroidAgent.Tests`) drives the new implementation over a TCP stream and
+passes 5/5, including token/attach gating, sanitized error text, exception filter
+capabilities and 0/1-based line handling.
 
 Neither the Android agent nor the desktop SharpDbg adapter references Microsoft's
-`Microsoft.VisualStudio.Shared.VSCodeDebugProtocol`: both use the same MIT OmniSharp DAP fork. The
-Microsoft package remains only in the adapter's test project, as its DAP client, and is not part of
-any payload. See [licensing-audit.md](licensing-audit.md). No decompiled `clrdbg` or
-`ICorDebugSharp` source was imported.
+`Microsoft.VisualStudio.Shared.VSCodeDebugProtocol`. That package remains only in the
+adapter's test project, as its DAP client, and is not part of any payload. See
+[licensing-audit.md](licensing-audit.md). No decompiled `clrdbg` or `ICorDebugSharp`
+source was imported.
 
 ## Remaining work
 
@@ -118,7 +107,7 @@ any payload. See [licensing-audit.md](licensing-audit.md). No decompiled `clrdbg
    while MSBuild runs, selecting between two real devices, and a physical device.
 2. The `x86_64` and `armeabi-v7a` agents build and pass the ELF/notice verification but have not run on a
    device. NativeAOT trimming warnings and reflection-dependent features need targeted coverage.
-3. The agents and their SPDX/notices are published once by `externals/sharpdbg`'s
+3. The agents and their SPDX/notices are published once by the `sharpdbg` repository's
    `publish-opendevelop-packages.yml`; OpenDevelop restores `LeXtudio.SharpDbg.AndroidAgent`, verifies
    the three ABIs after its build, and the debugging journeys run in the `mobile-android` and
    `mobile-ios` lanes of `.github/workflows/ci.yml` (see [`ci-test-plan.md`](ci-test-plan.md),

@@ -142,9 +142,14 @@ verify_debugger() {
   local debugger_addin=$1 require=$2
   echo '==> Checking debugger launch and breakpoint stop...'
   [[ -f "$debugger_addin/SharpDbg.Cli.dll" ]] || fail 'debugger add-in is missing SharpDbg.Cli.dll'
-  # The adapter's DAP transport is the MIT OmniSharp fork. Microsoft's debug protocol package is under a license that cannot be
-  # redistributed, and a stale development output folder can still hold a copy (the copy targets never delete).
-  [[ -z "$(find "$debugger_addin" -name 'Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll' -print -quit)" ]] || fail 'debugger add-in ships Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll (not redistributable; the adapter uses the OmniSharp fork)'
+  [[ -f "$debugger_addin/SharpDbg.DapProtocol.dll" ]] || fail 'debugger add-in is missing SharpDbg.DapProtocol.dll'
+  # The adapter's DAP transport is SharpDbg's own MIT DapProtocol. Microsoft's debug protocol package is under a license
+  # that cannot be redistributed, and a stale development output folder can still hold a copy of it or of the retired
+  # OmniSharp fork (the copy targets never delete).
+  [[ -z "$(find "$debugger_addin" -name 'Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll' -print -quit)" ]] || fail 'debugger add-in ships Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll (not redistributable; the adapter uses SharpDbg.DapProtocol)'
+  for retired in 'OmniSharp.Extensions.*.dll' 'System.Reactive.dll'; do
+    [[ -z "$(find "$debugger_addin" -name "$retired" -print -quit)" ]] || fail "debugger add-in ships a retired DAP transport file: $retired"
+  done
   for abi in arm64-v8a x86_64 armeabi-v7a; do
     [[ -f "$debugger_addin/android/$abi/libSharpDbg.AndroidAgent.so" ]] || fail "debugger add-in is missing the Android agent for $abi"
     for runtime in dotnet android; do

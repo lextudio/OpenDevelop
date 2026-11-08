@@ -52,7 +52,7 @@ giving up. A native host only opens the diagnostic port once it loads the
 runtime through hostfxr, and an x86 host under a full test-class run can take
 longer than 1.5s to get there - so the resume was never sent and the runtime
 stayed parked on "awaiting ResumeStartup", exactly the output above. The fix
-(in `externals/sharpdbg`, `DiagnosticClientHelper.cs`) keeps retrying with a
+(in the `sharpdbg` checkout, `DiagnosticClientHelper.cs`) keeps retrying with a
 backoff capped at 500 ms for as long as the debuggee process is alive. The
 `Automatic` 5s wait for the runtime-startup callback starts only after the
 resume succeeds, so it needs no change.
@@ -148,7 +148,7 @@ silent. Attach mode behaves correctly in both - and that is the most useful
 lead, because it is the one variable the harness and the IDE were not sharing
 before it was found.
 
-Fixing this means editing the `externals/sharpdbg` submodule, and that has a
+Fixing this means editing the `sharpdbg` checkout (`../sharpdbg`), and that has a
 process cost worth stating: the pinned revision `93b25ac` is not on any remote
 branch (`origin/main` is a single squashed root commit from 2026-08-05, and
 `93b25ac` is 2026-09-15), so a fix means a new branch, a push, and a submodule
@@ -443,8 +443,8 @@ UnoDevelop already follows the shape we want:
   over stdin/stdout with `Content-Length` messages.
 - `src/Main/SharpDevelop/Services/DebugService.cs` implements the debugger
   service by launching an external adapter process.
-- `externals/sharpdbg` is a git submodule.
-- The main app build builds `externals/sharpdbg/src/SharpDbg.Cli` when needed and
+- `sharpdbg` is a sibling checkout (`../sharpdbg`); it used to be an `externals/sharpdbg` submodule.
+- The main app build used to build `externals/sharpdbg/src/SharpDbg.Cli` when needed; it now restores
   copies the adapter output to `$(OutputPath)/Debugger`.
 - At runtime the service resolves `Debugger/SharpDbg.Cli.dll` first, then falls
   back to the submodule artifacts during development.
@@ -505,15 +505,15 @@ legacy visualizers can come later.
 Add `sharpdbg` as a submodule under OpenDevelop:
 
 ```text
-externals/sharpdbg -> https://github.com/MattParkerDev/SharpDbg.git
+sharpdbg -> https://github.com/MattParkerDev/SharpDbg.git
 ```
 
 Then add an OpenDevelop build target equivalent to UnoDevelop's:
 
 - Define `SharpDbgProject` pointing at
-  `externals/sharpdbg/src/SharpDbg.Cli/SharpDbg.Cli.csproj`.
+  `../sharpdbg/src/SharpDbg.Cli/SharpDbg.Cli.csproj`.
 - Define `SharpDbgBinDir` pointing at
-  `externals/sharpdbg/artifacts/bin/SharpDbg.Cli/$(ConfigurationLower)/`.
+  `../sharpdbg/artifacts/bin/SharpDbg.Cli/$(ConfigurationLower)/`.
 - Before building the main app, build `SharpDbg.Cli` if
   `SharpDbg.Cli.dll` is missing.
 - After building the main app, copy the adapter output to
@@ -522,8 +522,8 @@ Then add an OpenDevelop build target equivalent to UnoDevelop's:
 Runtime resolution should prefer:
 
 1. `Path.Combine(AppContext.BaseDirectory, "Debugger", "SharpDbg.Cli.dll")`
-2. `externals/sharpdbg/artifacts/bin/SharpDbg.Cli/debug/SharpDbg.Cli.dll`
-3. `externals/sharpdbg/artifacts/bin/SharpDbg.Cli/release/SharpDbg.Cli.dll`
+2. `../sharpdbg/artifacts/bin/SharpDbg.Cli/debug/SharpDbg.Cli.dll`
+3. `../sharpdbg/artifacts/bin/SharpDbg.Cli/release/SharpDbg.Cli.dll`
 
 This keeps developer builds and packaged builds using the same adapter.
 
@@ -556,7 +556,7 @@ properties, and CPS data, not from old `.csproj.user` Debug tab assumptions.
 
 ### Phase 1: backend skeleton
 
-- Add `externals/sharpdbg` submodule.
+- Add the sharpdbg checkout (then an `externals/sharpdbg` submodule).
 - Add main-app build targets that build and bundle `SharpDbg.Cli`.
 - Add a small `DapClient` service.
 - Add `DapDebuggerService : BaseDebuggerService`.
@@ -650,4 +650,4 @@ Useful UnoDevelop files:
 - `src/Main/Debugger/IDebuggerService.cs`
 - `src/Main/Debugger/*Pad.cs`
 - `src/Main/SharpDevelop/SharpDevelop.csproj` sharpdbg build/copy targets
-- `externals/sharpdbg/src/SharpDbg.Cli/SharpDbg.Cli.csproj`
+- `../sharpdbg/src/SharpDbg.Cli/SharpDbg.Cli.csproj`

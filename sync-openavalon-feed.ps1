@@ -100,25 +100,12 @@ $devFlowPackages = @(
     'LeXtudio.DevFlow.Agent.Core', 'LeXtudio.DevFlow.Agent.LibreWpf'
 ) | ForEach-Object { [pscustomobject]@{ Id = $_; Version = Get-CentralPackageVersion (Join-Path $PSScriptRoot 'Directory.Packages.props') $_ } }
 $wpfHotReloadPackages = @('WpfHotReload.Runtime') | ForEach-Object { [pscustomobject]@{ Id = $_; Version = Get-CentralPackageVersion (Join-Path $PSScriptRoot 'Directory.Packages.props') $_ } }
-# The OmniSharp DAP fork that hosts SharpDbg's debug adapter inside the Android agent. One version for the five packages.
-$dapForkVersion = Get-XmlPropertyValue (Join-Path $PSScriptRoot 'Directory.Packages.props') 'LextudioDapForkVersion'
-$dapForkPackages = @(
-    'OmniSharp.Extensions.DebugAdapter', 'OmniSharp.Extensions.DebugAdapter.Server', 'OmniSharp.Extensions.DebugAdapter.Shared',
-    'OmniSharp.Extensions.JsonRpc', 'OmniSharp.Extensions.JsonRpc.Generators'
-) | ForEach-Object { [pscustomobject]@{ Id = $_; Version = $dapForkVersion } }
-# SharpDbg's DAP adapter, published from externals/sharpdbg's own workflow (publish-opendevelop-packages.yml)
-# and versioned by the sharpdbg run that produced it. The debugger add-in restores it instead of building
-# that repository from source.
-$sharpDbgVersion = Get-XmlPropertyValue (Join-Path $PSScriptRoot 'Directory.Packages.props') 'SharpDbgCliVersion'
-$sharpDbgPackages = @('LeXtudio.SharpDbg.Cli') | ForEach-Object { [pscustomobject]@{ Id = $_; Version = $sharpDbgVersion } }
-# The Android debug agents (three NativeAOT ABIs) and their license/SBOM metadata, published by the same
-# workflow. Consumed as a package so no build job needs the .NET 11 preview SDK, the Android workload or an NDK.
-$sharpDbgAgentVersion = Get-XmlPropertyValue (Join-Path $PSScriptRoot 'Directory.Packages.props') 'SharpDbgAndroidAgentVersion'
-$sharpDbgAgentPackages = @('LeXtudio.SharpDbg.AndroidAgent') | ForEach-Object { [pscustomobject]@{ Id = $_; Version = $sharpDbgAgentVersion } }
+# LeXtudio.SharpDbg.Cli and LeXtudio.SharpDbg.AndroidAgent are consumed straight from GitHub Packages
+# (the lextudio_github source); they are not synchronized into the local feed.
 # Only the OpenAvalon closure carries the openavalon commit; the other packages are published separately.
 $packages = @($openAvalonPackages | ForEach-Object { [pscustomobject]@{ Id = $_; Version = $sdkVersion; Closure = $closureCommit } }) +
     [pscustomobject]@{ Id = 'LibGhostty.Net'; Version = $libGhosttyVersion; Closure = '' } +
-    @($forkPackages + $devFlowPackages + $wpfHotReloadPackages + $dapForkPackages + $sharpDbgPackages + $sharpDbgAgentPackages | ForEach-Object { [pscustomobject]@{ Id = $_.Id; Version = $_.Version; Closure = '' } })
+    @($forkPackages + $devFlowPackages + $wpfHotReloadPackages | ForEach-Object { [pscustomobject]@{ Id = $_.Id; Version = $_.Version; Closure = '' } })
 
 Write-Host "OpenAvalon local feed: $FeedPath"
 Write-Host "OpenAvalon package version: $sdkVersion from openavalon $closureCommit ($($openAvalonPackages.Count) packages); LibGhostty.Net $libGhosttyVersion; $($forkPackages.Count) AvalonEdit/AvalonDock fork packages; $($devFlowPackages.Count) DevFlow packages"

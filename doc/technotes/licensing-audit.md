@@ -42,11 +42,9 @@ and the SharpDbg infrastructure project. Its profiler callbacks
 use the NuGet packages `Silhouette` 4.2.0 and `NativeObjects` 1.4.0; both packages'
 nuspec files declare MIT. The agent uses `ICorDebugSharp` and the target .NET runtime's
 debugging library; it does not include decompiled `ICorDebugSharp` or `clrdbg` code.
-Its DAP transport is lextudio's NativeAOT-capable build of the OmniSharp DAP server
-(`OmniSharp.Extensions.DebugAdapter`, `.DebugAdapter.Server`, `.DebugAdapter.Shared` and
-`.JsonRpc`, from `lextudio/csharp-language-server-protocol`, a fork of
-`OmniSharp/csharp-language-server-protocol`; the packages ship the upstream MIT `LICENSE`
-file). The agent package records each ABI's NuGet graph, carries the actual NativeAOT
+Its DAP transport is SharpDbg's own MIT `SharpDbg.DapProtocol`, generated from the
+official DAP specification (MIT code, CC BY 4.0 documentation), with a
+source-generated JSON context for NativeAOT. The agent package records each ABI's NuGet graph, carries the actual NativeAOT
 runtime and Android runtime pack license and third-party notices alongside each binary,
 and supplies package metadata for the distribution SPDX manifest. OpenDevelop no longer
 builds the agents, so no build job needs the .NET 11 preview SDK, the Android workload
@@ -57,8 +55,8 @@ binary.
 `SharpDbg.InMemory` package and the Android agent no longer depend on
 `Microsoft.VisualStudio.Shared.VSCodeDebugProtocol` 18.0.10427.1, whose nuspec requires
 acceptance of Microsoft's separate, non-open-source
-[software license](https://go.microsoft.com/fwlink/?linkid=832965); they use the OmniSharp
-fork above. That package remains only in `externals/sharpdbg/tests/SharpDbg.Cli.Tests`,
+[software license](https://go.microsoft.com/fwlink/?linkid=832965); they use SharpDbg's own
+`SharpDbg.DapProtocol` (generated from the DAP specification). That package remains only in `sharpdbg/tests/SharpDbg.Cli.Tests`,
 where it is the protocol client of the adapter tests; a test project is not part of any
 payload. The packaged-app verifiers fail when a payload still contains
 `Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll` (an old development output folder can
@@ -80,10 +78,10 @@ part of the runtime payload.
 ## NuGet and native payloads
 
 The generated `THIRD-PARTY.spdx.json` inventories the resolved host, AddIn and
-SharpDbg adapter NuGet graphs. The SharpDbg closure comes from
-`externals/sharpdbg/artifacts/obj/SharpDbg.Cli/project.assets.json`; it is not an
-OpenDevelop project and previously appeared in no `src/**/project.assets.json`, so
-its packages were missing from the manifest. It records declared nuspec expressions
+SharpDbg adapter NuGet graphs. The SharpDbg closure comes from the
+`spdx/project.assets.json` that the restored `LeXtudio.SharpDbg.Cli` package carries; the
+adapter is not an OpenDevelop project, so it would otherwise appear in no
+`src/**/project.assets.json` and its packages would be missing from the manifest. It records declared nuspec expressions
 where available and uses `NOASSERTION` where metadata is absent; it is an
 inventory, not a legal conclusion. Package-contained LICENSE, COPYING, and NOTICE files are copied
 under `THIRD-PARTY-NOTICES/NuGet/`, with a per-package notice catalog.

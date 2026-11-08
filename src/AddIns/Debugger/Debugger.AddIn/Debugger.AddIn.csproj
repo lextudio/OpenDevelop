@@ -93,7 +93,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The adapter comes from lextudio's SharpDbg package, published by externals/sharpdbg's own
+    <!-- The adapter comes from lextudio's SharpDbg package, published by the sharpdbg repository's own
          workflow (publish-opendevelop-packages.yml). It is an out-of-process program copied next to the
          add-in, so ExcludeAssets="all" keeps it out of this project's own reference closure, and
          GeneratePathProperty is what gives the copy a path into the restored package. -->
@@ -112,11 +112,21 @@
           BeforeTargets="OpenDevelopTrimAddinOutput"
           Condition="Exists('$(PkgLeXtudio_SharpDbg_Cli)')">
     <!-- The adapter used to ship Microsoft.VisualStudio.Shared.VSCodeDebugProtocol, whose license
-         is not open source. The package carries the MIT OmniSharp fork instead, but an output folder
+         is not open source. The package carries SharpDbg's own MIT DapProtocol instead, but an output folder
          built before that change can still hold the old DLL: the copy target never deletes. Drop it,
          or the payload verifier fails the release. See doc/technotes/licensing-audit.md. -->
     <Delete Files="$(OutputPath)Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll"
             Condition="Exists('$(OutputPath)Microsoft.VisualStudio.Shared.VSCodeDebugProtocol.dll')" />
+    <!-- The adapter used to ship the OmniSharp DAP fork and its System.Reactive dependency. The copy
+         target never deletes, so an output folder built from an older package keeps them; remove them
+         here, or the packaged payload still carries a transport the adapter no longer uses. Do not
+         delete Nerdbank.Streams or the Microsoft.VisualStudio.Threading/Validation assemblies: the
+         DevFlow/StreamJsonRpc closure still resolves them for the in-process add-in. -->
+    <ItemGroup>
+      <StaleSharpDbgFiles Include="$(OutputPath)OmniSharp.Extensions.*.dll" />
+      <StaleSharpDbgFiles Include="$(OutputPath)System.Reactive.dll" />
+    </ItemGroup>
+    <Delete Files="@(StaleSharpDbgFiles)" />
     <ItemGroup>
       <SharpDbgFiles Include="$(PkgLeXtudio_SharpDbg_Cli)\lib\net10.0\**\*.*" />
       <!-- SharpDbg.Cli is an OUT-OF-PROCESS program that happens to be deployed inside an

@@ -27,19 +27,20 @@ Keep this file concise and operational. Read the referenced technote only when t
     `global.json` (`LibreWPF.Sdk`) and `Directory.Build.props` (`ProGpuWpfLibreWinFormsPackageVersion`,
     `ProGpuPackageVersion`). To take a newer LibreWPF, move all three to a version GitHub Packages
     has, then sync and rebuild.
-  - **Same rule for every other lextudio GitHub Packages dependency (local development):** download with the
+  - **Same rule for the other lextudio GitHub Packages dependencies (local development):** download with the
     `gh` CLI into the fixed local feed `artifacts/openavalon-feed` through `sync-openavalon-feed.ps1`, and restore
     from there. Never point a local build at `nuget.pkg.github.com` with a token in `NuGetPackageSourceCredentials_*`
     or `NuGet.config`; only CI does that. The script pins versions in `Directory.Packages.props`: the AvalonEdit and
-    AvalonDock forks, DevFlow, LibGhostty.Net, `LextudioDapForkVersion` (the five `OmniSharp.Extensions.*` packages of
-    lextudio's NativeAOT-capable DAP fork), and `SharpDbgCliVersion`/`SharpDbgAndroidAgentVersion` (the debugger adapter
-    and the three NativeAOT Android agents, published by `externals/sharpdbg`'s `publish-opendevelop-packages.yml`).
-    OpenDevelop no longer references the DAP fork itself: the adapter and the agents carry their own closure, so the
-    debugger add-in just restores the two `LeXtudio.SharpDbg.*` packages. The DAP pin and its sync remain because a
-    local SharpDbg checkout's `iac/pack-opendevelop-android-agent.ps1` restores the fork from
-    `artifacts/openavalon-feed` when it builds a new agent package. To take a new fork version, publish it from the
-    fork's `Publish lextudio DAP packages` workflow, change `LextudioDapForkVersion`, run `./sync-openavalon-feed.ps1`,
-    then republish the SharpDbg packages.
+    AvalonDock forks, DevFlow and LibGhostty.Net.
+  - **SharpDbg is the exception: consume it straight from GitHub Packages.** `LeXtudio.SharpDbg.Cli` and
+    `LeXtudio.SharpDbg.AndroidAgent` are published by the separate `sharpdbg` checkout's
+    `publish-opendevelop-packages.yml` (a sibling repository, `../sharpdbg`; it is no longer a submodule).
+    They are restored directly from the `lextudio_github` source, not synchronized into the local feed. A local
+    restore needs the token in the environment, e.g.
+    `NuGetPackageSourceCredentials_lextudio_github="Username=<you>;Password=$(gh auth token);ValidAuthenticationTypes=Basic"`.
+    The adapter and the agents carry their own closure, including SharpDbg's own MIT `SharpDbg.DapProtocol`; the
+    `OmniSharp.Extensions.*` DAP fork is no longer used. To take a new SharpDbg version, publish the two packages
+    from that workflow, then move `SharpDbgCliVersion` and `SharpDbgAndroidAgentVersion` in `Directory.Packages.props`.
   - **Take a republish:** openavalon republishes under the same version, which no NuGet cache can
     tell apart. `openavalon-closure.json` names the openavalon commit whose publish run this checkout
     consumes; after a publish you want, set it to that commit. `sync-openavalon-feed.ps1` writes it
@@ -74,7 +75,7 @@ the same way every time, and a hand-rolled run is not a valid review. The flow, 
 1. Stage exactly the target, then write `tmp/opencode/<unique>-prompt.txt` (user-facing intent, staged paths, the tree hash
    from `git write-tree`, invariants and risks, the complete call chain for a boundary change, and the test command with its
    result). New files must be staged; other working-tree changes must be named as out of scope.
-2. `pwsh build/opencode-review.ps1 -Action Launch -Name <unique> [-Directory externals/sharpdbg]` preflights the staged target
+2. `pwsh build/opencode-review.ps1 -Action Launch -Name <unique> [-Directory ../sharpdbg]` preflights the staged target
    (no `index.lock`, `git diff --cached --check`, a non-empty diff), records the tree hash and the pre-launch session
    snapshot, and runs the reviewer in the foreground with stdout and stderr in separate files. It never retries.
 3. `pwsh build/opencode-review.ps1 -Action Read -Name <unique> [-Directory <the same directory>]` polls the export (5-20 minutes is normal; exit code 3 means

@@ -19,9 +19,10 @@ included as `THIRD-PARTY-NOTICES/SharpDbg-LICENSE.txt` in every release
 payload.
 
 The desktop adapter and the Android debug agent implement the Debug Adapter
-Protocol with the MIT-licensed OmniSharp `OmniSharp.Extensions.DebugAdapter`
-fork; their notices are covered by the generated NuGet catalog. Microsoft's
-`Microsoft.VisualStudio.Shared.VSCodeDebugProtocol` is no longer bundled.
+Protocol with SharpDbg's own MIT-licensed `SharpDbg.DapProtocol`, generated from
+the DAP specification (MIT for the code, CC BY 4.0 for the documentation).
+Microsoft's `Microsoft.VisualStudio.Shared.VSCodeDebugProtocol` and the
+`OmniSharp.Extensions.*` packages are no longer bundled.
 
 ## UI framework and editors
 

@@ -128,16 +128,15 @@ namespace Debugger.AddIn.Service.Dap
 		/// <see cref="DapClient"/>. No-op by default.</param>
 		/// <param name="sharpDbgArtifactsPathFromRepoRoot">Path segments from the repo root
 		/// (found by walking up from <see cref="AppContext.BaseDirectory"/> looking for
-		/// ".gitmodules") down to the sharpdbg submodule's "artifacts" dir, used as a fallback
-		/// when no bundled adapter is found. Differs by host: OpenDevelop's own repo root has the
-		/// submodule directly under "externals/sharpdbg", but UnoDevelop's repo root sees it nested
-		/// one level deeper under "externals/OpenDevelop/externals/sharpdbg" (defaulted here).</param>
+		/// ".gitmodules") down to the sibling sharpdbg checkout's "artifacts" dir, used as a
+		/// fallback when no bundled adapter is found. The default points at "../sharpdbg"; hosts
+		/// with another layout pass their own segments.</param>
 		public DapSession(string clientId = "OpenDevelop", Action<string> log = null,
 			string[] sharpDbgArtifactsPathFromRepoRoot = null)
 		{
 			this.clientId = clientId;
 			this.log = log ?? (_ => { });
-			sharpDbgArtifactsSegments = sharpDbgArtifactsPathFromRepoRoot ?? new[] { "externals", "sharpdbg" };
+			sharpDbgArtifactsSegments = sharpDbgArtifactsPathFromRepoRoot ?? new[] { "..", "sharpdbg" };
 		}
 
 		/// <summary>Connects to an already running DAP adapter. The caller owns the remote debuggee's lifecycle.</summary>
@@ -197,7 +196,7 @@ namespace Debugger.AddIn.Service.Dap
 			var argumentList = arguments != null ? arguments.ToList() : new List<string>();
 			string adapterDll = ResolveAdapterDll();
 			if (adapterDll == null) {
-				throw new FileNotFoundException("SharpDbg.Cli.dll was not found. Build OpenDevelop after initializing externals/sharpdbg.");
+				throw new FileNotFoundException("SharpDbg.Cli.dll was not found. Restore the LeXtudio.SharpDbg.Cli package from GitHub Packages (lextudio_github) and rebuild the debugger add-in.");
 			}
 
 			this.launchMode = launchMode;

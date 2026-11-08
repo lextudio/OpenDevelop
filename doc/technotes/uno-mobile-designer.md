@@ -329,7 +329,7 @@ soft-debugger backend in 4b is not needed. Everything below was observed on this
 
 Attach arguments used: `{"processId": <pid>, "debuggerLibraryDirectory": "<retargeted DBI dir>", "continueStoppedProcess": true}`, adapter
 started with `TMPDIR=<container>/tmp/`.
-SharpDbg (`externals/sharpdbg`, commit `53930b0`) rejects `continueStoppedProcess` off macOS (signal numbers differ) and
+SharpDbg (`sharpdbg`, commit `53930b0`) rejects `continueStoppedProcess` off macOS (signal numbers differ) and
 `debuggerLibraryDirectory` on Windows (the provider serves Unix libraries only); a restart replays the library directory but not the
 continue. Its `tests/SharpDbg.Cli.Tests/AttachOptionsTests` cover both options; there the library test names the runtime's own directory,
 because the adapter runs inside the test host and a second mscordbi copy from another directory deadlocks the tests that follow.

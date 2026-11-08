@@ -7,19 +7,14 @@
     <!-- The lextudio GitHub Packages build of 1.0.2 contains native assets for every supported Terminal RID. -->
     <LibGhosttyNetVersion>1.0.2</LibGhosttyNetVersion>
     <!-- lextudio's SharpDbg build: the DAP adapter and its whole dependency closure, published by
-         externals/sharpdbg's own workflow (publish-opendevelop-packages.yml). The debugger add-in used
+         the sharpdbg repository's own workflow (publish-opendevelop-packages.yml). The debugger add-in used
          to build that project from source on every build; it now restores this package and copies the
          adapter out, like the other lextudio packages below. -->
-    <SharpDbgCliVersion>1.0.0-lextudio.42364141685.1</SharpDbgCliVersion>
+    <SharpDbgCliVersion>1.0.0-lextudio.42442298700.1</SharpDbgCliVersion>
     <!-- lextudio's SharpDbg Android debug agents (three NativeAOT ABIs) plus the license and SBOM
          metadata OpenDevelop redistributes with them. Built once by the same sharpdbg workflow, so
          no OpenDevelop job needs the .NET 11 preview SDK, the Android workload or an NDK. -->
-    <SharpDbgAndroidAgentVersion>1.0.0-lextudio.42364141685.1</SharpDbgAndroidAgentVersion>
-    <!-- lextudio's NativeAOT-capable OmniSharp DAP fork, consumed by externals/sharpdbg's desktop adapter
-         and Android agent (via the local feed that sync-openavalon-feed.ps1 fills), not by an
-         OpenDevelop project. It replaces Microsoft.VisualStudio.Shared.VSCodeDebugProtocol, whose
-         package license is not open source and cannot be redistributed. -->
-    <LextudioDapForkVersion>1.0.0-lextudio.42043402458.1</LextudioDapForkVersion>
+    <SharpDbgAndroidAgentVersion>1.0.0-lextudio.42442298700.1</SharpDbgAndroidAgentVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="AltCover" Version="9.0.102" />
@@ -50,7 +45,7 @@
     <!-- Derives the assembly version from git tags; see GitVersion.yml. -->
     <PackageVersion Include="GitVersion.MsBuild" Version="6.5.1" />
     <PackageVersion Include="LeXtudio.DevFlow.Agent.Core" Version="0.3.1" />
-    <!-- Published by externals/sharpdbg's publish-opendevelop-packages.yml to GitHub Packages. -->
+    <!-- Published by the sharpdbg repository's publish-opendevelop-packages.yml to GitHub Packages. -->
     <PackageVersion Include="LeXtudio.SharpDbg.Cli" Version="$(SharpDbgCliVersion)" />
     <PackageVersion Include="LeXtudio.SharpDbg.AndroidAgent" Version="$(SharpDbgAndroidAgentVersion)" />
     <!-- Published by the lextudio/libghostty-net fork to GitHub Packages. -->
