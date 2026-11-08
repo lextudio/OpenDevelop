@@ -7902,6 +7902,14 @@ EndGlobal
         var vbPath = Path.Combine(VBFixtureDir, "Class1.vb");
         Assert.True((await _app.InvokeAsync("od.open-file", vbPath)).GetProperty("opened").GetBoolean());
 
+        // This goes through the real light-bulb provider collection, unlike od.code-actions'
+        // direct language-service query. It verifies both addin registrations for .vb.
+        var bulb = await _app.InvokeAsync("od.editor.bulb-actions", vbPath, 0);
+        Assert.True(bulb.GetProperty("success").GetBoolean(), bulb.ToString());
+        var providers = bulb.GetProperty("providers").EnumerateArray().Select(item => item.GetString()).ToArray();
+        Assert.Contains("ICSharpCode.SharpDevelop.LanguageServices.CodeActions", providers);
+        Assert.Contains("ICSharpCode.PackageManagement.MissingPackage", providers);
+
         var result = await _app.InvokeAsync("od.code-actions", vbPath, 1, 1, 5, 10);
         Assert.True(result.TryGetProperty("count", out var count), result.ToString());
         Assert.True(count.GetInt32() >= 0, $"Expected non-negative action count, got: {result}");
