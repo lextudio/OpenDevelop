@@ -22,9 +22,9 @@
   </ItemGroup>
 
   <!--
-	The immutable launch-profile interfaces remain linked from
-	MonoDevelop.AspNetCore (externals/monodevelop submodule, MIT/Apache-2.0,
-	itself ported from dotnet/project-system). Its legacy JSON-dependent
+	The immutable launch-profile interfaces in LaunchProfiles/ are verbatim copies of
+	MonoDevelop.AspNetCore's ILaunchProfile.cs and LaunchProfile.cs (Apache-2.0,
+	Copyright Microsoft, itself ported from dotnet/project-system); keep their headers. Its legacy JSON-dependent
 	data/parser files are replaced by local System.Text.Json ports.
     LaunchProfileProvider/AspNetCoreRunConfiguration etc. are NOT linked: they
     depend on MonoDevelop.Projects.DotNetProject. Their applicable behavior is
@@ -32,8 +32,6 @@
     sibling Binding project.
   -->
   <ItemGroup>
-    <Compile Include="..\..\..\..\externals\monodevelop\main\src\addins\MonoDevelop.AspNetCore\MonoDevelop.AspNetCore\ILaunchProfile.cs" Link="Linked\ILaunchProfile.cs" />
-    <Compile Include="..\..\..\..\externals\monodevelop\main\src\addins\MonoDevelop.AspNetCore\MonoDevelop.AspNetCore\LaunchProfile.cs" Link="Linked\LaunchProfile.cs" />
   </ItemGroup>
 
 </Project>

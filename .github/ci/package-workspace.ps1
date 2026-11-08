@@ -4,8 +4,7 @@
 #   pwsh .github/ci/package-workspace.ps1 -Platform windows-x64 -Kind NuGetCache -Directory $env:RUNNER_TEMP/nuget-archive
 #   pwsh .github/ci/package-workspace.ps1 -Extract [-Kind NuGetCache] -Directory $env:RUNNER_TEMP/archive
 #
-# Kind Workspace (default) is the repository with every build output, without git metadata and without
-# externals/monodevelop (whose sources are only needed to compile), unpacked into -Root (the workspace).  Kind NuGetCache
+# Kind Workspace (default) is the repository with every build output, without git metadata, unpacked into -Root (the workspace).  Kind NuGetCache
 # is the global packages folder ($env:NUGET_PACKAGES or ~/.nuget/packages): the IDE host is not self-contained, it
 # resolves the LibreWPF assemblies from there at run time, so a lane that starts the IDE needs it.  Both are only valid on
 # a runner of the same OS with the same workspace location and user profile; the workflow guarantees that.
@@ -73,7 +72,7 @@ try {
     [string[]]$exclusions = @()
     # The project-local global packages folder is cached and transferred separately as NuGetCache.
     # Including it here duplicates several GB into every workspace artifact and every test lane.
-    if ($Kind -eq 'Workspace') { $exclusions += @('--exclude=.git', '--exclude=node_modules', '--exclude=.vs', '--exclude=.nuget', '--exclude=artifacts/nuget-packages', '--exclude=externals/monodevelop') }
+    if ($Kind -eq 'Workspace') { $exclusions += @('--exclude=.git', '--exclude=node_modules', '--exclude=.vs', '--exclude=.nuget', '--exclude=artifacts/nuget-packages') }
     # A NuGetCache archive is a faithful copy of the packages folder: the Terminal package verifier needs the native assets of
     # all five RIDs in it, so the per-platform trimming below applies to the workspace only.
     if ($Kind -ne 'Workspace') { }

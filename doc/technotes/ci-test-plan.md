@@ -609,9 +609,7 @@ distinct `project` of an enabled entry with that entry's `buildArgs`.
 * `build-binaries.ps1 -List` prints these commands without running them; use it to check a plan edit.
 
 The job initialises the submodules the build reaches: cps, WPF Toolkit, the standalone WpfDesigner and WinAppVSCE
-submodules, the small debugger, coverage and XAML ones, and `externals/monodevelop` shallow, because
-the AspNetCore add-in compiles four files straight out of it (a `Compile Include`, which a `ProjectReference` closure does
-not show). The monodevelop sources stay out of the workspace archive. The build uses the repository's LibreWPF SDK pin (`0.1.0-preview.69` in `global.json`) and the configured package
+submodules, and the small debugger, coverage and XAML ones. The build uses the repository's LibreWPF SDK pin (`0.1.0-preview.69` in `global.json`) and the configured package
 source mappings. AvalonEdit and AvalonDock are consumed as packages rather than initialized as submodules here.
 
 Measured on the first runs (windows-2025): the integration project build takes about ten minutes and the four unit test

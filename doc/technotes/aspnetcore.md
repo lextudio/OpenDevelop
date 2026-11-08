@@ -246,17 +246,18 @@ stretch scope — worth porting only after the core run/launch path works.
 
 ## Current state (launch path implemented, 2026-08-15)
 
-- `externals/monodevelop` added as a git submodule (shallow, depth 1, pinned
-  to `main` @ `ba01d2d6`) so the MonoDevelop.AspNetCore source referenced
-  throughout this doc is available locally for porting/diffing.
+- The `externals/monodevelop` submodule (pinned to `main` @ `ba01d2d6`) was removed: the
+  only two files the build used are now copied into `LaunchProfiles/`. The
+  `externals/monodevelop/...` paths elsewhere in this doc are historical; to diff
+  against upstream, clone `https://github.com/mono/monodevelop` into a scratch directory.
 - The addin is split into two projects, both wired into `OpenDevelop.Mvp.slnx`
   under `/src/AddIns/BackendBindings/AspNetCore/`:
   - **`AspNetCore.csproj`** (cross-platform core) — plain `Microsoft.NET.Sdk`,
     `net10.0`, no WPF/WinForms, no reference to
     `ICSharpCode.SharpDevelop`/`ICSharpCode.Core` (both require the Windows
-    TFM). Holds the launchSettings.json model/logic only. `ILaunchProfile.cs`,
-    `ILaunchProfile.cs` and `LaunchProfile.cs` are linked directly from the
-    submodule via `<Compile Include>` (not copied). `LaunchProfileData` and its
+    TFM). Holds the launchSettings.json model/logic only. `ILaunchProfile.cs`
+    and `LaunchProfile.cs` are verbatim copies (Apache-2.0, Microsoft headers kept) of the
+    MonoDevelop.AspNetCore files, under `LaunchProfiles/`. `LaunchProfileData` and its
     extensions are local `System.Text.Json` ports: they preserve arbitrary
     unknown JSON objects, arrays, scalar values, and nulls during edits without
     taking a third-party JSON dependency. The MonoDevelop-dependent
