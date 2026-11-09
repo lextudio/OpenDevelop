@@ -393,11 +393,27 @@ jobs:
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
           adb="$ANDROID_HOME/platform-tools/adb"
+          # One explicit AVD home for both tools. avdmanager resolves ANDROID_AVD_HOME first and so does the emulator,
+          # so they agree even when the image also exports ANDROID_USER_HOME/ANDROID_SDK_HOME. Left to the defaults they
+          # did not: the AVD landed outside the emulator's search list, which exited at once with
+          # "Unknown AVD name [opendevelop-ci]" and then cost the whole 5-minute adb wait (run 42402073349).
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/avd"
+          rm -rf "$ANDROID_AVD_HOME"
+          mkdir -p "$ANDROID_AVD_HOME"
           yes | "$sdkmanager" --licenses > /dev/null || true
           # android-35 x86_64 google_apis is the image whose ABI the archive's AddIns/Debugger/android/x86_64 agent and
           # the fixture's SupportedOSPlatformVersion (24) match. sdkmanager only downloads what the image lacks.
           "$sdkmanager" --install 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'emulator' 'system-images;android-35;google_apis;x86_64'
-          echo no | "$avdmanager" create avd -n opendevelop-ci -k 'system-images;android-35;google_apis;x86_64' -d pixel_6 --force
+          echo no | "$avdmanager" create avd -n opendevelop-ci -p "$ANDROID_AVD_HOME/opendevelop-ci.avd" \
+            -k 'system-images;android-35;google_apis;x86_64' -d pixel_6 --force
+          # Confirm from the emulator's own view, then fail here, naming the paths, instead of 5 minutes later in the
+          # adb wait (the failure mode of run 42402073349).
+          if [ ! -f "$ANDROID_AVD_HOME/opendevelop-ci.ini" ]; then
+            echo "::error::avdmanager did not create $ANDROID_AVD_HOME/opendevelop-ci.ini."
+            ls -la "$ANDROID_AVD_HOME" "$HOME/.android/avd" 2>&1 || true
+            exit 1
+          fi
+          "$ANDROID_HOME/emulator/emulator" -list-avds
           acceleration=$("$ANDROID_HOME/emulator/emulator" -accel-check 2>&1 || true)
           echo "$acceleration"
           if ! grep -qi 'is installed and usable' <<< "$acceleration"; then
@@ -406,6 +422,15 @@ jobs:
           fi
           nohup "$ANDROID_HOME/emulator/emulator" -avd opendevelop-ci -no-window -no-audio -no-boot-anim -no-snapshot \
             -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          emulator_pid=$!
+          # An emulator that cannot resolve its AVD or its graphics backend exits at once; do not spend the adb timeout
+          # on it, and keep its log so the reason is in the run.
+          sleep 10
+          if ! kill -0 "$emulator_pid" 2>/dev/null; then
+            tail -n 50 "$RUNNER_TEMP/emulator.log"
+            echo '::error::The Android emulator exited during start-up.'
+            exit 1
+          fi
           if ! timeout 300 "$adb" wait-for-device; then
             tail -n 50 "$RUNNER_TEMP/emulator.log"
             echo '::error::The Android emulator never reached adb within 5 minutes.'
@@ -419,6 +444,25 @@ jobs:
           if [ "$("$adb" shell getprop sys.boot_completed | tr -d '\r')" != '1' ]; then
             tail -n 50 "$RUNNER_TEMP/emulator.log"
             echo '::error::The Android emulator did not finish booting.'
+            exit 1
+          fi
+          # sys.boot_completed is not the same as a usable device: on a slow runner SystemUI can still be starting, or
+          # ANR'ing, when it flips, and the journey would then attach to a device that is not ready. Wait for the
+          # launcher window (Uno Platform's CI gates its Android lanes the same way) and dismiss an ANR if one appears.
+          focus=''
+          launcher_deadline=$((SECONDS + 180))
+          while [ "$SECONDS" -lt "$launcher_deadline" ]; do
+            focus=$("$adb" shell dumpsys window 2>/dev/null | grep -E 'mCurrentFocus|mFocusedApp' || true)
+            case "$focus" in
+              *Launcher*) break ;;
+              *'Not Responding'*) "$adb" shell input keyevent KEYCODE_DPAD_DOWN > /dev/null 2>&1 || true ;;
+            esac
+            sleep 3
+          done
+          echo "device focus: ${focus:-<none>}"
+          if [[ "$focus" != *Launcher* ]]; then
+            tail -n 50 "$RUNNER_TEMP/emulator.log"
+            echo '::error::The Android emulator did not reach its launcher within 3 minutes.'
             exit 1
           fi
       - name: Boot an iPhone simulator
