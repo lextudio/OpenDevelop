@@ -47,7 +47,8 @@ on:
 
 permissions:
   contents: read
-  # LibreWPF, LibreWinForms and ProGPU are restored from OpenAvalon's packages in this organization.
+  # LibreWPF, LibreWinForms and ProGPU are restored from OpenAvalon's packages in this organization, and the forks'
+  # packages (AvalonEdit, AvalonDock, LeXtudio.Wpf.Toolkit, Microsoft.VisualStudio.Text.*/CoreUtility) from the same feed.
   packages: read
   # dorny/test-reporter publishes the TRX results as annotations; fork PRs get a read-only token and the step is
   # continue-on-error, so this costs nothing there.

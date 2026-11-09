@@ -41,7 +41,8 @@ originally published by Xceed Software Inc., licensed under the Microsoft Public
 (Ms-PL); the package carries the license text (`license.md`) and the sources keep their
 copyright notices. It is not affiliated with or endorsed by Xceed Software Inc.; the Xceed
 name is a trademark of its owner, and the package id does not use it. The assembly is still
-named `Xceed.Wpf.Toolkit` for compatibility with existing code.
+named `Xceed.Wpf.Toolkit` for compatibility with existing code. The license text is
+copied from the package as `SOURCE-LICENSES/Toolkit-for-WPF-Ms-PL.txt`.
 
 ## Visual Studio editor API
 

@@ -35,7 +35,8 @@ on:
 permissions:
   contents: read
   actions: read
-  # LibreWPF, LibreWinForms, AvalonEdit, AvalonDock and LibGhostty.Net come from this organization's packages.
+  # LibreWPF, LibreWinForms, AvalonEdit, AvalonDock, LibGhostty.Net, the Toolkit for WPF fork (LeXtudio.Wpf.Toolkit) and the
+  # VS editor contract fork (Microsoft.VisualStudio.Text.*/CoreUtility) come from this organization's packages.
   packages: read
 
 concurrency:
