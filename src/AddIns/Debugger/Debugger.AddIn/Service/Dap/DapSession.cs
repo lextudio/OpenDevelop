@@ -73,6 +73,13 @@ namespace Debugger.AddIn.Service.Dap
 		/// <summary>The operating system id of the program being debugged, once known; null before that.</summary>
 		public int? DebuggeeProcessId { get; private set; }
 		DapLaunchMode launchMode;
+
+		/// <summary>
+		/// True when this session started the debuggee itself (suspended, then attached) instead of the adapter
+		/// launching it. The adapter's own <c>restart</c> then can neither terminate that process nor attach to it
+		/// again, so only the owner can restart it: stop the session and start it anew.
+		/// </summary>
+		public bool OwnsDebuggeeProcess { get { return launchMode == DapLaunchMode.AttachToSuspendedProcess; } }
 		DapClient client;
 		CancellationTokenSource cancellationTokenSource;
 		readonly string clientId;

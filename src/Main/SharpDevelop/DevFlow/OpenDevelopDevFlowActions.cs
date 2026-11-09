@@ -3106,15 +3106,21 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return SerializeDebugLocation(await wait);
 		}
 		
-		[DevFlowAction("od.debug.restart", Description = "Restart the current debug session (relaunch or re-attach)")]
-		public static async Task<string> RestartDebugAsync()
+		[DevFlowAction("od.debug.restart", Description = "Restart the current debug session (relaunch or re-attach); a positive waitForStopSeconds also waits for the relaunched debuggee's next stop")]
+		public static async Task<string> RestartDebugAsync(int waitForStopSeconds = 0)
 		{
 			if (!SD.Debugger.IsDebugging) {
 				return JsonSerializer.Serialize(new { success = false, reason = "no active debug session" });
 			}
+			// Restart attaches again asynchronously, so the session can still be the old one when it returns.
+			// The stop counter only ever grows, so a stop after this point belongs to the restarted debuggee.
+			int stopSequence = GetIntProperty(SD.Debugger, "CurrentStopSequence");
+			var wait = waitForStopSeconds > 0 ? WaitForStopAsync(SD.Debugger, waitForStopSeconds, stopSequence) : null;
 			await InvokeTaskAsync(SD.Debugger, "RestartAsync");
+			bool stopped = wait != null && await wait;
 			return JsonSerializer.Serialize(new {
 				success = true,
+				stopped,
 				isDebugging = SD.Debugger.IsDebugging,
 				isProcessRunning = SD.Debugger.IsProcessRunning
 			});

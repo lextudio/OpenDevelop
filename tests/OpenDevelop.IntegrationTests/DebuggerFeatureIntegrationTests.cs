@@ -65,16 +65,19 @@ public sealed class DebuggerFeatureIntegrationTests
             var start = await _app.InvokeAsync("od.debug.start", _app.DebugTestProjectPath, true, 45);
             Assert.True(start.GetProperty("stopped").GetBoolean(), start.ToString());
 
-            var restart = await _app.InvokeAsync("od.debug.restart");
-            Assert.True(restart.GetProperty("success").GetBoolean(), restart.ToString());
-            // Restart relaunches the debuggee and attaches again asynchronously; on a slow machine the
-            // session is not yet debugging when the action returns (seen on the Windows ARM64 runner).
-            JsonElement restarted = restart;
-            var kept = await OpenDevelopAppFixture.PollUntilAsync(async () => {
-                restarted = await _app.InvokeAsync("od.debug.service-info");
-                return restarted.GetProperty("isDebugging").GetBoolean();
-            }, TimeSpan.FromSeconds(45));
-            Assert.True(kept, restarted.ToString());
+            // Restart relaunches the debuggee and attaches again asynchronously, so the action returns while the
+            // old session may still be the one debugging (slow Windows ARM64 runner). Wait for the stop of the
+            // relaunched debuggee at the same breakpoint: a stop that happens after the restart began.
+            // Twice: the second restart starts from what the first one started.
+            for (int attempt = 1; attempt <= 2; attempt++)
+            {
+                var restart = await _app.InvokeAsync("od.debug.restart", 45);
+                Assert.True(restart.GetProperty("success").GetBoolean(), $"restart {attempt}: {restart}");
+                Assert.True(restart.GetProperty("stopped").GetBoolean(), $"restart {attempt}: {restart}");
+                Assert.True(restart.GetProperty("isDebugging").GetBoolean(), $"restart {attempt}: {restart}");
+                var location = await _app.InvokeAsync("od.debug.location");
+                Assert.Equal(breakpointLine, location.GetProperty("currentLine").GetInt32());
+            }
         }
         finally
         {

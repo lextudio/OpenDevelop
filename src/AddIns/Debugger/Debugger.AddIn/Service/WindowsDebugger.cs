@@ -125,12 +125,43 @@ namespace ICSharpCode.SharpDevelop.Services
 			}
 		}
 
-		/// <summary>Restart the current debug session (relaunch or re-attach).</summary>
+		/// <summary>What the running session was started with, so that a restart can start it again (only for a session this IDE started itself).</summary>
+		sealed class SessionStart
+		{
+			public ProcessStartInfo StartInfo;
+			public bool BreakAtBeginning;
+		}
+		SessionStart currentSessionStart;
+
+		/// <summary>
+		/// Restart the current debug session (relaunch or re-attach). A debuggee the IDE started itself is stopped and
+		/// started again with the same start info: the adapter did not launch it, so its own restart could only detach
+		/// and try to attach to the same running process again, which never completes.
+		/// </summary>
 		public async Task RestartAsync()
 		{
-			if (CurrentSession != null) {
-				await CurrentSession.RestartAsync().ConfigureAwait(false);
+			var session = CurrentSession;
+			if (session == null) {
+				return;
 			}
+			var start = currentSessionStart;
+			if (session.OwnsDebuggeeProcess && start != null) {
+				stopRequestedFor = session;
+				// The old session's late events (its adapter's process exit, a last "terminated") must not reach this
+				// debugger once the new session is current: SessionExited would drop the new one.
+				session.Started -= SessionStarted;
+				session.Stopped -= SessionStopped;
+				session.Continued -= SessionContinued;
+				session.Exited -= SessionExited;
+				session.OutputReceived -= PrintDebugMessage;
+				session.Stop();
+				SessionExited();
+				BreakAtBeginning = start.BreakAtBeginning;
+				OnDebugStarting(EventArgs.Empty);
+				await StartAsync(start.StartInfo).ConfigureAwait(false);
+				return;
+			}
+			await session.RestartAsync().ConfigureAwait(false);
 		}
 
 		/// <summary>"Set Next Statement": move the instruction pointer to the first goto target on
@@ -256,6 +287,7 @@ namespace ICSharpCode.SharpDevelop.Services
 
 					bool breakAtBeginning = BreakAtBeginning;
 					BreakAtBeginning = false;
+					currentSessionStart = noDebug ? null : new SessionStart { StartInfo = processStartInfo, BreakAtBeginning = breakAtBeginning };
 					var hotReloadEnvironment = processStartInfo.Environment
 						.Where(variable => variable.Key.StartsWith("UNO_DEV_SERVER_", StringComparison.Ordinal)
 							|| string.Equals(variable.Key, "DOTNET_MODIFIABLE_ASSEMBLIES", StringComparison.Ordinal)
