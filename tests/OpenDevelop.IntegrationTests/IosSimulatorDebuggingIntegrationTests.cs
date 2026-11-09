@@ -114,15 +114,9 @@ public sealed class IosSimulatorDebuggingIntegrationTests
             await File.WriteAllTextAsync(Path.Combine(work, "global.json"),
                 "{ \"sdk\": { \"version\": \"" + sdkVersion + "\", \"allowPrerelease\": true, \"rollForward\": \"disable\" } }\n");
             string app = Directory.CreateDirectory(Path.Combine(work, "ProGpuIosApp")).FullName;
-            string feed = Path.Combine(repositoryRoot, "artifacts", "openavalon-feed");
-            Assert.SkipUnless(File.Exists(Path.Combine(feed, "ProGPU.iOS." + packageVersion + ".nupkg")), "The OpenAvalon mobile package closure has not been synchronized into artifacts/openavalon-feed.");
-            await File.WriteAllTextAsync(Path.Combine(app, "NuGet.config"), $$"""
-                <?xml version="1.0" encoding="utf-8"?>
-                <configuration>
-                  <packageSources><clear /><add key="opendevelop-openavalon-local" value="{{feed}}" /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources>
-                  <packageSourceMapping><packageSource key="opendevelop-openavalon-local"><package pattern="ProGPU.*" /></packageSource><packageSource key="nuget.org"><package pattern="*" /></packageSource></packageSourceMapping>
-                </configuration>
-                """);
+            string nugetConfig = OpenAvalonMobilePackageSource.TryCreateConfig(repositoryRoot, "ProGPU.iOS", packageVersion, out string skipReason);
+            Assert.SkipWhen(nugetConfig == null, skipReason);
+            await File.WriteAllTextAsync(Path.Combine(app, "NuGet.config"), nugetConfig);
             string project = Path.Combine(app, "ProGpuIosApp.csproj");
             await File.WriteAllTextAsync(project, $$"""
                 <Project Sdk="Microsoft.NET.Sdk">

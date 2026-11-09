@@ -142,15 +142,9 @@ public sealed class AndroidDebuggingIntegrationTests
 			Assert.SkipWhen(root == null, "No SDK 11 root with the Android workload is installed.");
 			await File.WriteAllTextAsync(Path.Combine(work, "global.json"), "{\"sdk\":{\"version\":\"" + version + "\",\"allowPrerelease\":true,\"rollForward\":\"disable\"}}");
 			string app = Directory.CreateDirectory(Path.Combine(work, "ProGpuAndroidApp")).FullName;
-			string feed = Path.Combine(repositoryRoot, "artifacts", "openavalon-feed");
-			Assert.SkipUnless(File.Exists(Path.Combine(feed, "ProGPU.Android." + packageVersion + ".nupkg")), "The OpenAvalon mobile package closure has not been synchronized into artifacts/openavalon-feed.");
-			await File.WriteAllTextAsync(Path.Combine(app, "NuGet.config"), $$"""
-				<?xml version="1.0" encoding="utf-8"?>
-				<configuration>
-				  <packageSources><clear /><add key="opendevelop-openavalon-local" value="{{feed}}" /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources>
-				  <packageSourceMapping><packageSource key="opendevelop-openavalon-local"><package pattern="ProGPU.*" /></packageSource><packageSource key="nuget.org"><package pattern="*" /></packageSource></packageSourceMapping>
-				</configuration>
-				""");
+			string nugetConfig = OpenAvalonMobilePackageSource.TryCreateConfig(repositoryRoot, "ProGPU.Android", packageVersion, out string skipReason);
+			Assert.SkipWhen(nugetConfig == null, skipReason);
+			await File.WriteAllTextAsync(Path.Combine(app, "NuGet.config"), nugetConfig);
 			string project = Path.Combine(app, "ProGpuAndroidApp.csproj");
 			await File.WriteAllTextAsync(project, $$"""
 				<Project Sdk="Microsoft.NET.Sdk">
