@@ -50,6 +50,9 @@ public sealed class AndroidDebuggingIntegrationTests
 			var sdks = (await ide.InvokeAsync("od.sdk.list")).GetProperty("sdks");
 			(string? root, string? version) = FindSdk(sdks);
 			Assert.SkipWhen(root == null, "No SDK 11 root with the Android workload is installed.");
+			// Builds use only the SDK selected in Options (or the startup SDK), so the SDK 11 root the global.json pins must be selected, not just registered.
+			var selectedSdk = await ide.InvokeAsync("od.sdk.select", root!);
+			Assert.True(selectedSdk.GetProperty("success").GetBoolean(), selectedSdk.ToString());
 			await File.WriteAllTextAsync(Path.Combine(work, "global.json"), "{\"sdk\":{\"version\":\"" + version + "\",\"allowPrerelease\":true,\"rollForward\":\"disable\"}}");
 			string app = Directory.CreateDirectory(Path.Combine(work, "AndroidApp")).FullName;
 			await File.WriteAllTextAsync(Path.Combine(app, "Directory.Build.props"), "<Project><PropertyGroup><BaseOutputPath>custom-bin/</BaseOutputPath><BaseIntermediateOutputPath>custom-obj/</BaseIntermediateOutputPath></PropertyGroup></Project>");
@@ -140,10 +143,14 @@ public sealed class AndroidDebuggingIntegrationTests
 				await ide.InvokeAsync("od.sdk.add-custom-root", candidate);
 			var (root, version) = FindSdk((await ide.InvokeAsync("od.sdk.list")).GetProperty("sdks"));
 			Assert.SkipWhen(root == null, "No SDK 11 root with the Android workload is installed.");
+			// Builds use only the SDK selected in Options (or the startup SDK), so the SDK 11 root the global.json pins must be selected, not just registered.
+			var selectedSdk = await ide.InvokeAsync("od.sdk.select", root!);
+			Assert.True(selectedSdk.GetProperty("success").GetBoolean(), selectedSdk.ToString());
 			await File.WriteAllTextAsync(Path.Combine(work, "global.json"), "{\"sdk\":{\"version\":\"" + version + "\",\"allowPrerelease\":true,\"rollForward\":\"disable\"}}");
 			string app = Directory.CreateDirectory(Path.Combine(work, "ProGpuAndroidApp")).FullName;
 			string nugetConfig = OpenAvalonMobilePackageSource.TryCreateConfig(repositoryRoot, "ProGPU.Android", packageVersion, out string skipReason);
-			Assert.SkipWhen(nugetConfig == null, skipReason);
+			if (nugetConfig == null)
+				Assert.Skip(skipReason!); // not SkipWhen: it rejects the null reason of the case where a source exists
 			await File.WriteAllTextAsync(Path.Combine(app, "NuGet.config"), nugetConfig);
 			string project = Path.Combine(app, "ProGpuAndroidApp.csproj");
 			await File.WriteAllTextAsync(project, $$"""
