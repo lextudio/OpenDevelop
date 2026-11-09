@@ -170,7 +170,7 @@ public sealed class NewProjectDialogIntegrationTests
 
             var build = await _app.InvokeAsync("od.build-solution", projectName);
             Assert.True(build.GetProperty("success").GetBoolean(), build.ToString());
-            Assert.Equal("Success", build.GetProperty("result").GetString());
+            Assert.True(build.GetProperty("result").GetString() == "Success", "The created project did not build: " + build);
         }
         finally
         {

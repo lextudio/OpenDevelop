@@ -1155,7 +1155,13 @@ public sealed class WorkbenchTests
     {
         await _app.EnsureSolutionOpenAsync(_app.WpfSampleSolutionPath);
 
-        var state = await _app.InvokeAsync("od.project-browser-state", "sample");
+        // The sample solution's project is named after its file, which differs per runtime cell
+        // (LibreWpfSample's sample.csproj vs WpfHotReloadFixture.csproj), so read it instead of
+        // hard-coding one.
+        var solution = await _app.InvokeAsync("od.solution-tree");
+        var projects = solution.GetProperty("projects").EnumerateArray().ToList();
+        Assert.Single(projects);
+        var state = await _app.InvokeAsync("od.project-browser-state", projects[0].GetProperty("name").GetString());
         Assert.True(state.GetProperty("success").GetBoolean(), state.ToString());
         Assert.Equal("Auto", state.GetProperty("verticalScrollBarVisibility").GetString());
 

@@ -67,7 +67,14 @@ public sealed class DebuggerFeatureIntegrationTests
 
             var restart = await _app.InvokeAsync("od.debug.restart");
             Assert.True(restart.GetProperty("success").GetBoolean(), restart.ToString());
-            Assert.True(restart.GetProperty("isDebugging").GetBoolean(), restart.ToString());
+            // Restart relaunches the debuggee and attaches again asynchronously; on a slow machine the
+            // session is not yet debugging when the action returns (seen on the Windows ARM64 runner).
+            JsonElement restarted = restart;
+            var kept = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                restarted = await _app.InvokeAsync("od.debug.service-info");
+                return restarted.GetProperty("isDebugging").GetBoolean();
+            }, TimeSpan.FromSeconds(45));
+            Assert.True(kept, restarted.ToString());
         }
         finally
         {
@@ -222,27 +229,32 @@ public sealed class DebuggerFeatureIntegrationTests
             // A frame with real source is its own completion context, and `numbers.` (an int[] local of
             // Main, captured by the lambda) completes to array members.
             // The labels come from the language service, which may still be loading the project when the
-            // breakpoint is hit on a slow machine; the frame resolves immediately, the members a little later.
+            // breakpoint is hit on a slow machine; until it has, it answers from the namespace scope
+            // instead, so wait for the member itself rather than for any label at all.
             JsonElement own = default;
-            await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            var ownCompleted = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 own = await _app.InvokeAsync("od.debug.console-completions", "numbers.");
-                return own.GetProperty("labels").GetArrayLength() > 0;
-            }, TimeSpan.FromSeconds(30));
+                return own.GetProperty("labels").EnumerateArray().Any(l => l.GetString() == "Length");
+            }, TimeSpan.FromSeconds(60));
+            Assert.True(ownCompleted, own.ToString());
             Assert.True(own.GetProperty("hasContext").GetBoolean(), own.ToString());
             Assert.EndsWith("Program.cs", own.GetProperty("file").GetString());
             Assert.Equal(line, own.GetProperty("line").GetInt32());
-            Assert.Contains("Length", own.GetProperty("labels").EnumerateArray().Select(l => l.GetString()), StringComparer.Ordinal);
 
             // Open the sourceless System.Linq frame (what a double-click does): the context becomes
             // the nearest user-code caller instead of nothing, and the same expression still completes.
             var opened = await _app.InvokeAsync("od.debug.open-frame", "external");
             Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
-            var inherited = await _app.InvokeAsync("od.debug.console-completions", "numbers.");
+            JsonElement inherited = default;
+            var inheritedCompleted = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                inherited = await _app.InvokeAsync("od.debug.console-completions", "numbers.");
+                return inherited.GetProperty("labels").EnumerateArray().Any(l => l.GetString() == "Length");
+            }, TimeSpan.FromSeconds(60));
+            Assert.True(inheritedCompleted, inherited.ToString());
             Assert.True(inherited.GetProperty("hasContext").GetBoolean(), inherited.ToString());
             Assert.EndsWith("Program.cs", inherited.GetProperty("file").GetString());
             Assert.Contains("Main", inherited.GetProperty("frame").GetString());
             Assert.NotEqual(line, inherited.GetProperty("line").GetInt32());
-            Assert.Contains("Length", inherited.GetProperty("labels").EnumerateArray().Select(l => l.GetString()), StringComparer.Ordinal);
 
             // The real path: typing '.' into the console shows the completion popup with the items. The
             // result labels above would pass even if the console editor showed nothing, so check it.
