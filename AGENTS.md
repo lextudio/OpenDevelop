@@ -9,8 +9,9 @@ Keep this file concise and operational. Read the referenced technote only when t
 - **Keep the two SDK roles distinct.** The SDK fixed when the IDE starts exists only to host the
   OpenDevelop process and its in-process project services. A project build, restore, designer build
   or task host must use only the SDK explicitly selected in **Tools > Options > .NET SDK**; if Options
-  has no selection, it may fall back only to that already-fixed startup SDK. Do not proactively scan,
-  rank, or substitute other installed SDKs as a build fallback. Never let inherited `DOTNET_ROOT`,
+  has no selection, or names no supported (.NET 10+) SDK, it may fall back only to that already-fixed
+  startup SDK. Do not proactively scan, rank, or substitute other installed SDKs as a build fallback.
+  Never let inherited `DOTNET_ROOT`,
   `DOTNET_HOST_PATH`, `MSBuildSDKsPath`, or a startup MSBuild path silently override the Options SDK.
   On macOS, use the selected SDK's own `dotnet` consistently for a build; do not splice a Homebrew
   SDK path into another SDK environment. Mixing roots can create false `MSB4018`/`MSB4216` task-host

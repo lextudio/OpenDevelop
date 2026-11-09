@@ -46,6 +46,28 @@ public class DotNetSdkServiceTests : IDisposable
 	}
 
 	[Fact]
+	public void ResolveSdkForProject_WithAnUnusableOptionsSelection_FallsBackToTheSessionStartupSdk()
+	{
+		// Issue #19: an SDK 9 root (or a bare version string) stored as the Options selection cannot
+		// build anything, and the IDE must still build with a .NET 10+ SDK rather than fail every
+		// build on the machine.
+		var startup = DotNetSdkService.ResolveStartupSdkForInProcessHosting();
+		Assert.NotNull(startup);
+		using var root = new TemporaryDirectory();
+		File.WriteAllText(Path.Combine(root.Path, DotnetExecutableName), "");
+		Directory.CreateDirectory(Path.Combine(root.Path, "sdk", "9.0.106"));
+		string previous = DotNetSdkService.SelectedSdkRootPath;
+		try {
+			DotNetSdkService.SelectedSdkRootPath = root.Path;
+			var choice = DotNetSdkService.ResolveSdkForProject(null);
+			Assert.NotNull(choice);
+			Assert.True(DotNetSdkService.SameRoot(startup.RootPath, choice.Sdk.RootPath));
+		} finally {
+			DotNetSdkService.SelectedSdkRootPath = previous;
+		}
+	}
+
+	[Fact]
 	public void TryDescribeCustomRoot_ReportsMissingDotnetExecutable()
 	{
 		using var root = new TemporaryDirectory();
