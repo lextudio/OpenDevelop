@@ -113,7 +113,7 @@ namespace ICSharpCode.PackageManagement
 				?? (currentView?.IsVisible == true ? currentView : null);
 			return view == null
 				? JsonSerializer.Serialize(new { open = false })
-				: JsonSerializer.Serialize(new { open = true, title = (view.DataContext as ManagePackagesViewModel)?.Title, selectedTab = view.SelectedTabHeader, updatesSearchTerms = view.UpdatesSearchTerms, busy = PackageOperationGate.IsBusy });
+				: JsonSerializer.Serialize(new { open = true, title = (view.DataContext as ManagePackagesViewModel)?.Title, selectedTab = view.SelectedTabHeader, updatesSearchTerms = view.UpdatesSearchTerms, busy = PackageOperationGate.IsBusy, tabsEnabled = view.PackageTabs.IsEnabled, progressVisible = view.BusyProgress.Visibility == System.Windows.Visibility.Visible });
 		}
 
 		[DevFlowAction("od.nuget.set-search-text", Description = "Set the search box text in the currently open Manage NuGet Packages dialog's Available tab")]

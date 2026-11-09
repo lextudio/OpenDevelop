@@ -27,6 +27,12 @@
 	</Window.Title>
 	
 	<DockPanel x:Name="MainPanel">
+		<ProgressBar
+			x:Name="BusyProgress"
+			DockPanel.Dock="Top"
+			Height="4"
+			IsIndeterminate="True"
+			Visibility="{Binding Path=IsBusy, Converter={StaticResource BoolToVisibility}}"/>
 		<Grid
 			DockPanel.Dock="Bottom"
 			Margin="4, 4">
@@ -70,7 +76,7 @@
 				Content="{core:Localize Global.CloseButtonText}"
 				Click="CloseButton_Click"/>
 		</Grid>
-		<TabControl>
+		<TabControl x:Name="PackageTabs" IsEnabled="{Binding Path=IsIdle}">
 			<TabItem Header="{core:Localize PackageManagement.Available}">
 				<pm:PackagesView
 					x:Name="AvailablePackagesView"

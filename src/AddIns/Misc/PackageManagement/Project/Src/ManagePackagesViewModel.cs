@@ -47,6 +47,7 @@ namespace ICSharpCode.PackageManagement
 			
 			packageManagementEvents.PackageOperationError += PackageOperationError;
 			packageManagementEvents.PackageOperationsStarting += PackageOperationsStarting;
+			PackageOperationGate.Changed += OperationGateChanged;
 			
 			packagesViewModels.ReadPackages();
 		}
@@ -67,6 +68,21 @@ namespace ICSharpCode.PackageManagement
 			get { return packagesViewModels.RecentPackagesViewModel; }
 		}
 		
+		/// <summary>A package operation is running: the dialog shows progress and locks the tabs (not Close).</summary>
+		public bool IsBusy {
+			get { return PackageOperationGate.IsBusy; }
+		}
+
+		public bool IsIdle {
+			get { return !IsBusy; }
+		}
+
+		void OperationGateChanged(object sender, EventArgs e)
+		{
+			OnPropertyChanged(model => model.IsBusy);
+			OnPropertyChanged(model => model.IsIdle);
+		}
+
 		public string Title {
 			get { return viewTitle.Title; }
 		}
@@ -76,6 +92,7 @@ namespace ICSharpCode.PackageManagement
 			packagesViewModels.Dispose();
 			userPrompts.Dispose();
 			
+			PackageOperationGate.Changed -= OperationGateChanged;
 			packageManagementEvents.PackageOperationError -= PackageOperationError;
 			packageManagementEvents.PackageOperationsStarting -= PackageOperationsStarting;
 			packageManagementEvents.Dispose();

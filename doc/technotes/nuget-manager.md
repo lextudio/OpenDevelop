@@ -118,7 +118,7 @@ For an SDK-style project the engine is now NuGet.Protocol/NuGet.Packaging for da
   end of an operation (disposing the install marker, the "completed" log line, the refresh events) is posted back when the
   restore has finished. The bulb's install and any other UI-thread caller of `Restore` still use a pumped
   `DispatcherFrame`. Covered by the Update All fact, which sees `busy`, answers on the UI thread meanwhile and checks a
-  second command is refused. Not asynchronous: non-SDK solution-level operations (now unsupported anyway).
+  second command is refused. While one runs the dialog shows an indeterminate progress bar on top and disables the tabs (`ManagePackagesViewModel.IsBusy`/`IsIdle`, driven by `PackageOperationGate.Changed`); Close stays enabled and the log line in the status bar keeps reporting progress. Not asynchronous: non-SDK solution-level operations (unsupported anyway).
 - **packages.config is not supported any more.** Installing, uninstalling or updating in such a project throws
   "...uses packages.config, which is no longer supported. Migrate it to PackageReference..." (shown in the dialog's message
   bar) instead of running the legacy engine. Not covered by an integration test: a legacy-format project does not

@@ -6618,16 +6618,23 @@ EndGlobal
             // dialog reports busy, and a second command is refused until the first has finished.
             var sawBusy = false;
             var refusedWhileBusy = false;
+            var lockedWithProgress = false;
             await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 var state = await _app.InvokeAsync("od.nuget.dialog-state");
                 if (!state.GetProperty("busy").GetBoolean())
                     return sawBusy;
                 sawBusy = true;
+                lockedWithProgress |= !state.GetProperty("tabsEnabled").GetBoolean() && state.GetProperty("progressVisible").GetBoolean();
                 var second = await _app.InvokeAsync("od.nuget.tab-command", "updates", TestPackageId, "update-all");
                 refusedWhileBusy |= !second.GetProperty("success").GetBoolean();
                 return false;
             }, TimeSpan.FromSeconds(90));
             Assert.True(sawBusy, "The dialog never reported a running operation");
+            Assert.True(lockedWithProgress, "While an operation runs the tabs should be locked and the progress bar visible");
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                var idle = await _app.InvokeAsync("od.nuget.dialog-state");
+                return idle.GetProperty("tabsEnabled").GetBoolean() && !idle.GetProperty("progressVisible").GetBoolean();
+            }, TimeSpan.FromSeconds(60)), "The dialog was not unlocked after the operation");
             Assert.True(refusedWhileBusy, "A second operation was accepted while the first was running");
 
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {

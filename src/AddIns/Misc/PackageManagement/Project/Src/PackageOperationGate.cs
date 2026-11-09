@@ -21,6 +21,9 @@ namespace ICSharpCode.PackageManagement
 	{
 		static int busy;
 
+		/// <summary>Raised on the UI thread whenever <see cref="IsBusy"/> changes.</summary>
+		public static event EventHandler? Changed;
+
 		public static bool IsBusy => System.Threading.Volatile.Read(ref busy) != 0;
 
 		/// <summary>
@@ -54,7 +57,10 @@ namespace ICSharpCode.PackageManagement
 
 		static void Raise()
 		{
-			UiThread.Post(CommandManager.InvalidateRequerySuggested);
+			UiThread.Post(() => {
+				CommandManager.InvalidateRequerySuggested();
+				Changed?.Invoke(null, EventArgs.Empty);
+			});
 		}
 	}
 
