@@ -1079,16 +1079,8 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			// The only fallback is the root captured at IDE startup for this session.
 			string root = string.IsNullOrWhiteSpace(selected) ? StartupSdkRootPath : selected;
 			if (!TryDescribeCustomRoot(root, out var sdk, out _)
-				|| !IsSupportedSdk(sdk)) {
-				// A selection that names no supported SDK - an SDK 9 root, or a bare version string such
-				// as "10.0" - can build nothing at all, so fall back to that same startup root rather
-				// than refusing every build on the machine (issue #19). Still one fixed root, never a
-				// scan of the others.
-				if (!TryDescribeCustomRoot(StartupSdkRootPath, out sdk, out _)
-					|| !IsSupportedSdk(sdk))
-					return null;
-				root = StartupSdkRootPath;
-			}
+				|| !IsSupportedSdk(sdk))
+				return null;
 			var discovered = (IReadOnlyList<DotNetSdkInfo>)new[] { sdk };
 			var choice = ResolveSdkForTargetFrameworks(discovered, root, frameworks);
 			// Honour a global.json exact SDK version only inside the already chosen root. It must never
