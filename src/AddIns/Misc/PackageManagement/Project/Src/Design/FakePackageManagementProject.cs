@@ -28,6 +28,8 @@ namespace ICSharpCode.PackageManagement.Design
 {
 	public class FakePackageManagementProject : IPackageManagementProject
 	{
+		public bool UsesPackageReferences { get; set; }
+
 		public FakePackageManagementProject()
 			: this("Test")
 		{

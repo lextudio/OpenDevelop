@@ -134,7 +134,7 @@ namespace ICSharpCode.PackageManagement
 					if (candidates.Count == 0)
 						continue;
 					// Where the packages are installed and what this project compiles against: project and settings model, UI thread.
-					var (packagesFolder, framework) = await SD.MainThread.InvokeAsync(() => (GlobalPackagesFolder(), TargetFramework(project))).ConfigureAwait(false);
+					var (packagesFolder, framework) = await SD.MainThread.InvokeAsync(() => (GlobalPackagesFolder.ForOpenSolution(), TargetFramework(project))).ConfigureAwait(false);
 					if (packagesFolder == null || framework == null)
 						continue;
 					var matches = await Task.Run(() => PackageTypeIndex.Find(typeName, candidates, packagesFolder, framework), cancellationToken).ConfigureAwait(false);
@@ -147,18 +147,6 @@ namespace ICSharpCode.PackageManagement
 
 		static bool IsSimpleIdentifier(string name) =>
 			name.Length > 0 && (char.IsLetter(name[0]) || name[0] == '_') && name.All(c => char.IsLetterOrDigit(c) || c == '_');
-
-		/// <summary>The global packages folder NuGet's configuration gives the open solution (null when it cannot be read).</summary>
-		static string? GlobalPackagesFolder()
-		{
-			try {
-				var settings = NuGet.Configuration.Settings.LoadDefaultSettings(SD.ProjectService.CurrentSolution?.Directory.ToString());
-				return NuGet.Configuration.SettingsUtility.GetGlobalPackagesFolder(settings);
-			} catch (Exception ex) {
-				LoggingService.Debug("Could not determine the global packages folder: " + ex.Message);
-				return null;
-			}
-		}
 
 		/// <summary>The framework the project compiles against (the first of TargetFrameworks for a multi-targeting project).</summary>
 		static NuGet.Frameworks.NuGetFramework? TargetFramework(MSBuildBasedProject project)

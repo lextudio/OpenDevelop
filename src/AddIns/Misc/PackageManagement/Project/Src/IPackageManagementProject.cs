@@ -34,6 +34,8 @@ namespace ICSharpCode.PackageManagement
 		event EventHandler<PackageOperationEventArgs> PackageReferenceRemoving;
 		
 		string Name { get; }
+		/// <summary>True for an SDK-style project, whose packages are PackageReference items (every package is then a project package, and the packages.config engine does not apply).</summary>
+		bool UsesPackageReferences { get; }
 		FrameworkName TargetFramework { get; }
 		ILogger Logger { get; set; }
 		IPackageRepository SourceRepository { get; }

@@ -82,7 +82,7 @@ namespace ICSharpCode.PackageManagement
 		}
 
 		/// <summary>The version folder of the best installed match for <paramref name="version"/> (a version or a range), or null.</summary>
-		static string? FindPackageDirectory(string packagesFolder, string packageId, string version)
+		internal static string? FindPackageDirectory(string packagesFolder, string packageId, string version)
 		{
 			var resolver = new VersionFolderPathResolver(packagesFolder);
 			if (NuGetVersion.TryParse(version, out NuGetVersion? exact)) {

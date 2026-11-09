@@ -90,9 +90,18 @@ namespace ICSharpCode.PackageManagement
 			return JsonSerializer.Serialize(new { success = remaining == 0, closed = views.Length, remaining });
 		}
 
+		/// <summary>The visible Manage Packages dialog: one opened by od.nuget.open-dialog, or by a real menu command.</summary>
+		static ManagePackagesView OpenView()
+		{
+			return System.Windows.Application.Current?.Windows
+				.OfType<ManagePackagesView>()
+				.FirstOrDefault(candidate => candidate.IsVisible)
+				?? (currentView?.IsVisible == true ? currentView : null);
+		}
+
 		static ManagePackagesViewModel CurrentViewModel()
 		{
-			return currentView?.DataContext as ManagePackagesViewModel;
+			return OpenView()?.DataContext as ManagePackagesViewModel;
 		}
 
 		[DevFlowAction("od.nuget.dialog-state", Description = "Report the title (<project or solution> - Manage Packages), selected tab and Updates query of the real Manage NuGet Packages dialog, including one opened by a Project Browser context-menu command")]
@@ -132,7 +141,7 @@ namespace ICSharpCode.PackageManagement
 		[DevFlowAction("od.nuget.select-package", Description = "Select the package with the given Id in the Available tab's list of the open Manage NuGet Packages dialog, as a click on its row does, so the details pane shows it")]
 		public static string SelectPackage(string packageId)
 		{
-			var view = currentView;
+			var view = OpenView();
 			var vm = CurrentViewModel();
 			if (view == null || vm == null)
 				return JsonSerializer.Serialize(new { success = false, error = "No Manage NuGet Packages dialog is open (call od.nuget.open-dialog first)" });
@@ -160,6 +169,62 @@ namespace ICSharpCode.PackageManagement
 					return found;
 			}
 			return null;
+		}
+
+		static PackagesViewModel TabViewModel(string tab)
+		{
+			var vm = CurrentViewModel();
+			if (vm == null)
+				return null;
+			switch (tab?.ToLowerInvariant()) {
+				case "installed": return vm.InstalledPackagesViewModel;
+				case "updates": return vm.UpdatedPackagesViewModel;
+				case "available": return vm.AvailablePackagesViewModel;
+				default: return null;
+			}
+		}
+
+		[DevFlowAction("od.nuget.tab-read", Description = "Start reading the packages of one tab (installed, updates or available) of the open Manage NuGet Packages dialog, as selecting that tab does; poll od.nuget.tab-status until it is no longer reading")]
+		public static string TabRead(string tab)
+		{
+			var tabViewModel = TabViewModel(tab);
+			if (tabViewModel == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No open dialog or unknown tab '" + tab + "'" });
+			tabViewModel.ReadPackages();
+			return JsonSerializer.Serialize(new { success = true });
+		}
+
+		[DevFlowAction("od.nuget.tab-status", Description = "The state and rows (Id, Version, IsAdded, Description) of one tab (installed, updates or available) of the open Manage NuGet Packages dialog")]
+		public static string TabStatus(string tab)
+		{
+			var tabViewModel = TabViewModel(tab);
+			if (tabViewModel == null)
+				return JsonSerializer.Serialize(new { open = false });
+			return JsonSerializer.Serialize(new {
+				open = true,
+				isReadingPackages = tabViewModel.IsReadingPackages,
+				hasError = tabViewModel.HasError,
+				errorMessage = tabViewModel.ErrorMessage,
+				packages = tabViewModel.PackageViewModels.Select(p => new { id = p.Id, version = p.Version?.ToString(), isAdded = p.IsAdded, description = p.Description }).ToArray()
+			});
+		}
+
+		[DevFlowAction("od.nuget.tab-command", Description = "Run one row's command of a tab (installed, updates or available): command add (install or update, the row's own add/update button) or remove (uninstall), for the package with the given Id; returns when the command returned, not when its background work finished")]
+		public static string TabCommand(string tab, string packageId, string command)
+		{
+			var tabViewModel = TabViewModel(tab);
+			if (tabViewModel == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No open dialog or unknown tab '" + tab + "'" });
+			var package = tabViewModel.PackageViewModels.FirstOrDefault(p => p.Id == packageId);
+			if (package == null)
+				return JsonSerializer.Serialize(new { success = false, error = $"No package '{packageId}' in the {tab} tab" });
+			System.Windows.Input.ICommand row = command == "remove" ? package.RemovePackageCommand : command == "add" ? package.AddPackageCommand : null;
+			if (row == null)
+				return JsonSerializer.Serialize(new { success = false, error = "Unknown command '" + command + "'" });
+			if (!row.CanExecute(null))
+				return JsonSerializer.Serialize(new { success = false, error = $"'{command}' cannot execute for '{packageId}'" });
+			row.Execute(null);
+			return JsonSerializer.Serialize(new { success = true });
 		}
 
 		[DevFlowAction("od.nuget.status", Description = "Inspect the Available tab's current state: whether it's still searching, any error, and the result rows (Id/Version/IsAdded) as bound to the real PackageViewModels shown in the list")]

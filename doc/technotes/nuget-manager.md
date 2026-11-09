@@ -72,18 +72,36 @@ are listed in the bulb but report "cannot be applied yet" in the status bar. Fix
 the code-action contract beyond text edits (added documents, and a choice step), which also touches the
 remote and LSP language-service implementations.
 
-### 4. Engine: how install and uninstall are done
+### 4. Engine: moving off the legacy NuGet.Core (in progress)
 
-From reading the code, not measured end to end:
+**Measured 2026-11-08 before the work** (a restored SDK-style project that references a package, dialog opened from
+the project node): the Installed tab and the Updates tab were both **empty**, so for such a project only
+"install" worked; uninstall and update could not even be started, and their code went to the packages.config
+engine. (Base also holds `NuGetProjectPackageOperationService`, `NuGetPackageUpdateService`,
+`NuGetPackageConflictResolutionService`, `NuGetPackageDependencyPreviewService`, `SdkStylePackageReferenceEditor` and
+`PackageConsoleCommandProcessor`; nothing in the repository calls them. The editor rewrites the project file on disk,
+which the IDE's live project model would overwrite and which does not know Central Package Management, so the
+SDK-style engine is built on the add-in's `SdkStylePackageReferenceService` instead; `NuGetPackageUpdateService`
+is the one piece worth reusing.)
 
-- Search runs on `NuGet.Protocol` v3. Install, uninstall and update still go through the legacy
-  `NuGet.Core` (v2) engine kept in `RequiredLibraries/`; for SDK-style projects the add-in bypasses it by
-  writing the `PackageReference` itself (`SdkStylePackageReferenceService`) and shelling out to
-  `dotnet restore`. `packages.config` projects use the legacy engine.
-- Moving to NuGet.Client (`NuGet.PackageManagement`'s `NuGetPackageManager` over a
-  `NuGetProject` adapter for `IProject`) would give one engine, real dependency resolution and proper
-  restore results instead of an exit code. It is the largest item here and not urgent while the
-  SDK-style path works.
+For an SDK-style project the engine is now NuGet.Protocol/NuGet.Packaging for data, the project model for edits and
+`dotnet restore` for resolving (the same split Visual Studio uses for PackageReference):
+
+- **Installed tab (done).** `SdkStylePackageReferenceService.GetInstalledPackages` reads the project's
+  references (central versions included, `SolutionPackages.Collect`) on the UI thread and the details from each
+  package's nuspec in the global packages folder with NuGet's `PackageFolderReader` (`InstalledSdkPackages`); a package
+  that was never restored is shown by id and version with a placeholder. Covered by `InstalledSdkPackagesTests` and
+  `AddInTests.InstalledTab_ListsThePackagesAnSdkStyleProjectReferences`.
+- **Uninstall (done).** The row's remove command removes the `PackageReference` items from the project, saves, refreshes
+  the project browser and restores; under Central Package Management the `PackageVersion` stays (other projects may use it).
+  It needed `PackageViewModel.IsProjectPackage` to be true for a PackageReference project: the metadata-only packages
+  list no files, which the old check read as "solution package", so the uninstall was sent to the solution and did
+  nothing. Covered by `AddInTests.InstalledTab_UninstallsAPackageFromAnSdkStyleProject` (project file, restore result and
+  tab agree afterwards).
+- **Not done yet:** the Updates tab and updating a package (next), Update All, and the restore after an operation still
+  runs on the UI thread (as install always did), so the dialog is unresponsive for its duration.
+- **packages.config projects** keep the legacy engine. NuGet.Client's `NuGetPackageManager` would need a packages.config
+  `NuGetProject` adapter for `IProject`; given how rare they are in .NET 10 projects this is left unless it is asked for.
 
 ### 5. Features the package manager does not have
 

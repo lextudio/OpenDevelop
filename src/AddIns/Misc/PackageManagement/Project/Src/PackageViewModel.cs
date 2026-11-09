@@ -242,6 +242,12 @@ namespace ICSharpCode.PackageManagement
 		
 		protected virtual bool IsProjectPackage(IPackage package)
 		{
+			// A PackageReference project has no solution-level packages: whatever the package contains, it belongs to
+			// the project. (The metadata-only packages of the NuGet.Protocol engine list no files, which this check
+			// would read as "solution package" and send an uninstall to the solution instead of the project.)
+			if (selectedProjects.HasSingleProjectSelected() && selectedProjects.GetSingleProjectSelected(this.package.Repository).UsesPackageReferences) {
+				return true;
+			}
 			return package.IsProjectPackage();
 		}
 		

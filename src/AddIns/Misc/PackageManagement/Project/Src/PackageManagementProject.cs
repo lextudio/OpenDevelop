@@ -54,6 +54,10 @@ namespace ICSharpCode.PackageManagement
 			projectManager = packageManager.ProjectManager;
 		}
 		
+		public bool UsesPackageReferences {
+			get { return sdkStylePackageReferenceService != null; }
+		}
+
 		public string Name {
 			get { return msbuildProject.Name; }
 		}
@@ -113,6 +117,10 @@ namespace ICSharpCode.PackageManagement
 		
 		public IQueryable<IPackage> GetPackages()
 		{
+			if (sdkStylePackageReferenceService != null) {
+				// The legacy local repository knows packages.config, not PackageReference items.
+				return sdkStylePackageReferenceService.GetInstalledPackages().AsQueryable();
+			}
 			return projectManager.LocalRepository.GetPackages();
 		}
 		
@@ -135,6 +143,10 @@ namespace ICSharpCode.PackageManagement
 		
 		public void UninstallPackage(IPackage package, UninstallPackageAction uninstallAction)
 		{
+			if (sdkStylePackageReferenceService != null) {
+				sdkStylePackageReferenceService.UninstallPackage(package.Id, Logger);
+				return;
+			}
 			packageManager.UninstallPackage(package, uninstallAction);
 		}
 		

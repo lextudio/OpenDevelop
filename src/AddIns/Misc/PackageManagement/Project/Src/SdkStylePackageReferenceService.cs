@@ -16,6 +16,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Project;
 using Microsoft.Build.Construction;
 using NuGet;
@@ -40,6 +41,54 @@ namespace ICSharpCode.PackageManagement
 			this.projectService = projectService;
 		}
 		
+		/// <summary>
+		/// What the project references, as the legacy package objects the Installed tab shows. Safe from any thread:
+		/// the project model is read on the UI thread, the nuspecs in the packages folder on the calling one.
+		/// </summary>
+		public IList<IPackage> GetInstalledPackages()
+		{
+			var (references, packagesFolder) = SD.MainThread.InvokeIfRequired(() => (
+				SolutionPackages.Collect(new[] { project }),
+				GlobalPackagesFolder.ForOpenSolution()));
+			return InstalledSdkPackages.Read(references, packagesFolder);
+		}
+
+		/// <summary>
+		/// Removes the package's <c>PackageReference</c> items, saves the project, refreshes the project browser and
+		/// restores. Under Central Package Management the <c>PackageVersion</c> entry stays: other projects may use it.
+		/// </summary>
+		public void UninstallPackage(string packageId, ILogger logger)
+		{
+			if (RemovePackageReference(packageId)) {
+				Restore(logger);
+			}
+		}
+
+		/// <summary>Removes every <c>PackageReference</c> to the package from the project, saves it and refreshes the project browser. UI thread. False when there was none.</summary>
+		public bool RemovePackageReference(string packageId)
+		{
+			bool removed = false;
+			project.PerformUpdateOnProjectFile(() => {
+				List<ProjectItemElement> references = project.MSBuildProjectFile.Items
+					.Where(item => string.Equals(item.ItemType, "PackageReference", StringComparison.OrdinalIgnoreCase)
+						&& string.Equals(item.Include, packageId, StringComparison.OrdinalIgnoreCase))
+					.ToList();
+				foreach (ProjectItemElement reference in references) {
+					ProjectElementContainer group = reference.Parent;
+					group.RemoveChild(reference);
+					if (group.Count == 0) {
+						group.Parent?.RemoveChild(group);
+					}
+				}
+				removed = references.Count > 0;
+			});
+			if (removed) {
+				projectService.Save(project);
+				projectService.RefreshProjectBrowser();
+			}
+			return removed;
+		}
+
 		public bool IsInstalled(string packageId)
 		{
 			return FindPackageReference(packageId) != null;

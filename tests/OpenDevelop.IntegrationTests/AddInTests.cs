@@ -6430,6 +6430,127 @@ EndGlobal
         }
     }
 
+    /// <summary>
+    /// A temporary solution of one SDK-style project (App) with the given PackageReferences, restored from the local
+    /// test feed with dotnet restore, and returns the solution path. NuGet.Config (clear + the local feed) is written
+    /// into <paramref name="work"/> first.
+    /// </summary>
+    async Task<string> CreateRestoredSdkSolutionAsync(string work, params (string Id, string Version)[] references)
+    {
+        Directory.CreateDirectory(Path.Combine(work, "App"));
+        WriteLocalFeedNuGetConfig(work);
+        await File.WriteAllTextAsync(Path.Combine(work, "App", "App.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n"
+            + string.Concat(references.Select(r => $"    <PackageReference Include=\"{r.Id}\" Version=\"{r.Version}\" />\n"))
+            + "  </ItemGroup>\n</Project>\n");
+        await File.WriteAllTextAsync(Path.Combine(work, "App", "Program.cs"), "class Program { static void Main() { } }\n");
+        await File.WriteAllTextAsync(Path.Combine(work, "Work.slnx"), "<Solution>\n  <Project Path=\"App/App.csproj\" />\n</Solution>\n");
+        var restore = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("dotnet")
+        {
+            ArgumentList = { "restore", Path.Combine(work, "App", "App.csproj") },
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        })!;
+        var restoreOutput = await restore.StandardOutput.ReadToEndAsync();
+        Assert.True(restore.WaitForExit(120_000) && restore.ExitCode == 0, "dotnet restore failed: " + restoreOutput);
+        return Path.Combine(work, "Work.slnx");
+    }
+
+    /// <summary>
+    /// Opens Manage Packages from the named project's node in Solution Explorer, as a user does: that selects the
+    /// project, which the Installed and Updates tabs work on (opening the dialog with nothing selected shows the
+    /// solution-level packages instead).
+    /// </summary>
+    async Task OpenManagePackagesFromProjectNodeAsync(string projectName)
+    {
+        JsonElement started = default;
+        Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            started = await _app.InvokeAsync("od.project-browser.invoke-context-menu", "Project", "ManagePackages", projectName);
+            return started.GetProperty("started").GetBoolean();
+        }, TimeSpan.FromSeconds(60)), "Manage Packages could not be started from the project node: " + started);
+        JsonElement dialog = default;
+        Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            dialog = await _app.InvokeAsync("od.nuget.dialog-state");
+            return dialog.GetProperty("open").GetBoolean();
+        }, TimeSpan.FromSeconds(30)), "The Manage Packages dialog did not open: " + dialog);
+    }
+
+    /// <summary>Opens the Manage Packages dialog for <paramref name="solutionPath"/>, reads one tab and returns its rows (id, version).</summary>
+    async Task<List<(string Id, string Version, string Description)>> ReadTabAsync(string tab)
+    {
+        Assert.True((await _app.InvokeAsync("od.nuget.tab-read", tab)).GetProperty("success").GetBoolean());
+        JsonElement status = default;
+        var done = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            status = await _app.InvokeAsync("od.nuget.tab-status", tab);
+            return status.GetProperty("open").GetBoolean() && !status.GetProperty("isReadingPackages").GetBoolean();
+        }, TimeSpan.FromSeconds(60));
+        Assert.True(done, $"The {tab} tab never finished reading: {status}");
+        Assert.False(status.GetProperty("hasError").GetBoolean(), status.ToString());
+        return status.GetProperty("packages").EnumerateArray().Select(p => (p.GetProperty("id").GetString()!, p.GetProperty("version").GetString()!, p.GetProperty("description").GetString() ?? "")).ToList();
+    }
+
+    [Fact]
+    public async Task InstalledTab_ListsThePackagesAnSdkStyleProjectReferences()
+    {
+        // Measured before this change: the Installed tab was EMPTY for a restored SDK-style project, because it
+        // asked the legacy packages.config repository. Without a list there was nothing to uninstall or update.
+        var solution = await CreateRestoredSdkSolutionAsync(Path.Combine(_projectDir, "installed"),
+            (TestPackageId, "1.0.0"), ("OpenDevelop.TypeProbe", "1.0.0"));
+        var openResult = await _app.InvokeAsync("od.open-solution", solution);
+        Assert.True(openResult.GetProperty("success").GetBoolean(), openResult.ToString());
+        await OpenManagePackagesFromProjectNodeAsync("App");
+        try
+        {
+            var installed = await ReadTabAsync("installed");
+
+            Assert.Equal(new[] { ("OpenDevelop.TestPackage", "1.0.0"), ("OpenDevelop.TypeProbe", "1.0.0") }, installed.OrderBy(p => p.Id).Select(p => (p.Id, p.Version)).ToArray());
+            // The details come from the package's nuspec in the global packages folder, not from a placeholder.
+            Assert.StartsWith("Declares one public type", installed.Single(p => p.Id == "OpenDevelop.TypeProbe").Description);
+            Assert.DoesNotContain(installed, p => p.Description.StartsWith("Not restored yet", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Assert.True((await _app.InvokeAsync("od.nuget.close-dialog")).GetProperty("success").GetBoolean());
+        }
+    }
+
+    [Fact]
+    public async Task InstalledTab_UninstallsAPackageFromAnSdkStyleProject()
+    {
+        // Before: the Installed tab was empty for such a project, so there was no row to uninstall; and the uninstall
+        // itself went to the legacy packages.config engine. Now the row's remove command takes the PackageReference
+        // out of the project and restores.
+        var work = Path.Combine(_projectDir, "uninstall");
+        var solution = await CreateRestoredSdkSolutionAsync(work, (TestPackageId, "1.0.0"), ("OpenDevelop.TypeProbe", "1.0.0"));
+        var csprojPath = Path.Combine(work, "App", "App.csproj");
+        var assetsPath = Path.Combine(work, "App", "obj", "project.assets.json");
+        Assert.Contains(TestPackageId + "/", await File.ReadAllTextAsync(assetsPath));
+        var openResult = await _app.InvokeAsync("od.open-solution", solution);
+        Assert.True(openResult.GetProperty("success").GetBoolean(), openResult.ToString());
+        await OpenManagePackagesFromProjectNodeAsync("App");
+        try
+        {
+            Assert.Equal(2, (await ReadTabAsync("installed")).Count);
+
+            var removed = await _app.InvokeAsync("od.nuget.tab-command", "installed", TestPackageId, "remove");
+            Assert.True(removed.GetProperty("success").GetBoolean(), removed.ToString());
+
+            // The project file, the restore result and the tab all agree.
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => !(await File.ReadAllTextAsync(csprojPath)).Contains($"Include=\"{TestPackageId}\""), TimeSpan.FromSeconds(30)),
+                "The PackageReference is still in the project file: " + await File.ReadAllTextAsync(csprojPath));
+            var csproj = await File.ReadAllTextAsync(csprojPath);
+            Assert.Contains("Include=\"OpenDevelop.TypeProbe\"", csproj);
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => !(await File.ReadAllTextAsync(assetsPath)).Contains(TestPackageId + "/"), TimeSpan.FromSeconds(60)),
+                "The restore after the uninstall still resolves " + TestPackageId);
+            Assert.Equal(new[] { "OpenDevelop.TypeProbe" }, (await ReadTabAsync("installed")).Select(p => p.Id).ToArray());
+        }
+        finally
+        {
+            Assert.True((await _app.InvokeAsync("od.nuget.close-dialog")).GetProperty("success").GetBoolean());
+        }
+    }
+
     [Fact]
     public async Task LightBulb_DoesNotOfferAPackageNoProjectOfTheSolutionUses()
     {

@@ -72,7 +72,7 @@ namespace ICSharpCode.PackageManagement
 				dependencySets);
 		}
 
-		static global::NuGet.PackageDependencySet ToDependencySet(NuGet.Packaging.PackageDependencyGroup group)
+		internal static global::NuGet.PackageDependencySet ToDependencySet(NuGet.Packaging.PackageDependencyGroup group)
 		{
 			var dependencies = group.Packages.Select(dependency => {
 				var range = dependency.VersionRange;
