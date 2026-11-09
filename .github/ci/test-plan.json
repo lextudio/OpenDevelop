@@ -100,7 +100,7 @@
       "needsNuGetCache": true,
       "deviceClasses": { "AndroidDebuggingIntegrationTests": "linux" },
       "allowAllFailures": true,
-      "note": "The Android debugging journey (Debugger.AddIn's AndroidDebugProjectBehavior) against a headless emulator on the hosted ubuntu-24.04 runner, the only runner image family with KVM (macOS arm64 and ubuntu-24.04-arm have no nested virtualisation). The job enables /dev/kvm, installs the android workload next to the SDK 11 it puts in ~/.dotnet, and boots one google_apis x86_64 AVD, whose ABI the archive's AddIns/Debugger/android/x86_64 agent covers. allowAllFailures is the bootstrap exception (a lane whose only entry failed fails the lane): drop it and promote the entry to required after two green runs."
+      "note": "The Android debugging journey (Debugger.AddIn's AndroidDebugProjectBehavior) against a headless emulator on the hosted ubuntu-24.04 runner, the only runner image family with KVM (macOS arm64 and ubuntu-24.04-arm have no nested virtualisation). The job enables /dev/kvm, installs the android workload next to the SDK 11 it puts in ~/.dotnet, and boots one google_apis x86_64 AVD, whose ABI the archive's AddIns/Debugger/android/x86_64 agent covers. allowAllFailures is the bootstrap exception (a lane whose only entry failed fails the lane): drop it and promote the entry to required after two green runs. A runner whose host exposes no usable /dev/kvm skips the emulator and this lane with a warning instead of failing the job."
     },
     "integration-unstable": {
       "job": "fast",
