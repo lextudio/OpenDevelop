@@ -51,8 +51,7 @@ public sealed class AndroidDebuggingIntegrationTests
 			(string? root, string? version) = FindSdk(sdks);
 			Assert.SkipWhen(root == null, "No SDK 11 root with the Android workload is installed.");
 			// Builds use only the SDK selected in Options (or the startup SDK), so the SDK 11 root the global.json pins must be selected, not just registered.
-			var selectedSdk = await ide.InvokeAsync("od.sdk.select", root!);
-			Assert.True(selectedSdk.GetProperty("success").GetBoolean(), selectedSdk.ToString());
+			await SdkRootCandidates.SelectAsync(ide, root!);
 			await File.WriteAllTextAsync(Path.Combine(work, "global.json"), "{\"sdk\":{\"version\":\"" + version + "\",\"allowPrerelease\":true,\"rollForward\":\"disable\"}}");
 			string app = Directory.CreateDirectory(Path.Combine(work, "AndroidApp")).FullName;
 			await File.WriteAllTextAsync(Path.Combine(app, "Directory.Build.props"), "<Project><PropertyGroup><BaseOutputPath>custom-bin/</BaseOutputPath><BaseIntermediateOutputPath>custom-obj/</BaseIntermediateOutputPath></PropertyGroup></Project>");
@@ -144,8 +143,7 @@ public sealed class AndroidDebuggingIntegrationTests
 			var (root, version) = FindSdk((await ide.InvokeAsync("od.sdk.list")).GetProperty("sdks"));
 			Assert.SkipWhen(root == null, "No SDK 11 root with the Android workload is installed.");
 			// Builds use only the SDK selected in Options (or the startup SDK), so the SDK 11 root the global.json pins must be selected, not just registered.
-			var selectedSdk = await ide.InvokeAsync("od.sdk.select", root!);
-			Assert.True(selectedSdk.GetProperty("success").GetBoolean(), selectedSdk.ToString());
+			await SdkRootCandidates.SelectAsync(ide, root!);
 			await File.WriteAllTextAsync(Path.Combine(work, "global.json"), "{\"sdk\":{\"version\":\"" + version + "\",\"allowPrerelease\":true,\"rollForward\":\"disable\"}}");
 			string app = Directory.CreateDirectory(Path.Combine(work, "ProGpuAndroidApp")).FullName;
 			string nugetConfig = OpenAvalonMobilePackageSource.TryCreateConfig(repositoryRoot, "ProGPU.Android", packageVersion, out string skipReason);

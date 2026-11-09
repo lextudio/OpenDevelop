@@ -1,3 +1,6 @@
+using System.Text.Json;
+using Xunit;
+
 namespace OpenDevelop.IntegrationTests;
 
 /// <summary>
@@ -9,6 +12,20 @@ namespace OpenDevelop.IntegrationTests;
 /// </summary>
 static class SdkRootCandidates
 {
+    /// <summary>
+    /// Selects <paramref name="root"/> as the SDK builds use (Tools &gt; Options &gt; .NET SDK) and checks that it became the
+    /// effective one. od.sdk.select answers success even when the selection is unusable, so only the effective root
+    /// shows whether it took; a journey whose global.json pins an SDK 11 fails with a confusing "SDK not found" otherwise.
+    /// </summary>
+    public static async Task SelectAsync(IsolatedIde ide, string root)
+    {
+        var selected = await ide.InvokeAsync("od.sdk.select", root);
+        Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+        Assert.True(selected.TryGetProperty("effective", out var effective) && effective.ValueKind == JsonValueKind.Object,
+            "The selected SDK root is not usable: " + selected);
+        Assert.Equal(root.TrimEnd('/', '\\'), effective.GetProperty("RootPath").GetString()!.TrimEnd('/', '\\'), ignoreCase: true);
+    }
+
     /// <summary>Existing DOTNET_ROOT-style folders whose sdk/ directory holds an 11.x SDK.</summary>
     public static IEnumerable<string> WithSdk11()
     {

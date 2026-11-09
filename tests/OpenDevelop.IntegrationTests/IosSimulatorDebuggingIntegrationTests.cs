@@ -52,8 +52,7 @@ public sealed class IosSimulatorDebuggingIntegrationTests
             var (sdkRoot, sdkVersion) = FindSdk11WithIosWorkload(await ide.InvokeAsync("od.sdk.list"));
             Assert.SkipWhen(sdkRoot == null, "No SDK 11 root with the .NET 11 iOS workload is installed (packs/Microsoft.iOS.Sdk.net11.0_*).");
             // Builds use only the SDK selected in Options (or the startup SDK), so the SDK 11 root the global.json pins must be selected, not just registered.
-            var selectedSdk = await ide.InvokeAsync("od.sdk.select", sdkRoot!);
-            Assert.True(selectedSdk.GetProperty("success").GetBoolean(), selectedSdk.ToString());
+            await SdkRootCandidates.SelectAsync(ide, sdkRoot!);
 
             var (solution, appDelegate, breakLine) = await CreateIosAppAsync(work, sdkRoot!, sdkVersion!);
             var open = await ide.InvokeAsync("od.open-solution", solution);
@@ -114,8 +113,7 @@ public sealed class IosSimulatorDebuggingIntegrationTests
             var (sdkRoot, sdkVersion) = FindSdk11WithIosWorkload(await ide.InvokeAsync("od.sdk.list"));
             Assert.SkipWhen(sdkRoot == null, "No SDK 11 root with the .NET 11 iOS workload is installed (packs/Microsoft.iOS.Sdk.net11.0_*).");
             // Builds use only the SDK selected in Options (or the startup SDK), so the SDK 11 root the global.json pins must be selected, not just registered.
-            var selectedSdk = await ide.InvokeAsync("od.sdk.select", sdkRoot!);
-            Assert.True(selectedSdk.GetProperty("success").GetBoolean(), selectedSdk.ToString());
+            await SdkRootCandidates.SelectAsync(ide, sdkRoot!);
 
             await File.WriteAllTextAsync(Path.Combine(work, "global.json"),
                 "{ \"sdk\": { \"version\": \"" + sdkVersion + "\", \"allowPrerelease\": true, \"rollForward\": \"disable\" } }\n");
