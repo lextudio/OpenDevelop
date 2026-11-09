@@ -92,6 +92,7 @@ $libGhosttyVersion = Get-XmlPropertyValue (Join-Path $PSScriptRoot 'Directory.Pa
 # Packages endpoint from their own workflows; their versions are the central pins.
 $forkPackages = @(
     'ICSharpCode.AvalonEdit.LibreWPF',
+    'LeXtudio.Wpf.Toolkit',
     'Dirkster.AvalonDock.Core', 'Dirkster.AvalonDock.LibreWPF', 'Dirkster.AvalonDock.Serializer.Xml',
     # Themes.VS2013 depends on the VS theme package: synchronize the complete restore closure.
     'Dirkster.AvalonDock.Themes.VS.LibreWPF', 'Dirkster.AvalonDock.Themes.VS2013.LibreWPF',

@@ -141,7 +141,7 @@
        broke parallel builds (missing *.g.cs / locked *.g.resources as projects re-ran mid-compile
        against an input that kept changing). With the values identical everywhere the
        WriteOnlyWhenDifferent below genuinely no-ops after the first write. -->
-  <!-- "Vendored" means a submodule under <repo>/externals (ilspy, vscode-wpf, wpftoolkit, ...).
+  <!-- "Vendored" means a submodule under <repo>/externals (ilspy, vscode-wpf, ...).
        Those carry their own central-package-management and lock files, so adding a PackageReference
        there fails restore (NU1010/NU1004) - and they never link GlobalAssemblyInfo.cs anyway. Note
        the check is anchored to the repo root: this repository is ITSELF checked out under a folder

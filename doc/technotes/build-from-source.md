@@ -35,7 +35,7 @@ and no longer describe this tree. Use the `.slnx` and the scripts above.
   with the `dotnet` that resolves through it (the scripts call `Find-DotNetHost` for exactly this),
   not with an arbitrary host on `PATH`.
 - **Submodules.** `git submodule update --init --recursive`. `externals/*` (WpfDesigner, cps,
-  wpftoolkit, XamlToCSharpGenerator, ...) are compiled sources; nothing builds without them.
+  XamlToCSharpGenerator, ...) are compiled sources; nothing builds without them.
 - **Windows: Visual Studio with the MSBuild component.** Projects whose path contains `MicrosoftHost`
   cannot be built by `dotnet build` (below), and `Find-VsMsBuild` locates the right MSBuild via
   `vswhere`.
@@ -45,7 +45,8 @@ and no longer describe this tree. Use the `.slnx` and the scripts above.
   `read:packages`; the normal build and distribution scripts do this automatically. It downloads the
   required GitHub Packages closure into `artifacts/openavalon-feed` without writing a token to disk. The
   closure is the OpenAvalon packages (LibreWPF, LibreWinForms, ProGPU), LibGhostty.Net, the AvalonEdit and
-  AvalonDock forks and the two DevFlow agent packages: all of them are copied from lextudio GitHub Packages
+  AvalonDock forks, the Toolkit for WPF fork (`LeXtudio.Wpf.Toolkit`), the VS editor contract packages
+  (`Microsoft.VisualStudio.Text.*`/`CoreUtility`, the vs-editor-api fork) and the two DevFlow agent packages: all of them are copied from lextudio GitHub Packages
   into the local feed first and consumed from there. The script keeps a verified package as it is, so a
   package that was republished under the same version number (GitHub Packages allows that, and it happened to
   the whole preview.69 closure and AvalonDock 5.0.1 on 2026-10-28) is only replaced by

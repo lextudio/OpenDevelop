@@ -1,10 +1,6 @@
 [submodule "externals/cps"]
 	path = externals/cps
 	url = https://github.com/lextudio/cps-shims.git
-[submodule "externals/wpftoolkit"]
-	path = externals/wpftoolkit
-	url = https://github.com/lextudio/wpftoolkit.git
-	branch = openwpf
 [submodule "externals/xamlstudio"]
 	path = externals/xamlstudio
 	url = https://github.com/lextudio/xamlstudio.git

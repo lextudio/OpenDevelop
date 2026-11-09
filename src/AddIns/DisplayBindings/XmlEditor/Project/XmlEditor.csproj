@@ -20,7 +20,7 @@
     <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="False" />
     <ProjectReference Include="..\..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" Private="False" />
     <ProjectReference Include="..\..\AvalonEdit.AddIn\AvalonEdit.AddIn.csproj" Private="False" />
-    <ProjectReference Include="..\..\..\..\..\externals\wpftoolkit\ExtendedWPFToolkitSolution\Src\Xceed.Wpf.Toolkit\Xceed.Wpf.Toolkit.csproj" Private="False" />
+    <PackageReference Include="LeXtudio.Wpf.Toolkit" ExcludeAssets="runtime" />
   </ItemGroup>
 
   <ItemGroup>

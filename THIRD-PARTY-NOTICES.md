@@ -33,6 +33,16 @@ mappings. Distribution packaging copies package-contained LICENSE, COPYING,
 and NOTICE files into `THIRD-PARTY-NOTICES/NuGet/`, with a catalog generated
 from the exact resolved package graph.
 
+## Toolkit for WPF
+
+`LeXtudio.Wpf.Toolkit` (version 3.7.2, from the `lextudio/wpftoolkit` fork, published to the
+lextudio GitHub Packages feed) is the Community Edition of the open-source Toolkit for WPF
+originally published by Xceed Software Inc., licensed under the Microsoft Public License
+(Ms-PL); the package carries the license text (`license.md`) and the sources keep their
+copyright notices. It is not affiliated with or endorsed by Xceed Software Inc.; the Xceed
+name is a trademark of its owner, and the package id does not use it. The assembly is still
+named `Xceed.Wpf.Toolkit` for compatibility with existing code.
+
 ## Visual Studio editor API
 
 `Microsoft.VisualStudio.CoreUtility`, `Microsoft.VisualStudio.Text.Data`,

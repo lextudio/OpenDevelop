@@ -87,7 +87,7 @@
     <ProjectReference Include="..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" />
     <ProjectReference Include="..\..\..\Libraries\SharpTreeView\ICSharpCode.TreeView\ICSharpCode.TreeView.csproj" />
     <ProjectReference Include="..\..\..\Libraries\ResourceFiles\ResourceFiles.csproj" />
-    <ProjectReference Include="..\..\..\..\externals\wpftoolkit\ExtendedWPFToolkitSolution\Src\Xceed.Wpf.Toolkit\Xceed.Wpf.Toolkit.csproj" />
+    <PackageReference Include="LeXtudio.Wpf.Toolkit" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\..\Libraries\ICSharpCode.Build.Tasks\Project\KnownFrameworkAssemblies.cs">

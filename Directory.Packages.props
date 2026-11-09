@@ -31,6 +31,11 @@
          src/Libraries/AvalonEdit submodule, whose vendored global.json pinned its own LibreWPF.Sdk and had to be
          bumped with every provider release; the package carries that pin instead. -->
     <PackageVersion Include="ICSharpCode.AvalonEdit.LibreWPF" Version="6.3.1.120" />
+    <!-- The lextudio/wpftoolkit fork (the community edition, Ms-PL, of the toolkit originally published by Xceed Software
+         Inc.; the id carries no Xceed name because Ms-PL 3(A) grants no trademark rights, but the assembly is still
+         Xceed.Wpf.Toolkit). Published by the fork's own workflow to GitHub Packages; it replaced the
+         externals/wpftoolkit submodule. -->
+    <PackageVersion Include="LeXtudio.Wpf.Toolkit" Version="3.7.2" />
     <!-- ILSpy's decompiler and its non-UI service layer, taken from the published packages instead
          of from the externals/ilspy submodule. The two OpenDevelop patches that used to force a
          source build now live on this side of the boundary: see Dom/ITreeNodeModelOwner.cs
