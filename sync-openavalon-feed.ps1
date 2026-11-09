@@ -9,14 +9,17 @@ $ErrorActionPreference = 'Stop'
 
 # This is the exact closure OpenAvalon publishes to lextudio GitHub Packages. Keep it explicit:
 # packages that remain publicly available from nuget.org must not accidentally become a local-feed
-# dependency just because their names also start with ProGPU.
+# dependency just because their names also start with ProGPU. ProGPU.Fonts.Inter and ProGPU.Fonts.Noto (pulled in
+# by ProGPU.Android and ProGPU.iOS) are such packages: they are not published to the lextudio feed (404 there), so
+# they restore from nuget.org through its "*" mapping and are deliberately absent from this list and from the
+# lextudio/local mappings in NuGet.config.
 $openAvalonPackages = @(
     'LibreWPF.Interop', 'LibreWPF.ProGPU', 'LibreWPF.Sdk', 'LibreWPF.Transport',
     'LibreWinForms.ProGPU', 'LibreWinForms.Sdk', 'LibreWinForms.System.Windows.Forms', 'LibreWinForms.WindowsFormsIntegration',
     'ProGPU.Avalonia', 'ProGPU.Backend', 'ProGPU.Backend.Dawn', 'ProGPU.Backend.Dx12', 'ProGPU.Backend.Native', 'ProGPU.Native.Sdk', 'ProGPU.Compute',
     'ProGPU.DirectX', 'ProGPU.Layout', 'ProGPU.Media', 'ProGPU.Media.Scene', 'ProGPU.Scene', 'ProGPU.SkiaSharp',
     'ProGPU.System.Drawing.Common', 'ProGPU.Text', 'ProGPU.Text.Shaping', 'ProGPU.Transpiler', 'ProGPU.Vector',
-    'ProGPU.Virtualization', 'ProGPU.WinRT', 'ProGPU.WinUI', 'ProGPU.Fonts.Inter', 'ProGPU.Fonts.Noto',
+    'ProGPU.Virtualization', 'ProGPU.WinRT', 'ProGPU.WinUI',
     'ProGPU.Android', 'ProGPU.Android.Media', 'ProGPU.iOS', 'ProGPU.Apple.Media'
 )
 

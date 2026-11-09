@@ -212,9 +212,9 @@ existing central package from the Updates tab, `VersionOverride`, and a project 
   a fork. If an AltCover bug needs a patch, fork `SteveGilham/altcover` again then.
 - `externals/vs-editor-api` is gone (2026-11-09): `Microsoft.VisualStudio.CoreUtility/Text.Data/Text.Logic/Text.UI`
   17.3.198.1 are the `lextudio/vs-editor-api` fork's MIT builds, published to GitHub Packages under Microsoft's ids
-  (`lextudio/` in the fork) and synchronized like the AvalonEdit/AvalonDock forks. Note that
-  `sync-openavalon-feed.ps1` currently fails on `ProGPU.Fonts.Inter/Noto`, which are on nuget.org but not on the lextudio
-  feed; that predates this change.
+  (`lextudio/` in the fork) and synchronized like the AvalonEdit/AvalonDock forks. (`sync-openavalon-feed.ps1` used to
+  fail on `ProGPU.Fonts.Inter/Noto`, which are on nuget.org but not on the lextudio feed; they are now out of its list and
+  of the lextudio/local mappings, so they restore from nuget.org.)
 - `externals/vsmac-codecoverage` is source-linked (eight files) but frozen upstream; it is next to be published as a
   package, once the user decides.
 
