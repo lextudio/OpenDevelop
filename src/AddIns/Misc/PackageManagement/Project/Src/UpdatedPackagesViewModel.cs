@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 using NuGet;
 
@@ -124,9 +125,27 @@ namespace ICSharpCode.PackageManagement
 		protected override void TryUpdatingAllPackages()
 		{
 			List<IPackageFromRepository> packages = GetPackagesFromViewModels().ToList();
-			using (IDisposable operation = StartUpdateOperation(packages.First())) {
-				var factory = new UpdatePackagesActionFactory(logger, packageManagementEvents);
-				IUpdatePackagesAction action = factory.CreateAction(selectedProjects, packages);
+			var factory = new UpdatePackagesActionFactory(logger, packageManagementEvents);
+			IUpdatePackagesAction action = factory.CreateAction(selectedProjects, packages);
+			if (sdkStyleInstalledPackages != null) {
+				// An SDK-style project: edit and restore on a pool thread so the dialog stays responsive.
+				IPackageActionRunner runner = ActionRunner;
+				Task started = PackageOperationGate.Run(
+					() => {
+						using (StartUpdateOperation(packages.First())) {
+							runner.Run(action);
+						}
+					},
+					ex => {
+						packageManagementEvents.OnPackageOperationError(ex);
+						logger.Log(MessageLevel.Error, ex.ToString());
+					});
+				if (started == null) {
+					throw new InvalidOperationException("Another package operation is still running. Wait for it to finish.");
+				}
+				return;
+			}
+			using (StartUpdateOperation(packages.First())) {
 				ActionRunner.Run(action);
 			}
 		}

@@ -28,23 +28,24 @@ namespace ICSharpCode.PackageManagement
 		
 		public void OnPackageOperationsStarting()
 		{
-			if (PackageOperationsStarting != null) {
-				PackageOperationsStarting(this, new EventArgs());
-			}
+			UiThread.Invoke(() => PackageOperationsStarting?.Invoke(this, new EventArgs()));
 		}
 		
 		public event EventHandler<PackageOperationExceptionEventArgs> PackageOperationError;
 		
 		public void OnPackageOperationError(Exception ex)
 		{
-			if (PackageOperationError != null) {
-				PackageOperationError(this, new PackageOperationExceptionEventArgs(ex));
-			}
+			UiThread.Invoke(() => PackageOperationError?.Invoke(this, new PackageOperationExceptionEventArgs(ex)));
 		}
 		
 		public event EventHandler<AcceptLicensesEventArgs> AcceptLicenses;
 		
 		public bool OnAcceptLicenses(IEnumerable<IPackage> packages)
+		{
+			return UiThread.Invoke(() => AcceptLicensesOnUiThread(packages));
+		}
+
+		bool AcceptLicensesOnUiThread(IEnumerable<IPackage> packages)
 		{
 			if (AcceptLicenses != null) {
 				var eventArgs = new AcceptLicensesEventArgs(packages);
@@ -58,33 +59,31 @@ namespace ICSharpCode.PackageManagement
 		
 		public void OnParentPackageInstalled(IPackage package)
 		{
-			if (ParentPackageInstalled != null) {
-				ParentPackageInstalled(this, new ParentPackageOperationEventArgs(package));
-			}
+			UiThread.Invoke(() => ParentPackageInstalled?.Invoke(this, new ParentPackageOperationEventArgs(package)));
 		}
 		
 		public event EventHandler<ParentPackageOperationEventArgs> ParentPackageUninstalled;
 		
 		public void OnParentPackageUninstalled(IPackage package)
 		{
-			if (ParentPackageUninstalled != null) {
-				ParentPackageUninstalled(this, new ParentPackageOperationEventArgs(package));
-			}
+			UiThread.Invoke(() => ParentPackageUninstalled?.Invoke(this, new ParentPackageOperationEventArgs(package)));
 		}
 		
 		public event EventHandler<PackageOperationMessageLoggedEventArgs> PackageOperationMessageLogged;
 		
 		public void OnPackageOperationMessageLogged(MessageLevel level, string message, params object[] args)
 		{
-			if (PackageOperationMessageLogged != null) {
-				var eventArgs = new PackageOperationMessageLoggedEventArgs(level, message, args);
-				PackageOperationMessageLogged(this, eventArgs);
-			}
+			UiThread.Invoke(() => PackageOperationMessageLogged?.Invoke(this, new PackageOperationMessageLoggedEventArgs(level, message, args)));
 		}
 		
 		public event EventHandler<SelectProjectsEventArgs> SelectProjects;
 		
 		public bool OnSelectProjects(IEnumerable<IPackageManagementSelectedProject> projects)
+		{
+			return UiThread.Invoke(() => SelectProjectsOnUiThread(projects));
+		}
+
+		bool SelectProjectsOnUiThread(IEnumerable<IPackageManagementSelectedProject> projects)
 		{
 			if (SelectProjects != null) {
 				var eventArgs = new SelectProjectsEventArgs(projects);
@@ -98,6 +97,11 @@ namespace ICSharpCode.PackageManagement
 		
 		public FileConflictResolution OnResolveFileConflict(string message)
 		{
+			return UiThread.Invoke(() => ResolveFileConflictOnUiThread(message));
+		}
+
+		FileConflictResolution ResolveFileConflictOnUiThread(string message)
+		{
 			if (ResolveFileConflict != null) {
 				var eventArgs = new ResolveFileConflictEventArgs(message);
 				ResolveFileConflict(this, eventArgs);
@@ -110,9 +114,7 @@ namespace ICSharpCode.PackageManagement
 		
 		public void OnParentPackagesUpdated(IEnumerable<IPackage> packages)
 		{
-			if (ParentPackagesUpdated != null) {
-				ParentPackagesUpdated(this, new ParentPackagesOperationEventArgs(packages));
-			}
+			UiThread.Invoke(() => ParentPackagesUpdated?.Invoke(this, new ParentPackagesOperationEventArgs(packages)));
 		}
 	}
 }

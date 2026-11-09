@@ -72,9 +72,11 @@ namespace ICSharpCode.PackageManagement
 		
 		void CreateCommands()
 		{
-			addPackageCommand = new DelegateCommand(param => AddOrManagePackage());
-			removePackageCommand = new DelegateCommand(param => RemoveOrManagePackage());
-			managePackageCommand = new DelegateCommand(param => ManagePackage());
+			// Not while another operation runs: an SDK-style project's operations are asynchronous (see PackageOperationGate).
+			Predicate<object> notBusy = param => !PackageOperationGate.IsBusy;
+			addPackageCommand = new DelegateCommand(param => AddOrManagePackage(), notBusy);
+			removePackageCommand = new DelegateCommand(param => RemoveOrManagePackage(), notBusy);
+			managePackageCommand = new DelegateCommand(param => ManagePackage(), notBusy);
 		}
 	
 		public ICommand AddPackageCommand {
@@ -287,11 +289,51 @@ namespace ICSharpCode.PackageManagement
 			ClearReportedMessages();
 			logger.LogAddingPackage();
 			
-			using (IDisposable operation = StartInstallOperation(package)) {
-				TryAddingPackage();
+			IDisposable operation = StartInstallOperation(package);
+			TryAddingPackage();
+			FinishOperation(operation);
+		}
+
+		/// <summary>Set by <see cref="RunAction"/> when the action was started in the background.</summary>
+		Task backgroundOperation;
+
+		/// <summary>
+		/// Runs the action. For an SDK-style project that happens on a pool thread (the dialog stays responsive while the
+		/// project is edited and restored); anything else runs inline.
+		/// </summary>
+		void RunAction(IPackageManagementProject project, IPackageAction action)
+		{
+			if (!project.UsesPackageReferences) {
+				actionRunner.Run(action);
+				return;
 			}
-			
-			logger.LogAfterPackageOperationCompletes();
+			backgroundOperation = PackageOperationGate.Run(
+				() => actionRunner.Run(action),
+				ex => {
+					ReportError(ex);
+					logger.LogError(ex);
+				});
+			if (backgroundOperation == null) {
+				throw new InvalidOperationException("Another package operation is still running. Wait for it to finish.");
+			}
+		}
+
+		void FinishOperation(IDisposable operation)
+		{
+			Task pending = backgroundOperation;
+			backgroundOperation = null;
+			if (pending == null) {
+				operation?.Dispose();
+				logger.LogAfterPackageOperationCompletes();
+				return;
+			}
+			// The operation is still running: its end is reported from the UI thread once it has finished.
+			pending.ContinueWith(
+				_ => UiThread.Post(() => {
+					operation?.Dispose();
+					logger.LogAfterPackageOperationCompletes();
+				}),
+				TaskScheduler.Default);
 		}
 		
 		void TryAddingPackage()
@@ -492,7 +534,7 @@ namespace ICSharpCode.PackageManagement
 			action.AllowPrereleaseVersions = parent.IncludePrerelease;
 			action.Package = package;
 			action.Operations = installOperations;
-			actionRunner.Run(action);
+			RunAction(project, action);
 		}
 		
 		protected virtual ProcessPackageOperationsAction CreateInstallPackageAction(
@@ -531,7 +573,7 @@ namespace ICSharpCode.PackageManagement
 			
 			TryRemovingPackage();
 			
-			logger.LogAfterPackageOperationCompletes();
+			FinishOperation(null);
 		}
 		
 		void TryRemovingPackage()
@@ -541,7 +583,7 @@ namespace ICSharpCode.PackageManagement
 					IPackageManagementProject project = GetSingleProjectSelected();
 					UninstallPackageAction action = project.CreateUninstallPackageAction();
 					action.Package = package;
-					actionRunner.Run(action);
+					RunAction(project, action);
 				} else {
 					UninstallPackageFromSolution();
 				}

@@ -6504,7 +6504,7 @@ EndGlobal
         await OpenManagePackagesFromProjectNodeAsync("App");
         try
         {
-            var installed = await ReadTabAsync("installed");
+            var installed = await ReadTabAsync("installed", expectRows: true);
 
             Assert.Equal(new[] { ("OpenDevelop.TestPackage", "1.0.0"), ("OpenDevelop.TypeProbe", "1.0.0") }, installed.OrderBy(p => p.Id).Select(p => (p.Id, p.Version)).ToArray());
             // The details come from the package's nuspec in the global packages folder, not from a placeholder.
@@ -6533,7 +6533,7 @@ EndGlobal
         await OpenManagePackagesFromProjectNodeAsync("App");
         try
         {
-            Assert.Equal(2, (await ReadTabAsync("installed")).Count);
+            Assert.Equal(2, (await ReadTabAsync("installed", expectRows: true)).Count);
 
             var removed = await _app.InvokeAsync("od.nuget.tab-command", "installed", TestPackageId, "remove");
             Assert.True(removed.GetProperty("success").GetBoolean(), removed.ToString());
@@ -6613,6 +6613,22 @@ EndGlobal
 
             var applied = await _app.InvokeAsync("od.nuget.tab-command", "updates", TestPackageId, "update-all");
             Assert.True(applied.GetProperty("success").GetBoolean(), applied.ToString());
+
+            // The operation runs in the background: the UI thread answers (this very call is served by it) while the
+            // dialog reports busy, and a second command is refused until the first has finished.
+            var sawBusy = false;
+            var refusedWhileBusy = false;
+            await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                var state = await _app.InvokeAsync("od.nuget.dialog-state");
+                if (!state.GetProperty("busy").GetBoolean())
+                    return sawBusy;
+                sawBusy = true;
+                var second = await _app.InvokeAsync("od.nuget.tab-command", "updates", TestPackageId, "update-all");
+                refusedWhileBusy |= !second.GetProperty("success").GetBoolean();
+                return false;
+            }, TimeSpan.FromSeconds(90));
+            Assert.True(sawBusy, "The dialog never reported a running operation");
+            Assert.True(refusedWhileBusy, "A second operation was accepted while the first was running");
 
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 var text = await File.ReadAllTextAsync(csprojPath);
@@ -6973,8 +6989,15 @@ EndGlobal
         // "added" check icon (AutomationId=PackageAddedIcon, Visibility bound to IsAdded) must have
         // actually flipped to Visible after the install - i.e. the UI reflects the state the JSON
         // status above claims, not just the view model.
-        var tree = await _app.GetUITreeAsync();
-        var elements = FlattenElements(tree).ToList();
+        // The install runs in the background and announces itself when the restore has finished, so the icon
+        // follows the project file by a moment: wait for it.
+        List<JsonElement> elements = new();
+        await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            elements = FlattenElements(await _app.GetUITreeAsync()).ToList();
+            return elements.Any(e =>
+                e.TryGetProperty("automationId", out var a) && a.GetString() == "PackageAddedIcon"
+                && e.TryGetProperty("isVisible", out var v) && v.GetBoolean());
+        }, TimeSpan.FromSeconds(60));
 
         Assert.Contains(elements, e =>
             e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"

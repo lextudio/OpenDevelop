@@ -69,7 +69,7 @@ namespace ICSharpCode.PackageManagement
 			ShowPreviousPageCommand = new DelegateCommand(param => ShowPreviousPage());
 			ShowPageCommand = new DelegateCommand(param => ExecuteShowPageCommand(param));
 			SearchCommand = new DelegateCommand(param => Search());
-			UpdateAllPackagesCommand = new DelegateCommand(param => UpdateAllPackages());
+			UpdateAllPackagesCommand = new DelegateCommand(param => UpdateAllPackages(), param => !PackageOperationGate.IsBusy);
 		}
 		
 		void TryGetActiveProject()

@@ -110,10 +110,15 @@ For an SDK-style project the engine is now NuGet.Protocol/NuGet.Packaging for da
 - **Central Package Management (done).** An update of a centrally managed package changes the `PackageVersion` in
   `Directory.Packages.props` and leaves the reference without a `Version` (NU1008); covered by
   `AddInTests.UpdatesTab_UpdatesACentrallyManagedPackageInDirectoryPackagesProps`.
-- **Restore no longer freezes the dialog.** `SdkStylePackageReferenceService.Restore` runs `dotnet restore` on a pool
-  thread and, when called on the UI thread, pumps the dispatcher (a `DispatcherFrame`) until it ends, so the dialog keeps
-  painting. The dialog's commands are still synchronous: they return when the restore has finished, so a second click
-  during a restore is possible; making the commands themselves asynchronous is the remaining step.
+- **Operations are asynchronous.** For an SDK-style project the row commands (install, remove, update) and Update All run
+  on a pool thread through `PackageOperationGate`, which allows one operation at a time (the commands' CanExecute is false
+  while one runs, and `od.nuget.dialog-state` reports `busy`). Everything the work touches on the UI side is marshalled:
+  `PackageManagementEvents` raises every event on the UI thread, and `SdkStylePackageReferenceService` moves its project
+  model edits, save and project-browser refresh there. Licence prompts and the other pre-steps stay on the UI thread; the
+  end of an operation (disposing the install marker, the "completed" log line, the refresh events) is posted back when the
+  restore has finished. The bulb's install and any other UI-thread caller of `Restore` still use a pumped
+  `DispatcherFrame`. Covered by the Update All fact, which sees `busy`, answers on the UI thread meanwhile and checks a
+  second command is refused. Not asynchronous: non-SDK solution-level operations (now unsupported anyway).
 - **packages.config is not supported any more.** Installing, uninstalling or updating in such a project throws
   "...uses packages.config, which is no longer supported. Migrate it to PackageReference..." (shown in the dialog's message
   bar) instead of running the legacy engine. Not covered by an integration test: a legacy-format project does not

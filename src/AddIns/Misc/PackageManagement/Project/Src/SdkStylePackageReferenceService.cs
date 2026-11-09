@@ -76,6 +76,11 @@ namespace ICSharpCode.PackageManagement
 		/// <summary>Removes every <c>PackageReference</c> to the package from the project, saves it and refreshes the project browser. UI thread. False when there was none.</summary>
 		public bool RemovePackageReference(string packageId)
 		{
+			return UiThread.Invoke(() => RemovePackageReferenceOnUiThread(packageId));
+		}
+
+		bool RemovePackageReferenceOnUiThread(string packageId)
+		{
 			bool removed = false;
 			project.PerformUpdateOnProjectFile(() => {
 				List<ProjectItemElement> references = project.MSBuildProjectFile.Items
@@ -100,7 +105,7 @@ namespace ICSharpCode.PackageManagement
 
 		public bool IsInstalled(string packageId)
 		{
-			return FindPackageReference(packageId) != null;
+			return UiThread.Invoke(() => FindPackageReference(packageId) != null);
 		}
 		
 		public void InstallPackage(IPackage package, IPackageRepository sourceRepository, ILogger logger)
@@ -116,13 +121,16 @@ namespace ICSharpCode.PackageManagement
 
 		/// <summary>
 		/// Adds (or replaces) the PackageReference, saves the project and refreshes the project
-		/// browser. Touches the project model, so call it on the UI thread.
+		/// browser. Touches the project model, so it moves itself to the UI thread.
 		/// </summary>
 		public void AddPackageReference(string packageId, string version)
 		{
-			AddOrUpdatePackageReference(packageId, version);
-			projectService.Save(project);
-			projectService.RefreshProjectBrowser();
+			// Any thread: the project model belongs to the UI thread, and the operations run on a pool thread.
+			UiThread.Invoke(() => {
+				AddOrUpdatePackageReference(packageId, version);
+				projectService.Save(project);
+				projectService.RefreshProjectBrowser();
+			});
 		}
 		
 		void AddOrUpdatePackageReference(string packageId, string version)
