@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ICSharpCode.Core;
 using NuGet.Common;
+using NuGet.Frameworks;
 using NuGet.Configuration;
 using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
@@ -25,7 +26,8 @@ namespace ICSharpCode.SharpDevelop.NuGet
 			IReadOnlyList<PackageSource> sources,
 			IReadOnlyList<SdkStylePackageReference> installedPackages,
 			bool includePrerelease,
-			CancellationToken cancellationToken)
+			CancellationToken cancellationToken,
+			NuGetFramework targetFramework = null)
 		{
 			if (sources is null)
 				throw new ArgumentNullException(nameof(sources));
@@ -40,7 +42,7 @@ namespace ICSharpCode.SharpDevelop.NuGet
 				if (!NuGetVersion.TryParse(package.Version, out var currentVersion))
 					continue;
 
-				var update = await GetUpdateAsync(sources, package.Id, currentVersion, includePrerelease, cancellationToken).ConfigureAwait(false);
+				var update = await GetUpdateAsync(sources, package.Id, currentVersion, includePrerelease, targetFramework, cancellationToken).ConfigureAwait(false);
 				if (update is not null)
 					updates.Add(update);
 			}
@@ -50,11 +52,27 @@ namespace ICSharpCode.SharpDevelop.NuGet
 				.ToArray();
 		}
 
+		/// <summary>
+		/// False when the package declares dependency groups and none of them fits <paramref name="targetFramework"/>:
+		/// restoring that version would fail. A package that declares no groups (or an unknown project framework) gives
+		/// nothing to judge by, so it is kept.
+		/// </summary>
+		public static bool SupportsFramework(IPackageSearchMetadata metadata, NuGetFramework targetFramework)
+		{
+			if (targetFramework is null || targetFramework.IsUnsupported)
+				return true;
+			var groups = metadata.DependencySets?.ToList();
+			if (groups is null || groups.Count == 0)
+				return true;
+			return NuGetFrameworkUtility.GetNearest(groups, targetFramework, group => group.TargetFramework) != null;
+		}
+
 		async Task<NuGetPackageUpdateResult> GetUpdateAsync(
 			IReadOnlyList<PackageSource> sources,
 			string packageId,
 			NuGetVersion currentVersion,
 			bool includePrerelease,
+			NuGetFramework targetFramework,
 			CancellationToken cancellationToken)
 		{
 			NuGetVersion latestVersion = null;
@@ -78,6 +96,7 @@ namespace ICSharpCode.SharpDevelop.NuGet
 							.ConfigureAwait(false)).ToList();
 						var sourceLatestMetadata = metadata
 							.Where(item => includePrerelease || !item.Identity.Version.IsPrerelease)
+							.Where(item => SupportsFramework(item, targetFramework))
 							.OrderByDescending(item => item.Identity.Version)
 							.FirstOrDefault();
 
@@ -104,7 +123,8 @@ namespace ICSharpCode.SharpDevelop.NuGet
 				latestVersion.ToNormalizedString(),
 				latestSourceName,
 				latestMetadata?.RequireLicenseAcceptance ?? false,
-				latestMetadata?.LicenseUrl?.ToString());
+				latestMetadata?.LicenseUrl?.ToString(),
+				latestMetadata);
 		}
 	}
 }

@@ -98,8 +98,16 @@ For an SDK-style project the engine is now NuGet.Protocol/NuGet.Packaging for da
   list no files, which the old check read as "solution package", so the uninstall was sent to the solution and did
   nothing. Covered by `AddInTests.InstalledTab_UninstallsAPackageFromAnSdkStyleProject` (project file, restore result and
   tab agree afterwards).
-- **Not done yet:** the Updates tab and updating a package (next), Update All, and the restore after an operation still
-  runs on the UI thread (as install always did), so the dialog is unresponsive for its duration.
+- **Updates and Update All** (done): the Updates tab asks Base's `NuGetPackageUpdateService` for newer versions of the
+  project's PackageReferences (`SdkStyleUpdates`), and Update / Update All rewrite the reference's `Version` in place
+  (`SdkStylePackageReferenceService.AddOrUpdatePackageReference`, which keeps `PrivateAssets` and other metadata and
+  leaves no empty ItemGroup), then restore. Covered by `AddInTests.UpdatesTab_ListsANewerVersion_AndTheRowUpdatesTheSdkStyleProject`
+  and `UpdatesTab_UpdateAllMovesTheSdkStyleProjectToTheNewerVersion`.
+- Updates that do not fit the project's target framework are not offered (`NuGetPackageUpdateService.SupportsFramework`,
+  judged by the dependency groups the package declares; a package with none is kept).
+- **Not verified yet:** updating a Central Package Management package from the Updates tab (`AddOrUpdatePackageReference`
+  writes the `PackageVersion` first, but no test drives it, and multi-TFM projects are not filtered). The restore after an operation still runs on the UI thread (as install always did), so the
+  dialog is unresponsive for its duration.
 - **packages.config projects** keep the legacy engine. NuGet.Client's `NuGetPackageManager` would need a packages.config
   `NuGetProject` adapter for `IProject`; given how rare they are in .NET 10 projects this is left unless it is asked for.
 

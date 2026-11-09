@@ -6543,7 +6543,85 @@ EndGlobal
             Assert.Contains("Include=\"OpenDevelop.TypeProbe\"", csproj);
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => !(await File.ReadAllTextAsync(assetsPath)).Contains(TestPackageId + "/"), TimeSpan.FromSeconds(60)),
                 "The restore after the uninstall still resolves " + TestPackageId);
-            Assert.Equal(new[] { "OpenDevelop.TypeProbe" }, (await ReadTabAsync("installed")).Select(p => p.Id).ToArray());
+            // The tab refreshes after the operation completes, so poll instead of reading once.
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => (await ReadTabAsync("installed")).Select(p => p.Id).SequenceEqual(new[] { "OpenDevelop.TypeProbe" }), TimeSpan.FromSeconds(30)),
+                "The Installed tab did not settle on OpenDevelop.TypeProbe");
+        }
+        finally
+        {
+            Assert.True((await _app.InvokeAsync("od.nuget.close-dialog")).GetProperty("success").GetBoolean());
+        }
+    }
+
+    async Task AssertUpdatesTabUpdatesTypeProbeAsync(string command)
+    {
+        // The feed has OpenDevelop.TypeProbe 1.0.0 and 1.1.0; the project uses 1.0.0. The Updates tab used to be empty
+        // for a project like this (the legacy repository it asked knows no packages).
+        var work = Path.Combine(_projectDir, "update-" + command);
+        var solution = await CreateRestoredSdkSolutionAsync(work, ("OpenDevelop.TypeProbe", "1.0.0"));
+        var csprojPath = Path.Combine(work, "App", "App.csproj");
+        var assetsPath = Path.Combine(work, "App", "obj", "project.assets.json");
+        var openResult = await _app.InvokeAsync("od.open-solution", solution);
+        Assert.True(openResult.GetProperty("success").GetBoolean(), openResult.ToString());
+        await OpenManagePackagesFromProjectNodeAsync("App");
+        try
+        {
+            var updates = await ReadTabAsync("updates");
+            Assert.Equal(new[] { ("OpenDevelop.TypeProbe", "1.1.0") }, updates.Select(p => (p.Id, p.Version)).ToArray());
+
+            var applied = await _app.InvokeAsync("od.nuget.tab-command", "updates", "OpenDevelop.TypeProbe", command);
+            Assert.True(applied.GetProperty("success").GetBoolean(), applied.ToString());
+
+            // The project file, the restore result and both tabs agree.
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => (await File.ReadAllTextAsync(csprojPath)).Contains("Version=\"1.1.0\""), TimeSpan.FromSeconds(60)),
+                "The reference was not moved to 1.1.0: " + await File.ReadAllTextAsync(csprojPath));
+            Assert.DoesNotContain("Version=\"1.0.0\"", await File.ReadAllTextAsync(csprojPath));
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => (await File.ReadAllTextAsync(assetsPath)).Contains("OpenDevelop.TypeProbe/1.1.0"), TimeSpan.FromSeconds(60)),
+                "The restore after the update does not resolve 1.1.0");
+            Assert.Equal(new[] { ("OpenDevelop.TypeProbe", "1.1.0") }, (await ReadTabAsync("installed")).Select(p => (p.Id, p.Version)).ToArray());
+            Assert.Empty(await ReadTabAsync("updates"));
+        }
+        finally
+        {
+            Assert.True((await _app.InvokeAsync("od.nuget.close-dialog")).GetProperty("success").GetBoolean());
+        }
+    }
+
+    [Fact]
+    public Task UpdatesTab_ListsANewerVersion_AndTheRowUpdatesTheSdkStyleProject() => AssertUpdatesTabUpdatesTypeProbeAsync("add");
+
+    [Fact]
+    public Task UpdatesTab_UpdateAllMovesTheSdkStyleProjectToTheNewerVersion() => AssertUpdatesTabUpdatesTypeProbeAsync("update-all");
+
+    [Fact]
+    public async Task UpdatesTab_UpdateAllMovesEveryReferenceOfAnSdkStyleProject()
+    {
+        // The Update All button is only enabled with more than one row, so this is the flow a user can actually reach.
+        var work = Path.Combine(_projectDir, "update-all-two");
+        var solution = await CreateRestoredSdkSolutionAsync(work, (TestPackageId, "1.0.0"), ("OpenDevelop.TypeProbe", "1.0.0"));
+        var csprojPath = Path.Combine(work, "App", "App.csproj");
+        var assetsPath = Path.Combine(work, "App", "obj", "project.assets.json");
+        var openResult = await _app.InvokeAsync("od.open-solution", solution);
+        Assert.True(openResult.GetProperty("success").GetBoolean(), openResult.ToString());
+        await OpenManagePackagesFromProjectNodeAsync("App");
+        try
+        {
+            var updates = await ReadTabAsync("updates");
+            Assert.Equal(new[] { (TestPackageId, "1.1.0"), ("OpenDevelop.TypeProbe", "1.1.0") }, updates.OrderBy(p => p.Id).Select(p => (p.Id, p.Version)).ToArray());
+
+            var applied = await _app.InvokeAsync("od.nuget.tab-command", "updates", TestPackageId, "update-all");
+            Assert.True(applied.GetProperty("success").GetBoolean(), applied.ToString());
+
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                var text = await File.ReadAllTextAsync(csprojPath);
+                return !text.Contains("Version=\"1.0.0\"") && text.Split("Version=\"1.1.0\"").Length == 3;
+            }, TimeSpan.FromSeconds(90)), "Both references should be at 1.1.0: " + await File.ReadAllTextAsync(csprojPath));
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                var assets = await File.ReadAllTextAsync(assetsPath);
+                return assets.Contains(TestPackageId + "/1.1.0") && assets.Contains("OpenDevelop.TypeProbe/1.1.0");
+            }, TimeSpan.FromSeconds(90)), "The restore does not resolve both 1.1.0 packages");
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => (await ReadTabAsync("updates")).Count == 0, TimeSpan.FromSeconds(30)),
+                "The Updates tab still offers updates");
         }
         finally
         {

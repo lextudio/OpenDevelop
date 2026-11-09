@@ -152,6 +152,11 @@ namespace ICSharpCode.PackageManagement
 		
 		public void UpdatePackage(IPackage package, UpdatePackageAction updateAction)
 		{
+			if (sdkStylePackageReferenceService != null) {
+				// Replacing the reference with the new version is what an update of a PackageReference is.
+				sdkStylePackageReferenceService.UpdatePackages(new[] { package }, Logger);
+				return;
+			}
 			packageManager.UpdatePackage(package, updateAction);
 		}
 		
@@ -185,6 +190,10 @@ namespace ICSharpCode.PackageManagement
 		
 		public void UpdatePackages(UpdatePackagesAction updateAction)
 		{
+			if (sdkStylePackageReferenceService != null) {
+				sdkStylePackageReferenceService.UpdatePackages(updateAction.Packages, Logger);
+				return;
+			}
 			packageManager.UpdatePackages(updateAction);
 		}
 		
@@ -197,6 +206,9 @@ namespace ICSharpCode.PackageManagement
 			IEnumerable<IPackage> packages,
 			IUpdatePackageSettings settings)
 		{
+			if (sdkStylePackageReferenceService != null) {
+				return Enumerable.Empty<PackageOperation>();
+			}
 			return packageManager.GetUpdatePackageOperations(packages, settings);
 		}
 		

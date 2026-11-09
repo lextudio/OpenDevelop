@@ -28,6 +28,9 @@ namespace ICSharpCode.PackageManagement
 	{
 		PackageManagementSelectedProjects selectedProjects;
 		UpdatedPackages updatedPackages;
+		// Set when the selected project is an SDK-style one: its updates come from NuGet.Protocol, not the legacy repository.
+		IList<IPackage> sdkStyleInstalledPackages;
+		System.Runtime.Versioning.FrameworkName sdkStyleFramework;
 		ILogger logger;
 		
 		public UpdatedPackagesViewModel(
@@ -78,6 +81,10 @@ namespace ICSharpCode.PackageManagement
 			try {
 				IPackageRepository repository = RegisteredPackageRepositories.ActiveRepository;
 				IQueryable<IPackage> installedPackages = GetInstalledPackages(repository);
+				IPackageManagementProject sdkProject = selectedProjects.HasSingleProjectSelected() ? selectedProjects.GetSingleProjectSelected(repository) : null;
+				bool sdkStyle = sdkProject != null && sdkProject.UsesPackageReferences;
+				sdkStyleInstalledPackages = sdkStyle ? installedPackages.ToList() : null;
+				sdkStyleFramework = sdkStyle ? sdkProject.TargetFramework : null;
 				updatedPackages = new UpdatedPackages(installedPackages, repository, selectedProjects.GetConstraintProvider(repository));
 			} catch (Exception ex) {
 				errorMessage = ex.Message;
@@ -93,6 +100,9 @@ namespace ICSharpCode.PackageManagement
 		{
 			if (updatedPackages == null) {
 				ThrowSavedException();
+			}
+			if (sdkStyleInstalledPackages != null) {
+				return SdkStyleUpdates.Get(sdkStyleInstalledPackages, searchCriteria, IncludePrerelease, sdkStyleFramework).AsQueryable();
 			}
 			// The base view model owns the search box text. UpdatedPackages applies its
 			// own local-package filter before asking the feed for newer versions, so carry

@@ -53,6 +53,15 @@ namespace ICSharpCode.PackageManagement
 			return InstalledSdkPackages.Read(references, packagesFolder);
 		}
 
+		/// <summary>Moves each package to the given version (a changed <c>Version</c>, or the central <c>PackageVersion</c>) and restores once.</summary>
+		public void UpdatePackages(IEnumerable<IPackage> packages, ILogger logger)
+		{
+			foreach (IPackage package in packages) {
+				AddPackageReference(package.Id, package.Version.ToString());
+			}
+			Restore(logger);
+		}
+
 		/// <summary>
 		/// Removes the package's <c>PackageReference</c> items, saves the project, refreshes the project browser and
 		/// restores. Under Central Package Management the <c>PackageVersion</c> entry stays: other projects may use it.
@@ -130,18 +139,25 @@ namespace ICSharpCode.PackageManagement
 			project.PerformUpdateOnProjectFile(() => {
 				ProjectItemElement existing = FindPackageReference(packageId);
 				if (existing != null) {
-					existing.Parent.RemoveChild(existing);
+					// An update changes the version of the reference that is there, in place: replacing the item
+					// would leave an empty ItemGroup behind and drop whatever else the reference carries
+					// (PrivateAssets, IncludeAssets, ...).
+					ProjectMetadataElement versionMetadata = existing.Metadata.FirstOrDefault(metadata => metadata.Name == "Version");
+					if (centralVersionsFile != null) {
+						versionMetadata?.Parent.RemoveChild(versionMetadata); // a Version here would be NU1008
+					} else if (versionMetadata != null) {
+						versionMetadata.Value = version;
+					} else {
+						existing.AddMetadata("Version", version, expressAsAttribute: true);
+					}
+					return;
 				}
 
 				ProjectItemGroupElement itemGroup = FindPackageReferenceItemGroup()
 					?? project.MSBuildProjectFile.AddItemGroup();
-				if (centralVersionsFile != null) {
-					itemGroup.AddItem("PackageReference", packageId);
-				} else {
-					itemGroup.AddItem(
-						"PackageReference",
-						packageId,
-						new [] { new KeyValuePair<string, string>("Version", version) });
+				ProjectItemElement added = itemGroup.AddItem("PackageReference", packageId);
+				if (centralVersionsFile == null) {
+					added.AddMetadata("Version", version, expressAsAttribute: true);
 				}
 			});
 		}

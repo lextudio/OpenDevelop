@@ -12,11 +12,11 @@ using Modern = NuGet.Configuration;
 namespace ICSharpCode.PackageManagement
 {
 	/// <summary>
-	/// The feeds a package's health is asked of: the source the dialog is browsing, or every enabled source when
+	/// The feeds the dialog works with (package health, updates): the source the dialog is browsing, or every enabled source when
 	/// that is the aggregate. They are taken from NuGet's own configuration (<see cref="Modern.PackageSourceProvider"/>)
 	/// rather than rebuilt from the legacy source list, so credentials and the protocol version come along.
 	/// </summary>
-	static class PackageHealthSources
+	static class PackageFeeds
 	{
 		public static IReadOnlyList<Modern.PackageSource> Current()
 		{

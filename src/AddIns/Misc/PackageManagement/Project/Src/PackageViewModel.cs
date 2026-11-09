@@ -146,7 +146,7 @@ namespace ICSharpCode.PackageManagement
 		async Task LoadHealthAsync()
 		{
 			try {
-				var sources = PackageHealthSources.Current();
+				var sources = PackageFeeds.Current();
 				// This runs on the UI thread (a binding asked for HealthText), and the continuation returns to it.
 				NuGetPackageHealth health = await NuGetPackageHealthService.GetAsync(sources, package.Id, package.Version.ToString());
 				healthText = health.Describe();

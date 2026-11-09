@@ -325,6 +325,30 @@
              Properties="Configuration=$(Configuration);PackageOutputPath=$(MSBuildProjectDirectory)/../fixtures/LocalNuGetFeed;RestoreIgnoreFailedSources=true" />
   </Target>
 
+  <!-- OpenDevelop.TestPackage at 1.1.0 as well, so Update All has more than one package to move. -->
+  <Target Name="PackTestPackageUpdateFeedFixture" BeforeTargets="Build"
+          Condition="'$(BuildIntegrationFixtures)' == 'true'"
+          Inputs="../fixtures/LocalNuGetFeed/PackageSource/OpenDevelop.TestPackage.csproj"
+          Outputs="../fixtures/LocalNuGetFeed/OpenDevelop.TestPackage.1.1.0.nupkg">
+    <MSBuild Projects="../fixtures/LocalNuGetFeed/PackageSource/OpenDevelop.TestPackage.csproj"
+             Targets="Restore" Properties="Version=1.1.0;RestoreIgnoreFailedSources=true" />
+    <MSBuild Projects="../fixtures/LocalNuGetFeed/PackageSource/OpenDevelop.TestPackage.csproj"
+             Targets="Pack"
+             Properties="Version=1.1.0;Configuration=$(Configuration);PackageOutputPath=$(MSBuildProjectDirectory)/../fixtures/LocalNuGetFeed;RestoreIgnoreFailedSources=true" />
+  </Target>
+
+  <!-- The same package at a newer version (1.1.0), so the Updates tab has something to offer. -->
+  <Target Name="PackTypeProbeUpdateFeedFixture" BeforeTargets="Build"
+          Condition="'$(BuildIntegrationFixtures)' == 'true'"
+          Inputs="../fixtures/LocalNuGetFeed/TypeProbePackage/OpenDevelop.TypeProbe.csproj;../fixtures/LocalNuGetFeed/TypeProbePackage/ProbeWidget.cs"
+          Outputs="../fixtures/LocalNuGetFeed/OpenDevelop.TypeProbe.1.1.0.nupkg">
+    <MSBuild Projects="../fixtures/LocalNuGetFeed/TypeProbePackage/OpenDevelop.TypeProbe.csproj"
+             Targets="Restore" Properties="Version=1.1.0;RestoreIgnoreFailedSources=true" />
+    <MSBuild Projects="../fixtures/LocalNuGetFeed/TypeProbePackage/OpenDevelop.TypeProbe.csproj"
+             Targets="Pack"
+             Properties="Version=1.1.0;Configuration=$(Configuration);PackageOutputPath=$(MSBuildProjectDirectory)/../fixtures/LocalNuGetFeed;RestoreIgnoreFailedSources=true" />
+  </Target>
+
   <!-- One integration-test process owns one IDE process and drives all three Microsoft hosts.
        Keep this entry point in the test project (rather than a sidecar script) so the same
        fixture, artifacts and xUnit reporting are used in CI and locally. The backend choices

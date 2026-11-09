@@ -209,7 +209,7 @@ namespace ICSharpCode.PackageManagement
 			});
 		}
 
-		[DevFlowAction("od.nuget.tab-command", Description = "Run one row's command of a tab (installed, updates or available): command add (install or update, the row's own add/update button) or remove (uninstall), for the package with the given Id; returns when the command returned, not when its background work finished")]
+		[DevFlowAction("od.nuget.tab-command", Description = "Run one row's command of a tab (installed, updates or available): command add (install or update, the row's own add/update button), remove (uninstall) or update-all (the tab's Update all button; the package Id must still name a row of the tab), for the package with the given Id; returns when the command returned, not when its background work finished")]
 		public static string TabCommand(string tab, string packageId, string command)
 		{
 			var tabViewModel = TabViewModel(tab);
@@ -219,6 +219,10 @@ namespace ICSharpCode.PackageManagement
 			if (package == null)
 				return JsonSerializer.Serialize(new { success = false, error = $"No package '{packageId}' in the {tab} tab" });
 			System.Windows.Input.ICommand row = command == "remove" ? package.RemovePackageCommand : command == "add" ? package.AddPackageCommand : null;
+			if (command == "update-all") {
+				// The tab's own "Update all" button; any row of the tab will do as the target.
+				row = tabViewModel.UpdateAllPackagesCommand;
+			}
 			if (row == null)
 				return JsonSerializer.Serialize(new { success = false, error = "Unknown command '" + command + "'" });
 			if (!row.CanExecute(null))

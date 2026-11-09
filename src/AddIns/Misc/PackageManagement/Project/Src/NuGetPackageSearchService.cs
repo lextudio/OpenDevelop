@@ -46,7 +46,7 @@ namespace ICSharpCode.PackageManagement
 			return results;
 		}
 
-		static NuGetSearchResultPackage ToPackage(IPackageSearchMetadata metadata)
+		internal static NuGetSearchResultPackage ToPackage(IPackageSearchMetadata metadata)
 		{
 			IEnumerable<global::NuGet.PackageDependencySet> dependencySets = Enumerable.Empty<global::NuGet.PackageDependencySet>();
 			try {

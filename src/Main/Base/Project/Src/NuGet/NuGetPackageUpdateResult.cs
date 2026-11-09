@@ -7,5 +7,6 @@ namespace ICSharpCode.SharpDevelop.NuGet
 		string LatestVersion,
 		string SourceName,
 		bool RequireLicenseAcceptance = false,
-		string? LicenseUrl = null);
+		string? LicenseUrl = null,
+		global::NuGet.Protocol.Core.Types.IPackageSearchMetadata? Metadata = null);
 }
