@@ -227,7 +227,7 @@ public sealed class AvalonTextViewLine : ITextViewLine
 
 	public ReadOnlyCollection<object> GetAdornmentTags(object identityTag) => new(Array.Empty<object>());
 
-	// The setters below exist only on the source-built ITextViewLine (externals/vs-editor-api);
+	// The setters below exist only on the fork-built ITextViewLine (lextudio/vs-editor-api package);
 	// they are the layout engine's mutation hooks and were not part of the retired
 	// Microsoft.VisualStudio.Text.UI NuGet contract. This line is a read-only view of AvalonEdit's
 	// VisualLine/TextLine pair, recomputed rather than mutated, so there is nothing to store.

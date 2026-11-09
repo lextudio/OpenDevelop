@@ -186,7 +186,7 @@ public sealed class AvalonTextView : ITextView
 		// High risk / deferred) - nothing to refresh.
 	}
 
-	// The source-built ITextView (externals/vs-editor-api) exposes this lookup; the retired
+	// The fork-built ITextView (lextudio/vs-editor-api package) exposes this lookup; the retired
 	// Microsoft.VisualStudio.Text.UI NuGet contract did not. Adornments remain out of scope
 	// (section 64), so the manager exists only to keep callers that enumerate managers working.
 	public ISpaceReservationManager GetSpaceReservationManager(string name)

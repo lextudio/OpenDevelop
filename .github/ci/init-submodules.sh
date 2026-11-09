@@ -3,8 +3,6 @@
 # Initialises the submodules the build reaches. Every job that compiles calls this, so the list lives in one place.
 #   bash .github/ci/init-submodules.sh
 #
-# src/Libraries/VSEditorCore compiles the Microsoft.VisualStudio.Text.* contracts straight out of externals/vs-editor-api
-# (MIT) instead of taking Microsoft's NuGet packages, so every build that reaches OpenDevelop.VSEditorCompat needs it.
 # The integration test project's ProjectReference closure reaches cps, WPF Toolkit, the standalone WpfDesigner
 # and WinAppVSCE submodules; the coverage and XAML submodules are small and kept in case a build target uses them
 # directly. sharpdbg is deliberately absent: it is a sibling checkout (../sharpdbg), not a submodule, and the
@@ -12,5 +10,5 @@
 set -euo pipefail
 
 git submodule update --init \
-  externals/wpftoolkit externals/xamlstudio externals/vsmac-codecoverage externals/vs-editor-api
+  externals/wpftoolkit externals/xamlstudio externals/vsmac-codecoverage
 git submodule update --init --recursive externals/cps externals/WpfDesigner externals/winappvsce

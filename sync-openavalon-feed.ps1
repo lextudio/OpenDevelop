@@ -91,7 +91,9 @@ $forkPackages = @(
     'ICSharpCode.AvalonEdit.LibreWPF',
     'Dirkster.AvalonDock.Core', 'Dirkster.AvalonDock.LibreWPF', 'Dirkster.AvalonDock.Serializer.Xml',
     # Themes.VS2013 depends on the VS theme package: synchronize the complete restore closure.
-    'Dirkster.AvalonDock.Themes.VS.LibreWPF', 'Dirkster.AvalonDock.Themes.VS2013.LibreWPF'
+    'Dirkster.AvalonDock.Themes.VS.LibreWPF', 'Dirkster.AvalonDock.Themes.VS2013.LibreWPF',
+    # The lextudio/vs-editor-api fork's MIT builds of the VS editor contract assemblies (Microsoft's ids).
+    'Microsoft.VisualStudio.CoreUtility', 'Microsoft.VisualStudio.Text.Data', 'Microsoft.VisualStudio.Text.Logic', 'Microsoft.VisualStudio.Text.UI'
 ) | ForEach-Object { [pscustomobject]@{ Id = $_; Version = Get-CentralPackageVersion (Join-Path $PSScriptRoot 'Directory.Packages.props') $_ } }
 # DevFlow, the in-process automation agent (and CliclickSharp, the pointer helper it ships), is published to the same
 # endpoint, and the GitHub build of 0.3.1 is not the nuget.org one: it ships a native CliclickSharp.arm64.exe next to the

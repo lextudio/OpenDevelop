@@ -2486,9 +2486,10 @@ microsoft/vs-editor-api source repository
 
 Therefore, implementing adapters based on the public source/API design is compatible with an MIT OpenDevelop codebase.
 
-The compatibility layer is compiled from `externals/vs-editor-api` by
-`src/Libraries/VSEditorCore`; it does not reference the
-`Microsoft.VisualStudio.Text.Data`/`.Logic`/`.UI`/`CoreUtility` NuGet packages. Those packages
+The compatibility layer references the lextudio `vs-editor-api` fork's MIT builds of
+`Microsoft.VisualStudio.Text.Data`/`.Logic`/`.UI`/`CoreUtility` (published to GitHub Packages under the same
+ids, version 17.3.198.1, mapped to the lextudio feed only in `NuGet.config`); it does not use Microsoft's NuGet
+packages of those names. Those packages
 are licensed under "MICROSOFT SOFTWARE LICENSE TERMS - MICROSOFT VISUAL STUDIO ADD-ONs and
 EXTENSIONS", which limits use to Visual Studio and forbids combining the assemblies with another
 application for others to use. Shipping them in OpenDevelop was therefore not permitted. The

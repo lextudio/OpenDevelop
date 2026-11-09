@@ -37,10 +37,11 @@ from the exact resolved package graph.
 
 `Microsoft.VisualStudio.CoreUtility`, `Microsoft.VisualStudio.Text.Data`,
 `Microsoft.VisualStudio.Text.Logic` and `Microsoft.VisualStudio.Text.UI` are
-built from the MIT-licensed `microsoft/vs-editor-api` sources in
-`externals/vs-editor-api` (see `src/Libraries/VSEditorCore`), not from
-Microsoft's NuGet packages. The upstream license is copied as
-`SOURCE-LICENSES/vs-editor-api-MIT.txt`.
+built from the MIT-licensed `microsoft/vs-editor-api` sources by the
+`lextudio/vs-editor-api` fork and consumed as the NuGet packages it publishes
+to the lextudio GitHub Packages feed under the same ids (version 17.3.198.1),
+not from Microsoft's NuGet packages. The upstream license is copied from the
+package as `SOURCE-LICENSES/vs-editor-api-MIT.txt`.
 
 ## Microsoft components
 

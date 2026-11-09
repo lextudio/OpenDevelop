@@ -11,9 +11,6 @@
 [submodule "externals/vsmac-codecoverage"]
 	path = externals/vsmac-codecoverage
 	url = https://github.com/lextudio/VSMac-CodeCoverage.git
-[submodule "externals/vs-editor-api"]
-	path = externals/vs-editor-api
-	url = https://github.com/microsoft/vs-editor-api.git
 [submodule "externals/winappvsce"]
 	path = externals/winappvsce
 	url = https://github.com/lextudio/WinAppVSCE.git

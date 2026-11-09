@@ -138,8 +138,15 @@ function Write-DistributionLegalFiles {
     Copy-Item -LiteralPath (Join-Path $repoRoot 'legal/Apache-2.0.txt') -Destination (Join-Path $sourceNotices 'MonoDevelop.AspNetCore-Apache-2.0.txt') -Force
     Copy-Item -LiteralPath (Join-Path $repoRoot 'externals/vsmac-codecoverage/LICENSE') -Destination (Join-Path $sourceNotices 'VSMac-CodeCoverage-MIT.txt') -Force
     Copy-Item -LiteralPath (Join-Path $repoRoot 'externals/WpfDesigner/LICENSE') -Destination (Join-Path $sourceNotices 'WpfDesigner-MIT.txt') -Force
-    Copy-Item -LiteralPath (Join-Path $repoRoot 'externals/vs-editor-api/LICENSE') -Destination (Join-Path $sourceNotices 'vs-editor-api-MIT.txt') -Force
     [xml]$packageVersions = Get-Content -LiteralPath (Join-Path $repoRoot 'Directory.Packages.props') -Raw
+    # The VS editor contract assemblies are the lextudio/vs-editor-api fork's MIT builds; the package carries the
+    # repository's MIT LICENSE at its root. Take it from the restored package, not from a checkout.
+    $vsEditorVersion = @($packageVersions.Project.ItemGroup.PackageVersion | Where-Object { $_.Include -eq 'Microsoft.VisualStudio.Text.Data' })[0].Version
+    $vsEditorLicense = Join-Path (Join-Path (Join-Path (Get-NuGetGlobalPackages) 'microsoft.visualstudio.text.data') $vsEditorVersion) 'LICENSE'
+    if (-not (Test-Path -LiteralPath $vsEditorLicense)) {
+        throw "Microsoft.VisualStudio.Text.Data $vsEditorVersion lacks its LICENSE. Restore the verified package before creating a distribution."
+    }
+    Copy-Item -LiteralPath $vsEditorLicense -Destination (Join-Path $sourceNotices 'vs-editor-api-MIT.txt') -Force
     $ghosttyVersion = [string]$packageVersions.Project.PropertyGroup.LibGhosttyNetVersion
     $ghosttyNotices = Join-Path (Join-Path (Join-Path (Get-NuGetGlobalPackages) 'libghostty.net') $ghosttyVersion) 'THIRD-PARTY-NOTICES'
     if (-not (Test-Path -LiteralPath $ghosttyNotices)) {
