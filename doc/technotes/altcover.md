@@ -21,7 +21,7 @@ The zero-visits bug was never in AltCover - it was in how OpenDevelop drove test
 Unit Testing addin (`src/AddIns/Analysis/UnitTesting/`) used to talk to a **long-lived,
 IDE-session-scoped `vstest.console` process** (`VsTestAdapter`/`VsTestRunAdapter`/
 `VsTestDiscoveryAdapter`) over a persistent socket. AltCover's recorder flushes visits to disk on
-`AppDomain.ProcessExit`/`DomainUnload` (`externals/altcover/AltCover.Recorder/Recorder.fs`) - a
+`AppDomain.ProcessExit`/`DomainUnload` (`AltCover.Recorder/Recorder.fs` in the upstream `SteveGilham/altcover` repository) - a
 one-shot process reliably hits that hook on exit; a long-lived host talked to across many requests
 does not, by design.
 

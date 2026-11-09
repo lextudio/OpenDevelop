@@ -207,8 +207,9 @@ existing central package from the Updates tab, `VersionOverride`, and a project 
 
 ### 7. Housekeeping
 
-- `externals/altcover` stays: integration coverage consumes the `AltCover` NuGet package and
-  `doc/technotes/altcover.md` documents it. Its lack of a project reference does not make it unused.
+- `externals/altcover` is gone (2026-11-09): nothing built it. Coverage uses the official `AltCover` NuGet package
+  (`Directory.Packages.props`) and the official `coverlet.console` tool package (`CodeCoverage.csproj`); neither needs
+  a fork. If an AltCover bug needs a patch, fork `SteveGilham/altcover` again then.
 - `externals/vsmac-codecoverage` and `externals/vs-editor-api` are source-linked but frozen upstream;
   they could be published as LeXtudio GitHub Packages, as sharpdbg was.
 

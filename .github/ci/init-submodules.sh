@@ -12,5 +12,5 @@
 set -euo pipefail
 
 git submodule update --init \
-  externals/wpftoolkit externals/xamlstudio externals/altcover externals/vsmac-codecoverage externals/vs-editor-api
+  externals/wpftoolkit externals/xamlstudio externals/vsmac-codecoverage externals/vs-editor-api
 git submodule update --init --recursive externals/cps externals/WpfDesigner externals/winappvsce

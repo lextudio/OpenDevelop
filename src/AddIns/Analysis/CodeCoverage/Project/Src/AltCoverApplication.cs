@@ -64,7 +64,7 @@ namespace ICSharpCode.CodeCoverage
 	/// DapSession.ResolveDotNetHost() (src/AddIns/Debugger/Debugger.AddIn/Service/Dap/DapSession.cs).
 	///
 	/// NOTE: this class was written and reviewed against AltCover's actual CLI argument-building
-	/// source (externals/altcover/AltCover.Engine/Args.fs) but has NOT been executed end-to-end -
+	/// source (AltCover.Engine/Args.fs in the upstream SteveGilham/altcover repository) but has NOT been executed end-to-end -
 	/// treat the exact argument list as a well-researched first draft, not a verified one, and
 	/// test it for real before relying on it.
 	/// </summary>

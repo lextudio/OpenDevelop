@@ -24,7 +24,7 @@ The audit must be repeated when a project adds or changes a `Compile`, `Page`,
 
 ## Not part of the released product without a separate traced use
 
-`altcover`, `cps`, `wpftoolkit`, and
+`cps`, `wpftoolkit`, and
 `xamlstudio` have repository-level licenses but no direct
 source-link in the application projects found by this audit. They may be build
 or test dependencies. A future payload copy, source link, or bundled binary
