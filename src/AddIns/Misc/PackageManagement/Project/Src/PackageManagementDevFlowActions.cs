@@ -129,6 +129,39 @@ namespace ICSharpCode.PackageManagement
 			return JsonSerializer.Serialize(new { success = true });
 		}
 
+		[DevFlowAction("od.nuget.select-package", Description = "Select the package with the given Id in the Available tab's list of the open Manage NuGet Packages dialog, as a click on its row does, so the details pane shows it")]
+		public static string SelectPackage(string packageId)
+		{
+			var view = currentView;
+			var vm = CurrentViewModel();
+			if (view == null || vm == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No Manage NuGet Packages dialog is open (call od.nuget.open-dialog first)" });
+
+			var package = vm.AvailablePackagesViewModel.PackageViewModels.FirstOrDefault(p => p.Id == packageId);
+			if (package == null)
+				return JsonSerializer.Serialize(new { success = false, error = $"No package '{packageId}' in the current search results" });
+
+			var listBox = FindListBox(view, "allPackagesListBox");
+			if (listBox == null)
+				return JsonSerializer.Serialize(new { success = false, error = "The Available tab's list box was not found" });
+			listBox.SelectedItem = package;
+			return JsonSerializer.Serialize(new { success = true });
+		}
+
+		static System.Windows.Controls.ListBox FindListBox(System.Windows.DependencyObject root, string name)
+		{
+			int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+			for (int i = 0; i < count; i++) {
+				var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+				if (child is System.Windows.Controls.ListBox listBox && listBox.Name == name)
+					return listBox;
+				var found = FindListBox(child, name);
+				if (found != null)
+					return found;
+			}
+			return null;
+		}
+
 		[DevFlowAction("od.nuget.status", Description = "Inspect the Available tab's current state: whether it's still searching, any error, and the result rows (Id/Version/IsAdded) as bound to the real PackageViewModels shown in the list")]
 		public static string Status()
 		{

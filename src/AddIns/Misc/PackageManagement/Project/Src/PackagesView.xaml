@@ -239,6 +239,14 @@
 						</Hyperlink>
 					</TextBlock>
 					<TextBlock
+						automation:AutomationProperties.AutomationId="PackageHealthWarning"
+						Margin="0, 4"
+						TextWrapping="Wrap"
+						FontWeight="Bold"
+						Foreground="#C42B1C"
+						Text="{Binding Path=HealthText}"
+						Visibility="{Binding Path=HasHealthWarning, Converter={StaticResource BoolToVisibility}}"/>
+					<TextBlock
 						Margin="0, 4"
 						TextWrapping="Wrap"
 						Text="{Binding Path=Description}"/>

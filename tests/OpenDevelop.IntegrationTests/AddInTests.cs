@@ -6260,10 +6260,12 @@ EndGlobal
     /// A NuGet.Config that defines only the local test feed (<c>&lt;clear/&gt;</c> hides the user's and the machine's
     /// sources), so a restore in these tests neither needs nor reaches nuget.org.
     /// </summary>
-    void WriteLocalFeedNuGetConfig(string directory)
+    void WriteLocalFeedNuGetConfig(string directory) => WriteNuGetConfigWithOnlyFeed(directory, "LocalTestFeed", _app.LocalNuGetFeedPath);
+
+    static void WriteNuGetConfigWithOnlyFeed(string directory, string name, string value)
     {
         File.WriteAllText(Path.Combine(directory, "NuGet.Config"),
-            "<configuration>\n  <packageSources>\n    <clear />\n    <add key=\"LocalTestFeed\" value=\"" + _app.LocalNuGetFeedPath + "\" />\n  </packageSources>\n</configuration>\n");
+            "<configuration>\n  <packageSources>\n    <clear />\n    <add key=\"" + name + "\" value=\"" + value + "\" />\n  </packageSources>\n</configuration>\n");
     }
 
     [Fact]
@@ -6363,6 +6365,68 @@ EndGlobal
                     Assert.True(closed.GetProperty("success").GetBoolean(), closed.ToString());
                 }
             }
+        }
+    }
+
+    [Fact]
+    public async Task DetailsPane_WarnsAboutADeprecatedAndVulnerablePackage_AndOnlyAboutThat()
+    {
+        // A local folder feed carries neither deprecation nor vulnerability data, so the feed is a small in-process
+        // NuGet v3 server. The real client reads the registration of the SELECTED package's version; the warning
+        // must appear in the details pane for the flagged package and stay away for a healthy one.
+        using var feed = new FakeNuGetV3Feed();
+        feed.AddPackage("Old.Pack", "1.0.0",
+            ",\"deprecation\":{\"message\":\"Use Other.Pack\",\"reasons\":[\"Legacy\"],\"alternatePackage\":{\"id\":\"Other.Pack\",\"range\":\"[2.0.0, )\"}}," +
+            "\"vulnerabilities\":[{\"advisoryUrl\":\"https://github.com/advisories/GHSA-aaaa\",\"severity\":\"3\"}]");
+        feed.AddPackage("Fine.Pack", "1.0.0");
+        WriteNuGetConfigWithOnlyFeed(_projectDir, "FakeFeed", feed.IndexUrl);
+
+        var solutionPath = Path.Combine(_projectDir, "NuGetFixture.slnx");
+        var openResult = await _app.InvokeAsync("od.open-solution", solutionPath);
+        Assert.True(openResult.GetProperty("success").GetBoolean(), $"Failed to open {solutionPath}");
+        var openDialog = await _app.InvokeAsync("od.nuget.open-dialog");
+        Assert.True(openDialog.GetProperty("success").GetBoolean(), openDialog.ToString());
+        try
+        {
+            async Task<string?> SelectAndReadWarningAsync(string id)
+            {
+                Assert.True((await _app.InvokeAsync("od.nuget.set-search-text", id)).GetProperty("success").GetBoolean());
+                Assert.True((await _app.InvokeAsync("od.nuget.search")).GetProperty("success").GetBoolean());
+                JsonElement status = default;
+                var listed = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                    status = await _app.InvokeAsync("od.nuget.status");
+                    return !status.GetProperty("isReadingPackages").GetBoolean()
+                        && status.GetProperty("packages").EnumerateArray().Any(p => p.GetProperty("id").GetString() == id);
+                }, TimeSpan.FromSeconds(60));
+                Assert.True(listed, $"'{id}' was not listed by the fake feed: {status}");
+                var selected = await _app.InvokeAsync("od.nuget.select-package", id);
+                Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+
+                string? warning = null;
+                await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                    warning = FlattenElements(await _app.GetUITreeAsync())
+                        .Where(e => e.TryGetProperty("automationId", out var a) && a.GetString() == "PackageHealthWarning"
+                            && e.TryGetProperty("isVisible", out var v) && v.GetBoolean())
+                        .Select(e => e.TryGetProperty("text", out var t) ? t.GetString() : null)
+                        .FirstOrDefault(text => !string.IsNullOrEmpty(text));
+                    return warning != null;
+                }, TimeSpan.FromSeconds(15));
+                return warning;
+            }
+
+            var flagged = await SelectAndReadWarningAsync("Old.Pack");
+            Assert.NotNull(flagged);
+            Assert.Contains("Deprecated (Legacy): Use Other.Pack", flagged);
+            Assert.Contains("Use instead: Other.Pack", flagged);
+            Assert.Contains("Known vulnerability, Critical severity: https://github.com/advisories/GHSA-aaaa", flagged);
+
+            // The healthy package must not inherit the previous one's warning.
+            Assert.Null(await SelectAndReadWarningAsync("Fine.Pack"));
+        }
+        finally
+        {
+            var closed = await _app.InvokeAsync("od.nuget.close-dialog");
+            Assert.True(closed.GetProperty("success").GetBoolean(), closed.ToString());
         }
     }
 

@@ -17,6 +17,8 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using ICSharpCode.SharpDevelop.NuGet;
+using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Input;
@@ -116,6 +118,45 @@ namespace ICSharpCode.PackageManagement
 			get { return package.ReportAbuseUrl; }
 		}
 		
+		// Deprecation and known vulnerabilities of THIS version, asked of the package's feed (NuGet.Protocol's
+		// metadata resource). Loaded the first time the details pane binds to HealthText, that is for the
+		// selected package only, so browsing a long list costs no extra request per row.
+		string healthText = string.Empty;
+		bool healthRequested;
+
+		public string HealthText {
+			get {
+				EnsureHealthRequested();
+				return healthText;
+			}
+		}
+
+		public bool HasHealthWarning {
+			get { return healthText.Length > 0; }
+		}
+
+		void EnsureHealthRequested()
+		{
+			if (healthRequested)
+				return;
+			healthRequested = true;
+			_ = LoadHealthAsync();
+		}
+
+		async Task LoadHealthAsync()
+		{
+			try {
+				var sources = PackageHealthSources.Current();
+				// This runs on the UI thread (a binding asked for HealthText), and the continuation returns to it.
+				NuGetPackageHealth health = await NuGetPackageHealthService.GetAsync(sources, package.Id, package.Version.ToString());
+				healthText = health.Describe();
+				OnPropertyChanged(model => model.HealthText);
+				OnPropertyChanged(model => model.HasHealthWarning);
+			} catch (Exception ex) {
+				ICSharpCode.Core.LoggingService.Debug("Package health lookup failed for " + package.Id + ": " + ex.Message);
+			}
+		}
+
 		public bool IsAdded {
 			get {
 				if (selectedProjects.HasSingleProjectSelected()) {

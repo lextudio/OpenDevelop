@@ -89,13 +89,28 @@ From reading the code, not measured end to end:
 
 Audited 2026-11-08 by searching `src/AddIns/Misc/PackageManagement` and `src/Main/Base/Project/Src/NuGet`
 (an earlier version of this note counted keyword hits, which were only the repository's own build
-pins, not features). None of these exist in the package manager:
+pins, not features). Vulnerability and deprecation warnings did not exist then and do now (below). None of these exist:
 
-- Vulnerability and deprecation warnings in the package list or details.
 - A transitive-dependency view (the dependency groups in package details are the only dependency data).
 - A Consolidate view and package source mapping.
 - Central Package Management awareness beyond installing (below): the Installed and Updates tabs do not
   read versions from `Directory.Packages.props`; not examined, so unknown whether they show the right version.
+
+**Deprecation and vulnerability warnings in the details pane (done 2026-11-08).** Selecting a package shows, in
+bold red above its description, what the package's feed says about that version: deprecated (with NuGet's reasons,
+the author's message and the recommended alternative) and known vulnerabilities (severity and advisory link). The
+data is NuGet.Protocol's own (`PackageMetadataResource`, i.e. the registration data Visual Studio and
+`dotnet list package --vulnerable` read), fetched by `NuGetPackageHealthService` the first time the details pane
+binds `PackageViewModel.HealthText`, so only the selected package costs a request. The feeds asked are the one the
+dialog is browsing (all enabled ones for the aggregate), taken from NuGet's configuration so credentials come
+along. A feed that carries no such data (a local folder) or is down shows nothing: that is not a finding.
+Covered by `NuGetPackageHealthServiceTests` (an in-process v3 feed, so NuGet.Protocol's own parsing is under test)
+and `AddInTests.DetailsPane_WarnsAboutADeprecatedAndVulnerablePackage_AndOnlyAboutThat` (the real dialog
+against `FakeNuGetV3Feed`: the flagged package shows the warning in the UI tree, a healthy one does not). Limits:
+the details pane only (no marker on the list rows, which would cost one request per row); the Available tab is
+what the integration test drives (the Installed and Updates tabs use the same view model and template, not
+exercised); the version is the package's own (a floating or ranged reference is not looked up); nothing is
+checked automatically at install or build time (`dotnet restore` already reports NU1901-NU1904 through NuGetAudit).
 
 **Central Package Management install (fixed).** In a project that sets `ManagePackageVersionsCentrally`,
 NuGet rejects a `Version` on a `PackageReference` (NU1008, reproduced with `dotnet restore`). The SDK-style
