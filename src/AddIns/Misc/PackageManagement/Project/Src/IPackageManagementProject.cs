@@ -36,6 +36,8 @@ namespace ICSharpCode.PackageManagement
 		string Name { get; }
 		/// <summary>True for an SDK-style project, whose packages are PackageReference items (every package is then a project package, and the packages.config engine does not apply).</summary>
 		bool UsesPackageReferences { get; }
+		/// <summary>The target frameworks of an SDK-style project (<c>TargetFramework</c> or each of <c>TargetFrameworks</c>); empty when unknown.</summary>
+		IReadOnlyList<NuGet.Frameworks.NuGetFramework> TargetFrameworks { get; }
 		FrameworkName TargetFramework { get; }
 		ILogger Logger { get; set; }
 		IPackageRepository SourceRepository { get; }

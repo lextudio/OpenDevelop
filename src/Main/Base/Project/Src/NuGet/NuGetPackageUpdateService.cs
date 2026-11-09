@@ -27,7 +27,7 @@ namespace ICSharpCode.SharpDevelop.NuGet
 			IReadOnlyList<SdkStylePackageReference> installedPackages,
 			bool includePrerelease,
 			CancellationToken cancellationToken,
-			NuGetFramework targetFramework = null)
+			IReadOnlyList<NuGetFramework> targetFrameworks = null)
 		{
 			if (sources is null)
 				throw new ArgumentNullException(nameof(sources));
@@ -42,7 +42,7 @@ namespace ICSharpCode.SharpDevelop.NuGet
 				if (!NuGetVersion.TryParse(package.Version, out var currentVersion))
 					continue;
 
-				var update = await GetUpdateAsync(sources, package.Id, currentVersion, includePrerelease, targetFramework, cancellationToken).ConfigureAwait(false);
+				var update = await GetUpdateAsync(sources, package.Id, currentVersion, includePrerelease, targetFrameworks, cancellationToken).ConfigureAwait(false);
 				if (update is not null)
 					updates.Add(update);
 			}
@@ -57,6 +57,12 @@ namespace ICSharpCode.SharpDevelop.NuGet
 		/// restoring that version would fail. A package that declares no groups (or an unknown project framework) gives
 		/// nothing to judge by, so it is kept.
 		/// </summary>
+		/// <summary>All of a multi-targeting project's frameworks must be served; no frameworks (unknown) keeps the package.</summary>
+		public static bool SupportsFrameworks(IPackageSearchMetadata metadata, IReadOnlyList<NuGetFramework> targetFrameworks)
+		{
+			return targetFrameworks is null || targetFrameworks.All(framework => SupportsFramework(metadata, framework));
+		}
+
 		public static bool SupportsFramework(IPackageSearchMetadata metadata, NuGetFramework targetFramework)
 		{
 			if (targetFramework is null || targetFramework.IsUnsupported)
@@ -72,7 +78,7 @@ namespace ICSharpCode.SharpDevelop.NuGet
 			string packageId,
 			NuGetVersion currentVersion,
 			bool includePrerelease,
-			NuGetFramework targetFramework,
+			IReadOnlyList<NuGetFramework> targetFrameworks,
 			CancellationToken cancellationToken)
 		{
 			NuGetVersion latestVersion = null;
@@ -96,7 +102,7 @@ namespace ICSharpCode.SharpDevelop.NuGet
 							.ConfigureAwait(false)).ToList();
 						var sourceLatestMetadata = metadata
 							.Where(item => includePrerelease || !item.Identity.Version.IsPrerelease)
-							.Where(item => SupportsFramework(item, targetFramework))
+							.Where(item => SupportsFrameworks(item, targetFrameworks))
 							.OrderByDescending(item => item.Identity.Version)
 							.FirstOrDefault();
 

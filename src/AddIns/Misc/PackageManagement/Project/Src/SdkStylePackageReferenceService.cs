@@ -188,10 +188,28 @@ namespace ICSharpCode.PackageManagement
 		}
 		
 		/// <summary>
-		/// Runs <c>dotnet restore</c> for the project and waits for it, so call it off the UI thread.
-		/// Returns null on success, otherwise why it failed (also sent to <paramref name="logger"/> when given).
+		/// Runs <c>dotnet restore</c> for the project and returns when it is done: null on success, otherwise why it
+		/// failed (also sent to <paramref name="logger"/> when given). The process runs on a pool thread; when called on
+		/// the UI thread the dispatcher keeps pumping meanwhile, so the dialog repaints and stays responsive instead of
+		/// freezing for the length of the restore (the dialog's commands are synchronous, so the call itself still
+		/// returns only when the restore has finished).
 		/// </summary>
 		public string Restore(ILogger logger)
+		{
+			System.Windows.Threading.Dispatcher dispatcher = System.Windows.Application.Current?.Dispatcher;
+			if (dispatcher == null || !dispatcher.CheckAccess()) {
+				return RunRestore(logger);
+			}
+			var frame = new System.Windows.Threading.DispatcherFrame();
+			System.Threading.Tasks.Task<string> restore = System.Threading.Tasks.Task.Run(() => RunRestore(logger));
+			restore.ContinueWith(_ => frame.Continue = false, System.Threading.Tasks.TaskScheduler.Default);
+			if (!restore.IsCompleted) {
+				System.Windows.Threading.Dispatcher.PushFrame(frame);
+			}
+			return restore.GetAwaiter().GetResult();
+		}
+
+		string RunRestore(ILogger logger)
 		{
 			try {
 				var startInfo = new ProcessStartInfo("dotnet") {

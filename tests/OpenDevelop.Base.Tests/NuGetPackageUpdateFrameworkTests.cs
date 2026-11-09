@@ -37,4 +37,13 @@ public sealed class NuGetPackageUpdateFrameworkTests
 	[Fact]
 	public void SupportsFramework_UnknownProjectFramework_KeepsThePackage()
 		=> Assert.True(NuGetPackageUpdateService.SupportsFramework(Metadata("net48"), null));
+
+	[Fact]
+	public void SupportsFrameworks_MultiTargeting_RequiresEveryFramework()
+	{
+		var frameworks = new[] { Net8, NuGetFramework.Parse("net48") };
+		Assert.True(NuGetPackageUpdateService.SupportsFrameworks(Metadata("netstandard2.0"), frameworks));
+		Assert.False(NuGetPackageUpdateService.SupportsFrameworks(Metadata("net8.0"), frameworks));
+		Assert.True(NuGetPackageUpdateService.SupportsFrameworks(Metadata("net48"), null));
+	}
 }

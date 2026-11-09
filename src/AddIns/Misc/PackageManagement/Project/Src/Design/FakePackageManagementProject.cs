@@ -28,6 +28,8 @@ namespace ICSharpCode.PackageManagement.Design
 {
 	public class FakePackageManagementProject : IPackageManagementProject
 	{
+		public IReadOnlyList<NuGet.Frameworks.NuGetFramework> TargetFrameworks { get; set; } = new NuGet.Frameworks.NuGetFramework[0];
+
 		public bool UsesPackageReferences { get; set; }
 
 		public FakePackageManagementProject()

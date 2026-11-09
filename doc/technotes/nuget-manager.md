@@ -103,13 +103,21 @@ For an SDK-style project the engine is now NuGet.Protocol/NuGet.Packaging for da
   (`SdkStylePackageReferenceService.AddOrUpdatePackageReference`, which keeps `PrivateAssets` and other metadata and
   leaves no empty ItemGroup), then restore. Covered by `AddInTests.UpdatesTab_ListsANewerVersion_AndTheRowUpdatesTheSdkStyleProject`
   and `UpdatesTab_UpdateAllMovesTheSdkStyleProjectToTheNewerVersion`.
-- Updates that do not fit the project's target framework are not offered (`NuGetPackageUpdateService.SupportsFramework`,
-  judged by the dependency groups the package declares; a package with none is kept).
-- **Not verified yet:** updating a Central Package Management package from the Updates tab (`AddOrUpdatePackageReference`
-  writes the `PackageVersion` first, but no test drives it, and multi-TFM projects are not filtered). The restore after an operation still runs on the UI thread (as install always did), so the
-  dialog is unresponsive for its duration.
-- **packages.config projects** keep the legacy engine. NuGet.Client's `NuGetPackageManager` would need a packages.config
-  `NuGetProject` adapter for `IProject`; given how rare they are in .NET 10 projects this is left unless it is asked for.
+- Updates that do not fit the project's target framework are not offered (`NuGetPackageUpdateService.SupportsFrameworks`,
+  judged by the dependency groups the package declares; a package with none is kept). A multi-targeting project
+  (`TargetFrameworks`) needs a package that serves every one of its frameworks. Unit tests:
+  `NuGetPackageUpdateFrameworkTests`.
+- **Central Package Management (done).** An update of a centrally managed package changes the `PackageVersion` in
+  `Directory.Packages.props` and leaves the reference without a `Version` (NU1008); covered by
+  `AddInTests.UpdatesTab_UpdatesACentrallyManagedPackageInDirectoryPackagesProps`.
+- **Restore no longer freezes the dialog.** `SdkStylePackageReferenceService.Restore` runs `dotnet restore` on a pool
+  thread and, when called on the UI thread, pumps the dispatcher (a `DispatcherFrame`) until it ends, so the dialog keeps
+  painting. The dialog's commands are still synchronous: they return when the restore has finished, so a second click
+  during a restore is possible; making the commands themselves asynchronous is the remaining step.
+- **packages.config is not supported any more.** Installing, uninstalling or updating in such a project throws
+  "...uses packages.config, which is no longer supported. Migrate it to PackageReference..." (shown in the dialog's message
+  bar) instead of running the legacy engine. Not covered by an integration test: a legacy-format project does not
+  evaluate in the macOS test host (`PackageManagementProject` was given no project), so the check is by inspection only.
 
 ### 5. Features the package manager does not have
 

@@ -6477,13 +6477,15 @@ EndGlobal
     }
 
     /// <summary>Opens the Manage Packages dialog for <paramref name="solutionPath"/>, reads one tab and returns its rows (id, version).</summary>
-    async Task<List<(string Id, string Version, string Description)>> ReadTabAsync(string tab)
+    async Task<List<(string Id, string Version, string Description)>> ReadTabAsync(string tab, bool expectRows = false)
     {
         Assert.True((await _app.InvokeAsync("od.nuget.tab-read", tab)).GetProperty("success").GetBoolean());
         JsonElement status = default;
         var done = await OpenDevelopAppFixture.PollUntilAsync(async () => {
             status = await _app.InvokeAsync("od.nuget.tab-status", tab);
-            return status.GetProperty("open").GetBoolean() && !status.GetProperty("isReadingPackages").GetBoolean();
+            // isReadingPackages can still be false right after tab-read starts, so a caller that expects rows waits for them.
+            return status.GetProperty("open").GetBoolean() && !status.GetProperty("isReadingPackages").GetBoolean()
+                && (!expectRows || status.GetProperty("packages").GetArrayLength() > 0);
         }, TimeSpan.FromSeconds(60));
         Assert.True(done, $"The {tab} tab never finished reading: {status}");
         Assert.False(status.GetProperty("hasError").GetBoolean(), status.ToString());
@@ -6566,7 +6568,7 @@ EndGlobal
         await OpenManagePackagesFromProjectNodeAsync("App");
         try
         {
-            var updates = await ReadTabAsync("updates");
+            var updates = await ReadTabAsync("updates", expectRows: true);
             Assert.Equal(new[] { ("OpenDevelop.TypeProbe", "1.1.0") }, updates.Select(p => (p.Id, p.Version)).ToArray());
 
             var applied = await _app.InvokeAsync("od.nuget.tab-command", "updates", "OpenDevelop.TypeProbe", command);
@@ -6606,7 +6608,7 @@ EndGlobal
         await OpenManagePackagesFromProjectNodeAsync("App");
         try
         {
-            var updates = await ReadTabAsync("updates");
+            var updates = await ReadTabAsync("updates", expectRows: true);
             Assert.Equal(new[] { (TestPackageId, "1.1.0"), ("OpenDevelop.TypeProbe", "1.1.0") }, updates.OrderBy(p => p.Id).Select(p => (p.Id, p.Version)).ToArray());
 
             var applied = await _app.InvokeAsync("od.nuget.tab-command", "updates", TestPackageId, "update-all");
@@ -6622,6 +6624,53 @@ EndGlobal
             }, TimeSpan.FromSeconds(90)), "The restore does not resolve both 1.1.0 packages");
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => (await ReadTabAsync("updates")).Count == 0, TimeSpan.FromSeconds(30)),
                 "The Updates tab still offers updates");
+        }
+        finally
+        {
+            Assert.True((await _app.InvokeAsync("od.nuget.close-dialog")).GetProperty("success").GetBoolean());
+        }
+    }
+
+    [Fact]
+    public async Task UpdatesTab_UpdatesACentrallyManagedPackageInDirectoryPackagesProps()
+    {
+        // Under Central Package Management the version lives in Directory.Packages.props, and a Version on the
+        // PackageReference would be NU1008: the update must change the PackageVersion and leave the reference bare.
+        var work = Path.Combine(_projectDir, "update-central");
+        Directory.CreateDirectory(Path.Combine(work, "App"));
+        WriteLocalFeedNuGetConfig(work);
+        var propsPath = Path.Combine(work, "Directory.Packages.props");
+        await File.WriteAllTextAsync(propsPath,
+            "<Project>\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageVersion Include=\"OpenDevelop.TypeProbe\" Version=\"1.0.0\" />\n  </ItemGroup>\n</Project>\n");
+        var csprojPath = Path.Combine(work, "App", "App.csproj");
+        await File.WriteAllTextAsync(csprojPath,
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\"OpenDevelop.TypeProbe\" />\n  </ItemGroup>\n</Project>\n");
+        await File.WriteAllTextAsync(Path.Combine(work, "App", "Program.cs"), "class Program { static void Main() { } }\n");
+        await File.WriteAllTextAsync(Path.Combine(work, "Work.slnx"), "<Solution>\n  <Project Path=\"App/App.csproj\" />\n</Solution>\n");
+        var restore = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("dotnet")
+        {
+            ArgumentList = { "restore", csprojPath },
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+        })!;
+        var restoreOutput = await restore.StandardOutput.ReadToEndAsync();
+        Assert.True(restore.WaitForExit(120_000) && restore.ExitCode == 0, "dotnet restore failed: " + restoreOutput);
+        var assetsPath = Path.Combine(work, "App", "obj", "project.assets.json");
+
+        var openResult = await _app.InvokeAsync("od.open-solution", Path.Combine(work, "Work.slnx"));
+        Assert.True(openResult.GetProperty("success").GetBoolean(), openResult.ToString());
+        await OpenManagePackagesFromProjectNodeAsync("App");
+        try
+        {
+            Assert.Equal(new[] { ("OpenDevelop.TypeProbe", "1.1.0") }, (await ReadTabAsync("updates", expectRows: true)).Select(p => (p.Id, p.Version)).ToArray());
+            var applied = await _app.InvokeAsync("od.nuget.tab-command", "updates", "OpenDevelop.TypeProbe", "add");
+            Assert.True(applied.GetProperty("success").GetBoolean(), applied.ToString());
+
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => (await File.ReadAllTextAsync(propsPath)).Contains("Version=\"1.1.0\""), TimeSpan.FromSeconds(60)),
+                "PackageVersion was not moved: " + await File.ReadAllTextAsync(propsPath));
+            Assert.DoesNotContain("Version=", await File.ReadAllTextAsync(csprojPath));
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => (await File.ReadAllTextAsync(assetsPath)).Contains("OpenDevelop.TypeProbe/1.1.0"), TimeSpan.FromSeconds(60)),
+                "The restore does not resolve 1.1.0");
         }
         finally
         {

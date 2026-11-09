@@ -21,7 +21,7 @@ namespace ICSharpCode.PackageManagement
 	static class SdkStyleUpdates
 	{
 		public static IList<NuGet.IPackage> Get(
-			IEnumerable<NuGet.IPackage> installed, string? searchTerms, bool includePrerelease, System.Runtime.Versioning.FrameworkName? projectFramework = null, CancellationToken cancellationToken = default)
+			IEnumerable<NuGet.IPackage> installed, string? searchTerms, bool includePrerelease, IReadOnlyList<NuGetFramework>? projectFrameworks = null, CancellationToken cancellationToken = default)
 		{
 			var references = installed
 				.Where(package => string.IsNullOrWhiteSpace(searchTerms)
@@ -29,10 +29,9 @@ namespace ICSharpCode.PackageManagement
 					|| (package.Title ?? string.Empty).Contains(searchTerms, StringComparison.OrdinalIgnoreCase))
 				.Select(package => new SdkStylePackageReference(package.Id, package.Version.ToString()))
 				.ToList();
-			var framework = projectFramework == null ? null : NuGetFramework.ParseFrameworkName(projectFramework.ToString(), DefaultFrameworkNameProvider.Instance);
 			// Called from the tab's background task, so waiting here blocks no UI thread.
 			var updates = new NuGetPackageUpdateService()
-				.GetUpdatesAsync(PackageFeeds.Current(), references, includePrerelease, cancellationToken, framework)
+				.GetUpdatesAsync(PackageFeeds.Current(), references, includePrerelease, cancellationToken, projectFrameworks)
 				.GetAwaiter().GetResult();
 			return updates
 				.Where(update => update.Metadata != null)

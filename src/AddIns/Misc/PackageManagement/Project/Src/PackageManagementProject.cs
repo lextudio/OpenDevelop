@@ -44,7 +44,6 @@ namespace ICSharpCode.PackageManagement
 		{
 			SourceRepository = sourceRepository;
 			msbuildProject = project;
-			targetFramework = new ProjectTargetFramework(project);
 			if (project.IsSdkStyleProject) {
 				sdkStylePackageReferenceService = new SdkStylePackageReferenceService(project);
 			}
@@ -58,12 +57,27 @@ namespace ICSharpCode.PackageManagement
 			get { return sdkStylePackageReferenceService != null; }
 		}
 
+		public IReadOnlyList<NuGet.Frameworks.NuGetFramework> TargetFrameworks {
+			get {
+				return ProjectTargetFrameworks.Parse(
+					msbuildProject.GetEvaluatedProperty("TargetFrameworks"),
+					msbuildProject.GetEvaluatedProperty("TargetFramework"));
+			}
+		}
+
+		/// <summary>packages.config projects are no longer supported: the legacy engine is gone from every operation that changes packages.</summary>
+		static Exception PackagesConfigNotSupported()
+		{
+			return new NotSupportedException("Packages cannot be changed in this project because it uses packages.config, which is no longer supported. Migrate it to PackageReference (right-click the packages.config file > Migrate packages.config to PackageReference), then try again.");
+		}
+
 		public string Name {
 			get { return msbuildProject.Name; }
 		}
 		
 		public FrameworkName TargetFramework {
-			get { return targetFramework.TargetFrameworkName; }
+			// Evaluated on demand: a project MSBuild cannot evaluate must still open in the dialog (to say it is unsupported).
+			get { return (targetFramework ??= new ProjectTargetFramework(msbuildProject)).TargetFrameworkName; }
 		}
 		
 		public IPackageRepository SourceRepository { get; private set; }
@@ -129,7 +143,7 @@ namespace ICSharpCode.PackageManagement
 			if (sdkStylePackageReferenceService != null) {
 				return Enumerable.Empty<PackageOperation>();
 			}
-			return packageManager.GetInstallPackageOperations(package, installAction);
+			throw PackagesConfigNotSupported();
 		}
 		
 		public void InstallPackage(IPackage package, InstallPackageAction installAction)
@@ -138,7 +152,7 @@ namespace ICSharpCode.PackageManagement
 				sdkStylePackageReferenceService.InstallPackage(package, SourceRepository, Logger);
 				return;
 			}
-			packageManager.InstallPackage(package, installAction);
+			throw PackagesConfigNotSupported();
 		}
 		
 		public void UninstallPackage(IPackage package, UninstallPackageAction uninstallAction)
@@ -147,7 +161,7 @@ namespace ICSharpCode.PackageManagement
 				sdkStylePackageReferenceService.UninstallPackage(package.Id, Logger);
 				return;
 			}
-			packageManager.UninstallPackage(package, uninstallAction);
+			throw PackagesConfigNotSupported();
 		}
 		
 		public void UpdatePackage(IPackage package, UpdatePackageAction updateAction)
@@ -157,7 +171,7 @@ namespace ICSharpCode.PackageManagement
 				sdkStylePackageReferenceService.UpdatePackages(new[] { package }, Logger);
 				return;
 			}
-			packageManager.UpdatePackage(package, updateAction);
+			throw PackagesConfigNotSupported();
 		}
 		
 		public InstallPackageAction CreateInstallPackageAction()
@@ -194,7 +208,7 @@ namespace ICSharpCode.PackageManagement
 				sdkStylePackageReferenceService.UpdatePackages(updateAction.Packages, Logger);
 				return;
 			}
-			packageManager.UpdatePackages(updateAction);
+			throw PackagesConfigNotSupported();
 		}
 		
 		public UpdatePackagesAction CreateUpdatePackagesAction()
@@ -209,22 +223,33 @@ namespace ICSharpCode.PackageManagement
 			if (sdkStylePackageReferenceService != null) {
 				return Enumerable.Empty<PackageOperation>();
 			}
-			return packageManager.GetUpdatePackageOperations(packages, settings);
+			throw PackagesConfigNotSupported();
 		}
 		
 		public void RunPackageOperations(IEnumerable<PackageOperation> operations)
 		{
-			packageManager.RunPackageOperations(operations);
+			if (sdkStylePackageReferenceService != null) {
+				return; // a PackageReference project has no package operations: restore resolves them
+			}
+			throw PackagesConfigNotSupported();
 		}
 		
 		public bool HasOlderPackageInstalled(IPackage package)
 		{
+			if (sdkStylePackageReferenceService != null) {
+				return GetPackages().Any(installed => string.Equals(installed.Id, package.Id, StringComparison.OrdinalIgnoreCase)
+					&& installed.Version < package.Version);
+			}
 			return projectManager.HasOlderPackageInstalled(package);
 		}
 		
 		public void UpdatePackageReference(IPackage package, IUpdatePackageSettings settings)
 		{
-			packageManager.UpdatePackageReference(package, settings);
+			if (sdkStylePackageReferenceService != null) {
+				sdkStylePackageReferenceService.UpdatePackages(new[] { package }, Logger);
+				return;
+			}
+			throw PackagesConfigNotSupported();
 		}
 		
 		public IPackageConstraintProvider ConstraintProvider {
