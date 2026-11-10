@@ -301,9 +301,23 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				popupToolTip.HorizontalOffset = popupPosition.X;
 				popupToolTip.VerticalOffset = popupPosition.Y;
 				popupToolTip.StaysOpen = true;  // We will close it ourselves
-				
+				// The popup is not in any visual tree. Microsoft WPF opens an ownerless popup
+				// window, but LibreWPF's portable popup host needs an owner and finds it through the
+				// placement target. Absolute placement keeps HorizontalOffset/VerticalOffset as the
+				// screen position computed above, so naming the target does not move the popup.
+				popupToolTip.PlacementTarget = this;
+				popupToolTip.Placement = PlacementMode.Absolute;
+
 				e.Handled = true;
-				popupToolTip.IsOpen = true;
+				try {
+					popupToolTip.IsOpen = true;
+				} catch (Exception ex) when (ex is PlatformNotSupportedException || ex is InvalidOperationException) {
+					// A tooltip that cannot be shown must not take the editor down with it.
+					ICSharpCode.Core.LoggingService.Warn("IconBarMargin: could not open the bookmark popup: " + ex);
+					popupToolTip.Closed -= ToolTipClosed;
+					popupToolTip = null;
+					return;
+				}
 				distanceToPopupLimit = double.PositiveInfinity; // reset limit; we'll re-calculate it on the next mouse movement
 			} else if (content != null) {
 				if (toolTip == null) {
@@ -359,7 +373,14 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		
 		double GetDistanceToPopup(MouseEventArgs e)
 		{
-			Point p = popupToolTip.Child.PointFromScreen(PointToScreen(e.GetPosition(this)));
+			// The popup can close by itself (or never have been shown) while popupToolTip is still
+			// set; its child then has no PresentationSource and PointFromScreen throws. A popup that
+			// is not on screen is infinitely far away: the caller just closes it.
+			UIElement child = popupToolTip.Child;
+			if (!popupToolTip.IsOpen || child == null
+			    || PresentationSource.FromVisual(child) == null || PresentationSource.FromVisual(this) == null)
+				return double.PositiveInfinity;
+			Point p = child.PointFromScreen(PointToScreen(e.GetPosition(this)));
 			Size size = popupToolTip.Child.RenderSize;
 			double x = 0;
 			if (p.X < 0)
