@@ -101,7 +101,6 @@ populate_repo_payload() {
     "LanguageServices/XamlLanguageServer.Wpf"
     "LanguageServices/WinUIXamlLanguageServer"
     "LanguageServices/UnoXamlLanguageServer"
-    "LanguageServices/ProGpuWinUIXamlLanguageServer"
     "LanguageServices/LibreWpfXamlLanguageServer"
   )
   local keep_args=()

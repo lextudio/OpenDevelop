@@ -6,7 +6,7 @@ namespace ICSharpCode.WinUIXamlDesigner
 {
 	/// <summary>
 	/// Registers this addin's XAML language servers, one per runtime it designs: Microsoft's
-	/// profile-aware WinUiXaml.LanguageServer for Microsoft WinUI, ProGPU WinUI and Uno. All three are
+	/// profile-aware WinUiXaml.LanguageServer for Microsoft WinUI and Uno. Both are
 	/// WinUI markup, but each runtime implements Microsoft.UI.Xaml with its own assemblies, so each
 	/// has its own server reading only those. XamlBinding's ".xaml" resolver routes a file to the
 	/// server registered for its runtime (see <see cref="XamlLanguageServers"/>).
@@ -14,13 +14,11 @@ namespace ICSharpCode.WinUIXamlDesigner
 	public sealed class RegisterXamlLanguageServersCommand : AbstractCommand, IDisposable
 	{
 		IDisposable winui;
-		IDisposable progpu;
 		IDisposable uno;
 
 		public override void Run()
 		{
 			winui = Register(XamlLanguageServers.MicrosoftWinUI, "WinUIXamlLanguageServer", "WinUiXaml.LanguageServer.dll", "--framework", "winui");
-			progpu = Register(XamlLanguageServers.ProGpuWinUI, "ProGpuWinUIXamlLanguageServer", "WinUiXaml.LanguageServer.dll", "--framework", "progpu");
 			uno = Register(XamlLanguageServers.Uno, "UnoXamlLanguageServer", "WinUiXaml.LanguageServer.dll", "--framework", "uno");
 			// The XAML source editor's Toolbox for WinUI/Uno files (see XamlDialectRegistry).
 			XamlDialectRegistry.RegisterBuiltInToolsContent(XamlDialectKeys.WinUI, () => WinUIXamlToolbox.Instance.ToolboxControl);
@@ -41,7 +39,6 @@ namespace ICSharpCode.WinUIXamlDesigner
 		public void Dispose()
 		{
 			winui?.Dispose();
-			progpu?.Dispose();
 			uno?.Dispose();
 		}
 	}

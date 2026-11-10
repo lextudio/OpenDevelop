@@ -1359,66 +1359,6 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
     }
 
     /// <summary>
-    /// A ProGPU WinUI project is designed by ProGPU on the shared design canvas
-    /// (ICSharpCode.DesignerCanvas addin), like every other backend. Before, a UseProGpuWinUI project
-    /// was taken for Uno and rendered by the Uno host ("Rendered by Uno design host"); and ProGPU's
-    /// own host was a bare bitmap control with no toolbar, zoom, selection or handles. This checks the
-    /// canvas's behaviour on ProGPU's frames: selection outline on the element's bounds, absolute
-    /// zoom and Fit, the default page colour, and a theme switch that re-renders.
-    /// </summary>
-    [Fact]
-    [Trait(RuntimeCell.TraitName, RuntimeCell.ProGpuWinUI)]
-    public async Task ProGpuWinUIDesigner_UsesTheSharedDesignCanvas()
-    {
-        var pagePath = Path.Combine(Path.GetDirectoryName(_app.ProGpuWinUISampleSolutionPath)!, "MainPage.xaml");
-        Assert.True((await _app.ReopenSolutionAsync(_app.ProGpuWinUISampleSolutionPath)).GetProperty("success").GetBoolean());
-        Assert.True((await _app.InvokeAsync("od.open-file", pagePath)).GetProperty("opened").GetBoolean());
-        await _app.InvokeAsync("od.winui-designer.activate-design");
-
-        JsonElement status = default;
-        var rendered = await OpenDevelopAppFixture.PollUntilAsync(async () =>
-        {
-            status = await _app.InvokeAsync("od.winui-designer.status");
-            return status.TryGetProperty("rendered", out var r) && r.GetBoolean();
-        }, TimeSpan.FromSeconds(60));
-        Assert.True(rendered, status.ToString());
-        RuntimeCell.AssertWinUIBackend(status, RuntimeCell.ProGpuWinUI);
-        Assert.StartsWith("Rendered by ProGPU WinUI", status.GetProperty("status").GetString());
-
-        // Selection: the canvas outlines the element's own bounds from ProGPU's design tree.
-        Assert.True((await _app.InvokeAsync("od.winui-designer.select", "PrimaryButton")).GetProperty("success").GetBoolean());
-        var geometry = await _app.InvokeAsync("od.winui-designer.surface-geometry");
-        Assert.True(geometry.GetProperty("available").GetBoolean(), geometry.ToString());
-        var selection = geometry.GetProperty("selection");
-        var element = geometry.GetProperty("element");
-        foreach (var edge in new[] { "x", "y", "width", "height" })
-            Assert.Equal(element.GetProperty(edge).GetDouble(), selection.GetProperty(edge).GetDouble(), 1);
-        Assert.True(selection.GetProperty("height").GetDouble() > 0, geometry.ToString());
-
-        // Zoom: absolute 100% shows the design at its own size; Fit scales it to the pane.
-        Assert.True((await _app.InvokeAsync("od.winui-designer.view", "1 0 0")).GetProperty("success").GetBoolean());
-        var atHundred = await _app.InvokeAsync("od.winui-designer.surface-geometry");
-        var fit = await _app.InvokeAsync("od.winui-designer.view", "fit");
-        Assert.True(fit.GetProperty("success").GetBoolean(), fit.ToString());
-        var atFit = await _app.InvokeAsync("od.winui-designer.surface-geometry");
-        Assert.Equal(1280, atHundred.GetProperty("frame").GetProperty("width").GetDouble(), 1);
-        Assert.NotEqual(atHundred.GetProperty("frame").GetProperty("width").GetDouble(), atFit.GetProperty("frame").GetProperty("width").GetDouble());
-
-        // Page colour and theme: a page without a Background shows as an app window would.
-        await _app.InvokeAsync("od.winui-designer.theme", "Light");
-        var white = await OpenDevelopAppFixture.PollUntilAsync(async () =>
-            (await _app.InvokeAsync("od.winui-designer.render-sample")).GetProperty("sample").GetString()?.Contains("center=#FFFFFF") == true,
-            TimeSpan.FromSeconds(20));
-        Assert.True(white, "Light theme should show a white page");
-        await _app.InvokeAsync("od.winui-designer.theme", "Dark");
-        var dark = await OpenDevelopAppFixture.PollUntilAsync(async () =>
-            (await _app.InvokeAsync("od.winui-designer.render-sample")).GetProperty("sample").GetString()?.Contains("center=#1C1C1E") == true,
-            TimeSpan.FromSeconds(20));
-        await _app.InvokeAsync("od.winui-designer.theme", "Light");
-        Assert.True(dark, "Dark theme should re-render the page dark");
-    }
-
-    /// <summary>
     /// Theme switching must re-resolve ThemeResource against the new theme and actually change
     /// the rendered pixels: UnoXamlSample's App.xaml maps PageBackgroundBrush to #EEEEEE (Light)
     /// and #222222 (Dark), so the sampled bitmap center must flip between the two.
@@ -7880,10 +7820,9 @@ EndGlobal
     /// <summary>
     /// Each XAML runtime has its own language server and a file reaches no other: Microsoft WPF
     /// (profile-aware WinUiXaml.LanguageServer) and LibreWPF (the same server's LibreWPF profile) although both are WPF markup;
-    /// Microsoft WinUI, ProGPU WinUI and Uno likewise use separate profiles of that server although all
+    /// Microsoft WinUI and Uno likewise use separate profiles of that server although all
     /// three are WinUI markup. Before the servers were split, every page was served by one server as
-    /// WPF - a WinUI or Uno page completed System.Windows.Controls.Grid - and a ProGPU project was
-    /// even taken for Uno. The same "&lt;Grid" in each sample must resolve to that runtime's own
+    /// WPF - a WinUI or Uno page completed System.Windows.Controls.Grid. The same "&lt;Grid" in each sample must resolve to that runtime's own
     /// Grid type, checked twice: the second time after the Tier-2 prewarm had its chance to replace
     /// Tier 1. (MAUI, an out-of-tree dialect, is covered by the MAUI addin's own journey.)
     /// </summary>
@@ -7895,7 +7834,6 @@ EndGlobal
             ("LibreWPF", _app.LibreWpfSampleSolutionPath, "MainWindow.xaml", "WinUiXaml.LanguageServer.dll", "librewpf", "System.Windows.Controls.Grid"),
             ("Microsoft WPF", _app.MicrosoftWpfSampleSolutionPath, "MainWindow.xaml", "WinUiXaml.LanguageServer.dll", "wpf", "System.Windows.Controls.Grid"),
             ("Uno", _app.UnoXamlSampleSolutionPath, "MainPage.xaml", "WinUiXaml.LanguageServer.dll", "uno", "Microsoft.UI.Xaml.Controls.Grid"),
-            ("ProGPU WinUI", _app.ProGpuWinUISampleSolutionPath, "MainPage.xaml", "WinUiXaml.LanguageServer.dll", "progpu", "Microsoft.UI.Xaml.Controls.Grid"),
             ("Microsoft WinUI", _app.WinUISampleSolutionPath, "MainPage.xaml", "WinUiXaml.LanguageServer.dll", "winui", "Microsoft.UI.Xaml.Controls.Grid"),
             ("Microsoft WinUI (no package)", _app.MicrosoftWinUIHostSampleSolutionPath, "MainPage.xaml", "WinUiXaml.LanguageServer.dll", "winui", "Microsoft.UI.Xaml.Controls.Grid"),
         };

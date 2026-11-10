@@ -122,7 +122,6 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
                 File.WriteAllBytes(path, bytes);
     }
     public string UnoXamlSampleSolutionPath => LocateUnoXamlSampleSolution();
-    public string ProGpuWinUISampleSolutionPath => LocateProGpuWinUISampleSolution();
     public string WinUISampleSolutionPath => LocateWinUISampleSolution();
     // Null when no WinUI-Gallery checkout is present. The Gallery corpus tests
     // (WinUIGalleryDesignerTests) are optional and skip rather than fail in that case - the real
@@ -442,7 +441,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         // into the launched app, same pattern as DEVFLOW_AGENT_PORT above: one ambient override for
         // the whole test process, not a per-collection setting (xUnit constructs collection
         // fixtures itself with no constructor-injection point for that). Tests that need a specific
-        // WinUI backend (see ProGpuWinUIDesignerTests) are run as their own `dotnet test` invocation
+        // WinUI backend (see MicrosoftWinUI / Uno cells) are run as their own `dotnet test` invocation
         // with this set, rather than mixed into the same run as the default-backend suite.
 		var winUIRuntime = Environment.GetEnvironmentVariable("OD_WINUI_RUNTIME");
 		if (!string.IsNullOrEmpty(winUIRuntime))
@@ -1477,18 +1476,6 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             dir = Path.GetDirectoryName(dir);
         }
         throw new FileNotFoundException("Could not locate tests/fixtures/WpfDesignerFixture/Microsoft/MicrosoftWpfSample.slnx");
-    }
-
-    static string LocateProGpuWinUISampleSolution()
-    {
-        var dir = AppContext.BaseDirectory;
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir, "tests", "fixtures", "WinUIDesignerFixture", "ProGpu", "ProGpuWinUISample.slnx");
-            if (File.Exists(candidate)) return candidate;
-            dir = Path.GetDirectoryName(dir);
-        }
-        throw new FileNotFoundException("Could not locate tests/fixtures/WinUIDesignerFixture/ProGpu/ProGpuWinUISample.slnx");
     }
 
     static string LocateMicrosoftWinUIHostSampleSolution()

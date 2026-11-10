@@ -22,7 +22,7 @@ public sealed class XamlFrameworkDetectorTests
 	[InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup><PackageReference Include=\"Uno.WinUI\" /></ItemGroup></Project>", XamlFrameworkKind.Uno, XamlRuntimeKind.Uno, XamlRuntimeKind.Uno)]
 	// WinUI reports the SAME runtime on every platform, deliberately. An earlier detector mapped
 	// WindowsAppSDK/UseWinUI projects to the Uno runtime off Windows, so a native WinUI page was
-	// silently rendered by the Uno/ProGPU compatibility host; commit c7520ef288 ("Serve WinUI and
+	// silently rendered by the Uno compatibility host; commit c7520ef288 ("Serve WinUI and
 	// WinForms projects strictly by their own designer backends") removed that, because a project
 	// being unrunnable here should surface as an unavailable host rather than as a page quietly
 	// served by a different runtime. This expectation therefore has no platform switch - do not
@@ -34,10 +34,6 @@ public sealed class XamlFrameworkDetectorTests
 	// project with another runtime's controls; the designer now reports the OS as unsupported
 	// instead. LibreWPF comes only from explicit evidence (LibreWPF.Sdk) in the project file.
 	[InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><UseWPF>true</UseWPF></PropertyGroup></Project>", XamlFrameworkKind.Wpf, XamlRuntimeKind.MicrosoftWpf, XamlRuntimeKind.MicrosoftWpf)]
-	// ProGPU WinUI is its own runtime even though such a project references Uno.WinUI (for the WinUI
-	// XAML language model, ExcludeAssets="all"): detected as Uno, it was designed by the Uno host
-	// ("Rendered by Uno design host") and analysed by Uno's language server.
-	[InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><UseProGpuWinUI>true</UseProGpuWinUI></PropertyGroup><ItemGroup><PackageReference Include=\"Uno.WinUI\" ExcludeAssets=\"all\" /></ItemGroup></Project>", XamlFrameworkKind.WinUI, XamlRuntimeKind.ProGpuWinUI, XamlRuntimeKind.ProGpuWinUI)]
 	[InlineData("<Project Sdk=\"Microsoft.NET.Sdk\" />", XamlFrameworkKind.Unknown, XamlRuntimeKind.Unknown, XamlRuntimeKind.Unknown)]
 	public void DetectProjectFile_UsesOrderedFrameworkEvidence(string projectXml, XamlFrameworkKind expected, XamlRuntimeKind expectedRuntimeOnWindows, XamlRuntimeKind expectedRuntimeElsewhere)
 	{

@@ -12,8 +12,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 /// <para>
 /// Every XAML runtime has its own server executable, reading only its own assemblies: Microsoft WPF
 /// (WinUiXaml.LanguageServer --framework wpf) and LibreWPF (librewpf-xaml-ls) are separate even though both are WPF markup, and
-/// so are Microsoft WinUI (winui-xaml-ls), ProGPU WinUI (progpu-winui-xaml-ls) and Uno
-/// (uno-xaml-ls), even though all three are WinUI markup; an out-of-tree dialect (MAUI:
+/// so are Microsoft WinUI (winui-xaml-ls) and Uno
+/// (uno-xaml-ls), even though both are WinUI markup; an out-of-tree dialect (MAUI:
 /// maui-xaml-ls) has its own too. The addin that owns a runtime registers its server here under that
 /// runtime's key (<see cref="ResolveKey"/>). A file is routed to its runtime's server and no other,
 /// and a runtime with no registered server gets no language service (lexical highlighting only)
@@ -29,7 +29,6 @@ public static class XamlLanguageServers
 	public const string MicrosoftWpf = "MicrosoftWpf";
 	public const string LibreWpf = "LibreWpf";
 	public const string MicrosoftWinUI = "MicrosoftWinUI";
-	public const string ProGpuWinUI = "ProGpuWinUI";
 	public const string Uno = "Uno";
 
 	/// <summary>
@@ -52,7 +51,6 @@ public static class XamlLanguageServers
 			XamlRuntimeKind.MicrosoftWpf => MicrosoftWpf,
 			XamlRuntimeKind.LibreWpf => LibreWpf,
 			XamlRuntimeKind.MicrosoftWinUI => MicrosoftWinUI,
-			XamlRuntimeKind.ProGpuWinUI => ProGpuWinUI,
 			XamlRuntimeKind.Uno => Uno,
 			_ => null
 		};

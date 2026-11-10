@@ -9,7 +9,6 @@
     <Import assembly="$ICSharpCode.DesignerCanvas/ICSharpCode.DesignerCanvas.dll" />
     <Import assembly=":ICSharpCode.Designer.Presentation" />
     <Import assembly="ICSharpCode.WinUIXamlDesigner.dll" />
-    <Import assembly="ICSharpCode.WinUIXamlDesigner.ProGPUHost.dll" />
     <Import assembly="ICSharpCode.WinUIXamlDesigner.UnoDesignHost.dll" />
   </Runtime>
   <!-- Runtime Hot Reload for Windows App SDK (WinUI 3) applications. The agent and its native

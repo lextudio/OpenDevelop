@@ -1505,7 +1505,6 @@ function Invoke-WindowsPayload {
         'LanguageServices\XamlLanguageServer.Wpf',
         'LanguageServices\WinUIXamlLanguageServer',
         'LanguageServices\UnoXamlLanguageServer',
-        'LanguageServices\ProGpuWinUIXamlLanguageServer',
         'LanguageServices\LibreWpfXamlLanguageServer'
     )
 

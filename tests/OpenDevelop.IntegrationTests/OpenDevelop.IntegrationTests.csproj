@@ -94,16 +94,11 @@
   <ItemGroup>
     <_LanguageAddinProject Include="../../src/AddIns/BackendBindings/FSharpBinding/FSharpBinding.csproj" />
     <_LanguageAddinProject Include="../../src/AddIns/DisplayBindings/AvalonEdit.AddIn/AvalonEdit.AddIn.csproj" />
-    <!-- RegisterDevFlowActionsCommand (WinUIXamlDesigner.AddIn) resolves these two in-process
-         runtime-host bootstraps via Type.GetType("...,AssemblyName") at startup, which only
-         succeeds if the named assembly already sits deployed next to the addin's own DLL - and
-         WinUIXamlDesigner.AddIn.csproj does not reference either as a ProjectReference (they are
-         runtime-discovered plugins, exactly like FSharpBinding/AvalonEdit above). Without
-         ProGPUHost in particular, EVERY WinUI/Uno document fails with "runtime host is not
-         installed", including Uno ones - ProGPU is supposed to be the always-available fallback
-         when the out-of-process Uno/Microsoft children aren't deployed, but it can't fall back if
-         it was never registered in the first place. -->
-    <_LanguageAddinProject Include="../../src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.ProGPUHost/ICSharpCode.WinUIXamlDesigner.ProGPUHost.csproj" />
+    <!-- RegisterDevFlowActionsCommand (WinUIXamlDesigner.AddIn) resolves the runtime-host bootstraps
+         in-process via Type.GetType("...,AssemblyName") at startup, which only succeeds if the named
+         assembly already sits deployed next to the addin's own DLL - and WinUIXamlDesigner.AddIn.csproj
+         does not reference it as a ProjectReference (it is a runtime-discovered plugin, exactly like
+         FSharpBinding/AvalonEdit above). -->
     <_LanguageAddinProject Include="../../src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoDesignHost/ICSharpCode.WinUIXamlDesigner.UnoDesignHost.csproj" />
     <!-- VBBinding.vbproj deploys to AddIns/BackendBindings/VBBinding/ - without it, every VB.NET
          language-service test fails with "no language service for file" instead of exercising
@@ -172,8 +167,8 @@
          a plain `dotnet build`/non-Windows MSBuild fails it with MSB4062 (PRI tasks ship only with
          Visual Studio), which broke the default cross-platform test build on this project.
          Passed as a full path relative to the repo root - build.ps1's own WorkingDirectory below -
-         not a fuzzy name: "WinUISample" also matches MicrosoftWinUISample/ProGpuWinUISample (both
-         end with the same substring). -->
+         not a fuzzy name: "WinUISample" also matches MicrosoftWinUISample (it ends with the same
+         substring). -->
     <_MicrosoftHostProject Include="tests/fixtures/WinUIDesignerFixture/Microsoft/WinUISample.csproj" />
   </ItemGroup>
   <Target Name="BuildMicrosoftDesignerHostsForIntegrationTests" Condition="'$(OS)' == 'Windows_NT'">
@@ -377,8 +372,8 @@
        [Trait("OptIn", "true")] skip by design unless an environment variable asks for them (for example the full
        WPF Gallery sweep) and are left out of a cell's run, so they neither count nor fail it. -->
   <PropertyGroup>
-    <RuntimeCellsOnThisOS Condition="$([MSBuild]::IsOSPlatform('Windows'))">LibreWpf;MicrosoftWpf;LibreWinForms;MicrosoftWinForms;MicrosoftWinUI;Uno;ProGpuWinUI</RuntimeCellsOnThisOS>
-    <RuntimeCellsOnThisOS Condition="$([MSBuild]::IsOSPlatform('OSX'))">LibreWpf;LibreWinForms;Uno;ProGpuWinUI</RuntimeCellsOnThisOS>
+    <RuntimeCellsOnThisOS Condition="$([MSBuild]::IsOSPlatform('Windows'))">LibreWpf;MicrosoftWpf;LibreWinForms;MicrosoftWinForms;MicrosoftWinUI;Uno</RuntimeCellsOnThisOS>
+    <RuntimeCellsOnThisOS Condition="$([MSBuild]::IsOSPlatform('OSX'))">LibreWpf;LibreWinForms;Uno</RuntimeCellsOnThisOS>
     <_RuntimeCellBuild Condition="'$(NoBuild)' != 'true'">Build</_RuntimeCellBuild>
   </PropertyGroup>
 
@@ -393,7 +388,6 @@
       <_CellEnv Condition="'$(RuntimeCell)' == 'MicrosoftWinForms'">OD_FORMS_RUNTIME=microsoft</_CellEnv>
       <_CellEnv Condition="'$(RuntimeCell)' == 'MicrosoftWinUI'">OD_WINUI_RUNTIME=microsoft</_CellEnv>
       <_CellEnv Condition="'$(RuntimeCell)' == 'Uno'">OD_WINUI_RUNTIME=uno</_CellEnv>
-      <_CellEnv Condition="'$(RuntimeCell)' == 'ProGpuWinUI'">OD_WINUI_RUNTIME=progpu</_CellEnv>
       <_CellFailSkips Condition="'$(RuntimeCellAllowSkips)' != 'true'">-failSkips</_CellFailSkips>
     </PropertyGroup>
   </Target>

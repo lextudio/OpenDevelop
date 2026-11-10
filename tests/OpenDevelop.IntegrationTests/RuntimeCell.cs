@@ -22,7 +22,6 @@ public static class RuntimeCell
     public const string MicrosoftWinForms = "MicrosoftWinForms";
     public const string MicrosoftWinUI = "MicrosoftWinUI";
     public const string Uno = "Uno";
-    public const string ProGpuWinUI = "ProGpuWinUI";
 
     /// <summary>The <c>backend</c> field <c>od.wpf-designer.status</c> reports for a WPF cell.</summary>
     public static string WpfBackendName(string cell) => cell switch {
@@ -51,7 +50,6 @@ public static class RuntimeCell
     public static string WinUIBackendName(string cell) => cell switch {
         MicrosoftWinUI => "WinUI",
         Uno => "Uno",
-        ProGpuWinUI => "ProGPU",
         _ => throw new ArgumentException("Not a WinUI-family cell: " + cell, nameof(cell)),
     };
 

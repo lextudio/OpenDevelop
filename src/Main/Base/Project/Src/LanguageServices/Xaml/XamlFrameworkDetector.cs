@@ -15,7 +15,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Xaml
 	/// from <see cref="XamlFrameworkKind"/>: both LibreWPF and Microsoft WPF use WPF markup,
 	/// but their controls must never be loaded by the same design host.
 	/// </summary>
-	public enum XamlRuntimeKind { Unknown, LibreWpf, MicrosoftWpf, MicrosoftWinUI, Uno, ProGpuWinUI }
+	public enum XamlRuntimeKind { Unknown, LibreWpf, MicrosoftWpf, MicrosoftWinUI, Uno }
 
 	public sealed class XamlFrameworkContext
 	{
@@ -63,12 +63,6 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Xaml
 					.ToDictionary(g => g.Key, g => g.Last().Value, StringComparer.OrdinalIgnoreCase);
 
 				bool HasPackage(string prefix) => packages.Any(p => p.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
-				// ProGPU WinUI first: such a project may reference Uno.WinUI for its XAML language model
-				// (with ExcludeAssets="all"), which the Uno check below would otherwise claim - and the
-				// document was then designed by the Uno host and analysed by Uno's language server.
-				// ProGPU is its own runtime, WinUI markup over its own Microsoft.UI.Xaml implementation.
-				if (properties.TryGetValue("UseProGpuWinUI", out var useProGpu) && IsTrue(useProGpu))
-					return new XamlFrameworkContext(XamlFrameworkKind.WinUI, XamlRuntimeKind.ProGpuWinUI, projectFileName, "UseProGpuWinUI property");
 				if (sdk.Contains("Uno.Sdk", StringComparison.OrdinalIgnoreCase) || HasPackage("Uno.WinUI") || HasPackage("Uno.UI"))
 					return new XamlFrameworkContext(XamlFrameworkKind.Uno, XamlRuntimeKind.Uno, projectFileName, "Uno SDK/package");
 				if (HasPackage("Microsoft.WindowsAppSDK") || HasPackage("Microsoft.UI.Xaml")
@@ -77,7 +71,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Xaml
 					// A WinUI document is served only by the Microsoft WinUI runtime host. It is
 					// never re-identified as Uno just because Microsoft WinUI cannot run on this
 					// platform: doing so silently swapped the framework identity and rendered a
-					// native WinUI page through the Uno/ProGPU compatibility host. When the WinUI
+					// native WinUI page through the Uno compatibility host. When the WinUI
 					// host is unavailable the designer must say exactly that (see
 					// WinUIXamlHost.StatusText) instead of falling back to another runtime.
 					return new XamlFrameworkContext(XamlFrameworkKind.WinUI, XamlRuntimeKind.MicrosoftWinUI, projectFileName, "Windows App SDK/WinUI property or package");

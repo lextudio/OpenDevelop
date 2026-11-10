@@ -41,7 +41,6 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 			var unavailable = new ICSharpCode.SharpDevelop.Widgets.DesignerCanvas();
 			unavailable.BackendName = framework.Runtime switch {
 				XamlRuntimeKind.Uno => "Uno",
-				XamlRuntimeKind.ProGpuWinUI => "ProGPU WinUI",
 				_ => "WinUI"
 			};
 			unavailable.ShowUnavailable(UnsupportedOnThisOSText);
@@ -495,11 +494,9 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 
 	public XamlFrameworkContext Framework { get; }
 	public bool HasRenderedPreview => runtime?.HasRenderedPreview == true;
-	// ProGPU accepts XamlRuntimeKind.ProGpuWinUI and (as a fallback) Uno, so a null runtime here is
-	// only ever reachable for a MicrosoftWinUI document whose out-of-process child host isn't
-	// deployed - never for Uno, which always has ProGPU as a safety net. Name the
-	// specific missing runtime instead of "WinUI/Uno", which wrongly implies either could be at
-	// fault.
+	// A null runtime here means the out-of-process child host of the document's runtime family (Uno or
+	// Microsoft WinUI) is not deployed; there is no in-process fallback. StatusText names the specific
+	// missing runtime instead of "WinUI/Uno", which wrongly implies either could be at fault.
 	static string UnsupportedOnThisOSText
 		=> ICSharpCode.SharpDevelop.Widgets.DesignerCanvas.UnsupportedOnThisOSMessage("Microsoft WinUI", "Uno Platform");
 
@@ -511,7 +508,6 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	public string StatusText => runtime?.StatusText ?? (!XamlFrameworkDetector.IsRuntimeSupportedOnThisOS(Framework.Runtime) ? UnsupportedOnThisOSText : null) ?? Framework.Runtime switch {
 		XamlRuntimeKind.MicrosoftWinUI => "WinUI 3 runtime host is not installed.",
 		XamlRuntimeKind.Uno => "Uno runtime host is not installed. The WPF XamlReader compatibility renderer is disabled.",
-		XamlRuntimeKind.ProGpuWinUI => "ProGPU WinUI runtime host is not installed.",
 		_ => "No WinUI/Uno runtime host is available for this document."
 	};
 	public void LoadXaml(string text) => runtime?.LoadXaml(text ?? string.Empty);
@@ -986,7 +982,7 @@ public static class WinUIXamlRuntimeHostRegistry
 	/// <summary>
 	/// Registers a runtime host factory. The most recently registered factory is tried first;
 	/// a factory that declines (returns null - e.g. the out-of-process Uno host when its child
-	/// binary is missing) falls through to the previous one, so ProGPU remains the safety net.
+	/// binary is missing) falls through to the previous one; when none accepts, the document has no runtime host.
 	/// </summary>
 	public static void Register(Func<XamlFrameworkContext, string, IWinUIXamlRuntimeHost> runtimeFactory)
 	{
