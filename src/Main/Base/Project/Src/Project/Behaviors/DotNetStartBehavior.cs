@@ -77,6 +77,10 @@ namespace ICSharpCode.SharpDevelop.Project
 				case StartAction.Project:
 					var psi = CreateStartInfo(Project.OutputAssemblyFullPath, Project.Directory, StartWorkingDirectory, StartArguments);
 					UseRuntimeOfProjectSdk(psi);
+					// dotnet run applies the project's launch profile; so does starting it here.
+					LaunchSettingsProfile.Load(Project.Directory)?.ApplyTo(psi, Project.Directory,
+						argumentsConfigured: StartArguments.Length > 0,
+						workingDirectoryConfigured: StartWorkingDirectory.Length > 0);
 					return psi;
 				case StartAction.Program:
 					return CreateStartInfo(StartProgram, Project.Directory, StartWorkingDirectory, StartArguments);

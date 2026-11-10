@@ -289,16 +289,11 @@ namespace ICSharpCode.SharpDevelop.Services
 					bool breakAtBeginning = BreakAtBeginning;
 					BreakAtBeginning = false;
 					currentSessionStart = noDebug ? null : new SessionStart { StartInfo = processStartInfo, BreakAtBeginning = breakAtBeginning };
-					var hotReloadEnvironment = processStartInfo.Environment
-						.Where(variable => variable.Key.StartsWith("UNO_DEV_SERVER_", StringComparison.Ordinal)
-							|| string.Equals(variable.Key, "DOTNET_MODIFIABLE_ASSEMBLIES", StringComparison.Ordinal)
-							// The WPF Hot Reload agent is injected as a startup hook and finds its pipe and
-							// log through these; without them the debuggee runs with no agent at all.
-							|| string.Equals(variable.Key, "DOTNET_STARTUP_HOOKS", StringComparison.Ordinal)
-							|| string.Equals(variable.Key, "ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO", StringComparison.Ordinal)
-							|| variable.Key.StartsWith("WPF_HOTRELOAD_", StringComparison.Ordinal))
-						.Select(variable => new KeyValuePair<string, string>(variable.Key, variable.Value))
-						.ToArray();
+					// Forward every variable the start info sets on top of what the IDE inherited: the
+					// project's launch profile (launchSettings.json, e.g. DYLD_LIBRARY_PATH for a GTK
+					// app) and Hot Reload's (UNO_DEV_SERVER_*, DOTNET_STARTUP_HOOKS, WPF_HOTRELOAD_*...).
+					// The IDE's own environment is not repeated: the debuggee inherits it anyway.
+					var hotReloadEnvironment = GetExplicitEnvironment(processStartInfo);
 					// A start program that is not a managed assembly is a native host (e.g. EXCEL.EXE
 					// loading a class library add-in via Excel-DNA). `dotnet <exe>` cannot run it, so
 					// let SharpDbg launch it directly; it attaches once the host loads the .NET runtime.
@@ -398,6 +393,21 @@ namespace ICSharpCode.SharpDevelop.Services
 			} catch (UnauthorizedAccessException) {
 				return false;
 			}
+		}
+
+		/// <summary>
+		/// The variables a start info sets or changes relative to the IDE's own environment.
+		/// DOTNET_ROOT is left out: it selects the debuggee's runtime host (see debuggeeRuntimeHost)
+		/// and the session sets up that host's environment itself.
+		/// </summary>
+		public static KeyValuePair<string, string>[] GetExplicitEnvironment(ProcessStartInfo processStartInfo)
+		{
+			return processStartInfo.Environment
+				.Where(variable => !string.Equals(variable.Key, "DOTNET_ROOT", StringComparison.Ordinal)
+					&& variable.Value != null
+					&& !string.Equals(Environment.GetEnvironmentVariable(variable.Key), variable.Value, StringComparison.Ordinal))
+				.Select(variable => new KeyValuePair<string, string>(variable.Key, variable.Value))
+				.ToArray();
 		}
 
 		static IReadOnlyList<string> GetDebuggeeArguments(ProcessStartInfo processStartInfo)
