@@ -17,8 +17,8 @@ in the dedicated technotes:
 
 - [`winforms-designer.md`](winforms-designer.md) — the most complete OOP implementation;
 - [`wpf-designer.md`](wpf-designer.md) — the WPF designer, cut over to OOP on 2026-08-17/18;
-- [`winui-designer.md`](winui-designer.md) — the WinUI/Uno out-of-process host, the retired
-  ProGPU in-process profile, and the native WinUI (Windows App SDK) planned adapter;
+- [`winui-designer.md`](winui-designer.md) — the WinUI/Uno out-of-process host, the Microsoft
+  WinUI (Windows App SDK) host, and the history of the removed ProGPU in-process profile;
 - [`mewui-designer.md`](mewui-designer.md) — the MXAML-backed MewUI designer, its generated
   layout partial, source-model mutations and real-runtime preview boundary;
 - [`gtk-designer.md`](gtk-designer.md) — the GTK 4 GtkBuilder designer, GIR/catalogue model,
@@ -61,8 +61,8 @@ interaction floor — isolated host lifecycle, bitmap frame/overlay, snapshot-lo
 Toolbox/Outline/Properties shells, source refresh and accepted-mutation handling — but their
 authoritative models differ. WPF has the deepest XAML design-model editing; WinForms has the
 deepest resource and non-visual-component workflow; WinUI has supported Uno and Microsoft runtime
-paths and ProGPU remains a registered third runtime family (`OD_WINUI_RUNTIME=progpu`) rather than
-retired code; GTK and MewUI intentionally expose only operations their source model can
+paths (the in-process ProGPU profile was removed on 2026-11-09, see
+[Removed profile](#removed-profile)); GTK and MewUI intentionally expose only operations their source model can
 round-trip safely.
 
 The practical parity backlog is consequently not “give every designer every toolbar button”. It is:
@@ -1523,11 +1523,16 @@ WinUIXamlDesigner.UnoHost (child)
 - **Edge-drag page resize**: `CanvasMargin = 32` leaves room for it, but **only the comment
   exists — no implementation**; size changes come from the combo or DevFlow today.
 
-### Retired profile
+### Removed profile
 
-The **ProGPU in-process profile** (`WinUIXamlDesigner.ProGPUHost`) is retired: its
-`SurfaceGeometry()` returns `default` and `ElementTree => null`. It remains as a historical
-backend; the OOP Uno host is the only supported WinUI path.
+The **ProGPU in-process profile** (`WinUIXamlDesigner.ProGPUHost`) was retired earlier (its
+`SurfaceGeometry()` returned `default` and `ElementTree => null`) and **deleted on 2026-11-09**,
+together with `WinUIXamlDesigner.LanguageServer.ProGpu`, `XamlStudio.Toolkit.ProGPU`, the
+`UseProGpuWinUI` detection and `OD_WINUI_RUNTIME=progpu` (now an unrecognized value). Its only
+real dependency was ProGPU's XAML compiler (`ProGPU.Xaml`, `.Xaml.Roslyn`, `.Xaml.Workspaces`,
+`ProGPU.WinUI.Designer`), which upstream removed in ProGPU commit `2deb0316c`; the last published
+version (preview.65) exists only on nuget.org. The OOP Uno host (and the Microsoft WinUI host on
+Windows) is the only WinUI path. Mentions of the ProGPU host elsewhere in this document are history.
 
 ---
 

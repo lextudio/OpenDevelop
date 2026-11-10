@@ -3,7 +3,7 @@
 Status: **implemented 2026-09-29.** Every XAML runtime has its own server executable; see
 [Implementation](#implementation-2026-09-29). The original proposal is kept below for its reasoning.
 One refinement over it: the unit is the **runtime**, not the markup dialect. LibreWPF and Microsoft
-WPF are both WPF markup, and Microsoft WinUI, ProGPU WinUI and Uno are all WinUI markup, but each
+WPF are both WPF markup, and Microsoft WinUI and Uno are both WinUI markup, but each
 reads different assemblies, so each has its own server - they are never mixed.
 
 ## The shape
@@ -31,7 +31,7 @@ each host has to populate. Each server references only its own framework's profi
 | Piece | Where | State |
 |---|---|---|
 | WPF/WinUI/Uno language server | `externals/winappvsce/server/src/WinUiXaml.LanguageServer/` | profile-aware managed server, `net10.0` |
-| Framework profiles | `.../FrameworkProfiles.cs` | Microsoft WPF, LibreWPF, WinUI, ProGPU and Uno |
+| Framework profiles | `.../FrameworkProfiles.cs` | Microsoft WPF, LibreWPF, WinUI and Uno (the external server's `MsBuildCli.cs` still reads `UseProGpuWinUI`, `externals/winappvsce/server/src/WinUiXaml.Workspace/MsBuildCli.cs` lines 562 and 602; OpenDevelop no longer registers a ProGPU profile since 2026-11-09) |
 | Project-based detection | `src/Main/Base/Project/Src/LanguageServices/Xaml/XamlFrameworkDetector.cs` | exists, keyed on the owning project |
 | Runtime dialect registry | `.../XamlDialectRegistry.cs` | exists, added for out-of-tree designers |
 | Per-file language-service routing | `LanguageServiceRegistry.RegisterExtension(ext, Func<string, ILanguageService>)` | exists — the resolver receives the file name and may return `null` |
@@ -135,7 +135,7 @@ per-framework `CanResolveFromProject` methods, and `XamlDialectRegistry` — col
 **Centralised routing, servers owned by their addins.** `XamlBinding` keeps the single `.xaml`
 registration and only routes; each addin registers the server of every runtime it owns with
 `XamlLanguageServers` (the WPF designer: Microsoft WPF and LibreWPF; the WinUI designer: Microsoft
-WinUI, ProGPU WinUI and Uno; the MAUI addin: MAUI). Enabling or disabling an addin therefore
+WinUI and Uno; the MAUI addin: MAUI). Enabling or disabling an addin therefore
 enables or disables its runtimes' language support, and there is no second `.xaml` registration to
 clobber the first. See the implementation section below.
 
@@ -160,11 +160,10 @@ clobber the first. See the implementation section below.
 | Microsoft WPF (`MicrosoftWpf`) | `WinUiXaml.LanguageServer --framework wpf` | `externals/winappvsce` | WPF designer addin | Microsoft WPF project evaluation; a bounded `System.Windows` fallback supports the no-reference design-host fixture |
 | LibreWPF (`LibreWpf`) | `WinUiXaml.LanguageServer --framework librewpf` | `externals/winappvsce` | WPF designer addin | LibreWPF project evaluation; a bounded `System.Windows` fallback supports an unavailable closure |
 | Microsoft WinUI (`MicrosoftWinUI`) | `WinUiXaml.LanguageServer` | `externals/winappvsce` | WinUI designer addin | Microsoft WinUI XAML LSP project evaluation |
-| ProGPU WinUI (`ProGpuWinUI`) | `WinUiXaml.LanguageServer --framework progpu` | `externals/winappvsce` | WinUI designer addin | bounded `Microsoft.UI.Xaml` fallback for the marker-only ProGPU project |
 | Uno (`Uno`) | `WinUiXaml.LanguageServer --framework uno` | `externals/winappvsce` | WinUI designer addin | `Uno.WinUI` metadata and source-generator output |
 | MAUI (`Maui`, the dialect key) | `maui-xaml-ls` | MAUI-Designer `opendevelop-addin/MAUIDesigner.LanguageServer` (MIT) | MAUI addin (bundled under `LanguageServer/`) | MAUI packages |
 
-Microsoft WPF, LibreWPF, Microsoft WinUI, ProGPU WinUI and Uno share WinAppVSCE's managed server
+Microsoft WPF, LibreWPF, Microsoft WinUI and Uno share WinAppVSCE's managed server
 and choose a strict profile at launch; MAUI retains its dedicated server. Metadata is read only, so
 every server builds and runs on any OS (WinUI needs only a *restored* WinUI project on the machine -
 `dotnet restore` works on macOS). A server with no Tier-1 assemblies on the machine runs on Tier 2
@@ -178,8 +177,8 @@ from the retired language-service path.
 
 - `XamlLanguageServers` (Base, `LanguageServices/Xaml`) maps a **server key** to a server dll.
   `ResolveKey(file)` returns a registered out-of-tree dialect's key (MAUI), else the owning
-  project's runtime from `XamlFrameworkDetector` (which now reports `XamlRuntimeKind.ProGpuWinUI`
-  for `UseProGpuWinUI` projects instead of taking them for Uno). `GetLaunchSpec(file)` builds
+  project's runtime from `XamlFrameworkDetector` (the former `ProGpuWinUI` runtime was removed on
+  2026-11-09 with the ProGPU designer host). `GetLaunchSpec(file)` builds
   `dotnet exec <server> --workspace <owning project dir>`.
 - Addins register their own servers (`XamlLanguageServers.Register(key, dll)`) from an Autostart
   command; `FindDeployedServer(folder, dll)` locates one under `AddIns/LanguageServices/`.
@@ -230,7 +229,7 @@ otherwise.
 ### Verification
 
 - `AddInTests.XamlLanguageService_EachRuntime_UsesItsOwnServerAndControls`: LibreWpfSample,
-  MicrosoftWpfSample, UnoXamlSample, ProGpuWinUISample, WinUISample and MicrosoftWinUISample each
+  MicrosoftWpfSample, UnoXamlSample, WinUISample and MicrosoftWinUISample each
   route to their own server (`od.xaml.language-server`), with `--workspace` = the sample's
   directory, and `<Grid` completes to that runtime's own `Grid` type before and after the Tier-2
   prewarm. With WinUISample restored, the WinUI case exercises Tier 2 on the real Windows App SDK

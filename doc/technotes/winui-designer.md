@@ -1,4 +1,11 @@
-# WinUI Designer Runtimes: Uno, Windows App SDK, and ProGPU
+# WinUI Designer Runtimes: Uno and Windows App SDK (and the removed ProGPU profile)
+
+> **2026-11-09: the in-process ProGPU WinUI profile was deleted** (`WinUIXamlDesigner.ProGPUHost`,
+> `LanguageServer.ProGpu`, `XamlStudio.Toolkit.ProGPU`, `UseProGpuWinUI` detection,
+> `OD_WINUI_RUNTIME=progpu`). It depended on ProGPU's XAML compiler packages, which upstream removed
+> (ProGPU commit `2deb0316c`). Everything below that describes the ProGPU host, the ProGPU profile or
+> `ProGpuRuntimeHost` is **history**; the supported WinUI paths are the out-of-process Uno host and,
+> on Windows, the Microsoft WinUI host. See [`designer-common.md`](designer-common.md#removed-profile).
 
 ## Native WinUI long-term loading contract: research correction (2026-09-13)
 
@@ -267,22 +274,17 @@ versioned `design/set-event` validates the live element/event name and keeps the
 preview synchronized; it does not create or compile a code-behind method, which remains a
 backend-specific source-edit concern.
 
-There are **three supported runtime profiles**, not two interchangeable names for one renderer:
+There are **two supported runtime profiles** (a third, ProGPU, existed until 2026-11-09), not two interchangeable names for one renderer:
 
 | Project/runtime profile | Renderer | Host model | Current state |
 |---|---|---|---|
 | Uno Platform (`Uno.Sdk`, `Uno.WinUI`) | Bundled Uno 6.7.30 runtime today; project runtime is the target | Out of process | Implemented for the fixture; project-version loading remains |
-| ProGPU WinUI (`ProGPU.WinUI`) | ProGPU's WinUI-shaped runtime and compositor | In process in the LibreWPF shell | Standard-control path implemented; must be routed explicitly |
+| ProGPU WinUI (`ProGPU.WinUI`) | ProGPU's WinUI-shaped runtime and compositor | In process in the LibreWPF shell | **Removed 2026-11-09** (its XAML compiler packages were removed upstream) |
 | Native WinUI (`Microsoft.WindowsAppSDK`) | The project's Windows App SDK/WinUI runtime | Windows-only, out of process | Planned adapter |
 
-The repository does not yet encode that routing completely. `XamlFrameworkKind` currently has
-only `WinUI` and `Uno`; the detector recognizes Uno and Windows App SDK markers but not
-`ProGPU.WinUI`. Both host factories are then registered globally, with the Uno factory tried
-first whenever its child binary exists, regardless of framework kind. Before calling all three
-profiles product-complete, add an explicit ProGPU profile (or an equivalent runtime discriminator)
-and make each factory decline projects it does not own. ProGPU must not be a silent fallback for
-an Uno or Windows App SDK project, and the Uno child must not claim a ProGPU or native WinUI
-project.
+> *Obsolete (2026-11-09):* the paragraph that stood here asked for an explicit ProGPU profile and for
+> each host factory to decline ProGPU projects. The ProGPU profile was removed, so only the Uno and Microsoft
+> WinUI factories remain and each already declines projects outside its own runtime family.
 
 ## Architecture
 
@@ -314,8 +316,8 @@ identity guarantee. Runtime selection therefore follows project evidence and is 
 asking which renderer happens to be installed:
 
 1. `Uno.Sdk`, `Uno.WinUI`, or `Uno.UI` selects the out-of-process Uno adapter.
-2. `ProGPU.WinUI` (or an explicit future ProGPU project property) selects the in-process ProGPU
-   adapter. This is the supported cross-platform **WinUI on ProGPU** profile.
+2. ~~`ProGPU.WinUI` selects the in-process ProGPU adapter~~ - removed 2026-11-09; such a project is now
+   classified by its other markers like any other.
 3. `Microsoft.WindowsAppSDK`, `Microsoft.UI.Xaml`, or `UseWinUI=true` selects the native Windows
    App SDK adapter and is available only on Windows.
 
@@ -324,13 +326,12 @@ references from more than one family. A conflicting project should produce a dia
 than fall through to a different runtime. The host registry contract remains useful, but its
 factories must be predicates over `XamlFrameworkContext`, not availability-based fallbacks.
 
-ProGPU is a legitimate renderer for projects authored against `ProGPU.WinUI`; it is not a
-compatibility renderer for assemblies built against Uno.WinUI or the Windows App SDK. Conversely,
-the Uno child must run the project's Uno assemblies, and a native WinUI child must run the
-project's Windows App SDK assemblies. No `Microsoft.UI.Xaml` object crosses into the WPF shell in
-any profile.
+~~ProGPU is a legitimate renderer for projects authored against `ProGPU.WinUI`~~ (removed 2026-11-09; the rest of
+this rule still holds for the remaining profiles): the Uno child must run the project's Uno assemblies, and a
+native WinUI child must run the project's Windows App SDK assemblies. No `Microsoft.UI.Xaml` object crosses into
+the WPF shell in any profile.
 
-### ProGPU WinUI Host
+### ProGPU WinUI Host (removed 2026-11-09; kept as history)
 
 > **Since 2026-09-29** the ProGPU host no longer presents into its own WPF control:
 > `ProGpuWinUIHostControl` is deleted. `ProGpuRuntimeHost` renders the page offscreen

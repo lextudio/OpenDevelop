@@ -144,7 +144,6 @@ Uno and ProGPU designer suites, 5 with the WPF designer suites, 6 with the WinFo
 | Designer | State | Verified by |
 |---|---|---|
 | WinUI / Uno (`UnoDesignRuntimeHost`) | on the canvas | the WinUI/Uno designer suite (13), `WinUIXamlDesigner_ResizeDrag_*` |
-| ProGPU WinUI (`ProGpuRuntimeHost`: offscreen WebGPU frame + `ProGpuDesignTree`) | on the canvas; `ProGpuWinUIHostControl` deleted | `ProGpuWinUIDesigner_UsesTheSharedDesignCanvas`, `ProGpuWinUIDesignerTests` |
 | MAUI (MAUI-Designer repo) | on the canvas; `MauiDesignCanvas` deleted | the MAUI addin journey |
 | WPF (`WpfSurfaceDesignerControl`) | on the canvas (derives from `DesignSurface`, Id-keyed); ContextMenu tray, "Type Here" hotspot and inline editor live in `ExtensionLayer` | the 7 LibreWPF designer tests, now un-gated off Windows |
 | WinForms (`RemoteFormsDesignerControl`) | on the canvas (derives from `DesignSurface`, Name-keyed); ToolStrip editors, popups, smart tag, reorder and rename in `ExtensionLayer`; its own tray below the canvas | the 7 WinForms designer tests on LibreWinForms, `FormsMenuEditingTests`, `FormsDesigner.Host.Tests` |

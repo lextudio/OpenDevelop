@@ -121,8 +121,6 @@ WinUIXamlDesigner.UnoHost/          (net10.0-desktop, OutputType=Exe) <- SEPARAT
   HeadlessDispatcher.cs             <- pumps the Uno dispatcher without a real window
   DesignProtocol.cs
 
-WinUIXamlDesigner.ProGPUHost/       (alternate GPU-based renderer host)
-XamlStudio.Toolkit.ProGPU/          (ported rendering toolkit for ProGPUHost)
 ```
 
 Why the split: WinUI/Uno controls can't run inside the WPF host process

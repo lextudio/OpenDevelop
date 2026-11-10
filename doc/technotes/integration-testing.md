@@ -80,7 +80,6 @@ cover is:
 | Microsoft WinForms | yes | no | `UseMicrosoftDesktopRuntime=true`, or a `-windows` TFM |
 | Microsoft WinUI | yes | no | `UseWinUI` (Windows App SDK) project, and `OD_WINUI_RUNTIME=microsoft` |
 | Uno Platform | yes | yes | `Uno.Sdk` / `Uno.WinUI` project |
-| ProGPU.WinUI | yes | yes | `OD_WINUI_RUNTIME=progpu` |
 
 A cell is a runtime, not an OS. An OS is a column: a test that runs on Windows has not thereby run against Microsoft
 WPF, and one that runs on macOS has not thereby run against "the" LibreWPF. The XamlDom unit suite learned this the hard
@@ -109,17 +108,14 @@ This is what exists, so the plan below is a delta and not a rewrite:
   `FormsMenuEditingTests` used `OperatingSystem.IsWindows()` as a stand-in for "Microsoft WinForms" (now `MicrosoftCell`, see
   Progress), and `FormsDesignSolutionPath` is the same OS-dependent split for WinForms (`WinFormsSample` on Windows,
   `LibreWinFormsSample` elsewhere; its cell is `OpenDevelopAppFixture.FormsDesignCell`).
-- **ProGPU.WinUI:** `ProGpuWinUIDesignerTests` skip unless the whole process runs with `OD_WINUI_RUNTIME=progpu`. They have no OS
-  gate; the macOS column was measured on 2026-10-17 (see "Measured status on macOS"). This cell is the **retired** in-process
-  profile (see [designer-common.md](designer-common.md), "Retired profile"): it renders, but has no selection, toolbox or
-  property editing, so it is not a target for reusing the Uno/WinUI designer-behaviour tests (tried, see below).
+- **ProGPU.WinUI:** removed on 2026-11-09 together with the in-process ProGPU designer host and `ProGpuWinUIDesignerTests`; the figures below that mention it are history.
 - **Uno:** the default WinUI order prefers the Uno child, so Uno is covered implicitly by the WinUI tests of
   `AddInTests`; `UnoHotReloadIntegrationTests` is skipped on purpose.
 
 ### Plan
 
 1. **Every designer test declares its cell, and the fixture checks it.** Add traits `Runtime=<cell>` (`LibreWpf`,
-   `MicrosoftWpf`, `LibreWinForms`, `MicrosoftWinForms`, `MicrosoftWinUI`, `Uno`, `ProGpuWinUI`) next to the existing
+   `MicrosoftWpf`, `LibreWinForms`, `MicrosoftWinForms`, `MicrosoftWinUI`, `Uno`; a `ProGpuWinUI` cell existed until the ProGPU designer host was deleted on 2026-11-09) next to the existing
    `DesignerBackend` one (keep `DesignerBackend=Microsoft` working until the runner scripts move). After the designer
    opens, assert the backend the app reports (`od.wpf-designer.status` `backend`, the Forms/WinUI equivalents)
    equals the declared cell (`RuntimeCell.AssertWpfBackend`/`AssertWinFormsBackend`; the old
