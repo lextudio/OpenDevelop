@@ -7,12 +7,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# This is the exact closure OpenAvalon publishes to lextudio GitHub Packages. Keep it explicit:
-# packages that remain publicly available from nuget.org must not accidentally become a local-feed
-# dependency just because their names also start with ProGPU. ProGPU.Fonts.Inter and ProGPU.Fonts.Noto (pulled in
-# by ProGPU.Android and ProGPU.iOS) are such packages: they are not published to the lextudio feed (404 there), so
-# they restore from nuget.org through its "*" mapping and are deliberately absent from this list and from the
-# lextudio/local mappings in NuGet.config.
+# This is the exact closure OpenAvalon publishes to lextudio GitHub Packages. Keep it explicit so a sync
+# downloads exactly what the publish workflow produces. Every ProGPU.* package this checkout restores is in it,
+# including ProGPU.Fonts.Inter/Noto and ProGPU.Media.Editing (published since the closure was widened); none comes
+# from nuget.org, and NuGet.config maps ProGPU.* wholesale to the lextudio/local sources.
 $openAvalonPackages = @(
     'LibreWPF.Interop', 'LibreWPF.ProGPU', 'LibreWPF.Sdk', 'LibreWPF.Transport',
     'LibreWinForms.ProGPU', 'LibreWinForms.Sdk', 'LibreWinForms.System.Windows.Forms', 'LibreWinForms.WindowsFormsIntegration',
@@ -20,6 +18,7 @@ $openAvalonPackages = @(
     'ProGPU.DirectX', 'ProGPU.Layout', 'ProGPU.Media', 'ProGPU.Media.Scene', 'ProGPU.Scene', 'ProGPU.SkiaSharp',
     'ProGPU.System.Drawing.Common', 'ProGPU.Text', 'ProGPU.Text.Shaping', 'ProGPU.Transpiler', 'ProGPU.Vector',
     'ProGPU.Virtualization', 'ProGPU.WinRT', 'ProGPU.WinUI',
+    'ProGPU.Scene.Native', 'ProGPU.Media.Editing', 'ProGPU.Fonts.Inter', 'ProGPU.Fonts.Noto',
     'ProGPU.Android', 'ProGPU.Android.Media', 'ProGPU.iOS', 'ProGPU.Apple.Media'
 )
 

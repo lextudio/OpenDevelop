@@ -11,19 +11,6 @@ public sealed class OpenAvalonMobilePackageSourceTests : IDisposable
 {
     readonly string root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "od-mobile-source-" + Guid.NewGuid().ToString("N"))).FullName;
 
-    public OpenAvalonMobilePackageSourceTests()
-    {
-        // The closure comes from the repository's NuGet.config; the exact ProGPU ids, wildcards and other sources are ignored.
-        File.WriteAllText(Path.Combine(root, "NuGet.config"), """
-            <configuration><packageSourceMapping>
-              <packageSource key="nuget.org"><package pattern="*" /></packageSource>
-              <packageSource key="lextudio_github">
-                <package pattern="ProGPU.iOS" /><package pattern="ProGPU.Text" /><package pattern="LibreWPF.*" /><package pattern="LeXtudio.Wpf.Toolkit" />
-              </packageSource>
-            </packageSourceMapping></configuration>
-            """);
-    }
-
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     static Func<string, string?> Env(params (string Name, string Value)[] variables)
@@ -45,13 +32,13 @@ public sealed class OpenAvalonMobilePackageSourceTests : IDisposable
         Assert.Null(skip);
         var xml = XDocument.Parse(config!);
         Assert.Equal(feed, (string?)xml.Descendants("add").Single(a => (string?)a.Attribute("key") == "opendevelop-openavalon-local").Attribute("value"));
-        // Only the published closure is local; ProGPU.Fonts.* and ProGPU.Media.Editing are not in it and fall to nuget.org's "*".
-        Assert.Equal("ProGPU.iOS,ProGPU.Text", PatternsOf(xml, "opendevelop-openavalon-local"));
+        // Every ProGPU.* package is local, so none of them falls to nuget.org's "*".
+        Assert.Equal("ProGPU.*", PatternsOf(xml, "opendevelop-openavalon-local"));
         Assert.Equal("*", PatternsOf(xml, "nuget.org"));
     }
 
     [Fact]
-    public void WithoutALocalFeed_TheCredentialSelectsGitHubPackages_ForTheClosureOnly()
+    public void WithoutALocalFeed_TheCredentialSelectsGitHubPackages_ForProGpuPackagesOnly()
     {
         string? config = OpenAvalonMobilePackageSource.TryCreateConfig(root, "ProGPU.iOS", "1.2.3",
             Env(("NuGetPackageSourceCredentials_lextudio_github", "Username=u;Password=p")), out string? skip);
@@ -61,7 +48,7 @@ public sealed class OpenAvalonMobilePackageSourceTests : IDisposable
         // The key must be the one the credential variable is named after.
         Assert.Equal("https://nuget.pkg.github.com/lextudio/index.json",
             (string?)xml.Descendants("add").Single(a => (string?)a.Attribute("key") == "lextudio_github").Attribute("value"));
-        Assert.Equal("ProGPU.iOS,ProGPU.Text", PatternsOf(xml, "lextudio_github"));
+        Assert.Equal("ProGPU.*", PatternsOf(xml, "lextudio_github"));
         Assert.Equal("*", PatternsOf(xml, "nuget.org"));
     }
 

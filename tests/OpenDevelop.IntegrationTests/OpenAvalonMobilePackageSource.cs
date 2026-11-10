@@ -1,7 +1,5 @@
 using System;
 using System.IO;
-using System.Linq;
-using System.Xml.Linq;
 
 namespace OpenDevelop.IntegrationTests;
 
@@ -11,9 +9,8 @@ namespace OpenDevelop.IntegrationTests;
 /// closure from lextudio GitHub Packages with the token its workflow puts in
 /// <c>NuGetPackageSourceCredentials_lextudio_github</c>, so a journey that insisted on the local folder was
 /// skipped there and the lane's green result said nothing.
-/// Only the packages OpenAvalon publishes (the exact <c>ProGPU.*</c> ids the repository's NuGet.config maps to
-/// <c>lextudio_github</c>) come from that source; every other package, including ProGPU ones such as
-/// ProGPU.Fonts.* and ProGPU.Media.Editing that are published on nuget.org only, comes from nuget.org.
+/// Every <c>ProGPU.*</c> package comes from that source (OpenAvalon publishes the whole closure, including
+/// ProGPU.Fonts.* and ProGPU.Media.Editing); everything else comes from nuget.org.
 /// </summary>
 internal static class OpenAvalonMobilePackageSource
 {
@@ -29,9 +26,9 @@ internal static class OpenAvalonMobilePackageSource
         skipReason = null;
         string feed = Path.Combine(repositoryRoot, "artifacts", "openavalon-feed");
         if (File.Exists(Path.Combine(feed, packageId + "." + packageVersion + ".nupkg")))
-            return Create("opendevelop-openavalon-local", feed, ClosureIds(repositoryRoot));
+            return Create("opendevelop-openavalon-local", feed);
         if (!string.IsNullOrEmpty(getEnvironmentVariable(CredentialVariable)))
-            return Create("lextudio_github", "https://nuget.pkg.github.com/lextudio/index.json", ClosureIds(repositoryRoot));
+            return Create("lextudio_github", "https://nuget.pkg.github.com/lextudio/index.json");
 
         string reason = "The OpenAvalon mobile package closure is neither in artifacts/openavalon-feed (pwsh ./sync-openavalon-feed.ps1) nor reachable through " + CredentialVariable + ".";
         // A skip counts as a pass: on CI the journey would then report green without having run.
@@ -41,30 +38,14 @@ internal static class OpenAvalonMobilePackageSource
         return null;
     }
 
-    /// <summary>The exact ProGPU.* ids OpenAvalon publishes, as the repository's NuGet.config lists them for the lextudio_github source.</summary>
-    static string[] ClosureIds(string repositoryRoot)
+    static string Create(string sourceKey, string sourceValue)
     {
-        var config = XDocument.Load(Path.Combine(repositoryRoot, "NuGet.config"));
-        return config.Descendants("packageSource")
-            .Where(source => (string?)source.Attribute("key") == "lextudio_github")
-            .Elements("package")
-            .Select(package => (string?)package.Attribute("pattern"))
-            .OfType<string>()
-            .Where(pattern => pattern.StartsWith("ProGPU.", StringComparison.Ordinal) && !pattern.Contains('*'))
-            .ToArray();
-    }
-
-    static string Create(string sourceKey, string sourceValue, string[] closureIds)
-    {
-        if (closureIds.Length == 0)
-            throw new InvalidOperationException("NuGet.config lists no ProGPU.* package for the lextudio_github source.");
-        string patterns = string.Concat(closureIds.Select(id => $"<package pattern=\"{id}\" />"));
         return $$"""
             <?xml version="1.0" encoding="utf-8"?>
             <configuration>
               <packageSources><clear /><add key="{{sourceKey}}" value="{{sourceValue}}" /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources>
               <packageSourceMapping>
-                <packageSource key="{{sourceKey}}">{{patterns}}</packageSource>
+                <packageSource key="{{sourceKey}}"><package pattern="ProGPU.*" /></packageSource>
                 <packageSource key="nuget.org"><package pattern="*" /></packageSource>
               </packageSourceMapping>
             </configuration>
