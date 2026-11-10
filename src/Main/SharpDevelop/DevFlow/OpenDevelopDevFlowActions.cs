@@ -3014,8 +3014,8 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { success = true, gesture });
 		}
 
-		[DevFlowAction("od.debug.run-without-debugging", Description = "Start the project without debugging (Run Without Debugging); the process runs to completion and its exit is reported")]
-		public static string RunWithoutDebugging(string projectPath = null)
+		[DevFlowAction("od.debug.run-without-debugging", Description = "Start the project without debugging (Run Without Debugging), as the menu command does; the IDE does not track the program. Pass waitForExitSeconds > 0 to wait for it and report its exit code, and whether the IDE entered the debugging state")]
+		public static async Task<string> RunWithoutDebuggingAsync(string projectPath = null, int waitForExitSeconds = 0)
 		{
 			var debugger = SD.Debugger;
 			if (debugger == null) {
@@ -3032,7 +3032,25 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				return JsonSerializer.Serialize(new { success = false, error = "The project cannot produce a start info." });
 			}
 			debugger.StartWithoutDebugging(abstractProject.CreateStartInfo());
-			return JsonSerializer.Serialize(new { success = true });
+			bool debuggingAfterStart = debugger.IsDebugging;
+			var process = debugger.GetType().GetProperty("LastProcessStartedWithoutDebugging")?.GetValue(debugger) as System.Diagnostics.Process;
+			if (process == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No process was started.", isDebugging = debuggingAfterStart });
+			if (waitForExitSeconds <= 0)
+				return JsonSerializer.Serialize(new { success = true, processId = process.Id, isDebugging = debuggingAfterStart });
+			using var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(waitForExitSeconds));
+			try {
+				await process.WaitForExitAsync(timeout.Token);
+			} catch (OperationCanceledException) {
+				return JsonSerializer.Serialize(new { success = false, error = "The program did not exit in time.", processId = process.Id, isDebugging = debuggingAfterStart });
+			}
+			return JsonSerializer.Serialize(new {
+				success = true,
+				processId = process.Id,
+				exited = true,
+				exitCode = process.ExitCode,
+				isDebugging = debuggingAfterStart || debugger.IsDebugging
+			});
 		}
 		
 		[DevFlowAction("od.debug.attach", Description = "Attach to a running process by id")]

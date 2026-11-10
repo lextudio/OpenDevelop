@@ -87,12 +87,13 @@ public sealed class Net11ProjectIntegrationTests
         Assert.Contains("HELLO-NET11 11.", output, StringComparison.Ordinal);
 
         // What a user presses: Debug > Start Without Debugging (Ctrl+F5) and Start Debugging (F5)
-        // both go through the debugger, which launches the program with a host of its own - it must
-        // still be the pre-release SDK's root, the only place a .NET 11 runtime exists here.
-        var withoutDebugging = await ide.InvokeAsync("od.debug.run-without-debugging", "App11");
+        // must find the pre-release SDK's root: Start Debugging launches the program with a host of its own, and it must
+        // still be that root, the only place a .NET 11 runtime exists here.
+        // Start Without Debugging runs the program without the IDE tracking it (no debug session),
+        // so a clean exit is what shows it found that runtime.
+        var withoutDebugging = await ide.InvokeAsync("od.debug.run-without-debugging", "App11", 60);
         Assert.True(withoutDebugging.GetProperty("success").GetBoolean(), withoutDebugging.ToString());
-        await WaitForDebugOutputAsync(ide, "HELLO-NET11 11.", "Start Without Debugging");
-        await ide.InvokeAsync("od.debug.stop");
+        Assert.Equal(0, withoutDebugging.GetProperty("exitCode").GetInt32());
 
         var debugging = await ide.InvokeAsync("od.debug.start", null!, false, 30);
         Assert.True(debugging.GetProperty("started").GetBoolean(), debugging.ToString());

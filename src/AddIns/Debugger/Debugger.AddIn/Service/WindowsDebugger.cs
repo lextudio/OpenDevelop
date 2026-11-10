@@ -682,9 +682,57 @@ namespace ICSharpCode.SharpDevelop.Services
 				MessageService.ShowMessage(errorDebugging);
 				return;
 			}
-			// Run through the adapter's noDebug launch so the IDE captures stdout/stderr and the
-			// exit code, instead of a bare Process.Start it cannot observe.
-			StartAsync(processStartInfo, noDebug: true).FireAndForget();
+			// As SharpDevelop did: start the program and forget it. No debug session, so the
+			// workbench never enters the debugging state for a program the user did not ask to
+			// debug, and closing the program leaves nothing behind to tear down.
+			LastProcessStartedWithoutDebugging = null;
+			try {
+				LastProcessStartedWithoutDebugging = Process.Start(CreateStartWithoutDebuggingInfo(processStartInfo));
+			} catch (Exception ex) when (ex is System.ComponentModel.Win32Exception || ex is InvalidOperationException || ex is FileNotFoundException) {
+				MessageService.ShowError("Could not start " + processStartInfo.FileName + ": " + ex.Message);
+			}
+		}
+
+		/// <summary>
+		/// The program Run Without Debugging started last. The IDE does not track it; this is only
+		/// for DevFlow callers (od.debug.run-without-debugging), which need to see it exit.
+		/// </summary>
+		public Process LastProcessStartedWithoutDebugging { get; private set; }
+
+		/// <summary>
+		/// A project's start info names its output assembly, which for an SDK-style project is the
+		/// managed .dll. Run the apphost beside it when there is one (what `dotnet run` runs), or
+		/// else the .dll under a dotnet host: the project SDK's root when DotNetStartBehavior chose
+		/// one (DOTNET_ROOT in the start info), otherwise the host the IDE runs on.
+		/// A program file is started with UseShellExecute false so the launch profile's environment
+		/// reaches it; anything else (a StartAction.StartURL project's URL) goes to the shell, which
+		/// is what opens it in the browser.
+		/// </summary>
+		public static ProcessStartInfo CreateStartWithoutDebuggingInfo(ProcessStartInfo processStartInfo)
+		{
+			string target = processStartInfo.FileName;
+			if (string.IsNullOrEmpty(target) || !File.Exists(target)) {
+				processStartInfo.UseShellExecute = true;
+				return processStartInfo;
+			}
+			processStartInfo.UseShellExecute = false;
+			if (!string.Equals(Path.GetExtension(target), ".dll", StringComparison.OrdinalIgnoreCase))
+				return processStartInfo;
+			string apphost = Path.ChangeExtension(target, OperatingSystem.IsWindows() ? ".exe" : null);
+			if (File.Exists(apphost)) {
+				processStartInfo.FileName = apphost;
+				return processStartInfo;
+			}
+			string dotnet = OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
+			string host;
+			if (processStartInfo.Environment.TryGetValue("DOTNET_ROOT", out var root) && !string.IsNullOrEmpty(root))
+				host = Path.Combine(root, dotnet);
+			else
+				host = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") is { Length: > 0 } hostPath ? hostPath : dotnet;
+			string arguments = processStartInfo.Arguments;
+			processStartInfo.FileName = host;
+			processStartInfo.Arguments = "\"" + target + "\"" + (string.IsNullOrEmpty(arguments) ? string.Empty : " " + arguments);
+			return processStartInfo;
 		}
 
 		// The session the user asked to stop, so StartAsync can tell that from the adapter dying
