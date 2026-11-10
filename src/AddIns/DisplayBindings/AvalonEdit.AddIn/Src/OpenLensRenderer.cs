@@ -97,6 +97,11 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		// AddIfNotPresent threw IndexOutOfRangeException on resize while the async continuation
 		// was removing).
 		readonly ConcurrentDictionary<(string AnchorId, string LensId), byte> resolving = new();
+		// Items a provider returned unresolved wait here before they are resolved again; see
+		// OpenLensResolutionBackoff for why an immediate retry hung the IDE.
+		readonly OpenLensResolutionBackoff unresolvedBackoff = new();
+		DispatcherTimer unresolvedRetryTimer;
+		DateTime unresolvedRetryDue;
 
 		CancellationTokenSource refreshCancellation = new();
 		bool refreshQueued;
@@ -173,6 +178,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				.ToArray();
 			foreach (var key in keysToInvalidate)
 				resolvedItems.Remove(key);
+			// A refresh is the signal that a provider may answer now: try waiting items at once.
+			unresolvedBackoff.Reset();
 
 			ScheduleAnchorRefresh();
 		}
@@ -393,10 +400,13 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				anchors.Where(a => offsetByAnchorId.TryGetValue(a.AnchorId, out var o) && o >= viewStart && o <= viewEnd)
 					.Select(a => a.AnchorId));
 
+			var now = DateTime.UtcNow;
 			var toResolve = itemsByAnchorId
 				.Where(g => visibleAnchorIds.Contains(g.Key))
 				.SelectMany(g => g)
-				.Where(i => !i.IsResolved && providersById.ContainsKey(i.ProviderId) && resolving.TryAdd((i.AnchorId, i.LensId), 0))
+				.Where(i => !i.IsResolved && providersById.ContainsKey(i.ProviderId)
+					&& unresolvedBackoff.CanResolve(i.AnchorId, i.LensId, now)
+					&& resolving.TryAdd((i.AnchorId, i.LensId), 0))
 				.ToArray();
 
 			if (toResolve.Length > 0) {
@@ -428,6 +438,16 @@ namespace ICSharpCode.AvalonEdit.AddIn
 					return;
 				}
 
+				if (!resolved.IsResolved) {
+					// The provider could not answer yet. Nothing changed on screen, so do not cache or
+					// redraw: a redraw raises VisualLinesChanged, whose ResolveVisibleAnchors started this
+					// same resolution again at once, and a document whose language service never became
+					// ready spun the UI thread. Retry after a growing delay instead.
+					ScheduleUnresolvedRetry(item.AnchorId, item.LensId);
+					return;
+				}
+
+				unresolvedBackoff.RecordResolved(resolved.AnchorId, resolved.LensId);
 				resolvedItems[(resolved.AnchorId, resolved.LensId)] = resolved;
 				itemsByAnchorId = itemsByAnchorId.SelectMany(g => g)
 					.Select(i => i.AnchorId == resolved.AnchorId && i.LensId == resolved.LensId ? resolved : i)
@@ -449,6 +469,49 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				resolving.TryRemove((item.AnchorId, item.LensId), out _);
 				resolutionThrottle.Release();
 			}
+		}
+
+		/// <summary>
+		/// One pending timer for every waiting item: when it fires, the viewport pass picks up each
+		/// item whose delay has passed (and re-arms this for any that are still waiting). It only
+		/// resolves; it never redraws, so a provider that keeps answering "not yet" costs one cheap
+		/// pass per delay rather than a pass per frame.
+		/// </summary>
+		void ScheduleUnresolvedRetry(string anchorId, string lensId)
+		{
+			// The backoff state is read by ResolveVisibleAnchors on the dispatcher; record it there too.
+			if (!dispatcher.CheckAccess()) {
+				dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => ScheduleUnresolvedRetry(anchorId, lensId)));
+				return;
+			}
+			var now = DateTime.UtcNow;
+			unresolvedBackoff.RecordUnresolved(anchorId, lensId, now);
+			ArmUnresolvedRetry(now);
+		}
+
+		/// <summary>
+		/// Arms the single retry timer for the earliest waiting item, unless it is already armed for
+		/// that time or sooner. Called after each miss and after each timer pass, so an item with a
+		/// long delay is still retried when a sooner one fired (and resolved) before it.
+		/// </summary>
+		void ArmUnresolvedRetry(DateTime now)
+		{
+			if (!unresolvedBackoff.TryGetNextRetry(now, out var due))
+				return;
+			if (unresolvedRetryTimer != null && unresolvedRetryTimer.IsEnabled && unresolvedRetryDue <= due)
+				return;
+			if (unresolvedRetryTimer == null) {
+				unresolvedRetryTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher);
+				unresolvedRetryTimer.Tick += (s, e) => {
+					unresolvedRetryTimer.Stop();
+					ResolveVisibleAnchors();
+					ArmUnresolvedRetry(DateTime.UtcNow);
+				};
+			}
+			unresolvedRetryTimer.Stop();
+			unresolvedRetryDue = due;
+			unresolvedRetryTimer.Interval = due - now;
+			unresolvedRetryTimer.Start();
 		}
 
 		/// <summary>
@@ -773,6 +836,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			textView.VisualLinesChanged -= VisualLinesChanged;
 			textView.BlockAdornmentGenerators.Remove(this);
 			registry.RefreshRequested -= OnRefreshRequested;
+			unresolvedRetryTimer?.Stop();
 			refreshCancellation.Cancel();
 			refreshCancellation.Dispose();
 			resolutionThrottle.Dispose();
