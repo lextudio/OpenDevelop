@@ -476,6 +476,68 @@ public sealed class DebuggerFeatureIntegrationTests
         }
     }
 
+    /// <summary>
+    /// A real click on an empty line of the Icon Bar adds a breakpoint, hovering it shows its popup,
+    /// moving away closes it, and a second click removes it - SharpDevelop's gutter behaviour.
+    /// On LibreWPF the empty gutter was not hittable (the margin draws nothing there and relies on a
+    /// HitTestCore override), so the click reached the Grid behind it and nothing happened; the
+    /// breakpoint popup then threw "No portable popup host accepted this owner" on hover, and moving
+    /// away threw from PointFromScreen on the never-shown popup. Only real pointer input reaches
+    /// these paths: od.debug.set-breakpoint does not.
+    /// </summary>
+    [Fact]
+    public async Task IconBarClick_AddsAndRemovesABreakpointOnAnEmptyLine()
+    {
+        var program = ProgramPath;
+        // A plain statement: no declaration (outline) bookmark shares the line.
+        var line = FindLine(program, "var greeting = \"Hello, Debugger!\";");
+
+        await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+        await _app.InvokeAsync("od.open-file", program);
+        await _app.InvokeAsync("od.debug.clear-breakpoints");
+        try
+        {
+            async Task<bool> HasBreakpointAsync()
+            {
+                var snapshot = await _app.InvokeAsync("od.editor.icon-bar-bookmarks");
+                return snapshot.GetProperty("bookmarks").EnumerateArray().Any(bookmark =>
+                    bookmark.GetProperty("type").GetString() == "BreakpointBookmark"
+                    && bookmark.GetProperty("line").GetInt32() == line);
+            }
+
+            async Task<(double x, double y)> GutterPointAsync()
+            {
+                var point = await _app.InvokeAsync("od.editor.icon-bar-line-point", line);
+                Assert.True(point.GetProperty("success").GetBoolean(), point.ToString());
+                return (point.GetProperty("x").GetDouble(), point.GetProperty("y").GetDouble());
+            }
+
+            Assert.False(await HasBreakpointAsync());
+
+            var (x, y) = await GutterPointAsync();
+            var clicked = await _app.ClickPointerAsync(x, y);
+            Assert.True(clicked.GetProperty("ok").GetBoolean(), clicked.ToString());
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(HasBreakpointAsync, TimeSpan.FromSeconds(10)),
+                $"A click on the empty Icon Bar at line {line} ({x},{y}) did not add a breakpoint.");
+
+            // Stay on the breakpoint long enough for its popup, then leave the gutter: both used to throw.
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            await _app.MovePointerAsync(x + 400, y + 200);
+            await Task.Delay(TimeSpan.FromSeconds(1));
+
+            (x, y) = await GutterPointAsync();
+            clicked = await _app.ClickPointerAsync(x, y);
+            Assert.True(clicked.GetProperty("ok").GetBoolean(), clicked.ToString());
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => !await HasBreakpointAsync(), TimeSpan.FromSeconds(10)),
+                $"A second click on the Icon Bar at line {line} did not remove the breakpoint.");
+        }
+        finally
+        {
+            await _app.MovePointerAsync(0, 0);
+            await _app.InvokeAsync("od.debug.clear-breakpoints");
+        }
+    }
+
     string ProgramPath => Path.Combine(Path.GetDirectoryName(_app.DebugTestProjectPath)!, "Program.cs");
     static int FindLine(string path, string marker)
     {

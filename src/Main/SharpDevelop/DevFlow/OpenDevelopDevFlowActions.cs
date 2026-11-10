@@ -218,6 +218,18 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				return JsonSerializer.Serialize(new { active = false, error = "AvalonEdit AddIn is unavailable" });
 			return (string)method.Invoke(null, null);
 		}
+
+		[DevFlowAction("od.editor.icon-bar-line-point", Description = "Get the on-screen centre (PointToScreen) of the active editor's Icon Bar on a line, for aiming a real click at the gutter")]
+		public static string GetEditorIconBarLinePoint(int line)
+		{
+			var type = AppDomain.CurrentDomain.GetAssemblies()
+				.Select(assembly => assembly.GetType("ICSharpCode.AvalonEdit.AddIn.VSEditorViewDevFlowActions", throwOnError: false))
+				.FirstOrDefault(candidate => candidate != null);
+			var method = type?.GetMethod("GetIconBarLinePoint", BindingFlags.Public | BindingFlags.Static);
+			if (method == null)
+				return JsonSerializer.Serialize(new { success = false, error = "AvalonEdit AddIn is unavailable" });
+			return (string)method.Invoke(null, new object[] { line });
+		}
 		// ── FormsDesigner forwarding stubs ────────────────────────────────────────────
 		// DevFlow discovers [DevFlowAction] attributes once at startup, before AddIn
 		// autostart commands load lazy assemblies.  FormsDesignerDevFlowActions lives in

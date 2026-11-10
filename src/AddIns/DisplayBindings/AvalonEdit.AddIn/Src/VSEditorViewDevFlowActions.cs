@@ -108,6 +108,36 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			return JsonSerializer.Serialize(new { active = true, count = bookmarks.Length, bookmarks });
 		}
 
+		/// <summary>
+		/// The on-screen centre (PointToScreen, the convention ClickPointerAsync uses) of the active
+		/// editor's Icon Bar on a document line, scrolling the line into view first. Lets a test aim a
+		/// real click at the gutter: the generic UI tree only knows the whole margin, not its lines.
+		/// </summary>
+		public static string GetIconBarLinePoint(int line)
+		{
+			var editor = SD.Workbench.ActiveViewContent?.GetService(typeof(ITextEditor)) as ITextEditor;
+			var adapter = editor as AvalonEditTextEditorAdapter;
+			var textArea = adapter?.TextEditor?.TextArea;
+			var margin = textArea?.LeftMargins.OfType<IconBarMargin>().FirstOrDefault();
+			if (margin == null)
+				return JsonSerializer.Serialize(new { success = false, reason = "no active editor with an Icon Bar" });
+			if (line < 1 || line > textArea.Document.LineCount)
+				return JsonSerializer.Serialize(new { success = false, reason = "line out of range: " + line });
+
+			adapter.TextEditor.ScrollToLine(line);
+			var textView = textArea.TextView;
+			textView.EnsureVisualLines();
+			var visualLine = textView.GetVisualLine(line);
+			if (visualLine == null || !margin.IsVisible || margin.ActualWidth <= 0)
+				return JsonSerializer.Serialize(new { success = false, reason = "line or Icon Bar not laid out" });
+
+			// The Icon Bar shares the TextView's vertical coordinates (it maps the pointer to a line
+			// the same way), so the line's visual top minus the scroll offset is its y in the margin.
+			double y = visualLine.VisualTop - textView.ScrollOffset.Y + visualLine.Height / 2;
+			var screen = margin.PointToScreen(new System.Windows.Point(margin.ActualWidth / 2, y));
+			return JsonSerializer.Serialize(new { success = true, line, x = screen.X, y = screen.Y });
+		}
+
 		[DevFlowAction("od.vseditor.fold-and-geometry", Description = "Fold a document span (via AvalonEdit's FoldingManager) then report ITextViewLine geometry, to verify a folded VisualLine (FirstDocumentLine != LastDocumentLine) still maps to the correct combined Extent")]
 		public static string FoldAndGetLineGeometry(int foldStart, int foldEnd)
 		{
