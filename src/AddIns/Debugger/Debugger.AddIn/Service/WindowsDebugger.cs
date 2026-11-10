@@ -263,6 +263,7 @@ namespace ICSharpCode.SharpDevelop.Services
 				PrintDebugMessage("> Starting debug adapter...\n");
 
 				session = new DapSession();
+				currentSessionIsNoDebug = noDebug;
 				CurrentSession = session;
 				CurrentSession.Started += SessionStarted;
 				CurrentSession.Stopped += SessionStopped;
@@ -310,8 +311,12 @@ namespace ICSharpCode.SharpDevelop.Services
 					string debuggeeRuntimeHost = null;
 					if (processStartInfo.Environment.TryGetValue("DOTNET_ROOT", out var projectDotnetRoot) && !string.IsNullOrEmpty(projectDotnetRoot))
 						debuggeeRuntimeHost = Path.Combine(projectDotnetRoot, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
+					// Run Without Debugging must use "launch": only that request carries noDebug, and
+					// SharpDbg then starts the program with no debugger at all. The suspended-process
+					// shape always sends "attach", which has no noDebug, so a managed program ran under
+					// a full debugger and an unhandled exception raised the debugger's exception prompt.
 					await CurrentSession.StartAsync(targetPath, processStartInfo.WorkingDirectory, breakAtBeginning, arguments,
-						nativeHost ? DapLaunchMode.Launch : DapLaunchMode.AttachToSuspendedProcess, default, hotReloadEnvironment, noDebug,
+						GetLaunchMode(nativeHost, noDebug), default, hotReloadEnvironment, noDebug,
 						debuggeeRuntimeHost: debuggeeRuntimeHost).ConfigureAwait(false);
 
 				// Breakpoints must be sent after "launch" but before "configurationDone" -
@@ -346,6 +351,16 @@ namespace ICSharpCode.SharpDevelop.Services
 		/// Windows) is mapped to its sibling "&lt;name&gt;.dll" when that exists, falling back to the
 		/// original path if no such assembly is found.
 		/// </summary>
+		/// <summary>
+		/// How a session starts its debuggee. A managed program being debugged is started suspended by
+		/// the IDE and attached to, so breakpoints land before Main; a native host is launched by the
+		/// adapter. Run Without Debugging is always a launch, since "attach" cannot carry noDebug.
+		/// </summary>
+		internal static DapLaunchMode GetLaunchMode(bool nativeHost, bool noDebug)
+		{
+			return nativeHost || noDebug ? DapLaunchMode.Launch : DapLaunchMode.AttachToSuspendedProcess;
+		}
+
 		static string ResolveManagedAssemblyPath(string targetPath)
 		{
 			if (targetPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
@@ -430,6 +445,13 @@ namespace ICSharpCode.SharpDevelop.Services
 
 		void SessionStopped(DapStoppedEventArgs e)
 		{
+			if (currentSessionIsNoDebug) {
+				// Run Without Debugging has no debugger to pause in. A stop here means the adapter
+				// attached after all; resume rather than show debugger UI the user did not ask for.
+				LoggingService.Warn("Run Without Debugging session reported a '" + e.Reason + "' stop; resuming.");
+				CurrentSession?.Continue();
+				return;
+			}
 			HandleStoppedAsync(e).FireAndForget();
 		}
 
@@ -583,6 +605,7 @@ namespace ICSharpCode.SharpDevelop.Services
 						}
 					}
 				}
+				currentSessionIsNoDebug = false;
 				CurrentSession = session;
 				session.Started += SessionStarted;
 				session.Stopped += SessionStopped;
@@ -615,6 +638,7 @@ namespace ICSharpCode.SharpDevelop.Services
 			try {
 				PrintDebugMessage("> Attaching to process " + processId + "...\n");
 				session = new DapSession();
+				currentSessionIsNoDebug = false;
 				CurrentSession = session;
 				CurrentSession.Started += SessionStarted;
 				CurrentSession.Stopped += SessionStopped;
@@ -655,6 +679,9 @@ namespace ICSharpCode.SharpDevelop.Services
 
 		// The session the user asked to stop, so StartAsync can tell that from the adapter dying
 		volatile DapSession stopRequestedFor;
+
+		// Whether the current session is Run Without Debugging (set as each session is created)
+		volatile bool currentSessionIsNoDebug;
 
 		public override void Stop()
 		{

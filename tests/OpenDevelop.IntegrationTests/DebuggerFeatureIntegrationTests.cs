@@ -137,11 +137,43 @@ public sealed class DebuggerFeatureIntegrationTests
     }
 
     [Fact]
-    public async Task RunWithoutDebugging_StartsTheProjectWithoutABreakpoint()
+    public async Task RunWithoutDebugging_StartsTheProjectWithoutADebugger()
     {
         await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+        // The Debug output accumulates across this collection's sessions (the logpoint run also
+        // prints the line below, attached), so only what this run appends counts.
+        int outputBefore = (await DebugOutputAsync()).Length;
+
         var result = await _app.InvokeAsync("od.debug.run-without-debugging", _app.DebugTestProjectPath);
         Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
+
+        // DebugTestApp prints Debugger.IsAttached last. A managed program used to be started
+        // suspended and attached to even for Run Without Debugging (the "attach" request carries no
+        // noDebug), so it ran under a full debugger and printed True, and an unhandled exception
+        // raised the debugger's exception prompt.
+        string appended = string.Empty;
+        bool printed = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            string output = await DebugOutputAsync();
+            appended = output.Length >= outputBefore ? output.Substring(outputBefore) : output;
+            return appended.Contains("Debugger.IsAttached=", StringComparison.Ordinal);
+        }, TimeSpan.FromSeconds(45));
+        Assert.True(printed, "the program should have run to its last line; Debug output since the run:\n" + appended);
+        Assert.Contains("Hello, World!", appended, StringComparison.Ordinal);
+        Assert.Contains("Debugger.IsAttached=False", appended, StringComparison.Ordinal);
+        Assert.DoesNotContain("Debugger.IsAttached=True", appended, StringComparison.Ordinal);
+
+        // The session ends with the program, so the next test does not find it still debugging.
+        bool ended = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            var info = await _app.InvokeAsync("od.debug.service-info");
+            return !info.GetProperty("isDebugging").GetBoolean();
+        }, TimeSpan.FromSeconds(30));
+        Assert.True(ended, "the Run Without Debugging session should end when the program exits");
+    }
+
+    async Task<string> DebugOutputAsync()
+    {
+        var output = await _app.InvokeAsync("od.debug.output");
+        return output.GetProperty("text").GetString() ?? string.Empty;
     }
 
     [Fact]

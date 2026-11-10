@@ -276,16 +276,28 @@ namespace Debugger.AddIn.Service.Dap
 					["justMyCode"] = true
 				}, cancellationToken).ConfigureAwait(false);
 			} else {
+				string program = targetPath;
 				var args = new JsonArray();
+				var env = new JsonObject();
+				// Run Without Debugging: SharpDbg starts "program" as is, with no debugger attached. A
+				// managed .dll is not executable, so run it the way the debug path's suspended launch
+				// does: under the debuggee's own dotnet host, pointed at that host's install.
+				if (noDebug && targetPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) {
+					program = debuggeeLaunchHost;
+					args.Add(targetPath);
+					if (Path.IsPathRooted(debuggeeLaunchHost)) {
+						env["DOTNET_ROOT"] = Path.GetDirectoryName(debuggeeLaunchHost);
+						env["DOTNET_HOST_PATH"] = debuggeeLaunchHost;
+					}
+				}
 				foreach (var argument in argumentList) {
 					args.Add(argument);
 				}
-				var env = new JsonObject();
 				foreach (var variable in launchEnvironment ?? Enumerable.Empty<KeyValuePair<string, string>>()) {
 					env[variable.Key] = variable.Value;
 				}
 				await client.SendRequestAsync("launch", new JsonObject {
-					["program"] = targetPath,
+					["program"] = program,
 					["args"] = args,
 					["cwd"] = workingDirectory ?? Path.GetDirectoryName(targetPath),
 					["env"] = env,

@@ -23,6 +23,8 @@ namespace DebugTestApp
             Console.WriteLine(numbers.Length);
             Console.WriteLine(answer);
             Console.WriteLine(doubled.Length);
+            // Run Without Debugging must not attach a debugger; the integration test reads this line.
+            Console.WriteLine("Debugger.IsAttached=" + System.Diagnostics.Debugger.IsAttached);
         }
 
         static string ComputeGreeting(string name)
