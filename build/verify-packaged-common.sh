@@ -113,6 +113,10 @@ verify_wpf_designer() {
   local wpf_solution="$repo_root/tests/fixtures/WpfHotReloadFixture/WpfHotReloadFixture.slnx"
   local wpf_xaml="$repo_root/tests/fixtures/WpfHotReloadFixture/MainWindow.xaml" xaml_outline='' wpf_status=''
   [[ -f "$wpf_xaml" ]] || fail "linked WPF fixture source is missing: $wpf_xaml"
+  # The profile-aware XAML language server reads the project's resolved references and answers "restore required"
+  # (no outline) for a project that was never restored; nothing in this job builds or restores the fixtures.
+  # Run from the repository root: global.json (the LibreWPF.Sdk pin) is resolved from the working directory.
+  (cd "$repo_root" && dotnet restore tests/fixtures/WpfHotReloadFixture/WpfHotReloadFixture.csproj >/dev/null) || fail 'WPF fixture restore failed'
   invoke od.open-solution "$wpf_solution" | jq -e '.success == true' >/dev/null || fail 'WPF fixture solution did not open'
   invoke od.open-file "$wpf_xaml" | jq -e '.opened == true' >/dev/null || fail 'WPF fixture XAML did not open'
   invoke od.xaml.language-server "$wpf_xaml" | jq -e --arg workspace "$(dirname "$wpf_solution")" \

@@ -153,6 +153,11 @@ try {
     $wpfSolution = Join-Path $repoRoot 'tests/fixtures/WpfHotReloadFixture/WpfHotReloadFixture.slnx'
     $wpfXaml = Join-Path $repoRoot 'tests/fixtures/WpfHotReloadFixture/MainWindow.xaml'
     if (-not (Test-Path -LiteralPath $wpfXaml)) { Fail "the linked WPF fixture source is missing: $wpfXaml" }
+    # The profile-aware XAML language server answers "restore required" (no outline) for a project that was never restored.
+    # Run from the repository root: global.json (the LibreWPF.Sdk pin) is resolved from the working directory.
+    Push-Location $repoRoot
+    try { & dotnet restore 'tests/fixtures/WpfHotReloadFixture/WpfHotReloadFixture.csproj' | Out-Null; $restoreExit = $LASTEXITCODE } finally { Pop-Location }
+    if ($restoreExit -ne 0) { Fail 'the WPF fixture restore failed' }
     $null = Invoke-DevFlow 'od.open-solution' @($wpfSolution)
     $openedXaml = Invoke-DevFlow 'od.open-file' @($wpfXaml)
     if (-not $openedXaml.opened) { Fail 'the WPF fixture XAML did not open' }

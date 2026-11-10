@@ -194,7 +194,10 @@
       <_OpenDevelopForeignRuntimeAsset Include="$(OutputPath)**/runtimes/win*/**/*;$(OutputPath)**/runtimes/osx*/**/*;$(OutputPath)**/runtimes/linux-x64/**/*"
                                        Condition="'$(OpenDevelopDistributionRuntimeIdentifier)' == 'linux-arm64'" />
       <_OpenDevelopForeignRuntimeDirectory Include="@(_OpenDevelopForeignRuntimeAsset->'%(RootDir)%(Directory)')" />
+      <!-- android/ holds the device-side debug agents (Debugger.AddIn copies LeXtudio.SharpDbg.AndroidAgent
+           there): ELF files that run on the phone, shipped on every platform, never loaded by the host. -->
       <_OpenDevelopForeignNativeAsset Include="$(OutputPath)**/*.dylib;$(OutputPath)**/*.so"
+                                       Exclude="$(OutputPath)android/**"
                                        Condition="'$(OpenDevelopDistributionRidFamily)' == 'win'" />
       <_OpenDevelopForeignNativeAsset Include="$(OutputPath)**/*.dylib"
                                        Condition="'$(OpenDevelopDistributionRidFamily)' == 'linux'" />
