@@ -815,7 +815,9 @@ function Test-WindowsDistributionPayload {
         # another OS is not a foreign native asset. Same scope correction the Linux payload audit
         # already carries. Binaries under the notices tree are still rejected.
         $isNotice = $relative -match '(^|/)third-party-notices/'
-        $_.Extension -in '.pdb', '.dylib', '.so', '.lib', '.exp' -or
+        # The device-side Android debug agents are ELF files that ship by design (verify-android-debug-agent.ps1 checks them).
+        $isAndroidDebugAgent = $relative -match '^/addins/debugger/android/'
+        ($_.Extension -in '.pdb', '.dylib', '.so', '.lib', '.exp' -and -not ($isAndroidDebugAgent -and $_.Extension -eq '.so')) -or
         $relative -match '/ref/' -or
         # Only the host mirror's own 32-bit tree is dead weight: the one inside an add-in is what
         # the debugger and designers load when the user works on a 32-bit application.
@@ -906,7 +908,9 @@ function Test-WindowsDistributionArchive {
         # Same scope correction as the staged payload: a runtimes directory under
         # THIRD-PARTY-NOTICES is an attribution copy of a package layout, not a foreign binary.
         $isNotice = $name -match '(^|/)third-party-notices/'
-        $name.EndsWith('.pdb') -or $name.EndsWith('.dylib') -or $name.EndsWith('.so') -or
+        # Same exemption as the staged payload: the device-side Android debug agents are shipped ELF files.
+        $isAndroidDebugAgent = $name -match '/addins/debugger/android/'
+        $name.EndsWith('.pdb') -or $name.EndsWith('.dylib') -or ($name.EndsWith('.so') -and -not $isAndroidDebugAgent) -or
         $name.EndsWith('.lib') -or $name.EndsWith('.exp') -or
         $name -match '/ref/' -or
         # Same scope as the staged-payload rule: only the payload root's own 32-bit tree.

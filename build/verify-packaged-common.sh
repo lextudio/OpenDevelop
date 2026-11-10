@@ -182,7 +182,11 @@ verify_debugger() {
       debug_started=1
     fi
   fi
+  # Recorded before the next calls: a call that hangs (od.debug.stop did on macOS, 120 s timeout) otherwise leaves no
+  # trace of whether the session reached the breakpoint at all.
+  echo "debug start result: ${debug_start:-none}"
   debug_output=$(invoke od.debug.output || true)
+  echo "debug output: ${debug_output:-unavailable}"
   invoke od.debug.stop >/dev/null || true
   [[ "$debug_started" == 1 ]] || fail "debugger did not stop at the fixture breakpoint: ${debug_start:-no result}; output: ${debug_output:-unavailable}"
 }
