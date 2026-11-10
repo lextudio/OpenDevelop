@@ -1577,7 +1577,9 @@ function Invoke-WindowsPayload {
                 break
             }
         }
-        if (-not $hostFiles.Contains($name) -or $isOutOfProcessHost -or $ownProcessDependencies.Contains($file.FullName)) { $file }
+        # The agent folder carries its own LICENSE.TXT / THIRD-PARTY-NOTICES.TXT per runtime, whose names collide with the
+        # host's files; they are not host copies and must ship beside the agents (build/verify-android-debug-agent.ps1).
+        if ($isAndroidDebugAgent -or -not $hostFiles.Contains($name) -or $isOutOfProcessHost -or $ownProcessDependencies.Contains($file.FullName)) { $file }
     }
 
     $expectedAddInFiles = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)

@@ -124,10 +124,10 @@ verify_wpf_designer() {
     || fail 'XAML file was not routed to the packaged LibreWPF language server'
   for _ in $(seq 1 30); do
     xaml_outline=$(invoke od.xaml-outline.status)
-    jq -e '.active == true and .rootChildCount > 0 and any(.outlineNames[]; startswith("Button [PrimaryButton]"))' <<<"$xaml_outline" >/dev/null && break
+    jq -e '.active == true and .rootChildCount > 0 and any(.outlineNames[]; startswith("Button (PrimaryButton)"))' <<<"$xaml_outline" >/dev/null && break
     sleep 2
   done
-  jq -e '.active == true and .rootChildCount > 0 and any(.outlineNames[]; startswith("Button [PrimaryButton]"))' <<<"$xaml_outline" >/dev/null \
+  jq -e '.active == true and .rootChildCount > 0 and any(.outlineNames[]; startswith("Button (PrimaryButton)"))' <<<"$xaml_outline" >/dev/null \
     || fail "LibreWPF XAML language server did not return the fixture outline: $xaml_outline"
   invoke od.wpf-designer.activate-design | jq -e '.success == true' >/dev/null || fail 'WPF design view did not activate'
   for _ in $(seq 1 30); do

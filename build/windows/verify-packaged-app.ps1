@@ -167,7 +167,7 @@ try {
     if (-not $xamlServer.success -or $xamlServer.key -ne 'LibreWpf' -or $xamlServer.server -ne 'WinUiXaml.LanguageServer.dll' -or @($xamlServer.arguments) -notcontains 'librewpf' -or $actualWorkspace -ne $expectedWorkspace) {
         Fail "the XAML file was not routed to the packaged LibreWPF language server: $($xamlServer | ConvertTo-Json -Compress)"
     }
-    $outlineAccepted = { param($r) $r.active -and $r.rootChildCount -gt 0 -and @($r.outlineNames | Where-Object { $_ -like 'Button [[]PrimaryButton]*' }).Count -gt 0 }
+    $outlineAccepted = { param($r) $r.active -and $r.rootChildCount -gt 0 -and @($r.outlineNames | Where-Object { $_ -like 'Button (PrimaryButton)*' }).Count -gt 0 }
     $outline = Wait-DevFlow 'od.xaml-outline.status' @() $outlineAccepted
     if (-not (& $outlineAccepted $outline)) { Fail "the LibreWPF XAML language server did not return the fixture outline: $($outline | ConvertTo-Json -Compress)" }
     $null = Invoke-DevFlow 'od.wpf-designer.activate-design'
