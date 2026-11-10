@@ -116,7 +116,7 @@ verify_wpf_designer() {
   invoke od.open-solution "$wpf_solution" | jq -e '.success == true' >/dev/null || fail 'WPF fixture solution did not open'
   invoke od.open-file "$wpf_xaml" | jq -e '.opened == true' >/dev/null || fail 'WPF fixture XAML did not open'
   invoke od.xaml.language-server "$wpf_xaml" | jq -e --arg workspace "$(dirname "$wpf_solution")" \
-    '.success == true and .key == "LibreWpf" and .server == "librewpf-xaml-ls.dll" and .workspace == $workspace' >/dev/null \
+    '.success == true and .key == "LibreWpf" and .server == "WinUiXaml.LanguageServer.dll" and (.arguments | index("librewpf")) != null and .workspace == $workspace' >/dev/null \
     || fail 'XAML file was not routed to the packaged LibreWPF language server'
   for _ in $(seq 1 30); do
     xaml_outline=$(invoke od.xaml-outline.status)

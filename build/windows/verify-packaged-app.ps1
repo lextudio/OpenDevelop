@@ -159,7 +159,7 @@ try {
     $xamlServer = Invoke-DevFlow 'od.xaml.language-server' @($wpfXaml)
     $expectedWorkspace = [System.IO.Path]::GetFullPath((Split-Path $wpfSolution -Parent)).TrimEnd('\', '/')
     $actualWorkspace = if ($xamlServer.workspace) { [System.IO.Path]::GetFullPath([string]$xamlServer.workspace).TrimEnd('\', '/') } else { '' }
-    if (-not $xamlServer.success -or $xamlServer.key -ne 'LibreWpf' -or $xamlServer.server -ne 'librewpf-xaml-ls.dll' -or $actualWorkspace -ne $expectedWorkspace) {
+    if (-not $xamlServer.success -or $xamlServer.key -ne 'LibreWpf' -or $xamlServer.server -ne 'WinUiXaml.LanguageServer.dll' -or @($xamlServer.arguments) -notcontains 'librewpf' -or $actualWorkspace -ne $expectedWorkspace) {
         Fail "the XAML file was not routed to the packaged LibreWPF language server: $($xamlServer | ConvertTo-Json -Compress)"
     }
     $outlineAccepted = { param($r) $r.active -and $r.rootChildCount -gt 0 -and @($r.outlineNames | Where-Object { $_ -like 'Button [[]PrimaryButton]*' }).Count -gt 0 }

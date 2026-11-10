@@ -1560,9 +1560,12 @@ function Invoke-WindowsPayload {
     }
     $addInFiles = foreach ($file in $allAddInFiles) {
         $name = $file.Name
-        if ($name -like '*.pdb' -or $name -like '*.dylib' -or $name -like '*.so' -or
-            $name -like 'LeXtudio.DevFlow.*' -or $name -like 'CliclickSharp*') { continue }
         $relative = $file.FullName.Substring($addInsSource.Length).TrimStart('\', '/')
+        # The Android debug agents are device-side ELF payloads (Debugger/android/<abi>/*.so) that ship on every
+        # platform; every other host-native .so is dropped from the Windows payload.
+        $isAndroidDebugAgent = $relative -match '^Debugger[\\/]android[\\/]'
+        if ($name -like '*.pdb' -or $name -like '*.dylib' -or ($name -like '*.so' -and -not $isAndroidDebugAgent) -or
+            $name -like 'LeXtudio.DevFlow.*' -or $name -like 'CliclickSharp*') { continue }
         if ($relative -match '(^|[\\/])(ref|runtimes[\\/](linux|unix|osx))([\\/]|$)') { continue }
         if ($file.Extension -eq '.xml' -and $addInDllPaths.Contains([System.IO.Path]::ChangeExtension($file.FullName, '.dll'))) { continue }
 
