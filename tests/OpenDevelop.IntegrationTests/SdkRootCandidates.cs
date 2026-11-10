@@ -1,3 +1,4 @@
+using System;
 using System.Text.Json;
 using Xunit;
 
@@ -23,7 +24,14 @@ static class SdkRootCandidates
         Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
         Assert.True(selected.TryGetProperty("effective", out var effective) && effective.ValueKind == JsonValueKind.Object,
             "The selected SDK root is not usable: " + selected);
-        Assert.Equal(root.TrimEnd('/', '\\'), effective.GetProperty("RootPath").GetString()!.TrimEnd('/', '\\'), ignoreCase: true);
+        string expected = root.TrimEnd('/', '\\');
+        string actual = effective.GetProperty("RootPath").GetString()!.TrimEnd('/', '\\');
+        if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
+        {
+            // What the IDE discovered says why the choice did not take (root missing from the list, no SDK 10+ in it, ...).
+            var list = await ide.InvokeAsync("od.sdk.list");
+            Assert.Fail($"Selected SDK root '{root}' but the effective one is '{actual}'. Select response: {selected}. od.sdk.list: {list}");
+        }
     }
 
     /// <summary>Existing DOTNET_ROOT-style folders whose sdk/ directory holds an 11.x SDK.</summary>
