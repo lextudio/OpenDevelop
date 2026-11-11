@@ -134,10 +134,40 @@ public sealed class TimelineControl : FrameworkElement
 		e.Handled = true;
 	}
 
+	/// <summary>
+	/// The samples in the bar under a point, shown as the tooltip as moving the mouse there does; <c>null</c> outside the graph.
+	/// </summary>
+	internal string? HoverAt(Point point)
+	{
+		if (bins.Length == 0 || ActualWidth <= 0 || durationMs <= 0)
+			return null;
+		var index = Math.Clamp((int)(point.X / ActualWidth * bins.Length), 0, bins.Length - 1);
+		var from = index * durationMs / bins.Length;
+		var to = (index + 1) * durationMs / bins.Length;
+		var text = $"{bins[index]:0} samples\n{from / 1000:0.0#} s to {to / 1000:0.0#} s";
+		ToolTip = text;
+		return text;
+	}
+
+	/// <summary>The graph's size, its bars and the selection, for the integration-test probes.</summary>
+	internal object Snapshot() => new
+	{
+		width = ActualWidth,
+		height = ActualHeight,
+		durationMs,
+		bins,
+		peak = bins.Length == 0 ? 0 : bins.Max(),
+		selectionStartMs,
+		selectionEndMs,
+	};
+
 	protected override void OnMouseMove(MouseEventArgs e)
 	{
 		if (dragOriginX is null)
+		{
+			HoverAt(e.GetPosition(this));
 			return;
+		}
 		dragCurrentX = Clamp(e.GetPosition(this).X);
 		InvalidateVisual();
 	}

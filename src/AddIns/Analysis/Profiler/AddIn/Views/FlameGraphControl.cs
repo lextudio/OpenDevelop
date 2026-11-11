@@ -173,26 +173,38 @@ public sealed class FlameGraphControl : FrameworkElement
 		return point.X >= x && point.X < x + width ? node : null;
 	}
 
-	protected override void OnMouseMove(MouseEventArgs e)
+	protected override void OnMouseMove(MouseEventArgs e) => HoverAt(e.GetPosition(this));
+
+	/// <summary>
+	/// What the pointer shows at a point: sets the tooltip exactly as moving the mouse there does and returns its text,
+	/// <c>null</c> over empty space. The integration tests drive the same path with a point taken from <see cref="Snapshot"/>.
+	/// </summary>
+	internal string? HoverAt(Point point)
 	{
-		if (NodeAt(e.GetPosition(this)) is { } node && root is not null)
+		if (NodeAt(point) is { } node && root is not null)
 		{
-			ToolTip = $"{node.Name}\n{node.Module}\n"
+			var text = $"{node.Name}\n{node.Module}\n"
 				+ $"Total {ReportFormat.Quantity(node.Total * sampleIntervalMs, unit)} ({ReportFormat.Fraction(node.Total, root.Total):P1})   "
 				+ $"Self {ReportFormat.Quantity(node.Self * sampleIntervalMs, unit)} ({ReportFormat.Fraction(node.Self, root.Total):P1})";
+			ToolTip = text;
+			return text;
 		}
-		else
-		{
-			ToolTip = null;
-		}
+		ToolTip = null;
+		return null;
 	}
 
 	protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
 	{
 		Focus();
-		if (NodeAt(e.GetPosition(this)) is not { } node)
-			return;
-		if (e.ClickCount == 2 && node.FrameId != CallTreeNode.RootFrameId)
+		e.Handled = ClickAt(e.GetPosition(this), e.ClickCount);
+	}
+
+	/// <summary>A left click at a point: one click zooms into the box, a double click raises <see cref="FrameActivated"/>.</summary>
+	internal bool ClickAt(Point point, int clickCount)
+	{
+		if (NodeAt(point) is not { } node)
+			return false;
+		if (clickCount == 2 && node.FrameId != CallTreeNode.RootFrameId)
 		{
 			FrameActivated?.Invoke(this, node.FrameId);
 		}
@@ -202,7 +214,30 @@ public sealed class FlameGraphControl : FrameworkElement
 			InvalidateMeasure();
 			InvalidateVisual();
 		}
-		e.Handled = true;
+		return true;
+	}
+
+	/// <summary>The drawn boxes (a box per call, depth first) with their rectangles, for the integration-test probes.</summary>
+	internal object Snapshot(int maxBoxes = 60)
+	{
+		var boxes = new List<object>();
+		if (zoom is not null && zoom.Total > 0 && ActualWidth > 0)
+			Collect(zoom, 0, ActualWidth, 0, boxes, maxBoxes);
+		return new { zoom = zoom?.Name, width = ActualWidth, height = ActualHeight, boxes };
+	}
+
+	void Collect(CallTreeNode node, double x, double width, int row, List<object> boxes, int max)
+	{
+		if (width < MinDrawWidth || boxes.Count >= max)
+			return;
+		boxes.Add(new { name = node.Name, module = node.Module, row, x, y = row * RowHeight, width, height = RowHeight - 1 });
+		var childX = x;
+		foreach (var child in node.Children)
+		{
+			var childWidth = width * child.Total / node.Total;
+			Collect(child, childX, childWidth, row + 1, boxes, max);
+			childX += childWidth;
+		}
 	}
 
 	protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)

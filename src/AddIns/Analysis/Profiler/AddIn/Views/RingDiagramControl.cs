@@ -71,7 +71,24 @@ public sealed class RingDiagramControl : FrameworkElement
 		focus = focus?.Name,
 		slices = slices.Count,
 		levels = slices.Count == 0 ? 0 : slices.Max(s => s.Level),
+		marks = SliceMarks(40),
 	};
+
+	/// <summary>Where each slice's middle is, so a probe can point at it: a point inside the slice, in this element's coordinates.</summary>
+	List<object> SliceMarks(int max)
+	{
+		var (center, centreRadius, thickness) = Layout();
+		return slices.Take(max).Select(slice =>
+		{
+			var radius = centreRadius + (slice.Level - 0.5) * thickness;
+			var radians = Math.PI / 180 * (slice.StartAngle + slice.SweepAngle / 2 - 90);
+			return (object)new
+			{
+				name = slice.Node.Name, level = slice.Level, sweep = slice.SweepAngle,
+				x = center.X + radius * Math.Cos(radians), y = center.Y + radius * Math.Sin(radians),
+			};
+		}).ToList();
+	}
 
 	void SetFocus(CallTreeNode node)
 	{
@@ -198,9 +215,12 @@ public sealed class RingDiagramControl : FrameworkElement
 		return slices.FirstOrDefault(s => s.Level == level && angle >= s.StartAngle && angle < s.StartAngle + s.SweepAngle);
 	}
 
-	protected override void OnMouseMove(MouseEventArgs e)
+	protected override void OnMouseMove(MouseEventArgs e) => HoverAt(e.GetPosition(this));
+
+	/// <summary>Highlights the slice at a point and sets its tooltip as moving the mouse there does; returns the tooltip text.</summary>
+	internal string? HoverAt(Point point)
 	{
-		var slice = SliceAt(e.GetPosition(this), out var inCentre);
+		var slice = SliceAt(point, out var inCentre);
 		if (!ReferenceEquals(slice, hovered))
 		{
 			hovered = slice;
@@ -208,11 +228,13 @@ public sealed class RingDiagramControl : FrameworkElement
 		}
 
 		var node = slice?.Node ?? (inCentre ? focus : null);
-		ToolTip = node is null || focus is null
+		var text = node is null || focus is null
 			? null
 			: $"{node.Name}\n{node.Module}\n"
 			  + $"Total {ReportFormat.Quantity(node.Total * sampleIntervalMs, unit)} ({ReportFormat.Fraction(node.Total, focus.Total):P1} of the centre)   "
 			  + $"Self {ReportFormat.Quantity(node.Self * sampleIntervalMs, unit)}";
+		ToolTip = text;
+		return text;
 	}
 
 	protected override void OnMouseLeave(MouseEventArgs e)
@@ -227,12 +249,19 @@ public sealed class RingDiagramControl : FrameworkElement
 	protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
 	{
 		Focus();
-		var slice = SliceAt(e.GetPosition(this), out var inCentre);
+		ClickAt(e.GetPosition(this), e.ClickCount);
+		e.Handled = true;
+	}
+
+	/// <summary>A left click at a point: the centre goes up a level, a slice is focused, a double click on a slice raises <see cref="FrameActivated"/>.</summary>
+	internal void ClickAt(Point point, int clickCount)
+	{
+		var slice = SliceAt(point, out var inCentre);
 		if (inCentre && focus?.Parent is { } parent)
 		{
 			SetFocus(parent);
 		}
-		else if (slice is not null && e.ClickCount == 2 && slice.Node.FrameId != CallTreeNode.RootFrameId)
+		else if (slice is not null && clickCount == 2 && slice.Node.FrameId != CallTreeNode.RootFrameId)
 		{
 			FrameActivated?.Invoke(this, slice.Node.FrameId);
 		}
@@ -240,7 +269,6 @@ public sealed class RingDiagramControl : FrameworkElement
 		{
 			SetFocus(slice.Node);
 		}
-		e.Handled = true;
 	}
 
 	protected override void OnKeyDown(KeyEventArgs e)

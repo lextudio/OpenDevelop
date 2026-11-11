@@ -35,6 +35,54 @@ else if (mode == "alloc")
         Allocator.Labels(8);
     }
 }
+else if (mode == "leak")
+{
+    // A leak that grows at a steady rate, so two snapshots taken apart differ by a known direction.
+    Console.WriteLine("READY");
+    Console.Out.Flush();
+    var clock = System.Diagnostics.Stopwatch.StartNew();
+    while (clock.Elapsed < TimeSpan.FromSeconds(seconds))
+    {
+        for (var i = 0; i < LeakedItem.PerTick; i++)
+            Leak.Items.Add(new LeakedItem { Payload = new byte[64] });
+        Thread.Sleep(50);
+    }
+}
+else if (mode == "threads")
+{
+    var workers = Enumerable.Range(0, Fixture.ThreadCount).Select(index => new Thread(() =>
+    {
+        long accumulator = index;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (clock.Elapsed < TimeSpan.FromSeconds(seconds))
+            accumulator += Fixture.Outer(accumulator);
+        GC.KeepAlive(accumulator.ToString());
+    }) { Name = "spin-" + index }).ToList();
+    workers.ForEach(t => t.Start());
+    Console.WriteLine("READY");
+    Console.Out.Flush();
+    workers.ForEach(t => t.Join());
+}
+else if (mode == "starve")
+{
+    // Blocking inside pool work items is the classic starvation: the pool answers by injecting threads slowly.
+    Console.WriteLine("READY");
+    Console.Out.Flush();
+    var clock = System.Diagnostics.Stopwatch.StartNew();
+    while (clock.Elapsed < TimeSpan.FromSeconds(seconds))
+    {
+        while (Environment.ProcessorCount * 6 > Fixture.Blocked)
+        {
+            Interlocked.Increment(ref Fixture.Blocked);
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                Thread.Sleep(30_000); // long enough that nothing completes, which is what the pool reads as starvation
+                Interlocked.Decrement(ref Fixture.Blocked);
+            });
+        }
+        Thread.Sleep(100);
+    }
+}
 else if (mode == "contents")
 {
     // Equal values, distinct instances: new string(...) does not intern.
@@ -97,6 +145,8 @@ static class Allocator
 static class Fixture
 {
     public const int HeldObjectCount = 12345;
+    public const int ThreadCount = 4;
+    public static int Blocked;
     public const int ListenerCount = 200;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -143,4 +193,15 @@ sealed class HeldObject
 {
     public string Name = "";
     public byte[] Payload = [];
+}
+
+sealed class LeakedItem
+{
+    public const int PerTick = 200;
+    public byte[]? Payload;
+}
+
+static class Leak
+{
+    public static readonly List<LeakedItem> Items = [];
 }

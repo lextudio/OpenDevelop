@@ -11,6 +11,10 @@ internal sealed record FunctionRow(
 	double SelfChange = 0, double TotalChange = 0, bool Compared = false)
 {
 	// Percentage points of the whole profile; shown only while comparing.
+	public DiffTrend SelfTrend => Compared ? DiffColours.TrendOf(SelfChange, 0.0005) : DiffTrend.Same;
+	public DiffTrend TotalTrend => Compared ? DiffColours.TrendOf(TotalChange, 0.0005) : DiffTrend.Same;
+	public System.Windows.Media.Brush SelfChangeBrush => DiffColours.BrushOf(SelfTrend);
+	public System.Windows.Media.Brush TotalChangeBrush => DiffColours.BrushOf(TotalTrend);
 	public string SelfChangeText => Compared ? ReportFormat.Signed(SelfChange) : "";
 	public string TotalChangeText => Compared ? ReportFormat.Signed(TotalChange) : "";
 }
@@ -89,7 +93,7 @@ public partial class FunctionsView : UserControl
 	internal IReadOnlyList<object> Snapshot(int max) =>
 		(functionList.ItemsSource as IEnumerable<FunctionRow> ?? [])
 		.Take(max)
-		.Select(r => (object)new { name = r.Name, module = r.Module, totalMs = r.TotalMs, selfMs = r.SelfMs, selfChange = r.SelfChangeText })
+		.Select(r => (object)new { name = r.Name, module = r.Module, totalMs = r.TotalMs, selfMs = r.SelfMs, selfChange = r.SelfChangeText, selfTrend = r.SelfTrend.ToString() })
 		.ToList();
 
 	void Activate()

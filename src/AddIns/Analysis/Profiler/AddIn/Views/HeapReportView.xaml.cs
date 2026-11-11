@@ -16,6 +16,10 @@ internal sealed record TypeRow(
 {
 	public string SizeText => ReportFormat.Bytes(Size);
 	public string RetainedText => Retained < 0 ? "…" : ReportFormat.Bytes(Retained);
+	public DiffTrend CountTrend => DiffColours.TrendOf(CountDiff);
+	public DiffTrend SizeTrend => DiffColours.TrendOf(SizeDiff);
+	public System.Windows.Media.Brush CountDiffBrush => DiffColours.BrushOf(CountTrend);
+	public System.Windows.Media.Brush SizeDiffBrush => DiffColours.BrushOf(SizeTrend);
 	public string CountDiffText => Signed(CountDiff);
 	public string SizeDiffText => (SizeDiff > 0 ? "+" : "") + ReportFormat.Bytes(SizeDiff);
 
@@ -218,7 +222,7 @@ public partial class HeapReportView : UserControl
 		compareText = compareText.Text,
 		rows = (typeList.ItemsSource as IEnumerable<TypeRow> ?? [])
 			.Take(max)
-			.Select(r => new { name = r.Name, count = r.Count, size = r.Size, retained = r.Retained, countDiff = r.CountDiff, sizeDiff = r.SizeDiff })
+			.Select(r => new { name = r.Name, count = r.Count, size = r.Size, retained = r.Retained, countDiff = r.CountDiff, sizeDiff = r.SizeDiff, countTrend = r.CountTrend.ToString(), sizeTrend = r.SizeTrend.ToString() })
 			.ToList(),
 	};
 

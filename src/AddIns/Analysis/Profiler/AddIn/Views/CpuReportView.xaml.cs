@@ -428,7 +428,34 @@ public partial class CpuReportView : UserControl
 		callerCallee = callerCallee.Snapshot(),
 		ring = ringDiagram.Snapshot(),
 		counters = counters.Snapshot(),
+		timeline = timeline.Snapshot(),
+		flame = flameGraph.Snapshot(),
 	};
+
+	/// <summary>Moves the pointer over a drawn surface (timeline, flame, ring or counter:NAME) at a point in its coordinates.</summary>
+	internal string? Hover(string surface, Point point) => surface switch
+	{
+		"timeline" => timeline.HoverAt(point),
+		"flame" => flameGraph.HoverAt(point),
+		"ring" => ringDiagram.HoverAt(point),
+		_ when surface.StartsWith("counter:", StringComparison.Ordinal) => counters.HoverAt(surface["counter:".Length..], point),
+		_ => throw new ArgumentException("Unknown surface: " + surface),
+	};
+
+	/// <summary>Clicks a flame-graph box or ring slice; other surfaces have nothing to click.</summary>
+	internal bool Click(string surface, Point point, int clickCount)
+	{
+		switch (surface)
+		{
+			case "flame":
+				return flameGraph.ClickAt(point, clickCount);
+			case "ring":
+				ringDiagram.ClickAt(point, clickCount);
+				return true;
+			default:
+				throw new ArgumentException("Nothing to click on: " + surface);
+		}
+	}
 
 	async void GoToSourceRequested(object? sender, string frameName)
 	{

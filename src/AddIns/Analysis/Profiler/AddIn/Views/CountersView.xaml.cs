@@ -43,11 +43,16 @@ public partial class CountersView : UserControl
 		}
 	}
 
+	/// <summary>Hovers the chart of a counter at a point in its own coordinates; returns the tooltip, null when there is no such chart.</summary>
+	internal string? HoverAt(string counter, Point point) =>
+		panel.Children.OfType<CounterChart>().FirstOrDefault(c => c.Name == counter)?.HoverAt(point);
+
 	/// <summary>The charts shown, for the integration-test probes.</summary>
 	internal object Snapshot() => new
 	{
 		empty = emptyText.Visibility == Visibility.Visible,
 		charts = panel.Children.OfType<TextBlock>().Select(t => t.Text).ToList(),
 		points = panel.Children.OfType<CounterChart>().Select(c => c.Plot().Count).ToList(),
+		plots = panel.Children.OfType<CounterChart>().Select(c => c.Snapshot()).ToList(),
 	};
 }

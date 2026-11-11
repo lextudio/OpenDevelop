@@ -173,12 +173,22 @@
 							<GridViewColumnHeader Tag="SizeFraction" Content="{core:Localize AddIns.Profiler.Report.PercentOfHeap}" />
 						</GridViewColumn.Header>
 					</GridViewColumn>
-					<GridViewColumn x:Name="countDiffColumn" Width="0" DisplayMemberBinding="{Binding CountDiffText}">
+					<GridViewColumn x:Name="countDiffColumn" Width="0">
+						<GridViewColumn.CellTemplate>
+							<DataTemplate>
+								<TextBlock Text="{Binding CountDiffText}" Foreground="{Binding CountDiffBrush}" />
+							</DataTemplate>
+						</GridViewColumn.CellTemplate>
 						<GridViewColumn.Header>
 							<GridViewColumnHeader Tag="CountDiff" Content="{core:Localize AddIns.Profiler.Report.CountDiff}" />
 						</GridViewColumn.Header>
 					</GridViewColumn>
-					<GridViewColumn x:Name="sizeDiffColumn" Width="0" DisplayMemberBinding="{Binding SizeDiffText}">
+					<GridViewColumn x:Name="sizeDiffColumn" Width="0">
+						<GridViewColumn.CellTemplate>
+							<DataTemplate>
+								<TextBlock Text="{Binding SizeDiffText}" Foreground="{Binding SizeDiffBrush}" />
+							</DataTemplate>
+						</GridViewColumn.CellTemplate>
 						<GridViewColumn.Header>
 							<GridViewColumnHeader Tag="SizeDiff" Content="{core:Localize AddIns.Profiler.Report.SizeDiff}" />
 						</GridViewColumn.Header>

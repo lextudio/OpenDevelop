@@ -424,6 +424,15 @@ public sealed class ProfilerIntegrationTests : IAsyncDisposable
 		var change = hot.GetProperty("selfChange").GetString()!;
 		Assert.EndsWith(" pp", change);
 		Assert.True(Math.Abs(double.Parse(change[..^3].Replace("+", ""), System.Globalization.CultureInfo.CurrentCulture)) < 10, change);
+		// The colour of a change follows its sign (red for a larger share, green for a smaller one); a change that rounds to
+		// 0.0 pp is left out because either side of the rounding is a fair reading.
+		Assert.All(state.GetProperty("functions").EnumerateArray(), row =>
+		{
+			var text = row.GetProperty("selfChange").GetString()!;
+			var points = double.Parse(text[..^3].Replace("+", ""), System.Globalization.CultureInfo.CurrentCulture);
+			if (Math.Abs(points) >= 0.1)
+				Assert.Equal(points > 0 ? "Grew" : "Shrank", row.GetProperty("selfTrend").GetString());
+		});
 
 		await app.InvokeAsync("od.profiler.cpu.stop-compare");
 		state = (await app.InvokeAsync("od.profiler.report")).GetProperty("state");
@@ -749,6 +758,184 @@ public sealed class ProfilerIntegrationTests : IAsyncDisposable
 			}
 		});
 		return (process, ready!);
+	}
+
+	// What a user does with the drawn CPU report: point at a box, a slice, a bar or a chart reading and read what the pointer
+	// shows. The positions come from the report's own geometry (od.profiler.report), and the hover/click actions run the
+	// same methods the mouse handlers call, so each assertion is about the element under that point.
+	[Fact]
+	public async Task CpuReport_PointingAtTheDrawnElementsShowsTheDetailsUnderThePointer()
+	{
+		var fixture = await StartFixtureAsync("cpu", 60);
+		var capture = await app.InvokeAsync("od.profiler.capture-cpu", fixture.Id, 4);
+		Assert.True(capture.GetProperty("success").GetBoolean(), capture.ToString());
+
+		// Flame graph: the box of the hot method says it is where the time goes.
+		await app.InvokeAsync("od.profiler.cpu.set-mode", "FlameGraph");
+		var flame = (await app.InvokeAsync("od.profiler.report")).GetProperty("state").GetProperty("flame");
+		var boxes = flame.GetProperty("boxes").EnumerateArray().ToList();
+		var hot = boxes.First(box => box.GetProperty("name").GetString()!.Contains("HotLeaf"));
+		var hovered = await HoverAsync("flame", hot.GetProperty("x").GetDouble() + hot.GetProperty("width").GetDouble() / 2,
+			hot.GetProperty("y").GetDouble() + hot.GetProperty("height").GetDouble() / 2);
+		Assert.True(hovered.GetProperty("hit").GetBoolean(), hovered.ToString());
+		var tooltip = hovered.GetProperty("text").GetString()!;
+		Assert.Contains("HotLeaf", tooltip);
+		Assert.True(SelfPercent(tooltip) > 70, tooltip);
+		var below = await HoverAsync("flame", 5, flame.GetProperty("height").GetDouble() + 200);
+		Assert.False(below.GetProperty("hit").GetBoolean(), below.ToString());
+
+		// A click on the caller zooms into it; the hot method's box then fills the width.
+		var outer = boxes.First(box => box.GetProperty("name").GetString()!.Contains("Outer"));
+		await app.InvokeAsync("od.profiler.cpu.click", "flame", outer.GetProperty("x").GetDouble() + 5, outer.GetProperty("y").GetDouble() + 5, 1);
+		var zoomed = (await app.InvokeAsync("od.profiler.report")).GetProperty("state").GetProperty("flame");
+		Assert.Contains("Outer", zoomed.GetProperty("zoom").GetString());
+
+		// Ring diagram: the slice of the hot method, and a click on its parent focuses the parent.
+		await app.InvokeAsync("od.profiler.cpu.set-mode", "RingDiagram");
+		var ring = (await app.InvokeAsync("od.profiler.report")).GetProperty("state").GetProperty("ring");
+		var marks = ring.GetProperty("marks").EnumerateArray().ToList();
+		var slice = marks.First(mark => mark.GetProperty("name").GetString()!.Contains("HotLeaf"));
+		var sliceHover = await HoverAsync("ring", slice.GetProperty("x").GetDouble(), slice.GetProperty("y").GetDouble());
+		Assert.Contains("HotLeaf", sliceHover.GetProperty("text").GetString());
+		var parent = marks.First(mark => mark.GetProperty("name").GetString()!.Contains("Outer"));
+		await app.InvokeAsync("od.profiler.cpu.click", "ring", parent.GetProperty("x").GetDouble(), parent.GetProperty("y").GetDouble(), 1);
+		var focused = (await app.InvokeAsync("od.profiler.report")).GetProperty("state").GetProperty("ring");
+		Assert.Contains("Outer", focused.GetProperty("focus").GetString());
+
+		// Timeline: the tallest bar's tooltip carries its own sample count.
+		var timeline = (await app.InvokeAsync("od.profiler.report")).GetProperty("state").GetProperty("timeline");
+		var bins = timeline.GetProperty("bins").EnumerateArray().Select(bin => bin.GetDouble()).ToList();
+		var tallest = bins.IndexOf(bins.Max());
+		var bar = await HoverAsync("timeline", (tallest + 0.5) / bins.Count * timeline.GetProperty("width").GetDouble(), 10);
+		Assert.StartsWith($"{bins[tallest]:0} samples", bar.GetProperty("text").GetString());
+		Assert.Contains(" s to ", bar.GetProperty("text").GetString());
+	}
+
+	[Fact]
+	public async Task CounterChart_ShowsTheReadingUnderThePointer()
+	{
+		var fixture = await StartFixtureAsync("cpu", 60);
+		var capture = await app.InvokeAsync("od.profiler.capture-cpu", fixture.Id, 4);
+		Assert.True(capture.GetProperty("success").GetBoolean(), capture.ToString());
+		await app.InvokeAsync("od.profiler.cpu.set-mode", "Counters");
+
+		var cpu = await CounterPlotAsync("cpu-usage");
+		var points = cpu.GetProperty("points").EnumerateArray().ToList();
+		Assert.True(points.Count >= 2, cpu.ToString());
+		Assert.True(cpu.GetProperty("peak").GetDouble() > 0, "a program spinning one thread uses some CPU");
+		var peak = points.OrderByDescending(point => point.GetProperty("value").GetDouble()).First();
+		var hovered = await HoverAsync("counter:cpu-usage", peak.GetProperty("x").GetDouble(), peak.GetProperty("y").GetDouble());
+		Assert.True(hovered.GetProperty("hit").GetBoolean(), hovered.ToString());
+		Assert.Contains(" at ", hovered.GetProperty("text").GetString());
+		var marked = (await CounterPlotAsync("cpu-usage")).GetProperty("hover");
+		Assert.Equal(peak.GetProperty("value").GetDouble(), marked.GetProperty("value").GetDouble());
+	}
+
+	[Fact]
+	public async Task HeapDiff_OfAGrowingLeak_ColoursTheLeakedTypeAsGrown()
+	{
+		var fixture = await StartFixtureAsync("leak", 120);
+		var first = await app.InvokeAsync("od.profiler.capture-heap", fixture.Id);
+		Assert.True(first.GetProperty("success").GetBoolean(), first.ToString());
+		await Task.Delay(TimeSpan.FromSeconds(3));
+		var second = await app.InvokeAsync("od.profiler.capture-heap", fixture.Id);
+		Assert.True(second.GetProperty("success").GetBoolean(), second.ToString());
+
+		var compared = await app.InvokeAsync("od.profiler.heap.compare", first.GetProperty("path").GetString()!);
+		Assert.True(compared.GetProperty("success").GetBoolean(), compared.ToString());
+		var diff = (await app.InvokeAsync("od.profiler.report")).GetProperty("state");
+		Assert.True(diff.GetProperty("comparing").GetBoolean());
+		var rows = diff.GetProperty("rows").EnumerateArray().ToList();
+		var leaked = rows.Single(row => row.GetProperty("name").GetString() == "LeakedItem");
+		Assert.True(leaked.GetProperty("countDiff").GetInt64() >= 1000, leaked.ToString());
+		Assert.Equal("Grew", leaked.GetProperty("countTrend").GetString());
+		Assert.Equal("Grew", leaked.GetProperty("sizeTrend").GetString());
+		// The colour always agrees with the sign of the number it colours.
+		Assert.All(rows, row =>
+		{
+			var change = row.GetProperty("countDiff").GetInt64();
+			Assert.Equal(change > 0 ? "Grew" : change < 0 ? "Shrank" : "Same", row.GetProperty("countTrend").GetString());
+		});
+
+		// The leaked type is held from a root through the growing list.
+		var selected = await app.InvokeAsync("od.profiler.heap.select-type", "LeakedItem");
+		Assert.True(selected.GetProperty("result").GetProperty("selected").GetBoolean(), selected.ToString());
+		var path = selected.GetProperty("result").GetProperty("details").GetProperty("path").EnumerateArray()
+			.Select(item => item.GetString()).ToList();
+		Assert.StartsWith("GC root", path[0]);
+		Assert.Contains(path, line => line!.EndsWith("→ LeakedItem[]"));
+		Assert.EndsWith("→ LeakedItem", path[^1]);
+	}
+
+	[Fact]
+	public async Task CpuReport_OfSeveralBusyThreads_ShowsTheThreadsAndMoreThanOneCoreOfCpu()
+	{
+		var fixture = await StartFixtureAsync("threads", 60);
+		var capture = await app.InvokeAsync("od.profiler.capture-cpu", fixture.Id, 4);
+		Assert.True(capture.GetProperty("success").GetBoolean(), capture.ToString());
+		var state = (await app.InvokeAsync("od.profiler.report")).GetProperty("state");
+		Assert.True(state.GetProperty("threadChoices").GetInt32() >= 4, state.ToString());
+
+		await app.InvokeAsync("od.profiler.cpu.set-mode", "Counters");
+		var cpu = await CounterPlotAsync("cpu-usage");
+		// cpu-usage is a share of every core, so four spinning threads use more than one core's worth.
+		Assert.True(cpu.GetProperty("peak").GetDouble() > 100.0 / Environment.ProcessorCount * 1.5, cpu.ToString());
+		await app.InvokeAsync("od.profiler.cpu.set-mode", "Functions");
+		var functions = (await app.InvokeAsync("od.profiler.report")).GetProperty("state").GetProperty("functions").EnumerateArray().ToList();
+		Assert.Contains("HotLeaf", functions[0].GetProperty("name").GetString());
+	}
+
+	[Fact]
+	public async Task CpuReport_OfBlockedThreadPoolWork_ShowsThePoolAddingThreads()
+	{
+		var fixture = await StartFixtureAsync("starve", 60);
+		var capture = await app.InvokeAsync("od.profiler.capture-cpu", fixture.Id, 8);
+		Assert.True(capture.GetProperty("success").GetBoolean(), capture.ToString());
+		await app.InvokeAsync("od.profiler.cpu.set-mode", "Counters");
+
+		var threads = await CounterPlotAsync("threadpool-thread-count");
+		var values = threads.GetProperty("points").EnumerateArray().Select(point => point.GetProperty("value").GetDouble()).ToList();
+		Assert.True(values.Max() > Environment.ProcessorCount, threads.ToString());
+		Assert.True(values[^1] > values[0], "the pool keeps adding threads while the work stays blocked: " + string.Join(", ", values));
+	}
+
+	[Fact]
+	public async Task CpuReport_OfAllocationPressure_ShowsGarbageCollectionsInEveryInterval()
+	{
+		var fixture = await StartFixtureAsync("alloc", 60);
+		var capture = await app.InvokeAsync("od.profiler.capture-cpu", fixture.Id, 5);
+		Assert.True(capture.GetProperty("success").GetBoolean(), capture.ToString());
+		await app.InvokeAsync("od.profiler.cpu.set-mode", "Counters");
+
+		var gen0 = await CounterPlotAsync("gen-0-gc-count");
+		var values = gen0.GetProperty("points").EnumerateArray().Select(point => point.GetProperty("value").GetDouble()).ToList();
+		Assert.True(values.Count >= 2, gen0.ToString());
+		// The counter is the number of collections in each interval, so a program that allocates all the time never reads 0.
+		Assert.All(values, value => Assert.True(value > 100, "generation 0 collections per interval: " + string.Join(", ", values)));
+		var last = gen0.GetProperty("points").EnumerateArray().Last();
+		var hovered = await HoverAsync("counter:gen-0-gc-count", last.GetProperty("x").GetDouble(), last.GetProperty("y").GetDouble());
+		Assert.True(hovered.GetProperty("hit").GetBoolean(), hovered.ToString());
+	}
+
+	async Task<JsonElement> HoverAsync(string surface, double x, double y)
+	{
+		var result = await app.InvokeAsync("od.profiler.cpu.hover", surface, x, y);
+		Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
+		return result.GetProperty("result");
+	}
+
+	async Task<JsonElement> CounterPlotAsync(string name)
+	{
+		var plots = (await app.InvokeAsync("od.profiler.report")).GetProperty("state").GetProperty("counters").GetProperty("plots");
+		return plots.EnumerateArray().Single(plot => plot.GetProperty("name").GetString() == name);
+	}
+
+	// "Self 3,210 ms (88.4%)" -> 88.4
+	static double SelfPercent(string tooltip)
+	{
+		var match = System.Text.RegularExpressions.Regex.Match(tooltip, @"Self[^(]*\(([\d.,]+)");
+		Assert.True(match.Success, tooltip);
+		return double.Parse(match.Groups[1].Value.Replace(',', '.'), System.Globalization.CultureInfo.InvariantCulture);
 	}
 
 	async Task<Process> StartFixtureAsync(string mode, int seconds)

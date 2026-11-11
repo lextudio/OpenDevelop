@@ -317,6 +317,17 @@ public static class ProfilerDevFlowActions
 		return new { applied = true };
 	});
 
+	[DevFlowAction("od.profiler.cpu.hover", Description = "Move the pointer over a drawn surface of the CPU report (timeline, flame, ring or counter:NAME) at x,y in that surface's own coordinates; returns the tooltip text it shows")]
+	public static Task<string> Hover(string surface, double x, double y) => WithCpu(cpu =>
+	{
+		var text = cpu.Hover(surface, new System.Windows.Point(x, y));
+		return new { hit = text is not null, text };
+	});
+
+	[DevFlowAction("od.profiler.cpu.click", Description = "Left-click a flame-graph box or ring slice of the CPU report at x,y in that surface's coordinates (clickCount 2 is a double click)")]
+	public static Task<string> Click(string surface, double x, double y, int clickCount = 1) => WithCpu(cpu =>
+		new { hit = cpu.Click(surface, new System.Windows.Point(x, y), clickCount) });
+
 	[DevFlowAction("od.profiler.export", Description = "Export the open report (call tree or function list, or the heap type table) as CSV to a path, as the toolbar button does")]
 	public static async Task<string> Export(string path)
 	{

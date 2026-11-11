@@ -24,12 +24,22 @@
 						<GridViewColumnHeader Tag="Name" Content="{core:Localize AddIns.Profiler.Report.Function}" />
 					</GridViewColumn.Header>
 				</GridViewColumn>
-				<GridViewColumn x:Name="selfChangeColumn" Width="0" DisplayMemberBinding="{Binding SelfChangeText}">
+				<GridViewColumn x:Name="selfChangeColumn" Width="0">
+						<GridViewColumn.CellTemplate>
+							<DataTemplate>
+								<TextBlock Text="{Binding SelfChangeText}" Foreground="{Binding SelfChangeBrush}" />
+							</DataTemplate>
+						</GridViewColumn.CellTemplate>
 					<GridViewColumn.Header>
 						<GridViewColumnHeader Tag="SelfChange" Content="{core:Localize AddIns.Profiler.Report.SelfChange}" />
 					</GridViewColumn.Header>
 				</GridViewColumn>
-				<GridViewColumn x:Name="totalChangeColumn" Width="0" DisplayMemberBinding="{Binding TotalChangeText}">
+				<GridViewColumn x:Name="totalChangeColumn" Width="0">
+						<GridViewColumn.CellTemplate>
+							<DataTemplate>
+								<TextBlock Text="{Binding TotalChangeText}" Foreground="{Binding TotalChangeBrush}" />
+							</DataTemplate>
+						</GridViewColumn.CellTemplate>
 					<GridViewColumn.Header>
 						<GridViewColumnHeader Tag="TotalChange" Content="{core:Localize AddIns.Profiler.Report.TotalChange}" />
 					</GridViewColumn.Header>
