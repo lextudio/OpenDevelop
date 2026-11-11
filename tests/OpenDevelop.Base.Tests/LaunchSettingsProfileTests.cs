@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 
 using ICSharpCode.SharpDevelop.Project;
 
@@ -118,5 +119,73 @@ public sealed class LaunchSettingsProfileTests : IDisposable
 
 		WriteSettings("{ not json");
 		Assert.Throws<ProjectStartException>(() => LaunchSettingsProfile.Load(_directory));
+	}
+
+	const string ThreeProfiles = """
+		{ "profiles": {
+		  "App (Desktop)": { "commandName": "Project", "compatibleTargetFramework": "desktop",
+		    "environmentVariables": { "WHICH": "desktop" } },
+		  "App (Desktop WSL2)": { "commandName": "WSL2", "compatibleTargetFramework": "desktop" },
+		  "App (iOS)": { "commandName": "Project", "compatibleTargetFramework": "ios",
+		    "environmentVariables": { "WHICH": "ios" } },
+		  "Any": { "commandName": "Project" }
+		} }
+		""";
+
+	[Fact]
+	public void LoadAll_ListsTheProjectProfilesInFileOrder_AndSkipsOtherCommands()
+	{
+		WriteSettings(ThreeProfiles);
+
+		var profiles = LaunchSettingsProfile.LoadAll(_directory);
+
+		Assert.Equal(new[] { "App (Desktop)", "App (iOS)", "Any" }, profiles.Select(p => p.Name));
+		Assert.Equal(new[] { "desktop", "ios", "" }, profiles.Select(p => p.CompatibleTargetFramework));
+		Assert.Empty(LaunchSettingsProfile.LoadAll(Path.Combine(_directory, "missing")));
+	}
+
+	[Fact]
+	public void LoadByName_PicksThatProfile_AndAStaleNameFallsBackToDotnetRunsPick()
+	{
+		WriteSettings(ThreeProfiles);
+
+		Assert.Equal("App (iOS)", LaunchSettingsProfile.Load(_directory, "App (iOS)")!.Name);
+		Assert.Equal("App (Desktop)", LaunchSettingsProfile.Load(_directory, "Renamed Away")!.Name);
+		Assert.Equal("App (Desktop)", LaunchSettingsProfile.Load(_directory, "")!.Name);
+		Assert.Equal("App (Desktop)", LaunchSettingsProfile.Load(_directory, "App (Desktop WSL2)")!.Name);
+	}
+
+	[Fact]
+	public void TheSelectedProfileFromThePreferences_IsTheOneApplied()
+	{
+		WriteSettings(ThreeProfiles);
+		var preferences = new ICSharpCode.Core.Properties();
+		preferences.Set(LaunchSettingsProfile.SelectedProfilePreferenceKey, "App (iOS)");
+
+		var psi = new ProcessStartInfo("app");
+		LaunchSettingsProfile.LoadSelected(_directory, preferences)!.ApplyTo(psi, _directory, false, false);
+
+		Assert.Equal("ios", psi.Environment["WHICH"]);
+		Assert.Equal("App (iOS)", psi.Environment["DOTNET_LAUNCH_PROFILE"]);
+	}
+
+	[Theory]
+	[InlineData("desktop", "net10.0-desktop", true)]
+	[InlineData("DESKTOP", "net10.0-desktop", true)]
+	[InlineData("desktop", "net10.0-ios", false)]
+	[InlineData("ios", "net11.0-ios26.0", true)]
+	[InlineData("android", "net10.0-android35.0", true)]
+	[InlineData("windows", "net10.0-windows10.0.19041.0", true)]
+	[InlineData("desktop", "net10.0", false)]
+	[InlineData("", "net10.0-ios", true)]
+	[InlineData("", "net10.0", true)]
+	public void ACompatibleTargetFramework_NamesThePlatformOfTheFramework(string compatible, string tfm, bool expected)
+	{
+		string json = compatible.Length == 0
+			? """{ "profiles": { "P": { "commandName": "Project" } } }"""
+			: "{ \"profiles\": { \"P\": { \"commandName\": \"Project\", \"compatibleTargetFramework\": \"" + compatible + "\" } } }";
+		WriteSettings(json);
+
+		Assert.Equal(expected, LaunchSettingsProfile.Load(_directory)!.IsCompatibleWith(tfm));
 	}
 }

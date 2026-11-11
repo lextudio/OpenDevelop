@@ -32,10 +32,18 @@ namespace ICSharpCode.SharpDevelop.Project
 	/// </summary>
 	public sealed class LaunchSettingsProfile
 	{
+		/// <summary>The per-project preference naming the profile Run and Debug use.</summary>
+		public const string SelectedProfilePreferenceKey = "LaunchProfile";
+
 		public string Name { get; private set; }
 		public string CommandLineArgs { get; private set; }
 		public string WorkingDirectory { get; private set; }
 		public string ApplicationUrl { get; private set; }
+		/// <summary>
+		/// Uno's <c>compatibleTargetFramework</c>: the platform the profile belongs to (<c>desktop</c>;
+		/// this IDE also writes <c>ios</c> and <c>android</c>). Empty means any target framework.
+		/// </summary>
+		public string CompatibleTargetFramework { get; private set; }
 		public IReadOnlyList<KeyValuePair<string, string>> EnvironmentVariables { get; private set; }
 
 		public static string GetPath(string projectDirectory)
@@ -50,9 +58,42 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// </summary>
 		public static LaunchSettingsProfile Load(string projectDirectory)
 		{
+			var profiles = LoadAll(projectDirectory);
+			return profiles.Count > 0 ? profiles[0] : null;
+		}
+
+		/// <summary>
+		/// The profile named <paramref name="selectedName"/> when the file has a <c>Project</c> profile
+		/// of that name, else what <see cref="Load(string)"/> picks (a stale selection must not stop a start).
+		/// </summary>
+		public static LaunchSettingsProfile Load(string projectDirectory, string selectedName)
+		{
+			var profiles = LoadAll(projectDirectory);
+			if (!string.IsNullOrEmpty(selectedName)) {
+				foreach (var profile in profiles) {
+					if (string.Equals(profile.Name, selectedName, StringComparison.Ordinal))
+						return profile;
+				}
+			}
+			return profiles.Count > 0 ? profiles[0] : null;
+		}
+
+		/// <summary>The profile the project's preferences select (<see cref="SelectedProfilePreferenceKey"/>), as <see cref="Load(string, string)"/>.</summary>
+		public static LaunchSettingsProfile LoadSelected(string projectDirectory, ICSharpCode.Core.Properties preferences)
+		{
+			return Load(projectDirectory, preferences?.Get(SelectedProfilePreferenceKey, string.Empty));
+		}
+
+		/// <summary>
+		/// Every profile whose <c>commandName</c> is <c>Project</c>, in file order; other kinds
+		/// (<c>WSL2</c>, <c>IISExpress</c>, ...) are not something this IDE starts and are left out.
+		/// </summary>
+		public static IReadOnlyList<LaunchSettingsProfile> LoadAll(string projectDirectory)
+		{
+			var result = new List<LaunchSettingsProfile>();
 			string path = GetPath(projectDirectory);
 			if (!File.Exists(path))
-				return null;
+				return result;
 			JsonDocument document;
 			try {
 				document = JsonDocument.Parse(File.ReadAllText(path), new JsonDocumentOptions {
@@ -66,7 +107,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				if (document.RootElement.ValueKind != JsonValueKind.Object
 				    || !document.RootElement.TryGetProperty("profiles", out var profiles)
 				    || profiles.ValueKind != JsonValueKind.Object)
-					return null;
+					return result;
 				foreach (var profile in profiles.EnumerateObject()) {
 					if (profile.Value.ValueKind != JsonValueKind.Object)
 						continue;
@@ -79,16 +120,45 @@ namespace ICSharpCode.SharpDevelop.Project
 								variables.Add(new KeyValuePair<string, string>(variable.Name, variable.Value.GetString()));
 						}
 					}
-					return new LaunchSettingsProfile {
+					result.Add(new LaunchSettingsProfile {
 						Name = profile.Name,
 						CommandLineArgs = ReadString(profile.Value, "commandLineArgs"),
 						WorkingDirectory = ReadString(profile.Value, "workingDirectory"),
 						ApplicationUrl = ReadString(profile.Value, "applicationUrl"),
+						CompatibleTargetFramework = ReadString(profile.Value, "compatibleTargetFramework"),
 						EnvironmentVariables = variables
-					};
+					});
 				}
 			}
-			return null;
+			return result;
+		}
+
+		/// <summary>
+		/// Whether the profile belongs to <paramref name="targetFramework"/> (<c>net10.0-ios</c>): its
+		/// <see cref="CompatibleTargetFramework"/> names that framework's platform. A profile without one
+		/// fits every framework.
+		/// </summary>
+		public bool IsCompatibleWith(string targetFramework)
+		{
+			if (string.IsNullOrWhiteSpace(CompatibleTargetFramework))
+				return true;
+			return string.Equals(CompatibleTargetFramework.Trim(), GetPlatform(targetFramework), StringComparison.OrdinalIgnoreCase);
+		}
+
+		/// <summary>The platform of a target framework moniker: <c>net10.0-android35.0</c> gives
+		/// <c>android</c>, <c>net10.0-windows10.0.19041.0</c> gives <c>windows</c>, <c>net10.0</c> gives "".</summary>
+		public static string GetPlatform(string targetFramework)
+		{
+			if (string.IsNullOrEmpty(targetFramework))
+				return string.Empty;
+			int dash = targetFramework.IndexOf('-');
+			if (dash < 0)
+				return string.Empty;
+			string platform = targetFramework.Substring(dash + 1);
+			int end = 0;
+			while (end < platform.Length && char.IsLetter(platform[end]))
+				end++;
+			return platform.Substring(0, end);
 		}
 
 		/// <summary>
