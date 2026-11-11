@@ -12,6 +12,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 
 using ICSharpCode.AvalonEdit.Editing;
 using ICSharpCode.AvalonEdit.Folding;
@@ -243,7 +244,61 @@ namespace ICSharpCode.AvalonEdit.AddIn
 					start = window?.StartOffset, end = window?.EndOffset, count = window?.CompletionList.ListBox.Items.Count
 				});
 			}
+			// Typing at the keyboard scrolls the caret into view; the synthetic events above do not necessarily.
+			textArea.Caret.BringCaretToView();
 			return JsonSerializer.Serialize(new { success = true, caretOffset = textArea.Caret.Offset, lineText = CaretLineText(textArea), trace });
+		}
+
+		/// <summary>
+		/// Where the window is versus where the caret's line is, all in device-independent units. PointToScreen returns
+		/// physical pixels for a native window and device-independent coordinates for a portable one, so its results are
+		/// divided by the unit measured here (two points 1000 DIP apart on the root visual) before they are compared with
+		/// Window.Left/Top.
+		/// </summary>
+		static object DescribePlacement(TextArea textArea, ICSharpCode.AvalonEdit.CodeCompletion.CompletionWindowBase window)
+		{
+			var textView = textArea.TextView;
+			var source = PresentationSource.FromVisual(textView);
+			if (source?.RootVisual == null)
+				return null; // not shown yet: PointToScreen would throw
+			// A wide baseline: a native window reports whole pixels, so a short one would put a fractional scale off by a percent.
+			const double baseline = 1000;
+			var root = source.RootVisual;
+			double unit = (root.PointToScreen(new Point(baseline, 0)).X - root.PointToScreen(new Point(0, 0)).X) / baseline;
+			if (!(unit > 0) || double.IsInfinity(unit))
+				unit = 1;
+			Point ToDip(Point screen) => new Point(screen.X / unit, screen.Y / unit);
+
+			var scroll = textView.ScrollOffset;
+			var top = textView.GetVisualPosition(textArea.Caret.Position, ICSharpCode.AvalonEdit.Rendering.VisualYPosition.LineTop) - scroll;
+			var bottom = textView.GetVisualPosition(textArea.Caret.Position, ICSharpCode.AvalonEdit.Rendering.VisualYPosition.LineBottom) - scroll;
+			var origin = ToDip(textView.PointToScreen(new Point(0, 0)));
+			var lineTopScreen = ToDip(textView.PointToScreen(top));
+			var lineBottomScreen = ToDip(textView.PointToScreen(bottom));
+			var owner = Window.GetWindow(textArea);
+			// The popup stays anchored at the start of the word being typed, not at the caret.
+			var startLocation = textArea.Document.GetLocation(Math.Min(window.StartOffset, textArea.Document.TextLength));
+			var startVisual = textView.GetVisualPosition(new ICSharpCode.AvalonEdit.TextViewPosition(startLocation), ICSharpCode.AvalonEdit.Rendering.VisualYPosition.LineBottom) - scroll;
+			var startScreen = ToDip(textView.PointToScreen(startVisual));
+			var workArea = SystemParameters.WorkArea;
+			return new {
+				screenUnitsPerDip = unit,
+				wordStartScreenX = startScreen.X, wordStartScreenY = startScreen.Y,
+				gapRightOfWordStart = window.Left - startScreen.X,
+				workArea = new { x = workArea.X, y = workArea.Y, width = workArea.Width, height = workArea.Height },
+				windowRight = window.Left + window.ActualWidth,
+				ownerWidth = owner?.ActualWidth, ownerHeight = owner?.ActualHeight,
+				windowLeft = window.Left, windowTop = window.Top, windowWidth = window.ActualWidth, windowHeight = window.ActualHeight,
+				windowBottom = window.Top + window.ActualHeight,
+				caretLineTopScreenY = lineTopScreen.Y, caretLineBottomScreenY = lineBottomScreen.Y, caretScreenX = lineBottomScreen.X,
+				textViewOriginScreen = new { x = origin.X, y = origin.Y },
+				textViewScroll = new { x = scroll.X, y = scroll.Y },
+				ownerTop = owner?.Top, ownerLeft = owner?.Left,
+				dpiScale = new { x = VisualTreeHelper.GetDpi(textView).DpiScaleX, y = VisualTreeHelper.GetDpi(textView).DpiScaleY },
+				// Negative: the window sits above the caret line; the gap to the line bottom is what the user sees.
+				gapBelowCaretLine = window.Top - lineBottomScreen.Y,
+				gapAboveCaretLine = lineTopScreen.Y - (window.Top + window.ActualHeight)
+			};
 		}
 
 		static string CaretLineText(TextArea textArea)
@@ -271,6 +326,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			return JsonSerializer.Serialize(new {
 				success = true, open = true, caretOffset = caret, lineText = CaretLineText(textArea),
 				startOffset = window.StartOffset, endOffset = window.EndOffset, typed,
+				placement = DescribePlacement(textArea, window),
 				totalCount = list.CompletionData.Count, count = items.Length,
 				selected = (list.SelectedItem as ICSharpCode.AvalonEdit.CodeCompletion.ICompletionData)?.Text,
 				selectedIndex = list.ListBox.SelectedIndex,

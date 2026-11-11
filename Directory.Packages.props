@@ -30,7 +30,7 @@
     <!-- Published by the AvalonEdit fork's own workflow (nuget.pkg.github.com/lextudio). It replaced the
          src/Libraries/AvalonEdit submodule, whose vendored global.json pinned its own LibreWPF.Sdk and had to be
          bumped with every provider release; the package carries that pin instead. -->
-    <PackageVersion Include="ICSharpCode.AvalonEdit.LibreWPF" Version="6.3.1.120" />
+    <PackageVersion Include="ICSharpCode.AvalonEdit.LibreWPF" Version="6.3.1.122" />
     <!-- The lextudio/wpftoolkit fork (the community edition, Ms-PL, of the toolkit originally published by Xceed Software
          Inc.; the id carries no Xceed name because Ms-PL 3(A) grants no trademark rights, but the assembly is still
          Xceed.Wpf.Toolkit). Published by the fork's own workflow to GitHub Packages; it replaced the

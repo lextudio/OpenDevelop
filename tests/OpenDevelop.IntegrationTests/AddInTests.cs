@@ -7943,6 +7943,9 @@ EndGlobal
         int total = status.GetProperty("totalCount").GetInt32();
         Assert.True(total > 5, "string members are offered: " + status);
 
+        // The popup sits right under the word being typed, inside the IDE window.
+        await AssertCompletionWindowPlacedAtTheWordAsync();
+
         var more = await _app.InvokeAsync("od.editor.type-text", "Sta");
         Assert.True(more.GetProperty("success").GetBoolean(), more.ToString());
         await Task.Delay(500);
@@ -7987,6 +7990,52 @@ EndGlobal
         Assert.True(status.GetProperty("open").GetBoolean(), "no completion window for 'Nam': " + status);
         Assert.Equal("Nam", status.GetProperty("typed").GetString());
         Assert.StartsWith("Nam", status.GetProperty("selected").GetString() ?? "", StringComparison.OrdinalIgnoreCase);
+        await AssertCompletionWindowPlacedAtTheWordAsync();
+    }
+
+    /// <summary>
+    /// The open completion window is anchored at the START of the word being typed (not at the caret), directly under
+    /// its line - or directly above it when there is no room below - and lies inside the IDE window. A display scale
+    /// above 1 used to halve its screen position (AvalonEdit assumed PointToScreen returns physical pixels, but it is
+    /// device independent for a portable window), which floated it far above and left of the caret.
+    /// </summary>
+    async Task AssertCompletionWindowPlacedAtTheWordAsync()
+    {
+        // Wait for the window to settle: two consecutive object samples with the same Left/Top.
+        JsonElement placement = default;
+        string previous = null;
+        bool settled = false;
+        for (int i = 0; i < 20 && !settled; i++) {
+            var status = await _app.InvokeAsync("od.editor.completion-status");
+            if (status.TryGetProperty("placement", out placement) && placement.ValueKind == JsonValueKind.Object) {
+                string sample = placement.GetProperty("windowLeft").GetDouble() + "," + placement.GetProperty("windowTop").GetDouble();
+                settled = sample == previous;
+                previous = sample;
+            } else {
+                previous = null;
+            }
+            if (!settled)
+                await Task.Delay(250);
+        }
+        Assert.True(settled, "the completion window's position did not settle: " + placement);
+
+        double Value(string name) => placement.GetProperty(name).GetDouble();
+        var workArea = placement.GetProperty("workArea");
+        double workRight = workArea.GetProperty("x").GetDouble() + workArea.GetProperty("width").GetDouble();
+        double workBottom = workArea.GetProperty("y").GetDouble() + workArea.GetProperty("height").GetDouble();
+        // PointToScreen reports whole device pixels on a native window, so allow a few units of rounding.
+        const double tolerance = 3;
+
+        // Horizontally at the word start, unless the popup was shifted left to stay on the screen.
+        double expectedLeft = Math.Min(Value("wordStartScreenX"), workRight - Value("windowWidth"));
+        Assert.True(Math.Abs(Value("windowLeft") - expectedLeft) < tolerance, "the completion window is aligned with the word: " + placement);
+        // Vertically under the word's line, or above it when it would not fit below.
+        if (Value("wordStartScreenY") + Value("windowHeight") <= workBottom)
+            Assert.True(Math.Abs(Value("gapBelowCaretLine")) < tolerance, "the completion window starts at the bottom of the line: " + placement);
+        else
+            Assert.True(Math.Abs(Value("gapAboveCaretLine")) < tolerance, "the completion window ends at the top of the line: " + placement);
+        // The caret was scrolled into view, so the popup is inside the IDE window, not floating beside it.
+        Assert.True(Value("windowLeft") < Value("ownerLeft") + Value("ownerWidth"), "the completion window is inside the IDE window: " + placement);
     }
 
     [Fact]
