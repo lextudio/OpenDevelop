@@ -106,6 +106,8 @@
     <PackageVersion Include="NUnit" Version="4.4.0" />
     <PackageVersion Include="NUnitLite" Version="4.4.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyModel" Version="10.0.6" />
+    <!-- Not referenced by any project here. It is a transitive pin: StreamJsonRpc, Microsoft.TemplateEngine.*
+         and NuGet.Packaging each ask only for 13.0.3, and this lifts them all to 13.0.4. -->
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
     <!-- Not directly used by app code - Microsoft.Build.NuGetSdkResolver.dll (from
          Microsoft.Build.Runtime) loads this by reflection at a fixed version
