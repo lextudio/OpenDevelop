@@ -1046,11 +1046,6 @@
 	
 	<Path name = "/SharpDevelop/Workbench/ToolBar/Debug">
 
-		<!-- A Custom item gets no conditions from ToolBarService; the combo disables itself while debugging. -->
-		<ToolbarItem id    = "LaunchTarget"
-		             type  = "Custom"
-		             class = "ICSharpCode.SharpDevelop.Workbench.LaunchTargetComboBox" />
-		
 		<ComplexCondition>
 			<Or>
 				<Condition name="IsProcessRunning" isdebugging = "False"/>
@@ -1065,6 +1060,10 @@
 						             icon    = "Icons.16x16.RunProgramIcon"
 						             tooltip = "${res:XML.MainMenu.RunMenu.Run.Description}"
 						             class   = "ICSharpCode.SharpDevelop.Project.Commands.Execute"/>
+						<!-- A Custom item gets no conditions from ToolBarService; the button disables itself while debugging. -->
+						<ToolbarItem id    = "LaunchTarget"
+						             type  = "Custom"
+						             class = "ICSharpCode.SharpDevelop.Workbench.LaunchTargetDropDownButton" />
 					</Condition>
 					
 					<Condition name="DebuggerSupports" debuggersupports = "StartWithoutDebugging">

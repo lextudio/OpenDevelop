@@ -197,6 +197,27 @@ public sealed class LaunchTargetTests : IAsyncDisposable
         Assert.Empty(status.GetProperty("entries").EnumerateArray());
     }
 
+    // A desktop-only Uno project: one profile names a platform, but F5 can only start it, so there is nothing to choose.
+    [Fact]
+    public async Task LaunchTarget_IsHidden_ForASingleDesktopProfile()
+    {
+        string dir = Path.Combine(_dir, "DesktopOnly");
+        Directory.CreateDirectory(Path.Combine(dir, "Properties"));
+        File.WriteAllText(Path.Combine(dir, "DesktopOnly.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0-desktop</TargetFramework></PropertyGroup></Project>");
+        File.WriteAllText(Path.Combine(dir, "Properties", "launchSettings.json"),
+            "{ \"profiles\": { \"DesktopOnly (Desktop)\": { \"commandName\": \"Project\", \"compatibleTargetFramework\": \"desktop\" } } }");
+        string slnx = Path.Combine(dir, "DesktopOnly.slnx");
+        File.WriteAllText(slnx, "<Solution><Project Path=\"DesktopOnly.csproj\" /></Solution>");
+        var open = await _app.ReopenSolutionAsync(slnx);
+        Assert.True(open.GetProperty("success").GetBoolean(), open.ToString());
+
+        var status = await _app.InvokeAsync("od.launch-target.status", Path.Combine(dir, "DesktopOnly.csproj"));
+
+        Assert.True(status.GetProperty("success").GetBoolean(), status.ToString());
+        Assert.False(status.GetProperty("visible").GetBoolean(), status.ToString());
+    }
+
     async Task<JsonElement> StatusAsync()
     {
         var status = await _app.InvokeAsync("od.launch-target.status", ProjectPath);

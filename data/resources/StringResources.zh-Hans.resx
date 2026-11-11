@@ -5002,6 +5002,9 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
   <data name="MainWindow.Windows.Debug.LaunchTarget.AddProfile" xml:space="preserve">
     <value>为 {0} 添加配置文件…</value>
   </data>
+  <data name="MainWindow.Windows.Debug.LaunchTarget.EditLaunchSettings" xml:space="preserve">
+    <value>编辑 launchSettings.json…</value>
+  </data>
   <data name="MainWindow.Windows.Debug.IosSimulator.Refreshing" xml:space="preserve">
     <value>正在查找模拟器...</value>
   </data>

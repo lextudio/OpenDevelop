@@ -5718,6 +5718,9 @@ Shows the full callstack of the error.</comment>
   <data name="MainWindow.Windows.Debug.LaunchTarget.AddProfile" xml:space="preserve">
     <value>Add profile for {0}…</value>
   </data>
+  <data name="MainWindow.Windows.Debug.LaunchTarget.EditLaunchSettings" xml:space="preserve">
+    <value>Edit launchSettings.json…</value>
+  </data>
   <data name="MainWindow.Windows.Debug.IosSimulator.Refreshing" xml:space="preserve">
     <value>Looking for simulators...</value>
   </data>

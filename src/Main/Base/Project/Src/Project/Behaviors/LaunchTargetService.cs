@@ -62,6 +62,9 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (source != null)
 				entries.AddRange(LaunchTargetModel.BuildDevices(platform, source.GetDevices(project)));
 			// Several frameworks but nothing to choose or add (net10.0;netstandard2.0 without profiles): no empty drop-down.
+			// A lone profile with no devices to pick (a desktop-only Uno project) is nothing to choose: F5 can only start it.
+			if (entries.Count == 1 && entries[0].Kind == LaunchTargetEntryKind.Profile)
+				return Hidden;
 			return entries.Count == 0 ? Hidden : new State(true, active, entries);
 		}
 
