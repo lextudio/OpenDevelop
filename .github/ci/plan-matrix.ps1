@@ -12,7 +12,7 @@
 #                tests across the lane jobs of one run). A lane without a 'job' is its own job. Jobs of different groups
 #                (fast, designer) run in parallel once the build is done. A platform may name 'singleJob': every lane of
 #                that platform that does not name 'standalone' then runs in ONE job with that name, so a scarce runner image
-#                (macOS) is acquired once and finishes those lanes instead of queueing once per group. A 'standalone' lane
+#                can be acquired once (no platform uses this now; macOS did and its merged job timed out). A 'standalone' lane
 #                keeps its own job, for a device lane whose image and set-up the other lanes must not share. Each include
 #                carries 'lanes' (in plan order) and the sum of their timeouts plus 30 minutes of preparation headroom; a
 #                flag a lane asks for (needsNuGetCache, needsGtk) holds for the whole job, and 'needs_ios_simulator' says the
@@ -90,8 +90,8 @@ function Test-LaneDeviceClass([string]$laneName, [string]$className) {
     if (-not $lane.PSObject.Properties['deviceClasses']) { return $false }
     return [bool]($lane.deviceClasses.PSObject.Properties[$className])
 }
-# A platform that names 'singleJob' runs its non-standalone lanes in one job of that name, on one runner: the macOS image
-# is the scarce resource, so the unit, integration and designer lanes share one acquisition instead of three queue entries.
+# A platform that names 'singleJob' runs its non-standalone lanes in one job of that name, on one runner, so those lanes
+# share one acquisition. No platform names it now: macOS did, and the merged job exceeded its timeout.
 # A lane that names 'standalone' keeps its own job: a device lane needs a runner image (and a device set-up) the rest of the
 # platform does not, and merging it would put that image's workload on the machine that runs every other lane.
 function Get-PlatformSingleJob([string]$platformName) {

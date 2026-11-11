@@ -403,7 +403,7 @@ files or a shared IDE instance. Inside a job the lanes, and inside a lane the en
 machine; an integration entry starts its own IDE process, waits for it to exit and kills its whole process tree if it
 overruns its budget. Putting several lanes in one job adds no kind of sharing that entries of one lane did not already have
 (same machine, same ports, same temp area, strictly one after another), but it does mean a leftover process of one entry can
-now reach the entries of the next lane too; that is why the `fast` group and the merged macOS job keep the 'observe' lane
+now reach the entries of the next lane too; that is why the `fast` group keeps the 'observe' lane
 (`integration-unstable`) last: its pointer journeys leave IDE windows behind, and those must not sit in front of a designer
 drag or the Simulator lane.
 
@@ -423,7 +423,7 @@ A device journey needs a runner that hosts the device, and only two hosted image
 
 Each journey stays in its own lane (`mobile-ios`, `mobile-android`) because each needs a runner the rest of the plan does not
 use; on macOS the Simulator lane is `standalone`, so it keeps its own job on the Simulator image while the platform's other
-lanes share the merged `macos` job, and Linux runs its own `mobile-android` job. A lane declares what it may run as a
+lanes run in the `fast` and `designer` jobs as on Windows and Linux, and Linux runs its own `mobile-android` job. A lane declares what it may run as a
 class-to-OS-family map:
 
 ```json
@@ -494,22 +494,19 @@ Since 2026-11-02 that is made explicit by the lane's `job` in the plan: lanes of
 CI job, one after another, on the one unpacked archive. `unit`, `integration-stable` and `integration-unstable` are job
 `fast` (unit first, so its result arrives within minutes); `integration-designer` is job `designer` (the longest lane, which
 also needs the GTK runtimes). Run 41395236804 spent 70 minutes of its lane jobs on downloading and unpacking against 30 minutes
-of tests, Windows ARM64 alone paying 11-15 minutes three times for 16 minutes of tests; on Windows and Linux a platform now
-pays it twice, and macOS once. A job's timeout is the sum of its lanes' timeouts plus 30 minutes of headroom for the
+of tests, Windows ARM64 alone paying 11-15 minutes three times for 16 minutes of tests; each platform with a designer lane now
+pays it twice. A job's timeout is the sum of its lanes' timeouts plus 30 minutes of headroom for the
 preparation that sits outside every lane budget.
 Each lane still keeps its own budget: `run-test-plan.ps1` starts no further entry once the lane's `timeoutMinutes` are spent
 (they are reported as skipped, which fails a `required` entry and only warns for an `observe` one), so a slow lane cannot eat
 the lanes after it. A failing lane, or one whose script throws, does not stop the next one, and the step fails if any lane
 failed.
 
-macOS goes one step further: its platform definition names `singleJob`, so its unit, integration and designer lanes run
-in the one `macos` job, one after another. A macOS hosted image is the scarce resource - runs 42173315312 and 42246598022
-lost the `fast`, `designer` and `mobile-ios` jobs to "runner lost communication" and "the job was not acquired ... after
-multiple attempts" - so one acquisition finishes those lanes instead of two jobs queueing for two images, and the job pays
-the archive preparation once. The Simulator lane opts out with `standalone` and keeps its own `mobile-ios` job on
-`xcode-27`: its SDK 11, iOS workload and booted simulator must not sit on the machine that runs the GUI lanes, and after
-run 42362589732 lost the merged job (and with it every macOS result) while the designer lane ran, the blast radius of one
-runner death stays limited to that lane. Both jobs run in parallel once the build is done.
+macOS briefly merged its lanes into one `macos` job through `singleJob` (runs 42173315312 and 42246598022 had lost jobs to
+"runner lost communication" and unacquired runners), but the merged job exceeded its timeout, so macOS is split into `fast`
+and `designer` again. The Simulator lane stays `standalone` in its own `mobile-ios` job on `xcode-27`: its SDK 11, iOS
+workload and booted simulator must not sit on the machine that runs the GUI lanes. The `singleJob` mechanism remains
+available, but no platform names it.
 
 * `unit` runs the unit suites (Base, VSEditorCompat, XamlDom, Profiler, the AddIn SDK projects) on every platform from
   that platform's build archive; an entry gets 10 minutes so one hang cannot use up the lane.
@@ -567,7 +564,7 @@ failures are under control. Focus mode does not gate anything: the `required` en
   described under "Lanes".
 * Lanes `mobile-ios` and `mobile-android`: the iOS Simulator and Android emulator debugging journeys. Each needs the one
   runner image family that hosts its device (see "Device journeys"); either way the lane is its own job (`mobile-ios` is
-  `standalone` out of macOS's merged job, `mobile-android` is the linux-x64 job). Both run `observe` and are the reason
+  its own `standalone` job on macOS, `mobile-android` is the linux-x64 job). Both run `observe` and are the reason
   plan entries may now declare `deviceClasses`.
 
 Not planned yet: `AddInTests` (about 15 minutes, its own lane), the Microsoft designer
