@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace ICSharpCode.SharpDevelop.Project
 {
@@ -54,7 +55,12 @@ namespace ICSharpCode.SharpDevelop.Project
 				return Hidden;
 			string active = ProjectTargetFrameworkService.GetActiveTargetFramework(project);
 			string selected = project.Preferences.Get(LaunchSettingsProfile.SelectedProfilePreferenceKey, string.Empty);
-			var entries = LaunchTargetModel.Build(project.Name, targetFrameworks, profiles, active, selected);
+			var entries = LaunchTargetModel.Build(project.Name, targetFrameworks, profiles, active, selected).ToList();
+			var chosen = entries.FirstOrDefault(e => e.Kind == LaunchTargetEntryKind.Profile && e.IsSelected);
+			string platform = chosen == null ? null : LaunchSettingsProfile.GetPlatform(chosen.TargetFramework ?? string.Empty);
+			var source = LaunchTargetDeviceSources.ForPlatform(platform);
+			if (source != null)
+				entries.AddRange(LaunchTargetModel.BuildDevices(platform, source.GetDevices(project)));
 			// Several frameworks but nothing to choose or add (net10.0;netstandard2.0 without profiles): no empty drop-down.
 			return entries.Count == 0 ? Hidden : new State(true, active, entries);
 		}
@@ -79,13 +85,19 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// launchSettings.json; then the profile becomes the project's selected one and its framework,
 		/// if it names one, the active target framework.
 		/// </summary>
-		/// <exception cref="LaunchSettingsEditException">The profile could not be added; nothing changed.</exception>
+		/// <exception cref="LaunchSettingsEditException">The profile could not be added, or a device entry has no source; nothing changed.</exception>
 		public static void Apply(IProject project, LaunchTargetEntry entry)
 		{
 			if (project == null)
 				throw new ArgumentNullException(nameof(project));
 			if (entry == null)
 				throw new ArgumentNullException(nameof(entry));
+			if (entry.Kind == LaunchTargetEntryKind.Device) {
+				var source = LaunchTargetDeviceSources.ForPlatform(entry.Platform)
+					?? throw new LaunchSettingsEditException("No device list is available for the platform '" + entry.Platform + "'.");
+				source.Select(project, entry.DeviceId);
+				return;
+			}
 			if (entry.Kind == LaunchTargetEntryKind.AddProfile)
 				LaunchSettingsEditor.AddProfileToFile(LaunchSettingsProfile.GetPath(project.Directory), entry.ProfileName, entry.Platform);
 			// The profile first: changing the framework raises an event whose handlers read the selection.

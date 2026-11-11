@@ -30,6 +30,12 @@
 		</Condition>
 	</Path>
 	
+	<!-- Devices listed in the launch-target drop-down for the selected profile's platform -->
+	<Path name="/SharpDevelop/Workbench/LaunchTargetDeviceSources">
+		<Class id="IosSimulatorDevices" class="Debugger.AddIn.Ios.IosSimulatorLaunchTargetDeviceSource"/>
+		<Class id="AndroidDevices" class="Debugger.AddIn.Android.AndroidLaunchTargetDeviceSource"/>
+	</Path>
+
 	<Path name="/SharpDevelop/Services">
 		<Service id="ICSharpCode.SharpDevelop.Debugging.IDebuggerService"
 		         class="ICSharpCode.SharpDevelop.Services.WindowsDebugger" />

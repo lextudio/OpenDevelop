@@ -27,14 +27,17 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// <summary>An existing launchSettings.json profile; choosing it selects its target framework too.</summary>
 		Profile,
 		/// <summary>A target framework without a profile: choosing it writes one.</summary>
-		AddProfile
+		AddProfile,
+		/// <summary>A device of the selected profile's platform (an iOS Simulator, an Android device).</summary>
+		Device
 	}
 
 	/// <param name="TargetFramework">The framework a <see cref="LaunchTargetEntryKind.Profile"/> selects (null for a
 	/// profile that fits every framework and so leaves the active one alone), or the one an AddProfile entry is for.</param>
 	/// <param name="ProfileName">The profile's name, or the name an AddProfile entry would give the new one.</param>
 	/// <param name="Platform">The <c>compatibleTargetFramework</c> an AddProfile entry would write.</param>
-	public sealed record LaunchTargetEntry(LaunchTargetEntryKind Kind, string Label, string TargetFramework, string ProfileName, string Platform, bool IsSelected);
+	/// <param name="DeviceId">For a <see cref="LaunchTargetEntryKind.Device"/> entry the device to store (null is "Automatic").</param>
+	public sealed record LaunchTargetEntry(LaunchTargetEntryKind Kind, string Label, string TargetFramework, string ProfileName, string Platform, bool IsSelected, string DeviceId = null);
 
 	/// <summary>
 	/// What the launch-target drop-down shows, the way Visual Studio lists an Uno project's launch
@@ -131,6 +134,17 @@ namespace ICSharpCode.SharpDevelop.Project
 				result.Add(new LaunchTargetEntry(LaunchTargetEntryKind.AddProfile, tfm, tfm, name, platform, false));
 			}
 			return result;
+		}
+
+		/// <summary>
+		/// The device entries for the selected profile's platform, listed after the profiles and add-profile entries.
+		/// A profile that fits every framework (no platform) has no devices.
+		/// </summary>
+		public static IReadOnlyList<LaunchTargetEntry> BuildDevices(string platform, IEnumerable<LaunchTargetDevice> devices)
+		{
+			if (string.IsNullOrEmpty(platform) || devices == null)
+				return Array.Empty<LaunchTargetEntry>();
+			return devices.Select(d => new LaunchTargetEntry(LaunchTargetEntryKind.Device, d.Label, null, null, platform, d.IsSelected, d.Id)).ToList();
 		}
 
 		/// <summary>Uno's naming, <c>App (Desktop)</c>; a name already in use gets <c>(2)</c>, <c>(3)</c>, ... after it.</summary>

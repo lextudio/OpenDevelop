@@ -68,6 +68,28 @@ public sealed class LaunchTargetTests : IAsyncDisposable
         Assert.Equal("net10.0-ios", status.GetProperty("activeTargetFramework").GetString());
         Assert.Equal("App (iOS)", SelectedEntry(status));
         Assert.Equal("App (iOS)", status.GetProperty("launchProfile").GetString());
+        // The selected profile's platform lists its devices, "Automatic" first.
+        Assert.StartsWith("Automatic", DeviceEntries(status).First());
+
+        // Choosing a device stores only the device preference: profile and framework stay. Automatic (id null) clears it;
+        // a real simulator, when the machine has one, is stored by its simctl UDID.
+        var simulator = DeviceRows(status).FirstOrDefault(row => row.Id != null);
+        if (simulator.Id != null) {
+            var pick = await _app.InvokeAsync("od.launch-target.select", simulator.Label, ProjectPath);
+            Assert.True(pick.GetProperty("success").GetBoolean(), pick.ToString());
+            status = await StatusAsync();
+            Assert.Equal(simulator.Id, status.GetProperty("iosSimulatorUdid").GetString());
+            Assert.Equal(simulator.Id, DeviceRows(status).Single(row => row.Selected).Id);
+        }
+        var automatic = await _app.InvokeAsync("od.launch-target.select", DeviceRows(status).First().Label, ProjectPath);
+        Assert.True(automatic.GetProperty("success").GetBoolean(), automatic.ToString());
+        status = await StatusAsync();
+        Assert.Equal(string.Empty, status.GetProperty("iosSimulatorUdid").GetString());
+        Assert.Null(DeviceRows(status).Single(row => row.Selected).Id);
+        Assert.Equal("net10.0-ios", status.GetProperty("activeTargetFramework").GetString());
+        Assert.Equal("App (iOS)", SelectedEntry(status));
+        Assert.Equal("App (iOS)", status.GetProperty("launchProfile").GetString());
+        Assert.All(DeviceRows(status), row => Assert.True(row.Platform == "ios"));
 
         // Choosing the "add" entry for android writes its profile, selects it and switches the framework.
         var add = await _app.InvokeAsync("od.launch-target.select", "net10.0-android", ProjectPath);
@@ -78,6 +100,7 @@ public sealed class LaunchTargetTests : IAsyncDisposable
         Assert.Equal("App (Android)", SelectedEntry(status));
         Assert.Equal("App (Android)", status.GetProperty("launchProfile").GetString());
         Assert.Equal(new[] { "Profile:App (iOS)", "Profile:App (Android)", "AddProfile:net10.0-desktop" }, Entries(status));
+        Assert.StartsWith("Automatic", DeviceEntries(status).First());
 
         // The file was edited in place: the comment and the WSL2 profile are untouched.
         string text = File.ReadAllText(Path.Combine(_dir, "Properties", "launchSettings.json"));
@@ -181,10 +204,23 @@ public sealed class LaunchTargetTests : IAsyncDisposable
         return status;
     }
 
+    // Device rows depend on the simulators and adb devices of the machine, so they are checked apart.
     static string[] Entries(JsonElement status) => status.GetProperty("entries").EnumerateArray()
+        .Where(entry => entry.GetProperty("kind").GetString() != "Device")
         .Select(entry => entry.GetProperty("kind").GetString() + ":" + entry.GetProperty("label").GetString()).ToArray();
 
+    static string[] DeviceEntries(JsonElement status) => status.GetProperty("entries").EnumerateArray()
+        .Where(entry => entry.GetProperty("kind").GetString() == "Device")
+        .Select(entry => entry.GetProperty("label").GetString()!).ToArray();
+
+    static (string Label, string? Id, bool Selected, string Platform)[] DeviceRows(JsonElement status) => status.GetProperty("entries").EnumerateArray()
+        .Where(entry => entry.GetProperty("kind").GetString() == "Device")
+        .Select(entry => (entry.GetProperty("label").GetString()!,
+            entry.GetProperty("deviceId").ValueKind == JsonValueKind.Null ? null : entry.GetProperty("deviceId").GetString(),
+            entry.GetProperty("isSelected").GetBoolean(), entry.GetProperty("platform").GetString()!)).ToArray();
+
     static string? SelectedEntry(JsonElement status) => status.GetProperty("entries").EnumerateArray()
+        .Where(entry => entry.GetProperty("kind").GetString() == "Profile")
         .Where(entry => entry.GetProperty("isSelected").GetBoolean())
         .Select(entry => entry.GetProperty("label").GetString()).SingleOrDefault();
 }

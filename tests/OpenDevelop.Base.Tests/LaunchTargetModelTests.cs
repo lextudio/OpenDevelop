@@ -168,4 +168,48 @@ public sealed class LaunchTargetModelTests : IDisposable
 	{
 		Assert.Equal(expected, LaunchTargetModel.SuggestProfileName(project, platform, existing));
 	}
+
+	[Fact]
+	public void DeviceEntriesCarryThePlatformAndTheStoredDeviceId()
+	{
+		var entries = LaunchTargetModel.BuildDevices("ios", new[] {
+			new LaunchTargetDevice(null, "Automatic", true),
+			new LaunchTargetDevice("UDID-1", "iPhone 16", false)
+		});
+
+		Assert.Collection(entries,
+			e => { Assert.Equal(LaunchTargetEntryKind.Device, e.Kind); Assert.Null(e.DeviceId); Assert.True(e.IsSelected); Assert.Equal("ios", e.Platform); },
+			e => { Assert.Equal("UDID-1", e.DeviceId); Assert.Equal("iPhone 16", e.Label); Assert.False(e.IsSelected); });
+	}
+
+	[Theory]
+	[InlineData(null)]
+	[InlineData("")]
+	public void NoPlatformMeansNoDeviceEntries(string platform)
+	{
+		Assert.Empty(LaunchTargetModel.BuildDevices(platform, new[] { new LaunchTargetDevice(null, "Automatic", true) }));
+	}
+
+	[Fact]
+	public void ChoosingADeviceWithoutASourceForItsPlatformIsARefusal()
+	{
+		LaunchTargetDeviceSources.All = Array.Empty<ILaunchTargetDeviceSource>();
+		try {
+			var project = System.Reflection.DispatchProxy.Create<IProject, NoMembersProject>();
+			var entry = new LaunchTargetEntry(LaunchTargetEntryKind.Device, "Pixel", null, null, "android", false, "emulator-5554");
+
+			var ex = Assert.Throws<LaunchSettingsEditException>(() => LaunchTargetService.Apply(project, entry));
+
+			Assert.Contains("android", ex.Message);
+		} finally {
+			LaunchTargetDeviceSources.All = null; // back to the add-in tree
+		}
+	}
+
+	/// <summary>An IProject whose members are never reached: the refusal comes before any is read.</summary>
+	public class NoMembersProject : System.Reflection.DispatchProxy
+	{
+		protected override object Invoke(System.Reflection.MethodInfo targetMethod, object[] args)
+			=> throw new InvalidOperationException("The project must not be touched: " + targetMethod.Name);
+	}
 }

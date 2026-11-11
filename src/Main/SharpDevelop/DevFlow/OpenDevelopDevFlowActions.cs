@@ -3053,7 +3053,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 		
-		[DevFlowAction("od.launch-target.status", Description = "The launch-target drop-down for the project: whether it shows, the active target framework, the selected launch profile (preference), the profile Run/Debug would apply (launchProfile) and every entry (kind, label, targetFramework, profileName, isSelected)")]
+		[DevFlowAction("od.launch-target.status", Description = "The launch-target drop-down for the project: whether it shows, the active target framework, the selected launch profile (preference), the profile Run/Debug would apply (launchProfile) and the stored device preferences and every entry (kind, label, targetFramework, profileName, isSelected, platform, deviceId)")]
 		public static string LaunchTargetStatus(string projectPath = null)
 		{
 			var project = ResolveProject(projectPath);
@@ -3075,14 +3075,17 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				selectedProfile = project.Preferences.Get(LaunchSettingsProfile.SelectedProfilePreferenceKey, string.Empty),
 				launchProfile,
 				launchError,
+				// The raw per-project device preferences F5 reads (Debugger.AddIn's SimulatorPreferenceKey and DevicePreferenceKey)
+				iosSimulatorUdid = project.Preferences.Get("IosSimulatorUdid", string.Empty),
+				androidSerial = project.Preferences.Get("AndroidDebugSerial", string.Empty),
 				entries = state.Entries.Select(e => new {
 					kind = e.Kind.ToString(), label = e.Label, targetFramework = e.TargetFramework,
-					profileName = e.ProfileName, isSelected = e.IsSelected
+					profileName = e.ProfileName, isSelected = e.IsSelected, platform = e.Platform, deviceId = e.DeviceId
 				}).ToArray()
 			});
 		}
 
-		[DevFlowAction("od.launch-target.select", Description = "Choose a launch-target entry by its label, as the toolbar drop-down does: a profile selects it and its target framework, an 'add profile' entry (labelled with its target framework) writes the profile into launchSettings.json first")]
+		[DevFlowAction("od.launch-target.select", Description = "Choose a launch-target entry by its label, as the toolbar drop-down does: a profile selects it and its target framework, an 'add profile' entry (labelled with its target framework) writes the profile into launchSettings.json first, a device entry stores the project's device preference only")]
 		public static string LaunchTargetSelect(string label, string projectPath = null)
 		{
 			var project = ResolveProject(projectPath);

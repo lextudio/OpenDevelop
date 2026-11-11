@@ -33,6 +33,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 	{
 		ISolution solution;
 		bool updating;
+		int deviceStart = -1;
 
 		public LaunchTargetComboBox()
 		{
@@ -50,7 +51,13 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				RefreshOnUIThread();
 			};
 			ProjectTargetFrameworkService.ActiveTargetFrameworkChanged += (_, _) => RefreshOnUIThread();
-			DropDownOpened += (_, _) => Refresh(); // picks up edits of launchSettings.json made outside the IDE
+			DropDownOpened += (_, _) => { // picks up edits of launchSettings.json made outside the IDE
+				Refresh();
+				foreach (var source in LaunchTargetDeviceSources.All)
+					source.RequestRefresh();
+			};
+			foreach (var source in LaunchTargetDeviceSources.All)
+				source.DevicesChanged += (_, _) => RefreshDevicesOnUIThread();
 			// A Custom toolbar item gets no conditions, so follow the debugger here: changing the target
 			// mid-session would change the active framework under the running program.
 			var debugger = SD.Debugger;
@@ -97,9 +104,12 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			updating = true;
 			try {
 				Items.Clear();
+				deviceStart = -1;
 				Visibility = state.Visible ? Visibility.Visible : Visibility.Collapsed;
 				int selectedIndex = -1;
 				foreach (var entry in state.Entries) {
+					if (entry.Kind == LaunchTargetEntryKind.Device)
+						continue;
 					string label = entry.Kind == LaunchTargetEntryKind.AddProfile
 						? string.Format(StringParser.Parse("${res:MainWindow.Windows.Debug.LaunchTarget.AddProfile}"), entry.TargetFramework)
 						: entry.Label;
@@ -110,17 +120,67 @@ namespace ICSharpCode.SharpDevelop.Workbench
 						selectedIndex = Items.Count;
 					Items.Add(item);
 				}
+				AddDeviceItems(state);
 				SelectedIndex = selectedIndex;
 			} finally {
 				updating = false;
 			}
 		}
 
+		// Devices arrive after the drop-down opened (the first snapshot is empty), and clearing the items under
+		// an open popup closes it: while it is open only the device section is replaced, in place.
+		void RefreshDevices()
+		{
+			if (!IsDropDownOpen) {
+				Refresh();
+				return;
+			}
+			var state = LaunchTargetService.GetState(SD.ProjectService.CurrentSolution?.StartupProject);
+			updating = true;
+			try {
+				if (deviceStart >= 0)
+					while (Items.Count > deviceStart)
+						Items.RemoveAt(Items.Count - 1);
+				AddDeviceItems(state);
+			} finally {
+				updating = false;
+			}
+		}
+
+		void AddDeviceItems(LaunchTargetService.State state)
+		{
+			deviceStart = -1;
+			foreach (var entry in state.Entries) {
+				if (entry.Kind != LaunchTargetEntryKind.Device)
+					continue;
+				if (deviceStart < 0) {
+					deviceStart = Items.Count;
+					// A disabled item cannot be clicked or arrowed onto, unlike a bare Separator, which the
+					// ComboBox would wrap into a selectable item.
+					Items.Add(new ComboBoxItem { Content = new Separator(), IsEnabled = false, Focusable = false });
+				}
+				// One selection only: the profile keeps the highlight, the chosen device is ticked.
+				Items.Add(new ComboBoxItem { Content = (entry.IsSelected ? "\u2713 " : "    ") + entry.Label, Tag = entry });
+			}
+		}
+
+		void RefreshDevicesOnUIThread()
+		{
+			if (Dispatcher.CheckAccess())
+				RefreshDevices();
+			else
+				Dispatcher.InvokeAsync(RefreshDevices);
+		}
+
 		protected override void OnSelectionChanged(SelectionChangedEventArgs e)
 		{
 			base.OnSelectionChanged(e);
-			if (updating || !(SelectedItem is ComboBoxItem item) || !(item.Tag is LaunchTargetEntry entry))
+			if (updating || SelectedItem == null)
 				return;
+			if (!(SelectedItem is ComboBoxItem item) || !(item.Tag is LaunchTargetEntry entry)) {
+				Refresh(); // never leave the box on something that is not an entry
+				return;
+			}
 			var project = SD.ProjectService.CurrentSolution?.StartupProject;
 			if (project == null)
 				return;
