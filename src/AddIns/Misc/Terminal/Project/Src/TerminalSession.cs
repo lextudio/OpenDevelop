@@ -81,6 +81,20 @@ namespace OpenDevelop.Terminal
 		/// <summary>The program asked for bracketed paste (DECSET 2004).</summary>
 		public bool BracketedPaste { get; private set; }
 		public bool HasExited { get; private set; }
+
+		// Started when StartAsync begins, so the two timings below cover what the user waits for: the PTY spawn, then the shell's
+		// own start-up (profile and rc files) until it first prints something.
+		readonly System.Diagnostics.Stopwatch sinceStart = System.Diagnostics.Stopwatch.StartNew();
+		long firstOutputTicks = -1;
+
+		/// <summary>The shell has written its first output; until then a view shows that the shell is still starting.</summary>
+		public bool HasOutput => Interlocked.Read(ref firstOutputTicks) >= 0;
+
+		/// <summary>How long starting the PTY took, before the shell had a chance to run anything.</summary>
+		public TimeSpan SpawnTime { get; private set; }
+
+		/// <summary>How long after the start the shell first wrote something (usually its prompt), or null while it has not.</summary>
+		public TimeSpan? FirstOutputAfter => HasOutput ? TimeSpan.FromTicks(Interlocked.Read(ref firstOutputTicks)) : null;
 		public int ExitCode { get; private set; }
 
 		/// <summary>Raised on a background thread whenever the screen may have changed.</summary>
@@ -89,6 +103,7 @@ namespace OpenDevelop.Terminal
 		/// <param name="colors">Taken by the caller on the UI thread (theme resources are not readable here).</param>
 		public static async Task<TerminalSession> StartAsync(string shell, string workingDirectory, int columns, int rows, TerminalColors colors, IReadOnlyList<string> arguments = null, IReadOnlyDictionary<string, string> additionalEnvironment = null)
 		{
+			var started = System.Diagnostics.Stopwatch.StartNew();
 			var native = new G(FindNativeLibrary());
 			var environment = new Dictionary<string, string>();
 			foreach (System.Collections.DictionaryEntry e in Environment.GetEnvironmentVariables())
@@ -138,6 +153,8 @@ namespace OpenDevelop.Terminal
 				_ = session.AnnounceExitAsync(e.ExitCode);
 			};
 			session.ApplyColors(colors);
+			session.SpawnTime = started.Elapsed;
+			session.sinceStart.Restart(); // measured from here, so the first-output time is the shell's own start-up
 			_ = Task.Run(session.ReadLoop);
 			return session;
 		}
@@ -204,6 +221,7 @@ namespace OpenDevelop.Terminal
 				}
 				if (n <= 0)
 					break;
+				Interlocked.CompareExchange(ref firstOutputTicks, sinceStart.Elapsed.Ticks, -1);
 				lock (gate) {
 					if (disposed)
 						return;

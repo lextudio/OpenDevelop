@@ -437,6 +437,7 @@ namespace OpenDevelop.Terminal
 				background = Hex(snap.DefaultBackground), foreground = Hex(snap.DefaultForeground), cellWidth = Pad()?.View?.CellWidth ?? 0, bell = new { count = session.BellCount, flashes = Pad()?.View?.FlashCount ?? 0 },
 				cursor = new { column = snap.CursorColumn, row = snap.CursorRow, style = snap.CursorStyle.ToString().ToLowerInvariant(), visible = snap.CursorVisible },
 				exited = session.HasExited, exitCode = session.ExitCode,
+				start = new { hasOutput = session.HasOutput, showsStartingNotice = Pad()?.View?.ShowsStartingNotice ?? false, noticePainted = Pad()?.View?.StartingNoticePainted ?? false, spawnMs = session.SpawnTime.TotalMilliseconds, firstOutputMs = session.FirstOutputAfter?.TotalMilliseconds },
 				scrollback = new { total = snap.ScrollbackTotal, offset = snap.ScrollbackOffset, length = snap.ScrollbackLength },
 				bracketedPaste = session.BracketedPaste,
 				mouseTracking = session.MouseTrackingEnabled,

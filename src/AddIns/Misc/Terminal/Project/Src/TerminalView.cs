@@ -363,6 +363,12 @@ namespace OpenDevelop.Terminal
 			}
 		}
 
+		/// <summary>True while the shell has printed nothing yet, so the view says it is starting instead of showing a blank screen.</summary>
+		/// <summary>Whether the last paint drew the starting notice, for the integration-test probes.</summary>
+		public bool StartingNoticePainted { get; private set; }
+
+		public bool ShowsStartingNotice => session != null && !session.HasOutput && !session.HasExited;
+
 		public double CellWidth => cellWidth;
 		public double CellHeight => cellHeight;
 		/// <summary>False until the first layout pass: a PTY must not start at the 2x1 the fit maths would give then.</summary>
@@ -431,6 +437,16 @@ namespace OpenDevelop.Terminal
 			uint defaultBg = snap?.DefaultBackground ?? (TerminalCell.ColorSet | 0x1e1e1e);
 			uint defaultFg = snap?.DefaultForeground ?? (TerminalCell.ColorSet | 0xcccccc);
 			dc.DrawRectangle(BrushFor(defaultBg), null, new Rect(0, 0, ActualWidth, ActualHeight));
+			// A login shell reads its profile and rc files before it prints a prompt, which can take seconds; say so. Keys typed
+			// meanwhile are already written to the PTY and run once the shell reads them.
+			StartingNoticePainted = ShowsStartingNotice;
+			if (StartingNoticePainted) {
+				var notice = new FormattedText("Starting " + session.ShellName + "…", CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+					typeface, fontSize, BrushFor(defaultFg), pixelsPerDip) { };
+				dc.PushOpacity(0.55);
+				dc.DrawText(notice, new Point(cellWidth, cellHeight * 0.25));
+				dc.Pop();
+			}
 			if (snap == null)
 				return;
 

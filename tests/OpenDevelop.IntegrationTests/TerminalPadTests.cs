@@ -1338,6 +1338,35 @@ public sealed class TerminalPadTests
 		Assert.Fail($"Bracketed paste never became {expected}.\n{last}");
 	}
 
+	// A login shell reads its profile and rc files before it prints a prompt (seconds with a heavy rc). The view says so while it
+	// waits, and what the user types in that time is already queued in the PTY and runs once the shell is up.
+	[Fact]
+	public async Task TerminalPad_SaysTheShellIsStarting_AndRunsWhatWasTypedBeforeItWasReady()
+	{
+		await ShowPadAsync();
+		// A shell that stays silent for two seconds stands in for a slow rc file, then hands over to a real one.
+		var launched = await app.InvokeAsync("od.terminal.launch", "/bin/sh", "[\"-c\",\"sleep 2; echo SHELL_READY; exec /bin/sh\"]", "", "", "Slow start");
+		Assert.True(launched.GetProperty("success").GetBoolean(), launched.ToString());
+
+		var waiting = (await app.InvokeAsync("od.terminal.text")).GetProperty("start");
+		Assert.False(waiting.GetProperty("hasOutput").GetBoolean(), waiting.ToString());
+		Assert.True(waiting.GetProperty("showsStartingNotice").GetBoolean(), waiting.ToString());
+		// The notice is really drawn (not just flagged): the view's last paint included it.
+		Assert.True(await WaitForRenderAsync(drawn: true), "the starting notice was never painted");
+		Assert.True(waiting.GetProperty("spawnMs").GetDouble() < 2000, "starting the PTY is not what takes the time: " + waiting);
+
+		// Typed straight away: the shell has not even started reading, yet the command must run. Its result (42) differs from the
+		// echoed command line, so seeing it proves the shell executed the queued input.
+		await SendAsync("echo EARLY_$((20+22))\r");
+		var ready = await WaitForAsync("SHELL_READY");
+		var screen = await WaitForAsync("EARLY_42");
+		Assert.True(ready.GetProperty("start").GetProperty("hasOutput").GetBoolean());
+		var started = screen.GetProperty("start");
+		Assert.False(started.GetProperty("showsStartingNotice").GetBoolean(), started.ToString());
+		Assert.True(await WaitForRenderAsync(drawn: false), "the starting notice was still painted after the shell had written output");
+		Assert.True(started.GetProperty("firstOutputMs").GetDouble() > 0, started.ToString());
+	}
+
 	/// <summary>
 	/// Shows the pad and waits for the terminal it starts by itself when it is first created (that start is
 	/// asynchronous): without it an absolute session count taken right away races with that shell appearing.
@@ -1369,6 +1398,19 @@ public sealed class TerminalPadTests
 	}
 
 	Task<JsonElement> SendAsync(string text) => app.InvokeAsync("od.terminal.send", text);
+
+	// The view repaints on a timer, so the painted state follows the logical one by a frame or two.
+	async Task<bool> WaitForRenderAsync(bool drawn)
+	{
+		for (var attempt = 0; attempt < 50; attempt++)
+		{
+			var start = (await app.InvokeAsync("od.terminal.text")).GetProperty("start");
+			if (start.GetProperty("noticePainted").GetBoolean() == drawn)
+				return true;
+			await Task.Delay(100);
+		}
+		return false;
+	}
 
 	async Task<JsonElement> WaitForAsync(string expected)
 	{
