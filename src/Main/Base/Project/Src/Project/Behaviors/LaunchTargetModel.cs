@@ -53,12 +53,24 @@ namespace ICSharpCode.SharpDevelop.Project
 			return targetFrameworks.Count > 1 || profiles.Any(p => !string.IsNullOrWhiteSpace(p.CompatibleTargetFramework));
 		}
 
-		public static IReadOnlyList<LaunchTargetEntry> Build(
-			string projectName,
+		/// <summary>
+		/// The profile Run and Debug apply, the one <see cref="Build"/> marks as selected: among the profiles that
+		/// fit the active target framework the stored one, else the first; null when none fits. Showing one
+		/// profile while starting another would be the worst kind of drop-down, so both use this.
+		/// </summary>
+		public static LaunchSettingsProfile SelectProfile(
 			IReadOnlyList<string> targetFrameworks,
 			IReadOnlyList<LaunchSettingsProfile> profiles,
 			string activeTargetFramework,
 			string selectedProfileName)
+		{
+			var entries = ResolveEntries(targetFrameworks, profiles);
+			int selected = FindSelected(entries, activeTargetFramework, selectedProfileName);
+			return selected < 0 ? null : entries[selected].Profile;
+		}
+
+		static List<(LaunchSettingsProfile Profile, string Tfm)> ResolveEntries(
+			IReadOnlyList<string> targetFrameworks, IReadOnlyList<LaunchSettingsProfile> profiles)
 		{
 			var entries = new List<(LaunchSettingsProfile Profile, string Tfm)>();
 			foreach (var profile in profiles) {
@@ -70,8 +82,12 @@ namespace ICSharpCode.SharpDevelop.Project
 				if (tfm != null)
 					entries.Add((profile, tfm));
 			}
+			return entries;
+		}
 
-			// Among the entries that fit the active framework: the stored selection, else the first.
+		// Among the entries that fit the active framework: the stored selection, else the first.
+		static int FindSelected(List<(LaunchSettingsProfile Profile, string Tfm)> entries, string activeTargetFramework, string selectedProfileName)
+		{
 			int selected = -1;
 			for (int i = 0; i < entries.Count; i++) {
 				bool fits = entries[i].Tfm == null
@@ -80,11 +96,21 @@ namespace ICSharpCode.SharpDevelop.Project
 					continue;
 				if (selected < 0)
 					selected = i;
-				if (!string.IsNullOrEmpty(selectedProfileName) && string.Equals(entries[i].Profile.Name, selectedProfileName, StringComparison.Ordinal)) {
-					selected = i;
-					break;
-				}
+				if (!string.IsNullOrEmpty(selectedProfileName) && string.Equals(entries[i].Profile.Name, selectedProfileName, StringComparison.Ordinal))
+					return i;
 			}
+			return selected;
+		}
+
+		public static IReadOnlyList<LaunchTargetEntry> Build(
+			string projectName,
+			IReadOnlyList<string> targetFrameworks,
+			IReadOnlyList<LaunchSettingsProfile> profiles,
+			string activeTargetFramework,
+			string selectedProfileName)
+		{
+			var entries = ResolveEntries(targetFrameworks, profiles);
+			int selected = FindSelected(entries, activeTargetFramework, selectedProfileName);
 
 			var result = new List<LaunchTargetEntry>();
 			for (int i = 0; i < entries.Count; i++) {

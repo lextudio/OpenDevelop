@@ -100,17 +100,34 @@ namespace ICSharpCode.SharpDevelop.Project
 
 		/// <summary>
 		/// <see cref="AddProfile"/> on a file: creates it (and its directory) when it does not exist,
-		/// keeps a UTF-8 byte order mark, and writes nothing if the edit is refused.
+		/// keeps a UTF-8 byte order mark, and writes nothing if the edit is refused or the file cannot be used.
 		/// </summary>
+		/// <exception cref="LaunchSettingsEditException">The edit is refused, or the file cannot be read or
+		/// written (read-only, locked by another editor, no space): the original file is left as it was.</exception>
 		public static void AddProfileToFile(string path, string name, string compatibleTargetFramework)
 		{
-			bool exists = File.Exists(path);
-			byte[] raw = exists ? File.ReadAllBytes(path) : Array.Empty<byte>();
-			bool bom = raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF;
-			string existing = Encoding.UTF8.GetString(raw, bom ? 3 : 0, raw.Length - (bom ? 3 : 0));
-			string updated = AddProfile(existing, name, compatibleTargetFramework);
-			Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));
-			File.WriteAllText(path, updated, new UTF8Encoding(bom));
+			try {
+				bool exists = File.Exists(path);
+				byte[] raw = exists ? File.ReadAllBytes(path) : Array.Empty<byte>();
+				bool bom = raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF;
+				string existing = Encoding.UTF8.GetString(raw, bom ? 3 : 0, raw.Length - (bom ? 3 : 0));
+				string updated = AddProfile(existing, name, compatibleTargetFramework);
+				string directory = Path.GetDirectoryName(Path.GetFullPath(path));
+				Directory.CreateDirectory(directory);
+				if (exists && (File.GetAttributes(path) & FileAttributes.ReadOnly) != 0)
+					throw new IOException("the file is read-only");
+				// Write beside it and replace: File.WriteAllText truncates first, so a failure halfway (disk full,
+				// media gone) would leave the user's launchSettings.json empty.
+				string temp = Path.Combine(directory, Path.GetFileName(path) + "." + Guid.NewGuid().ToString("N") + ".tmp");
+				try {
+					File.WriteAllText(temp, updated, new UTF8Encoding(bom));
+					File.Move(temp, path, overwrite: true);
+				} finally {
+					try { File.Delete(temp); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+				}
+			} catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) {
+				throw new LaunchSettingsEditException("Could not update " + path + ": " + ex.Message);
+			}
 		}
 
 		static string NewFile(string name, string compatibleTargetFramework)

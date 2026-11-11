@@ -97,6 +97,38 @@ public sealed class LaunchTargetModelTests : IDisposable
 	}
 
 	[Fact]
+	public void SelectProfile_IsTheEntryBuildSelects_EvenWhenAForeignProfileComesFirstInTheFile()
+	{
+		// Android's profile is listed first, the active framework is iOS and nothing is stored: what F5 applies
+		// must be the iOS profile the drop-down shows, not the first profile of the file.
+		var profiles = Profiles("""
+			{ "profiles": {
+			  "App (Android)": { "commandName": "Project", "compatibleTargetFramework": "android" },
+			  "App (iOS)": { "commandName": "Project", "compatibleTargetFramework": "ios" },
+			  "App (iOS) 2": { "commandName": "Project", "compatibleTargetFramework": "ios" }
+			} }
+			""");
+
+		Assert.Equal("App (iOS)", LaunchTargetModel.SelectProfile(Mobile, profiles, "net10.0-ios", null)!.Name);
+		Assert.Equal("App (iOS) 2", LaunchTargetModel.SelectProfile(Mobile, profiles, "net10.0-ios", "App (iOS) 2")!.Name);
+		Assert.Equal("App (iOS)", LaunchTargetModel.SelectProfile(Mobile, profiles, "net10.0-ios", "App (Android)")!.Name);
+		Assert.Equal("App (Android)", LaunchTargetModel.SelectProfile(Mobile, profiles, "net10.0-android", null)!.Name);
+		foreach (string active in new[] { "net10.0-ios", "net10.0-android", "net10.0-desktop" }) {
+			var shown = LaunchTargetModel.Build("App", Mobile, profiles, active, null).SingleOrDefault(e => e.IsSelected)?.ProfileName;
+			Assert.Equal(shown, LaunchTargetModel.SelectProfile(Mobile, profiles, active, null)?.Name);
+		}
+	}
+
+	[Fact]
+	public void SelectProfile_IsNullWhenNoProfileFitsTheActiveFramework_SoAForeignPlatformsProfileIsNotApplied()
+	{
+		var profiles = Profiles("""{ "profiles": { "App (iOS)": { "commandName": "Project", "compatibleTargetFramework": "ios" } } }""");
+
+		Assert.Null(LaunchTargetModel.SelectProfile(Mobile, profiles, "net10.0-desktop", null));
+		Assert.Null(LaunchTargetModel.SelectProfile(Mobile, profiles, "net10.0-desktop", "App (iOS)"));
+	}
+
+	[Fact]
 	public void AProfileThatFitsEveryFramework_IsOneEntryLeavingTheActiveFrameworkAlone()
 	{
 		var profiles = Profiles("""{ "profiles": { "Any": { "commandName": "Project" } } }""");

@@ -196,6 +196,49 @@ public sealed class LaunchSettingsEditorTests : IDisposable
 		Assert.Equal(broken, File.ReadAllText(path));
 	}
 
+	[Fact]
+	public void File_ThatCannotBeWritten_IsARefusalNotAnIoException()
+	{
+		// The path names a directory: reading finds no file, writing it fails with an IO or access error.
+		string path = LaunchSettingsProfile.GetPath(_directory);
+		Directory.CreateDirectory(path);
+
+		var ex = Assert.Throws<LaunchSettingsEditException>(() => LaunchSettingsEditor.AddProfileToFile(path, "A", "desktop"));
+
+		Assert.Contains("Could not update", ex.Message);
+		Assert.True(Directory.Exists(path));
+	}
+
+	[Fact]
+	public void File_ThatIsReadOnly_IsRefusedAndKeepsItsBytes()
+	{
+		string path = LaunchSettingsProfile.GetPath(_directory);
+		Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+		const string original = "{ // mine\n  \"profiles\": {} }";
+		File.WriteAllText(path, original);
+		File.SetAttributes(path, FileAttributes.ReadOnly);
+		try {
+			var ex = Assert.Throws<LaunchSettingsEditException>(() => LaunchSettingsEditor.AddProfileToFile(path, "A", "desktop"));
+
+			Assert.Contains("read-only", ex.Message);
+			Assert.Equal(original, File.ReadAllText(path));
+			Assert.Equal(new[] { path }, Directory.GetFiles(Path.GetDirectoryName(path)!));
+		} finally {
+			File.SetAttributes(path, FileAttributes.Normal);
+		}
+	}
+
+	[Fact]
+	public void File_IsReplacedWithoutLeavingATemporaryFile()
+	{
+		string path = LaunchSettingsProfile.GetPath(_directory);
+		LaunchSettingsEditor.AddProfileToFile(path, "A", "desktop");
+		LaunchSettingsEditor.AddProfileToFile(path, "B", "ios");
+
+		AssertParsesWithProfiles(File.ReadAllText(path), "A", "B");
+		Assert.Equal(new[] { path }, Directory.GetFiles(Path.GetDirectoryName(path)!));
+	}
+
 	static void AssertParsesWithProfiles(string text, params string[] names)
 	{
 		using var document = JsonDocument.Parse(text, new JsonDocumentOptions {

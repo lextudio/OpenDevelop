@@ -4996,6 +4996,12 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
   <data name="MainWindow.Windows.Debug.IosSimulator.Automatic" xml:space="preserve">
     <value>自動（已啟動的或最新的 iPhone）</value>
   </data>
+  <data name="MainWindow.Windows.Debug.LaunchTarget.ToolTip" xml:space="preserve">
+    <value>啟動目標：啟動設定檔及其對應的目標框架</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.LaunchTarget.AddProfile" xml:space="preserve">
+    <value>為 {0} 新增設定檔…</value>
+  </data>
   <data name="MainWindow.Windows.Debug.IosSimulator.Refreshing" xml:space="preserve">
     <value>正在尋找模擬器...</value>
   </data>

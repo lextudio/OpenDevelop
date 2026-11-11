@@ -1046,6 +1046,10 @@
 	
 	<Path name = "/SharpDevelop/Workbench/ToolBar/Debug">
 
+		<!-- A Custom item gets no conditions from ToolBarService; the combo disables itself while debugging. -->
+		<ToolbarItem id    = "LaunchTarget"
+		             type  = "Custom"
+		             class = "ICSharpCode.SharpDevelop.Workbench.LaunchTargetComboBox" />
 		
 		<ComplexCondition>
 			<Or>

@@ -5712,6 +5712,12 @@ Shows the full callstack of the error.</comment>
   <data name="MainWindow.Windows.Debug.IosSimulator.Automatic" xml:space="preserve">
     <value>Automatic (booted or newest iPhone)</value>
   </data>
+  <data name="MainWindow.Windows.Debug.LaunchTarget.ToolTip" xml:space="preserve">
+    <value>Launch target: the launch profile and the target framework it belongs to</value>
+  </data>
+  <data name="MainWindow.Windows.Debug.LaunchTarget.AddProfile" xml:space="preserve">
+    <value>Add profile for {0}…</value>
+  </data>
   <data name="MainWindow.Windows.Debug.IosSimulator.Refreshing" xml:space="preserve">
     <value>Looking for simulators...</value>
   </data>

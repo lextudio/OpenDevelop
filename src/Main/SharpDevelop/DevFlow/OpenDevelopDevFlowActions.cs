@@ -3053,6 +3053,52 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 		
+		[DevFlowAction("od.launch-target.status", Description = "The launch-target drop-down for the project: whether it shows, the active target framework, the selected launch profile (preference), the profile Run/Debug would apply (launchProfile) and every entry (kind, label, targetFramework, profileName, isSelected)")]
+		public static string LaunchTargetStatus(string projectPath = null)
+		{
+			var project = ResolveProject(projectPath);
+			if (project == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No project." });
+			var state = LaunchTargetService.GetState(project);
+			// GetState hides the control for a launchSettings.json that is invalid or unreadable; report that here
+			// instead of throwing, as starting the project would.
+			string launchProfile = null, launchError = null;
+			try {
+				launchProfile = LaunchTargetService.GetLaunchProfile(project)?.Name;
+			} catch (Exception ex) when (ex is ProjectStartException || ex is IOException || ex is UnauthorizedAccessException) {
+				launchError = ex.Message;
+			}
+			return JsonSerializer.Serialize(new {
+				success = true,
+				visible = state.Visible,
+				activeTargetFramework = state.ActiveTargetFramework,
+				selectedProfile = project.Preferences.Get(LaunchSettingsProfile.SelectedProfilePreferenceKey, string.Empty),
+				launchProfile,
+				launchError,
+				entries = state.Entries.Select(e => new {
+					kind = e.Kind.ToString(), label = e.Label, targetFramework = e.TargetFramework,
+					profileName = e.ProfileName, isSelected = e.IsSelected
+				}).ToArray()
+			});
+		}
+
+		[DevFlowAction("od.launch-target.select", Description = "Choose a launch-target entry by its label, as the toolbar drop-down does: a profile selects it and its target framework, an 'add profile' entry (labelled with its target framework) writes the profile into launchSettings.json first")]
+		public static string LaunchTargetSelect(string label, string projectPath = null)
+		{
+			var project = ResolveProject(projectPath);
+			if (project == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No project." });
+			var entry = LaunchTargetService.GetState(project).Entries.FirstOrDefault(e => e.Label == label);
+			if (entry == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No launch-target entry labelled '" + label + "'." });
+			try {
+				LaunchTargetService.Apply(project, entry);
+			} catch (LaunchSettingsEditException ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+			}
+			return JsonSerializer.Serialize(new { success = true, profile = entry.ProfileName });
+		}
+
 		[DevFlowAction("od.debug.attach", Description = "Attach to a running process by id")]
 		public static async Task<string> AttachDebugAsync(int processId, bool waitForStop = false, int timeoutSeconds = 30)
 		{
