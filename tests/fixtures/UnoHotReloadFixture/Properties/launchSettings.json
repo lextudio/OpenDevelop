@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "UnoHotReloadFixture (Desktop)": {
+      "commandName": "Project",
+      "compatibleTargetFramework": "desktop"
+    }
+  }
+}

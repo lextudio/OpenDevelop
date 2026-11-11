@@ -188,4 +188,18 @@ public sealed class LaunchSettingsProfileTests : IDisposable
 
 		Assert.Equal(expected, LaunchSettingsProfile.Load(_directory)!.IsCompatibleWith(tfm));
 	}
+
+	/// <summary>The Uno fixtures carry the profiles the launch-target drop-down is tested with.</summary>
+	[Theory]
+	[InlineData("WinUIDesignerFixture/Uno", new[] { "UnoXamlSample (Desktop)", "UnoXamlSample (iOS)", "UnoXamlSample (Android)" }, new[] { "desktop", "ios", "android" })]
+	[InlineData("UnoHotReloadFixture", new[] { "UnoHotReloadFixture (Desktop)" }, new[] { "desktop" })]
+	public void TheUnoFixtures_HaveTheirProfiles(string fixture, string[] names, string[] platforms)
+	{
+		string directory = Path.Combine(ProductCopyrightTests.RepositoryRoot(), "tests", "fixtures", fixture);
+
+		var profiles = LaunchSettingsProfile.LoadAll(directory);
+
+		Assert.Equal(names, profiles.Select(p => p.Name));
+		Assert.Equal(platforms, profiles.Select(p => p.CompatibleTargetFramework));
+	}
 }
