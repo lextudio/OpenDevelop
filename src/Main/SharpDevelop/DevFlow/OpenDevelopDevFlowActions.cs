@@ -230,6 +230,24 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				return JsonSerializer.Serialize(new { success = false, error = "AvalonEdit AddIn is unavailable" });
 			return (string)method.Invoke(null, new object[] { line });
 		}
+		[DevFlowAction("od.editor.type-text", Description = "Type text into the active editor one character at a time through the routed text-input events a keyboard produces, so code completion reacts as to real typing; caretOffset >= 0 moves the caret first")]
+		public static string EditorTypeText(string text, int caretOffset = -1)
+			=> InvokeAvalonEditDevFlowAction("TypeText", text, caretOffset);
+
+		[DevFlowAction("od.editor.completion-status", Description = "The active editor's open completion window: filtered item count versus total, selected item, word range and text typed so far; open=false when none")]
+		public static string EditorCompletionStatus() => InvokeAvalonEditDevFlowAction("GetCompletionStatus");
+
+		static string InvokeAvalonEditDevFlowAction(string methodName, params object[] args)
+		{
+			var type = AppDomain.CurrentDomain.GetAssemblies()
+				.Select(assembly => assembly.GetType("ICSharpCode.AvalonEdit.AddIn.VSEditorViewDevFlowActions", throwOnError: false))
+				.FirstOrDefault(candidate => candidate != null);
+			var method = type?.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static);
+			if (method == null)
+				return JsonSerializer.Serialize(new { success = false, error = "AvalonEdit AddIn is unavailable" });
+			return (string)method.Invoke(null, args);
+		}
+
 		// ── FormsDesigner forwarding stubs ────────────────────────────────────────────
 		// DevFlow discovers [DevFlowAction] attributes once at startup, before AddIn
 		// autostart commands load lazy assemblies.  FormsDesignerDevFlowActions lives in

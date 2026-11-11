@@ -34,7 +34,10 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 			=> CodeCompletionKeyPressResult.None;
 
 		public bool HandleKeyPressed(ITextEditor editor, char ch)
-			=> IsTriggerCharacter(ch) && ShowCompletion(editor);
+			=> IsTriggerCharacter(ch)
+				// An open window filters itself as the word grows; a new request would replace it with an unfiltered one.
+				&& !((char.IsLetter(ch) || ch == '_') && editor?.ActiveCompletionWindow != null)
+				&& ShowCompletion(editor);
 
 		public bool CtrlSpace(ITextEditor editor) => ShowCompletion(editor);
 
@@ -68,7 +71,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 					|| editor.Document != document || editor.FileName != fileName
 					|| editor.Caret.Offset != offset || document.Text != text)
 					return;
-				editor.ShowCompletionWindow(LanguageServiceCompletionItemList.FromResult(completions));
+				editor.ShowCompletionWindow(LanguageServiceCompletionItemList.FromResult(completions, document, offset));
 			} catch (OperationCanceledException) when (cancellation.IsCancellationRequested) {
 			} catch (Exception ex) {
 				LoggingService.Warn(GetType().Name + ": GetCompletionsAsync failed. " + ex.Message);

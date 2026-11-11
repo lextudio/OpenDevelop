@@ -24,9 +24,15 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 
 		public bool HandleKeyPressed(ITextEditor editor, char ch)
 		{
-			if (ch == '.' || char.IsLetter(ch) || ch == '_') {
+			// A window that is already open filters itself as the word grows; asking again would replace it with
+			// one that starts at the caret and has lost the typed prefix.
+			if (char.IsLetter(ch) || ch == '_') {
+				if (editor?.ActiveCompletionWindow != null)
+					return false;
 				return ShowCompletion(editor);
 			}
+			if (ch == '.')
+				return ShowCompletion(editor);
 			return false;
 		}
 
@@ -67,7 +73,7 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 					|| editor.Document != document || editor.FileName != fileName
 					|| editor.Caret.Offset != offset || document.Text != text)
 					return;
-				editor.ShowCompletionWindow(LanguageServiceCompletionItemList.FromResult(completions));
+				editor.ShowCompletionWindow(LanguageServiceCompletionItemList.FromResult(completions, document, offset));
 			} catch (OperationCanceledException) when (cancellation.IsCancellationRequested) {
 			} catch (Exception ex) {
 				LoggingService.Warn("RoslynCodeCompletionBinding: GetCompletionsAsync failed. " + ex.Message);

@@ -7899,6 +7899,96 @@ EndGlobal
         throw new InvalidOperationException(tag + " not found");
     }
 
+    /// <summary>Control for the completion test: od.editor.type-text must behave like typing when no window is involved.</summary>
+    [Fact]
+    public async Task TypeText_InsertsAtTheCaret_AndAdvancesIt()
+    {
+        Assert.True((await _app.InvokeAsync("od.open-solution", _solutionPath)).GetProperty("success").GetBoolean());
+        Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
+
+        // Inside the TODO comment, where no completion binding reacts.
+        string text = File.ReadAllText(_widgetPath);
+        int at = text.IndexOf("add validation", StringComparison.Ordinal);
+        var typed = await _app.InvokeAsync("od.editor.type-text", "xyz", at);
+
+        Assert.True(typed.GetProperty("success").GetBoolean(), typed.ToString());
+        Assert.Contains("xyzadd validation", typed.GetProperty("lineText").GetString());
+        Assert.True(typed.GetProperty("caretOffset").GetInt32() == at + 3, "caret moved past the typed text: " + typed);
+    }
+
+    /// <summary>
+    /// The completion WINDOW, not the provider: typing "Name." in a C# file pops it up, and each further letter must
+    /// narrow the list and highlight the matching item (issue #25: the list stayed unfiltered with no selection).
+    /// Characters go through the routed text-input events a keyboard produces (od.editor.type-text).
+    /// </summary>
+    [Fact]
+    public async Task CodeCompletionWindow_FiltersAndSelectsAsTheUserTypes()
+    {
+        Assert.True((await _app.InvokeAsync("od.open-solution", _solutionPath)).GetProperty("success").GetBoolean());
+        Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
+
+        string text = File.ReadAllText(_widgetPath);
+        int endOfPropertyLine = text.IndexOf("= string.Empty;", StringComparison.Ordinal) + "= string.Empty;".Length;
+        var typed = await _app.InvokeAsync("od.editor.type-text", " public int Probe() { return Name.", endOfPropertyLine);
+        Assert.True(typed.GetProperty("success").GetBoolean(), typed.ToString());
+
+        JsonElement status = default;
+        for (int i = 0; i < 60; i++) {
+            status = await _app.InvokeAsync("od.editor.completion-status");
+            if (status.GetProperty("open").GetBoolean() && status.GetProperty("totalCount").GetInt32() > 0)
+                break;
+            await Task.Delay(500);
+        }
+        Assert.True(status.GetProperty("open").GetBoolean(), "the completion window did not open after 'Name.': " + status);
+        int total = status.GetProperty("totalCount").GetInt32();
+        Assert.True(total > 5, "string members are offered: " + status);
+
+        var more = await _app.InvokeAsync("od.editor.type-text", "Sta");
+        Assert.True(more.GetProperty("success").GetBoolean(), more.ToString());
+        await Task.Delay(500);
+        status = await _app.InvokeAsync("od.editor.completion-status");
+
+        Assert.True(status.GetProperty("open").GetBoolean(), "typing 'Sta' closed the window: " + status);
+        Assert.True(status.GetProperty("count").GetInt32() < total, "the list is narrowed by 'Sta': " + status + " trace: " + more.GetProperty("trace"));
+        Assert.StartsWith("Sta", status.GetProperty("selected").GetString() ?? "", StringComparison.OrdinalIgnoreCase);
+        // The window still starts at the word, so it keeps filtering by everything typed since the dot.
+        Assert.Equal("Sta", status.GetProperty("typed").GetString());
+
+        await _app.InvokeAsync("od.editor.type-text", "rtsW");
+        await Task.Delay(500);
+        status = await _app.InvokeAsync("od.editor.completion-status");
+        Assert.True(status.GetProperty("open").GetBoolean(), "the window closed while the word was still being typed: " + status);
+        Assert.Equal("StartsWith", status.GetProperty("selected").GetString());
+        Assert.Equal("StartsW", status.GetProperty("typed").GetString());
+    }
+
+    /// <summary>
+    /// A window opened by a LETTER (no dot) must start at that word too: the old code opened it at the caret
+    /// after the first letter, so completing "Na" inserted the item after the typed text instead of replacing it.
+    /// </summary>
+    [Fact]
+    public async Task CodeCompletionWindow_OpenedByALetter_StartsAtTheWord()
+    {
+        Assert.True((await _app.InvokeAsync("od.open-solution", _solutionPath)).GetProperty("success").GetBoolean());
+        Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
+
+        string text = File.ReadAllText(_widgetPath);
+        int endOfPropertyLine = text.IndexOf("= string.Empty;", StringComparison.Ordinal) + "= string.Empty;".Length;
+        var typed = await _app.InvokeAsync("od.editor.type-text", " public int Probe() { return Nam", endOfPropertyLine);
+        Assert.True(typed.GetProperty("success").GetBoolean(), typed.ToString());
+
+        JsonElement status = default;
+        for (int i = 0; i < 60; i++) {
+            await Task.Delay(500);
+            status = await _app.InvokeAsync("od.editor.completion-status");
+            if (status.GetProperty("open").GetBoolean() && status.GetProperty("typed").GetString() == "Nam")
+                break;
+        }
+        Assert.True(status.GetProperty("open").GetBoolean(), "no completion window for 'Nam': " + status);
+        Assert.Equal("Nam", status.GetProperty("typed").GetString());
+        Assert.StartsWith("Nam", status.GetProperty("selected").GetString() ?? "", StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task GetCompletions_ReturnsItems()
     {

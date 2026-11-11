@@ -10,6 +10,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Windows;
+using System.Windows.Input;
 
 using ICSharpCode.AvalonEdit.Editing;
 using ICSharpCode.AvalonEdit.Folding;
@@ -206,6 +208,74 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				.ToArray();
 
 			return JsonSerializer.Serialize(new { active = true, lines = perLine });
+		}
+
+		static TextArea ActiveTextArea()
+		{
+			var editor = SD.Workbench.ActiveViewContent?.GetService(typeof(ITextEditor)) as ITextEditor;
+			return (editor as AvalonEditTextEditorAdapter)?.TextEditor?.TextArea;
+		}
+
+		/// <summary>
+		/// Types <paramref name="text"/> into the active editor one character at a time through the same routed events a
+		/// keyboard produces (PreviewTextInput, then TextInput on the TextArea), so code-completion bindings and an open
+		/// completion window see it as the user's typing. A caret offset of -1 leaves the caret where it is.
+		/// </summary>
+		public static string TypeText(string text, int caretOffset = -1)
+		{
+			var textArea = ActiveTextArea();
+			if (textArea == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No active AvalonEdit text editor." });
+			if (caretOffset >= 0)
+				textArea.Caret.Offset = Math.Min(caretOffset, textArea.Document.TextLength);
+			var trace = new List<object>();
+			foreach (char c in text ?? string.Empty) {
+				var composition = new TextComposition(InputManager.Current, textArea, c.ToString());
+				var preview = new TextCompositionEventArgs(Keyboard.PrimaryDevice, composition) { RoutedEvent = UIElement.PreviewTextInputEvent };
+				textArea.RaiseEvent(preview);
+				if (preview.Handled)
+					continue;
+				var input = new TextCompositionEventArgs(Keyboard.PrimaryDevice, composition) { RoutedEvent = UIElement.TextInputEvent };
+				textArea.RaiseEvent(input);
+				var window = (textArea.TextView.Services.GetService(typeof(CodeEditor)) as CodeEditor)?.PrimaryTextEditor?.ActiveCompletionWindow;
+				trace.Add(new {
+					ch = c.ToString(), caret = textArea.Caret.Offset, windowOpen = window != null,
+					start = window?.StartOffset, end = window?.EndOffset, count = window?.CompletionList.ListBox.Items.Count
+				});
+			}
+			return JsonSerializer.Serialize(new { success = true, caretOffset = textArea.Caret.Offset, lineText = CaretLineText(textArea), trace });
+		}
+
+		static string CaretLineText(TextArea textArea)
+		{
+			var line = textArea.Document.GetLineByOffset(Math.Min(textArea.Caret.Offset, textArea.Document.TextLength));
+			return textArea.Document.GetText(line.Offset, line.Length);
+		}
+
+		/// <summary>The open completion window's filtered list, selection and word range, or open=false.</summary>
+		public static string GetCompletionStatus()
+		{
+			var textArea = ActiveTextArea();
+			if (textArea == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No active AvalonEdit text editor." });
+			var codeEditor = textArea.TextView.Services.GetService(typeof(CodeEditor)) as CodeEditor;
+			var window = (codeEditor?.PrimaryTextEditor)?.ActiveCompletionWindow;
+			int caret = textArea.Caret.Offset;
+			if (window == null)
+				return JsonSerializer.Serialize(new { success = true, open = false, caretOffset = caret });
+			var list = window.CompletionList;
+			string typed = null;
+			if (window.StartOffset >= 0 && window.EndOffset >= window.StartOffset && window.EndOffset <= textArea.Document.TextLength)
+				typed = textArea.Document.GetText(window.StartOffset, window.EndOffset - window.StartOffset);
+			var items = list.ListBox.Items.Cast<object>().Select(i => (i as ICSharpCode.AvalonEdit.CodeCompletion.ICompletionData)?.Text).ToArray();
+			return JsonSerializer.Serialize(new {
+				success = true, open = true, caretOffset = caret, lineText = CaretLineText(textArea),
+				startOffset = window.StartOffset, endOffset = window.EndOffset, typed,
+				totalCount = list.CompletionData.Count, count = items.Length,
+				selected = (list.SelectedItem as ICSharpCode.AvalonEdit.CodeCompletion.ICompletionData)?.Text,
+				selectedIndex = list.ListBox.SelectedIndex,
+				items = items.Take(30).ToArray()
+			});
 		}
 	}
 }
