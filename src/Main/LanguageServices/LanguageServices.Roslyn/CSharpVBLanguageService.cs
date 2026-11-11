@@ -1950,7 +1950,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 item.DisplayText,
                 insertionText,
                 description?.Text ?? string.Empty,
-                item.Tags.FirstOrDefault());
+                item.Tags.FirstOrDefault(),
+                item.Tags.ToArray());
         }
 
         static LanguageDiagnostic ConvertDiagnostic(RoslynDiagnostic diagnostic)

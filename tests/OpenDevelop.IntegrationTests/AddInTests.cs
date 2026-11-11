@@ -7942,6 +7942,10 @@ EndGlobal
         Assert.True(status.GetProperty("open").GetBoolean(), "the completion window did not open after 'Name.': " + status);
         int total = status.GetProperty("totalCount").GetInt32();
         Assert.True(total > 5, "string members are offered: " + status);
+        // Each member shows its kind's icon (a Roslyn tag mapped to the editor's image set), not a blank gutter.
+        Assert.True(status.GetProperty("itemsWithImage").GetInt32() >= status.GetProperty("count").GetInt32() - 2,
+            "the completion items carry icons: " + status);
+        Assert.True(status.GetProperty("selectedHasImage").GetBoolean(), "the selected completion item has an icon: " + status);
 
         // The popup sits right under the word being typed, inside the IDE window.
         await AssertCompletionWindowPlacedAtTheWordAsync();

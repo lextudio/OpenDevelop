@@ -449,18 +449,23 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 
     public sealed class CompletionItem
     {
-        public CompletionItem(string displayText, string? insertionText = null, string? description = null, string? glyph = null)
+        public CompletionItem(string displayText, string? insertionText = null, string? description = null, string? glyph = null,
+            IReadOnlyList<string>? tags = null)
         {
             DisplayText = displayText ?? throw new ArgumentNullException(nameof(displayText));
             InsertionText = insertionText ?? displayText;
             Description = description;
             Glyph = glyph;
+            Tags = tags;
         }
 
         public string DisplayText { get; }
         public string InsertionText { get; }
         public string? Description { get; }
+        /// <summary>The kind of item ("Method", "Class", "Property", ...), the icon to show; the first of <see cref="Tags"/> for Roslyn.</summary>
         public string? Glyph { get; }
+        /// <summary>All the service's tags for the item: its kind and, for Roslyn, its accessibility ("Public", "Private", ...).</summary>
+        public IReadOnlyList<string>? Tags { get; }
     }
 
     public sealed class QuickInfo

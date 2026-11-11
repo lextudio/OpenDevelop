@@ -322,7 +322,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			string typed = null;
 			if (window.StartOffset >= 0 && window.EndOffset >= window.StartOffset && window.EndOffset <= textArea.Document.TextLength)
 				typed = textArea.Document.GetText(window.StartOffset, window.EndOffset - window.StartOffset);
-			var items = list.ListBox.Items.Cast<object>().Select(i => (i as ICSharpCode.AvalonEdit.CodeCompletion.ICompletionData)?.Text).ToArray();
+			var data = list.ListBox.Items.Cast<object>().OfType<ICSharpCode.AvalonEdit.CodeCompletion.ICompletionData>().ToArray();
+			var items = data.Select(i => i.Text).ToArray();
 			return JsonSerializer.Serialize(new {
 				success = true, open = true, caretOffset = caret, lineText = CaretLineText(textArea),
 				startOffset = window.StartOffset, endOffset = window.EndOffset, typed,
@@ -330,6 +331,9 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				totalCount = list.CompletionData.Count, count = items.Length,
 				selected = (list.SelectedItem as ICSharpCode.AvalonEdit.CodeCompletion.ICompletionData)?.Text,
 				selectedIndex = list.ListBox.SelectedIndex,
+				// The icon in front of each item: a blank gutter means the item carries no image.
+				itemsWithImage = data.Count(i => i.Image != null),
+				selectedHasImage = (list.SelectedItem as ICSharpCode.AvalonEdit.CodeCompletion.ICompletionData)?.Image != null,
 				items = items.Take(30).ToArray()
 			});
 		}

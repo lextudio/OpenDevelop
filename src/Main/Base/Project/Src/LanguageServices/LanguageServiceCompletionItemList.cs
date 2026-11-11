@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.CodeCompletion;
 
@@ -63,11 +64,31 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         {
             readonly CompletionItem _item;
 
+            IImage _image;
+            bool _imageResolved;
+
             public LanguageServiceCompletionItem(CompletionItem item)
                 : base(item.InsertionText)
             {
                 _item = item ?? throw new ArgumentNullException(nameof(item));
                 Description = item.Description ?? string.Empty;
+            }
+
+            // Resolved on first use: a list can hold thousands of items and a window shows a few dozen.
+            public override IImage Image {
+                get {
+                    if (!_imageResolved) {
+                        _imageResolved = true;
+                        var source = LanguageServiceCompletionImages.GetImage(_item);
+                        if (source != null)
+                            _image = new ImageSourceOnlyImage(source);
+                    }
+                    return _image;
+                }
+                set {
+                    _image = value;
+                    _imageResolved = true;
+                }
             }
 
             public override string Description { get; set; }
