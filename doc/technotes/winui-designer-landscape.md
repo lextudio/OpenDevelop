@@ -958,6 +958,20 @@ two different WASDK versions in one solution open concurrently without cross-con
 not reachable with the upstream surface, which never runs generated binding code; see the `{x:Bind}` table in section 7.8.
 It needs our own compiled-page route. The second half still applies to either.)
 
+**Assessment of the compiled-page route for real `{x:Bind}` (read from the surface source, not built).**
+The surface renders with `XamlReader.Load` on the edited text; `--user-dll` only contributes the metadata
+provider for custom types and resources. A compiled page is different in kind: the XAML compiler turns the
+file into an XBF in the PRI plus generated `InitializeComponent`/binding code, and `new MyPage()` loads
+that frozen XBF. So the route needs (1) a new surface message that instantiates a named page type from the
+user assembly instead of parsing text, (2) the provisioner to build the user's own project (their XAML
+compiler run, their PRI) before each preview, and (3) a rule for edits: the compiled page shows the
+*last build*, not the buffer, so an edited page needs a rebuild (seconds to a minute) before the
+preview changes, or falls back to the placeholder render. That conflicts with live editing, which is why it
+is an opt-in "compiled preview" of a saved, built page rather than a replacement renderer. It is a change
+to our `lextudio/WinAppVSCE` fork (message, page activation, error mapping) plus a provisioner build
+step, and the acceptance test needs a Gallery-style page with `{x:Bind}` and a user build, which this
+machine can run but which is a project of its own. Not started.
+
 ### 7.2 Do not replace the snapshot canvas with native embedding
 
 The bitmap snapshot is why OpenDevelop can support five runtimes, recover from a native crash, and
