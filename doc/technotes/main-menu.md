@@ -229,3 +229,8 @@ The diagnostic code is in:
   `ExpandMenuBuilders()` (adds file-log writes to trace item creation)
 - `WpfWorkbench.cs` — `Initialize()` (adds file-log writes at Background and
   ApplicationIdle priorities to check menu state)
+
+## Keyboard shortcuts
+
+The `shortcut` attribute of an item is installed as an `InputBinding` when the item is built (the main menu is expanded eagerly for exactly this reason). A design for letting
+users override them, with a page in the Settings dialog, is in [`keyboard-shortcuts.md`](keyboard-shortcuts.md).
