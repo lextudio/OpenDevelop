@@ -153,6 +153,7 @@ namespace ICSharpCode.SharpDevelop.Services
 				session.Stopped -= SessionStopped;
 				session.Continued -= SessionContinued;
 				session.Exited -= SessionExited;
+				session.SymbolsNeeded -= SessionSymbolsNeeded;
 				session.OutputReceived -= PrintDebugMessage;
 				session.Stop();
 				SessionExited();
@@ -269,6 +270,7 @@ namespace ICSharpCode.SharpDevelop.Services
 				CurrentSession.Stopped += SessionStopped;
 				CurrentSession.Continued += SessionContinued;
 				CurrentSession.Exited += SessionExited;
+				CurrentSession.SymbolsNeeded += SessionSymbolsNeeded;
 				CurrentSession.OutputReceived += PrintDebugMessage;
 
 				string targetPath = processStartInfo.FileName;
@@ -555,6 +557,44 @@ namespace ICSharpCode.SharpDevelop.Services
 			return path != null && path.StartsWith("decompiled/", StringComparison.Ordinal);
 		}
 
+		/// <summary>
+		/// The adapter waits for symbols of a module without a PDB (it was started with decompileExternalCode=false, so it never
+		/// decompiles by itself). Always answered, even with nothing, or the adapter would wait for its timeout.
+		/// </summary>
+		void SessionSymbolsNeeded(DapSession session, DapSymbolsNeededEventArgs e)
+		{
+			AnswerSymbolsNeededAsync(session, e).FireAndForget();
+		}
+
+		async Task AnswerSymbolsNeededAsync(DapSession session, DapSymbolsNeededEventArgs e)
+		{
+			string pdbPath = null;
+			try {
+				pdbPath = await GetDecompiledSymbolsAsync(e).ConfigureAwait(false);
+			} catch (Exception ex) {
+				LoggingService.Warn("Debugger: could not produce symbols for " + e.ModuleName, ex);
+				PrintDebugMessage("> Could not decompile " + e.ModuleName + " for debugging: " + ex.Message + "\n");
+			} finally {
+				try {
+					await session.LoadSymbolsAsync(e.Mvid, pdbPath).ConfigureAwait(false);
+				} catch (Exception ex) {
+					LoggingService.Warn("Debugger: could not answer symbolsNeeded for " + e.ModuleName, ex);
+				}
+			}
+		}
+
+		/// <summary>
+		/// Asks the decompiler AddIn for the module's symbols. With that AddIn disabled there is no provider and nothing is decompiled.
+		/// </summary>
+		static async Task<string> GetDecompiledSymbolsAsync(DapSymbolsNeededEventArgs e)
+		{
+			var provider = AddInTree.BuildItems<IDecompiledSymbolProvider>(IDecompiledSymbolProvider.AddInTreePath, null, false).FirstOrDefault();
+			if (provider == null || string.IsNullOrEmpty(e.ModulePath))
+				return null;
+			var progress = new Progress<string>(message => PrintDebugMessage("> " + message + "\n"));
+			return await provider.GetSymbolsAsync(e.ModulePath, e.Mvid, progress, System.Threading.CancellationToken.None).ConfigureAwait(false);
+		}
+
 		void SessionContinued()
 		{
 			SD.MainThread.InvokeAsyncAndForget(() => {
@@ -675,6 +715,7 @@ namespace ICSharpCode.SharpDevelop.Services
 				session.Stopped += SessionStopped;
 				session.Continued += SessionContinued;
 				session.Exited += SessionExited;
+				session.SymbolsNeeded += SessionSymbolsNeeded;
 				session.OutputReceived += PrintDebugMessage;
 				if (!session.IsRunning) throw new IOException("The Android debug adapter disconnected during startup.");
 				await SyncAllBreakpointsBeforeLaunchAsync().ConfigureAwait(false);
@@ -708,6 +749,7 @@ namespace ICSharpCode.SharpDevelop.Services
 				CurrentSession.Stopped += SessionStopped;
 				CurrentSession.Continued += SessionContinued;
 				CurrentSession.Exited += SessionExited;
+				CurrentSession.SymbolsNeeded += SessionSymbolsNeeded;
 				CurrentSession.OutputReceived += PrintDebugMessage;
 
 				await CurrentSession.StartAsync(null, null, false, null, DapLaunchMode.AttachToProcess, default, null, false, processId,

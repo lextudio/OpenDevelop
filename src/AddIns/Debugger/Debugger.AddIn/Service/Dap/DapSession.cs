@@ -128,6 +128,11 @@ namespace Debugger.AddIn.Service.Dap
 		public event Action Continued;
 		public event Action Exited;
 		public event Action<string> OutputReceived;
+		/// <summary>
+		/// The adapter (started with decompileExternalCode=false) needs symbols for a module without a PDB and is waiting for
+		/// <see cref="LoadSymbolsAsync"/>. Raised on the adapter's reader thread: do not block in a handler.
+		/// </summary>
+		public event Action<DapSession, DapSymbolsNeededEventArgs> SymbolsNeeded;
 
 		/// <param name="clientId">Sent as the DAP "clientID"/"clientName" - purely informational
 		/// (shows up in adapter logs), but distinguishes which host started the session.</param>
@@ -261,7 +266,10 @@ namespace Debugger.AddIn.Service.Dap
 				var attachArguments = new JsonObject {
 					["processId"] = attachProcessId,
 					["console"] = "internalConsole",
-					["justMyCode"] = true
+					["justMyCode"] = true,
+					// The IDE (its decompiler add-in) decides whether and how a module without a PDB gets symbols; with no provider nothing is
+					// decompiled. An adapter that does not know the argument keeps decompiling by itself.
+					["decompileExternalCode"] = false
 				};
 				// Adapter-specific attach settings, e.g. where an iOS simulator target's debugger libraries are
 				foreach (var option in attachOptions ?? new JsonObject())
@@ -273,7 +281,10 @@ namespace Debugger.AddIn.Service.Dap
 				await client.SendRequestAsync("attach", new JsonObject {
 					["processId"] = debuggeeProcess.Id,
 					["console"] = "internalConsole",
-					["justMyCode"] = true
+					["justMyCode"] = true,
+					// The IDE (its decompiler add-in) decides whether and how a module without a PDB gets symbols; with no provider nothing is
+					// decompiled. An adapter that does not know the argument keeps decompiling by itself.
+					["decompileExternalCode"] = false
 				}, cancellationToken).ConfigureAwait(false);
 			} else {
 				string program = targetPath;
@@ -301,6 +312,7 @@ namespace Debugger.AddIn.Service.Dap
 					["args"] = args,
 					["cwd"] = workingDirectory ?? Path.GetDirectoryName(targetPath),
 					["env"] = env,
+					["decompileExternalCode"] = false,
 					["stopAtEntry"] = breakAtBeginning,
 					["console"] = "internalConsole",
 					["noDebug"] = noDebug
@@ -621,11 +633,16 @@ namespace Debugger.AddIn.Service.Dap
 		/// <see cref="DapStackFrameInfo.DecompiledSource"/> when the code is only available decompiled.
 		/// Throws <see cref="InvalidOperationException"/> when the adapter answers with an error.
 		/// </summary>
+		static readonly TimeSpan ResolveStackFrameTimeout = TimeSpan.FromMinutes(4);
+
 		public async Task<DapStackFrameInfo> ResolveStackFrameAsync(DapStackFrameInfo frame)
 		{
 			if (client == null)
 				return frame;
-			JsonObject response = await client.SendRequestAsync("resolveStackFrame", new JsonObject { ["stackFrameId"] = frame.Id }).ConfigureAwait(false);
+			// The adapter may wait for this IDE's decompiler to produce the module's symbols (symbolsNeeded -> loadSymbols), which for a
+			// large module such as System.Private.CoreLib takes tens of seconds: longer than the default request timeout, and shorter than
+			// the adapter's own limit (3 minutes) plus the time to answer.
+			JsonObject response = await client.SendRequestAsync("resolveStackFrame", new JsonObject { ["stackFrameId"] = frame.Id }, default, ResolveStackFrameTimeout).ConfigureAwait(false);
 			// SendRequestAsync returns an error response instead of throwing (see EvaluateAsync).
 			bool success = response?["success"] == null || response["success"].GetValue<bool>();
 			if (!success) {
@@ -941,6 +958,41 @@ namespace Debugger.AddIn.Service.Dap
 			}
 		}
 
+		void HandleSymbolsNeededEvent(JsonObject body)
+		{
+			string mvidText = body?["mvid"] != null ? body["mvid"].GetValue<string>() : null;
+			if (!Guid.TryParse(mvidText, out Guid mvid)) {
+				return;
+			}
+			var args = new DapSymbolsNeededEventArgs {
+				ModuleName = body["moduleName"] != null ? body["moduleName"].GetValue<string>() : null,
+				ModulePath = body["modulePath"] != null ? body["modulePath"].GetValue<string>() : null,
+				Mvid = mvid
+			};
+			var handler = SymbolsNeeded;
+			if (handler == null) {
+				// Nobody to answer: do not leave the adapter waiting for its timeout
+				_ = LoadSymbolsAsync(mvid, null);
+				return;
+			}
+			handler(this, args);
+		}
+
+		/// <summary>
+		/// Answers a <c>symbolsNeeded</c> event (or provides symbols up front) for the module with this MVID. A null or empty
+		/// <paramref name="pdbPath"/> tells the adapter the client has none; it must always be answered, or the adapter waits.
+		/// </summary>
+		public async Task LoadSymbolsAsync(Guid mvid, string pdbPath)
+		{
+			if (client == null)
+				return;
+			var arguments = new JsonObject { ["mvid"] = mvid.ToString() };
+			if (!string.IsNullOrEmpty(pdbPath))
+				arguments["pdbPath"] = pdbPath;
+			// An answer to a request the adapter is still holding (resolveStackFrame...): it must not queue behind it
+			await client.SendAnswerAsync("loadSymbols", arguments).ConfigureAwait(false);
+		}
+
 		void OnDapEvent(string eventName, JsonObject body)
 		{
 			switch (eventName) {
@@ -964,6 +1016,9 @@ namespace Debugger.AddIn.Service.Dap
 					break;
 				case "module":
 					HandleModuleEvent(body);
+					break;
+				case "symbolsNeeded":
+					HandleSymbolsNeededEvent(body);
 					break;
 				case "process":
 					// The adapter reports the program it launched; the attach modes already know theirs.

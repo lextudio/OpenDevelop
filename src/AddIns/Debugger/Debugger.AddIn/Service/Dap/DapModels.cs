@@ -16,6 +16,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using System.Collections.Generic;
 using System.Text.Json.Nodes;
 
@@ -154,6 +155,14 @@ namespace Debugger.AddIn.Service.Dap
 		public int Line { get; set; }
 		public bool Verified { get; set; }
 		public string Message { get; set; }
+	}
+
+	/// <summary>A module without a PDB needs symbols (the adapter's <c>symbolsNeeded</c> event).</summary>
+	public sealed class DapSymbolsNeededEventArgs
+	{
+		public string ModuleName { get; set; }
+		public string ModulePath { get; set; }
+		public Guid Mvid { get; set; }
 	}
 
 	public sealed class DapStoppedEventArgs

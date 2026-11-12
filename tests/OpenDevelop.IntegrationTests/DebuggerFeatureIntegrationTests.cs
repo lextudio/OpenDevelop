@@ -206,7 +206,13 @@ public sealed class DebuggerFeatureIntegrationTests
             Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
             Assert.True(opened.GetProperty("resolved").GetBoolean(), opened.ToString());
             var document = opened.GetProperty("activeDocument").GetString()!;
-            Assert.True(document.StartsWith("ilspy:", StringComparison.OrdinalIgnoreCase), opened.ToString());
+            // An adapter that decompiles by itself (the pinned SharpDbg before decompileExternalCode) is shown through the ILSpy
+            // document; an adapter that takes the IDE's symbols (doc/technotes/decompiled-debugging.md) opens the .cs file ILSpy
+            // wrote for the module. Either way it is the System.Linq code, read-only, with the caret on the paused statement.
+            var viaIlspyDocument = document.StartsWith("ilspy:", StringComparison.OrdinalIgnoreCase);
+            var viaSymbolFile = document.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+                && document.Contains("DecompiledSymbols", StringComparison.OrdinalIgnoreCase);
+            Assert.True(viaIlspyDocument || viaSymbolFile, opened.ToString());
             Assert.Contains("System.Linq", document, StringComparison.OrdinalIgnoreCase);
             var caretLine = opened.GetProperty("caretLine").GetInt32();
             Assert.InRange(caretLine, 1, opened.GetProperty("lineCount").GetInt32());

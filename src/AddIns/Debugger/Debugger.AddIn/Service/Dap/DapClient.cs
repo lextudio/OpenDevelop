@@ -89,6 +89,18 @@ namespace Debugger.AddIn.Service.Dap
 			}
 		}
 
+		/// <summary>
+		/// Sends a request that answers something the adapter is waiting for, without queueing behind <see cref="SendRequestAsync"/>'s
+		/// request lock. The adapter's request that is waiting for this answer (for example a resolveStackFrame that waits for the
+		/// symbols the IDE is about to supply) holds that lock until it is answered, so an answer that waited for it would never go out.
+		/// Use only for such answers.
+		/// </summary>
+		public Task<JsonObject> SendAnswerAsync(string command, JsonObject arguments, CancellationToken cancellationToken = default)
+		{
+			ObjectDisposedException.ThrowIf(isDisposed, this);
+			return SendRequestCoreAsync(command, arguments, cancellationToken, RequestTimeout);
+		}
+
 		/// <summary>Fails every request still awaiting a response with <paramref name="error"/>.</summary>
 		public void FailPendingRequests(Exception error)
 		{

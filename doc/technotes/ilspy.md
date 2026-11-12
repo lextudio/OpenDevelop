@@ -3638,3 +3638,13 @@ options panel (see its own 2026-08-07 status update) are now the first real cons
 via DevFlow - no existing action drives a menu command or opens the Options dialog by id, so
 correctness here rests on the build passing plus following the same service-registration pattern
 already live-verified for `IPropertyPadHost`/`IOutputPadHost`/etc. above.
+
+## Decompiled-code debugging
+
+The ILSpy add-in supplies the decompiled source **and the PDB** for code the debugger reaches without symbols
+(`DecompiledSymbolProvider` and `DecompiledPdbWriter`, registered at `/SharpDevelop/Services/DecompiledSymbolProvider`), as Visual Studio
+does, and **disabling this add-in switches the feature off**. The files go to `<config dir>/cache/DecompiledSymbols/`. The old in-process
+route (`ILSpySymbolSource.cs`, excluded from the build) is the precedent. The design, the adapter change in `../sharpdbg`, the traps found
+(Publicizer with `GenerateAssemblyInfo=false`, the client request lock) and the open questions are in
+[`decompiled-debugging.md`](decompiled-debugging.md); the older route, used with an adapter that decompiles by itself, is in
+[`debugging.md`](debugging.md), "External-frame decompilation".

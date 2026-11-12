@@ -337,6 +337,12 @@ resolved, an `ilspy://` document is the active document, its text contains the d
 and the caret line is non-zero and inside the document. The action exercises the same
 `WindowsDebugger.OpenFrame` the double-click calls, not the final seam alone.
 
+**Superseded for an adapter that supports it:** with a SharpDbg that understands `decompileExternalCode`, the ILSpy add-in generates
+the decompiled files and the PDB itself, the frame resolves to a real file, and disabling ILSpy switches decompilation off:
+see [`decompiled-debugging.md`](decompiled-debugging.md). That also covers the case this section cannot, a stack made only of framework
+frames, where the adapter returns no `decompiledSourceInfo`. The text below still describes the route used with an adapter that decompiles
+by itself (the pinned one until the package is moved).
+
 ### 2. Eval window
 
 SharpIDE's Eval window is an editor with C# highlighting and completion that evaluates in the
