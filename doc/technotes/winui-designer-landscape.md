@@ -1200,8 +1200,13 @@ the solution load fails with "No backend for project type installed") and `CShar
 - **Document Outline works** (`Page, Grid, RootStack, TitleText, PrimaryButton`): it comes from the parent's source model.
 - Edit round trip: `od.winui-designer.select PrimaryButton`, then `properties-pad.edit Content` changed `Hello WinUI` to
   `Edited in the IDE` with the designer still rendered, dirty and `canUndo: true`; `od.winui-designer.undo` restored it
-  (`canUndo: false`, `canRedo: true`). Whether the edit repainted is proved by the tests (`UpdateAsync` returns a new frame), not by
-  a pixel check here: no screenshot was taken.
+  (`canUndo: false`, `canRedo: true`).
+- **Pixel check of the edit** (`od.winui-designer.export-png` of the designer frame, three exports, compared byte for byte):
+  `Hello WinUI` gave `4BE6315BB585` (7,356 bytes), which is byte-identical to the frame the standalone client got from the same page
+  earlier; `A much longer button caption than before` gave `26FBFBDC1155` (9,153 bytes) and the image shows that caption on the
+  button; after `undo` the frame is `4BE6315BB585` again. So the edit repainted through the surface and undo restored the exact
+  original pixels. (`od.winui-designer.frame-profile` and `render-sample` are ProGPU-era diagnostics and say only
+  `render 1024x720 png=0KB` / `no frame` for this backend; they prove nothing either way.) The fixture file on disk was never saved.
 - Without the C# Binding add-in loaded the status was `WinUI Surface host: '<file>' belongs to no project.`: the bootstrap
   declines with its own reason, as designed.
 
@@ -1212,8 +1217,8 @@ their run copies would stay under `%LOCALAPPDATA%\OpenDevelop\surf\run`; each ch
 for its process id, removes that folder on shutdown, and at startup sweeps the id-named folders of processes that no longer exist
 (never a live one's, never a folder whose name is not a process id).
 
-Still not done: the OpenCode review and the commit (`build/opencode-review.ps1` needs the OpenCode CLI and its provider auth, which are
-not on this machine), ARM64 (this machine is AMD64), and a pixel-level check of the edited frame in the IDE.
+Still not done: the OpenCode review (`build/opencode-review.ps1` needs the OpenCode CLI and its provider auth, which were not on the
+machine; the change was committed without it at the user's explicit request) and ARM64 (this machine is AMD64).
 
 **`{x:Bind}` and custom controls, measured** (upstream `TestUserApp` built with `dotnet build`, copied to a short path and passed
 as `--user-dll`, bundled WASDK 2.2.0 host, one page with a `FancyBadge` custom control and two `{x:Bind}` properties):
