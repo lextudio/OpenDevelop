@@ -1,8 +1,8 @@
 # Keyboard shortcut overrides (design)
 
 Status (2026-11-12): **design; phase 1 is implemented**, phases 2 to 4 are not. Implemented: the command key (`CommandKey`), `KeyBindings.xml` (`KeyBindingsFile`), the resolution, `KeyBindingService`,
-the four installers moved onto it, and the DevFlow actions `od.keybindings.bindings|invoke|overrides|set|reset`. **Not yet:** the `CommandCatalog`, the command-wide default for an item that has no `shortcut`
-of its own (so for now an override applies to every site of a command, but a default is still taken from the item's own attribute), and the Settings page. The sections below say what each part does or will do.
+the four installers moved onto it, and the DevFlow actions `od.keybindings.bindings|invoke|overrides|set|reset`. `CommandCatalog` (the codons of the loaded, not suspended AddIns grouped by command) and the command-wide default (an item without a `shortcut` takes the one another item of its command carries), plus `od.keybindings.catalog`.
+**Not yet:** the Settings page. The sections below say what each part does or will do.
 Facts below were read from the code and from the `.addin` manifests on that date.
 The counts come from a script over the **57 product `.addin` files**: the 79 tracked ones minus the 15 under `samples/` and the 7 test fixtures
 (`*.Tests/TestResources`, `tests/`). The samples are left out on purpose: they carry their own menus (for example `Control|Z` on `Undo` in `SdaBase.addin`)
@@ -74,7 +74,7 @@ that is a `Builder` (a dynamic list) has no identity and cannot have a shortcut,
 
 **The effective gesture applies to every site of the command**: the override if there is one (an explicit "none" removes the default),
 otherwise the default from the manifest. Where a command's items differ today (22 commands have the attribute on only some items), the
-service uses the one gesture it finds, so the toolbar button's tooltip and the binding agree. This changes nothing for the defaults. *(Phase 1 implements the override part: an override reaches every site of the command. Taking the default of a command from its other items needs the `CommandCatalog`.)*
+service uses the one gesture it finds, so the toolbar button's tooltip and the binding agree. This changes nothing for the defaults. *(Phase 1 implements both: an override reaches every site of the command, and an item without a `shortcut` takes the default of its command from the `CommandCatalog`; `KeyBindingService.CommandDefaultProvider`, filled lazily from the AddIn tree for the default service.)*
 
 Routed commands are different in kind. In the product they are `Undo`, `Redo`, `Cut`, `Copy`, `Paste`, `SelectAll` (main-menu and toolbar items with `command=` and **no**
 `shortcut` attribute: their keys are WPF's built-in `InputGestures` on the command, `Ctrl+Z` in any text box) and `Print` and `Help` (which do carry a `shortcut`). An `InputBinding`
@@ -204,12 +204,14 @@ all strings go through `${res:...}` with English, Simplified and Traditional Chi
 
 ## Phases
 
-1. **Core** (implemented, except the `CommandCatalog`): the command key, `KeyBindings.xml` (read, write, round-trip, a newer `version` and unknown content kept, an unreadable file kept as `.corrupt`), the resolution
+1. **Core** (implemented): the command key, `KeyBindings.xml` (read, write, round-trip, a newer `version` and unknown content kept, an unreadable file kept as `.corrupt`), the resolution
    `override ?? default`, `KeyBindingService`, and the four installers moved onto it. No UI. Observable through DevFlow and a hand-edited file. How the service works: for every owner it keeps the sites registered on it and
    DERIVES the bindings it adds from them, so a change removes what it added and adds the new ones; a site is replaced when the same item (its codon) registers again, which is what a context menu does every time it
    opens, so nothing piles up (the old code added a binding, or wrapped one, on every open); two sites on one gesture are combined as before (the first that can execute runs); bindings other code added are not touched; an
-   override that does not parse is reported and ignored, so the default applies; an item without a shortcut registers too, so an override can give it one (the issue's "Clean"). Still to do in this phase: the
-   `CommandCatalog` and the command-wide default.
+   override that does not parse is reported and ignored, so the default applies; an item without a shortcut registers too, so an override can give it one (the issue's "Clean"). The `CommandCatalog` walks the codons without
+   instantiating anything and takes the kinds `MenuItem`, `ToolbarItem` and `Pad` that have a `class`, a `command` or a `link` (a pad: an id or a class), except a `type` of Builder, Menu, Separator, Custom or DropDownButton. On the
+   running application it finds 359 commands (62 with a default shortcut, 20 routed, 79 in more than one item); this is fewer than the 385 above because that count also took the Custom and DropDownButton items and AddIns the
+   host does not load.
 2. **The page**: list, search, details and capture, conflict handling, OK/Cancel semantics, the dialog's default size.
 3. **Import / export, reset all, the unknown-command row**, and the gesture search.
 4. **More scopes**: the editor's own commands (AvalonEdit's built-in editing actions and the add-in's `CustomCommands`), the terminal, designers. They bind inside

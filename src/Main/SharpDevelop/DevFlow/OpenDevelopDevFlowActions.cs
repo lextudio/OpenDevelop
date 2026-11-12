@@ -2913,6 +2913,21 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { success = true, overrides = ICSharpCode.Core.Presentation.KeyBindingService.Default.Overrides });
 		}
 
+		[DevFlowAction("od.keybindings.catalog", Description = "The commands that can have a keyboard shortcut (the AddIn tree's items grouped by command): key, name, manifest default, item count, routed or not")]
+		public static string KeyBindingCatalog()
+		{
+			var catalog = ICSharpCode.Core.Presentation.CommandCatalog.Build(SD.AddInTree.AddIns);
+			var service = ICSharpCode.Core.Presentation.KeyBindingService.Default;
+			return JsonSerializer.Serialize(new {
+				success = true,
+				count = catalog.Count,
+				commands = catalog.Select(e => new {
+					key = e.Key, name = e.DisplayName, defaultGesture = e.DefaultGesture, items = e.Items.Count, routed = e.IsRouted,
+					current = service.ResolveText(e.Key, e.DefaultGesture)
+				})
+			});
+		}
+
 		[DevFlowAction("od.keybindings.set", Description = "Give a command (key such as class:ICSharpCode.SharpDevelop.Project.Commands.Clean) an override; an empty gesture means no shortcut. Applies at once and is saved in KeyBindings.xml")]
 		public static string SetKeyBinding(string commandKey, string gesture)
 		{

@@ -31,8 +31,10 @@ namespace ICSharpCode.Core.Presentation
 		public static KeyBindingService Default {
 			get {
 				lock (defaultLock) {
-					if (defaultInstance == null)
+					if (defaultInstance == null) {
 						defaultInstance = new KeyBindingService(FindDefaultFile(), LoggingService.Warn);
+						defaultInstance.CommandDefaultProvider = CreateAddInTreeDefaults();
+					}
 					return defaultInstance;
 				}
 			}
@@ -43,6 +45,24 @@ namespace ICSharpCode.Core.Presentation
 		{
 			lock (defaultLock)
 				defaultInstance = service;
+		}
+
+		/// <summary>The command-wide defaults of the AddIn tree, collected on first use (the tree is complete by the time the first menu is built).</summary>
+		static Func<string, string> CreateAddInTreeDefaults()
+		{
+			IReadOnlyDictionary<string, string> defaults = null;
+			return key => {
+				try {
+					if (defaults == null)
+						defaults = CommandCatalog.DefaultGestures(ServiceSingleton.GetRequiredService<IAddInTree>().AddIns);
+					string text;
+					return defaults.TryGetValue(key, out text) ? text : null;
+				} catch (Exception ex) {
+					LoggingService.Warn("The command defaults of the AddIn tree are not available.", ex);
+					defaults = new Dictionary<string, string>();
+					return null;
+				}
+			};
 		}
 
 		static string FindDefaultFile()
@@ -99,6 +119,19 @@ namespace ICSharpCode.Core.Presentation
 			}
 		}
 
+		/// <summary>
+		/// The manifest shortcut of a command, for an item that has none of its own (an item of the command carries it elsewhere); null for none.
+		/// Set it, then call <see cref="Reload"/> to apply it to the sites already registered.
+		/// </summary>
+		public Func<string, string> CommandDefaultProvider { get; set; }
+
+		string EffectiveDefault(string commandKey, string defaultGesture)
+		{
+			if (!string.IsNullOrWhiteSpace(defaultGesture) || CommandDefaultProvider == null)
+				return defaultGesture;
+			return CommandDefaultProvider(commandKey);
+		}
+
 		/// <summary>The overrides: command key -> gesture text, an empty text meaning "no shortcut".</summary>
 		public IReadOnlyDictionary<string, string> Overrides {
 			get { return Data.Overrides; }
@@ -108,7 +141,7 @@ namespace ICSharpCode.Core.Presentation
 		public string ResolveText(string commandKey, string defaultGesture)
 		{
 			string overridden;
-			string text = Data.Overrides.TryGetValue(commandKey, out overridden) ? overridden : defaultGesture;
+			string text = Data.Overrides.TryGetValue(commandKey, out overridden) ? overridden : EffectiveDefault(commandKey, defaultGesture);
 			return string.IsNullOrWhiteSpace(text) ? null : text;
 		}
 
@@ -126,6 +159,7 @@ namespace ICSharpCode.Core.Presentation
 				if (gesture != null)
 					return gesture;
 			}
+			defaultGesture = EffectiveDefault(commandKey, defaultGesture);
 			return string.IsNullOrWhiteSpace(defaultGesture) ? null : TryParse(defaultGesture, commandKey, "default shortcut");
 		}
 
