@@ -20,6 +20,12 @@
 		<Class id="ILSpy" class="ICSharpCode.ILSpyAddIn.DecompiledSourceNavigator"/>
 	</Path>
 
+	<!-- Decompiled debugging: ILSpy generates the decompiled sources and the PDB the debugger uses for modules without symbols.
+	     Disabling this AddIn removes the provider, so nothing is decompiled while debugging. doc/technotes/decompiled-debugging.md -->
+	<Path name="/SharpDevelop/Services/DecompiledSymbolProvider">
+		<Class id="ILSpy" class="ICSharpCode.ILSpyAddIn.DecompiledSymbolProvider"/>
+	</Path>
+
 	<Path name = "/SharpDevelop/Parser">
 		<Parser id    = "ILSpy"
 		        insertbefore="C#"

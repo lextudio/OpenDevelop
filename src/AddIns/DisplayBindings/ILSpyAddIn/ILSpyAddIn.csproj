@@ -56,6 +56,9 @@
     <!-- Existing legacy launcher-based addin references (untouched). -->
     <PackageReference Include="ICSharpCode.AvalonEdit.LibreWPF" />
     <PackageReference Include="ICSharpCode.Decompiler" />
+    <!-- DecompiledPdbWriter uses ICSharpCode.Decompiler's internal DebugInfo types (the stock PortablePdbWriter's own helpers); build-time only. -->
+    <PackageReference Include="Krafs.Publicizer" PrivateAssets="all" />
+    <Publicize Include="ICSharpCode.Decompiler" IncludeCompilerGeneratedMembers="false" MemberPattern="^ICSharpCode\.Decompiler\.(CSharp\.Transforms\.RemoveEmbeddedAttributes|DebugInfo)\..*" />
     <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
     <!-- ICSharpCode.SharpDevelop.ViewModels.ToolPaneModel/DockWorkspace (the pads structure we
          plug ILSpy's panes into) live in the OpenDevelop workbench assembly, not in the Core
