@@ -289,6 +289,50 @@ public class SurfaceChildProcessTests
 		Assert.True(again.Accepted, again.Error);
 	}
 
+	/// <summary>The wire shape of the child's <c>design/native-live</c> reply (the test does not reference the child assembly).</summary>
+	sealed class NativeLiveReply
+	{
+		public bool Native { get; set; }
+		public long Hwnd { get; set; }
+		public int PixelWidth { get; set; }
+		public int PixelHeight { get; set; }
+		public DesignerSessionState? State { get; set; }
+		public string? Message { get; set; }
+	}
+
+	[System.Runtime.InteropServices.DllImport("user32.dll")]
+	static extern bool IsWindow(nint hwnd);
+
+	[Fact]
+	public async Task Real_surface_switches_a_document_to_a_native_window_and_back_over_ddp()
+	{
+		string? exe = Environment.GetEnvironmentVariable("OD_SURFACE_EXE");
+		if (string.IsNullOrEmpty(exe) || !OperatingSystem.IsWindows())
+			Assert.Skip("OD_SURFACE_EXE is not set (or not Windows).");
+		await using var child = await Child.StartAsync(exe, Environment.GetEnvironmentVariable("OD_SURFACE_ARGS") ?? "");
+		await child.Call<HostHandshake>("initialize", Token, DesignerProtocol.Version, "s1");
+		const string xaml = "<Page xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\">"
+			+ "<Button x:Name=\"Go\" Content=\"Click me\"/></Page>";
+		var opened = await child.Call<DesignerSessionState>("session/open", Request(xaml, 1));
+		Assert.True(opened.Accepted, opened.Error + "\n" + child.Stderr);
+
+		var native = await child.Call<NativeLiveReply>("design/native-live", "s1", "d1", true, null);
+		Assert.True(native.Native, native.Message + "\n" + child.Stderr);
+		Assert.True(native.Hwnd != 0 && IsWindow((nint)native.Hwnd), "the reply should name a live window");
+		Assert.True(native.PixelWidth > 0 && native.PixelHeight > 0);
+
+		// While native, an edit is refused rather than rendered, and a click is a miss.
+		var during = await child.Call<DesignerSessionState>("session/update", Request(xaml, 2));
+		Assert.False(during.Accepted);
+		Assert.False((await child.Call<DesignerHitTestResult>("design/hit-test", "s1", "d1", 1L, 20.0, 15.0)).Hit);
+
+		var edited = xaml.Replace("Click me", "Edited");
+		var back = await child.Call<NativeLiveReply>("design/native-live", "s1", "d1", false, Request(edited, 3));
+		Assert.False(back.Native, back.Message);
+		Assert.True(back.State is { Accepted: true, Render: not null }, back.Message + "\n" + child.Stderr);
+		Assert.True((await child.Call<DesignerSessionState>("session/update", Request(edited, 4))).Accepted);   // snapshots work again
+	}
+
 	[Fact]
 	public async Task Real_surface_renders_refuses_edits_and_exports_over_ddp()
 	{

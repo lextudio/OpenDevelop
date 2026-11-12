@@ -20,6 +20,15 @@ public sealed record SurfaceRenderResult(SurfaceFrame? Frame, SurfaceError? Erro
 /// The element a pick landed on. <see cref="Name"/> is its x:Name when it has one; <see cref="Path"/> is the surface's own tree path
 /// and may be unresolved. The bounds are in the artboard's DIPs.
 /// </summary>
+/// <summary>The window a surface in native mode hosts the document in: its handle and size (DIPs and pixels).</summary>
+public sealed record SurfaceNativeWindow(long Hwnd, double DipWidth, double DipHeight, int PixelWidth, int PixelHeight, double Scale);
+
+/// <summary>
+/// What switching a document to or from native-live mode produced: the window (entering), or the snapshot to show (leaving, or when the
+/// surface was lost), and a message for the shell's banner when something went wrong.
+/// </summary>
+public sealed record NativeLiveResult(SurfaceNativeWindow? Window, ICSharpCode.SharpDevelop.Designer.Remote.DesignerSessionState? Fallback, string? Message);
+
 public sealed record SurfacePick(int Id, string ElementType, string? Name, string? Path, double X, double Y, double Width, double Height);
 
 /// <summary>The peer cannot speak a shared protocol version, or lacks a capability this client requires.</summary>
@@ -60,6 +69,7 @@ public sealed class SurfaceConnection : IAsyncDisposable
 	readonly CancellationTokenSource stopReading = new();
 	readonly Task readLoop;
 	Exception? fault;
+	bool nativeLive;
 
 	SurfaceConnection(Stream stream, TimeSpan requestTimeout, StreamReader reader, StreamWriter writer)
 	{
@@ -196,6 +206,7 @@ public sealed class SurfaceConnection : IAsyncDisposable
 		await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
 		try {
 			ThrowIfFaulted();
+			ThrowIfNativeLive();
 			try {
 				DrainStale();
 				await SendAsync(new Dictionary<string, object?> {
@@ -264,12 +275,101 @@ public sealed class SurfaceConnection : IAsyncDisposable
 		}
 	}
 
+	/// <summary>True between <see cref="EnterNativeLiveAsync"/> and <see cref="ExitNativeLiveAsync"/>: the surface shows its own window and sends no frames.</summary>
+	public bool IsNativeLive => nativeLive;
+
+	/// <summary>
+	/// Puts the surface in its native-window mode and leaves it there: the document is hosted in a real window whose handle the caller may
+	/// reparent, and it animates and reacts to input itself. Renders and picks are refused until <see cref="ExitNativeLiveAsync"/> (in
+	/// native mode the surface answers a document update with a window handle, not a frame).
+	/// </summary>
+	public async Task<SurfaceNativeWindow> EnterNativeLiveAsync(
+		string xaml, double width, double height, double scale, string? documentPath, CancellationToken cancellationToken = default)
+	{
+		await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+		try {
+			ThrowIfFaulted();
+			if (nativeLive)
+				throw new InvalidOperationException("The surface is already in native-live mode.");
+			try {
+				DrainStale();
+				await SendAsync(new Dictionary<string, object?> {
+					["type"] = "EnterNative",
+					["xaml"] = xaml,
+					["width"] = width,
+					["height"] = height,
+					["scale"] = scale,
+					["sampleData"] = false,
+					["documentPath"] = documentPath,
+					["paneWidthPx"] = (int)Math.Ceiling(width * scale),
+					["paneHeightPx"] = (int)Math.Ceiling(height * scale),
+					["view"] = new Dictionary<string, object?> { ["fit"] = false, ["zoom"] = 1.0, ["offsetX"] = 0.0, ["offsetY"] = 0.0 },
+				}).ConfigureAwait(false);
+				while (true) {
+					using var doc = await NextAsync(requestTimeout, cancellationToken).ConfigureAwait(false);
+					var root = doc.RootElement;
+					switch (GetString(root, "type")) {
+						case "Hwnd":
+							nativeLive = true;
+							return new SurfaceNativeWindow(
+								root.TryGetProperty("hwnd", out var h) && h.TryGetInt64(out var handle) ? handle : 0,
+								GetDouble(root, "dipWidth"), GetDouble(root, "dipHeight"), GetInt(root, "pixelWidth"), GetInt(root, "pixelHeight"),
+								GetDouble(root, "scale"));
+						case "Error":
+							// The native flag stays set on the surface either way, so leave it before reporting.
+							await SendAsync(new Dictionary<string, object?> { ["type"] = "ExitNative" }).ConfigureAwait(false);
+							throw new SurfaceProtocolException("The surface could not enter native mode: " + GetString(root, "message"));
+					}
+				}
+			} catch (Exception ex) when (ex is not SurfaceProtocolException && ex is not OperationCanceledException) {
+				fault = ex;
+				throw new SurfaceConnectionFaultedException("The surface connection was lost entering native mode.", ex);
+			}
+		} finally {
+			gate.Release();
+		}
+	}
+
+	/// <summary>Leaves native-live mode; renders and picks work again. Does nothing when not in it.</summary>
+	public async Task ExitNativeLiveAsync(CancellationToken cancellationToken = default)
+	{
+		await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+		try {
+			ThrowIfFaulted();
+			if (!nativeLive)
+				return;
+			try {
+				DrainStale();
+				await SendAsync(new Dictionary<string, object?> { ["type"] = "ExitNative" }).ConfigureAwait(false);
+				while (true) {
+					using var doc = await NextAsync(requestTimeout, cancellationToken).ConfigureAwait(false);
+					if (GetString(doc.RootElement, "type") == "NativeExited")
+						break;
+				}
+				nativeLive = false;
+			} catch (Exception ex) when (ex is not OperationCanceledException) {
+				fault = ex;
+				nativeLive = false;
+				throw new SurfaceConnectionFaultedException("The surface connection was lost leaving native mode.", ex);
+			}
+		} finally {
+			gate.Release();
+		}
+	}
+
+	void ThrowIfNativeLive()
+	{
+		if (nativeLive)
+			throw new InvalidOperationException("The surface is in native-live mode; leave it before rendering or picking.");
+	}
+
 	Task SendAsync(Dictionary<string, object?> message) => writer.WriteLineAsync(JsonSerializer.Serialize(message));
 	async Task<SurfaceRenderResult> RequestAsync(Dictionary<string, object?> message, CancellationToken cancellationToken)
 	{
 		await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
 		try {
 			ThrowIfFaulted();
+			ThrowIfNativeLive();
 			try {
 				DrainStale();
 				await writer.WriteLineAsync(JsonSerializer.Serialize(message)).ConfigureAwait(false);

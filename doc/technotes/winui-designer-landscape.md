@@ -972,6 +972,20 @@ continues to use snapshots. WinAppVSCE has already proven the reparenting mechan
 Acceptance evidence: the same document can switch between snapshot and native modes without losing
 selection, and a native-mode crash falls back to the last snapshot with the recovery banner.
 
+**Built (renderer side, 2026-11).** `SurfaceConnection.EnterNativeLiveAsync/ExitNativeLiveAsync`,
+`SurfaceDesignDocument.EnterNativeLiveAsync/ExitNativeLiveAsync` and the child RPC `design/native-live`
+(`enabled`, current request on leaving) switch one document between snapshots and the surface's own
+window. The reply carries the window handle and size when native; otherwise the snapshot to show and a
+message. While native, the surface sends no frames, so `session/update` is refused with a reason,
+hit-tests miss (the window takes the clicks) and picks are off; leaving re-renders the current source.
+A lost surface returns the last accepted snapshot and "showing the last snapshot" instead of an
+exception. It is a renderer capability, not part of the shared designer protocol, so a shell that never
+calls it never leaves snapshots. Tested on the fake surface (4 tests, including a dropped connection
+and a refused `EnterNative`) and on the real 2.2.0 surface over DDP (the handle is a live window,
+update refused, back to a frame). **Not built:** the shell side, i.e. reparenting that HWND into the
+LibreWPF canvas, DPI/input forwarding, and the UI to toggle it; that cannot be verified without
+a visible IDE and is the remaining work.
+
 ### 7.3 Treat WinUI source round-trip as the moat
 
 WinAppVSCE cannot do writeback because it has no model; WinUIDesigner's model is borrowed. OpenDevelop

@@ -101,7 +101,8 @@ sealed class SurfaceDesignRpc
 		rpc.AddLocalRpcMethod("design/go-to-state", new Func<string, string, long, string, string, DesignerSessionState>((s, d, v, g, st) => Refuse(s, d, "design/go-to-state", "the surface has no message for forcing a visual state.")));
 		rpc.AddLocalRpcMethod("app/resources", new Func<string, string, string, DesignerAppResourcesResult>(AppResources));
 	rpc.AddLocalRpcMethod("design/hit-test", new Func<string, string, long, double, double, DesignerHitTestResult>(HitTest));
-		rpc.AddLocalRpcMethod("design/export-png", new Func<string, string, string, string>(ExportPng));
+		rpc.AddLocalRpcMethod("design/native-live", new Func<string, string, bool, DesignerDocumentRequest?, SurfaceNativeLiveReply>(NativeLive));
+			rpc.AddLocalRpcMethod("design/export-png", new Func<string, string, string, string>(ExportPng));
 		rpc.AddLocalRpcMethod("ping", new Action(() => { }));
 		rpc.AddLocalRpcMethod("shutdown", new Action(() => {
 			CloseAll();
@@ -224,6 +225,36 @@ sealed class SurfaceDesignRpc
 		} catch (SurfaceConnectionFaultedException e) {
 			Console.Error.WriteLine($"{Runtime}: design/hit-test failed: {e.Message}");
 			return new DesignerHitTestResult { Hit = false };
+		}
+	}
+
+	/// <summary>
+	/// <c>design/native-live</c>: switches the document to the surface's own window (<paramref name="enabled"/>) or back to snapshots.
+	/// This is a capability of this renderer, not part of the shared designer protocol: a shell that does not call it never leaves
+	/// snapshots. <paramref name="current"/> is the document as it is now, so leaving native mode re-renders the edited source. If the
+	/// surface is lost, the reply carries the last snapshot and a message instead of an exception.
+	/// </summary>
+	SurfaceNativeLiveReply NativeLive(string sessionId, string documentId, bool enabled, DesignerDocumentRequest? current)
+	{
+		var document = documents.Get(sessionId, documentId);
+		try {
+			var result = enabled
+				? document.EnterNativeLiveAsync().GetAwaiter().GetResult()
+				: document.ExitNativeLiveAsync(current).GetAwaiter().GetResult();
+			return new SurfaceNativeLiveReply {
+				Native = result.Window != null,
+				Hwnd = result.Window?.Hwnd ?? 0,
+				PixelWidth = result.Window?.PixelWidth ?? 0,
+				PixelHeight = result.Window?.PixelHeight ?? 0,
+				DipWidth = result.Window?.DipWidth ?? 0,
+				DipHeight = result.Window?.DipHeight ?? 0,
+				Scale = result.Window?.Scale ?? 1,
+				State = result.Fallback,
+				Message = result.Message,
+			};
+		} catch (Exception e) when (e is SurfaceConnectionFaultedException or SurfaceProtocolException or IOException or TimeoutException) {
+			Console.Error.WriteLine($"{Runtime}: design/native-live failed: {e}");
+			return new SurfaceNativeLiveReply { Message = "The WinUI surface stopped responding: " + (e.InnerException?.Message ?? e.Message) };
 		}
 	}
 

@@ -62,6 +62,9 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 	public async Task<DesignerSessionState> UpdateAsync(DesignerDocumentRequest request, CancellationToken cancellationToken = default)
 	{
 		var snapshot = request.Snapshot;
+		if (connection.IsNativeLive)
+			return Rejected(snapshot.SessionId, snapshot.DocumentId, Math.Max(version, 0),
+				"The document is in native-live mode; it is re-rendered when that mode is left.");
 		if (version >= 0 && snapshot.Version < version)
 			return Rejected(snapshot.SessionId, snapshot.DocumentId, version,
 				$"Stale document version {snapshot.Version}; the surface is at {version}.");
@@ -82,6 +85,8 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 	/// </summary>
 	public async Task<DesignerHitTestResult> HitTestAsync(double x, double y, CancellationToken cancellationToken = default)
 	{
+		if (connection.IsNativeLive)
+			return new DesignerHitTestResult { Hit = false };   // the native window takes the clicks itself
 		var pick = await connection.PickAtAsync(lastXaml, viewportWidth, viewportHeight, viewportScale, x, y, PickTimeout, cancellationToken).ConfigureAwait(false);
 		if (pick?.Name is not { Length: > 0 } name)
 			return new DesignerHitTestResult { Hit = false };
@@ -178,6 +183,45 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 		}
 		return root;
 	}
+	/// <summary>True while the document is shown in the surface's own window (see <see cref="EnterNativeLiveAsync"/>).</summary>
+	public bool IsNativeLive => connection.IsNativeLive;
+
+	/// <summary>
+	/// Switches this document to a live native window: the surface hosts the page in a real window (handle in the result) that animates
+	/// and takes input itself. Frames and picks stop until <see cref="ExitNativeLiveAsync"/>. When the surface dies instead, the result
+	/// carries <see cref="NativeLiveResult.Fallback"/>, the last accepted snapshot, and a message for the recovery banner.
+	/// </summary>
+	public async Task<NativeLiveResult> EnterNativeLiveAsync(CancellationToken cancellationToken = default)
+	{
+		if (lastState == null)
+			return new NativeLiveResult(null, null, "Open the document before switching to native mode.");
+		try {
+			var window = await connection.EnterNativeLiveAsync(lastXaml, viewportWidth, viewportHeight, viewportScale, null, cancellationToken).ConfigureAwait(false);
+			return new NativeLiveResult(window, null, null);
+		} catch (SurfaceConnectionFaultedException) {
+			return new NativeLiveResult(null, lastState, "The renderer was lost while switching to native mode; showing the last snapshot.");
+		} catch (SurfaceProtocolException ex) {
+			return new NativeLiveResult(null, lastState, ex.Message);
+		}
+	}
+
+	/// <summary>
+	/// Back to snapshots. The document is re-rendered so the canvas shows the current source (it may have been edited meanwhile); when
+	/// that cannot be done because the native window crashed, the last snapshot is returned with a message.
+	/// </summary>
+	public async Task<NativeLiveResult> ExitNativeLiveAsync(DesignerDocumentRequest? current, CancellationToken cancellationToken = default)
+	{
+		try {
+			await connection.ExitNativeLiveAsync(cancellationToken).ConfigureAwait(false);
+		} catch (SurfaceConnectionFaultedException) {
+			return new NativeLiveResult(null, lastState, "The native window was lost; showing the last snapshot.");
+		}
+		if (current == null)
+			return new NativeLiveResult(null, lastState, null);
+		var state = await UpdateAsync(current, cancellationToken).ConfigureAwait(false);
+		return new NativeLiveResult(null, state, null);
+	}
+
 	/// <summary>An edit request this backend cannot honour; a normal result, with the document version unchanged.</summary>
 	public DesignerSessionState Refuse(string sessionId, string documentId, string operation, string? reason = null)
 		=> Rejected(sessionId, documentId, Math.Max(version, 0),
