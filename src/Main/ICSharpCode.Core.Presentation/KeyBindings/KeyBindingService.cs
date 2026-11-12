@@ -196,6 +196,33 @@ namespace ICSharpCode.Core.Presentation
 		}
 
 		/// <summary>Removes every override.</summary>
+		/// <summary>
+		/// Replaces every override at once (the Settings page applies its working copy this way): one write, one rebuild.
+		/// Nothing is changed when a CHANGED gesture does not parse; an entry that is already in the file and is passed back unchanged is kept as it is.
+		/// </summary>
+		/// <exception cref="FormatException">A gesture is not valid.</exception>
+		public void ReplaceOverrides(IEnumerable<KeyValuePair<string, string>> overrides)
+		{
+			if (overrides == null)
+				throw new ArgumentNullException("overrides");
+			var list = overrides.ToList();
+			foreach (var pair in list) {
+				string current;
+				// an entry that is not changed is kept as it is, even when it is not a gesture (the file was edited by hand): it is ignored when applied
+				if (string.IsNullOrWhiteSpace(pair.Value) || (Data.Overrides.TryGetValue(pair.Key, out current) && current == (pair.Value ?? "").Trim()))
+					continue;
+				try {
+					MenuService.ParseShortcut(pair.Value);
+				} catch (Exception ex) when (ex is NotSupportedException || ex is ArgumentException) {
+					throw new FormatException("\"" + pair.Value + "\" is not a keyboard shortcut: " + ex.Message, ex);
+				}
+			}
+			Data.Clear();
+			foreach (var pair in list)
+				Data.Set(pair.Key, pair.Value == null ? "" : pair.Value.Trim());
+			SaveAndApply();
+		}
+
 		public void ResetAll()
 		{
 			if (Data.Overrides.Count == 0)

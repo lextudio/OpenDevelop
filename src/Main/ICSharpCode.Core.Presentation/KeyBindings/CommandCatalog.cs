@@ -20,6 +20,9 @@ namespace ICSharpCode.Core.Presentation
 
 		/// <summary>The codons (menu items, toolbar items, pads) that run the command.</summary>
 		public IReadOnlyList<Codon> Items { get; internal set; }
+
+		/// <summary>The AddIn-tree path each item of <see cref="Items"/> sits in, in the same order.</summary>
+		public IReadOnlyList<string> ItemPaths { get; internal set; }
 	}
 
 	/// <summary>
@@ -53,7 +56,7 @@ namespace ICSharpCode.Core.Presentation
 		{
 			if (addIns == null)
 				throw new ArgumentNullException("addIns");
-			var groups = new Dictionary<string, List<Codon>>();
+			var groups = new Dictionary<string, List<KeyValuePair<string, Codon>>>();
 			var order = new List<string>();
 			foreach (AddIn addIn in addIns) {
 				if (addIn.Action != AddInAction.Enable || addIn.Suspended)
@@ -63,13 +66,13 @@ namespace ICSharpCode.Core.Presentation
 						if (!IsCommand(codon))
 							continue;
 						string key = CommandKey.FromCodon(codon);
-						List<Codon> list;
+						List<KeyValuePair<string, Codon>> list;
 						if (!groups.TryGetValue(key, out list)) {
-							list = new List<Codon>();
+							list = new List<KeyValuePair<string, Codon>>();
 							groups.Add(key, list);
 							order.Add(key);
 						}
-						list.Add(codon);
+						list.Add(new KeyValuePair<string, Codon>(path.Name, codon));
 					}
 				}
 			}
@@ -79,15 +82,17 @@ namespace ICSharpCode.Core.Presentation
 				.ToList();
 		}
 
-		static CommandCatalogEntry Create(string key, List<Codon> items)
+		static CommandCatalogEntry Create(string key, List<KeyValuePair<string, Codon>> pairs)
 		{
+			List<Codon> items = pairs.Select(p => p.Value).ToList();
 			string label = items.Select(c => c.Properties["label"]).FirstOrDefault(l => !string.IsNullOrWhiteSpace(l));
 			string shortcut = items.Select(c => c.Properties["shortcut"]).FirstOrDefault(s => !string.IsNullOrWhiteSpace(s));
 			return new CommandCatalogEntry {
 				Key = key,
 				DisplayName = label != null ? StripMnemonic(StringParser.Parse(label)) : key,
 				DefaultGesture = shortcut,
-				Items = items
+				Items = items,
+				ItemPaths = pairs.Select(p => p.Key).ToList()
 			};
 		}
 

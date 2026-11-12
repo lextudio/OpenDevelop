@@ -2,7 +2,7 @@
 
 Status (2026-11-12): **design; phase 1 is implemented**, phases 2 to 4 are not. Implemented: the command key (`CommandKey`), `KeyBindings.xml` (`KeyBindingsFile`), the resolution, `KeyBindingService`,
 the four installers moved onto it, and the DevFlow actions `od.keybindings.bindings|invoke|overrides|set|reset`. `CommandCatalog` (the codons of the loaded, not suspended AddIns grouped by command) and the command-wide default (an item without a `shortcut` takes the one another item of its command carries), plus `od.keybindings.catalog`.
-**Not yet:** the Settings page. The sections below say what each part does or will do.
+Phase 2 has started: the working copy behind the page (`KeyboardShortcutsModel`: rows, validation, conflicts per scope, reassign, reset, commit through `KeyBindingService.ReplaceOverrides`). **Not yet:** the page itself (XAML, capture box, registration, dialog size). The sections below say what each part does or will do.
 Facts below were read from the code and from the `.addin` manifests on that date.
 The counts come from a script over the **57 product `.addin` files**: the 79 tracked ones minus the 15 under `samples/` and the 7 test fixtures
 (`*.Tests/TestResources`, `tests/`). The samples are left out on purpose: they carry their own menus (for example `Control|Z` on `Undo` in `SdaBase.addin`)
@@ -212,7 +212,11 @@ all strings go through `${res:...}` with English, Simplified and Traditional Chi
    instantiating anything and takes the kinds `MenuItem`, `ToolbarItem` and `Pad` that have a `class`, a `command` or a `link` (a pad: an id or a class), except a `type` of Builder, Menu, Separator, Custom or DropDownButton. On the
    running application it finds 359 commands (62 with a default shortcut, 20 routed, 79 in more than one item); this is fewer than the 385 above because that count also took the Custom and DropDownButton items and AddIns the
    host does not load.
-2. **The page**: list, search, details and capture, conflict handling, OK/Cancel semantics, the dialog's default size.
+2. **The page**: list, search, details and capture, conflict handling, OK/Cancel semantics, the dialog's default size. Step 2a (done): `KeyboardShortcutsModel`, the working copy. A row is a command with its effective
+   shortcut in the normal form (`Ctrl+Shift+F8`), its scope and group. *Scope*: Workbench when any item sits under `/SharpDevelop/Workbench/{MainMenu,ToolBar,Pads,Tools}`, else the control the context menu or pad toolbar
+   belongs to (its path up to `/ContextMenu` or `/Toolbar`). *Conflict*: another command in the same scope has the gesture (needs Reassign, which gives the other command an explicit "none"); a Workbench gesture against a
+   control-scope command is a *shadow*, a note only. Refused: text that is not a gesture, `Alt+F4`, routed commands, and a gesture a routed command has (it cannot give it up). `Commit` writes the whole working copy once and keeps override keys the catalog does not know, and entries of the file that are not gestures (a hand-edit), which the service ignores but does not erase or choke on. The group
+   of a main-menu command is the menu's path segment (`Build`), not yet its translated label.
 3. **Import / export, reset all, the unknown-command row**, and the gesture search.
 4. **More scopes**: the editor's own commands (AvalonEdit's built-in editing actions and the add-in's `CustomCommands`), the terminal, designers. They bind inside
    controls, not through `.addin` items, so they need their own registration (a small `IKeyBindable` description) before they can appear in the same list.
