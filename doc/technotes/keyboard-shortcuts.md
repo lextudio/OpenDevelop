@@ -1,7 +1,9 @@
 # Keyboard shortcut overrides (design)
 
-Status: **design, nothing implemented** (2026-11-12). Facts below were read from the code and from the `.addin` manifests on that date
-(counts come from a script over the 72 non-test `.addin` files); anything marked *proposal* or *open* is not verified. Tracks
+Status: **design, nothing implemented** (2026-11-12). Facts below were read from the code and from the `.addin` manifests on that date.
+The counts come from a script over the **57 product `.addin` files**: the 79 tracked ones minus the 15 under `samples/` and the 7 test fixtures
+(`*.Tests/TestResources`, `tests/`). The samples are left out on purpose: they carry their own menus (for example `Control|Z` on `Undo` in `SdaBase.addin`)
+that the product does not. Anything marked *proposal* or *open* is not verified. Tracks
 [issue #26](https://github.com/lextudio/OpenDevelop/issues/26) "User be able to define shortcuts for tasks" (build, rebuild, clean, debug, ...).
 
 Related notes: [`main-menu.md`](main-menu.md) (how menus are built, lazily), [`debugging.md`](debugging.md) (the commands the issue names).
@@ -33,20 +35,24 @@ per-project or per-solution shortcuts, shortcuts for the editor's built-in editi
 
 ### The data that decides the design
 
+A *commandable item* is a `MenuItem` or `ToolbarItem` element that has a `class` or a `command` attribute and whose `type` is not `Menu`, `Separator` or `Builder` (a Builder produces a
+dynamic list and has no identity; counting the builders too gives 570 items, 403 distinct commands and 90 shared ones). A *shortcut item* is any `MenuItem`, `ToolbarItem` or `Pad` with a `shortcut`. Everything is counted on the **parsed XML**, so an element inside an XML comment does not count: `WpfDesign.addin` has an
+`OutlineViewPad` with `Control|Alt|I` in a commented-out block, which a text search finds and the product does not have. The one pad with a shortcut is `PropertyPad` (`F4`, `ICSharpCode.SharpDevelop.addin`).
+
 | | count |
 |---|---|
-| menu / toolbar / context-menu items that run a command (a `class` or a `command`) | 590 |
-| distinct commands among them | **396** |
-| commands that appear in more than one item (main menu, toolbar button, context menu, ...) | 101 |
-| distinct commands that have a default shortcut | 69 |
+| menu / toolbar / context-menu items that run a command (a `class` or a `command`) | 551 |
+| distinct commands among them | **385** |
+| commands that appear in more than one item (main menu, toolbar button, context menu, ...) | 89 |
+| distinct commands that have a default shortcut | 63 |
 | commands whose items disagree about the default shortcut | **0** |
-| commands with a shortcut on some of their items but not on others (a toolbar button without it) | 28 |
-| items with a `shortcut` | 87 (86 menu items, 1 pad) |
-| commandable items by site: main menu 190, context menus 237, toolbars 71, other 92 | |
+| commands with a shortcut on some of their items but not on others (a toolbar button without it) | 22 |
+| items with a `shortcut` | 76 (75 menu items, 1 pad) |
+| commandable items by kind and site: context-menu 256, main-menu 167, toolbar 100, other menu paths 28 (the Tools list, pad menus) | |
 
 So the user thinks in **commands** ("Save", "Rename"), and the manifests already agree with that: one command, one gesture. `Rename` is a
-context-menu item in eight different project-browser context-menu paths with the same `F2`; `Save` is in the main menu, the editor's context menu and a
-toolbar. Overriding per menu *item* would make the user repeat the change eight times and leave the toolbar button out of date.
+context-menu item in ten project-browser context-menu paths, eight of which carry the same `F2`; `Save` is in the main menu, the editor's context menu and a
+toolbar. Overriding per menu *item* would make the user repeat the change in each of the ten items (the eight that carry `F2`, and still the other two) and leave the toolbar button out of date.
 
 ## Decisions (proposal)
 
@@ -56,19 +62,21 @@ toolbar. Overriding per menu *item* would make the user repeat the change eight 
 |---|---|---|
 | a command class | `class:<full class name>` | `class:ICSharpCode.SharpDevelop.Project.Commands.Build` |
 | a WPF routed command named in `command=` | `routed:<name>` | `routed:Undo` |
-| a pad | `pad:<pad id>` | the pad's `Shortcut` |
+| a pad | `pad:<pad id>` | the `shortcut` of a `<Pad id=...>` codon under `/SharpDevelop/Workbench/Pads` (one in the product today) |
+| an item with neither (a `link=` item that opens a URL) | `item:<tree path>/<id>` | Help > Topics, `Alt+F1`, the only such item with a shortcut |
 
 The class name is stable, human-readable, and the same for every item that runs the command, which is what the data above requires. An item
 that is a `Builder` (a dynamic list) has no identity and cannot have a shortcut, as today. A key that no longer exists after an upgrade
 (a renamed class) is kept in the file and shown in the page as "unknown command" with a Remove button, never silently dropped.
 
 **The effective gesture applies to every site of the command**: the override if there is one (an explicit "none" removes the default),
-otherwise the default from the manifest. Where a command's items differ today (28 commands have the attribute on only some items), the
+otherwise the default from the manifest. Where a command's items differ today (22 commands have the attribute on only some items), the
 service uses the one gesture it finds, so the toolbar button's tooltip and the binding agree. This changes nothing for the defaults.
 
-Routed commands (`Undo`, `Redo`, `Cut`, `Copy`, `Paste`, `SelectAll`, `Print`, `Help`) are different in kind: WPF's own controls bind them
-through the command's built-in `InputGestures` (`Ctrl+Z` in any text box), which an `InputBinding` on the window can add to but cannot
-remove. **First version: shown, read-only, with the reason in the row**, because an override that leaves the old key working would be a lie.
+Routed commands are different in kind. In the product they are `Undo`, `Redo`, `Cut`, `Copy`, `Paste`, `SelectAll` (main-menu and toolbar items with `command=` and **no**
+`shortcut` attribute: their keys are WPF's built-in `InputGestures` on the command, `Ctrl+Z` in any text box) and `Print` and `Help` (which do carry a `shortcut`). An `InputBinding`
+on the window can add a gesture to such a command but cannot remove the built-in one. **First version: shown with the gesture they have, read-only, with the reason in the row**,
+because an override that leaves the old key working would be a lie.
 
 ### 2. Where overrides are stored
 
@@ -83,6 +91,10 @@ everyone who did not change that command.
   <Command key="class:ICSharpCode.SharpDevelop.Commands.SaveFile" gesture="" />   <!-- removed: no shortcut -->
 </KeyBindings>
 ```
+
+An empty `gesture` is the explicit "no shortcut". `KeyGestureConverter` cannot parse an empty string, so the loader tests for it first and never hands it to the converter; a
+`gesture` that does not parse is reported and the entry ignored, not fatal. The file lives in the user configuration directory (`PropertyService.ConfigDirectory`, which is what
+`-configdir:` sets; on macOS `~/Library/Application Support/ICSharpCode/SharpDevelop5`).
 
 Gestures are stored in WPF's invariant `KeyGesture` text (`Ctrl+Shift+F8`), which is culture-independent; the page shows the culture's display string
 (`MenuService.GetDisplayStringForShortcut`). `version` lets a later format be read.
@@ -103,7 +115,7 @@ The four installers above each read the attribute and add an `InputBinding`. Tha
   is already built eagerly for shortcuts.
 
 The page cannot depend on what has been built (sub-menus and context menus are created when opened), so it lists commands from a **`CommandCatalog`**
-that walks the AddIn tree's *codons* (path, id, label, `class`/`command`, `shortcut`, `type`) without instantiating anything. The breadcrumb
+that walks the AddIn tree's *codons* (path, id, label, `class`/`command`/`link`, `shortcut`, `type`, and the `<Pad>` codons under `/SharpDevelop/Workbench/Pads`) without instantiating anything. The breadcrumb
 ("File > New > File...") is the chain of labels down the path. Labels are `${res:...}` strings, run through the `StringParser`, mnemonic underscore removed.
 
 ### 4. Scope and conflicts
@@ -139,28 +151,28 @@ default to about 760 x 540 (minimum unchanged), remembered between sessions; the
 (the list drops the "Default" column and the details wrap).
 
 ```
-+- Settings ---------------------------------------------------------------------------+
-| SharpDevelop Options            |  Keyboard                                          |
-|  > IDE                          |  +-----------------------------------------------+ |
-|    Culture                      |  | [ Search commands or press a shortcut ] [Show v]| |
-|    Style                        |  |  All | Customized | Unassigned | Conflicts     | |
-|    IDE Theme                    |  +-----------------------------------------------+ |
-|  * Keyboard         <-----      |  | Command                  Shortcut      Scope   | |
-|    Load/Save                    |  | v Build                                          | |
-|    Updates                      |  |   Build Solution          F8            Global  | |
-|    ...                          |  |   Rebuild Solution        Alt+F8        Global  | |
-|                                 |  | * Clean Solution          Ctrl+Shift+F8 Global  | |
-|                                 |  |   Clean Project           (none)        Global  | |
-|                                 |  | v Debug                                          | |
-|                                 |  |   Start Debugging         F5            Global  | |
-|                                 |  +-----------------------------------------------+ |
-|                                 |  Shortcut for "Clean Solution"   Build > Clean ...   |
-|                                 |  [ Ctrl+Shift+F8        ]  [Assign] [Remove] [Reset] |
-|                                 |  ! Ctrl+Shift+F8 is also "Foo" (Text editor).        |
-|                                 |    [Reassign]  [Cancel]                              |
-|                                 |  [ Reset all... ]  [ Import... ]  [ Export... ]      |
-|                                 |                                  [  OK  ] [Cancel]    |
-+---------------------------------------------------------------------------------------+
++- Settings -----------------------------------------------------------------------------+
+| SharpDevelop Options             | Keyboard                                            |
+|  > IDE                           | +--------------------------------------------------+|
+|     Culture                      | | [ Search commands or press a shortcut ] [Show v] ||
+|     Style                        | | All | Customized | Unassigned | Conflicts        ||
+|     IDE Theme                    | +--------------------------------------------------+|
+|  * Keyboard   <-----             | | Command                 Shortcut        Scope    ||
+|     Load/Save                    | | v Build                                          ||
+|     Updates                      | |     Build Solution     F8              Workbench ||
+|     ...                          | |     Rebuild Solution   Alt+F8          Workbench ||
+|                                  | |  *  Clean Solution     Ctrl+Shift+F8   Workbench ||
+|                                  | |     Clean Project      (none)          Workbench ||
+|                                  | | v Debug                                          ||
+|                                  | |     Start Debugging    F5              Workbench ||
+|                                  | +--------------------------------------------------+|
+|                                  | Shortcut for "Clean Solution"   Build > Clean ...   |
+|                                  | [ Ctrl+Shift+F8      ]  [Assign] [Remove] [Reset]   |
+|                                  | ! Ctrl+Shift+F8 is also "Foo" (Text editor).        |
+|                                  |   [Reassign]  [Cancel]                              |
+|                                  | [ Reset all... ] [ Import... ] [ Export... ]        |
+|                                  |                                 [  OK  ] [Cancel]   |
++----------------------------------------------------------------------------------------+
 ```
 
 **The list** (a grid, one row per command from the `CommandCatalog`, grouped by the top-level menu, sorted in menu order):
