@@ -263,6 +263,32 @@ namespace ICSharpCode.Core.Presentation
 			return result;
 		}
 
+		/// <summary>The commands in the same scope that have the same gesture as this row (a conflict that is already in the copy, e.g. two manifests that agree).</summary>
+		public IReadOnlyList<ShortcutRow> ConflictsOf(ShortcutRow row)
+		{
+			if (row == null || row.Gesture == null)
+				return new ShortcutRow[0];
+			return rows.Where(r => r != row && r.Scope == row.Scope && string.Equals(r.Gesture, row.Gesture, StringComparison.OrdinalIgnoreCase)).ToList();
+		}
+
+		/// <summary>
+		/// The gesture a key press stands for, in the normal form; null while only modifiers are down or when the chord is not a valid shortcut
+		/// (a bare letter, for instance). What the capture box shows.
+		/// </summary>
+		public static string FormatChord(Key key, ModifierKeys modifiers)
+		{
+			switch (key) {
+				case Key.None: case Key.LeftCtrl: case Key.RightCtrl: case Key.LeftAlt: case Key.RightAlt:
+				case Key.LeftShift: case Key.RightShift: case Key.LWin: case Key.RWin: case Key.System: case Key.DeadCharProcessed:
+					return null;
+			}
+			try {
+				return new KeyGestureConverter().ConvertToInvariantString(new KeyGesture(key, modifiers));
+			} catch (Exception ex) when (ex is NotSupportedException || ex is ArgumentException || ex is FormatException) {
+				return null;
+			}
+		}
+
 		/// <summary>Whether the working copy differs from what is on disk.</summary>
 		public bool IsDirty {
 			get {

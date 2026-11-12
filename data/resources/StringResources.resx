@@ -10946,4 +10946,79 @@ Press Esc to cancel this operation.</value>
   <data name="AddIns.Profiler.Report.Handlers" xml:space="preserve">
     <value>Handlers</value>
   </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.PanelName" xml:space="preserve">
+    <value>Keyboard</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Description" xml:space="preserve">
+    <value>Give commands keyboard shortcuts, change them or remove them. Changes apply when you press OK.</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Search" xml:space="preserve">
+    <value>Search commands or shortcuts</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Filter.All" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Filter.Customized" xml:space="preserve">
+    <value>Customized</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Filter.Unassigned" xml:space="preserve">
+    <value>Unassigned</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Filter.Conflicts" xml:space="preserve">
+    <value>Conflicts</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Column.Command" xml:space="preserve">
+    <value>Command</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Column.Shortcut" xml:space="preserve">
+    <value>Shortcut</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Column.Default" xml:space="preserve">
+    <value>Default</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Column.Scope" xml:space="preserve">
+    <value>Scope</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.None" xml:space="preserve">
+    <value>(none)</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.BuiltIn" xml:space="preserve">
+    <value>built in</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Selected" xml:space="preserve">
+    <value>Shortcut for "{0}"</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Locations" xml:space="preserve">
+    <value>Appears in: {0}</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Capture.Prompt" xml:space="preserve">
+    <value>Press a shortcut...</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Assign" xml:space="preserve">
+    <value>Assign</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Reset" xml:space="preserve">
+    <value>Reset</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.ResetAll" xml:space="preserve">
+    <value>Reset all</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Reassign" xml:space="preserve">
+    <value>Reassign</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.ConflictWith" xml:space="preserve">
+    <value>{0} is also used by "{1}" ({2}).</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Shadows" xml:space="preserve">
+    <value>{0} is also used by "{1}" in another scope; the control wins while it has focus.</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Workbench" xml:space="preserve">
+    <value>Workbench</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.ResetAllQuestion" xml:space="preserve">
+    <value>Remove every keyboard shortcut change and go back to the defaults?</value>
+  </data>
 </root>

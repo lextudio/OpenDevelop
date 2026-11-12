@@ -194,4 +194,21 @@ public sealed class KeyboardShortcutsModelTests : IDisposable
 		Assert.Equal("Nope", service.Overrides["class:Gone"]);
 		Assert.Equal("Ctrl+Shift+F9", service.Overrides["class:Foo.Rebuild"]);
 	}
+
+	[Fact]
+	public void TheCaptureBox_ShowsAChordOnlyOnceAKeyBesidesModifiersIsDown()
+	{
+		Assert.Equal("Ctrl+Shift+F8", KeyboardShortcutsModel.FormatChord(System.Windows.Input.Key.F8, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift));
+		Assert.Equal("F5", KeyboardShortcutsModel.FormatChord(System.Windows.Input.Key.F5, System.Windows.Input.ModifierKeys.None));
+		Assert.Null(KeyboardShortcutsModel.FormatChord(System.Windows.Input.Key.LeftCtrl, System.Windows.Input.ModifierKeys.Control));
+		Assert.Null(KeyboardShortcutsModel.FormatChord(System.Windows.Input.Key.A, System.Windows.Input.ModifierKeys.None)); // a bare letter types text
+	}
+
+	[Fact]
+	public void ConflictsOf_FindsTwoCommandsThatAlreadyShareAGestureInOneScope()
+	{
+		var model = Model(new() { ["class:Foo.Clean"] = "Alt+F8" }); // Rebuild has Alt+F8 by default
+		Assert.Equal("class:Foo.Rebuild", Assert.Single(model.ConflictsOf(model.Find("class:Foo.Clean")!)).Key);
+		Assert.Empty(model.ConflictsOf(model.Find("class:Foo.Build")!));
+	}
 }

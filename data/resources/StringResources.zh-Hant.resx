@@ -10552,4 +10552,79 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
   <data name="AddIns.Profiler.Report.Handlers" xml:space="preserve">
     <value>處理常式</value>
   </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.PanelName" xml:space="preserve">
+    <value>鍵盤</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Description" xml:space="preserve">
+    <value>為命令設定、修改或移除鍵盤快速鍵。按下「確定」後生效。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Search" xml:space="preserve">
+    <value>搜尋命令或快速鍵</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Filter.All" xml:space="preserve">
+    <value>全部</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Filter.Customized" xml:space="preserve">
+    <value>已自訂</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Filter.Unassigned" xml:space="preserve">
+    <value>未指派</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Filter.Conflicts" xml:space="preserve">
+    <value>衝突</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Column.Command" xml:space="preserve">
+    <value>命令</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Column.Shortcut" xml:space="preserve">
+    <value>快速鍵</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Column.Default" xml:space="preserve">
+    <value>預設</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Column.Scope" xml:space="preserve">
+    <value>範圍</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.None" xml:space="preserve">
+    <value>(無)</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.BuiltIn" xml:space="preserve">
+    <value>內建</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Selected" xml:space="preserve">
+    <value>「{0}」的快速鍵</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Locations" xml:space="preserve">
+    <value>出現於：{0}</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Capture.Prompt" xml:space="preserve">
+    <value>請按下快速鍵...</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Assign" xml:space="preserve">
+    <value>指派</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Remove" xml:space="preserve">
+    <value>移除</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Reset" xml:space="preserve">
+    <value>重設</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.ResetAll" xml:space="preserve">
+    <value>全部重設</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Reassign" xml:space="preserve">
+    <value>重新指派</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.ConflictWith" xml:space="preserve">
+    <value>{0} 也被「{1}」使用({2})。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Shadows" xml:space="preserve">
+    <value>{0} 也被另一範圍中的「{1}」使用；控制項取得焦點時以控制項為準。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Workbench" xml:space="preserve">
+    <value>工作台</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.ResetAllQuestion" xml:space="preserve">
+    <value>移除所有快速鍵變更並還原預設值？</value>
+  </data>
 </root>

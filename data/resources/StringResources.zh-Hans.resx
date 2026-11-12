@@ -10552,4 +10552,79 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   <data name="AddIns.Profiler.Report.Handlers" xml:space="preserve">
     <value>处理程序</value>
   </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.PanelName" xml:space="preserve">
+    <value>键盘</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Description" xml:space="preserve">
+    <value>为命令设置、修改或删除键盘快捷键。点击“确定”后生效。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Search" xml:space="preserve">
+    <value>搜索命令或快捷键</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Filter.All" xml:space="preserve">
+    <value>全部</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Filter.Customized" xml:space="preserve">
+    <value>已自定义</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Filter.Unassigned" xml:space="preserve">
+    <value>未分配</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Filter.Conflicts" xml:space="preserve">
+    <value>冲突</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Column.Command" xml:space="preserve">
+    <value>命令</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Column.Shortcut" xml:space="preserve">
+    <value>快捷键</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Column.Default" xml:space="preserve">
+    <value>默认</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Column.Scope" xml:space="preserve">
+    <value>范围</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.None" xml:space="preserve">
+    <value>(无)</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.BuiltIn" xml:space="preserve">
+    <value>内置</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Selected" xml:space="preserve">
+    <value>“{0}”的快捷键</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Locations" xml:space="preserve">
+    <value>出现在：{0}</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Capture.Prompt" xml:space="preserve">
+    <value>请按下快捷键...</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Assign" xml:space="preserve">
+    <value>分配</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Remove" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Reset" xml:space="preserve">
+    <value>重置</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.ResetAll" xml:space="preserve">
+    <value>全部重置</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Reassign" xml:space="preserve">
+    <value>重新分配</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.ConflictWith" xml:space="preserve">
+    <value>{0} 也被“{1}”使用({2})。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Shadows" xml:space="preserve">
+    <value>{0} 也被另一范围中的“{1}”使用；控件获得焦点时以控件为准。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Workbench" xml:space="preserve">
+    <value>工作台</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.ResetAllQuestion" xml:space="preserve">
+    <value>删除所有快捷键修改并恢复默认值？</value>
+  </data>
 </root>

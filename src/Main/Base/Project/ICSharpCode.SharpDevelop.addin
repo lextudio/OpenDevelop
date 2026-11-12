@@ -1277,6 +1277,9 @@
 			<OptionPanel id    = "IdeTheme"
 			             label = "IDE Theme"
 			             class = "ICSharpCode.SharpDevelop.OptionPanels.IdeThemeOptions"/>
+			<OptionPanel id    = "Keyboard"
+			             label = "${res:Dialog.Options.IDEOptions.Keyboard.PanelName}"
+			             class = "ICSharpCode.SharpDevelop.OptionPanels.KeyboardShortcutsOptions"/>
 			<OptionPanel id    = "LoadSave"
 			             label = "${res:Dialog.Options.IDEOptions.LoadSaveOptions.PanelName}"
 			             class = "ICSharpCode.SharpDevelop.OptionPanels.LoadSaveOptions"/>
