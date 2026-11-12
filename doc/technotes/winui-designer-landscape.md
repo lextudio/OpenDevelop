@@ -1233,6 +1233,12 @@ for its process id, removes that folder on shutdown, and at startup sweeps the i
   `WinUIXamlDesigner.Runtime` (`uno`, `microsoft` or `surface`) when `OD_WINUI_RUNTIME` is not set. This is compile-verified only
   (the IDE's global settings file does not exist in test mode and the user's profile was not modified), and there is no Options page
   for it yet.
+- *CI.* `.github/ci/test-plan.json` has a `surfacehost-tests` entry in the `unit` lane (`observe` on Windows x64 and ARM64, `excluded`
+  elsewhere with a reason: the surface and provisioner are Windows-only and two tests create their root under the drive root). The plan
+  parses and `plan-matrix.ps1` builds its matrices; **the suite itself has not run on a runner**, and `dist.ps1` was not exercised
+  (the child and payload ride on the add-in's `DeployToAddIns` when the solution builds). Not added: a DevFlow journey that opens a
+  WinUI page with the Surface runtime (it needs the Windows App Runtime installed on the runner, which the fork's workflow already
+  does with `windowsappruntimeinstall-x64.exe --quiet --force`).
 
 Still not done: the OpenCode review (`build/opencode-review.ps1` needs the OpenCode CLI and its provider auth, which were not on the
 machine; the change was committed without it at the user's explicit request) and ARM64 (this machine is AMD64).

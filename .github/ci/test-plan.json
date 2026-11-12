@@ -172,6 +172,18 @@
       "note": "141 tests when measured on macOS arm64. Windows ARM64 and macOS ARM64 (formerly the separate vseditorcompat-tests-arm entry, merged so each suite is one entry with every platform): macOS ARM64: 141 passed. Linux starts as observe."
     },
     {
+      "id": "surfacehost-tests",
+      "batch": 1,
+      "lane": "unit",
+      "kind": "xunit-exe",
+      "project": "src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.SurfaceHost.Tests/WinUIXamlDesigner.SurfaceHost.Tests.csproj",
+      "target": "src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.SurfaceHost.Tests/bin/Debug/net10.0/WinUIXamlDesigner.SurfaceHost.Tests.dll",
+      "measuredSeconds": 20,
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "excluded", "linux-x64": "excluded", "linux-arm64": "excluded" },
+      "reason": "The Surface renderer and its provisioner are Windows-only, and two tests create their root under the drive root, which a non-Windows runner cannot write.",
+      "note": "53 tests on Windows x64 when measured locally with every gated test enabled; on a runner the tests that need OD_SURFACE_EXE, OD_SURFACE_HOST_DIR, OD_SURFACE_HOST_SDK/OD_SURFACE_PROJECT (a built surface, a provisioned host, the unpacked package) skip, so what runs is the fake-surface, child-process, launch and provisioner-result suites. The child test launches `dotnet` and the IDE-client test links the standalone UnoDesignClient (MicrosoftHost.Remote). Building it restores LeXtudio.WinUISurface from the lextudio_github feed (the SurfaceHost.Child project's package reference). Starts as observe."
+    },
+    {
       "id": "xamldom-tests-librewpf",
       "batch": 1,
       "lane": "unit",
