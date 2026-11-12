@@ -233,12 +233,20 @@ function Test-DistributionLegalFiles {
     & (Join-Path $repoRoot 'build/verify-android-debug-agent.ps1') -AgentRoot (Join-Path $Destination 'AddIns/Debugger/android')
 }
 
-function Assert-HostPublished {
-    # Every phase from "addins" onward consumes the host publish output. Fail with an actionable
-    # message instead of silently assembling a payload around a missing or stale host.
+function Assert-HostPublishExists {
+    # The addins phase rebuilds (and first deletes) AddIns/, so all it needs is a host publish to
+    # build against. It must not compare versions: leftover add-ins from an earlier build at a
+    # different commit (for example before a release tag moved the version) are exactly what it is
+    # about to replace, and refusing them there made a full run fail before it could do so.
     if (-not (Test-Path $publishDir)) {
         throw "dist.ps1: host publish output not found at $publishDir. Run './dist.ps1 -Phase host' first (or omit -Phase to run everything)."
     }
+}
+
+function Assert-HostPublished {
+    # Every phase that packages or extends an EXISTING AddIns/ tree. Fail with an actionable
+    # message instead of silently assembling a payload around a missing or stale host.
+    Assert-HostPublishExists
     Assert-HostAddinAssemblyMatch -HostPublish $publishDir -AddInRoot (Join-Path $repoRoot 'AddIns')
 }
 
@@ -300,7 +308,8 @@ function Assert-HostAddinAssemblyMatch {
     $details = ($newer | Select-Object -First 5 | ForEach-Object { "  $($_.Path) was built against $($_.Version)" }) -join [Environment]::NewLine
     throw ("dist.ps1: $($newer.Count) add-in(s) under $AddInRoot were built against a newer ICSharpCode.SharpDevelop " +
         "than the host publish ($hostVersion):`n$details`n" +
-        "Rebuild both sides from one commit - './dist.ps1 -From host' (host, addins, payload, ...) instead of '-Phase payload' - " +
+        "Rebuild both sides from one commit - './dist.ps1 -From host' (host, addins, payload, ...) instead of '-Phase payload' " +
+        "(the addins phase deletes and rebuilds AddIns/, so './dist.ps1 -From addins' also clears this when the host is current) - " +
         "or the app will fail at startup with TypeLoadException in an add-in command.")
 }
 
@@ -1788,7 +1797,7 @@ function Invoke-HostPhase {
 }
 
 function Invoke-AddInsPhase {
-    Assert-HostPublished
+    Assert-HostPublishExists
 
     # The developer solution deliberately contains test projects. Their Build hooks compile
     # independent sample applications (including a second, incompatible Uno SDK graph), none of
