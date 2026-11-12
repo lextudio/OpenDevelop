@@ -164,7 +164,10 @@ build of `Debugger.AddIn` (and building the integration project) puts the packag
   (`AddIns.xml`, which `Enable`/`Disable` rewrite without dropping it), and `CoreStartup.RunInitialization` applies it right after the AddIns are loaded, before anything
   (the services registration included) is built from the tree. What the add-in contributed at startup while it was suspended is only built again after a restart that follows
   the resume. The symbol provider is looked up in the tree at the moment it is needed, so a suspended ILSpy add-in is absent for this feature at once. DevFlow:
-  `od.addin.suspend identity [suspended]`; `od.addins` reports `suspended`. The test suspends ILSpy, opens the first external frame and asserts that no file was resolved (an
+  `od.addin.suspend identity [suspended]`; `od.addins` reports `suspended`. The **AddIn manager** (AddInManager2) shows it: an installed, loaded AddIn that is suspended gets a
+  "Suspended" label and its Suspend button reads "Resume" (`OfflineAddInsViewModel.IsSuspended`/`SwitchSuspension`, `IAddInSetup.SwitchAddInSuspension`); the manager itself, an AddIn
+  without identity and one that is not loaded cannot be suspended, as for disabling, and suspending one that others depend on asks first. The list shows the state as it is when it
+  is opened and after its own button; a change made elsewhere (DevFlow) appears when the manager is reopened. The test suspends ILSpy, opens the first external frame and asserts that no file was resolved (an
   adapter that decompiles by itself would have returned its virtual `decompiled/...` path), the active document is unchanged, nothing new was written to the add-in's cache,
   and the adapter's own `SharpIdeSymbolCache` was not written; it resumes the add-in in a `finally`. It skips when the SharpDbg the application loads does not support
   `decompileExternalCode`. Unit tests: `AddInSuspensionTests` (the tree) and `AddInSuspensionPersistenceTests` (remembered, still suspended after a simulated restart,

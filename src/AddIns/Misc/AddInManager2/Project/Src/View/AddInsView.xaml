@@ -164,6 +164,13 @@
 							TextWrapping="Wrap"
 							Margin="0,0,0,6"/>
 						<TextBlock
+							x:Name="suspendedTextBlock"
+							Text="{core:Localize AddInManager.StateSuspended}"
+							Foreground="DarkOrange"
+							FontWeight="SemiBold"
+							Visibility="Collapsed"
+							Margin="0,0,0,6"/>
+						<TextBlock
 							x:Name="summaryTextBlock"
 							Text="{Binding Path=Summary}"
 							TextWrapping="Wrap"
@@ -187,6 +194,11 @@
 							Content="{core:Localize AddInManager.ActionDisable}"
 							IsDefault="True"
 							Command="{Binding Path=DisablePackageCommand}"
+							Style="{StaticResource addInListButtonStyle}"/>
+						<Button
+							x:Name="suspendPackageButton"
+							Content="{core:Localize AddInManager.ActionSuspend}"
+							Command="{Binding Path=SuspendPackageCommand}"
 							Style="{StaticResource addInListButtonStyle}"/>
 						<Button
 							x:Name="removePackageButton"
@@ -233,6 +245,18 @@
 						Value="Strikethrough"/>
 				</DataTrigger>
 				
+				<!-- Suspended AddIns: contributions switched off at run time, remembered across restarts; the button resumes them -->
+				<DataTrigger Binding="{Binding Path=IsSuspended}" Value="True">
+					<Setter
+						TargetName="suspendedTextBlock"
+						Property="Visibility"
+						Value="Visible" />
+					<Setter
+						TargetName="suspendPackageButton"
+						Property="Content"
+						Value="{core:Localize AddInManager.ActionResume}" />
+				</DataTrigger>
+
 				<!-- AddIns marked for installation -->
 				<DataTrigger Binding="{Binding Path=IsAdded}" Value="True">
 					<Setter

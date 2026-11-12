@@ -50,6 +50,10 @@ namespace ICSharpCode.AddInManager2.Model
 		void AbortRemoveUserAddInOnNextStart(string identity);
 		void Enable(IList<AddIn> addIns);
 		void Disable(IList<AddIn> addIns);
+		/// <summary>Switches the AddIns' contributions off at once and remembers it across restarts (<see cref="AddIn.Suspended"/>).</summary>
+		void Suspend(IList<AddIn> addIns);
+		/// <summary>Makes the suspended AddIns' contributions available again and forgets that they were suspended.</summary>
+		void Resume(IList<AddIn> addIns);
 		void RemoveExternalAddIns(IList<AddIn> addIns);
 		void RemoveUserAddInOnNextStart(string identity);
 		AddIn Load(TextReader textReader);

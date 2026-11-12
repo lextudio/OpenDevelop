@@ -38,6 +38,8 @@ namespace ICSharpCode.AddInManager2.Model
 		void CancelInstallation(AddIn addIn);
 		void CancelUninstallation(AddIn addIn);
 		void SwitchAddInActivation(AddIn addIn);
+		/// <summary>Suspends the AddIn, or resumes it when it is suspended (<see cref="AddIn.Suspended"/>): immediate, and remembered across restarts.</summary>
+		void SwitchAddInSuspension(AddIn addIn);
 		AddIn GetInstalledAddInByIdentity(string identity);
 		bool IsAddInInstalled(AddIn addIn);
 		bool IsAddInPreinstalled(AddIn addin);

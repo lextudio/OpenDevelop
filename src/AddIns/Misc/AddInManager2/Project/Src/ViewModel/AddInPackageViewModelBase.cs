@@ -33,6 +33,7 @@ namespace ICSharpCode.AddInManager2.ViewModel
 		private DelegateCommand updatePackageCommand;
 		private DelegateCommand removePackageCommand;
 		private DelegateCommand disablePackageCommand;
+		private DelegateCommand suspendPackageCommand;
 		private DelegateCommand cancelInstallationCommand;
 		private DelegateCommand cancelUpdateCommand;
 		private DelegateCommand cancelUninstallationCommand;
@@ -67,6 +68,10 @@ namespace ICSharpCode.AddInManager2.ViewModel
 			disablePackageCommand = new DelegateCommand(
 				param => DisablePackage(),
 				param => !IsAdded && !IsRemoved && IsInstalled && IsOffline && IsDisablingPossible
+			);
+			suspendPackageCommand = new DelegateCommand(
+				param => SwitchSuspension(),
+				param => !IsAdded && !IsRemoved && IsInstalled && IsOffline && IsSuspendingPossible
 			);
 			cancelInstallationCommand = new DelegateCommand(
 				param => CancelInstallation(),
@@ -115,6 +120,15 @@ namespace ICSharpCode.AddInManager2.ViewModel
 			get
 			{
 				return disablePackageCommand;
+			}
+		}
+
+		/// <summary>Suspends the AddIn, or resumes it when it is suspended.</summary>
+		public ICommand SuspendPackageCommand
+		{
+			get
+			{
+				return suspendPackageCommand;
 			}
 		}
 
@@ -290,6 +304,11 @@ namespace ICSharpCode.AddInManager2.ViewModel
 		{
 		}
 		
+		/// <summary>Suspends the AddIn, or resumes it when it is suspended (<see cref="IsSuspended"/>).</summary>
+		public virtual void SwitchSuspension()
+		{
+		}
+
 		public virtual void CancelInstallation()
 		{
 		}
@@ -314,6 +333,7 @@ namespace ICSharpCode.AddInManager2.ViewModel
 			OnPropertyChanged(m => m.IsInstallable);
 			OnPropertyChanged(m => m.IsInstalled);
 			OnPropertyChanged(m => m.IsEnabled);
+			OnPropertyChanged(m => m.IsSuspended);
 			OnPropertyChanged(m => m.IsRemoved);
 			OnPropertyChanged(m => m.Summary);
 		}
@@ -373,6 +393,26 @@ namespace ICSharpCode.AddInManager2.ViewModel
 		public abstract bool IsDisablingPossible
 		{
 			get;
+		}
+
+		/// <summary>
+		/// True while the AddIn's contributions are switched off at run time (see AddIn.Suspended): nothing is unloaded, it takes effect
+		/// at once, and it is remembered across restarts until the AddIn is resumed. Only an installed AddIn can be suspended.
+		/// </summary>
+		public virtual bool IsSuspended
+		{
+			get
+			{
+				return false;
+			}
+		}
+
+		public virtual bool IsSuspendingPossible
+		{
+			get
+			{
+				return false;
+			}
 		}
 
 		public abstract IEnumerable<AddInDependency> Dependencies

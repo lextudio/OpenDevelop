@@ -132,6 +132,15 @@
   <data name="AddInManager.ActionDisable" xml:space="preserve">
     <value>Disable</value>
   </data>
+  <data name="AddInManager.ActionSuspend" xml:space="preserve">
+    <value>Suspend</value>
+  </data>
+  <data name="AddInManager.ActionResume" xml:space="preserve">
+    <value>Resume</value>
+  </data>
+  <data name="AddInManager.StateSuspended" xml:space="preserve">
+    <value>Suspended</value>
+  </data>
   <data name="AddInManager.ActionEnable" xml:space="preserve">
     <value>Enable</value>
   </data>
@@ -292,6 +301,13 @@ Download an AddIn from the Internet, then click 'Install AddIn' and choose the d
 {1}
 
 They will stop working after disabling this AddIn! Are you sure you want to continue?</value>
+  </data>
+  <data name="AddInManager2.SuspendDependentWarning" xml:space="preserve">
+    <value>Following installed AddIns are depending on "{0}":
+
+{1}
+
+They will stop working while this AddIn is suspended! Are you sure you want to continue?</value>
   </data>
   <data name="AddInManager2.InstallDependentMessage" xml:space="preserve">
     <value>Package "{0}" needs at least one additional package:

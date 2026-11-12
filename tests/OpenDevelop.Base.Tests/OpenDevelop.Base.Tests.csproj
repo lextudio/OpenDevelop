@@ -60,6 +60,7 @@
     <ProjectReference Include="..\..\src\Main\Designer\Designer.Shell\Designer.Shell.csproj" />
     <ProjectReference Include="..\..\src\AddIns\Debugger\Debugger.AddIn\Debugger.AddIn.csproj" />
     <ProjectReference Include="..\..\src\AddIns\DisplayBindings\ILSpyAddIn\ILSpyAddIn.csproj" />
+    <ProjectReference Include="..\..\src\AddIns\Misc\AddInManager2\Project\AddInManager2.csproj" />
     <!-- AndroidDeviceProvider maps parsed AVDs to the shared Device model. -->
     <ProjectReference Include="..\..\src\AddIns\Misc\AndroidDeviceManager\Project\AndroidDeviceManager.csproj" />
   </ItemGroup>

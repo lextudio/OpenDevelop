@@ -100,6 +100,22 @@ namespace ICSharpCode.AddInManager2.Model
 			ICSharpCode.Core.AddInManager.Disable(addIns);
 		}
 		
+		public void Suspend(IList<AddIn> addIns)
+		{
+			SD.Log.DebugFormatted(
+				"[AddInManager2.SD] Suspending AddIn {0}", addIns[0].Name);
+
+			ICSharpCode.Core.AddInManager.Suspend(addIns);
+		}
+
+		public void Resume(IList<AddIn> addIns)
+		{
+			SD.Log.DebugFormatted(
+				"[AddInManager2.SD] Resuming AddIn {0}", addIns[0].Name);
+
+			ICSharpCode.Core.AddInManager.Resume(addIns);
+		}
+
 		public void RemoveExternalAddIns(IList<AddIn> addIns)
 		{
 			SD.Log.DebugFormatted(

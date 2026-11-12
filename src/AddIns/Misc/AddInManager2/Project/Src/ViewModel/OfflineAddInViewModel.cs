@@ -287,6 +287,24 @@ namespace ICSharpCode.AddInManager2.ViewModel
 			}
 		}
 		
+		public override bool IsSuspended
+		{
+			get
+			{
+				return (_addIn != null) && _addIn.Suspended;
+			}
+		}
+
+		public override bool IsSuspendingPossible
+		{
+			get
+			{
+				// As for disabling: only an AddIn with an identity, and never the AddInManager itself (it is where a suspended AddIn is
+				// resumed). And it must be loaded now: an AddIn that is only installed, or disabled, contributes nothing to suspend.
+				return (_addIn != null) && IsDisablingPossible && _addIn.Enabled;
+			}
+		}
+
 		public override bool IsRemoved
 		{
 			get
@@ -579,6 +597,42 @@ namespace ICSharpCode.AddInManager2.ViewModel
 			AddInManager.Setup.SwitchAddInActivation(_addIn);
 		}
 		
+		public override void SwitchSuspension()
+		{
+			ClearReportedMessages();
+
+			if (_addIn == null)
+			{
+				return;
+			}
+			if (_addIn.Manifest.PrimaryIdentity == "ICSharpCode.AddInManager2")
+			{
+				MessageService.ShowMessage("${res:AddInManager.CannotDisableAddInManager}", "${res:AddInManager.Title}");
+				return;
+			}
+
+			if (!_addIn.Suspended)
+			{
+				var dependentAddIns = AddInManager.Setup.GetDependentAddIns(_addIn);
+				if ((dependentAddIns != null) && dependentAddIns.Any())
+				{
+					string addInNames = "";
+					foreach (var dependentAddIn in dependentAddIns)
+					{
+						addInNames += "\t " + dependentAddIn.AddIn.Name + Environment.NewLine;
+					}
+					if (!MessageService.AskQuestionFormatted(
+						"${res:AddInManager.Title}", "${res:AddInManager2.SuspendDependentWarning}", _addIn.Name, addInNames))
+					{
+						return;
+					}
+				}
+			}
+
+			AddInManager.Setup.SwitchAddInSuspension(_addIn);
+			UpdateInstallationState();
+		}
+
 		public override bool HasOptions
 		{
 			get

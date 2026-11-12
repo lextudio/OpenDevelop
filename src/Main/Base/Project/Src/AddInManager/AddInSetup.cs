@@ -624,6 +624,16 @@ namespace ICSharpCode.AddInManager2.Model
 			}
 		}
 		
+		public void SwitchAddInSuspension(AddIn addIn)
+		{
+			if (addIn == null)
+				return;
+			if (addIn.Suspended)
+				_sdAddInManagement.Resume(new AddIn[] { addIn });
+			else
+				_sdAddInManagement.Suspend(new AddIn[] { addIn });
+		}
+
 		public void SwitchAddInActivation(AddIn addIn)
 		{
 			if (addIn != null)

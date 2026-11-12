@@ -140,6 +140,28 @@ namespace ICSharpCode.AddInManager2.Tests.Fakes
 			}
 		}
 		
+		public void Suspend(System.Collections.Generic.IList<ICSharpCode.Core.AddIn> addIns)
+		{
+			if (addIns != null)
+			{
+				foreach (var addIn in addIns)
+				{
+					addIn.Suspended = true;
+				}
+			}
+		}
+
+		public void Resume(System.Collections.Generic.IList<ICSharpCode.Core.AddIn> addIns)
+		{
+			if (addIns != null)
+			{
+				foreach (var addIn in addIns)
+				{
+					addIn.Suspended = false;
+				}
+			}
+		}
+
 		public void RemoveExternalAddIns(System.Collections.Generic.IList<ICSharpCode.Core.AddIn> addIns)
 		{
 			if (addIns != null)

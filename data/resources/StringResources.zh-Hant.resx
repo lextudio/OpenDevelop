@@ -135,6 +135,15 @@
   <data name="AddInManager.ActionDisable" xml:space="preserve">
     <value>停用</value>
   </data>
+  <data name="AddInManager.ActionSuspend" xml:space="preserve">
+    <value>暫停</value>
+  </data>
+  <data name="AddInManager.ActionResume" xml:space="preserve">
+    <value>恢復</value>
+  </data>
+  <data name="AddInManager.StateSuspended" xml:space="preserve">
+    <value>已暫停</value>
+  </data>
   <data name="AddInManager.ActionEnable" xml:space="preserve">
     <value>啟用</value>
   </data>
@@ -7625,6 +7634,13 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
 {1}
 
 禁用此增益集後它們將停止工作！確定要繼續嗎？</value>
+  </data>
+  <data name="AddInManager2.SuspendDependentWarning" xml:space="preserve">
+    <value>以下已安裝增益集依賴於「{0}」：
+
+{1}
+
+暫停此增益集期間它們將停止工作！確定要繼續嗎？</value>
   </data>
   <data name="AddInManager2.InstallDependentMessage" xml:space="preserve">
     <value>包「{0}」需要至少一個附加包：

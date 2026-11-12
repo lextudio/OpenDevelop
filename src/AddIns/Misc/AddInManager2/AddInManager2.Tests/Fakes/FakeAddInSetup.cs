@@ -146,6 +146,14 @@ namespace ICSharpCode.AddInManager2.Tests.Fakes
 			set;
 		}
 
+        public void SwitchAddInSuspension(ICSharpCode.Core.AddIn addIn)
+        {
+            if (addIn != null)
+            {
+                addIn.Suspended = !addIn.Suspended;
+            }
+        }
+
         public ICSharpCode.Core.AddIn GetInstalledAddInByIdentity(string identity)
         {
             if (!String.IsNullOrEmpty(identity))
