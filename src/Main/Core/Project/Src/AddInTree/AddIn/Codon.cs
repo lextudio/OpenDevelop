@@ -95,6 +95,10 @@ namespace ICSharpCode.Core
 		
 		internal object BuildItem(BuildItemArgs args)
 		{
+			// A suspended AddIn contributes nothing to what is built from now on (see AddIn.Suspended)
+			if (addIn != null && addIn.Suspended)
+				return null;
+
 			IDoozer doozer;
 			if (!addIn.AddInTree.Doozers.TryGetValue(Name, out doozer))
 				throw new CoreException("Doozer " + Name + " not found! " + ToString());

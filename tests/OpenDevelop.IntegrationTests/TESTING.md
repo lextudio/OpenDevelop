@@ -59,6 +59,11 @@ assembly. Set `OD_TEST_DISABLE_ADDINS` (comma-separated identities, e.g. `ICShar
 fixture writes `<config dir>/AddIns.xml` before the launch. Such a test skips itself unless the variable names its add-in, so an ordinary run never
 disables anything (see `DebuggerFeatureIntegrationTests.ExternalFrame_WithIlspyDisabled_DecompilesNothing`).
 
+When it is enough that an add-in's contributions that are looked up in the AddIn tree **when needed** are absent, no restart is necessary: the DevFlow action
+`od.addin.suspend <identity> [false]` sets `AddIn.Suspended` (nothing is unloaded; `Codon.BuildItem` builds nothing from a suspended add-in), so the test runs in
+an ordinary run and must resume the add-in in a `finally` (see `ExternalFrame_WithIlspySuspended_DecompilesNothing`). What was built at startup (menus, pads,
+singletons) is not affected.
+
 Building `SharpDevelop.csproj` is **not** sufficient on its own. The addins are runtime-discovered
 plugins, not ProjectReferences of the app, so building only the app leaves their `AddIns/...`
 folders empty - and an undeployed addin fails its tests with symptoms that read like product bugs

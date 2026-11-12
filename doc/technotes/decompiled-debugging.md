@@ -164,6 +164,12 @@ build of `Debugger.AddIn` (and building the integration project) puts the packag
   unchanged, there is no `cache/DecompiledSymbols` in the run's config directory, and the adapter's own `SharpIdeSymbolCache` was not written during
   the run. It skips in an ordinary run and when the bundled SharpDbg does not support `decompileExternalCode`. Verified skipping both ways and
   passing with the new adapter.
+- **ILSpy suspended at run time** (`ExternalFrame_WithIlspySuspended_DecompilesNothing`): the same claim in an ordinary run, without a restart. `AddIn.Suspended`
+  (ICSharpCode.Core) switches an add-in's contributions off at run time: `Codon.BuildItem`, through which everything in the AddIn tree is built, returns nothing
+  for a suspended add-in's codons, as if their conditions failed. Nothing is unloaded or removed (assemblies stay loaded, what was built earlier stays), it is
+  separate from the persisted, startup-time `Enabled` (whose setter also changes `Action`), and resuming restores the contributions. The symbol provider is looked
+  up in the tree at the moment it is needed, so a suspended ILSpy add-in is absent for this feature at once. DevFlow: `od.addin.suspend identity [suspended]`;
+  `od.addins` reports `suspended`. Unit tests: `AddInSuspensionTests`. The startup variant above remains the proof with the add-in really not loaded.
 - Not covered: the Break button itself (a modal dialog that `OD_TEST_MODE` auto-answers; it needs a non-test-mode launch and a real click,
   which a locked screen prevents).
 

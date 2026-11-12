@@ -2848,11 +2848,22 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 					name = a.Name,
 					fileName = a.FileName,
 					enabled = a.Enabled,
+					suspended = a.Suspended,
 					action = a.Action.ToString()
 				}).ToArray()
 			});
 		}
 		
+		[DevFlowAction("od.addin.suspend", Description = "Switch an AddIn's contributions off (or back on) at run time, by identity (e.g. ICSharpCode.ILSpyAddIn): nothing is unloaded, but nothing is built from its codons from then on, as if their conditions failed; what was already built stays. suspended defaults to true")]
+		public static string SuspendAddIn(string identity, bool suspended = true)
+		{
+			var addIn = SD.AddInTree.AddIns.FirstOrDefault(a => a.Manifest.Identities.ContainsKey(identity));
+			if (addIn == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No AddIn with identity " + identity });
+			addIn.Suspended = suspended;
+			return JsonSerializer.Serialize(new { success = true, identity, suspended = addIn.Suspended });
+		}
+
 		[DevFlowAction("od.debug.output", Description = "Read the Debug output category text (diagnostics)")]
 		public static string GetDebugOutput()
 		{

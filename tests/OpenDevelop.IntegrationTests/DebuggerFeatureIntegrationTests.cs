@@ -241,14 +241,47 @@ public sealed class DebuggerFeatureIntegrationTests
         Assert.SkipUnless(await AdapterTakesTheIdesSymbolsAsync(), "The SharpDbg the application loads does not support decompileExternalCode; it decompiles by itself.");
 
         var started = DateTime.UtcNow;
-        var program = ProgramPath;
-        var line = FindLine(program, "var twice = n * 2;");
-
         // The add-in really is absent
         var addins = await _app.InvokeAsync("od.addins");
         var ilspy = Assert.Single(addins.GetProperty("addins").EnumerateArray(),
             a => a.GetProperty("fileName").GetString()!.EndsWith("ILSpyAddIn.addin", StringComparison.OrdinalIgnoreCase));
         Assert.False(ilspy.GetProperty("enabled").GetBoolean(), ilspy.ToString());
+
+        await AssertTheFirstExternalFrameIsNotDecompiledAsync(started);
+        // No decompiled sources or PDB from the add-in at all in this run
+        Assert.False(Directory.Exists(Path.Combine(_app.ConfigDirectory, "cache", "DecompiledSymbols")));
+    }
+
+    // The same claim without a restart: AddIn.Suspended switches the add-in's contributions off at run time (nothing is unloaded; what is looked up in the
+    // AddIn tree when it is needed, such as the symbol provider, is simply not there), so this runs in an ordinary run. It needs the new SharpDbg too.
+    [Fact]
+    public async Task ExternalFrame_WithIlspySuspended_DecompilesNothing()
+    {
+        Assert.SkipUnless(await AdapterTakesTheIdesSymbolsAsync(), "The SharpDbg the application loads does not support decompileExternalCode; it decompiles by itself.");
+
+        var started = DateTime.UtcNow;
+        var suspended = await _app.InvokeAsync("od.addin.suspend", "ICSharpCode.ILSpyAddIn", true);
+        Assert.True(suspended.GetProperty("success").GetBoolean(), suspended.ToString());
+        try
+        {
+            await AssertTheFirstExternalFrameIsNotDecompiledAsync(started);
+        }
+        finally
+        {
+            // Whatever happens, the add-in must be back for the tests that follow in this shared application
+            var resumed = await _app.InvokeAsync("od.addin.suspend", "ICSharpCode.ILSpyAddIn", false);
+            Assert.False(resumed.GetProperty("suspended").GetBoolean(), resumed.ToString());
+        }
+    }
+
+    /// <summary>
+    /// Stops in the System.Linq lambda of DebugTestApp and opens the first external frame the way a call-stack double-click does: the adapter asks the IDE for
+    /// symbols and nobody supplies any. Nothing may be resolved or opened, and nothing may be written by the add-in or by the adapter itself.
+    /// </summary>
+    async Task AssertTheFirstExternalFrameIsNotDecompiledAsync(DateTime started)
+    {
+        var program = ProgramPath;
+        var line = FindLine(program, "var twice = n * 2;");
 
         await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
         await _app.InvokeAsync("od.open-file", program);
@@ -260,10 +293,10 @@ public sealed class DebuggerFeatureIntegrationTests
             var start = await _app.InvokeAsync("od.debug.start", _app.DebugTestProjectPath, true, 45);
             Assert.True(start.GetProperty("stopped").GetBoolean(), start.ToString());
 
-            // The same path a double-click on the first sourceless frame takes: the adapter asks the IDE for symbols, nobody supplies any
             var opened = await _app.InvokeAsync("od.debug.open-frame", "external");
             Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
             var resolvedFile = opened.GetProperty("resolvedFilePath");
+            // An adapter that decompiles by itself would have returned its virtual decompiled/... path here
             Assert.True(resolvedFile.ValueKind == JsonValueKind.Null || string.IsNullOrEmpty(resolvedFile.GetString()), opened.ToString());
             var document = opened.GetProperty("activeDocument").GetString()!;
             Assert.Equal(program, document);
@@ -274,11 +307,13 @@ public sealed class DebuggerFeatureIntegrationTests
             await _app.InvokeAsync("od.debug.stop");
         }
 
-        // No decompiled sources or PDB from the add-in...
-        Assert.False(Directory.Exists(Path.Combine(_app.ConfigDirectory, "cache", "DecompiledSymbols")));
-        // ...and none from the adapter either: it must not have written to its own cache during this run. The path is the adapter's own formula
-        // (sharpdbg ManagedDebugger_FrameSourceInfo.cs: LocalApplicationData/Temp/SharpIdeSymbolCache; on macOS ~/Library/Application Support/Temp/...), computed
-        // here with the same call by the same user. Not existing at all also means nothing was written, so the guard is not a way to skip the claim.
+        // The add-in wrote nothing during this test (other tests of the run may have filled the cache before)
+        var cache = Path.Combine(_app.ConfigDirectory, "cache", "DecompiledSymbols");
+        if (Directory.Exists(cache))
+            Assert.DoesNotContain(Directory.EnumerateFiles(cache, "*", SearchOption.AllDirectories), f => File.GetLastWriteTimeUtc(f) >= started);
+        // ...and the adapter did not write to its own cache either. The path is the adapter's own formula (sharpdbg ManagedDebugger_FrameSourceInfo.cs:
+        // LocalApplicationData/Temp/SharpIdeSymbolCache; on macOS ~/Library/Application Support/Temp/...), computed here with the same call by the same user.
+        // Not existing at all also means nothing was written, so the guard is not a way to skip the claim.
         var adapterCache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp", "SharpIdeSymbolCache");
         if (Directory.Exists(adapterCache))
             Assert.DoesNotContain(Directory.EnumerateFiles(adapterCache, "*", SearchOption.AllDirectories), f => File.GetLastWriteTimeUtc(f) >= started);

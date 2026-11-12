@@ -212,6 +212,21 @@ namespace ICSharpCode.Core
 			set { stringResources = value; }
 		}
 		
+		volatile bool suspended;
+
+		/// <summary>
+		/// True while this AddIn's contributions are switched off AT RUN TIME. Nothing is unloaded or removed: its assemblies stay loaded and
+		/// whatever was built from it earlier (menus, pads, singletons) stays as it is. But <see cref="Codon.BuildItem"/> builds nothing
+		/// from its codons, exactly as if their conditions failed, so everything that is looked up in the AddIn tree when it is needed is
+		/// absent. Setting it back to false makes the contributions available again.
+		/// It is deliberately not <see cref="Enabled"/>: that one is the persisted, startup-time state, and its setter also changes
+		/// <see cref="Action"/>, which the AddIn manager shows as a pending change.
+		/// </summary>
+		public bool Suspended {
+			get { return suspended; }
+			set { suspended = value; }
+		}
+
 		public bool Enabled {
 			get { return enabled; }
 			set {
